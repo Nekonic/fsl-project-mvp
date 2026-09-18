@@ -1,0 +1,107 @@
+# 공격과 정상 트래픽을 같은 파일에 둔다. 분리하면 정상 트래픽을 빠뜨리기
+# 쉽고, 정상 트래픽이 없으면 "전부 차단"하는 룰이 만점을 받는다.
+
+# ── 공격 ──────────────────────────────────────────────────────────
+- name: sqli-login-bypass
+  malicious: true
+  technique: SQLi
+  correlation: marker
+  request:
+    method: POST
+    path: /rest/user/login
+    json:
+      email: "' OR 1=1--"
+      password: "anything"
+
+- name: sqli-union-in-search
+  malicious: true
+  technique: SQLi
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "apple')) UNION SELECT NULL,NULL,NULL--"
+
+- name: xss-script-tag-in-search
+  malicious: true
+  technique: XSS
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "<script>alert(1)</script>"
+
+- name: xss-img-onerror
+  malicious: true
+  technique: XSS
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "<img src=x onerror=alert(1)>"
+
+# `..` 를 그대로 쓰면 requests 가 전송 전에 경로를 정규화해서 공격이
+# 나가지 않는다. %2e%2e 는 그대로 전송되고 WAF·IDS 는 똑같이 본다.
+- name: path-traversal-ftp
+  malicious: true
+  technique: PathTraversal
+  correlation: marker
+  request:
+    method: GET
+    path: /ftp/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
+
+# ── 정상 ──────────────────────────────────────────────────────────
+# 오탐 채점의 근거. CRS 가 과하게 반응하기 쉬운 문자열을 일부러 섞었다.
+- name: normal-product-search
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "apple juice"
+
+- name: normal-login-attempt
+  malicious: false
+  correlation: marker
+  request:
+    method: POST
+    path: /rest/user/login
+    json:
+      email: "customer@juice-sh.op"
+      password: "correct horse battery staple"
+
+- name: normal-search-with-apostrophe
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "O'Brien's lemonade"
+
+- name: normal-search-select-as-a-word
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "select the best juice for me"
+
+- name: normal-product-reviews
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/1/reviews
+
+- name: normal-application-version
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/admin/application-version

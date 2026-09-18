@@ -66,37 +66,49 @@ def fetch(
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """문서 묶음을 경보 목록으로 바꾼다. 마커는 flow_id 로 조인한다.
+    """문서 묶음을 경보 목록으로 바꾼다. 마커는 트랜잭션 단위로 조인한다.
 
     Suricata 의 alert 이벤트는 HTTP 요청 헤더를 담지 않는다 — 헤더는 같은
-    flow_id 를 가진 별도의 http 이벤트에만 실린다. 그래서 마커는 문서 하나만
-    보고는 알 수 없고, 두 번 훑어야 한다. 실제 스택에서 확인한 사실이다.
+    트랜잭션의 http 이벤트에만 실린다. 그래서 마커는 문서 하나만 보고는
+    알 수 없고, 두 번 훑어야 한다.
+
+    조인 키는 `flow_id` 하나가 아니라 `(flow_id, tx_id)` 다. HTTP keep-alive
+    에서는 TCP 흐름 하나 위로 요청 수십 개가 흐르므로, flow_id 만으로 조인하면
+    흐름의 첫 마커가 그 흐름의 모든 경보에 붙어 전부 엉뚱한 케이스로 귀속된다.
+    점수는 그럴듯해 보이면서 조용히 거짓이 된다. 실제 스택에서 확인한 사실이다.
     """
-    flow_markers = _flow_markers(documents)
+    markers = _transaction_markers(documents)
 
     detections: list[dict[str, Any]] = []
     for doc_id, doc in documents:
-        flow_id = doc.get("flow_id")
+        key = _transaction_key(doc)
         for detection in normalize(doc_id, doc):
-            if detection["marker"] is None and flow_id is not None:
-                detection["marker"] = flow_markers.get(flow_id)
+            if detection["marker"] is None and key is not None:
+                detection["marker"] = markers.get(key)
             detections.append(detection)
     return detections
 
 
-def _flow_markers(
+def _transaction_markers(
     documents: Sequence[tuple[str, dict[str, Any]]],
-) -> dict[Any, str]:
-    """flow_id -> 마커. http 이벤트가 싣고 다니는 것을 모은다."""
-    markers: dict[Any, str] = {}
+) -> dict[tuple[Any, Any], str]:
+    """(flow_id, tx_id) -> 마커. http 이벤트가 싣고 다니는 것을 모은다."""
+    markers: dict[tuple[Any, Any], str] = {}
     for _, doc in documents:
-        flow_id = doc.get("flow_id")
-        if flow_id is None or flow_id in markers:
+        key = _transaction_key(doc)
+        if key is None or key in markers:
             continue
         marker = _suricata_marker(doc.get("http") or {})
         if marker:
-            markers[flow_id] = marker
+            markers[key] = marker
     return markers
+
+
+def _transaction_key(doc: dict[str, Any]) -> tuple[Any, Any] | None:
+    flow_id = doc.get("flow_id")
+    if flow_id is None:
+        return None
+    return (flow_id, doc.get("tx_id"))
 
 
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:

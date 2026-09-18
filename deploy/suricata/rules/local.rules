@@ -7,4 +7,6 @@ alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi 시도 - 요청 본
 
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL XSS 시도 - script 태그 또는 이벤트 핸들러"; flow:established,to_server; http.uri; pcre:"/(<script|%3cscript|javascript:|onerror\s*%?3?d?\s*=)/i"; sid:9000003; rev:1;)
 
-alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL 경로 탐색 시도"; flow:established,to_server; http.uri; pcre:"/(\.\.[\/\\]|%2e%2e[\/\\%])/i"; sid:9000004; rev:1;)
+# http.uri 는 정규화된 버퍼라 %2F 가 풀리고 dot-segment 가 제거된다.
+# 경로 탐색은 raw 버퍼에서 봐야 한다. 실측으로 확인했다.
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL 경로 탐색 시도"; flow:established,to_server; http.uri.raw; pcre:"/(\.\.(%2f|%5c|[\/\\])|%2e%2e)/i"; sid:9000004; rev:2;)
