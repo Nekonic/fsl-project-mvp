@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko" class="bg-slate-950">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}블루팀 콘솔{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans">
+  <header class="border-b border-slate-800">
+    <nav class="max-w-5xl mx-auto px-6 py-4 flex gap-6 text-sm items-center">
+      <span class="font-semibold text-slate-100">FSL 블루팀</span>
+      <a href="/" class="hover:text-white">스코어</a>
+      <a href="/detections/" class="hover:text-white">경보</a>
+      <a href="/rules/" class="hover:text-white">룰</a>
+      <label class="ml-auto flex items-center gap-2">
+        <span class="text-slate-400">세션</span>
+        <input id="session-id" type="number" min="1"
+               class="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1">
+      </label>
+    </nav>
+  </header>
+  <main class="max-w-5xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // 세션 번호는 화면 사이를 옮겨다녀도 유지한다.
+    const sessionInput = document.getElementById("session-id");
+    sessionInput.value = localStorage.getItem("fsl-session") || "1";
+    sessionInput.addEventListener("change", () => {
+      localStorage.setItem("fsl-session", sessionInput.value);
+      window.dispatchEvent(new Event("fsl:session-changed"));
+    });
+    const sessionId = () => sessionInput.value;
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const body = await response.json().catch(() => ({}));
+      return { ok: response.ok, status: response.status, body };
+    }
+  </script>
+  {% block script %}{% endblock %}
+</body>
+</html>

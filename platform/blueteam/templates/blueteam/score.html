@@ -1,0 +1,75 @@
+{% extends "blueteam/base.html" %}
+{% block title %}스코어{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold text-slate-100 mb-6">스코어</h1>
+<button id="reload"
+        class="mb-6 px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
+  경보 재수집 후 채점
+</button>
+<div id="warnings" class="mb-6 space-y-2"></div>
+<div id="totals" class="grid grid-cols-4 gap-4 mb-8"></div>
+<table class="w-full text-sm">
+  <thead class="text-slate-400 border-b border-slate-800">
+    <tr><th class="text-left py-2">케이스</th><th class="text-left">라벨</th>
+        <th class="text-left">판정</th><th class="text-left">경보 수</th></tr>
+  </thead>
+  <tbody id="per-case"></tbody>
+</table>
+{% endblock %}
+{% block script %}
+<script>
+  const VERDICT_STYLE = {
+    TP: "text-emerald-400", TN: "text-emerald-400",
+    FP: "text-amber-400", FN: "text-rose-400",
+  };
+
+  function tile(label, value) {
+    return `<div class="bg-slate-900 border border-slate-800 rounded p-4">
+      <div class="text-slate-400 text-xs uppercase">${label}</div>
+      <div class="text-2xl font-semibold text-slate-100">${value}</div></div>`;
+  }
+
+  async function render() {
+    const ingest = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
+    const warnings = document.getElementById("warnings");
+    warnings.innerHTML = "";
+    if (!ingest.ok) {
+      warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
+        text-rose-200 text-sm">수집 실패 (${ingest.status}): ${ingest.body.detail || ""}</div>`;
+    }
+
+    const score = await api(`/api/sessions/${sessionId()}/score/`);
+    if (!score.ok) {
+      warnings.innerHTML += `<div class="bg-rose-950 border border-rose-800 rounded p-3
+        text-rose-200 text-sm">채점 실패 (${score.status})</div>`;
+      return;
+    }
+    const s = score.body;
+
+    document.getElementById("totals").innerHTML =
+      tile("TP", s.tp) + tile("FN (미탐)", s.fn) +
+      tile("FP (오탐)", s.fp) + tile("TN", s.tn) +
+      tile("precision", s.precision.toFixed(2)) +
+      tile("recall", s.recall.toFixed(2)) +
+      tile("F1", s.f1.toFixed(2)) +
+      tile("오탐률", s.false_positive_rate.toFixed(2));
+
+    for (const w of s.warnings) {
+      warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3
+        text-amber-200 text-sm">${w}</div>`;
+    }
+
+    document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
+      <tr class="border-b border-slate-900">
+        <td class="py-2">${c.name}</td>
+        <td>${c.malicious ? "공격" : "정상"}</td>
+        <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${c.verdict}</td>
+        <td>${c.detection_ids.length}</td>
+      </tr>`).join("");
+  }
+
+  document.getElementById("reload").addEventListener("click", render);
+  window.addEventListener("fsl:session-changed", render);
+  render();
+</script>
+{% endblock %}
