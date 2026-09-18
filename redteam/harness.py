@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,8 +20,20 @@ import requests
 import yaml
 from requests.utils import requote_uri
 
+from redteam.tools import (
+    DOCKER_STARTUP_FAILURE,
+    TOOL_IMAGE,
+    ToolUnavailable,
+    build_tool_command,
+    is_tool_case,
+)
+
 MARKER_HEADER = "X-FSL-Case"
 REQUEST_TIMEOUT = 15.0
+TOOL_TIMEOUT = 600.0
+
+# 도구 컨테이너는 스택 네트워크 안에서 돈다. localhost 로는 대상에 닿지 못한다.
+DEFAULT_TOOL_TARGET = "http://waf:8080"
 
 
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
@@ -87,6 +100,17 @@ def _canonical_path(url_or_path: str) -> str:
     return _PERCENT_ESCAPE.sub(lambda m: "%" + m.group(1).upper(), path)
 
 
+def case_meta(case: dict[str, Any]) -> dict[str, Any]:
+    """케이스가 무엇을 했는지 기록용으로 요약한다.
+
+    도구 케이스에는 `request` 가 없다. 여기서 터지면 세션 전체가
+    ground truth 없이 중단된다.
+    """
+    if is_tool_case(case):
+        return {"tool": case["tool"], "args": list(case.get("args") or [])}
+    return {"request": case["request"]}
+
+
 class Harness:
     """세션을 열고 케이스를 실행한 뒤 ground truth 를 기록한다."""
 
@@ -95,9 +119,11 @@ class Harness:
         platform_url: str,
         target_url: str,
         session: requests.Session | None = None,
+        tool_target_url: str = DEFAULT_TOOL_TARGET,
     ) -> None:
         self.platform_url = platform_url.rstrip("/")
         self.target_url = target_url.rstrip("/")
+        self.tool_target_url = tool_target_url.rstrip("/")
         self.session = session or requests.Session()
 
     def run(self, cases: list[dict[str, Any]]) -> int:
@@ -133,6 +159,10 @@ class Harness:
         )
 
     def _fire(self, case: dict[str, Any]) -> None:
+        if is_tool_case(case):
+            self._fire_tool(case)
+            return
+
         spec = build_request(case, self.target_url)
         prepared = requests.Request(
             method=spec["method"],
@@ -153,6 +183,31 @@ class Harness:
             # 한다. 요청이 나갔다는 사실 자체가 채점 대상이다.
             print(f"  ! {case['name']}: 요청 실패 — {exc}")
 
+    def _fire_tool(self, case: dict[str, Any]) -> None:
+        command = build_tool_command(case, self.tool_target_url)
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=TOOL_TIMEOUT
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ToolUnavailable(
+                f"{case['name']}: 도구를 실행하지 못했다 — {exc}. "
+                f"이미지를 먼저 만들라: docker compose --profile tools build"
+            ) from exc
+
+        if result.returncode == DOCKER_STARTUP_FAILURE:
+            raise ToolUnavailable(
+                f"{case['name']}: 도구 컨테이너가 시작되지 않았다 "
+                f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
+                f"이미지를 먼저 만들라: docker compose --profile tools build"
+            )
+
+        if result.returncode != 0:
+            # 도구 자신의 비정상 종료는 정상이다 — sqlmap 은 주입점을 못
+            # 찾으면 0 이 아닌 코드를 낸다. 공격 시도는 나갔으므로
+            # ground truth 는 유효하다.
+            print(f"  · {case['name']}: 도구가 {result.returncode} 로 끝났다")
+
     def _record(
         self,
         session_id: int,
@@ -169,7 +224,7 @@ class Harness:
             "source_ip": case.get("source_ip"),
             "started_at": started_at.isoformat(),
             "ended_at": ended_at.isoformat(),
-            "meta": {"request": case["request"]},
+            "meta": case_meta(case),
         }
         response = self.session.post(
             f"{self.platform_url}/api/sessions/{session_id}/cases/",

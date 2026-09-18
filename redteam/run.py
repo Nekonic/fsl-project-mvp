@@ -9,7 +9,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from redteam.harness import Harness, load_cases  # noqa: E402
+from redteam.harness import (  # noqa: E402
+    DEFAULT_TOOL_TARGET,
+    Harness,
+    load_cases,
+)
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 
@@ -19,6 +23,11 @@ def main() -> int:
     parser.add_argument("--platform", default="http://localhost:8000")
     parser.add_argument("--target", default="http://localhost:8080")
     parser.add_argument("--cases", default=str(DEFAULT_CASES))
+    parser.add_argument(
+        "--tool-target",
+        default=DEFAULT_TOOL_TARGET,
+        help="도구 컨테이너가 스택 안에서 부를 대상 주소",
+    )
     args = parser.parse_args()
 
     cases = load_cases(args.cases)
@@ -28,7 +37,9 @@ def main() -> int:
     if attacks == len(cases):
         print("경고: 정상 케이스가 없다. 오탐을 채점할 수 없다.", file=sys.stderr)
 
-    session_id = Harness(args.platform, args.target).run(cases)
+    session_id = Harness(
+        args.platform, args.target, tool_target_url=args.tool_target
+    ).run(cases)
 
     print(f"세션 {session_id} 완료")
     print(f"  채점: curl -X POST {args.platform}/api/sessions/{session_id}/ingest/")

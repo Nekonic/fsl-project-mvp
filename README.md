@@ -29,6 +29,13 @@ ES ingest pipeline 을 한 번 등록한다.
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip -H 'Content-Type: application/json' --data-binary @deploy/elastic/ingest-pipeline.json
 ```
 
+레드팀 외부 도구(sqlmap) 이미지를 한 번 만든다. 일회성으로 `docker run`
+되므로 `up` 에서는 뜨지 않는다.
+
+```bash
+docker compose --profile tools build
+```
+
 호스트가 arm64 (Apple Silicon) 면 Docker 도 arm64 로 돌려야 한다.
 Elasticsearch 의 amd64 JVM 은 x86 에뮬레이션 아래에서 SIGSEGV 로 죽는다.
 

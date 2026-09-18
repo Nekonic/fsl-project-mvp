@@ -53,6 +53,24 @@
     method: GET
     path: /ftp/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
 
+# 외부 도구. HTTP 요청을 직접 만드는 대신 컨테이너로 돌린다.
+# {target} 은 하니스가 스택 내부 주소로 치환한다 — 도구는 fsl 네트워크
+# 안에서 도므로 localhost 로는 대상에 닿지 못한다.
+- name: sqlmap-boolean-blind
+  malicious: true
+  technique: SQLi
+  correlation: marker
+  tool: sqlmap
+  args:
+    - "-u"
+    - "{target}/rest/products/search?q=1"
+    - "--batch"
+    - "--level=1"
+    - "--risk=1"
+    - "--technique=B"
+    - "--flush-session"
+    - "--disable-coloring"
+
 # ── 정상 ──────────────────────────────────────────────────────────
 # 오탐 채점의 근거. CRS 가 과하게 반응하기 쉬운 문자열을 일부러 섞었다.
 - name: normal-product-search

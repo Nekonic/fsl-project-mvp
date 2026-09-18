@@ -129,7 +129,11 @@ def test_default_cases_survive_request_preparation():
 
     from redteam.harness import check_path_preserved
 
+    from redteam.tools import is_tool_case
+
     for case in load_cases(DEFAULT_CASES):
+        if is_tool_case(case):
+            continue  # 도구 케이스는 requests 를 거치지 않는다
         case = dict(case, case_id="probe")
         spec = build_request(case, BASE)
         prepared = requests.Request(
@@ -140,3 +144,21 @@ def test_default_cases_survive_request_preparation():
             params=spec["params"],
         ).prepare()
         check_path_preserved(case["request"]["path"], prepared.url)
+
+
+def test_case_meta_describes_an_http_case():
+    from redteam.harness import case_meta
+
+    case = {"request": {"method": "GET", "path": "/x"}}
+
+    assert case_meta(case) == {"request": {"method": "GET", "path": "/x"}}
+
+
+def test_case_meta_describes_a_tool_case_without_a_request():
+    # 도구 케이스에는 request 가 없다. 여기서 KeyError 가 나면 세션 전체가
+    # ground truth 없이 중단된다.
+    from redteam.harness import case_meta
+
+    case = {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}
+
+    assert case_meta(case) == {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}

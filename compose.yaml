@@ -115,6 +115,15 @@ services:
       - ./deploy/suricata/logs:/logs/suricata:ro
       - ./deploy/nginx/logs:/logs/modsecurity:ro
 
+  # 레드팀 외부 도구. 일회성으로 `docker run` 되므로 up 에서는 뜨지 않는다.
+  # 이미지를 만들기만 한다: docker compose --profile tools build
+  redteam-tools:
+    build: ./redteam
+    image: fsl-redteam-tools
+    profiles: ["tools"]
+    networks: [fsl]
+    command: ["sqlmap", "--version"]
+
   platform:
     build: ./platform
     container_name: fsl-platform
