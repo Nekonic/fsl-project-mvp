@@ -154,3 +154,27 @@ def test_score_on_session_without_cases_warns_about_benign(client):
 
     assert response.status_code == 200
     assert any("benign" in w for w in response.data["warnings"])
+
+
+def test_ingest_skipped_counts_documents_not_alerts(client, session_with_cases):
+    # ModSecurity 트랜잭션 하나가 message 여러 개를 낳아도 "건너뛴 문서"는
+    # 늘지 않아야 한다. 뺄셈으로 세면 음수가 된다.
+    modsec = (
+        "m1",
+        {
+            "fsl_source": "modsecurity",
+            "transaction": {
+                "time_stamp": "Fri Sep 18 12:00:01 2026",
+                "client_ip": "172.20.0.5",
+                "request": {"headers": {"X-FSL-Case": ATTACK}},
+                "messages": [{"message": "first"}, {"message": "second"}],
+            },
+        },
+    )
+    noise = ("n1", {"fsl_source": "suricata", "event_type": "http"})
+
+    with patch("api.views.elastic.fetch", return_value=[modsec, noise]):
+        response = client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    assert response.data["ingested"] == 2
+    assert response.data["skipped"] == 1

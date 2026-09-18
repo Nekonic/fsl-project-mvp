@@ -1,0 +1,37 @@
+filebeat.inputs:
+  - type: filestream
+    id: suricata-eve
+    enabled: true
+    paths:
+      - /logs/suricata/eve.json
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+    fields_under_root: true
+    fields:
+      fsl_source: suricata
+
+  - type: filestream
+    id: modsecurity-audit
+    enabled: true
+    paths:
+      - /logs/modsecurity/audit.log
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+    fields_under_root: true
+    fields:
+      fsl_source: modsecurity
+
+setup.template.name: fsl-logs
+setup.template.pattern: fsl-logs-*
+setup.ilm.enabled: false
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "fsl-logs-%{+yyyy.MM.dd}"
+  pipeline: fsl-geoip
+
+logging.level: warning

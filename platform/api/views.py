@@ -75,19 +75,21 @@ def ingest_detections(request, session_id):
         Detection.objects.filter(session=session).values_list("detection_id", flat=True)
     )
     ingested = 0
-    skipped = 0
 
-    for doc_id, doc in documents:
-        alerts = elastic.normalize(doc_id, doc)
-        if not alerts:
-            skipped += 1
+    alerts = elastic.normalize_all(documents)
+
+    # 경보를 하나도 낳지 않은 문서의 수. 문서 하나가 경보 여럿을 낳을 수
+    # 있으므로 (ModSecurity 트랜잭션 하나에 message 여러 개) 뺄셈으로는
+    # 셀 수 없다.
+    productive = {a["detection_id"].split(":")[0] for a in alerts}
+    skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
+
+    for alert in alerts:
+        if alert["detection_id"] in known or alert["timestamp"] is None:
             continue
-        for alert in alerts:
-            if alert["detection_id"] in known or alert["timestamp"] is None:
-                continue
-            Detection.objects.create(session=session, **alert)
-            known.add(alert["detection_id"])
-            ingested += 1
+        Detection.objects.create(session=session, **alert)
+        known.add(alert["detection_id"])
+        ingested += 1
 
     return Response({"ingested": ingested, "skipped": skipped})
 
