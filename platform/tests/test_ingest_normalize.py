@@ -225,3 +225,65 @@ def test_modsecurity_unparseable_timestamp_falls_back_to_beat_timestamp():
     [det] = normalize("es2", doc)
 
     assert det["timestamp"] == datetime(2026, 9, 18, 15, 25, 2, tzinfo=timezone.utc)
+
+
+# ── HTTP keep-alive ──────────────────────────────────────────────────
+#
+# 하나의 TCP 흐름 위로 요청 여러 개가 흐른다. flow_id 만으로 조인하면 흐름의
+# 첫 마커가 그 흐름의 모든 경보에 붙어 전부 엉뚱한 케이스로 귀속된다.
+# alert 와 http 이벤트는 tx_id 로 정확히 짝지어진다 — 실측으로 확인했다.
+
+
+def keepalive_pair(tx_id, marker, flow_id=7):
+    alert = suricata_alert()
+    alert["flow_id"] = flow_id
+    alert["tx_id"] = tx_id
+    alert["http"] = {"url": f"/tx/{tx_id}"}
+
+    http = {
+        "fsl_source": "suricata",
+        "event_type": "http",
+        "flow_id": flow_id,
+        "tx_id": tx_id,
+        "timestamp": "2026-09-18T12:00:01.000000+0000",
+        "http": {
+            "url": f"/tx/{tx_id}",
+            "request_headers": [{"name": "X-FSL-Case", "value": marker}],
+        },
+    }
+    return [(f"a{tx_id}", alert), (f"h{tx_id}", http)]
+
+
+def test_keepalive_transactions_keep_their_own_markers():
+    from ingest.elastic import normalize_all
+
+    first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    documents = keepalive_pair(0, first) + keepalive_pair(1, second)
+
+    by_id = {d["detection_id"]: d["marker"] for d in normalize_all(documents)}
+
+    assert by_id["a0"] == first
+    assert by_id["a1"] == second, (
+        "같은 흐름의 두 번째 트랜잭션이 첫 번째의 마커를 물려받았다. "
+        "keep-alive 에서 모든 경보가 첫 요청으로 귀속된다."
+    )
+
+
+def test_marker_does_not_leak_to_a_transaction_without_one():
+    from ingest.elastic import normalize_all
+
+    marked = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    documents = keepalive_pair(0, marked)
+
+    # 마커 없는 두 번째 트랜잭션.
+    alert = suricata_alert()
+    alert["flow_id"] = 7
+    alert["tx_id"] = 1
+    alert["http"] = {"url": "/tx/1"}
+    documents.append(("a1", alert))
+
+    by_id = {d["detection_id"]: d["marker"] for d in normalize_all(documents)}
+
+    assert by_id["a0"] == marked
+    assert by_id["a1"] is None
