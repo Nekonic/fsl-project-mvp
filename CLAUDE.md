@@ -30,6 +30,9 @@ Follow this whether a human started you or `/loop` did. To run it unattended:
 
 1. Read this file and `docs/STATE.md`. That is the whole briefing.
 2. `bin/verify --fast` — prove the baseline is green before touching anything.
+   If the stack is down, bring it back before step 5: `colima start --profile
+   fsl`, `docker compose up -d`. If it will not come up, say so and stop —
+   never commit on the strength of `--fast` alone.
 3. Take **the top item** of the backlog in `docs/STATE.md`. One item, not two.
 4. Implement it test-first.
 5. `bin/verify` — full run: unit, acceptance against the live stack, ratchet.
