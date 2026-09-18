@@ -7,14 +7,16 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from api.models import Detection, ScoreSnapshot, Session
+from api.models import Detection, RuleSet, ScoreSnapshot, Session
 from api.serializers import (
     CaseSerializer,
     DetectionSerializer,
+    RuleSetSerializer,
     ScoreSnapshotSerializer,
     SessionSerializer,
 )
 from ingest import elastic
+from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 
@@ -149,3 +151,33 @@ def _session_window(session):
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     return start, end
+
+
+@api_view(["GET"])
+def current_rules(request):
+    return Response({"content": suricata.current()})
+
+
+@api_view(["POST"])
+def validate_rules(request):
+    """검증만 한다. 통과해도 파일에 쓰지 않고 RuleSet 도 만들지 않는다."""
+    content = request.data.get("content", "")
+    outcome = suricata.validate(content)
+    payload = {"ok": outcome.ok, "output": outcome.output}
+    if outcome.ok:
+        return Response(payload)
+    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+def apply_rules(request):
+    content = request.data.get("content", "")
+    try:
+        suricata.apply(content)
+    except suricata.RuleApplyError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    ruleset = RuleSet.objects.create(
+        content=content, applied_at=timezone.now(), validation_output=""
+    )
+    return Response(RuleSetSerializer(ruleset).data)

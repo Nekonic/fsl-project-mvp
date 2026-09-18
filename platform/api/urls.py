@@ -10,4 +10,7 @@ urlpatterns = [
     path("sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("sessions/<int:session_id>/detections/", views.session_detections),
     path("sessions/<int:session_id>/score/", views.session_score),
+    path("rules/", views.current_rules),
+    path("rules/validate/", views.validate_rules),
+    path("rules/apply/", views.apply_rules),
 ]
