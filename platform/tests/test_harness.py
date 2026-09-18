@@ -76,9 +76,9 @@ def test_build_request_carries_json_body_and_params():
 def test_default_cases_file_has_both_labels():
     cases = load_cases(DEFAULT_CASES)
 
-    assert any(c["malicious"] for c in cases), "공격 케이스가 없다"
+    assert any(c["malicious"] for c in cases), "no attack cases"
     assert any(not c["malicious"] for c in cases), (
-        "정상 케이스가 없다. 오탐을 채점할 수 없으면 전부 차단하는 룰이 만점을 받는다."
+        "no benign cases: without scoring false positives, a block-everything rule wins"
     )
 
 
@@ -94,11 +94,11 @@ def test_default_cases_have_unique_names():
     assert len(names) == len(set(names))
 
 
-# ── 요청이 선언대로 나갔는지 ─────────────────────────────────────────
+# -- did the request go out as declared --------------------------------------
 #
-# requests 는 /ftp/../../../../etc/passwd 를 /etc/passwd 로 정규화해서
-# 보낸다. 경로 탐색 공격이 전송되지 않았는데 ground truth 에는 "공격을
-# 보냈다" 고 남으면 채점이 거짓말을 한다. 조용히 넘어가서는 안 된다.
+# requests normalises /ftp/../../../../etc/passwd to /etc/passwd before
+# sending. If the traversal never left but ground truth says "attack sent",
+# the score lies. That must not pass quietly.
 
 
 def test_check_path_preserved_accepts_an_unaltered_path():
@@ -124,7 +124,7 @@ def test_check_path_preserved_accepts_percent_encoded_traversal():
 
 
 def test_default_cases_survive_request_preparation():
-    # 케이스 파일의 모든 경로가 정규화되지 않고 그대로 나가야 한다.
+    # Every path in the case file must survive preparation unchanged.
     import requests
 
     from redteam.harness import check_path_preserved
@@ -133,7 +133,7 @@ def test_default_cases_survive_request_preparation():
 
     for case in load_cases(DEFAULT_CASES):
         if is_tool_case(case):
-            continue  # 도구 케이스는 requests 를 거치지 않는다
+            continue  # tool cases never go through requests
         case = dict(case, case_id="probe")
         spec = build_request(case, BASE)
         prepared = requests.Request(
@@ -155,8 +155,8 @@ def test_case_meta_describes_an_http_case():
 
 
 def test_case_meta_describes_a_tool_case_without_a_request():
-    # 도구 케이스에는 request 가 없다. 여기서 KeyError 가 나면 세션 전체가
-    # ground truth 없이 중단된다.
+    # Tool cases have no request. A KeyError here aborts the whole session with
+    # no ground truth at all.
     from redteam.harness import case_meta
 
     case = {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}

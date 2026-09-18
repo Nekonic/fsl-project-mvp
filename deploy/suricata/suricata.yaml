@@ -21,11 +21,11 @@ outputs:
             metadata: yes
         - http:
             extended: yes
-            # 채점의 ground truth 대응이 이 한 줄에 달려 있다. 이 설정이
-            # 빠지면 마커가 어디에도 실리지 않아 모든 공격이 미탐이 된다.
+            # Ground truth correlation hangs on this one line. Without it
+            # the marker is logged nowhere and every attack counts as missed.
             #
-            # custom: [X-FSL-Case] 는 Suricata 8.0.7 에서 아무 효과가 없었다.
-            # 실측으로 확인했다. dump-all-headers 는 동작한다.
+            # custom: [X-FSL-Case] had no effect on Suricata 8.0.7 - verified
+            # against the real stack. dump-all-headers does work.
             dump-all-headers: request
 
 af-packet:

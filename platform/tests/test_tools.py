@@ -69,19 +69,19 @@ def test_tool_case_in_the_default_file_declares_args():
     cases = load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/default.yaml")
     tool_cases = [c for c in cases if is_tool_case(c)]
 
-    assert tool_cases, "tool: 케이스가 하나도 없다"
+    assert tool_cases, "no tool: cases at all"
     for case in tool_cases:
-        assert case["args"], f"{case['name']} 에 args 가 없다"
+        assert case["args"], f"{case['name']}  has no args"
         assert any("{target}" in a for a in case["args"]), (
-            f"{case['name']} 이 {{target}} 를 쓰지 않는다 — 대상이 고정되어 있다"
+            f"{case['name']}  does not use {{target}}, so its target is hardcoded"
         )
 
 
-# ── 도구가 아예 실행되지 않은 경우 ────────────────────────────────────
+# -- when the tool never ran at all ------------------------------------------
 #
-# 이미지가 없거나 docker 가 없으면 공격이 나가지 않는다. ground truth 에는
-# "공격을 보냈다" 고 남으므로 미탐으로 집계되지만, 실제로는 방어가 아니라
-# 하니스가 실패한 것이다. 경로 정규화와 같은 부류의 결함이다.
+# A missing image or missing docker means no attack went out. Ground truth
+# still says "attack sent", so it counts as a miss when in fact the harness,
+# not the defence, failed. Same class of defect as path normalisation.
 
 
 def test_missing_tool_image_raises_instead_of_being_swallowed():
@@ -105,8 +105,8 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
 
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
-    # sqlmap 은 주입점을 못 찾으면 0 이 아닌 코드를 낸다. 공격 시도는
-    # 나갔으므로 ground truth 는 유효하다.
+    # sqlmap exits non-zero when it finds no injection point. The attempt
+    # went out, so ground truth stands.
     import subprocess
     from unittest.mock import patch
 
@@ -121,4 +121,4 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
     )
 
     with patch("redteam.harness.subprocess.run", return_value=scan_failed):
-        harness._fire_tool(dict(CASE))  # 예외 없음
+        harness._fire_tool(dict(CASE))  # no exception

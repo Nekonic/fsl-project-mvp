@@ -1,9 +1,9 @@
-"""Suricata 룰 검증과 반영. 스택에서 Suricata 프로세스를 아는 유일한 파일.
+"""Suricata rule validation and reload. The only file that knows the process.
 
-platform 컨테이너에는 suricata 바이너리가 없다. Docker 소켓을 통해 IDS
-컨테이너 안에서 `suricata -T` 를 돌린다. 소켓 마운트는 컨테이너 탈출
-경로이므로, 메인 레포에서는 IDS 쪽에 검증·반영만 노출하는 사이드카로
-바꿔야 한다. 그 교체가 이 파일 하나로 끝나도록 격리해 두었다.
+The platform container has no suricata binary, so it runs `suricata -T` inside
+the IDS container over the Docker socket. That socket is a container escape
+path: production should put a sidecar in front of Suricata instead. Isolated
+here so the swap touches one file.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ _TIMEOUT = 60
 
 
 class RuleApplyError(RuntimeError):
-    """룰을 반영하지 못했다. 이전 룰셋은 그대로 살아 있다."""
+    """The rules were not applied. The previous rule set is still live."""
 
 
 @dataclass(frozen=True)
@@ -29,12 +29,12 @@ class ValidationOutcome:
 
 
 def current() -> str:
-    """지금 반영되어 있는 룰 파일 내용."""
+    """Contents of the rule file that is currently in effect."""
     return _read_rules()
 
 
 def validate(content: str) -> ValidationOutcome:
-    """후보 파일에 쓰고 `suricata -T` 로 검사한다. 반영하지 않는다."""
+    """Write the candidate file and check it with `suricata -T`. Applies nothing."""
     _write_candidate(content)
     result = _run(
         [
@@ -52,7 +52,7 @@ def validate(content: str) -> ValidationOutcome:
 
 
 def apply(content: str) -> None:
-    """검증을 통과한 룰만 파일에 쓰고 Suricata 를 리로드한다."""
+    """Write rules that passed validation, then reload Suricata."""
     outcome = validate(content)
     if not outcome.ok:
         raise RuleApplyError(outcome.output)
@@ -64,7 +64,7 @@ def apply(content: str) -> None:
     if result.returncode != 0:
         _write_rules(previous)
         raise RuleApplyError(
-            "리로드에 실패해 직전 룰셋으로 되돌렸다: "
+            "reload failed, rolled back to the previous rule set: "
             + ((result.stdout or "") + (result.stderr or "")).strip()
         )
 

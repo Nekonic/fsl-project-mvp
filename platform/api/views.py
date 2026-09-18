@@ -58,10 +58,10 @@ def session_cases(request, session_id):
 
 @api_view(["POST"])
 def ingest_detections(request, session_id):
-    """세션 구간의 ES 문서를 끌어와 Detection 으로 저장한다.
+    """Pull Elasticsearch documents for the session window and store them.
 
-    이미 저장된 경보는 건너뛴다. 여러 번 호출해도 결과가 같아야
-    블루팀이 룰을 고치고 재수집하는 흐름이 성립한다.
+    Alerts already stored are skipped. Repeated calls must give the same result
+    so the blue team can fix a rule and re-ingest.
     """
     session = get_object_or_404(Session, pk=session_id)
     start, end = _session_window(session)
@@ -78,9 +78,9 @@ def ingest_detections(request, session_id):
 
     alerts = elastic.normalize_all(documents)
 
-    # 경보를 하나도 낳지 않은 문서의 수. 문서 하나가 경보 여럿을 낳을 수
-    # 있으므로 (ModSecurity 트랜잭션 하나에 message 여러 개) 뺄셈으로는
-    # 셀 수 없다.
+    # Documents that produced no alert at all. One document can produce
+    # several alerts (a ModSecurity transaction with several messages), so
+    # subtraction would not count this.
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
@@ -102,7 +102,7 @@ def session_detections(request, session_id):
 
 @api_view(["GET"])
 def session_score(request, session_id):
-    """저장된 케이스와 경보로 채점하고 스냅샷을 남긴다."""
+    """Score the stored cases against the stored alerts and snapshot it."""
     session = get_object_or_404(Session, pk=session_id)
 
     cases = list(session.cases.all())
@@ -149,7 +149,7 @@ def _verdict(malicious: bool, detected: bool) -> str:
 
 
 def _session_window(session):
-    """세션 구간. 아직 열려 있으면 지금까지로 본다. 앞뒤 1분 여유."""
+    """The session window. Still open means "up to now". One minute of slack."""
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     return start, end
@@ -162,7 +162,7 @@ def current_rules(request):
 
 @api_view(["POST"])
 def validate_rules(request):
-    """검증만 한다. 통과해도 파일에 쓰지 않고 RuleSet 도 만들지 않는다."""
+    """Validate only. Even on success, nothing is written and no RuleSet is made."""
     content = request.data.get("content", "")
     outcome = suricata.validate(content)
     payload = {"ok": outcome.ok, "output": outcome.output}

@@ -1,7 +1,7 @@
-# 공격과 정상 트래픽을 같은 파일에 둔다. 분리하면 정상 트래픽을 빠뜨리기
-# 쉽고, 정상 트래픽이 없으면 "전부 차단"하는 룰이 만점을 받는다.
+# Attack and benign traffic live in one file. Splitting them makes it easy to
+# forget the benign half, and without it a block-everything rule scores 100%.
 
-# ── 공격 ──────────────────────────────────────────────────────────
+# -- attacks ---------------------------------------------------------------
 - name: sqli-login-bypass
   malicious: true
   technique: SQLi
@@ -43,8 +43,8 @@
     params:
       q: "<img src=x onerror=alert(1)>"
 
-# `..` 를 그대로 쓰면 requests 가 전송 전에 경로를 정규화해서 공격이
-# 나가지 않는다. %2e%2e 는 그대로 전송되고 WAF·IDS 는 똑같이 본다.
+# A literal `..` makes requests normalise the path before sending, so nothing
+# attacks anything. %2e%2e is sent verbatim and the WAF and IDS read it the same.
 - name: path-traversal-ftp
   malicious: true
   technique: PathTraversal
@@ -53,9 +53,8 @@
     method: GET
     path: /ftp/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
 
-# 외부 도구. HTTP 요청을 직접 만드는 대신 컨테이너로 돌린다.
-# {target} 은 하니스가 스택 내부 주소로 치환한다 — 도구는 fsl 네트워크
-# 안에서 도므로 localhost 로는 대상에 닿지 못한다.
+# External tool: run as a container instead of building the request here. The
+# harness substitutes {target}, since inside the fsl network localhost is not it.
 - name: sqlmap-boolean-blind
   malicious: true
   technique: SQLi
@@ -71,8 +70,9 @@
     - "--flush-session"
     - "--disable-coloring"
 
-# ── 정상 ──────────────────────────────────────────────────────────
-# 오탐 채점의 근거. CRS 가 과하게 반응하기 쉬운 문자열을 일부러 섞었다.
+# -- benign ----------------------------------------------------------------
+# The basis for scoring false positives. Deliberately seeded with strings CRS
+# tends to over-react to.
 - name: normal-product-search
   malicious: false
   correlation: marker

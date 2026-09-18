@@ -61,7 +61,7 @@ def test_marker_case_without_matching_marker_is_undetected():
 
 
 def test_marker_case_ignores_time_and_ip():
-    # 마커가 맞으면 시각이 구간 밖이고 IP 가 달라도 매칭된다.
+    # A matching marker wins even outside the window and from another IP.
     result = correlate(
         [case(case_id="c1", source_ip="10.0.0.1")],
         [det(detection_id="d1", marker="c1", src_ip="10.0.0.9", at=9999)],
@@ -108,7 +108,7 @@ def test_window_case_rejects_detection_outside_slack():
 
 
 def test_window_case_never_matches_by_marker():
-    # 암묵적 폴백 금지의 반대 방향: window 케이스는 마커를 쳐다보지 않는다.
+    # The other side of "no implicit fallback": window cases ignore markers.
     result = correlate(
         [case(case_id="c1", correlation="window", source_ip="10.0.0.1", start=0, end=5)],
         [det(marker="c1", src_ip="10.0.0.9", at=3)],
@@ -143,7 +143,7 @@ def test_warns_when_no_detection_carries_a_marker():
 
 
 def test_no_marker_warning_when_there_are_no_detections_at_all():
-    # 경보가 0건인 것은 파이프라인 고장이 아니라 정상적인 전부-미탐일 수 있다.
+    # Zero alerts may be an honest all-missed run, not a broken pipeline.
     result = correlate([case(case_id="c1")], [])
 
     assert result.warnings == ()

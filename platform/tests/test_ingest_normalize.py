@@ -122,12 +122,12 @@ def test_raw_document_is_preserved():
     assert det["raw"]["alert"]["signature"] == "ET WEB SQL Injection"
 
 
-# ── 실제 스택에서 확인한 사실에 대한 회귀 테스트 ────────────────────────
+# -- regressions for facts established against the real stack ----------------
 #
-# 1. Suricata 8.0.7 의 alert 이벤트는 HTTP 요청 헤더를 담지 않는다. 헤더는
-#    같은 flow_id 를 가진 별도의 http 이벤트에만 실린다. 따라서 마커는
-#    문서 하나만 보고는 알 수 없고 flow_id 로 조인해야 한다.
-# 2. ModSecurity 감사 로그의 time_stamp 는 ISO 가 아니라 ctime 형식이다.
+# 1. A Suricata 8.0.7 alert event carries no HTTP request headers. They live
+#    on a separate http event of the same transaction, so the marker cannot
+#    be read from one document and has to be joined.
+# 2. ModSecurity audit logs write time_stamp in ctime format, not ISO.
 
 
 def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
@@ -153,7 +153,7 @@ def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
 def suricata_alert_event(flow_id=42, doc_id="a1"):
     doc = suricata_alert()
     doc["flow_id"] = flow_id
-    doc["http"] = {"url": "/rest/products/search"}  # alert 에는 헤더가 없다
+    doc["http"] = {"url": "/rest/products/search"}  # an alert has no headers
     return (doc_id, doc)
 
 
@@ -219,7 +219,7 @@ def test_modsecurity_ctime_timestamp_is_parsed_as_utc():
 
 def test_modsecurity_unparseable_timestamp_falls_back_to_beat_timestamp():
     doc = modsec_doc([{"message": "SQLi"}])
-    doc["transaction"]["time_stamp"] = "설명할 수 없는 형식"
+    doc["transaction"]["time_stamp"] = "not a shape anything can parse"
     doc["@timestamp"] = "2026-09-18T15:25:02.000Z"
 
     [det] = normalize("es2", doc)
@@ -227,11 +227,11 @@ def test_modsecurity_unparseable_timestamp_falls_back_to_beat_timestamp():
     assert det["timestamp"] == datetime(2026, 9, 18, 15, 25, 2, tzinfo=timezone.utc)
 
 
-# ── HTTP keep-alive ──────────────────────────────────────────────────
+# -- HTTP keep-alive ---------------------------------------------------------
 #
-# 하나의 TCP 흐름 위로 요청 여러 개가 흐른다. flow_id 만으로 조인하면 흐름의
-# 첫 마커가 그 흐름의 모든 경보에 붙어 전부 엉뚱한 케이스로 귀속된다.
-# alert 와 http 이벤트는 tx_id 로 정확히 짝지어진다 — 실측으로 확인했다.
+# Many requests travel over one TCP flow. Joining on flow_id alone attaches
+# the flow's first marker to every alert in it, attributing them all wrongly.
+# Alert and http events pair up exactly by tx_id - verified live.
 
 
 def keepalive_pair(tx_id, marker, flow_id=7):
@@ -265,8 +265,8 @@ def test_keepalive_transactions_keep_their_own_markers():
 
     assert by_id["a0"] == first
     assert by_id["a1"] == second, (
-        "같은 흐름의 두 번째 트랜잭션이 첫 번째의 마커를 물려받았다. "
-        "keep-alive 에서 모든 경보가 첫 요청으로 귀속된다."
+        "the second transaction on this flow inherited the first one's marker, "
+        "so under keep-alive every alert lands on the first request"
     )
 
 
@@ -276,7 +276,7 @@ def test_marker_does_not_leak_to_a_transaction_without_one():
     marked = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     documents = keepalive_pair(0, marked)
 
-    # 마커 없는 두 번째 트랜잭션.
+    # A second transaction with no marker.
     alert = suricata_alert()
     alert["flow_id"] = 7
     alert["tx_id"] = 1

@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
-# suricata -T 와 리로드를 IDS 컨테이너 안에서 실행하기 위한 Docker CLI.
-# 데몬은 필요 없고 클라이언트만 있으면 된다.
+# Docker CLI, used to run `suricata -T` and reload inside the IDS container.
+# No daemon needed, only the client.
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 WORKDIR /app

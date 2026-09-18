@@ -1,7 +1,8 @@
-"""콘솔 화면. 데이터는 하나도 넘기지 않는다.
+"""Console pages. They are handed no data at all.
 
-모든 값은 브라우저가 /api/ 를 fetch 해서 채운다. 서버에서 렌더하면
-화면에서만 되는 동작이 생기고, 나중에 사람 자리에 에이전트를 넣을 수 없다.
+Every value is filled in by the browser fetching /api/. Rendering on the server
+would create behaviour that exists only in the UI, and then an agent could not
+take a human's place later.
 """
 
 from django.shortcuts import render

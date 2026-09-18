@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Measure how simple the project is. Three numbers, nothing else.
+
+The goal of this project's recursive improvement is the simplest code that
+still proves the hypothesis. "Simpler" has to be a number, or every session
+re-argues it from taste.
+
+  production_loc  non-blank lines of shipped source and config
+  dependencies    direct pip packages
+  services        compose services
+
+Tests, docs and this tooling are NOT counted: growing the test suite must
+never look like a regression.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BASELINE = ROOT / "metrics.json"
+
+# Not product code. Tests and docs are free to grow.
+EXCLUDE_PREFIXES = ("docs/", "test/", "platform/tests/", "bin/", ".claude/")
+EXCLUDE_SUFFIXES = (".md",)
+EXCLUDE_EXACT = (".gitignore", "metrics.json", "platform/pytest.ini")
+EXCLUDE_CONTAINS = ("/migrations/",)
+
+METRICS = ("production_loc", "dependencies", "services")
+
+
+def tracked_files() -> list[str]:
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    )
+    return out.stdout.split()
+
+
+def is_production(path: str) -> bool:
+    if path.startswith(EXCLUDE_PREFIXES):
+        return False
+    if path.endswith(EXCLUDE_SUFFIXES):
+        return False
+    if path in EXCLUDE_EXACT:
+        return False
+    return not any(part in path for part in EXCLUDE_CONTAINS)
+
+
+def production_loc() -> tuple[int, dict[str, int]]:
+    per_file: dict[str, int] = {}
+    for path in tracked_files():
+        if not is_production(path):
+            continue
+        text = (ROOT / path).read_text(encoding="utf-8", errors="replace")
+        count = sum(1 for line in text.splitlines() if line.strip())
+        if count:
+            per_file[path] = count
+    return sum(per_file.values()), per_file
+
+
+def dependencies() -> int:
+    requirements = ROOT / "platform" / "requirements.txt"
+    if not requirements.exists():
+        return 0
+    return sum(
+        1
+        for line in requirements.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def services() -> int:
+    """Count top-level keys under `services:` in compose.yaml.
+
+    Deliberately regex, not PyYAML: this script must run before any virtualenv
+    exists, in a fresh clone, with nothing but python3.
+    """
+    compose = ROOT / "compose.yaml"
+    if not compose.exists():
+        return 0
+
+    inside = False
+    count = 0
+    for line in compose.read_text().splitlines():
+        if re.match(r"^services:\s*$", line):
+            inside = True
+            continue
+        if inside:
+            if re.match(r"^\S", line):  # next top-level key ends the block
+                break
+            if re.match(r"^  [A-Za-z0-9_.-]+:\s*$", line):
+                count += 1
+    return count
+
+
+def measure() -> dict[str, int]:
+    loc, _ = production_loc()
+    return {"production_loc": loc, "dependencies": dependencies(), "services": services()}
+
+
+def load_baseline() -> dict[str, int] | None:
+    if not BASELINE.exists():
+        return None
+    return json.loads(BASELINE.read_text())
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("--save", action="store_true", help="write metrics.json")
+    parser.add_argument("--files", action="store_true", help="per-file breakdown")
+    args = parser.parse_args()
+
+    current = measure()
+
+    if args.json:
+        print(json.dumps(current, indent=2))
+    else:
+        baseline = load_baseline()
+        for name in METRICS:
+            now = current[name]
+            if baseline is None:
+                print(f"{name:<16} {now}")
+                continue
+            was = baseline.get(name, now)
+            arrow = "=" if now == was else ("v" if now < was else "^")
+            print(f"{name:<16} {now:>6}  {arrow} baseline {was}")
+
+    if args.files:
+        _, per_file = production_loc()
+        print()
+        for path, count in sorted(per_file.items(), key=lambda kv: -kv[1]):
+            print(f"{count:>6}  {path}")
+
+    if args.save:
+        BASELINE.write_text(json.dumps(current, indent=2) + "\n")
+        print(f"\nwrote {BASELINE.relative_to(ROOT)}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

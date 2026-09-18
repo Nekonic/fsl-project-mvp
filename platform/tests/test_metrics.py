@@ -61,7 +61,7 @@ def test_perfect_defense():
 
 
 def test_block_everything_is_punished_by_false_positive_rate():
-    # 전부 차단하는 룰. recall 은 만점이지만 오탐률도 만점이다.
+    # A block-everything rule: perfect recall, but a perfect FP rate too.
     s = score(
         result(
             match("a", malicious=True, detected=True),
@@ -100,9 +100,9 @@ def test_no_benign_warning_when_benign_cases_exist():
 
 
 def test_correlation_warnings_are_carried_through():
-    s = score(result(match("a", malicious=True, detected=True), warnings=("보존됨",)))
+    s = score(result(match("a", malicious=True, detected=True), warnings=("carried through",)))
 
-    assert "보존됨" in s.warnings
+    assert "carried through" in s.warnings
 
 
 def test_empty_result_is_all_zero_with_warning():

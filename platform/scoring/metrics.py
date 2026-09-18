@@ -1,4 +1,4 @@
-"""대응 결과를 오탐·미탐 지표로 접는다. 순수 함수만 있다."""
+"""Fold correlation results into false-positive/negative figures. Pure only."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from scoring.types import CorrelationResult, Score
 
 
 def score(result: CorrelationResult) -> Score:
-    """케이스 단위로 TP/FP/FN/TN 을 세고 지표를 계산한다.
+    """Count TP/FP/FN/TN per case and derive the metrics.
 
-    케이스 하나가 요청을 여러 개 보냈어도 판정은 하나다. 경보의 severity 나
-    룰 종류는 보지 않는다 — "경보가 났는가" 만 본다.
+    One case is one verdict even if it sent many requests. Alert severity and
+    rule kind are ignored: the only question is whether an alert fired.
     """
     tp = sum(1 for m in result.matches if m.malicious and m.detected)
     fn = sum(1 for m in result.matches if m.malicious and not m.detected)
@@ -24,9 +24,10 @@ def score(result: CorrelationResult) -> Score:
     warnings = list(result.warnings)
     if fp + tn == 0:
         warnings.append(
-            "benign 케이스가 0건이다. 정상 트래픽이 없으면 전부 차단하는 룰이 "
-            "만점을 받는다. 오탐 채점이 이 플랫폼의 존재 이유이므로 "
-            "케이스 파일에 정상 트래픽을 추가하라."
+            "There are no benign cases. Without normal traffic, a rule that "
+            "blocks everything scores perfectly. Scoring false positives is "
+            "the whole point of this platform, so add normal traffic to the "
+            "case file."
         )
 
     return Score(
@@ -43,7 +44,7 @@ def score(result: CorrelationResult) -> Score:
 
 
 def _ratio(numerator: float, denominator: float) -> float:
-    """분모가 0이면 0.0. 정의되지 않은 지표를 예외로 터뜨리지 않는다."""
+    """Zero denominator yields 0.0. An undefined metric is not an exception."""
     if denominator == 0:
         return 0.0
     return numerator / denominator

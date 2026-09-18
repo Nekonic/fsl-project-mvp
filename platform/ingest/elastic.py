@@ -1,4 +1,4 @@
-"""Elasticsearch 조회와 경보 정규화. 스택에서 ES 를 아는 유일한 파일."""
+"""Elasticsearch queries and alert normalisation. The only file that knows ES."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import requests
 
 MARKER_HEADER = "X-FSL-Case"
 
-# Suricata 가 eve-log 의 http custom 으로 내보내는 헤더 키 표기.
-# 버전에 따라 하이픈이 밑줄로 바뀌거나 원래 표기가 유지된다.
+# Spellings Suricata may use for a header exported via eve-log http custom:
+# depending on version, hyphens become underscores or survive as written.
 _MARKER_KEYS = ("x_fsl_case", "X-FSL-Case", "x-fsl-case", "X_FSL_CASE")
 
 
 class ElasticUnavailable(RuntimeError):
-    """ES 에 닿지 못했거나 인덱스가 아직 없다. 탐지 실패와 구분해야 한다."""
+    """Cannot reach ES, or the index is absent. Distinct from "nothing detected"."""
 
 
 def fetch(
@@ -27,7 +27,7 @@ def fetch(
     size: int = 5000,
     timeout: float = 10.0,
 ) -> list[tuple[str, dict[str, Any]]]:
-    """구간에 걸친 문서를 (_id, _source) 목록으로 가져온다."""
+    """Return documents in the interval as (_id, _source) pairs."""
     query = {
         "size": size,
         "sort": [{"@timestamp": "asc"}],
@@ -48,15 +48,16 @@ def fetch(
             timeout=timeout,
         )
     except requests.RequestException as exc:
-        raise ElasticUnavailable(f"Elasticsearch 에 닿지 못했다: {exc}") from exc
+        raise ElasticUnavailable(f"could not reach Elasticsearch: {exc}") from exc
 
     if response.status_code == 404:
         raise ElasticUnavailable(
-            f"인덱스 {index!r} 가 없다. Filebeat 이 아직 아무것도 보내지 않았을 수 있다."
+            f"index {index!r} does not exist. Filebeat may not have shipped "
+            f"anything yet."
         )
     if not response.ok:
         raise ElasticUnavailable(
-            f"Elasticsearch 가 {response.status_code} 를 반환했다: {response.text[:500]}"
+            f"Elasticsearch returned {response.status_code}: {response.text[:500]}"
         )
 
     hits = response.json().get("hits", {}).get("hits", [])
@@ -66,16 +67,13 @@ def fetch(
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """문서 묶음을 경보 목록으로 바꾼다. 마커는 트랜잭션 단위로 조인한다.
+    """Turn a batch of documents into alerts, joining markers per transaction.
 
-    Suricata 의 alert 이벤트는 HTTP 요청 헤더를 담지 않는다 — 헤더는 같은
-    트랜잭션의 http 이벤트에만 실린다. 그래서 마커는 문서 하나만 보고는
-    알 수 없고, 두 번 훑어야 한다.
-
-    조인 키는 `flow_id` 하나가 아니라 `(flow_id, tx_id)` 다. HTTP keep-alive
-    에서는 TCP 흐름 하나 위로 요청 수십 개가 흐르므로, flow_id 만으로 조인하면
-    흐름의 첫 마커가 그 흐름의 모든 경보에 붙어 전부 엉뚱한 케이스로 귀속된다.
-    점수는 그럴듯해 보이면서 조용히 거짓이 된다. 실제 스택에서 확인한 사실이다.
+    A Suricata alert carries no request headers; they live on the http event of
+    the same transaction, so the batch must be walked twice. The join key is
+    (flow_id, tx_id): under keep-alive many requests share one flow, and joining
+    on flow_id alone pins that flow's first marker onto every alert in it - a
+    plausible-looking, quietly false score. Both verified against the stack.
     """
     markers = _transaction_markers(documents)
 
@@ -92,7 +90,7 @@ def normalize_all(
 def _transaction_markers(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> dict[tuple[Any, Any], str]:
-    """(flow_id, tx_id) -> 마커. http 이벤트가 싣고 다니는 것을 모은다."""
+    """(flow_id, tx_id) -> marker, collected from the http events that carry it."""
     markers: dict[tuple[Any, Any], str] = {}
     for _, doc in documents:
         key = _transaction_key(doc)
@@ -112,10 +110,10 @@ def _transaction_key(doc: dict[str, Any]) -> tuple[Any, Any] | None:
 
 
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """ES 문서 하나를 0개 이상의 경보로 바꾼다.
+    """Turn one document into zero or more alerts.
 
-    경보가 아닌 문서(Suricata 의 http/flow 이벤트, 룰에 걸리지 않은
-    ModSecurity 트랜잭션)는 빈 목록이 된다.
+    Documents that are not alerts (Suricata http/flow events, ModSecurity
+    transactions that matched no rule) yield an empty list.
     """
     source = doc.get("fsl_source")
     if source == "suricata":
@@ -196,7 +194,7 @@ def _header_lookup(headers: dict[str, Any]) -> str | None:
         value = headers.get(key)
         if value:
             return value
-    # 대소문자만 다른 경우까지 훑는다.
+    # Fall back to a case-insensitive sweep.
     wanted = MARKER_HEADER.lower().replace("-", "_")
     for key, value in headers.items():
         if str(key).lower().replace("-", "_") == wanted and value:
@@ -208,7 +206,7 @@ def _parse_time(value: Any) -> datetime | None:
     if not value:
         return None
     text = str(value)
-    # Suricata 는 +0000, ES 는 Z 를 쓴다. 둘 다 받는다.
+    # Suricata writes +0000, Elasticsearch writes Z. Accept both.
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     elif len(text) >= 5 and text[-5] in "+-" and ":" not in text[-5:]:
@@ -218,9 +216,8 @@ def _parse_time(value: Any) -> datetime | None:
     except ValueError:
         pass
 
-    # ModSecurity 감사 로그는 ISO 가 아니라 ctime 형식을 쓴다:
-    # "Fri Sep 18 15:25:02 2026". 시간대가 없으므로 UTC 로 본다 —
-    # 컨테이너가 UTC 로 돈다.
+    # ModSecurity audit logs use ctime, not ISO: "Fri Sep 18 15:25:02 2026".
+    # There is no timezone, so read it as UTC - the container runs in UTC.
     for fmt in ("%a %b %d %H:%M:%S %Y", "%a %b %d %H:%M:%S.%f %Y"):
         try:
             return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)

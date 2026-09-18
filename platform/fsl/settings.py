@@ -49,7 +49,7 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
 }
 
-# 스택 연동 지점. 컨테이너 밖에서 테스트할 때를 위해 전부 환경변수로 뺀다.
+# Where this process meets the stack. All env vars, so tests run outside Docker.
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
 SURICATA_CONTAINER = os.environ.get("SURICATA_CONTAINER", "fsl-suricata")

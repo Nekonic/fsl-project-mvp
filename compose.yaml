@@ -15,8 +15,7 @@ services:
     container_name: fsl-juice-shop
     networks: [fsl]
     healthcheck:
-      # distroless 이미지라 셸도 wget 도 curl 도 없다. 유일한 바이너리인
-      # node 를 절대 경로로 부른다 (PATH 에도 올라와 있지 않다).
+      # Distroless: no shell/wget/curl. Call node by absolute path, not on PATH.
       test:
         - CMD
         - /nodejs/bin/node
@@ -47,8 +46,8 @@ services:
       PARANOIA: "1"
       ANOMALY_INBOUND: "5"
     volumes:
-      # 목적지가 아니라 템플릿 경로에 넣는다. 이미지가 envsubst 를 거쳐
-      # /etc/modsecurity.d/ 로 복사하므로 목적지를 막으면 부팅이 실패한다.
+      # Template path, not the destination: the image runs envsubst and copies
+      # into /etc/modsecurity.d/, so blocking the destination breaks startup.
       - ./deploy/nginx/modsecurity-overrides.conf:/etc/nginx/templates/modsecurity.d/modsecurity-override.conf.template:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
     healthcheck:
@@ -62,13 +61,13 @@ services:
     container_name: fsl-suricata
     depends_on:
       waf: {condition: service_started}
-    # WAF 의 네트워크 네임스페이스에 들어가 그 eth0 를 스니핑한다.
-    # host 모드는 Docker Desktop 에서 VM 네임스페이스에 붙어 동작이 갈린다.
+    # Join the WAF's network namespace and sniff its eth0. host mode attaches
+    # to the VM namespace on Docker Desktop, so its behaviour varies by host.
     network_mode: "service:waf"
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
     command: ["-c", "/etc/suricata/suricata.yaml", "-i", "eth0"]
     volumes:
-      # 이미지 엔트리포인트가 /etc/suricata 를 chown 한다. :ro 면 부팅이 실패한다.
+      # The image entrypoint chowns /etc/suricata, so :ro fails to start.
       - ./deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
       - ./deploy/suricata/rules:/var/lib/suricata/rules
       - ./deploy/suricata/logs:/var/log/suricata
@@ -115,8 +114,8 @@ services:
       - ./deploy/suricata/logs:/logs/suricata:ro
       - ./deploy/nginx/logs:/logs/modsecurity:ro
 
-  # 레드팀 외부 도구. 일회성으로 `docker run` 되므로 up 에서는 뜨지 않는다.
-  # 이미지를 만들기만 한다: docker compose --profile tools build
+  # Red team external tools. Invoked one-shot with `docker run`, so this never
+  # comes up with the rest. Build the image: docker compose --profile tools build
   redteam-tools:
     build: ./redteam
     image: fsl-redteam-tools
@@ -144,7 +143,7 @@ services:
     volumes:
       - ./platform:/app
       - ./deploy/suricata/rules:/rules
-      # 룰 검증·리로드를 IDS 컨테이너 안에서 실행하기 위한 소켓.
-      # 컨테이너 탈출 경로다. 메인 레포에서는 사이드카로 교체한다.
+      # Runs rule validation and reload inside the IDS container. A container
+      # escape path; production should replace it with a sidecar.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data

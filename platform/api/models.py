@@ -4,7 +4,7 @@ from scoring.types import CaseRecord, DetectionRecord
 
 
 class Session(models.Model):
-    """훈련 세션 하나. 레드팀 실행 한 번에 해당한다."""
+    """One training session, i.e. one red team run."""
 
     scenario = models.CharField(max_length=128, default="juice-shop")
     started_at = models.DateTimeField(auto_now_add=True)
@@ -15,7 +15,7 @@ class Session(models.Model):
 
 
 class Case(models.Model):
-    """레드팀이 기록한 ground truth 한 건."""
+    """One piece of ground truth recorded by the red team."""
 
     session = models.ForeignKey(Session, related_name="cases", on_delete=models.CASCADE)
     case_id = models.CharField(max_length=64, db_index=True)
@@ -45,7 +45,7 @@ class Case(models.Model):
 
 
 class Detection(models.Model):
-    """Elasticsearch 에서 끌어온 경보 한 건."""
+    """One alert pulled from Elasticsearch."""
 
     session = models.ForeignKey(
         Session, related_name="detections", on_delete=models.CASCADE
@@ -75,7 +75,7 @@ class Detection(models.Model):
 
 
 class RuleSet(models.Model):
-    """Suricata 룰 파일의 한 버전."""
+    """One version of the Suricata rule file."""
 
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -87,7 +87,7 @@ class RuleSet(models.Model):
 
 
 class ScoreSnapshot(models.Model):
-    """채점 결과 스냅샷."""
+    """A snapshot of a scoring run."""
 
     session = models.ForeignKey(Session, related_name="scores", on_delete=models.CASCADE)
     tp = models.IntegerField()

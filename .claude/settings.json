@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit(bin/**)",
+      "Edit(deploy/**)",
+      "Edit(docs/**)",
+      "Edit(platform/**)",
+      "Edit(redteam/**)",
+      "Edit(test/**)",
+      "Edit(wargame/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(README.md)",
+      "Edit(compose.yaml)",
+      "Edit(metrics.json)",
+      "Bash(./bin/measure*)",
+      "Bash(./bin/verify*)",
+      "Bash(bin/measure*)",
+      "Bash(bin/verify*)",
+      "Bash(.venv/bin/python*)",
+      "Bash(.venv/bin/pip*)",
+      "Bash(../.venv/bin/python*)",
+      "Bash(python3*)",
+      "Bash(cd *)",
+      "Bash(git *)",
+      "Bash(docker *)",
+      "Bash(colima *)",
+      "Bash(curl *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sed -n *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(diff *)",
+      "Bash(jq *)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(gh pr create*)",
+      "Bash(docker compose down -v*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)"
+    ]
+  }
+}
