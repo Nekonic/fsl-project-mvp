@@ -1,15 +1,15 @@
 {% extends "blueteam/base.html" %}
-{% block title %}룰{% endblock %}
+{% block title %}Rules{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold text-slate-100 mb-6">Suricata 룰</h1>
+<h1 class="text-2xl font-semibold text-slate-100 mb-6">Suricata rules</h1>
 <textarea id="editor" spellcheck="false"
   class="w-full h-80 bg-slate-900 border border-slate-800 rounded p-4 font-mono
          text-sm text-slate-200"></textarea>
 <div class="flex gap-3 mt-4">
   <button id="validate"
-    class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">검증</button>
+    class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Validate</button>
   <button id="apply"
-    class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">반영</button>
+    class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">Apply</button>
 </div>
 <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
      text-xs whitespace-pre-wrap text-slate-300"></pre>
@@ -37,7 +37,7 @@
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({content: editor.value}),
     });
-    show(r.body.output || "(출력 없음)", r.ok);
+    show(r.body.output || "(no output)", r.ok);
   });
 
   document.getElementById("apply").addEventListener("click", async () => {
@@ -46,7 +46,7 @@
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({content: editor.value}),
     });
-    show(r.ok ? "반영하고 Suricata 를 리로드했다." : r.body.detail, r.ok);
+    show(r.ok ? "Applied and reloaded Suricata." : r.body.detail, r.ok);
   });
 
   load();

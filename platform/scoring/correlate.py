@@ -1,4 +1,4 @@
-"""케이스(ground truth)와 경보를 대응시킨다. 순수 함수만 있다."""
+"""Match ground-truth cases against alerts. Pure functions only."""
 
 from __future__ import annotations
 
@@ -22,11 +22,11 @@ def correlate(
     cases: Sequence[CaseRecord],
     detections: Sequence[DetectionRecord],
 ) -> CorrelationResult:
-    """케이스마다 어떤 경보가 걸렸는지 판정한다.
+    """Decide, per case, which alerts fired for it.
 
-    케이스는 자기가 선언한 전략 하나만 쓴다. 마커 케이스는 시각·IP 를 보지
-    않고, 시간창 케이스는 마커를 보지 않는다. 폴백을 허용하면 파이프라인
-    고장이 탐지 성공으로 둔갑한다.
+    A case uses exactly the one strategy it declares. Marker cases ignore time
+    and IP; window cases ignore markers. Allowing a fallback would let a broken
+    pipeline masquerade as successful detection.
     """
     for case in cases:
         if case.correlation not in CORRELATION_STRATEGIES:
@@ -84,9 +84,9 @@ def _warnings(
     marker_cases = [c for c in cases if c.correlation == CORRELATION_MARKER]
     if marker_cases and detections and not any(d.marker for d in detections):
         warnings.append(
-            "경보가 있는데 어느 것도 케이스 marker 를 싣고 있지 않다. "
-            "Suricata eve-log 의 http custom 헤더 설정과 레드팀 하니스의 "
-            "X-FSL-Case 주입을 확인하라."
+            "There are alerts, but none carries a case marker. Check the "
+            "eve-log http dump-all-headers setting in Suricata and the "
+            "X-FSL-Case injection in the red team harness."
         )
 
     missing_ip = [
@@ -96,8 +96,8 @@ def _warnings(
     ]
     if missing_ip:
         warnings.append(
-            "시간창 대응 케이스에 source_ip 가 없어 영원히 미탐으로 집계된다: "
-            + ", ".join(missing_ip)
+            "Window-correlated cases without a source_ip can never match, so "
+            "they are counted as missed forever: " + ", ".join(missing_ip)
         )
 
     return tuple(warnings)

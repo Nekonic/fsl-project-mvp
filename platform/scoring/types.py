@@ -1,4 +1,4 @@
-"""채점에 쓰이는 값 객체. 어떤 I/O 도 알지 못한다."""
+"""Value objects used in scoring. Knows nothing about I/O."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ CORRELATION_STRATEGIES = (CORRELATION_MARKER, CORRELATION_WINDOW)
 
 @dataclass(frozen=True)
 class CaseRecord:
-    """레드팀이 기록한 ground truth 한 건."""
+    """One piece of ground truth recorded by the red team."""
 
     case_id: str
     name: str
@@ -27,7 +27,7 @@ class CaseRecord:
 
 @dataclass(frozen=True)
 class DetectionRecord:
-    """Suricata 또는 ModSecurity 경보 한 건."""
+    """One alert from Suricata or ModSecurity."""
 
     detection_id: str
     source: str

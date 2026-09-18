@@ -83,11 +83,11 @@ def test_ingest_is_idempotent(client, session_with_cases):
 
 
 def test_ingest_reports_503_when_elasticsearch_is_unreachable(client, session_with_cases):
-    with patch("api.views.elastic.fetch", side_effect=ElasticUnavailable("인덱스 없음")):
+    with patch("api.views.elastic.fetch", side_effect=ElasticUnavailable("index missing")):
         response = client.post(f"/api/sessions/{session_with_cases}/ingest/")
 
     assert response.status_code == 503
-    assert "인덱스 없음" in response.data["detail"]
+    assert "index missing" in response.data["detail"]
 
 
 def test_score_counts_true_positive_and_true_negative(client, session_with_cases):
@@ -157,8 +157,8 @@ def test_score_on_session_without_cases_warns_about_benign(client):
 
 
 def test_ingest_skipped_counts_documents_not_alerts(client, session_with_cases):
-    # ModSecurity 트랜잭션 하나가 message 여러 개를 낳아도 "건너뛴 문서"는
-    # 늘지 않아야 한다. 뺄셈으로 세면 음수가 된다.
+    # One ModSecurity transaction with several messages must not inflate the
+    # "skipped documents" count. Subtraction would go negative.
     modsec = (
         "m1",
         {

@@ -1,5 +1,5 @@
 {
-  "description": "FSL: 출발지 IP 의 지리 정보를 붙인다. Logstash 를 쓰지 않는 이유.",
+  "description": "FSL: attach geo information to the source IP. This is why there is no Logstash.",
   "processors": [
     {
       "geoip": {

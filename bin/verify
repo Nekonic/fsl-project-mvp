@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# The gate. Nothing gets committed unless this exits 0.
+#
+#   bin/verify --fast   unit + API tests only (~1s, no Docker)
+#   bin/verify          the above + acceptance against the live stack + ratchet
+#
+# The ratchet is the point: a change that makes the project bigger is not an
+# improvement, however good it looks. See metrics.json and docs/STATE.md.
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PY="$ROOT/.venv/bin/python"
+FAST=0
+FAILED=0
+
+[ "${1:-}" = "--fast" ] && FAST=1
+
+section() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+fail()    { printf '\033[31mFAIL\033[0m %s\n' "$1"; FAILED=1; }
+ok()      { printf '\033[32mok\033[0m   %s\n' "$1"; }
+
+if [ ! -x "$PY" ]; then
+  echo "No virtualenv at .venv — run:"
+  echo "  python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt"
+  exit 1
+fi
+
+section "unit + API tests"
+if (cd platform && "$PY" -m pytest tests -q -p no:cacheprovider); then
+  ok "platform/tests"
+else
+  fail "platform/tests"
+fi
+
+if [ "$FAST" = 1 ]; then
+  section "metrics (not gated in --fast)"
+  ./bin/measure
+  [ "$FAILED" = 0 ] && printf '\n\033[32mfast check passed\033[0m — run bin/verify before committing\n'
+  exit "$FAILED"
+fi
+
+section "stack"
+if curl -fsS -o /dev/null --max-time 5 http://localhost:8000/api/rules/; then
+  ok "platform responding"
+else
+  fail "platform not responding — docker compose up -d --build"
+  echo
+  echo "Skipping acceptance tests: the stack must be up."
+  exit 1
+fi
+
+if docker image inspect fsl-redteam-tools >/dev/null 2>&1; then
+  ok "redteam tool image present"
+else
+  fail "fsl-redteam-tools missing — docker compose --profile tools build"
+fi
+
+section "acceptance (live stack)"
+if "$PY" -m pytest test/ -q -p no:cacheprovider; then
+  ok "test/"
+else
+  fail "test/"
+fi
+
+section "ratchet"
+./bin/measure
+if "$PY" - <<'PY'
+import json, subprocess, sys, pathlib
+root = pathlib.Path(".")
+baseline_path = root / "metrics.json"
+current = json.loads(
+    subprocess.run(["./bin/measure", "--json"], capture_output=True, text=True).stdout
+)
+if not baseline_path.exists():
+    print("\nno metrics.json yet — run: bin/measure --save")
+    sys.exit(0)
+baseline = json.loads(baseline_path.read_text())
+
+worse = {k: (baseline[k], v) for k, v in current.items() if v > baseline.get(k, v)}
+if worse:
+    print("\nthis change makes the project bigger:")
+    for name, (was, now) in worse.items():
+        print(f"  {name}: {was} -> {now}")
+    print("\nThat is not an improvement. Either shrink it back, or if the growth")
+    print("is genuinely necessary, edit metrics.json by hand and write down why")
+    print("in docs/DECISIONS.md.")
+    sys.exit(1)
+
+better = {k: (baseline[k], v) for k, v in current.items() if v < baseline.get(k, v)}
+if better:
+    print("\nsmaller:")
+    for name, (was, now) in better.items():
+        print(f"  {name}: {was} -> {now}")
+    print("\nRecord it: bin/measure --save")
+PY
+then
+  ok "no regression"
+else
+  fail "metrics regressed"
+fi
+
+section "result"
+if [ "$FAILED" = 0 ]; then
+  printf '\033[32mall green\033[0m — safe to commit\n'
+else
+  printf '\033[31msomething failed\033[0m — do not commit\n'
+fi
+exit "$FAILED"

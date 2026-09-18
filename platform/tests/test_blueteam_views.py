@@ -20,8 +20,8 @@ def test_page_renders(client, path):
 
 @pytest.mark.parametrize("path", PAGES)
 def test_page_fetches_its_data_from_the_api(client, path):
-    # 구조 원칙: 화면 동작은 전부 REST API 로 먼저 존재한다. 템플릿이
-    # 서버 렌더한 데이터를 들고 있으면 에이전트가 사람 자리에 들어올 수 없다.
+    # Structural rule: everything the UI does exists as a REST API first. A
+    # template carrying server-rendered data would block an agent from taking over.
     body = client.get(path).content.decode()
 
     assert "/api/" in body

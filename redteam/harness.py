@@ -1,9 +1,9 @@
-"""공격·정상 트래픽을 보내고 ground truth 를 platform 에 기록한다.
+"""Send attack and benign traffic, and record ground truth on the platform.
 
-케이스마다 X-FSL-Case 헤더를 실어 보내는 것이 채점의 전부다. 실제
-공격자는 이런 마커를 달아주지 않지만, ground truth 를 만드는 쪽은
-플랫폼이 통제하므로 성립한다. 이것은 훈련 환경의 채점 장치이지
-탐지 기법이 아니다.
+Scoring rests entirely on sending an X-FSL-Case header with every case. A real
+attacker would not label their traffic, but the side that produces ground truth
+is the platform itself, so this holds. It is a scoring device for a training
+range, not a detection technique.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ MARKER_HEADER = "X-FSL-Case"
 REQUEST_TIMEOUT = 15.0
 TOOL_TIMEOUT = 600.0
 
-# 도구 컨테이너는 스택 네트워크 안에서 돈다. localhost 로는 대상에 닿지 못한다.
+# Tool containers run inside the stack network, where localhost is not the target.
 DEFAULT_TOOL_TARGET = "http://waf:8080"
 
 
@@ -40,20 +40,20 @@ _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
 
 
 class CaseRequestAltered(RuntimeError):
-    """요청이 선언한 경로와 다르게 나갔다. ground truth 가 거짓이 된다."""
+    """The request went out differently than declared, so ground truth is false."""
 
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
-    """YAML 케이스 파일을 읽는다."""
+    """Read a YAML case file."""
     with open(path, encoding="utf-8") as handle:
         return yaml.safe_load(handle) or []
 
 
 def build_request(case: dict[str, Any], base_url: str) -> dict[str, Any]:
-    """케이스 하나를 requests 호출 인자로 바꾼다.
+    """Turn one case into keyword arguments for requests.
 
-    마커 대응 케이스에만 헤더를 싣는다. 시간창 케이스에 마커가 달리면
-    두 전략이 섞여 대응 실패가 보이지 않게 된다.
+    Only marker-correlated cases carry the header. Putting a marker on a window
+    case would blend the two strategies and hide correlation failures.
     """
     spec = case["request"]
     headers: dict[str, str] = dict(spec.get("headers") or {})
@@ -70,41 +70,41 @@ def build_request(case: dict[str, Any], base_url: str) -> dict[str, Any]:
 
 
 def check_path_preserved(declared_path: str, prepared_url: str) -> None:
-    """선언한 경로가 그대로 전송되는지 확인한다.
+    """Check that the declared path is what actually goes on the wire.
 
-    requests 는 `/ftp/../../../../etc/passwd` 를 `/etc/passwd` 로 정규화해서
-    보낸다. 경로 탐색 공격이 전송되지 않았는데 ground truth 에는 "공격을
-    보냈다" 고 남으면 채점이 거짓말을 한다. 미탐으로 집계되지만 실제로는
-    방어가 아니라 하니스가 실패한 것이다. 조용히 넘어가서는 안 된다.
+    requests normalises `/ftp/../../../../etc/passwd` to `/etc/passwd` before
+    sending. If the traversal never left but ground truth records "attack sent",
+    the score lies: it counts as a miss when in fact the harness, not the
+    defence, failed. That must not pass quietly.
 
-    우회하려면 `..` 대신 `%2e%2e` 를 쓴다 — 전송은 그대로 되고 WAF·IDS 는
-    똑같이 경로 탐색으로 본다.
+    Write `%2e%2e` instead of `..` to get around it - it is sent verbatim and
+    the WAF and IDS still read it as traversal.
     """
     sent = _canonical_path(prepared_url)
     declared = _canonical_path(declared_path)
     if sent != declared:
         raise CaseRequestAltered(
-            f"요청 경로가 전송 전에 바뀌었다: 선언 {declared!r} -> 전송 {sent!r}. "
-            f"ground truth 가 거짓이 된다. `..` 를 `%2e%2e` 로 바꾸라."
+            f"request path changed before sending: declared {declared!r} -> "
+            f"sent {sent!r}. Ground truth would be false. Use `%2e%2e` instead of `..`."
         )
 
 
 def _canonical_path(url_or_path: str) -> str:
-    """구조 변화만 보이도록 경로를 정규화한다.
+    """Normalise a path so only structural changes show.
 
-    퍼센트 인코딩의 표기 차이는 무시한다 — requests 는 `%2e` 를 `.` 로
-    풀고 `%2f` 를 `%2F` 로 다시 쓴다. 둘 다 RFC 3986 상 같은 경로다.
-    잡아야 하는 것은 `..` 세그먼트가 통째로 사라지는 구조적 재작성이다.
+    Differences in percent-encoding are ignored: requests decodes `%2e` to `.`
+    and re-encodes `%2f` as `%2F`, and RFC 3986 calls those the same path. What
+    must be caught is structural rewriting, where `..` segments disappear.
     """
     path = urlsplit(requote_uri(url_or_path)).path
     return _PERCENT_ESCAPE.sub(lambda m: "%" + m.group(1).upper(), path)
 
 
 def case_meta(case: dict[str, Any]) -> dict[str, Any]:
-    """케이스가 무엇을 했는지 기록용으로 요약한다.
+    """Summarise what a case did, for the record.
 
-    도구 케이스에는 `request` 가 없다. 여기서 터지면 세션 전체가
-    ground truth 없이 중단된다.
+    Tool cases have no `request`. Blowing up here would abort the whole session
+    with no ground truth at all.
     """
     if is_tool_case(case):
         return {"tool": case["tool"], "args": list(case.get("args") or [])}
@@ -112,7 +112,7 @@ def case_meta(case: dict[str, Any]) -> dict[str, Any]:
 
 
 class Harness:
-    """세션을 열고 케이스를 실행한 뒤 ground truth 를 기록한다."""
+    """Open a session, run the cases, and record ground truth."""
 
     def __init__(
         self,
@@ -172,16 +172,16 @@ class Harness:
             params=spec["params"],
         ).prepare()
 
-        # 선언한 것과 다른 요청이 나가면 ground truth 가 거짓이 된다.
-        # 이건 삼키지 않고 터뜨린다.
+        # A request that differs from what was declared makes ground truth
+        # false. Do not swallow this.
         check_path_preserved(case["request"]["path"], prepared.url)
 
         try:
             self.session.send(prepared, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
-            # 대상이 4xx/5xx 를 내거나 연결이 끊겨도 ground truth 는 남겨야
-            # 한다. 요청이 나갔다는 사실 자체가 채점 대상이다.
-            print(f"  ! {case['name']}: 요청 실패 — {exc}")
+            # Record ground truth even if the target answers 4xx/5xx or the
+            # connection drops. That the request went out is what is scored.
+            print(f"  ! {case['name']}: request failed - {exc}")
 
     def _fire_tool(self, case: dict[str, Any]) -> None:
         command = build_tool_command(case, self.tool_target_url)
@@ -191,22 +191,22 @@ class Harness:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise ToolUnavailable(
-                f"{case['name']}: 도구를 실행하지 못했다 — {exc}. "
-                f"이미지를 먼저 만들라: docker compose --profile tools build"
+                f"{case['name']}: could not run the tool - {exc}. "
+                f"Build the image first: docker compose --profile tools build"
             ) from exc
 
         if result.returncode == DOCKER_STARTUP_FAILURE:
             raise ToolUnavailable(
-                f"{case['name']}: 도구 컨테이너가 시작되지 않았다 "
+                f"{case['name']}: the tool container did not start "
                 f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
-                f"이미지를 먼저 만들라: docker compose --profile tools build"
+                f"Build the image first: docker compose --profile tools build"
             )
 
         if result.returncode != 0:
-            # 도구 자신의 비정상 종료는 정상이다 — sqlmap 은 주입점을 못
-            # 찾으면 0 이 아닌 코드를 낸다. 공격 시도는 나갔으므로
-            # ground truth 는 유효하다.
-            print(f"  · {case['name']}: 도구가 {result.returncode} 로 끝났다")
+            # The tool exiting non-zero is normal: sqlmap does that when it
+            # finds no injection point. The attempt went out, so ground truth
+            # stands.
+            print(f"  . {case['name']}: tool exited {result.returncode}")
 
     def _record(
         self,
