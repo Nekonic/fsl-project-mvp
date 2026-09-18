@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -62,6 +63,42 @@ def fetch(
     return [(hit["_id"], hit.get("_source", {})) for hit in hits]
 
 
+def normalize_all(
+    documents: Sequence[tuple[str, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """문서 묶음을 경보 목록으로 바꾼다. 마커는 flow_id 로 조인한다.
+
+    Suricata 의 alert 이벤트는 HTTP 요청 헤더를 담지 않는다 — 헤더는 같은
+    flow_id 를 가진 별도의 http 이벤트에만 실린다. 그래서 마커는 문서 하나만
+    보고는 알 수 없고, 두 번 훑어야 한다. 실제 스택에서 확인한 사실이다.
+    """
+    flow_markers = _flow_markers(documents)
+
+    detections: list[dict[str, Any]] = []
+    for doc_id, doc in documents:
+        flow_id = doc.get("flow_id")
+        for detection in normalize(doc_id, doc):
+            if detection["marker"] is None and flow_id is not None:
+                detection["marker"] = flow_markers.get(flow_id)
+            detections.append(detection)
+    return detections
+
+
+def _flow_markers(
+    documents: Sequence[tuple[str, dict[str, Any]]],
+) -> dict[Any, str]:
+    """flow_id -> 마커. http 이벤트가 싣고 다니는 것을 모은다."""
+    markers: dict[Any, str] = {}
+    for _, doc in documents:
+        flow_id = doc.get("flow_id")
+        if flow_id is None or flow_id in markers:
+            continue
+        marker = _suricata_marker(doc.get("http") or {})
+        if marker:
+            markers[flow_id] = marker
+    return markers
+
+
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     """ES 문서 하나를 0개 이상의 경보로 바꾼다.
 
@@ -103,7 +140,9 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
 
     headers = ((transaction.get("request") or {}).get("headers")) or {}
     marker = _header_lookup(headers)
-    timestamp = _parse_time(transaction.get("time_stamp"))
+    timestamp = _parse_time(transaction.get("time_stamp")) or _parse_time(
+        doc.get("@timestamp")
+    )
     src_ip = transaction.get("client_ip")
 
     detections = []
@@ -165,7 +204,17 @@ def _parse_time(value: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(text)
     except ValueError:
-        return None
+        pass
+
+    # ModSecurity 감사 로그는 ISO 가 아니라 ctime 형식을 쓴다:
+    # "Fri Sep 18 15:25:02 2026". 시간대가 없으므로 UTC 로 본다 —
+    # 컨테이너가 UTC 로 돈다.
+    for fmt in ("%a %b %d %H:%M:%S %Y", "%a %b %d %H:%M:%S.%f %Y"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def _as_int(value: Any) -> int | None:

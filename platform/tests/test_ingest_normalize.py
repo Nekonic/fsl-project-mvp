@@ -120,3 +120,108 @@ def test_raw_document_is_preserved():
     [det] = normalize("es1", suricata_alert())
 
     assert det["raw"]["alert"]["signature"] == "ET WEB SQL Injection"
+
+
+# ── 실제 스택에서 확인한 사실에 대한 회귀 테스트 ────────────────────────
+#
+# 1. Suricata 8.0.7 의 alert 이벤트는 HTTP 요청 헤더를 담지 않는다. 헤더는
+#    같은 flow_id 를 가진 별도의 http 이벤트에만 실린다. 따라서 마커는
+#    문서 하나만 보고는 알 수 없고 flow_id 로 조인해야 한다.
+# 2. ModSecurity 감사 로그의 time_stamp 는 ISO 가 아니라 ctime 형식이다.
+
+
+def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
+    return (
+        doc_id,
+        {
+            "fsl_source": "suricata",
+            "event_type": "http",
+            "flow_id": flow_id,
+            "timestamp": "2026-09-18T12:00:01.000000+0000",
+            "src_ip": "172.20.0.5",
+            "http": {
+                "url": "/rest/products/search",
+                "request_headers": [
+                    {"name": "Host", "value": "localhost"},
+                    {"name": "X-FSL-Case", "value": marker},
+                ],
+            },
+        },
+    )
+
+
+def suricata_alert_event(flow_id=42, doc_id="a1"):
+    doc = suricata_alert()
+    doc["flow_id"] = flow_id
+    doc["http"] = {"url": "/rest/products/search"}  # alert 에는 헤더가 없다
+    return (doc_id, doc)
+
+
+def test_normalize_all_joins_marker_from_http_event_by_flow_id():
+    from ingest.elastic import normalize_all
+
+    [det] = normalize_all([suricata_alert_event(), suricata_http_event()])
+
+    assert det["detection_id"] == "a1"
+    assert det["marker"] == MARKER
+
+
+def test_normalize_all_does_not_join_across_different_flows():
+    from ingest.elastic import normalize_all
+
+    [det] = normalize_all(
+        [suricata_alert_event(flow_id=1), suricata_http_event(flow_id=2)]
+    )
+
+    assert det["marker"] is None
+
+
+def test_normalize_all_keeps_a_marker_the_document_already_carries():
+    from ingest.elastic import normalize_all
+
+    own = suricata_alert()
+    own["flow_id"] = 42
+    other = "99999999-9999-4999-8999-999999999999"
+
+    [det] = normalize_all([("a1", own), suricata_http_event(marker=other)])
+
+    assert det["marker"] == MARKER
+
+
+def test_normalize_all_returns_detections_from_every_document():
+    from ingest.elastic import normalize_all
+
+    dets = normalize_all(
+        [
+            suricata_alert_event(flow_id=1, doc_id="a1"),
+            suricata_alert_event(flow_id=2, doc_id="a2"),
+            suricata_http_event(flow_id=1, doc_id="h1"),
+        ]
+    )
+
+    assert {d["detection_id"] for d in dets} == {"a1", "a2"}
+
+
+def test_normalize_all_accepts_an_empty_document_list():
+    from ingest.elastic import normalize_all
+
+    assert normalize_all([]) == []
+
+
+def test_modsecurity_ctime_timestamp_is_parsed_as_utc():
+    doc = modsec_doc([{"message": "SQLi"}])
+    doc["transaction"]["time_stamp"] = "Fri Sep 18 15:25:02 2026"
+
+    [det] = normalize("es2", doc)
+
+    assert det["timestamp"] == datetime(2026, 9, 18, 15, 25, 2, tzinfo=timezone.utc)
+
+
+def test_modsecurity_unparseable_timestamp_falls_back_to_beat_timestamp():
+    doc = modsec_doc([{"message": "SQLi"}])
+    doc["transaction"]["time_stamp"] = "설명할 수 없는 형식"
+    doc["@timestamp"] = "2026-09-18T15:25:02.000Z"
+
+    [det] = normalize("es2", doc)
+
+    assert det["timestamp"] == datetime(2026, 9, 18, 15, 25, 2, tzinfo=timezone.utc)

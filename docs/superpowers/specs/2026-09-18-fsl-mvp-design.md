@@ -41,11 +41,25 @@
 
 레드팀 하니스가 모든 HTTP 요청에 `X-FSL-Case: <case_id>` 헤더를 주입한다.
 
-- Suricata: `eve-log` 의 `http` 출력에 `custom: [X-FSL-Case]` 를 설정해
-  경보 이벤트에 헤더 값을 함께 싣는다.
-- ModSecurity: 감사 로그(JSON)가 요청 헤더 전체를 남기므로 그대로 추출한다.
+- ModSecurity: 감사 로그(JSON)가 요청 헤더 전체를 남기므로 경보에서 바로
+  꺼낸다.
+- Suricata: `eve-log` 의 `http` 출력에 `dump-all-headers: request` 를 설정하면
+  헤더가 **http 이벤트**에 실린다. 그러나 **alert 이벤트는 HTTP 요청 헤더를
+  담지 않는다.** 그래서 경보의 `flow_id` 로 같은 흐름의 http 이벤트를 찾아
+  마커를 가져온다.
 
-경보와 케이스가 1:1로 떨어진다.
+실측으로 확인한 것 두 가지 (Suricata 8.0.7):
+
+1. `custom: [X-FSL-Case]` 는 아무 효과가 없다. `dump-all-headers: request`
+   는 동작한다.
+2. alert 이벤트와 그 http 이벤트의 `flow_id` 는 같다. 이것이 조인 키다.
+
+요청 하나가 경보 둘을 낳을 수 있다. Suricata 가 WAF 의 네임스페이스 안에서
+공격자→WAF 와 WAF→juice-shop 두 다리를 모두 보기 때문이다. 채점은 케이스
+단위로 접으므로 문제되지 않는다.
+
+ModSecurity 감사 로그의 `time_stamp` 는 ISO 가 아니라 ctime 형식
+(`Fri Sep 18 15:25:02 2026`)이다. 시간대가 없어 UTC 로 읽는다.
 
 한계를 명시한다: 실제 공격자는 마커를 달아주지 않는다. 그러나 ground truth를
 생성하는 쪽은 플랫폼이 통제하므로 성립한다. 이는 훈련 환경의 채점 장치이지

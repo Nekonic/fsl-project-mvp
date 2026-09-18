@@ -1,0 +1,50 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[172.20.0.0/16]"
+    EXTERNAL_NET: "any"
+  port-groups:
+    HTTP_PORTS: "8080"
+
+default-log-dir: /var/log/suricata/
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+            payload: no
+            http: yes
+            metadata: yes
+        - http:
+            extended: yes
+            # 채점의 ground truth 대응이 이 한 줄에 달려 있다. 이 설정이
+            # 빠지면 마커가 어디에도 실리지 않아 모든 공격이 미탐이 된다.
+            #
+            # custom: [X-FSL-Case] 는 Suricata 8.0.7 에서 아무 효과가 없었다.
+            # 실측으로 확인했다. dump-all-headers 는 동작한다.
+            dump-all-headers: request
+
+af-packet:
+  - interface: eth0
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+
+app-layer:
+  protocols:
+    http:
+      enabled: yes
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - local.rules
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
