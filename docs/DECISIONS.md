@@ -96,3 +96,27 @@ precedent: the ratchet is not negotiable on day one, or it is not a ratchet.
 Deleting normal traffic from `redteam/cases/` is the fastest way to make any
 score look excellent and the platform worthless. `bin/verify` checks TN > 0 for
 this reason.
+
+## Replacing a bind-mounted file breaks the running container
+
+`waf` and `suricata` have single *files* bind-mounted in, not directories.
+Docker resolves those to an inode when the container is created. Anything that
+replaces the file on the host - `git checkout`, `git reset --hard`, a history
+rewrite, an editor that writes via rename - leaves the container holding a
+deleted inode, and its config silently disappears.
+
+It surfaced during the v1.0 history cleanup: replaying trees rewrote
+`deploy/suricata/suricata.yaml`, and rule validation then failed with
+`failed to open file: /etc/suricata//suricata.yaml`, while ModSecurity stopped
+producing alerts entirely. Two acceptance tests failed and both looked like
+defence failures.
+
+`docker compose restart` does not fix it - the mount is resolved at creation:
+
+```bash
+docker compose up -d --force-recreate waf suricata
+```
+
+`bin/verify` now checks for this before running the acceptance tests, on the
+same principle as everything else here: infrastructure breakage must never be
+recorded as a detection result.

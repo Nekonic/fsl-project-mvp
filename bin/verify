@@ -58,6 +58,20 @@ else
   fail "fsl-redteam-tools missing — docker compose --profile tools build"
 fi
 
+# A git checkout or reset while the stack runs replaces the single files that
+# are bind-mounted into waf and suricata. The containers keep the old inode and
+# their config silently vanishes. Catch it here: otherwise it surfaces as an
+# acceptance failure and reads as a defence failure.
+if curl -fsS --max-time 30 -X POST http://localhost:8000/api/rules/validate/ \
+     -H 'Content-Type: application/json' \
+     --data-binary "$("$PY" -c 'import json,sys;print(json.dumps({"content":open("deploy/suricata/rules/local.rules").read()}))')" \
+     2>/dev/null | grep -q '"ok":true'; then
+  ok "suricata can read its config"
+else
+  fail "suricata cannot read its config — its bind-mounted files were replaced"
+  echo "     docker compose up -d --force-recreate waf suricata"
+fi
+
 section "acceptance (live stack)"
 if "$PY" -m pytest test/ -q -p no:cacheprovider; then
   ok "test/"
