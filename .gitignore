@@ -6,3 +6,7 @@ db.sqlite3
 data/
 deploy/suricata/logs/
 deploy/nginx/logs/
+
+# platform 이 룰 검증 중에 쓰는 임시 파일. Suricata 컨테이너와 공유하는
+# bind mount 위에 있어 저장소 안에 생기지만 추적 대상이 아니다.
+deploy/suricata/rules/candidate.rules
