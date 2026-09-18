@@ -1,0 +1,156 @@
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pytest
+from rest_framework.test import APIClient
+
+from ingest.elastic import ElasticUnavailable
+
+pytestmark = pytest.mark.django_db
+
+T0 = datetime(2026, 9, 18, 12, 0, 0, tzinfo=timezone.utc)
+ATTACK = "11111111-1111-4111-8111-111111111111"
+BENIGN = "22222222-2222-4222-8222-222222222222"
+
+
+@pytest.fixture
+def client():
+    return APIClient()
+
+
+@pytest.fixture
+def session_with_cases(client):
+    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
+    for case_id, name, malicious in ((ATTACK, "sqli", True), (BENIGN, "search", False)):
+        client.post(
+            f"/api/sessions/{session_id}/cases/",
+            {
+                "case_id": case_id,
+                "name": name,
+                "malicious": malicious,
+                "correlation": "marker",
+                "source_ip": "172.20.0.5",
+                "started_at": T0.isoformat(),
+                "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
+            },
+            format="json",
+        )
+    return session_id
+
+
+def es_alert(marker, doc_id="es1"):
+    return (
+        doc_id,
+        {
+            "fsl_source": "suricata",
+            "event_type": "alert",
+            "timestamp": (T0 + timedelta(seconds=1)).isoformat(),
+            "src_ip": "172.20.0.5",
+            "alert": {"signature": "SQLi", "severity": 1},
+            "http": {"x_fsl_case": marker},
+        },
+    )
+
+
+def test_ingest_stores_detections(client, session_with_cases):
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+        response = client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    assert response.status_code == 200
+    assert response.data["ingested"] == 1
+
+    listed = client.get(f"/api/sessions/{session_with_cases}/detections/")
+    assert len(listed.data) == 1
+    assert listed.data[0]["marker"] == ATTACK
+
+
+def test_ingest_skips_non_alert_documents(client, session_with_cases):
+    noise = ("es9", {"fsl_source": "suricata", "event_type": "http"})
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK), noise]):
+        response = client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    assert response.data["ingested"] == 1
+    assert response.data["skipped"] == 1
+
+
+def test_ingest_is_idempotent(client, session_with_cases):
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+        second = client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    assert second.data["ingested"] == 0
+    assert len(client.get(f"/api/sessions/{session_with_cases}/detections/").data) == 1
+
+
+def test_ingest_reports_503_when_elasticsearch_is_unreachable(client, session_with_cases):
+    with patch("api.views.elastic.fetch", side_effect=ElasticUnavailable("인덱스 없음")):
+        response = client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    assert response.status_code == 503
+    assert "인덱스 없음" in response.data["detail"]
+
+
+def test_score_counts_true_positive_and_true_negative(client, session_with_cases):
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    response = client.get(f"/api/sessions/{session_with_cases}/score/")
+
+    assert response.status_code == 200
+    assert response.data["tp"] == 1
+    assert response.data["tn"] == 1
+    assert response.data["fp"] == 0
+    assert response.data["fn"] == 0
+
+
+def test_score_counts_false_positive_when_benign_case_alerts(client, session_with_cases):
+    with patch(
+        "api.views.elastic.fetch",
+        return_value=[es_alert(ATTACK), es_alert(BENIGN, doc_id="es2")],
+    ):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    response = client.get(f"/api/sessions/{session_with_cases}/score/")
+
+    assert response.data["fp"] == 1
+    assert response.data["false_positive_rate"] == pytest.approx(1.0)
+
+
+def test_score_counts_false_negative_when_attack_is_silent(client, session_with_cases):
+    with patch("api.views.elastic.fetch", return_value=[]):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    response = client.get(f"/api/sessions/{session_with_cases}/score/")
+
+    assert response.data["fn"] == 1
+    assert response.data["tn"] == 1
+
+
+def test_score_includes_per_case_verdicts(client, session_with_cases):
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+
+    per_case = client.get(f"/api/sessions/{session_with_cases}/score/").data["per_case"]
+
+    by_name = {entry["name"]: entry for entry in per_case}
+    assert by_name["sqli"]["verdict"] == "TP"
+    assert by_name["search"]["verdict"] == "TN"
+
+
+def test_score_persists_a_snapshot(client, session_with_cases):
+    from api.models import ScoreSnapshot
+
+    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+        client.post(f"/api/sessions/{session_with_cases}/ingest/")
+    client.get(f"/api/sessions/{session_with_cases}/score/")
+
+    assert ScoreSnapshot.objects.filter(session_id=session_with_cases).count() == 1
+
+
+def test_score_on_session_without_cases_warns_about_benign(client):
+    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
+
+    response = client.get(f"/api/sessions/{session_id}/score/")
+
+    assert response.status_code == 200
+    assert any("benign" in w for w in response.data["warnings"])
