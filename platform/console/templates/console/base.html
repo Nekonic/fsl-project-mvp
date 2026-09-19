@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-slate-950">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FSL{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans">
+  <header class="border-b border-slate-800">
+    <nav class="max-w-5xl mx-auto px-6 py-4 flex gap-6 text-sm items-center">
+      <a href="/" class="font-semibold text-slate-100">FSL</a>
+      {% block nav %}{% endblock %}
+      <span id="session-label" class="ml-auto text-slate-500"></span>
+    </nav>
+  </header>
+  <main class="max-w-5xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // The session lives in the URL, so no page is ever handed data by the
+    // server and two windows cannot drift onto different sessions.
+    const sessionId = () => location.pathname.split("/")[2];
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const body = await response.json().catch(() => ({}));
+      return { ok: response.ok, status: response.status, body };
+    }
+
+    const post = (path, payload) => api(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+
+    if (sessionId()) {
+      document.getElementById("session-label").textContent = `session ${sessionId()}`;
+    }
+  </script>
+  {% block script %}{% endblock %}
+</body>
+</html>

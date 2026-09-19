@@ -11,7 +11,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
     "api",
-    "blueteam",
+    "console",
 ]
 
 MIDDLEWARE = [
@@ -40,6 +40,15 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
+
+# Where the red team's traffic goes, and where its case files live. Inside the
+# stack the attacks leave this container, so the target is the WAF by service
+# name; on a developer's host it is the published port.
+TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
+TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
+WARGAME_CASES_DIR = os.environ.get(
+    "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
+)
 
 # Where this process meets the stack. All env vars, so tests run outside Docker.
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")

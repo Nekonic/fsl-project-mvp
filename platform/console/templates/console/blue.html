@@ -1,0 +1,183 @@
+{% extends "console/base.html" %}
+{% block title %}Blue team{% endblock %}
+{% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
+{% block content %}
+<div class="flex gap-3 mb-6 border-b border-slate-800">
+  <button data-tab="score" class="tab px-4 py-2 text-sm">Score</button>
+  <button data-tab="alerts" class="tab px-4 py-2 text-sm">Alerts</button>
+  <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
+  <a id="to-red" target="_blank"
+     class="ml-auto px-4 py-2 text-sm text-rose-400 hover:text-rose-300">
+    Open red window
+  </a>
+</div>
+
+<section data-panel="score">
+  <button id="reload"
+          class="mb-6 px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
+    Re-ingest alerts and score
+  </button>
+  <div id="warnings" class="mb-6 space-y-2"></div>
+  <div id="totals" class="grid grid-cols-4 gap-4 mb-8"></div>
+  <table class="w-full text-sm">
+    <thead class="text-slate-400 border-b border-slate-800">
+      <tr><th class="text-left py-2">Case</th><th class="text-left">Label</th>
+          <th class="text-left">Verdict</th><th class="text-left">Alerts</th></tr>
+    </thead>
+    <tbody id="per-case"></tbody>
+  </table>
+</section>
+
+<section data-panel="alerts" class="hidden">
+  <button id="refresh-alerts"
+          class="mb-6 px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">
+    Refresh
+  </button>
+  <table class="w-full text-sm">
+    <thead class="text-slate-400 border-b border-slate-800">
+      <tr><th class="text-left py-2">Time</th><th class="text-left">Source</th>
+          <th class="text-left">Signature</th><th class="text-left">From</th>
+          <th class="text-left">Marker</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p id="empty" class="text-slate-500 text-sm mt-4 hidden">
+    No alerts ingested. Re-ingest from the Score tab.
+  </p>
+</section>
+
+<section data-panel="rules" class="hidden">
+  <h2 class="text-slate-100 mb-3">Suricata rules</h2>
+  <textarea id="editor" spellcheck="false"
+    class="w-full h-80 bg-slate-900 border border-slate-800 rounded p-4 font-mono
+           text-sm text-slate-200"></textarea>
+  <div class="flex gap-3 mt-4">
+    <button id="validate"
+      class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Validate</button>
+    <button id="apply"
+      class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">Apply</button>
+  </div>
+  <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
+       text-xs whitespace-pre-wrap text-slate-300"></pre>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+  document.getElementById("to-red").href = `/red/${sessionId()}/`;
+
+  // -- tabs. Defending means editing a rule, re-scoring and reading the
+  // result over and over; a page load between each made that a chore.
+  function showTab(name) {
+    document.querySelectorAll("[data-panel]").forEach((panel) => {
+      panel.classList.toggle("hidden", panel.dataset.panel !== name);
+    });
+    document.querySelectorAll(".tab").forEach((tab) => {
+      const on = tab.dataset.tab === name;
+      tab.className = `tab px-4 py-2 text-sm ${on
+        ? "text-slate-100 border-b-2 border-sky-500" : "text-slate-500"}`;
+    });
+    if (name === "alerts") renderAlerts();
+  }
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => showTab(tab.dataset.tab));
+  });
+
+  // -- score
+  const VERDICT_STYLE = {
+    TP: "text-emerald-400", TN: "text-emerald-400",
+    FP: "text-amber-400", FN: "text-rose-400",
+  };
+
+  function tile(label, value) {
+    return `<div class="bg-slate-900 border border-slate-800 rounded p-4">
+      <div class="text-slate-400 text-xs uppercase">${label}</div>
+      <div class="text-2xl font-semibold text-slate-100">${value}</div></div>`;
+  }
+
+  async function renderScore() {
+    const warnings = document.getElementById("warnings");
+    warnings.innerHTML = "";
+
+    const ingest = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
+    if (!ingest.ok) {
+      warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
+        text-rose-200 text-sm">ingest failed (${ingest.status}): ${ingest.body.detail || ""}</div>`;
+    }
+
+    const score = await api(`/api/sessions/${sessionId()}/score/`);
+    if (!score.ok) {
+      warnings.innerHTML += `<div class="bg-rose-950 border border-rose-800 rounded p-3
+        text-rose-200 text-sm">scoring failed (${score.status})</div>`;
+      return;
+    }
+    const s = score.body;
+
+    document.getElementById("totals").innerHTML =
+      tile("TP", s.tp) + tile("FN (missed)", s.fn) +
+      tile("FP (false alarm)", s.fp) + tile("TN", s.tn) +
+      tile("precision", s.precision.toFixed(2)) +
+      tile("recall", s.recall.toFixed(2)) +
+      tile("F1", s.f1.toFixed(2)) +
+      tile("FP rate", s.false_positive_rate.toFixed(2));
+
+    for (const w of s.warnings) {
+      warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3
+        text-amber-200 text-sm">${w}</div>`;
+    }
+
+    document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
+      <tr class="border-b border-slate-900">
+        <td class="py-2">${c.name}</td>
+        <td>${c.malicious ? "attack" : "benign"}</td>
+        <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${c.verdict}</td>
+        <td>${c.detection_ids.length}</td>
+      </tr>`).join("");
+  }
+  document.getElementById("reload").addEventListener("click", renderScore);
+
+  // -- alerts
+  async function renderAlerts() {
+    const result = await api(`/api/sessions/${sessionId()}/detections/`);
+    const rows = document.getElementById("rows");
+    const empty = document.getElementById("empty");
+    if (!result.ok) { rows.innerHTML = ""; empty.classList.remove("hidden"); return; }
+
+    empty.classList.toggle("hidden", result.body.length > 0);
+    rows.innerHTML = result.body.map((d) => `
+      <tr class="border-b border-slate-900">
+        <td class="py-2 text-slate-400">${d.timestamp}</td>
+        <td>${d.source}</td>
+        <td class="text-slate-100">${d.signature}</td>
+        <td>${d.src_ip || "-"}</td>
+        <td class="${d.marker ? "text-emerald-400" : "text-slate-600"}">
+          ${d.marker ? d.marker.slice(0, 8) : "none"}</td>
+      </tr>`).join("");
+  }
+  document.getElementById("refresh-alerts").addEventListener("click", renderAlerts);
+
+  // -- rules
+  const editor = document.getElementById("editor");
+  const output = document.getElementById("output");
+
+  function show(text, ok) {
+    output.textContent = text;
+    output.className = `mt-4 bg-slate-900 border rounded p-4 text-xs
+      whitespace-pre-wrap ${ok ? "border-emerald-800 text-emerald-300"
+                               : "border-rose-800 text-rose-300"}`;
+  }
+
+  document.getElementById("validate").addEventListener("click", async () => {
+    const r = await post("/api/rules/validate/", {content: editor.value});
+    show(r.body.output || "(no output)", r.ok);
+  });
+
+  document.getElementById("apply").addEventListener("click", async () => {
+    const r = await post("/api/rules/apply/", {content: editor.value});
+    show(r.ok ? "Applied and reloaded Suricata." : r.body.detail, r.ok);
+  });
+
+  api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
+  showTab("score");
+  renderScore();
+</script>
+{% endblock %}

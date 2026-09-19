@@ -129,8 +129,16 @@ services:
       SURICATA_RULE_PATH_IN_IDS: "/var/lib/suricata/rules/local.rules"
       SURICATA_CANDIDATE_PATH_IN_IDS: "/var/lib/suricata/rules/candidate.rules"
       DJANGO_DB_PATH: "/data/db.sqlite3"
+      # The console fires the red team's own cases, so the platform needs the
+      # case files and a way to reach the target from inside the network.
+      TARGET_URL: "http://waf:8080"
+      TOOL_TARGET_URL: "http://waf:8080"
+      WARGAME_CASES_DIR: "/app/redteam/cases"
     volumes:
       - ./platform:/app
+      # Mounted inside /app so `import redteam` resolves the same way it does
+      # on a developer's host, where the repo root is on sys.path.
+      - ./redteam:/app/redteam:ro
       - ./deploy/suricata/rules:/rules
       # Runs rule validation and reload inside the IDS container. A container
       # escape path; production should replace it with a sidecar.

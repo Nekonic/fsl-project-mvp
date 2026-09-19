@@ -96,7 +96,8 @@ cost a line in `docs/DECISIONS.md`, not pass unnoticed.
 | `platform/scoring/` | the hypothesis itself: pure functions, no I/O, no Django |
 | `platform/ingest/elastic.py` | the only file that knows Elasticsearch |
 | `platform/rules/suricata.py` | the only file that knows the Suricata process |
-| `platform/api/`, `platform/blueteam/` | REST surface and the console |
+| `platform/api/`, `platform/console/` | REST surface and the console |
+| `platform/wargames.py` | the case catalogue the console fires from |
 | `redteam/` | attack execution and ground truth |
 | `deploy/`, `compose.yaml` | the stack |
 | `test/` | acceptance criteria, over HTTP only |
