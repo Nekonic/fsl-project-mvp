@@ -195,3 +195,47 @@ change the answer: Django removed for a reason other than size (it is not on
 the fixed-stack list, so a licence, a CVE or a hosting constraint could force
 it), or `api/views.py` shrinking enough that the hand-written persistence layer
 stops being the dominant cost.
+
+## Firing one case per HTTP request does not move the score
+
+`run()` keeps one `requests.Session` for a whole CLI run, and says why: the
+traffic has to keep HTTP keep-alive, because a shared TCP flow is what the
+`(flow_id, tx_id)` correlation exists to cope with. The console fires one case
+per request, so each case gets its own flow. The worry was that this quietly
+makes correlation easier and the score better than it should be.
+
+Measured instead of argued. The same twelve cases, same stack, same rules:
+
+```
+CLI run (session 1)   TP=6 FP=0 FN=0 TN=6   alerts 4, 5, 7, 7, 1, 94
+API run (session 5)   TP=6 FP=0 FN=0 TN=6   alerts 4, 5, 7, 7, 1, 94
+```
+
+Not one alert different. No workaround was added, and the platform does not
+hold a `requests.Session` per session.
+
+The reasoning behind the result is the opposite of the worry: one case per flow
+makes attribution trivial, so the score cannot get worse. What it does mean is
+that the console path no longer *exercises* the hard case. That still matters,
+and `test/` still covers it, because the acceptance fixture drives the CLI
+harness with its shared connection. If that ever changes, the keep-alive
+condition stops being tested anywhere and this entry is wrong again.
+
+Firing from inside the network is also about twenty times faster - twelve cases
+in 1.5s against roughly 30s - because the platform container reaches the WAF
+directly instead of through the host's published port.
+
+## bin/measure does not count what git does not track
+
+It counts `git ls-files`. A file that has been written but not added is
+invisible to it, so a change that adds six new files can report that the
+project got *smaller*. That happened while building the console: it printed
+`product_loc 1031 -> 945` and `bin/verify` said all green. The real number was
+1370.
+
+This is the worst shape a measurement bug can take here - it fails towards
+"you are doing well" - and nothing else in the run would have caught it.
+
+`bin/verify` now refuses to measure a tree with untracked, non-ignored files
+and names them. Same principle as the bind-mount guard and the cold-stack
+guard: a broken measurement must never be recorded as a result.

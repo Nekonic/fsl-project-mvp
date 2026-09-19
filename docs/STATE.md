@@ -2,29 +2,59 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 6 backlog items; the backlog is now empty)
+Updated: 2026-09-20 (product phase, phase 1 of 3 done)
 
 ## Where things stand
 
-v1.0 proves the hypothesis. `bin/verify` is green: 103 unit/API tests, 11
-acceptance tests against the live stack.
+The repo moved from "prove the hypothesis" to "build the smallest product that
+demonstrates it" on 2026-09-20. The design is in
+`docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
+phases; 0 and 1 are done.
 
-Last full run: `TP=6 FN=0 FP=0 TN=6`, no pipeline warnings. Adding a rule that
-matches `apple` turns `normal-product-search` into a false positive and moves
-precision to 0.83 — so the score responds to defence changes in the predicted
-direction, which is the whole point.
+`bin/verify` is green: 115 unit/API tests, 11 acceptance tests against the live
+stack. The hypothesis itself is untouched and still scores
+`TP=6 FN=0 FP=0 TN=6`.
 
 ```
-production_loc  1642   (v1.0: 1703)
-dependencies       6   (v1.0: 7)
-services           7   (v1.0: 8)
+core_loc         611   gated, unchanged by the product work
+product_loc     1370   not gated (was 1031 before the console)
+dependencies       6
+services           7
 ```
+
+**You can now run the whole loop in a browser.** Open `/`, start a session,
+then open the red and blue windows side by side: fire cases from one, watch the
+score move in the other, edit a Suricata rule and fire again.
 
 ## In progress
 
-Nothing. Start at the top of the backlog.
+Nothing. Phase 2 is next.
 
 ## Done since v1.0
+
+- **Phase 1: the red team got a REST surface, and the console got a shell.**
+  The reason there was no red team screen was never the screen - firing an
+  attack had no endpoint, and the rule is that every UI action is an API call
+  first. `POST /api/sessions/<id>/attacks/` fires one catalogue case and
+  records its ground truth; `/api/wargames/` and `/api/wargames/<id>/cases/`
+  describe what can be fired.
+
+  The console became four pages - main, session, red, blue - and the session
+  number moved from a text box in the nav into the URL. That box was the
+  reason the old console looked broken: nothing told you whether the number
+  was right, and a session that did not exist rendered as an empty page. The
+  `blueteam` app is now `console`, because it serves both teams, and the blue
+  team's three pages are tabs on one screen so defending does not mean a page
+  load between every rule edit.
+
+  Two things were measured rather than assumed, both in DECISIONS: firing one
+  case per request does not move the score, and `bin/measure` was undercounting
+  untracked files - which had already produced one false green.
+
+- **Phase 0: the ratchet split into `core_loc` and `product_loc`.** One number
+  could not gate a hypothesis that must shrink and a product shell that must
+  grow. `core_loc` covers scoring, ingest, rules and the harness and still only
+  falls; everything else is reported.
 
 - **Tried to replace Django entirely, and did not.** Built against `wsgiref`
   and `sqlite3`, verified green end to end, then discarded because
@@ -103,20 +133,30 @@ Nothing. Start at the top of the backlog.
 
 ## Backlog
 
-Empty. Every item written after v1.0 has been done or decided.
+The remaining phases of the product design. Take the top one.
 
-The last one, "consider replacing Django entirely", was built in full and
-measured: it passes all 103 unit tests and all 11 acceptance tests against the
-live stack, drops two dependencies, and grows `production_loc` by 36. The
-ratchet refused it and the work was discarded. `docs/DECISIONS.md` has the
-per-file accounting and the two things that would justify revisiting it. Do not
-re-propose it without one of them.
+### 1. Phase 2 - the labelled Kali terminal
 
-Before adding an item here, read `docs/DECISIONS.md`. The next real candidate
-is most likely the known gap below rather than anything left in `platform/`:
-the three biggest production files now are `api/views.py` (189),
-`ingest/elastic.py` (186) and `redteam/harness.py` (185), and none of them is
-carrying obvious weight.
+A `kali` service running `ttyd`, framed in the red team window, so attacks can
+be typed instead of chosen from a list. Labelling is a "start attack / stop"
+pair in the UI that writes one `Case` with `correlation: "window"` and the Kali
+container's address - which needs **no new endpoint**, because
+`POST /api/sessions/<id>/cases/` already takes all four fields.
+
+This is also what closes the known gap below: `window` correlation has never
+run against the live stack. Add the acceptance test that scores a window case
+in the same phase, or the gap moves rather than closes.
+
+Costs one compose service. Write down why in DECISIONS when you add it.
+
+### 2. Phase 3 - compare the two strategies
+
+`GET /api/sessions/<id>/score/?correlation=marker|window|both`, and a mitmproxy
+service that stamps `X-FSL-Case` onto the Kali container's traffic so the same
+attack can be scored both ways at once. The user's reason for wanting this:
+the scoring criteria are themselves under test, and a comparison is data.
+
+Costs a second compose service.
 
 ## Known gaps
 

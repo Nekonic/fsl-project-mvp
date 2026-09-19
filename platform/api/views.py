@@ -1,16 +1,21 @@
 import json
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_http_methods
 
+import requests
+
+import wargames
 from api.models import Case, Detection, RuleSet, ScoreSnapshot, Session
 from ingest import elastic
+from redteam import harness
 from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
@@ -49,11 +54,68 @@ def _payload(request):
     return json.loads(request.body or b"{}")
 
 
-@require_http_methods(["POST"])
-def create_session(request):
+@require_http_methods(["GET", "POST"])
+def sessions(request):
+    if request.method == "GET":
+        return _reply([_shape(s, SESSION_FIELDS) for s in Session.objects.all()])
+
     body = _payload(request)
     session = Session.objects.create(scenario=body.get("scenario") or "juice-shop")
     return _reply(_shape(session, SESSION_FIELDS), status=201)
+
+
+@require_http_methods(["GET"])
+def wargame_catalogue(request):
+    return _reply(wargames.catalogue())
+
+
+@require_http_methods(["GET"])
+def wargame_cases(request, wargame_id):
+    try:
+        return _reply(wargames.cases(wargame_id))
+    except wargames.UnknownWargame:
+        raise Http404(wargame_id)
+
+
+@require_http_methods(["POST"])
+def fire_attack(request, session_id):
+    """Send one catalogue case and record what it was.
+
+    Ground truth is written only after the traffic has left. A case recorded
+    for an attack that never went out is a false negative charged to the
+    defence, which is the one mistake this platform must not make.
+    """
+    session = get_object_or_404(Session, pk=session_id)
+
+    try:
+        case = wargames.find_case(session.scenario, _payload(request).get("case"))
+    except wargames.UnknownWargame as exc:
+        raise Http404(str(exc))
+
+    case = dict(case, case_id=str(uuid.uuid4()))
+    case.setdefault("correlation", "marker")
+
+    started_at = timezone.now()
+    try:
+        harness.fire(
+            requests.Session(), case, settings.TARGET_URL, settings.TOOL_TARGET_URL
+        )
+    except harness.ToolUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+
+    recorded = Case.objects.create(
+        session=session,
+        case_id=case["case_id"],
+        name=case["name"],
+        malicious=bool(case["malicious"]),
+        technique=case.get("technique") or "",
+        correlation=case["correlation"],
+        source_ip=case.get("source_ip"),
+        started_at=started_at,
+        ended_at=timezone.now(),
+        meta=harness.case_meta(case),
+    )
+    return _reply(_shape(recorded, CASE_FIELDS), status=201)
 
 
 @require_http_methods(["GET"])

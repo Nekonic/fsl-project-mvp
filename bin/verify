@@ -93,6 +93,18 @@ else
 fi
 
 section "ratchet"
+# bin/measure counts `git ls-files`, so a file that is not added yet is not
+# counted. That reads as a change that grew nothing, which is a false green in
+# exactly the direction nobody checks. Refuse to measure a dirty tree.
+untracked="$(git ls-files --others --exclude-standard)"
+if [ -n "$untracked" ]; then
+  fail "untracked files - metrics would not count them:"
+  echo "$untracked" | sed 's/^/       /'
+  echo "     git add them, then run bin/verify again"
+else
+  ok "nothing untracked"
+fi
+
 ./bin/measure
 if "$PY" - <<'PY'
 import json, subprocess, sys, pathlib

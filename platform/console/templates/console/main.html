@@ -1,0 +1,62 @@
+{% extends "console/base.html" %}
+{% block title %}FSL{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold text-slate-100 mb-2">Attack and defence range</h1>
+<p class="text-slate-400 text-sm mb-8">
+  Start a session, then open the red and blue windows side by side and drive
+  both halves yourself.
+</p>
+
+<h2 class="text-sm uppercase tracking-wide text-slate-500 mb-3">Wargames</h2>
+<div id="wargames" class="grid gap-4 mb-10"></div>
+
+<h2 class="text-sm uppercase tracking-wide text-slate-500 mb-3">Recent sessions</h2>
+<div id="sessions" class="space-y-2"></div>
+<p id="no-sessions" class="text-slate-500 text-sm hidden">
+  Nothing yet. Start one above.
+</p>
+{% endblock %}
+{% block script %}
+<script>
+  async function renderWargames() {
+    const { body } = await api("/api/wargames/");
+    document.getElementById("wargames").innerHTML = body.map((wargame) => `
+      <div class="border border-slate-800 rounded p-5 flex items-center gap-6">
+        <div class="flex-1">
+          <div class="text-slate-100 font-medium">${wargame.name}</div>
+          <div class="text-slate-400 text-sm mt-1">${wargame.description}</div>
+          <div class="text-slate-600 text-xs mt-2">${wargame.cases} cases available</div>
+        </div>
+        <button data-wargame="${wargame.id}"
+          class="start px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
+          Start session
+        </button>
+      </div>`).join("");
+
+    document.querySelectorAll(".start").forEach((button) => {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        const { body } = await post("/api/sessions/", { scenario: button.dataset.wargame });
+        location.href = `/session/${body.id}/`;
+      });
+    });
+  }
+
+  async function renderSessions() {
+    const { body } = await api("/api/sessions/");
+    document.getElementById("no-sessions").classList.toggle("hidden", body.length > 0);
+    document.getElementById("sessions").innerHTML = body.slice(0, 10).map((s) => `
+      <a href="/session/${s.id}/"
+         class="block border border-slate-800 rounded px-4 py-3 hover:border-slate-600">
+        <span class="text-slate-100">Session ${s.id}</span>
+        <span class="text-slate-500 text-sm ml-3">${s.scenario}</span>
+        <span class="text-slate-600 text-xs ml-3">${s.started_at}</span>
+        <span class="text-xs ml-3 ${s.ended_at ? "text-slate-600" : "text-emerald-400"}">
+          ${s.ended_at ? "closed" : "open"}</span>
+      </a>`).join("");
+  }
+
+  renderWargames();
+  renderSessions();
+</script>
+{% endblock %}
