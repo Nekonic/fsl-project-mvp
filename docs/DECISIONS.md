@@ -142,3 +142,56 @@ It cost a full diagnosis to establish that the code was fine and the pipeline
 was empty. `score_when_ready` now checks for that case and fails with the real
 reason. Same principle as the bind-mount guard in `bin/verify`: infrastructure
 state must never be recorded as a detection result.
+
+## Replacing Django with stdlib WSGI + sqlite3 was built, measured and rejected
+
+It works. It is bigger. The ratchet refused it and that was the right answer.
+
+The whole platform was rewritten against `wsgiref` and `sqlite3`: a regex
+router where handlers register themselves with `@route`, one shared sqlite
+connection, and column names chosen to match the JSON field names so a row is
+already almost a response. Django template inheritance became marker
+substitution in `blueteam/views.py`. The API contract did not move one byte.
+
+It passed everything except the measure of progress:
+
+```
+unit + API tests    103 passed (0.07s, against 0.51s under Django)
+acceptance (live)    11 passed  - the hypothesis holds without Django
+production_loc     1642 -> 1678  REFUSED
+dependencies          6 -> 4     Django and pytest-django both gone
+services              7 -> 7
+```
+
+Where the 36 lines went, after an honest tightening pass had already taken 20
+out of a first draft at 1698:
+
+| | |
+|---|---|
+| `api/views.py` | 189 -> 206 — every ORM call became SQL and a shaped dict |
+| `fsl/db.py` 89 | against `api/models.py` 83 — schema, encode, decode |
+| `fsl/app.py` 61, `serve.py` 13, `fsl/config.py` 18 | 92 against settings 48 + urls 22 + manage.py 9 |
+| `blueteam/views.py` | 12 -> 29 — the template engine had been free |
+| templates | 198 -> 183 — the one place that genuinely shrank |
+
+So the trade is exact: **two dependencies and a framework, bought with 36 lines
+of routing and persistence that are now ours to maintain.** Deleting Django's
+configuration does not delete Django's work; it moves it into the repository.
+
+Two things are worth keeping from the attempt. The rewrite was far easier than
+its reputation - one session, and the existing tests needed a new `conftest`
+rather than new assertions, because they had always spoken HTTP. And the tests
+got six times faster, which is a real cost Django was charging every run.
+
+Neither is worth 36 lines. `production_loc` is the metric this project chose
+for "simpler", and it says this is not simpler. Editing `metrics.json` to let
+it through was considered and refused: the growth here is avoidable - keeping
+Django avoids it entirely - so it does not meet CLAUDE.md's bar of "genuinely
+unavoidable", and the second hand-granted exception is the one that ends the
+ratchet. The v1.0 precedent stands.
+
+Do not rerun this experiment without new information. The two things that would
+change the answer: Django removed for a reason other than size (it is not on
+the fixed-stack list, so a licence, a CVE or a hosting constraint could force
+it), or `api/views.py` shrinking enough that the hand-written persistence layer
+stops being the dominant cost.
