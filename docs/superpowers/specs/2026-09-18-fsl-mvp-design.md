@@ -1,201 +1,221 @@
-# fsl-project-mvp 설계
+# fsl-project-mvp design
 
-작성일: 2026-09-18
+Written: 2026-09-18
 
-## 1. 목적
+## 1. Purpose
 
-사이버 공방 훈련 플랫폼의 가설 검증용 MVP. 메인 프로젝트는 별도 레포.
+An MVP that tests one hypothesis behind a cyber attack/defence training
+platform. The production project lives in a separate repository.
 
-검증할 가설:
+The hypothesis:
 
-> 레드팀 공격에 ground truth 라벨을 붙일 수 있고, Suricata·ModSecurity 경보를
-> 그 라벨에 자동 대응시켜 오탐/미탐을 기계적으로 채점할 수 있다.
+> Red team attacks can be labelled with ground truth, and Suricata/ModSecurity
+> alerts can be matched to those labels automatically, so false positives and
+> negatives can be scored mechanically.
 
-이 고리가 돌지 않으면 OpenStack 온디맨드 인스턴스도, 다중 워게임 앱도,
-사람 자리를 대체할 에이전트도 의미가 없다. 따라서 MVP는 이 고리만 만든다.
+If that loop does not turn, then on-demand OpenStack instances, several wargame
+apps, and an agent standing where a human stands are all beside the point. So
+the MVP builds that loop and nothing else.
 
-## 2. 범위
+## 2. Scope
 
-### 포함
+### In
 
-- 단일 호스트 Docker Compose 스택 (방어 대상 + WAF + IDS + 로그 파이프라인 + 플랫폼)
-- 레드팀 공격 하니스와 ground truth 기록
-- 오탐·미탐 채점 엔진과 REST API
-- 블루팀 콘솔 (룰 조회·편집·검증·반영, 스코어 조회)
-- 완료 기준 검증 테스트
+- A single-host Docker Compose stack: the app under defence, a WAF, an IDS, a
+  log pipeline, and the platform.
+- A red team harness that runs attacks and records ground truth.
+- The false-positive/false-negative scoring engine and its REST API.
+- A blue team console: read, edit, validate and apply rules; read the score.
+- Tests that check the acceptance criteria.
 
-### 제외
+### Out
 
-- OpenStack Heat 템플릿. compose 스택을 얹은 VM 하나를 감싸는 얇은 층이라
-  가설 검증에 기여하지 않는다. 가설이 서면 메인 레포에서 만든다.
-- Juice Shop 외의 워게임 앱. `wargame/` 디렉터리 구조로 자리만 비워둔다.
-- 사용자 인증·다중 테넌시·세션 격리. MVP는 단일 사용자 단일 세션.
-- 에이전트. 구조 원칙("화면 동작은 전부 REST API가 먼저")으로 자리만 확보한다.
+- OpenStack Heat templates. A thin layer wrapping one VM that runs the compose
+  stack contributes nothing to testing the hypothesis. Build it in the
+  production repo once the hypothesis stands.
+- Wargame apps other than Juice Shop. The `wargame/` layout leaves the space.
+- Authentication, multi-tenancy, session isolation. One user, one session.
+- Agents. The structural rule — every UI action exists as a REST API first —
+  leaves the space for them.
 
-## 3. 핵심 설계 — ground truth 대응
+## 3. The core of it: correlating ground truth
 
-채점이 성립하려면 "이 경보가 저 공격에 대한 것"이라는 대응 관계가 필요하다.
-시간창만으로 맞추면 동시 트래픽에서 무너진다. 두 단계로 해결한다.
+Scoring only means something if "this alert belongs to that attack" can be
+established. Matching on a time window alone collapses as soon as traffic
+overlaps. Two strategies, declared per case.
 
-### 3.1 마커 헤더 (주 경로)
+### 3.1 The marker header (the main path)
 
-레드팀 하니스가 모든 HTTP 요청에 `X-FSL-Case: <case_id>` 헤더를 주입한다.
+The harness injects `X-FSL-Case: <case_id>` into every HTTP request.
 
-- ModSecurity: 감사 로그(JSON)가 요청 헤더 전체를 남기므로 경보에서 바로
-  꺼낸다.
-- Suricata: `eve-log` 의 `http` 출력에 `dump-all-headers: request` 를 설정하면
-  헤더가 **http 이벤트**에 실린다. 그러나 **alert 이벤트는 HTTP 요청 헤더를
-  담지 않는다.** 그래서 경보를 같은 트랜잭션의 http 이벤트와 짝지어
-  마커를 가져온다.
+- ModSecurity: its JSON audit log records the whole request header block, so
+  the marker comes straight off the alert.
+- Suricata: setting `dump-all-headers: request` on the `http` output of
+  `eve-log` puts the headers on the **http event**. But an **alert event
+  carries no HTTP request headers at all**, so each alert has to be paired with
+  the http event of the same transaction to get its marker.
 
-실측으로 확인한 것 세 가지 (Suricata 8.0.7):
+Three things established by measurement, on Suricata 8.0.7:
 
-1. `custom: [X-FSL-Case]` 는 아무 효과가 없다. `dump-all-headers: request`
-   는 동작한다.
-2. alert 이벤트와 그 http 이벤트는 `tx_id` 로 정확히 짝지어진다.
-3. **조인 키는 `flow_id` 가 아니라 `(flow_id, tx_id)` 다.** HTTP keep-alive
-   에서는 TCP 흐름 하나 위로 요청 수십 개가 흐른다. `flow_id` 만으로 조인하면
-   흐름의 첫 마커가 그 흐름의 모든 경보에 붙어 전부 엉뚱한 케이스로 귀속된다.
-   점수는 그럴듯해 보이면서 조용히 거짓이 된다 — MVP 에서 실제로 겪었고,
-   ModSecurity 경보가 마커를 직접 실어 나르는 덕에 점수가 그럴듯해 보여
-   한참 보이지 않았다.
+1. `custom: [X-FSL-Case]` has no effect whatsoever.
+   `dump-all-headers: request` works.
+2. An alert event and its http event pair up exactly by `tx_id`.
+3. **The join key is `(flow_id, tx_id)`, not `flow_id`.** Under HTTP
+   keep-alive, dozens of requests travel over one TCP flow. Joining on
+   `flow_id` alone pins that flow's first marker onto every alert in it and
+   attributes them all to the wrong case. The score stays plausible while being
+   quietly false — this happened during the MVP, and ModSecurity alerts
+   carrying their markers directly kept the totals looking right for a long
+   time before anyone noticed.
 
-요청 하나가 경보 둘을 낳을 수 있다. Suricata 가 WAF 의 네임스페이스 안에서
-공격자→WAF 와 WAF→juice-shop 두 다리를 모두 보기 때문이다. 채점은 케이스
-단위로 접으므로 문제되지 않는다.
+One request can produce two alerts, because Suricata sits inside the WAF's
+namespace and sees both legs: attacker to WAF, and WAF to Juice Shop. Scoring
+folds to one verdict per case, so this does not matter.
 
-ModSecurity 감사 로그의 `time_stamp` 는 ISO 가 아니라 ctime 형식
-(`Fri Sep 18 15:25:02 2026`)이다. 시간대가 없어 UTC 로 읽는다.
+ModSecurity writes `time_stamp` in ctime format, not ISO
+(`Fri Sep 18 15:25:02 2026`). There is no timezone, so it is read as UTC.
 
-### 3.3 요청이 선언대로 나가는지
+State the limit plainly: a real attacker does not label their traffic. But the
+side that produces ground truth is the platform itself, so this holds. It is a
+scoring device for a training range, not a detection technique.
 
-`requests` 는 `/ftp/../../../../etc/passwd` 를 전송 전에 `/etc/passwd` 로
-정규화한다. 공격이 나가지 않았는데 ground truth 에는 "공격을 보냈다" 고
-남으면 채점이 거짓말을 한다 — 미탐으로 집계되지만 실제로는 방어가 아니라
-하니스가 실패한 것이다.
+### 3.2 Time window and source IP (the fallback)
 
-하니스는 요청을 보내기 전에 선언한 경로와 실제로 나갈 경로를 비교하고,
-다르면 예외를 던진다. 퍼센트 인코딩의 표기 차이(`%2e` → `.`, `%2f` → `%2F`)는
-RFC 3986 상 같은 경로이므로 무시하고, `..` 세그먼트가 사라지는 구조적
-재작성만 잡는다.
+Cases that are not HTTP — an nmap port scan, say — cannot carry a header.
+They are matched on the case's `started_at`/`ended_at` interval and its source
+IP, with two seconds of slack at each end.
 
-한계를 명시한다: 실제 공격자는 마커를 달아주지 않는다. 그러나 ground truth를
-생성하는 쪽은 플랫폼이 통제하므로 성립한다. 이는 훈련 환경의 채점 장치이지
-탐지 기법이 아니다.
+A case uses exactly one of the two strategies, declared as
+`correlation: marker|window`. There is no implicit fallback: if a case that
+should have carried a marker lost it, letting window correlation quietly cover
+for that hides the bug.
 
-### 3.2 시간창 + 출발지 IP (보조)
+### 3.3 Checking the request went out as declared
 
-HTTP가 아닌 케이스(nmap 포트스캔 등)는 헤더를 주입할 수 없다.
-케이스의 `started_at`/`ended_at` 구간과 출발지 IP로 대응시킨다.
-구간은 앞뒤 2초 여유를 둔다.
+`requests` normalises `/ftp/../../../../etc/passwd` to `/etc/passwd` before
+sending. If the attack never left while ground truth still records "attack
+sent", the score lies — it counts as a miss when in fact the harness, not the
+defence, failed.
 
-케이스 하나는 두 전략 중 하나만 쓴다. 케이스 정의에 `correlation: marker|window`
-로 명시한다. 암묵적 폴백은 두지 않는다 — 마커가 붙었어야 할 케이스에서
-마커가 사라진 것을 시간창 대응이 조용히 덮어버리면 버그가 보이지 않는다.
+Before sending, the harness compares the declared path against the path that
+will actually go on the wire and raises when they differ. Differences in
+percent-encoding (`%2e` → `.`, `%2f` → `%2F`) are the same path under RFC 3986
+and are ignored; what is caught is structural rewriting, where `..` segments
+disappear.
 
-## 4. 채점
+## 4. Scoring
 
-케이스 단위로 접는다. 케이스 하나가 요청 여러 개를 보내도 판정은 하나다.
+Folded per case. One case is one verdict even if it sent many requests.
 
-|              | 경보 있음 | 경보 없음 |
-|--------------|-----------|-----------|
-| malicious    | TP        | FN (미탐) |
-| benign       | FP (오탐) | TN        |
+|           | alert    | no alert |
+|-----------|----------|----------|
+| malicious | TP       | FN       |
+| benign    | FP       | TN       |
 
-산출 지표: precision, recall, F1, false positive rate, 그리고 원시 TP/FP/FN/TN.
+Reported: precision, recall, F1, false positive rate, and the raw
+TP/FP/FN/TN.
 
-**benign 케이스는 선택이 아니라 필수다.** 정상 트래픽 케이스가 없으면
-"전부 차단"하는 룰이 만점을 받는다. 오탐을 채점하는 것이 이 플랫폼의 존재
-이유이므로, 케이스 파일에 정상 트래픽을 1급 시민으로 넣는다. 스코어 API는
-benign 케이스가 0건이면 경고 필드를 실어 보낸다.
+**Benign cases are required, not optional.** Without normal traffic, a rule
+that blocks everything scores perfectly. Scoring false positives is the reason
+this platform exists, so normal traffic is a first-class citizen of the case
+file, and the score API carries a warning field when there are no benign cases.
 
-경보의 severity나 룰 종류는 MVP에서 채점에 쓰지 않는다. "경보가 났는가"만
-본다. 가중치는 가설이 선 뒤에 붙인다.
+Alert severity and rule type are not used in scoring in the MVP. The only
+question is whether an alert fired. Weighting comes after the hypothesis
+stands.
 
-## 5. 아키텍처
+## 5. Architecture
 
 ```
-redteam 하니스 ──공격/정상 요청 + X-FSL-Case──▶ nginx+ModSecurity+CRS ──▶ juice-shop
+redteam harness ──attack/benign + X-FSL-Case──▶ nginx+ModSecurity+CRS ──▶ juice-shop
       │                                                  │
-      │ POST 케이스 (ground truth)              Suricata (인터페이스 스니핑)
+      │ POST cases (ground truth)              Suricata (sniffing the interface)
       ▼                                                  │
-  platform (Django + DRF)  ◀── Filebeat ─▶ Elasticsearch ◀─ EVE JSON / ModSec audit
+  platform (Django)  ◀── Filebeat ─▶ Elasticsearch ◀─ EVE JSON / ModSec audit
       ▲                                                  │
-  blueteam 콘솔 ──룰 편집 / 검증 / 반영 / reload──────────┘
+  blueteam console ──edit / validate / apply / reload────┘
 ```
 
-데이터 흐름:
+The flow:
 
-1. 레드팀이 세션을 열고 케이스를 실행. 각 케이스 실행 전후로 platform에
-   ground truth를 POST.
-2. 요청이 nginx(ModSecurity)를 지나 juice-shop에 도달. Suricata가 같은
-   트래픽을 스니핑.
-3. Suricata EVE JSON과 ModSecurity 감사 로그를 Filebeat이 Elasticsearch로.
-4. platform이 채점 요청을 받으면 ES를 조회해 Detection을 끌어오고,
-   케이스와 대응시켜 스코어를 계산.
-5. 블루팀이 콘솔에서 룰을 고치고 반영하면 다음 실행의 스코어가 달라진다.
+1. The red team opens a session and runs its cases, POSTing ground truth to the
+   platform around each one.
+2. Requests pass through nginx with ModSecurity and reach Juice Shop. Suricata
+   sniffs the same traffic.
+3. Filebeat ships Suricata's EVE JSON and ModSecurity's audit log to
+   Elasticsearch.
+4. On a scoring request the platform queries Elasticsearch for detections,
+   correlates them with the cases, and computes the score.
+5. When the blue team changes and applies a rule, the next run scores
+   differently.
 
-## 6. 컴포넌트
+## 6. Components
 
-### 6.1 platform — Django + DRF
+### 6.1 platform — Django
 
-`platform`은 채점, 룰 검증·반영, API 제공을 맡는다.
+The platform does the scoring, validates and applies rules, and serves the API.
 
-모델:
+Models:
 
-- `Session` — 훈련 세션 하나. `started_at`, `ended_at`, `scenario`.
-- `Case` — ground truth 한 건. `session`, `case_id`(uuid), `name`,
-  `malicious`(bool), `technique`, `correlation`(marker|window),
-  `source_ip`, `started_at`, `ended_at`, `meta`(json).
-- `Detection` — ES에서 끌어온 경보 한 건. `session`, `source`(suricata|modsecurity),
-  `signature`, `severity`, `timestamp`, `src_ip`, `marker`, `raw`(json).
-- `RuleSet` — Suricata 룰 파일의 한 버전. `content`, `created_at`, `applied_at`,
-  `validation_output`.
-- `Score` — 계산 결과 스냅샷. `session`, `tp/fp/fn/tn`, `precision`, `recall`,
-  `f1`, `computed_at`, `per_case`(json).
+- `Session` — one training session. `started_at`, `ended_at`, `scenario`.
+- `Case` — one piece of ground truth. `session`, `case_id` (uuid), `name`,
+  `malicious` (bool), `technique`, `correlation` (marker|window), `source_ip`,
+  `started_at`, `ended_at`, `meta` (json).
+- `Detection` — one alert pulled from Elasticsearch. `session`, `source`
+  (suricata|modsecurity), `signature`, `severity`, `timestamp`, `src_ip`,
+  `marker`, `raw` (json).
+- `RuleSet` — one version of the Suricata rule file. `content`, `created_at`,
+  `applied_at`, `validation_output`.
+- `ScoreSnapshot` — a computed result. `session`, `tp/fp/fn/tn`, `precision`,
+  `recall`, `f1`, `false_positive_rate`, `warnings`, `per_case` (json),
+  `computed_at`.
 
 API (`/api/`):
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST   | `/sessions/` | 세션 시작 |
-| GET    | `/sessions/{id}/` | 세션 조회 |
-| POST   | `/sessions/{id}/close/` | 세션 종료 |
-| POST   | `/sessions/{id}/cases/` | 케이스(ground truth) 기록 |
-| GET    | `/sessions/{id}/cases/` | 케이스 목록 |
-| POST   | `/sessions/{id}/ingest/` | ES에서 Detection 수집 |
-| GET    | `/sessions/{id}/score/` | 채점 결과 (수집 후 계산) |
-| GET    | `/sessions/{id}/detections/` | 수집된 경보 목록 |
-| GET    | `/rules/` | 현재 룰셋 |
-| POST   | `/rules/validate/` | `suricata -T` 로 문법 검증 (반영 없음) |
-| POST   | `/rules/apply/` | 검증 통과 시 파일 기록 + Suricata reload |
+| Method | Path | |
+|--------|------|---|
+| POST   | `/sessions/` | start a session |
+| GET    | `/sessions/{id}/` | read a session |
+| POST   | `/sessions/{id}/close/` | end a session |
+| POST   | `/sessions/{id}/cases/` | record ground truth |
+| GET    | `/sessions/{id}/cases/` | list cases |
+| POST   | `/sessions/{id}/ingest/` | pull detections from Elasticsearch |
+| GET    | `/sessions/{id}/score/` | score (computed after ingest) |
+| GET    | `/sessions/{id}/detections/` | list ingested alerts |
+| GET    | `/rules/` | the current rule set |
+| POST   | `/rules/validate/` | check syntax with `suricata -T`, apply nothing |
+| POST   | `/rules/apply/` | on success, write the file and reload Suricata |
 
-내부 구조는 관심사별로 쪼갠다.
+Split by concern:
 
-- `platform/scoring/correlate.py` — 케이스 ↔ Detection 대응. 순수 함수.
-  입력은 케이스 리스트와 Detection 리스트, 출력은 케이스별 매칭 결과.
-  ES도 DB도 모르며, 따라서 스택 없이 단위 테스트가 된다.
-- `platform/scoring/metrics.py` — 매칭 결과에서 TP/FP/FN/TN과 지표 계산.
-  역시 순수 함수.
-- `platform/ingest/elastic.py` — ES 조회와 Detection 정규화. 여기만 ES를 안다.
-- `platform/rules/suricata.py` — 룰 검증(`suricata -T`)과 reload.
-  여기만 Suricata 프로세스를 안다.
+- `platform/scoring/correlate.py` — matches cases to detections. Pure
+  functions. In: a list of cases and a list of detections. Out: what matched
+  per case. It knows neither Elasticsearch nor the database, so it unit-tests
+  without the stack.
+- `platform/scoring/metrics.py` — TP/FP/FN/TN and the metrics, from the match
+  result. Pure functions as well.
+- `platform/ingest/elastic.py` — queries Elasticsearch and normalises
+  detections. The only file that knows Elasticsearch.
+- `platform/rules/suricata.py` — rule validation (`suricata -T`) and reload.
+  The only file that knows the Suricata process.
 
-`suricata` 바이너리는 platform 컨테이너에 없다. platform은 Docker 소켓을
-읽기 전용으로 마운트받아 `docker exec suricata suricata -T -S <후보파일>` 로
-검증하고, 통과하면 룰 파일을 bind mount에 쓴 뒤 같은 방식으로 reload 한다.
+There is no `suricata` binary in the platform container. The platform has the
+Docker socket mounted and runs
+`docker exec suricata suricata -T -S <candidate>` to validate; on success it
+writes the rule file into the shared bind mount and reloads the same way.
 
-Docker 소켓 마운트는 컨테이너 탈출 경로다. 로컬 훈련 랩이라 감수하지만
-메인 레포에서는 Suricata 쪽에 룰 검증·반영만 노출하는 작은 사이드카를
-두어 걷어내야 한다. `platform/rules/suricata.py` 한 파일에 가둬 둔 이유가
-이것이다 — 교체 지점이 한 곳이어야 한다.
+Mounting the Docker socket is a container escape path. It is accepted in a
+local training lab, but the production repo has to remove it — a small sidecar
+in front of Suricata that exposes nothing but validate and apply. Confining it
+to `platform/rules/suricata.py` is exactly so that the swap touches one place.
 
-채점 로직(`correlate` + `metrics`)이 I/O를 전혀 모르는 것이 이 설계의 핵심이다.
-가설의 본체가 그 두 파일에 있고, 스택 없이 검증할 수 있어야 한다.
+That the scoring logic — `correlate` plus `metrics` — knows nothing about I/O
+is the heart of this design. The hypothesis itself lives in those two files,
+and it has to be checkable without the stack.
 
-### 6.2 redteam — 공격 실행과 ground truth
+### 6.2 redteam — running attacks and recording ground truth
 
-`redteam/cases/*.yaml` 에 케이스를 선언한다.
+Cases are declared in `redteam/cases/*.yaml`.
 
 ```yaml
 - name: sqli-login-bypass
@@ -217,106 +237,114 @@ Docker 소켓 마운트는 컨테이너 탈출 경로다. 로컬 훈련 랩이�
     params: {q: "apple juice"}
 ```
 
-`redteam/run.py` 가 케이스를 읽어 세션을 열고, 케이스마다
-`X-FSL-Case` 헤더를 붙여 요청을 보내고, ground truth를 platform에 POST한다.
-외부 도구는 `tool:` 필드로 선언한다. 하니스가 HTTP 요청을 직접 만드는
-대신 도구를 스택 네트워크에 붙은 일회성 컨테이너로 돌린다. 케이스는
-대상을 `{target}` 자리표시자로 쓰고, 하니스가 내부 주소로 치환한다 —
-도구는 네트워크 안에서 돌므로 `localhost` 로는 대상에 닿지 못한다.
+`redteam/run.py` reads the cases, opens a session, sends each request with its
+`X-FSL-Case` header, and POSTs ground truth to the platform.
 
-MVP 가 지원하는 도구는 sqlmap 하나다. `--headers` 로 마커를 주입할 수
-있어야 ground truth 대응이 성립하기 때문이다. nmap 같은 비 HTTP 도구는
-시간창 대응으로 붙여야 하고, 그러려면 도구 컨테이너의 IP 를 알아야 한다.
+External tools are declared with a `tool:` field. Rather than building the HTTP
+request itself, the harness runs the tool as a one-shot container on the stack
+network. A case writes its target as the `{target}` placeholder and the harness
+substitutes the internal address, because a tool running inside the network
+cannot reach the target through `localhost`.
 
-배포된 sqlmap 이미지는 대부분 amd64 전용이라 `redteam/Dockerfile` 에서
-직접 만든다.
+The MVP supports one tool, sqlmap: correlating ground truth requires injecting
+the marker, and `--headers` is the mechanism. Non-HTTP tools such as nmap need
+window correlation instead, which requires knowing the tool container's IP.
 
-도구가 아예 실행되지 않으면(이미지 없음, docker 없음) 예외를 던진다.
-공격이 나가지 않았는데 ground truth 에 "보냈다" 고 남으면 미탐으로
-집계되지만 실제로는 하니스가 실패한 것이다. 도구 자신의 비정상 종료는
-다르다 — sqlmap 은 주입점을 못 찾으면 0 이 아닌 코드를 내지만 공격
-시도는 나갔으므로 ground truth 는 유효하다.
+Published sqlmap images are mostly amd64-only, so `redteam/Dockerfile` builds
+one.
 
-케이스 파일은 공격과 정상 트래픽을 같은 파일에 섞어 둔다. 분리하면
-정상 트래픽을 빠뜨리기 쉽다.
+A tool that never runs at all — no image, no docker — raises. If no attack went
+out while ground truth says it did, it counts as a miss when the harness, not
+the defence, failed. A tool exiting non-zero is different: sqlmap does that
+whenever it finds no injection point, and the attempt still went out, so ground
+truth stands.
 
-### 6.3 blueteam — 방어자 콘솔
+Attack and benign traffic share one case file. Separating them makes it easy to
+forget the benign half.
 
-platform의 Django 앱. Tailwind CSS(CDN, MVP 한정).
+### 6.3 blueteam — the defender's console
 
-화면 셋:
+A Django app inside the platform. Tailwind CSS from a CDN, for the MVP only.
 
-1. 스코어 — TP/FP/FN/TN, 지표, 케이스별 판정 표. 미탐/오탐 케이스 강조.
-2. 경보 — 수집된 Detection 목록, 케이스 대응 여부.
-3. 룰 — Suricata 룰 편집기. 검증 → 결과 표시 → 반영.
+Three pages:
 
-모든 화면은 자기 자신의 REST API를 호출한다. 템플릿이 ORM을 직접 쓰지 않는다.
-이게 "나중에 사람 자리에 에이전트가 들어온다"는 원칙을 강제하는 방법이다.
+1. Score — TP/FP/FN/TN, the metrics, and a per-case verdict table with the
+   misses and false alarms called out.
+2. Alerts — the ingested detections and whether each matched a case.
+3. Rules — the Suricata rule editor: validate, show the result, apply.
 
-### 6.4 deploy — 스택 설정
+Every page calls the project's own REST API. No template touches the ORM. That
+is how the rule "an agent takes a human's place later" is enforced rather than
+merely intended.
 
-`compose.yaml` 서비스:
+### 6.4 deploy — the stack
 
-| 서비스 | 이미지 | 역할 |
-|--------|--------|------|
-| juice-shop | bkimminich/juice-shop | 방어 대상 |
-| waf | owasp/modsecurity-crs:nginx | 리버스 프록시 + WAF |
+`compose.yaml` services:
+
+| Service | Image | |
+|---------|-------|---|
+| juice-shop | bkimminich/juice-shop | the app under defence |
+| waf | owasp/modsecurity-crs:nginx | reverse proxy and WAF |
 | suricata | jasonish/suricata | IDS |
-| elasticsearch | elasticsearch:8 | 로그 저장 |
-| filebeat | elastic/filebeat:8 | 로그 수집 |
-| platform | 로컬 빌드 (Django) | 채점·API·콘솔 |
+| elasticsearch | elasticsearch:8 | log storage |
+| filebeat | elastic/filebeat:8 | log shipping |
+| platform | built locally (Django) | scoring, API, console |
 
-- Suricata는 `network_mode: "service:waf"` 로 WAF 컨테이너의 네트워크
-  네임스페이스에 들어가 그 `eth0` 을 스니핑한다. `NET_ADMIN`/`NET_RAW` 필요.
-  `network_mode: host` 는 쓰지 않는다 — Docker Desktop(macOS)에서는 호스트가
-  아니라 Linux VM의 네임스페이스에 붙어 동작이 플랫폼마다 달라진다.
-  WAF의 `eth0` 에는 공격자→WAF 와 WAF→juice-shop 양쪽 다리가 모두 흐르므로
-  필요한 트래픽을 전부 본다. VM 안에서 컨테이너를 돌리면 Neutron 포트
-  미러링이 불필요하다는 판단과 같은 논리를 컨테이너 층에 한 번 더 적용한 것.
-- Kibana 는 걷어냈다. 블루팀 콘솔이 이미 경보를 보여주고 ES 는 남으므로
-  curl 로 임의 질의가 된다. 방어자가 로그를 파고들 때는 분명 쓸모가 있지만
-  이 저장소의 가설에는 기여하지 않는다. 메인 레포에서는 되살릴 수 있다.
-- Elasticsearch는 단일 노드, 보안 비활성(MVP 한정). `discovery.type=single-node`,
-  `ES_JAVA_OPTS=-Xms512m -Xmx512m`. Docker Desktop 기본 메모리에서 스택
-  전체가 떠야 한다.
-- Filebeat은 EVE JSON과 ModSec 감사 로그를 볼륨으로 공유받아 읽는다.
-  GeoIP는 ES ingest pipeline으로. Logstash 없음.
-- 룰 파일과 로그는 named volume이 아니라 bind mount로 둔다.
-  platform이 룰을 쓰고 Suricata가 읽어야 하므로.
+- Suricata joins the WAF container's network namespace with
+  `network_mode: "service:waf"` and sniffs its `eth0`; it needs `NET_ADMIN` and
+  `NET_RAW`. `network_mode: host` is not used — under Docker Desktop on macOS
+  that attaches to the Linux VM's namespace rather than the host's, so
+  behaviour varies by platform. The WAF's `eth0` carries both the attacker-to-
+  WAF and WAF-to-Juice-Shop legs, so everything needed is visible. This is the
+  same reasoning as running containers inside a VM to avoid needing Neutron
+  port mirroring, applied once more a layer down.
+- Kibana was removed. The blue team console already lists detections and
+  Elasticsearch stays, so curl still answers ad-hoc questions. It is genuinely
+  useful to a defender digging through logs, but it contributes nothing to this
+  repository's hypothesis. The production repo can bring it back.
+- Elasticsearch is a single node with security disabled, for the MVP only:
+  `discovery.type=single-node`, `ES_JAVA_OPTS=-Xms512m -Xmx512m`. The whole
+  stack has to come up inside a default Docker Desktop memory allowance.
+- Filebeat reads the EVE JSON and the ModSecurity audit log through shared
+  volumes. GeoIP is an Elasticsearch ingest pipeline. There is no Logstash.
+- Rule files and logs are bind mounts rather than named volumes, because the
+  platform writes the rules and Suricata reads them.
 
-## 7. 오류 처리
+## 7. Error handling
 
-- ES가 아직 안 떴거나 인덱스가 없음 → `/ingest/` 가 503과 사유를 반환.
-  채점을 0점으로 만들지 않는다. 데이터 없음과 탐지 실패는 다르다.
-- 룰 검증 실패 → `/rules/apply/` 가 400과 `suricata -T` 원문 출력을 반환.
-  검증을 통과하지 못한 룰은 절대 파일에 쓰지 않는다.
-- reload 실패 → 직전 룰셋으로 되돌리고 500과 사유를 반환.
-- benign 케이스 0건 → 스코어에 `warnings: ["no benign cases"]`.
-- 케이스가 마커를 선언했는데 Detection에 마커가 하나도 없음 →
-  스코어에 경고. 조용히 전부 FN으로 처리하면 파이프라인 고장을
-  탐지 실패로 오독한다.
+- Elasticsearch not up yet, or no index → `/ingest/` returns 503 and the
+  reason. It does not turn the score into a zero. No data and no detection are
+  different things.
+- Rule validation fails → `/rules/apply/` returns 400 and the raw
+  `suricata -T` output. A rule that failed validation is never written to the
+  file.
+- Reload fails → roll back to the previous rule set and return the reason.
+- No benign cases → a warning on the score.
+- A case declared a marker but no detection carries one → a warning on the
+  score. Silently counting them all as misses would read a broken pipeline as
+  a detection failure.
 
-## 8. 테스트
+## 8. Tests
 
-3층으로 나눈다.
+Three layers.
 
-1. **단위** — `correlate.py`, `metrics.py`. 스택 불필요.
-   합성 케이스/Detection 리스트로 TP/FP/FN/TN 경계를 전부 짚는다.
-   마커 대응, 시간창 대응, 중복 경보, 경계 시각.
-2. **API** — Django 테스트 클라이언트. ES와 Suricata는 모킹.
-   세션 → 케이스 → 수집 → 채점 왕복.
-3. **통합** (`test/`) — 실제 compose 스택 대상. 완료 기준 검증.
-   스택을 띄우고 `redteam/run.py` 를 돌린 뒤 스코어를 확인.
+1. **Unit** — `correlate.py`, `metrics.py`. No stack needed. Synthetic case and
+   detection lists covering every TP/FP/FN/TN boundary: marker correlation,
+   window correlation, duplicate alerts, the edges of the time window.
+2. **API** — Django's test client, with Elasticsearch and Suricata mocked. The
+   round trip: session, case, ingest, score.
+3. **Acceptance** (`test/`) — against the real compose stack, checking the
+   criteria below. Bring the stack up, run `redteam/run.py`, read the score.
 
-## 9. 완료 기준
+## 9. Acceptance criteria
 
-1. `docker compose up -d` 로 전 서비스가 healthy.
-2. `python redteam/run.py` 가 오류 없이 완주하고 세션 id를 출력.
-3. `GET /api/sessions/{id}/score/` 가 TP > 0, TN > 0 인 스코어를 반환.
-   (탐지되는 공격과 탐지되지 않는 정상 트래픽이 둘 다 존재)
-4. 블루팀 콘솔에서 룰 하나를 추가·반영한 뒤 재실행하면 스코어가
-   예측한 방향으로 움직인다.
-5. `test/` 가 1~4를 자동으로 검증한다.
+1. `docker compose up -d` brings every service up healthy.
+2. `python redteam/run.py` runs to completion and prints a session id.
+3. `GET /api/sessions/{id}/score/` returns a score with TP > 0 and TN > 0 —
+   attacks that are detected and normal traffic that is not.
+4. Adding and applying one rule from the blue team console moves the next run's
+   score in the predicted direction.
+5. `test/` checks 1 through 4 automatically.
 
-3번이 이 MVP의 반증 지점이다. TP > 0 이 안 나오면 경보-케이스 대응이
-실패한 것이고, TN > 0 이 안 나오면 오탐 채점이 무의미한 것이다.
+Criterion 3 is where this MVP can be falsified. TP of zero means alert-to-case
+correlation failed. TN of zero means scoring false positives is meaningless.

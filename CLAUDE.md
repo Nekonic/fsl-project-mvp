@@ -20,6 +20,9 @@ documents. The user is Korean and talks to you in Korean; reply in Korean, but
 never write Korean into a file. Korean costs roughly twice the tokens per line,
 and every session pays to re-read it.
 
+The one exception is `docs/superpowers/plans/`, which is archived and should
+not be read. Do not spend tokens translating it.
+
 ## Session protocol
 
 Follow this whether a human started you or `/loop` did. To run it unattended:

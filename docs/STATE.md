@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 5 backlog items)
+Updated: 2026-09-19 (v1.0 + 6 backlog items)
 
 ## Where things stand
 
@@ -25,6 +25,17 @@ services           7   (v1.0: 8)
 Nothing. Start at the top of the backlog.
 
 ## Done since v1.0
+
+- **Translated the remaining Korean.** The design document and the README were
+  still Korean, so CLAUDE.md's claim that the repo is written in English was
+  not true. Every tracked file is English now except
+  `docs/superpowers/plans/`, which is archived and which CLAUDE.md now names as
+  the one exception. No metric moved; docs are never counted.
+
+  Three pieces of drift surfaced while reading the design closely enough to
+  translate it: it still described the platform as "Django + DRF", it called
+  the Docker socket mount read-only when compose mounts it writable, and
+  section 3.3 had been inserted ahead of 3.2. All corrected.
 
 - **Shrank `redteam/harness.py`.** `Harness` had one public method and no
   state outliving the call, so it is functions now. `build_request` used to
@@ -89,17 +100,7 @@ Nothing. Start at the top of the backlog.
 Ordered by value over risk. Take the top one. If you finish it and have room,
 stop anyway — a small verified step handed over cleanly beats two rushed ones.
 
-### 1. Translate docs/superpowers/specs/ to English
-
-CLAUDE.md states the repo is written in English. The design document is still
-210 lines of Korean, so the briefing is not true. It is the canonical reference
-a session reads when it needs the why behind a decision, and it costs roughly
-twice the tokens it should.
-
-Not counted by `bin/measure` - docs never are - so judge it on the briefing
-being honest, not on the numbers moving.
-
-### 2. Consider replacing Django entirely
+### 1. Consider replacing Django entirely
 
 The largest remaining win and the riskiest. Django plus DRF is two dependencies
 carrying an ORM, migrations, templates and routing for five models and ten
