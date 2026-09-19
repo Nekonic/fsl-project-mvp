@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Measure how simple the project is. Three numbers, nothing else.
+"""Measure how simple the project is. Four numbers, nothing else.
 
-The goal of this project's recursive improvement is the simplest code that
-still proves the hypothesis. "Simpler" has to be a number, or every session
-re-argues it from taste.
+"Simpler" has to be a number, or every session re-argues it from taste. But
+one number cannot serve a hypothesis and a product at once: a product shell
+grows, and a hypothesis must not. So the line count splits.
 
-  production_loc  non-blank lines of shipped source and config
-  dependencies    direct pip packages
-  services        compose services
+  core_loc      the hypothesis itself - scoring, ingest, rules, the harness
+  product_loc   the shell around it - UI, API surface, compose, deploy
+  dependencies  direct pip packages
+  services      compose services
+
+Only core_loc, dependencies and services are gated by bin/verify. product_loc
+is reported so growth is visible, not forbidden.
 
 Tests, docs and this tooling are NOT counted: growing the test suite must
 never look like a regression.
@@ -31,7 +35,17 @@ EXCLUDE_SUFFIXES = (".md",)
 EXCLUDE_EXACT = (".gitignore", "metrics.json", "platform/pytest.ini")
 EXCLUDE_CONTAINS = ("/migrations/",)
 
-METRICS = ("production_loc", "dependencies", "services")
+# The hypothesis: correlation, the two log readers, and the harness that
+# produces ground truth. Everything else is the shell it is demonstrated in.
+CORE = (
+    "platform/scoring/",
+    "platform/ingest/",
+    "platform/rules/",
+    "redteam/harness.py",
+)
+
+METRICS = ("core_loc", "product_loc", "dependencies", "services")
+GATED = ("core_loc", "dependencies", "services")
 
 
 def tracked_files() -> list[str]:
@@ -51,7 +65,7 @@ def is_production(path: str) -> bool:
     return not any(part in path for part in EXCLUDE_CONTAINS)
 
 
-def production_loc() -> tuple[int, dict[str, int]]:
+def production_loc() -> tuple[int, int, dict[str, int]]:
     per_file: dict[str, int] = {}
     for path in tracked_files():
         if not is_production(path):
@@ -60,7 +74,8 @@ def production_loc() -> tuple[int, dict[str, int]]:
         count = sum(1 for line in text.splitlines() if line.strip())
         if count:
             per_file[path] = count
-    return sum(per_file.values()), per_file
+    core = sum(n for path, n in per_file.items() if path.startswith(CORE))
+    return core, sum(per_file.values()) - core, per_file
 
 
 def dependencies() -> int:
@@ -99,8 +114,13 @@ def services() -> int:
 
 
 def measure() -> dict[str, int]:
-    loc, _ = production_loc()
-    return {"production_loc": loc, "dependencies": dependencies(), "services": services()}
+    core, product, _ = production_loc()
+    return {
+        "core_loc": core,
+        "product_loc": product,
+        "dependencies": dependencies(),
+        "services": services(),
+    }
 
 
 def load_baseline() -> dict[str, int] | None:
@@ -129,10 +149,11 @@ def main() -> int:
                 continue
             was = baseline.get(name, now)
             arrow = "=" if now == was else ("v" if now < was else "^")
-            print(f"{name:<16} {now:>6}  {arrow} baseline {was}")
+            gate = "" if name in GATED else "   (not gated)"
+            print(f"{name:<16} {now:>6}  {arrow} baseline {was}{gate}")
 
     if args.files:
-        _, per_file = production_loc()
+        *_, per_file = production_loc()
         print()
         for path, count in sorted(per_file.items(), key=lambda kv: -kv[1]):
             print(f"{count:>6}  {path}")

@@ -10,8 +10,14 @@ This repo exists to test one hypothesis, and nothing else:
 > alerts can be matched to those labels automatically, so false positives and
 > negatives can be scored mechanically.
 
-The hypothesis holds as of v1.0. The work now is to reach the **simplest code
-that still proves it**. The production project lives in a separate repo.
+The hypothesis holds as of v1.0. The work now is to build the **smallest
+product that demonstrates it** - a shell one person can run attack and defence
+in, two browser windows, no accounts. See
+`docs/superpowers/specs/2026-09-20-product-flow-design.md`.
+
+The hypothesis core underneath must still get simpler, and `bin/verify` still
+enforces that. The production project lives in a separate repo; this one stays
+where the loop is tested cheaply first.
 
 ## Working language
 
@@ -48,19 +54,26 @@ Leave `docs/STATE.md` true. It is the entire handover to the next session.
 
 ## The measure of progress
 
-`bin/measure` prints three numbers. All three may only go down.
+`bin/measure` prints four numbers. Three of them may only go down.
 
-| | |
-|---|---|
-| `production_loc` | non-blank lines of shipped source and config |
-| `dependencies` | direct pip packages |
-| `services` | compose services |
+| | gated | |
+|---|---|---|
+| `core_loc` | yes | the hypothesis: `scoring/`, `ingest/`, `rules/`, `redteam/harness.py` |
+| `product_loc` | no | the shell: UI, API surface, compose, deploy |
+| `dependencies` | yes | direct pip packages |
+| `services` | yes | compose services |
+
+One number could not serve both jobs. A product shell grows — that is what
+building one looks like — but the hypothesis underneath must not, or the thing
+being demonstrated quietly becomes something else. So `product_loc` is
+reported every run and never blocks, and everything else ratchets as before.
 
 Tests, docs and `bin/` are not counted: growing the test suite must never look
 like a regression. `metrics.json` holds the record and `bin/verify` refuses any
-change that grows a number. If growth is genuinely unavoidable, edit
+change that grows a gated number. If growth is genuinely unavoidable, edit
 `metrics.json` by hand and write down why in `docs/DECISIONS.md` — but treat
-that as a last resort, not an escape hatch.
+that as a last resort, not an escape hatch. A new dependency or service should
+cost a line in `docs/DECISIONS.md`, not pass unnoticed.
 
 ## What must not break
 

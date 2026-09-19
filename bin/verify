@@ -4,8 +4,9 @@
 #   bin/verify --fast   unit + API tests only (~1s, no Docker)
 #   bin/verify          the above + acceptance against the live stack + ratchet
 #
-# The ratchet is the point: a change that makes the project bigger is not an
-# improvement, however good it looks. See metrics.json and docs/STATE.md.
+# The ratchet is the point: a change that makes the hypothesis bigger is not an
+# improvement, however good it looks. The product shell around it is allowed to
+# grow and is only reported. See metrics.json and docs/STATE.md.
 
 set -uo pipefail
 
@@ -105,9 +106,17 @@ if not baseline_path.exists():
     sys.exit(0)
 baseline = json.loads(baseline_path.read_text())
 
-worse = {k: (baseline[k], v) for k, v in current.items() if v > baseline.get(k, v)}
+# product_loc is measured and printed, never gated: a shell that grows is what
+# building a product looks like. core_loc is the hypothesis and may only fall.
+GATED = ("core_loc", "dependencies", "services")
+
+worse = {
+    k: (baseline[k], v)
+    for k, v in current.items()
+    if k in GATED and v > baseline.get(k, v)
+}
 if worse:
-    print("\nthis change makes the project bigger:")
+    print("\nthis change makes the hypothesis bigger:")
     for name, (was, now) in worse.items():
         print(f"  {name}: {was} -> {now}")
     print("\nThat is not an improvement. Either shrink it back, or if the growth")
