@@ -1,62 +1,123 @@
+import json
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.utils.dateparse import parse_datetime
+from django.views.decorators.http import require_http_methods
 
-from api.models import Detection, RuleSet, ScoreSnapshot, Session
-from api.serializers import (
-    CaseSerializer,
-    DetectionSerializer,
-    RuleSetSerializer,
-    ScoreSnapshotSerializer,
-    SessionSerializer,
-)
+from api.models import Case, Detection, RuleSet, ScoreSnapshot, Session
 from ingest import elastic
 from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
+from scoring.types import CORRELATION_STRATEGIES
+
+# The JSON shape of each resource. The console templates and test/ both read
+# these keys by name, so changing one is an API change.
+SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
+CASE_FIELDS = (
+    "id", "case_id", "name", "malicious", "technique", "correlation",
+    "source_ip", "started_at", "ended_at", "meta",
+)
+DETECTION_FIELDS = (
+    "id", "detection_id", "source", "signature", "severity", "timestamp",
+    "src_ip", "marker",
+)
+RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
+SCORE_FIELDS = (
+    "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
+    "false_positive_rate", "warnings", "per_case", "computed_at",
+)
+
+CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
 
-@api_view(["POST"])
+def _shape(obj, fields):
+    return {name: getattr(obj, name) for name in fields}
+
+
+def _reply(payload, status=200):
+    """DjangoJSONEncoder renders datetimes the way the console expects."""
+    return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
+
+
+def _payload(request):
+    return json.loads(request.body or b"{}")
+
+
+@require_http_methods(["POST"])
 def create_session(request):
-    serializer = SessionSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    session = serializer.save()
-    return Response(SessionSerializer(session).data, status=status.HTTP_201_CREATED)
+    body = _payload(request)
+    session = Session.objects.create(scenario=body.get("scenario") or "juice-shop")
+    return _reply(_shape(session, SESSION_FIELDS), status=201)
 
 
-@api_view(["GET"])
+@require_http_methods(["GET"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    return Response(SessionSerializer(session).data)
+    return _reply(_shape(session, SESSION_FIELDS))
 
 
-@api_view(["POST"])
+@require_http_methods(["POST"])
 def close_session(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     session.ended_at = timezone.now()
     session.save(update_fields=["ended_at"])
-    return Response(SessionSerializer(session).data)
+    return _reply(_shape(session, SESSION_FIELDS))
 
 
-@api_view(["GET", "POST"])
+@require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
 
     if request.method == "GET":
-        return Response(CaseSerializer(session.cases.all(), many=True).data)
+        return _reply([_shape(c, CASE_FIELDS) for c in session.cases.all()])
 
-    serializer = CaseSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    case = serializer.save(session=session)
-    return Response(CaseSerializer(case).data, status=status.HTTP_201_CREATED)
+    body = _payload(request)
+    errors = _case_errors(body)
+    if errors:
+        return _reply(errors, status=400)
+
+    case = Case.objects.create(
+        session=session,
+        case_id=body["case_id"],
+        name=body["name"],
+        malicious=bool(body["malicious"]),
+        technique=body.get("technique") or "",
+        correlation=body["correlation"],
+        source_ip=body.get("source_ip"),
+        started_at=parse_datetime(body["started_at"]),
+        ended_at=parse_datetime(body["ended_at"]),
+        meta=body.get("meta") or {},
+    )
+    return _reply(_shape(case, CASE_FIELDS), status=201)
 
 
-@api_view(["POST"])
+def _case_errors(body):
+    """Reject a case before it reaches the database.
+
+    An unknown correlation strategy must never be stored: the scoring core
+    raises on it, which would turn one bad case into an unscorable session.
+    """
+    errors = {
+        field: ["This field is required."]
+        for field in CASE_REQUIRED
+        if body.get(field) is None
+    }
+    correlation = body.get("correlation")
+    if correlation is not None and correlation not in CORRELATION_STRATEGIES:
+        errors["correlation"] = [
+            f'"{correlation}" is not a valid choice; expected one of '
+            f"{', '.join(CORRELATION_STRATEGIES)}."
+        ]
+    return errors
+
+
+@require_http_methods(["POST"])
 def ingest_detections(request, session_id):
     """Pull Elasticsearch documents for the session window and store them.
 
@@ -69,7 +130,7 @@ def ingest_detections(request, session_id):
     try:
         documents = elastic.fetch(settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end)
     except elastic.ElasticUnavailable as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _reply({"detail": str(exc)}, status=503)
 
     known = set(
         Detection.objects.filter(session=session).values_list("detection_id", flat=True)
@@ -91,16 +152,16 @@ def ingest_detections(request, session_id):
         known.add(alert["detection_id"])
         ingested += 1
 
-    return Response({"ingested": ingested, "skipped": skipped})
+    return _reply({"ingested": ingested, "skipped": skipped})
 
 
-@api_view(["GET"])
+@require_http_methods(["GET"])
 def session_detections(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    return Response(DetectionSerializer(session.detections.all(), many=True).data)
+    return _reply([_shape(d, DETECTION_FIELDS) for d in session.detections.all()])
 
 
-@api_view(["GET"])
+@require_http_methods(["GET"])
 def session_score(request, session_id):
     """Score the stored cases against the stored alerts and snapshot it."""
     session = get_object_or_404(Session, pk=session_id)
@@ -125,7 +186,7 @@ def session_score(request, session_id):
         per_case=_per_case(result),
     )
 
-    return Response(ScoreSnapshotSerializer(snapshot).data)
+    return _reply(_shape(snapshot, SCORE_FIELDS))
 
 
 def _per_case(result):
@@ -155,31 +216,28 @@ def _session_window(session):
     return start, end
 
 
-@api_view(["GET"])
+@require_http_methods(["GET"])
 def current_rules(request):
-    return Response({"content": suricata.current()})
+    return _reply({"content": suricata.current()})
 
 
-@api_view(["POST"])
+@require_http_methods(["POST"])
 def validate_rules(request):
     """Validate only. Even on success, nothing is written and no RuleSet is made."""
-    content = request.data.get("content", "")
-    outcome = suricata.validate(content)
+    outcome = suricata.validate(_payload(request).get("content", ""))
     payload = {"ok": outcome.ok, "output": outcome.output}
-    if outcome.ok:
-        return Response(payload)
-    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    return _reply(payload, status=200 if outcome.ok else 400)
 
 
-@api_view(["POST"])
+@require_http_methods(["POST"])
 def apply_rules(request):
-    content = request.data.get("content", "")
+    content = _payload(request).get("content", "")
     try:
         suricata.apply(content)
     except suricata.RuleApplyError as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return _reply({"detail": str(exc)}, status=400)
 
     ruleset = RuleSet.objects.create(
         content=content, applied_at=timezone.now(), validation_output=""
     )
-    return Response(RuleSetSerializer(ruleset).data)
+    return _reply(_shape(ruleset, RULESET_FIELDS))

@@ -62,10 +62,22 @@ fi
 # are bind-mounted into waf and suricata. The containers keep the old inode and
 # their config silently vanishes. Catch it here: otherwise it surfaces as an
 # acceptance failure and reads as a defence failure.
-if curl -fsS --max-time 30 -X POST http://localhost:8000/api/rules/validate/ \
-     -H 'Content-Type: application/json' \
-     --data-binary "$("$PY" -c 'import json,sys;print(json.dumps({"content":open("deploy/suricata/rules/local.rules").read()}))')" \
-     2>/dev/null | grep -q '"ok":true'; then
+if "$PY" - <<'RULECHECK'
+import json, pathlib, sys, urllib.request
+
+body = json.dumps(
+    {"content": pathlib.Path("deploy/suricata/rules/local.rules").read_text()}
+).encode()
+request = urllib.request.Request(
+    "http://localhost:8000/api/rules/validate/", body,
+    {"Content-Type": "application/json"},
+)
+try:
+    sys.exit(0 if json.load(urllib.request.urlopen(request, timeout=30))["ok"] else 1)
+except Exception:
+    sys.exit(1)
+RULECHECK
+then
   ok "suricata can read its config"
 else
   fail "suricata cannot read its config — its bind-mounted files were replaced"

@@ -1,25 +1,19 @@
 import pytest
-from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture
-def client():
-    return APIClient()
-
-
 def test_create_session_returns_id_and_start_time(client):
-    response = client.post("/api/sessions/", {"scenario": "juice-shop"}, format="json")
+    response = client.post_json("/api/sessions/", {"scenario": "juice-shop"})
 
     assert response.status_code == 201
-    assert response.data["id"]
-    assert response.data["started_at"]
-    assert response.data["ended_at"] is None
+    assert response.json()["id"]
+    assert response.json()["started_at"]
+    assert response.json()["ended_at"] is None
 
 
 def test_record_case_then_read_it_back(client):
-    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
     payload = {
         "case_id": "11111111-1111-4111-8111-111111111111",
         "name": "sqli-login-bypass",
@@ -32,18 +26,18 @@ def test_record_case_then_read_it_back(client):
         "meta": {"path": "/rest/user/login"},
     }
 
-    created = client.post(f"/api/sessions/{session_id}/cases/", payload, format="json")
+    created = client.post_json(f"/api/sessions/{session_id}/cases/", payload)
     assert created.status_code == 201
 
     listed = client.get(f"/api/sessions/{session_id}/cases/")
     assert listed.status_code == 200
-    assert len(listed.data) == 1
-    assert listed.data[0]["name"] == "sqli-login-bypass"
-    assert listed.data[0]["malicious"] is True
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["name"] == "sqli-login-bypass"
+    assert listed.json()[0]["malicious"] is True
 
 
 def test_case_rejects_unknown_correlation_strategy(client):
-    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
     payload = {
         "case_id": "22222222-2222-4222-8222-222222222222",
         "name": "bad",
@@ -53,19 +47,19 @@ def test_case_rejects_unknown_correlation_strategy(client):
         "ended_at": "2026-09-18T12:00:03Z",
     }
 
-    response = client.post(f"/api/sessions/{session_id}/cases/", payload, format="json")
+    response = client.post_json(f"/api/sessions/{session_id}/cases/", payload)
 
     assert response.status_code == 400
-    assert "correlation" in response.data
+    assert "correlation" in response.json()
 
 
 def test_closing_session_sets_end_time(client):
-    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
 
-    response = client.post(f"/api/sessions/{session_id}/close/")
+    response = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert response.status_code == 200
-    assert response.data["ended_at"] is not None
+    assert response.json()["ended_at"] is not None
 
 
 def test_cases_for_missing_session_are_404(client):
@@ -78,10 +72,8 @@ def test_case_model_converts_to_scoring_record(client):
     from api.models import Case
     from scoring.types import CaseRecord
 
-    session_id = client.post("/api/sessions/", {}, format="json").data["id"]
-    client.post(
-        f"/api/sessions/{session_id}/cases/",
-        {
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
             "case_id": "33333333-3333-4333-8333-333333333333",
             "name": "n",
             "malicious": False,
@@ -90,7 +82,6 @@ def test_case_model_converts_to_scoring_record(client):
             "started_at": "2026-09-18T12:00:00Z",
             "ended_at": "2026-09-18T12:00:03Z",
         },
-        format="json",
     )
 
     record = Case.objects.get().to_record()

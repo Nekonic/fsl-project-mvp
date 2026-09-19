@@ -82,4 +82,19 @@ def session_id(stack_is_up):
 
 @pytest.fixture(scope="session")
 def score(session_id):
-    return score_when_ready(session_id, until=lambda s: s["tp"] > 0)
+    """Wait until both engines have landed, not just the first one.
+
+    Suricata alerts reach Elasticsearch before ModSecurity's audit log does, so
+    stopping at the first true positive leaves half the detections missing and
+    every downstream assertion racing the pipeline.
+    """
+
+    def ready(totals):
+        if totals["tp"] <= 0:
+            return False
+        detections = requests.get(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
+        ).json()
+        return {d["source"] for d in detections} == {"suricata", "modsecurity"}
+
+    return score_when_ready(session_id, until=ready)

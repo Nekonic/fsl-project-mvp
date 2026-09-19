@@ -1,5 +1,9 @@
+import json
 import sys
 from pathlib import Path
+
+import pytest
+from django.test import Client
 
 # redteam is a sibling of the repository root. Putting the root on sys.path
 # risks shadowing the stdlib `platform` module, but platform/ has no
@@ -8,3 +12,21 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
+
+
+class ApiClient(Client):
+    """Django's test client with a JSON POST shorthand.
+
+    The API speaks plain Django now, so tests send bodies and read responses
+    the same way the console and the harness do.
+    """
+
+    def post_json(self, path, payload=None):
+        return self.post(
+            path, json.dumps(payload or {}), content_type="application/json"
+        )
+
+
+@pytest.fixture
+def client():
+    return ApiClient()
