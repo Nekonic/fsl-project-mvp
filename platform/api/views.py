@@ -1,5 +1,6 @@
 import json
 import uuid
+from dataclasses import replace
 from datetime import timedelta
 
 from django.conf import settings
@@ -77,6 +78,13 @@ def attacker_box(request):
         )
     except attacker.AttackerUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
+
+
+@require_http_methods(["POST"])
+def attacker_label(request):
+    """Open or close the marker the proxy stamps on the attacker's traffic."""
+    attacker.set_label(_payload(request).get("case_id"))
+    return _reply({"ok": True})
 
 
 @require_http_methods(["GET"])
@@ -240,13 +248,32 @@ def session_detections(request, session_id):
 
 @require_http_methods(["GET"])
 def session_score(request, session_id):
-    """Score the stored cases against the stored alerts and snapshot it."""
+    """Score the stored cases against the stored alerts and snapshot it.
+
+    `?correlation=` overrides what every case declared, so the same traffic can
+    be scored both ways and the strategies compared. Only terminal windows
+    carry both a marker and a source, so only they answer differently.
+    """
     session = get_object_or_404(Session, pk=session_id)
+
+    forced = request.GET.get("correlation")
+    if forced is not None and forced not in CORRELATION_STRATEGIES:
+        return _reply(
+            {
+                "detail": f'"{forced}" is not a valid strategy; expected one of '
+                f"{', '.join(CORRELATION_STRATEGIES)}."
+            },
+            status=400,
+        )
 
     cases = list(session.cases.all())
     detections = list(session.detections.all())
 
-    result = correlate([c.to_record() for c in cases], [d.to_record() for d in detections])
+    records = [c.to_record() for c in cases]
+    if forced:
+        records = [replace(record, correlation=forced) for record in records]
+
+    result = correlate(records, [d.to_record() for d in detections])
     totals = compute_score(result)
 
     snapshot = ScoreSnapshot.objects.create(

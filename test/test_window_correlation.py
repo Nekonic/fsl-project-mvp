@@ -9,7 +9,6 @@ The labelled terminal in the red team console is that path, and a person can
 now take it, so it needs an acceptance test of its own.
 """
 
-import subprocess
 import time
 import uuid
 from datetime import datetime, timezone
@@ -17,7 +16,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, score_when_ready
+from conftest import PLATFORM_URL, from_attacker, score_when_ready
 
 # Windows are matched with two seconds of slack at each end, so consecutive
 # windows must be further apart than that, or one window's traffic is
@@ -30,22 +29,6 @@ BENIGN_PATH = "/rest/products/search?q=apple"
 
 def _now():
     return datetime.now(timezone.utc)
-
-
-def _from_kali(path):
-    """Send one request from the attacker's box, the way the terminal would."""
-    result = subprocess.run(
-        [
-            "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
-            "-w", "%{http_code}", "--max-time", "20", f"http://waf:8080{path}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert result.returncode == 0, (
-        f"could not reach the target from the attacker box: {result.stderr}"
-    )
 
 
 def _record_window(session_id, name, malicious, source_ip, started_at, ended_at):
@@ -80,13 +63,13 @@ def window_session(stack_is_up):
     ).json()["id"]
 
     started = _now()
-    _from_kali(ATTACK_PATH)
+    from_attacker(ATTACK_PATH)
     _record_window(session_id, "terminal-sqli", True, source_ip, started, _now())
 
     time.sleep(GAP_SECONDS)
 
     started = _now()
-    _from_kali(BENIGN_PATH)
+    from_attacker(BENIGN_PATH)
     _record_window(session_id, "terminal-benign", False, source_ip, started, _now())
 
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)

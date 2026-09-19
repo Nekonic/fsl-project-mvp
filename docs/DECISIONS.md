@@ -285,3 +285,39 @@ This is not a bug: the slack exists because a request's alert can land either
 side of the window it belongs to. But it does mean the console's "start / stop"
 labelling cannot be used to mark two attacks in quick succession, and whoever
 adds a second labelled window to the UI should say so on screen.
+
+## Proxying the terminal moves the source IP, and that is the whole trap
+
+The stamping proxy costs a service (8 -> 9, raised by hand) and buys the one
+thing neither strategy could do alone: a single piece of free-form traffic that
+carries both a marker and a source-and-time window, so the two can be scored on
+identical evidence. `GET /api/sessions/<id>/score/?correlation=` forces the
+strategy for every case, which is what makes the two runs comparable.
+
+The trap is that mitmproxy is the one making the outbound connection. The WAF -
+and therefore Suricata, which runs in its namespace - sees **the proxy's**
+address, not Kali's. Window correlation labelled with the Kali container's
+address would have matched nothing at all, and scored every terminal attack as
+a miss charged to the defence.
+
+Verified directly. With a marker set, the probe appears in Suricata's log twice:
+
+```
+event: http  src_ip: 172.20.0.7 (proxy -> waf)   X-FSL-Case = stamp-probe-abc
+event: http  src_ip: 172.20.0.4 (waf -> juice)   X-FSL-Case = stamp-probe-abc
+```
+
+So `/api/attacker/` reports the address alerts will actually carry, which is
+`ATTACKER_SOURCE_CONTAINER` (the proxy) and not `ATTACKER_CONTAINER` (Kali).
+Two settings that look like they should be one, on purpose: when the proxy goes
+away, they diverge again and the second is what matters.
+
+It also means the two strategies are not symmetric. The marker is stamped on
+both legs of the request, so marker correlation can match alerts on the
+WAF-to-target leg; window correlation, labelled with the proxy's address, only
+sees the attacker-to-WAF leg. They agree today because the rules fire on the
+first leg. If they ever disagree, look here before looking at the defence.
+
+The marker is passed as a file on a shared volume rather than an API the proxy
+serves. The proxy reads it per request, so there is nothing to restart and no
+second service to keep in step.

@@ -43,6 +43,10 @@ STATIC_URL = "static/"
 
 # The attacker's box, for free-form traffic typed in the terminal.
 ATTACKER_CONTAINER = os.environ.get("ATTACKER_CONTAINER", "fsl-kali")
+# Not the same container: the terminal's traffic is proxied, so this is who
+# the WAF and the IDS see.
+ATTACKER_SOURCE_CONTAINER = os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy")
+ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
 ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_fsl")
 ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
 

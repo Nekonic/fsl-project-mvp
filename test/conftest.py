@@ -54,6 +54,26 @@ def run_redteam() -> int:
     raise AssertionError(f"no session number in output:\n{result.stdout}")
 
 
+def from_attacker(path: str) -> None:
+    """Send one request from the attacker's box, the way the terminal would.
+
+    Goes out through the stamping proxy because that is how the container is
+    configured, so it carries a marker whenever a label is open.
+    """
+    result = subprocess.run(
+        [
+            "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
+            "--max-time", "20", f"http://waf:8080{path}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"could not reach the target from the attacker box: {result.stderr}"
+    )
+
+
 def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
     """Re-ingest and re-score until the logs have reached Elasticsearch.
 

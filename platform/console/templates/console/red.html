@@ -37,9 +37,10 @@
 
 <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Terminal</h2>
 <p class="text-slate-400 text-sm mb-4">
-  Type your own attacks. Nothing typed here carries a case marker, so it is
-  labelled by time instead: name the attack, press start, do it, press stop.
-  Everything the terminal sends in that window is attributed to the name.
+  Type your own attacks. Name the attack, press start, do it, press stop.
+  Everything the terminal sends in that window is attributed to the name - by
+  time and source, and by a marker the proxy stamps on the way out. Recording
+  both means the blue window can score it either way and compare them.
 </p>
 
 <div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
@@ -137,6 +138,7 @@
   // POST /api/sessions/<id>/cases/ already accepts.
   let attacker = null;
   let openedAt = null;
+  let windowCaseId = null;
 
   const status = (text, tone) => {
     const element = document.getElementById("window-status");
@@ -162,6 +164,15 @@
     const malicious = document.getElementById("window-malicious");
 
     if (!openedAt) {
+      // The marker goes on before the clock starts, so the proxy is already
+      // stamping by the time anything can be typed. Same id in both places:
+      // that is what lets the two strategies score the same traffic.
+      windowCaseId = crypto.randomUUID();
+      const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
+      if (!labelled.ok) {
+        status("could not set the marker - is the proxy up?", "text-amber-400");
+        return;
+      }
       openedAt = new Date();
       toggle.textContent = "Stop";
       name.disabled = malicious.disabled = true;
@@ -170,8 +181,9 @@
       return;
     }
 
+    await post("/api/attacker/label/", { case_id: null });
     const result = await post(`/api/sessions/${sessionId()}/cases/`, {
-      case_id: crypto.randomUUID(),
+      case_id: windowCaseId,
       name: name.value,
       malicious: malicious.checked,
       correlation: "window",

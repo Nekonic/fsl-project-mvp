@@ -26,6 +26,17 @@
     </thead>
     <tbody id="per-case"></tbody>
   </table>
+
+  <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">
+    Strategy comparison
+  </h2>
+  <p class="text-slate-400 text-sm mb-4">
+    The same alerts, scored twice: once matching cases by the marker header,
+    once by source address and time. Only terminal windows carry both, so only
+    they can disagree - and a disagreement is a result about the scoring
+    method, not about the defence.
+  </p>
+  <div id="comparison" class="grid grid-cols-2 gap-4"></div>
 </section>
 
 <section data-panel="alerts" class="hidden">
@@ -132,6 +143,30 @@
         <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${c.verdict}</td>
         <td>${c.detection_ids.length}</td>
       </tr>`).join("");
+
+    renderComparison();
+  }
+
+  async function renderComparison() {
+    const strategies = ["marker", "window"];
+    const scored = await Promise.all(strategies.map((strategy) =>
+      api(`/api/sessions/${sessionId()}/score/?correlation=${strategy}`)));
+
+    document.getElementById("comparison").innerHTML = scored.map((result, i) => {
+      if (!result.ok) {
+        return `<div class="border border-slate-800 rounded p-4 text-amber-400 text-sm">
+          ${strategies[i]}: ${result.body.detail || result.status}</div>`;
+      }
+      const s = result.body;
+      return `<div class="border border-slate-800 rounded p-4">
+        <div class="text-slate-400 text-xs uppercase mb-2">by ${strategies[i]}</div>
+        <div class="text-slate-100">
+          TP ${s.tp} &middot; FN ${s.fn} &middot; FP ${s.fp} &middot; TN ${s.tn}
+        </div>
+        <div class="text-slate-500 text-sm mt-1">
+          precision ${s.precision.toFixed(2)} &middot; recall ${s.recall.toFixed(2)}
+        </div></div>`;
+    }).join("");
   }
   document.getElementById("reload").addEventListener("click", renderScore);
 
