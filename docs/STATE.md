@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (product phase, all four phases done)
+Updated: 2026-09-20 (product phase done; objectives now lead the score)
 
 ## Where things stand
 
@@ -11,13 +11,13 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 130 unit/API tests, 17 acceptance tests against the live
+`bin/verify` is green: 144 unit/API tests, 20 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     1870   not gated (was 1031 before the console)
+product_loc     2303   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
 ```
@@ -38,6 +38,24 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **Objectives lead the score.** The old scoreboard was false positives and
+  false negatives and nothing else, which is gameable - twelve fixed public
+  payloads, so the blue team's optimal play is twelve matching rules - and
+  which measured nothing real: a full twelve-case run achieves **zero** Juice
+  Shop objectives while reporting `TP=6`.
+
+  Juice Shop's 116 challenges are now the game. It flips `solved` itself, so
+  the platform labels nothing about whether an attack achieved anything, and
+  the ground truth is orthogonal to the detector - which is the property
+  Sommer & Paxson require and which 5-tuple-plus-time-window labelling does not
+  have. Losing an objective always costs, losing one unseen costs double, false
+  positives stay separate. The red window leads with the objective list; the
+  blue window leads with what was taken and whether it was seen.
+
+  The target never has to be reset: each session snapshots what was already
+  solved. DECISIONS has the reset command anyway, and why `--force-recreate` is
+  not it.
 
 - **The blue window became a monitoring console.** It ingests on a timer and
   appends only the rows it has not seen (`?after=`), so alerts arrive without a
@@ -184,22 +202,36 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-The remaining phases of the product design. Take the top one.
+### 1. Check *which* signature fired, not only that one did
 
-Empty. The product design is delivered end to end.
+`TP > 0` does not prove the hypothesis. Mahoney & Chan (RAID 2003) built a
+detector that scored competitively on DARPA by reading one byte of the source
+address, and it fell to zero detections on real traffic. Nothing here yet
+checks that the alert attributed to an attack has anything to do with that
+attack's mechanism - a path traversal case credited with an XSS signature
+scores exactly the same as one credited with the traversal rule.
 
-What is worth doing next is a judgement, not a leftover. Two candidates, in the
-order they would pay off:
+The data is already stored: `Detection.raw` carries the Suricata `signature_id`.
+The cheap version is a per-case expected-SID and a warning when the attributed
+alerts do not include it. See DECISIONS for the reasoning.
 
-- **A second wargame.** Juice Shop is the only target, and the catalogue screen
-  exists precisely so a second one has somewhere to go. Nothing about the
-  scoring is specific to it, which is a claim no one has tested.
-- **Make a disagreement between the strategies happen on purpose.** They agree
-  on everything measured so far, which means the comparison has not yet earned
-  its service. A case that only one of them can see would tell you which to
-  trust when it matters.
+### 2. More objectives the red team can actually reach
 
-Read `docs/DECISIONS.md` before proposing either.
+`redteam/cases/` fires twelve payloads and takes nothing. Now that objectives
+are the score, the case file is the weakest part of the range: it should
+contain attack chains that reach named objectives, not payloads that only trip
+rules. Start from the two verified single-request ones in
+`test/test_objectives.py` and work up the difficulty ladder.
+
+### 3. Turn a verdict into a rule change
+
+No commercial console closes this loop - an analyst records "false positive"
+and the rule that produced it is untouched. This range owns both sides. A
+button on a false positive that emits the matching Suricata `suppress` line or
+CRS `SecRuleUpdateTargetById`, applies it and shows the score delta, is the one
+thing here that would be genuinely ahead of the products it imitates. Make
+suppressions expire, as Sentinel's do at 24 hours: every silenced rule is a
+timed, audited false-negative bet.
 
 ## Known gaps
 

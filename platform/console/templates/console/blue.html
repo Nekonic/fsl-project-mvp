@@ -4,7 +4,7 @@
 {% block content %}
 <div class="flex gap-3 mb-6 border-b border-slate-800 items-center">
   <button data-tab="alerts" class="tab px-4 py-2 text-sm">Live</button>
-  <button data-tab="score" class="tab px-4 py-2 text-sm">Score</button>
+  <button data-tab="score" class="tab px-4 py-2 text-sm">Scoreboard</button>
   <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
 
   <div class="ml-auto flex items-center gap-3">
@@ -29,7 +29,7 @@
 <section data-panel="alerts">
   <div class="grid grid-cols-4 gap-3 mb-5">
     <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">Events</div>
+      <div class="text-slate-500 text-xs uppercase tracking-wide">Alerts</div>
       <div id="kpi-total" class="text-2xl font-semibold text-slate-100 tabular-nums">0</div>
     </div>
     <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
@@ -75,6 +75,7 @@
         <tr>
           <th class="w-1"></th>
           <th class="text-left py-2 px-3 font-medium">Time</th>
+          <th class="text-left font-medium">Severity</th>
           <th class="text-left font-medium">Source</th>
           <th class="text-left font-medium">Signature</th>
           <th class="text-left font-medium">From</th>
@@ -90,6 +91,21 @@
 </section>
 
 <section data-panel="score" class="hidden">
+  <h2 class="text-slate-100 mb-1">What was taken</h2>
+  <p class="text-slate-400 text-sm mb-4">
+    Objectives the shop itself judged achieved. Losing one always costs;
+    losing one you never saw costs double. Detection is mitigation, not the
+    game.
+  </p>
+  <div id="breach-totals" class="grid grid-cols-4 gap-3 mb-4"></div>
+  <div id="breach-table" class="border border-slate-800 rounded mb-10"></div>
+
+  <h2 class="text-slate-100 mb-1">Detection quality</h2>
+  <p class="text-slate-400 text-sm mb-4">
+    How the defence behaved against labelled traffic, attacks and benign alike.
+    A rule that alerts on everything scores every attack and is worthless; that
+    is what the false positives are here to catch.
+  </p>
   <div id="warnings" class="mb-5 space-y-2"></div>
   <div id="totals" class="grid grid-cols-4 gap-3 mb-8"></div>
   <table class="w-full text-sm">
@@ -155,8 +171,16 @@
     suricata: "bg-violet-950 text-violet-300 border-violet-900",
     modsecurity: "bg-cyan-950 text-cyan-300 border-cyan-900",
   };
-  // Suricata severity runs 1 (worst) to 3. ModSecurity sends none.
-  const SEVERITY_BAR = {1: "bg-rose-500", 2: "bg-amber-500", 3: "bg-sky-500"};
+  // Suricata severity runs 1 (worst) to 3; ModSecurity sends none, which is
+  // why every console that shows severity has a fourth, "informational" value.
+  // Colour and word together, never colour alone.
+  const SEVERITY = {
+    1: {bar: "bg-rose-500", text: "text-rose-400", word: "High"},
+    2: {bar: "bg-amber-500", text: "text-amber-400", word: "Medium"},
+    3: {bar: "bg-sky-500", text: "text-sky-400", word: "Low"},
+  };
+  const INFORMATIONAL = {bar: "bg-slate-700", text: "text-slate-500", word: "Info"};
+  const severityOf = (d) => SEVERITY[d.severity] || INFORMATIONAL;
 
   let rows = [];
   let lastId = 0;
@@ -252,9 +276,10 @@
       .map((d) => `
       <tr data-id="${d.id}" class="alert-row border-t border-slate-900
           hover:bg-slate-900/60 cursor-pointer">
-        <td class="${SEVERITY_BAR[d.severity] || "bg-slate-700"} w-1 p-0"></td>
+        <td class="${severityOf(d).bar} w-1 p-0"></td>
         <td class="py-2 px-3 text-slate-500 font-mono text-xs whitespace-nowrap">
           ${(d.timestamp || "").replace("T", " ").slice(0, 19)}</td>
+        <td class="${severityOf(d).text} text-xs">${severityOf(d).word}</td>
         <td><span class="border rounded px-1.5 py-0.5 text-xs ${
           SOURCE_STYLE[d.source] || "border-slate-700 text-slate-400"}">${d.source}</span></td>
         <td class="text-slate-200">${d.signature}</td>
@@ -341,6 +366,7 @@
       return;
     }
     const s = score.body;
+    renderBreaches(s);
 
     document.getElementById("totals").innerHTML =
       tile("TP", s.tp) + tile("FN (missed)", s.fn) +
@@ -364,6 +390,52 @@
       </tr>`).join("");
 
     renderComparison();
+  }
+
+  function renderBreaches(s) {
+    const o = s.objectives;
+    const missed = o.undetected
+      ? "text-rose-400"
+      : "text-slate-100";
+
+    document.getElementById("breach-totals").innerHTML =
+      tile("objectives taken", o.objectives) +
+      `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+         <div class="text-slate-500 text-xs uppercase tracking-wide">taken unseen</div>
+         <div class="text-2xl font-semibold ${missed} tabular-nums">${o.undetected}</div>
+         <div class="text-slate-600 text-xs mt-0.5">${o.undetected_difficulty} difficulty</div>
+       </div>` +
+      tile("coverage", `${Math.round(o.coverage * 100)}%`) +
+      tile("damage", o.damage.toFixed(1));
+
+    if (!s.breaches.length) {
+      document.getElementById("breach-table").innerHTML =
+        `<p class="text-slate-500 text-sm p-5 text-center">
+           Nothing taken. Either the red team achieved nothing, or nobody has
+           attacked yet.</p>`;
+      return;
+    }
+
+    document.getElementById("breach-table").innerHTML = `
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide">
+          <tr><th class="text-left py-2 px-3 font-medium">Difficulty</th>
+              <th class="text-left font-medium">Objective</th>
+              <th class="text-left font-medium">Category</th>
+              <th class="text-left font-medium">Defence</th>
+              <th class="text-left font-medium pr-3">Alerts</th></tr>
+        </thead>
+        <tbody>${s.breaches.map((b) => `
+          <tr class="border-t border-slate-900">
+            <td class="py-2 px-3 text-amber-400 font-mono text-xs">
+              ${"*".repeat(b.difficulty)}</td>
+            <td class="text-slate-100">${b.name}</td>
+            <td class="text-slate-500 text-xs">${b.category}</td>
+            <td class="${b.detected ? "text-amber-400" : "text-rose-400"} font-semibold text-xs">
+              ${b.detected ? "SEEN" : "MISSED"}</td>
+            <td class="pr-3 text-slate-400 tabular-nums">${b.detection_ids.length}</td>
+          </tr>`).join("")}</tbody>
+      </table>`;
   }
 
   async function renderComparison() {
