@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 1 backlog item)
+Updated: 2026-09-19 (v1.0 + 2 backlog items)
 
 ## Where things stand
 
@@ -15,9 +15,9 @@ precision to 0.83 — so the score responds to defence changes in the predicted
 direction, which is the whole point.
 
 ```
-production_loc  1684   (v1.0: 1703)
+production_loc  1674   (v1.0: 1703)
 dependencies       6   (v1.0: 7)
-services           8
+services           7   (v1.0: 8)
 ```
 
 ## In progress
@@ -25,6 +25,16 @@ services           8
 Nothing. Start at the top of the backlog.
 
 ## Done since v1.0
+
+- **Removed Kibana.** One service and about a gigabyte of RAM, for something
+  no other part of the stack referenced. The console already lists detections
+  and Elasticsearch stays, so curl still answers ad-hoc questions.
+  `-10 LOC, -1 service`.
+
+  Note for whoever wants it back: `docker compose stop kibana` fails silently
+  once the service is gone from compose.yaml, which leaves the container
+  running as an orphan. Remove the container first, or use
+  `docker compose up -d --remove-orphans`.
 
 - **Dropped djangorestframework.** `serializers.py` is gone; the views are plain
   Django returning `JsonResponse`, and the shape of every response is now one
@@ -42,17 +52,7 @@ Nothing. Start at the top of the backlog.
 Ordered by value over risk. Take the top one. If you finish it and have room,
 stop anyway — a small verified step handed over cleanly beats two rushed ones.
 
-### 1. Remove Kibana
-
-One service, roughly 1GB of RAM, and zero lines of code that anything else
-needs. The blue team console already lists detections, and Elasticsearch stays,
-so ad-hoc queries are still possible with curl. Expect `-1 service`.
-
-Worth stating the loss: Kibana is genuinely useful for a defender pivoting
-through logs, and the production repo may well want it back. It earns nothing
-for *this* repo's hypothesis.
-
-### 2. Delete the dead marker-probing in `ingest/elastic.py`
+### 1. Delete the dead marker-probing in `ingest/elastic.py`
 
 `_MARKER_KEYS` tries four spellings and `_header_lookup` then does a
 case-insensitive sweep. That was written before we knew where the marker
@@ -62,18 +62,28 @@ exactly `X-FSL-Case`. Expect `-15 LOC`.
 
 Keep one test per real shape. Do not keep tests for spellings we invented.
 
-### 3. Collapse the Django boilerplate
+### 2. Collapse the Django boilerplate
 
 `fsl/urls.py`, `fsl/wsgi.py`, `api/apps.py`, `blueteam/apps.py`,
 `blueteam/urls.py`, `api/urls.py`, `manage.py` are 45 lines across seven files,
 most of them ceremony. Routing could live in one module. Expect `-20 LOC` and
 four fewer files.
 
-### 4. Shrink `redteam/harness.py`
+### 3. Shrink `redteam/harness.py`
 
 191 lines, the second largest file. `Harness` holds three fields and could be
 functions taking a `requests.Session`. Do not touch `check_path_preserved` — it
 guards a real bug that made the score lie (see DECISIONS).
+
+### 4. Translate docs/superpowers/specs/ to English
+
+CLAUDE.md states the repo is written in English. The design document is still
+210 lines of Korean, so the briefing is not true. It is the canonical reference
+a session reads when it needs the why behind a decision, and it costs roughly
+twice the tokens it should.
+
+Not counted by `bin/measure` - docs never are - so judge it on the briefing
+being honest, not on the numbers moving.
 
 ### 5. Consider replacing Django entirely
 
@@ -81,7 +91,7 @@ The largest remaining win and the riskiest. Django plus DRF is two dependencies
 carrying an ORM, migrations, templates and routing for five models and ten
 endpoints. `sqlite3` and a small framework would be a fraction of that.
 
-Do not start this until 1-4 are done; by then the Django surface will be small
+Do not start this until 1-3 are done; by then the Django surface will be small
 enough to judge honestly. Note the cost: the production repo's main site is
 Django, so diverging here loses shared ground.
 

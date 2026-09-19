@@ -20,7 +20,6 @@ docker compose up -d --build
 |------|------|
 | http://localhost:8000 | 블루팀 콘솔 + `/api/` |
 | http://localhost:8080 | WAF 를 통과하는 juice-shop (공격 대상) |
-| http://localhost:5601 | Kibana |
 | http://localhost:9200 | Elasticsearch |
 
 ES ingest pipeline 을 한 번 등록한다.

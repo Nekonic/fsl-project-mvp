@@ -263,7 +263,6 @@ platform의 Django 앱. Tailwind CSS(CDN, MVP 한정).
 | waf | owasp/modsecurity-crs:nginx | 리버스 프록시 + WAF |
 | suricata | jasonish/suricata | IDS |
 | elasticsearch | elasticsearch:8 | 로그 저장 |
-| kibana | kibana:8 | 로그 조회 |
 | filebeat | elastic/filebeat:8 | 로그 수집 |
 | platform | 로컬 빌드 (Django) | 채점·API·콘솔 |
 
@@ -274,6 +273,9 @@ platform의 Django 앱. Tailwind CSS(CDN, MVP 한정).
   WAF의 `eth0` 에는 공격자→WAF 와 WAF→juice-shop 양쪽 다리가 모두 흐르므로
   필요한 트래픽을 전부 본다. VM 안에서 컨테이너를 돌리면 Neutron 포트
   미러링이 불필요하다는 판단과 같은 논리를 컨테이너 층에 한 번 더 적용한 것.
+- Kibana 는 걷어냈다. 블루팀 콘솔이 이미 경보를 보여주고 ES 는 남으므로
+  curl 로 임의 질의가 된다. 방어자가 로그를 파고들 때는 분명 쓸모가 있지만
+  이 저장소의 가설에는 기여하지 않는다. 메인 레포에서는 되살릴 수 있다.
 - Elasticsearch는 단일 노드, 보안 비활성(MVP 한정). `discovery.type=single-node`,
   `ES_JAVA_OPTS=-Xms512m -Xmx512m`. Docker Desktop 기본 메모리에서 스택
   전체가 떠야 한다.

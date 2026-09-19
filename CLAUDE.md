@@ -66,9 +66,9 @@ that as a last resort, not an escape hatch.
 - **Benign cases in `redteam/cases/`.** Deleting them is the easiest way to make
   the score look good and the platform pointless.
 - **These stay, by the user's decision:** OpenStack, Docker, Suricata, nginx,
-  Elasticsearch. Everything else — Django, Kibana, Filebeat, ModSecurity,
-  Juice Shop, the API shape, the scoring design — may be replaced if it makes
-  the project smaller without breaking the above.
+  Elasticsearch. Everything else — Django, Filebeat, ModSecurity, Juice Shop,
+  the API shape, the scoring design — may be replaced if it makes the project
+  smaller without breaking the above.
 - **Every UI action exists as a REST API first.** Console templates fetch
   `/api/`; they never receive server-rendered data. This is what lets an agent
   take a human's place later.
