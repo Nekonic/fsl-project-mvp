@@ -98,7 +98,7 @@ cost a line in `docs/DECISIONS.md`, not pass unnoticed.
 | `platform/rules/suricata.py` | the only file that knows the Suricata process |
 | `platform/api/`, `platform/console/` | REST surface and the console |
 | `platform/wargames.py` | the case catalogue the console fires from |
-| `platform/attacker.py` | the only file that knows the attacker container |
+| `platform/attacker.py` | the only file that knows the attacker box and its marker |
 | `redteam/` | attack execution and ground truth |
 | `deploy/`, `compose.yaml` | the stack |
 | `test/` | acceptance criteria, over HTTP only |
@@ -120,7 +120,9 @@ curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
 ```
 
 The console is the point now: open `/`, start a session, and open the red and
-blue windows side by side. The terminal in the red window is on 7681.
+blue windows side by side. The terminal in the red window is on 7681, and its
+traffic goes out through the stamping proxy - so the address alerts carry is
+the proxy's, not Kali's. See DECISIONS.
 
 See `README.md` for what each port is. `docs/superpowers/specs/` holds the
 design; the plan beside it is a finished historical record, not a to-do list.

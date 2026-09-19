@@ -2,37 +2,53 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (product phase, phases 0-2 done)
+Updated: 2026-09-20 (product phase, all four phases done)
 
 ## Where things stand
 
 The repo moved from "prove the hypothesis" to "build the smallest product that
 demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
-phases; 0, 1 and 2 are done.
+phases; all four are done.
 
-`bin/verify` is green: 118 unit/API tests, 14 acceptance tests against the live
+`bin/verify` is green: 124 unit/API tests, 17 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     1544   not gated (was 1031 before the console)
+product_loc     1668   not gated (was 1031 before the console)
 dependencies       6
-services           8   kali, raised by hand - see DECISIONS
+services           9   kali and proxy, both raised by hand - see DECISIONS
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
 then open the red and blue windows side by side: fire cases from one, watch the
 score move in the other, edit a Suricata rule and fire again. The red window
 also has a Kali terminal - name an attack, press start, type it, press stop,
-and it is scored by time and source instead of by a header.
+and it is scored two ways at once - by time and source, and by a marker the
+proxy stamps - with both answers side by side in the blue window.
 
 ## In progress
 
-Nothing. Phase 3 is next.
+Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **Phase 3: both strategies score the same traffic.** A mitmproxy service
+  stamps `X-FSL-Case` onto the terminal's traffic, reading the active marker
+  from a file the platform writes, so one free-form attack now carries a marker
+  *and* a source-and-time window. `?correlation=marker|window` on the score
+  endpoint forces the strategy for every case, and the blue window shows both
+  answers side by side.
+
+  The trap, and it is a bad one: the proxy makes the outbound connection, so
+  Suricata sees the proxy's address rather than Kali's. Labelling a window with
+  the Kali address would have matched nothing and blamed the defence for it.
+  `/api/attacker/` reports the address alerts actually carry. Full reasoning,
+  including why the two strategies are not symmetric, is in DECISIONS.
+
+  Cost the second service.
 
 - **Phase 2: the Kali terminal, and the known gap is closed.** A `kali` service
   runs `ttyd`, framed in the red team window. Labelling is a start/stop pair
@@ -154,14 +170,20 @@ Nothing. Phase 3 is next.
 
 The remaining phases of the product design. Take the top one.
 
-### 1. Phase 3 - compare the two strategies
+Empty. The product design is delivered end to end.
 
-`GET /api/sessions/<id>/score/?correlation=marker|window|both`, and a mitmproxy
-service that stamps `X-FSL-Case` onto the Kali container's traffic so the same
-attack can be scored both ways at once. The user's reason for wanting this:
-the scoring criteria are themselves under test, and a comparison is data.
+What is worth doing next is a judgement, not a leftover. Two candidates, in the
+order they would pay off:
 
-Costs a second compose service.
+- **A second wargame.** Juice Shop is the only target, and the catalogue screen
+  exists precisely so a second one has somewhere to go. Nothing about the
+  scoring is specific to it, which is a claim no one has tested.
+- **Make a disagreement between the strategies happen on purpose.** They agree
+  on everything measured so far, which means the comparison has not yet earned
+  its service. A case that only one of them can see would tell you which to
+  trust when it matters.
+
+Read `docs/DECISIONS.md` before proposing either.
 
 ## Known gaps
 

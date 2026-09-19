@@ -11,6 +11,7 @@ from console import views as console
 
 urlpatterns = [
     path("api/attacker/", views.attacker_box),
+    path("api/attacker/label/", views.attacker_label),
     path("api/wargames/", views.wargame_catalogue),
     path("api/wargames/<str:wargame_id>/cases/", views.wargame_cases),
     path("api/sessions/", views.sessions),

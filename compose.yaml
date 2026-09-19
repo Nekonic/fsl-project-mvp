@@ -115,6 +115,20 @@ services:
     ports:
       - "7681:7681"
     init: true
+    environment:
+      # Everything typed in the terminal goes through the stamping proxy, so
+      # it can be scored by marker as well as by window. The cost is that the
+      # WAF - and therefore Suricata - sees the proxy's address, not this
+      # container's. /api/attacker/ reports the one alerts will actually carry.
+      http_proxy: "http://proxy:8081"
+      HTTP_PROXY: "http://proxy:8081"
+
+  proxy:
+    build: ./deploy/proxy
+    container_name: fsl-proxy
+    networks: [fsl]
+    volumes:
+      - ./data/label:/label
 
   redteam-tools:
     build: ./redteam
@@ -155,3 +169,5 @@ services:
       # escape path; production should replace it with a sidecar.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
+      # The active case marker, written here and read by the proxy.
+      - ./data/label:/label
