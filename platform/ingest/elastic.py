@@ -9,10 +9,7 @@ from typing import Any
 import requests
 
 MARKER_HEADER = "X-FSL-Case"
-
-# Spellings Suricata may use for a header exported via eve-log http custom:
-# depending on version, hyphens become underscores or survive as written.
-_MARKER_KEYS = ("x_fsl_case", "X-FSL-Case", "x-fsl-case", "X_FSL_CASE")
+_MARKER_KEY = MARKER_HEADER.lower()
 
 
 class ElasticUnavailable(RuntimeError):
@@ -178,28 +175,25 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
     return detections
 
 
-def _suricata_marker(http: dict[str, Any]) -> str | None:
-    direct = _header_lookup(http)
-    if direct:
-        return direct
+# Each engine logs the marker in exactly one place. Matching is case-insensitive
+# because HTTP header names are, but nothing else is guessed at: if the marker
+# is ever missed, correlate() warns and the acceptance tests fail on it, so the
+# failure is loud rather than a session of silent false negatives.
 
+
+def _suricata_marker(http: dict[str, Any]) -> str | None:
+    """Suricata logs request headers as a list, under dump-all-headers."""
     for header in http.get("request_headers") or []:
-        if str(header.get("name", "")).lower() == MARKER_HEADER.lower():
+        if str(header.get("name", "")).lower() == _MARKER_KEY:
             return header.get("value")
     return None
 
 
 def _header_lookup(headers: dict[str, Any]) -> str | None:
-    for key in _MARKER_KEYS:
-        value = headers.get(key)
-        if value:
-            return value
-    # Fall back to a case-insensitive sweep.
-    wanted = MARKER_HEADER.lower().replace("-", "_")
-    for key, value in headers.items():
-        if str(key).lower().replace("-", "_") == wanted and value:
-            return value
-    return None
+    """ModSecurity logs them as a dict, keyed as the client sent them."""
+    return next(
+        (v for k, v in headers.items() if str(k).lower() == _MARKER_KEY and v), None
+    )
 
 
 def _parse_time(value: Any) -> datetime | None:

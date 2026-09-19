@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 2 backlog items)
+Updated: 2026-09-19 (v1.0 + 3 backlog items)
 
 ## Where things stand
 
@@ -15,7 +15,7 @@ precision to 0.83 — so the score responds to defence changes in the predicted
 direction, which is the whole point.
 
 ```
-production_loc  1674   (v1.0: 1703)
+production_loc  1668   (v1.0: 1703)
 dependencies       6   (v1.0: 7)
 services           7   (v1.0: 8)
 ```
@@ -25,6 +25,23 @@ services           7   (v1.0: 8)
 Nothing. Start at the top of the backlog.
 
 ## Done since v1.0
+
+- **Deleted the dead marker-probing.** `_MARKER_KEYS` guessed at four spellings
+  of the header, all inherited from the eve-log `custom:` hypothesis that
+  measurement later showed does nothing at all. Each engine logs the marker in
+  exactly one place and the code now looks in exactly that place. `-6 LOC`.
+
+  The estimate said `-15`; four lines went back as a comment recording why
+  narrowing this is safe. Matching stays case-insensitive because HTTP header
+  names are — a property of the protocol, not a guess. Two test files had the
+  invented shape baked into their fixtures and were passing on data Suricata
+  never produces.
+
+  This tick also hit a false red twice: sessions created just after a stack
+  restart ingest nothing, and the score came back all-FN reading as "no attack
+  was detected at all". `score_when_ready` now checks for an empty ingest and
+  says so. See DECISIONS for that and for why truncating `eve.json` in place
+  breaks Filebeat.
 
 - **Removed Kibana.** One service and about a gigabyte of RAM, for something
   no other part of the stack referenced. The console already lists detections
@@ -52,30 +69,20 @@ Nothing. Start at the top of the backlog.
 Ordered by value over risk. Take the top one. If you finish it and have room,
 stop anyway — a small verified step handed over cleanly beats two rushed ones.
 
-### 1. Delete the dead marker-probing in `ingest/elastic.py`
-
-`_MARKER_KEYS` tries four spellings and `_header_lookup` then does a
-case-insensitive sweep. That was written before we knew where the marker
-actually lands. We now know: Suricata puts it in `http.request_headers` as a
-list of `{name, value}`, ModSecurity in `transaction.request.headers` keyed
-exactly `X-FSL-Case`. Expect `-15 LOC`.
-
-Keep one test per real shape. Do not keep tests for spellings we invented.
-
-### 2. Collapse the Django boilerplate
+### 1. Collapse the Django boilerplate
 
 `fsl/urls.py`, `fsl/wsgi.py`, `api/apps.py`, `blueteam/apps.py`,
 `blueteam/urls.py`, `api/urls.py`, `manage.py` are 45 lines across seven files,
 most of them ceremony. Routing could live in one module. Expect `-20 LOC` and
 four fewer files.
 
-### 3. Shrink `redteam/harness.py`
+### 2. Shrink `redteam/harness.py`
 
 191 lines, the second largest file. `Harness` holds three fields and could be
 functions taking a `requests.Session`. Do not touch `check_path_preserved` — it
 guards a real bug that made the score lie (see DECISIONS).
 
-### 4. Translate docs/superpowers/specs/ to English
+### 3. Translate docs/superpowers/specs/ to English
 
 CLAUDE.md states the repo is written in English. The design document is still
 210 lines of Korean, so the briefing is not true. It is the canonical reference
@@ -85,13 +92,13 @@ twice the tokens it should.
 Not counted by `bin/measure` - docs never are - so judge it on the briefing
 being honest, not on the numbers moving.
 
-### 5. Consider replacing Django entirely
+### 4. Consider replacing Django entirely
 
 The largest remaining win and the riskiest. Django plus DRF is two dependencies
 carrying an ORM, migrations, templates and routing for five models and ten
 endpoints. `sqlite3` and a small framework would be a fraction of that.
 
-Do not start this until 1-3 are done; by then the Django surface will be small
+Do not start this until 1-2 are done; by then the Django surface will be small
 enough to judge honestly. Note the cost: the production repo's main site is
 Django, so diverging here loses shared ground.
 

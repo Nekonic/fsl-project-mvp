@@ -12,7 +12,10 @@ def suricata_alert(**overrides):
         "timestamp": "2026-09-18T12:00:01.500000+0000",
         "src_ip": "172.20.0.5",
         "alert": {"signature": "ET WEB SQL Injection", "severity": 1},
-        "http": {"hostname": "waf", "x_fsl_case": MARKER},
+        "http": {
+            "hostname": "waf",
+            "request_headers": [{"name": "X-FSL-Case", "value": MARKER}],
+        },
     }
     doc.update(overrides)
     return doc
@@ -32,14 +35,6 @@ def test_suricata_alert_becomes_one_detection():
 
 def test_suricata_non_alert_events_are_dropped():
     assert normalize("es1", suricata_alert(event_type="http")) == []
-
-
-def test_suricata_marker_read_from_dashed_header_name():
-    doc = suricata_alert(http={"X-FSL-Case": MARKER})
-
-    [det] = normalize("es1", doc)
-
-    assert det["marker"] == MARKER
 
 
 def test_suricata_marker_read_from_request_headers_list():
@@ -79,6 +74,18 @@ def modsec_doc(messages):
             "messages": messages,
         },
     }
+
+
+def test_modsecurity_header_name_is_matched_case_insensitively():
+    # HTTP header names are case-insensitive, and ModSecurity logs them as the
+    # client sent them. This is a property of the protocol, not a guess at a
+    # spelling Suricata might use.
+    doc = modsec_doc([{"message": "SQLi"}])
+    doc["transaction"]["request"]["headers"] = {"x-fsl-case": MARKER}
+
+    [det] = normalize("es2", doc)
+
+    assert det["marker"] == MARKER
 
 
 def test_modsecurity_message_becomes_one_detection():

@@ -71,6 +71,19 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
                 return last
         time.sleep(5)
 
+    # A session that ingested nothing says nothing about the defence. Report it
+    # as what it is - the pipeline delivered no data - so that a cold stack, a
+    # stalled Filebeat or a corrupt log never reads as "the attack got through".
+    detections = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
+    ).json()
+    assert detections, (
+        f"session {session_id} ingested no detections at all in {timeout:.0f}s, "
+        f"so nothing was scored and nothing can be concluded about the defence. "
+        f"This is a pipeline failure, not a detection failure: check Filebeat "
+        f"and Elasticsearch. A stack that restarted recently needs a few "
+        f"minutes before new events reach the index."
+    )
     assert last, "never got a score back. Check Elasticsearch and Filebeat."
     return last
 
