@@ -105,6 +105,17 @@ services:
 
   # Red team external tools. Invoked one-shot with `docker run`, so this never
   # comes up with the rest. Build the image: docker compose --profile tools build
+  # The attacker's shell, framed in the red team window. On the fsl network so
+  # its traffic reaches the WAF the same way the tool containers' does, and so
+  # Suricata sees a source IP that window correlation can be labelled against.
+  kali:
+    build: ./deploy/kali
+    container_name: fsl-kali
+    networks: [fsl]
+    ports:
+      - "7681:7681"
+    init: true
+
   redteam-tools:
     build: ./redteam
     image: fsl-redteam-tools

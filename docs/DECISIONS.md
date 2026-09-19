@@ -239,3 +239,49 @@ This is the worst shape a measurement bug can take here - it fails towards
 `bin/verify` now refuses to measure a tree with untracked, non-ignored files
 and names them. Same principle as the bind-mount guard and the cold-stack
 guard: a broken measurement must never be recorded as a result.
+
+## The Kali terminal costs one service, and the ratchet was told so by hand
+
+`services` went 7 -> 8 and `bin/verify` refused the commit, which is what it is
+for. The baseline was raised by hand rather than the service being dropped.
+
+The reason it is worth a service: every case in `redteam/cases/` carries the
+`X-FSL-Case` header, so until now the only attacks the platform could score
+were ones it had written itself. A person could not sit down and attack the
+range. The terminal is what makes the red team a role rather than a script, and
+it is what the second correlation strategy exists to serve.
+
+What it bought, beyond the screen: `correlation: window` ran against the live
+stack for the first time. It had been implemented and unit-tested to its
+boundaries since v1.0 and never once exercised end to end - the known gap in
+STATE.md. `test/test_window_correlation.py` now scores an unlabelled attack
+typed from the Kali box as a true positive by source IP and time, keeps benign
+traffic in an adjacent window clean, and asserts that the alerts it matched
+carry no marker, so it cannot pass by accidentally using the marker path.
+
+Two things that bit while building it:
+
+`ttyd` is not packaged in Kali. The upstream static aarch64 build is pinned
+and checksummed in `deploy/kali/Dockerfile` instead. arm64 only, which this
+stack already required.
+
+`http.kali.org` redirects to a nearby mirror, and some of those serve https
+with a certificate the base image cannot verify - because `ca-certificates` is
+exactly what the build is there to install. The build failed on that bootstrap
+loop with an error that said nothing about it. The Dockerfile pins
+`http://kali.download/kali`.
+
+The terminal is a root shell with no authentication, published on 7681. That is
+the same bargain as the Docker socket the platform already mounts: acceptable
+on a single-host lab, not beyond one.
+
+## Consecutive time windows need more than four seconds between them
+
+`WINDOW_SLACK` is two seconds at each end, so two windows less than four
+seconds apart overlap and one window's traffic is attributed to both cases.
+The acceptance test leaves six.
+
+This is not a bug: the slack exists because a request's alert can land either
+side of the window it belongs to. But it does mean the console's "start / stop"
+labelling cannot be used to mark two attacks in quick succession, and whoever
+adds a second labelled window to the UI should say so on screen.

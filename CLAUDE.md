@@ -98,6 +98,7 @@ cost a line in `docs/DECISIONS.md`, not pass unnoticed.
 | `platform/rules/suricata.py` | the only file that knows the Suricata process |
 | `platform/api/`, `platform/console/` | REST surface and the console |
 | `platform/wargames.py` | the case catalogue the console fires from |
+| `platform/attacker.py` | the only file that knows the attacker container |
 | `redteam/` | attack execution and ground truth |
 | `deploy/`, `compose.yaml` | the stack |
 | `test/` | acceptance criteria, over HTTP only |
@@ -110,13 +111,16 @@ directory. Same for `test/`.
 
 ```bash
 colima start --profile fsl          # arm64 host: ES crashes under x86 emulation
-docker compose up -d --build
+docker compose up -d --build          # includes kali, the attacker's terminal
 docker compose --profile tools build
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
   -H 'Content-Type: application/json' \
   --data-binary @deploy/elastic/ingest-pipeline.json
-.venv/bin/python redteam/run.py
+.venv/bin/python redteam/run.py       # or drive it from the console at /
 ```
+
+The console is the point now: open `/`, start a session, and open the red and
+blue windows side by side. The terminal in the red window is on 7681.
 
 See `README.md` for what each port is. `docs/superpowers/specs/` holds the
 design; the plan beside it is a finished historical record, not a to-do list.

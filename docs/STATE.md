@@ -2,35 +2,54 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (product phase, phase 1 of 3 done)
+Updated: 2026-09-20 (product phase, phases 0-2 done)
 
 ## Where things stand
 
 The repo moved from "prove the hypothesis" to "build the smallest product that
 demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
-phases; 0 and 1 are done.
+phases; 0, 1 and 2 are done.
 
-`bin/verify` is green: 115 unit/API tests, 11 acceptance tests against the live
+`bin/verify` is green: 118 unit/API tests, 14 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     1370   not gated (was 1031 before the console)
+product_loc     1544   not gated (was 1031 before the console)
 dependencies       6
-services           7
+services           8   kali, raised by hand - see DECISIONS
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
 then open the red and blue windows side by side: fire cases from one, watch the
-score move in the other, edit a Suricata rule and fire again.
+score move in the other, edit a Suricata rule and fire again. The red window
+also has a Kali terminal - name an attack, press start, type it, press stop,
+and it is scored by time and source instead of by a header.
 
 ## In progress
 
-Nothing. Phase 2 is next.
+Nothing. Phase 3 is next.
 
 ## Done since v1.0
+
+- **Phase 2: the Kali terminal, and the known gap is closed.** A `kali` service
+  runs `ttyd`, framed in the red team window. Labelling is a start/stop pair
+  that writes one `Case` with `correlation: "window"` and the container's
+  address - no new endpoint, because `POST /api/sessions/<id>/cases/` already
+  took all four fields. `GET /api/attacker/` answers where the traffic will
+  come from, and refuses to guess when the box is down.
+
+  **`correlation: window` has now run against the live stack.** It had been
+  unit-tested to its boundaries since v1.0 and never exercised end to end.
+  `test/test_window_correlation.py` scores an unlabelled attack typed from Kali
+  as a true positive, keeps an adjacent benign window clean, and proves the
+  matched alerts carry no marker so it cannot pass via the marker path.
+
+  Cost one service, raised by hand. `ttyd` is not in Kali's repos and the Kali
+  mirror redirect breaks TLS before `ca-certificates` exists; both are in
+  DECISIONS, as is the four-second minimum between consecutive windows.
 
 - **Phase 1: the red team got a REST surface, and the console got a shell.**
   The reason there was no red team screen was never the screen - firing an
@@ -135,21 +154,7 @@ Nothing. Phase 2 is next.
 
 The remaining phases of the product design. Take the top one.
 
-### 1. Phase 2 - the labelled Kali terminal
-
-A `kali` service running `ttyd`, framed in the red team window, so attacks can
-be typed instead of chosen from a list. Labelling is a "start attack / stop"
-pair in the UI that writes one `Case` with `correlation: "window"` and the Kali
-container's address - which needs **no new endpoint**, because
-`POST /api/sessions/<id>/cases/` already takes all four fields.
-
-This is also what closes the known gap below: `window` correlation has never
-run against the live stack. Add the acceptance test that scores a window case
-in the same phase, or the gap moves rather than closes.
-
-Costs one compose service. Write down why in DECISIONS when you add it.
-
-### 2. Phase 3 - compare the two strategies
+### 1. Phase 3 - compare the two strategies
 
 `GET /api/sessions/<id>/score/?correlation=marker|window|both`, and a mitmproxy
 service that stamps `X-FSL-Case` onto the Kali container's traffic so the same
@@ -160,10 +165,12 @@ Costs a second compose service.
 
 ## Known gaps
 
-- **Window correlation is never exercised end to end.** `correlation: window`
-  is implemented and unit-tested to its boundaries, but no case in
-  `redteam/cases/` uses it, so it has never run against the real stack. It
-  needs a non-HTTP tool (nmap) and the tool container's IP. Out of scope for
-  v1.0 by the design document; close this gap before trusting the strategy.
-- The `platform` container mounts the Docker socket to validate rules. It is a
-  container escape path. Acceptable in a local lab, not beyond one.
+- The `platform` container mounts the Docker socket to validate rules, and the
+  Kali terminal is an unauthenticated root shell on 7681. Both are container
+  escape paths, acceptable in a local lab and nowhere else.
+- Two labelled terminal windows less than four seconds apart overlap, because
+  `WINDOW_SLACK` is two seconds at each end. The console does not say so on
+  screen yet. See DECISIONS.
+- Nothing stops two people opening the same session in four windows. One user,
+  one session was a deliberate scope decision; revisit it only if the answer to
+  "who is in front of this" changes.
