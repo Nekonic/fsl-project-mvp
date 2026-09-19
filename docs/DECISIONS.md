@@ -120,3 +120,25 @@ docker compose up -d --force-recreate waf suricata
 `bin/verify` now checks for this before running the acceptance tests, on the
 same principle as everything else here: infrastructure breakage must never be
 recorded as a detection result.
+
+## Never truncate a log file Suricata has open
+
+`: > deploy/suricata/logs/eve.json` leaves the file full of NUL bytes, because
+Suricata keeps writing at its old offset. Filebeat then fails with
+`Error decoding JSON: invalid character '\x00' looking for beginning of value`
+and stops shipping that file, so detections silently stop arriving.
+
+Read from a saved byte offset instead (`wc -c` before, `tail -c +N` after), or
+restart Suricata after truncating.
+
+## A cold stack looks exactly like a broken defence
+
+Sessions created in the first minutes after `docker compose up` can ingest zero
+detections: Elasticsearch, Filebeat and the WAF are still settling. The score
+then comes back all-FN, and the acceptance criteria used to report that as "no
+attack was detected at all" - the hypothesis failing.
+
+It cost a full diagnosis to establish that the code was fine and the pipeline
+was empty. `score_when_ready` now checks for that case and fails with the real
+reason. Same principle as the bind-mount guard in `bin/verify`: infrastructure
+state must never be recorded as a detection result.

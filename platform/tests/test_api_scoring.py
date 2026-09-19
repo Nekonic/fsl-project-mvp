@@ -38,7 +38,7 @@ def es_alert(marker, doc_id="es1"):
             "timestamp": (T0 + timedelta(seconds=1)).isoformat(),
             "src_ip": "172.20.0.5",
             "alert": {"signature": "SQLi", "severity": 1},
-            "http": {"x_fsl_case": marker},
+            "http": {"request_headers": [{"name": "X-FSL-Case", "value": marker}]},
         },
     )
 
