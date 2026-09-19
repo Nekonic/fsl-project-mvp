@@ -321,3 +321,32 @@ first leg. If they ever disagree, look here before looking at the defence.
 The marker is passed as a file on a shared volume rather than an API the proxy
 serves. The proxy reads it per request, so there is nothing to restart and no
 second service to keep in step.
+
+## The live console polls, and does not push
+
+Watching a defence happen cannot mean pressing a button. The options were
+WebSockets (django-channels plus an ASGI server), server-sent events, or
+polling.
+
+Polling won on the metric that is actually gated. `dependencies` would have
+gone 6 -> 8 for channels and daphne, and that is a permanent cost on every
+install for a console with one user. Server-sent events need no dependency but
+hold a worker thread per open tab under `runserver`, which is the same bargain
+with a subtler failure. Kibana and Cloudflare's own event views poll on an
+interval; this is not a compromise, it is what the tools being imitated do.
+
+What made polling cheap enough to feel live is that the list is incremental.
+`?after=<row id>` returns only what the console has not seen, so a two-second
+tick moves a handful of rows rather than re-sending eight hundred. A bad
+`after` is a 400 rather than a silent fallback to everything: falling back
+would arrive on screen as a sudden flood of alerts that are not new, which is
+exactly the wrong thing to show someone watching for an attack.
+
+Filtering stayed on the client. The console already holds every row it has been
+sent, so a source filter or a search should not cost a round trip, and the
+server keeps one query.
+
+The raw log needed no new storage. `Detection.raw` has held the whole
+Elasticsearch document since v1.0 and was simply never served - the list
+response omits it on purpose, because it is far too heavy per row. One detail
+endpoint was the entire change.
