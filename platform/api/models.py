@@ -9,6 +9,14 @@ class Session(models.Model):
     scenario = models.CharField(max_length=128, default="juice-shop")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    # Objectives the target already considered solved when this session
+    # opened. Only what appears after this counts as the red team's doing,
+    # which also means the target never has to be reset between sessions.
+    #
+    # null means never established - the target was unreachable. It is not the
+    # same as "nothing was solved", and must not be treated as it: that would
+    # hand the red team credit for every objective solved before they arrived.
+    baseline = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]
@@ -72,6 +80,29 @@ class Detection(models.Model):
             src_ip=self.src_ip,
             marker=self.marker,
         )
+
+
+class Objective(models.Model):
+    """One objective the target itself judged to have been achieved.
+
+    Juice Shop decides this, not the platform, so it is ground truth nobody
+    here has to produce or be trusted on. `achieved_at` is when this process
+    first observed the flip, not the target's own timestamp - the target
+    rewrites those in bulk on restore.
+    """
+
+    session = models.ForeignKey(
+        Session, related_name="objectives", on_delete=models.CASCADE
+    )
+    key = models.CharField(max_length=128)
+    name = models.CharField(max_length=256)
+    category = models.CharField(max_length=128, blank=True, default="")
+    difficulty = models.IntegerField(default=1)
+    achieved_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["achieved_at"]
+        unique_together = [("session", "key")]
 
 
 class RuleSet(models.Model):

@@ -4,11 +4,21 @@ A cyber attack/defence training range. A red team attacks a web app; a blue team
 defends with Suricata and ModSecurity; the platform scores the defence by false
 positives and false negatives.
 
-This repo exists to test one hypothesis, and nothing else:
+This repo tests one hypothesis:
 
 > Red team attacks can be labelled with ground truth, and Suricata/ModSecurity
 > alerts can be matched to those labels automatically, so false positives and
 > negatives can be scored mechanically.
+
+That still holds, and it is still what `platform/scoring/` is. But it is not
+the game. **Objectives lead the score**: Juice Shop's own challenges, which the
+application judges itself, so the platform labels nothing about whether an
+attack achieved anything. Losing one always costs and losing one you never saw
+costs double - detection is mitigation, the shape every cyber defence exercise
+settled on. False positives stay beside the damage, never inside it.
+
+A twelve-case run that scored `TP=6` was measured to achieve exactly zero
+objectives. See `docs/DECISIONS.md`.
 
 The hypothesis holds as of v1.0. The work now is to build the **smallest
 product that demonstrates it** - a shell one person can run attack and defence
@@ -81,6 +91,9 @@ cost a line in `docs/DECISIONS.md`, not pass unnoticed.
   TN > 0: attacks are detected, benign traffic passes. That is the hypothesis.
 - **Benign cases in `redteam/cases/`.** Deleting them is the easiest way to make
   the score look good and the platform pointless.
+- **The target decides whether it was beaten.** Never mark an objective from
+  the platform's own belief about what an attack did. The whole value of the
+  objective layer is that its ground truth is orthogonal to the detector.
 - **These stay, by the user's decision:** OpenStack, Docker, Suricata, nginx,
   Elasticsearch. Everything else — Django, Filebeat, ModSecurity, Juice Shop,
   the API shape, the scoring design — may be replaced if it makes the project
@@ -98,6 +111,8 @@ cost a line in `docs/DECISIONS.md`, not pass unnoticed.
 | `platform/rules/suricata.py` | the only file that knows the Suricata process |
 | `platform/api/`, `platform/console/` | REST surface and the console |
 | `platform/wargames.py` | the case catalogue the console fires from |
+| `platform/objectives.py` | the only file that knows the target's challenge API |
+| `platform/scoreboard.py` | what each side achieved: pure, no I/O |
 | `platform/attacker.py` | the only file that knows the attacker box and its marker |
 | `redteam/` | attack execution and ground truth |
 | `deploy/`, `compose.yaml` | the stack |

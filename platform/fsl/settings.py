@@ -55,6 +55,10 @@ ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhos
 # name; on a developer's host it is the published port.
 TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
 TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
+# The target's own API, reached directly and never through the WAF: polling it
+# through the proxy would put the range's own housekeeping into the alert
+# stream, where it could be scored as a false positive against the defence.
+WARGAME_API_URL = os.environ.get("WARGAME_API_URL", "http://juice-shop:3000")
 WARGAME_CASES_DIR = os.environ.get(
     "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
 )

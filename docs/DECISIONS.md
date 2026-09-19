@@ -350,3 +350,96 @@ The raw log needed no new storage. `Detection.raw` has held the whole
 Elasticsearch document since v1.0 and was simply never served - the list
 response omits it on purpose, because it is far too heavy per row. One detail
 endpoint was the entire change.
+
+## The target judges its own defeat, and that is the point
+
+Scoring was false positives and false negatives and nothing else, and the user
+put the objection plainly: it is easy to game and it does not feel like
+attacking anything. Both halves are right, and the second one turned out to be
+measurable.
+
+Gaming: `redteam/cases/` is twelve fixed, public payloads. The blue team's
+optimal play is not to defend but to write twelve rules that match them
+exactly. `TP=6 FP=0` while the thirteenth attack walks in.
+
+Not attacking anything: a full twelve-case run was measured against Juice
+Shop's own challenge API and achieved **nothing**. The score read `TP=6` - six
+attacks, all detected - while the shop was untouched. The two objectives that
+had ever fallen, `Login Admin` and `Error Handling`, were taken by the red team
+long ago and the platform never counted them.
+
+So objectives now lead the score, and Juice Shop decides them: 116 challenges
+with a name, a category and a difficulty, and a `solved` flag the application
+sets itself. The platform labels nothing here.
+
+The shape is the one cyber defence exercises settled on. CCDC scores service
+uptime, injects and compromise, and detection enters only as mitigation - an
+incident report that correctly identifies a red team attack reduces that
+event's penalty, with no partial credit for a vague one. NSA CDX plants known
+tokens and scores whether they leak; DEF CON attack-defense scores flags
+stolen. None of them scores detection mechanically at all. So: losing an
+objective always costs, losing one you never saw costs double, and false
+positives stay beside the damage rather than inside it.
+
+False positives are not demoted. A defence that sees every attack by alerting
+on everything has defended nothing, and blending the two numbers would let it
+look as though it had.
+
+**The literature says this is the right fix, in the terms it uses.** Every
+labelled IDS dataset since DARPA 1998 labels by the same rule this repo uses -
+5-tuple plus time window - and its documented failure mode is exactly the one
+measured above. Engelen et al. (WTMC 2021) on CICIDS2017: the strategy "relies
+solely on a flow's source and destination IP and a specific data collection
+window", so "a resulting flow's content and characteristics are not verified".
+Failed attacks, refused connections and attacks against closed ports all
+inherit the attack label. Flood et al. (IEEE EuroS&P 2024) found no paper that
+appeared to be aware it was working with failed attack data.
+
+Sommer & Paxson (IEEE S&P 2010) state the requirement: "One must collect
+ground-truth via a mechanism orthogonal (unrelated) to how the detector works."
+The target's own verdict is orthogonal. That is what makes it worth a model.
+
+Two things worth keeping from the reading:
+
+- Public datasets' attack windows are always slightly wrong, and every
+  re-labelling team had to retune them by hand. This repo executes the attacks,
+  so it records exact start and stop times at source. Do not lose that.
+- `TP > 0` does not prove the hypothesis. Mahoney & Chan (RAID 2003) built a
+  detector that scored competitively on DARPA by reading one byte of the source
+  address and dropped to zero detections on real traffic. The next honest step
+  is to check *which* signature fired and whether its evidence matches the
+  attack's mechanism, not only that something fired.
+
+## Attribution is by last attempt, not by enclosing window
+
+An objective's time is when the platform noticed the flip, which trails the
+deed by up to one poll interval. Requiring that observation to land inside a
+case's own window - often a tenth of a second wide - would attribute almost
+nothing to anybody. An objective is credited to the last attempt that started
+before it, within two minutes. Outside that it belongs to nobody and is
+reported undetected, which is honest: no alert was tied to it either.
+
+## The target's solved state survives a restart, and mostly survives a recreate
+
+`docker compose restart juice-shop` keeps every solved challenge - the writable
+layer survives. `docker compose up -d --force-recreate juice-shop` reseeds the
+database (every challenge's `createdAt` moves) and yet two challenges came back
+marked solved two seconds later, in the same millisecond as each other, which
+is a bulk write and not two solves. The cause was not established.
+
+What does work, verified:
+
+```bash
+docker compose rm -sf juice-shop && docker compose up -d juice-shop
+```
+
+The range does not depend on it. Each session snapshots what the target already
+considered solved and counts only what appears afterwards, so a dirty target
+scores correctly - a session simply cannot win an objective someone already
+took. `Session.baseline` is null when the target could not be asked, which is
+deliberately not the same as an empty list: treating "unknown" as "nothing was
+solved" would hand the red team credit for every objective ever taken.
+
+Note for whoever writes an objective test: Juice Shop's challenge keys and its
+display names disagree. "Confidential Document" is `directoryListingChallenge`.
+Verify a key against the live catalogue rather than guessing it from the name.

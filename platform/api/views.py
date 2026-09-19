@@ -14,8 +14,10 @@ from django.views.decorators.http import require_http_methods
 import requests
 
 import attacker
+import objectives
+import scoreboard
 import wargames
-from api.models import Case, Detection, RuleSet, ScoreSnapshot, Session
+from api.models import Case, Detection, Objective, RuleSet, ScoreSnapshot, Session
 from ingest import elastic
 from redteam import harness
 from rules import suricata
@@ -37,6 +39,7 @@ DETECTION_FIELDS = (
 # One alert plus the document it came from. Only the drawer asks for this:
 # `raw` is the whole Elasticsearch record and far too heavy for a list.
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
+OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
 SCORE_FIELDS = (
     "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
@@ -65,7 +68,16 @@ def sessions(request):
         return _reply([_shape(s, SESSION_FIELDS) for s in Session.objects.all()])
 
     body = _payload(request)
-    session = Session.objects.create(scenario=body.get("scenario") or "juice-shop")
+    try:
+        baseline = sorted(objectives.solved_keys())
+    except objectives.ObjectivesUnavailable:
+        # Not fatal, and not an empty baseline either: null records that the
+        # target could not be asked. Calling it "nothing was solved" would hand
+        # the red team credit for every objective reached before they arrived.
+        baseline = None
+    session = Session.objects.create(
+        scenario=body.get("scenario") or "juice-shop", baseline=baseline
+    )
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
 
@@ -101,6 +113,64 @@ def wargame_cases(request, wargame_id):
         return _reply(wargames.cases(wargame_id))
     except wargames.UnknownWargame:
         raise Http404(wargame_id)
+
+
+@require_http_methods(["GET"])
+def wargame_objectives(request, wargame_id):
+    if wargame_id not in wargames.WARGAMES:
+        raise Http404(wargame_id)
+    try:
+        return _reply(objectives.catalogue())
+    except objectives.ObjectivesUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+
+
+@require_http_methods(["GET", "POST"])
+def session_objectives(request, session_id):
+    """What the red team has actually taken, as judged by the target itself.
+
+    POST asks the target what it now considers solved and records anything new
+    since this session opened. Nothing here is labelled by the platform: the
+    application decides whether it was beaten.
+    """
+    session = get_object_or_404(Session, pk=session_id)
+
+    if request.method == "GET":
+        return _reply(
+            [_shape(o, OBJECTIVE_FIELDS) for o in session.objectives.all()]
+        )
+
+    try:
+        solved = {o["key"]: o for o in objectives.catalogue() if o["solved"]}
+    except objectives.ObjectivesUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+
+    if session.baseline is None:
+        # The target was unreachable when the session opened. Establish the
+        # baseline now and credit nobody for what came before it.
+        session.baseline = sorted(solved)
+        session.save(update_fields=["baseline"])
+        return _reply({"achieved": 0, "baseline": len(session.baseline)})
+
+    ignore = set(session.baseline) | set(
+        session.objectives.values_list("key", flat=True)
+    )
+    observed_at = timezone.now()
+    fresh = [
+        Objective(
+            session=session,
+            key=key,
+            name=objective["name"],
+            category=objective["category"],
+            difficulty=objective["difficulty"],
+            achieved_at=observed_at,
+        )
+        for key, objective in solved.items()
+        if key not in ignore
+    ]
+    Objective.objects.bulk_create(fresh)
+
+    return _reply({"achieved": len(fresh), "total": session.objectives.count()})
 
 
 @require_http_methods(["POST"])
@@ -301,6 +371,7 @@ def session_score(request, session_id):
 
     result = correlate(records, [d.to_record() for d in detections])
     totals = compute_score(result)
+    board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
 
     snapshot = ScoreSnapshot.objects.create(
         session=session,
@@ -316,7 +387,56 @@ def session_score(request, session_id):
         per_case=_per_case(result),
     )
 
-    return _reply(_shape(snapshot, SCORE_FIELDS))
+    return _reply(
+        _shape(snapshot, SCORE_FIELDS)
+        | {"objectives": board.__dict__, "breaches": _breach_rows(session, cases, result)}
+    )
+
+
+def _attempts(cases, result):
+    by_case = {match.case_id: match for match in result.matches}
+    return [
+        scoreboard.Attempt(
+            case_id=case.case_id,
+            started_at=case.started_at,
+            detected=bool(by_case[case.case_id].detected),
+            detection_ids=tuple(by_case[case.case_id].detection_ids),
+        )
+        for case in cases
+        if case.case_id in by_case
+    ]
+
+
+def _breaches(session, cases, result):
+    attempts = _attempts(cases, result)
+    breaches = []
+    for objective in session.objectives.all():
+        credited = scoreboard.attribute(objective.achieved_at, attempts)
+        breaches.append(
+            scoreboard.Breach(
+                key=objective.key,
+                name=objective.name,
+                category=objective.category,
+                difficulty=objective.difficulty,
+                detected=bool(credited and credited.detected),
+                detection_ids=tuple(credited.detection_ids) if credited else (),
+            )
+        )
+    return breaches
+
+
+def _breach_rows(session, cases, result):
+    return [
+        {
+            "key": b.key,
+            "name": b.name,
+            "category": b.category,
+            "difficulty": b.difficulty,
+            "detected": b.detected,
+            "detection_ids": list(b.detection_ids),
+        }
+        for b in _breaches(session, cases, result)
+    ]
 
 
 def _per_case(result):

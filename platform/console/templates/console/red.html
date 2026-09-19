@@ -2,6 +2,43 @@
 {% block title %}Red team{% endblock %}
 {% block nav %}<span class="text-rose-400">Red team</span>{% endblock %}
 {% block content %}
+<h1 class="text-2xl font-semibold text-slate-100 mb-2">Objectives</h1>
+<p class="text-slate-400 text-sm mb-5">
+  What you are actually trying to do. The shop decides whether you managed it -
+  nothing here is scored on your say-so. Firing payloads that trip an IDS rule
+  but take nothing is not an attack, it is noise.
+</p>
+
+<div class="grid grid-cols-3 gap-3 mb-5">
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Taken this session</div>
+    <div id="kpi-taken" class="text-2xl font-semibold text-rose-300 tabular-nums">0</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Difficulty total</div>
+    <div id="kpi-stars" class="text-2xl font-semibold text-amber-300 tabular-nums">0</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Available</div>
+    <div id="kpi-available" class="text-2xl font-semibold text-slate-300 tabular-nums">-</div>
+  </div>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-3 items-center">
+  <input id="objective-search" placeholder="filter objectives"
+    class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 min-w-56">
+  <select id="objective-category"
+    class="bg-slate-900 border border-slate-700 rounded px-2 py-2 text-xs text-slate-300">
+    <option value="">all categories</option>
+  </select>
+  <label class="flex items-center gap-2 text-xs text-slate-400 px-1">
+    <input id="hide-solved" type="checkbox" checked class="accent-sky-600">
+    hide already solved
+  </label>
+</div>
+
+<div id="objectives" class="border border-slate-800 rounded max-h-80 overflow-y-auto mb-10"></div>
+
 <h1 class="text-2xl font-semibold text-slate-100 mb-2">Send traffic</h1>
 <p class="text-slate-400 text-sm mb-6">
   Each button fires one case and records what it was. Benign cases matter as
@@ -100,6 +137,7 @@
     } else {
       note(`FAILED ${name} - ${result.body.detail || result.status}`, "text-amber-400");
     }
+    await pollObjectives();
     return result.ok;
   }
 
@@ -136,6 +174,75 @@
 
   // -- the labelled terminal. No new endpoint: a window case is exactly what
   // POST /api/sessions/<id>/cases/ already accepts.
+  // -- objectives. The target judges these itself, so the list is the only
+  // honest statement of what there is to win.
+  let objectives = [];
+  const STAR = (n) => "*".repeat(n);
+
+  async function loadObjectives() {
+    const result = await api(`/api/wargames/juice-shop/objectives/`);
+    if (!result.ok) {
+      document.getElementById("objectives").innerHTML =
+        `<p class="text-amber-400 text-sm p-4">${result.body.detail || "target unreachable"}</p>`;
+      return;
+    }
+    objectives = result.body;
+    document.getElementById("kpi-available").textContent =
+      objectives.filter((o) => !o.solved).length;
+
+    const categories = [...new Set(objectives.map((o) => o.category))].sort();
+    const select = document.getElementById("objective-category");
+    select.innerHTML = `<option value="">all categories</option>` +
+      categories.map((c) => `<option value="${c}">${c}</option>`).join("");
+    renderObjectives();
+  }
+
+  function renderObjectives() {
+    const needle = document.getElementById("objective-search").value.trim().toLowerCase();
+    const category = document.getElementById("objective-category").value;
+    const hideSolved = document.getElementById("hide-solved").checked;
+
+    const shown = objectives.filter((o) => {
+      if (hideSolved && o.solved) return false;
+      if (category && o.category !== category) return false;
+      if (!needle) return true;
+      return (o.name + o.description).toLowerCase().includes(needle);
+    }).sort((a, b) => a.difficulty - b.difficulty);
+
+    document.getElementById("objectives").innerHTML = shown.map((o) => `
+      <div class="border-t border-slate-900 px-3 py-2 flex gap-3 items-baseline">
+        <span class="text-amber-400 font-mono text-xs w-12">${STAR(o.difficulty)}</span>
+        <span class="${o.solved ? "text-slate-500 line-through" : "text-slate-100"} text-sm w-56">
+          ${o.name}</span>
+        <span class="text-slate-500 text-xs w-48">${o.category}</span>
+        <span class="text-slate-600 text-xs flex-1 truncate">${o.description}</span>
+      </div>`).join("") ||
+      `<p class="text-slate-500 text-sm p-4">Nothing matches.</p>`;
+  }
+
+  async function refreshTaken() {
+    const result = await api(`/api/sessions/${sessionId()}/objectives/`);
+    if (!result.ok) return;
+    document.getElementById("kpi-taken").textContent = result.body.length;
+    document.getElementById("kpi-stars").textContent =
+      result.body.reduce((sum, o) => sum + o.difficulty, 0);
+  }
+
+  // Polled after every shot: the shop flips `solved` on its own clock.
+  async function pollObjectives() {
+    const result = await post(`/api/sessions/${sessionId()}/objectives/`);
+    if (result.ok && result.body.achieved) {
+      note(`TAKEN ${result.body.achieved} objective(s)`, "text-rose-300 font-semibold");
+      loadObjectives();
+    }
+    refreshTaken();
+  }
+
+  ["objective-search", "objective-category", "hide-solved"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", renderObjectives);
+    document.getElementById(id).addEventListener("change", renderObjectives);
+  });
+
   let attacker = null;
   let openedAt = null;
   let windowCaseId = null;
@@ -196,6 +303,7 @@
       result.ok ? `window closed: ${name.value}` : `FAILED to record ${name.value}`,
       result.ok ? "text-slate-300" : "text-amber-400",
     );
+    await pollObjectives();
     openedAt = null;
     toggle.textContent = "Start";
     name.disabled = malicious.disabled = false;
@@ -211,5 +319,10 @@
 
   render();
   loadTerminal();
+  loadObjectives();
+  refreshTaken();
+  // The terminal can take an objective at any moment, not only when a button
+  // is pressed, so keep asking.
+  setInterval(pollObjectives, 10000);
 </script>
 {% endblock %}
