@@ -29,8 +29,6 @@ TEMPLATES = [
     }
 ]
 
-WSGI_APPLICATION = "fsl.wsgi.application"
-
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
