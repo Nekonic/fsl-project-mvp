@@ -1,5 +1,6 @@
 {
-  "production_loc": 1642,
+  "core_loc": 611,
+  "product_loc": 1031,
   "dependencies": 6,
   "services": 7
 }
