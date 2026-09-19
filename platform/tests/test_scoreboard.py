@@ -90,3 +90,38 @@ def test_an_objective_nobody_was_attacking_for_belongs_to_nobody():
 
 def test_an_objective_before_any_attempt_belongs_to_nobody():
     assert attribute(T0 - timedelta(seconds=1), [attempt(0)]) is None
+
+
+from scoreboard import corroborated
+
+ANOMALY = "Inbound Anomaly Score Exceeded (Total Score: 5)"
+
+
+def test_a_case_that_declares_nothing_is_not_judged():
+    # None, not False: a terminal window has no declared mechanism, and
+    # calling that "wrong reason" would be an accusation the data cannot make.
+    assert corroborated(None, ["FSL SQLi attempt - URI"]) is None
+    assert corroborated("", ["FSL SQLi attempt - URI"]) is None
+
+
+def test_evidence_matching_the_mechanism_corroborates():
+    assert corroborated("SQL", ["FSL SQLi attempt - request body"]) is True
+    assert corroborated("SQL", ["SQL Injection Attack Detected via libinjection"]) is True
+
+
+def test_the_match_is_case_insensitive_because_signatures_are_prose():
+    assert corroborated("traversal", ["FSL path traversal attempt"]) is True
+    assert corroborated("TRAVERSAL", ["FSL path traversal attempt"]) is True
+
+
+def test_an_alert_about_something_else_does_not_corroborate():
+    # The whole point. This case is a true positive by the score and is being
+    # detected by a rule that has nothing to do with path traversal.
+    assert corroborated("traversal", ["FSL XSS attempt - script tag"]) is False
+
+
+def test_a_generic_anomaly_alert_alone_does_not_corroborate():
+    # ModSecurity raises this for anything that crosses the threshold, so on
+    # its own it says the request was odd, not that it was this attack.
+    assert corroborated("SQL", [ANOMALY]) is False
+    assert corroborated("SQL", [ANOMALY, "SQL Injection Attack Detected"]) is True

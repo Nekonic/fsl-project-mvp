@@ -30,6 +30,26 @@ DETECTED_WEIGHT = 0.5
 ATTRIBUTION_WINDOW = timedelta(minutes=2)
 
 
+def corroborated(expect: str | None, signatures) -> bool | None:
+    """Whether the evidence matches the attack's own mechanism.
+
+    A true positive says only that something fired inside the window. It does
+    not say the alert had anything to do with the attack. Mahoney and Chan
+    (RAID 2003) built a detector that scored with the best systems of the 1999
+    DARPA evaluation by reading one byte of the source address, and fell to
+    zero detections once real traffic was mixed in: right, for the wrong
+    reason, and the score could not tell.
+
+    So a case declares what should be able to detect it, and this asks whether
+    anything attributed to it says so. `None` means the case declared nothing -
+    a terminal window, say - which is not the same as False.
+    """
+    if not expect:
+        return None
+    needle = expect.lower()
+    return any(needle in signature.lower() for signature in signatures)
+
+
 @dataclass(frozen=True)
 class Attempt:
     """One case the red team fired, and what the defence made of it."""

@@ -62,6 +62,22 @@ Follow this whether a human started you or `/loop` did. To run it unattended:
 
 Leave `docs/STATE.md` true. It is the entire handover to the next session.
 
+## What a score counts
+
+One red team case is one decision: TP, FP, FN or TN, however many alerts it
+drew. `sqlmap-boolean-blind` produces 94 alerts and counts once. State this
+whenever the numbers are reported - per-alert counting would measure
+`threshold.config` rather than the defence, and McHugh's complaint about the
+DARPA evaluations ("It is up to them to specify 0.1% of what") is the reason
+it has to be said out loud.
+
+A true positive also has to survive `expect`: each attack case declares a
+substring of the signature that should be able to find it, and an alert that
+does not mention the attack's own mechanism is reported as
+`corroborated: false`. A rule set that catches everything for unrelated
+reasons would otherwise score exactly as well as one that works. See
+`docs/DECISIONS.md`.
+
 ## The measure of progress
 
 `bin/measure` prints four numbers. Three of them may only go down.

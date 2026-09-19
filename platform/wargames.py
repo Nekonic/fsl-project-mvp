@@ -40,10 +40,16 @@ def cases(wargame_id: str) -> list[dict[str, Any]]:
             "malicious": bool(case["malicious"]),
             "technique": case.get("technique") or "",
             "correlation": case.get("correlation") or "marker",
+            "expect": case.get("expect") or "",
             "summary": _summary(case),
         }
         for case in _load(wargame_id)
     ]
+
+
+def expectations(wargame_id: str) -> dict[str, str]:
+    """What should be able to detect each case, by case name."""
+    return {case["name"]: case.get("expect") or "" for case in _load(wargame_id)}
 
 
 def find_case(wargame_id: str, name: str) -> dict[str, Any]:

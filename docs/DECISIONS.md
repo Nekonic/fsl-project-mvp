@@ -443,3 +443,73 @@ solved" would hand the red team credit for every objective ever taken.
 Note for whoever writes an objective test: Juice Shop's challenge keys and its
 display names disagree. "Confidential Document" is `directoryListingChallenge`.
 Verify a key against the live catalogue rather than guessing it from the name.
+
+## A true positive is not evidence until you check which rule fired
+
+The score counted an alert inside the window as detection. It never asked
+whether the alert was about the attack. A path traversal case credited with an
+XSS signature scored exactly as well as one credited with the traversal rule.
+
+The literature calls this being right for the wrong reason and has the
+definitive demonstration. Mahoney & Chan (RAID 2003) built **SAD**: it reads
+**one byte** at a fixed offset of inbound SYN packets and alerts on any value
+it did not see in training. On the third byte of the source address it detected
+**79 of 177 attacks (45%) at 43 false alarms** - competitive with the top four
+systems in the real 1999 DARPA evaluation, which managed 40-55%. Mixed with
+real background traffic it detected **zero**. The score could not tell the
+difference, because the score only counted matches.
+
+So each attack case declares `expect`: a substring of the alert signature that
+should be able to find it. At scoring, every alert attributed to the case is
+checked against it, and a true positive whose evidence fails is reported as
+`corroborated: false` plus a warning naming the cases. The arithmetic does not
+change - it is still a true positive - because quietly rewriting TP to FN would
+hide the disagreement rather than surface it.
+
+The values were read off what the engines actually emit, not guessed: Suricata
+says `FSL SQLi attempt - URI`, ModSecurity says `SQL Injection Attack Detected
+via libinjection`, so `SQL` covers both. `traversal` matches only Suricata,
+which is itself worth knowing.
+
+Three properties worth keeping:
+
+- **`None` is not `False`.** A terminal window declares no mechanism, so it is
+  unjudged. Calling that "wrong reason" would be an accusation the data cannot
+  support.
+- **A generic anomaly alert does not corroborate.** ModSecurity's `Inbound
+  Anomaly Score Exceeded` fires for anything over the threshold; on its own it
+  says the request was odd, not that it was this attack.
+- **`core_loc` did not move.** The check lives in `scoreboard.py`, not in
+  `platform/scoring/`. It is a check *on* the correlation rather than part of
+  it, and the ratchet protecting the hypothesis stayed at 611.
+
+Measured on the current rule set: all six attacks corroborate. That is the
+point of having it - the baseline is honest today, and now a change that makes
+it dishonest is visible instead of silent.
+
+## The counting unit is the attack case, and it is stated on purpose
+
+McHugh's critique of the DARPA evaluations (ACM TISSEC 3(4), 2000) says the
+unit of analysis is the body of data on which the detector decided, that it is
+a property of the detector rather than a free choice, and that evaluations
+routinely fail to say what theirs is. His complaint about the sponsor's 0.1%
+false-alarm goal - "It is up to them to specify 0.1% of what" - is the whole
+problem in one line.
+
+Here the unit is **one red team case**: one TP/FP/FN/TN decision per case,
+regardless of how many alerts it drew. `sqlmap-boolean-blind` produces 94
+alerts and counts once.
+
+That is deliberate and it matters, because per-alert counting would measure
+something else entirely. Suricata's `threshold`, `detection_filter` and
+`suppress` change the alert count without changing detection at all, so a
+per-alert false positive total is a measurement of `threshold.config`. Julisch
+(ACM TISSEC 6(4), 2003) found a few dozen root causes account for over 90% of
+alarms, and one legitimate search URL containing `%2E` produced ~108,000
+"attack" alerts on a real network. Counting those as 108,000 false positives
+would say nothing about the defence.
+
+Per-attack-instance with duplicates collapsed is also what Lincoln Laboratory
+actually did - an attack counts as detected if an alert names the right victim
+within the attack window, and duplicate alarms in a 60-second same-target
+window are consolidated first.
