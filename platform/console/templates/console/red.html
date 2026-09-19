@@ -35,6 +35,32 @@
   </div>
 </div>
 
+<h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Terminal</h2>
+<p class="text-slate-400 text-sm mb-4">
+  Type your own attacks. Nothing typed here carries a case marker, so it is
+  labelled by time instead: name the attack, press start, do it, press stop.
+  Everything the terminal sends in that window is attributed to the name.
+</p>
+
+<div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
+  <label class="text-sm">
+    <span class="block text-slate-400 text-xs mb-1">Name</span>
+    <input id="window-name" value="manual-attack"
+           class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm w-56">
+  </label>
+  <label class="text-sm flex items-center gap-2 pb-2">
+    <input id="window-malicious" type="checkbox" checked class="accent-rose-600">
+    <span class="text-slate-400">this is an attack</span>
+  </label>
+  <button id="window-toggle"
+    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
+    Start
+  </button>
+  <span id="window-status" class="text-slate-500 text-sm pb-2"></span>
+</div>
+
+<iframe id="terminal" class="w-full h-96 border border-slate-800 rounded bg-black"></iframe>
+
 <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Sent</h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
 <p id="log-empty" class="text-slate-500 text-sm">Nothing sent yet.</p>
@@ -107,11 +133,71 @@
     });
   }
 
+  // -- the labelled terminal. No new endpoint: a window case is exactly what
+  // POST /api/sessions/<id>/cases/ already accepts.
+  let attacker = null;
+  let openedAt = null;
+
+  const status = (text, tone) => {
+    const element = document.getElementById("window-status");
+    element.textContent = text;
+    element.className = `text-sm pb-2 ${tone || "text-slate-500"}`;
+  };
+
+  async function loadTerminal() {
+    const result = await api("/api/attacker/");
+    if (!result.ok) {
+      status(result.body.detail || "attacker box unavailable", "text-amber-400");
+      document.getElementById("window-toggle").disabled = true;
+      return;
+    }
+    attacker = result.body;
+    document.getElementById("terminal").src = attacker.terminal_url;
+    status(`attacks will come from ${attacker.source_ip}`);
+  }
+
+  async function toggleWindow() {
+    const toggle = document.getElementById("window-toggle");
+    const name = document.getElementById("window-name");
+    const malicious = document.getElementById("window-malicious");
+
+    if (!openedAt) {
+      openedAt = new Date();
+      toggle.textContent = "Stop";
+      name.disabled = malicious.disabled = true;
+      status(`recording from ${attacker.source_ip} - go and attack`, "text-rose-400");
+      note(`window open: ${name.value}`, "text-slate-500");
+      return;
+    }
+
+    const result = await post(`/api/sessions/${sessionId()}/cases/`, {
+      case_id: crypto.randomUUID(),
+      name: name.value,
+      malicious: malicious.checked,
+      correlation: "window",
+      source_ip: attacker.source_ip,
+      started_at: openedAt.toISOString(),
+      ended_at: new Date().toISOString(),
+    });
+
+    note(
+      result.ok ? `window closed: ${name.value}` : `FAILED to record ${name.value}`,
+      result.ok ? "text-slate-300" : "text-amber-400",
+    );
+    openedAt = null;
+    toggle.textContent = "Start";
+    name.disabled = malicious.disabled = false;
+    status(`attacks will come from ${attacker.source_ip}`);
+  }
+
+  document.getElementById("window-toggle").addEventListener("click", toggleWindow);
+
   document.getElementById("run-all")
     .addEventListener("click", () => fireMany(catalogue));
   document.getElementById("run-attacks")
     .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
 
   render();
+  loadTerminal();
 </script>
 {% endblock %}

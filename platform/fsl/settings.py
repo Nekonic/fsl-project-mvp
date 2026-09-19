@@ -41,6 +41,11 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
 
+# The attacker's box, for free-form traffic typed in the terminal.
+ATTACKER_CONTAINER = os.environ.get("ATTACKER_CONTAINER", "fsl-kali")
+ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_fsl")
+ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
+
 # Where the red team's traffic goes, and where its case files live. Inside the
 # stack the attacks leave this container, so the target is the WAF by service
 # name; on a developer's host it is the published port.

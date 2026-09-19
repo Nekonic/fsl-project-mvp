@@ -128,7 +128,7 @@ worse = {
     if k in GATED and v > baseline.get(k, v)
 }
 if worse:
-    print("\nthis change makes the hypothesis bigger:")
+    print("\nthis change grows a gated number:")
     for name, (was, now) in worse.items():
         print(f"  {name}: {was} -> {now}")
     print("\nThat is not an improvement. Either shrink it back, or if the growth")

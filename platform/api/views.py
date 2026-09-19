@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 import requests
 
+import attacker
 import wargames
 from api.models import Case, Detection, RuleSet, ScoreSnapshot, Session
 from ingest import elastic
@@ -62,6 +63,20 @@ def sessions(request):
     body = _payload(request)
     session = Session.objects.create(scenario=body.get("scenario") or "juice-shop")
     return _reply(_shape(session, SESSION_FIELDS), status=201)
+
+
+@require_http_methods(["GET"])
+def attacker_box(request):
+    try:
+        return _reply(
+            {
+                "container": settings.ATTACKER_CONTAINER,
+                "source_ip": attacker.source_ip(),
+                "terminal_url": settings.ATTACKER_TERMINAL_URL,
+            }
+        )
+    except attacker.AttackerUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
 
 
 @require_http_methods(["GET"])
