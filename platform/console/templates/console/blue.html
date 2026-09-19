@@ -2,23 +2,96 @@
 {% block title %}Blue team{% endblock %}
 {% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
 {% block content %}
-<div class="flex gap-3 mb-6 border-b border-slate-800">
+<div class="flex gap-3 mb-6 border-b border-slate-800 items-center">
+  <button data-tab="alerts" class="tab px-4 py-2 text-sm">Live</button>
   <button data-tab="score" class="tab px-4 py-2 text-sm">Score</button>
-  <button data-tab="alerts" class="tab px-4 py-2 text-sm">Alerts</button>
   <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
-  <a id="to-red" target="_blank"
-     class="ml-auto px-4 py-2 text-sm text-rose-400 hover:text-rose-300">
-    Open red window
-  </a>
+
+  <div class="ml-auto flex items-center gap-3">
+    <button id="live-toggle"
+      class="flex items-center gap-2 px-3 py-1.5 rounded border border-slate-700
+             hover:border-slate-500 text-xs">
+      <span id="live-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span id="live-label">Live</span>
+    </button>
+    <select id="interval"
+      class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300">
+      <option value="2000">2s</option>
+      <option value="5000" selected>5s</option>
+      <option value="15000">15s</option>
+    </select>
+    <a id="to-red" target="_blank" class="text-sm text-rose-400 hover:text-rose-300">
+      Red window
+    </a>
+  </div>
 </div>
 
-<section data-panel="score">
-  <button id="reload"
-          class="mb-6 px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
-    Re-ingest alerts and score
-  </button>
-  <div id="warnings" class="mb-6 space-y-2"></div>
-  <div id="totals" class="grid grid-cols-4 gap-4 mb-8"></div>
+<section data-panel="alerts">
+  <div class="grid grid-cols-4 gap-3 mb-5">
+    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+      <div class="text-slate-500 text-xs uppercase tracking-wide">Events</div>
+      <div id="kpi-total" class="text-2xl font-semibold text-slate-100 tabular-nums">0</div>
+    </div>
+    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+      <div class="text-slate-500 text-xs uppercase tracking-wide">Suricata</div>
+      <div id="kpi-suricata" class="text-2xl font-semibold text-violet-300 tabular-nums">0</div>
+    </div>
+    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+      <div class="text-slate-500 text-xs uppercase tracking-wide">ModSecurity</div>
+      <div id="kpi-modsec" class="text-2xl font-semibold text-cyan-300 tabular-nums">0</div>
+    </div>
+    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+      <div class="text-slate-500 text-xs uppercase tracking-wide">Unattributed</div>
+      <div id="kpi-orphan" class="text-2xl font-semibold text-amber-300 tabular-nums">0</div>
+      <div class="text-slate-600 text-xs mt-0.5">no case marker</div>
+    </div>
+  </div>
+
+  <div class="border border-slate-800 rounded p-3 mb-5">
+    <div class="flex justify-between text-xs text-slate-500 mb-2">
+      <span>Activity</span><span id="histogram-range"></span>
+    </div>
+    <div id="histogram" class="flex items-end gap-px h-16"></div>
+  </div>
+
+  <div class="flex flex-wrap gap-2 mb-4 items-center">
+    <input id="search" placeholder="filter signature, address or marker"
+      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 min-w-64">
+    <div class="flex gap-1" id="source-filter">
+      <button data-source="" class="chip px-3 py-2 rounded text-xs border">All</button>
+      <button data-source="suricata" class="chip px-3 py-2 rounded text-xs border">Suricata</button>
+      <button data-source="modsecurity" class="chip px-3 py-2 rounded text-xs border">ModSecurity</button>
+    </div>
+    <label class="flex items-center gap-2 text-xs text-slate-400 px-2">
+      <input id="only-orphans" type="checkbox" class="accent-amber-500">
+      unattributed only
+    </label>
+    <span id="shown" class="text-xs text-slate-500 ml-auto"></span>
+  </div>
+
+  <div class="border border-slate-800 rounded overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide">
+        <tr>
+          <th class="w-1"></th>
+          <th class="text-left py-2 px-3 font-medium">Time</th>
+          <th class="text-left font-medium">Source</th>
+          <th class="text-left font-medium">Signature</th>
+          <th class="text-left font-medium">From</th>
+          <th class="text-left font-medium pr-3">Case</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="text-slate-500 text-sm p-6 text-center">
+      Waiting for traffic. Fire something from the red window.
+    </p>
+  </div>
+</section>
+
+<section data-panel="score" class="hidden">
+  <div id="warnings" class="mb-5 space-y-2"></div>
+  <div id="totals" class="grid grid-cols-4 gap-3 mb-8"></div>
   <table class="w-full text-sm">
     <thead class="text-slate-400 border-b border-slate-800">
       <tr><th class="text-left py-2">Case</th><th class="text-left">Label</th>
@@ -39,24 +112,6 @@
   <div id="comparison" class="grid grid-cols-2 gap-4"></div>
 </section>
 
-<section data-panel="alerts" class="hidden">
-  <button id="refresh-alerts"
-          class="mb-6 px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">
-    Refresh
-  </button>
-  <table class="w-full text-sm">
-    <thead class="text-slate-400 border-b border-slate-800">
-      <tr><th class="text-left py-2">Time</th><th class="text-left">Source</th>
-          <th class="text-left">Signature</th><th class="text-left">From</th>
-          <th class="text-left">Marker</th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <p id="empty" class="text-slate-500 text-sm mt-4 hidden">
-    No alerts ingested. Re-ingest from the Score tab.
-  </p>
-</section>
-
 <section data-panel="rules" class="hidden">
   <h2 class="text-slate-100 mb-3">Suricata rules</h2>
   <textarea id="editor" spellcheck="false"
@@ -71,13 +126,45 @@
   <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
        text-xs whitespace-pre-wrap text-slate-300"></pre>
 </section>
+
+<div id="drawer" class="fixed inset-y-0 right-0 w-[36rem] max-w-full bg-slate-950
+     border-l border-slate-800 translate-x-full transition-transform duration-200
+     overflow-y-auto z-50">
+  <div class="sticky top-0 bg-slate-950 border-b border-slate-800 px-5 py-4
+              flex items-center gap-3">
+    <div class="flex-1 min-w-0">
+      <div id="drawer-signature" class="text-slate-100 truncate"></div>
+      <div id="drawer-meta" class="text-slate-500 text-xs mt-0.5"></div>
+    </div>
+    <button id="drawer-close" class="text-slate-500 hover:text-slate-200 text-xl px-2">
+      &times;
+    </button>
+  </div>
+  <div class="p-5">
+    <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">Raw log record</div>
+    <pre id="drawer-raw" class="bg-slate-900 border border-slate-800 rounded p-4
+         text-xs whitespace-pre-wrap break-all text-slate-300 leading-relaxed"></pre>
+  </div>
+</div>
 {% endblock %}
 {% block script %}
 <script>
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
 
-  // -- tabs. Defending means editing a rule, re-scoring and reading the
-  // result over and over; a page load between each made that a chore.
+  const SOURCE_STYLE = {
+    suricata: "bg-violet-950 text-violet-300 border-violet-900",
+    modsecurity: "bg-cyan-950 text-cyan-300 border-cyan-900",
+  };
+  // Suricata severity runs 1 (worst) to 3. ModSecurity sends none.
+  const SEVERITY_BAR = {1: "bg-rose-500", 2: "bg-amber-500", 3: "bg-sky-500"};
+
+  let rows = [];
+  let lastId = 0;
+  let live = true;
+  let timer = null;
+  let sourceFilter = "";
+
+  // -- tabs
   function showTab(name) {
     document.querySelectorAll("[data-panel]").forEach((panel) => {
       panel.classList.toggle("hidden", panel.dataset.panel !== name);
@@ -85,13 +172,151 @@
     document.querySelectorAll(".tab").forEach((tab) => {
       const on = tab.dataset.tab === name;
       tab.className = `tab px-4 py-2 text-sm ${on
-        ? "text-slate-100 border-b-2 border-sky-500" : "text-slate-500"}`;
+        ? "text-slate-100 border-b-2 border-sky-500" : "text-slate-500 hover:text-slate-300"}`;
     });
-    if (name === "alerts") renderAlerts();
+    if (name === "score") renderScore();
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
+
+  // -- the live loop. Ingest pulls whatever Elasticsearch has since last time,
+  // then only the rows this console has not seen are fetched.
+  async function tick() {
+    await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
+    const result = await api(
+      `/api/sessions/${sessionId()}/detections/?after=${lastId}`);
+    if (!result.ok) return;
+
+    if (result.body.length) {
+      rows = rows.concat(result.body);
+      lastId = Math.max(...result.body.map((d) => d.id));
+      renderAlerts();
+      if (!document.querySelector('[data-panel="score"]').classList.contains("hidden")) {
+        renderScore();
+      }
+    }
+  }
+
+  function schedule() {
+    clearInterval(timer);
+    if (live) timer = setInterval(tick, Number(document.getElementById("interval").value));
+  }
+
+  function setLive(on) {
+    live = on;
+    document.getElementById("live-label").textContent = on ? "Live" : "Paused";
+    document.getElementById("live-dot").className = on
+      ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
+      : "w-2 h-2 rounded-full bg-slate-600";
+    schedule();
+    if (on) tick();
+  }
+  document.getElementById("live-toggle").addEventListener("click", () => setLive(!live));
+  document.getElementById("interval").addEventListener("change", schedule);
+
+  // -- filtering happens here, not on the server: the console already holds
+  // every row it has been sent, so a filter should not cost a round trip.
+  function visible() {
+    const needle = document.getElementById("search").value.trim().toLowerCase();
+    const orphansOnly = document.getElementById("only-orphans").checked;
+    return rows.filter((d) => {
+      if (sourceFilter && d.source !== sourceFilter) return false;
+      if (orphansOnly && d.marker) return false;
+      if (!needle) return true;
+      return [d.signature, d.src_ip, d.marker].some(
+        (value) => (value || "").toLowerCase().includes(needle));
+    });
+  }
+
+  function renderAlerts() {
+    const shown = visible();
+
+    document.getElementById("kpi-total").textContent = rows.length;
+    document.getElementById("kpi-suricata").textContent =
+      rows.filter((d) => d.source === "suricata").length;
+    document.getElementById("kpi-modsec").textContent =
+      rows.filter((d) => d.source === "modsecurity").length;
+    document.getElementById("kpi-orphan").textContent =
+      rows.filter((d) => !d.marker).length;
+
+    document.getElementById("shown").textContent =
+      shown.length === rows.length ? `${rows.length} events`
+                                   : `${shown.length} of ${rows.length} events`;
+
+    renderHistogram();
+    document.getElementById("empty").classList.toggle("hidden", shown.length > 0);
+
+    // Newest first: a console is read from the top.
+    document.getElementById("rows").innerHTML = shown.slice().reverse().slice(0, 300)
+      .map((d) => `
+      <tr data-id="${d.id}" class="alert-row border-t border-slate-900
+          hover:bg-slate-900/60 cursor-pointer">
+        <td class="${SEVERITY_BAR[d.severity] || "bg-slate-700"} w-1 p-0"></td>
+        <td class="py-2 px-3 text-slate-500 font-mono text-xs whitespace-nowrap">
+          ${(d.timestamp || "").replace("T", " ").slice(0, 19)}</td>
+        <td><span class="border rounded px-1.5 py-0.5 text-xs ${
+          SOURCE_STYLE[d.source] || "border-slate-700 text-slate-400"}">${d.source}</span></td>
+        <td class="text-slate-200">${d.signature}</td>
+        <td class="text-slate-400 font-mono text-xs">${d.src_ip || "-"}</td>
+        <td class="pr-3 font-mono text-xs ${d.marker ? "text-emerald-400" : "text-slate-600"}">
+          ${d.marker ? d.marker.slice(0, 8) : "unattributed"}</td>
+      </tr>`).join("");
+
+    document.querySelectorAll(".alert-row").forEach((row) => {
+      row.addEventListener("click", () => openDrawer(row.dataset.id));
+    });
+  }
+
+  function renderHistogram() {
+    const times = rows.map((d) => Date.parse(d.timestamp)).filter(Number.isFinite);
+    const histogram = document.getElementById("histogram");
+    if (!times.length) { histogram.innerHTML = ""; return; }
+
+    const first = Math.min(...times);
+    const last = Math.max(...times);
+    const buckets = new Array(48).fill(0);
+    const span = Math.max(last - first, 1);
+    times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 47))]++);
+
+    const tallest = Math.max(...buckets, 1);
+    histogram.innerHTML = buckets.map((count) => `
+      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${count} events"
+           style="height:${Math.max(count / tallest * 100, count ? 6 : 1)}%"></div>`).join("");
+    document.getElementById("histogram-range").textContent =
+      `${new Date(first).toLocaleTimeString()} - ${new Date(last).toLocaleTimeString()}`;
+  }
+
+  document.getElementById("search").addEventListener("input", renderAlerts);
+  document.getElementById("only-orphans").addEventListener("change", renderAlerts);
+  document.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      sourceFilter = chip.dataset.source;
+      document.querySelectorAll(".chip").forEach((other) => {
+        const on = other.dataset.source === sourceFilter;
+        other.className = `chip px-3 py-2 rounded text-xs border ${on
+          ? "border-sky-600 text-sky-300 bg-sky-950/40" : "border-slate-700 text-slate-400"}`;
+      });
+      renderAlerts();
+    });
+  });
+  document.querySelector('.chip[data-source=""]').click();
+
+  // -- the drawer: the whole log record behind one line of the table.
+  async function openDrawer(id) {
+    const { ok, body } = await api(`/api/detections/${id}/`);
+    if (!ok) return;
+    document.getElementById("drawer-signature").textContent = body.signature;
+    document.getElementById("drawer-meta").textContent =
+      `${body.source} - ${body.timestamp} - from ${body.src_ip || "unknown"}` +
+      (body.marker ? ` - case ${body.marker.slice(0, 8)}` : " - unattributed");
+    document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
+    document.getElementById("drawer").classList.remove("translate-x-full");
+  }
+  const closeDrawer = () =>
+    document.getElementById("drawer").classList.add("translate-x-full");
+  document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
   // -- score
   const VERDICT_STYLE = {
@@ -100,24 +325,18 @@
   };
 
   function tile(label, value) {
-    return `<div class="bg-slate-900 border border-slate-800 rounded p-4">
-      <div class="text-slate-400 text-xs uppercase">${label}</div>
-      <div class="text-2xl font-semibold text-slate-100">${value}</div></div>`;
+    return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+      <div class="text-slate-500 text-xs uppercase tracking-wide">${label}</div>
+      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${value}</div></div>`;
   }
 
   async function renderScore() {
     const warnings = document.getElementById("warnings");
     warnings.innerHTML = "";
 
-    const ingest = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
-    if (!ingest.ok) {
-      warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
-        text-rose-200 text-sm">ingest failed (${ingest.status}): ${ingest.body.detail || ""}</div>`;
-    }
-
     const score = await api(`/api/sessions/${sessionId()}/score/`);
     if (!score.ok) {
-      warnings.innerHTML += `<div class="bg-rose-950 border border-rose-800 rounded p-3
+      warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
         text-rose-200 text-sm">scoring failed (${score.status})</div>`;
       return;
     }
@@ -159,36 +378,15 @@
       }
       const s = result.body;
       return `<div class="border border-slate-800 rounded p-4">
-        <div class="text-slate-400 text-xs uppercase mb-2">by ${strategies[i]}</div>
-        <div class="text-slate-100">
+        <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">by ${strategies[i]}</div>
+        <div class="text-slate-100 tabular-nums">
           TP ${s.tp} &middot; FN ${s.fn} &middot; FP ${s.fp} &middot; TN ${s.tn}
         </div>
-        <div class="text-slate-500 text-sm mt-1">
+        <div class="text-slate-500 text-sm mt-1 tabular-nums">
           precision ${s.precision.toFixed(2)} &middot; recall ${s.recall.toFixed(2)}
         </div></div>`;
     }).join("");
   }
-  document.getElementById("reload").addEventListener("click", renderScore);
-
-  // -- alerts
-  async function renderAlerts() {
-    const result = await api(`/api/sessions/${sessionId()}/detections/`);
-    const rows = document.getElementById("rows");
-    const empty = document.getElementById("empty");
-    if (!result.ok) { rows.innerHTML = ""; empty.classList.remove("hidden"); return; }
-
-    empty.classList.toggle("hidden", result.body.length > 0);
-    rows.innerHTML = result.body.map((d) => `
-      <tr class="border-b border-slate-900">
-        <td class="py-2 text-slate-400">${d.timestamp}</td>
-        <td>${d.source}</td>
-        <td class="text-slate-100">${d.signature}</td>
-        <td>${d.src_ip || "-"}</td>
-        <td class="${d.marker ? "text-emerald-400" : "text-slate-600"}">
-          ${d.marker ? d.marker.slice(0, 8) : "none"}</td>
-      </tr>`).join("");
-  }
-  document.getElementById("refresh-alerts").addEventListener("click", renderAlerts);
 
   // -- rules
   const editor = document.getElementById("editor");
@@ -209,10 +407,12 @@
   document.getElementById("apply").addEventListener("click", async () => {
     const r = await post("/api/rules/apply/", {content: editor.value});
     show(r.ok ? "Applied and reloaded Suricata." : r.body.detail, r.ok);
+    // A rule change is the one thing that should re-score immediately.
+    if (r.ok) renderScore();
   });
 
   api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
-  showTab("score");
-  renderScore();
+  showTab("alerts");
+  setLive(true);
 </script>
 {% endblock %}

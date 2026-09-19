@@ -34,6 +34,9 @@ DETECTION_FIELDS = (
     "id", "detection_id", "source", "signature", "severity", "timestamp",
     "src_ip", "marker",
 )
+# One alert plus the document it came from. Only the drawer asks for this:
+# `raw` is the whole Elasticsearch record and far too heavy for a list.
+DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
 SCORE_FIELDS = (
     "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
@@ -242,8 +245,31 @@ def ingest_detections(request, session_id):
 
 @require_http_methods(["GET"])
 def session_detections(request, session_id):
+    """The alerts, or just the ones a live console has not seen yet.
+
+    `?after=` is what keeps a two-second refresh cheap. A bad value is rejected
+    rather than ignored, because falling back to "everything" would arrive at
+    the console as a sudden flood of alerts that are not new.
+    """
     session = get_object_or_404(Session, pk=session_id)
-    return _reply([_shape(d, DETECTION_FIELDS) for d in session.detections.all()])
+    detections = session.detections.all()
+
+    after = request.GET.get("after")
+    if after is not None:
+        if not after.lstrip("-").isdigit():
+            return _reply({"detail": f'"after" must be a row id, got {after!r}'}, 400)
+        detections = detections.filter(id__gt=int(after))
+
+    return _reply([_shape(d, DETECTION_FIELDS) for d in detections])
+
+
+@require_http_methods(["GET"])
+def detection_detail(request, detection_id):
+    """One alert with the log record behind it, for the console's drawer."""
+    detection = get_object_or_404(Detection, pk=detection_id)
+    return _reply(
+        _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
+    )
 
 
 @require_http_methods(["GET"])

@@ -22,6 +22,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("api/sessions/<int:session_id>/detections/", views.session_detections),
     path("api/sessions/<int:session_id>/score/", views.session_score),
+    path("api/detections/<int:detection_id>/", views.detection_detail),
     path("api/rules/", views.current_rules),
     path("api/rules/validate/", views.validate_rules),
     path("api/rules/apply/", views.apply_rules),

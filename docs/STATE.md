@@ -11,13 +11,13 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 124 unit/API tests, 17 acceptance tests against the live
+`bin/verify` is green: 130 unit/API tests, 17 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     1668   not gated (was 1031 before the console)
+product_loc     1870   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
 ```
@@ -29,11 +29,27 @@ also has a Kali terminal - name an attack, press start, type it, press stop,
 and it is scored two ways at once - by time and source, and by a marker the
 proxy stamps - with both answers side by side in the blue window.
 
+The blue window is a live console now: it ingests and redraws on a timer, so
+alerts arrive while you watch rather than when you press something, and any
+alert opens the whole Elasticsearch record behind it.
+
 ## In progress
 
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The blue window became a monitoring console.** It ingests on a timer and
+  appends only the rows it has not seen (`?after=`), so alerts arrive without a
+  refresh - verified by firing attacks with the window open and watching the
+  counts move. Event counts by engine, an activity histogram, source and text
+  filters, an unattributed-only toggle, and a drawer that opens the raw
+  Elasticsearch record behind any alert. `Detection.raw` had held that document
+  since v1.0 and had simply never been served.
+
+  Polling rather than WebSockets: channels and daphne would have put
+  `dependencies` at 8 permanently, and the tools this imitates poll too. See
+  DECISIONS.
 
 - **Phase 3: both strategies score the same traffic.** A mitmproxy service
   stamps `X-FSL-Case` onto the terminal's traffic, reading the active marker
