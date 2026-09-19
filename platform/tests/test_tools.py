@@ -88,10 +88,9 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
     import subprocess
     from unittest.mock import patch
 
-    from redteam.harness import Harness
+    from redteam.harness import fire_tool
     from redteam.tools import ToolUnavailable
 
-    harness = Harness("http://platform", "http://target")
     failure = subprocess.CompletedProcess(
         args=["docker"],
         returncode=125,
@@ -101,7 +100,7 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
 
     with patch("redteam.harness.subprocess.run", return_value=failure):
         with pytest.raises(ToolUnavailable, match="fsl-redteam-tools"):
-            harness._fire_tool(dict(CASE))
+            fire_tool(dict(CASE), INTERNAL_TARGET)
 
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
@@ -110,9 +109,8 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
     import subprocess
     from unittest.mock import patch
 
-    from redteam.harness import Harness
+    from redteam.harness import fire_tool
 
-    harness = Harness("http://platform", "http://target")
     scan_failed = subprocess.CompletedProcess(
         args=["docker"],
         returncode=1,
@@ -121,4 +119,4 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
     )
 
     with patch("redteam.harness.subprocess.run", return_value=scan_failed):
-        harness._fire_tool(dict(CASE))  # no exception
+        fire_tool(dict(CASE), INTERNAL_TARGET)  # no exception

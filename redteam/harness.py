@@ -49,8 +49,10 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
         return yaml.safe_load(handle) or []
 
 
-def build_request(case: dict[str, Any], base_url: str) -> dict[str, Any]:
-    """Turn one case into keyword arguments for requests.
+def build_request(case: dict[str, Any], base_url: str) -> requests.PreparedRequest:
+    """Turn one case into the request that will actually go on the wire.
+
+    Prepared rather than sent, so a test can pin down exactly what would leave.
 
     Only marker-correlated cases carry the header. Putting a marker on a window
     case would blend the two strategies and hide correlation failures.
@@ -60,13 +62,13 @@ def build_request(case: dict[str, Any], base_url: str) -> dict[str, Any]:
     if case.get("correlation") == "marker":
         headers[MARKER_HEADER] = case["case_id"]
 
-    return {
-        "method": spec.get("method", "GET"),
-        "url": f"{base_url.rstrip('/')}{spec['path']}",
-        "headers": headers,
-        "json": spec.get("json"),
-        "params": spec.get("params"),
-    }
+    return requests.Request(
+        method=spec.get("method", "GET"),
+        url=f"{base_url.rstrip('/')}{spec['path']}",
+        headers=headers,
+        json=spec.get("json"),
+        params=spec.get("params"),
+    ).prepare()
 
 
 def check_path_preserved(declared_path: str, prepared_url: str) -> None:
@@ -111,111 +113,108 @@ def case_meta(case: dict[str, Any]) -> dict[str, Any]:
     return {"request": case["request"]}
 
 
-class Harness:
-    """Open a session, run the cases, and record ground truth."""
+def run(
+    cases: list[dict[str, Any]],
+    platform_url: str,
+    target_url: str,
+    tool_target_url: str = DEFAULT_TOOL_TARGET,
+) -> int:
+    """Open a session, run every case, record ground truth, close the session.
 
-    def __init__(
-        self,
-        platform_url: str,
-        target_url: str,
-        session: requests.Session | None = None,
-        tool_target_url: str = DEFAULT_TOOL_TARGET,
-    ) -> None:
-        self.platform_url = platform_url.rstrip("/")
-        self.target_url = target_url.rstrip("/")
-        self.tool_target_url = tool_target_url.rstrip("/")
-        self.session = session or requests.Session()
+    One requests.Session for the whole run, so the traffic keeps HTTP
+    keep-alive - which is what the (flow_id, tx_id) correlation has to cope
+    with, and therefore what this has to reproduce.
+    """
+    http = requests.Session()
+    platform_url = platform_url.rstrip("/")
+    session_id = _open_session(http, platform_url)
 
-    def run(self, cases: list[dict[str, Any]]) -> int:
-        session_id = self._open_session()
+    for case in cases:
+        case = dict(case)
+        case.setdefault("case_id", str(uuid.uuid4()))
+        case.setdefault("correlation", "marker")
 
-        for case in cases:
-            case = dict(case)
-            case.setdefault("case_id", str(uuid.uuid4()))
-            case.setdefault("correlation", "marker")
+        started_at = _now()
+        fire(http, case, target_url, tool_target_url)
+        _record(http, platform_url, session_id, case, started_at, _now())
 
-            started_at = _now()
-            self._fire(case)
-            ended_at = _now()
+    http.post(
+        f"{platform_url}/api/sessions/{session_id}/close/", timeout=REQUEST_TIMEOUT
+    )
+    return session_id
 
-            self._record(session_id, case, started_at, ended_at)
 
-        self._close_session(session_id)
-        return session_id
+def _open_session(http: requests.Session, platform_url: str) -> int:
+    response = http.post(
+        f"{platform_url}/api/sessions/",
+        json={"scenario": "juice-shop"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()["id"]
 
-    def _open_session(self) -> int:
-        response = self.session.post(
-            f"{self.platform_url}/api/sessions/",
-            json={"scenario": "juice-shop"},
-            timeout=REQUEST_TIMEOUT,
+
+def fire(
+    http: requests.Session,
+    case: dict[str, Any],
+    target_url: str,
+    tool_target_url: str,
+) -> None:
+    """Send one case's traffic."""
+    if is_tool_case(case):
+        fire_tool(case, tool_target_url)
+        return
+
+    prepared = build_request(case, target_url)
+
+    # A request that differs from what was declared makes ground truth false.
+    # Do not swallow this.
+    check_path_preserved(case["request"]["path"], prepared.url)
+
+    try:
+        http.send(prepared, timeout=REQUEST_TIMEOUT)
+    except requests.RequestException as exc:
+        # Record ground truth even if the target answers 4xx/5xx or the
+        # connection drops. That the request went out is what is scored.
+        print(f"  ! {case['name']}: request failed - {exc}")
+
+
+def fire_tool(case: dict[str, Any], tool_target_url: str) -> None:
+    command = build_tool_command(case, tool_target_url)
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=TOOL_TIMEOUT
         )
-        response.raise_for_status()
-        return response.json()["id"]
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ToolUnavailable(
+            f"{case['name']}: could not run the tool - {exc}. "
+            f"Build the image first: docker compose --profile tools build"
+        ) from exc
 
-    def _close_session(self, session_id: int) -> None:
-        self.session.post(
-            f"{self.platform_url}/api/sessions/{session_id}/close/",
-            timeout=REQUEST_TIMEOUT,
+    if result.returncode == DOCKER_STARTUP_FAILURE:
+        raise ToolUnavailable(
+            f"{case['name']}: the tool container did not start "
+            f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
+            f"Build the image first: docker compose --profile tools build"
         )
 
-    def _fire(self, case: dict[str, Any]) -> None:
-        if is_tool_case(case):
-            self._fire_tool(case)
-            return
+    if result.returncode != 0:
+        # The tool exiting non-zero is normal: sqlmap does that when it finds
+        # no injection point. The attempt went out, so ground truth stands.
+        print(f"  . {case['name']}: tool exited {result.returncode}")
 
-        spec = build_request(case, self.target_url)
-        prepared = requests.Request(
-            method=spec["method"],
-            url=spec["url"],
-            headers=spec["headers"],
-            json=spec["json"],
-            params=spec["params"],
-        ).prepare()
 
-        # A request that differs from what was declared makes ground truth
-        # false. Do not swallow this.
-        check_path_preserved(case["request"]["path"], prepared.url)
-
-        try:
-            self.session.send(prepared, timeout=REQUEST_TIMEOUT)
-        except requests.RequestException as exc:
-            # Record ground truth even if the target answers 4xx/5xx or the
-            # connection drops. That the request went out is what is scored.
-            print(f"  ! {case['name']}: request failed - {exc}")
-
-    def _fire_tool(self, case: dict[str, Any]) -> None:
-        command = build_tool_command(case, self.tool_target_url)
-        try:
-            result = subprocess.run(
-                command, capture_output=True, text=True, timeout=TOOL_TIMEOUT
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise ToolUnavailable(
-                f"{case['name']}: could not run the tool - {exc}. "
-                f"Build the image first: docker compose --profile tools build"
-            ) from exc
-
-        if result.returncode == DOCKER_STARTUP_FAILURE:
-            raise ToolUnavailable(
-                f"{case['name']}: the tool container did not start "
-                f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
-                f"Build the image first: docker compose --profile tools build"
-            )
-
-        if result.returncode != 0:
-            # The tool exiting non-zero is normal: sqlmap does that when it
-            # finds no injection point. The attempt went out, so ground truth
-            # stands.
-            print(f"  . {case['name']}: tool exited {result.returncode}")
-
-    def _record(
-        self,
-        session_id: int,
-        case: dict[str, Any],
-        started_at: datetime,
-        ended_at: datetime,
-    ) -> None:
-        payload = {
+def _record(
+    http: requests.Session,
+    platform_url: str,
+    session_id: int,
+    case: dict[str, Any],
+    started_at: datetime,
+    ended_at: datetime,
+) -> None:
+    response = http.post(
+        f"{platform_url}/api/sessions/{session_id}/cases/",
+        json={
             "case_id": case["case_id"],
             "name": case["name"],
             "malicious": bool(case["malicious"]),
@@ -225,13 +224,10 @@ class Harness:
             "started_at": started_at.isoformat(),
             "ended_at": ended_at.isoformat(),
             "meta": case_meta(case),
-        }
-        response = self.session.post(
-            f"{self.platform_url}/api/sessions/{session_id}/cases/",
-            json=payload,
-            timeout=REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
 
 
 def _now() -> datetime:

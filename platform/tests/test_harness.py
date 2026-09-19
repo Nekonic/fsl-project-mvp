@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import yaml
@@ -36,11 +37,11 @@ def test_build_request_injects_marker_header():
         "request": {"method": "GET", "path": "/rest/products/search"},
     }
 
-    request = build_request(case, BASE)
+    prepared = build_request(case, BASE)
 
-    assert request["headers"]["X-FSL-Case"] == "abc"
-    assert request["url"] == f"{BASE}/rest/products/search"
-    assert request["method"] == "GET"
+    assert prepared.headers["X-FSL-Case"] == "abc"
+    assert prepared.url == f"{BASE}/rest/products/search"
+    assert prepared.method == "GET"
 
 
 def test_build_request_omits_marker_for_window_cases():
@@ -50,12 +51,14 @@ def test_build_request_omits_marker_for_window_cases():
         "request": {"method": "GET", "path": "/"},
     }
 
-    request = build_request(case, BASE)
+    prepared = build_request(case, BASE)
 
-    assert "X-FSL-Case" not in request["headers"]
+    assert "X-FSL-Case" not in prepared.headers
 
 
 def test_build_request_carries_json_body_and_params():
+    # Asserted on the prepared request, so this pins what leaves the process
+    # rather than what we intended to send.
     case = {
         "case_id": "abc",
         "correlation": "marker",
@@ -67,10 +70,11 @@ def test_build_request_carries_json_body_and_params():
         },
     }
 
-    request = build_request(case, BASE)
+    prepared = build_request(case, BASE)
 
-    assert request["json"] == {"email": "x", "password": "y"}
-    assert request["params"] == {"q": "apple"}
+    assert json.loads(prepared.body) == {"email": "x", "password": "y"}
+    assert prepared.headers["Content-Type"] == "application/json"
+    assert prepared.url.endswith("?q=apple")
 
 
 def test_default_cases_file_has_both_labels():
@@ -125,24 +129,14 @@ def test_check_path_preserved_accepts_percent_encoded_traversal():
 
 def test_default_cases_survive_request_preparation():
     # Every path in the case file must survive preparation unchanged.
-    import requests
-
     from redteam.harness import check_path_preserved
-
     from redteam.tools import is_tool_case
 
     for case in load_cases(DEFAULT_CASES):
         if is_tool_case(case):
             continue  # tool cases never go through requests
         case = dict(case, case_id="probe")
-        spec = build_request(case, BASE)
-        prepared = requests.Request(
-            method=spec["method"],
-            url=spec["url"],
-            headers=spec["headers"],
-            json=spec["json"],
-            params=spec["params"],
-        ).prepare()
+        prepared = build_request(dict(case, case_id="probe"), BASE)
         check_path_preserved(case["request"]["path"], prepared.url)
 
 
