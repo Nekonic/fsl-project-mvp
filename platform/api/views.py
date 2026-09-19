@@ -364,6 +364,7 @@ def session_score(request, session_id):
 
     cases = list(session.cases.all())
     detections = list(session.detections.all())
+    signatures = {d.detection_id: d.signature for d in detections}
 
     records = [c.to_record() for c in cases]
     if forced:
@@ -371,7 +372,9 @@ def session_score(request, session_id):
 
     result = correlate(records, [d.to_record() for d in detections])
     totals = compute_score(result)
+    per_case = _per_case(result, _expectations(session.scenario), signatures)
     board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
+    warnings = list(totals.warnings) + _wrong_reason_warnings(per_case)
 
     snapshot = ScoreSnapshot.objects.create(
         session=session,
@@ -383,8 +386,8 @@ def session_score(request, session_id):
         recall=totals.recall,
         f1=totals.f1,
         false_positive_rate=totals.false_positive_rate,
-        warnings=list(totals.warnings),
-        per_case=_per_case(result),
+        warnings=warnings,
+        per_case=per_case,
     )
 
     return _reply(
@@ -439,7 +442,14 @@ def _breach_rows(session, cases, result):
     ]
 
 
-def _per_case(result):
+def _expectations(scenario):
+    try:
+        return wargames.expectations(scenario)
+    except wargames.UnknownWargame:
+        return {}
+
+
+def _per_case(result, expectations, signatures):
     return [
         {
             "case_id": m.case_id,
@@ -448,8 +458,30 @@ def _per_case(result):
             "detected": m.detected,
             "verdict": _verdict(m.malicious, m.detected),
             "detection_ids": list(m.detection_ids),
+            "expect": expectations.get(m.name) or "",
+            "corroborated": scoreboard.corroborated(
+                expectations.get(m.name),
+                [signatures[d] for d in m.detection_ids if d in signatures],
+            ),
         }
         for m in result.matches
+    ]
+
+
+def _wrong_reason_warnings(per_case):
+    """Say so when a true positive is not evidence of anything.
+
+    An alert inside the window is not an alert about the attack. Left
+    unreported, a rule set that catches every case for reasons unrelated to
+    any of them scores exactly as well as one that works.
+    """
+    wrong = [c["name"] for c in per_case if c["detected"] and c["corroborated"] is False]
+    if not wrong:
+        return []
+    return [
+        f"Detected for the wrong reason: {', '.join(wrong)}. Nothing attributed "
+        f"to these mentions the mechanism the case declared, so the true "
+        f"positive is not evidence that the defence saw this attack."
     ]
 
 

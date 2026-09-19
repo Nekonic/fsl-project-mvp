@@ -11,13 +11,13 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 144 unit/API tests, 20 acceptance tests against the live
+`bin/verify` is green: 153 unit/API tests, 20 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2303   not gated (was 1031 before the console)
+product_loc     2379   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
 ```
@@ -38,6 +38,18 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **A true positive now has to name the right rule.** Each attack case declares
+  `expect` - a substring of the signature that should be able to find it - and
+  an alert that does not mention the attack's own mechanism is reported as
+  `corroborated: false` with a warning. The arithmetic is unchanged on purpose:
+  rewriting the TP would hide the disagreement rather than show it.
+
+  Mahoney & Chan's one-byte detector scored 45% on DARPA - level with the best
+  real systems of 1999 - and zero on real traffic, and no score of that era
+  could tell. Measured here: all six attacks corroborate today, so the baseline
+  is honest and a change that makes it dishonest is now visible. `core_loc` did
+  not move; the check is in `scoreboard.py`, not in the hypothesis.
 
 - **Objectives lead the score.** The old scoreboard was false positives and
   false negatives and nothing else, which is gameable - twelve fixed public
@@ -202,20 +214,7 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-### 1. Check *which* signature fired, not only that one did
-
-`TP > 0` does not prove the hypothesis. Mahoney & Chan (RAID 2003) built a
-detector that scored competitively on DARPA by reading one byte of the source
-address, and it fell to zero detections on real traffic. Nothing here yet
-checks that the alert attributed to an attack has anything to do with that
-attack's mechanism - a path traversal case credited with an XSS signature
-scores exactly the same as one credited with the traversal rule.
-
-The data is already stored: `Detection.raw` carries the Suricata `signature_id`.
-The cheap version is a per-case expected-SID and a warning when the attributed
-alerts do not include it. See DECISIONS for the reasoning.
-
-### 2. More objectives the red team can actually reach
+### 1. More objectives the red team can actually reach
 
 `redteam/cases/` fires twelve payloads and takes nothing. Now that objectives
 are the score, the case file is the weakest part of the range: it should
@@ -223,7 +222,7 @@ contain attack chains that reach named objectives, not payloads that only trip
 rules. Start from the two verified single-request ones in
 `test/test_objectives.py` and work up the difficulty ladder.
 
-### 3. Turn a verdict into a rule change
+### 2. Turn a verdict into a rule change
 
 No commercial console closes this loop - an analyst records "false positive"
 and the rule that produced it is untouched. This range owns both sides. A

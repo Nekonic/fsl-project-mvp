@@ -1,10 +1,18 @@
 # Attack and benign traffic live in one file. Splitting them makes it easy to
 # forget the benign half, and without it a block-everything rule scores 100%.
+#
+# `expect` is what should be able to detect the attack: a substring of the
+# alert signature, matched case-insensitively against everything attributed to
+# the case. A true positive whose only evidence fails this is detected for the
+# wrong reason, and the score says so instead of taking the credit. The values
+# were read off the signatures both engines actually produce, not guessed -
+# Suricata says "SQLi", ModSecurity says "SQL Injection", so "SQL" covers both.
 
 # -- attacks ---------------------------------------------------------------
 - name: sqli-login-bypass
   malicious: true
   technique: SQLi
+  expect: "SQL"
   correlation: marker
   request:
     method: POST
@@ -16,6 +24,7 @@
 - name: sqli-union-in-search
   malicious: true
   technique: SQLi
+  expect: "SQL"
   correlation: marker
   request:
     method: GET
@@ -26,6 +35,7 @@
 - name: xss-script-tag-in-search
   malicious: true
   technique: XSS
+  expect: "XSS"
   correlation: marker
   request:
     method: GET
@@ -36,6 +46,7 @@
 - name: xss-img-onerror
   malicious: true
   technique: XSS
+  expect: "XSS"
   correlation: marker
   request:
     method: GET
@@ -48,6 +59,7 @@
 - name: path-traversal-ftp
   malicious: true
   technique: PathTraversal
+  expect: "traversal"
   correlation: marker
   request:
     method: GET
@@ -58,6 +70,7 @@
 - name: sqlmap-boolean-blind
   malicious: true
   technique: SQLi
+  expect: "SQL"
   correlation: marker
   tool: sqlmap
   args:

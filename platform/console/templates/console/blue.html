@@ -111,7 +111,8 @@
   <table class="w-full text-sm">
     <thead class="text-slate-400 border-b border-slate-800">
       <tr><th class="text-left py-2">Case</th><th class="text-left">Label</th>
-          <th class="text-left">Verdict</th><th class="text-left">Alerts</th></tr>
+          <th class="text-left">Verdict</th><th class="text-left">Alerts</th>
+          <th class="text-left">Evidence</th></tr>
     </thead>
     <tbody id="per-case"></tbody>
   </table>
@@ -349,6 +350,21 @@
     FP: "text-amber-400", FN: "text-rose-400",
   };
 
+  // A true positive says something fired in the window, not that it was about
+  // this attack. `expect` is what the case declared should be able to find it.
+  function evidence(c) {
+    if (!c.detected) return `<span class="text-slate-600">-</span>`;
+    if (c.corroborated === null) {
+      return `<span class="text-slate-600" title="no declared mechanism">unjudged</span>`;
+    }
+    if (c.corroborated) {
+      return `<span class="text-emerald-500" title="an alert mentions ${c.expect}">
+        matches ${c.expect}</span>`;
+    }
+    return `<span class="text-amber-400 font-semibold"
+      title="nothing attributed to this mentions ${c.expect}">WRONG RULE</span>`;
+  }
+
   function tile(label, value) {
     return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
       <div class="text-slate-500 text-xs uppercase tracking-wide">${label}</div>
@@ -386,7 +402,8 @@
         <td class="py-2">${c.name}</td>
         <td>${c.malicious ? "attack" : "benign"}</td>
         <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${c.verdict}</td>
-        <td>${c.detection_ids.length}</td>
+        <td class="tabular-nums">${c.detection_ids.length}</td>
+        <td class="text-xs">${evidence(c)}</td>
       </tr>`).join("");
 
     renderComparison();
