@@ -2,18 +2,12 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
-from rest_framework.test import APIClient
 
 from rules.suricata import RuleApplyError, ValidationOutcome
 
 pytestmark = pytest.mark.django_db
 
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'
-
-
-@pytest.fixture
-def client():
-    return APIClient()
 
 
 def completed(returncode, stdout="", stderr=""):
@@ -99,10 +93,10 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
     with patch(
         "api.views.suricata.validate", return_value=ValidationOutcome(ok=True, output="ok")
     ):
-        response = client.post("/api/rules/validate/", {"content": GOOD_RULE}, format="json")
+        response = client.post_json("/api/rules/validate/", {"content": GOOD_RULE})
 
     assert response.status_code == 200
-    assert response.data["ok"] is True
+    assert response.json()["ok"] is True
     assert RuleSet.objects.count() == 0
 
 
@@ -111,17 +105,17 @@ def test_validate_endpoint_reports_failure_as_400_with_output(client):
         "api.views.suricata.validate",
         return_value=ValidationOutcome(ok=False, output="Error parsing signature"),
     ):
-        response = client.post("/api/rules/validate/", {"content": "x"}, format="json")
+        response = client.post_json("/api/rules/validate/", {"content": "x"})
 
     assert response.status_code == 400
-    assert "Error parsing signature" in response.data["output"]
+    assert "Error parsing signature" in response.json()["output"]
 
 
 def test_apply_endpoint_stores_and_marks_applied(client):
     from api.models import RuleSet
 
     with patch("api.views.suricata.apply") as applier:
-        response = client.post("/api/rules/apply/", {"content": GOOD_RULE}, format="json")
+        response = client.post_json("/api/rules/apply/", {"content": GOOD_RULE})
 
     applier.assert_called_once_with(GOOD_RULE)
     assert response.status_code == 200
@@ -134,10 +128,10 @@ def test_apply_endpoint_returns_400_and_stores_nothing_on_failure(client):
     from api.models import RuleSet
 
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad rule")):
-        response = client.post("/api/rules/apply/", {"content": "x"}, format="json")
+        response = client.post_json("/api/rules/apply/", {"content": "x"})
 
     assert response.status_code == 400
-    assert "bad rule" in response.data["detail"]
+    assert "bad rule" in response.json()["detail"]
     assert RuleSet.objects.count() == 0
 
 
@@ -146,4 +140,4 @@ def test_rules_endpoint_returns_current_file_content(client):
         response = client.get("/api/rules/")
 
     assert response.status_code == 200
-    assert response.data["content"] == GOOD_RULE
+    assert response.json()["content"] == GOOD_RULE

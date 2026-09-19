@@ -10,7 +10,6 @@ ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
-    "rest_framework",
     "api",
     "blueteam",
 ]
@@ -43,11 +42,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
-
-REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
-    "UNAUTHENTICATED_USER": None,
-}
 
 # Where this process meets the stack. All env vars, so tests run outside Docker.
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
