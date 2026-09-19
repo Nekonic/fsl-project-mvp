@@ -1,84 +1,93 @@
 # fsl-project-mvp
 
-사이버 공방 훈련 플랫폼 MVP. 레드팀이 웹 앱을 공격하고 블루팀이
-Suricata·ModSecurity 로 막는 환경을 세우고, 방어 성패를 오탐·미탐으로 채점한다.
+A cyber attack/defence training range. A red team attacks a web app, a blue
+team defends it with Suricata and ModSecurity, and the platform scores the
+defence by its false positives and false negatives.
 
-메인 프로젝트는 별도 레포. 여기는 가설 검증용이다.
+The production project lives in a separate repository. This one exists to test
+a hypothesis:
 
-검증하는 가설: **레드팀 공격에 ground truth 라벨을 붙일 수 있고, Suricata·
-ModSecurity 경보를 그 라벨에 자동 대응시켜 오탐/미탐을 기계적으로 채점할 수 있다.**
+> **Red team attacks can be labelled with ground truth, and Suricata/ModSecurity
+> alerts can be matched to those labels automatically, so false positives and
+> negatives can be scored mechanically.**
 
-설계는 [`docs/superpowers/specs/2026-09-18-fsl-mvp-design.md`](docs/superpowers/specs/2026-09-18-fsl-mvp-design.md).
+The design is in
+[`docs/superpowers/specs/2026-09-18-fsl-mvp-design.md`](docs/superpowers/specs/2026-09-18-fsl-mvp-design.md).
 
-## 띄우기
+## Bringing it up
 
 ```bash
 docker compose up -d --build
 ```
 
-| 주소 | 용도 |
-|------|------|
-| http://localhost:8000 | 블루팀 콘솔 + `/api/` |
-| http://localhost:8080 | WAF 를 통과하는 juice-shop (공격 대상) |
+| | |
+|---|---|
+| http://localhost:8000 | blue team console, and `/api/` |
+| http://localhost:8080 | Juice Shop behind the WAF — the target |
 | http://localhost:9200 | Elasticsearch |
 
-ES ingest pipeline 을 한 번 등록한다.
+Register the Elasticsearch ingest pipeline once:
 
 ```bash
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip -H 'Content-Type: application/json' --data-binary @deploy/elastic/ingest-pipeline.json
 ```
 
-레드팀 외부 도구(sqlmap) 이미지를 한 번 만든다. 일회성으로 `docker run`
-되므로 `up` 에서는 뜨지 않는다.
+Build the red team tool image (sqlmap) once. It is invoked one-shot with
+`docker run`, so it never comes up with the rest:
 
 ```bash
 docker compose --profile tools build
 ```
 
-호스트가 arm64 (Apple Silicon) 면 Docker 도 arm64 로 돌려야 한다.
-Elasticsearch 의 amd64 JVM 은 x86 에뮬레이션 아래에서 SIGSEGV 로 죽는다.
+On an arm64 host (Apple Silicon), Docker has to run arm64 natively.
+Elasticsearch's amd64 JVM dies with SIGSEGV under x86 emulation.
 
-## 한 판 돌리기
+## Running a round
 
 ```bash
 python redteam/run.py
 ```
 
-세션 번호가 출력된다. 콘솔(http://localhost:8000)에서 그 번호를 넣으면
-TP/FP/FN/TN 과 케이스별 판정이 보인다.
+It prints a session number. Enter that number in the console at
+http://localhost:8000 to see TP/FP/FN/TN and the verdict for every case.
 
-## 완료 기준 검증
+## Checking the acceptance criteria
 
 ```bash
 python -m pytest test/ -v
 ```
 
-설계 문서 9장의 완료 기준을 그대로 검사한다. `TP > 0` 과 `TN > 0` 이
-이 MVP 의 반증 지점이다.
+These check section 9 of the design document as written. `TP > 0` and
+`TN > 0` are where this MVP can be falsified.
 
-단위·API 테스트는 스택 없이 돈다.
+The unit and API tests run without the stack:
 
 ```bash
 cd platform && python -m pytest tests -q
 ```
 
-## 디렉터리
+`bin/verify` runs all of it, plus the size ratchet — see `CLAUDE.md`.
 
-- `deploy` — 스택 설정 파일
-- `wargame` — 방어 대상 앱, 하나당 디렉터리 하나
-- `redteam` — 공격 실행, 무엇을 언제 공격했는지 ground truth 기록
-- `blueteam` — 방어자 콘솔 (`platform/blueteam`)
-- `platform` — 채점, 룰 검증·반영, API 제공
-- `test` — 완료 기준 검증
+## Layout
 
-## 구조 원칙
+| | |
+|---|---|
+| `deploy` | stack configuration |
+| `wargame` | the apps under defence, one directory each |
+| `redteam` | running attacks, and recording what was attacked and when |
+| `blueteam` | the defender's console (`platform/blueteam`) |
+| `platform` | scoring, rule validation and application, the API |
+| `test` | the acceptance criteria |
 
-화면에서 되는 모든 동작은 `platform` REST API 로 먼저 존재한다. 콘솔 템플릿은
-값을 하나도 서버 렌더하지 않고 브라우저에서 `/api/` 를 fetch 한다. 나중에
-사람 자리에 에이전트가 들어올 때 고칠 곳이 없어야 한다.
+## The structural rule
 
-## 주의
+Every action available in the UI exists as a `platform` REST API first. Console
+templates receive no server-rendered values; they fetch `/api/` from the
+browser. When an agent takes a human's place later, there should be nothing to
+change.
 
-로컬 훈련 랩 전용이다. Elasticsearch 보안 비활성, Django `DEBUG=1`,
-`ALLOWED_HOSTS=*`, platform 컨테이너에 Docker 소켓 마운트. 어느 것도
-공개 네트워크에 두어서는 안 된다.
+## A warning
+
+This is for a local training lab only: Elasticsearch with security disabled,
+Django with `DEBUG=1` and `ALLOWED_HOSTS=*`, and the Docker socket mounted into
+the platform container. None of it belongs on a public network.
