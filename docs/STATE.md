@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 3 backlog items)
+Updated: 2026-09-19 (v1.0 + 4 backlog items)
 
 ## Where things stand
 
@@ -15,7 +15,7 @@ precision to 0.83 — so the score responds to defence changes in the predicted
 direction, which is the whole point.
 
 ```
-production_loc  1668   (v1.0: 1703)
+production_loc  1653   (v1.0: 1703)
 dependencies       6   (v1.0: 7)
 services           7   (v1.0: 8)
 ```
@@ -25,6 +25,16 @@ services           7   (v1.0: 8)
 Nothing. Start at the top of the backlog.
 
 ## Done since v1.0
+
+- **Collapsed the Django boilerplate.** Every route now lives in
+  `fsl/urls.py`; `api/urls.py` and `blueteam/urls.py` were two copies of the
+  same two imports. Both `apps.py` files said only what Django's default
+  `AppConfig` already says. `fsl/wsgi.py` and the `WSGI_APPLICATION` setting
+  went with them - runserver falls back to `get_wsgi_application()` when that
+  setting is absent. `-15 LOC, five fewer files`.
+
+  `manage.py` stays. The Dockerfile runs migrations through it and it is the
+  entry point anyone would reach for.
 
 - **Deleted the dead marker-probing.** `_MARKER_KEYS` guessed at four spellings
   of the header, all inherited from the eve-log `custom:` hypothesis that
@@ -69,20 +79,13 @@ Nothing. Start at the top of the backlog.
 Ordered by value over risk. Take the top one. If you finish it and have room,
 stop anyway — a small verified step handed over cleanly beats two rushed ones.
 
-### 1. Collapse the Django boilerplate
-
-`fsl/urls.py`, `fsl/wsgi.py`, `api/apps.py`, `blueteam/apps.py`,
-`blueteam/urls.py`, `api/urls.py`, `manage.py` are 45 lines across seven files,
-most of them ceremony. Routing could live in one module. Expect `-20 LOC` and
-four fewer files.
-
-### 2. Shrink `redteam/harness.py`
+### 1. Shrink `redteam/harness.py`
 
 191 lines, the second largest file. `Harness` holds three fields and could be
 functions taking a `requests.Session`. Do not touch `check_path_preserved` — it
 guards a real bug that made the score lie (see DECISIONS).
 
-### 3. Translate docs/superpowers/specs/ to English
+### 2. Translate docs/superpowers/specs/ to English
 
 CLAUDE.md states the repo is written in English. The design document is still
 210 lines of Korean, so the briefing is not true. It is the canonical reference
@@ -92,7 +95,7 @@ twice the tokens it should.
 Not counted by `bin/measure` - docs never are - so judge it on the briefing
 being honest, not on the numbers moving.
 
-### 4. Consider replacing Django entirely
+### 3. Consider replacing Django entirely
 
 The largest remaining win and the riskiest. Django plus DRF is two dependencies
 carrying an ORM, migrations, templates and routing for five models and ten
