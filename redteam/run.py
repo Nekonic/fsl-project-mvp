@@ -9,11 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from redteam.harness import (  # noqa: E402
-    DEFAULT_TOOL_TARGET,
-    Harness,
-    load_cases,
-)
+from redteam import harness  # noqa: E402
+from redteam.harness import DEFAULT_TOOL_TARGET, load_cases  # noqa: E402
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 
@@ -37,9 +34,7 @@ def main() -> int:
     if attacks == len(cases):
         print("warning: no benign cases, false positives cannot be scored", file=sys.stderr)
 
-    session_id = Harness(
-        args.platform, args.target, tool_target_url=args.tool_target
-    ).run(cases)
+    session_id = harness.run(cases, args.platform, args.target, args.tool_target)
 
     print(f"session {session_id} done")
     print(f"  score:   curl -X POST {args.platform}/api/sessions/{session_id}/ingest/")
