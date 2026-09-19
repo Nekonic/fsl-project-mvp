@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-19 (v1.0 + 6 backlog items)
+Updated: 2026-09-19 (v1.0 + 6 backlog items; the backlog is now empty)
 
 ## Where things stand
 
@@ -25,6 +25,12 @@ services           7   (v1.0: 8)
 Nothing. Start at the top of the backlog.
 
 ## Done since v1.0
+
+- **Tried to replace Django entirely, and did not.** Built against `wsgiref`
+  and `sqlite3`, verified green end to end, then discarded because
+  `production_loc` went 1642 -> 1678. Two dependencies bought with 36 lines of
+  routing and persistence we would own. No file changed; the whole result is
+  the DECISIONS entry.
 
 - **Translated the remaining Korean.** The design document and the README were
   still Korean, so CLAUDE.md's claim that the repo is written in English was
@@ -97,18 +103,20 @@ Nothing. Start at the top of the backlog.
 
 ## Backlog
 
-Ordered by value over risk. Take the top one. If you finish it and have room,
-stop anyway — a small verified step handed over cleanly beats two rushed ones.
+Empty. Every item written after v1.0 has been done or decided.
 
-### 1. Consider replacing Django entirely
+The last one, "consider replacing Django entirely", was built in full and
+measured: it passes all 103 unit tests and all 11 acceptance tests against the
+live stack, drops two dependencies, and grows `production_loc` by 36. The
+ratchet refused it and the work was discarded. `docs/DECISIONS.md` has the
+per-file accounting and the two things that would justify revisiting it. Do not
+re-propose it without one of them.
 
-The largest remaining win and the riskiest. Django plus DRF is two dependencies
-carrying an ORM, migrations, templates and routing for five models and ten
-endpoints. `sqlite3` and a small framework would be a fraction of that.
-
-Do not start this until item 1 is done; by then the Django surface will be small
-enough to judge honestly. Note the cost: the production repo's main site is
-Django, so diverging here loses shared ground.
+Before adding an item here, read `docs/DECISIONS.md`. The next real candidate
+is most likely the known gap below rather than anything left in `platform/`:
+the three biggest production files now are `api/views.py` (189),
+`ingest/elastic.py` (186) and `redteam/harness.py` (185), and none of them is
+carrying obvious weight.
 
 ## Known gaps
 
