@@ -309,16 +309,30 @@ a line in DECISIONS, which is the designed friction, not an obstacle.
 
 ### 2. Real source addresses, and a map that shows them
 
-Every `src_ip` in the logs is `172.20.0.x`, so the `fsl-geoip` ingest pipeline
-that already exists resolves nothing and there is no map to draw. The range
-should carry addresses a GeoIP lookup answers for, while never routing anywhere
-real, and the attacker's address should rotate - which is not only for show:
-`correlation: window` matches alerts by source address, and with one fixed
-proxy address that strategy has never actually been tested.
+Every `src_ip` is `172.20.0.x`, so the `fsl-geoip` pipeline that already exists
+resolves nothing. Researched and partly tested already - see DECISIONS for the
+measurements. What is settled:
 
-Kibana is gone, so the map is the console's own. Research is in flight on how
-to assign the addresses, what GeoIP returns for which ranges, and how to draw
-points on a world map with no build step.
+- No address is both safe to fake and publicly geolocatable. **Ship a hand-made
+  MMDB** mapping the lab's ranges to chosen cities, chained ahead of GeoLite2
+  with `if: ctx.src_geo == null`. Proven on this stack: ~1 KB, picked up in
+  eight seconds with no restart, no dependency, no service, no `core_loc`.
+- Bind-mount it at `config/ingest-geoip/`, then
+  `ingest.geoip.downloader.enabled: false` - the stack currently needs an
+  outbound fetch from `geoip.elastic.co` at first boot, which nobody noticed.
+- Kibana is gone, so the map is the console's own: inline SVG, `x = lon + 180`,
+  `y = 90 - lat` on a `0 0 360 180` viewBox. Most off-the-shelf world SVGs are
+  clipped rather than full plate carrée, so either know the bounding box or use
+  d3-geo `fitSize`.
+
+**What is not settled, and must be before code:** whether the synthetic
+addresses go on the wire (choose RFC 5737 subnets while doing item 1) or in an
+`X-Forwarded-For` header. The header is how real WAFs do it and is nearly free
+here, but it makes `src_ip` attacker-controlled - and `correlation: window`
+keys on `src_ip`. See DECISIONS; it is a real fork, not a detail.
+
+Rotation is part of the item. It is also the only way window correlation ever
+gets tested: it has only ever seen one fixed proxy address.
 
 ### 3. A topology worth drawing, drawn from the stack itself
 
