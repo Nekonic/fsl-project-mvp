@@ -117,6 +117,28 @@ class RuleSet(models.Model):
         ordering = ["-created_at"]
 
 
+class Suppression(models.Model):
+    """One Suricata rule silenced on purpose, and when it comes back.
+
+    Every suppression is a false-negative bet, so it carries a deadline.
+    Sentinel's exceptions expire by default for exactly this reason, and a
+    range that lets a rule be silenced for good while the score stays clean is
+    teaching the wrong lesson.
+
+    `original` is the rule line verbatim, so putting it back cannot drift.
+    """
+
+    sid = models.IntegerField()
+    original = models.TextField()
+    reason = models.CharField(max_length=256, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    restored_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class ScoreSnapshot(models.Model):
     """A snapshot of a scoring run."""
 

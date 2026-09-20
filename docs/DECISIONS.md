@@ -594,3 +594,48 @@ case's expense: if the target cannot be asked, the case is still recorded and
 the response carries `objectives: null`. Losing ground truth because the shop
 would not answer a side question would put a real attack on record as never
 having happened.
+
+## A verdict is the rule change, and it expires
+
+The loop no commercial console closes: an analyst records "false positive" and
+the rule that produced it is untouched, because recording verdicts and editing
+detections belong to different teams and different tools. This range owns both
+sides, so the verdict *is* the edit - a button in the alert drawer silences the
+signature that raised it.
+
+Three choices worth keeping.
+
+**It expires.** A suppression is a false-negative bet, so it carries a
+deadline and comes back on its own; nothing here can be silenced for good.
+Sentinel's exceptions default to 24 hours for the same reason, and its docs say
+so out loud. The default here is 60 minutes rather than 24 hours, because a
+range session lasts minutes and over that horizon 24 hours and "permanent" are
+the same thing - being indistinguishable from permanent is the one property a
+suppression must not have.
+
+**It comments, it does not delete.** The rule stays in the file behind a
+`# fsl-suppressed until <time>` line, and the original is stored verbatim so
+restoring cannot drift. A rule file that quietly loses lines is one nobody can
+reason about, and the deadline should be readable by whoever opens the file
+rather than only by the platform.
+
+**`core_loc` did not move.** `platform/rules/suricata.py` is the only file that
+knows the Suricata process and it is gated, so all of this is built on the
+`current()` / `apply()` it already exposes: the suppression is an edit to the
+rule text, applied the same way the console's rule editor applies one. The new
+`platform/suppress.py` is pure text manipulation with no I/O, which is also why
+it can be tested without the stack.
+
+**What the console does not claim.** The backlog asked for the score delta on
+applying a suppression. There is none to show: silencing a rule does not change
+alerts that have already been ingested and scored, so an immediate delta would
+be zero and saying otherwise would be a lie about what just happened. The
+drawer says instead that the alerts already scored do not change and the cases
+have to be fired again. `test/test_suppression.py` is that sentence as a test -
+the attack is a true positive with the rule on and a false negative with it
+silenced, while a control case stays detected so the silence is narrow rather
+than a broken pipeline.
+
+A restore that the IDS refuses leaves the suppression on the books rather than
+marking it lifted. A rule that is off with nothing saying so is worse than one
+that is openly still off.

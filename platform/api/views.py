@@ -17,8 +17,17 @@ import requests
 import attacker
 import objectives
 import scoreboard
+import suppress
 import wargames
-from api.models import Case, Detection, Objective, RuleSet, ScoreSnapshot, Session
+from api.models import (
+    Case,
+    Detection,
+    Objective,
+    RuleSet,
+    ScoreSnapshot,
+    Session,
+    Suppression,
+)
 from ingest import elastic
 from redteam import harness
 from rules import suricata
@@ -42,6 +51,15 @@ DETECTION_FIELDS = (
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
+SUPPRESSION_FIELDS = (
+    "id", "sid", "reason", "created_at", "expires_at", "restored_at",
+)
+
+# How long a rule stays silenced unless asked otherwise. Sentinel defaults to
+# 24 hours; a range session lasts minutes, where 24 hours and "for good" are
+# the same thing, and being indistinguishable from permanent is the one
+# property a suppression must not have.
+SUPPRESSION_MINUTES = 60
 SCORE_FIELDS = (
     "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
     "false_positive_rate", "warnings", "per_case", "computed_at",
@@ -574,6 +592,103 @@ def validate_rules(request):
     outcome = suricata.validate(_payload(request).get("content", ""))
     payload = {"ok": outcome.ok, "output": outcome.output}
     return _reply(payload, status=200 if outcome.ok else 400)
+
+
+@require_http_methods(["GET", "POST"])
+def suppressions(request):
+    """Silence a rule, or see what is silenced.
+
+    This is the loop no console closes: an analyst records "false positive"
+    and the rule that produced it is untouched, because recording verdicts and
+    editing detections belong to different teams and different tools. Here
+    they are the same button.
+    """
+    expired = _restore_expired()
+
+    if request.method == "GET":
+        return _reply(
+            {
+                "suppressions": [
+                    _shape(s, SUPPRESSION_FIELDS)
+                    for s in Suppression.objects.filter(restored_at__isnull=True)
+                ],
+                "restored": expired,
+            }
+        )
+
+    body = _payload(request)
+    try:
+        sid = int(body.get("sid"))
+    except (TypeError, ValueError):
+        return _reply({"detail": f'"sid" must be a rule id, got {body.get("sid")!r}'}, 400)
+
+    minutes = body.get("minutes") or SUPPRESSION_MINUTES
+    expires_at = timezone.now() + timedelta(minutes=float(minutes))
+    content = suricata.current()
+
+    try:
+        silenced = suppress.silence(content, sid, expires_at.isoformat())
+    except KeyError:
+        raise Http404(f"no active rule carries sid {sid}")
+
+    original = suppress.find(content, sid)
+    try:
+        suricata.apply(silenced)
+    except suricata.RuleApplyError as exc:
+        return _reply({"detail": str(exc)}, status=400)
+
+    record = Suppression.objects.create(
+        sid=sid,
+        original=original,
+        reason=body.get("reason") or "",
+        expires_at=expires_at,
+    )
+    return _reply(_shape(record, SUPPRESSION_FIELDS), status=201)
+
+
+@require_http_methods(["POST"])
+def restore_suppression(request, suppression_id):
+    record = get_object_or_404(Suppression, pk=suppression_id, restored_at__isnull=True)
+    problem = _restore(record)
+    if problem:
+        return _reply({"detail": problem}, status=400)
+    return _reply(_shape(record, SUPPRESSION_FIELDS))
+
+
+def _restore(record) -> str | None:
+    """Put one rule back. Returns what went wrong, or None."""
+    try:
+        content = suppress.restore(suricata.current(), record.sid, record.original)
+    except KeyError:
+        # The line is already back - edited by hand, most likely. Nothing to
+        # undo, so stop tracking it rather than writing the rule in twice.
+        record.restored_at = timezone.now()
+        record.save(update_fields=["restored_at"])
+        return None
+
+    try:
+        suricata.apply(content)
+    except suricata.RuleApplyError as exc:
+        # Leave it on the books. A suppression that cannot be lifted is worse
+        # news than one that is still running, and silently marking it restored
+        # would leave the rule off with nothing saying so.
+        return f"could not restore sid {record.sid}: {exc}"
+
+    record.restored_at = timezone.now()
+    record.save(update_fields=["restored_at"])
+    return None
+
+
+def _restore_expired() -> list:
+    """Lift every suppression whose deadline has passed."""
+    due = Suppression.objects.filter(
+        restored_at__isnull=True, expires_at__lte=timezone.now()
+    )
+    lifted = []
+    for record in list(due):
+        problem = _restore(record)
+        lifted.append({"sid": record.sid, "ok": problem is None, "detail": problem})
+    return lifted
 
 
 @require_http_methods(["POST"])

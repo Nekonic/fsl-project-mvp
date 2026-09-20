@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (breaches are credited to the attack that took them)
+Updated: 2026-09-20 (a verdict is now the rule change; backlog empty)
 
 ## Where things stand
 
@@ -11,16 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 158 unit/API tests, 25 acceptance tests against the live
+`bin/verify` is green: 175 unit/API tests, 29 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2485   not gated (was 1031 before the console)
+product_loc     2716   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
-tests            177   a floor: it may only go up
+tests            198   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -39,6 +39,22 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **A verdict is the rule change, and it expires.** The alert drawer silences
+  the signature that raised it; silenced rules are listed with their deadline
+  and a restore button. Every suppression is a false-negative bet, so it comes
+  back on its own - nothing here can be switched off for good. The rule is
+  commented, not deleted, behind a readable `# fsl-suppressed until <time>`,
+  and the original line is stored verbatim so restoring cannot drift.
+
+  `core_loc` did not move: it is all built on the `current()` / `apply()` that
+  `rules/suricata.py` already exposes, and the new `suppress.py` is pure text.
+
+  The console does not show a score delta, because there is none: silencing a
+  rule does not change alerts already ingested. `test/test_suppression.py` is
+  the honest version - the attack is a true positive with the rule on and a
+  false negative with it silenced, with a control case still detected so the
+  silence is narrow rather than a broken pipeline.
 
 - **Breaches are credited to the attack that took them.** Objectives were
   polled once at the end of a run, so all seven carried one timestamp and
@@ -257,15 +273,24 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-### 1. Turn a verdict into a rule change
+Empty.
 
-No commercial console closes this loop - an analyst records "false positive"
-and the rule that produced it is untouched. This range owns both sides. A
-button on a false positive that emits the matching Suricata `suppress` line or
-CRS `SecRuleUpdateTargetById`, applies it and shows the score delta, is the one
-thing here that would be genuinely ahead of the products it imitates. Make
-suppressions expire, as Sentinel's do at 24 hours: every silenced rule is a
-timed, audited false-negative bet.
+Three items came out of the last session and all three are done: the red team
+takes objectives now, breaches are credited to the attack that took them, and a
+verdict changes the rule that earned it.
+
+What to do next is a judgement, not a leftover, and the protocol says a session
+that finds this list empty stops rather than filling it in. Two things are
+*observations*, not proposals, and whoever writes the next item may want them:
+
+- Nothing yet promotes anything to the production repo. `docs/DECISIONS.md`
+  records what was rejected and why, thoroughly. It records nothing about what
+  survived and would be worth carrying over - which, given what this repo is
+  for, is the other half of its job.
+- Two of the nine attacks are detected by nothing at all, on purpose, and the
+  blue team has no way to write a rule that would catch them. The Rules tab
+  edits Suricata signatures; neither a confidential file being served nor a
+  metrics endpoint being scraped is a signature problem.
 
 ## Known gaps
 
