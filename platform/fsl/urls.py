@@ -28,6 +28,8 @@ urlpatterns = [
     path("api/rules/", views.current_rules),
     path("api/rules/validate/", views.validate_rules),
     path("api/rules/apply/", views.apply_rules),
+    path("api/rules/suppressions/", views.suppressions),
+    path("api/rules/suppressions/<int:suppression_id>/restore/", views.restore_suppression),
     path("", console.main),
     path("session/<int:session_id>/", console.session),
     path("red/<int:session_id>/", console.red),

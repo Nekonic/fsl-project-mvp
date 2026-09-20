@@ -142,6 +142,13 @@
   </div>
   <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
        text-xs whitespace-pre-wrap text-slate-300"></pre>
+
+  <h2 class="text-slate-100 mt-10 mb-1">Silenced rules</h2>
+  <p class="text-slate-400 text-sm mb-4">
+    Each of these is a false-negative bet with a deadline. They come back on
+    their own; nothing here can be switched off for good, which is the point.
+  </p>
+  <div id="suppressions" class="border border-slate-800 rounded"></div>
 </section>
 
 <div id="drawer" class="fixed inset-y-0 right-0 w-[36rem] max-w-full bg-slate-950
@@ -157,6 +164,23 @@
       &times;
     </button>
   </div>
+  <div id="drawer-verdict" class="px-5 py-4 border-b border-slate-800 hidden">
+    <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">Verdict</div>
+    <p class="text-slate-400 text-xs mb-3">
+      If this alert is wrong, the rule that raised it is wrong. Silencing it
+      here is a false-negative bet with a deadline, and it does not change
+      alerts already scored - fire the cases again to see what it costs.
+    </p>
+    <div class="flex gap-2 items-center">
+      <input id="suppress-reason" placeholder="why (optional)"
+        class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+      <button id="suppress"
+        class="px-3 py-2 rounded bg-amber-700 hover:bg-amber-600 text-white text-sm
+               whitespace-nowrap">Silence <span id="suppress-sid"></span></button>
+    </div>
+    <p id="suppress-result" class="text-xs mt-2"></p>
+  </div>
+
   <div class="p-5">
     <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">Raw log record</div>
     <pre id="drawer-raw" class="bg-slate-900 border border-slate-800 rounded p-4
@@ -337,10 +361,42 @@
       `${body.source} - ${body.timestamp} - from ${body.src_ip || "unknown"}` +
       (body.marker ? ` - case ${body.marker.slice(0, 8)}` : " - unattributed");
     document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
+
+    // Only Suricata rules can be silenced from here: a ModSecurity alert
+    // carries no sid, and pretending otherwise would offer a button that
+    // cannot work.
+    const sid = body.raw?.alert?.signature_id;
+    const verdict = document.getElementById("drawer-verdict");
+    verdict.classList.toggle("hidden", !sid);
+    if (sid) {
+      document.getElementById("suppress-sid").textContent = sid;
+      document.getElementById("suppress").dataset.sid = sid;
+      document.getElementById("suppress-result").textContent = "";
+      document.getElementById("suppress-reason").value = "";
+    }
+
     document.getElementById("drawer").classList.remove("translate-x-full");
   }
   const closeDrawer = () =>
     document.getElementById("drawer").classList.add("translate-x-full");
+  document.getElementById("suppress").addEventListener("click", async (event) => {
+    const sid = Number(event.currentTarget.dataset.sid);
+    const result = document.getElementById("suppress-result");
+    const applied = await post("/api/rules/suppressions/", {
+      sid, reason: document.getElementById("suppress-reason").value,
+    });
+    if (!applied.ok) {
+      result.className = "text-xs mt-2 text-rose-400";
+      result.textContent = applied.body.detail || `failed (${applied.status})`;
+      return;
+    }
+    result.className = "text-xs mt-2 text-amber-300";
+    result.textContent =
+      `sid ${sid} is off until ${new Date(applied.body.expires_at).toLocaleTimeString()}.` +
+      ` Fire the cases again to see what it costs.`;
+    renderSuppressions();
+  });
+
   document.getElementById("drawer-close").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
@@ -500,7 +556,39 @@
     if (r.ok) renderScore();
   });
 
+  async function renderSuppressions() {
+    const { ok, body } = await api("/api/rules/suppressions/");
+    const panel = document.getElementById("suppressions");
+    if (!ok) { panel.innerHTML = ""; return; }
+
+    if (body.restored.length) {
+      // Reloading the editor: expiry rewrites the rule file underneath it.
+      api("/api/rules/").then((r) => { if (r.ok) editor.value = r.body.content; });
+    }
+
+    panel.innerHTML = body.suppressions.map((s) => `
+      <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
+        <span class="text-amber-300 font-mono text-sm">sid ${s.sid}</span>
+        <span class="text-slate-400 text-sm flex-1">${s.reason || "no reason given"}</span>
+        <span class="text-slate-500 text-xs">back at
+          ${new Date(s.expires_at).toLocaleTimeString()}</span>
+        <button data-id="${s.id}"
+          class="lift px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-xs">
+          Restore now</button>
+      </div>`).join("") ||
+      `<p class="text-slate-500 text-sm p-4">Nothing is silenced.</p>`;
+
+    panel.querySelectorAll(".lift").forEach((button) => {
+      button.addEventListener("click", async () => {
+        await post(`/api/rules/suppressions/${button.dataset.id}/restore/`);
+        api("/api/rules/").then((r) => { if (r.ok) editor.value = r.body.content; });
+        renderSuppressions();
+      });
+    });
+  }
+
   api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
+  renderSuppressions();
   showTab("alerts");
   setLive(true);
 </script>
