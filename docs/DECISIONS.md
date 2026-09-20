@@ -707,3 +707,71 @@ to do.
 
 The network tier this range needs is routing and filtering between segments,
 which is layer 3 and which a container can actually be.
+
+## No address is both safe to fake and publicly geolocatable
+
+Measured against this stack's own Elasticsearch 8.15, thirteen documents
+through `fsl-geoip`. Every range that is safe to use in a lab returns nothing:
+RFC 1918, CGNAT `100.64/10`, all three RFC 5737 TEST-NETs, RFC 2544
+`198.18/15`. So does `1.1.1.1`, which is public - resolvable and public are not
+the same thing. Only real allocated space resolves, and using space you do not
+own is not on: if anything ever leaves the lab it is indistinguishable from
+spoofing, configuring it locally blackholes that range for every container, and
+it puts a stranger's address in the logs labelled "attacker".
+
+There is no gap in the research here. It is how the address space is defined.
+
+**The answer is to ship the coordinates.** A hand-built MMDB mapping the lab's
+own ranges to chosen cities, chained ahead of GeoLite2 with
+`if: ctx.src_geo == null`, because a `geoip` miss is a silent no-op rather than
+a failure. Proven on this stack: a 1,067-byte file dropped into
+`config/ingest-geoip/` was picked up in about eight seconds with no restart,
+and `172.20.0.5` came back as Seoul. It costs no dependency, no service and no
+`core_loc` - the generator is a `bin/` script, which the metrics do not count.
+
+It also removes a fragility nobody had noticed: the stack currently downloads
+GeoLite2 from `geoip.elastic.co` on first boot. With its own database it can
+set `ingest.geoip.downloader.enabled: false` and be genuinely air-gapped.
+
+Two further findings worth having before anyone builds this.
+
+**`on_failure` in the current pipeline never fires for an unresolvable
+address.** The processor simply omits `target_field`; no error, no tag. The
+existing `on_failure` only catches malformed IP strings. Anything that wants to
+know "this address had no location" has to test for the field's absence.
+
+**Renumbering the bridge is one line and changes the wire.** Docker accepts any
+subnet in `ipam.config`, so segmenting the network - the item above this one -
+is the moment to choose addresses, and choosing RFC 5737 ranges gets real
+geolocatable-looking source IPs into the IP header for free. That is more
+honest for an IDS exercise than a header, because reading packets is the IDS's
+job.
+
+## Forging the source address would hand the red team the scoreboard
+
+The realistic way to geolocate WAF logs is `X-Forwarded-For`: a WAF behind a
+CDN geolocates the client header, not the peer. It would be cheap here, too -
+`deploy/proxy/stamp.py` already stamps a header on every request, Suricata has
+a native `xff:` block whose `mode: overwrite` replaces `src_ip` outright, and
+nginx `realip` would feed ModSecurity's `client_ip` without touching
+`platform/ingest/elastic.py`.
+
+It is also a scoring hazard, and the reason is structural. `correlation:
+window` matches alerts to cases **by source address**, and `attacker.py` exists
+because a wrong address scores a real attack as a miss and blames the defence.
+Making `src_ip` attacker-controlled means the red team can forge the field the
+score is keyed on. Marker correlation is immune; window correlation is not.
+
+So it is not "add XFF". It is a choice, and it has to be made before anything
+is built:
+
+- put the addresses on the wire instead, by segmenting with RFC 5737 subnets,
+  and leave `src_ip` meaning what it says; or
+- use XFF and have the platform match against the synthetic pool as a set
+  rather than a single address; or
+- use XFF and abandon window correlation for rotated traffic, scoring it by
+  marker alone - which would have to be said out loud, because the whole point
+  of exercising `window` was that it had never run.
+
+Rotating the address is not only decoration either: window correlation has only
+ever seen one fixed proxy address, so it has never actually been tested.
