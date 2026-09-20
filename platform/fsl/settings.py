@@ -47,7 +47,7 @@ ATTACKER_CONTAINER = os.environ.get("ATTACKER_CONTAINER", "fsl-kali")
 # the WAF and the IDS see.
 ATTACKER_SOURCE_CONTAINER = os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy")
 ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
-ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_fsl")
+ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_edge")
 ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
 
 # Where the red team's traffic goes, and where its case files live. Inside the

@@ -2,7 +2,10 @@
 ---
 vars:
   address-groups:
-    HOME_NET: "[172.20.0.0/16]"
+    # Includes the edge subnet because the WAF's own outside address is what
+    # the attacker aims at first; leaving it out would drop every alert on the
+    # attacker-to-WAF leg, which is most of them.
+    HOME_NET: "[5.188.10.0/24,172.30.0.0/24,172.31.0.0/24]"
     EXTERNAL_NET: "any"
   port-groups:
     HTTP_PORTS: "8080"
@@ -28,9 +31,16 @@ outputs:
             # against the real stack. dump-all-headers does work.
             dump-all-headers: request
 
+# Both of the WAF's interfaces: one faces the attacker, one faces the estate,
+# and which is which is not guaranteed by Docker. Watching both means the
+# choke point is watched whichever way round they come up.
 af-packet:
   - interface: eth0
     cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth1
+    cluster-id: 98
     cluster-type: cluster_flow
     defrag: yes
 

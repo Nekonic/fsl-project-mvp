@@ -1,10 +1,25 @@
 name: fsl
 
 networks:
-  fsl:
+  # The internet, as far as this range is concerned. Public addresses on
+  # purpose: private ones geolocate to nothing, so a map has nothing to draw,
+  # and an attacker sharing a subnet with the target was never the picture.
+  # The lab can never reach the real 5.188.10.0/24 - see DECISIONS.
+  edge:
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 5.188.10.0/24
+
+  # The estate. Private, because that is what a company's inside looks like.
+  app:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+  mgmt:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
 
 volumes:
   esdata:
@@ -13,7 +28,7 @@ services:
   juice-shop:
     image: bkimminich/juice-shop:latest
     container_name: fsl-juice-shop
-    networks: [fsl]
+    networks: [app]
     healthcheck:
       # Distroless: no shell/wget/curl. Call node by absolute path, not on PATH.
       test:
@@ -31,7 +46,10 @@ services:
     container_name: fsl-waf
     depends_on:
       juice-shop: {condition: service_healthy}
-    networks: [fsl]
+    # The only member of both segments, and therefore the only way across.
+    # Suricata shares this container's namespace, so it now sits at a choke
+    # point rather than on one host's interface.
+    networks: [edge, app]
     ports:
       - "8080:8080"
     environment:
@@ -65,7 +83,10 @@ services:
     # to the VM namespace on Docker Desktop, so its behaviour varies by host.
     network_mode: "service:waf"
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
-    command: ["-c", "/etc/suricata/suricata.yaml", "-i", "eth0"]
+    # --af-packet rather than -i: the WAF straddles two segments, so there are
+    # two interfaces to watch and their order is not guaranteed. The config
+    # lists both.
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
     volumes:
       # The image entrypoint chowns /etc/suricata, so :ro fails to start.
       - ./deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
@@ -75,7 +96,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: fsl-elasticsearch
-    networks: [fsl]
+    networks: [mgmt]
     ports:
       - "9200:9200"
     environment:
@@ -96,7 +117,7 @@ services:
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
-    networks: [fsl]
+    networks: [mgmt]
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
@@ -111,7 +132,7 @@ services:
   kali:
     build: ./deploy/kali
     container_name: fsl-kali
-    networks: [fsl]
+    networks: [edge]
     ports:
       - "7681:7681"
     init: true
@@ -126,7 +147,7 @@ services:
   proxy:
     build: ./deploy/proxy
     container_name: fsl-proxy
-    networks: [fsl]
+    networks: [edge]
     volumes:
       - ./data/label:/label
 
@@ -134,7 +155,7 @@ services:
     build: ./redteam
     image: fsl-redteam-tools
     profiles: ["tools"]
-    networks: [fsl]
+    networks: [edge]
     command: ["sqlmap", "--version"]
 
   platform:
@@ -142,7 +163,10 @@ services:
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
-    networks: [fsl]
+    # On every segment, and that is a simplification worth naming: it launches
+    # attacks (edge), reads the target's own challenge API (app) and writes to
+    # Elasticsearch (mgmt). In a real estate those are three machines.
+    networks: [edge, app, mgmt]
     ports:
       - "8000:8000"
     environment:
@@ -159,6 +183,9 @@ services:
       TARGET_URL: "http://waf:8080"
       TOOL_TARGET_URL: "http://waf:8080"
       WARGAME_CASES_DIR: "/app/redteam/cases"
+      # The segments moved; these name docker networks, not hosts.
+      ATTACKER_NETWORK: "fsl_edge"
+      FSL_TOOL_NETWORK: "fsl_edge"
     volumes:
       - ./platform:/app
       # Mounted inside /app so `import redteam` resolves the same way it does

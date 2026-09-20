@@ -822,3 +822,47 @@ Two consequences worth stating plainly. The lab can never reach those eight
 networks - nothing here wants to, and that is why they were picked. And the
 logs will name real networks as attackers, which is fine inside the lab and
 worth a second thought before a screenshot leaves it.
+
+## The WAF became the gateway by topology, not by policy
+
+The bypass is closed and it cost no new service. `services` is still 9.
+
+Three networks instead of one flat bridge. `edge` carries the attacker on
+public space (`5.188.10.0/24`, which GeoLite2 places in Moscow); `app` and
+`mgmt` are RFC 1918, because that is what a company's inside looks like. The
+WAF is the **only** member of both `edge` and `app`, so it is the way across -
+not because a rule says so but because nothing else can carry a packet between
+them. Kali resolves `juice-shop` and gets nowhere:
+
+```
+kali 5.188.10.3 -> juice-shop:3000   000   (was 200)
+kali 5.188.10.3 -> waf:8080          200
+```
+
+Suricata stays in the WAF's namespace, which was always the right place and is
+now a genuine choke point rather than one host's interface. It watches both of
+the WAF's interfaces via `--af-packet` with two entries in the config, because
+which one Docker calls `eth0` is not guaranteed. `HOME_NET` had to grow to
+include the *edge* subnet: the attacker aims at the WAF's outside address
+first, and leaving that out silently drops every alert on the
+attacker-to-WAF leg, which is most of them.
+
+**The first full run after this was red, and it was not this change.** TP was
+zero, and the cause was a cold stack - `docker compose down` then `up` gives
+Filebeat new containers and an empty registry, and the acceptance suite ran
+while it was still settling. The entry above about cold stacks has now cost two
+sessions; treat a red `bin/verify` in the first minutes after a recreate as
+uninformative and run it again before concluding anything. A rerun on the warm
+stack passed all 34 acceptance tests unchanged.
+
+Two things this exposed and did not fix, both measured:
+
+- **Published ports enter through `app`, not `edge`.** Traffic to
+  `localhost:8080` reaches the WAF on its app-side address, so the CLI
+  harness's attacks arrive from `172.30.0.1` - inside the estate, and
+  geolocating to nothing. The front door should be on the edge.
+- **The platform is on all three segments**, which is a simplification worth
+  naming rather than hiding: it launches attacks, reads the target's challenge
+  API and writes to Elasticsearch, and in a real estate those are three
+  machines. It also means the platform can reach the target directly, so it is
+  a bypass path for anything that can make the platform issue requests.

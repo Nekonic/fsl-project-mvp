@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (backlog refilled by the user: segment the network)
+Updated: 2026-09-20 (the network is segmented; the bypass is closed)
 
 ## Where things stand
 
@@ -11,16 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 175 unit/API tests, 29 acceptance tests against the live
+`bin/verify` is green: 175 unit/API tests, 34 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2716   not gated (was 1031 before the console)
+product_loc     2751   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
-tests            198   a floor: it may only go up
+tests            203   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -39,6 +39,20 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The network is segmented and the defence is no longer optional.** Three
+  networks replace one flat bridge: `edge` on public space where the attacker
+  lives, `app` and `mgmt` on RFC 1918. The WAF is the only member of both
+  `edge` and `app`, so it is the way across by topology rather than by policy,
+  and Suricata - still in its namespace - now watches a real choke point on
+  both interfaces.
+
+  The bypass that made every score meaningless returns `000` where it used to
+  return `200`, and the attacker sits at `5.188.10.3`, which geolocates. **No
+  new service**: `services` is still 9.
+
+  The first verify after this was red and it was a cold stack, not the change.
+  See DECISIONS - that trap has now cost two sessions.
 
 - **A verdict is the rule change, and it expires.** The alert drawer silences
   the signature that raised it; silenced rules are listed with their deadline
@@ -292,20 +306,21 @@ exist as far as the range is concerned. Anyone at the red team terminal can
 take every objective and score no alerts at all. That is not a missing feature;
 it makes the score meaningless against an attacker who knows the address.
 
-### 1. Segment the network so the defence cannot be walked around
+### 1. Put the front door on the edge
 
-Split the flat bridge into at least attacker / DMZ / app / management, route
-between them through a gateway container, and move Suricata off the WAF's
-namespace onto the gateway, where it sees traffic between segments rather than
-one host's interface.
+Measured while segmenting, not fixed there. Traffic published to
+`localhost:8080` reaches the WAF on its **app-side** address, so the CLI
+harness's attacks arrive from `172.30.0.1` - inside the estate, and
+geolocating to nothing. Console-fired attacks have the same problem from the
+other direction: the platform sits on all three segments and can reach the WAF
+without crossing the edge at all.
 
-The acceptance test writes itself and should be written first: the bypass above
-must stop working - either refused, or detected. It is the same shape as
-`test_suppression.py`, a control case that still works beside the one that
-should not.
+The range is only half honest until an attack from outside actually enters from
+outside. It is also what stands between item 2 and a map with pins on it.
 
-Costs `services` and probably several compose networks. Each new service costs
-a line in DECISIONS, which is the designed friction, not an obstacle.
+While in there: the platform being on all three segments is a real bypass path
+for anything that can make it issue requests, and worth either narrowing or
+writing down as accepted.
 
 ### 2. Real source addresses, and a map that shows them
 
