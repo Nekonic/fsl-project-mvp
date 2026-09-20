@@ -34,6 +34,43 @@ def stack_is_up():
         )
 
 
+def reset_target() -> None:
+    """Give the target back its unsolved objectives.
+
+    The red team's cases take objectives now, so every acceptance run has to
+    start from a target in a known state, or it measures whatever the last run
+    left behind.
+
+    A restart is not enough and neither is --force-recreate; see DECISIONS.
+    Afterwards the WAF must still reach it: nginx resolves its upstream once,
+    at start, so a target that comes back on a different address leaves the
+    whole range answering 502 - which would surface as a defence failure.
+    """
+    subprocess.run(
+        ["docker", "compose", "rm", "-sf", "juice-shop"],
+        capture_output=True, timeout=120, check=True, cwd=REPO_ROOT,
+    )
+    subprocess.run(
+        ["docker", "compose", "up", "-d", "juice-shop"],
+        capture_output=True, timeout=300, check=True, cwd=REPO_ROOT,
+    )
+
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        try:
+            if requests.get(TARGET_URL, timeout=5).ok:
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(3)
+
+    raise AssertionError(
+        f"the target was reset but {TARGET_URL} does not answer through the "
+        "WAF. nginx caches its upstream address at start, so recreate it too:\n"
+        "  docker compose up -d --force-recreate waf suricata"
+    )
+
+
 def run_redteam() -> int:
     """Run the red team once and return the session number."""
     result = subprocess.run(
@@ -110,6 +147,7 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
 
 @pytest.fixture(scope="session")
 def session_id(stack_is_up):
+    reset_target()
     return run_redteam()
 
 
