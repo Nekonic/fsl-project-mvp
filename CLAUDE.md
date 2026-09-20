@@ -1,33 +1,38 @@
 # fsl-project-mvp
 
-A cyber attack/defence training range. A red team attacks a web app; a blue team
-defends with Suricata and ModSecurity; the platform scores the defence by false
-positives and false negatives.
+A cyber attack/defence training range. A red team attacks a web app; a blue
+team defends with Suricata and ModSecurity; the platform scores the defence.
 
-This repo tests one hypothesis:
+**This repo is where the product gets built cheaply enough to throw away.** The
+real one lives in a separate repo. Everything here exists to find out, before
+that repo pays for it, what the thing should actually be - which screens, which
+scoring, which stack. Build it, run it, measure it, keep what survives and
+write down what did not.
+
+That is why `docs/DECISIONS.md` is the main output and not a graveyard. A
+Django replacement was built in full, measured, and discarded in a day; a
+twelve-case run was measured to achieve zero objectives while reporting `TP=6`,
+and the scoreboard was rebuilt around what it took instead. Neither was a
+failure. Both were answers bought at a price the production repo would not have
+wanted to pay.
+
+A hypothesis does get tested along the way, because building the thing is what
+tests it:
 
 > Red team attacks can be labelled with ground truth, and Suricata/ModSecurity
 > alerts can be matched to those labels automatically, so false positives and
 > negatives can be scored mechanically.
 
-That still holds, and it is still what `platform/scoring/` is. But it is not
-the game. **Objectives lead the score**: Juice Shop's own challenges, which the
-application judges itself, so the platform labels nothing about whether an
-attack achieved anything. Losing one always costs and losing one you never saw
-costs double - detection is mitigation, the shape every cyber defence exercise
-settled on. False positives stay beside the damage, never inside it.
+It holds, and `platform/scoring/` is it. But proving it is not the job, and it
+is not the game. **Objectives lead the score**: Juice Shop's own challenges,
+which the application judges itself, so the platform labels nothing about
+whether an attack achieved anything. Losing one always costs and losing one you
+never saw costs double - detection is mitigation, the shape every cyber defence
+exercise settled on. False positives stay beside the damage, never inside it.
 
-A twelve-case run that scored `TP=6` was measured to achieve exactly zero
-objectives. See `docs/DECISIONS.md`.
-
-The hypothesis holds as of v1.0. The work now is to build the **smallest
-product that demonstrates it** - a shell one person can run attack and defence
-in, two browser windows, no accounts. See
+What the product currently is: a shell one person can run attack and defence in,
+two browser windows, no accounts. See
 `docs/superpowers/specs/2026-09-20-product-flow-design.md`.
-
-The hypothesis core underneath must still get simpler, and `bin/verify` still
-enforces that. The production project lives in a separate repo; this one stays
-where the loop is tested cheaply first.
 
 ## Working language
 
@@ -97,10 +102,13 @@ reasons would otherwise score exactly as well as one that works. See
 | `dependencies` | yes | direct pip packages |
 | `services` | yes | compose services |
 
-One number could not serve both jobs. A product shell grows — that is what
-building one looks like — but the hypothesis underneath must not, or the thing
-being demonstrated quietly becomes something else. So `product_loc` is
-reported every run and never blocks, and everything else ratchets as before.
+One number could not serve both jobs, and the split follows what this repo is
+for. `core_loc` is the part that has survived and would be worth carrying to
+the production repo, so it stays small and keeps getting smaller.
+`product_loc` is the disposable surface where things are tried, so it grows -
+that is what building one looks like - and is reported rather than blocked.
+Anything that stops being disposable should be earning its way into `core_loc`
+or out of the repo.
 
 `tests` runs the other way: it counts `def test_` definitions and may only go
 **up**. Deleting a test is the cheapest way to make any change here pass, and
