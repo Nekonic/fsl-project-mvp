@@ -9,12 +9,17 @@ grows, and a hypothesis must not. So the line count splits.
   product_loc   the shell around it - UI, API surface, compose, deploy
   dependencies  direct pip packages
   services      compose services
+  tests         test functions, and this one may only go UP
 
-Only core_loc, dependencies and services are gated by bin/verify. product_loc
-is reported so growth is visible, not forbidden.
+Only core_loc, dependencies and services are gated downward by bin/verify.
+product_loc is reported so growth is visible, not forbidden.
 
-Tests, docs and this tooling are NOT counted: growing the test suite must
-never look like a regression.
+Tests, docs and this tooling are not counted as production code: growing the
+test suite must never look like a regression. But nothing stopped it
+*shrinking*, and deleting a failing test is the cheapest way to make anything
+here pass - cheaper than the change it was hiding. So the count is a floor.
+It counts `def test_` definitions, not parametrized cases, because this script
+has to run in a fresh clone with nothing but python3 and cannot ask pytest.
 """
 
 from __future__ import annotations
@@ -44,8 +49,11 @@ CORE = (
     "redteam/harness.py",
 )
 
-METRICS = ("core_loc", "product_loc", "dependencies", "services")
-GATED = ("core_loc", "dependencies", "services")
+TEST_DIRS = ("platform/tests", "test")
+
+METRICS = ("core_loc", "product_loc", "dependencies", "services", "tests")
+GATED = ("core_loc", "dependencies", "services")  # may only fall
+FLOOR = ("tests",)  # may only rise
 
 
 def tracked_files() -> list[str]:
@@ -89,6 +97,19 @@ def dependencies() -> int:
     )
 
 
+def tests() -> int:
+    """Test functions across the unit and acceptance suites."""
+    total = 0
+    for directory in TEST_DIRS:
+        for path in sorted((ROOT / directory).glob("*.py")):
+            total += sum(
+                1
+                for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+                if line.startswith("def test_")
+            )
+    return total
+
+
 def services() -> int:
     """Count top-level keys under `services:` in compose.yaml.
 
@@ -120,6 +141,7 @@ def measure() -> dict[str, int]:
         "product_loc": product,
         "dependencies": dependencies(),
         "services": services(),
+        "tests": tests(),
     }
 
 
@@ -149,7 +171,12 @@ def main() -> int:
                 continue
             was = baseline.get(name, now)
             arrow = "=" if now == was else ("v" if now < was else "^")
-            gate = "" if name in GATED else "   (not gated)"
+            if name in GATED:
+                gate = ""
+            elif name in FLOOR:
+                gate = "   (floor)"
+            else:
+                gate = "   (not gated)"
             print(f"{name:<16} {now:>6}  {arrow} baseline {was}{gate}")
 
     if args.files:

@@ -121,6 +121,11 @@ baseline = json.loads(baseline_path.read_text())
 # product_loc is measured and printed, never gated: a shell that grows is what
 # building a product looks like. core_loc is the hypothesis and may only fall.
 GATED = ("core_loc", "dependencies", "services")
+# And the test count may only rise. Deleting a test is the cheapest way to make
+# any change here pass, and nothing else in this run would notice.
+FLOOR = ("tests",)
+
+failed = False
 
 worse = {
     k: (baseline[k], v)
@@ -134,14 +139,62 @@ if worse:
     print("\nThat is not an improvement. Either shrink it back, or if the growth")
     print("is genuinely necessary, edit metrics.json by hand and write down why")
     print("in docs/DECISIONS.md.")
-    sys.exit(1)
+    failed = True
 
-better = {k: (baseline[k], v) for k, v in current.items() if v < baseline.get(k, v)}
-if better:
+shrunk = {
+    k: (baseline[k], v)
+    for k, v in current.items()
+    if k in FLOOR and v < baseline.get(k, v)
+}
+if shrunk:
+    print("\nthe test suite got smaller:")
+    for name, (was, now) in shrunk.items():
+        print(f"  {name}: {was} -> {now}")
+    print("\nA deleted test is cheaper than the change it was hiding, and it")
+    print("leaves every other number in this run looking fine. If a test was")
+    print("genuinely wrong, say so in docs/DECISIONS.md and lower the floor in")
+    print("metrics.json by hand.")
+    failed = True
+
+# The escape hatch is allowed. Taking it silently is not: a run that moves a
+# gated baseline and touches no line of DECISIONS.md has written the reason
+# down nowhere, and an unattended loop would do exactly that.
+head = subprocess.run(
+    ["git", "show", "HEAD:metrics.json"], capture_output=True, text=True
+)
+if head.returncode == 0:
+    before = json.loads(head.stdout)
+    moved = {
+        k: (before[k], baseline[k])
+        for k in (*GATED, *FLOOR)
+        if k in before
+        and (baseline.get(k, 0) > before[k] if k in GATED else baseline.get(k, 0) < before[k])
+    }
+    if moved:
+        touched = subprocess.run(
+            ["git", "diff", "HEAD", "--name-only"], capture_output=True, text=True
+        ).stdout.split()
+        if "docs/DECISIONS.md" not in touched:
+            print("\nmetrics.json was raised by hand:")
+            for name, (was, now) in moved.items():
+                print(f"  {name}: {was} -> {now}")
+            print("\nThat is the last resort, and it has to be argued for. This")
+            print("change touches no line of docs/DECISIONS.md, so the reason is")
+            print("written down nowhere. Write it, then run again.")
+            failed = True
+
+better = {
+    k: (baseline[k], v)
+    for k, v in current.items()
+    if k not in FLOOR and v < baseline.get(k, v)
+}
+if better and not failed:
     print("\nsmaller:")
     for name, (was, now) in better.items():
         print(f"  {name}: {was} -> {now}")
     print("\nRecord it: bin/measure --save")
+
+sys.exit(1 if failed else 0)
 PY
 then
   ok "no regression"

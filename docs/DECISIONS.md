@@ -513,3 +513,39 @@ Per-attack-instance with duplicates collapsed is also what Lincoln Laboratory
 actually did - an attack counts as detected if an alert names the right victim
 within the attack window, and duplicate alarms in a 60-second same-target
 window are consolidated first.
+
+## Guardrails for running this unattended
+
+`/loop` can drive the session protocol with nobody watching. Three ways a
+session could make the numbers look good without doing the work, and what now
+stops each.
+
+**Deleting tests.** `production_loc` deliberately ignores tests so the suite can
+grow freely, which also meant nothing noticed it shrinking. A failing test is
+cheaper to delete than the change it was hiding. `tests` is now a metric that
+may only go **up**, counted as `def test_` definitions - not parametrized
+cases, because `bin/measure` has to run in a fresh clone with nothing but
+python3 and cannot ask pytest. Verified by deleting one test: 167 -> 166, run
+refused.
+
+**Raising a baseline in silence.** Hand-editing `metrics.json` was always the
+documented last resort, but "write down why in DECISIONS" was a sentence, not a
+mechanism. `bin/verify` now compares `metrics.json` against the committed one
+and refuses any run that raises a gated number - or lowers the test floor -
+while changing no line of `docs/DECISIONS.md`. Verified both ways: raising
+`services` 9 -> 10 alone is refused and names the metric; the same raise with a
+DECISIONS entry passes. The hatch is still open, it just cannot be taken
+quietly.
+
+**Writing its own backlog.** The protocol said take the top item and said
+nothing about an empty list. Every backlog item this project has had came from
+a human deciding what it should be - dropping DRF, replacing Django, making
+objectives the score. A loop that invents items is choosing the direction. The
+protocol now says stop and say so.
+
+Also written down: commit, never push. Pushing and merging stay with the human
+whether or not a loop is driving, because a session that cannot ask is one that
+has to stop at the commit.
+
+None of this stops a determined agent. It makes each of these visible in the
+transcript and in the diff, which is the only kind of guarantee available here.
