@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (a verdict is now the rule change; backlog empty)
+Updated: 2026-09-20 (backlog refilled by the user: segment the network)
 
 ## Where things stand
 
@@ -273,24 +273,67 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-Empty.
+The user's direction: make the range look and behave like a real network -
+a topology anyone can see, defence at the network layer and not only at the
+application, and real network appliances if they can be had.
 
-Three items came out of the last session and all three are done: the red team
-takes objectives now, breaches are credited to the attack that took them, and a
-verdict changes the rule that earned it.
+Measured first, because it changes the order. **The defence is optional.**
+Everything sits on one flat `172.20.0.0/16` bridge, so the attacker container
+can reach the target directly and both the WAF and the IDS disappear:
 
-What to do next is a judgement, not a leftover, and the protocol says a session
-that finds this list empty stops rather than filling it in. Two things are
-*observations*, not proposals, and whoever writes the next item may want them:
+```
+through the WAF   proxy .7 -> waf .4 -> juice-shop .2    4 Suricata events, 2 alerts
+around it         kali  .8 ------------> juice-shop .2    0 Suricata events
+```
 
-- Nothing yet promotes anything to the production repo. `docs/DECISIONS.md`
-  records what was rejected and why, thoroughly. It records nothing about what
-  survived and would be worth carrying over - which, given what this repo is
-  for, is the other half of its job.
-- Two of the nine attacks are detected by nothing at all, on purpose, and the
-  blue team has no way to write a rule that would catch them. The Rules tab
-  edits Suricata signatures; neither a confidential file being served nor a
-  metrics endpoint being scraped is a signature problem.
+Same SQLi payload, one `--noproxy` flag. Suricata sniffs the WAF's `eth0` from
+inside its network namespace, so traffic that never touches the WAF does not
+exist as far as the range is concerned. Anyone at the red team terminal can
+take every objective and score no alerts at all. That is not a missing feature;
+it makes the score meaningless against an attacker who knows the address.
+
+### 1. Segment the network so the defence cannot be walked around
+
+Split the flat bridge into at least attacker / DMZ / app / management, route
+between them through a gateway container, and move Suricata off the WAF's
+namespace onto the gateway, where it sees traffic between segments rather than
+one host's interface.
+
+The acceptance test writes itself and should be written first: the bypass above
+must stop working - either refused, or detected. It is the same shape as
+`test_suppression.py`, a control case that still works beside the one that
+should not.
+
+Costs `services` and probably several compose networks. Each new service costs
+a line in DECISIONS, which is the designed friction, not an obstacle.
+
+### 2. Show the topology, generated rather than drawn
+
+The compose file and `docker inspect` already describe the whole range:
+segments, addresses, which host each sensor watches. A diagram generated from
+them is live and cannot rot; a drawing of it would be wrong within a session.
+Worth doing after item 1, when there is a topology worth drawing.
+
+Show where each alert came from, so the picture and the alert stream are the
+same object rather than two.
+
+### 3. Real network appliances - feasibility checked, and it is mixed
+
+The two named are not container-shaped, and this is worth knowing before
+anyone starts:
+
+- **pfSense / OPNsense** are FreeBSD. There is no usable Docker image; they
+  want a VM. The OpenStack path CLAUDE.md names in the fixed stack is the
+  honest route, and it is a large step.
+- **NAC (PacketFence)** enforces at layer 2 with 802.1X and RADIUS against
+  switch ports. A Docker bridge has no port to enforce on and no supplicant,
+  so there is nothing for it to do. It needs a virtual switch to be more than
+  a decoration.
+
+Container-shaped substitutes that would give item 1 its gateway: VyOS, an
+nftables router, OpenWRT. **Nobody has checked whether these publish arm64
+images**, and this stack requires arm64 - check that before designing around
+one.
 
 ## Known gaps
 

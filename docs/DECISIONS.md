@@ -639,3 +639,34 @@ than a broken pipeline.
 A restore that the IDS refuses leaves the suppression on the books rather than
 marking it lifted. A rule that is off with nothing saying so is worse than one
 that is openly still off.
+
+## The defence is optional, because there is no network
+
+Measured while scoping the user's request for network-layer defence, and it
+reframes that request as a correctness fix rather than a feature.
+
+Every service sits on one flat `172.20.0.0/16` bridge. The WAF is not a
+gateway; it is a peer that happens to proxy. Suricata runs inside the WAF's
+network namespace sniffing its `eth0` - a deliberate choice, recorded above,
+because host mode behaves differently per host - which means it sees exactly
+what crosses that one interface and nothing else.
+
+So the same attack, twice:
+
+```
+through the WAF   proxy .7 -> waf .4 -> juice-shop .2    4 events, 2 alerts
+around it         kali  .8 ------------> juice-shop .2    0 events
+```
+
+One `--noproxy` flag removes the WAF and the IDS together. An attacker at the
+red team terminal can take every objective and produce no alerts, so the score
+says the defence was perfect while nothing was defended.
+
+This has been true since v1.0 and nothing surfaced it, because every attack the
+range fired went through the WAF by construction. The terminal is what made it
+reachable by a person, and asking for a network tier is what made anyone look.
+
+Not fixed here - it is the top backlog item, and it needs segments, a gateway
+and Suricata moved onto it. Written down now because the next session should
+not have to rediscover it, and because any score taken before it is fixed
+carries this caveat.
