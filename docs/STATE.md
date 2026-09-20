@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (attacks from outside now arrive from outside)
+Updated: 2026-09-20 (the IDS rules match attacks, not encodings)
 
 ## Where things stand
 
@@ -11,16 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 175 unit/API tests, 37 acceptance tests against the live
+`bin/verify` is green: 175 unit/API tests, 40 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2776   not gated (was 1031 before the console)
+product_loc     2797   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
-tests            206   a floor: it may only go up
+tests            209   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -39,6 +39,22 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The IDS rules match attacks rather than encodings.** A space sent as `+`
+  instead of `%20` is a space to the application but not to a `\s`, so the same
+  injection was caught one way and slid past the other. `[\s+]` on sids
+  9000001-9000003 closes it, and the benign cases stayed true negatives - which
+  was the real risk, since the class is more permissive.
+
+  The claim had to be narrowed twice before it was true, and both corrections
+  are in DECISIONS. The stack was never evaded: ModSecurity catches this by
+  other means, so a combined verdict says "detected" either way and the hole
+  was invisible. The test therefore asks **which engine fired**, not whether
+  anything did.
+
+  It also turned up a trap worth knowing: sessions overlap in time, so a
+  readiness check that asks what is in a session's window is answered by the
+  neighbouring session's traffic. Wait on the control case.
 
 - **The front door is on the outside.** Traffic to the published port reached
   the WAF on its estate-side address, so the range's own attacks were logged as
@@ -325,24 +341,7 @@ exist as far as the range is concerned. Anyone at the red team terminal can
 take every objective and score no alerts at all. That is not a missing feature;
 it makes the score meaningless against an attacker who knows the address.
 
-### 1. The rules can be walked past with a plus sign
-
-Measured, by accident, while writing a probe. Every SQLi rule in `local.rules`
-matches `\x27\s*(or|and)`, and a space encoded as `+` rather than `%20` is not
-whitespace, so the payload walks past all of them:
-
-```
-q=%27%20OR%201%3D1--     alert
-q=%27+OR+1%3D1--         nothing
-```
-
-The oldest WAF evasion there is, and the range does not catch it. Left
-deliberately unfixed so it can be fixed properly: it is a detection-engineering
-task with its own acceptance criterion - a case that uses `+`, red before and
-green after - and it is exactly what the blue team should be finding from the
-console.
-
-### 2. Real source addresses, and a map that shows them
+### 1. Real source addresses, and a map that shows them
 
 Decided, and most of the cost is gone. The attacker gets **real public
 addresses** from a pool verified against this stack's GeoLite2, and the inside
@@ -368,7 +367,7 @@ What is left:
 - `ingest.geoip.downloader.enabled` stays on now, so keep in mind the stack
   fetches GeoLite2 from `geoip.elastic.co` at first boot and is not air-gapped.
 
-### 3. A topology worth drawing, drawn from the stack itself
+### 2. A topology worth drawing, drawn from the stack itself
 
 The compose file and `docker inspect` already describe segments, addresses and
 which interface each sensor watches. Generate the picture from them; a drawing
