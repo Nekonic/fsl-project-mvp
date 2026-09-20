@@ -670,3 +670,40 @@ Not fixed here - it is the top backlog item, and it needs segments, a gateway
 and Suricata moved onto it. Written down now because the next session should
 not have to rediscover it, and because any score taken before it is fixed
 carries this caveat.
+
+## The deployment target is x86_64, and that is not blocked
+
+Development happens on an Apple Silicon Mac, so the stack runs arm64 images and
+will keep doing so. The environment it is eventually deployed to is x86_64, and
+the question of whether that switch is possible came up before anyone had
+tested it.
+
+Tested. `docker.elastic.co/elasticsearch/elasticsearch:8.15.0` pulled as
+**amd64** boots and reaches `started` inside the aarch64 colima VM, with
+`rosetta: false` - plain qemu binfmt. No SIGSEGV.
+
+**This narrows the earlier entry above rather than contradicting it.** "The
+stack needs a native arm64 Docker host" was measured against
+`arch: x86_64` - a *fully emulated x86_64 VM*, where the JVM did die. Running
+amd64 *containers* inside an aarch64 VM is a different mechanism and works. The
+earlier entry is correct about what it tested and should not be read as "amd64
+images cannot run here".
+
+The cost is speed: Elasticsearch takes about **60 seconds** to start under
+emulation against about **6 seconds** native. Nobody has measured what that
+does to a full `bin/verify`, which already spends 85 seconds in the acceptance
+suite, or to Suricata's packet handling and sqlmap. Measure before switching,
+and consider pinning `platform: linux/amd64` on the services where fidelity
+actually matters rather than all of them.
+
+## Layer 2 is the wrong layer for this range
+
+NAC was considered for the network tier and dropped, on the user's call and for
+the right reason: this is not a range where anyone plugs a cable into a
+corporate switch. PacketFence and its kind enforce at layer 2 with 802.1X and
+RADIUS against switch ports, and a Docker bridge has no port to enforce on and
+no supplicant to challenge. It would be a service in the diagram with nothing
+to do.
+
+The network tier this range needs is routing and filtering between segments,
+which is layer 3 and which a container can actually be.

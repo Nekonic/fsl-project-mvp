@@ -307,33 +307,42 @@ should not.
 Costs `services` and probably several compose networks. Each new service costs
 a line in DECISIONS, which is the designed friction, not an obstacle.
 
-### 2. Show the topology, generated rather than drawn
+### 2. Real source addresses, and a map that shows them
 
-The compose file and `docker inspect` already describe the whole range:
-segments, addresses, which host each sensor watches. A diagram generated from
-them is live and cannot rot; a drawing of it would be wrong within a session.
-Worth doing after item 1, when there is a topology worth drawing.
+Every `src_ip` in the logs is `172.20.0.x`, so the `fsl-geoip` ingest pipeline
+that already exists resolves nothing and there is no map to draw. The range
+should carry addresses a GeoIP lookup answers for, while never routing anywhere
+real, and the attacker's address should rotate - which is not only for show:
+`correlation: window` matches alerts by source address, and with one fixed
+proxy address that strategy has never actually been tested.
 
-Show where each alert came from, so the picture and the alert stream are the
-same object rather than two.
+Kibana is gone, so the map is the console's own. Research is in flight on how
+to assign the addresses, what GeoIP returns for which ranges, and how to draw
+points on a world map with no build step.
 
-### 3. Real network appliances - feasibility checked, and it is mixed
+### 3. A topology worth drawing, drawn from the stack itself
 
-The two named are not container-shaped, and this is worth knowing before
-anyone starts:
+The compose file and `docker inspect` already describe segments, addresses and
+which interface each sensor watches. Generate the picture from them; a drawing
+is wrong within a session. Show which segment each alert came from, so the
+diagram and the alert stream are one object rather than two.
 
-- **pfSense / OPNsense** are FreeBSD. There is no usable Docker image; they
-  want a VM. The OpenStack path CLAUDE.md names in the fixed stack is the
-  honest route, and it is a large step.
-- **NAC (PacketFence)** enforces at layer 2 with 802.1X and RADIUS against
-  switch ports. A Docker bridge has no port to enforce on and no supplicant,
-  so there is nothing for it to do. It needs a virtual switch to be more than
-  a decoration.
+Last of the three on purpose: there is no topology worth drawing until item 1
+has made one.
 
-Container-shaped substitutes that would give item 1 its gateway: VyOS, an
-nftables router, OpenWRT. **Nobody has checked whether these publish arm64
-images**, and this stack requires arm64 - check that before designing around
-one.
+## Not doing
+
+- **NAC / layer 2.** Dropped on the user's call. Nothing here plugs a cable
+  into a corporate switch, and 802.1X against switch ports has no port to act
+  on in a bridge network. See DECISIONS.
+- **pfSense / OPNsense.** FreeBSD, no usable container, wants a VM. If a real
+  appliance is ever wanted, that is the OpenStack path CLAUDE.md already names
+  - a large step, not a compose change. A container-shaped gateway (VyOS,
+  nftables, OpenWRT) is what item 1 needs.
+- **Switching to x86_64 now.** The deployment target is x86_64 and the switch
+  has been shown to work - amd64 Elasticsearch boots here under emulation - but
+  development is on a Mac and the stack stays arm64 until it is not. See
+  DECISIONS for the measurement and the speed cost.
 
 ## Known gaps
 
