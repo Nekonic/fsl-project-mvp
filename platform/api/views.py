@@ -1,7 +1,8 @@
 import json
+import time
 import uuid
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -47,6 +48,14 @@ SCORE_FIELDS = (
 )
 
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
+
+# The target keeps its own clock and its timestamps arrive at millisecond
+# precision, so comparing one to this session's start exactly is not
+# meaningful - a value can round to just before a session it plainly falls
+# inside. What the check is really rejecting is a restore, which is out by
+# hours, so a few seconds of slack costs nothing and removes the false
+# rejection.
+CLOCK_SLACK = timedelta(seconds=5)
 
 
 def _shape(obj, fields):
@@ -141,16 +150,28 @@ def session_objectives(request, session_id):
         )
 
     try:
-        solved = {o["key"]: o for o in objectives.catalogue() if o["solved"]}
+        return _reply(_observe_objectives(session))
     except objectives.ObjectivesUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
+
+
+def _observe_objectives(session) -> dict:
+    """Record what the target now counts as solved and this session did not.
+
+    The moment to ask is the moment a case is reported, because that is when
+    the red team has just finished doing something. Asking once at the end of
+    a run stamps every objective with the same time, and attribution then
+    credits them all to whichever case happened to fire last - which in a run
+    that ends on benign traffic is nobody at all.
+    """
+    solved = {o["key"]: o for o in objectives.catalogue() if o["solved"]}
 
     if session.baseline is None:
         # The target was unreachable when the session opened. Establish the
         # baseline now and credit nobody for what came before it.
         session.baseline = sorted(solved)
         session.save(update_fields=["baseline"])
-        return _reply({"achieved": 0, "baseline": len(session.baseline)})
+        return {"achieved": 0, "baseline": len(session.baseline)}
 
     ignore = set(session.baseline) | set(
         session.objectives.values_list("key", flat=True)
@@ -163,14 +184,14 @@ def session_objectives(request, session_id):
             name=objective["name"],
             category=objective["category"],
             difficulty=objective["difficulty"],
-            achieved_at=observed_at,
+            achieved_at=_solved_at(objective, session, observed_at),
         )
         for key, objective in solved.items()
         if key not in ignore
     ]
     Objective.objects.bulk_create(fresh)
 
-    return _reply({"achieved": len(fresh), "total": session.objectives.count()})
+    return {"achieved": len(fresh), "total": session.objectives.count()}
 
 
 @require_http_methods(["POST"])
@@ -252,7 +273,29 @@ def session_cases(request, session_id):
         ended_at=parse_datetime(body["ended_at"]),
         meta=body.get("meta") or {},
     )
-    return _reply(_shape(case, CASE_FIELDS), status=201)
+
+    # Give the target a beat before answering. Measured on a live run: the
+    # shop records a solve about 80ms after it has answered the request that
+    # earned it, while the red team fires its next case about 70ms later - so
+    # every solve landed just inside the *following* case and attribution
+    # credited it there. The red team blocks on this response, so waiting here
+    # spaces the cases far enough apart for the target's own timestamps to fall
+    # in the right window. Cheap at fifteen cases; it belongs here rather than
+    # in the harness, which is the hypothesis and may not grow.
+    time.sleep(settings.TARGET_SETTLE)
+
+    # Best effort, and never at the cost of the case: what the red team did is
+    # what this endpoint exists to record, and losing it because the shop would
+    # not answer a side question would put a real attack on record as never
+    # having happened. `objectives: null` says the target could not be asked.
+    try:
+        observed = _observe_objectives(session)["achieved"]
+    except objectives.ObjectivesUnavailable:
+        observed = None
+
+    return _reply(
+        _shape(case, CASE_FIELDS) | {"objectives": observed}, status=201
+    )
 
 
 def _case_errors(body):
@@ -440,6 +483,28 @@ def _breach_rows(session, cases, result):
         }
         for b in _breaches(session, cases, result)
     ]
+
+
+def _solved_at(objective, session, observed_at):
+    """When the target says it fell, if that can be believed.
+
+    Prefer it: the poll is always late, because `solved` flips after the
+    request that did it has been answered, and by then the red team may have
+    moved on to the next case - which is then credited with the breach.
+
+    Do not believe a stamp from before this session opened. The target
+    rewrites every one of them in bulk when it restores its own state, and a
+    restore is not a solve.
+    """
+    stamp = objective.get("solved_at")
+    if not stamp:
+        return observed_at
+    try:
+        solved_at = datetime.fromisoformat(stamp)
+    except ValueError:
+        return observed_at
+    believable = session.started_at - CLOCK_SLACK <= solved_at <= observed_at
+    return solved_at if believable else observed_at
 
 
 def _expectations(scenario):
