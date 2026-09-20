@@ -775,3 +775,50 @@ is built:
 
 Rotating the address is not only decoration either: window correlation has only
 ever seen one fixed proxy address, so it has never actually been tested.
+
+## The attacker gets real public addresses, by the user's decision
+
+The entry above argued against using allocated space nobody here owns. The user
+overruled it - "어차피 공인써도 상관없는데" - and that is their call to make on
+their own lab. This records what was decided and what makes it work, so nobody
+reads the earlier entry and undoes it.
+
+**It also makes the topology more honest, not less.** Only the attacker side
+gets public addresses. The DMZ, the application and the management segment stay
+RFC 1918, which is what a real company's inside looks like. An attacker on the
+internet hitting a private estate is the picture; both sides on `172.20.0.0/16`
+never was.
+
+Verified pool, measured against this stack's own GeoLite2:
+
+| range | resolves to | lat, lon |
+|---|---|---|
+| `5.188.10.0/24` | Russia | 55.7386, 37.6068 |
+| `45.155.205.0/24` | Russia, St Petersburg | 59.9417, 30.3096 |
+| `185.220.101.0/24` | Germany, Brandenburg | 52.6171, 13.1207 |
+| `103.152.220.0/24` | Hong Kong, Kwai Chung | 22.374, 114.1369 |
+| `175.45.176.0/24` | North Korea | 40.0, 127.0 |
+| `196.16.0.0/24` | Seychelles | -4.5833, 55.6667 |
+| `177.54.144.0/24` | Brazil, São Paulo | -23.5475, -46.6361 |
+| `123.59.0.0/24` | China | 34.7732, 113.722 |
+
+With a public pool there is no MMDB, no enrich policy and no header rewriting.
+GeoLite2 answers, the existing `fsl-geoip` pipeline works unchanged, and
+`src_ip` keeps meaning what it says - so `correlation: window` stays honest and
+the fork recorded above is closed in favour of putting the addresses on the
+wire.
+
+**The one real cost is a blackhole, and it was checked.** Any range assigned to
+a bridge is directly connected for every container on it and can never reach
+the real thing. The stack reaches Docker Hub (`52/3/34.x`), `geoip.elastic.co`
+(`104.197.x`), `docker.elastic.co` (`34.56.x`), `kali.download` (`104.17.x`)
+and GitHub (`20.200.x`) - all cloud and CDN space, none of it overlapping the
+pool above. **Before adding a range to that table, resolve what the build
+actually fetches and check again.** Cloud and CDN blocks move; a range that was
+free last month can break `docker compose build` in a way that looks like
+anything but a routing decision.
+
+Two consequences worth stating plainly. The lab can never reach those eight
+networks - nothing here wants to, and that is why they were picked. And the
+logs will name real networks as attackers, which is fine inside the lab and
+worth a second thought before a screenshot leaves it.
