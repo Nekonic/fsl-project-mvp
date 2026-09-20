@@ -866,3 +866,76 @@ Two things this exposed and did not fix, both measured:
   API and writes to Elasticsearch, and in a real estate those are three
   machines. It also means the platform can reach the target directly, so it is
   a bypass path for anything that can make the platform issue requests.
+
+## Docker picks the published port's target by network name, alphabetically
+
+Segmenting put the attacker outside but left the way in on the inside: traffic
+to `localhost:8080` reached the WAF on its estate-side address, so the range's
+own attacks were logged as coming from `172.30.0.1`.
+
+`priority: 100` on the edge attachment did **not** fix it, and did not even
+change which interface came up as `eth0`. What fixed it was renaming the inside
+network from `app` to `estate`, so that `edge` sorts first. Measured:
+
+```
+before   alert src=172.30.0.1 -> dst=172.30.0.3   iface=eth0   (inside)
+after    alert src=5.188.10.1 -> dst=5.188.10.4   iface=eth0   (outside)
+```
+
+So the published port follows the alphabetically first network name, not
+`priority` and not declaration order. If a segment is ever renamed, check this
+again - nothing in the compose file says the name is load-bearing, and the
+failure is silent.
+
+The platform needed a separate fix. It shares *both* segments with the WAF, so
+`waf` resolved to whichever address answered first, and attacks fired from the
+console went out on the estate side. Network-scoped aliases make the way in
+explicit: `waf-edge` and `waf-estate` each resolve on one network only, and
+`TARGET_URL` names the door rather than the host.
+
+Two smaller traps met on the way. Renaming a network and then running
+`docker compose down` leaves the old one orphaned and still holding the subnet,
+so the new one cannot be created - `docker network rm fsl_app` first. And
+moving a log file the WAF has open is the bind-mount inode trap again, one
+entry up: the WAF keeps writing to the moved file and its alerts stop arriving.
+Recreate the container, do not just move the file.
+
+## Filebeat's registry has to outlive the container
+
+`docker compose down` then `up` gives Filebeat a new container and an empty
+registry, so it re-ships every log file from the beginning. Measured after one
+recreate: **14,242 documents in the last ten minutes**, overwhelmingly carrying
+`172.20.0.x` - addresses from the flat network that had not existed for an
+hour.
+
+This is not the cold-stack delay recorded above. It is worse, and in the
+opposite direction: rather than a window with nothing in it, every session
+opened afterwards gets a window with thousands of stale events in it, and the
+score is computed over them. A range that silently re-scores last week's
+traffic as this minute's is not measuring anything.
+
+The registry now lives in a named volume. Recreating Filebeat picks up where it
+left off.
+
+Cleaning up after the fact took more than expected and is worth writing down.
+The indices are **data streams**, so `DELETE /fsl-logs-*` is refused twice
+over - wildcards are disallowed, and a data stream's backing index cannot be
+deleted directly. `DELETE /_data_stream/<names>` is the one that works.
+
+## The rules can be walked past with a plus sign
+
+Found by accident: a probe written with `requests`' `params=` raised no alert
+at all, because `params=` encodes a space as `+` and every SQLi rule in
+`local.rules` matches `\x27\s*(or|and)` - and `+` is not whitespace. The same
+payload with `%20` alerts immediately.
+
+```
+q=%27%20OR%201%3D1--     alert
+q=%27+OR+1%3D1--         nothing
+```
+
+This is a real gap in the rule set, not a quirk of the test, and it is the
+oldest WAF evasion there is. It is deliberately **not fixed here** - it is a
+detection-engineering task with its own acceptance criterion, and it is exactly
+the kind of thing the blue team should find and fix from the console. It is on
+the backlog with the measurement attached.

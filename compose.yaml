@@ -11,7 +11,7 @@ networks:
         - subnet: 5.188.10.0/24
 
   # The estate. Private, because that is what a company's inside looks like.
-  app:
+  estate:
     ipam:
       config:
         - subnet: 172.30.0.0/24
@@ -23,12 +23,18 @@ networks:
 
 volumes:
   esdata:
+  # Filebeat's registry - which files it has read, and how far. Inside the
+  # container it is lost on every recreate, and Filebeat then re-ships every
+  # log from the beginning with fresh timestamps. That does not merely delay
+  # data: it drops thousands of stale events into the window of every session
+  # opened afterwards, and the score is computed over them.
+  filebeatdata:
 
 services:
   juice-shop:
     image: bkimminich/juice-shop:latest
     container_name: fsl-juice-shop
-    networks: [app]
+    networks: [estate]
     healthcheck:
       # Distroless: no shell/wget/curl. Call node by absolute path, not on PATH.
       test:
@@ -47,9 +53,24 @@ services:
     depends_on:
       juice-shop: {condition: service_healthy}
     # The only member of both segments, and therefore the only way across.
-    # Suricata shares this container's namespace, so it now sits at a choke
-    # point rather than on one host's interface.
-    networks: [edge, app]
+    # Suricata shares this container's namespace, so it sits at a choke point
+    # rather than on one host's interface.
+    #
+    # edge takes priority so it is the interface Docker attaches first, which
+    # is the one the published port maps to. Without that, traffic to
+    # localhost:8080 arrives on the app-side address and the range's own
+    # attacks are logged as coming from inside the estate.
+    #
+    # The aliases exist because the platform shares *both* of these networks
+    # with the WAF, so `waf` alone is ambiguous and resolved to whichever came
+    # back first. Naming the door says which way in is meant.
+    networks:
+      edge:
+        priority: 100
+        aliases: [waf-edge]
+      estate:
+        priority: 10
+        aliases: [waf-estate]
     ports:
       - "8080:8080"
     environment:
@@ -123,6 +144,7 @@ services:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./deploy/suricata/logs:/logs/suricata:ro
       - ./deploy/nginx/logs:/logs/modsecurity:ro
+      - filebeatdata:/usr/share/filebeat/data
 
   # Red team external tools. Invoked one-shot with `docker run`, so this never
   # comes up with the rest. Build the image: docker compose --profile tools build
@@ -166,7 +188,7 @@ services:
     # On every segment, and that is a simplification worth naming: it launches
     # attacks (edge), reads the target's own challenge API (app) and writes to
     # Elasticsearch (mgmt). In a real estate those are three machines.
-    networks: [edge, app, mgmt]
+    networks: [edge, estate, mgmt]
     ports:
       - "8000:8000"
     environment:
@@ -180,8 +202,11 @@ services:
       DJANGO_DB_PATH: "/data/db.sqlite3"
       # The console fires the red team's own cases, so the platform needs the
       # case files and a way to reach the target from inside the network.
-      TARGET_URL: "http://waf:8080"
-      TOOL_TARGET_URL: "http://waf:8080"
+      # Named for the segment, not the host: the platform can reach the WAF
+      # from inside the estate as well, and an attack that goes that way is
+      # not an attack from outside.
+      TARGET_URL: "http://waf-edge:8080"
+      TOOL_TARGET_URL: "http://waf-edge:8080"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       # The segments moved; these name docker networks, not hosts.
       ATTACKER_NETWORK: "fsl_edge"

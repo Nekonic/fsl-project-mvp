@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (the network is segmented; the bypass is closed)
+Updated: 2026-09-20 (attacks from outside now arrive from outside)
 
 ## Where things stand
 
@@ -11,16 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 175 unit/API tests, 34 acceptance tests against the live
+`bin/verify` is green: 175 unit/API tests, 37 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2751   not gated (was 1031 before the console)
+product_loc     2776   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
-tests            203   a floor: it may only go up
+tests            206   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -39,6 +39,25 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The front door is on the outside.** Traffic to the published port reached
+  the WAF on its estate-side address, so the range's own attacks were logged as
+  coming from inside. Docker picks that target by **network name,
+  alphabetically** - not by `priority`, which changed nothing - so `app` became
+  `estate` and `edge` now sorts first. Console-fired attacks needed a separate
+  fix: the platform shares both segments with the WAF, so network-scoped
+  aliases (`waf-edge`, `waf-estate`) name the way in rather than the host.
+
+  ```
+  before  src=172.30.0.1 -> 172.30.0.3   inside
+  after   src=5.188.10.1 -> 5.188.10.4   outside
+  ```
+
+  And a correctness bug this uncovered: **Filebeat's registry lived inside the
+  container**, so every recreate re-shipped every log from the beginning -
+  14,242 stale events landed in the last-ten-minutes window and would have been
+  scored as current. It is a named volume now. See DECISIONS, along with the
+  data-stream deletion that cleaning up required.
 
 - **The network is segmented and the defence is no longer optional.** Three
   networks replace one flat bridge: `edge` on public space where the attacker
@@ -306,21 +325,22 @@ exist as far as the range is concerned. Anyone at the red team terminal can
 take every objective and score no alerts at all. That is not a missing feature;
 it makes the score meaningless against an attacker who knows the address.
 
-### 1. Put the front door on the edge
+### 1. The rules can be walked past with a plus sign
 
-Measured while segmenting, not fixed there. Traffic published to
-`localhost:8080` reaches the WAF on its **app-side** address, so the CLI
-harness's attacks arrive from `172.30.0.1` - inside the estate, and
-geolocating to nothing. Console-fired attacks have the same problem from the
-other direction: the platform sits on all three segments and can reach the WAF
-without crossing the edge at all.
+Measured, by accident, while writing a probe. Every SQLi rule in `local.rules`
+matches `\x27\s*(or|and)`, and a space encoded as `+` rather than `%20` is not
+whitespace, so the payload walks past all of them:
 
-The range is only half honest until an attack from outside actually enters from
-outside. It is also what stands between item 2 and a map with pins on it.
+```
+q=%27%20OR%201%3D1--     alert
+q=%27+OR+1%3D1--         nothing
+```
 
-While in there: the platform being on all three segments is a real bypass path
-for anything that can make it issue requests, and worth either narrowing or
-writing down as accepted.
+The oldest WAF evasion there is, and the range does not catch it. Left
+deliberately unfixed so it can be fixed properly: it is a detection-engineering
+task with its own acceptance criterion - a case that uses `+`, red before and
+green after - and it is exactly what the blue team should be finding from the
+console.
 
 ### 2. Real source addresses, and a map that shows them
 
