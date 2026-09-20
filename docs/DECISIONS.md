@@ -939,3 +939,59 @@ oldest WAF evasion there is. It is deliberately **not fixed here** - it is a
 detection-engineering task with its own acceptance criterion, and it is exactly
 the kind of thing the blue team should find and fix from the console. It is on
 the backlog with the measurement attached.
+
+## The plus-sign evasion, narrowed twice and then fixed
+
+The entry above said "every SQLi rule" could be walked past with a `+`. That
+was written from one probe and it was wrong twice over. Both corrections are
+worth more than the fix.
+
+**First narrowing: one alternative already caught it.** `'))+UNION+SELECT`
+alerted while `'+OR+1=1--` did not, which made no sense until the rule was read
+properly - sid 9000001 has a fifth alternative, `\x27\s*\x29`, that matches
+`')` on its own and has nothing to do with whitespace. The rule was catching
+that payload for a reason unrelated to the one being tested.
+
+**Second narrowing, and the important one: the stack was never evaded.**
+ModSecurity catches the plus-encoded injection by other means, so the combined
+verdict is a true positive either way. Defence in depth was working, which is
+exactly why nobody noticed the IDS rules had a hole. The honest claim is
+narrow: **the Suricata rule set matched an encoding rather than an attack,
+while the WAF covered for it.**
+
+That changed what the test had to measure. "Is it detected" passes before the
+fix and proves nothing; the criterion is **which engine fired**, and the range
+can answer that because detections carry their source.
+
+```
+before   only ['modsecurity'] caught the plus-encoded injection
+after    both engines
+```
+
+The fix is `[\s+]` in place of `\s` on sids 9000001-9000003, wherever
+whitespace is expected inside a query or a form body. Suricata 8 also has a
+`url_decode` transform, which is the more general answer - it would decode
+`+` to a space before matching, and fix encodings nobody has thought of yet.
+It was not used because applying it to `http.uri`, which is already normalised,
+decodes twice, and the narrower change is the one whose blast radius can be
+reasoned about. The transform is the right next step if this class of thing
+recurs.
+
+Benign traffic was the risk - `[\s+]` is more permissive - and the acceptance
+criteria carried it: `O'Brien's lemonade` and `select the best juice for me`
+are still true negatives.
+
+## A session's readiness cannot be judged by what is in its window
+
+Writing the test for the above hit something that will bite again. Sessions
+overlap in time, and ingest pulls everything in a session's window, so a
+session opened beside another one inherits its alerts. A readiness check of the
+form "have both engines appeared in this session yet" was therefore satisfied
+**by the neighbouring session's traffic**, seconds after opening and long
+before this session's own attack had landed. The test then measured an empty
+result and failed for a reason that had nothing to do with the code.
+
+Wait on the control **case**, not on the session: "has the case I know should
+be detected been detected, by the engines I expect". `test_evasion.py` and
+`test_suppression.py` both do this now, and anything that waits for a pipeline
+should.

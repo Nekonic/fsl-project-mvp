@@ -21,6 +21,22 @@
       email: "' OR 1=1--"
       password: "anything"
 
+# The same injection as above with spaces sent as `+` rather than `%20`, which
+# is what a form-encoded query looks like and what `requests` produces from
+# `params`. The rules matched `\x27\s*(or|and)` and `+` is not whitespace, so
+# this walked past all of them - the oldest evasion there is. Kept as a case so
+# it stays walked-past-proof.
+- name: sqli-or-1-1-plus-encoded
+  malicious: true
+  technique: SQLi
+  expect: "SQL"
+  correlation: marker
+  request:
+    method: GET
+    path: /rest/products/search
+    params:
+      q: "' OR 1=1--"
+
 # Nine columns because that is what the products query selects; with the wrong
 # count Juice Shop errors, the IDS still alerts, and the attack takes nothing.
 # An attack that trips a rule and achieves nothing is not an attack.
