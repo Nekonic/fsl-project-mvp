@@ -2,5 +2,6 @@
   "core_loc": 611,
   "product_loc": 2379,
   "dependencies": 6,
-  "services": 9
+  "services": 9,
+  "tests": 167
 }

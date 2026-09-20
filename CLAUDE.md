@@ -53,12 +53,20 @@ Follow this whether a human started you or `/loop` did. To run it unattended:
    fsl`, `docker compose up -d`. If it will not come up, say so and stop —
    never commit on the strength of `--fast` alone.
 3. Take **the top item** of the backlog in `docs/STATE.md`. One item, not two.
+   **If the backlog is empty, stop and say so.** Do not invent an item. Every
+   item on that list so far came from a human deciding what this should be,
+   not from reading the code — a loop that writes its own backlog is choosing
+   the project's direction, which is not its to choose.
 4. Implement it test-first.
 5. `bin/verify` — full run: unit, acceptance against the live stack, ratchet.
 6. If it is red, or any metric grew: `git reset --hard`, append what you learned
    to `docs/DECISIONS.md`, and stop. A failed attempt that is written down is
    worth more than a half-finished one that is not.
 7. If it is green: `bin/measure --save`, update `docs/STATE.md`, commit.
+
+**Commit, never push.** Pushing and merging are the human's, whether or not a
+loop is driving. A session that cannot ask is a session that must stop at the
+commit.
 
 Leave `docs/STATE.md` true. It is the entire handover to the next session.
 
@@ -94,12 +102,20 @@ building one looks like — but the hypothesis underneath must not, or the thing
 being demonstrated quietly becomes something else. So `product_loc` is
 reported every run and never blocks, and everything else ratchets as before.
 
-Tests, docs and `bin/` are not counted: growing the test suite must never look
-like a regression. `metrics.json` holds the record and `bin/verify` refuses any
-change that grows a gated number. If growth is genuinely unavoidable, edit
+`tests` runs the other way: it counts `def test_` definitions and may only go
+**up**. Deleting a test is the cheapest way to make any change here pass, and
+without a floor nothing else in a verify run would notice.
+
+Docs and `bin/` are not counted, and tests are not counted as production code:
+growing the suite must never look like a regression.
+
+`metrics.json` holds the record and `bin/verify` refuses any change that grows
+a gated number or shrinks the floor. If it is genuinely unavoidable, edit
 `metrics.json` by hand and write down why in `docs/DECISIONS.md` — but treat
-that as a last resort, not an escape hatch. A new dependency or service should
-cost a line in `docs/DECISIONS.md`, not pass unnoticed.
+that as a last resort, not an escape hatch. **`bin/verify` enforces the second
+half of that sentence**: a run that moves a baseline by hand and changes no
+line of `docs/DECISIONS.md` is refused, because the reason was written down
+nowhere. A new dependency or service costs a line there, not silence.
 
 ## What must not break
 
