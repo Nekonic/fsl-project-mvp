@@ -19,7 +19,7 @@ from typing import Any
 MARKER_HEADER = "X-FSL-Case"
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-redteam-tools")
-TOOL_NETWORK = os.environ.get("FSL_TOOL_NETWORK", "fsl_fsl")
+TOOL_NETWORK = os.environ.get("FSL_TOOL_NETWORK", "fsl_edge")
 
 # Tool name -> the executable to run inside the container.
 SUPPORTED_TOOLS = {"sqlmap": "sqlmap"}
