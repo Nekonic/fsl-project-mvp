@@ -549,3 +549,48 @@ has to stop at the commit.
 
 None of this stops a determined agent. It makes each of these visible in the
 transcript and in the diff, which is the only kind of guarantee available here.
+
+## The target records a solve after it has answered, so every poll is late
+
+Objectives are attributed by time, and the timing was wrong in a way that only
+showed up once a run took more than one or two.
+
+Measured on a live run. Juice Shop writes `solved` about **80ms after** it has
+answered the request that earned it, and the red team fires its next case about
+**70ms later**. So every solve landed just inside the *following* case, and
+attribution credited it there. `backup-file-null-byte` scored a true positive
+and its breach still read MISSED, with coverage 0% across seven breaches:
+
+```
+case  :21.205  backup-file-null-byte     <- took it
+case  :21.277  normal-product-search     <- credited with it
+solve :21.285  forgottenDevBackupChallenge
+```
+
+Two things were wrong, and both had to be fixed.
+
+**The stamp.** The platform used its own observation time, which trails by an
+unknown amount. The target's `updatedAt` is the real solve time and is distinct
+per challenge - every one of them falls inside the window of the case that
+earned it. An earlier entry here said those timestamps are rewritten in bulk
+and cannot be trusted; that is true of a **restore at boot**, not of a live
+solve. A stamp from before the session opened is still refused, with five
+seconds of slack because the target keeps its own clock and the API serialises
+to milliseconds, so an exact comparison can reject a value that plainly falls
+inside the session.
+
+**The spacing.** Even with the right stamp, 80ms of lag against 70ms of gap
+means consecutive cases cannot be told apart by time at all. The platform now
+holds the case-recording response for a quarter of a second before asking what
+fell. The red team blocks on that response, so the wait spaces the cases out -
+the fix belongs here rather than in `redteam/harness.py`, which is the
+hypothesis and may not grow. Unit tests mock the target and set the wait to
+zero; paying it on every recorded case turned a half-second suite into a
+ten-second one.
+
+Recording a case now polls objectives as a side effect, which is what gives
+per-case granularity in the first place. It is best effort and never at the
+case's expense: if the target cannot be asked, the case is still recorded and
+the response carries `objectives: null`. Losing ground truth because the shop
+would not answer a side question would put a real attack on record as never
+having happened.

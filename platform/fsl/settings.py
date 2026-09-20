@@ -59,6 +59,11 @@ TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
 # through the proxy would put the range's own housekeeping into the alert
 # stream, where it could be scored as a false positive against the defence.
 WARGAME_API_URL = os.environ.get("WARGAME_API_URL", "http://juice-shop:3000")
+# How long to let the target settle before asking what a case took. It records
+# a solve after answering the request that earned it, and the red team blocks
+# on this response, so this is what keeps consecutive cases far enough apart to
+# tell apart. Unit tests mock the target and set it to zero.
+TARGET_SETTLE = float(os.environ.get("TARGET_SETTLE", "0.25"))
 WARGAME_CASES_DIR = os.environ.get(
     "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
 )

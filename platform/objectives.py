@@ -59,4 +59,9 @@ def _summarise(challenge: dict[str, Any]) -> dict[str, Any]:
         "difficulty": int(challenge.get("difficulty") or 1),
         "description": challenge.get("description") or "",
         "solved": bool(challenge.get("solved")),
+        # When the target says it was beaten. Worth more than the moment we
+        # noticed: `solved` flips after the request that did it has already
+        # been answered, so any poll is late by an unknown amount, and
+        # attribution is by time. Not trusted blindly - see the caller.
+        "solved_at": challenge.get("updatedAt") or None,
     }

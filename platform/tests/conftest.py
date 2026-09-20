@@ -30,3 +30,15 @@ class ApiClient(Client):
 @pytest.fixture
 def client():
     return ApiClient()
+
+
+@pytest.fixture(autouse=True)
+def no_settle(settings):
+    """Nothing to wait for: these tests mock the target.
+
+    The real delay exists so consecutive red team cases land far enough apart
+    for the target's own solve timestamps to tell them apart. With no target
+    there is nothing to settle, and paying it on every recorded case turned a
+    half-second suite into a ten-second one.
+    """
+    settings.TARGET_SETTLE = 0

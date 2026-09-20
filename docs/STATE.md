@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (the red team now takes seven objectives, not two)
+Updated: 2026-09-20 (breaches are credited to the attack that took them)
 
 ## Where things stand
 
@@ -11,16 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 153 unit/API tests, 23 acceptance tests against the live
+`bin/verify` is green: 158 unit/API tests, 25 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2421   not gated (was 1031 before the console)
+product_loc     2485   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
-tests            170   a floor: it may only go up
+tests            177   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -39,6 +39,23 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **Breaches are credited to the attack that took them.** Objectives were
+  polled once at the end of a run, so all seven carried one timestamp and
+  attribution handed them to whichever case fired last - benign traffic,
+  detected by nothing. Coverage read 0% while the attack that took one of them
+  was a true positive.
+
+  Two causes, both measured. The platform used its own observation time, which
+  trails the deed; it uses the target's `updatedAt` now, which is exact per
+  solve. And the target records a solve ~80ms after answering while the red
+  team fires the next case ~70ms later, so consecutive cases could not be told
+  apart by time at all - the platform holds the case-recording response for a
+  quarter second, which spaces them, because the red team blocks on it.
+
+  `core_loc` did not move: the wait is in the API, not in `redteam/harness.py`.
+  Recording a case now polls objectives as a side effect, best effort, and a
+  target that cannot be asked never costs the case record.
 
 - **The red team takes seven objectives instead of two.** The case file fired
   twelve payloads and took `errorHandling` and `loginAdmin` almost by accident;
@@ -240,26 +257,7 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-### 1. Objectives are credited to the wrong attack in a CLI run
-
-Measured, not suspected. The console polls `/api/sessions/<id>/objectives/`
-after every shot; `redteam/run.py` polls once when the whole run is over, so
-every objective is stamped with that one time and attributed to whatever case
-fired last - a benign one. Session 116 scored `backup-file-null-byte` as a true
-positive and still reported its objective as `MISSED`, with coverage 0% across
-seven breaches.
-
-This is older than the change that exposed it: a two-objective run had the same
-defect and nobody could see it. Now that the run takes seven, the scoreboard is
-visibly wrong.
-
-Two ways to fix it, and the choice matters. Polling from the platform when a
-case is recorded costs nothing in `core_loc` and gives per-case granularity for
-free, because the harness already reports after every case. Polling from the
-harness is the more obvious place and grows `core_loc`, which is gated - so it
-needs a hand-raise and an argument.
-
-### 2. Turn a verdict into a rule change
+### 1. Turn a verdict into a rule change
 
 No commercial console closes this loop - an analyst records "false positive"
 and the rule that produced it is untouched. This range owns both sides. A
