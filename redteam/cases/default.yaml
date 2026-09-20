@@ -21,16 +21,20 @@
       email: "' OR 1=1--"
       password: "anything"
 
-- name: sqli-union-in-search
+# Nine columns because that is what the products query selects; with the wrong
+# count Juice Shop errors, the IDS still alerts, and the attack takes nothing.
+# An attack that trips a rule and achieves nothing is not an attack.
+- name: sqli-union-user-table
   malicious: true
   technique: SQLi
   expect: "SQL"
+  takes: unionSqlInjectionChallenge
   correlation: marker
   request:
     method: GET
     path: /rest/products/search
     params:
-      q: "apple')) UNION SELECT NULL,NULL,NULL--"
+      q: "')) UNION SELECT id,email,password,'4','5','6','7','8','9' FROM Users--"
 
 - name: xss-script-tag-in-search
   malicious: true
@@ -86,6 +90,46 @@
 # -- benign ----------------------------------------------------------------
 # The basis for scoring false positives. Deliberately seeded with strings CRS
 # tends to over-react to.
+# Objectives the target judges for itself. These take something rather than
+# only tripping a rule, which is the difference between an attack and noise.
+# Every `takes` value was read off the live catalogue - Juice Shop's keys and
+# its display names disagree, so "Confidential Document" is directoryListing.
+
+# No `expect` on the next two, and not by omission: both are plain GETs of
+# files the shop should not serve, so there is no mechanism a signature could
+# name. They go undetected, which is the honest answer and the most useful
+# thing on the board - an objective taken with nobody watching.
+- name: confidential-document-access
+  malicious: true
+  technique: BrokenAccessControl
+  takes: directoryListingChallenge
+  correlation: marker
+  request:
+    method: GET
+    path: /ftp/acquisitions.md
+
+- name: metrics-endpoint-scrape
+  malicious: true
+  technique: SensitiveDataExposure
+  takes: exposedMetricsChallenge
+  correlation: marker
+  request:
+    method: GET
+    path: /metrics
+
+# %2500 is a double-encoded null byte: the path arrives as package.json.bak%00.md
+# and the extension whitelist is fooled into serving the backup. Sent verbatim -
+# see check_path_preserved.
+- name: backup-file-null-byte
+  malicious: true
+  technique: NullByte
+  expect: "Restricted File"
+  takes: forgottenDevBackupChallenge
+  correlation: marker
+  request:
+    method: GET
+    path: /ftp/package.json.bak%2500.md
+
 - name: normal-product-search
   malicious: false
   correlation: marker

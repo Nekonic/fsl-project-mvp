@@ -6,24 +6,24 @@ attribution - crediting a breach to the wrong attack, or to nobody - and that
 is what these check.
 """
 
-import subprocess
-import time
 import uuid
 from datetime import datetime, timezone
 
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, TARGET_URL, from_attacker
+from conftest import PLATFORM_URL, from_attacker, reset_target
 
 # Objectives reachable with one unauthenticated request, so the test needs no
 # attack chain of its own. Both pairs were verified against the live target:
 # guessing the key from the name does not work, because Juice Shop's keys and
 # its display names disagree - "Confidential Document" is directoryListing.
 # It takes the first that nobody has taken yet.
+# Deliberately not the ones `redteam/cases/` takes: the acceptance suite fires
+# that case file first, and a test that has to reset the target to find
+# anything left is a slow test with a hidden dependency on running order.
 REACHABLE = [
-    ("exposedMetricsChallenge", "/metrics"),
-    ("directoryListingChallenge", "/ftp/acquisitions.md"),
+    ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
 ]
 
 
@@ -46,7 +46,7 @@ def unsolved(stack_is_up):
     # Every objective this test can take has been taken, by an earlier run of
     # this very test. Reset the target rather than skipping: a skipped
     # acceptance check reads as a passed one.
-    _reset_target()
+    reset_target()
 
     catalogue = requests.get(
         f"{PLATFORM_URL}/api/wargames/juice-shop/objectives/", timeout=60
@@ -59,39 +59,6 @@ def unsolved(stack_is_up):
     raise AssertionError(
         "the target was reset and still reports these objectives as solved: "
         f"{sorted(solved)}"
-    )
-
-
-def _reset_target():
-    """Give the target back its unsolved objectives.
-
-    A restart is not enough and neither is --force-recreate; see DECISIONS.
-    Afterwards the WAF must still reach it: nginx resolves its upstream once,
-    at start, so a target that comes back on a different address leaves the
-    whole range answering 502 - which would surface as a defence failure.
-    """
-    subprocess.run(
-        ["docker", "compose", "rm", "-sf", "juice-shop"],
-        capture_output=True, timeout=120, check=True,
-    )
-    subprocess.run(
-        ["docker", "compose", "up", "-d", "juice-shop"],
-        capture_output=True, timeout=300, check=True,
-    )
-
-    deadline = time.time() + 180
-    while time.time() < deadline:
-        try:
-            if requests.get(TARGET_URL, timeout=5).ok:
-                return
-        except requests.RequestException:
-            pass
-        time.sleep(3)
-
-    raise AssertionError(
-        f"the target was reset but {TARGET_URL} does not answer through the "
-        "WAF. nginx caches its upstream address at start, so recreate it too:\n"
-        "  docker compose up -d --force-recreate waf suricata"
     )
 
 

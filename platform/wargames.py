@@ -41,6 +41,7 @@ def cases(wargame_id: str) -> list[dict[str, Any]]:
             "technique": case.get("technique") or "",
             "correlation": case.get("correlation") or "marker",
             "expect": case.get("expect") or "",
+            "takes": case.get("takes") or "",
             "summary": _summary(case),
         }
         for case in _load(wargame_id)

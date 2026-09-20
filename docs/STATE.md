@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (product phase done; objectives now lead the score)
+Updated: 2026-09-20 (the red team now takes seven objectives, not two)
 
 ## Where things stand
 
@@ -11,15 +11,16 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 153 unit/API tests, 20 acceptance tests against the live
+`bin/verify` is green: 153 unit/API tests, 23 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
 ```
 core_loc         611   gated, unchanged by the product work
-product_loc     2379   not gated (was 1031 before the console)
+product_loc     2421   not gated (was 1031 before the console)
 dependencies       6
 services           9   kali and proxy, both raised by hand - see DECISIONS
+tests            170   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
@@ -38,6 +39,31 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The red team takes seven objectives instead of two.** The case file fired
+  twelve payloads and took `errorHandling` and `loginAdmin` almost by accident;
+  everything else tripped rules and achieved nothing. Four cases now claim an
+  objective in a `takes:` field the catalogue and console read, and the
+  acceptance suite derives what it asserts from that field rather than
+  repeating it, so the two cannot drift.
+
+  `sqli-union-in-search` became `sqli-union-user-table`: the old payload had
+  the wrong column count, so Juice Shop errored, the IDS alerted and nothing
+  was taken. Nine columns takes the user table. New: a confidential document,
+  the metrics endpoint, and a double-encoded null byte that takes two
+  objectives with one request.
+
+  Every pair was verified against the live target - Juice Shop's keys and its
+  display names disagree, so guessing them from the name does not work.
+
+  Two of the new attacks are detected by nothing at all, on purpose. They are
+  plain GETs of files the shop should not serve, so no signature could name a
+  mechanism, and they carry no `expect`. An objective taken with nobody
+  watching is the most useful line on the board.
+
+  The acceptance suite now resets the target once per run, in `conftest`,
+  because a run that starts from whatever the last one left behind measures
+  that instead of the defence.
 
 - **A true positive now has to name the right rule.** Each attack case declares
   `expect` - a substring of the signature that should be able to find it - and
@@ -214,13 +240,24 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-### 1. More objectives the red team can actually reach
+### 1. Objectives are credited to the wrong attack in a CLI run
 
-`redteam/cases/` fires twelve payloads and takes nothing. Now that objectives
-are the score, the case file is the weakest part of the range: it should
-contain attack chains that reach named objectives, not payloads that only trip
-rules. Start from the two verified single-request ones in
-`test/test_objectives.py` and work up the difficulty ladder.
+Measured, not suspected. The console polls `/api/sessions/<id>/objectives/`
+after every shot; `redteam/run.py` polls once when the whole run is over, so
+every objective is stamped with that one time and attributed to whatever case
+fired last - a benign one. Session 116 scored `backup-file-null-byte` as a true
+positive and still reported its objective as `MISSED`, with coverage 0% across
+seven breaches.
+
+This is older than the change that exposed it: a two-objective run had the same
+defect and nobody could see it. Now that the run takes seven, the scoreboard is
+visibly wrong.
+
+Two ways to fix it, and the choice matters. Polling from the platform when a
+case is recorded costs nothing in `core_loc` and gives per-case granularity for
+free, because the harness already reports after every case. Polling from the
+harness is the more obvious place and grows `core_loc`, which is gated - so it
+needs a hand-raise and an argument.
 
 ### 2. Turn a verdict into a rule change
 
