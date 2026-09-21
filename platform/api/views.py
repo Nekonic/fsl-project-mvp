@@ -565,7 +565,9 @@ def ingest_detections(request, session_id):
     start, end = _session_window(session)
 
     try:
-        documents = elastic.fetch(settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end)
+        documents, truncated = elastic.fetch(
+            settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end
+        )
     except elastic.ElasticUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
@@ -589,7 +591,11 @@ def ingest_detections(request, session_id):
         known.add(alert["detection_id"])
         ingested += 1
 
-    return _reply({"ingested": ingested, "skipped": skipped})
+    reply = {"ingested": ingested, "skipped": skipped}
+    if truncated:
+        read, total = truncated
+        reply["truncated"] = {"read": read, "total": total}
+    return _reply(reply)
 
 @require_http_methods(["GET"])
 def session_detections(request, session_id):

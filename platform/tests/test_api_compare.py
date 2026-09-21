@@ -34,7 +34,7 @@ def scored_session(client):
             },
         },
     )
-    with patch("api.views.elastic.fetch", return_value=[alert]):
+    with patch("api.views.elastic.fetch", return_value=([alert], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return session_id
 
@@ -85,7 +85,7 @@ def test_forcing_marker_on_traffic_that_carries_none_misses_it(client):
             "alert": {"signature": "SQLi", "severity": 1},
         },
     )
-    with patch("api.views.elastic.fetch", return_value=[unmarked]):
+    with patch("api.views.elastic.fetch", return_value=([unmarked], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
     by_window = client.get(f"/api/sessions/{session_id}/score/?correlation=window").json()

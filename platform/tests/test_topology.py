@@ -160,7 +160,7 @@ def drawn(client):
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.5"),
         _alert("c", "172.30.0.3"), _alert("d", "10.9.9.9"),
     ]
-    with patch("api.views.elastic.fetch", return_value=documents):
+    with patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     with patch("api.views.topology.subprocess.run", _Run()):
         return client.get(f"/api/sessions/{session_id}/topology/").json()
@@ -208,7 +208,7 @@ def counted(client):
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.3"),
         _alert("c", "172.30.0.2"), _alert("d", "10.9.9.9"),
     ]
-    with patch("api.views.elastic.fetch", return_value=documents):
+    with patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return sources(client, session_id)
 
@@ -251,7 +251,7 @@ def addressed(client):
         _addressed("b", "172.30.0.3", "172.30.0.2", 3000),
         _addressed("c", "10.9.9.9", "10.9.9.10"),
     ]
-    with patch("api.views.elastic.fetch", return_value=documents):
+    with patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     with patch("api.views.topology.subprocess.run", _Run()):
         return client.get(f"/api/sessions/{session_id}/top/").json()
@@ -285,7 +285,7 @@ def test_an_address_the_range_does_not_own_is_not_given_a_host(addressed):
 def test_a_stack_that_cannot_be_read_names_no_host_rather_than_guessing(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     with patch("api.views.elastic.fetch",
-               return_value=[_addressed("a", "5.188.10.2", "5.188.10.4")]):
+               return_value=([_addressed("a", "5.188.10.2", "5.188.10.4")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
     with patch("api.views.topology.subprocess.run", _Run(code=1, stderr="no daemon")):
@@ -298,7 +298,7 @@ def test_a_stack_that_cannot_be_read_still_reports_the_addresses(client):
                                                                          
                                  
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
-    with patch("api.views.elastic.fetch", return_value=[_alert("a", "5.188.10.3")]):
+    with patch("api.views.elastic.fetch", return_value=([_alert("a", "5.188.10.3")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
     with patch("api.views.topology.subprocess.run", _Run(code=1, stderr="no daemon")):

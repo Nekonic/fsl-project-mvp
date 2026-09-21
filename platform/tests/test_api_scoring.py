@@ -41,7 +41,7 @@ def es_alert(marker, doc_id="es1"):
     )
 
 def test_ingest_stores_detections(client, session_with_cases):
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK)], None)):
         response = client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     assert response.status_code == 200
@@ -53,14 +53,14 @@ def test_ingest_stores_detections(client, session_with_cases):
 
 def test_ingest_skips_non_alert_documents(client, session_with_cases):
     noise = ("es9", {"fsl_source": "suricata", "event_type": "http"})
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK), noise]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK), noise], None)):
         response = client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     assert response.json()["ingested"] == 1
     assert response.json()["skipped"] == 1
 
 def test_ingest_is_idempotent(client, session_with_cases):
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK)], None)):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
         second = client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
@@ -75,7 +75,7 @@ def test_ingest_reports_503_when_elasticsearch_is_unreachable(client, session_wi
     assert "index missing" in response.json()["detail"]
 
 def test_score_counts_true_positive_and_true_negative(client, session_with_cases):
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK)], None)):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     response = client.get(f"/api/sessions/{session_with_cases}/score/")
@@ -89,7 +89,7 @@ def test_score_counts_true_positive_and_true_negative(client, session_with_cases
 def test_score_counts_false_positive_when_benign_case_alerts(client, session_with_cases):
     with patch(
         "api.views.elastic.fetch",
-        return_value=[es_alert(ATTACK), es_alert(BENIGN, doc_id="es2")],
+        return_value=([es_alert(ATTACK), es_alert(BENIGN, doc_id="es2")], None),
     ):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
@@ -99,7 +99,7 @@ def test_score_counts_false_positive_when_benign_case_alerts(client, session_wit
     assert response.json()["false_positive_rate"] == pytest.approx(1.0)
 
 def test_score_counts_false_negative_when_attack_is_silent(client, session_with_cases):
-    with patch("api.views.elastic.fetch", return_value=[]):
+    with patch("api.views.elastic.fetch", return_value=([], None)):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     response = client.get(f"/api/sessions/{session_with_cases}/score/")
@@ -108,7 +108,7 @@ def test_score_counts_false_negative_when_attack_is_silent(client, session_with_
     assert response.json()["tn"] == 1
 
 def test_score_includes_per_case_verdicts(client, session_with_cases):
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK)], None)):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     per_case = client.get(f"/api/sessions/{session_with_cases}/score/").json()["per_case"]
@@ -120,7 +120,7 @@ def test_score_includes_per_case_verdicts(client, session_with_cases):
 def test_reading_the_score_writes_nothing(client, session_with_cases):
     from django.db import connection
 
-    with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
+    with patch("api.views.elastic.fetch", return_value=([es_alert(ATTACK)], None)):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     before = _row_counts(connection)
@@ -169,7 +169,7 @@ def test_ingest_skipped_counts_documents_not_alerts(client, session_with_cases):
     )
     noise = ("n1", {"fsl_source": "suricata", "event_type": "http"})
 
-    with patch("api.views.elastic.fetch", return_value=[modsec, noise]):
+    with patch("api.views.elastic.fetch", return_value=([modsec, noise], None)):
         response = client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
 
     assert response.json()["ingested"] == 2

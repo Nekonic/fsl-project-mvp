@@ -23,7 +23,7 @@ def session_id(client):
     return client.post_json("/api/sessions/", {}).json()["id"]
 
 def ingest(client, session_id, documents):
-    with patch("api.views.elastic.fetch", return_value=documents):
+    with patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
 def test_after_returns_only_what_the_console_has_not_seen(client, session_id):
@@ -75,3 +75,26 @@ def test_the_detail_says_which_session_it_belongs_to(client, session_id):
 
 def test_an_unknown_detection_is_404(client):
     assert client.get("/api/detections/9999/").status_code == 404
+
+def test_an_ingest_that_could_not_read_everything_says_so(client, monkeypatch):
+    from ingest import elastic
+
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    monkeypatch.setattr(elastic, "fetch", lambda *a, **k: ([], (5000, 25937)))
+
+    body = client.post_json(f"/api/sessions/{session_id}/ingest/").json()
+
+    assert body["truncated"] == {"read": 5000, "total": 25937}, (
+        "the window held more documents than one fetch can read and the reply "
+        "did not say so, so the score is computed on part of the evidence"
+    )
+
+def test_an_ingest_that_read_everything_stays_quiet(client, monkeypatch):
+    from ingest import elastic
+
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    monkeypatch.setattr(elastic, "fetch", lambda *a, **k: ([], None))
+
+    assert "truncated" not in client.post_json(
+        f"/api/sessions/{session_id}/ingest/"
+    ).json()
