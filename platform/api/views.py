@@ -125,7 +125,7 @@ def sessions(request):
 
     body = _payload(request)
     try:
-        baseline = sorted(objectives.solved_keys())
+        baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
     except objectives.ObjectivesUnavailable:
                                                                             
                                                                                
@@ -326,12 +326,12 @@ def attacker_origin(request):
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
-    attacker.set_origin(chosen["id"])
+    attacker.set_origin(chosen["id"], substrate().runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
 @require_http_methods(["POST"])
 def attacker_label(request):
-    attacker.set_label(_payload(request).get("case_id"))
+    attacker.set_label(_payload(request).get("case_id"), substrate().runner("proxy"))
     return _reply({"ok": True})
 
 @require_http_methods(["GET"])
@@ -350,7 +350,7 @@ def wargame_objectives(request, wargame_id):
     if wargame_id not in wargames.WARGAMES:
         raise Http404(wargame_id)
     try:
-        return _reply(objectives.catalogue())
+        return _reply(objectives.catalogue(substrate().runner("wiki")))
     except objectives.ObjectivesUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
@@ -374,7 +374,7 @@ def session_objectives(request, session_id):
         return _reply({"detail": str(exc)}, status=503)
 
 def _observe_objectives(session) -> dict:
-    solved = {o["key"]: o for o in objectives.catalogue() if o["solved"]}
+    solved = {o["key"]: o for o in objectives.catalogue(substrate().runner("wiki")) if o["solved"]}
 
     if session.baseline is None:
                                                                            

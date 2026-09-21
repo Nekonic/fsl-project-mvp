@@ -62,7 +62,7 @@ PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
 
                                                                               
                                                                      
-WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/wiki-logs/read.log")
+WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")
 WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
 TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
                                                                               
@@ -86,6 +86,8 @@ FSL_SUBSTRATE_OPTIONS = {
     "project": os.environ.get("FSL_PROJECT", "fsl"),
     "hosts": {
         "sensor": os.environ.get("SURICATA_CONTAINER", "fsl-suricata"),
+        "proxy": os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy"),
+        "wiki": os.environ.get("WIKI_CONTAINER", "fsl-wiki"),
     },
 }
 

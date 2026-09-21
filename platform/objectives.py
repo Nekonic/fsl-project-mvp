@@ -26,22 +26,28 @@ INTERNAL = {
     ),
 }
 
-def catalogue() -> list[dict[str, Any]]:
-    return [_summarise(challenge) for challenge in _fetch()] + [_internal()]
+def catalogue(wiki=None) -> list[dict[str, Any]]:
+    return [_summarise(c) for c in _fetch()] + [_internal(wiki)]
 
-def solved_keys() -> set[str]:
+def solved_keys(wiki=None) -> set[str]:
     taken = {c["key"] for c in _fetch() if c.get("solved")}
-    if _internal()["solved"]:
+    if _internal(wiki)["solved"]:
         taken.add(INTERNAL["key"])
     return taken
 
-def _internal() -> dict[str, Any]:
+def wiki_read_at(wiki, secret_path: str) -> str | None:
+    when = None
+    for line in wiki(["cat", settings.WIKI_READ_LOG]).output.splitlines():
+        stamp, _, rest = line.partition(" ")
+        if secret_path in rest:
+            when = stamp
+    return when
+
+def _internal(wiki=None) -> dict[str, Any]:
     when = None
     try:
-        for line in Path(settings.WIKI_READ_LOG).read_text().splitlines():
-            stamp, _, rest = line.partition(" ")
-            if settings.WIKI_SECRET_PATH in rest:
-                when = stamp
+        if wiki is not None:
+            when = wiki_read_at(wiki, settings.WIKI_SECRET_PATH)
     except OSError:
                                                                             
                                                                   
