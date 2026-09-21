@@ -28,8 +28,8 @@ class Node:
 class Segment:
     id: str
     name: str
-    origin: str
-    subnet: str
+    origin: str = ""
+    subnet: str = ""
     network: str = ""
     gateway: str = ""
     nodes: tuple[Node, ...] = field(default_factory=tuple)

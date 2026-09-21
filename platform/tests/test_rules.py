@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from range.declared import Declaration
 from range.ports import Ran, RangeUnavailable
 from rules.suricata import RuleApplyError, ValidationOutcome
 
@@ -30,7 +31,7 @@ def sensor_of(substrate):
 def test_the_endpoint_asks_the_substrate_for_the_sensor_and_nothing_else():
     from range.docker import Docker
 
-    substrate = Docker(hosts={"sensor": "fsl-suricata"})
+    substrate = Docker(Declaration(roles={"sensor": "fsl-suricata"}))
     run = substrate.runner("sensor")
 
     with patch("range.docker.subprocess.run") as ran:
@@ -46,7 +47,7 @@ def test_the_endpoint_asks_the_substrate_for_the_sensor_and_nothing_else():
 def test_writing_through_the_substrate_opens_stdin():
     from range.docker import Docker
 
-    run = Docker(hosts={"sensor": "fsl-suricata"}).runner("sensor")
+    run = Docker(Declaration(roles={"sensor": "fsl-suricata"})).runner("sensor")
 
     with patch("range.docker.subprocess.run") as ran:
         ran.return_value.returncode = 0
@@ -60,7 +61,7 @@ def test_writing_through_the_substrate_opens_stdin():
 def test_a_missing_sensor_is_unavailable_not_a_failed_command():
     from range.docker import Docker
 
-    run = Docker(hosts={"sensor": "fsl-suricata"}).runner("sensor")
+    run = Docker(Declaration(roles={"sensor": "fsl-suricata"})).runner("sensor")
 
     with patch("range.docker.subprocess.run") as ran:
         ran.return_value.returncode = 1
@@ -73,7 +74,7 @@ def test_a_role_no_host_fills_is_refused_before_anything_runs():
     from range.docker import Docker
 
     with pytest.raises(RangeUnavailable, match="sensor"):
-        Docker(hosts={}).runner("sensor")
+        Docker(Declaration()).runner("sensor")
 
 def test_the_rule_paths_are_the_sensors_own():
     from rules import suricata

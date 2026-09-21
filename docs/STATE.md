@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-22 (the substrate is behind a port; OpenStack is the next one)
+Updated: 2026-09-22 (the range is declared, not discovered; name resolution next)
 
 ## Where things stand
 
@@ -39,7 +39,8 @@ most of the way done, and the remaining work is named below rather than
 guessed at.
 
 `platform/range/` holds the port: `describe() -> Shape` and
-`runner(role, segment) -> Runner`. `platform/range/docker.py` implements both.
+`runner(role, segment) -> Runner`. `platform/range/docker.py` implements both,
+and `platform/range/declaration.yaml` tells it what the range means.
 Nothing under `platform/scoring/`, `platform/ingest/`, `platform/rules/` or
 `redteam/harness.py` contains the word docker, and neither does
 `platform/topology.py`, `platform/attacker.py` or `platform/objectives.py`.
@@ -58,17 +59,35 @@ both are load-bearing:
   0 of 3,969 alerts carry `http.request_headers`. Any change that filters the
   ingest to `event_type: alert` destroys correlation entirely.
 
+The range is now **declared**. `platform/range/declaration.yaml` holds the one
+substrate-neutral statement of it - per segment an id, the name a person reads
+and the origin it attacks from, plus the role table naming the host that fills
+each job - and three readers share it: `range/docker.py` merges the declared
+identity into what the daemon allocated, `fsl/settings.py` takes the attacker
+and proxy identity from it instead of restating them, and `test/range.py` builds
+the acceptance suite's host table from it. The adapter no longer reads
+`fsl.segment` or `fsl.origin`; it asks Docker only for addresses and membership,
+which is exactly the set of questions Neutron can answer.
+
+The subnet stays substrate-assigned, deliberately. Identity is declared,
+allocation is reported: a subnet written into the declaration would be an
+address fact the platform does not own, and when it disagreed with the one the
+range handed out the console would bin alerts by a subnet nothing lives on.
+Gateway settles it - nobody can declare that at all.
+
+`compose.yaml` is the Docker realisation of the declaration and nothing
+generates one from the other, so `platform/tests/test_declaration.py` holds them
+together: a network built and not declared, a segment declared and not built, a
+name or an origin changed on one side, or a role pointing at a container compose
+does not define, each fails the suite naming the segment or the role.
+
 What is left for OpenStack, in order:
 
-1. **The range is discovered, not declared.** `describe()` asks Docker what
-   networks carry `fsl.origin` and which containers sit on them. Neutron has
-   nothing to ask. The shape has to come from a declaration the adapter
-   realises, with the substrate reporting only the addresses it assigned.
-2. **Name resolution.** Fifteen places name a host - `shop.com`,
+1. **Name resolution.** Fifteen places name a host - `shop.com`,
    `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose
    gives those away; Neutron does not. cloud-init writing `/etc/hosts` is the
    cheapest answer that keeps `shop.com` a name, which is the product.
-3. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
+2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
    the WAF's namespace so it sees both legs of every proxied request. Neutron
    has no namespace sharing: either Suricata rides the WAF instance, or
    Tap-as-a-Service mirrors the ports. `Sensor(name, watches)` already carries
@@ -81,6 +100,9 @@ What is left for OpenStack, in order:
 One line each.
 
 **The range**
+- The platform is told what the range means rather than asking the daemon:
+  one declaration, a Docker adapter that fills in what it allocated, and a test
+  that fails when compose and the declaration disagree.
 - Three segments plus four origin networks; the WAF is the only intended way
   across, and the published port arrives on the outside one.
 - The attacks come from four countries, chosen in the console; the stamping
