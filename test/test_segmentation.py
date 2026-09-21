@@ -1,10 +1,8 @@
-import json
-import subprocess
-
 import pytest
 import requests
 
 from conftest import PLATFORM_URL
+from range import ATTACKER, GATEWAY, TARGET, run, segments
 
 TARGET_INSIDE = "http://juice-shop:3000/"
                                                                        
@@ -12,20 +10,11 @@ TARGET_INSIDE = "http://juice-shop:3000/"
 WAF_INSIDE = "http://shop.com/"
 
 def _from_kali(url, extra=()):
-    return subprocess.run(
-        [
-            "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
-            "-w", "%{http_code}", "--max-time", "8", "--noproxy", "*", *extra, url,
-        ],
-        capture_output=True, text=True, timeout=60,
+    return run(
+        ATTACKER,
+        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+         "--max-time", "8", "--noproxy", "*", *extra, url],
     )
-
-def _networks(container):
-    out = subprocess.run(
-        ["docker", "inspect", container, "--format", "{{json .NetworkSettings.Networks}}"],
-        capture_output=True, text=True, timeout=60, check=True,
-    )
-    return json.loads(out.stdout)
 
 def test_the_attacker_cannot_reach_the_target_directly(stack_is_up):
                                                                            
@@ -46,9 +35,9 @@ def test_the_attacker_can_still_reach_the_way_in(stack_is_up):
         f"so the range is broken rather than segmented"
     )
 
-def test_the_attacker_and_the_target_share_no_network(stack_is_up):
-    attacker = set(_networks("fsl-kali"))
-    target = set(_networks("fsl-juice-shop"))
+def test_the_attacker_and_the_target_share_no_segment(stack_is_up):
+    attacker = segments(ATTACKER)
+    target = segments(TARGET)
 
     assert not (attacker & target), (
         f"attacker and target both sit on {sorted(attacker & target)}, so "
@@ -56,9 +45,9 @@ def test_the_attacker_and_the_target_share_no_network(stack_is_up):
     )
 
 def test_the_waf_is_the_only_way_across(stack_is_up):
-    attacker = set(_networks("fsl-kali"))
-    target = set(_networks("fsl-juice-shop"))
-    waf = set(_networks("fsl-waf"))
+    attacker = segments(ATTACKER)
+    target = segments(TARGET)
+    waf = segments(GATEWAY)
 
     assert attacker & waf, "the WAF is not reachable from the attacker's segment"
     assert target & waf, "the WAF cannot reach the target's segment"

@@ -6,6 +6,7 @@ import pytest
 import requests
 
 from conftest import PLATFORM_URL, from_attacker, score_when_ready
+from range import ATTACKER, start_hint
 
                                                                            
                                                                      
@@ -39,7 +40,7 @@ def window_session(stack_is_up):
     attacker = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60)
     assert attacker.ok, (
         f"the attacker box is not available: {attacker.text}. "
-        f"Run `docker compose up -d kali`."
+        f"Run `{start_hint(ATTACKER)}`."
     )
     source_ip = attacker.json()["source_ip"]
 
