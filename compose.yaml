@@ -216,8 +216,5 @@ services:
     volumes:
       - ./platform:/app
       - ./redteam:/app/redteam:ro
-      - ./deploy/suricata/rules:/rules
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
-      - ./data/label:/label
-      - ./deploy/wiki/logs:/wiki-logs:ro

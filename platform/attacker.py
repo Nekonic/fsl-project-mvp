@@ -64,13 +64,11 @@ def _unknown(origin_id, available):
         f"{[o['id'] for o in available]}"
     )
 
-def set_origin(origin_id: str | None) -> None:
-    _write(settings.ATTACKER_ORIGIN_FILE, origin_id)
+def set_origin(origin_id: str | None, proxy) -> None:
+    _write(proxy, settings.ATTACKER_ORIGIN_FILE, origin_id)
 
-def set_label(case_id: str | None) -> None:
-    _write(settings.ATTACKER_LABEL_FILE, case_id)
+def set_label(case_id: str | None, proxy) -> None:
+    _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)
 
-def _write(where: str, value: str | None) -> None:
-    path = Path(where)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value or "")
+def _write(proxy, where: str, value: str | None) -> None:
+    proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
