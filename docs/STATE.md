@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-21 (the estate has an inside, and it can be lost)
+Updated: 2026-09-22 (the substrate is behind a port; OpenStack is the next one)
 
 ## Where things stand
 
@@ -30,7 +30,51 @@ alert opens the whole Elasticsearch record behind it.
 
 ## In progress
 
-Nothing. The product design is finished; the next item is not written yet.
+Nothing half-finished. The last session left the tree green and committed.
+
+## The substrate seam
+
+Docker was the MVP shortcut; OpenStack was always the target. That move is now
+most of the way done, and the remaining work is named below rather than
+guessed at.
+
+`platform/range/` holds the port: `describe() -> Shape` and
+`runner(role, segment) -> Runner`. `platform/range/docker.py` implements both.
+Nothing under `platform/scoring/`, `platform/ingest/`, `platform/rules/` or
+`redteam/harness.py` contains the word docker, and neither does
+`platform/topology.py`, `platform/attacker.py` or `platform/objectives.py`.
+`test/range.py` is the same idea for the acceptance suite, which used to shell
+out to `docker exec` in five files.
+
+Two mechanics were measured against the running stack rather than assumed, and
+both are load-bearing:
+
+- Suricata is PID 1 in its container, so `kill -USR2 1` through the runner is
+  exactly `docker kill -s USR2`. With stdin round-tripping through
+  `docker exec -i`, write, validate and reload collapse into one operation.
+  That is why the port has two verbs and not five, and why five settings and
+  four compose environment lines went away.
+- The marker lives only on Suricata `http` documents, never on `alert` ones -
+  0 of 3,969 alerts carry `http.request_headers`. Any change that filters the
+  ingest to `event_type: alert` destroys correlation entirely.
+
+What is left for OpenStack, in order:
+
+1. **The range is discovered, not declared.** `describe()` asks Docker what
+   networks carry `fsl.origin` and which containers sit on them. Neutron has
+   nothing to ask. The shape has to come from a declaration the adapter
+   realises, with the substrate reporting only the addresses it assigned.
+2. **Name resolution.** Fifteen places name a host - `shop.com`,
+   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose
+   gives those away; Neutron does not. cloud-init writing `/etc/hosts` is the
+   cheapest answer that keeps `shop.com` a name, which is the product.
+3. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
+   the WAF's namespace so it sees both legs of every proxied request. Neutron
+   has no namespace sharing: either Suricata rides the WAF instance, or
+   Tap-as-a-Service mirrors the ports. `Sensor(name, watches)` already carries
+   the relationship either way.
+
+`docs/ARCHITECTURE.md` has the mechanism and the measured numbers.
 
 ## Done since v1.0
 
@@ -113,12 +157,48 @@ it a window case says an attack happened and not what it was.
 
 ## Known gaps
 
-- The `platform` container mounts the Docker socket to validate rules, and the
-  Kali terminal is an unauthenticated root shell on 7681. Both are container
-  escape paths, acceptable in a local lab and nowhere else.
+- The `platform` container still mounts the Docker socket, now reached as a
+  non-root user through a group whose id compose passes as `DOCKER_GID`. It is
+  still a container escape path and it disappears with the substrate: an
+  OpenStack adapter authenticates rather than mounting anything.
+- The Kali terminal on 7681 is an unauthenticated root shell. Local lab only.
+- `elastic.fetch` reads at most 5000 documents per ingest and has no
+  `event_type` filter, so `http` records burn the same budget. It now reports
+  what it could not read and the console says so, but a long session still
+  scores on part of its evidence. Paginating with `search_after` needs a
+  monotonic write-time field, which the index does not have; one
+  `set: _ingest.timestamp` processor in the pipeline would give it one.
+- `Detection.raw` for ModSecurity holds only the `message` sub-object. The
+  drawer now names the CRS rule and says the ruleset lives in the WAF, so the
+  operator is not stuck, but the record is still a fragment.
 - Two labelled terminal windows less than four seconds apart overlap, because
-  `WINDOW_SLACK` is two seconds at each end. The console does not say so on
-  screen yet.
+  `WINDOW_SLACK` is two seconds at each end. The console does not say so.
 - Nothing stops two people opening the same session in four windows. One user,
-  one session was a deliberate scope decision; revisit it only if the answer to
-  "who is in front of this" changes.
+  one session was a deliberate scope decision.
+- The console loads Tailwind from `cdn.tailwindcss.com` on every page, so an
+  isolated range renders unstyled.
+
+## Tried and thrown away
+
+**Elasticsearch as the only store, 2026-09-22.** The idea was to delete the
+Django `Detection` table and query the index directly: one copy of the truth,
+no 5000-document cap, aggregations instead of Python loops. Killed at the
+scoping stage, before any production code, by three measurements:
+
+- Window correlation has no Elasticsearch form. Both event clocks are mapped
+  `keyword`; the only `date` field is filebeat's read clock, which runs ahead
+  of ModSecurity's by a median of 2.5s and p90 of 7.9s against a two-second
+  `WINDOW_SLACK`. 64% of ModSecurity alerts would land in the wrong window.
+- It does not re-derive the same score, it changes it. One session's frozen 66
+  detections come back as 98 when its window is re-queried, and no closed
+  session could be told from a regression.
+- 85 of the tests are written against the `patch(elastic.fetch)` seam and the
+  floor may only rise, so most of the work is rewriting tests to stand still.
+
+The motivating measurement was also wrong, which is the more useful lesson:
+`/top/` at 44-82ms against an aggregation at 3-9ms is not Django versus
+Elasticsearch. `/map/` walks the same rows in Python in 3.5ms; the 40ms was the
+Docker call in `_segments()`, since removed.
+
+Worth keeping from it: a `set: _ingest.timestamp` processor is the one line
+every future version of that idea depends on.
