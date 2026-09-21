@@ -156,6 +156,28 @@ def test_nothing_that_decides_a_recorded_address_can_move_while_recording():
             "never sent the traffic"
         )
 
+def test_an_alert_the_operator_cannot_tune_says_why():
+    source = (CONSOLE / "blue.html").read_text()
+    drawer = source[source.index("async function openDrawer("):]
+    drawer = drawer[:drawer.index("\n  }")]
+    english = strings()["en"]
+
+    assert "blue.drawer.not_tunable" in drawer, (
+        "a ModSecurity alert carries a CRS rule id but no Suricata sid, so the "
+        "whole verdict panel is hidden and the operator is told nothing about "
+        "why this one cannot be silenced"
+    )
+    assert english.get("blue.drawer.not_tunable")
+
+def test_the_drawer_names_the_rule_whichever_engine_raised_it():
+    source = (CONSOLE / "blue.html").read_text()
+
+    assert "details?.ruleId" in source or "details.ruleId" in source, (
+        "ModSecurity puts its rule id in raw.details.ruleId; the drawer only "
+        "looks for raw.alert.signature_id, so it shows the operator no rule "
+        "number at all for half the engines"
+    )
+
 def test_the_console_tells_a_quiet_range_from_a_dead_one():
     source = (CONSOLE / "blue.html").read_text()
     paint = source[source.index("function paintLive("):]
