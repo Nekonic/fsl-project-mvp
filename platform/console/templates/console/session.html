@@ -3,12 +3,12 @@
 {% block content %}
 <h1 class="text-2xl font-semibold text-slate-100 mb-2">Session ready</h1>
 <p class="text-slate-400 text-sm mb-8">
-  Three windows, on as many screens as there are. Traffic goes out of one; the
-  other two are the two distances a defence is watched from - the board a room
-  reads from across it, and the list one person reads sitting in front of it.
+  Two windows, side by side or on two screens. Traffic goes out of one and the
+  other is the console that sees what the defence made of it - open it twice
+  and leave one on Dashboard if you want the overview on its own screen.
 </p>
 
-<div class="grid grid-cols-3 gap-4 mb-10">
+<div class="grid grid-cols-2 gap-4 mb-10">
   <a id="red" target="_blank"
      class="border border-rose-900 rounded p-6 hover:border-rose-600 block">
     <div class="text-rose-400 font-medium mb-1">Red team window</div>
@@ -17,21 +17,13 @@
       which is what makes the score mean anything.
     </div>
   </a>
-  <a id="board" target="_blank"
-     class="border border-amber-900 rounded p-6 hover:border-amber-600 block">
-    <div class="text-amber-400 font-medium mb-1">Status board</div>
-    <div class="text-slate-400 text-sm">
-      Counts, where it is coming from, the trend, the top attackers and the
-      shape of the range. Big enough to read from across a room, and there is
-      nothing on it to operate.
-    </div>
-  </a>
   <a id="blue" target="_blank"
      class="border border-sky-900 rounded p-6 hover:border-sky-600 block">
-    <div class="text-sky-400 font-medium mb-1">Alert list</div>
+    <div class="text-sky-400 font-medium mb-1">Blue team window</div>
     <div class="text-slate-400 text-sm">
-      Every alert, filtered, with the whole log record behind each row. The
-      score and the Suricata rules are here too.
+      The overview - where it is coming from, what is being hit, the trend -
+      and the alert list behind it, with the whole log record under each row.
+      The score and the Suricata rules are here too.
     </div>
   </a>
 </div>
@@ -47,7 +39,6 @@
 <script>
   document.getElementById("red").href = `/red/${sessionId()}/`;
   document.getElementById("blue").href = `/blue/${sessionId()}/`;
-  document.getElementById("board").href = `/board/${sessionId()}/`;
 
   document.getElementById("close").addEventListener("click", async () => {
     await post(`/api/sessions/${sessionId()}/close/`);

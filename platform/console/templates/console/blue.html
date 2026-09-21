@@ -3,15 +3,20 @@
 {% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
 {% block nav_class %}w-full{% endblock %}
 {% comment %}
-The three-foot view: the alert list, with filters and a row that opens the
-whole log record behind it. The counters, the map and the shape of the range
-are the ten-foot view and live in /board/<id>/, on a screen a room reads from
-across it. Putting both in one window is the mistake this split.
+One console for the blue team. Dashboard is the overview a room can read -
+counters, where it is coming from, top-N by each dimension, the trend. Live is
+the alert list, with filters and the whole log record behind a row.
+
+They are tabs rather than two URLs on purpose. Splitting them across screens
+is the operator's call, made by opening this page twice and leaving one on
+Dashboard - not a decision baked into the routes, which is what a second
+address would have made it.
 {% endcomment %}
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
 <div id="tabs" class="flex gap-3 mb-3 border-b border-slate-800 items-center shrink-0">
+  <button data-tab="dashboard" class="tab px-4 py-2 text-sm">Dashboard</button>
   <button data-tab="alerts" class="tab px-4 py-2 text-sm">Live</button>
   <button data-tab="score" class="tab px-4 py-2 text-sm">Scoreboard</button>
   <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
@@ -29,14 +34,141 @@ across it. Putting both in one window is the mistake this split.
       <option value="5000" selected>5s</option>
       <option value="15000">15s</option>
     </select>
-    <a id="to-board" target="_blank" class="text-sm text-amber-400 hover:text-amber-300">
-      Status board
-    </a>
     <a id="to-red" target="_blank" class="text-sm text-rose-400 hover:text-rose-300">
       Red window
     </a>
   </div>
 </div>
+
+<section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3">
+<div class="grid grid-cols-4 gap-3 shrink-0">
+  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
+    <div class="text-slate-500 text-xs uppercase tracking-widest">Events</div>
+    <div id="kpi-total" class="text-4xl font-semibold text-slate-100 tabular-nums">0</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
+    <div class="text-slate-500 text-xs uppercase tracking-widest">Suricata</div>
+    <div id="kpi-suricata" class="text-4xl font-semibold text-violet-300 tabular-nums">0</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
+    <div class="text-slate-500 text-xs uppercase tracking-widest">ModSecurity</div>
+    <div id="kpi-modsec" class="text-4xl font-semibold text-cyan-300 tabular-nums">0</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
+    <div class="text-slate-500 text-xs uppercase tracking-widest">Unattributed</div>
+    <div id="kpi-orphan" class="text-4xl font-semibold text-amber-300 tabular-nums">0</div>
+  </div>
+</div>
+
+<div class="flex-1 min-h-0 grid grid-cols-12 gap-3">
+  <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
+    <div class="flex items-center gap-3 px-4 py-2 border-b border-slate-800 shrink-0">
+      <span class="text-sm uppercase tracking-widest text-slate-500">Source countries</span>
+      <span id="map-note" class="text-sm text-slate-400 ml-auto"></span>
+    </div>
+    <div class="flex-1 min-h-0 p-2 flex">
+      <svg viewBox="0 0 360 180" class="w-full h-full block" preserveAspectRatio="xMidYMid meet">
+        <rect width="360" height="180" fill="#0b1220"/>
+        <g stroke="#172033" stroke-width="0.15">
+          <line x1="0" y1="90" x2="360" y2="90"/>
+          <line x1="180" y1="0" x2="180" y2="180"/>
+        </g>
+        <g fill="#1e293b" stroke="#334155" stroke-width="0.2">
+          {% include "console/world.svg" %}
+        </g>
+        <g id="map-points"></g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
+    <div class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500">
+      Top source addresses
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr>
+            <th class="text-left py-1.5 px-3 font-medium">Source IP</th>
+            <th class="text-left py-1.5 px-3 font-medium">Zone</th>
+            <th class="text-left py-1.5 px-3 font-medium">Country</th>
+            <th class="text-right font-medium pr-3">Events</th>
+          </tr>
+        </thead>
+        <tbody id="sources"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col-span-3 min-h-0 flex flex-col border border-slate-800 rounded">
+    <div class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500">
+      Top signatures
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr>
+            <th class="text-left py-1.5 px-3 font-medium">Signature</th>
+            <th class="text-left py-1.5 px-3 font-medium">Engine</th>
+            <th class="text-right font-medium pr-3">Events</th>
+          </tr>
+        </thead>
+        <tbody id="signatures"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<div class="shrink-0 grid grid-cols-12 gap-3" style="height:13rem">
+  <section class="col-span-3 flex flex-col border border-slate-800 rounded">
+    <div class="flex items-center gap-2 px-4 py-2 border-b border-slate-800 shrink-0">
+      <span class="text-sm uppercase tracking-widest text-slate-500">Events over time</span>
+      <span id="histogram-range" class="text-xs text-slate-500 ml-auto"></span>
+    </div>
+    <div id="histogram" class="flex-1 flex items-end gap-px p-2"></div>
+  </section>
+
+  <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
+    <div class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500">
+      Top destinations
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr>
+            <th class="text-left py-1.5 px-3 font-medium">Destination</th>
+            <th class="text-left py-1.5 px-3 font-medium">Zone</th>
+            <th class="text-right font-medium pr-3">Events</th>
+          </tr>
+        </thead>
+        <tbody id="destinations"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
+    <div class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500">
+      Top request paths
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr>
+            <th class="text-left py-1.5 px-3 font-medium">Method</th>
+            <th class="text-left py-1.5 px-3 font-medium">Path</th>
+            <th class="text-right font-medium pr-3">Events</th>
+          </tr>
+        </thead>
+        <tbody id="paths"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+</section>
 
 <section data-panel="alerts" class="flex-1 min-h-0 flex flex-col border border-slate-800 rounded">
   <div class="flex items-center gap-3 px-3 py-2 border-b border-slate-800 shrink-0">
@@ -179,7 +311,6 @@ across it. Putting both in one window is the mistake this split.
 {% block script %}
 <script>
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
-  document.getElementById("to-board").href = `/board/${sessionId()}/`;
 
   const SOURCE_STYLE = {
     suricata: "bg-violet-950 text-violet-300 border-violet-900",
@@ -220,6 +351,7 @@ across it. Putting both in one window is the mistake this split.
         ? "text-slate-100 border-b-2 border-sky-500" : "text-slate-500 hover:text-slate-300"}`;
     });
     if (name === "score") renderScore();
+    if (name === "dashboard") renderDashboard(true);
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
@@ -227,6 +359,18 @@ across it. Putting both in one window is the mistake this split.
 
   // -- the live loop. Ingest pulls whatever Elasticsearch has since last time,
   // then only the rows this console has not seen are fetched.
+  // The overview, drawn from the same rows the list is drawn from. The two
+  // server-side parts - the map and the top-N tables - are skipped while the
+  // tab is hidden, because a request nobody is looking at is a request for
+  // nothing.
+  function renderDashboard(force) {
+    if (!force && !showing("dashboard")) return;
+    renderCounters();
+    renderHistogram();
+    renderMap();
+    loadTop(force);
+  }
+
   async function tick() {
     await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
     const result = await api(
@@ -238,6 +382,7 @@ across it. Putting both in one window is the mistake this split.
       lastId = Math.max(...result.body.map((d) => d.id));
       await loadOwners();
       renderAlerts();
+      renderDashboard();
       if (showing("score")) renderScore();
     }
   }
@@ -291,15 +436,142 @@ across it. Putting both in one window is the mistake this split.
     owners = Object.fromEntries(body.sources.map((s) => [s.src_ip, s]));
   }
 
-  // A path is read, not copied: the payload in a query string is the point
-  // of the row, and %27+OR+1%3D1-- hides it.
+  // The projection bin/worldmap used for the coastlines: one unit per degree
+  // on a 360x180 viewBox, which is why a point lands on its own country.
+  const projectX = (lon) => lon + 180;
+  const projectY = (lat) => 90 - lat;
+
+  const cell = "py-1 px-3 align-top";
+  const num = (n) =>
+    `<td class="${cell} text-right pr-3 tabular-nums text-slate-300">${esc(n)}</td>`;
+  // esc, always. Every value in these tables is part of an attack someone
+  // just sent - see base.html.
+  const text = (s, tone) =>
+    `<td class="${cell} ${tone || "text-slate-400"}">${esc(s) || "-"}</td>`;
+  const empty = (columns) =>
+    `<tr><td class="${cell} text-slate-500" colspan="${columns}">Nothing yet.</td></tr>`;
+
+  function fill(id, rows, row, columns) {
+    document.getElementById(id).innerHTML =
+      rows.map((r) => `<tr class="border-t border-slate-800/70">${row(r)}</tr>`).join("")
+      || empty(columns);
+  }
+
+  function renderCounters() {
+    const of = (source) => rows.filter((d) => d.source === source).length;
+    document.getElementById("kpi-total").textContent = rows.length;
+    document.getElementById("kpi-suricata").textContent = of("suricata");
+    document.getElementById("kpi-modsec").textContent = of("modsecurity");
+    document.getElementById("kpi-orphan").textContent =
+      rows.filter((d) => !d.marker).length;
+  }
+
+  function renderTop(body) {
+    // An address with the zone it belongs to and where it geolocates - the
+    // two things that turn an address into something a reader can act on.
+    fill("sources", body.sources, (s) => [
+      text(s.src_ip, `font-mono text-xs ${s.outside ? "text-rose-300" : "text-slate-300"}`),
+      text(s.zone),
+      text([s.city, s.country].filter(Boolean).join(", ")),
+      num(s.alerts),
+    ].join(""), 4);
+
+    fill("destinations", body.destinations, (d) => [
+      text(d.dest, "font-mono text-xs text-slate-300"),
+      text(d.zone),
+      num(d.alerts),
+    ].join(""), 3);
+
+    fill("signatures", body.signatures, (s) => [
+      text(s.signature, "text-slate-300"),
+      text(s.engine, s.engine === "suricata" ? "text-violet-300 text-xs" : "text-cyan-300 text-xs"),
+      num(s.alerts),
+    ].join(""), 3);
+
+    // Decoded, because a path is read, not copied: the payload in a query
+    // string is the whole point of the row and %27+OR+1%3D1-- hides it.
+    fill("paths", body.paths, (p) => [
+      text(p.method, "text-xs text-slate-500"),
+      text(decodePath(p.path), "font-mono text-xs text-slate-300 break-all"),
+      num(p.alerts),
+    ].join(""), 3);
+  }
+
   function decodePath(path) {
     try {
-      return decodeURIComponent((path || "").replace(/\+/g, " "));
+      return decodeURIComponent(path.replace(/\+/g, " "));
     } catch (error) {
-      return path || "";
+      return path;
     }
   }
+
+  function renderHistogram() {
+    const times = rows.map((d) => Date.parse(d.timestamp)).filter(Number.isFinite);
+    const histogram = document.getElementById("histogram");
+    if (!times.length) { histogram.innerHTML = ""; return; }
+
+    const first = Math.min(...times);
+    const last = Math.max(...times);
+    const buckets = new Array(48).fill(0);
+    const span = Math.max(last - first, 1);
+    times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 47))]++);
+
+    const tallest = Math.max(...buckets, 1);
+    histogram.innerHTML = buckets.map((n) => `
+      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${n} events"
+           style="height:${Math.max(n / tallest * 100, n ? 6 : 1)}%"></div>`).join("");
+    document.getElementById("histogram-range").textContent =
+      `${new Date(first).toLocaleTimeString()} - ${new Date(last).toLocaleTimeString()}`;
+  }
+
+  async function renderMap() {
+    const { ok, body } = await api(`/api/sessions/${sessionId()}/map/`);
+    if (!ok) return;
+
+    const busiest = Math.max(1, ...body.points.map((p) => p.detections));
+    document.getElementById("map-points").innerHTML = body.points.map((p) => {
+      // Area, not radius, follows the count - otherwise one loud origin
+      // swallows the map.
+      const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
+      const where = [p.city, p.country].filter(Boolean).join(", ") || "unknown";
+      return `
+        <g>
+          <title>${esc(where)} - ${p.detections} events from ${esc(p.ips.join(", "))}</title>
+          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r + 2}"
+                  fill="#f43f5e" opacity="0.15"/>
+          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r}"
+                  fill="#f43f5e" opacity="0.85"/>
+        </g>`;
+    }).join("");
+
+    const note = document.getElementById("map-note");
+    if (!body.points.length && !body.unlocated) {
+      note.textContent = "nothing yet";
+    } else {
+      const places = body.points.length === 1 ? "1 country" : `${body.points.length} countries`;
+      // Say when events could not be placed rather than quietly drawing fewer
+      // than there are - an address inside the estate has no country.
+      note.textContent = body.unlocated
+        ? `${places} · ${body.unlocated} from addresses with no location`
+        : places;
+    }
+  }
+
+  // The top-N tables ask Docker for the zone names, so they run on a slower
+  // clock than the event count. The zones change when the stack does, which
+  // is never during a session.
+  const TOP_EVERY = 15000;
+  let topAt = 0;
+
+  async function loadTop(force) {
+    if (!force && Date.now() - topAt < TOP_EVERY) return;
+    topAt = Date.now();
+    const { ok, body } = await api(`/api/sessions/${sessionId()}/top/`);
+    if (ok) renderTop(body);
+  }
+
+  // A path is read, not copied: the payload in a query string is the point
+  // of the row, and %27+OR+1%3D1-- hides it.
 
   function renderAlerts() {
     const shown = visible();
@@ -596,8 +868,8 @@ across it. Putting both in one window is the mistake this split.
 
   api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
   renderSuppressions();
-  loadOwners(true).then(renderAlerts);
-  showTab("alerts");
+  loadOwners(true).then(() => { renderAlerts(); renderDashboard(true); });
+  showTab("dashboard");
   setLive(true);
 </script>
 {% endblock %}

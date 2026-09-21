@@ -39,5 +39,4 @@ urlpatterns = [
     path("session/<int:session_id>/", console.session),
     path("red/<int:session_id>/", console.red),
     path("blue/<int:session_id>/", console.blue),
-    path("board/<int:session_id>/", console.board),
 ]

@@ -6,7 +6,7 @@ from django.test import Client
 
 pytestmark = pytest.mark.django_db
 
-PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/", "/board/1/"]
+PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
 
 
 @pytest.fixture
@@ -42,87 +42,65 @@ def test_pages_do_not_query_the_database(client):
     assert len(queries) == 0
 
 
-# -- two distances, two windows -------------------------------------------
-# A monitoring console is watched from two distances and they are not the same
-# screen. The board is the ten-foot view: counts, a map, a trend, the shape of
-# the range - read from across a room, with nothing on it to operate. The
-# alert list is the three-foot view: filters, a table, and the whole log
-# record behind a row. Putting both in one window is what this split.
+# -- one console, two views --------------------------------------------------
+# A console is watched from two distances: an overview a room can read, and an
+# analyst's list with filters and the record behind a row. They are tabs of
+# one page rather than two addresses, so splitting them across screens is the
+# operator's call - open this page twice and leave one on Dashboard - instead
+# of a decision baked into the routes.
 
-# The board's widgets are tables, the way real ones are: a summary, a trend,
-# and top-N by a dimension. Cloudflare's security events screen is counters,
-# one time series and "top events by source"; Igloo's write-up adds the column
-# that makes an address mean something - what it belongs to.
-BOARD_ONLY = ['id="kpi-total"', 'id="map-points"', 'id="sources"',
-              'id="destinations"', 'id="signatures"', 'id="paths"']
-LIST_ONLY = ['id="rows"', 'id="search"', 'id="only-orphans"', 'id="source-filter"']
+OVERVIEW = ['id="kpi-total"', 'id="map-points"', 'id="sources"',
+            'id="destinations"', 'id="signatures"', 'id="paths"']
+THE_LIST = ['id="rows"', 'id="search"', 'id="only-orphans"', 'id="source-filter"']
 
 
 def body(client, path):
     return client.get(path).content.decode()
 
 
-def test_the_board_carries_what_is_read_from_across_a_room(client):
-    page = body(client, "/board/1/")
+def test_the_blue_console_carries_both_views(client):
+    page = body(client, "/blue/1/")
 
-    for marker in BOARD_ONLY:
+    for marker in OVERVIEW + THE_LIST:
         assert marker in page, marker
 
 
-def test_the_board_has_nothing_on_it_to_operate(client):
-    # Filters and a table cannot be read at a distance or worked by someone
-    # who is not sitting in front of them, which is the whole distinction.
-    page = body(client, "/board/1/")
+def test_the_two_views_are_tabs_rather_than_one_screenful(client):
+    # The distinction that matters is still there: only one of them is on the
+    # screen at a time, which is what a grid of everything was not.
+    page = body(client, "/blue/1/")
 
-    for marker in LIST_ONLY:
-        assert marker not in page, f"the board carries {marker}"
-
-
-def test_the_board_says_nothing_about_how_the_range_is_built(client):
-    # Which container bridges which network, and which segment has no sensor,
-    # are findings about the stack. They belong in DECISIONS and in a test; a
-    # room watching traffic has no use for them, and they were on here in
-    # words nobody outside this repo could read.
-    page = body(client, "/board/1/")
-
-    for invented in ("ways in", "unwatched", "fsl-", "crosses"):
-        assert invented not in page, invented
+    for tab in ("dashboard", "alerts", "score", "rules"):
+        assert f'data-tab="{tab}"' in page, tab
+        assert f'data-panel="{tab}"' in page or tab == "alerts", tab
 
 
-def test_the_board_reports_each_dimension_as_a_table(client):
-    # A bar chart of eight addresses says less than eight rows naming them,
-    # what they belong to and where they are - and a room reads a table from
-    # further away than it reads a diagram.
-    page = body(client, "/board/1/")
+def test_the_overview_reports_each_dimension_as_a_table(client):
+    page = body(client, "/blue/1/")
 
     for column in ("Source IP", "Zone", "Country", "Events", "Destination",
                    "Signature", "Engine", "Method", "Path"):
         assert f">{column}<" in page, column
 
 
-def test_the_alert_list_says_what_each_address_belongs_to(client):
-    # The defect Igloo names: the device that raised an alert is obvious from
-    # the alert, but what the source address belongs to is not, and an analyst
-    # reading bare addresses does that lookup in their head.
+def test_the_overview_says_nothing_about_how_the_range_is_built(client):
+    # Which container bridges which network, and which segment has no sensor,
+    # are findings about the stack. They belong in DECISIONS and in a test; a
+    # room watching traffic has no use for them.
     page = body(client, "/blue/1/")
 
-    assert ">Zone<" in page and ">Country<" in page
-    assert "/top/" in page
+    for invented in ("ways in", "unwatched", "crosses"):
+        assert invented not in page, invented
 
 
-def test_the_alert_list_is_the_alert_list(client):
-    page = body(client, "/blue/1/")
-
-    for marker in LIST_ONLY:
-        assert marker in page, marker
-    for marker in BOARD_ONLY:
-        assert marker not in page, f"the alert list carries {marker}"
+def test_there_is_no_second_address_for_the_same_console(client):
+    assert client.get("/board/1/").status_code == 404
 
 
 def test_the_console_fills_the_screen_rather_than_scrolling_as_a_page(client):
-    for path in ("/blue/1/", "/board/1/"):
-        assert "h-screen" in body(client, path), path
-        assert "overflow-hidden" in body(client, path), path
+    page = body(client, "/blue/1/")
+
+    assert "h-screen" in page and "overflow-hidden" in page
 
 
 def test_a_template_comment_never_reaches_the_browser(client):
@@ -173,7 +151,7 @@ def interpolations(source):
         yield source.count("\n", 0, match.start()), source[match.end():i - 1]
 
 
-@pytest.mark.parametrize("name", ["blue.html", "board.html", "red.html"])
+@pytest.mark.parametrize("name", ["blue.html", "red.html"])
 def test_no_untrusted_value_is_written_into_markup_unescaped(name):
     source = (CONSOLE / name).read_text()
     offenders = []
@@ -206,4 +184,24 @@ def test_no_script_block_is_closed_early_by_its_own_text(client, path):
     assert opened == closed, (
         f"{path}: {opened} script elements opened, {closed} closed - "
         f"something wrote a closing tag where it is not one"
+    )
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_every_element_the_script_reaches_for_is_on_the_page(client, path):
+    """A missing id is not a missing feature: it is a dead page.
+
+    Removing the second console left behind one line setting the href of a
+    link that no longer existed. `getElementById` returned null, assigning to
+    it threw, and every statement after that line - including the one that
+    picks which panel to show - never ran. The page rendered, with all four
+    panels stacked on top of each other, and nothing said why.
+    """
+    page = body(client, path)
+    reached_for = set(re.findall(r'getElementById\("([^"]+)"\)', page))
+    present = set(re.findall(r'\bid="([^"]+)"', page))
+
+    assert reached_for <= present, (
+        f"{path}: the script reaches for {sorted(reached_for - present)}, "
+        f"which is not on the page"
     )

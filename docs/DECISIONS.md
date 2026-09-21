@@ -1245,79 +1245,38 @@ two-second alert refresh. The shape changes when the stack changes, which is
 never during a session, and four `docker` round trips every two seconds is a
 cost with nothing on the other side of it.
 
-## Two distances, two windows
+## One console for the blue team, two views inside it
 
-The console had grown into a document - a map, then a topology, then the
-counters, then the alert list, appended one below the next on a page that
-scrolled. The first correction made it a grid that filled one screen, and that
-was still wrong, for a reason the trade writes down plainly: a control room is
-read from two distances.
+This went through three shapes before it was right, and the middle one is
+worth keeping written down.
 
-- The **ten-foot view** is a status board (상황판): big numbers, a map, a
-  trend, top attackers, the shape of the range. High contrast, read from
-  across the room, operated by nobody.
-- The **three-foot view** is the analyst's own screen: the alert list, with
-  filters and the whole Elasticsearch record behind a row.
+It started as a document: a map, then a topology, then counters, then the
+alert list, appended one below the next on a page that scrolled. Making that a
+grid on one screen was the first correction and was still wrong - a control
+room is read from two distances, an overview a room can read and an analyst's
+list with filters and the record behind a row, and neither is a section of the
+other. So they were split into two addresses, `/board/<id>` and `/blue/<id>`.
 
-Filters and a table cannot be read at a distance and cannot be worked by
-someone who is not sitting in front of them; big tiles waste the screen of
-someone who is. Neither is a section of the other, so they are two windows:
-`/board/<id>/` and `/blue/<id>/`, opened side by side or on two screens like
-the red and blue windows already were. An acceptance test keeps them disjoint,
-because the way this went wrong was by accretion and it would go wrong again
-the same way.
+That was one step too far, and the reason is the difference between a **view**
+and a **product**. Splitting them across screens is the operator's call: open
+the blue console twice and leave one on the overview. Baking it into the
+routes made that decision for them, and made two things to maintain where
+there is one console with two tabs.
 
-The vocabulary came with the research and is worth keeping, because the made-up
-words were part of getting it wrong: 상황판 / 통합대시보드 for the board,
-경보 리스트 for the alert list, and the board's contents are widgets - 탐지
-추이, 공격자 통계 (최근 / 지속 / 신규). "Top attackers" is on the board
-because it is on every real one.
+So: `/blue/<id>` has Dashboard, Live, Scoreboard and Rules, `/board` is gone,
+and the property that mattered is unchanged - only one of them is on screen at
+a time, which is what a grid of everything was not.
 
-Two things worth keeping from doing it:
+The overview is drawn from the rows the list is already holding, and the two
+server-side parts - the map and the top-N tables - are skipped while the tab
+is hidden, because a request nobody is looking at is a request for nothing.
 
-- **Django's `{# #}` is single-line only.** A multi-line one is not a comment;
-  it is rendered. Two of them appeared across the top of the console in grey
-  text, and nothing would have caught it - so now something does.
-- **`hidden` and `flex` are both display utilities**, and which wins depends
-  on the order Tailwind emits them, which is not ours to rely on. The panels
-  are flex containers now, so showing a tab sets `display` outright.
-
-And one caught by reading the output: the board counted unattributed alerts on
-`case_marker`, a field the API does not have, so it would have read as the
-total for ever. The field is `marker`.
-
-## The console ran the attacks it collected
-
-The range collects attacks and the console displays them, which makes the
-console the place a payload finally lands. `xss-script-tag-in-search` sends a
-script tag as a search term; it came back as a request path, and the board
-rendered it into `innerHTML`. The user's browser ran it. A security tool
-executing the attack it caught is the worst version of this bug and it
-shipped.
-
-There were two sources, not one:
-
-- **The traffic.** Request paths, signatures, source addresses, the
-  suppression reason someone typed - all of it is written by an attacker or
-  by whoever is at the keyboard.
-- **The target.** Juice Shop *describes* its DOM XSS challenge with an iframe
-  whose `src` is `javascript:`, and the red window drew that description as
-  markup. Nothing hostile had to happen for the console to attack its own
-  user: the target's own help text did it.
-
-Every value interpolated into markup now goes through one `esc()` in
-`base.html`, and a test reads the three templates, finds every `${...}` inside
-a template literal containing a tag, and fails on any that names an untrusted
-field without `esc(`. A ternary that only picks a CSS class is allowed,
-because the value never reaches the page.
-
-**And the comment explaining all this broke the console.** It contained a
-literal closing script tag as an example. The HTML parser ends a script
-element at the first one it sees - inside a comment, inside a string, it does
-not care - so everything after it stopped being JavaScript and `esc` silently
-did not exist. The page still rendered, which is what made it take a while to
-find. There is a test for that too: script tags opened must equal script tags
-closed.
+**Removing the second address broke the page in a way worth a test.** One line
+still set the href of a link that no longer existed; `getElementById` returned
+null, assigning to it threw, and every statement after it - including the one
+that picks which panel to show - never ran. The page rendered with all four
+panels stacked, and nothing said why. There is now a test that every id the
+script reaches for is on the page.
 
 ## A top-N table is what a console shows, not a bar
 
