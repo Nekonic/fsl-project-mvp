@@ -8,6 +8,7 @@ from rules.suricata import RuleApplyError, ValidationOutcome
 
 pytestmark = pytest.mark.django_db
 
+RELOAD = ("kill", "-USR2", "1")
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'
 
 class Sensor:
@@ -80,7 +81,7 @@ def test_the_rule_paths_are_the_sensors_own():
     from rules import suricata
 
     sensor = Sensor()
-    suricata.apply(GOOD_RULE, sensor)
+    suricata.apply(GOOD_RULE, sensor, RELOAD)
 
     written = [argv for argv, stdin in sensor.calls if stdin is not None]
     assert all("/var/lib/suricata/rules/" in " ".join(a) for a in written), written

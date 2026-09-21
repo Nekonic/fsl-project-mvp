@@ -854,7 +854,7 @@ def suppressions(request):
 
     original = suppress.find(content, sid)
     try:
-        suricata.apply(silenced, substrate().runner('sensor'))
+        suricata.apply(silenced, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
         return _reply({"detail": str(exc)}, status=400)
 
@@ -885,7 +885,7 @@ def _restore(record) -> str | None:
         return None
 
     try:
-        suricata.apply(content, substrate().runner('sensor'))
+        suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
                                                                              
                                                                                
@@ -910,7 +910,7 @@ def _restore_expired() -> list:
 def apply_rules(request):
     content = _payload(request).get("content", "")
     try:
-        suricata.apply(content, substrate().runner('sensor'))
+        suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
         return _reply({"detail": str(exc)}, status=400)
 

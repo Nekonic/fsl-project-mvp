@@ -7,6 +7,16 @@ from dataclasses import replace
 from range.declared import Declaration
 from range.ports import Node, Ran, RangeUnavailable, Segment, Sensor, Shape
 
+def _one_subnet(network_name: str, config: list) -> str:
+    allocated = [entry.get("Subnet", "") for entry in config if entry.get("Subnet")]
+    if len(allocated) > 1:
+        raise RangeUnavailable(
+            f"the segment {network_name!r} carries {len(allocated)} subnets "
+            f"{allocated} and alerts are binned by exactly one. Which one is a "
+            f"decision nobody has taken."
+        )
+    return allocated[0] if allocated else ""
+
 PROJECT_LABEL = "com.docker.compose.project"
 
 _TIMEOUT = 30
@@ -80,9 +90,9 @@ class Docker:
         )
         return replace(
             self.declared.segment(self.segment_id(network["Name"])),
-            subnet=config[0].get("Subnet", ""),
+            subnet=_one_subnet(network["Name"], config),
             network=network["Name"],
-            gateway=config[0].get("Gateway", ""),
+            gateway=(config[0].get("Gateway", "") if config else ""),
             nodes=tuple(nodes),
         )
 
