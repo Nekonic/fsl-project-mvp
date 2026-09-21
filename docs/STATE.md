@@ -147,6 +147,18 @@ What is left for OpenStack, in order:
    is the router's, not the attacker's - the stamping proxy solves this on
    Docker and has no Neutron equivalent yet.
 
+**What the sketch is, exactly.** It cannot be run: there is no cloud here, and
+writing HTTP calls nobody can execute would only look like an adapter. What it
+can be is checked. Every field it reads is one the published API reference
+names - `networks[].id`, `.name`, `.tags` and the `tags-any` filter from the
+Networking v2.0 reference, `subnets[].cidr` and `.gateway_ip` from the same,
+and `servers[].addresses` keyed by the network's label with `addr` and
+`OS-EXT-IPS:type` from Nova's own List Servers Detailed example. A test holds
+it to them. Reading that example is also what found the last bug in it: Nova
+reports every fixed address a port has, including IPv6, and the sketch would
+have drawn an instance at a v6 address while the console bins every alert by
+an IPv4 subnet.
+
 `docs/ARCHITECTURE.md` has the mechanism and the measured numbers.
 
 ## Done since v1.0
