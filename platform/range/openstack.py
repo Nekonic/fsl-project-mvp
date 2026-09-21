@@ -7,7 +7,7 @@ from range.declared import Declaration
 from range.ports import Node, Ran, RangeUnavailable, Segment, Sensor, Shape
 
 TOKEN = "POST {keystone}/v3/auth/tokens"
-NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}"
+NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}&tags-any={tags}"
 SUBNETS = "GET {neutron}/v2.0/subnets?network_id={network}"
 SERVERS = "GET {nova}/servers/detail?project_id={project}"
 
@@ -17,6 +17,7 @@ FIXED = "OS-EXT-IPS:type"
 
 WATCHED_ROLE = "gateway"
 SENSOR_ROLE = "sensor"
+SEGMENT_TAG = "fsl.segment.id"
 
 
 def unimplemented(call: str) -> dict:
@@ -43,7 +44,10 @@ class OpenStack:
         self.get = get
 
     def describe(self) -> Shape:
-        bound = self._bind(self._ask(NETWORKS)["networks"])
+        wanted = ",".join(
+            f"{SEGMENT_TAG}={segment.id}" for segment in self.declared.segments
+        )
+        bound = self._bind(self._ask(NETWORKS, tags=wanted)["networks"])
         servers = self._ask(SERVERS)["servers"]
 
         segments = []
@@ -51,8 +55,9 @@ class OpenStack:
             network = bound.get(declared.id)
             if network is None:
                 raise RangeUnavailable(
-                    f"the declaration names the segment {declared.id!r} and "
-                    f"project {self.cloud.project!r} has no network called that"
+                    f"the declaration names the segment {declared.id!r} and no "
+                    f"network of project {self.cloud.project!r} is tagged "
+                    f"{SEGMENT_TAG}={declared.id}"
                 )
             allocated = self._ask(SUBNETS, network=network["id"])["subnets"]
             first = allocated[0] if allocated else {}
@@ -62,7 +67,7 @@ class OpenStack:
                     subnet=first.get("cidr", ""),
                     network=network["id"],
                     gateway=first.get("gateway_ip", ""),
-                    nodes=self._nodes(declared.id, servers),
+                    nodes=self._nodes(network["name"], servers),
                 )
             )
 
@@ -96,26 +101,26 @@ class OpenStack:
         return run
 
     def _bind(self, networks: list[dict]) -> dict[str, dict]:
-        declared = {segment.id for segment in self.declared.segments}
         found: dict[str, dict] = {}
         for network in networks:
-            name = network["name"]
-            if name not in declared:
-                continue
-            if name in found:
-                raise RangeUnavailable(
-                    f"two Neutron networks are named {name!r}; the declaration "
-                    f"binds a segment by name and Neutron does not keep names "
-                    f"unique, so nothing says which one the segment is"
-                )
-            found[name] = network
+            for tag in network.get("tags") or []:
+                mark, _, segment_id = tag.partition("=")
+                if mark != SEGMENT_TAG or not segment_id:
+                    continue
+                if segment_id in found:
+                    raise RangeUnavailable(
+                        f"{found[segment_id]['id']} and {network['id']} both "
+                        f"carry {SEGMENT_TAG}={segment_id!r}, so nothing says "
+                        f"which of them the segment is"
+                    )
+                found[segment_id] = network
         return found
 
-    def _nodes(self, segment_id: str, servers: list[dict]) -> tuple[Node, ...]:
+    def _nodes(self, network_name: str, servers: list[dict]) -> tuple[Node, ...]:
         found = [
             Node(name=server["name"], address=entry["addr"])
             for server in servers
-            for entry in (server.get("addresses") or {}).get(segment_id, [])
+            for entry in (server.get("addresses") or {}).get(network_name, [])
             if entry.get(FIXED) == "fixed"
         ]
         return tuple(sorted(found, key=lambda node: node.name))

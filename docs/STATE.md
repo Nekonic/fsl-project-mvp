@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-22 (the declaration checked cold, and an OpenStack sketch against it)
+Updated: 2026-09-22 (a segment is bound by a mark the range carries, not by its name)
 
 ## Where things stand
 
@@ -87,20 +87,32 @@ unimplemented, and it exists to be read. `test_openstack_sketch.py` holds it to
 the port and asserts nothing at runtime imports it. What it found is below;
 `topology.shape()` consumed its `Shape` unchanged, which is the part that works.
 
+Closed since the sketch was written: which origin is the default, how the
+sensor is reloaded, whether a sensor is one of its segment's participants, how
+many subnets a segment may carry, and how a substrate object is bound to a
+declared segment.
+
+**A segment is bound by a mark it carries.** The Docker adapter used to cut the
+compose project off the front of a network name, and the sketch matched a
+Neutron network whose name happened to equal the declared id. Both were rules,
+and both were wrong: compose lets a network override its own name, Heat appends
+a stack suffix to every one it builds, Neutron does not keep names unique, and a
+project called `fsl_lab` swallowed part of itself. Now whoever builds the range
+marks each network with the segment it realises - a Docker label, a Neutron tag,
+`fsl.segment.id` in both - and the adapter reads it. Nothing else is part of the
+range, which is also the answer to a shared Neutron project handing back other
+tenants' networks: the listing is filtered by `tags-any`, a documented Neutron
+filter, so the cloud is never asked for them.
+
 What is left for OpenStack, in order:
 
-1. **The declaration cannot say which origin is the default.** `attacker.origins`
-   flags it by `segment.network == ATTACKER_NETWORK`, and `ATTACKER_NETWORK` is
-   an env var holding the Docker network name `fsl_edge`. Against the sketch
-   every origin comes back `"default": false` and `find(None)` picks `edge`
-   only because it sorts first. Which origin is the default is identity, not
-   allocation; it belongs in the declaration as a flag on a segment.
+1. **Name resolution.** Fifteen places name a host - `shop.com`,
+   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081` - and
+   `FSL_TOOL_NETWORK` still holds the literal `fsl_edge`. Compose gives those
+   away; Neutron does not. cloud-init writing `/etc/hosts` is the cheapest
+   answer that keeps `shop.com` a name, which is the product.
 
-2. **Name resolution.** Fifteen places name a host - `shop.com`,
-   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose
-   gives those away; Neutron does not. cloud-init writing `/etc/hosts` is the
-   cheapest answer that keeps `shop.com` a name, which is the product.
-3. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
+2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
    the WAF's namespace so it sees both legs of every proxied request. Neutron
    has no namespace sharing: either Suricata rides the WAF instance, or
    Tap-as-a-Service mirrors the ports. `Sensor(name, watches)` already carries
@@ -109,17 +121,7 @@ What is left for OpenStack, in order:
    assumes the sensor watches the gateway. That assumption belongs in the
    declaration, beside the roles.
 
-4. **The sensor becomes a node.** On Docker Suricata owns no port, so it never
-   appears in a segment. On Nova it is an instance with its own addresses, and
-   `topology.shape()` then marks every segment it stands on as sensed - the
-   estate would claim a sensor it does not have.
-
-5. **`kill -USR2 1` is a substrate fact inside core.** `platform/rules/suricata.py`
-   reloads by signalling PID 1, which is only true because Suricata is a
-   container's entrypoint. On an instance it is a systemd unit. Either the
-   declaration carries the reload command or the port grows a third verb.
-
-6. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
+3. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
    which needs no credential. The sketch needs an ssh user, a key and an address
    the platform can reach, and none of the three has anywhere to live. They are
    credentials, so the answer is probably settings rather than the declaration -
@@ -127,6 +129,12 @@ What is left for OpenStack, in order:
    (`fsl-kali` is a compose `container_name`, a Nova server name and, after
    `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
    and is not addressable.
+
+4. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
+   floating address, and the adapter keeps the fixed one. An attack leaving the
+   range through a Neutron router is source-NATed, so the address Suricata sees
+   is the router's, not the attacker's - the stamping proxy solves this on
+   Docker and has no Neutron equivalent yet.
 
 `docs/ARCHITECTURE.md` has the mechanism and the measured numbers.
 
@@ -214,17 +222,17 @@ it a window case says an attack happened and not what it was.
 
 ## Known gaps
 
-- `test_declaration.py` compares two files and never the running range. It
-  keys a compose network by its mapping key, so a `name:` override
-  (`estate: {name: corp-estate}`) passes the whole suite while the adapter
-  resolves the segment id `corp-estate`, which the declaration does not have:
-  `declared.segment()` falls back to a nameless, originless, silently-inside
-  segment. Four deliberate breakages - an undeclared network, a renamed
-  segment, a changed origin, a role pointing at no container - were each caught
-  by name, so the test is real; this is the one seam it does not cover.
+- `test_declaration.py` compares two files and never the running range. Six
+  deliberate breakages - an undeclared network, an unmarked one, a renamed
+  segment, a changed origin, a removed origin, a role pointing at no container -
+  are each caught by name, and a `name:` override no longer breaks anything
+  because the binding is a label rather than the name. It still cannot see a
+  range that does not match either file.
 - The `platform` container still mounts the Docker socket, now reached as a
-  non-root user through a group whose id compose passes as `DOCKER_GID`. It is
-  still a container escape path and it disappears with the substrate: an
+  non-root user through a group whose id compose passes as `DOCKER_GID`
+  (`bin/docker-gid` prints it; read off the host instead of inside the VM it
+  comes back `1` and the platform answers 200 with `permission denied` in the
+  body). It is still a container escape path and it disappears with the substrate: an
   OpenStack adapter authenticates rather than mounting anything.
 - The Kali terminal on 7681 is an unauthenticated root shell. Local lab only.
 - `elastic.fetch` reads at most 5000 documents per ingest and has no

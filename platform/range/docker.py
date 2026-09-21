@@ -18,27 +18,26 @@ def _one_subnet(network_name: str, config: list) -> str:
     return allocated[0] if allocated else ""
 
 PROJECT_LABEL = "com.docker.compose.project"
+SEGMENT_LABEL = "fsl.segment.id"
 
 _TIMEOUT = 30
 
 class Docker:
-    def segment_id(self, network_name: str) -> str:
-        prefix = self.project + "_"
-        if network_name.startswith(prefix):
-            return network_name[len(prefix):]
-        return network_name
-
     def __init__(self, declared: Declaration, project: str = "fsl"):
         self.declared = declared
         self.project = project
 
     def describe(self) -> Shape:
         names = self._lines([
-            "network", "ls", "--filter", f"label={PROJECT_LABEL}={self.project}",
+            "network", "ls",
+            "--filter", f"label={PROJECT_LABEL}={self.project}",
+            "--filter", f"label={SEGMENT_LABEL}",
             "--format", "{{.Name}}",
         ])
         if not names:
-            raise RangeUnavailable(f"project {self.project!r} has no networks")
+            raise RangeUnavailable(
+                f"no network of project {self.project!r} carries {SEGMENT_LABEL}"
+            )
 
         networks = [
             json.loads(line)
@@ -48,7 +47,7 @@ class Docker:
         ]
 
         return Shape(
-            segments=tuple(self._segment(network) for network in networks),
+            segments=tuple(self._placed(networks)),
             sensors=self._sensors(networks),
         )
 
@@ -76,7 +75,22 @@ class Docker:
 
         return run
 
-    def _segment(self, network: dict) -> Segment:
+    def _placed(self, networks: list[dict]):
+        taken: dict[str, str] = {}
+        for network in networks:
+            segment_id = (network.get("Labels") or {}).get(SEGMENT_LABEL, "")
+            if not segment_id:
+                continue
+            if segment_id in taken:
+                raise RangeUnavailable(
+                    f"{taken[segment_id]} and {network['Name']} both carry "
+                    f"{SEGMENT_LABEL}={segment_id!r}, so nothing says which of "
+                    f"them the segment is"
+                )
+            taken[segment_id] = network["Name"]
+            yield self._segment(segment_id, network)
+
+    def _segment(self, segment_id: str, network: dict) -> Segment:
         config = (network.get("IPAM") or {}).get("Config") or [{}]
         nodes = sorted(
             (
@@ -89,7 +103,7 @@ class Docker:
             key=lambda node: node.name,
         )
         return replace(
-            self.declared.segment(self.segment_id(network["Name"])),
+            self.declared.segment(segment_id),
             subnet=_one_subnet(network["Name"], config),
             network=network["Name"],
             gateway=(config[0].get("Gateway", "") if config else ""),

@@ -8,16 +8,25 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
 DECLARATION = ROOT / "platform" / "range" / "declaration.yaml"
 
+MARK = "fsl.segment.id"
+
 def built(compose):
     realised = {}
     for key, network in (compose.get("networks") or {}).items():
-        network = network or {}
-        realised[key] = {
-            "name": (network.get("labels") or {}).get("fsl.segment", ""),
-            "origin": (network.get("labels") or {}).get("fsl.origin", ""),
-            "as": network.get("name") or "",
-        }
+        labels = ((network or {}).get("labels") or {})
+        if labels.get(MARK):
+            realised[labels[MARK]] = {
+                "name": labels.get("fsl.segment", ""),
+                "origin": labels.get("fsl.origin", ""),
+                "key": key,
+            }
     return realised
+
+def unmarked(compose):
+    return sorted(
+        key for key, network in (compose.get("networks") or {}).items()
+        if not ((network or {}).get("labels") or {}).get(MARK)
+    )
 
 def meant(declaration):
     return {
@@ -38,6 +47,12 @@ def drift(compose, declaration):
     realised, declared = built(compose), meant(declaration)
     complaints = []
 
+    for key in unmarked(compose):
+        complaints.append(
+            f"the network compose builds from {key!r} carries no {MARK}, so "
+            f"nothing on it says which declared segment it realises"
+        )
+
     for segment_id in sorted(set(realised) - set(declared)):
         complaints.append(
             f"compose builds the network {segment_id!r} and the declaration "
@@ -50,12 +65,6 @@ def drift(compose, declaration):
             f"builds no such network, so nothing will ever stand on it"
         )
     for segment_id in sorted(set(realised) & set(declared)):
-        renamed = realised[segment_id]["as"]
-        if renamed:
-            complaints.append(
-                f"segment {segment_id!r}: compose builds it as {renamed!r}, so "
-                f"the adapter cannot bind it back to the declared id"
-            )
         for field in ("name", "origin"):
             if realised[segment_id][field] != declared[segment_id][field]:
                 complaints.append(
@@ -85,7 +94,8 @@ def test_the_declaration_and_the_stack_that_realises_it_agree():
 def test_a_segment_compose_builds_and_nobody_declared_is_caught():
     compose, declaration = documents()
     compose["networks"]["edge-cn"] = {
-        "labels": {"fsl.segment": "Internet", "fsl.origin": "Shanghai, China"}
+        "labels": {MARK: "edge-cn",
+                   "fsl.segment": "Internet", "fsl.origin": "Shanghai, China"}
     }
 
     assert drift(compose, declaration) == [
@@ -219,21 +229,35 @@ def test_no_substrate_name_decides_where_an_attack_starts():
     )
 
 
-def test_a_renamed_network_cannot_hide_behind_its_compose_key():
-    compose = yaml.safe_load(COMPOSE.read_text())
+def test_a_renamed_network_is_still_the_segment_it_says_it_is():
+    compose, declaration = documents()
     compose["networks"]["estate"]["name"] = "corp-estate"
 
-    complaints = drift(compose, yaml.safe_load(DECLARATION.read_text()))
+    assert drift(compose, declaration) == [], (
+        "a network is bound to its segment by the mark it carries, so what the "
+        "range happens to call it is nobody's business"
+    )
 
-    assert any("corp-estate" in c for c in complaints), complaints
+def test_a_network_with_nothing_to_bind_it_is_caught():
+    compose, declaration = documents()
+    del compose["networks"]["mgmt"]["labels"][MARK]
 
-def test_a_project_name_with_an_underscore_does_not_break_the_binding():
-    from range.docker import Docker
-    from range.declared import Declaration
+    assert drift(compose, declaration) == [
+        "the network compose builds from 'mgmt' carries no fsl.segment.id, so "
+        "nothing on it says which declared segment it realises",
+        "the declaration names the segment 'mgmt' and compose builds no such "
+        "network, so nothing will ever stand on it",
+    ]
 
-    adapter = Docker(Declaration(), project="fsl_lab")
+def test_every_network_the_stack_builds_says_which_segment_it_is():
+    compose = yaml.safe_load(COMPOSE.read_text())
 
-    assert adapter.segment_id("fsl_lab_edge-br") == "edge-br", (
-        "the binding splits on the first underscore, so a project name "
-        "carrying one swallows part of itself and every segment id is wrong"
+    unmarked = sorted(
+        key for key, network in compose["networks"].items()
+        if not ((network or {}).get("labels") or {}).get("fsl.segment.id")
+    )
+
+    assert unmarked == [], (
+        f"nothing on {unmarked} says which declared segment it realises, so "
+        f"the adapter has to guess from the name it happens to have"
     )

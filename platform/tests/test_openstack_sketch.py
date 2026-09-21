@@ -26,9 +26,15 @@ ALLOCATED = {
     "mgmt": "172.31.0.0/24",
 }
 
+def tagged(segment_id):
+    return f"{openstack.SEGMENT_TAG}={segment_id}"
+
 NETWORKS = {
-    "networks": [{"id": f"net-{name}", "name": name} for name in ALLOCATED]
-    + [{"id": "net-unrelated", "name": "tenant-scratch"}]
+    "networks": [
+        {"id": f"net-{name}", "name": f"range1-{name}-v4", "tags": [tagged(name)]}
+        for name in ALLOCATED
+    ]
+    + [{"id": "net-unrelated", "name": "tenant-scratch", "tags": []}]
 }
 
 SUBNETS = {
@@ -43,31 +49,37 @@ SERVERS = {
         {
             "name": "fsl-kali",
             "addresses": {
-                "edge": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
+                "range1-edge-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
             },
         },
         {
             "name": "fsl-waf",
             "addresses": {
-                "edge": [
+                "range1-edge-v4": [
                     {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"},
                     {"addr": "192.0.2.9", "OS-EXT-IPS:type": "floating"},
                 ],
-                "estate": [{"addr": "172.30.0.9", "OS-EXT-IPS:type": "fixed"}],
+                "range1-estate-v4": [
+                    {"addr": "172.30.0.9", "OS-EXT-IPS:type": "fixed"}
+                ],
             },
         },
         {
             "name": "fsl-suricata",
             "addresses": {
-                "estate": [{"addr": "172.30.0.11", "OS-EXT-IPS:type": "fixed"}]
+                "range1-estate-v4": [
+                    {"addr": "172.30.0.11", "OS-EXT-IPS:type": "fixed"}
+                ]
             },
         },
     ]
 }
 
 
-def cloud_reader(networks=None):
+def cloud_reader(networks=None, asked=None):
     def get(call):
+        if asked is not None:
+            asked.append(call)
         if "/v2.0/networks" in call:
             return networks if networks is not None else NETWORKS
         if "/v2.0/subnets" in call:
@@ -79,8 +91,10 @@ def cloud_reader(networks=None):
     return get
 
 
-def sketch(networks=None):
-    return openstack.OpenStack(declared.read(), CLOUD, get=cloud_reader(networks))
+def sketch(networks=None, asked=None):
+    return openstack.OpenStack(
+        declared.read(), CLOUD, get=cloud_reader(networks, asked)
+    )
 
 
 def test_the_sketch_offers_the_same_port_the_docker_adapter_does():
@@ -125,27 +139,52 @@ def test_the_cloud_supplies_only_what_it_allocated():
     ]
 
 
-def test_a_network_the_declaration_never_named_is_dropped_not_drawn():
+def test_a_network_the_range_does_not_tag_is_dropped_not_drawn():
     ids = [segment.id for segment in sketch().describe().segments]
 
     assert "tenant-scratch" not in ids, (
         "unlike compose, a Neutron project holds networks that are not the "
-        "range, so the adapter can only keep what the declaration named"
+        "range, so the adapter can only keep what the range marked"
     )
 
 
-def test_two_networks_of_the_same_name_are_refused_rather_than_guessed():
-    doubled = {"networks": NETWORKS["networks"] + [{"id": "net-edge-2", "name": "edge"}]}
+def test_a_segment_is_bound_by_its_tag_and_not_by_what_it_is_called():
+    edge = next(s for s in sketch().describe().segments if s.id == "edge")
+
+    assert edge.network == "net-edge", (
+        "the segment was found by a network whose name happened to equal the "
+        "declared id. Neutron names are neither unique nor the operator's to "
+        "keep, and Heat appends its own stack suffix to every one of them"
+    )
+
+
+def test_the_cloud_is_asked_only_for_the_networks_the_range_marked():
+    asked = []
+    sketch(asked=asked).describe()
+
+    listing = next(call for call in asked if "/v2.0/networks" in call)
+
+    assert "tags-any=" in listing, (
+        "every network in the project came back and the adapter sorted them "
+        "out afterwards; a shared project hands back other people's networks"
+    )
+    assert tagged("edge") in listing
+
+
+def test_two_networks_claiming_the_same_segment_are_refused_not_guessed():
+    doubled = {"networks": NETWORKS["networks"] + [
+        {"id": "net-edge-2", "name": "range1-edge-legacy", "tags": [tagged("edge")]}
+    ]}
 
     with pytest.raises(RangeUnavailable) as raised:
         sketch(doubled).describe()
 
-    assert "two Neutron networks are named 'edge'" in str(raised.value)
+    assert "both carry" in str(raised.value) and "'edge'" in str(raised.value)
 
 
 def test_a_segment_the_cloud_does_not_have_is_named_rather_than_skipped():
     short = {
-        "networks": [n for n in NETWORKS["networks"] if n["name"] != "estate"]
+        "networks": [n for n in NETWORKS["networks"] if n["id"] != "net-estate"]
     }
 
     with pytest.raises(RangeUnavailable) as raised:
