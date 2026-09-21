@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from attacker import AttackerUnavailable
+from range.ports import Shape
 
 pytestmark = pytest.mark.django_db
 
@@ -12,8 +13,15 @@ HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "di
          "target_url": "http://waf-edge:8080", "subnet": "", "network": "fsl_edge",
          "default": True}]
 
+def stub():
+    class Stub:
+        def describe(self):
+            return Shape(segments=(), sensors=())
+
+    return patch("api.views.substrate", Stub)
+
 def test_attacker_reports_the_address_alerts_will_carry(client):
-    with patch("api.views.attacker.origins", return_value=HOME):
+    with stub(), patch("api.views.attacker.origins", return_value=HOME):
         response = client.get("/api/attacker/")
 
     assert response.status_code == 200
@@ -21,7 +29,7 @@ def test_attacker_reports_the_address_alerts_will_carry(client):
     assert response.json()["terminal_url"]
 
 def test_attacker_that_is_not_running_is_503_not_a_guess(client):
-    with patch(
+    with stub(), patch(
         "api.views.attacker.origins",
         side_effect=AttackerUnavailable("no such container: fsl-kali"),
     ):

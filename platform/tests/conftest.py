@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from django.test import Client
@@ -27,3 +28,13 @@ def client():
 @pytest.fixture(autouse=True)
 def no_settle(settings):
     settings.TARGET_SETTLE = 0
+
+@pytest.fixture(autouse=True)
+def no_real_substrate():
+    def refuse(argv, **kwargs):
+        raise AssertionError(
+            f"a unit test reached the real substrate: {' '.join(argv)}"
+        )
+
+    with patch("range.docker.subprocess.run", refuse):
+        yield

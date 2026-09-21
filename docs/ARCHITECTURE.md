@@ -37,16 +37,20 @@ definition: no Terraform, no provisioning step, no router.
 
 Labels are at `compose.yaml:3-48`. A segment is **outside** if and only if its
 network carries a non-empty `fsl.origin` label — the only definition anywhere
-(`platform/topology.py:105,126-133`) — and that label's text is the origin name
-the console shows (`platform/attacker.py:73`).
+(`platform/range/ports.py:38-39`, read off the network at
+`platform/range/docker.py:80`) — and that label's text is the origin name the
+console shows (`platform/attacker.py:38`).
 
 Only the subnets are fixed. No service is given an `ipv4_address`, so every
-address is DHCP-assigned and changes on recreate. `platform/topology.py:62-148`
-reads live addresses from Docker per request, which is why it answers 503 rather
-than a stale picture when Docker is unreachable (`platform/api/views.py:270-273`).
+address is DHCP-assigned and changes on recreate. `Substrate.describe()` reads
+live addresses once per request — `platform/range/docker.py:20-35` for Docker,
+the only file that asks it — which is why the API answers 503 rather than a
+stale picture when the substrate is unreachable
+(`platform/api/views.py:283-285`). `platform/topology.py` shapes that reading
+into the response and makes no call of its own.
 
 Three containers are multi-homed: the platform (all six), the WAF (four outside
-plus estate), the proxy (four outside). `platform/topology.py:103-120` marks a
+plus estate), the proxy (four outside). `platform/topology.py:5-18` marks a
 node as a crossing when it sits on both sides, so two are drawn as ways in: the
 WAF and the platform itself. "The WAF is the only way across" is true of the
 attacker's traffic, not of the stack.
@@ -145,10 +149,11 @@ putting the client's original `Host` back. No TLS interception is configured, so
 the proxy is an environment variable and not an enforcement point —
 `curl --noproxy '*'` skips it, which is what `test/test_segmentation.py:18` does.
 Both label files are written by the platform through the shared `./data/label`
-mount (`platform/attacker.py:113-122`), the only channel between the two.
+mount (`platform/attacker.py:67-77`), the only channel between the two.
 
-**Origins.** `platform/attacker.py:47-90` derives the list at runtime: the
-networks the proxy is on that carry an `fsl.origin` label. Choosing one writes
+**Origins.** `platform/attacker.py:21-47` derives the list from the same
+reading of the range: the segments the proxy stands on that carry an
+`fsl.origin` label. Choosing one writes
 the id to `/label/origin` for the terminal, and makes `fire_attack` target
 `http://waf-<id>` with a `Host` header of `PUBLIC_TARGET_URL`'s netloc so the
 target still sees `shop.com` (`platform/api/views.py:408-420`). That re-adding is
