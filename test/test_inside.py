@@ -62,7 +62,9 @@ def test_the_inside_is_an_objective_the_target_judges(stack_is_up):
 
 @pytest.fixture(scope="module")
 def taken_through_the_app(stack_is_up):
-    (REPO_ROOT / "deploy/wiki/logs/read.log").write_text("")
+    record = REPO_ROOT / "deploy/wiki/logs/read.log"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text("")
 
     script = f'''
       T=$(curl -s --max-time 20 -H "Content-Type: application/json" \\
