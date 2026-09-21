@@ -188,14 +188,14 @@ def fire_tool(case: dict[str, Any], tool_target_url: str) -> None:
     except (OSError, subprocess.SubprocessError) as exc:
         raise ToolUnavailable(
             f"{case['name']}: could not run the tool - {exc}. "
-            f"Build the image first: docker compose --profile tools build"
+            f"Build it first: docker compose build kali"
         ) from exc
 
     if result.returncode == DOCKER_STARTUP_FAILURE:
         raise ToolUnavailable(
             f"{case['name']}: the tool container did not start "
             f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
-            f"Build the image first: docker compose --profile tools build"
+            f"Build it first: docker compose build kali"
         )
 
     if result.returncode != 0:

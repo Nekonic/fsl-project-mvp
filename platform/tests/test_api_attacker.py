@@ -17,7 +17,7 @@ pytestmark = pytest.mark.django_db
 
 # The attacker can leave by several places now, so the address is asked of the
 # origin rather than of the container. See test_origins.py for the rest.
-HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7",
+HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
          "target_url": "http://waf-edge:8080", "subnet": "", "network": "fsl_edge",
          "default": True}]
 
@@ -51,7 +51,7 @@ def test_a_terminal_window_is_recorded_as_a_window_case(client):
         "name": "manual-sqlmap",
         "malicious": True,
         "correlation": "window",
-        "source_ip": "172.20.0.7",
+        "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
         "started_at": "2026-09-20T12:00:00Z",
         "ended_at": "2026-09-20T12:02:00Z",
     })

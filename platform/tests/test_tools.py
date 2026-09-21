@@ -95,11 +95,11 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
         args=["docker"],
         returncode=125,
         stdout="",
-        stderr="Unable to find image 'fsl-redteam-tools:latest' locally",
+        stderr="Unable to find image 'fsl-kali:latest' locally",
     )
 
     with patch("redteam.harness.subprocess.run", return_value=failure):
-        with pytest.raises(ToolUnavailable, match="fsl-redteam-tools"):
+        with pytest.raises(ToolUnavailable, match="fsl-kali"):
             fire_tool(dict(CASE), INTERNAL_TARGET)
 
 

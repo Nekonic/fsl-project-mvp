@@ -110,7 +110,18 @@ services:
     networks:
       edge:
         priority: 100
-        aliases: [waf-edge]
+        # The name the target answers to. An attacker dials a company, not
+        # the appliance in front of it - `waf-edge` in the shell told them
+        # both that a WAF exists and what it is called. example.com is
+        # reserved by RFC 2606, so this can never collide with a real site.
+        #
+        # Only on this segment: the proxy and the platform are on all four,
+        # and a name that resolves on several of them picks an interface at
+        # random, which is the origin choosing itself. The per-segment
+        # `waf-<origin>` names stay for exactly that reason - they are how
+        # those two boxes choose which address to leave by, and nobody types
+        # them.
+        aliases: [waf-edge, shop.com]
       edge-br:
         priority: 90
         aliases: [waf-edge-br]
@@ -123,11 +134,17 @@ services:
       estate:
         priority: 10
         aliases: [waf-estate]
+    # The site answers on 80, because that is what a site does and the port
+    # was the last piece of the lab's plumbing showing in the target's name.
+    # nginx runs as uid 101 here, so binding a privileged port needs this
+    # rather than running the WAF as root.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     ports:
-      - "8080:8080"
+      - "8080:80"
     environment:
       BACKEND: "http://juice-shop:3000"
-      PORT: "8080"
+      PORT: "80"
       MODSEC_RULE_ENGINE: "DetectionOnly"
       MODSEC_AUDIT_ENGINE: "RelevantOnly"
       MODSEC_AUDIT_LOG_FORMAT: "JSON"
@@ -140,9 +157,12 @@ services:
       # Template path, not the destination: the image runs envsubst and copies
       # into /etc/modsecurity.d/, so blocking the destination breaks startup.
       - ./deploy/nginx/modsecurity-overrides.conf:/etc/nginx/templates/modsecurity.d/modsecurity-override.conf.template:ro
+      # The image refuses PORT<1024 on the assumption an unprivileged user
+      # cannot bind one. The sysctl above makes that untrue here.
+      - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8080/"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -198,11 +218,9 @@ services:
       - ./deploy/nginx/logs:/logs/modsecurity:ro
       - filebeatdata:/usr/share/filebeat/data
 
-  # Red team external tools. Invoked one-shot with `docker run`, so this never
-  # comes up with the rest. Build the image: docker compose --profile tools build
-  # The attacker's shell, framed in the red team window. On the fsl network so
-  # its traffic reaches the WAF the same way the tool containers' does, and so
-  # Suricata sees a source IP that window correlation can be labelled against.
+  # The attacker's box: the shell the red team window frames, and the image a
+  # case with `tool:` is run one-shot in. One image rather than two, so what a
+  # person can do at that prompt is exactly what a case can do.
   kali:
     build: ./deploy/kali
     container_name: fsl-kali
@@ -217,6 +235,11 @@ services:
       # container's. /api/attacker/ reports the one alerts will actually carry.
       http_proxy: "http://proxy:8081"
       HTTP_PROXY: "http://proxy:8081"
+      # So the shell can name the target without anyone memorising it. The
+      # host form is for the tools that take a host rather than a URL - nmap,
+      # netcat - and which do not go through the proxy either.
+      FSL_TARGET: "http://shop.com"
+      FSL_TARGET_HOST: "shop.com"
 
   proxy:
     build: ./deploy/proxy
@@ -228,13 +251,6 @@ services:
     networks: [edge, edge-br, edge-hk, edge-kp]
     volumes:
       - ./data/label:/label
-
-  redteam-tools:
-    build: ./redteam
-    image: fsl-redteam-tools
-    profiles: ["tools"]
-    networks: [edge]
-    command: ["sqlmap", "--version"]
 
   platform:
     build: ./platform
@@ -261,8 +277,9 @@ services:
       # Named for the segment, not the host: the platform can reach the WAF
       # from inside the estate as well, and an attack that goes that way is
       # not an attack from outside.
-      TARGET_URL: "http://waf-edge:8080"
-      TOOL_TARGET_URL: "http://waf-edge:8080"
+      TARGET_URL: "http://shop.com"
+      PUBLIC_TARGET_URL: "http://shop.com"
+      TOOL_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       # The segments moved; these name docker networks, not hosts.
       ATTACKER_NETWORK: "fsl_edge"

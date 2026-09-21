@@ -18,7 +18,9 @@ import requests
 from conftest import PLATFORM_URL
 
 TARGET_INSIDE = "http://juice-shop:3000/"
-WAF_INSIDE = "http://waf:8080/"
+# The way in, under the name anyone would dial. The port is the site's,
+# not the appliance's - see DECISIONS.
+WAF_INSIDE = "http://shop.com/"
 
 
 def _from_kali(url, extra=()):

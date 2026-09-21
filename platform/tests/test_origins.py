@@ -30,18 +30,24 @@ ATTACHED = {
     "fsl_edge-br": {"IPAddress": "177.54.144.7"},
 }
 
+# The box a person types at. Only on the first origin, which is the truth: it
+# talks to the proxy and the proxy does the travelling.
+DIRECT = {"fsl_edge": {"IPAddress": "5.188.10.2"}}
+
 
 class _Run:
-    """Stands in for the two docker calls origins() makes, in order."""
+    """Stands in for the docker calls origins() makes."""
 
-    def __init__(self, networks=NETWORKS, attached=ATTACHED, code=0, stderr=""):
-        self.networks, self.attached, self.code, self.stderr = (
-            networks, attached, code, stderr,
-        )
+    def __init__(self, networks=NETWORKS, attached=ATTACHED, direct=DIRECT,
+                 code=0, stderr=""):
+        self.networks, self.attached, self.direct = networks, attached, direct
+        self.code, self.stderr = code, stderr
 
     def __call__(self, argv, **kwargs):
         if argv[:2] == ["docker", "network"]:
             out = "\n".join(json.dumps(n) for n in self.networks)
+        elif any("kali" in arg for arg in argv):
+            out = json.dumps(self.direct)
         else:
             out = json.dumps(self.attached)
         return type("R", (), {"returncode": self.code, "stdout": out,
@@ -55,6 +61,30 @@ def origins(**kwargs):
 
 def test_every_declared_network_is_an_origin():
     assert {o["id"] for o in origins()} == {"edge", "edge-hk", "edge-br"}
+
+
+def test_an_origin_carries_both_addresses_the_terminal_can_leave_by():
+    # Anything HTTP goes through the stamping proxy, so the alert carries the
+    # proxy's address. nmap and netcat do not go through it and leave from the
+    # box itself. A window recorded against the wrong one of these matches no
+    # alert at all, which scores a real attack as a miss.
+    edge = next(o for o in origins() if o["id"] == "edge")
+
+    assert edge["source_ip"] == "5.188.10.7"
+    assert edge["direct_ip"] == "5.188.10.2"
+
+
+def test_an_origin_the_attacker_box_cannot_reach_says_so():
+    # Kali is only on the first segment: it talks to the proxy and the proxy
+    # travels. Offering a direct address there would invent one.
+    hk = next(o for o in origins() if o["id"] == "edge-hk")
+
+    assert hk["direct_ip"] == ""
+
+
+def test_a_missing_attacker_box_does_not_lose_the_origins():
+    # The proxy is what carries the scripted cases; the shell is optional.
+    assert {o["id"] for o in origins(direct={})} == {"edge", "edge-hk", "edge-br"}
 
 
 def test_an_origin_carries_the_address_the_attack_will_come_from():
@@ -130,13 +160,13 @@ def test_an_unknown_origin_is_refused_rather_than_falling_back():
 pytestmark = pytest.mark.django_db
 
 PLACES = [
-    {"id": "edge", "label": "Moscow, Russia", "source_ip": "5.188.10.7",
+    {"id": "edge", "label": "Moscow, Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
      "target_url": "http://waf-edge:8080", "subnet": "5.188.10.0/24",
      "network": "fsl_edge", "default": True},
-    {"id": "edge-br", "label": "Sao Paulo, Brazil", "source_ip": "177.54.144.7",
+    {"id": "edge-br", "label": "Sao Paulo, Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
      "target_url": "http://waf-edge-br:8080", "subnet": "177.54.144.0/24",
      "network": "fsl_edge-br", "default": False},
-    {"id": "edge-hk", "label": "Kwai Chung, Hong Kong", "source_ip": "103.152.220.7",
+    {"id": "edge-hk", "label": "Kwai Chung, Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
      "target_url": "http://waf-edge-hk:8080", "subnet": "103.152.220.0/24",
      "network": "fsl_edge-hk", "default": False},
 ]
@@ -249,4 +279,5 @@ def test_the_terminal_s_address_follows_the_chosen_origin(client):
 
     assert response.status_code == 200
     assert response.json()["source_ip"] == "103.152.220.7"
+    assert response.json()["direct_ip"] == "103.152.220.7"
     assert response.json()["target_url"] == "http://waf-edge-hk:8080"

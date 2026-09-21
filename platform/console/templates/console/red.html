@@ -39,11 +39,64 @@
 
 <div id="objectives" class="border border-slate-800 rounded max-h-80 overflow-y-auto mb-10"></div>
 
-<h1 class="text-2xl font-semibold text-slate-100 mb-2">Send traffic</h1>
+<h1 class="text-2xl font-semibold text-slate-100 mb-2">The box</h1>
+<p class="text-slate-400 text-sm mb-4">
+  A shell on Kali with the usual tools. Name a window, work, stop - everything
+  sent in between is attributed to that name and scored. Two addresses, and
+  which one an alert carries depends on the tool: anything HTTP leaves through
+  the stamping proxy, and raw TCP leaves from the box itself.
+</p>
+
+<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Target</div>
+    <div id="box-target" class="font-mono text-slate-200 mt-1 truncate">-</div>
+    <div class="text-slate-600 text-xs mt-1">$FSL_TARGET in the shell</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Through the proxy</div>
+    <div id="box-proxied" class="font-mono text-rose-300 mt-1">-</div>
+    <div class="text-slate-600 text-xs mt-1">curl, sqlmap, nikto, ffuf, gobuster</div>
+  </div>
+  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
+    <div class="text-slate-500 text-xs uppercase tracking-wide">Direct</div>
+    <div id="box-direct" class="font-mono text-amber-300 mt-1">-</div>
+    <div class="text-slate-600 text-xs mt-1">nmap, nc, hydra - no http_proxy</div>
+  </div>
+</div>
+
+<div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
+  <label class="text-sm">
+    <span class="block text-slate-400 text-xs mb-1">Name</span>
+    <input id="window-name" value="manual-attack"
+           class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm w-56">
+  </label>
+  <label class="text-sm">
+    <span class="block text-slate-400 text-xs mb-1">Leaves by</span>
+    <select id="window-route"
+      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+      <option value="proxy">the proxy - HTTP tools</option>
+      <option value="direct">directly - nmap, nc, hydra</option>
+    </select>
+  </label>
+  <label class="text-sm flex items-center gap-2 pb-2">
+    <input id="window-malicious" type="checkbox" checked class="accent-rose-600">
+    <span class="text-slate-400">this is an attack</span>
+  </label>
+  <button id="window-toggle"
+    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
+    Start
+  </button>
+  <span id="window-status" class="text-slate-500 text-sm pb-2"></span>
+</div>
+
+<iframe id="terminal" class="w-full h-[28rem] border border-slate-800 rounded bg-black"></iframe>
+
+<h1 class="text-2xl font-semibold text-slate-100 mt-12 mb-2">Scripted baseline</h1>
 <p class="text-slate-400 text-sm mb-6">
-  Each button fires one case and records what it was. Benign cases matter as
-  much as the attacks: without them a rule that blocks everything scores
-  perfectly.
+  The same twelve-odd cases every run, so the score can be compared with the
+  last one. Benign cases matter as much as the attacks: without them a rule
+  that blocks everything scores perfectly.
 </p>
 
 <div class="flex gap-3 mb-8 items-end flex-wrap">
@@ -78,32 +131,6 @@
   </div>
 </div>
 
-<h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Terminal</h2>
-<p class="text-slate-400 text-sm mb-4">
-  Type your own attacks. Name the attack, press start, do it, press stop.
-  Everything the terminal sends in that window is attributed to the name - by
-  time and source, and by a marker the proxy stamps on the way out. Recording
-  both means the blue window can score it either way and compare them.
-</p>
-
-<div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
-  <label class="text-sm">
-    <span class="block text-slate-400 text-xs mb-1">Name</span>
-    <input id="window-name" value="manual-attack"
-           class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm w-56">
-  </label>
-  <label class="text-sm flex items-center gap-2 pb-2">
-    <input id="window-malicious" type="checkbox" checked class="accent-rose-600">
-    <span class="text-slate-400">this is an attack</span>
-  </label>
-  <button id="window-toggle"
-    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
-    Start
-  </button>
-  <span id="window-status" class="text-slate-500 text-sm pb-2"></span>
-</div>
-
-<iframe id="terminal" class="w-full h-96 border border-slate-800 rounded bg-black"></iframe>
 
 <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Sent</h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
@@ -289,11 +316,22 @@
     element.className = `text-sm pb-2 ${tone || "text-slate-500"}`;
   };
 
+  // Which address a window is scored against. HTTP goes through the stamping
+  // proxy so the alert carries the proxy's; nmap and netcat ignore http_proxy
+  // and carry the box's own. Recording the wrong one matches no alert at all,
+  // which scores a real attack as a miss and blames the defence for it.
+  const windowAddress = () =>
+    document.getElementById("window-route").value === "direct"
+      ? attacker.direct_ip
+      : attacker.source_ip;
+
   async function loadTerminal() {
-    // A window is scored against one address, so it cannot rotate: pick the
-    // front door and say which host to dial, because the proxy resolves the
-    // name and that is what decides where the traffic comes from.
+    // A window is scored against one address, so it cannot rotate: with
+    // "rotate" selected the shell keeps using the front door. Telling the
+    // proxy which segment to leave by is what lets the attacker type the
+    // target's own name instead of a routing name.
     const origin = chosenOrigin() === "rotate" ? "" : chosenOrigin();
+    await post("/api/attacker/origin/", { origin });
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
       status(result.body.detail || "attacker box unavailable", "text-amber-400");
@@ -304,7 +342,17 @@
     if (!document.getElementById("terminal").src) {
       document.getElementById("terminal").src = attacker.terminal_url;
     }
-    status(`from ${attacker.source_ip} - attack ${attacker.target_url}`);
+    document.getElementById("box-target").textContent = attacker.public_url;
+    document.getElementById("box-proxied").textContent = attacker.source_ip;
+    document.getElementById("box-direct").textContent = attacker.direct_ip || "not on this segment";
+
+    // The shell only reaches the proxy from the segment it is on, so a route
+    // it cannot take is not offered rather than silently mis-recorded.
+    const route = document.getElementById("window-route");
+    route.querySelector('[value="direct"]').disabled = !attacker.direct_ip;
+    if (!attacker.direct_ip) route.value = "proxy";
+
+    status(`window will record ${windowAddress()}`);
   }
 
   async function toggleWindow() {
@@ -325,7 +373,7 @@
       openedAt = new Date();
       toggle.textContent = "Stop";
       name.disabled = malicious.disabled = true;
-      status(`recording from ${attacker.source_ip} - go and attack`, "text-rose-400");
+      status(`recording from ${windowAddress()} - go and attack`, "text-rose-400");
       note(`window open: ${name.value}`, "text-slate-500");
       return;
     }
@@ -336,7 +384,7 @@
       name: name.value,
       malicious: malicious.checked,
       correlation: "window",
-      source_ip: attacker.source_ip,
+      source_ip: windowAddress(),
       started_at: openedAt.toISOString(),
       ended_at: new Date().toISOString(),
     });
@@ -349,7 +397,7 @@
     openedAt = null;
     toggle.textContent = "Start";
     name.disabled = malicious.disabled = false;
-    status(`from ${attacker.source_ip} - attack ${attacker.target_url}`);
+    status(`window will record ${windowAddress()}`);
   }
 
   document.getElementById("window-toggle").addEventListener("click", toggleWindow);

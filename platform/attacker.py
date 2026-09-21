@@ -52,11 +52,11 @@ def _docker(argv: list[str]) -> str:
     return result.stdout
 
 
-def _attached() -> dict[str, dict]:
-    """The networks the attacker's traffic can leave by, and its address on each."""
+def _attached(container: str) -> dict[str, dict]:
+    """The networks a box can leave by, and its address on each."""
     return json.loads(
         _docker([
-            "inspect", settings.ATTACKER_SOURCE_CONTAINER,
+            "inspect", container,
             "--format", "{{json .NetworkSettings.Networks}}",
         ]) or "{}"
     )
@@ -71,7 +71,8 @@ def _target_url(origin_id: str) -> str:
     the attack is decided by which of its addresses is dialled.
     """
     parts = urlsplit(settings.TARGET_URL)
-    return f"{parts.scheme}://waf-{origin_id}:{parts.port}"
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://waf-{origin_id}{port}"
 
 
 def origins() -> list[dict]:
@@ -81,11 +82,20 @@ def origins() -> list[dict]:
     be, and an address on it. A declared network the attacker is not attached
     to would offer an attack that cannot be sent.
     """
-    attached = _attached()
+    attached = _attached(settings.ATTACKER_SOURCE_CONTAINER)
     if not attached:
         raise AttackerUnavailable(
             f"{settings.ATTACKER_SOURCE_CONTAINER} is on no network at all"
         )
+
+    # Where raw TCP leaves from. Anything HTTP goes through the stamping proxy
+    # above, so an alert carries the proxy's address - but nmap and netcat
+    # ignore http_proxy and leave from the box the shell is on. Both are true
+    # at once, and a window recorded against the wrong one matches no alert.
+    try:
+        direct = _attached(settings.ATTACKER_CONTAINER)
+    except AttackerUnavailable:
+        direct = {}
 
     described = {}
     for line in _docker(
@@ -110,6 +120,7 @@ def origins() -> list[dict]:
             "label": label,
             "subnet": config[0].get("Subnet", ""),
             "source_ip": address,
+            "direct_ip": (direct.get(name) or {}).get("IPAddress", ""),
             "target_url": _target_url(origin_id),
             "default": name == settings.ATTACKER_NETWORK,
         })
@@ -146,12 +157,25 @@ def source_ip(origin_id: str | None = None) -> str:
     return find(origin_id)["source_ip"]
 
 
+def set_origin(origin_id: str | None) -> None:
+    """Tell the proxy which segment to send the terminal's traffic out of.
+
+    Written as a file for the same reason as the marker: the proxy reads it
+    per request, so there is nothing to restart and nothing to keep in sync.
+    """
+    _write(settings.ATTACKER_ORIGIN_FILE, origin_id)
+
+
 def set_label(case_id: str | None) -> None:
     """Tell the proxy which marker to stamp, or to stop stamping.
 
     Written as a file rather than pushed over an API: the proxy reads it per
     request, so it needs no endpoint of its own and nothing to restart.
     """
-    path = Path(settings.ATTACKER_LABEL_FILE)
+    _write(settings.ATTACKER_LABEL_FILE, case_id)
+
+
+def _write(where: str, value: str | None) -> None:
+    path = Path(where)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(case_id or "")
+    path.write_text(value or "")

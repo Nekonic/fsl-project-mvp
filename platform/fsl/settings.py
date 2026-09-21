@@ -47,6 +47,7 @@ ATTACKER_CONTAINER = os.environ.get("ATTACKER_CONTAINER", "fsl-kali")
 # the WAF and the IDS see.
 ATTACKER_SOURCE_CONTAINER = os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy")
 ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
+ATTACKER_ORIGIN_FILE = os.environ.get("ATTACKER_ORIGIN_FILE", "/label/origin")
 ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_edge")
 ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
 
@@ -54,6 +55,10 @@ ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhos
 # stack the attacks leave this container, so the target is the WAF by service
 # name; on a developer's host it is the published port.
 TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
+# The name the target answers to, which is what an attacker dials. TARGET_URL
+# names a segment so the platform can choose which address to attack from;
+# that is routing, and it is not what the site is called.
+PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
 TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
 # The target's own API, reached directly and never through the WAF: polling it
 # through the proxy would put the range's own housekeeping into the alert

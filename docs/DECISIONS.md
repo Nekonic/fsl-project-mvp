@@ -1379,3 +1379,152 @@ entirely.
 
 `docker compose up -d --force-recreate <service>` puts the alias back. The
 rule: recreate the **containers**, not just the network.
+
+## The red team is a box, not a button list
+
+The catalogue was the red team, and every case in it encodes a path only this
+target has: `/rest/user/login`, `/ftp/acquisitions.md`, a column count that
+matches Juice Shop's products query. That is fine for a baseline - the same
+payloads every run, so one score can be compared with the last - and useless
+as an attacker. A real one runs tools it chose against a target it is still
+working out.
+
+So the shell got the tools it needed to be one: nmap and whatweb for what is
+there, ffuf and gobuster for what is served, nikto and sqlmap for what is
+wrong with it, hydra for what it will let you in with, and curl, wget,
+netcat, dig and jq to improvise. It had curl, nmap and sqlmap. The red window
+leads with the box now and the buttons are below it, labelled as the scripted
+baseline they are.
+
+**One image, not two.** A case with `tool:` used to run in `fsl-redteam-tools`
+- a python-slim base with pip-installed sqlmap - while the person typed at
+Kali. Two attacker images means a case can depend on something the shell does
+not have, and the other way round. They are the same image now, which also
+took `services` from 9 to 8: the `redteam-tools` compose service and its
+Dockerfile are gone.
+
+## Two routes out of the box, and the alert says which
+
+The terminal's traffic goes through the stamping proxy, so an alert carries
+the proxy's address - that is how a free-form window gets a marker as well as
+a time and a source. But `http_proxy` is an HTTP convention. nmap, netcat and
+hydra ignore it and leave from the box itself:
+
+```
+through the proxy   5.188.10.3    curl, sqlmap, nikto, ffuf, gobuster
+direct              5.188.10.2    nmap, nc, hydra
+```
+
+Both are true at once, and a window recorded against the wrong one matches no
+alert at all - which scores a real attack as a miss and blames the defence.
+The API reports both, the window panel asks which route the work will take,
+and the origin that has no shell on it offers only the proxy rather than
+inventing a direct address.
+
+## Why the scanners are not cases
+
+They were, for about an hour, and the measurement is why they are not.
+
+A case is correlated by a marker header, appended by `build_tool_command` as
+`--headers=X-FSL-Case: <id>`. That is **sqlmap's** syntax. nmap does not take
+it and nikto does not either, so their traffic carries no marker, nothing
+correlates to the case, and both come back `FN` with zero alerts:
+
+```
+nmap-service-scan      FN  detected=False  alerts=0
+nikto-web-scan         FN  detected=False  alerts=0
+```
+
+Both tools reached the target - nikto found `/ftp/` and reported ten items -
+so this is a harness failure recorded as a defence failure, which is the one
+mistake this platform must not make. `SUPPORTED_TOOLS` is back to sqlmap
+alone, with the reason written where the next person will change it.
+
+The shell is where those tools belong anyway: a labelled window scores them
+by time and source, which needs nothing appended to anything. Making them
+cases needs a per-tool marker flag - ffuf, gobuster, curl and whatweb all
+take one, nikto and nmap do not - and that is a separate item.
+
+## Kali's wordlists are symlinks into packages you did not install
+
+`/usr/share/wordlists` comes from the `wordlists` package and is almost
+entirely symlinks; `dirb/common.txt` only exists if `dirb` is. Installing
+`wordlists` alone leaves the directory looking populated and every path in it
+broken, and `rockyou.txt` ships gzipped, which no tool reads. The image
+installs `dirb` and unpacks rockyou, and an acceptance test counts the lines
+in the list the shell's own help text points at - because the first version
+of that help text pointed at a file that was not there.
+
+## The target is a site, not the appliance in front of it
+
+The shell was told to attack `waf-edge:8080`. That tells an attacker three
+things they could not possibly know: that there is a web application firewall,
+what it is called, and that the site is really a lab on a high port. No
+console shows any of it, because no attacker ever sees it.
+
+The target answers to `http://shop.com` now. No port, because a site does not
+have one, and that was the last piece of the plumbing showing.
+
+**Port 80 needed two things.** The CRS images run nginx as uid 101, so
+`net.ipv4.ip_unprivileged_port_start=0` on the container lets it bind a
+privileged port. The image also ships `01-check-low-port.sh`, which refuses
+`PORT` below 1024 on the assumption that an unprivileged user cannot bind one
+- an assumption the sysctl makes untrue - so a no-op script is mounted over
+it. The host still publishes 8080, because that is the operator's browser and
+not the attacker's view of the site.
+
+The name was also doing two jobs, and they had to be separated:
+
+- **Naming the site.** One name, the same from everywhere, which is what goes
+  on the wire and into every alert.
+- **Choosing a segment.** The proxy and the platform sit on all four origin
+  networks, so which of the target's addresses they connect to is what decides
+  which of their own addresses the alert carries. A name that resolves on
+  several of those networks picks an interface at random.
+
+So `shop.com` is aliased on one segment only, which makes it unambiguous even
+from a box attached to four, and the `waf-<origin>` names stay as pure
+routing. Nobody types them:
+
+- **The shell** always dials `shop.com`. The console's origin selector writes
+  a file, the stamping proxy reads it per request and rewrites the connection
+  host while leaving the `Host` header alone. Verified: with Hong Kong
+  selected, `curl "$FSL_TARGET/..."` produced
+  `103.152.220.2 -> 103.152.220.4  Host: shop.com`.
+- **The scripted cases** dial the routing name when an origin is chosen, and
+  the platform injects the `Host` header so the request still says which site
+  it is for. Cases can already declare headers, so this needed no change to
+  `harness.py`, which is gated.
+
+`shop.com` is a real registered domain, and this alias only resolves inside
+the range's own DNS - the same call the user already made for the attacker's
+public addresses, and recorded here so nobody undoes it.
+
+The acceptance suite checks the whole of it: that the shell's target does not
+name the appliance, and that choosing an origin moves the source address
+without renaming the site.
+
+## Two more pieces of state that survive the session that set them
+
+The origin file is the second thing in this range that a run can leave
+pointing somewhere unexpected, after a suppression left silencing a rule. Both
+have the same shape: a file the proxy or the IDS reads per request, no
+expiry a test run respects, and a failure that reads as something else
+entirely - "attributed to an address on the wrong continent", "the probe
+raised no alert at all".
+
+The acceptance suite now resets the origin and refuses to run while any rule
+is suppressed. Anything else added with that shape needs the same treatment,
+and the rule is: **state the console can change must be reset before a
+measurement, or the measurement is of the last session.**
+
+## Never test a hypothesis with a mutating command on the live stack
+
+`docker network disconnect fsl_edge fsl-waf` was run to undo a probe, and it
+worked: the WAF came off the edge segment and the range stopped having a front
+door. The probe itself had already failed for an unrelated reason, so nothing
+was learned and the stack had to be rebuilt.
+
+`docker compose up -d --force-recreate waf suricata` put it back. The lesson
+is the obvious one, written down because it cost real time twice in this repo
+now: read with `inspect`, change with `compose`.
