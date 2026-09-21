@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-21 (one blue console with the dashboard in it)
+Updated: 2026-09-21 (the estate has an inside, and it can be lost)
 
 ## Where things stand
 
@@ -11,7 +11,7 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 246 unit/API tests, 87 acceptance tests against the live
+`bin/verify` is green: 248 unit/API tests, 94 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
@@ -19,7 +19,7 @@ stack. The hypothesis itself is untouched and still scores
 core_loc         611   gated, unchanged by the product work
 product_loc     3415   not gated (was 1031 before the console)
 dependencies       6
-services           8   one attacker image now, not two - see DECISIONS
+services           9   raised by hand for the internal host - see DECISIONS
 tests            273   a floor: it may only go up
 ```
 
@@ -39,6 +39,37 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The estate has an inside, and it can be lost.** Read against the Korean
+  red team playbook's attack lifecycle - 공격 인프라 구축 / 초기 정찰 / 초기
+  침투 / 거점 확보 / 권한 상승 / 내부 정찰 / 횡적 이동 / 지속성 유지 / 미션
+  수행 - this range had the first, part of the second, the third and the last.
+  Everything in the middle was missing for one reason: the estate had one host
+  in it, so there was nowhere to move to.
+
+  There is a second host now: an internal wiki on `estate` only, no published
+  port, holding a credential. `services` went 8 to 9 by hand, which is what
+  that costs and why DECISIONS has the reason.
+
+  The path to it is the attack the playbook describes - the application used
+  as a proxy into the estate. The shop's SSRF challenge reaches it once you
+  have a login, and the wiki records the visit itself, so the platform still
+  never marks an objective from its own belief about the traffic. Measured:
+
+  ```
+  outside  kali -> wiki.internal       000
+  inside   juice-shop -> wiki.internal 200
+  wiki log 172.30.0.2 "GET /runbooks/deploy.html" 200 "node"
+  ```
+
+  **The case buttons cannot take it.** A case is one request; this needs the
+  credential from the first to send the second. It is operator work, which is
+  what the shell is for.
+
+  Two hidden order dependencies surfaced doing it, both in existing tests: a
+  module that reset the shop changed what a later module found, and a test
+  asserted a request takes exactly one objective when this target bundles two.
+  Both are fixed where they were, not worked around.
 
 - **The target is a site, not the appliance in front of it.** The shell was
   told to attack `waf-edge:8080`, which tells an attacker that a WAF exists,
@@ -477,21 +508,32 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-### 1. A marker a scanner can carry
+The user's direction, from the red team playbook at 레드팀.com: the range
+should cover more of the attack lifecycle than initial access. The inside now
+exists; what is still missing is named below.
 
-Adding nmap and nikto to the catalogue was tried and withdrawn. The marker is
-appended as `--headers=X-FSL-Case: <id>`, which is sqlmap's syntax; neither
-tool takes it, so both came back `FN` with zero alerts while plainly reaching
-the target. That is a harness failure recorded as a defence failure.
+### 1. A foothold to escalate from
 
-ffuf, gobuster, curl and whatweb all take a custom header, so a per-tool flag
-in `SUPPORTED_TOOLS` would cover most of it. nmap and nikto cannot carry one
-at all: either they are correlated by window - which needs the tool container
-to have a known address, and `--ip` on the run would give it one - or they
-stay at the shell, where a labelled window already scores them.
+Still absent: 거점 확보, 권한 상승, 지속성 유지. There is no code execution on
+the target, so the estate is reached *through* the application rather than
+from a shell on it, and there is nothing to escalate. Whether that matters is
+a scope decision: a C2 and a foothold is a large step, and the range may be
+more useful as a web-entry range that is honest about where it stops.
 
-Worth doing only if the scripted baseline should include recon at all. It may
-not: the argument for the shell is that recon is what a person does.
+### 2. The vocabulary and the threat model
+
+Take the industry's words rather than invented ones - 공격 인프라 구축, 초기
+정찰, 초기 침투, 내부 정찰, 횡적 이동, 미션 수행 - and label the cases and the
+console with the stage each belongs to, plus the ATT&CK technique id. Add the
+위협 모델링 table and a 한계점 section to the docs: state the threat being
+emulated, the attacker's position, the TTP outline, and then what this range
+cannot show.
+
+### 3. What the operator actually typed
+
+The standard red team operator log records Tool/App and Command. The shell
+records neither: the proxy sees HTTP requests, and nothing sees nmap. Without
+it a window case says an attack happened and not what it was.
 
 ## Known gaps
 
