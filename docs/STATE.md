@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (the target is a site, and the red team is a box with tools on it)
+Updated: 2026-09-21 (one blue console with the dashboard in it)
 
 ## Where things stand
 
@@ -24,7 +24,7 @@ tests            273   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
-then open the three windows side by side: fire cases from one, watch the
+then open the two windows side by side: fire cases from one, watch the
 score move in the other, edit a Suricata rule and fire again. The red window
 also has a Kali terminal - name an attack, press start, type it, press stop,
 and it is scored two ways at once - by time and source, and by a marker the
@@ -103,24 +103,21 @@ Nothing. The product design is finished; the next item is not written yet.
   this file, not for a room watching traffic) and the Host column (it showed
   an internal Docker alias, and Cloudflare's "host" is the attacked domain).
 
-- **The console is two windows, because it is watched from two distances.**
-  It had become a document - map, then topology, then counters, then the alert
-  list, each appended below the last on one scroll. Making it a grid on one
-  screen did not fix it: a control room has a **status board** read from
-  across the room and an **analyst screen** read sitting in front of it, and
-  neither is a section of the other.
+- **One blue console, with the dashboard in it.** The overview and the alert
+  list were split across two addresses, `/board/<id>` and `/blue/<id>`. That
+  confused a view with a product: splitting them across screens is the
+  operator's call - open the console twice and leave one on Dashboard - and
+  baking it into the routes made that decision for them.
 
-  `/board/<id>/` is the board. `/blue/<id>/` is the alert list: filters, the
-  table, the whole log record behind a row, plus the scoreboard and the rules.
-  The session page opens three windows now.
+  `/blue/<id>` has Dashboard, Live, Scoreboard and Rules now; `/board` is
+  gone. Only one view is on screen at a time, which is the property that
+  mattered. The overview draws from the rows the list already holds, and skips
+  its two server-side feeds while the tab is hidden.
 
-  An acceptance test keeps the two disjoint, because this went wrong by
-  accretion and would go wrong again the same way.
-
-  Two traps: Django's `{# #}` is single-line only, so the multi-line ones
-  rendered across the top of the console; and `hidden` versus `flex` is
-  decided by the order Tailwind emits them, so showing a tab sets `display`
-  outright.
+  Getting there had gone through a scrolling document and then a grid on one
+  screen; both corrections are in DECISIONS, along with the dead link that
+  removing the second address left behind - it threw, and everything after it
+  in the script never ran. There is a test for that now.
 
 - **The console draws the range, from the range.** `GET
   /api/sessions/<id>/topology/` reads the shape off Docker - segments from the
