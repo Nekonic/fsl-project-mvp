@@ -214,7 +214,6 @@ services:
       PUBLIC_TARGET_URL: "http://shop.com"
       TOOL_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
-      ATTACKER_NETWORK: "fsl_edge"
       FSL_TOOL_NETWORK: "fsl_edge"
     volumes:
       - ./platform:/app

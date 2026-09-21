@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 
+from range import declared
+
 from range.ports import RangeUnavailable
 
 class AttackerUnavailable(RangeUnavailable):
@@ -39,7 +41,7 @@ def origins(described) -> list[dict]:
             "source_ip": addresses[box],
             "direct_ip": addresses.get(terminal, ""),
             "target_url": _target_url(segment.id),
-            "default": segment.network == settings.ATTACKER_NETWORK,
+            "default": segment.id == declared.read().default_origin,
         }
         for segment, addresses in standing
         if segment.origin and addresses[box]

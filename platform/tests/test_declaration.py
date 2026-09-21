@@ -1,6 +1,8 @@
 import pathlib
 
 import yaml
+import attacker as ATTACKER
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
@@ -172,4 +174,38 @@ def test_the_declaration_carries_nothing_the_substrate_assigns():
         f"the declaration states {sorted(stated & assigned)}, which the "
         f"substrate hands out; a declared address that disagrees with the one "
         f"the range actually gave is a lie the console would draw"
+    )
+
+
+def test_the_declaration_says_where_an_attack_starts_from():
+    from range import declared
+
+    found = declared.read()
+
+    assert found.default_origin, (
+        "which segment an attack leaves from by default is a fact about the "
+        "range, not about the substrate; it was decided by comparing a Docker "
+        "network name, so no segment was default on any other substrate"
+    )
+    assert found.default_origin in {s.id for s in found.segments}
+
+def test_the_default_origin_has_to_be_somewhere_an_attack_can_start():
+    from range.declared import Declaration, Segment
+
+    inside_only = Declaration(
+        segments=(Segment(id="estate", name="Application estate", origin=""),),
+        default_origin="estate",
+    )
+
+    with pytest.raises(ValueError, match="estate"):
+        inside_only.check()
+
+def test_no_substrate_name_decides_where_an_attack_starts():
+    import pathlib
+
+    source = pathlib.Path(ATTACKER.__file__).read_text()
+
+    assert "ATTACKER_NETWORK" not in source, (
+        "the default origin was chosen by matching settings.ATTACKER_NETWORK, "
+        "which is the literal string fsl_edge"
     )

@@ -1,3 +1,5 @@
+default_origin: edge
+
 segments:
   - id: edge
     name: Internet
