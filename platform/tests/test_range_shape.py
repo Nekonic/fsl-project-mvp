@@ -13,6 +13,8 @@ DECLARED = Declaration(
         Segment(id="estate", name="Application estate"),
         Segment(id="mgmt", name="Management"),
     ),
+    roles={"sensor": "fsl-suricata", "gateway": "fsl-waf"},
+    watches={"sensor": "gateway"},
 )
 
 NETWORKS = [
@@ -283,3 +285,30 @@ def test_a_tool_on_a_segment_nobody_marked_is_refused():
     with pytest.raises(RangeUnavailable, match="dmz"):
         with patch("range.docker.subprocess.run", spy):
             Docker(DECLARED).launcher("dmz")("fsl-kali", ["sqlmap"])
+
+def test_what_the_sensor_watches_is_declared_and_not_guessed():
+    quiet = Declaration(
+        segments=DECLARED.segments,
+        roles=DECLARED.roles,
+        watches={},
+    )
+
+    with patch("range.docker.subprocess.run", _Run()):
+        shape = Docker(quiet).describe()
+
+    assert shape.sensors == (), (
+        "the adapter found a sensor nothing declared, by reading a Docker fact "
+        "- NetworkMode: container:<id> - that Neutron has no equivalent of"
+    )
+
+def test_a_sensor_that_is_not_where_it_was_declared_to_be_is_refused():
+    elsewhere = dict(MODES, **{"fsl-suricata": "fsl_mgmt"})
+
+    with pytest.raises(RangeUnavailable, match="fsl-waf"):
+        with patch("range.docker.subprocess.run", _Run(modes=elsewhere)):
+            Docker(DECLARED).describe()
+
+def test_a_declared_sensor_the_substrate_confirms_is_reported():
+    assert [(s.name, s.watches) for s in describe().sensors] == [
+        ("fsl-suricata", "fsl-waf"),
+    ]

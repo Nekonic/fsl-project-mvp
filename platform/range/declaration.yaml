@@ -25,3 +25,6 @@ roles:
   sensor: fsl-suricata
   target: fsl-juice-shop
   wiki: fsl-wiki
+
+watches:
+  sensor: gateway
