@@ -99,3 +99,28 @@ def test_finding_the_socket_group_is_not_left_to_the_operator():
         "host it comes back 1, the build joins the wrong group and the platform "
         "answers 200 with 'permission denied' in the body"
     )
+
+def test_no_setting_is_read_by_nothing():
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    declared = {
+        line.split("=")[0].strip()
+        for line in (root / "fsl/settings.py").read_text().splitlines()
+        if line[:1].isupper() and "=" in line and not line.startswith("_")
+    }
+    used = "\n".join(
+        path.read_text() for path in root.rglob("*.py")
+        if path.name != "settings.py" and path.parent.name != "tests"
+    ) + (root.parent / "compose.yaml").read_text()
+
+    unread = sorted(
+        name for name in declared
+        if name.startswith(("FSL_", "ATTACKER_", "TOOL_", "TARGET_", "PUBLIC_"))
+        and f"settings.{name}" not in used
+    )
+
+    assert unread == [], (
+        f"{unread} is set in settings and in compose and read by nobody, so it "
+        f"reads as configuration somebody could change to an effect"
+    )

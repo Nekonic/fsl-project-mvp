@@ -115,12 +115,13 @@ filter, so the cloud is never asked for them.
 
 What is left for OpenStack, in order:
 
-1. **Name resolution.** Fourteen places name a host - `shop.com`,
-   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose gives
-   those away; Neutron does not. cloud-init writing `/etc/hosts` is the cheapest
-   answer that keeps `shop.com` a name, which is the product. The fifteenth,
-   `FSL_TOOL_NETWORK`, is gone: a tool is launched on a segment id now, and the
-   substrate says what network that is.
+1. **Name resolution.** Nine places still name a host - `shop.com`,
+   `wiki.internal`, `juice-shop:3000`, `proxy:8081`. Compose gives those away;
+   Neutron does not. cloud-init writing `/etc/hosts` is the cheapest answer
+   that keeps `shop.com` a name, which is the product - and `shop.com` is the
+   one name worth keeping, because a range where the target has no name is not
+   the product. The other two classes are gone: `FSL_TOOL_NETWORK`, and the
+   five `waf-<origin>` aliases.
 
 2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
    the WAF's namespace so it sees both legs of every proxied request. Neutron
