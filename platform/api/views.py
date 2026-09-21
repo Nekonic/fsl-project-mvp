@@ -33,6 +33,7 @@ from api.models import (
 )
 from ingest import elastic
 from redteam import harness
+import operator_log
 from range import declared, substrate
 from range.ports import RangeUnavailable
 from rules import suricata
@@ -315,6 +316,28 @@ def origins(request):
         return _reply({"origins": attacker.origins(substrate().describe())})
     except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
+
+@require_http_methods(["GET"])
+def session_commands(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+
+    try:
+        typed = operator_log.commands(substrate().runner("attacker"))
+    except (RangeUnavailable, operator_log.OperatorLogUnavailable) as exc:
+        return _reply({"detail": str(exc)}, status=503)
+
+    return _reply({
+        "commands": [
+            {
+                "at": command.at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "case_id": command.marker,
+                "text": command.text,
+            }
+            for command in operator_log.within(
+                typed, session.started_at, session.ended_at
+            )
+        ]
+    })
 
 @require_http_methods(["POST"])
 def attacker_origin(request):

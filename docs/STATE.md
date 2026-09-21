@@ -194,6 +194,15 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**What the operator actually typed**
+- Every command typed at the terminal is recorded with the case that was open
+  when it was typed: the box appends to a log on each prompt, stamping it with
+  the marker the proxy is already labelling traffic with, and the platform
+  reads it through `runner("attacker")`.
+  `GET /api/sessions/<id>/commands/` returns what was typed inside the
+  session's window. `nmap` leaves a record now, not just an alert with no case
+  behind it.
+
 **Where an attack sits in an intrusion**
 - Every attack case carries the Mandiant life cycle stage it belongs to, an
   ATT&CK technique id and a CAPEC pattern id, and the console links both ids to
@@ -228,11 +237,11 @@ matters is a scope decision: a C2 and a foothold is a large step, and the
 range may be more useful as a web-entry range that is honest about where it
 stops.
 
-### 2. What the operator actually typed
+### 2. Show the operator log in the console
 
-The standard red team operator log records Tool/App and Command. The shell
-records neither: the proxy sees HTTP requests, and nothing sees nmap. Without
-it a window case says an attack happened and not what it was.
+The API records and returns what was typed; nothing draws it. A window case in
+the blue console still says only that an attack happened. The commands are
+there to be shown beside it.
 
 ## Known gaps
 
@@ -258,6 +267,10 @@ it a window case says an attack happened and not what it was.
 - `Detection.raw` for ModSecurity holds only the `message` sub-object. The
   drawer now names the CRS rule and says the ruleset lives in the WAF, so the
   operator is not stuck, but the record is still a fragment.
+- The operator log lives inside the attacker box and is lost when it is
+  recreated, and its stamps are whole seconds - a session's window is widened
+  to whole seconds to match, so two sessions less than a second apart would
+  each claim the other's commands.
 - Two labelled terminal windows less than four seconds apart overlap, because
   `WINDOW_SLACK` is two seconds at each end. The console does not say so.
 - Nothing stops two people opening the same session in four windows. One user,

@@ -182,6 +182,8 @@ services:
     networks: [edge]
     ports:
       - "7681:7681"
+    volumes:
+      - ./data/label:/label:ro
     init: true
     environment:
       http_proxy: "http://proxy:8081"

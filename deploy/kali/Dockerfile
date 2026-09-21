@@ -21,7 +21,10 @@ RUN [ -f /usr/share/wordlists/rockyou.txt.gz ] \
  && gunzip -f /usr/share/wordlists/rockyou.txt.gz || true
 
 COPY motd /etc/motd
-RUN echo 'cat /etc/motd' >> /root/.bashrc
+COPY operator-log.sh /etc/fsl/operator-log.sh
+RUN mkdir -p /var/log/fsl \
+ && echo 'cat /etc/motd' >> /root/.bashrc \
+ && echo '. /etc/fsl/operator-log.sh' >> /root/.bashrc
 
 WORKDIR /root
 
