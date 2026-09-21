@@ -13,7 +13,6 @@ TARGET_URL = "http://localhost:8080"
 
 SESSION_LINE = re.compile(r"^session (\d+) done$")
 
-
 def _reachable(url: str) -> bool:
     try:
         requests.get(url, timeout=3)
@@ -21,42 +20,20 @@ def _reachable(url: str) -> bool:
     except requests.RequestException:
         return False
 
-
 @pytest.fixture(scope="session", autouse=True)
 def stack_is_up():
-    """Fail rather than skip when the stack is down.
-
-    An acceptance check that quietly skips reads as "passed".
-    """
     for url in (PLATFORM_URL, TARGET_URL):
         assert _reachable(url), (
             f"could not reach {url}. Run `docker compose up -d --build` first."
         )
 
-
 @pytest.fixture(scope="session", autouse=True)
 def terminal_leaves_by_the_front_door(stack_is_up):
-    """Put the shell's origin back to the default before measuring anything.
-
-    The console can point the terminal's traffic at another segment, and the
-    proxy reads that choice from a file - so it survives the session that made
-    it. A run that starts with the shell pointed at Hong Kong attributes every
-    terminal case to an address on the wrong continent, and nothing says so.
-    """
     requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
                   timeout=60)
 
-
 @pytest.fixture(scope="session", autouse=True)
 def defence_is_on(stack_is_up):
-    """Refuse to measure a defence that is switched off.
-
-    A suppression silences a rule for an hour, and one left behind - by a run
-    that died, or by somebody clicking in the console - makes every later run
-    measure a range with a hole in it. The symptom is not "a rule is off": it
-    is "the probe raised no alert at all", which reads as a broken pipeline
-    and sends the next session looking in the wrong place. It already did.
-    """
     active = requests.get(f"{PLATFORM_URL}/api/rules/suppressions/", timeout=60)
     if not active.ok:
         return
@@ -67,23 +44,7 @@ def defence_is_on(stack_is_up):
         f"POST /api/rules/suppressions/<id>/restore/"
     )
 
-
 def reset_target() -> None:
-    """Give the target back its unsolved objectives.
-
-    The red team's cases take objectives now, so every acceptance run has to
-    start from a target in a known state, or it measures whatever the last run
-    left behind.
-
-    There are two targets now. The wiki judges itself by its own access log,
-    which survives everything, so a run that does not clear it starts with the
-    inside already lost and scores the defence for a breach from last week.
-
-    A restart is not enough and neither is --force-recreate; see DECISIONS.
-    Afterwards the WAF must still reach it: nginx resolves its upstream once,
-    at start, so a target that comes back on a different address leaves the
-    whole range answering 502 - which would surface as a defence failure.
-    """
     (REPO_ROOT / "deploy/wiki/logs/read.log").write_text("")
 
     subprocess.run(
@@ -110,9 +71,7 @@ def reset_target() -> None:
         "  docker compose up -d --force-recreate waf suricata"
     )
 
-
 def run_redteam() -> int:
-    """Run the red team once and return the session number."""
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "redteam" / "run.py")],
         capture_output=True,
@@ -130,14 +89,7 @@ def run_redteam() -> int:
             return int(found.group(1))
     raise AssertionError(f"no session number in output:\n{result.stdout}")
 
-
 def from_attacker(path: str) -> None:
-    """Send one request from the attacker's box, the way the terminal would.
-
-    Goes out through the stamping proxy because that is how the container is
-    configured, so it carries a marker whenever a label is open. Dialled by
-    the site's own name, which is what a person at that prompt types.
-    """
     result = subprocess.run(
         [
             "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
@@ -151,13 +103,7 @@ def from_attacker(path: str) -> None:
         f"could not reach the target from the attacker box: {result.stderr}"
     )
 
-
 def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
-    """Re-ingest and re-score until the logs have reached Elasticsearch.
-
-    Filebeat to Elasticsearch is asynchronous, so the first ingest can be empty.
-    Retries until `until` holds or the time runs out.
-    """
     deadline = time.time() + timeout
     last: dict = {}
 
@@ -169,9 +115,9 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
                 return last
         time.sleep(5)
 
-    # A session that ingested nothing says nothing about the defence. Report it
-    # as what it is - the pipeline delivered no data - so that a cold stack, a
-    # stalled Filebeat or a corrupt log never reads as "the attack got through".
+                                                                               
+                                                                              
+                                                                                
     detections = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
     ).json()
@@ -185,21 +131,13 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
     assert last, "never got a score back. Check Elasticsearch and Filebeat."
     return last
 
-
 @pytest.fixture(scope="session")
 def session_id(stack_is_up):
     reset_target()
     return run_redteam()
 
-
 @pytest.fixture(scope="session")
 def score(session_id):
-    """Wait until both engines have landed, not just the first one.
-
-    Suricata alerts reach Elasticsearch before ModSecurity's audit log does, so
-    stopping at the first true positive leaves half the detections missing and
-    every downstream assertion racing the pipeline.
-    """
 
     def ready(totals):
         if totals["tp"] <= 0:

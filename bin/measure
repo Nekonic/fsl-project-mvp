@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""Measure how simple the project is. Four numbers, nothing else.
-
-"Simpler" has to be a number, or every session re-argues it from taste. But
-one number cannot serve a hypothesis and a product at once: a product shell
-grows, and a hypothesis must not. So the line count splits.
-
-  core_loc      the hypothesis itself - scoring, ingest, rules, the harness
-  product_loc   the shell around it - UI, API surface, compose, deploy
-  dependencies  direct pip packages
-  services      compose services
-  tests         test functions, and this one may only go UP
-
-Only core_loc, dependencies and services are gated downward by bin/verify.
-product_loc is reported so growth is visible, not forbidden.
-
-Tests, docs and this tooling are not counted as production code: growing the
-test suite must never look like a regression. But nothing stopped it
-*shrinking*, and deleting a failing test is the cheapest way to make anything
-here pass - cheaper than the change it was hiding. So the count is a floor.
-It counts `def test_` definitions, not parametrized cases, because this script
-has to run in a fresh clone with nothing but python3 and cannot ask pytest.
-"""
+                      
 
 from __future__ import annotations
 
@@ -34,14 +13,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "metrics.json"
 
-# Not product code. Tests and docs are free to grow.
+                                                    
 EXCLUDE_PREFIXES = ("docs/", "test/", "platform/tests/", "bin/", ".claude/")
 EXCLUDE_SUFFIXES = (".md",)
 EXCLUDE_EXACT = (".gitignore", "metrics.json", "platform/pytest.ini")
 EXCLUDE_CONTAINS = ("/migrations/",)
 
-# The hypothesis: correlation, the two log readers, and the harness that
-# produces ground truth. Everything else is the shell it is demonstrated in.
+                                                                        
+                                                                            
 CORE = (
     "platform/scoring/",
     "platform/ingest/",
@@ -52,16 +31,14 @@ CORE = (
 TEST_DIRS = ("platform/tests", "test")
 
 METRICS = ("core_loc", "product_loc", "dependencies", "services", "tests")
-GATED = ("core_loc", "dependencies", "services")  # may only fall
-FLOOR = ("tests",)  # may only rise
-
+GATED = ("core_loc", "dependencies", "services")                 
+FLOOR = ("tests",)                 
 
 def tracked_files() -> list[str]:
     out = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     )
     return out.stdout.split()
-
 
 def is_production(path: str) -> bool:
     if path.startswith(EXCLUDE_PREFIXES):
@@ -71,7 +48,6 @@ def is_production(path: str) -> bool:
     if path in EXCLUDE_EXACT:
         return False
     return not any(part in path for part in EXCLUDE_CONTAINS)
-
 
 def production_loc() -> tuple[int, int, dict[str, int]]:
     per_file: dict[str, int] = {}
@@ -85,7 +61,6 @@ def production_loc() -> tuple[int, int, dict[str, int]]:
     core = sum(n for path, n in per_file.items() if path.startswith(CORE))
     return core, sum(per_file.values()) - core, per_file
 
-
 def dependencies() -> int:
     requirements = ROOT / "platform" / "requirements.txt"
     if not requirements.exists():
@@ -96,9 +71,7 @@ def dependencies() -> int:
         if line.strip() and not line.lstrip().startswith("#")
     )
 
-
 def tests() -> int:
-    """Test functions across the unit and acceptance suites."""
     total = 0
     for directory in TEST_DIRS:
         for path in sorted((ROOT / directory).glob("*.py")):
@@ -109,13 +82,7 @@ def tests() -> int:
             )
     return total
 
-
 def services() -> int:
-    """Count top-level keys under `services:` in compose.yaml.
-
-    Deliberately regex, not PyYAML: this script must run before any virtualenv
-    exists, in a fresh clone, with nothing but python3.
-    """
     compose = ROOT / "compose.yaml"
     if not compose.exists():
         return 0
@@ -127,12 +94,11 @@ def services() -> int:
             inside = True
             continue
         if inside:
-            if re.match(r"^\S", line):  # next top-level key ends the block
+            if re.match(r"^\S", line):                                     
                 break
             if re.match(r"^  [A-Za-z0-9_.-]+:\s*$", line):
                 count += 1
     return count
-
 
 def measure() -> dict[str, int]:
     core, product, _ = production_loc()
@@ -144,12 +110,10 @@ def measure() -> dict[str, int]:
         "tests": tests(),
     }
 
-
 def load_baseline() -> dict[str, int] | None:
     if not BASELINE.exists():
         return None
     return json.loads(BASELINE.read_text())
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -190,7 +154,6 @@ def main() -> int:
         print(f"\nwrote {BASELINE.relative_to(ROOT)}")
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

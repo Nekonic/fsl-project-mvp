@@ -2,7 +2,6 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
-
 def test_create_session_returns_id_and_start_time(client):
     response = client.post_json("/api/sessions/", {"scenario": "juice-shop"})
 
@@ -10,7 +9,6 @@ def test_create_session_returns_id_and_start_time(client):
     assert response.json()["id"]
     assert response.json()["started_at"]
     assert response.json()["ended_at"] is None
-
 
 def test_record_case_then_read_it_back(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
@@ -35,7 +33,6 @@ def test_record_case_then_read_it_back(client):
     assert listed.json()[0]["name"] == "sqli-login-bypass"
     assert listed.json()[0]["malicious"] is True
 
-
 def test_case_rejects_unknown_correlation_strategy(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     payload = {
@@ -52,7 +49,6 @@ def test_case_rejects_unknown_correlation_strategy(client):
     assert response.status_code == 400
     assert "correlation" in response.json()
 
-
 def test_closing_session_sets_end_time(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
 
@@ -61,12 +57,10 @@ def test_closing_session_sets_end_time(client):
     assert response.status_code == 200
     assert response.json()["ended_at"] is not None
 
-
 def test_cases_for_missing_session_are_404(client):
     response = client.get("/api/sessions/9999/cases/")
 
     assert response.status_code == 404
-
 
 def test_case_model_converts_to_scoring_record(client):
     from api.models import Case

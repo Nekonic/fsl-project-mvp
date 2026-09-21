@@ -9,26 +9,23 @@ that repo pays for it, what the thing should actually be - which screens, which
 scoring, which stack. Build it, run it, measure it, keep what survives and
 write down what did not.
 
-That is why `docs/DECISIONS.md` is the main output and not a graveyard. A
-Django replacement was built in full, measured, and discarded in a day; a
-twelve-case run was measured to achieve zero objectives while reporting `TP=6`,
-and the scoreboard was rebuilt around what it took instead. Neither was a
-failure. Both were answers bought at a price the production repo would not have
-wanted to pay.
+Things get built, measured and thrown away here. A Django replacement was
+built in full, measured and discarded in a day.
 
-A hypothesis does get tested along the way, because building the thing is what
-tests it:
+## How the score works
 
-> Red team attacks can be labelled with ground truth, and Suricata/ModSecurity
-> alerts can be matched to those labels automatically, so false positives and
-> negatives can be scored mechanically.
+Two separate numbers, and the first one is the point.
 
-It holds, and `platform/scoring/` is it. But proving it is not the job, and it
-is not the game. **Objectives lead the score**: Juice Shop's own challenges,
-which the application judges itself, so the platform labels nothing about
-whether an attack achieved anything. Losing one always costs and losing one you
-never saw costs double - detection is mitigation, the shape every cyber defence
-exercise settled on. False positives stay beside the damage, never inside it.
+**What the red team took.** Juice Shop ships challenges and flips its own
+`solved` flag when one falls. That is the score: which objectives were lost,
+and whether the blue team saw each one go. A lost objective nobody detected
+counts double. The platform never decides whether an attack achieved
+something - only the target does.
+
+**What the defence got wrong.** TP, FP, FN and TN per attack case, from
+matching alerts to the cases that caused them. Reported beside the first
+number, never folded into it: a defence that blocks everything scores
+perfectly here and loses every objective.
 
 What the product currently is: a shell one person can run attack and defence in,
 two browser windows, no accounts. See
@@ -36,7 +33,7 @@ two browser windows, no accounts. See
 
 ## Working language
 
-Everything in this repo is written in English: code, comments, commit messages,
+Everything in this repo is written in English: code, commit messages,
 documents. The user is Korean and talks to you in Korean; reply in Korean, but
 never write Korean into a file. Korean costs roughly twice the tokens per line,
 and every session pays to re-read it.
@@ -64,9 +61,9 @@ Follow this whether a human started you or `/loop` did. To run it unattended:
    the project's direction, which is not its to choose.
 4. Implement it test-first.
 5. `bin/verify` — full run: unit, acceptance against the live stack, ratchet.
-6. If it is red, or any metric grew: `git reset --hard`, append what you learned
-   to `docs/DECISIONS.md`, and stop. A failed attempt that is written down is
-   worth more than a half-finished one that is not.
+6. If it is red, or any metric grew: `git reset --hard` and stop. Say what you
+   learned; a failed attempt that is reported is worth more than a
+   half-finished one that is not.
 7. If it is green: `bin/measure --save`, update `docs/STATE.md`, commit.
 
 **Commit, never push.** Pushing and merging are the human's, whether or not a
@@ -88,8 +85,7 @@ A true positive also has to survive `expect`: each attack case declares a
 substring of the signature that should be able to find it, and an alert that
 does not mention the attack's own mechanism is reported as
 `corroborated: false`. A rule set that catches everything for unrelated
-reasons would otherwise score exactly as well as one that works. See
-`docs/DECISIONS.md`.
+reasons would otherwise score exactly as well as one that works.
 
 ## The measure of progress
 
@@ -119,11 +115,7 @@ growing the suite must never look like a regression.
 
 `metrics.json` holds the record and `bin/verify` refuses any change that grows
 a gated number or shrinks the floor. If it is genuinely unavoidable, edit
-`metrics.json` by hand and write down why in `docs/DECISIONS.md` — but treat
-that as a last resort, not an escape hatch. **`bin/verify` enforces the second
-half of that sentence**: a run that moves a baseline by hand and changes no
-line of `docs/DECISIONS.md` is refused, because the reason was written down
-nowhere. A new dependency or service costs a line there, not silence.
+`metrics.json` by hand — but treat that as a last resort, not an escape hatch.
 
 ## What must not break
 
@@ -141,6 +133,15 @@ nowhere. A new dependency or service costs a line there, not silence.
 - **Every UI action exists as a REST API first.** Console templates fetch
   `/api/`; they never receive server-rendered data. This is what lets an agent
   take a human's place later.
+
+## No comments in code
+
+Do not write comments or docstrings. Name things so the code says what it
+does; if a line needs explaining, the line is wrong. Python, JavaScript, HTML
+templates, Dockerfiles and `compose.yaml` alike.
+
+The one exception is `deploy/suricata/rules/`, where commenting a rule out is
+how suppression works.
 
 ## Layout
 
@@ -174,9 +175,9 @@ curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
 ```
 
 The console is the point now: open `/`, start a session, and open the red and
-blue windows side by side. The terminal in the red window is on 7681, and its
-traffic goes out through the stamping proxy - so the address alerts carry is
-the proxy's, not Kali's. See DECISIONS.
+blue windows side by side. The terminal in the red window is on 7681. HTTP
+from it goes out through the stamping proxy, so alerts carry the proxy's
+address; raw TCP ignores the proxy and carries Kali's own.
 
 See `README.md` for what each port is. `docs/superpowers/specs/` holds the
 design; the plan beside it is a finished historical record, not a to-do list.

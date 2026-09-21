@@ -1,14 +1,3 @@
-"""The same traffic, scored by both strategies.
-
-A terminal window is the only traffic in the project that carries both: the
-proxy stamps a marker on the way out, and it sits in a time window from a known
-address. So it is the only place the two correlation strategies can be compared
-on identical evidence, which is what `?correlation=` exists for.
-
-The user's reason for wanting this: the scoring criteria are themselves under
-test, and a comparison is data rather than an argument.
-"""
-
 import uuid
 from datetime import datetime, timezone
 
@@ -19,10 +8,8 @@ from conftest import PLATFORM_URL, from_attacker, score_when_ready
 
 ATTACK_PATH = "/rest/products/search?q=%27%20OR%201%3D1--"
 
-
 def _now():
     return datetime.now(timezone.utc)
-
 
 def _label(case_id):
     response = requests.post(
@@ -30,10 +17,8 @@ def _label(case_id):
     )
     assert response.ok, response.text
 
-
 @pytest.fixture(scope="module")
 def labelled_session(stack_is_up):
-    """One terminal window, marked and timed, exactly as the console does it."""
     source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=30
@@ -66,7 +51,6 @@ def labelled_session(stack_is_up):
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)
     return session_id
 
-
 def _scored(session_id, strategy):
     response = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/score/",
@@ -76,15 +60,12 @@ def _scored(session_id, strategy):
     assert response.ok, response.text
     return response.json()
 
-
 @pytest.fixture(scope="module")
 def ready(labelled_session):
     score_when_ready(labelled_session, until=lambda totals: totals["tp"] > 0)
     return labelled_session
 
-
 def test_the_proxy_marked_free_form_traffic(ready):
-    """Without this the marker column is empty and the comparison is vacuous."""
     detections = requests.get(
         f"{PLATFORM_URL}/api/sessions/{ready}/detections/", timeout=30
     ).json()
@@ -93,7 +74,6 @@ def test_the_proxy_marked_free_form_traffic(ready):
         "no alert carried a marker, so the proxy did not stamp the window"
     )
 
-
 def test_both_strategies_find_the_same_attack(ready):
     by_marker = _scored(ready, "marker")
     by_window = _scored(ready, "window")
@@ -101,11 +81,10 @@ def test_both_strategies_find_the_same_attack(ready):
     assert by_marker["tp"] == 1, "the marker path missed a window it had stamped"
     assert by_window["tp"] == 1, "the window path missed traffic from its own source"
 
-
 def test_the_two_strategies_are_reported_separately(ready):
-    # They agree here. The point of scoring twice is that a future change to
-    # either one shows up as a disagreement rather than as a silently moved
-    # number.
+                                                                            
+                                                                           
+             
     by_marker = _scored(ready, "marker")
     by_window = _scored(ready, "window")
 

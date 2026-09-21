@@ -1,5 +1,3 @@
-"""Match ground-truth cases against alerts. Pure functions only."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -17,17 +15,10 @@ from scoring.types import (
 
 WINDOW_SLACK = timedelta(seconds=2)
 
-
 def correlate(
     cases: Sequence[CaseRecord],
     detections: Sequence[DetectionRecord],
 ) -> CorrelationResult:
-    """Decide, per case, which alerts fired for it.
-
-    A case uses exactly the one strategy it declares. Marker cases ignore time
-    and IP; window cases ignore markers. Allowing a fallback would let a broken
-    pipeline masquerade as successful detection.
-    """
     for case in cases:
         if case.correlation not in CORRELATION_STRATEGIES:
             raise ValueError(
@@ -61,7 +52,6 @@ def correlate(
         warnings=_warnings(cases, detections),
     )
 
-
 def _matches(case: CaseRecord, detection: DetectionRecord) -> bool:
     if case.correlation == CORRELATION_MARKER:
         return detection.marker is not None and detection.marker == case.case_id
@@ -73,7 +63,6 @@ def _matches(case: CaseRecord, detection: DetectionRecord) -> bool:
         <= detection.timestamp
         <= case.ended_at + WINDOW_SLACK
     )
-
 
 def _warnings(
     cases: Sequence[CaseRecord],

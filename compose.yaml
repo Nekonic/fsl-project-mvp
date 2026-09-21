@@ -1,22 +1,6 @@
 name: fsl
 
 networks:
-  # The internet, as far as this range is concerned. Public addresses on
-  # purpose: private ones geolocate to nothing, so a map has nothing to draw,
-  # and an attacker sharing a subnet with the target was never the picture.
-  # The lab can never reach the real 5.188.10.0/24 - see DECISIONS.
-  #
-  # One subnet is one place on the map, and the bridge driver refuses more than
-  # one subnet on a network - so each origin an attack can come from is its own
-  # network. `fsl.origin` is what marks a network as one; the platform reads
-  # the label rather than keeping a copy of this list.
-  #
-  # The names must sort after `edge`: the published port follows the
-  # alphabetically first network the WAF is on, so `dmz-hk` would move the
-  # front door back inside the estate. See DECISIONS.
-  #
-  # Every range below was checked against this stack's own GeoLite2 - a range
-  # that resolves to nothing draws no pin, and no assertion would notice.
   edge:
     labels:
       fsl.segment: "Internet"
@@ -49,7 +33,6 @@ networks:
       config:
         - subnet: 175.45.176.0/24
 
-  # The estate. Private, because that is what a company's inside looks like.
   estate:
     labels:
       fsl.segment: "Application estate"
@@ -66,11 +49,6 @@ networks:
 
 volumes:
   esdata:
-  # Filebeat's registry - which files it has read, and how far. Inside the
-  # container it is lost on every recreate, and Filebeat then re-ships every
-  # log from the beginning with fresh timestamps. That does not merely delay
-  # data: it drops thousands of stale events into the window of every session
-  # opened afterwards, and the score is computed over them.
   filebeatdata:
 
 services:
@@ -79,7 +57,6 @@ services:
     container_name: fsl-juice-shop
     networks: [estate]
     healthcheck:
-      # Distroless: no shell/wget/curl. Call node by absolute path, not on PATH.
       test:
         - CMD
         - /nodejs/bin/node
@@ -90,11 +67,6 @@ services:
       retries: 18
       start_period: 30s
 
-  # The inside. An estate with one host in it has no inside: there is nowhere
-  # to move to, so the later stages of an attack - internal reconnaissance,
-  # lateral movement - cannot happen and the range only ever exercises initial
-  # access. This is the second thing in the estate, and it is deliberately
-  # reachable from the application and from nowhere else.
   wiki:
     image: nginx:alpine
     container_name: fsl-wiki
@@ -116,32 +88,9 @@ services:
     container_name: fsl-waf
     depends_on:
       juice-shop: {condition: service_healthy}
-    # The only member of both segments, and therefore the only way across.
-    # Suricata shares this container's namespace, so it sits at a choke point
-    # rather than on one host's interface.
-    #
-    # edge takes priority so it is the interface Docker attaches first, which
-    # is the one the published port maps to. Without that, traffic to
-    # localhost:8080 arrives on the app-side address and the range's own
-    # attacks are logged as coming from inside the estate.
-    #
-    # The aliases exist because the platform shares *both* of these networks
-    # with the WAF, so `waf` alone is ambiguous and resolved to whichever came
-    # back first. Naming the door says which way in is meant.
     networks:
       edge:
         priority: 100
-        # The name the target answers to. An attacker dials a company, not
-        # the appliance in front of it - `waf-edge` in the shell told them
-        # both that a WAF exists and what it is called. example.com is
-        # reserved by RFC 2606, so this can never collide with a real site.
-        #
-        # Only on this segment: the proxy and the platform are on all four,
-        # and a name that resolves on several of them picks an interface at
-        # random, which is the origin choosing itself. The per-segment
-        # `waf-<origin>` names stay for exactly that reason - they are how
-        # those two boxes choose which address to leave by, and nobody types
-        # them.
         aliases: [waf-edge, shop.com]
       edge-br:
         priority: 90
@@ -155,10 +104,6 @@ services:
       estate:
         priority: 10
         aliases: [waf-estate]
-    # The site answers on 80, because that is what a site does and the port
-    # was the last piece of the lab's plumbing showing in the target's name.
-    # nginx runs as uid 101 here, so binding a privileged port needs this
-    # rather than running the WAF as root.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     ports:
@@ -175,11 +120,7 @@ services:
       PARANOIA: "1"
       ANOMALY_INBOUND: "5"
     volumes:
-      # Template path, not the destination: the image runs envsubst and copies
-      # into /etc/modsecurity.d/, so blocking the destination breaks startup.
       - ./deploy/nginx/modsecurity-overrides.conf:/etc/nginx/templates/modsecurity.d/modsecurity-override.conf.template:ro
-      # The image refuses PORT<1024 on the assumption an unprivileged user
-      # cannot bind one. The sysctl above makes that untrue here.
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
     healthcheck:
@@ -193,16 +134,10 @@ services:
     container_name: fsl-suricata
     depends_on:
       waf: {condition: service_started}
-    # Join the WAF's network namespace and sniff its eth0. host mode attaches
-    # to the VM namespace on Docker Desktop, so its behaviour varies by host.
     network_mode: "service:waf"
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
-    # --af-packet rather than -i: the WAF straddles two segments, so there are
-    # two interfaces to watch and their order is not guaranteed. The config
-    # lists both.
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
     volumes:
-      # The image entrypoint chowns /etc/suricata, so :ro fails to start.
       - ./deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
       - ./deploy/suricata/rules:/var/lib/suricata/rules
       - ./deploy/suricata/logs:/var/log/suricata
@@ -239,9 +174,6 @@ services:
       - ./deploy/nginx/logs:/logs/modsecurity:ro
       - filebeatdata:/usr/share/filebeat/data
 
-  # The attacker's box: the shell the red team window frames, and the image a
-  # case with `tool:` is run one-shot in. One image rather than two, so what a
-  # person can do at that prompt is exactly what a case can do.
   kali:
     build: ./deploy/kali
     container_name: fsl-kali
@@ -250,25 +182,14 @@ services:
       - "7681:7681"
     init: true
     environment:
-      # Everything typed in the terminal goes through the stamping proxy, so
-      # it can be scored by marker as well as by window. The cost is that the
-      # WAF - and therefore Suricata - sees the proxy's address, not this
-      # container's. /api/attacker/ reports the one alerts will actually carry.
       http_proxy: "http://proxy:8081"
       HTTP_PROXY: "http://proxy:8081"
-      # So the shell can name the target without anyone memorising it. The
-      # host form is for the tools that take a host rather than a URL - nmap,
-      # netcat - and which do not go through the proxy either.
       FSL_TARGET: "http://shop.com"
       FSL_TARGET_HOST: "shop.com"
 
   proxy:
     build: ./deploy/proxy
     container_name: fsl-proxy
-    # On every origin, because the terminal's traffic leaves from here: which
-    # host the attacker dials decides which of these addresses it comes from.
-    # Kali stays on `edge` alone - it only ever talks to this proxy, and the
-    # proxy resolves the target name.
     networks: [edge, edge-br, edge-hk, edge-kp]
     volumes:
       - ./data/label:/label
@@ -278,9 +199,6 @@ services:
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
-    # On every segment, and that is a simplification worth naming: it launches
-    # attacks (edge), reads the target's own challenge API (app) and writes to
-    # Elasticsearch (mgmt). In a real estate those are three machines.
     networks: [edge, edge-br, edge-hk, edge-kp, estate, mgmt]
     ports:
       - "8000:8000"
@@ -293,30 +211,17 @@ services:
       SURICATA_RULE_PATH_IN_IDS: "/var/lib/suricata/rules/local.rules"
       SURICATA_CANDIDATE_PATH_IN_IDS: "/var/lib/suricata/rules/candidate.rules"
       DJANGO_DB_PATH: "/data/db.sqlite3"
-      # The console fires the red team's own cases, so the platform needs the
-      # case files and a way to reach the target from inside the network.
-      # Named for the segment, not the host: the platform can reach the WAF
-      # from inside the estate as well, and an attack that goes that way is
-      # not an attack from outside.
       TARGET_URL: "http://shop.com"
       PUBLIC_TARGET_URL: "http://shop.com"
       TOOL_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
-      # The segments moved; these name docker networks, not hosts.
       ATTACKER_NETWORK: "fsl_edge"
       FSL_TOOL_NETWORK: "fsl_edge"
     volumes:
       - ./platform:/app
-      # Mounted inside /app so `import redteam` resolves the same way it does
-      # on a developer's host, where the repo root is on sys.path.
       - ./redteam:/app/redteam:ro
       - ./deploy/suricata/rules:/rules
-      # Runs rule validation and reload inside the IDS container. A container
-      # escape path; production should replace it with a sidecar.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
-      # The active case marker, written here and read by the proxy.
       - ./data/label:/label
-      # What the internal wiki says was read of it. Read-only: the platform
-      # reads the target's record and never writes one.
       - ./deploy/wiki/logs:/wiki-logs:ro

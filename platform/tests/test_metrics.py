@@ -3,12 +3,10 @@ import pytest
 from scoring.metrics import score
 from scoring.types import CaseMatch, CorrelationResult
 
-
 def result(*matches, warnings=()):
     return CorrelationResult(
         matches=tuple(matches), unmatched_detection_ids=(), warnings=tuple(warnings)
     )
-
 
 def match(case_id, malicious, detected):
     return CaseMatch(
@@ -18,7 +16,6 @@ def match(case_id, malicious, detected):
         detection_ids=("d",) if detected else (),
         detected=detected,
     )
-
 
 def test_confusion_matrix_counts():
     s = score(
@@ -31,7 +28,6 @@ def test_confusion_matrix_counts():
     )
 
     assert (s.tp, s.fn, s.fp, s.tn) == (1, 1, 1, 1)
-
 
 def test_metrics_on_balanced_case():
     s = score(
@@ -48,7 +44,6 @@ def test_metrics_on_balanced_case():
     assert s.f1 == pytest.approx(0.5)
     assert s.false_positive_rate == pytest.approx(0.5)
 
-
 def test_perfect_defense():
     s = score(
         result(
@@ -59,9 +54,8 @@ def test_perfect_defense():
 
     assert (s.precision, s.recall, s.f1, s.false_positive_rate) == (1.0, 1.0, 1.0, 0.0)
 
-
 def test_block_everything_is_punished_by_false_positive_rate():
-    # A block-everything rule: perfect recall, but a perfect FP rate too.
+                                                                         
     s = score(
         result(
             match("a", malicious=True, detected=True),
@@ -73,7 +67,6 @@ def test_block_everything_is_punished_by_false_positive_rate():
     assert s.false_positive_rate == pytest.approx(1.0)
     assert s.precision == pytest.approx(0.5)
 
-
 def test_zero_denominators_yield_zero_not_error():
     s = score(result(match("a", malicious=True, detected=False)))
 
@@ -81,12 +74,10 @@ def test_zero_denominators_yield_zero_not_error():
     assert s.f1 == 0.0
     assert s.false_positive_rate == 0.0
 
-
 def test_warns_when_there_are_no_benign_cases():
     s = score(result(match("a", malicious=True, detected=True)))
 
     assert any("benign" in w for w in s.warnings)
-
 
 def test_no_benign_warning_when_benign_cases_exist():
     s = score(
@@ -98,12 +89,10 @@ def test_no_benign_warning_when_benign_cases_exist():
 
     assert not any("benign" in w for w in s.warnings)
 
-
 def test_correlation_warnings_are_carried_through():
     s = score(result(match("a", malicious=True, detected=True), warnings=("carried through",)))
 
     assert "carried through" in s.warnings
-
 
 def test_empty_result_is_all_zero_with_warning():
     s = score(result())

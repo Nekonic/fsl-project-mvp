@@ -2,9 +2,6 @@
 ---
 vars:
   address-groups:
-    # Includes the edge subnet because the WAF's own outside address is what
-    # the attacker aims at first; leaving it out would drop every alert on the
-    # attacker-to-WAF leg, which is most of them.
     HOME_NET: "[5.188.10.0/24,177.54.144.0/24,103.152.220.0/24,175.45.176.0/24,172.30.0.0/24,172.31.0.0/24]"
     EXTERNAL_NET: "any"
   port-groups:
@@ -24,16 +21,8 @@ outputs:
             metadata: yes
         - http:
             extended: yes
-            # Ground truth correlation hangs on this one line. Without it
-            # the marker is logged nowhere and every attack counts as missed.
-            #
-            # custom: [X-FSL-Case] had no effect on Suricata 8.0.7 - verified
-            # against the real stack. dump-all-headers does work.
             dump-all-headers: request
 
-# Both of the WAF's interfaces: one faces the attacker, one faces the estate,
-# and which is which is not guaranteed by Docker. Watching both means the
-# choke point is watched whichever way round they come up.
 af-packet:
   - interface: eth0
     cluster-id: 99
@@ -43,10 +32,6 @@ af-packet:
     cluster-id: 98
     cluster-type: cluster_flow
     defrag: yes
-  # One per network the WAF is on. Every origin subnet is in HOME_NET above,
-  # because the rules fire on traffic *to* $HOME_NET and the destination is the
-  # WAF's address on whichever origin the attack arrived by. Both omissions are
-  # silent: the attack lands and nothing alerts.
   - interface: eth2
     cluster-id: 97
     cluster-type: cluster_flow

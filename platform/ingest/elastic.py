@@ -1,5 +1,3 @@
-"""Elasticsearch queries and alert normalisation. The only file that knows ES."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -11,10 +9,8 @@ import requests
 MARKER_HEADER = "X-FSL-Case"
 _MARKER_KEY = MARKER_HEADER.lower()
 
-
 class ElasticUnavailable(RuntimeError):
     """Cannot reach ES, or the index is absent. Distinct from "nothing detected"."""
-
 
 def fetch(
     url: str,
@@ -24,7 +20,6 @@ def fetch(
     size: int = 5000,
     timeout: float = 10.0,
 ) -> list[tuple[str, dict[str, Any]]]:
-    """Return documents in the interval as (_id, _source) pairs."""
     query = {
         "size": size,
         "sort": [{"@timestamp": "asc"}],
@@ -60,18 +55,9 @@ def fetch(
     hits = response.json().get("hits", {}).get("hits", [])
     return [(hit["_id"], hit.get("_source", {})) for hit in hits]
 
-
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """Turn a batch of documents into alerts, joining markers per transaction.
-
-    A Suricata alert carries no request headers; they live on the http event of
-    the same transaction, so the batch must be walked twice. The join key is
-    (flow_id, tx_id): under keep-alive many requests share one flow, and joining
-    on flow_id alone pins that flow's first marker onto every alert in it - a
-    plausible-looking, quietly false score. Both verified against the stack.
-    """
     markers = _transaction_markers(documents)
 
     detections: list[dict[str, Any]] = []
@@ -83,11 +69,9 @@ def normalize_all(
             detections.append(detection)
     return detections
 
-
 def _transaction_markers(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> dict[tuple[Any, Any], str]:
-    """(flow_id, tx_id) -> marker, collected from the http events that carry it."""
     markers: dict[tuple[Any, Any], str] = {}
     for _, doc in documents:
         key = _transaction_key(doc)
@@ -98,27 +82,19 @@ def _transaction_markers(
             markers[key] = marker
     return markers
 
-
 def _transaction_key(doc: dict[str, Any]) -> tuple[Any, Any] | None:
     flow_id = doc.get("flow_id")
     if flow_id is None:
         return None
     return (flow_id, doc.get("tx_id"))
 
-
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """Turn one document into zero or more alerts.
-
-    Documents that are not alerts (Suricata http/flow events, ModSecurity
-    transactions that matched no rule) yield an empty list.
-    """
     source = doc.get("fsl_source")
     if source == "suricata":
         return _normalize_suricata(doc_id, doc)
     if source == "modsecurity":
         return _normalize_modsecurity(doc_id, doc)
     return []
-
 
 def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     if doc.get("event_type") != "alert":
@@ -137,7 +113,6 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
             "raw": doc,
         }
     ]
-
 
 def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     transaction = doc.get("transaction") or {}
@@ -174,33 +149,27 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
         )
     return detections
 
-
-# Each engine logs the marker in exactly one place. Matching is case-insensitive
-# because HTTP header names are, but nothing else is guessed at: if the marker
-# is ever missed, correlate() warns and the acceptance tests fail on it, so the
-# failure is loud rather than a session of silent false negatives.
-
+                                                                                
+                                                                              
+                                                                               
+                                                                  
 
 def _suricata_marker(http: dict[str, Any]) -> str | None:
-    """Suricata logs request headers as a list, under dump-all-headers."""
     for header in http.get("request_headers") or []:
         if str(header.get("name", "")).lower() == _MARKER_KEY:
             return header.get("value")
     return None
 
-
 def _header_lookup(headers: dict[str, Any]) -> str | None:
-    """ModSecurity logs them as a dict, keyed as the client sent them."""
     return next(
         (v for k, v in headers.items() if str(k).lower() == _MARKER_KEY and v), None
     )
-
 
 def _parse_time(value: Any) -> datetime | None:
     if not value:
         return None
     text = str(value)
-    # Suricata writes +0000, Elasticsearch writes Z. Accept both.
+                                                                 
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     elif len(text) >= 5 and text[-5] in "+-" and ":" not in text[-5:]:
@@ -210,15 +179,14 @@ def _parse_time(value: Any) -> datetime | None:
     except ValueError:
         pass
 
-    # ModSecurity audit logs use ctime, not ISO: "Fri Sep 18 15:25:02 2026".
-    # There is no timezone, so read it as UTC - the container runs in UTC.
+                                                                            
+                                                                          
     for fmt in ("%a %b %d %H:%M:%S %Y", "%a %b %d %H:%M:%S.%f %Y"):
         try:
             return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
     return None
-
 
 def _as_int(value: Any) -> int | None:
     try:

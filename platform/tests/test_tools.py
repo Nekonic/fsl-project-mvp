@@ -18,11 +18,9 @@ CASE = {
 }
 INTERNAL_TARGET = "http://waf:8080"
 
-
 def test_is_tool_case_detects_the_tool_field():
     assert is_tool_case(CASE) is True
     assert is_tool_case({"request": {"path": "/"}}) is False
-
 
 def test_command_runs_the_tool_image_on_the_stack_network():
     command = build_tool_command(CASE, INTERNAL_TARGET)
@@ -33,18 +31,15 @@ def test_command_runs_the_tool_image_on_the_stack_network():
     assert TOOL_IMAGE in command
     assert "sqlmap" in command
 
-
 def test_target_placeholder_is_substituted():
     command = build_tool_command(CASE, INTERNAL_TARGET)
 
     assert f"{INTERNAL_TARGET}/rest/products/search?q=1" in command
 
-
 def test_marker_header_is_injected_for_marker_cases():
     command = build_tool_command(CASE, INTERNAL_TARGET)
 
     assert "--headers=X-FSL-Case: abc-123" in command
-
 
 def test_marker_header_is_omitted_for_window_cases():
     case = dict(CASE, correlation="window")
@@ -53,13 +48,11 @@ def test_marker_header_is_omitted_for_window_cases():
 
     assert not any("X-FSL-Case" in part for part in command)
 
-
 def test_unknown_tool_is_rejected():
     case = dict(CASE, tool="metasploit")
 
     with pytest.raises(UnsupportedTool, match="metasploit"):
         build_tool_command(case, INTERNAL_TARGET)
-
 
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path
@@ -76,13 +69,11 @@ def test_tool_case_in_the_default_file_declares_args():
             f"{case['name']}  does not use {{target}}, so its target is hardcoded"
         )
 
-
-# -- when the tool never ran at all ------------------------------------------
-#
-# A missing image or missing docker means no attack went out. Ground truth
-# still says "attack sent", so it counts as a miss when in fact the harness,
-# not the defence, failed. Same class of defect as path normalisation.
-
+                                                                              
+ 
+                                                                          
+                                                                            
+                                                                      
 
 def test_missing_tool_image_raises_instead_of_being_swallowed():
     import subprocess
@@ -102,10 +93,9 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
         with pytest.raises(ToolUnavailable, match="fsl-kali"):
             fire_tool(dict(CASE), INTERNAL_TARGET)
 
-
 def test_tool_reporting_a_failed_scan_is_not_an_error():
-    # sqlmap exits non-zero when it finds no injection point. The attempt
-    # went out, so ground truth stands.
+                                                                         
+                                       
     import subprocess
     from unittest.mock import patch
 
@@ -119,23 +109,21 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
     )
 
     with patch("redteam.harness.subprocess.run", return_value=scan_failed):
-        fire_tool(dict(CASE), INTERNAL_TARGET)  # no exception
+        fire_tool(dict(CASE), INTERNAL_TARGET)                
 
-
-# -- the tool runs on the segment it attacks from --------------------------
+                                                                            
 
 def test_a_tool_attacking_through_another_origin_runs_on_that_network():
-    # The WAF's name says which segment it is being dialled on, so the network
-    # need not be passed separately. On the default network the container
-    # could not resolve waf-edge-hk at all, and sqlmap - 94 alerts, the most
-    # visible thing on the map - would rotate nowhere.
+                                                                              
+                                                                         
+                                                                            
+                                                      
     command = build_tool_command(
         {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
         "http://waf-edge-hk:8080",
     )
 
     assert command[command.index("--network") + 1] == "fsl_edge-hk"
-
 
 def test_a_tool_attacking_through_the_front_door_runs_where_it_always_did():
     command = build_tool_command(

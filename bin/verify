@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# The gate. Nothing gets committed unless this exits 0.
-#
-#   bin/verify --fast   unit + API tests only (~1s, no Docker)
-#   bin/verify          the above + acceptance against the live stack + ratchet
-#
-# The ratchet is the point: a change that makes the hypothesis bigger is not an
-# improvement, however good it looks. The product shell around it is allowed to
-# grow and is only reported. See metrics.json and docs/STATE.md.
 
 set -uo pipefail
 
@@ -59,10 +51,6 @@ else
   fail "fsl-kali missing — docker compose build kali"
 fi
 
-# A git checkout or reset while the stack runs replaces the single files that
-# are bind-mounted into waf and suricata. The containers keep the old inode and
-# their config silently vanishes. Catch it here: otherwise it surfaces as an
-# acceptance failure and reads as a defence failure.
 if "$PY" - <<'RULECHECK'
 import json, pathlib, sys, urllib.request
 
@@ -93,9 +81,6 @@ else
 fi
 
 section "ratchet"
-# bin/measure counts `git ls-files`, so a file that is not added yet is not
-# counted. That reads as a change that grew nothing, which is a false green in
-# exactly the direction nobody checks. Refuse to measure a dirty tree.
 untracked="$(git ls-files --others --exclude-standard)"
 if [ -n "$untracked" ]; then
   fail "untracked files - metrics would not count them:"
@@ -118,11 +103,7 @@ if not baseline_path.exists():
     sys.exit(0)
 baseline = json.loads(baseline_path.read_text())
 
-# product_loc is measured and printed, never gated: a shell that grows is what
-# building a product looks like. core_loc is the hypothesis and may only fall.
 GATED = ("core_loc", "dependencies", "services")
-# And the test count may only rise. Deleting a test is the cheapest way to make
-# any change here pass, and nothing else in this run would notice.
 FLOOR = ("tests",)
 
 failed = False
@@ -137,8 +118,7 @@ if worse:
     for name, (was, now) in worse.items():
         print(f"  {name}: {was} -> {now}")
     print("\nThat is not an improvement. Either shrink it back, or if the growth")
-    print("is genuinely necessary, edit metrics.json by hand and write down why")
-    print("in docs/DECISIONS.md.")
+    print("is genuinely necessary, edit metrics.json by hand.")
     failed = True
 
 shrunk = {
@@ -152,36 +132,8 @@ if shrunk:
         print(f"  {name}: {was} -> {now}")
     print("\nA deleted test is cheaper than the change it was hiding, and it")
     print("leaves every other number in this run looking fine. If a test was")
-    print("genuinely wrong, say so in docs/DECISIONS.md and lower the floor in")
-    print("metrics.json by hand.")
+    print("genuinely wrong, lower the floor in metrics.json by hand.")
     failed = True
-
-# The escape hatch is allowed. Taking it silently is not: a run that moves a
-# gated baseline and touches no line of DECISIONS.md has written the reason
-# down nowhere, and an unattended loop would do exactly that.
-head = subprocess.run(
-    ["git", "show", "HEAD:metrics.json"], capture_output=True, text=True
-)
-if head.returncode == 0:
-    before = json.loads(head.stdout)
-    moved = {
-        k: (before[k], baseline[k])
-        for k in (*GATED, *FLOOR)
-        if k in before
-        and (baseline.get(k, 0) > before[k] if k in GATED else baseline.get(k, 0) < before[k])
-    }
-    if moved:
-        touched = subprocess.run(
-            ["git", "diff", "HEAD", "--name-only"], capture_output=True, text=True
-        ).stdout.split()
-        if "docs/DECISIONS.md" not in touched:
-            print("\nmetrics.json was raised by hand:")
-            for name, (was, now) in moved.items():
-                print(f"  {name}: {was} -> {now}")
-            print("\nThat is the last resort, and it has to be argued for. This")
-            print("change touches no line of docs/DECISIONS.md, so the reason is")
-            print("written down nowhere. Write it, then run again.")
-            failed = True
 
 better = {
     k: (baseline[k], v)

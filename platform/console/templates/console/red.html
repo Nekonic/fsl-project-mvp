@@ -131,7 +131,6 @@
   </div>
 </div>
 
-
 <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Sent</h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
 <p id="log-empty" class="text-slate-500 text-sm">Nothing sent yet.</p>
@@ -176,10 +175,6 @@
     return result.ok;
   }
 
-  // -- where the attack comes from -----------------------------------------
-  // One subnet is one place on the map, so each origin is its own network and
-  // the address an alert carries is decided by which door was dialled.
-
   const chosenOrigin = () => document.getElementById("origin").value;
 
   async function loadOrigins() {
@@ -193,9 +188,6 @@
     select.innerHTML =
       `<option value="rotate">Rotate - a different place each time</option>` +
       result.body.origins.map((origin) =>
-        // The subnet, not the address: the buttons fire from the platform and
-        // the terminal from the proxy, so the two have different addresses on
-        // the same network. The subnet is true of both.
         `<option value="${esc(origin.id)}">${esc(origin.label)} (${esc(origin.subnet)})</option>`
       ).join("");
     const preferred = result.body.origins.find((origin) => origin.default);
@@ -206,8 +198,6 @@
   async function fireMany(cases) {
     const buttons = document.querySelectorAll("button");
     buttons.forEach((b) => (b.disabled = true));
-    // Sequential on purpose: the order and spacing of the traffic is part of
-    // what the correlation has to cope with.
     for (const caseDef of cases) {
       await fire(caseDef.name);
     }
@@ -234,10 +224,6 @@
     });
   }
 
-  // -- the labelled terminal. No new endpoint: a window case is exactly what
-  // POST /api/sessions/<id>/cases/ already accepts.
-  // -- objectives. The target judges these itself, so the list is the only
-  // honest statement of what there is to win.
   let objectives = [];
   const STAR = (n) => "*".repeat(n);
 
@@ -291,7 +277,6 @@
       result.body.reduce((sum, o) => sum + o.difficulty, 0);
   }
 
-  // Polled after every shot: the shop flips `solved` on its own clock.
   async function pollObjectives() {
     const result = await post(`/api/sessions/${sessionId()}/objectives/`);
     if (result.ok && result.body.achieved) {
@@ -316,20 +301,12 @@
     element.className = `text-sm pb-2 ${tone || "text-slate-500"}`;
   };
 
-  // Which address a window is scored against. HTTP goes through the stamping
-  // proxy so the alert carries the proxy's; nmap and netcat ignore http_proxy
-  // and carry the box's own. Recording the wrong one matches no alert at all,
-  // which scores a real attack as a miss and blames the defence for it.
   const windowAddress = () =>
     document.getElementById("window-route").value === "direct"
       ? attacker.direct_ip
       : attacker.source_ip;
 
   async function loadTerminal() {
-    // A window is scored against one address, so it cannot rotate: with
-    // "rotate" selected the shell keeps using the front door. Telling the
-    // proxy which segment to leave by is what lets the attacker type the
-    // target's own name instead of a routing name.
     const origin = chosenOrigin() === "rotate" ? "" : chosenOrigin();
     await post("/api/attacker/origin/", { origin });
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
@@ -346,8 +323,6 @@
     document.getElementById("box-proxied").textContent = attacker.source_ip;
     document.getElementById("box-direct").textContent = attacker.direct_ip || "not on this segment";
 
-    // The shell only reaches the proxy from the segment it is on, so a route
-    // it cannot take is not offered rather than silently mis-recorded.
     const route = document.getElementById("window-route");
     route.querySelector('[value="direct"]').disabled = !attacker.direct_ip;
     if (!attacker.direct_ip) route.value = "proxy";
@@ -361,9 +336,6 @@
     const malicious = document.getElementById("window-malicious");
 
     if (!openedAt) {
-      // The marker goes on before the clock starts, so the proxy is already
-      // stamping by the time anything can be typed. Same id in both places:
-      // that is what lets the two strategies score the same traffic.
       windowCaseId = crypto.randomUUID();
       const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
       if (!labelled.ok) {
@@ -408,12 +380,9 @@
     .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
 
   render();
-  // Origins first: the terminal's address is a property of the chosen one.
   loadOrigins().then(loadTerminal);
   loadObjectives();
   refreshTaken();
-  // The terminal can take an objective at any moment, not only when a button
-  // is pressed, so keep asking.
   setInterval(pollObjectives, 10000);
 </script>
 {% endblock %}

@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-"""Run a case file and print the session number."""
+                     
 
 from __future__ import annotations
 
@@ -9,11 +8,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from redteam import harness  # noqa: E402
-from redteam.harness import DEFAULT_TOOL_TARGET, load_cases  # noqa: E402
+from redteam import harness              
+from redteam.harness import DEFAULT_TOOL_TARGET, load_cases              
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="FSL red team harness")
@@ -41,7 +39,6 @@ def main() -> int:
     print(f"           curl {args.platform}/api/sessions/{session_id}/score/")
     print(f"  console: {args.platform}/  (session {session_id})")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
