@@ -20,10 +20,10 @@ class Suricata:
         self.content = content
         self.applied = []
 
-    def current(self):
+    def current(self, sensor):
         return self.content
 
-    def apply(self, content):
+    def apply(self, content, sensor):
         self.applied.append(content)
         self.content = content
 

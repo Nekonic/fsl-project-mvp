@@ -81,14 +81,12 @@ WARGAME_CASES_DIR = os.environ.get(
                                                                                 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
+FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
+FSL_SUBSTRATE_OPTIONS = {
+    "project": os.environ.get("FSL_PROJECT", "fsl"),
+    "hosts": {
+        "sensor": os.environ.get("SURICATA_CONTAINER", "fsl-suricata"),
+    },
+}
+
 SURICATA_CONTAINER = os.environ.get("SURICATA_CONTAINER", "fsl-suricata")
-SURICATA_RULE_PATH = os.environ.get("SURICATA_RULE_PATH", "/rules/local.rules")
-SURICATA_CANDIDATE_PATH = os.environ.get(
-    "SURICATA_CANDIDATE_PATH", "/rules/candidate.rules"
-)
-SURICATA_RULE_PATH_IN_IDS = os.environ.get(
-    "SURICATA_RULE_PATH_IN_IDS", "/var/lib/suricata/rules/local.rules"
-)
-SURICATA_CANDIDATE_PATH_IN_IDS = os.environ.get(
-    "SURICATA_CANDIDATE_PATH_IN_IDS", "/var/lib/suricata/rules/candidate.rules"
-)

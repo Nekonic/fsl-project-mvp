@@ -33,6 +33,8 @@ from api.models import (
 )
 from ingest import elastic
 from redteam import harness
+from range import substrate
+from range.ports import RangeUnavailable
 from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
@@ -807,11 +809,12 @@ def _session_window(session):
 
 @require_http_methods(["GET"])
 def current_rules(request):
-    return _reply({"content": suricata.current()})
+    return _reply({"content": suricata.current(substrate().runner('sensor'))})
 
 @require_http_methods(["POST"])
 def validate_rules(request):
-    outcome = suricata.validate(_payload(request).get("content", ""))
+    outcome = suricata.validate(_payload(request).get("content", ""),
+                                 substrate().runner("sensor"))
     payload = {"ok": outcome.ok, "output": outcome.output}
     return _reply(payload, status=200 if outcome.ok else 400)
 
@@ -838,7 +841,7 @@ def suppressions(request):
 
     minutes = body.get("minutes") or SUPPRESSION_MINUTES
     expires_at = timezone.now() + timedelta(minutes=float(minutes))
-    content = suricata.current()
+    content = suricata.current(substrate().runner('sensor'))
 
     try:
         silenced = suppress.silence(content, sid, expires_at.isoformat())
@@ -847,7 +850,7 @@ def suppressions(request):
 
     original = suppress.find(content, sid)
     try:
-        suricata.apply(silenced)
+        suricata.apply(silenced, substrate().runner('sensor'))
     except suricata.RuleApplyError as exc:
         return _reply({"detail": str(exc)}, status=400)
 
@@ -869,7 +872,7 @@ def restore_suppression(request, suppression_id):
 
 def _restore(record) -> str | None:
     try:
-        content = suppress.restore(suricata.current(), record.sid, record.original)
+        content = suppress.restore(suricata.current(substrate().runner('sensor')), record.sid, record.original)
     except KeyError:
                                                                             
                                                                           
@@ -878,7 +881,7 @@ def _restore(record) -> str | None:
         return None
 
     try:
-        suricata.apply(content)
+        suricata.apply(content, substrate().runner('sensor'))
     except suricata.RuleApplyError as exc:
                                                                              
                                                                                
@@ -903,7 +906,7 @@ def _restore_expired() -> list:
 def apply_rules(request):
     content = _payload(request).get("content", "")
     try:
-        suricata.apply(content)
+        suricata.apply(content, substrate().runner('sensor'))
     except suricata.RuleApplyError as exc:
         return _reply({"detail": str(exc)}, status=400)
 
