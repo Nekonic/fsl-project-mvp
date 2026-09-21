@@ -44,8 +44,8 @@ from scoring.types import CORRELATION_STRATEGIES
                                                        
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
 CASE_FIELDS = (
-    "id", "case_id", "name", "malicious", "technique", "correlation",
-    "source_ip", "started_at", "ended_at", "meta",
+    "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
+    "correlation", "source_ip", "started_at", "ended_at", "meta",
 )
 DETECTION_FIELDS = (
     "id", "detection_id", "source", "signature", "severity", "timestamp",
@@ -458,7 +458,9 @@ def fire_attack(request, session_id):
         case_id=case["case_id"],
         name=case["name"],
         malicious=bool(case["malicious"]),
+        stage=case.get("stage") or "",
         technique=case.get("technique") or "",
+        pattern=case.get("pattern") or "",
         correlation=case["correlation"],
         source_ip=case.get("source_ip"),
         started_at=started_at,
@@ -526,7 +528,9 @@ def session_cases(request, session_id):
         case_id=body["case_id"],
         name=body["name"],
         malicious=bool(body["malicious"]),
+        stage=body.get("stage") or "",
         technique=body.get("technique") or "",
+        pattern=body.get("pattern") or "",
         correlation=body["correlation"],
         source_ip=body.get("source_ip"),
         started_at=parse_datetime(body["started_at"]),

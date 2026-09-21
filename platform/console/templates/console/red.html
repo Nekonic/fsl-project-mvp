@@ -96,6 +96,8 @@
     class="px-4 py-2 rounded border border-sky-900 hover:border-sky-600 text-sky-400 text-sm"></a>
 </div>
 
+<p id="covers" class="text-xs text-slate-500 mb-6"></p>
+
 <div class="grid grid-cols-2 gap-8">
   <div>
     <h2 data-t="red.cases.attacks" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
@@ -122,16 +124,52 @@
   const detail = (result) =>
     result.body.detail || result.status || t("common.no_answer");
 
+  async function showCoverage() {
+    const listed = await api("/api/wargames/");
+    if (!listed.ok || !Array.isArray(listed.body)) return;
+    const wargame = listed.body.find((w) => w.id === scenario);
+    if (!wargame) return;
+
+    const named = (stages) => stages.map((s) => t("stage." + s)).join(", ");
+    const lines = [t("red.covers", named(wargame.covers))];
+    if (wargame.uncovered.length) {
+      lines.push(t("red.covers.not", named(wargame.uncovered)));
+    }
+    document.getElementById("covers").textContent = lines.join(" ");
+  }
+
+  function reference(caseDef, field) {
+    const id = caseDef[field];
+    const href = (caseDef.references || {})[field];
+    if (!id) return "";
+    if (!href) return `<span class="text-slate-600">${esc(id)}</span>`;
+    return `<a href="${esc(href)}" target="_blank" rel="noopener"
+      class="text-slate-500 hover:text-slate-300 underline decoration-dotted">${esc(id)}</a>`;
+  }
+
+  function labels(caseDef) {
+    if (!caseDef.stage) return "";
+    return `
+      <div class="px-3 pb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+        <span class="text-slate-400">${esc(t("stage." + caseDef.stage))}</span>
+        ${reference(caseDef, "technique")}
+        ${reference(caseDef, "pattern")}
+      </div>`;
+  }
+
   function button(caseDef) {
     return `
-      <button data-case="${esc(caseDef.name)}"
-        class="fire w-full text-left border border-slate-800 hover:border-slate-600 rounded px-3 py-2">
-        <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
-        <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
-        ${caseDef.takes
-          ? `<div class="text-rose-400 text-xs mt-1">${esc(t("red.case.objective", caseDef.takes))}</div>`
-          : ""}
-      </button>`;
+      <div class="border border-slate-800 hover:border-slate-600 rounded">
+        <button data-case="${esc(caseDef.name)}"
+          class="fire w-full text-left px-3 py-2">
+          <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
+          <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
+          ${caseDef.takes
+            ? `<div class="text-rose-400 text-xs mt-1">${esc(t("red.case.objective", caseDef.takes))}</div>`
+            : ""}
+        </button>
+        ${labels(caseDef)}
+      </div>`;
   }
 
   function note(text, tone) {
@@ -201,6 +239,7 @@
       return;
     }
     catalogue = cases.body;
+    await showCoverage();
     document.getElementById("attacks").innerHTML =
       catalogue.filter((c) => c.malicious).map(button).join("");
     document.getElementById("benign").innerHTML =

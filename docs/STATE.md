@@ -194,6 +194,16 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**Where an attack sits in an intrusion**
+- Every attack case carries the Mandiant life cycle stage it belongs to, an
+  ATT&CK technique id and a CAPEC pattern id, and the console links both ids to
+  the catalogue that defines them. `technique: SQLi` was an abbreviation from
+  nowhere; T1190 and CAPEC-66 can be checked.
+- The catalogue reports which stages the cases reach and which five of the
+  eight they never do, computed from the cases rather than written down, and
+  the red console says both. `docs/THREAT-MODEL.md` says which threat is being
+  emulated, that there is no C2 at all, and what the range cannot show.
+
 **Smaller**
 - Dropped djangorestframework and Kibana; collapsed the Django boilerplate;
   shrank `redteam/harness.py`; deleted the dead marker-probing.
@@ -218,14 +228,7 @@ matters is a scope decision: a C2 and a foothold is a large step, and the
 range may be more useful as a web-entry range that is honest about where it
 stops.
 
-### 2. Stage labels and a threat model
-
-Label each case and each console view with the lifecycle stage it belongs to
-and the ATT&CK technique id. Add a threat model table to the docs - the threat
-being emulated, the attacker's position, the C2, the TTP outline - and a
-limitations section saying what this range cannot show.
-
-### 3. What the operator actually typed
+### 2. What the operator actually typed
 
 The standard red team operator log records Tool/App and Command. The shell
 records neither: the proxy sees HTTP requests, and nothing sees nmap. Without

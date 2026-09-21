@@ -17,7 +17,9 @@ it: a defence that blocks everything scores perfectly on the second and loses
 every objective on the first.
 
 `CLAUDE.md` is the working brief. `docs/ARCHITECTURE.md` is how it is put
-together. `docs/STATE.md` is where the work currently stands.
+together. `docs/THREAT-MODEL.md` is which threat the cases stand for and which
+five of the eight life cycle stages never happen here. `docs/STATE.md` is where
+the work currently stands.
 
 ## Bringing it up
 
@@ -111,7 +113,7 @@ bin/prune --keep 20 --apply   # deletes it
 | `deploy/`, `compose.yaml` | the stack |
 | `bin/` | verify, measure, prune, and the world map generator |
 | `test/` | the acceptance criteria |
-| `docs/` | architecture, state, vocabulary |
+| `docs/` | architecture, threat model, state, vocabulary |
 
 `platform/` is not a Python package — `platform` is a stdlib module name. Run
 Python with `platform/` as the working directory.
