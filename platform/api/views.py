@@ -139,8 +139,8 @@ def sessions(request):
 @require_http_methods(["GET"])
 def attacker_box(request):
     try:
-        origin = attacker.find(request.GET.get("origin"))
-    except attacker.AttackerUnavailable as exc:
+        origin = attacker.find(substrate().describe(), request.GET.get("origin"))
+    except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
@@ -167,9 +167,11 @@ TOP_N = 25
 
 def _segments():
     try:
-        segments = topology.shape()["segments"]
-    except topology.StackUnavailable:
+        described = substrate().describe()
+    except RangeUnavailable:
         return [], {}
+
+    segments = topology.shape(described)["segments"]
 
     zones = []
     for segment in segments:
@@ -278,8 +280,8 @@ def session_top(request, session_id):
 def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     try:
-        shape = topology.shape()
-    except topology.StackUnavailable as exc:
+        shape = topology.shape(substrate().describe())
+    except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
     subnets = []
@@ -310,16 +312,16 @@ def session_topology(request, session_id):
 @require_http_methods(["GET"])
 def origins(request):
     try:
-        return _reply({"origins": attacker.origins()})
-    except attacker.AttackerUnavailable as exc:
+        return _reply({"origins": attacker.origins(substrate().describe())})
+    except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
 @require_http_methods(["POST"])
 def attacker_origin(request):
     origin_id = _payload(request).get("origin")
     try:
-        chosen = attacker.find(origin_id)
-    except attacker.AttackerUnavailable as exc:
+        chosen = attacker.find(substrate().describe(), origin_id)
+    except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
@@ -418,7 +420,7 @@ def fire_attack(request, session_id):
 
     try:
         origin = _origin_for(session, _payload(request).get("origin"))
-    except attacker.AttackerUnavailable as exc:
+    except RangeUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
@@ -475,10 +477,12 @@ ROTATE = "rotate"
 def _origin_for(session, requested):
     if not requested:
         return None
-    if requested != ROTATE:
-        return attacker.find(requested)
 
-    available = attacker.origins()
+    described = substrate().describe()
+    if requested != ROTATE:
+        return attacker.find(described, requested)
+
+    available = attacker.origins(described)
     if not available:
         raise attacker.UnknownOrigin("the stack declares no origins to rotate through")
     return available[session.cases.count() % len(available)]

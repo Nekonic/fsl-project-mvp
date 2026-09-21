@@ -30,6 +30,8 @@ class Segment:
     name: str
     origin: str
     subnet: str
+    network: str = ""
+    gateway: str = ""
     nodes: tuple[Node, ...] = field(default_factory=tuple)
 
     @property

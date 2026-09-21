@@ -1,74 +1,77 @@
-import json
+import pathlib
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 
 import attacker
 from attacker import AttackerUnavailable
+from range.ports import Node, RangeUnavailable, Segment, Shape
 
-NETWORKS = [
-    {"Name": "fsl_edge", "Labels": {"fsl.origin": "Moscow, Russia"},
-     "IPAM": {"Config": [{"Subnet": "5.188.10.0/24"}]}},
-    {"Name": "fsl_edge-hk", "Labels": {"fsl.origin": "Kwai Chung, Hong Kong"},
-     "IPAM": {"Config": [{"Subnet": "103.152.220.0/24"}]}},
-    {"Name": "fsl_edge-br", "Labels": {"fsl.origin": "Sao Paulo, Brazil"},
-     "IPAM": {"Config": [{"Subnet": "177.54.144.0/24"}]}},
-]
+PROXY = "fsl-proxy"
+KALI = "fsl-kali"
 
-ATTACHED = {
-    "fsl_edge": {"IPAddress": "5.188.10.7"},
-    "fsl_edge-hk": {"IPAddress": "103.152.220.7"},
-    "fsl_edge-br": {"IPAddress": "177.54.144.7"},
-}
+EDGE = Segment(
+    id="edge", name="Internet", origin="Moscow, Russia",
+    subnet="5.188.10.0/24", network="fsl_edge",
+    nodes=(Node(PROXY, "5.188.10.7"), Node(KALI, "5.188.10.2")),
+)
+HK = Segment(
+    id="edge-hk", name="Internet", origin="Kwai Chung, Hong Kong",
+    subnet="103.152.220.0/24", network="fsl_edge-hk",
+    nodes=(Node(PROXY, "103.152.220.7"),),
+)
+BR = Segment(
+    id="edge-br", name="Internet", origin="Sao Paulo, Brazil",
+    subnet="177.54.144.0/24", network="fsl_edge-br",
+    nodes=(Node(PROXY, "177.54.144.7"),),
+)
+ESTATE = Segment(
+    id="estate", name="Application estate", origin="",
+    subnet="172.30.0.0/24", network="fsl_estate",
+    nodes=(Node(PROXY, "172.30.0.7"), Node("fsl-juice-shop", "172.30.0.2")),
+)
 
-                                                                             
-                                                       
-DIRECT = {"fsl_edge": {"IPAddress": "5.188.10.2"}}
+SHAPE = Shape(segments=(EDGE, HK, BR, ESTATE), sensors=())
 
-class _Run:
+def stub(described=SHAPE, error=None):
+    class Stub:
+        def describe(self):
+            if error is not None:
+                raise error
+            return described
 
-    def __init__(self, networks=NETWORKS, attached=ATTACHED, direct=DIRECT,
-                 code=0, stderr=""):
-        self.networks, self.attached, self.direct = networks, attached, direct
-        self.code, self.stderr = code, stderr
+    return patch("api.views.substrate", Stub)
 
-    def __call__(self, argv, **kwargs):
-        if argv[:2] == ["docker", "network"]:
-            out = "\n".join(json.dumps(n) for n in self.networks)
-        elif any("kali" in arg for arg in argv):
-            out = json.dumps(self.direct)
-        else:
-            out = json.dumps(self.attached)
-        return type("R", (), {"returncode": self.code, "stdout": out,
-                              "stderr": self.stderr})()
-
-def origins(**kwargs):
-    with patch("attacker.subprocess.run", _Run(**kwargs)):
-        return attacker.origins()
+def origins(described=SHAPE):
+    return attacker.origins(described)
 
 def test_every_declared_network_is_an_origin():
     assert {o["id"] for o in origins()} == {"edge", "edge-hk", "edge-br"}
 
 def test_an_origin_carries_both_addresses_the_terminal_can_leave_by():
-                                                                             
-                                                                              
-                                                                             
-                                                         
     edge = next(o for o in origins() if o["id"] == "edge")
 
     assert edge["source_ip"] == "5.188.10.7"
     assert edge["direct_ip"] == "5.188.10.2"
 
 def test_an_origin_the_attacker_box_cannot_reach_says_so():
-                                                                            
-                                                                
     hk = next(o for o in origins() if o["id"] == "edge-hk")
 
     assert hk["direct_ip"] == ""
 
 def test_a_missing_attacker_box_does_not_lose_the_origins():
-                                                                          
-    assert {o["id"] for o in origins(direct={})} == {"edge", "edge-hk", "edge-br"}
+    without_kali = Shape(
+        segments=tuple(
+            replace(s, nodes=tuple(n for n in s.nodes if n.name != KALI))
+            for s in SHAPE.segments
+        ),
+        sensors=(),
+    )
+
+    assert {o["id"] for o in origins(without_kali)} == {
+        "edge", "edge-hk", "edge-br",
+    }
 
 def test_an_origin_carries_the_address_the_attack_will_come_from():
     found = {o["id"]: o["source_ip"] for o in origins()}
@@ -77,9 +80,6 @@ def test_an_origin_carries_the_address_the_attack_will_come_from():
     assert found["edge"] == "5.188.10.7"
 
 def test_an_origin_names_the_way_in_rather_than_the_host():
-                                                                              
-                                                                              
-                                                             
     hk = next(o for o in origins() if o["id"] == "edge-hk")
 
     assert hk["target_url"] == "http://waf-edge-hk:8080"
@@ -94,40 +94,45 @@ def test_origins_are_in_a_stable_order_because_rotation_depends_on_it():
     assert [o["id"] for o in origins()] == sorted(o["id"] for o in origins())
 
 def test_the_default_origin_is_the_one_the_terminal_already_used():
-                                                                           
-                                                                             
-                                                        
     assert [o["id"] for o in origins() if o["default"]] == ["edge"]
 
+def test_a_segment_that_carries_no_origin_is_not_a_place_to_attack_from():
+    assert "estate" not in {o["id"] for o in origins()}
+
 def test_a_network_the_attacker_is_not_on_is_not_an_origin():
-                                                                              
-                                                                            
-    attached = {k: v for k, v in ATTACHED.items() if k != "fsl_edge-br"}
+    elsewhere = Shape(
+        segments=tuple(s for s in SHAPE.segments if s.id != "edge-br"),
+        sensors=(),
+    )
 
-    assert {o["id"] for o in origins(attached=attached)} == {"edge", "edge-hk"}
+    assert {o["id"] for o in origins(elsewhere)} == {"edge", "edge-hk"}
 
-def test_docker_that_cannot_answer_is_an_error_not_an_empty_list():
-                                                                           
-                                                          
+def test_an_attacker_box_on_nothing_at_all_is_an_error_not_an_empty_list():
+    nowhere = Shape(
+        segments=(replace(EDGE, nodes=(Node(KALI, "5.188.10.2"),)),), sensors=(),
+    )
+
     with pytest.raises(AttackerUnavailable):
-        origins(code=1, stderr="Cannot connect to the Docker daemon")
+        origins(nowhere)
 
-def test_source_ip_still_answers_for_the_default_origin():
-    with patch("attacker.subprocess.run", _Run()):
-        assert attacker.source_ip() == "5.188.10.7"
+def test_an_attacker_box_that_cannot_be_reached_is_a_range_that_cannot_be_read():
+    assert issubclass(AttackerUnavailable, RangeUnavailable)
 
-def test_source_ip_answers_for_a_chosen_origin():
-    with patch("attacker.subprocess.run", _Run()):
-        assert attacker.source_ip("edge-hk") == "103.152.220.7"
+def test_finding_an_origin_never_names_the_substrate():
+    source = pathlib.Path(attacker.__file__).read_text()
+
+    assert "docker" not in source.lower()
+    assert "subprocess" not in source
+
+def test_the_default_origin_answers_when_none_was_asked_for():
+    assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.7"
+
+def test_a_chosen_origin_answers_with_its_own_address():
+    assert attacker.find(SHAPE, "edge-hk")["source_ip"] == "103.152.220.7"
 
 def test_an_unknown_origin_is_refused_rather_than_falling_back():
-    with patch("attacker.subprocess.run", _Run()):
-        with pytest.raises(attacker.UnknownOrigin):
-            attacker.source_ip("edge-antarctica")
-
-                                                                            
-                                                                           
-                        
+    with pytest.raises(attacker.UnknownOrigin):
+        attacker.find(SHAPE, "edge-antarctica")
 
 pytestmark = pytest.mark.django_db
 
@@ -144,7 +149,7 @@ PLACES = [
 ]
 
 def _fire(client, session_id, payload):
-    with patch("api.views.attacker.origins", return_value=PLACES), \
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
             patch("api.views.harness.fire") as fired:
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/", payload
@@ -156,7 +161,7 @@ def session_id(client):
     return client.post_json("/api/sessions/", {}).json()["id"]
 
 def test_the_console_can_ask_where_it_may_attack_from(client):
-    with patch("api.views.attacker.origins", return_value=PLACES):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES):
         response = client.get("/api/origins/")
 
     assert response.status_code == 200
@@ -165,18 +170,13 @@ def test_the_console_can_ask_where_it_may_attack_from(client):
     ]
 
 def test_origins_that_cannot_be_discovered_are_503_not_an_empty_list(client):
-    with patch(
-        "api.views.attacker.origins",
-        side_effect=AttackerUnavailable("Cannot connect to the Docker daemon"),
-    ):
+    with stub(error=RangeUnavailable("Cannot connect to the Docker daemon")):
         response = client.get("/api/origins/")
 
     assert response.status_code == 503
     assert "Docker" in response.json()["detail"]
 
 def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session_id):
-                                                                      
-                                                                      
     from django.conf import settings
 
     response, fired = _fire(client, session_id, {"case": "sqli-login-bypass"})
@@ -194,10 +194,6 @@ def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
     assert fired.call_args.args[2] == "http://waf-edge-hk:8080"
 
 def test_the_origin_is_recorded_but_not_an_address(client, session_id):
-                                                                             
-                                                                           
-                                                                        
-                                      
     response, _ = _fire(
         client, session_id, {"case": "sqli-login-bypass", "origin": "edge-hk"}
     )
@@ -223,8 +219,6 @@ def test_rotation_moves_on_with_every_attack(client, session_id):
     ], "rotation stalled: every attack would land on the same pin"
 
 def test_an_origin_that_does_not_exist_is_refused(client, session_id):
-                                                                           
-                                             
     response, fired = _fire(
         client, session_id, {"case": "sqli-login-bypass", "origin": "edge-mars"}
     )
@@ -233,10 +227,7 @@ def test_an_origin_that_does_not_exist_is_refused(client, session_id):
     assert not fired.called
 
 def test_the_terminal_s_address_follows_the_chosen_origin(client):
-                                                                        
-                                                                        
-                                                                     
-    with patch("api.views.attacker.origins", return_value=PLACES):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES):
         response = client.get("/api/attacker/?origin=edge-hk")
 
     assert response.status_code == 200
