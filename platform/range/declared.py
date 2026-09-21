@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from range.ports import Segment
+from range.ports import RangeUnavailable, Segment
 
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 
@@ -27,7 +27,11 @@ class Declaration:
         for segment in self.segments:
             if segment.id == segment_id:
                 return segment
-        return Segment(id=segment_id, name=segment_id)
+        raise RangeUnavailable(
+            f"the range has a segment {segment_id!r} that the declaration does "
+            f"not name, so the console would draw it with no name and no "
+            f"origin. Declared: {sorted(s.id for s in self.segments)}"
+        )
 
 def read(path: Path = DECLARATION) -> Declaration:
     document = yaml.safe_load(Path(path).read_text()) or {}
