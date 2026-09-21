@@ -127,3 +127,47 @@ def test_reading_the_shape_asks_each_question_once():
         f"one describe() cost {len(spy.argv)} round trips: "
         f"{[' '.join(a[:3]) for a in spy.argv]}"
     )
+
+def test_a_sensor_standing_on_a_segment_is_not_one_of_its_participants():
+    from range.declared import Declaration, Segment
+    from range.ports import Node, Shape
+
+    import topology
+
+    shape = Shape(
+        segments=(
+            Segment(
+                id="edge", name="Internet", origin="Moscow, Russia",
+                nodes=(Node(name="fsl-kali", address="5.188.10.2"),
+                       Node(name="fsl-suricata", address="5.188.10.9")),
+            ),
+        ),
+        sensors=(),
+    )
+
+    picture = topology.shape(shape, Declaration(roles={"sensor": "fsl-suricata"}))
+    edge = picture["segments"][0]
+    watching = [n for n in edge["nodes"] if n.get("watches")]
+
+    assert [n["name"] for n in edge["nodes"] if not n.get("watches")] == ["fsl-kali"], (
+        "the sensor is drawn as a host on the segment, so an operator reads it "
+        "as something traffic can reach. On Docker it owns no port and never "
+        "appeared; on Nova it is an instance and appears on every segment"
+    )
+    assert [n["name"] for n in watching] == ["fsl-suricata"]
+
+def test_a_host_that_is_not_the_sensor_is_left_alone():
+    from range.declared import Declaration, Segment
+    from range.ports import Node, Shape
+
+    import topology
+
+    shape = Shape(
+        segments=(Segment(id="estate", name="Application estate",
+                          nodes=(Node(name="fsl-juice-shop", address="172.30.0.2"),)),),
+        sensors=(),
+    )
+
+    picture = topology.shape(shape, Declaration(roles={"sensor": "fsl-suricata"}))
+
+    assert not picture["segments"][0]["nodes"][0].get("watches")

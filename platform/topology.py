@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-def shape(described) -> dict:
+def shape(described, declared=None) -> dict:
+    sensor_host = (declared.roles.get("sensor", "") if declared else "")
     sides: dict[str, set[bool]] = {}
     for segment in described.segments:
         for node in segment.nodes:
@@ -17,6 +18,7 @@ def shape(described) -> dict:
                     "address": node.address,
                     "crosses": sides.get(node.name) == {True, False},
                     "sensor": watching.get(node.name, ""),
+                    "watches": node.name == sensor_host,
                 }
                 for node in segment.nodes
             ),
