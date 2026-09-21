@@ -38,8 +38,20 @@ documents. The user is Korean and talks to you in Korean; reply in Korean, but
 never write Korean into a file. Korean costs roughly twice the tokens per line,
 and every session pays to re-read it.
 
-The one exception is `docs/superpowers/plans/`, which is archived and should
-not be read. Do not spend tokens translating it.
+Two files are exempt, and the rule about cost is why the exemption is shaped
+this way: the Korean is quarantined so that no session pays for it unless that
+session is the one editing it.
+
+- `platform/console/templates/console/strings.html` is the console's `en`/`ko`
+  string table. It is the only template allowed to contain Korean and a test
+  enforces that. **Do not read it** unless you are changing a visible string;
+  nothing else in the codebase needs it.
+- `docs/vocabulary.md` records what each term is called in both languages and
+  the source it came from. Reference only. **Do not read it** unless you are
+  naming something new.
+
+`docs/superpowers/plans/` is archived and should not be read either. Do not
+spend tokens translating any of these.
 
 ## Session protocol
 
@@ -151,6 +163,7 @@ how suppression works.
 | `platform/ingest/elastic.py` | the only file that knows Elasticsearch |
 | `platform/rules/suricata.py` | the only file that knows the Suricata process |
 | `platform/api/`, `platform/console/` | REST surface and the console |
+| `platform/console/templates/console/strings.html` | every visible string, `en` and `ko` |
 | `platform/wargames.py` | the case catalogue the console fires from |
 | `platform/objectives.py` | the only file that knows the target's challenge API |
 | `platform/scoreboard.py` | what each side achieved: pure, no I/O |

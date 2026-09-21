@@ -117,14 +117,32 @@ def test_score_includes_per_case_verdicts(client, session_with_cases):
     assert by_name["sqli"]["verdict"] == "TP"
     assert by_name["search"]["verdict"] == "TN"
 
-def test_score_persists_a_snapshot(client, session_with_cases):
-    from api.models import ScoreSnapshot
+def test_reading_the_score_writes_nothing(client, session_with_cases):
+    from django.db import connection
 
     with patch("api.views.elastic.fetch", return_value=[es_alert(ATTACK)]):
         client.post_json(f"/api/sessions/{session_with_cases}/ingest/")
-    client.get(f"/api/sessions/{session_with_cases}/score/")
 
-    assert ScoreSnapshot.objects.filter(session_id=session_with_cases).count() == 1
+    before = _row_counts(connection)
+    for _ in range(3):
+        client.get(f"/api/sessions/{session_with_cases}/score/")
+
+    assert _row_counts(connection) == before, (
+        "a GET grew the database, so looking at the scoreboard changes the "
+        "record it is reporting"
+    )
+
+def _row_counts(connection):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'api_%'"
+        )
+        tables = [row[0] for row in cursor.fetchall()]
+        counts = {}
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            counts[table] = cursor.fetchone()[0]
+    return counts
 
 def test_score_on_session_without_cases_warns_about_benign(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]

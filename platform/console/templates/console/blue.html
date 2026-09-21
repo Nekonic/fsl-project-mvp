@@ -1,39 +1,38 @@
 {% extends "console/base.html" %}
 {% block title %}Blue team{% endblock %}
-{% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
+{% block nav %}<span data-t="blue.title" class="text-sky-400"></span>{% endblock %}
 {% block nav_class %}w-full{% endblock %}
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
 <div id="tabs" class="flex gap-3 mb-3 border-b border-slate-800 items-center shrink-0">
-  <button data-tab="dashboard" class="tab px-4 py-2 text-sm">Dashboard</button>
-  <button data-tab="alerts" class="tab px-4 py-2 text-sm">Live</button>
-  <button data-tab="score" class="tab px-4 py-2 text-sm">Scoreboard</button>
-  <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
+  <button data-tab="dashboard" data-t="blue.tab.dashboard" class="tab px-4 py-2 text-sm"></button>
+  <button data-tab="alerts" data-t="blue.tab.alerts" class="tab px-4 py-2 text-sm"></button>
+  <button data-tab="score" data-t="blue.tab.score" class="tab px-4 py-2 text-sm"></button>
+  <button data-tab="rules" data-t="blue.tab.rules" class="tab px-4 py-2 text-sm"></button>
 
   <div class="ml-auto flex items-center gap-3">
     <button id="live-toggle"
       class="flex items-center gap-2 px-3 py-1.5 rounded border border-slate-700
              hover:border-slate-500 text-xs">
       <span id="live-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-      <span id="live-label">Live</span>
+      <span id="live-label"></span>
     </button>
-    <select id="interval"
+    <select id="interval" data-t-title="blue.interval.title"
       class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300">
       <option value="2000">2s</option>
       <option value="5000" selected>5s</option>
       <option value="15000">15s</option>
     </select>
-    <a id="to-red" target="_blank" class="text-sm text-rose-400 hover:text-rose-300">
-      Red window
-    </a>
+    <a id="to-red" data-t="blue.nav.to_red" target="_blank"
+       class="text-sm text-rose-400 hover:text-rose-300"></a>
   </div>
 </div>
 
 <section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3">
 <div class="grid grid-cols-4 gap-3 shrink-0">
   <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div class="text-slate-500 text-xs uppercase tracking-widest">Events</div>
+    <div data-t="blue.kpi.total" class="text-slate-500 text-xs uppercase tracking-widest"></div>
     <div id="kpi-total" class="text-4xl font-semibold text-slate-100 tabular-nums">0</div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
@@ -45,7 +44,7 @@
     <div id="kpi-modsec" class="text-4xl font-semibold text-cyan-300 tabular-nums">0</div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div class="text-slate-500 text-xs uppercase tracking-widest">Unattributed</div>
+    <div data-t="blue.unattributed" class="text-slate-500 text-xs uppercase tracking-widest"></div>
     <div id="kpi-orphan" class="text-4xl font-semibold text-amber-300 tabular-nums">0</div>
   </div>
 </div>
@@ -53,7 +52,7 @@
 <div class="flex-1 min-h-0 grid grid-cols-12 gap-3">
   <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
     <div class="flex items-center gap-3 px-4 py-2 border-b border-slate-800 shrink-0">
-      <span class="text-sm uppercase tracking-widest text-slate-500">Source countries</span>
+      <span data-t="blue.map.title" class="text-sm uppercase tracking-widest text-slate-500"></span>
       <span id="map-note" class="text-sm text-slate-400 ml-auto"></span>
     </div>
     <div class="flex-1 min-h-0 p-2 flex">
@@ -72,18 +71,17 @@
   </section>
 
   <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
-    <div class="px-4 py-2 border-b border-slate-800 shrink-0
-                text-sm uppercase tracking-widest text-slate-500">
-      Top source addresses
-    </div>
+    <div data-t="blue.sources.title"
+         class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500"></div>
     <div class="flex-1 min-h-0 overflow-y-auto">
       <table class="w-full text-sm">
         <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
           <tr>
-            <th class="text-left py-1.5 px-3 font-medium">Source IP</th>
-            <th class="text-left py-1.5 px-3 font-medium">Zone</th>
-            <th class="text-left py-1.5 px-3 font-medium">Country</th>
-            <th class="text-right font-medium pr-3">Events</th>
+            <th data-t="blue.col.src_ip" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.zone" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.country" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
           </tr>
         </thead>
         <tbody id="sources"></tbody>
@@ -92,17 +90,16 @@
   </section>
 
   <section class="col-span-3 min-h-0 flex flex-col border border-slate-800 rounded">
-    <div class="px-4 py-2 border-b border-slate-800 shrink-0
-                text-sm uppercase tracking-widest text-slate-500">
-      Top signatures
-    </div>
+    <div data-t="blue.signatures.title"
+         class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500"></div>
     <div class="flex-1 min-h-0 overflow-y-auto">
       <table class="w-full text-sm">
         <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
           <tr>
-            <th class="text-left py-1.5 px-3 font-medium">Signature</th>
-            <th class="text-left py-1.5 px-3 font-medium">Engine</th>
-            <th class="text-right font-medium pr-3">Events</th>
+            <th data-t="blue.col.signature" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.engine" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
           </tr>
         </thead>
         <tbody id="signatures"></tbody>
@@ -114,24 +111,24 @@
 <div class="shrink-0 grid grid-cols-12 gap-3" style="height:13rem">
   <section class="col-span-3 flex flex-col border border-slate-800 rounded">
     <div class="flex items-center gap-2 px-4 py-2 border-b border-slate-800 shrink-0">
-      <span class="text-sm uppercase tracking-widest text-slate-500">Events over time</span>
+      <span data-t="blue.histogram.title"
+            class="text-sm uppercase tracking-widest text-slate-500"></span>
       <span id="histogram-range" class="text-xs text-slate-500 ml-auto"></span>
     </div>
     <div id="histogram" class="flex-1 flex items-end gap-px p-2"></div>
   </section>
 
   <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
-    <div class="px-4 py-2 border-b border-slate-800 shrink-0
-                text-sm uppercase tracking-widest text-slate-500">
-      Top destinations
-    </div>
+    <div data-t="blue.destinations.title"
+         class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500"></div>
     <div class="flex-1 min-h-0 overflow-y-auto">
       <table class="w-full text-sm">
         <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
           <tr>
-            <th class="text-left py-1.5 px-3 font-medium">Destination</th>
-            <th class="text-left py-1.5 px-3 font-medium">Zone</th>
-            <th class="text-right font-medium pr-3">Events</th>
+            <th data-t="blue.col.dest" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.zone" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
           </tr>
         </thead>
         <tbody id="destinations"></tbody>
@@ -140,17 +137,16 @@
   </section>
 
   <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
-    <div class="px-4 py-2 border-b border-slate-800 shrink-0
-                text-sm uppercase tracking-widest text-slate-500">
-      Top request paths
-    </div>
+    <div data-t="blue.paths.title"
+         class="px-4 py-2 border-b border-slate-800 shrink-0
+                text-sm uppercase tracking-widest text-slate-500"></div>
     <div class="flex-1 min-h-0 overflow-y-auto">
       <table class="w-full text-sm">
         <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
           <tr>
-            <th class="text-left py-1.5 px-3 font-medium">Method</th>
-            <th class="text-left py-1.5 px-3 font-medium">Path</th>
-            <th class="text-right font-medium pr-3">Events</th>
+            <th data-t="blue.col.method" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.path" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
           </tr>
         </thead>
         <tbody id="paths"></tbody>
@@ -162,16 +158,17 @@
 
 <section data-panel="alerts" class="flex-1 min-h-0 flex flex-col border border-slate-800 rounded">
   <div class="flex items-center gap-3 px-3 py-2 border-b border-slate-800 shrink-0">
-    <input id="search" placeholder="filter signature, address or marker"
+    <input id="search" data-t-placeholder="blue.alerts.search.placeholder"
       class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs flex-1 min-w-32">
     <div class="flex gap-1" id="source-filter">
-      <button data-source="" class="chip px-2 py-1 rounded text-xs border">All</button>
+      <button data-source="" data-t="blue.alerts.filter.all"
+        class="chip px-2 py-1 rounded text-xs border"></button>
       <button data-source="suricata" class="chip px-2 py-1 rounded text-xs border">Suricata</button>
       <button data-source="modsecurity" class="chip px-2 py-1 rounded text-xs border">ModSecurity</button>
     </div>
     <label class="flex items-center gap-1.5 text-xs text-slate-400">
       <input id="only-orphans" type="checkbox" class="accent-amber-500">
-      unattributed only
+      <span data-t="blue.alerts.filter.orphans_only"></span>
     </label>
     <span id="shown" class="text-xs text-slate-500"></span>
   </div>
@@ -179,85 +176,66 @@
     <table class="w-full text-sm">
       <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
         <tr>
-          <th class="w-1"></th>
-          <th class="text-left py-2 px-3 font-medium">Time</th>
-          <th class="text-left font-medium">Severity</th>
-          <th class="text-left font-medium">Source</th>
-          <th class="text-left font-medium">Signature</th>
-          <th class="text-left font-medium">From</th>
-          <th class="text-left font-medium">Zone</th>
-          <th class="text-left font-medium">Country</th>
-          <th class="text-left font-medium">Destination</th>
-          <th class="text-left font-medium">Path</th>
-          <th class="text-left font-medium pr-3">Case</th>
+          <th data-t="blue.col.time" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.severity" class="text-left font-medium"></th>
+          <th data-t="blue.col.engine" class="text-left font-medium"></th>
+          <th data-t="blue.col.signature" class="text-left font-medium"></th>
+          <th data-t="blue.col.src_ip" class="text-left font-medium"></th>
+          <th data-t="blue.col.zone" class="text-left font-medium"></th>
+          <th data-t="blue.col.country" class="text-left font-medium"></th>
+          <th data-t="blue.col.dest" class="text-left font-medium"></th>
+          <th data-t="blue.col.path" class="text-left font-medium"></th>
+          <th data-t="blue.col.case" class="text-left font-medium pr-3"></th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
-    <p id="empty" class="text-slate-500 text-sm p-6 text-center">
-      Waiting for traffic. Fire something from the red window.
-    </p>
+    <p id="empty" data-t="blue.alerts.empty" class="text-slate-500 text-sm p-6 text-center"></p>
   </div>
 </section>
 
 <section data-panel="score" class="hidden flex-1 min-h-0 overflow-y-auto">
-  <h2 class="text-slate-100 mb-1">What was taken</h2>
-  <p class="text-slate-400 text-sm mb-4">
-    Objectives the shop itself judged achieved. Losing one always costs;
-    losing one you never saw costs double. Detection is mitigation, not the
-    game.
-  </p>
+  <h2 data-t="blue.score.breaches.heading"
+      class="text-lg font-semibold text-slate-100 mb-4"></h2>
   <div id="breach-totals" class="grid grid-cols-4 gap-3 mb-4"></div>
   <div id="breach-table" class="border border-slate-800 rounded mb-10"></div>
 
-  <h2 class="text-slate-100 mb-1">Detection quality</h2>
-  <p class="text-slate-400 text-sm mb-4">
-    How the defence behaved against labelled traffic, attacks and benign alike.
-    A rule that alerts on everything scores every attack and is worthless; that
-    is what the false positives are here to catch.
-  </p>
+  <h2 data-t="blue.score.detection.heading"
+      class="text-lg font-semibold text-slate-100 mb-1"></h2>
   <div id="warnings" class="mb-5 space-y-2"></div>
   <div id="totals" class="grid grid-cols-4 gap-3 mb-8"></div>
   <table class="w-full text-sm">
     <thead class="text-slate-400 border-b border-slate-800">
-      <tr><th class="text-left py-2">Case</th><th class="text-left">Label</th>
-          <th class="text-left">Verdict</th><th class="text-left">Alerts</th>
-          <th class="text-left">Evidence</th></tr>
+      <tr><th data-t="blue.col.case" class="text-left py-2"></th>
+          <th data-t="blue.score.case.col.truth" class="text-left"></th>
+          <th data-t="blue.score.case.col.disposition" class="text-left"></th>
+          <th data-t="blue.col.alerts" class="text-left"></th>
+          <th data-t="blue.score.case.col.evidence" class="text-left"></th></tr>
     </thead>
     <tbody id="per-case"></tbody>
   </table>
 
-  <h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">
-    Strategy comparison
-  </h2>
-  <p class="text-slate-400 text-sm mb-4">
-    The same alerts, scored twice: once matching cases by the marker header,
-    once by source address and time. Only terminal windows carry both, so only
-    they can disagree - and a disagreement is a result about the scoring
-    method, not about the defence.
-  </p>
+  <h2 data-t="blue.score.comparison.heading"
+      class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3"></h2>
   <div id="comparison" class="grid grid-cols-2 gap-4"></div>
 </section>
 
 <section data-panel="rules" class="hidden flex-1 min-h-0 overflow-y-auto">
-  <h2 class="text-slate-100 mb-3">Suricata rules</h2>
+  <h2 data-t="blue.rules.heading" class="text-lg font-semibold text-slate-100 mb-3"></h2>
   <textarea id="editor" spellcheck="false"
     class="w-full h-80 bg-slate-900 border border-slate-800 rounded p-4 font-mono
            text-sm text-slate-200"></textarea>
   <div class="flex gap-3 mt-4">
-    <button id="validate"
-      class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Validate</button>
-    <button id="apply"
-      class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">Apply</button>
+    <button id="validate" data-t="blue.rules.validate"
+      class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm"></button>
+    <button id="apply" data-t="blue.rules.apply"
+      class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm"></button>
   </div>
   <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
        text-xs whitespace-pre-wrap text-slate-300"></pre>
 
-  <h2 class="text-slate-100 mt-10 mb-1">Silenced rules</h2>
-  <p class="text-slate-400 text-sm mb-4">
-    Each of these is a false-negative bet with a deadline. They come back on
-    their own; nothing here can be switched off for good, which is the point.
-  </p>
+  <h2 data-t="blue.rules.suppressions.heading"
+      class="text-lg font-semibold text-slate-100 mt-10 mb-1"></h2>
   <div id="suppressions" class="border border-slate-800 rounded"></div>
 </section>
 
@@ -270,29 +248,27 @@
       <div id="drawer-signature" class="text-slate-100 truncate"></div>
       <div id="drawer-meta" class="text-slate-500 text-xs mt-0.5"></div>
     </div>
-    <button id="drawer-close" class="text-slate-500 hover:text-slate-200 text-xl px-2">
+    <button id="drawer-close" data-t-title="blue.drawer.close"
+      class="text-slate-500 hover:text-slate-200 text-xl px-2">
       &times;
     </button>
   </div>
   <div id="drawer-verdict" class="px-5 py-4 border-b border-slate-800 hidden">
-    <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">Verdict</div>
-    <p class="text-slate-400 text-xs mb-3">
-      If this alert is wrong, the rule that raised it is wrong. Silencing it
-      here is a false-negative bet with a deadline, and it does not change
-      alerts already scored - fire the cases again to see what it costs.
-    </p>
+    <div data-t="blue.drawer.suppress.heading"
+         class="text-slate-500 text-xs uppercase tracking-wide mb-2"></div>
     <div class="flex gap-2 items-center">
-      <input id="suppress-reason" placeholder="why (optional)"
+      <input id="suppress-reason" data-t-placeholder="blue.drawer.suppress.reason_placeholder"
         class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
       <button id="suppress"
         class="px-3 py-2 rounded bg-amber-700 hover:bg-amber-600 text-white text-sm
-               whitespace-nowrap">Silence <span id="suppress-sid"></span></button>
+               whitespace-nowrap"><span id="suppress-sid"></span></button>
     </div>
     <p id="suppress-result" class="text-xs mt-2"></p>
   </div>
 
   <div class="p-5">
-    <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">Raw log record</div>
+    <div data-t="blue.drawer.raw.heading"
+         class="text-slate-500 text-xs uppercase tracking-wide mb-2"></div>
     <pre id="drawer-raw" class="bg-slate-900 border border-slate-800 rounded p-4
          text-xs whitespace-pre-wrap break-all text-slate-300 leading-relaxed"></pre>
   </div>
@@ -300,18 +276,15 @@
 {% endblock %}
 {% block script %}
 <script>
+  document.title = t("blue.title");
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
 
-  const SOURCE_STYLE = {
-    suricata: "bg-violet-950 text-violet-300 border-violet-900",
-    modsecurity: "bg-cyan-950 text-cyan-300 border-cyan-900",
-  };
   const SEVERITY = {
-    1: {bar: "bg-rose-500", text: "text-rose-400", word: "High"},
-    2: {bar: "bg-amber-500", text: "text-amber-400", word: "Medium"},
-    3: {bar: "bg-sky-500", text: "text-sky-400", word: "Low"},
+    1: {text: "text-rose-400", key: "blue.alerts.severity.high"},
+    2: {text: "text-amber-400", key: "blue.alerts.severity.medium"},
+    3: {text: "text-sky-400", key: "blue.alerts.severity.low"},
   };
-  const INFORMATIONAL = {bar: "bg-slate-700", text: "text-slate-500", word: "Info"};
+  const INFORMATIONAL = {text: "text-slate-500", key: "blue.alerts.severity.info"};
   const severityOf = (d) => SEVERITY[d.severity] || INFORMATIONAL;
 
   let rows = [];
@@ -349,7 +322,7 @@
   }
 
   async function tick() {
-    await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
+    const ingested = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
     const result = await api(
       `/api/sessions/${sessionId()}/detections/?after=${lastId}`);
     if (!result.ok) return;
@@ -369,12 +342,31 @@
     if (live) timer = setInterval(tick, Number(document.getElementById("interval").value));
   }
 
+  let reachable = true;
+  let unreachableDetail = "";
+
+  function paintLive() {
+    const toggle = document.getElementById("live-toggle");
+    const label = document.getElementById("live-label");
+    label.textContent = reachable ? (live ? t("blue.live.on") : t("blue.live.paused"))
+                                  : (live ? t("blue.live.unreachable") : t("blue.live.paused"));
+    document.getElementById("live-dot").className = !live
+      ? "w-2 h-2 rounded-full bg-slate-600"
+      : reachable ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
+                  : "w-2 h-2 rounded-full bg-rose-500 animate-pulse";
+    toggle.title = reachable ? "" : (unreachableDetail || t("blue.live.unreachable_title"));
+  }
+
+  function setReachable(ok, detail) {
+    if (ok === reachable) return;
+    reachable = ok;
+    unreachableDetail = ok ? "" : (detail || "");
+    paintLive();
+  }
+
   function setLive(on) {
     live = on;
-    document.getElementById("live-label").textContent = on ? "Live" : "Paused";
-    document.getElementById("live-dot").className = on
-      ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
-      : "w-2 h-2 rounded-full bg-slate-600";
+    paintLive();
     schedule();
     if (on) tick();
   }
@@ -413,8 +405,13 @@
     `<td class="${cell} text-right pr-3 tabular-nums text-slate-300">${esc(n)}</td>`;
   const text = (s, tone) =>
     `<td class="${cell} ${tone || "text-slate-400"}">${esc(s) || "-"}</td>`;
+  const address = (value, host, tone) =>
+    `<td class="${cell} font-mono text-xs ${tone || "text-slate-300"}">${esc(value)}` +
+    (host ? `<div class="font-sans text-slate-400 mt-0.5">${esc(host)}</div>` : "") +
+    `</td>`;
   const empty = (columns) =>
-    `<tr><td class="${cell} text-slate-500" colspan="${columns}">Nothing yet.</td></tr>`;
+    `<tr><td class="${cell} text-slate-500" colspan="${columns}">${
+      esc(t("blue.table.empty"))}</td></tr>`;
 
   function fill(id, rows, row, columns) {
     document.getElementById(id).innerHTML =
@@ -433,21 +430,21 @@
 
   function renderTop(body) {
     fill("sources", body.sources, (s) => [
-      text(s.src_ip, `font-mono text-xs ${s.outside ? "text-rose-300" : "text-slate-300"}`),
+      address(s.src_ip, s.host, s.outside ? "text-rose-300" : "text-slate-300"),
       text(s.zone),
       text([s.city, s.country].filter(Boolean).join(", ")),
       num(s.alerts),
     ].join(""), 4);
 
     fill("destinations", body.destinations, (d) => [
-      text(d.dest, "font-mono text-xs text-slate-300"),
+      address(d.dest, d.host),
       text(d.zone),
       num(d.alerts),
     ].join(""), 3);
 
     fill("signatures", body.signatures, (s) => [
       text(s.signature, "text-slate-300"),
-      text(s.engine, s.engine === "suricata" ? "text-violet-300 text-xs" : "text-cyan-300 text-xs"),
+      text(s.engine, "text-xs text-slate-400"),
       num(s.alerts),
     ].join(""), 3);
 
@@ -479,10 +476,11 @@
 
     const tallest = Math.max(...buckets, 1);
     histogram.innerHTML = buckets.map((n) => `
-      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${n} events"
+      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${esc(t("blue.histogram.bar_title", n))}"
            style="height:${Math.max(n / tallest * 100, n ? 6 : 1)}%"></div>`).join("");
-    document.getElementById("histogram-range").textContent =
-      `${new Date(first).toLocaleTimeString()} - ${new Date(last).toLocaleTimeString()}`;
+    document.getElementById("histogram-range").textContent = t(
+      "blue.histogram.range",
+      new Date(first).toLocaleTimeString(), new Date(last).toLocaleTimeString());
   }
 
   async function renderMap() {
@@ -492,10 +490,11 @@
     const busiest = Math.max(1, ...body.points.map((p) => p.detections));
     document.getElementById("map-points").innerHTML = body.points.map((p) => {
       const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
-      const where = [p.city, p.country].filter(Boolean).join(", ") || "unknown";
+      const where = [p.city, p.country].filter(Boolean).join(", ")
+        || t("blue.map.place.unknown");
       return `
         <g>
-          <title>${esc(where)} - ${p.detections} events from ${esc(p.ips.join(", "))}</title>
+          <title>${esc(t("blue.map.point_title", where, p.detections, p.ips.join(", ")))}</title>
           <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r + 2}"
                   fill="#f43f5e" opacity="0.15"/>
           <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r}"
@@ -505,12 +504,11 @@
 
     const note = document.getElementById("map-note");
     if (!body.points.length && !body.unlocated) {
-      note.textContent = "nothing yet";
+      note.textContent = t("blue.map.note.empty");
+    } else if (body.unlocated) {
+      note.textContent = t("blue.map.note.unlocated", body.points.length, body.unlocated);
     } else {
-      const places = body.points.length === 1 ? "1 country" : `${body.points.length} countries`;
-      note.textContent = body.unlocated
-        ? `${places} · ${body.unlocated} from addresses with no location`
-        : places;
+      note.textContent = t("blue.map.note.countries", body.points.length);
     }
   }
 
@@ -528,8 +526,8 @@
     const shown = visible();
 
     document.getElementById("shown").textContent =
-      shown.length === rows.length ? `${rows.length} events`
-                                   : `${shown.length} of ${rows.length} events`;
+      shown.length === rows.length ? t("blue.alerts.count.all", rows.length)
+                                   : t("blue.alerts.count.filtered", shown.length, rows.length);
 
     document.getElementById("empty").classList.toggle("hidden", shown.length > 0);
 
@@ -537,12 +535,11 @@
       .map((d) => `
       <tr data-id="${esc(d.id)}" class="alert-row border-t border-slate-900
           hover:bg-slate-900/60 cursor-pointer">
-        <td class="${severityOf(d).bar} w-1 p-0"></td>
         <td class="py-2 px-3 text-slate-500 font-mono text-xs whitespace-nowrap">
           ${esc((d.timestamp || "").replace("T", " ").slice(0, 19))}</td>
-        <td class="${severityOf(d).text} text-xs">${esc(severityOf(d).word)}</td>
-        <td><span class="border rounded px-1.5 py-0.5 text-xs ${
-          SOURCE_STYLE[d.source] || "border-slate-700 text-slate-400"}">${esc(d.source)}</span></td>
+        <td class="${severityOf(d).text} text-xs">${esc(t(severityOf(d).key))}</td>
+        <td><span class="border rounded px-1.5 py-0.5 text-xs
+          border-slate-700 text-slate-400">${esc(d.source)}</span></td>
         <td class="text-slate-200">${esc(d.signature)}</td>
         <td class="font-mono text-xs ${
           (owners[d.src_ip] || {}).outside ? "text-rose-300" : "text-slate-400"
@@ -556,8 +553,8 @@
         <td class="text-slate-400 font-mono text-xs max-w-md truncate"
             title="${esc(decodePath(d.path))}">${
           d.path ? esc(`${d.method} ${decodePath(d.path)}`) : "-"}</td>
-        <td class="pr-3 font-mono text-xs ${d.marker ? "text-emerald-400" : "text-slate-600"}">
-          ${d.marker ? esc(d.marker.slice(0, 8)) : "unattributed"}</td>
+        <td class="pr-3 font-mono text-xs ${d.marker ? "text-slate-300" : "text-slate-400"}">
+          ${d.marker ? esc(d.marker.slice(0, 8)) : esc(t("blue.unattributed"))}</td>
       </tr>`).join("");
 
     document.querySelectorAll(".alert-row").forEach((row) => {
@@ -584,16 +581,19 @@
     const { ok, body } = await api(`/api/detections/${id}/`);
     if (!ok) return;
     document.getElementById("drawer-signature").textContent = body.signature;
-    document.getElementById("drawer-meta").textContent =
-      `${body.source} - ${body.timestamp} - from ${body.src_ip || "unknown"}` +
-      (body.marker ? ` - case ${body.marker.slice(0, 8)}` : " - unattributed");
+    const from = body.src_ip || t("blue.drawer.meta.src_unknown");
+    document.getElementById("drawer-meta").textContent = body.marker
+      ? t("blue.drawer.meta.attributed",
+          body.source, body.timestamp, from, body.marker.slice(0, 8))
+      : t("blue.drawer.meta.unattributed", body.source, body.timestamp, from);
     document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
 
     const sid = body.raw?.alert?.signature_id;
     const verdict = document.getElementById("drawer-verdict");
     verdict.classList.toggle("hidden", !sid);
     if (sid) {
-      document.getElementById("suppress-sid").textContent = sid;
+      document.getElementById("suppress-sid").textContent =
+        t("blue.drawer.suppress.button", sid);
       document.getElementById("suppress").dataset.sid = sid;
       document.getElementById("suppress-result").textContent = "";
       document.getElementById("suppress-reason").value = "";
@@ -611,13 +611,15 @@
     });
     if (!applied.ok) {
       result.className = "text-xs mt-2 text-rose-400";
-      result.textContent = applied.body.detail || `failed (${applied.status})`;
+      result.title = applied.body.detail || applied.status;
+      result.textContent =
+        t("blue.drawer.suppress.failed", applied.body.detail || applied.status);
       return;
     }
     result.className = "text-xs mt-2 text-amber-300";
-    result.textContent =
-      `sid ${sid} is off until ${new Date(applied.body.expires_at).toLocaleTimeString()}.` +
-      ` Fire the cases again to see what it costs.`;
+    result.title = "";
+    result.textContent = t("blue.drawer.suppress.done", sid,
+      new Date(applied.body.expires_at).toLocaleTimeString());
     renderSuppressions();
   });
 
@@ -630,16 +632,20 @@
   };
 
   function evidence(c) {
-    if (!c.detected) return `<span class="text-slate-600">-</span>`;
+    if (!c.detected) return `<span class="text-slate-400">-</span>`;
     if (c.corroborated === null) {
-      return `<span class="text-slate-600" title="no declared mechanism">unjudged</span>`;
+      return `<span class="text-slate-400" title="${
+        esc(t("blue.score.evidence.unjudged_title"))}">${
+        esc(t("blue.score.evidence.unjudged"))}</span>`;
     }
     if (c.corroborated) {
-      return `<span class="text-emerald-500" title="an alert mentions ${esc(c.expect)}">
-        matches ${esc(c.expect)}</span>`;
+      return `<span class="text-emerald-500" title="${
+        esc(t("blue.score.evidence.match_title", c.expect))}">${
+        esc(t("blue.score.evidence.match", c.expect))}</span>`;
     }
-    return `<span class="text-amber-400 font-semibold"
-      title="nothing attributed to this mentions ${esc(c.expect)}">WRONG RULE</span>`;
+    return `<span class="text-amber-400 font-semibold" title="${
+      esc(t("blue.score.evidence.wrong_reason_title", c.expect))}">${
+      esc(t("blue.score.evidence.wrong_reason"))}</span>`;
   }
 
   function tile(label, value) {
@@ -655,19 +661,20 @@
     const score = await api(`/api/sessions/${sessionId()}/score/`);
     if (!score.ok) {
       warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
-        text-rose-200 text-sm">scoring failed (${score.status})</div>`;
+        text-rose-200 text-sm" title="${esc(score.body.detail || score.status)}">${
+        esc(t("blue.score.failed", score.body.detail || score.status))}</div>`;
       return;
     }
     const s = score.body;
     renderBreaches(s);
 
     document.getElementById("totals").innerHTML =
-      tile("TP", s.tp) + tile("FN (missed)", s.fn) +
-      tile("FP (false alarm)", s.fp) + tile("TN", s.tn) +
-      tile("precision", s.precision.toFixed(2)) +
-      tile("recall", s.recall.toFixed(2)) +
-      tile("F1", s.f1.toFixed(2)) +
-      tile("FP rate", s.false_positive_rate.toFixed(2));
+      tile(t("blue.score.tile.tp"), s.tp) + tile(t("blue.score.tile.fn"), s.fn) +
+      tile(t("blue.score.tile.fp"), s.fp) + tile(t("blue.score.tile.tn"), s.tn) +
+      tile(t("blue.score.tile.precision"), s.precision.toFixed(2)) +
+      tile(t("blue.score.tile.recall"), s.recall.toFixed(2)) +
+      tile(t("blue.score.tile.f1"), s.f1.toFixed(2)) +
+      tile(t("blue.score.tile.fp_rate"), s.false_positive_rate.toFixed(2));
 
     for (const w of s.warnings) {
       warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3
@@ -677,7 +684,7 @@
     document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
       <tr class="border-b border-slate-900">
         <td class="py-2">${esc(c.name)}</td>
-        <td>${c.malicious ? "attack" : "benign"}</td>
+        <td>${esc(c.malicious ? t("blue.score.case.malicious") : t("blue.score.case.benign"))}</td>
         <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${esc(c.verdict)}</td>
         <td class="tabular-nums">${c.detection_ids.length}</td>
         <td class="text-xs">${evidence(c)}</td>
@@ -693,31 +700,36 @@
       : "text-slate-100";
 
     document.getElementById("breach-totals").innerHTML =
-      tile("objectives taken", o.objectives) +
+      tile(t("blue.score.breaches.tile.objectives"), o.objectives) +
       `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-         <div class="text-slate-500 text-xs uppercase tracking-wide">taken unseen</div>
+         <div class="text-slate-500 text-xs uppercase tracking-wide">${
+           esc(t("blue.score.breaches.tile.undetected"))}</div>
          <div class="text-2xl font-semibold ${missed} tabular-nums">${o.undetected}</div>
-         <div class="text-slate-600 text-xs mt-0.5">${o.undetected_difficulty} difficulty</div>
+         <div class="text-slate-400 text-xs mt-0.5">${
+           esc(t("blue.score.breaches.tile.difficulty", o.undetected_difficulty))}</div>
        </div>` +
-      tile("coverage", `${Math.round(o.coverage * 100)}%`) +
-      tile("damage", o.damage.toFixed(1));
+      tile(t("blue.score.breaches.tile.coverage"), `${Math.round(o.coverage * 100)}%`) +
+      tile(t("blue.score.breaches.tile.damage"), o.damage.toFixed(1));
 
     if (!s.breaches.length) {
       document.getElementById("breach-table").innerHTML =
-        `<p class="text-slate-500 text-sm p-5 text-center">
-           Nothing taken. Either the red team achieved nothing, or nobody has
-           attacked yet.</p>`;
+        `<p class="text-slate-500 text-sm p-5 text-center">${
+          esc(t("blue.score.breaches.empty"))}</p>`;
       return;
     }
 
     document.getElementById("breach-table").innerHTML = `
       <table class="w-full text-sm">
         <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide">
-          <tr><th class="text-left py-2 px-3 font-medium">Difficulty</th>
-              <th class="text-left font-medium">Objective</th>
-              <th class="text-left font-medium">Category</th>
-              <th class="text-left font-medium">Defence</th>
-              <th class="text-left font-medium pr-3">Alerts</th></tr>
+          <tr><th class="text-left py-2 px-3 font-medium">${
+                esc(t("blue.score.breaches.col.difficulty"))}</th>
+              <th class="text-left font-medium">${
+                esc(t("blue.score.breaches.col.objective"))}</th>
+              <th class="text-left font-medium">${
+                esc(t("blue.score.breaches.col.category"))}</th>
+              <th class="text-left font-medium">${
+                esc(t("blue.score.breaches.col.detection"))}</th>
+              <th class="text-left font-medium pr-3">${esc(t("blue.col.alerts"))}</th></tr>
         </thead>
         <tbody>${s.breaches.map((b) => `
           <tr class="border-t border-slate-900">
@@ -726,31 +738,35 @@
             <td class="text-slate-100">${esc(b.name)}</td>
             <td class="text-slate-500 text-xs">${esc(b.category)}</td>
             <td class="${b.detected ? "text-amber-400" : "text-rose-400"} font-semibold text-xs">
-              ${b.detected ? "SEEN" : "MISSED"}</td>
+              ${esc(b.detected ? t("blue.score.breaches.detected")
+                               : t("blue.score.breaches.missed"))}</td>
             <td class="pr-3 text-slate-400 tabular-nums">${b.detection_ids.length}</td>
           </tr>`).join("")}</tbody>
       </table>`;
   }
 
   async function renderComparison() {
-    const strategies = ["marker", "window"];
-    const scored = await Promise.all(strategies.map((strategy) =>
+    const scored = await Promise.all(["marker", "window"].map((strategy) =>
       api(`/api/sessions/${sessionId()}/score/?correlation=${strategy}`)));
+    const titles = [t("blue.score.strategy.marker"), t("blue.score.strategy.window")];
 
     document.getElementById("comparison").innerHTML = scored.map((result, i) => {
+      const heading = `<div class="text-slate-500 text-xs uppercase tracking-wide mb-2">${
+        esc(titles[i])}</div>`;
       if (!result.ok) {
-        return `<div class="border border-slate-800 rounded p-4 text-amber-400 text-sm">
-          ${esc(strategies[i])}: ${esc(result.body.detail || result.status)}</div>`;
+        return `<div class="border border-slate-800 rounded p-4">${heading}
+          <div class="text-amber-400 text-sm" title="${
+            esc(result.body.detail || result.status)}">${
+            esc(t("blue.score.comparison.error", strategies[i],
+                 result.body.detail || result.status))}</div></div>`;
       }
       const s = result.body;
-      return `<div class="border border-slate-800 rounded p-4">
-        <div class="text-slate-500 text-xs uppercase tracking-wide mb-2">by ${strategies[i]}</div>
-        <div class="text-slate-100 tabular-nums">
-          TP ${s.tp} &middot; FN ${s.fn} &middot; FP ${s.fp} &middot; TN ${s.tn}
-        </div>
-        <div class="text-slate-500 text-sm mt-1 tabular-nums">
-          precision ${s.precision.toFixed(2)} &middot; recall ${s.recall.toFixed(2)}
-        </div></div>`;
+      return `<div class="border border-slate-800 rounded p-4">${heading}
+        <div class="text-slate-100 tabular-nums">${
+          esc(t("blue.score.comparison.counts", s.tp, s.fn, s.fp, s.tn))}</div>
+        <div class="text-slate-500 text-sm mt-1 tabular-nums">${
+          esc(t("blue.score.comparison.rates",
+                s.precision.toFixed(2), s.recall.toFixed(2)))}</div></div>`;
     }).join("");
   }
 
@@ -766,12 +782,13 @@
 
   document.getElementById("validate").addEventListener("click", async () => {
     const r = await post("/api/rules/validate/", {content: editor.value});
-    show(r.body.output || "(no output)", r.ok);
+    show(r.body.output || t("blue.rules.output.none"), r.ok);
   });
 
   document.getElementById("apply").addEventListener("click", async () => {
     const r = await post("/api/rules/apply/", {content: editor.value});
-    show(r.ok ? "Applied and reloaded Suricata." : r.body.detail, r.ok);
+    show(r.ok ? t("blue.rules.applied")
+              : t("blue.rules.apply_failed", r.body.detail || r.status), r.ok);
     if (r.ok) renderScore();
   });
 
@@ -786,15 +803,18 @@
 
     panel.innerHTML = body.suppressions.map((s) => `
       <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
-        <span class="text-amber-300 font-mono text-sm">sid ${esc(s.sid)}</span>
-        <span class="text-slate-400 text-sm flex-1">${esc(s.reason) || "no reason given"}</span>
-        <span class="text-slate-500 text-xs">back at
-          ${esc(new Date(s.expires_at).toLocaleTimeString())}</span>
+        <span class="text-amber-300 font-mono text-sm">${
+          esc(t("blue.rules.suppression.sid", s.sid))}</span>
+        <span class="text-slate-400 text-sm flex-1">${
+          esc(s.reason) || esc(t("blue.rules.suppression.no_reason"))}</span>
+        <span class="text-slate-500 text-xs">${
+          esc(t("blue.rules.suppression.back_at",
+                new Date(s.expires_at).toLocaleTimeString()))}</span>
         <button data-id="${esc(s.id)}"
-          class="lift px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-xs">
-          Restore now</button>
+          class="lift px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-xs">${
+          esc(t("blue.rules.suppression.restore"))}</button>
       </div>`).join("") ||
-      `<p class="text-slate-500 text-sm p-4">Nothing is silenced.</p>`;
+      `<p class="text-slate-500 text-sm p-4">${esc(t("blue.rules.suppression.empty"))}</p>`;
 
     panel.querySelectorAll(".lift").forEach((button) => {
       button.addEventListener("click", async () => {

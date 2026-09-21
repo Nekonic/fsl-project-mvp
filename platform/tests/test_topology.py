@@ -235,6 +235,65 @@ def test_the_busiest_address_is_first_because_that_is_what_a_top_n_is(counted):
 def test_every_alert_is_counted_against_exactly_one_address(counted):
     assert sum(s["alerts"] for s in counted) == 4
 
+def _addressed(doc_id, src_ip, dest_ip, dest_port=80):
+    return (doc_id, {
+        "fsl_source": "suricata", "event_type": "alert",
+        "timestamp": "2026-09-20T12:00:00Z",
+        "src_ip": src_ip, "dest_ip": dest_ip, "dest_port": dest_port,
+        "alert": {"signature": "FSL SQLi attempt", "severity": 1},
+    })
+
+@pytest.fixture
+def addressed(client):
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    documents = [
+        _addressed("a", "5.188.10.2", "5.188.10.4"),
+        _addressed("b", "172.30.0.3", "172.30.0.2", 3000),
+        _addressed("c", "10.9.9.9", "10.9.9.10"),
+    ]
+    with patch("api.views.elastic.fetch", return_value=documents):
+        client.post_json(f"/api/sessions/{session_id}/ingest/")
+    with patch("api.views.topology.subprocess.run", _Run()):
+        return client.get(f"/api/sessions/{session_id}/top/").json()
+
+def test_an_address_belonging_to_the_range_is_named_by_its_host(addressed):
+    found = {s["src_ip"]: s for s in addressed["sources"]}
+
+    assert found["172.30.0.3"]["host"] == "fsl-waf"
+
+def test_a_destination_says_which_host_it_is(addressed):
+    found = {d["dest"]: d for d in addressed["destinations"]}
+
+    assert found["5.188.10.4:80"]["host"] == "fsl-waf"
+    assert found["172.30.0.2:3000"]["host"] == "fsl-juice-shop"
+
+def test_the_same_host_on_two_segments_is_the_same_name_on_both(addressed):
+    source = next(s for s in addressed["sources"] if s["src_ip"] == "172.30.0.3")
+    destination = next(
+        d for d in addressed["destinations"] if d["dest"] == "5.188.10.4:80"
+    )
+
+    assert source["host"] == destination["host"] == "fsl-waf"
+
+def test_an_address_the_range_does_not_own_is_not_given_a_host(addressed):
+    stranger = next(s for s in addressed["sources"] if s["src_ip"] == "10.9.9.9")
+    outbound = next(d for d in addressed["destinations"] if d["dest"] == "10.9.9.10:80")
+
+    assert stranger["host"] == ""
+    assert outbound["host"] == ""
+
+def test_a_stack_that_cannot_be_read_names_no_host_rather_than_guessing(client):
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    with patch("api.views.elastic.fetch",
+               return_value=[_addressed("a", "5.188.10.2", "5.188.10.4")]):
+        client.post_json(f"/api/sessions/{session_id}/ingest/")
+
+    with patch("api.views.topology.subprocess.run", _Run(code=1, stderr="no daemon")):
+        found = client.get(f"/api/sessions/{session_id}/top/").json()
+
+    assert found["sources"][0]["host"] == ""
+    assert found["destinations"][0]["host"] == ""
+
 def test_a_stack_that_cannot_be_read_still_reports_the_addresses(client):
                                                                          
                                  

@@ -1,59 +1,103 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold text-slate-100 mb-2">Attack and defence range</h1>
-<p class="text-slate-400 text-sm mb-8">
-  Start a session, then open the red and blue windows side by side and drive
-  both halves yourself.
-</p>
+<h1 data-t="main.title" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
+<p data-t="main.intro" class="text-slate-400 text-sm mb-8"></p>
 
-<h2 class="text-sm uppercase tracking-wide text-slate-500 mb-3">Wargames</h2>
+<section id="running-panel" class="mb-10 hidden">
+  <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-emerald-500 mb-3"></h2>
+  <div id="running" class="space-y-2"></div>
+</section>
+
+<h2 data-t="main.scenarios" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
 <div id="wargames" class="grid gap-4 mb-10"></div>
+<p id="start-error" class="text-rose-400 text-sm mb-10 hidden"></p>
 
-<h2 class="text-sm uppercase tracking-wide text-slate-500 mb-3">Recent sessions</h2>
-<div id="sessions" class="space-y-2"></div>
-<p id="no-sessions" class="text-slate-500 text-sm hidden">
-  Nothing yet. Start one above.
-</p>
+<details id="finished-panel" class="mt-4">
+  <summary data-t="main.finished"
+    class="text-sm uppercase tracking-wide text-slate-500 cursor-pointer select-none"></summary>
+  <div id="finished" class="space-y-2 mt-3"></div>
+</details>
 {% endblock %}
 {% block script %}
 <script>
+  function unavailable(what, result) {
+    const panel = document.getElementById("start-error");
+    panel.classList.remove("hidden");
+    panel.textContent = t("main.unavailable", what,
+                          result.body.detail || result.status || t("common.no_answer"));
+  }
+
   async function renderWargames() {
-    const { body } = await api("/api/wargames/");
-    document.getElementById("wargames").innerHTML = body.map((wargame) => `
+    const result = await api("/api/wargames/");
+    if (!result.ok || !Array.isArray(result.body)) {
+      unavailable(t("main.the_scenarios"), result);
+      return;
+    }
+    document.getElementById("wargames").innerHTML = result.body.map((wargame) => `
       <div class="border border-slate-800 rounded p-5 flex items-center gap-6">
         <div class="flex-1">
-          <div class="text-slate-100 font-medium">${wargame.name}</div>
-          <div class="text-slate-400 text-sm mt-1">${wargame.description}</div>
-          <div class="text-slate-600 text-xs mt-2">${wargame.cases} cases available</div>
+          <div class="text-slate-100 font-medium">${esc(wargame.name)}</div>
+          <div class="text-slate-400 text-sm mt-1">${esc(wargame.description)}</div>
+          <div class="text-slate-400 text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
         </div>
-        <button data-wargame="${wargame.id}"
+        <button data-wargame="${esc(wargame.id)}"
           class="start px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
-          Start session
+          ${esc(t("main.start"))}
         </button>
       </div>`).join("");
 
     document.querySelectorAll(".start").forEach((button) => {
       button.addEventListener("click", async () => {
         button.disabled = true;
-        const { body } = await post("/api/sessions/", { scenario: button.dataset.wargame });
-        location.href = `/session/${body.id}/`;
+        const started = await post("/api/sessions/", { scenario: button.dataset.wargame });
+        if (!started.ok || !started.body.id) {
+          button.disabled = false;
+          unavailable(t("main.a_session"), started);
+          return;
+        }
+        location.href = `/session/${started.body.id}/`;
       });
     });
   }
 
+  function sessionRow(session, running) {
+    const state = running ? t("main.open") : t("main.closed");
+    const tone = running ? "text-emerald-400" : "text-slate-400";
+    return `
+      <a href="/session/${esc(session.id)}/"
+         class="block border rounded px-4 py-3 ${running
+           ? "border-emerald-900 hover:border-emerald-600"
+           : "border-slate-800 hover:border-slate-600"}">
+        <span class="text-slate-100">${esc(t("common.session", session.id))}</span>
+        <span class="text-slate-500 text-sm ml-3">${esc(session.scenario)}</span>
+        <span class="text-slate-400 text-xs ml-3">${
+          esc((session.started_at || "").replace("T", " ").slice(0, 19))}</span>
+        <span class="text-xs ml-3 ${tone}">${esc(state)}</span>
+      </a>`;
+  }
+
+  function showPanel(id, visible) {
+    document.getElementById(id).classList.toggle("hidden", !visible);
+  }
+
   async function renderSessions() {
-    const { body } = await api("/api/sessions/");
-    document.getElementById("no-sessions").classList.toggle("hidden", body.length > 0);
-    document.getElementById("sessions").innerHTML = body.slice(0, 10).map((s) => `
-      <a href="/session/${s.id}/"
-         class="block border border-slate-800 rounded px-4 py-3 hover:border-slate-600">
-        <span class="text-slate-100">Session ${s.id}</span>
-        <span class="text-slate-500 text-sm ml-3">${s.scenario}</span>
-        <span class="text-slate-600 text-xs ml-3">${s.started_at}</span>
-        <span class="text-xs ml-3 ${s.ended_at ? "text-slate-600" : "text-emerald-400"}">
-          ${s.ended_at ? "closed" : "open"}</span>
-      </a>`).join("");
+    const running = await api("/api/sessions/?state=open");
+    if (!running.ok || !Array.isArray(running.body)) {
+      showPanel("running-panel", false);
+      showPanel("finished-panel", false);
+      unavailable(t("main.the_sessions"), running);
+      return;
+    }
+    showPanel("running-panel", running.body.length > 0);
+    document.getElementById("running").innerHTML =
+      running.body.map((s) => sessionRow(s, true)).join("");
+
+    const finished = await api("/api/sessions/?state=closed&limit=10");
+    const rows = finished.ok && Array.isArray(finished.body) ? finished.body : [];
+    showPanel("finished-panel", rows.length > 0);
+    document.getElementById("finished").innerHTML =
+      rows.map((s) => sessionRow(s, false)).join("");
   }
 
   renderWargames();

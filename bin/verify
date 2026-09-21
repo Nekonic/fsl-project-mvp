@@ -80,6 +80,13 @@ else
   fail "test/"
 fi
 
+section "housekeeping"
+if ./bin/prune --keep 20 --apply >/dev/null 2>&1; then
+  ok "$(./bin/prune --keep 20 | head -1)"
+else
+  printf '     could not prune old sessions; run bin/prune yourself\n'
+fi
+
 section "ratchet"
 untracked="$(git ls-files --others --exclude-standard)"
 if [ -n "$untracked" ]; then
