@@ -156,3 +156,25 @@ def test_every_top_table_is_ordered_by_count(top):
     for name in ("sources", "destinations", "signatures", "paths"):
         counts = [row["alerts"] for row in top[name]]
         assert counts == sorted(counts, reverse=True), name
+
+def test_the_running_range_matches_what_was_declared(session_id):
+    import pathlib
+
+    import yaml
+
+    declared = yaml.safe_load(
+        (pathlib.Path(__file__).resolve().parents[1]
+         / "platform/range/declaration.yaml").read_text()
+    )
+    meant = {s["id"] for s in declared["segments"]}
+
+    shape = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
+    ).json()
+    standing = {s["id"] for s in shape["segments"]}
+
+    assert standing == meant, (
+        f"the range standing up is not the one that was declared. "
+        f"Only running: {sorted(standing - meant)}. "
+        f"Only declared: {sorted(meant - standing)}"
+    )

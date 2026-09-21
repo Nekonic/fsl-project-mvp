@@ -9,13 +9,15 @@ COMPOSE = ROOT / "compose.yaml"
 DECLARATION = ROOT / "platform" / "range" / "declaration.yaml"
 
 def built(compose):
-    return {
-        name: {
+    realised = {}
+    for key, network in (compose.get("networks") or {}).items():
+        network = network or {}
+        realised[key] = {
             "name": (network.get("labels") or {}).get("fsl.segment", ""),
             "origin": (network.get("labels") or {}).get("fsl.origin", ""),
+            "as": network.get("name") or "",
         }
-        for name, network in (compose.get("networks") or {}).items()
-    }
+    return realised
 
 def meant(declaration):
     return {
@@ -48,6 +50,12 @@ def drift(compose, declaration):
             f"builds no such network, so nothing will ever stand on it"
         )
     for segment_id in sorted(set(realised) & set(declared)):
+        renamed = realised[segment_id]["as"]
+        if renamed:
+            complaints.append(
+                f"segment {segment_id!r}: compose builds it as {renamed!r}, so "
+                f"the adapter cannot bind it back to the declared id"
+            )
         for field in ("name", "origin"):
             if realised[segment_id][field] != declared[segment_id][field]:
                 complaints.append(
@@ -208,4 +216,24 @@ def test_no_substrate_name_decides_where_an_attack_starts():
     assert "ATTACKER_NETWORK" not in source, (
         "the default origin was chosen by matching settings.ATTACKER_NETWORK, "
         "which is the literal string fsl_edge"
+    )
+
+
+def test_a_renamed_network_cannot_hide_behind_its_compose_key():
+    compose = yaml.safe_load(COMPOSE.read_text())
+    compose["networks"]["estate"]["name"] = "corp-estate"
+
+    complaints = drift(compose, yaml.safe_load(DECLARATION.read_text()))
+
+    assert any("corp-estate" in c for c in complaints), complaints
+
+def test_a_project_name_with_an_underscore_does_not_break_the_binding():
+    from range.docker import Docker
+    from range.declared import Declaration
+
+    adapter = Docker(Declaration(), project="fsl_lab")
+
+    assert adapter.segment_id("fsl_lab_edge-br") == "edge-br", (
+        "the binding splits on the first underscore, so a project name "
+        "carrying one swallows part of itself and every segment id is wrong"
     )
