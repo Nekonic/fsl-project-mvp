@@ -12,6 +12,12 @@ PROJECT_LABEL = "com.docker.compose.project"
 _TIMEOUT = 30
 
 class Docker:
+    def segment_id(self, network_name: str) -> str:
+        prefix = self.project + "_"
+        if network_name.startswith(prefix):
+            return network_name[len(prefix):]
+        return network_name
+
     def __init__(self, declared: Declaration, project: str = "fsl"):
         self.declared = declared
         self.project = project
@@ -73,7 +79,7 @@ class Docker:
             key=lambda node: node.name,
         )
         return replace(
-            self.declared.segment(network["Name"].split("_", 1)[-1]),
+            self.declared.segment(self.segment_id(network["Name"])),
             subnet=config[0].get("Subnet", ""),
             network=network["Name"],
             gateway=config[0].get("Gateway", ""),
