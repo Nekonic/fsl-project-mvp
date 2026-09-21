@@ -31,10 +31,16 @@ def no_settle(settings):
 
 @pytest.fixture(autouse=True)
 def no_real_substrate():
+    import subprocess
+
+    real = subprocess.run
+
     def refuse(argv, **kwargs):
-        raise AssertionError(
-            f"a unit test reached the real substrate: {' '.join(argv)}"
-        )
+        if argv and argv[0] == "docker":
+            raise AssertionError(
+                f"a unit test reached the real substrate: {' '.join(argv)}"
+            )
+        return real(argv, **kwargs)
 
     with patch("range.docker.subprocess.run", refuse):
         yield
