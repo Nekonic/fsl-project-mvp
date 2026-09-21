@@ -245,10 +245,10 @@ matters is a scope decision: a C2 and a foothold is a large step, and the
 range may be more useful as a web-entry range that is honest about where it
 stops.
 
-### 2. A foothold to escalate from, or a decision not to
-
-See item 1. It is the only thing left on this list, and it is a scope
-decision rather than a task.
+It is the only item left on this list, and it is a decision rather than a
+task: either the range grows a C2 and a foothold, or it says in the product
+that it is a web-entry range and stops there. `docs/THREAT-MODEL.md` currently
+says the second, because that is what is true today.
 
 ## Known gaps
 
