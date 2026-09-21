@@ -1,6 +1,5 @@
 import ipaddress
 import json
-import subprocess
 import time
 import uuid
 
@@ -8,8 +7,7 @@ import pytest
 import requests
 
 from conftest import PLATFORM_URL
-
-BOX = "fsl-kali"
+from range import ATTACKER, SENSOR, run
 
                                                                          
                                                                             
@@ -23,16 +21,13 @@ TOOLS = [
 ]
 
 def in_box(*argv, timeout=60):
-    return subprocess.run(
-        ["docker", "exec", BOX, *argv],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    return run(ATTACKER, list(argv), timeout=timeout)
 
 @pytest.mark.parametrize("tool", TOOLS)
 def test_the_box_has_the_tool(stack_is_up, tool):
     found = in_box("sh", "-c", f"command -v {tool}")
 
-    assert found.returncode == 0, (
+    assert found.ok, (
         f"{tool} is not on the attacker box, so nobody can use it there and a "
         f"case declaring it would fail at the prompt too"
     )
@@ -44,7 +39,7 @@ def test_a_directory_brute_force_has_a_wordlist_to_use(stack_is_up):
                                    
     found = in_box("sh", "-c", "wc -l < /usr/share/wordlists/dirb/common.txt")
 
-    assert found.returncode == 0, "no directory wordlist on the box"
+    assert found.ok, "no directory wordlist on the box"
     assert int(found.stdout.strip()) > 100
 
 def test_the_shell_is_told_what_to_attack(stack_is_up):
@@ -104,11 +99,7 @@ def test_the_console_shows_the_name_a_person_types(box):
     assert PUBLIC_HOST in box["public_url"], box["public_url"]
 
 def _alerts_mentioning(token, lines=300):
-    out = subprocess.run(
-        ["docker", "exec", "fsl-suricata", "sh", "-c",
-         f"tail -{lines} /var/log/suricata/eve.json"],
-        capture_output=True, text=True, timeout=60,
-    )
+    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"])
     found = []
     for line in out.stdout.splitlines():
         try:

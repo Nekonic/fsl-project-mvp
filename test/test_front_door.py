@@ -1,22 +1,18 @@
 import ipaddress
 import json
-import subprocess
 import uuid
 
 import pytest
 import requests
 
 from conftest import PLATFORM_URL, TARGET_URL
+from range import SENSOR, run
 
 EDGE = ipaddress.ip_network("5.188.10.0/24")
 ESTATE = ipaddress.ip_network("172.30.0.0/24")
 
 def _alerts_mentioning(token, lines=400):
-    out = subprocess.run(
-        ["docker", "exec", "fsl-suricata", "sh", "-c",
-         f"tail -{lines} /var/log/suricata/eve.json"],
-        capture_output=True, text=True, timeout=60,
-    )
+    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"])
     found = []
     for line in out.stdout.splitlines():
         try:
