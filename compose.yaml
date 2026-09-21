@@ -90,6 +90,27 @@ services:
       retries: 18
       start_period: 30s
 
+  # The inside. An estate with one host in it has no inside: there is nowhere
+  # to move to, so the later stages of an attack - internal reconnaissance,
+  # lateral movement - cannot happen and the range only ever exercises initial
+  # access. This is the second thing in the estate, and it is deliberately
+  # reachable from the application and from nowhere else.
+  wiki:
+    image: nginx:alpine
+    container_name: fsl-wiki
+    networks:
+      estate:
+        aliases: [wiki.internal]
+    volumes:
+      - ./deploy/wiki/site:/usr/share/nginx/html:ro
+      - ./deploy/wiki/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/wiki/logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   waf:
     image: owasp/modsecurity-crs:nginx
     container_name: fsl-waf
@@ -296,3 +317,6 @@ services:
       - ./data:/data
       # The active case marker, written here and read by the proxy.
       - ./data/label:/label
+      # What the internal wiki says was read of it. Read-only: the platform
+      # reads the target's record and never writes one.
+      - ./deploy/wiki/logs:/wiki-logs:ro

@@ -1487,3 +1487,80 @@ was learned and the stack had to be rebuilt.
 `docker compose up -d --force-recreate waf suricata` put it back. The lesson
 is the obvious one, written down because it cost real time twice in this repo
 now: read with `inspect`, change with `compose`.
+
+## The estate needed an inside, and that is worth a service
+
+`services` is gated and may only fall. This raises it from 8 to 9 by hand,
+which the protocol allows once and asks to be justified here.
+
+The reason is that the range was one stage of an attack pretending to be all
+of them. Read against the Korean red team playbook at 레드팀.com, whose
+attack lifecycle runs 공격 인프라 구축 → 초기 정찰 → 초기 침투 → 거점 확보 →
+권한 상승 → 내부 정찰 → 횡적 이동 → 지속성 유지 → 미션 수행, this range had
+the first, part of the second, the third, and the last. Everything in the
+middle was missing for one reason: **the estate had one host in it, so there
+was nowhere to move to.**
+
+The same playbook names what that costs, and the sentence could have been
+written about this repo:
+
+> 웹 모의해킹을 통해 웹앱에서 XSS, CSRF 등의 취약점을 몇 개 찾는다고 해서
+> 공격자들이 해당 웹 어플리케이션을 프록시 서버로 사용해 내부망에 진입한 뒤
+> (…) 데이터를 유출시키고 있다는 것을 알 수 없는 것처럼
+
+So the estate has a second host: an internal wiki, on `estate` only, with no
+published port. It is nginx serving three static pages, one of which holds a
+credential. It costs one service and no dependency, and it buys the stage the
+range could not reach.
+
+**The path to it is the attack the quote describes.** The shop has an SSRF
+challenge - "Request a hidden resource on server through server" - reached by
+setting a profile image URL, which needs a login first. Measured end to end
+from the attacker's box:
+
+```
+outside  kali -> wiki.internal              000        unreachable
+inside   juice-shop -> wiki.internal        200        the way across
+chain    login, then imageUrl=wiki.internal 302
+wiki log 2026-09-21T02:51:20 172.30.0.2 "GET /runbooks/deploy.html" 200 "node"
+```
+
+The last line is the whole point: the request arrived from inside the estate,
+made by the application, on behalf of somebody who cannot reach it at all.
+
+**The wiki judges its own defeat**, by its own access log, for the same reason
+the shop flips its own `solved` flag: the platform must never mark an
+objective from its own belief about what the traffic did. It cannot know who
+asked for a page, and nothing else in the estate has a reason to, so a read is
+the objective. The log is mounted into the platform read-only - the platform
+reads the target's record and never writes one - and the acceptance suite
+clears it on reset, because a record that survives everything means a run
+starts with the inside already lost.
+
+**The case buttons cannot take it, and that is the point.** A case is one
+request; this needs the credential from the first one to send the second. It
+is operator work, which is what the shell is for.
+
+## What the red team playbook changed about the plan
+
+The earlier conclusion here - add technique IDs, add phases, record the
+commands - was right in direction and far too small. Reading
+`basic-redteam/overview.md` and `what-even-is-redteam.md` made the real
+finding: by the trade's own definition this was 모의해킹 (a web pentest),
+not 레드팀, and no amount of labelling would have changed that. The football
+analogy in that document is the argument: individual drills are not a match.
+
+Two things from it are worth taking whatever else happens:
+
+- **The vocabulary**, which is the industry's and not invented here: 공격 인프라
+  구축, 초기 정찰, 초기 침투, 거점 확보, 권한 상승, 내부 정찰, 횡적 이동,
+  지속성 유지, 미션 수행.
+- **The 위협 모델링 table and the 한계점 section.** Their overview states the
+  threat being emulated, the attacker's position, the C2, the TTP outline -
+  and then says plainly what the project cannot show. This repo already works
+  that way; it just does not have the table.
+
+Still missing after this change: 거점 확보, 권한 상승, 지속성 유지. There is
+no code execution on the target, so there is no foothold to escalate from -
+the estate is reached *through* the application rather than from a shell on
+it. Whether that matters is a scope decision, not a defect.

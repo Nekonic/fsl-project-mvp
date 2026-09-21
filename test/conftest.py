@@ -75,11 +75,17 @@ def reset_target() -> None:
     start from a target in a known state, or it measures whatever the last run
     left behind.
 
+    There are two targets now. The wiki judges itself by its own access log,
+    which survives everything, so a run that does not clear it starts with the
+    inside already lost and scores the defence for a breach from last week.
+
     A restart is not enough and neither is --force-recreate; see DECISIONS.
     Afterwards the WAF must still reach it: nginx resolves its upstream once,
     at start, so a target that comes back on a different address leaves the
     whole range answering 502 - which would surface as a defence failure.
     """
+    (REPO_ROOT / "deploy/wiki/logs/read.log").write_text("")
+
     subprocess.run(
         ["docker", "compose", "rm", "-sf", "juice-shop"],
         capture_output=True, timeout=120, check=True, cwd=REPO_ROOT,

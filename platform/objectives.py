@@ -1,9 +1,15 @@
-"""The only file that knows Juice Shop's challenge API.
+"""The only file that knows how each target says it was beaten.
 
-The target judges its own defeat. Every challenge it ships is an objective with
-a name, a category and a difficulty, and it flips `solved` itself - so whether
-an attack achieved anything is ground truth we do not have to label, produce or
-be trusted on.
+A target judges its own defeat. Every challenge the shop ships is an objective
+with a name, a category and a difficulty, and it flips `solved` itself - so
+whether an attack achieved anything is ground truth we do not have to label,
+produce or be trusted on.
+
+The internal wiki judges itself the same way, by its own access log. It is a
+second target because an estate with one host in it has no inside: there is
+nowhere to move to, so everything after initial access is missing. Reaching it
+means making the application fetch it, which is the attack the trade describes
+as using the web app as a proxy into the estate.
 
 Polled directly, never through the WAF: a poll every few seconds through the
 proxy would appear in the alert stream as traffic the range generated about
@@ -15,6 +21,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
@@ -26,13 +33,51 @@ class ObjectivesUnavailable(RuntimeError):
     """The target is not answering, so nothing can be said about objectives."""
 
 
+# The one objective that is not the shop's. Difficulty is the shop's own scale,
+# where 6 is its SSRF challenge - which is the step this needs.
+INTERNAL = {
+    "key": "internalRunbookRead",
+    "name": "Internal runbook read",
+    "category": "Lateral Movement",
+    "difficulty": 6,
+    "description": (
+        "Read the estate's internal wiki, which is reachable from the "
+        "application and from nowhere else."
+    ),
+}
+
+
 def catalogue() -> list[dict[str, Any]]:
-    """Every objective the target offers, whether or not anyone has reached it."""
-    return [_summarise(challenge) for challenge in _fetch()]
+    """Every objective the targets offer, whether or not anyone reached them."""
+    return [_summarise(challenge) for challenge in _fetch()] + [_internal()]
 
 
 def solved_keys() -> set[str]:
-    return {c["key"] for c in _fetch() if c.get("solved")}
+    taken = {c["key"] for c in _fetch() if c.get("solved")}
+    if _internal()["solved"]:
+        taken.add(INTERNAL["key"])
+    return taken
+
+
+def _internal() -> dict[str, Any]:
+    """What the wiki says was read of it.
+
+    Its own record, not ours: nothing here infers the deed from the traffic.
+    A read at all is the objective - the wiki cannot know who asked for it,
+    and nothing else in the estate has a reason to.
+    """
+    when = None
+    try:
+        for line in Path(settings.WIKI_READ_LOG).read_text().splitlines():
+            stamp, _, rest = line.partition(" ")
+            if settings.WIKI_SECRET_PATH in rest:
+                when = stamp
+    except OSError:
+        # No log is not "not taken" - it is a wiki that has never been asked
+        # for anything, which is the same answer for our purposes.
+        pass
+
+    return dict(INTERNAL, solved=bool(when), solved_at=when)
 
 
 def _fetch() -> list[dict[str, Any]]:

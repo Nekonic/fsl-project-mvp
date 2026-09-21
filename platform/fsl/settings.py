@@ -59,6 +59,11 @@ TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
 # names a segment so the platform can choose which address to attack from;
 # that is routing, and it is not what the site is called.
 PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
+
+# The inside. The wiki records what was read of it, which is how it judges its
+# own defeat - the same rule the shop follows with its `solved` flag.
+WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/wiki-logs/read.log")
+WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
 TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
 # The target's own API, reached directly and never through the WAF: polling it
 # through the proxy would put the range's own housekeeping into the alert

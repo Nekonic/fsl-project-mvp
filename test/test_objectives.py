@@ -22,6 +22,9 @@ from conftest import PLATFORM_URL, from_attacker, reset_target
 # Deliberately not the ones `redteam/cases/` takes: the acceptance suite fires
 # that case file first, and a test that has to reset the target to find
 # anything left is a slow test with a hidden dependency on running order.
+# The assertions below allow the target to award more than one objective for
+# one request, which it does here - that was a second hidden dependency on the
+# order, and it only surfaced when another module started resetting the shop.
 REACHABLE = [
     ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
 ]
@@ -100,8 +103,14 @@ def test_the_target_decides_an_objective_was_taken(breach_session):
         f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=30
     ).json()
 
-    assert [o["key"] for o in taken] == [key]
-    assert taken[0]["difficulty"] >= 1
+    # Among, not equal to. One request can take more than one objective - the
+    # null-byte path takes the backup file and the null byte with it - and how
+    # many a target awards for a request is the target's business. Asserting
+    # exactly one made this pass only when the extra had already been taken by
+    # an earlier module, which is a hidden dependency on running order.
+    keys = [o["key"] for o in taken]
+    assert key in keys, keys
+    assert all(o["difficulty"] >= 1 for o in taken)
 
 
 def test_objectives_solved_before_the_session_are_not_counted(breach_session):
@@ -123,11 +132,16 @@ def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(breach_ses
 
     scored = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60).json()
 
-    assert scored["objectives"]["objectives"] == 1
+    assert scored["objectives"]["objectives"] >= 1
     breach = next(b for b in scored["breaches"] if b["key"] == key)
     # Attribution, not detection, is what is asserted: whether this particular
     # request trips a rule is a property of the rule set, and the rule set is
     # the blue team's to change.
     assert breach["difficulty"] >= 1
     assert breach["detected"] is (len(breach["detection_ids"]) > 0)
-    assert scored["objectives"]["coverage"] == (1.0 if breach["detected"] else 0.0)
+
+    # Coverage is over everything taken in the window, so it is only 1.0 or
+    # 0.0 when they all went the same way.
+    seen = [b["detected"] for b in scored["breaches"]]
+    if all(seen) or not any(seen):
+        assert scored["objectives"]["coverage"] == (1.0 if seen[0] else 0.0)
