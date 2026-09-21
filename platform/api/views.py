@@ -443,7 +443,13 @@ def fire_attack(request, session_id):
     try:
                                                                              
                                                                             
-        harness.fire(requests.Session(), case, target_url, target_url)
+        harness.fire(
+            requests.Session(), case, target_url,
+            substrate().launcher(
+                origin["id"] if origin else settings.RANGE.default_origin
+            ),
+            target_url,
+        )
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 

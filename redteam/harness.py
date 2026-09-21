@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,8 +14,8 @@ from requests.utils import requote_uri
 from redteam.tools import (
     STARTUP_FAILURE,
     ToolUnavailable,
-    build_tool_command,
     is_tool_case,
+    tool_argv,
     unavailable,
 )
 
@@ -72,6 +71,7 @@ def run(
     cases: list[dict[str, Any]],
     platform_url: str,
     target_url: str,
+    launch,
     tool_target_url: str = DEFAULT_TOOL_TARGET,
 ) -> int:
     http = requests.Session()
@@ -84,7 +84,7 @@ def run(
         case.setdefault("correlation", "marker")
 
         started_at = _now()
-        fire(http, case, target_url, tool_target_url)
+        fire(http, case, target_url, launch, tool_target_url)
         _record(http, platform_url, session_id, case, started_at, _now())
 
     http.post(
@@ -105,10 +105,11 @@ def fire(
     http: requests.Session,
     case: dict[str, Any],
     target_url: str,
-    tool_target_url: str,
+    launch,
+    tool_target_url: str = DEFAULT_TOOL_TARGET,
 ) -> None:
     if is_tool_case(case):
-        fire_tool(case, tool_target_url)
+        fire_tool(case, tool_target_url, launch)
         return
 
     prepared = build_request(case, target_url)
@@ -124,22 +125,20 @@ def fire(
                                                                         
         print(f"  ! {case['name']}: request failed - {exc}")
 
-def fire_tool(case: dict[str, Any], tool_target_url: str) -> None:
-    command = build_tool_command(case, tool_target_url)
+def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
+    image, argv = tool_argv(case, target_url)
     try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=TOOL_TIMEOUT
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
+        result = launch(image, argv, timeout=TOOL_TIMEOUT)
+    except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
 
-    if result.returncode == STARTUP_FAILURE:
-        raise unavailable(case["name"], result.stderr.strip()[:200])
+    if result.exit_code == STARTUP_FAILURE:
+        raise unavailable(case["name"], result.output.strip()[:200])
 
-    if result.returncode != 0:
+    if result.exit_code != 0:
                                                                              
                                                                            
-        print(f"  . {case['name']}: tool exited {result.returncode}")
+        print(f"  . {case['name']}: tool exited {result.exit_code}")
 
 def _record(
     http: requests.Session,

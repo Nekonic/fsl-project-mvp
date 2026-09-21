@@ -6,8 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "platform"))
 
+from range import declared              
+from range.docker import Docker              
 from redteam import harness              
 from redteam.harness import DEFAULT_TOOL_TARGET, load_cases              
 
@@ -23,7 +27,11 @@ def main() -> int:
         default=DEFAULT_TOOL_TARGET,
         help="address the tool containers use for the target inside the stack",
     )
+    parser.add_argument("--origin", default="")
     args = parser.parse_args()
+
+    declaration = declared.read()
+    launch = Docker(declaration).launcher(args.origin or declaration.default_origin)
 
     cases = load_cases(args.cases)
     attacks = sum(1 for c in cases if c["malicious"])
@@ -32,7 +40,9 @@ def main() -> int:
     if attacks == len(cases):
         print("warning: no benign cases, false positives cannot be scored", file=sys.stderr)
 
-    session_id = harness.run(cases, args.platform, args.target, args.tool_target)
+    session_id = harness.run(
+        cases, args.platform, args.target, launch, args.tool_target
+    )
 
     print(f"session {session_id} done")
     print(f"  score:   curl -X POST {args.platform}/api/sessions/{session_id}/ingest/")

@@ -75,6 +75,41 @@ class Docker:
 
         return run
 
+    def launcher(self, segment_id: str):
+        def launch(image: str, argv: list[str], timeout: float = 600.0) -> Ran:
+            command = [
+                "docker", "run", "--rm",
+                "--network", self._network_of(segment_id),
+                image, *argv,
+            ]
+            try:
+                done = subprocess.run(
+                    command, capture_output=True, text=True, timeout=timeout,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise RangeUnavailable(f"could not start {image}: {exc}") from exc
+            return Ran(
+                exit_code=done.returncode,
+                output=(done.stdout or "") + (done.stderr or ""),
+            )
+
+        return launch
+
+    def _network_of(self, segment_id: str) -> str:
+        found = self._lines([
+            "network", "ls",
+            "--filter", f"label={PROJECT_LABEL}={self.project}",
+            "--filter", f"label={SEGMENT_LABEL}={segment_id}",
+            "--format", "{{.Name}}",
+        ])
+        if len(found) != 1:
+            raise RangeUnavailable(
+                f"{len(found)} networks of project {self.project!r} carry "
+                f"{SEGMENT_LABEL}={segment_id!r}, and a host has to start on "
+                f"exactly one"
+            )
+        return found[0]
+
     def _placed(self, networks: list[dict]):
         taken: dict[str, str] = {}
         for network in networks:

@@ -98,7 +98,7 @@ def sketch(networks=None, asked=None):
 
 
 def test_the_sketch_offers_the_same_port_the_docker_adapter_does():
-    for verb in ("describe", "runner"):
+    for verb in ("describe", "runner", "launcher"):
         assert inspect.signature(
             getattr(openstack.OpenStack, verb)
         ) == inspect.signature(getattr(docker.Docker, verb))
@@ -220,3 +220,16 @@ def test_the_only_unimplemented_part_is_the_cloud_call_itself():
 
     assert "/v2.0/networks" in str(raised.value)
     assert all(call in str(raised.value) for call in openstack.CALLS)
+
+
+def test_starting_a_tool_is_a_cloud_call_the_sketch_does_not_make():
+    with pytest.raises(NotImplementedError) as raised:
+        openstack.OpenStack(declared.read(), CLOUD).launcher("edge")(
+            "fsl-kali", ["sqlmap"]
+        )
+
+    assert openstack.BOOT in str(raised.value), (
+        "docker run --rm is seconds and cleans up after itself. Nova has no "
+        "such verb: a tool is a server booted from a Glance image with a "
+        "flavour and a key pair, and something has to delete it afterwards"
+    )

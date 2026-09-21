@@ -55,7 +55,15 @@ class _Run:
     def __call__(self, argv, **kwargs):
         self.argv.append(argv)
         if argv[:3] == ["docker", "network", "ls"]:
-            out = "\n".join(n["Name"] for n in self.networks)
+            wanted = [
+                a.split("=", 2)[2] for a in argv
+                if a.startswith("label=fsl.segment.id=")
+            ]
+            out = "\n".join(
+                n["Name"] for n in self.networks
+                if not wanted
+                or (n.get("Labels") or {}).get("fsl.segment.id") in wanted
+            )
         elif argv[:3] == ["docker", "network", "inspect"]:
             out = "\n".join(json.dumps(n) for n in self.networks)
         elif argv[:2] == ["docker", "ps"]:
@@ -258,3 +266,20 @@ def test_what_the_project_is_called_no_longer_decides_any_segment_id():
         "underscore, so a project called fsl_lab swallowed part of itself and "
         "every segment came back wrong"
     )
+
+def test_a_tool_is_launched_on_the_segment_it_was_given():
+    spy = _Run()
+    with patch("range.docker.subprocess.run", spy):
+        Docker(DECLARED).launcher("estate")("fsl-kali", ["sqlmap", "-u", "x"])
+
+    started = spy.argv[-1]
+
+    assert started[:3] == ["docker", "run", "--rm"]
+    assert started[started.index("--network") + 1] == "fsl_estate"
+    assert started[-4:] == ["fsl-kali", "sqlmap", "-u", "x"]
+
+def test_a_tool_on_a_segment_nobody_marked_is_refused():
+    spy = _Run(networks=[])
+    with pytest.raises(RangeUnavailable, match="dmz"):
+        with patch("range.docker.subprocess.run", spy):
+            Docker(DECLARED).launcher("dmz")("fsl-kali", ["sqlmap"])

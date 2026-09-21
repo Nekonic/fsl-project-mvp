@@ -58,9 +58,22 @@ class Runner(Protocol):
         RangeUnavailable when it could not be dispatched at all.
         """
 
+class Launcher(Protocol):
+    def __call__(
+        self, image: str, argv: list[str], timeout: float = 600.0
+    ) -> Ran:
+        """Start a throwaway host from image on the segment this is bound to.
+
+        Returns when it has finished. Raises RangeUnavailable when nothing
+        could be started at all.
+        """
+
 class Substrate(Protocol):
     def describe(self) -> Shape:
         """The range as it is now. Raises RangeUnavailable rather than guessing."""
 
     def runner(self, role: str, segment_id: str = "") -> Runner:
         """A Runner bound to the host filling that role, on that segment."""
+
+    def launcher(self, segment_id: str) -> Launcher:
+        """A Launcher that starts throwaway hosts on that segment."""

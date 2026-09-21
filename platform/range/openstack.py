@@ -10,8 +10,9 @@ TOKEN = "POST {keystone}/v3/auth/tokens"
 NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}&tags-any={tags}"
 SUBNETS = "GET {neutron}/v2.0/subnets?network_id={network}"
 SERVERS = "GET {nova}/servers/detail?project_id={project}"
+BOOT = "POST {nova}/servers"
 
-CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS)
+CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
 
@@ -99,6 +100,12 @@ class OpenStack:
             )
 
         return run
+
+    def launcher(self, segment_id: str):
+        def launch(image: str, argv: list[str], timeout: float = 600.0) -> Ran:
+            return self._ask(BOOT, network=segment_id)
+
+        return launch
 
     def _bind(self, networks: list[dict]) -> dict[str, dict]:
         found: dict[str, dict] = {}
