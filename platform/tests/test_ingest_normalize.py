@@ -265,3 +265,41 @@ def test_marker_does_not_leak_to_a_transaction_without_one():
 
     assert by_id["a0"] == marked
     assert by_id["a1"] is None
+
+class _Response:
+    def __init__(self, hits, total):
+        self.status_code = 200
+        self.ok = True
+        self._body = {
+            "hits": {
+                "total": {"value": total, "relation": "eq"},
+                "hits": [{"_id": str(n), "_source": {}} for n in range(hits)],
+            }
+        }
+
+    def json(self):
+        return self._body
+
+def _fetch(hits, total, monkeypatch, **kwargs):
+    from datetime import datetime, timezone
+    from ingest import elastic
+
+    monkeypatch.setattr(
+        elastic.requests, "post", lambda *a, **k: _Response(hits, total)
+    )
+    when = datetime(2026, 9, 21, tzinfo=timezone.utc)
+    return elastic.fetch("http://es", "fsl-logs-*", when, when, **kwargs)
+
+def test_a_fetch_that_saw_everything_says_nothing(monkeypatch):
+    documents, truncated = _fetch(120, 120, monkeypatch)
+
+    assert len(documents) == 120
+    assert truncated is None
+
+def test_a_fetch_that_hit_the_cap_says_what_it_lost(monkeypatch):
+    _, truncated = _fetch(5000, 25937, monkeypatch, size=5000)
+
+    assert truncated == (5000, 25937), (
+        "the window held 25937 documents and only 5000 were read; a caller "
+        "that cannot see that scores a session on a fifth of its evidence"
+    )

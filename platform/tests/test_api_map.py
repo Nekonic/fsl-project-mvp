@@ -38,7 +38,7 @@ def session_id(client):
     return client.post_json("/api/sessions/", {}).json()["id"]
 
 def ingest(client, session_id, documents):
-    with patch("api.views.elastic.fetch", return_value=documents):
+    with patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return client.get(f"/api/sessions/{session_id}/map/").json()
 

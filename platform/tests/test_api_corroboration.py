@@ -37,7 +37,7 @@ def alert(marker, signature):
 def scored(client, session_id, signature):
     case_id = "11111111-1111-4111-8111-111111111111"
     record(client, session_id, case_id)
-    with patch("api.views.elastic.fetch", return_value=[alert(case_id, signature)]):
+    with patch("api.views.elastic.fetch", return_value=([alert(case_id, signature)], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return client.get(f"/api/sessions/{session_id}/score/").json()
 
@@ -73,7 +73,7 @@ def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
         "correlation": "marker", "started_at": T0.isoformat(),
         "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
     })
-    with patch("api.views.elastic.fetch", return_value=[alert(case_id, "anything")]):
+    with patch("api.views.elastic.fetch", return_value=([alert(case_id, "anything")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
     s = client.get(f"/api/sessions/{session_id}/score/").json()

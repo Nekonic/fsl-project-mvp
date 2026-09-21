@@ -19,9 +19,10 @@ def fetch(
     end: datetime,
     size: int = 5000,
     timeout: float = 10.0,
-) -> list[tuple[str, dict[str, Any]]]:
+) -> tuple[list[tuple[str, dict[str, Any]]], tuple[int, int] | None]:
     query = {
         "size": size,
+        "track_total_hits": True,
         "sort": [{"@timestamp": "asc"}],
         "query": {
             "range": {
@@ -52,8 +53,11 @@ def fetch(
             f"Elasticsearch returned {response.status_code}: {response.text[:500]}"
         )
 
-    hits = response.json().get("hits", {}).get("hits", [])
-    return [(hit["_id"], hit.get("_source", {})) for hit in hits]
+    found = response.json().get("hits", {})
+    hits = found.get("hits", [])
+    total = (found.get("total") or {}).get("value", len(hits))
+    documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
+    return documents, (len(hits), total) if total > len(hits) else None
 
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],

@@ -14,10 +14,10 @@ from requests.utils import requote_uri
 
 from redteam.tools import (
     DOCKER_STARTUP_FAILURE,
-    TOOL_IMAGE,
     ToolUnavailable,
     build_tool_command,
     is_tool_case,
+    unavailable,
 )
 
 MARKER_HEADER = "X-FSL-Case"
@@ -131,17 +131,10 @@ def fire_tool(case: dict[str, Any], tool_target_url: str) -> None:
             command, capture_output=True, text=True, timeout=TOOL_TIMEOUT
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise ToolUnavailable(
-            f"{case['name']}: could not run the tool - {exc}. "
-            f"Build it first: docker compose build kali"
-        ) from exc
+        raise unavailable(case["name"], str(exc)) from exc
 
     if result.returncode == DOCKER_STARTUP_FAILURE:
-        raise ToolUnavailable(
-            f"{case['name']}: the tool container did not start "
-            f"({TOOL_IMAGE}). {result.stderr.strip()[:200]} "
-            f"Build it first: docker compose build kali"
-        )
+        raise unavailable(case["name"], result.stderr.strip()[:200])
 
     if result.returncode != 0:
                                                                              

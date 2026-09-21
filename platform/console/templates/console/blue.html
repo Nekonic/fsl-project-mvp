@@ -29,6 +29,9 @@
   </div>
 </div>
 
+<p id="truncated" class="hidden shrink-0 mb-2 border border-amber-800 bg-amber-950
+   rounded px-3 py-2 text-amber-200 text-sm"></p>
+
 <section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3">
 <div class="grid grid-cols-4 gap-3 shrink-0">
   <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
@@ -323,6 +326,7 @@
 
   async function tick() {
     const ingested = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
+    setTruncated(ingested.ok ? ingested.body.truncated : null);
     const result = await api(
       `/api/sessions/${sessionId()}/detections/?after=${lastId}`);
     if (!result.ok) return;
@@ -355,6 +359,14 @@
       : reachable ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
                   : "w-2 h-2 rounded-full bg-rose-500 animate-pulse";
     toggle.title = reachable ? "" : (unreachableDetail || t("blue.live.unreachable_title"));
+  }
+
+  function setTruncated(limit) {
+    const banner = document.getElementById("truncated");
+    banner.classList.toggle("hidden", !limit);
+    if (limit) {
+      banner.textContent = t("blue.truncated", limit.read, limit.total);
+    }
   }
 
   function setReachable(ok, detail) {
