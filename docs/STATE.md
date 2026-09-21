@@ -201,7 +201,8 @@ One line each.
   reads it through `runner("attacker")`.
   `GET /api/sessions/<id>/commands/` returns what was typed inside the
   session's window. `nmap` leaves a record now, not just an alert with no case
-  behind it.
+  behind it, and the blue console's scoreboard draws it beside the per-case
+  table - time, the case that was open, the command.
 
 **Where an attack sits in an intrusion**
 - Every attack case carries the Mandiant life cycle stage it belongs to, an
@@ -237,11 +238,12 @@ matters is a scope decision: a C2 and a foothold is a large step, and the
 range may be more useful as a web-entry range that is honest about where it
 stops.
 
-### 2. Show the operator log in the console
+### 2. The blue console's warnings are English on a Korean page
 
-The API records and returns what was typed; nothing draws it. A window case in
-the blue console still says only that an attack happened. The commands are
-there to be shown beside it.
+`scoring` returns warning text and the console prints it as it comes. Every
+other string on the page goes through the table in `strings.html`; these do
+not, because they are produced server-side and some carry numbers. They are
+the last untranslated strings in the console.
 
 ## Known gaps
 

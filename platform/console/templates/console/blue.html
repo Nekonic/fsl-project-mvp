@@ -218,6 +218,18 @@
     <tbody id="per-case"></tbody>
   </table>
 
+  <h2 data-t="blue.score.operator.heading"
+      class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-1"></h2>
+  <p data-t="blue.score.operator.note" class="text-xs text-slate-500 mb-3"></p>
+  <table class="w-full text-sm">
+    <thead class="text-slate-400 border-b border-slate-800">
+      <tr><th data-t="blue.score.operator.col.at" class="text-left py-2 w-52"></th>
+          <th data-t="blue.col.case" class="text-left w-64"></th>
+          <th data-t="blue.score.operator.col.command" class="text-left"></th></tr>
+    </thead>
+    <tbody id="operator-log"></tbody>
+  </table>
+
   <h2 data-t="blue.score.comparison.heading"
       class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3"></h2>
   <div id="comparison" class="grid grid-cols-2 gap-4"></div>
@@ -712,6 +724,38 @@
       </tr>`).join("");
 
     renderComparison();
+    renderOperatorLog();
+  }
+
+  async function renderOperatorLog() {
+    const body = document.getElementById("operator-log");
+    const typed = await api(`/api/sessions/${sessionId()}/commands/`);
+    if (!typed.ok || !Array.isArray(typed.body.commands)) {
+      body.innerHTML = `<tr><td colspan="3" class="py-2 text-amber-400 text-xs">${
+        esc(t("blue.score.operator.unavailable", detail(typed)))}</td></tr>`;
+      return;
+    }
+    if (!typed.body.commands.length) {
+      body.innerHTML = `<tr><td colspan="3" class="py-2 text-slate-500 text-xs">${
+        esc(t("blue.score.operator.empty"))}</td></tr>`;
+      return;
+    }
+
+    const named = await caseNames();
+    body.innerHTML = typed.body.commands.map((c) => `
+      <tr class="border-b border-slate-900">
+        <td class="py-2 text-slate-400 tabular-nums whitespace-nowrap">${esc(c.at)}</td>
+        <td class="text-slate-400">${esc(
+          c.case_id ? (named[c.case_id] || c.case_id) : t("blue.score.operator.unlabelled")
+        )}</td>
+        <td class="font-mono text-slate-200">${esc(c.text)}</td>
+      </tr>`).join("");
+  }
+
+  async function caseNames() {
+    const listed = await api(`/api/sessions/${sessionId()}/cases/`);
+    if (!listed.ok || !Array.isArray(listed.body)) return {};
+    return Object.fromEntries(listed.body.map((c) => [c.case_id, c.name]));
   }
 
   function renderBreaches(s) {
