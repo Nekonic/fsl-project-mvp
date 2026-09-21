@@ -99,3 +99,41 @@ def test_empty_result_is_all_zero_with_warning():
 
     assert (s.tp, s.fp, s.fn, s.tn) == (0, 0, 0, 0)
     assert any("benign" in w for w in s.warnings)
+
+
+def test_every_dependency_is_imported_by_something():
+    import pathlib, re
+
+    root = pathlib.Path(__file__).resolve().parent.parent.parent
+    listed = [
+        re.split(r"[><=\[]", line, 1)[0].strip().lower()
+        for line in (root / "platform/requirements.txt").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    sources = "\n".join(
+        p.read_text()
+        for d in ("platform", "redteam", "test", "bin")
+        for p in (root / d).rglob("*.py")
+    )
+
+    MODULE = {"pyyaml": "yaml", "pytest-django": "pytest_django"}
+    RUN_NOT_IMPORTED = {"django", "pytest", "pytest-django", "waitress"}
+
+    unused = [
+        name for name in listed
+        if name not in RUN_NOT_IMPORTED
+        and not re.search(
+            rf"^\s*(import|from)\s+{re.escape(MODULE.get(name, name))}\b", sources, re.M
+        )
+    ]
+
+    assert not unused, (
+        f"declared and never imported, so every build pulls them for nothing: {unused}"
+    )
+
+    run = root / "platform/Dockerfile"
+    for name in RUN_NOT_IMPORTED - {"pytest", "pytest-django"}:
+        assert name in run.read_text() or name == "django", (
+            f"{name} is exempt from the import check because something runs it, "
+            f"but nothing in the Dockerfile does"
+        )

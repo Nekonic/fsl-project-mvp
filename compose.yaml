@@ -195,7 +195,10 @@ services:
       - ./data/label:/label
 
   platform:
-    build: ./platform
+    build:
+      context: ./platform
+      args:
+        DOCKER_GID: "${DOCKER_GID:-0}"
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -203,6 +206,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "fsl-logs-*"
       SURICATA_CONTAINER: "fsl-suricata"
