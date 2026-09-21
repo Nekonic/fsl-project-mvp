@@ -128,3 +128,17 @@ def test_no_korean_is_written_outside_the_string_table():
     assert not offenders, (
         f"CLAUDE.md confines Korean to the string table; these carry it inline: {offenders}"
     )
+
+def test_nothing_the_platform_sends_to_the_page_is_prose():
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    source = "\n".join(
+        path.read_text() for path in (root / "scoring").rglob("*.py")
+    )
+
+    assert "There are no benign" not in source and "Check the eve-log" not in source, (
+        "scoring is the hypothesis and it held English sentences meant for a "
+        "screen, so every warning on the console was English whatever language "
+        "the rest of the page was in"
+    )

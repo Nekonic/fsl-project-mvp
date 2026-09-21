@@ -711,7 +711,7 @@
 
     for (const w of s.warnings) {
       warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3
-        text-amber-200 text-sm">${esc(w)}</div>`;
+        text-amber-200 text-sm">${esc(t(...w))}</div>`;
     }
 
     document.getElementById("per-case").innerHTML = s.per_case.map((c) => `

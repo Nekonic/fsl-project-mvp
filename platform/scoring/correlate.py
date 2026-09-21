@@ -67,16 +67,12 @@ def _matches(case: CaseRecord, detection: DetectionRecord) -> bool:
 def _warnings(
     cases: Sequence[CaseRecord],
     detections: Sequence[DetectionRecord],
-) -> tuple[str, ...]:
-    warnings: list[str] = []
+) -> tuple[tuple[str, ...], ...]:
+    warnings: list[tuple[str, ...]] = []
 
     marker_cases = [c for c in cases if c.correlation == CORRELATION_MARKER]
     if marker_cases and detections and not any(d.marker for d in detections):
-        warnings.append(
-            "There are alerts, but none carries a case marker. Check the "
-            "eve-log http dump-all-headers setting in Suricata and the "
-            "X-FSL-Case injection in the red team harness."
-        )
+        warnings.append(("score.warning.no_marker",))
 
     missing_ip = [
         c.case_id
@@ -84,9 +80,6 @@ def _warnings(
         if c.correlation == CORRELATION_WINDOW and c.source_ip is None
     ]
     if missing_ip:
-        warnings.append(
-            "Window-correlated cases without a source_ip can never match, so "
-            "they are counted as missed forever: " + ", ".join(missing_ip)
-        )
+        warnings.append(("score.warning.no_source_ip", ", ".join(missing_ip)))
 
     return tuple(warnings)

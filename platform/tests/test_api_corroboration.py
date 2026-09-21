@@ -46,7 +46,7 @@ def test_the_right_rule_corroborates_the_true_positive(client, session_id):
 
     assert s["tp"] == 1
     assert s["per_case"][0]["corroborated"] is True
-    assert not any("wrong reason" in w for w in s["warnings"])
+    assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])
 
 def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, session_id):
                                                                             
@@ -57,7 +57,8 @@ def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, sessio
     assert s["tp"] == 1
     assert s["per_case"][0]["detected"] is True
     assert s["per_case"][0]["corroborated"] is False
-    assert any("wrong reason" in w and CASE in w for w in s["warnings"])
+    assert any(w[0] == "score.warning.wrong_reason" and CASE in w[1]
+               for w in s["warnings"])
 
 def test_the_expectation_is_reported_so_the_judgement_can_be_checked(client, session_id):
     s = scored(client, session_id, "FSL path traversal attempt")
@@ -80,4 +81,4 @@ def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
 
     assert s["per_case"][0]["detected"] is True
     assert s["per_case"][0]["corroborated"] is None
-    assert not any("wrong reason" in w for w in s["warnings"])
+    assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])

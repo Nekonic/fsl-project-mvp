@@ -77,7 +77,7 @@ def test_zero_denominators_yield_zero_not_error():
 def test_warns_when_there_are_no_benign_cases():
     s = score(result(match("a", malicious=True, detected=True)))
 
-    assert any("benign" in w for w in s.warnings)
+    assert ("score.warning.no_benign",) in s.warnings
 
 def test_no_benign_warning_when_benign_cases_exist():
     s = score(
@@ -87,18 +87,18 @@ def test_no_benign_warning_when_benign_cases_exist():
         )
     )
 
-    assert not any("benign" in w for w in s.warnings)
+    assert ("score.warning.no_benign",) not in s.warnings
 
 def test_correlation_warnings_are_carried_through():
-    s = score(result(match("a", malicious=True, detected=True), warnings=("carried through",)))
+    s = score(result(match("a", malicious=True, detected=True), warnings=(("carried through",),)))
 
-    assert "carried through" in s.warnings
+    assert ("carried through",) in s.warnings
 
 def test_empty_result_is_all_zero_with_warning():
     s = score(result())
 
     assert (s.tp, s.fp, s.fn, s.tn) == (0, 0, 0, 0)
-    assert any("benign" in w for w in s.warnings)
+    assert ("score.warning.no_benign",) in s.warnings
 
 
 def test_every_dependency_is_imported_by_something():

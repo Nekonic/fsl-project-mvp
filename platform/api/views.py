@@ -828,11 +828,7 @@ def _wrong_reason_warnings(per_case):
     wrong = [c["name"] for c in per_case if c["detected"] and c["corroborated"] is False]
     if not wrong:
         return []
-    return [
-        f"Detected for the wrong reason: {', '.join(wrong)}. Nothing attributed "
-        f"to these mentions the mechanism the case declared, so the true "
-        f"positive is not evidence that the defence saw this attack."
-    ]
+    return [("score.warning.wrong_reason", ", ".join(wrong))]
 
 def _verdict(malicious: bool, detected: bool) -> str:
     if malicious:

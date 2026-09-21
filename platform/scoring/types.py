@@ -42,7 +42,7 @@ class CaseMatch:
 class CorrelationResult:
     matches: tuple[CaseMatch, ...]
     unmatched_detection_ids: tuple[str, ...]
-    warnings: tuple[str, ...]
+    warnings: tuple[tuple[str, ...], ...]
 
 @dataclass(frozen=True)
 class Score:
@@ -54,4 +54,4 @@ class Score:
     recall: float
     f1: float
     false_positive_rate: float
-    warnings: tuple[str, ...]
+    warnings: tuple[tuple[str, ...], ...]

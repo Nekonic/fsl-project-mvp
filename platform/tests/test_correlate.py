@@ -125,7 +125,7 @@ def test_multiple_detections_collapse_to_one_case():
 def test_warns_when_no_detection_carries_a_marker():
     result = correlate([case(case_id="c1")], [det(marker=None, src_ip="10.0.0.1")])
 
-    assert any("marker" in w for w in result.warnings)
+    assert ("score.warning.no_marker",) in result.warnings
 
 def test_no_marker_warning_when_there_are_no_detections_at_all():
                                                                          
@@ -136,7 +136,7 @@ def test_no_marker_warning_when_there_are_no_detections_at_all():
 def test_warns_when_window_case_has_no_source_ip():
     result = correlate([case(correlation="window", source_ip=None)], [])
 
-    assert any("source_ip" in w for w in result.warnings)
+    assert any(w[0] == "score.warning.no_source_ip" for w in result.warnings)
 
 def test_rejects_unknown_correlation_strategy():
     with pytest.raises(ValueError, match="correlation"):
