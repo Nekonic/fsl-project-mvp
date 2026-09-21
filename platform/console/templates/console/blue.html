@@ -27,6 +27,32 @@
 </div>
 
 <section data-panel="alerts">
+  <div class="border border-slate-800 rounded p-3 mb-5">
+    <div class="flex justify-between text-xs text-slate-500 mb-2">
+      <span>Where it is coming from</span>
+      <span id="map-note"></span>
+    </div>
+    <svg viewBox="0 0 360 180" class="w-full block" style="max-height:300px">
+      <rect width="360" height="180" fill="#0b1220"/>
+      <g stroke="#172033" stroke-width="0.15">
+        <line x1="0" y1="90" x2="360" y2="90"/>
+        <line x1="180" y1="0" x2="180" y2="180"/>
+      </g>
+      <g fill="#1e293b" stroke="#334155" stroke-width="0.2">
+        {% include "console/world.svg" %}
+      </g>
+      <g id="map-points"></g>
+    </svg>
+  </div>
+
+  <div class="border border-slate-800 rounded p-3 mb-5">
+    <div class="flex justify-between text-xs text-slate-500 mb-2">
+      <span>How it is put together</span>
+      <span id="topology-note"></span>
+    </div>
+    <div id="topology" class="space-y-1 text-sm"></div>
+  </div>
+
   <div class="grid grid-cols-4 gap-3 mb-5">
     <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
       <div class="text-slate-500 text-xs uppercase tracking-wide">Alerts</div>
@@ -241,6 +267,8 @@
       rows = rows.concat(result.body);
       lastId = Math.max(...result.body.map((d) => d.id));
       renderAlerts();
+      renderMap();
+      renderTopology();
       if (!document.querySelector('[data-panel="score"]').classList.contains("hidden")) {
         renderScore();
       }
@@ -316,6 +344,119 @@
     document.querySelectorAll(".alert-row").forEach((row) => {
       row.addEventListener("click", () => openDrawer(row.dataset.id));
     });
+  }
+
+  // The projection is the one bin/worldmap used to draw the coastlines, which
+  // is why a point can be trusted to land where the country is: one unit per
+  // degree on a 360x180 viewBox.
+  const projectX = (lon) => lon + 180;
+  const projectY = (lat) => 90 - lat;
+
+  // -- the shape of the range, read off Docker rather than drawn.
+  // Throttled: the segments change when the stack does, which is never during
+  // a session, and asking Docker four times every two seconds to be told the
+  // same thing is a cost with nothing on the other side of it.
+  const TOPOLOGY_EVERY = 15000;
+  let topologyAt = 0;
+
+  async function renderTopology(force) {
+    if (!force && Date.now() - topologyAt < TOPOLOGY_EVERY) return;
+    topologyAt = Date.now();
+
+    const panel = document.getElementById("topology");
+    const note = document.getElementById("topology-note");
+    const { ok, body } = await api(`/api/sessions/${sessionId()}/topology/`);
+    if (!ok) {
+      note.textContent = body.detail || "the stack could not be read";
+      note.className = "text-amber-400";
+      return;
+    }
+
+    const busiest = Math.max(1, ...body.segments.map((s) => s.alerts));
+    panel.innerHTML = body.segments.map((segment) => {
+      const width = Math.round(100 * segment.alerts / busiest);
+      const chips = segment.nodes.map((node) => {
+        // Amber is a way in: this box has a foot on each side of the range.
+        const tone = node.crosses
+          ? "border-amber-600/70 text-amber-200 bg-amber-950/30"
+          : "border-slate-700 text-slate-400";
+        const title = node.crosses ? "a way in - also on the inside" : node.address;
+        return `<span title="${title}"
+                 class="border ${tone} rounded px-1.5 py-0.5 text-xs font-mono"
+               >${node.name.replace(/^fsl-/, "")}</span>`;
+      }).join(" ");
+
+      return `
+        <div class="border ${segment.outside ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"}
+                    rounded px-3 py-2 flex flex-wrap gap-x-4 gap-y-2 items-center">
+          <div class="w-40 shrink-0">
+            <div class="text-slate-200">${segment.id}</div>
+            <div class="text-xs font-mono text-slate-500">${segment.subnet}</div>
+          </div>
+          <div class="w-16 shrink-0 text-xs uppercase tracking-wide
+                      ${segment.outside ? "text-rose-400" : "text-slate-600"}">
+            ${segment.outside ? "outside" : "inside"}
+          </div>
+          <div class="w-28 shrink-0">
+            <div class="tabular-nums text-slate-300">${segment.alerts}</div>
+            <div class="h-1 bg-slate-800 rounded mt-1">
+              <div class="h-1 bg-violet-500 rounded" style="width:${width}%"></div>
+            </div>
+          </div>
+          <div class="w-24 shrink-0 text-xs ${segment.sensor ? "text-violet-400" : "text-amber-400"}">
+            ${segment.sensor ? segment.sensor.replace(/^fsl-/, "") : "unwatched"}
+          </div>
+          <div class="flex flex-wrap gap-1">${chips}</div>
+        </div>`;
+    }).join("");
+
+    // The number the picture exists to show. One way in is the design; a
+    // second is the defence becoming optional, whatever the diagram looks
+    // like, so it is said in words and not only in colour.
+    const ways = [...new Set(
+      body.segments.flatMap((s) => s.nodes.filter((n) => n.crosses).map((n) => n.name))
+    )].map((name) => name.replace(/^fsl-/, ""));
+    const unwatched = body.segments.filter((s) => !s.sensor).map((s) => s.id);
+
+    note.className = ways.length > 1 ? "text-amber-400" : "text-slate-500";
+    note.textContent = [
+      `${ways.length} ${ways.length === 1 ? "way" : "ways"} in: ${ways.join(", ")}`,
+      unwatched.length ? `unwatched: ${unwatched.join(", ")}` : "",
+      body.unplaced ? `${body.unplaced} alerts from no segment` : "",
+    ].filter(Boolean).join(" · ");
+  }
+
+  async function renderMap() {
+    const { ok, body } = await api(`/api/sessions/${sessionId()}/map/`);
+    if (!ok) return;
+
+    const busiest = Math.max(1, ...body.points.map((p) => p.detections));
+    document.getElementById("map-points").innerHTML = body.points.map((p) => {
+      // Area, not radius, follows the count - otherwise one loud origin
+      // swallows the map.
+      const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
+      const where = [p.city, p.country].filter(Boolean).join(", ") || "unknown";
+      return `
+        <g>
+          <title>${where} - ${p.detections} alerts from ${p.ips.join(", ")}</title>
+          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r + 2}"
+                  fill="#f43f5e" opacity="0.15"/>
+          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r}"
+                  fill="#f43f5e" opacity="0.85"/>
+        </g>`;
+    }).join("");
+
+    const note = document.getElementById("map-note");
+    if (!body.points.length && !body.unlocated) {
+      note.textContent = "nothing yet";
+    } else {
+      const places = body.points.length === 1 ? "1 origin" : `${body.points.length} origins`;
+      // Say when alerts could not be placed rather than quietly drawing fewer
+      // than there are - an address inside the estate has no country.
+      note.textContent = body.unlocated
+        ? `${places} · ${body.unlocated} alerts from addresses with no location`
+        : places;
+    }
   }
 
   function renderHistogram() {
@@ -590,6 +731,8 @@
   api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
   renderSuppressions();
   showTab("alerts");
+  renderMap();
+  renderTopology(true);
   setLive(true);
 </script>
 {% endblock %}

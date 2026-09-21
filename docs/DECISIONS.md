@@ -995,3 +995,245 @@ Wait on the control **case**, not on the session: "has the case I know should
 be detected been detected, by the engines I expect". `test_evasion.py` and
 `test_suppression.py` both do this now, and anything that waits for a pipeline
 should.
+
+## The map draws its own projection, because borrowed ones lie
+
+The console plots attack origins on a world map, and the coastlines come from
+`bin/worldmap`, which converts Natural Earth 110m land into SVG paths at build
+time. The output is committed; nothing is fetched at runtime, because an
+isolated range should not depend on a CDN and a map that silently fails to load
+is worse than no map.
+
+The projection is computed here rather than taken from a ready-made SVG on
+purpose. Most world SVGs described as equirectangular are clipped somewhere
+north of 83 and south of 56, so a point plotted with the textbook formula lands
+tens of pixels from where the country is drawn - and no assertion catches it,
+because the numbers are all correct. Generating the paths with the same
+`x = lon + 180, y = 90 - lat` the console uses means the grid and the points
+cannot disagree. Verified by eye against ten known cities before anything was
+built on it: Moscow, London, New York, São Paulo, Hong Kong, Pyongyang, Sydney,
+Cape Town, Brandenburg, Seychelles.
+
+The source data is clipped at about 85.6° south, so Antarctica is a band rather
+than a continent. That is the data, not the projection.
+
+## A location belongs to an address, not to an alert
+
+Measured, and it changed the design. Elasticsearch documents carry `src_geo`
+once the pipeline has run - 306 of them did. But only **Suricata** detections
+keep it: `normalize` stores the whole document as `raw` for Suricata and only
+the message sub-object for ModSecurity, whose `raw` is `['details', 'message']`
+and has no geo at all.
+
+| source | `raw.src_geo` |
+|---|---|
+| suricata, public address | present |
+| suricata, estate address | absent, correctly |
+| modsecurity | never |
+
+Drawing only the alerts that carry geo would have halved every origin and made
+the WAF invisible on the map. Fixing `normalize` would have been the direct
+route and would have grown `core_loc`, which is gated.
+
+Neither was necessary, because geolocation is a property of the **address**.
+Each address is placed once, from whichever alert happened to carry it, and
+then every alert from that address counts - and both engines see the same
+traffic, so the addresses overlap. `core_loc` did not move.
+
+Addresses that resolve to nothing are counted and reported rather than dropped:
+"26 alerts from Russia, 7 from addresses with no location" is a fact about the
+range, and a map quietly showing fewer alerts than the counter beside it is
+not.
+
+## Rotating the source address needs one network per origin
+
+The attacker is on public space and geolocates, but the whole edge segment is
+one subnet, so every attack comes from Moscow. Making them arrive from
+different countries means addresses in different ranges, and the obvious way
+does not work:
+
+```
+docker network create --subnet 185.220.101.0/24 --subnet 175.45.176.0/24 ...
+Error response from daemon: bridge driver doesn't support multiple subnets
+```
+
+So a second origin is a second network, attached to the attacker's containers
+and to the WAF, with Suricata watching another interface. That is real work and
+it is not the map, so it is the next backlog item rather than something bolted
+on here.
+
+One constraint for whoever takes it: the published port follows the
+alphabetically first network name, so any new segment must sort **after**
+`edge` or the front door moves back inside the estate. `edge-hk` is safe;
+`dmz-hk` is not.
+
+## One network per origin, because a subnet is a place
+
+The map had one pin. Every attack came from Moscow, because the edge segment
+is one subnet and a subnet geolocates to one point. The bridge driver refuses
+more than one subnet on a network, so each place an attack can come from is
+its own network: `edge-br`, `edge-hk`, `edge-kp` beside `edge`, each on a
+range checked against this stack's own GeoLite2 first.
+
+Nothing had to be taught how to use them. A container attached to all four
+picks its source address by routing, so **dialling the WAF on a segment is
+what makes the attack come from that segment** - and the WAF already answered
+under a per-network alias for an unrelated reason (it is on several networks
+the platform also shares, so `waf` alone was ambiguous). `waf-edge-hk` is both
+the way in and the choice of origin, and the console passes a target URL the
+harness already took as an argument. `core_loc` did not move.
+
+Measured, first request through the new segment:
+
+```
+103.152.220.3 -> 103.152.220.4  eth4  FSL SQLi attempt - URI
+172.30.0.3    -> 172.30.0.2     eth1  FSL SQLi attempt - URI
+```
+
+Three things are silent when they are wrong, and all three had to be right
+before a single alert appeared:
+
+- **`HOME_NET`.** The rules fire on traffic *to* `$HOME_NET`, and the
+  destination is the WAF's address on whichever origin was dialled. A missing
+  subnet means the attack lands and nothing alerts - which reads as a defence
+  that missed.
+- **The interface list.** Suricata watches named interfaces in the WAF's
+  namespace. A new network is a new `ethN`, and an unwatched choke point sees
+  nothing and says nothing about it. All five are listed rather than the ones
+  believed to matter, because Docker's attachment order is not guaranteed.
+- **The name.** The published port follows the alphabetically first network
+  the WAF is on, so every origin must sort after `edge`. `dmz-hk` would have
+  moved the front door back inside the estate, undoing an earlier entry here.
+
+Four pins, four countries, one rotating run: Russia 6, Brazil 6, Hong Kong 3,
+North Korea 3.
+
+## The origins are discovered, not listed
+
+`fsl.origin` is a Docker network label, set in compose beside the subnet it
+describes, and `origins()` reads it back. A table in Python would be a second
+copy of the compose file, and the one that would quietly stop being true is
+the copy - while the score is read off the addresses the compose file decides.
+
+An origin needs both halves: a network that says where it pretends to be, and
+an address on it. A declared network the attacker is not attached to would
+offer an attack that cannot be sent. Docker failing to answer is a 503, never
+an empty list: "nowhere to attack from" and "cannot ask" are different, and
+only one of them is the console's fault.
+
+## A recorded origin carries no address
+
+Caught by reading the output rather than the test. Rotation reported
+`source_ip 5.188.10.3` while the alerts carried `5.188.10.4`, and both were
+correct: origins are discovered from the attacker box - the proxy, because
+that is where terminal traffic leaves from - while a case fired from the
+console leaves from the platform, which has its own address on the same
+network.
+
+So the case records the origin and the door it dialled, and no address. The
+rule this repo keeps is that a wrong address matches no alert at all, which
+scores a real attack as a miss and blames the defence for it. The map is drawn
+from the alerts, which carry the true one.
+
+The console's selector shows the subnet for the same reason: it is true of
+both boxes, and the exact address appears only in the terminal panel, where it
+is the proxy's and correct.
+
+## Two clocks, and a breach handed to the case before
+
+`bin/verify` came back red on a test this change does not touch:
+`forgottenDevBackupChallenge` was taken by an attack the defence detected, yet
+the breach read MISSED.
+
+Checked before attributing it, because a red run is worth nothing if the cause
+is guessed. With `platform/` and `redteam/` reverted to HEAD on the same
+stack, the same test failed **three runs in four**. The one passing run is why
+this was worth measuring rather than reasoning about: a single green run had
+already been mistaken for proof once in this session.
+
+The cause is in the timestamps:
+
+```
+forgottenDevBackupChallenge   achieved 05:22:53.858   (the target's clock)
+backup-file-null-byte         started  05:22:53.884   (the firing side's)
+```
+
+The deed is recorded 26ms *before* the attack that caused it. `attribute()`
+required `started_at <= achieved_at`, so every objective went to the case
+before - which is exactly the defect this module was rewritten to fix, arriving
+by a different road. The lead was 19-26ms across the run.
+
+It cannot be corrected by subtracting an offset. A `docker exec` round trip to
+read the target's clock takes ~40ms, so the skew cannot be measured to better
+than the size of the thing being measured; two attempts an hour apart gave
++8ms and -1ms with +/-20ms of uncertainty. What can be said is that the two
+numbers come from two clocks and disagree by tens of milliseconds, so
+comparing them exactly was never meaningful.
+
+`CLOCK_SKEW = 100ms` on the lower bound, and nothing else changes. It is four
+times the observed lead and under a third of the quarter-second the platform
+already holds between cases for a related reason, so a deed cannot fall to a
+neighbouring case. The previously flaky test now passes four runs in four.
+
+This is a second thing in one session, which the protocol does not ask for.
+The alternative was to discard a finished item over a defect already in the
+baseline, and a baseline that fails three runs in four is not a baseline.
+
+## The topology is asked for, not drawn
+
+A picture of a network maintained beside the network is wrong within a
+session - an address changes, a segment is added, a sensor moves - and a wrong
+picture is worse than none, because it is believed. So the diagram is a read
+of the running stack, and the only way for it to be wrong is for the question
+to be wrong.
+
+Docker answers all of it. `network ls` filtered on the compose project label
+gives the segments, `network inspect` gives each one's subnet and the
+addresses on it, and `fsl.origin` - already there for the attack origins -
+says which segments are outside. Nothing new had to be written down anywhere
+for the picture to exist.
+
+One thing only `docker inspect` knows: **a sensor that shares another
+container's namespace is on no network of its own.** Suricata has
+`NetworkMode: container:<waf>` and appears in no network's container list, so
+a diagram built from networks alone draws a range with no IDS in it - which is
+the single box the blue team most needs to see. It is placed where it watches,
+by resolving that container id back to a name.
+
+## A crossing is a foot on each side, not two networks
+
+The first version marked any container on more than one segment. Run against
+the stack it marked three, and one of them was noise: the proxy is on all four
+origin segments, which are all outside, and crossing between two outside
+segments threatens nothing. The number that matters - how many ways in there
+are past the WAF - was buried under boxes that are not ways in.
+
+So a crossing is a container with a foot on an outside segment *and* on an
+inside one. Against the real stack that leaves two:
+
+```
+ways in: waf, platform        unwatched: mgmt
+```
+
+Both are true and neither was visible before. The WAF is the design. The
+platform is the simplification `compose.yaml` has admitted in a comment since
+the segments were created - it launches attacks on the edge, reads the
+target's challenge API on the estate and writes to Elasticsearch on mgmt, and
+in a real estate those are three machines. A comment in a file nobody opens
+and an amber box on the console beside the alerts are not the same thing.
+
+`mgmt` having no sensor is the same kind of fact: it is a segment where
+attacks could arrive and nothing is listening. Saying "unwatched" is honest;
+drawing an empty box and letting it read as "quiet" is not.
+
+## The diagram's numbers are the alerts
+
+Every detection is counted onto the segment its source address falls in, and
+an address on no segment is counted as unplaced rather than dropped. The
+acceptance suite asserts `placed + unplaced == alerts`, which is what stops
+the picture becoming a second count that drifts from the one beside it.
+
+It is throttled to once every fifteen seconds rather than riding the
+two-second alert refresh. The shape changes when the stack changes, which is
+never during a session, and four `docker` round trips every two seconds is a
+cost with nothing on the other side of it.

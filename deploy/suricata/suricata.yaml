@@ -5,7 +5,7 @@ vars:
     # Includes the edge subnet because the WAF's own outside address is what
     # the attacker aims at first; leaving it out would drop every alert on the
     # attacker-to-WAF leg, which is most of them.
-    HOME_NET: "[5.188.10.0/24,172.30.0.0/24,172.31.0.0/24]"
+    HOME_NET: "[5.188.10.0/24,177.54.144.0/24,103.152.220.0/24,175.45.176.0/24,172.30.0.0/24,172.31.0.0/24]"
     EXTERNAL_NET: "any"
   port-groups:
     HTTP_PORTS: "8080"
@@ -41,6 +41,22 @@ af-packet:
     defrag: yes
   - interface: eth1
     cluster-id: 98
+    cluster-type: cluster_flow
+    defrag: yes
+  # One per network the WAF is on. Every origin subnet is in HOME_NET above,
+  # because the rules fire on traffic *to* $HOME_NET and the destination is the
+  # WAF's address on whichever origin the attack arrived by. Both omissions are
+  # silent: the attack lands and nothing alerts.
+  - interface: eth2
+    cluster-id: 97
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth3
+    cluster-id: 96
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth4
+    cluster-id: 95
     cluster-type: cluster_flow
     defrag: yes
 

@@ -120,3 +120,27 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
 
     with patch("redteam.harness.subprocess.run", return_value=scan_failed):
         fire_tool(dict(CASE), INTERNAL_TARGET)  # no exception
+
+
+# -- the tool runs on the segment it attacks from --------------------------
+
+def test_a_tool_attacking_through_another_origin_runs_on_that_network():
+    # The WAF's name says which segment it is being dialled on, so the network
+    # need not be passed separately. On the default network the container
+    # could not resolve waf-edge-hk at all, and sqlmap - 94 alerts, the most
+    # visible thing on the map - would rotate nowhere.
+    command = build_tool_command(
+        {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
+        "http://waf-edge-hk:8080",
+    )
+
+    assert command[command.index("--network") + 1] == "fsl_edge-hk"
+
+
+def test_a_tool_attacking_through_the_front_door_runs_where_it_always_did():
+    command = build_tool_command(
+        {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
+        "http://waf-edge:8080",
+    )
+
+    assert command[command.index("--network") + 1] == "fsl_edge"

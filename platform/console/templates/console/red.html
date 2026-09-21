@@ -46,7 +46,13 @@
   perfectly.
 </p>
 
-<div class="flex gap-3 mb-8">
+<div class="flex gap-3 mb-8 items-end flex-wrap">
+  <label class="text-sm">
+    <span class="block text-slate-400 text-xs mb-1">Coming from</span>
+    <select id="origin"
+      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+    </select>
+  </label>
   <button id="run-all"
     class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
     Run every case
@@ -132,7 +138,8 @@
 
   async function fire(name) {
     note(`... ${name}`, "text-slate-500");
-    const result = await post(`/api/sessions/${sessionId()}/attacks/`, { case: name });
+    const result = await post(`/api/sessions/${sessionId()}/attacks/`,
+                              { case: name, origin: chosenOrigin() });
     if (result.ok) {
       note(`sent ${name}`, "text-slate-300");
     } else {
@@ -140,6 +147,33 @@
     }
     await pollObjectives();
     return result.ok;
+  }
+
+  // -- where the attack comes from -----------------------------------------
+  // One subnet is one place on the map, so each origin is its own network and
+  // the address an alert carries is decided by which door was dialled.
+
+  const chosenOrigin = () => document.getElementById("origin").value;
+
+  async function loadOrigins() {
+    const select = document.getElementById("origin");
+    const result = await api("/api/origins/");
+    if (!result.ok) {
+      select.innerHTML = `<option value="">the front door</option>`;
+      select.disabled = true;
+      return;
+    }
+    select.innerHTML =
+      `<option value="rotate">Rotate - a different place each time</option>` +
+      result.body.origins.map((origin) =>
+        // The subnet, not the address: the buttons fire from the platform and
+        // the terminal from the proxy, so the two have different addresses on
+        // the same network. The subnet is true of both.
+        `<option value="${origin.id}">${origin.label} (${origin.subnet})</option>`
+      ).join("");
+    const preferred = result.body.origins.find((origin) => origin.default);
+    if (preferred) select.value = preferred.id;
+    select.addEventListener("change", loadTerminal);
   }
 
   async function fireMany(cases) {
@@ -255,15 +289,21 @@
   };
 
   async function loadTerminal() {
-    const result = await api("/api/attacker/");
+    // A window is scored against one address, so it cannot rotate: pick the
+    // front door and say which host to dial, because the proxy resolves the
+    // name and that is what decides where the traffic comes from.
+    const origin = chosenOrigin() === "rotate" ? "" : chosenOrigin();
+    const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
       status(result.body.detail || "attacker box unavailable", "text-amber-400");
       document.getElementById("window-toggle").disabled = true;
       return;
     }
     attacker = result.body;
-    document.getElementById("terminal").src = attacker.terminal_url;
-    status(`attacks will come from ${attacker.source_ip}`);
+    if (!document.getElementById("terminal").src) {
+      document.getElementById("terminal").src = attacker.terminal_url;
+    }
+    status(`from ${attacker.source_ip} - attack ${attacker.target_url}`);
   }
 
   async function toggleWindow() {
@@ -308,7 +348,7 @@
     openedAt = null;
     toggle.textContent = "Start";
     name.disabled = malicious.disabled = false;
-    status(`attacks will come from ${attacker.source_ip}`);
+    status(`from ${attacker.source_ip} - attack ${attacker.target_url}`);
   }
 
   document.getElementById("window-toggle").addEventListener("click", toggleWindow);
@@ -319,7 +359,8 @@
     .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
 
   render();
-  loadTerminal();
+  // Origins first: the terminal's address is a property of the chosen one.
+  loadOrigins().then(loadTerminal);
   loadObjectives();
   refreshTaken();
   // The terminal can take an objective at any moment, not only when a button

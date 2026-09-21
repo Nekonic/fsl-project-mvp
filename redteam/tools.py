@@ -15,11 +15,27 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 MARKER_HEADER = "X-FSL-Case"
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-redteam-tools")
 TOOL_NETWORK = os.environ.get("FSL_TOOL_NETWORK", "fsl_edge")
+
+
+def network_for(target_url: str) -> str:
+    """The network to run the tool on: the segment it is about to attack from.
+
+    The WAF answers on every origin under a name that says which one - so the
+    host being dialled already names the network, and running the tool
+    anywhere else would either fail to resolve it or send the attack from an
+    address the case does not claim.
+    """
+    host = urlsplit(target_url).hostname or ""
+    if not host.startswith("waf-"):
+        return TOOL_NETWORK
+    project = TOOL_NETWORK.split("_", 1)[0]
+    return f"{project}_{host[len('waf-'):]}"
 
 # Tool name -> the executable to run inside the container.
 SUPPORTED_TOOLS = {"sqlmap": "sqlmap"}
@@ -68,7 +84,7 @@ def build_tool_command(case: dict[str, Any], target_url: str) -> list[str]:
         "run",
         "--rm",
         "--network",
-        TOOL_NETWORK,
+        network_for(target_url),
         TOOL_IMAGE,
         executable,
         *args,
