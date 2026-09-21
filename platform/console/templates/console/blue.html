@@ -262,6 +262,7 @@
     <div class="flex gap-2 items-center">
       <input id="suppress-reason" data-t-placeholder="blue.drawer.suppress.reason_placeholder"
         class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+      <p id="suppress-why" class="hidden text-slate-400 text-sm"></p>
       <button id="suppress"
         class="px-3 py-2 rounded bg-amber-700 hover:bg-amber-600 text-white text-sm
                whitespace-nowrap"><span id="suppress-sid"></span></button>
@@ -601,14 +602,22 @@
     document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
 
     const sid = body.raw?.alert?.signature_id;
-    const verdict = document.getElementById("drawer-verdict");
-    verdict.classList.toggle("hidden", !sid);
+    const crsRule = body.raw?.details?.ruleId;
+    document.getElementById("drawer-verdict").classList.remove("hidden");
+    document.getElementById("suppress").classList.toggle("hidden", !sid);
+    document.getElementById("suppress-reason").classList.toggle("hidden", !sid);
+    const why = document.getElementById("suppress-why");
+    why.classList.toggle("hidden", !!sid);
     if (sid) {
       document.getElementById("suppress-sid").textContent =
         t("blue.drawer.suppress.button", sid);
       document.getElementById("suppress").dataset.sid = sid;
       document.getElementById("suppress-result").textContent = "";
       document.getElementById("suppress-reason").value = "";
+    } else {
+      why.textContent = crsRule
+        ? t("blue.drawer.not_tunable_rule", body.source, crsRule)
+        : t("blue.drawer.not_tunable");
     }
 
     document.getElementById("drawer").classList.remove("translate-x-full");
