@@ -18,13 +18,14 @@ import pytest
 import topology
 
 NETWORKS = [
-    {"Name": "fsl_edge", "Labels": {"fsl.origin": "Moscow, Russia"},
+    {"Name": "fsl_edge",
+     "Labels": {"fsl.origin": "Moscow, Russia", "fsl.segment": "Internet"},
      "IPAM": {"Config": [{"Subnet": "5.188.10.0/24", "Gateway": "5.188.10.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "5.188.10.4/24"},
          "bbb": {"Name": "fsl-proxy", "IPv4Address": "5.188.10.3/24"},
      }},
-    {"Name": "fsl_estate", "Labels": {},
+    {"Name": "fsl_estate", "Labels": {"fsl.segment": "Application estate"},
      "IPAM": {"Config": [{"Subnet": "172.30.0.0/24", "Gateway": "172.30.0.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "172.30.0.3/24"},
@@ -89,6 +90,21 @@ def test_the_outside_is_marked_as_outside():
 
 def test_outside_segments_come_first_because_that_is_the_way_in():
     assert shape()["segments"][0]["outside"] is True
+
+
+def test_a_segment_is_called_something_a_person_can_read():
+    # It used to show compose's own network names - `edge-br`, `mgmt` - and
+    # the first person to read the diagram asked what they were.
+    found = shape()
+
+    assert segment(found, "edge")["name"] == "Internet"
+    assert segment(found, "estate")["name"] == "Application estate"
+
+
+def test_a_segment_nobody_named_falls_back_to_its_network_name():
+    # Better a name that means nothing than a blank row: the id is at least
+    # something to grep the compose file for.
+    assert segment(shape(), "mgmt")["name"] == "mgmt"
 
 
 def test_a_segment_carries_the_addresses_that_are_actually_on_it():
@@ -206,3 +222,68 @@ def test_a_stack_that_cannot_be_read_is_503_not_a_blank_diagram(client):
 
     assert response.status_code == 503
     assert "daemon" in response.json()["detail"]
+
+
+# -- what an address belongs to --------------------------------------------
+# An address on its own is not identification. Igloo's write-up of a real
+# console names the defect: the device that raised an alert is obvious from
+# the alert, but working out what its source and destination addresses belong
+# to takes further work - so the console maps ranges to the name of the thing
+# that owns them and shows that name beside the address.
+
+def sources(client, session_id):
+    with patch("api.views.topology.subprocess.run", _Run()):
+        return client.get(f"/api/sessions/{session_id}/top/").json()["sources"]
+
+
+@pytest.fixture
+def counted(client):
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    documents = [
+        _alert("a", "5.188.10.3"), _alert("b", "5.188.10.3"),
+        _alert("c", "172.30.0.2"), _alert("d", "10.9.9.9"),
+    ]
+    with patch("api.views.elastic.fetch", return_value=documents):
+        client.post_json(f"/api/sessions/{session_id}/ingest/")
+    return sources(client, session_id)
+
+
+def test_an_address_is_named_by_the_segment_it_belongs_to(counted):
+    found = {s["src_ip"]: s for s in counted}
+
+    assert found["5.188.10.3"]["zone"] == "Internet"
+    assert found["5.188.10.3"]["outside"] is True
+    assert found["172.30.0.2"]["zone"] == "Application estate"
+    assert found["172.30.0.2"]["outside"] is False
+
+
+def test_an_address_belonging_to_nothing_says_so_rather_than_guessing(counted):
+    stranger = next(s for s in counted if s["src_ip"] == "10.9.9.9")
+
+    assert stranger["zone"] == ""
+
+
+def test_the_busiest_address_is_first_because_that_is_what_a_top_n_is(counted):
+    assert [s["alerts"] for s in counted] == sorted(
+        (s["alerts"] for s in counted), reverse=True
+    )
+    assert counted[0]["src_ip"] == "5.188.10.3"
+    assert counted[0]["alerts"] == 2
+
+
+def test_every_alert_is_counted_against_exactly_one_address(counted):
+    assert sum(s["alerts"] for s in counted) == 4
+
+
+def test_a_stack_that_cannot_be_read_still_reports_the_addresses(client):
+    # The segment is the extra; the address is the fact. A stopped Docker
+    # should not empty the board.
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    with patch("api.views.elastic.fetch", return_value=[_alert("a", "5.188.10.3")]):
+        client.post_json(f"/api/sessions/{session_id}/ingest/")
+
+    with patch("api.views.topology.subprocess.run", _Run(code=1, stderr="no daemon")):
+        found = client.get(f"/api/sessions/{session_id}/top/").json()["sources"]
+
+    assert [s["src_ip"] for s in found] == ["5.188.10.3"]
+    assert found[0]["zone"] == ""

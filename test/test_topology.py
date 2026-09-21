@@ -39,6 +39,7 @@ def drawn(stack_is_up):
     shape = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
     ).json()
+    shape["session_id"] = session_id
     shape["detections"] = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
     ).json()
@@ -120,3 +121,67 @@ def test_the_diagram_and_the_alert_stream_are_one_object(drawn):
         f"{placed} placed + {drawn['unplaced']} unplaced != "
         f"{len(drawn['detections'])} alerts"
     )
+
+
+# -- the board's own tables -----------------------------------------------
+# An address on its own is not identification. Igloo's write-up of a real
+# console names the defect: the device that raised an alert is obvious from
+# the alert, but what its source and destination addresses *belong to* takes
+# further work - so the console shows the zone beside the address. The rest of
+# the dimensions are Cloudflare's: top events by source, by destination, by
+# signature, by path.
+
+@pytest.fixture(scope="module")
+def top(drawn):
+    return requests.get(
+        f"{PLATFORM_URL}/api/sessions/{drawn['session_id']}/top/", timeout=120
+    ).json()
+
+
+def test_every_alert_is_counted_against_exactly_one_address(top, drawn):
+    addressed = [d for d in drawn["detections"] if d["src_ip"]]
+
+    assert sum(s["alerts"] for s in top["sources"]) == len(addressed)
+
+
+def test_an_address_is_named_by_the_zone_it_is_actually_on(top, drawn):
+    for source in top["sources"]:
+        if not source["zone"]:
+            continue
+        # A zone name covers several segments - every origin is "Internet" -
+        # so the address must fall in one of the ranges carrying that name.
+        ranges = [ipaddress.ip_network(s["subnet"]) for s in drawn["segments"]
+                  if s["name"] == source["zone"]]
+        assert any(ipaddress.ip_address(source["src_ip"]) in r for r in ranges), source
+
+
+def test_the_attack_came_from_outside_and_the_row_says_so(top):
+    outside = [s for s in top["sources"] if s["outside"]]
+
+    assert outside, f"nothing outside: {[s['src_ip'] for s in top['sources']]}"
+
+    # Some, not all. A location is learned from whichever alert happened to
+    # carry it, and only Suricata's records do - so an address whose alerts in
+    # this session were all ModSecurity's has none, which is the honest answer
+    # rather than a guess. The bridge gateway is usually that address.
+    assert any(s["country"] for s in outside), (
+        f"no address on public space resolved to a country: "
+        f"{[s['src_ip'] for s in outside]}. The geoip pipeline is not running, "
+        f"or the origin ranges stopped resolving."
+    )
+
+
+def test_the_board_says_what_was_attacked_and_how(top):
+    # A console showing only where traffic came from is half a console: the
+    # pair is source and destination, each with its zone, and the path is
+    # where the payload actually is.
+    assert top["destinations"], "no destination was recorded for any alert"
+    assert any(d["zone"] for d in top["destinations"])
+    assert top["paths"], "no request path was recorded for any alert"
+    assert all(p["method"] for p in top["paths"])
+
+
+def test_every_top_table_is_ordered_by_count(top):
+    for name in ("sources", "destinations", "signatures", "paths"):
+        counts = [row["alerts"] for row in top[name]]
+        assert counts == sorted(counts, reverse=True), name

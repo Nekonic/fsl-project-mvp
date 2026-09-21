@@ -1,8 +1,17 @@
 {% extends "console/base.html" %}
 {% block title %}Blue team{% endblock %}
 {% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
+{% block nav_class %}w-full{% endblock %}
+{% comment %}
+The three-foot view: the alert list, with filters and a row that opens the
+whole log record behind it. The counters, the map and the shape of the range
+are the ten-foot view and live in /board/<id>/, on a screen a room reads from
+across it. Putting both in one window is the mistake this split.
+{% endcomment %}
+{% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
+{% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
-<div class="flex gap-3 mb-6 border-b border-slate-800 items-center">
+<div id="tabs" class="flex gap-3 mb-3 border-b border-slate-800 items-center shrink-0">
   <button data-tab="alerts" class="tab px-4 py-2 text-sm">Live</button>
   <button data-tab="score" class="tab px-4 py-2 text-sm">Scoreboard</button>
   <button data-tab="rules" class="tab px-4 py-2 text-sm">Rules</button>
@@ -20,84 +29,33 @@
       <option value="5000" selected>5s</option>
       <option value="15000">15s</option>
     </select>
+    <a id="to-board" target="_blank" class="text-sm text-amber-400 hover:text-amber-300">
+      Status board
+    </a>
     <a id="to-red" target="_blank" class="text-sm text-rose-400 hover:text-rose-300">
       Red window
     </a>
   </div>
 </div>
 
-<section data-panel="alerts">
-  <div class="border border-slate-800 rounded p-3 mb-5">
-    <div class="flex justify-between text-xs text-slate-500 mb-2">
-      <span>Where it is coming from</span>
-      <span id="map-note"></span>
-    </div>
-    <svg viewBox="0 0 360 180" class="w-full block" style="max-height:300px">
-      <rect width="360" height="180" fill="#0b1220"/>
-      <g stroke="#172033" stroke-width="0.15">
-        <line x1="0" y1="90" x2="360" y2="90"/>
-        <line x1="180" y1="0" x2="180" y2="180"/>
-      </g>
-      <g fill="#1e293b" stroke="#334155" stroke-width="0.2">
-        {% include "console/world.svg" %}
-      </g>
-      <g id="map-points"></g>
-    </svg>
-  </div>
-
-  <div class="border border-slate-800 rounded p-3 mb-5">
-    <div class="flex justify-between text-xs text-slate-500 mb-2">
-      <span>How it is put together</span>
-      <span id="topology-note"></span>
-    </div>
-    <div id="topology" class="space-y-1 text-sm"></div>
-  </div>
-
-  <div class="grid grid-cols-4 gap-3 mb-5">
-    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">Alerts</div>
-      <div id="kpi-total" class="text-2xl font-semibold text-slate-100 tabular-nums">0</div>
-    </div>
-    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">Suricata</div>
-      <div id="kpi-suricata" class="text-2xl font-semibold text-violet-300 tabular-nums">0</div>
-    </div>
-    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">ModSecurity</div>
-      <div id="kpi-modsec" class="text-2xl font-semibold text-cyan-300 tabular-nums">0</div>
-    </div>
-    <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">Unattributed</div>
-      <div id="kpi-orphan" class="text-2xl font-semibold text-amber-300 tabular-nums">0</div>
-      <div class="text-slate-600 text-xs mt-0.5">no case marker</div>
-    </div>
-  </div>
-
-  <div class="border border-slate-800 rounded p-3 mb-5">
-    <div class="flex justify-between text-xs text-slate-500 mb-2">
-      <span>Activity</span><span id="histogram-range"></span>
-    </div>
-    <div id="histogram" class="flex items-end gap-px h-16"></div>
-  </div>
-
-  <div class="flex flex-wrap gap-2 mb-4 items-center">
+<section data-panel="alerts" class="flex-1 min-h-0 flex flex-col border border-slate-800 rounded">
+  <div class="flex items-center gap-3 px-3 py-2 border-b border-slate-800 shrink-0">
     <input id="search" placeholder="filter signature, address or marker"
-      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 min-w-64">
+      class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs flex-1 min-w-32">
     <div class="flex gap-1" id="source-filter">
-      <button data-source="" class="chip px-3 py-2 rounded text-xs border">All</button>
-      <button data-source="suricata" class="chip px-3 py-2 rounded text-xs border">Suricata</button>
-      <button data-source="modsecurity" class="chip px-3 py-2 rounded text-xs border">ModSecurity</button>
+      <button data-source="" class="chip px-2 py-1 rounded text-xs border">All</button>
+      <button data-source="suricata" class="chip px-2 py-1 rounded text-xs border">Suricata</button>
+      <button data-source="modsecurity" class="chip px-2 py-1 rounded text-xs border">ModSecurity</button>
     </div>
-    <label class="flex items-center gap-2 text-xs text-slate-400 px-2">
+    <label class="flex items-center gap-1.5 text-xs text-slate-400">
       <input id="only-orphans" type="checkbox" class="accent-amber-500">
       unattributed only
     </label>
-    <span id="shown" class="text-xs text-slate-500 ml-auto"></span>
+    <span id="shown" class="text-xs text-slate-500"></span>
   </div>
-
-  <div class="border border-slate-800 rounded overflow-hidden">
+  <div class="flex-1 min-h-0 overflow-y-auto">
     <table class="w-full text-sm">
-      <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide">
+      <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
         <tr>
           <th class="w-1"></th>
           <th class="text-left py-2 px-3 font-medium">Time</th>
@@ -105,6 +63,10 @@
           <th class="text-left font-medium">Source</th>
           <th class="text-left font-medium">Signature</th>
           <th class="text-left font-medium">From</th>
+          <th class="text-left font-medium">Zone</th>
+          <th class="text-left font-medium">Country</th>
+          <th class="text-left font-medium">Destination</th>
+          <th class="text-left font-medium">Path</th>
           <th class="text-left font-medium pr-3">Case</th>
         </tr>
       </thead>
@@ -116,7 +78,7 @@
   </div>
 </section>
 
-<section data-panel="score" class="hidden">
+<section data-panel="score" class="hidden flex-1 min-h-0 overflow-y-auto">
   <h2 class="text-slate-100 mb-1">What was taken</h2>
   <p class="text-slate-400 text-sm mb-4">
     Objectives the shop itself judged achieved. Losing one always costs;
@@ -155,7 +117,7 @@
   <div id="comparison" class="grid grid-cols-2 gap-4"></div>
 </section>
 
-<section data-panel="rules" class="hidden">
+<section data-panel="rules" class="hidden flex-1 min-h-0 overflow-y-auto">
   <h2 class="text-slate-100 mb-3">Suricata rules</h2>
   <textarea id="editor" spellcheck="false"
     class="w-full h-80 bg-slate-900 border border-slate-800 rounded p-4 font-mono
@@ -217,6 +179,7 @@
 {% block script %}
 <script>
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
+  document.getElementById("to-board").href = `/board/${sessionId()}/`;
 
   const SOURCE_STYLE = {
     suricata: "bg-violet-950 text-violet-300 border-violet-900",
@@ -240,9 +203,16 @@
   let sourceFilter = "";
 
   // -- tabs
+  const showing = (name) =>
+    document.querySelector(`[data-panel="${name}"]`).style.display !== "none";
+
   function showTab(name) {
+    // Set display rather than toggling `hidden`: these panels are flex
+    // containers, and which of the two display utilities wins depends on the
+    // order Tailwind emits them, which is not ours to rely on.
     document.querySelectorAll("[data-panel]").forEach((panel) => {
-      panel.classList.toggle("hidden", panel.dataset.panel !== name);
+      panel.classList.remove("hidden");
+      panel.style.display = panel.dataset.panel === name ? "" : "none";
     });
     document.querySelectorAll(".tab").forEach((tab) => {
       const on = tab.dataset.tab === name;
@@ -266,12 +236,9 @@
     if (result.body.length) {
       rows = rows.concat(result.body);
       lastId = Math.max(...result.body.map((d) => d.id));
+      await loadOwners();
       renderAlerts();
-      renderMap();
-      renderTopology();
-      if (!document.querySelector('[data-panel="score"]').classList.contains("hidden")) {
-        renderScore();
-      }
+      if (showing("score")) renderScore();
     }
   }
 
@@ -306,176 +273,75 @@
     });
   }
 
+  // What each address belongs to. An address on its own is not
+  // identification: the engine that raised an alert is obvious from the
+  // alert, but the segment and the place behind a source address are not, and
+  // an analyst reading a list of bare addresses does that lookup in their
+  // head. Asked of the server so the CIDR matching happens in one place - see
+  // /api/sessions/<id>/top/.
+  let owners = {};
+  const OWNERS_EVERY = 15000;
+  let ownersAt = 0;
+
+  async function loadOwners(force) {
+    if (!force && Date.now() - ownersAt < OWNERS_EVERY) return;
+    ownersAt = Date.now();
+    const { ok, body } = await api(`/api/sessions/${sessionId()}/top/`);
+    if (!ok) return;
+    owners = Object.fromEntries(body.sources.map((s) => [s.src_ip, s]));
+  }
+
+  // A path is read, not copied: the payload in a query string is the point
+  // of the row, and %27+OR+1%3D1-- hides it.
+  function decodePath(path) {
+    try {
+      return decodeURIComponent((path || "").replace(/\+/g, " "));
+    } catch (error) {
+      return path || "";
+    }
+  }
+
   function renderAlerts() {
     const shown = visible();
 
-    document.getElementById("kpi-total").textContent = rows.length;
-    document.getElementById("kpi-suricata").textContent =
-      rows.filter((d) => d.source === "suricata").length;
-    document.getElementById("kpi-modsec").textContent =
-      rows.filter((d) => d.source === "modsecurity").length;
-    document.getElementById("kpi-orphan").textContent =
-      rows.filter((d) => !d.marker).length;
 
     document.getElementById("shown").textContent =
       shown.length === rows.length ? `${rows.length} events`
                                    : `${shown.length} of ${rows.length} events`;
 
-    renderHistogram();
     document.getElementById("empty").classList.toggle("hidden", shown.length > 0);
 
     // Newest first: a console is read from the top.
     document.getElementById("rows").innerHTML = shown.slice().reverse().slice(0, 300)
       .map((d) => `
-      <tr data-id="${d.id}" class="alert-row border-t border-slate-900
+      <tr data-id="${esc(d.id)}" class="alert-row border-t border-slate-900
           hover:bg-slate-900/60 cursor-pointer">
         <td class="${severityOf(d).bar} w-1 p-0"></td>
         <td class="py-2 px-3 text-slate-500 font-mono text-xs whitespace-nowrap">
-          ${(d.timestamp || "").replace("T", " ").slice(0, 19)}</td>
-        <td class="${severityOf(d).text} text-xs">${severityOf(d).word}</td>
+          ${esc((d.timestamp || "").replace("T", " ").slice(0, 19))}</td>
+        <td class="${severityOf(d).text} text-xs">${esc(severityOf(d).word)}</td>
         <td><span class="border rounded px-1.5 py-0.5 text-xs ${
-          SOURCE_STYLE[d.source] || "border-slate-700 text-slate-400"}">${d.source}</span></td>
-        <td class="text-slate-200">${d.signature}</td>
-        <td class="text-slate-400 font-mono text-xs">${d.src_ip || "-"}</td>
+          SOURCE_STYLE[d.source] || "border-slate-700 text-slate-400"}">${esc(d.source)}</span></td>
+        <td class="text-slate-200">${esc(d.signature)}</td>
+        <td class="font-mono text-xs ${
+          (owners[d.src_ip] || {}).outside ? "text-rose-300" : "text-slate-400"
+        }">${esc(d.src_ip) || "-"}</td>
+        <td class="text-slate-500 text-xs whitespace-nowrap">${
+          esc((owners[d.src_ip] || {}).zone) || "-"}</td>
+        <td class="text-slate-500 text-xs whitespace-nowrap">${
+          esc([(owners[d.src_ip] || {}).city, (owners[d.src_ip] || {}).country]
+            .filter(Boolean).join(", ")) || "-"}</td>
+        <td class="text-slate-400 font-mono text-xs whitespace-nowrap">${esc(d.dest) || "-"}</td>
+        <td class="text-slate-400 font-mono text-xs max-w-md truncate"
+            title="${esc(decodePath(d.path))}">${
+          d.path ? esc(`${d.method} ${decodePath(d.path)}`) : "-"}</td>
         <td class="pr-3 font-mono text-xs ${d.marker ? "text-emerald-400" : "text-slate-600"}">
-          ${d.marker ? d.marker.slice(0, 8) : "unattributed"}</td>
+          ${d.marker ? esc(d.marker.slice(0, 8)) : "unattributed"}</td>
       </tr>`).join("");
 
     document.querySelectorAll(".alert-row").forEach((row) => {
       row.addEventListener("click", () => openDrawer(row.dataset.id));
     });
-  }
-
-  // The projection is the one bin/worldmap used to draw the coastlines, which
-  // is why a point can be trusted to land where the country is: one unit per
-  // degree on a 360x180 viewBox.
-  const projectX = (lon) => lon + 180;
-  const projectY = (lat) => 90 - lat;
-
-  // -- the shape of the range, read off Docker rather than drawn.
-  // Throttled: the segments change when the stack does, which is never during
-  // a session, and asking Docker four times every two seconds to be told the
-  // same thing is a cost with nothing on the other side of it.
-  const TOPOLOGY_EVERY = 15000;
-  let topologyAt = 0;
-
-  async function renderTopology(force) {
-    if (!force && Date.now() - topologyAt < TOPOLOGY_EVERY) return;
-    topologyAt = Date.now();
-
-    const panel = document.getElementById("topology");
-    const note = document.getElementById("topology-note");
-    const { ok, body } = await api(`/api/sessions/${sessionId()}/topology/`);
-    if (!ok) {
-      note.textContent = body.detail || "the stack could not be read";
-      note.className = "text-amber-400";
-      return;
-    }
-
-    const busiest = Math.max(1, ...body.segments.map((s) => s.alerts));
-    panel.innerHTML = body.segments.map((segment) => {
-      const width = Math.round(100 * segment.alerts / busiest);
-      const chips = segment.nodes.map((node) => {
-        // Amber is a way in: this box has a foot on each side of the range.
-        const tone = node.crosses
-          ? "border-amber-600/70 text-amber-200 bg-amber-950/30"
-          : "border-slate-700 text-slate-400";
-        const title = node.crosses ? "a way in - also on the inside" : node.address;
-        return `<span title="${title}"
-                 class="border ${tone} rounded px-1.5 py-0.5 text-xs font-mono"
-               >${node.name.replace(/^fsl-/, "")}</span>`;
-      }).join(" ");
-
-      return `
-        <div class="border ${segment.outside ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"}
-                    rounded px-3 py-2 flex flex-wrap gap-x-4 gap-y-2 items-center">
-          <div class="w-40 shrink-0">
-            <div class="text-slate-200">${segment.id}</div>
-            <div class="text-xs font-mono text-slate-500">${segment.subnet}</div>
-          </div>
-          <div class="w-16 shrink-0 text-xs uppercase tracking-wide
-                      ${segment.outside ? "text-rose-400" : "text-slate-600"}">
-            ${segment.outside ? "outside" : "inside"}
-          </div>
-          <div class="w-28 shrink-0">
-            <div class="tabular-nums text-slate-300">${segment.alerts}</div>
-            <div class="h-1 bg-slate-800 rounded mt-1">
-              <div class="h-1 bg-violet-500 rounded" style="width:${width}%"></div>
-            </div>
-          </div>
-          <div class="w-24 shrink-0 text-xs ${segment.sensor ? "text-violet-400" : "text-amber-400"}">
-            ${segment.sensor ? segment.sensor.replace(/^fsl-/, "") : "unwatched"}
-          </div>
-          <div class="flex flex-wrap gap-1">${chips}</div>
-        </div>`;
-    }).join("");
-
-    // The number the picture exists to show. One way in is the design; a
-    // second is the defence becoming optional, whatever the diagram looks
-    // like, so it is said in words and not only in colour.
-    const ways = [...new Set(
-      body.segments.flatMap((s) => s.nodes.filter((n) => n.crosses).map((n) => n.name))
-    )].map((name) => name.replace(/^fsl-/, ""));
-    const unwatched = body.segments.filter((s) => !s.sensor).map((s) => s.id);
-
-    note.className = ways.length > 1 ? "text-amber-400" : "text-slate-500";
-    note.textContent = [
-      `${ways.length} ${ways.length === 1 ? "way" : "ways"} in: ${ways.join(", ")}`,
-      unwatched.length ? `unwatched: ${unwatched.join(", ")}` : "",
-      body.unplaced ? `${body.unplaced} alerts from no segment` : "",
-    ].filter(Boolean).join(" · ");
-  }
-
-  async function renderMap() {
-    const { ok, body } = await api(`/api/sessions/${sessionId()}/map/`);
-    if (!ok) return;
-
-    const busiest = Math.max(1, ...body.points.map((p) => p.detections));
-    document.getElementById("map-points").innerHTML = body.points.map((p) => {
-      // Area, not radius, follows the count - otherwise one loud origin
-      // swallows the map.
-      const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
-      const where = [p.city, p.country].filter(Boolean).join(", ") || "unknown";
-      return `
-        <g>
-          <title>${where} - ${p.detections} alerts from ${p.ips.join(", ")}</title>
-          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r + 2}"
-                  fill="#f43f5e" opacity="0.15"/>
-          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r}"
-                  fill="#f43f5e" opacity="0.85"/>
-        </g>`;
-    }).join("");
-
-    const note = document.getElementById("map-note");
-    if (!body.points.length && !body.unlocated) {
-      note.textContent = "nothing yet";
-    } else {
-      const places = body.points.length === 1 ? "1 origin" : `${body.points.length} origins`;
-      // Say when alerts could not be placed rather than quietly drawing fewer
-      // than there are - an address inside the estate has no country.
-      note.textContent = body.unlocated
-        ? `${places} · ${body.unlocated} alerts from addresses with no location`
-        : places;
-    }
-  }
-
-  function renderHistogram() {
-    const times = rows.map((d) => Date.parse(d.timestamp)).filter(Number.isFinite);
-    const histogram = document.getElementById("histogram");
-    if (!times.length) { histogram.innerHTML = ""; return; }
-
-    const first = Math.min(...times);
-    const last = Math.max(...times);
-    const buckets = new Array(48).fill(0);
-    const span = Math.max(last - first, 1);
-    times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 47))]++);
-
-    const tallest = Math.max(...buckets, 1);
-    histogram.innerHTML = buckets.map((count) => `
-      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${count} events"
-           style="height:${Math.max(count / tallest * 100, count ? 6 : 1)}%"></div>`).join("");
-    document.getElementById("histogram-range").textContent =
-      `${new Date(first).toLocaleTimeString()} - ${new Date(last).toLocaleTimeString()}`;
   }
 
   document.getElementById("search").addEventListener("input", renderAlerts);
@@ -555,17 +421,17 @@
       return `<span class="text-slate-600" title="no declared mechanism">unjudged</span>`;
     }
     if (c.corroborated) {
-      return `<span class="text-emerald-500" title="an alert mentions ${c.expect}">
-        matches ${c.expect}</span>`;
+      return `<span class="text-emerald-500" title="an alert mentions ${esc(c.expect)}">
+        matches ${esc(c.expect)}</span>`;
     }
     return `<span class="text-amber-400 font-semibold"
-      title="nothing attributed to this mentions ${c.expect}">WRONG RULE</span>`;
+      title="nothing attributed to this mentions ${esc(c.expect)}">WRONG RULE</span>`;
   }
 
   function tile(label, value) {
     return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">${label}</div>
-      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${value}</div></div>`;
+      <div class="text-slate-500 text-xs uppercase tracking-wide">${esc(label)}</div>
+      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${esc(value)}</div></div>`;
   }
 
   async function renderScore() {
@@ -591,14 +457,14 @@
 
     for (const w of s.warnings) {
       warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3
-        text-amber-200 text-sm">${w}</div>`;
+        text-amber-200 text-sm">${esc(w)}</div>`;
     }
 
     document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
       <tr class="border-b border-slate-900">
-        <td class="py-2">${c.name}</td>
+        <td class="py-2">${esc(c.name)}</td>
         <td>${c.malicious ? "attack" : "benign"}</td>
-        <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${c.verdict}</td>
+        <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${esc(c.verdict)}</td>
         <td class="tabular-nums">${c.detection_ids.length}</td>
         <td class="text-xs">${evidence(c)}</td>
       </tr>`).join("");
@@ -643,8 +509,8 @@
           <tr class="border-t border-slate-900">
             <td class="py-2 px-3 text-amber-400 font-mono text-xs">
               ${"*".repeat(b.difficulty)}</td>
-            <td class="text-slate-100">${b.name}</td>
-            <td class="text-slate-500 text-xs">${b.category}</td>
+            <td class="text-slate-100">${esc(b.name)}</td>
+            <td class="text-slate-500 text-xs">${esc(b.category)}</td>
             <td class="${b.detected ? "text-amber-400" : "text-rose-400"} font-semibold text-xs">
               ${b.detected ? "SEEN" : "MISSED"}</td>
             <td class="pr-3 text-slate-400 tabular-nums">${b.detection_ids.length}</td>
@@ -660,7 +526,7 @@
     document.getElementById("comparison").innerHTML = scored.map((result, i) => {
       if (!result.ok) {
         return `<div class="border border-slate-800 rounded p-4 text-amber-400 text-sm">
-          ${strategies[i]}: ${result.body.detail || result.status}</div>`;
+          ${esc(strategies[i])}: ${esc(result.body.detail || result.status)}</div>`;
       }
       const s = result.body;
       return `<div class="border border-slate-800 rounded p-4">
@@ -709,11 +575,11 @@
 
     panel.innerHTML = body.suppressions.map((s) => `
       <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
-        <span class="text-amber-300 font-mono text-sm">sid ${s.sid}</span>
-        <span class="text-slate-400 text-sm flex-1">${s.reason || "no reason given"}</span>
+        <span class="text-amber-300 font-mono text-sm">sid ${esc(s.sid)}</span>
+        <span class="text-slate-400 text-sm flex-1">${esc(s.reason) || "no reason given"}</span>
         <span class="text-slate-500 text-xs">back at
-          ${new Date(s.expires_at).toLocaleTimeString()}</span>
-        <button data-id="${s.id}"
+          ${esc(new Date(s.expires_at).toLocaleTimeString())}</span>
+        <button data-id="${esc(s.id)}"
           class="lift px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-xs">
           Restore now</button>
       </div>`).join("") ||
@@ -730,9 +596,8 @@
 
   api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
   renderSuppressions();
+  loadOwners(true).then(renderAlerts);
   showTab("alerts");
-  renderMap();
-  renderTopology(true);
   setLive(true);
 </script>
 {% endblock %}

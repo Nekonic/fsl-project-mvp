@@ -34,6 +34,27 @@ def stack_is_up():
         )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def defence_is_on(stack_is_up):
+    """Refuse to measure a defence that is switched off.
+
+    A suppression silences a rule for an hour, and one left behind - by a run
+    that died, or by somebody clicking in the console - makes every later run
+    measure a range with a hole in it. The symptom is not "a rule is off": it
+    is "the probe raised no alert at all", which reads as a broken pipeline
+    and sends the next session looking in the wrong place. It already did.
+    """
+    active = requests.get(f"{PLATFORM_URL}/api/rules/suppressions/", timeout=60)
+    if not active.ok:
+        return
+    silenced = [s["sid"] for s in active.json()["suppressions"]]
+    assert not silenced, (
+        f"sid {silenced} are suppressed, so this run would score a defence "
+        f"with a hole in it. Restore them first: "
+        f"POST /api/rules/suppressions/<id>/restore/"
+    )
+
+
 def reset_target() -> None:
     """Give the target back its unsolved objectives.
 

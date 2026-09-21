@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("api/sessions/<int:session_id>/detections/", views.session_detections),
     path("api/sessions/<int:session_id>/map/", views.session_map),
+    path("api/sessions/<int:session_id>/top/", views.session_top),
     path("api/sessions/<int:session_id>/topology/", views.session_topology),
     path("api/sessions/<int:session_id>/score/", views.session_score),
     path("api/detections/<int:detection_id>/", views.detection_detail),
@@ -37,4 +38,5 @@ urlpatterns = [
     path("session/<int:session_id>/", console.session),
     path("red/<int:session_id>/", console.red),
     path("blue/<int:session_id>/", console.blue),
+    path("board/<int:session_id>/", console.board),
 ]

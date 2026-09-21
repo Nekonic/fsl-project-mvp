@@ -708,6 +708,13 @@ to do.
 The network tier this range needs is routing and filtering between segments,
 which is layer 3 and which a container can actually be.
 
+**pfSense and OPNsense were looked at for that tier and are not it.** Both are
+FreeBSD, neither ships a usable container, and both want a VM - which is the
+OpenStack path CLAUDE.md already names, a large step rather than a compose
+change. If a real appliance is ever wanted that is where it goes. What this
+range could actually run is a container-shaped gateway: VyOS, nftables,
+OpenWRT.
+
 ## No address is both safe to fake and publicly geolocatable
 
 Measured against this stack's own Elasticsearch 8.15, thirteen documents
@@ -1237,3 +1244,138 @@ It is throttled to once every fifteen seconds rather than riding the
 two-second alert refresh. The shape changes when the stack changes, which is
 never during a session, and four `docker` round trips every two seconds is a
 cost with nothing on the other side of it.
+
+## Two distances, two windows
+
+The console had grown into a document - a map, then a topology, then the
+counters, then the alert list, appended one below the next on a page that
+scrolled. The first correction made it a grid that filled one screen, and that
+was still wrong, for a reason the trade writes down plainly: a control room is
+read from two distances.
+
+- The **ten-foot view** is a status board (상황판): big numbers, a map, a
+  trend, top attackers, the shape of the range. High contrast, read from
+  across the room, operated by nobody.
+- The **three-foot view** is the analyst's own screen: the alert list, with
+  filters and the whole Elasticsearch record behind a row.
+
+Filters and a table cannot be read at a distance and cannot be worked by
+someone who is not sitting in front of them; big tiles waste the screen of
+someone who is. Neither is a section of the other, so they are two windows:
+`/board/<id>/` and `/blue/<id>/`, opened side by side or on two screens like
+the red and blue windows already were. An acceptance test keeps them disjoint,
+because the way this went wrong was by accretion and it would go wrong again
+the same way.
+
+The vocabulary came with the research and is worth keeping, because the made-up
+words were part of getting it wrong: 상황판 / 통합대시보드 for the board,
+경보 리스트 for the alert list, and the board's contents are widgets - 탐지
+추이, 공격자 통계 (최근 / 지속 / 신규). "Top attackers" is on the board
+because it is on every real one.
+
+Two things worth keeping from doing it:
+
+- **Django's `{# #}` is single-line only.** A multi-line one is not a comment;
+  it is rendered. Two of them appeared across the top of the console in grey
+  text, and nothing would have caught it - so now something does.
+- **`hidden` and `flex` are both display utilities**, and which wins depends
+  on the order Tailwind emits them, which is not ours to rely on. The panels
+  are flex containers now, so showing a tab sets `display` outright.
+
+And one caught by reading the output: the board counted unattributed alerts on
+`case_marker`, a field the API does not have, so it would have read as the
+total for ever. The field is `marker`.
+
+## The console ran the attacks it collected
+
+The range collects attacks and the console displays them, which makes the
+console the place a payload finally lands. `xss-script-tag-in-search` sends a
+script tag as a search term; it came back as a request path, and the board
+rendered it into `innerHTML`. The user's browser ran it. A security tool
+executing the attack it caught is the worst version of this bug and it
+shipped.
+
+There were two sources, not one:
+
+- **The traffic.** Request paths, signatures, source addresses, the
+  suppression reason someone typed - all of it is written by an attacker or
+  by whoever is at the keyboard.
+- **The target.** Juice Shop *describes* its DOM XSS challenge with an iframe
+  whose `src` is `javascript:`, and the red window drew that description as
+  markup. Nothing hostile had to happen for the console to attack its own
+  user: the target's own help text did it.
+
+Every value interpolated into markup now goes through one `esc()` in
+`base.html`, and a test reads the three templates, finds every `${...}` inside
+a template literal containing a tag, and fails on any that names an untrusted
+field without `esc(`. A ternary that only picks a CSS class is allowed,
+because the value never reaches the page.
+
+**And the comment explaining all this broke the console.** It contained a
+literal closing script tag as an example. The HTML parser ends a script
+element at the first one it sees - inside a comment, inside a string, it does
+not care - so everything after it stopped being JavaScript and `esc` silently
+did not exist. The page still rendered, which is what made it take a while to
+find. There is a test for that too: script tags opened must equal script tags
+closed.
+
+## A top-N table is what a console shows, not a bar
+
+Rebuilt after the first two attempts put the wrong things on the board, both
+times from a summary rather than the source. Read properly:
+
+**Cloudflare's security events screen** is a summary grouped by dimension, one
+time series, and *top events by source* - IP addresses, user agents, paths,
+countries, hosts, ASNs - each a table of one dimension with its count, plus
+sampled logs with configurable columns.
+
+**Igloo's write-up of a Korean SOC console** names the defect that makes an
+address useful: 탐지 장비 정보는 직관적으로 식별이 가능하나, 이벤트의 출발지 /
+목적지 IP 자산의 영역 확인을 위해서는 추가적인 업무가 필요하다. Their answer
+is a mapping from address range to the name of the thing that owns it, shown
+beside the address - and they say to use a department name and a host for a
+small site rather than an institution code.
+
+So: top source addresses with the zone they belong to and where they
+geolocate, top destinations with their zone, top signatures with the engine
+that raised them, top request paths with the method. The zone mapping is this
+range's own segments, which is what `topology.py` is for now - a registry, not
+a diagram.
+
+What came off the board, and why:
+
+- **The segments table.** Which container bridges which network and which
+  segment has no sensor are findings about how this range is built. They are
+  in this file and in a test; a room watching traffic has no use for them, and
+  they were written in words nobody outside this repo could read.
+- **The Host column.** It showed `waf-edge`, an internal Docker alias.
+  Cloudflare's "host" is the attacked domain. Two different things under one
+  word is worse than not having the column.
+
+Request paths are decoded before display, because the payload is the point of
+the row and `%27+OR+1%3D1--` hides it. That decoding is exactly what made the
+XSS above fire, which is not an argument for leaving it encoded - it is an
+argument for escaping output, which is now done.
+
+## Never remove a compose network while its containers are running
+
+Cost an hour across two occurrences in one session, with the same silent
+symptom both times.
+
+Changing a network's labels means recreating the network. Doing that with
+`docker network rm` while containers are attached-but-running, then bringing
+the stack back up, reconnects them **without their compose service alias**:
+
+```
+DNSNames: ["fsl-juice-shop", "f70a6184cc73"]     # no "juice-shop"
+DNSNames: ["fsl-elasticsearch", "5080fa34ffaa"]  # no "elasticsearch"
+```
+
+Nothing logs a warning. The WAF died with `host not found in upstream
+"juice-shop"` and took Suricata with it, because Suricata shares its
+namespace; later the platform could not reach Elasticsearch and every ingest
+returned 503 while the console kept polling. Both read as something else
+entirely.
+
+`docker compose up -d --force-recreate <service>` puts the alias back. The
+rule: recreate the **containers**, not just the network.

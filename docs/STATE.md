@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (the console draws the range, and the backlog is empty)
+Updated: 2026-09-20 (the board is top-N tables; the console no longer runs what it collects)
 
 ## Where things stand
 
@@ -11,7 +11,7 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 218 unit/API tests, 61 acceptance tests against the live
+`bin/verify` is green: 225 unit/API tests, 61 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
@@ -24,7 +24,7 @@ tests            273   a floor: it may only go up
 ```
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
-then open the red and blue windows side by side: fire cases from one, watch the
+then open the three windows side by side: fire cases from one, watch the
 score move in the other, edit a Suricata rule and fire again. The red window
 also has a Kali terminal - name an attack, press start, type it, press stop,
 and it is scored two ways at once - by time and source, and by a marker the
@@ -39,6 +39,53 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The console no longer runs the attacks it collects.** A script-tag payload
+  went out as a case, came back as a request path, and the board rendered it
+  into `innerHTML`. Juice Shop's own challenge text did it too - it describes
+  its DOM XSS challenge with an iframe whose src is `javascript:`, and the red
+  window drew that as markup. Every value interpolated into markup now goes
+  through one `esc()`, and a test scans the templates for any that does not.
+
+  The comment explaining the fix broke the console, because it contained a
+  literal closing script tag: the HTML parser ends the element at the first
+  one it sees, so everything after it stopped being JavaScript and `esc`
+  silently did not exist. Tested for now as well.
+
+- **The board is top-N tables, the way real consoles are.** Rebuilt after two
+  attempts put the wrong things on it, both from summaries rather than the
+  source. Cloudflare's security events screen is a summary, one time series
+  and top events by source - each a table of a dimension with its count.
+  Igloo's names the thing that makes an address useful: the engine that raised
+  an alert is obvious, but what its source and destination *belong to* is not.
+
+  So: top source addresses with zone and country, top destinations with zone,
+  top signatures with engine, top request paths with method - and the same
+  zone and destination columns beside `From` in the alert list. `topology.py`
+  is the zone registry now, not a diagram.
+
+  Off the board: the segments table (how this range is built is a finding for
+  this file, not for a room watching traffic) and the Host column (it showed
+  an internal Docker alias, and Cloudflare's "host" is the attacked domain).
+
+- **The console is two windows, because it is watched from two distances.**
+  It had become a document - map, then topology, then counters, then the alert
+  list, each appended below the last on one scroll. Making it a grid on one
+  screen did not fix it: a control room has a **status board** read from
+  across the room and an **analyst screen** read sitting in front of it, and
+  neither is a section of the other.
+
+  `/board/<id>/` is the board. `/blue/<id>/` is the alert list: filters, the
+  table, the whole log record behind a row, plus the scoreboard and the rules.
+  The session page opens three windows now.
+
+  An acceptance test keeps the two disjoint, because this went wrong by
+  accretion and would go wrong again the same way.
+
+  Two traps: Django's `{# #}` is single-line only, so the multi-line ones
+  rendered across the top of the console; and `hidden` versus `flex` is
+  decided by the order Tailwind emits them, so showing a tab sets `display`
+  outright.
 
 - **The console draws the range, from the range.** `GET
   /api/sessions/<id>/topology/` reads the shape off Docker - segments from the
@@ -403,8 +450,13 @@ finds this stops and says so rather than inventing the next one: what this
 should be is not a loop's to choose.
 
 The user's direction, now delivered: a topology anyone can see, defence at the
-network layer and not only at the application, real source addresses on a map.
-What is left of that direction is the part the user ruled out - see below.
+network layer and not only at the application, real source addresses on a map,
+and a console shaped like something a person watches.
+
+What the user has ruled out is in DECISIONS rather than here: layer 2 and NAC,
+pfSense and OPNsense, and switching to x86_64 before it is needed. Keeping a
+second copy of a decision in the file every session re-reads costs the reading
+and buys nothing.
 
 Two things the range itself is now saying, which are observations and not
 items. Someone has to decide whether either is worth doing:
@@ -417,21 +469,14 @@ items. Someone has to decide whether either is worth doing:
 - **`mgmt` is unwatched.** Suricata is in the WAF's namespace, so nothing is
   listening on the management segment where Elasticsearch lives.
 
-## Not doing
-
-- **NAC / layer 2.** Dropped on the user's call. Nothing here plugs a cable
-  into a corporate switch, and 802.1X against switch ports has no port to act
-  on in a bridge network. See DECISIONS.
-- **pfSense / OPNsense.** FreeBSD, no usable container, wants a VM. If a real
-  appliance is ever wanted, that is the OpenStack path CLAUDE.md already names
-  - a large step, not a compose change. A container-shaped gateway (VyOS,
-  nftables, OpenWRT) is what item 1 needs.
-- **Switching to x86_64 now.** The deployment target is x86_64 and the switch
-  has been shown to work - amd64 Elasticsearch boots here under emulation - but
-  development is on a Mac and the stack stays arm64 until it is not. See
-  DECISIONS for the measurement and the speed cost.
-
 ## Known gaps
+
+- **Never `docker network rm` a compose network while its containers run.**
+  They reconnect without their service alias, nothing warns, and the failures
+  read as something else: the WAF died on `host not found in upstream
+  "juice-shop"` and took Suricata with it; later every ingest returned 503.
+  `docker compose up -d --force-recreate <service>` puts the alias back. This
+  cost an hour twice in one session - see DECISIONS.
 
 - The `platform` container mounts the Docker socket to validate rules, and the
   Kali terminal is an unauthenticated root shell on 7681. Both are container
