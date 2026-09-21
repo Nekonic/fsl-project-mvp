@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import requests
 
+from range import ATTACKER, GATEWAY, SENSOR, TARGET, recreate, run, start_hint
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = "http://localhost:8000"
 TARGET_URL = "http://localhost:8080"
@@ -24,7 +26,7 @@ def _reachable(url: str) -> bool:
 def stack_is_up():
     for url in (PLATFORM_URL, TARGET_URL):
         assert _reachable(url), (
-            f"could not reach {url}. Run `docker compose up -d --build` first."
+            f"could not reach {url}. Run `{start_hint()}` first."
         )
 
 @pytest.fixture(scope="session", autouse=True)
@@ -49,14 +51,7 @@ def reset_target() -> None:
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text("")
 
-    subprocess.run(
-        ["docker", "compose", "rm", "-sf", "juice-shop"],
-        capture_output=True, timeout=120, check=True, cwd=REPO_ROOT,
-    )
-    subprocess.run(
-        ["docker", "compose", "up", "-d", "juice-shop"],
-        capture_output=True, timeout=300, check=True, cwd=REPO_ROOT,
-    )
+    recreate(TARGET)
 
     deadline = time.time() + 180
     while time.time() < deadline:
@@ -70,7 +65,7 @@ def reset_target() -> None:
     raise AssertionError(
         f"the target was reset but {TARGET_URL} does not answer through the "
         "WAF. nginx caches its upstream address at start, so recreate it too:\n"
-        "  docker compose up -d --force-recreate waf suricata"
+        f"  {start_hint(GATEWAY, SENSOR, fresh=True)}"
     )
 
 def run_redteam() -> int:
@@ -92,16 +87,12 @@ def run_redteam() -> int:
     raise AssertionError(f"no session number in output:\n{result.stdout}")
 
 def from_attacker(path: str) -> None:
-    result = subprocess.run(
-        [
-            "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
-            "--max-time", "20", f"http://shop.com{path}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
+    result = run(
+        ATTACKER,
+        ["curl", "-s", "-o", "/dev/null", "--max-time", "20",
+         f"http://shop.com{path}"],
     )
-    assert result.returncode == 0, (
+    assert result.ok, (
         f"could not reach the target from the attacker box: {result.stderr}"
     )
 
