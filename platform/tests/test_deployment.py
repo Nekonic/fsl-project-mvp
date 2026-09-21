@@ -124,3 +124,25 @@ def test_no_setting_is_read_by_nothing():
         f"{unread} is set in settings and in compose and read by nobody, so it "
         f"reads as configuration somebody could change to an effect"
     )
+
+def test_a_health_check_asks_a_host_its_container_actually_listens_on():
+    import re
+
+    compose = (ROOT / "compose.yaml").read_text()
+    localhost = re.findall(r'test:.*?localhost.*', compose)
+
+    assert localhost == [], (
+        f"{localhost} asks 'localhost', which resolves to ::1 first. The nginx "
+        f"entrypoint adds an IPv6 listener by editing its own conf, and these "
+        f"confs are mounted read-only, so the check fails forever while the "
+        f"container serves fine"
+    )
+
+def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
+    verify = (ROOT / "bin/verify").read_text()
+
+    assert "fsl-juice-shop" in verify and "Health" in verify, (
+        "attacks fired at a target that is still starting hit nothing, and the "
+        "run reports TP 0 - which the session protocol answers with git reset "
+        "--hard. A flaky red is worse than a slow verify"
+    )

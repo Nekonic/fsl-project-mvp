@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONSOLE="$ROOT/platform/console/templates/console"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > "$WORK/in.css"
+
+npx --yes tailwindcss@3 \
+  -i "$WORK/in.css" \
+  -o "$CONSOLE/tailwind.css" \
+  --content "$CONSOLE/*.html" \
+  --minify
+
+printf 'wrote %s (%s bytes)\n' \
+  "platform/console/templates/console/tailwind.css" \
+  "$(wc -c < "$CONSOLE/tailwind.css" | tr -d ' ')"

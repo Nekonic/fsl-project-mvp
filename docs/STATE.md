@@ -194,6 +194,29 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**A verify that fails for its own reasons**
+- `bin/verify` fired the acceptance suite the moment the platform answered,
+  without waiting for the target. A run that started while Juice Shop was
+  still coming up reported TP 0 - "no attack was detected at all" - which the
+  session protocol answers with `git reset --hard`. It waits for the target's
+  own health now, up to two minutes, and says why if it never arrives.
+- Four health checks asked `localhost`, which resolves to `::1` first. The
+  nginx entrypoint adds an IPv6 listener by editing its own conf and these
+  confs are mounted read-only, so the wiki had been `unhealthy` for 513
+  consecutive checks while serving every request it was given. They ask
+  `127.0.0.1` now, and every container in the stack reports true.
+
+**The console needs no internet**
+- Tailwind came from `cdn.tailwindcss.com` on every page: a browser-side JIT
+  compiler, fetched at render time, which Tailwind documents as a development
+  tool. An isolated range - which is what this is for - met an unstyled
+  console. `bin/build-css` runs the Tailwind CLI over the console's own
+  templates and commits the 16KB result, which `base.html` inlines, so there
+  is no static-file serving, no new dependency and no network. Verified by
+  sampling computed styles on the blue console before and after: nine
+  selectors, identical to the character. A test refuses a template that
+  fetches anything, and another refuses a utility that is used and not built.
+
 **One language at a time**
 - `scoring` returned English sentences meant for a screen, so four warnings
   stayed English whatever language the console was in. It returns
@@ -282,8 +305,6 @@ says the second, because that is what is true today.
   `WINDOW_SLACK` is two seconds at each end. The console does not say so.
 - Nothing stops two people opening the same session in four windows. One user,
   one session was a deliberate scope decision.
-- The console loads Tailwind from `cdn.tailwindcss.com` on every page, so an
-  isolated range renders unstyled.
 
 ## Tried and thrown away
 
