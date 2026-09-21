@@ -19,6 +19,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/objectives/", views.session_objectives),
     path("api/sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("api/sessions/<int:session_id>/detections/", views.session_detections),
+    path("api/sessions/<int:session_id>/commands/", views.session_commands),
     path("api/sessions/<int:session_id>/map/", views.session_map),
     path("api/sessions/<int:session_id>/top/", views.session_top),
     path("api/sessions/<int:session_id>/topology/", views.session_topology),
