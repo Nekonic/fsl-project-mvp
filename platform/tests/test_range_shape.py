@@ -11,6 +11,7 @@ DECLARED = Declaration(
     segments=(
         Segment(id="edge", name="Internet", origin="Moscow, Russia"),
         Segment(id="estate", name="Application estate"),
+        Segment(id="mgmt", name="Management"),
     ),
 )
 
@@ -79,9 +80,12 @@ def test_a_segment_carries_the_name_the_substrate_knows_it_by():
 def test_a_segment_is_called_what_the_declaration_calls_it():
     assert segment(describe(), "estate").name == "Application estate"
 
-def test_a_segment_nobody_declared_falls_back_to_its_own_name():
-    assert segment(describe(), "mgmt").name == "mgmt"
-    assert segment(describe(), "mgmt").origin == ""
+def test_a_segment_nobody_declared_stops_the_picture():
+    thin = Declaration(segments=(Segment(id="edge", name="Internet"),))
+
+    with pytest.raises(RangeUnavailable, match="estate"):
+        with patch("range.docker.subprocess.run", _Run()):
+            Docker(thin).describe()
 
 def test_the_declaration_says_what_a_segment_means_and_the_substrate_does_not():
     edge = segment(describe(), "edge")
@@ -171,3 +175,29 @@ def test_a_host_that_is_not_the_sensor_is_left_alone():
     picture = topology.shape(shape, Declaration(roles={"sensor": "fsl-suricata"}))
 
     assert not picture["segments"][0]["nodes"][0].get("watches")
+
+def test_a_segment_nobody_declared_is_reported_not_invented():
+    from range.declared import Declaration
+
+    found = Declaration(segments=(), roles={})
+
+    with pytest.raises(RangeUnavailable, match="ghost"):
+        found.segment("ghost")
+
+def test_a_declared_segment_still_comes_back():
+    from range.declared import Declaration
+    from range.ports import Segment
+
+    found = Declaration(segments=(Segment(id="edge", name="Internet"),))
+
+    assert found.segment("edge").name == "Internet"
+
+def test_the_adapter_says_which_network_it_could_not_place():
+    from range.declared import Declaration
+    from range.docker import Docker
+
+    adapter = Docker(Declaration(segments=(), roles={}))
+
+    with pytest.raises(RangeUnavailable, match="edge"):
+        with patch("range.docker.subprocess.run", _Run()):
+            adapter.describe()
