@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from range import declared
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
@@ -47,11 +49,10 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
 
-                                                                  
-ATTACKER_CONTAINER = os.environ.get("ATTACKER_CONTAINER", "fsl-kali")
-                                                                           
-                          
-ATTACKER_SOURCE_CONTAINER = os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy")
+RANGE = declared.read()
+
+ATTACKER_CONTAINER = RANGE.roles["attacker"]
+ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
 ATTACKER_ORIGIN_FILE = os.environ.get("ATTACKER_ORIGIN_FILE", "/label/origin")
 ATTACKER_NETWORK = os.environ.get("ATTACKER_NETWORK", "fsl_edge")
@@ -90,11 +91,5 @@ ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
 FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
 FSL_SUBSTRATE_OPTIONS = {
     "project": os.environ.get("FSL_PROJECT", "fsl"),
-    "hosts": {
-        "sensor": os.environ.get("SURICATA_CONTAINER", "fsl-suricata"),
-        "proxy": os.environ.get("ATTACKER_SOURCE_CONTAINER", "fsl-proxy"),
-        "wiki": os.environ.get("WIKI_CONTAINER", "fsl-wiki"),
-    },
+    "declared": RANGE,
 }
-
-SURICATA_CONTAINER = os.environ.get("SURICATA_CONTAINER", "fsl-suricata")

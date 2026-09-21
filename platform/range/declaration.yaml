@@ -1,0 +1,25 @@
+segments:
+  - id: edge
+    name: Internet
+    origin: Moscow, Russia
+  - id: edge-br
+    name: Internet
+    origin: Sao Paulo, Brazil
+  - id: edge-hk
+    name: Internet
+    origin: Kwai Chung, Hong Kong
+  - id: edge-kp
+    name: Internet
+    origin: North Korea
+  - id: estate
+    name: Application estate
+  - id: mgmt
+    name: Management
+
+roles:
+  attacker: fsl-kali
+  gateway: fsl-waf
+  proxy: fsl-proxy
+  sensor: fsl-suricata
+  target: fsl-juice-shop
+  wiki: fsl-wiki

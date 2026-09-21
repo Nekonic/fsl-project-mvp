@@ -11,8 +11,9 @@ repo disagrees with the code, the code is the fact; those are collected in §8.
 
 ## 1. What the range is made of
 
-Nine compose services on six Docker networks. `compose.yaml` is the whole
-definition: no Terraform, no provisioning step, no router.
+Nine compose services on six Docker networks. `platform/range/declaration.yaml`
+says what they mean and `compose.yaml` builds them: no Terraform, no
+provisioning step, no router.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
@@ -26,7 +27,7 @@ definition: no Terraform, no provisioning step, no router.
 | `fsl-proxy` | built from `deploy/proxy` | edge, edge-br, edge-hk, edge-kp | — |
 | `fsl-platform` | built from `./platform` | all six | 8000 |
 
-| Network | Subnet | `fsl.segment` | `fsl.origin` |
+| Network | Subnet (allocated) | Name (declared) | Origin (declared) |
 |---|---|---|---|
 | `edge` | 5.188.10.0/24 | Internet | Moscow, Russia |
 | `edge-br` | 177.54.144.0/24 | Internet | Sao Paulo, Brazil |
@@ -35,11 +36,34 @@ definition: no Terraform, no provisioning step, no router.
 | `estate` | 172.30.0.0/24 | Application estate | — |
 | `mgmt` | 172.31.0.0/24 | Management | — |
 
-Labels are at `compose.yaml:3-48`. A segment is **outside** if and only if its
-network carries a non-empty `fsl.origin` label — the only definition anywhere
-(`platform/range/ports.py:38-39`, read off the network at
-`platform/range/docker.py:80`) — and that label's text is the origin name the
-console shows (`platform/attacker.py:38`).
+**The platform is told what the range means, not asked.**
+`platform/range/declaration.yaml` is the one substrate-neutral statement of it:
+per segment an id, the name a person reads and the origin it attacks from, plus
+the role table (`attacker`, `gateway`, `proxy`, `sensor`, `target`, `wiki`) that
+says which host fills each job. `compose.yaml` is the Docker *realisation* of
+that file — its network labels at `compose.yaml:3-48` and its `container_name`
+lines say the same things in Docker's vocabulary — and nothing generates one
+from the other, so `platform/tests/test_declaration.py` compares them and names
+the segment or the role that drifted.
+
+A segment is **outside** if and only if the declaration gives it a non-empty
+`origin` — the only definition anywhere (`platform/range/ports.py:38-39`,
+supplied at `platform/range/declared.py:23-35`) — and that text is the origin name
+the console shows (`platform/attacker.py:38`). The Docker adapter no longer
+reads `fsl.segment` or `fsl.origin`: it asks the daemon only for what only the
+daemon knows, and merges the declared identity into it
+(`platform/range/docker.py:63-81`). Neutron can answer which networks a project
+has and what it allocated on them; it cannot answer what they mean.
+
+**The subnet is not declared.** The declaration carries identity; the substrate
+carries allocation. A subnet written into the declaration would be an address
+fact the platform does not own — Docker hands it out from `ipam`, Neutron may
+hand it out from a subnet pool — and if the two disagreed the console would draw
+a segment whose own nodes' addresses fall outside it, and place alerts by a
+subnet nothing lives on (`platform/api/views.py:179,291` bin every alert by
+`ip_network(segment["subnet"])`). Gateway settles it: nobody can declare that at
+all, and it travels with the subnet. `test_declaration.py` asserts the
+declaration states none of subnet, gateway, address, nodes or network.
 
 Only the subnets are fixed. No service is given an `ipv4_address`, so every
 address is DHCP-assigned and changes on recreate. `Substrate.describe()` reads
@@ -61,7 +85,7 @@ rule and no ACL anywhere in `deploy/`. The guarantee is what
 reach `juice-shop:3000`, Kali can reach `shop.com`, and they share no network.
 
 ```
- OUTSIDE  (networks carrying fsl.origin)
+ OUTSIDE  (segments the declaration gives an origin)
 
  +---------------------------------------------------------------+
  | edge      5.188.10.0/24     "Internet" / Moscow, Russia        |

@@ -3,18 +3,26 @@ from unittest.mock import patch
 
 import pytest
 
+from range.declared import Declaration
 from range.docker import Docker
-from range.ports import RangeUnavailable
+from range.ports import RangeUnavailable, Segment
+
+DECLARED = Declaration(
+    segments=(
+        Segment(id="edge", name="Internet", origin="Moscow, Russia"),
+        Segment(id="estate", name="Application estate"),
+    ),
+)
 
 NETWORKS = [
     {"Name": "fsl_edge",
-     "Labels": {"fsl.origin": "Moscow, Russia", "fsl.segment": "Internet"},
+     "Labels": {"fsl.origin": "Nowhere at all", "fsl.segment": "Whatever"},
      "IPAM": {"Config": [{"Subnet": "5.188.10.0/24", "Gateway": "5.188.10.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "5.188.10.4/24"},
          "bbb": {"Name": "fsl-proxy", "IPv4Address": "5.188.10.3/24"},
      }},
-    {"Name": "fsl_estate", "Labels": {"fsl.segment": "Application estate"},
+    {"Name": "fsl_estate", "Labels": {},
      "IPAM": {"Config": [{"Subnet": "172.30.0.0/24", "Gateway": "172.30.0.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "172.30.0.3/24"},
@@ -57,7 +65,7 @@ class _Run:
 
 def describe(**kwargs):
     with patch("range.docker.subprocess.run", _Run(**kwargs)):
-        return Docker(hosts={}).describe()
+        return Docker(DECLARED).describe()
 
 def segment(shape, segment_id):
     return next(s for s in shape.segments if s.id == segment_id)
@@ -68,14 +76,22 @@ def test_every_network_of_the_project_is_a_segment():
 def test_a_segment_carries_the_name_the_substrate_knows_it_by():
     assert segment(describe(), "edge").network == "fsl_edge"
 
-def test_a_segment_the_stack_named_is_called_what_the_stack_called_it():
+def test_a_segment_is_called_what_the_declaration_calls_it():
     assert segment(describe(), "estate").name == "Application estate"
 
-def test_a_segment_nobody_named_falls_back_to_its_network_name():
+def test_a_segment_nobody_declared_falls_back_to_its_own_name():
     assert segment(describe(), "mgmt").name == "mgmt"
+    assert segment(describe(), "mgmt").origin == ""
 
-def test_a_segment_carrying_an_origin_is_outside():
-    assert segment(describe(), "edge").origin == "Moscow, Russia"
+def test_the_declaration_says_what_a_segment_means_and_the_substrate_does_not():
+    edge = segment(describe(), "edge")
+
+    assert (edge.name, edge.origin) == ("Internet", "Moscow, Russia"), (
+        "the meaning came off a label the substrate was carrying; Neutron has "
+        "no such label to carry"
+    )
+
+def test_a_segment_the_declaration_gives_an_origin_is_outside():
     assert segment(describe(), "edge").outside is True
     assert segment(describe(), "estate").outside is False
 
@@ -105,7 +121,7 @@ def test_a_project_with_no_networks_is_an_error_not_an_empty_shape():
 def test_reading_the_shape_asks_each_question_once():
     spy = _Run()
     with patch("range.docker.subprocess.run", spy):
-        Docker(hosts={}).describe()
+        Docker(DECLARED).describe()
 
     assert len(spy.argv) == 4, (
         f"one describe() cost {len(spy.argv)} round trips: "

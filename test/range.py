@@ -5,7 +5,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
 
 ATTACKER = "attacker"
 TARGET = "target"
@@ -37,12 +40,13 @@ class Host:
     node: str
     unit: str
 
+def declared_roles() -> dict[str, str]:
+    document = yaml.safe_load(DECLARATION.read_text()) or {}
+    return dict(document.get("roles") or {})
+
 DOCKER_HOSTS = {
-    ATTACKER: Host(node="fsl-kali", unit="kali"),
-    TARGET: Host(node="fsl-juice-shop", unit="juice-shop"),
-    SENSOR: Host(node="fsl-suricata", unit="suricata"),
-    WIKI: Host(node="fsl-wiki", unit="wiki"),
-    GATEWAY: Host(node="fsl-waf", unit="waf"),
+    role: Host(node=node, unit=node.removeprefix("fsl-"))
+    for role, node in declared_roles().items()
 }
 
 class Docker:

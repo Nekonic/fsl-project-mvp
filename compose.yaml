@@ -209,7 +209,6 @@ services:
       DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "fsl-logs-*"
-      SURICATA_CONTAINER: "fsl-suricata"
       DJANGO_DB_PATH: "/data/db.sqlite3"
       TARGET_URL: "http://shop.com"
       PUBLIC_TARGET_URL: "http://shop.com"

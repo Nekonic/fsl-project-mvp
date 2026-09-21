@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 
+from range.declared import Declaration
 from range.ports import Node, Ran, RangeUnavailable, Segment, Sensor, Shape
 
 PROJECT_LABEL = "com.docker.compose.project"
-ORIGIN_LABEL = "fsl.origin"
-NAME_LABEL = "fsl.segment"
 
 _TIMEOUT = 30
 
 class Docker:
-    def __init__(self, hosts: dict[str, str], project: str = "fsl"):
-        self.hosts = hosts
+    def __init__(self, declared: Declaration, project: str = "fsl"):
+        self.declared = declared
         self.project = project
 
     def describe(self) -> Shape:
@@ -37,7 +37,7 @@ class Docker:
         )
 
     def runner(self, role: str, segment_id: str = ""):
-        host = self.hosts.get(role)
+        host = self.declared.roles.get(role)
         if host is None:
             raise RangeUnavailable(f"no host fills the role {role!r}")
 
@@ -61,9 +61,7 @@ class Docker:
         return run
 
     def _segment(self, network: dict) -> Segment:
-        labels = network.get("Labels") or {}
         config = (network.get("IPAM") or {}).get("Config") or [{}]
-        short = network["Name"].split("_", 1)[-1]
         nodes = sorted(
             (
                 Node(
@@ -74,10 +72,8 @@ class Docker:
             ),
             key=lambda node: node.name,
         )
-        return Segment(
-            id=short,
-            name=labels.get(NAME_LABEL, "") or short,
-            origin=labels.get(ORIGIN_LABEL, ""),
+        return replace(
+            self.declared.segment(network["Name"].split("_", 1)[-1]),
             subnet=config[0].get("Subnet", ""),
             network=network["Name"],
             gateway=config[0].get("Gateway", ""),
