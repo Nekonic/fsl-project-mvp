@@ -82,6 +82,26 @@ def _shape(obj, fields):
     return {name: getattr(obj, name) for name in fields}
 
 
+def _listed(detection):
+    """One row of the alert list.
+
+    Destination and path come out of the stored record rather than out of new
+    columns: only Suricata's record keeps the whole event, so ModSecurity's
+    half of the same traffic reads empty here - which is the honest answer and
+    the same one the map gives about geo.
+    """
+    raw = detection.raw or {}
+    http = raw.get("http") or {}
+    port = raw.get("dest_port")
+    return dict(
+        _shape(detection, DETECTION_FIELDS),
+        dest=f"{raw['dest_ip']}:{port}" if raw.get("dest_ip") and port
+             else (raw.get("dest_ip") or ""),
+        method=http.get("http_method") or "",
+        path=http.get("url") or "",
+    )
+
+
 def _reply(payload, status=200):
     """DjangoJSONEncoder renders datetimes the way the console expects."""
     return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
@@ -135,6 +155,140 @@ def attacker_box(request):
             "terminal_url": settings.ATTACKER_TERMINAL_URL,
         }
     )
+
+
+# How many rows a top-N table shows. More than this is not read from a board
+# and not scrolled through on a screen either.
+TOP_N = 25
+
+
+def _zones():
+    """Which address range belongs to what, by name.
+
+    Igloo's write-up of a real console names the defect this fixes: the device
+    that raised an alert is obvious from the alert, but working out what its
+    source and destination addresses *belong to* takes further work - so the
+    console maps ranges to the name of the thing that owns them and shows that
+    name beside the address. Here the ranges are the stack's own segments.
+    """
+    try:
+        segments = topology.shape()["segments"]
+    except topology.StackUnavailable:
+        # The address is the fact and the zone is the extra. A stopped Docker
+        # must not empty the board.
+        return []
+
+    zones = []
+    for segment in segments:
+        try:
+            zones.append((ipaddress.ip_network(segment["subnet"]), segment))
+        except ValueError:
+            continue
+    return zones
+
+
+def _zone_of(address, zones):
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return None
+    return next((s for network, s in zones if parsed in network), None)
+
+
+def _http(detection):
+    """The request an alert was raised on, where the record kept it.
+
+    Suricata keeps the whole event, so the method, host, path and user agent
+    are all there. ModSecurity's record keeps the message alone, so these read
+    empty for its half of the same traffic - said, not guessed.
+    """
+    return (detection.raw or {}).get("http") or {}
+
+
+@require_http_methods(["GET"])
+def session_top(request, session_id):
+    """The board: each dimension of the traffic, counted, biggest first.
+
+    The shape every real console has. Cloudflare's security events screen is a
+    summary, one time series and "top events by source" - addresses,
+    countries, paths, hosts - each a table of one dimension with its count.
+    Igloo's adds the zone beside the address, which is what makes an address
+    mean something to whoever is reading it.
+    """
+    session = get_object_or_404(Session, pk=session_id)
+    detections = list(session.detections.all())
+    zones = _zones()
+
+    # Geo belongs to the address, not the alert - only Suricata's records keep
+    # the whole document. See session_map.
+    located = {}
+    for detection in detections:
+        if detection.src_ip and detection.src_ip not in located:
+            geo = (detection.raw or {}).get("src_geo") or {}
+            if geo:
+                located[detection.src_ip] = geo
+
+    sources, destinations, signatures, paths = {}, {}, {}, {}
+    for detection in detections:
+        http = _http(detection)
+
+        if detection.src_ip:
+            row = sources.get(detection.src_ip)
+            if row is None:
+                geo = located.get(detection.src_ip) or {}
+                zone = _zone_of(detection.src_ip, zones)
+                row = sources[detection.src_ip] = {
+                    "src_ip": detection.src_ip,
+                    "zone": zone["name"] if zone else "",
+                    "outside": bool(zone and zone["outside"]),
+                    "country": geo.get("country_name") or "",
+                    "country_code": geo.get("country_iso_code") or "",
+                    "city": geo.get("city_name") or "",
+                    "alerts": 0,
+                }
+            row["alerts"] += 1
+
+        dest_ip = (detection.raw or {}).get("dest_ip")
+        if dest_ip:
+            port = (detection.raw or {}).get("dest_port") or ""
+            key = f"{dest_ip}:{port}" if port else dest_ip
+            row = destinations.get(key)
+            if row is None:
+                zone = _zone_of(dest_ip, zones)
+                row = destinations[key] = {
+                    "dest": key,
+                    "zone": zone["name"] if zone else "",
+                    "alerts": 0,
+                }
+            row["alerts"] += 1
+
+        key = (detection.signature, detection.source)
+        row = signatures.setdefault(key, {
+            "signature": detection.signature,
+            "engine": detection.source,
+            "alerts": 0,
+        })
+        row["alerts"] += 1
+
+        url = http.get("url")
+        if url:
+            key = (http.get("http_method") or "", url)
+            row = paths.setdefault(key, {
+                "method": key[0],
+                "path": url,
+                "alerts": 0,
+            })
+            row["alerts"] += 1
+
+    def top(rows):
+        return sorted(rows, key=lambda r: -r["alerts"])[:TOP_N]
+
+    return _reply({
+        "sources": top(sources.values()),
+        "destinations": top(destinations.values()),
+        "signatures": top(signatures.values()),
+        "paths": top(paths.values()),
+    })
 
 
 @require_http_methods(["GET"])
@@ -499,7 +653,7 @@ def session_detections(request, session_id):
             return _reply({"detail": f'"after" must be a row id, got {after!r}'}, 400)
         detections = detections.filter(id__gt=int(after))
 
-    return _reply([_shape(d, DETECTION_FIELDS) for d in detections])
+    return _reply([_listed(d) for d in detections])
 
 
 @require_http_methods(["GET"])

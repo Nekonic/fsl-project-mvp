@@ -28,6 +28,12 @@ PROJECT_LABEL = "com.docker.compose.project"
 # A network carrying this is somewhere an attack comes from. See attacker.py.
 ORIGIN_LABEL = "fsl.origin"
 
+# What to call the segment on screen. Without it the diagram shows compose's
+# own network names - `edge-br`, `mgmt` - which say nothing to anyone who did
+# not write the compose file, and the first person to read it asked what they
+# were.
+NAME_LABEL = "fsl.segment"
+
 
 class StackUnavailable(RuntimeError):
     """Docker cannot be reached, so the shape cannot be read."""
@@ -142,9 +148,11 @@ def shape() -> dict:
             }
             for attached in (network.get("Containers") or {}).values()
         ]
-        label = (network.get("Labels") or {}).get(ORIGIN_LABEL, "")
+        labels = network.get("Labels") or {}
+        label = labels.get(ORIGIN_LABEL, "")
         segments.append({
             "id": network["Name"].split("_", 1)[-1],
+            "name": labels.get(NAME_LABEL, "") or network["Name"].split("_", 1)[-1],
             "network": network["Name"],
             "subnet": config[0].get("Subnet", ""),
             "gateway": config[0].get("Gateway", ""),

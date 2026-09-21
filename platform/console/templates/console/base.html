@@ -6,15 +6,19 @@
   <title>{% block title %}FSL{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-950 text-slate-200 font-sans">
+<body class="bg-slate-950 text-slate-200 font-sans {% block body_class %}{% endblock %}">
   <header class="border-b border-slate-800">
-    <nav class="max-w-5xl mx-auto px-6 py-4 flex gap-6 text-sm items-center">
+    <nav class="{% block nav_class %}max-w-5xl mx-auto{% endblock %} px-6 py-3 flex gap-6 text-sm items-center">
       <a href="/" class="font-semibold text-slate-100">FSL</a>
       {% block nav %}{% endblock %}
       <span id="session-label" class="ml-auto text-slate-500"></span>
     </nav>
   </header>
-  <main class="max-w-5xl mx-auto px-6 py-8">
+  {% comment %}
+  A monitoring console is not a document: it fills the screen and each panel
+  scrolls on its own. Pages that are documents keep the default.
+  {% endcomment %}
+  <main class="{% block main_class %}max-w-5xl mx-auto px-6 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
   <script>
@@ -27,6 +31,26 @@
       const body = await response.json().catch(() => ({}));
       return { ok: response.ok, status: response.status, body };
     }
+
+    // Everything on these pages is an attack someone just sent. Putting any
+    // of it into innerHTML unescaped runs it: a script-tag payload goes out
+    // as a case, comes back as a request path, and the console that displays
+    // it is where the payload finally lands. A security tool executing the
+    // attacks it caught is the worst version of this bug, and it shipped.
+    //
+    // So: every value interpolated into markup goes through this. Use
+    // textContent where there is no markup to build.
+    //
+    // Nothing here may contain a literal closing script tag, not even inside
+    // a comment or a string: the HTML parser ends the element at the first
+    // one it sees and the rest stops being JavaScript. That is how this very
+    // comment broke the console while describing the bug it fixes.
+    const ESCAPES = {
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    };
+    const esc = (value) =>
+      String(value === null || value === undefined ? "" : value)
+        .replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
     const post = (path, payload) => api(path, {
       method: "POST",

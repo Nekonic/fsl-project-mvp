@@ -19,6 +19,7 @@ networks:
   # that resolves to nothing draws no pin, and no assertion would notice.
   edge:
     labels:
+      fsl.segment: "Internet"
       fsl.origin: "Moscow, Russia"
     ipam:
       config:
@@ -26,6 +27,7 @@ networks:
 
   edge-br:
     labels:
+      fsl.segment: "Internet"
       fsl.origin: "Sao Paulo, Brazil"
     ipam:
       config:
@@ -33,6 +35,7 @@ networks:
 
   edge-hk:
     labels:
+      fsl.segment: "Internet"
       fsl.origin: "Kwai Chung, Hong Kong"
     ipam:
       config:
@@ -40,6 +43,7 @@ networks:
 
   edge-kp:
     labels:
+      fsl.segment: "Internet"
       fsl.origin: "North Korea"
     ipam:
       config:
@@ -47,11 +51,15 @@ networks:
 
   # The estate. Private, because that is what a company's inside looks like.
   estate:
+    labels:
+      fsl.segment: "Application estate"
     ipam:
       config:
         - subnet: 172.30.0.0/24
 
   mgmt:
+    labels:
+      fsl.segment: "Management"
     ipam:
       config:
         - subnet: 172.31.0.0/24

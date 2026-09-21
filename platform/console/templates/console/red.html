@@ -120,11 +120,11 @@
       ? "border-rose-900 hover:border-rose-600"
       : "border-emerald-900 hover:border-emerald-600";
     return `
-      <button data-case="${caseDef.name}"
+      <button data-case="${esc(caseDef.name)}"
         class="fire w-full text-left border ${colour} rounded px-3 py-2">
-        <div class="text-slate-100 text-sm">${caseDef.name}</div>
-        <div class="text-slate-500 text-xs font-mono mt-1">${caseDef.summary}</div>
-        ${caseDef.takes ? `<div class="text-rose-400 text-xs mt-1">takes ${caseDef.takes}</div>` : ""}
+        <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
+        <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
+        ${caseDef.takes ? `<div class="text-rose-400 text-xs mt-1">takes ${esc(caseDef.takes)}</div>` : ""}
       </button>`;
   }
 
@@ -169,7 +169,7 @@
         // The subnet, not the address: the buttons fire from the platform and
         // the terminal from the proxy, so the two have different addresses on
         // the same network. The subnet is true of both.
-        `<option value="${origin.id}">${origin.label} (${origin.subnet})</option>`
+        `<option value="${esc(origin.id)}">${esc(origin.label)} (${esc(origin.subnet)})</option>`
       ).join("");
     const preferred = result.body.origins.find((origin) => origin.default);
     if (preferred) select.value = preferred.id;
@@ -218,7 +218,7 @@
     const result = await api(`/api/wargames/juice-shop/objectives/`);
     if (!result.ok) {
       document.getElementById("objectives").innerHTML =
-        `<p class="text-amber-400 text-sm p-4">${result.body.detail || "target unreachable"}</p>`;
+        `<p class="text-amber-400 text-sm p-4">${esc(result.body.detail) || "target unreachable"}</p>`;
       return;
     }
     objectives = result.body;
@@ -228,7 +228,7 @@
     const categories = [...new Set(objectives.map((o) => o.category))].sort();
     const select = document.getElementById("objective-category");
     select.innerHTML = `<option value="">all categories</option>` +
-      categories.map((c) => `<option value="${c}">${c}</option>`).join("");
+      categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     renderObjectives();
   }
 
@@ -246,11 +246,12 @@
 
     document.getElementById("objectives").innerHTML = shown.map((o) => `
       <div class="border-t border-slate-900 px-3 py-2 flex gap-3 items-baseline">
-        <span class="text-amber-400 font-mono text-xs w-12">${STAR(o.difficulty)}</span>
+        <span class="text-amber-400 font-mono text-xs w-12">${esc(STAR(o.difficulty))}</span>
         <span class="${o.solved ? "text-slate-500 line-through" : "text-slate-100"} text-sm w-56">
-          ${o.name}</span>
-        <span class="text-slate-500 text-xs w-48">${o.category}</span>
-        <span class="text-slate-600 text-xs flex-1 truncate">${o.description}</span>
+          ${esc(o.name)}</span>
+        <span class="text-slate-500 text-xs w-48">${esc(o.category)}</span>
+        <span class="text-slate-600 text-xs flex-1 truncate" title="${esc(o.description)}"
+          >${esc(o.description)}</span>
       </div>`).join("") ||
       `<p class="text-slate-500 text-sm p-4">Nothing matches.</p>`;
   }

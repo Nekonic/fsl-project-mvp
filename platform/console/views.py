@@ -23,3 +23,8 @@ def red(request, session_id):
 
 def blue(request, session_id):
     return render(request, "console/blue.html")
+
+
+def board(request, session_id):
+    """The ten-foot view: read from across a room, operated by nobody."""
+    return render(request, "console/board.html")
