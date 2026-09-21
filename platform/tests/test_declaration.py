@@ -73,6 +73,21 @@ def drift(compose, declaration):
                     f"{declared[segment_id][field]!r}"
                 )
 
+    services = compose.get("services") or {}
+    roles = declaration.get("roles") or {}
+    for sensing, sensed in sorted((declaration.get("watches") or {}).items()):
+        name = (roles.get(sensing) or "").removeprefix("fsl-")
+        watched = (roles.get(sensed) or "").removeprefix("fsl-")
+        if name not in services or watched not in services:
+            continue
+        mode = (services.get(name) or {}).get("network_mode") or ""
+        if mode != f"service:{watched}":
+            complaints.append(
+                f"the {sensing!r} is declared to watch the {sensed!r} and "
+                f"compose gives {name!r} network_mode {mode or 'of its own'!r}, "
+                f"so it would see none of that host's traffic"
+            )
+
     defined = containers(compose)
     for role, host in sorted((declaration.get("roles") or {}).items()):
         if host not in defined:
@@ -261,3 +276,43 @@ def test_every_network_the_stack_builds_says_which_segment_it_is():
         f"nothing on {unmarked} says which declared segment it realises, so "
         f"the adapter has to guess from the name it happens to have"
     )
+
+def test_the_declaration_says_what_the_sensor_watches():
+    from range import declared
+
+    found = declared.read()
+
+    assert found.watches, (
+        "which host the sensor sees traffic for was read off Docker's "
+        "NetworkMode, and Neutron has no such fact: on Nova the console would "
+        "have shown no sensor at all, or the sketch's guess"
+    )
+    for sensing, sensed in found.watches.items():
+        assert sensing in found.roles and sensed in found.roles
+
+def test_a_sensor_watching_a_role_nobody_fills_is_refused():
+    from range.declared import Declaration
+
+    with pytest.raises(ValueError, match="gateway"):
+        Declaration(roles={"sensor": "fsl-suricata"},
+                    watches={"sensor": "gateway"}).check()
+
+def test_a_sensor_compose_takes_out_of_the_namespace_it_watches_is_caught():
+    compose, declaration = documents()
+    compose["services"]["suricata"]["network_mode"] = "service:juice-shop"
+
+    assert drift(compose, declaration) == [
+        "the 'sensor' is declared to watch the 'gateway' and compose gives "
+        "'suricata' network_mode 'service:juice-shop', so it would see none of "
+        "that host's traffic"
+    ]
+
+def test_a_sensor_compose_gives_its_own_stack_is_caught():
+    compose, declaration = documents()
+    del compose["services"]["suricata"]["network_mode"]
+
+    assert drift(compose, declaration) == [
+        "the 'sensor' is declared to watch the 'gateway' and compose gives "
+        "'suricata' network_mode 'of its own', so it would see none of that "
+        "host's traffic"
+    ]

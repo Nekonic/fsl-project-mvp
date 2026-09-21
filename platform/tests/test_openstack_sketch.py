@@ -199,9 +199,9 @@ def test_what_the_sensor_watches_comes_from_the_roles_and_not_the_cloud():
     assert [(s.name, s.watches) for s in shape.sensors] == [
         ("fsl-suricata", "fsl-waf")
     ], (
-        "Neutron has no namespace sharing to read this off, so the sketch "
-        "assumes the sensor watches the gateway; nothing in the declaration "
-        "says so"
+        "Neutron has no namespace sharing to read this off, and the sketch "
+        "used to assume the sensor watches the gateway. It is declared now, "
+        "and nothing on Nova confirms it"
     )
 
 

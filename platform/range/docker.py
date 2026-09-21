@@ -146,19 +146,28 @@ class Docker:
         )
 
     def _sensors(self, networks: list[dict]) -> tuple[Sensor, ...]:
+        if not self.declared.watches:
+            return ()
+
         named = {
             container_id: attached["Name"]
             for network in networks
             for container_id, attached in (network.get("Containers") or {}).items()
         }
+        modes = self._modes()
         found = []
-        for name, mode in self._modes().items():
-            if not mode.startswith("container:"):
-                continue
-            host = named.get(mode.split(":", 1)[1])
-            if host:
-                found.append(Sensor(name=name, watches=host))
-        return tuple(sorted(found, key=lambda sensor: sensor.name))
+        for sensing, sensed in sorted(self.declared.watches.items()):
+            name = self.declared.roles[sensing]
+            host = self.declared.roles[sensed]
+            sharing = named.get(modes.get(name, "").partition(":")[2], "")
+            if sharing != host:
+                raise RangeUnavailable(
+                    f"{name} is declared to watch {host} and stands in "
+                    f"{sharing or modes.get(name, 'nothing')!r} instead, so "
+                    f"the console would draw a sensor on traffic it cannot see"
+                )
+            found.append(Sensor(name=name, watches=host))
+        return tuple(found)
 
     def _modes(self) -> dict[str, str]:
         names = self._lines([

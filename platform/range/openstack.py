@@ -16,8 +16,6 @@ CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
 
-WATCHED_ROLE = "gateway"
-SENSOR_ROLE = "sensor"
 SEGMENT_TAG = "fsl.segment.id"
 
 
@@ -133,12 +131,14 @@ class OpenStack:
         return tuple(sorted(found, key=lambda node: node.name))
 
     def _sensors(self, servers: list[dict]) -> tuple[Sensor, ...]:
-        sensor = self.declared.roles.get(SENSOR_ROLE, "")
-        watched = self.declared.roles.get(WATCHED_ROLE, "")
         standing = {server["name"] for server in servers}
-        if sensor in standing and watched in standing:
-            return (Sensor(name=sensor, watches=watched),)
-        return ()
+        found = []
+        for sensing, sensed in sorted(self.declared.watches.items()):
+            name = self.declared.roles[sensing]
+            host = self.declared.roles[sensed]
+            if name in standing and host in standing:
+                found.append(Sensor(name=name, watches=host))
+        return tuple(found)
 
     def _address(self, role: str, host: str, segment_id: str) -> str:
         for segment in self.describe().segments:

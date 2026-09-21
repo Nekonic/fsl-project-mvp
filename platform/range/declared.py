@@ -13,9 +13,17 @@ DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 class Declaration:
     segments: tuple[Segment, ...] = ()
     roles: dict[str, str] = field(default_factory=dict)
+    watches: dict[str, str] = field(default_factory=dict)
     default_origin: str = ""
 
     def check(self) -> None:
+        for sensing, sensed in self.watches.items():
+            missing = [r for r in (sensing, sensed) if r not in self.roles]
+            if missing:
+                raise ValueError(
+                    f"{sensing!r} is declared to watch {sensed!r} and nothing "
+                    f"fills {', '.join(sorted(missing))}"
+                )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
             raise ValueError(
@@ -45,6 +53,7 @@ def read(path: Path = DECLARATION) -> Declaration:
             for entry in document.get("segments") or []
         ),
         roles=dict(document.get("roles") or {}),
+        watches=dict(document.get("watches") or {}),
         default_origin=document.get("default_origin") or "",
     )
     found.check()
