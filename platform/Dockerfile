@@ -9,8 +9,8 @@ COPY . .
 
 ARG DOCKER_GID=0
 RUN useradd --system --create-home --uid 10001 fsl \
- && groupadd --gid ${DOCKER_GID} dockersock \
- && usermod --append --groups dockersock fsl \
+ && (getent group ${DOCKER_GID} || groupadd --gid ${DOCKER_GID} dockersock) \
+ && usermod --append --groups $(getent group ${DOCKER_GID} | cut -d: -f1) fsl \
  && chown -R fsl /app
 USER fsl
 

@@ -3,6 +3,7 @@ name: fsl
 networks:
   edge:
     labels:
+      fsl.segment.id: "edge"
       fsl.segment: "Internet"
       fsl.origin: "Moscow, Russia"
     ipam:
@@ -11,6 +12,7 @@ networks:
 
   edge-br:
     labels:
+      fsl.segment.id: "edge-br"
       fsl.segment: "Internet"
       fsl.origin: "Sao Paulo, Brazil"
     ipam:
@@ -19,6 +21,7 @@ networks:
 
   edge-hk:
     labels:
+      fsl.segment.id: "edge-hk"
       fsl.segment: "Internet"
       fsl.origin: "Kwai Chung, Hong Kong"
     ipam:
@@ -27,6 +30,7 @@ networks:
 
   edge-kp:
     labels:
+      fsl.segment.id: "edge-kp"
       fsl.segment: "Internet"
       fsl.origin: "North Korea"
     ipam:
@@ -35,6 +39,7 @@ networks:
 
   estate:
     labels:
+      fsl.segment.id: "estate"
       fsl.segment: "Application estate"
     ipam:
       config:
@@ -42,6 +47,7 @@ networks:
 
   mgmt:
     labels:
+      fsl.segment.id: "mgmt"
       fsl.segment: "Management"
     ipam:
       config:

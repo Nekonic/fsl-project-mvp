@@ -81,3 +81,21 @@ def test_the_lab_passes_the_hosts_own_socket_group():
         "the image takes a DOCKER_GID build argument and compose never sets "
         "it, so the platform cannot reach the daemon"
     )
+
+def test_a_socket_group_the_image_already_has_does_not_break_the_build():
+    text = DOCKERFILE.read_text()
+
+    assert "getent group" in text, (
+        "groupadd fails when the gid is already taken, and on this host the "
+        "socket's group is 991, which the python image already uses. The build "
+        "died with GID '991' already exists and the stack could not come up"
+    )
+
+def test_finding_the_socket_group_is_not_left_to_the_operator():
+    script = ROOT / "bin/docker-gid"
+
+    assert script.exists() and os.access(script, os.X_OK), (
+        "the gid has to be read inside the VM the daemon runs in; read off the "
+        "host it comes back 1, the build joins the wrong group and the platform "
+        "answers 200 with 'permission denied' in the body"
+    )

@@ -17,19 +17,20 @@ DECLARED = Declaration(
 
 NETWORKS = [
     {"Name": "fsl_edge",
-     "Labels": {"fsl.origin": "Nowhere at all", "fsl.segment": "Whatever"},
+     "Labels": {"fsl.segment.id": "edge",
+                "fsl.origin": "Nowhere at all", "fsl.segment": "Whatever"},
      "IPAM": {"Config": [{"Subnet": "5.188.10.0/24", "Gateway": "5.188.10.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "5.188.10.4/24"},
          "bbb": {"Name": "fsl-proxy", "IPv4Address": "5.188.10.3/24"},
      }},
-    {"Name": "fsl_estate", "Labels": {},
+    {"Name": "fsl_estate", "Labels": {"fsl.segment.id": "estate"},
      "IPAM": {"Config": [{"Subnet": "172.30.0.0/24", "Gateway": "172.30.0.1"}]},
      "Containers": {
          "aaa": {"Name": "fsl-waf", "IPv4Address": "172.30.0.3/24"},
          "ccc": {"Name": "fsl-juice-shop", "IPv4Address": "172.30.0.2/24"},
      }},
-    {"Name": "fsl_mgmt", "Labels": {},
+    {"Name": "fsl_mgmt", "Labels": {"fsl.segment.id": "mgmt"},
      "IPAM": {"Config": [{"Subnet": "172.31.0.0/24", "Gateway": "172.31.0.1"}]},
      "Containers": {
          "ddd": {"Name": "fsl-elasticsearch", "IPv4Address": "172.31.0.2/24"},
@@ -214,3 +215,46 @@ def test_a_network_carrying_two_subnets_is_not_quietly_halved():
 
 def test_a_network_with_one_subnet_is_unaffected():
     assert segment(describe(), "edge").subnet == "5.188.10.0/24"
+
+def test_a_segment_is_bound_by_the_mark_it_carries_not_by_its_name():
+    renamed = [NETWORKS[0], dict(NETWORKS[1], Name="corp-estate"), NETWORKS[2]]
+
+    with patch("range.docker.subprocess.run", _Run(networks=renamed)):
+        shape = Docker(DECLARED).describe()
+
+    assert segment(shape, "estate").network == "corp-estate", (
+        "the id was cut off the front of the network name, so a range whose "
+        "networks are not named after the platform has no segments at all"
+    )
+
+def test_a_network_the_range_does_not_mark_is_not_part_of_it():
+    extra = NETWORKS + [{"Name": "fsl_scratch", "Labels": {},
+                         "IPAM": {"Config": []}, "Containers": {}}]
+
+    with patch("range.docker.subprocess.run", _Run(networks=extra)):
+        shape = Docker(DECLARED).describe()
+
+    assert {s.id for s in shape.segments} == {"edge", "estate", "mgmt"}, (
+        "a substrate holds networks that are not the range - on Neutron every "
+        "tenant network comes back - and an unmarked one was drawn as a segment"
+    )
+
+def test_two_networks_claiming_the_same_segment_are_refused():
+    doubled = NETWORKS + [dict(NETWORKS[1], Name="fsl_estate_old")]
+
+    with pytest.raises(RangeUnavailable, match="both carry"):
+        with patch("range.docker.subprocess.run", _Run(networks=doubled)):
+            Docker(DECLARED).describe()
+
+def test_what_the_project_is_called_no_longer_decides_any_segment_id():
+    lab = [dict(network, Name="fsl_lab_" + network["Labels"]["fsl.segment.id"])
+           for network in NETWORKS]
+
+    with patch("range.docker.subprocess.run", _Run(networks=lab)):
+        shape = Docker(DECLARED, project="fsl_lab").describe()
+
+    assert {s.id for s in shape.segments} == {"edge", "estate", "mgmt"}, (
+        "the id was cut off the front of the name by splitting on the first "
+        "underscore, so a project called fsl_lab swallowed part of itself and "
+        "every segment came back wrong"
+    )

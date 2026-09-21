@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  alpine:3 stat -c '%g' /var/run/docker.sock
