@@ -29,6 +29,21 @@ DETECTED_WEIGHT = 0.5
 # a second wide - would attribute almost nothing to anybody.
 ATTRIBUTION_WINDOW = timedelta(minutes=2)
 
+# And how far *before* a case started an objective may still be credited to it.
+# The two timestamps come from two clocks: a case is stamped by whoever fired
+# it, and the deed is stamped by the target, in its own container. Measured
+# here, the target's clock ran 19-26ms behind, so an objective taken by a case
+# was recorded as happening just before that case began - and a strict
+# comparison handed every breach to the case before, which is precisely the
+# defect this module was rewritten to fix. The offset is not a constant to be
+# subtracted, either: `docker exec` round trips take ~40ms, so the skew cannot
+# be measured to better than the size of the thing being measured.
+#
+# Much smaller than the spacing between cases, which the platform holds at a
+# quarter of a second for this same reason, so this tolerates two clocks
+# disagreeing without letting one case's deed fall to its neighbour.
+CLOCK_SKEW = timedelta(milliseconds=100)
+
 
 def corroborated(expect: str | None, signatures) -> bool | None:
     """Whether the evidence matches the attack's own mechanism.
@@ -66,11 +81,16 @@ def attribute(achieved_at: datetime, attempts: list[Attempt]) -> Attempt | None:
     Not the enclosing window, for the reason above. An objective nobody was
     attacking at the time belongs to nobody, and is reported as undetected -
     which is the honest answer, because no alert was tied to it either.
+
+    "Before" is to within CLOCK_SKEW, because the two times are read off two
+    clocks and the difference between them is smaller than the disagreement.
     """
     candidates = [
         attempt
         for attempt in attempts
-        if attempt.started_at <= achieved_at <= attempt.started_at + ATTRIBUTION_WINDOW
+        if attempt.started_at - CLOCK_SKEW
+        <= achieved_at
+        <= attempt.started_at + ATTRIBUTION_WINDOW
     ]
     return max(candidates, key=lambda attempt: attempt.started_at, default=None)
 

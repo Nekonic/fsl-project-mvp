@@ -10,6 +10,7 @@ from api import views
 from console import views as console
 
 urlpatterns = [
+    path("api/origins/", views.origins, name="origins"),
     path("api/attacker/", views.attacker_box),
     path("api/attacker/label/", views.attacker_label),
     path("api/wargames/", views.wargame_catalogue),
@@ -23,6 +24,8 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/objectives/", views.session_objectives),
     path("api/sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("api/sessions/<int:session_id>/detections/", views.session_detections),
+    path("api/sessions/<int:session_id>/map/", views.session_map),
+    path("api/sessions/<int:session_id>/topology/", views.session_topology),
     path("api/sessions/<int:session_id>/score/", views.session_score),
     path("api/detections/<int:detection_id>/", views.detection_detail),
     path("api/rules/", views.current_rules),

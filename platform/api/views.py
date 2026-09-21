@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import time
 import uuid
@@ -18,6 +19,7 @@ import attacker
 import objectives
 import scoreboard
 import suppress
+import topology
 import wargames
 from api.models import (
     Case,
@@ -110,14 +112,79 @@ def sessions(request):
 
 @require_http_methods(["GET"])
 def attacker_box(request):
+    """Where the terminal's traffic will come from, and where to send it.
+
+    A labelled window is scored against this address, so it has to follow the
+    origin the red team picked: leaving by Hong Kong while the window records
+    Moscow matches no alert and scores a real attack as a miss.
+    """
     try:
-        return _reply(
-            {
-                "container": settings.ATTACKER_CONTAINER,
-                "source_ip": attacker.source_ip(),
-                "terminal_url": settings.ATTACKER_TERMINAL_URL,
-            }
-        )
+        origin = attacker.find(request.GET.get("origin"))
+    except attacker.AttackerUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    except attacker.UnknownOrigin as exc:
+        raise Http404(str(exc))
+
+    return _reply(
+        {
+            "container": settings.ATTACKER_CONTAINER,
+            "source_ip": origin["source_ip"],
+            "origin": origin["id"],
+            "origin_label": origin["label"],
+            "target_url": origin["target_url"],
+            "terminal_url": settings.ATTACKER_TERMINAL_URL,
+        }
+    )
+
+
+@require_http_methods(["GET"])
+def session_topology(request, session_id):
+    """The shape of the range, with what arrived on each segment.
+
+    Read off Docker rather than drawn, because a picture of a network is wrong
+    within a session and a wrong picture is worse than none: it is believed.
+
+    The counts are what make it one object with the alert stream. A segment
+    reading zero is not an empty box - it is a place attacks could arrive and
+    nothing is watching, which is the thing a blue team most needs to see.
+    """
+    session = get_object_or_404(Session, pk=session_id)
+    try:
+        shape = topology.shape()
+    except topology.StackUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+
+    subnets = []
+    for segment in shape["segments"]:
+        segment["alerts"] = 0
+        try:
+            subnets.append((ipaddress.ip_network(segment["subnet"]), segment))
+        except ValueError:
+            continue
+
+    unplaced = 0
+    for detection in session.detections.all():
+        try:
+            address = ipaddress.ip_address(detection.src_ip or "")
+        except ValueError:
+            unplaced += 1
+            continue
+        found = next((s for network, s in subnets if address in network), None)
+        if found is None:
+            # Counted, never dropped: a diagram whose numbers do not add up to
+            # the alert count beside it is worse than one that says so.
+            unplaced += 1
+        else:
+            found["alerts"] += 1
+
+    return _reply({**shape, "unplaced": unplaced})
+
+
+@require_http_methods(["GET"])
+def origins(request):
+    """Every place an attack can be sent from."""
+    try:
+        return _reply({"origins": attacker.origins()})
     except attacker.AttackerUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
@@ -230,11 +297,20 @@ def fire_attack(request, session_id):
     case = dict(case, case_id=str(uuid.uuid4()))
     case.setdefault("correlation", "marker")
 
+    try:
+        origin = _origin_for(session, _payload(request).get("origin"))
+    except attacker.AttackerUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    except attacker.UnknownOrigin as exc:
+        raise Http404(str(exc))
+
+    target_url = origin["target_url"] if origin else settings.TARGET_URL
+
     started_at = timezone.now()
     try:
-        harness.fire(
-            requests.Session(), case, settings.TARGET_URL, settings.TOOL_TARGET_URL
-        )
+        # The tool target is the same door: an external tool that dialled the
+        # default one would leave by a different address than the case says.
+        harness.fire(requests.Session(), case, target_url, target_url)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
@@ -248,9 +324,41 @@ def fire_attack(request, session_id):
         source_ip=case.get("source_ip"),
         started_at=started_at,
         ended_at=timezone.now(),
-        meta=harness.case_meta(case),
+        # The origin and the door it was dialled through, but *not* an
+        # address: origins are discovered from the attacker box, and a case
+        # fired here leaves from the platform, which has its own address on
+        # the same network. Recording that address would name a source no
+        # alert carries - the one mistake this platform must not make. The
+        # map is read off the alerts, which carry the true one.
+        meta=dict(
+            harness.case_meta(case),
+            **({"origin": origin["id"], "target_url": origin["target_url"]}
+               if origin else {}),
+        ),
     )
     return _reply(_shape(recorded, CASE_FIELDS), status=201)
+
+
+# Asking for this instead of a place means "somewhere else than last time".
+ROTATE = "rotate"
+
+
+def _origin_for(session, requested):
+    """Which place this attack leaves from, or None for the default door.
+
+    Rotation is counted off the session's own cases rather than held as
+    state: there is nothing to reset, and two windows onto one session cannot
+    disagree about whose turn it is.
+    """
+    if not requested:
+        return None
+    if requested != ROTATE:
+        return attacker.find(requested)
+
+    available = attacker.origins()
+    if not available:
+        raise attacker.UnknownOrigin("the stack declares no origins to rotate through")
+    return available[session.cases.count() % len(available)]
 
 
 @require_http_methods(["GET"])
@@ -400,6 +508,65 @@ def detection_detail(request, detection_id):
     detection = get_object_or_404(Detection, pk=detection_id)
     return _reply(
         _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
+    )
+
+
+@require_http_methods(["GET"])
+def session_map(request, session_id):
+    """Where the attacks came from, as points a map can draw.
+
+    A location belongs to an address, not to an alert. The ingest pipeline
+    writes it onto the Elasticsearch document, and only Suricata's records keep
+    the whole document - ModSecurity's keep the message alone. So each address
+    is placed once, from whichever alert happened to carry it, and then every
+    alert from that address counts. Counting only the alerts that carry geo
+    would make the WAF invisible on the map and halve every origin.
+
+    Addresses that resolve to nothing are not guessed at. They are counted, and
+    said so, because "seventeen alerts from somewhere unplaceable" is a fact
+    about the range and an empty map is not.
+    """
+    session = get_object_or_404(Session, pk=session_id)
+    detections = list(session.detections.all())
+
+    located = {}
+    for detection in detections:
+        if not detection.src_ip or detection.src_ip in located:
+            continue
+        geo = (detection.raw or {}).get("src_geo") or {}
+        where = geo.get("location") or {}
+        if where.get("lat") is None or where.get("lon") is None:
+            continue
+        located[detection.src_ip] = (where["lat"], where["lon"], geo)
+
+    points, unlocated = {}, 0
+    for detection in detections:
+        place = located.get(detection.src_ip)
+        if place is None:
+            unlocated += 1
+            continue
+        lat, lon, geo = place
+        point = points.setdefault(
+            (lat, lon),
+            {
+                "lat": lat,
+                "lon": lon,
+                "country": geo.get("country_name") or "",
+                "country_code": geo.get("country_iso_code") or "",
+                "city": geo.get("city_name") or "",
+                "detections": 0,
+                "ips": [],
+            },
+        )
+        point["detections"] += 1
+        if detection.src_ip not in point["ips"]:
+            point["ips"].append(detection.src_ip)
+
+    return _reply(
+        {
+            "points": sorted(points.values(), key=lambda p: -p["detections"]),
+            "unlocated": unlocated,
+        }
     )
 
 

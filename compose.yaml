@@ -5,10 +5,45 @@ networks:
   # purpose: private ones geolocate to nothing, so a map has nothing to draw,
   # and an attacker sharing a subnet with the target was never the picture.
   # The lab can never reach the real 5.188.10.0/24 - see DECISIONS.
+  #
+  # One subnet is one place on the map, and the bridge driver refuses more than
+  # one subnet on a network - so each origin an attack can come from is its own
+  # network. `fsl.origin` is what marks a network as one; the platform reads
+  # the label rather than keeping a copy of this list.
+  #
+  # The names must sort after `edge`: the published port follows the
+  # alphabetically first network the WAF is on, so `dmz-hk` would move the
+  # front door back inside the estate. See DECISIONS.
+  #
+  # Every range below was checked against this stack's own GeoLite2 - a range
+  # that resolves to nothing draws no pin, and no assertion would notice.
   edge:
+    labels:
+      fsl.origin: "Moscow, Russia"
     ipam:
       config:
         - subnet: 5.188.10.0/24
+
+  edge-br:
+    labels:
+      fsl.origin: "Sao Paulo, Brazil"
+    ipam:
+      config:
+        - subnet: 177.54.144.0/24
+
+  edge-hk:
+    labels:
+      fsl.origin: "Kwai Chung, Hong Kong"
+    ipam:
+      config:
+        - subnet: 103.152.220.0/24
+
+  edge-kp:
+    labels:
+      fsl.origin: "North Korea"
+    ipam:
+      config:
+        - subnet: 175.45.176.0/24
 
   # The estate. Private, because that is what a company's inside looks like.
   estate:
@@ -68,6 +103,15 @@ services:
       edge:
         priority: 100
         aliases: [waf-edge]
+      edge-br:
+        priority: 90
+        aliases: [waf-edge-br]
+      edge-hk:
+        priority: 90
+        aliases: [waf-edge-hk]
+      edge-kp:
+        priority: 90
+        aliases: [waf-edge-kp]
       estate:
         priority: 10
         aliases: [waf-estate]
@@ -169,7 +213,11 @@ services:
   proxy:
     build: ./deploy/proxy
     container_name: fsl-proxy
-    networks: [edge]
+    # On every origin, because the terminal's traffic leaves from here: which
+    # host the attacker dials decides which of these addresses it comes from.
+    # Kali stays on `edge` alone - it only ever talks to this proxy, and the
+    # proxy resolves the target name.
+    networks: [edge, edge-br, edge-hk, edge-kp]
     volumes:
       - ./data/label:/label
 
@@ -188,7 +236,7 @@ services:
     # On every segment, and that is a simplification worth naming: it launches
     # attacks (edge), reads the target's own challenge API (app) and writes to
     # Elasticsearch (mgmt). In a real estate those are three machines.
-    networks: [edge, estate, mgmt]
+    networks: [edge, edge-br, edge-hk, edge-kp, estate, mgmt]
     ports:
       - "8000:8000"
     environment:

@@ -125,3 +125,32 @@ def test_a_generic_anomaly_alert_alone_does_not_corroborate():
     # its own it says the request was odd, not that it was this attack.
     assert corroborated("SQL", [ANOMALY]) is False
     assert corroborated("SQL", [ANOMALY, "SQL Injection Attack Detected"]) is True
+
+
+# -- two clocks ------------------------------------------------------------
+
+def test_a_deed_stamped_just_before_its_own_attack_still_belongs_to_it():
+    # The case is stamped by whoever fired it and the deed by the target, in
+    # another container. Measured on this stack, the target ran 19-26ms behind,
+    # so its record of a solve predates the attack that caused it - and a
+    # strict comparison hands the breach to the case before, which is the
+    # defect this module exists to prevent. Reproduced 3 runs in 4.
+    attempts = [attempt(0, "before"), attempt(0.33, "took-it")]
+
+    credited = attribute(
+        T0 + timedelta(seconds=0.33) - timedelta(milliseconds=25), attempts
+    )
+
+    assert credited.case_id == "took-it"
+
+
+def test_a_deed_long_before_an_attack_is_not_dragged_into_it():
+    # The tolerance is for two clocks disagreeing, not for crediting a case
+    # with something that happened before it was fired.
+    attempts = [attempt(0, "before"), attempt(0.33, "after")]
+
+    credited = attribute(
+        T0 + timedelta(seconds=0.33) - timedelta(milliseconds=200), attempts
+    )
+
+    assert credited.case_id == "before"

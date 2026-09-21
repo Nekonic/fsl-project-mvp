@@ -15,8 +15,15 @@ from attacker import AttackerUnavailable
 pytestmark = pytest.mark.django_db
 
 
+# The attacker can leave by several places now, so the address is asked of the
+# origin rather than of the container. See test_origins.py for the rest.
+HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7",
+         "target_url": "http://waf-edge:8080", "subnet": "", "network": "fsl_edge",
+         "default": True}]
+
+
 def test_attacker_reports_the_address_alerts_will_carry(client):
-    with patch("api.views.attacker.source_ip", return_value="172.20.0.7"):
+    with patch("api.views.attacker.origins", return_value=HOME):
         response = client.get("/api/attacker/")
 
     assert response.status_code == 200
@@ -26,7 +33,7 @@ def test_attacker_reports_the_address_alerts_will_carry(client):
 
 def test_attacker_that_is_not_running_is_503_not_a_guess(client):
     with patch(
-        "api.views.attacker.source_ip",
+        "api.views.attacker.origins",
         side_effect=AttackerUnavailable("no such container: fsl-kali"),
     ):
         response = client.get("/api/attacker/")
