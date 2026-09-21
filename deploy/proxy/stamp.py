@@ -15,14 +15,14 @@ def request(flow):
     if marker:
         flow.request.headers[MARKER_HEADER] = marker
 
-    origin = _read(ORIGIN_FILE)
-    if not origin:
+    address = _read(ORIGIN_FILE)
+    if not address:
         return
 
                                                                               
                                                                          
                                          
     asked_for = flow.request.host_header
-    flow.request.host = f"waf-{origin}"
+    flow.request.host = address
     if asked_for:
         flow.request.host_header = asked_for

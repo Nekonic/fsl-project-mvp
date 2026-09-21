@@ -326,7 +326,7 @@ def attacker_origin(request):
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
-    attacker.set_origin(chosen["id"], substrate().runner("proxy"))
+    attacker.set_origin(chosen["address"], substrate().runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
 @require_http_methods(["POST"])

@@ -70,7 +70,6 @@ PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
                                                                      
 WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")
 WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
-TOOL_TARGET_URL = os.environ.get("TOOL_TARGET_URL", "http://waf:8080")
                                                                               
                                                                          
                                                                            

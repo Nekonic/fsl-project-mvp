@@ -10,7 +10,7 @@ pytestmark = pytest.mark.django_db
                                                                               
                                                                         
 HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
-         "target_url": "http://waf-edge:8080", "subnet": "", "network": "fsl_edge",
+         "target_url": "http://5.188.10.9:8080", "subnet": "", "network": "fsl_edge",
          "default": True}]
 
 def stub():

@@ -15,14 +15,15 @@ class AttackerUnavailable(RangeUnavailable):
 class UnknownOrigin(ValueError):
     pass
 
-def _target_url(origin_id: str) -> str:
+def _target_url(address: str) -> str:
     parts = urlsplit(settings.TARGET_URL)
     port = f":{parts.port}" if parts.port else ""
-    return f"{parts.scheme}://waf-{origin_id}{port}"
+    return f"{parts.scheme}://{address}{port}"
 
 def origins(described) -> list[dict]:
     box = settings.ATTACKER_SOURCE_CONTAINER
     terminal = settings.ATTACKER_CONTAINER
+    way_in = settings.RANGE.roles["gateway"]
 
     standing = [
         (segment, {node.name: node.address for node in segment.nodes})
@@ -40,11 +41,12 @@ def origins(described) -> list[dict]:
             "subnet": segment.subnet,
             "source_ip": addresses[box],
             "direct_ip": addresses.get(terminal, ""),
-            "target_url": _target_url(segment.id),
+            "address": addresses[way_in],
+            "target_url": _target_url(addresses[way_in]),
             "default": segment.id == declared.read().default_origin,
         }
         for segment, addresses in standing
-        if segment.origin and addresses[box]
+        if segment.origin and addresses[box] and addresses.get(way_in)
     ]
     return sorted(found, key=lambda origin: origin["id"])
 
@@ -66,8 +68,8 @@ def _unknown(origin_id, available):
         f"{[o['id'] for o in available]}"
     )
 
-def set_origin(origin_id: str | None, proxy) -> None:
-    _write(proxy, settings.ATTACKER_ORIGIN_FILE, origin_id)
+def set_origin(address: str | None, proxy) -> None:
+    _write(proxy, settings.ATTACKER_ORIGIN_FILE, address)
 
 def set_label(case_id: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)

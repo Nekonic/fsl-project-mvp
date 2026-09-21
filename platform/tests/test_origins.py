@@ -10,26 +10,29 @@ from range.ports import Node, RangeUnavailable, Segment, Shape
 
 PROXY = "fsl-proxy"
 KALI = "fsl-kali"
+WAF = "fsl-waf"
 
 EDGE = Segment(
     id="edge", name="Internet", origin="Moscow, Russia",
     subnet="5.188.10.0/24", network="fsl_edge",
-    nodes=(Node(PROXY, "5.188.10.7"), Node(KALI, "5.188.10.2")),
+    nodes=(Node(PROXY, "5.188.10.7"), Node(KALI, "5.188.10.2"),
+           Node(WAF, "5.188.10.9")),
 )
 HK = Segment(
     id="edge-hk", name="Internet", origin="Kwai Chung, Hong Kong",
     subnet="103.152.220.0/24", network="fsl_edge-hk",
-    nodes=(Node(PROXY, "103.152.220.7"),),
+    nodes=(Node(PROXY, "103.152.220.7"), Node(WAF, "103.152.220.9")),
 )
 BR = Segment(
     id="edge-br", name="Internet", origin="Sao Paulo, Brazil",
     subnet="177.54.144.0/24", network="fsl_edge-br",
-    nodes=(Node(PROXY, "177.54.144.7"),),
+    nodes=(Node(PROXY, "177.54.144.7"), Node(WAF, "177.54.144.9")),
 )
 ESTATE = Segment(
     id="estate", name="Application estate", origin="",
     subnet="172.30.0.0/24", network="fsl_estate",
-    nodes=(Node(PROXY, "172.30.0.7"), Node("fsl-juice-shop", "172.30.0.2")),
+    nodes=(Node(PROXY, "172.30.0.7"), Node("fsl-juice-shop", "172.30.0.2"),
+           Node(WAF, "172.30.0.9")),
 )
 
 SHAPE = Shape(segments=(EDGE, HK, BR, ESTATE), sensors=())
@@ -85,10 +88,34 @@ def test_an_origin_carries_the_address_the_attack_will_come_from():
     assert found["edge-hk"] == "103.152.220.7"
     assert found["edge"] == "5.188.10.7"
 
-def test_an_origin_names_the_way_in_rather_than_the_host():
+def test_an_attack_leaves_for_an_address_the_range_gave():
     hk = next(o for o in origins() if o["id"] == "edge-hk")
 
-    assert hk["target_url"] == "http://waf-edge-hk:8080"
+    assert hk["target_url"] == "http://103.152.220.9:8080", (
+        "the address was a name assembled out of the origin id - 'waf-' plus "
+        "'edge-hk' - which only resolves because compose was asked to put that "
+        "alias on that network. Neutron hands out no aliases"
+    )
+
+def test_an_origin_with_no_way_in_is_not_offered():
+    stranded = replace(HK, nodes=(Node(PROXY, "103.152.220.7"),))
+
+    listed = attacker.origins(Shape(segments=(EDGE, stranded), sensors=()))
+
+    assert [o["id"] for o in listed] == ["edge"], (
+        "an origin whose segment the gateway does not stand on was offered, "
+        "and an attack fired from it would have gone nowhere"
+    )
+
+def test_no_name_is_assembled_from_an_origin_id_anywhere():
+    for source in (
+        pathlib.Path(attacker.__file__),
+        pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/proxy/stamp.py",
+    ):
+        assert "waf-" not in source.read_text(), (
+            f"{source.name} builds a hostname by pasting 'waf-' in front of an "
+            f"origin id, so the range has to be told to answer to it"
+        )
 
 def test_the_label_is_the_stack_s_own_description():
     hk = next(o for o in origins() if o["id"] == "edge-hk")
@@ -144,13 +171,13 @@ pytestmark = pytest.mark.django_db
 
 PLACES = [
     {"id": "edge", "label": "Moscow, Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
-     "target_url": "http://waf-edge:8080", "subnet": "5.188.10.0/24",
+     "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
      "network": "fsl_edge", "default": True},
     {"id": "edge-br", "label": "Sao Paulo, Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
-     "target_url": "http://waf-edge-br:8080", "subnet": "177.54.144.0/24",
+     "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
      "network": "fsl_edge-br", "default": False},
     {"id": "edge-hk", "label": "Kwai Chung, Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
-     "target_url": "http://waf-edge-hk:8080", "subnet": "103.152.220.0/24",
+     "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
      "network": "fsl_edge-hk", "default": False},
 ]
 
@@ -197,7 +224,7 @@ def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
     )
 
     assert response.status_code == 201
-    assert fired.call_args.args[2] == "http://waf-edge-hk:8080"
+    assert fired.call_args.args[2] == "http://103.152.220.9:8080"
 
 def test_the_origin_is_recorded_but_not_an_address(client, session_id):
     response, _ = _fire(
@@ -206,7 +233,7 @@ def test_the_origin_is_recorded_but_not_an_address(client, session_id):
     meta = response.json()["meta"]
 
     assert meta["origin"] == "edge-hk"
-    assert meta["target_url"] == "http://waf-edge-hk:8080"
+    assert meta["target_url"] == "http://103.152.220.9:8080"
     assert "source_ip" not in meta
 
 def test_rotation_moves_on_with_every_attack(client, session_id):
@@ -218,10 +245,10 @@ def test_rotation_moves_on_with_every_attack(client, session_id):
         seen.append(fired.call_args.args[2])
 
     assert seen == [
-        "http://waf-edge:8080",
-        "http://waf-edge-br:8080",
-        "http://waf-edge-hk:8080",
-        "http://waf-edge:8080",
+        "http://5.188.10.9:8080",
+        "http://177.54.144.9:8080",
+        "http://103.152.220.9:8080",
+        "http://5.188.10.9:8080",
     ], "rotation stalled: every attack would land on the same pin"
 
 def test_an_origin_that_does_not_exist_is_refused(client, session_id):
@@ -239,4 +266,4 @@ def test_the_terminal_s_address_follows_the_chosen_origin(client):
     assert response.status_code == 200
     assert response.json()["source_ip"] == "103.152.220.7"
     assert response.json()["direct_ip"] == "103.152.220.7"
-    assert response.json()["target_url"] == "http://waf-edge-hk:8080"
+    assert response.json()["target_url"] == "http://103.152.220.9:8080"

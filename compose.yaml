@@ -97,19 +97,15 @@ services:
     networks:
       edge:
         priority: 100
-        aliases: [waf-edge, shop.com]
+        aliases: [shop.com]
       edge-br:
         priority: 90
-        aliases: [waf-edge-br]
       edge-hk:
         priority: 90
-        aliases: [waf-edge-hk]
       edge-kp:
         priority: 90
-        aliases: [waf-edge-kp]
       estate:
         priority: 10
-        aliases: [waf-estate]
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     ports:
@@ -218,7 +214,6 @@ services:
       DJANGO_DB_PATH: "/data/db.sqlite3"
       TARGET_URL: "http://shop.com"
       PUBLIC_TARGET_URL: "http://shop.com"
-      TOOL_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
     volumes:
       - ./platform:/app
