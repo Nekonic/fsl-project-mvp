@@ -9,5 +9,5 @@
 # It is worth the override. The port was the last piece of the lab's plumbing
 # showing in the target's name - an attacker dials http://shop.com, not
 # http://shop.com:8080 - and every alternative costs a service or runs the WAF
-# as root. See docs/DECISIONS.md.
+# as root.
 exit 0

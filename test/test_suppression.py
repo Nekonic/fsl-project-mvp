@@ -1,26 +1,16 @@
-"""Silencing a rule has a cost, and the range can show it.
-
-This is the loop no console closes. An analyst records "false positive" and
-the rule that produced it is untouched, because recording verdicts and editing
-detections belong to different teams and different tools. Here the verdict is
-the edit - so the cost of the verdict is measurable, and these measure it.
-"""
-
 import pytest
 import requests
 
 from conftest import PLATFORM_URL, score_when_ready
 
-# The path traversal rule, and the case only it catches. ModSecurity raises
-# nothing for this one, so silencing the rule silences the attack completely -
-# which is what makes the cost visible rather than merely smaller.
+                                                                           
+                                                                              
+                                                                  
 SID = 9000004
 SILENCED_CASE = "path-traversal-ftp"
 CONTROL_CASE = "sqli-login-bypass"
 
-
 def _run(cases):
-    """Fire cases into a new session and score once the pipeline has caught up."""
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
@@ -32,8 +22,8 @@ def _run(cases):
         assert fired.status_code == 201, fired.text
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-    # The control is the clock: once it has been detected the pipeline has
-    # delivered, so anything still missing is missing because nothing fired.
+                                                                          
+                                                                            
     def control_landed(totals):
         return any(
             case["name"] == CONTROL_CASE and case["detected"]
@@ -42,14 +32,11 @@ def _run(cases):
 
     return score_when_ready(session_id, until=control_landed)
 
-
 def _verdict(score, name):
     return next(c["verdict"] for c in score["per_case"] if c["name"] == name)
 
-
 @pytest.fixture
 def silenced(stack_is_up):
-    """Silence the rule for the test, and put it back whatever happens."""
     created = requests.post(
         f"{PLATFORM_URL}/api/rules/suppressions/",
         json={"sid": SID, "minutes": 10, "reason": "acceptance test"},
@@ -64,7 +51,6 @@ def silenced(stack_is_up):
             f"{PLATFORM_URL}/api/rules/suppressions/{record['id']}/restore/", timeout=300
         )
 
-
 def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
     before = _run([SILENCED_CASE, CONTROL_CASE])
 
@@ -73,7 +59,6 @@ def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
         "show what silencing the rule costs"
     )
 
-
 def test_silencing_the_rule_turns_the_attack_into_a_miss(silenced):
     after = _run([SILENCED_CASE, CONTROL_CASE])
 
@@ -81,9 +66,8 @@ def test_silencing_the_rule_turns_the_attack_into_a_miss(silenced):
         "the rule was silenced and the attack was still detected - either the "
         "reload did not happen or something else catches it"
     )
-    # And the silence is narrow: everything else still works.
+                                                             
     assert _verdict(after, CONTROL_CASE) == "TP"
-
 
 def test_a_silenced_rule_is_on_the_books_with_a_deadline(silenced):
     listed = requests.get(f"{PLATFORM_URL}/api/rules/suppressions/", timeout=120).json()
@@ -91,7 +75,6 @@ def test_a_silenced_rule_is_on_the_books_with_a_deadline(silenced):
     live = [s for s in listed["suppressions"] if s["sid"] == SID]
     assert live, "a silenced rule that nothing records is a rule silenced for good"
     assert live[0]["expires_at"] > live[0]["created_at"]
-
 
 def test_restoring_brings_the_rule_back(stack_is_up):
     created = requests.post(

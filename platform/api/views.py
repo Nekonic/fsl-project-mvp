@@ -39,8 +39,8 @@ from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES
 
-# The JSON shape of each resource. The console templates and test/ both read
-# these keys by name, so changing one is an API change.
+                                                                            
+                                                       
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "technique", "correlation",
@@ -50,8 +50,8 @@ DETECTION_FIELDS = (
     "id", "detection_id", "source", "signature", "severity", "timestamp",
     "src_ip", "marker",
 )
-# One alert plus the document it came from. Only the drawer asks for this:
-# `raw` is the whole Elasticsearch record and far too heavy for a list.
+                                                                          
+                                                                       
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
@@ -59,10 +59,10 @@ SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
 
-# How long a rule stays silenced unless asked otherwise. Sentinel defaults to
-# 24 hours; a range session lasts minutes, where 24 hours and "for good" are
-# the same thing, and being indistinguishable from permanent is the one
-# property a suppression must not have.
+                                                                             
+                                                                            
+                                                                       
+                                       
 SUPPRESSION_MINUTES = 60
 SCORE_FIELDS = (
     "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
@@ -71,27 +71,18 @@ SCORE_FIELDS = (
 
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
-# The target keeps its own clock and its timestamps arrive at millisecond
-# precision, so comparing one to this session's start exactly is not
-# meaningful - a value can round to just before a session it plainly falls
-# inside. What the check is really rejecting is a restore, which is out by
-# hours, so a few seconds of slack costs nothing and removes the false
-# rejection.
+                                                                         
+                                                                    
+                                                                          
+                                                                          
+                                                                      
+            
 CLOCK_SLACK = timedelta(seconds=5)
-
 
 def _shape(obj, fields):
     return {name: getattr(obj, name) for name in fields}
 
-
 def _listed(detection):
-    """One row of the alert list.
-
-    Destination and path come out of the stored record rather than out of new
-    columns: only Suricata's record keeps the whole event, so ModSecurity's
-    half of the same traffic reads empty here - which is the honest answer and
-    the same one the map gives about geo.
-    """
     raw = detection.raw or {}
     http = raw.get("http") or {}
     port = raw.get("dest_port")
@@ -103,15 +94,11 @@ def _listed(detection):
         path=http.get("url") or "",
     )
 
-
 def _reply(payload, status=200):
-    """DjangoJSONEncoder renders datetimes the way the console expects."""
     return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
-
 
 def _payload(request):
     return json.loads(request.body or b"{}")
-
 
 @require_http_methods(["GET", "POST"])
 def sessions(request):
@@ -122,24 +109,17 @@ def sessions(request):
     try:
         baseline = sorted(objectives.solved_keys())
     except objectives.ObjectivesUnavailable:
-        # Not fatal, and not an empty baseline either: null records that the
-        # target could not be asked. Calling it "nothing was solved" would hand
-        # the red team credit for every objective reached before they arrived.
+                                                                            
+                                                                               
+                                                                              
         baseline = None
     session = Session.objects.create(
         scenario=body.get("scenario") or "juice-shop", baseline=baseline
     )
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
-
 @require_http_methods(["GET"])
 def attacker_box(request):
-    """Where the terminal's traffic will come from, and where to send it.
-
-    A labelled window is scored against this address, so it has to follow the
-    origin the red team picked: leaving by Hong Kong while the window records
-    Moscow matches no alert and scores a real attack as a miss.
-    """
     try:
         origin = attacker.find(request.GET.get("origin"))
     except attacker.AttackerUnavailable as exc:
@@ -151,38 +131,28 @@ def attacker_box(request):
         {
             "container": settings.ATTACKER_CONTAINER,
             "source_ip": origin["source_ip"],
-            # Raw TCP leaves from the shell's own box, not the proxy's.
+                                                                       
             "direct_ip": origin["direct_ip"],
             "origin": origin["id"],
             "origin_label": origin["label"],
             "target_url": origin["target_url"],
-            # What a person types. The routing name above is how the platform
-            # and the proxy pick which address to leave by; nobody types it.
+                                                                             
+                                                                            
             "public_url": settings.PUBLIC_TARGET_URL,
             "terminal_url": settings.ATTACKER_TERMINAL_URL,
         }
     )
 
-
-# How many rows a top-N table shows. More than this is not read from a board
-# and not scrolled through on a screen either.
+                                                                            
+                                              
 TOP_N = 25
 
-
 def _zones():
-    """Which address range belongs to what, by name.
-
-    Igloo's write-up of a real console names the defect this fixes: the device
-    that raised an alert is obvious from the alert, but working out what its
-    source and destination addresses *belong to* takes further work - so the
-    console maps ranges to the name of the thing that owns them and shows that
-    name beside the address. Here the ranges are the stack's own segments.
-    """
     try:
         segments = topology.shape()["segments"]
     except topology.StackUnavailable:
-        # The address is the fact and the zone is the extra. A stopped Docker
-        # must not empty the board.
+                                                                             
+                                   
         return []
 
     zones = []
@@ -193,7 +163,6 @@ def _zones():
             continue
     return zones
 
-
 def _zone_of(address, zones):
     try:
         parsed = ipaddress.ip_address(address)
@@ -201,33 +170,17 @@ def _zone_of(address, zones):
         return None
     return next((s for network, s in zones if parsed in network), None)
 
-
 def _http(detection):
-    """The request an alert was raised on, where the record kept it.
-
-    Suricata keeps the whole event, so the method, host, path and user agent
-    are all there. ModSecurity's record keeps the message alone, so these read
-    empty for its half of the same traffic - said, not guessed.
-    """
     return (detection.raw or {}).get("http") or {}
-
 
 @require_http_methods(["GET"])
 def session_top(request, session_id):
-    """The board: each dimension of the traffic, counted, biggest first.
-
-    The shape every real console has. Cloudflare's security events screen is a
-    summary, one time series and "top events by source" - addresses,
-    countries, paths, hosts - each a table of one dimension with its count.
-    Igloo's adds the zone beside the address, which is what makes an address
-    mean something to whoever is reading it.
-    """
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
     zones = _zones()
 
-    # Geo belongs to the address, not the alert - only Suricata's records keep
-    # the whole document. See session_map.
+                                                                              
+                                          
     located = {}
     for detection in detections:
         if detection.src_ip and detection.src_ip not in located:
@@ -297,18 +250,8 @@ def session_top(request, session_id):
         "paths": top(paths.values()),
     })
 
-
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
-    """The shape of the range, with what arrived on each segment.
-
-    Read off Docker rather than drawn, because a picture of a network is wrong
-    within a session and a wrong picture is worse than none: it is believed.
-
-    The counts are what make it one object with the alert stream. A segment
-    reading zero is not an empty box - it is a place attacks could arrive and
-    nothing is watching, which is the thing a blue team most needs to see.
-    """
     session = get_object_or_404(Session, pk=session_id)
     try:
         shape = topology.shape()
@@ -332,31 +275,23 @@ def session_topology(request, session_id):
             continue
         found = next((s for network, s in subnets if address in network), None)
         if found is None:
-            # Counted, never dropped: a diagram whose numbers do not add up to
-            # the alert count beside it is worse than one that says so.
+                                                                              
+                                                                       
             unplaced += 1
         else:
             found["alerts"] += 1
 
     return _reply({**shape, "unplaced": unplaced})
 
-
 @require_http_methods(["GET"])
 def origins(request):
-    """Every place an attack can be sent from."""
     try:
         return _reply({"origins": attacker.origins()})
     except attacker.AttackerUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
-
 @require_http_methods(["POST"])
 def attacker_origin(request):
-    """Choose which segment the terminal's traffic leaves by.
-
-    The attacker types the target's own name; this is what decides where that
-    request appears to come from, so nobody has to know the routing names.
-    """
     origin_id = _payload(request).get("origin")
     try:
         chosen = attacker.find(origin_id)
@@ -368,18 +303,14 @@ def attacker_origin(request):
     attacker.set_origin(chosen["id"])
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
-
 @require_http_methods(["POST"])
 def attacker_label(request):
-    """Open or close the marker the proxy stamps on the attacker's traffic."""
     attacker.set_label(_payload(request).get("case_id"))
     return _reply({"ok": True})
-
 
 @require_http_methods(["GET"])
 def wargame_catalogue(request):
     return _reply(wargames.catalogue())
-
 
 @require_http_methods(["GET"])
 def wargame_cases(request, wargame_id):
@@ -387,7 +318,6 @@ def wargame_cases(request, wargame_id):
         return _reply(wargames.cases(wargame_id))
     except wargames.UnknownWargame:
         raise Http404(wargame_id)
-
 
 @require_http_methods(["GET"])
 def wargame_objectives(request, wargame_id):
@@ -398,15 +328,8 @@ def wargame_objectives(request, wargame_id):
     except objectives.ObjectivesUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
-
 @require_http_methods(["GET", "POST"])
 def session_objectives(request, session_id):
-    """What the red team has actually taken, as judged by the target itself.
-
-    POST asks the target what it now considers solved and records anything new
-    since this session opened. Nothing here is labelled by the platform: the
-    application decides whether it was beaten.
-    """
     session = get_object_or_404(Session, pk=session_id)
 
     if request.method == "GET":
@@ -419,21 +342,12 @@ def session_objectives(request, session_id):
     except objectives.ObjectivesUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
-
 def _observe_objectives(session) -> dict:
-    """Record what the target now counts as solved and this session did not.
-
-    The moment to ask is the moment a case is reported, because that is when
-    the red team has just finished doing something. Asking once at the end of
-    a run stamps every objective with the same time, and attribution then
-    credits them all to whichever case happened to fire last - which in a run
-    that ends on benign traffic is nobody at all.
-    """
     solved = {o["key"]: o for o in objectives.catalogue() if o["solved"]}
 
     if session.baseline is None:
-        # The target was unreachable when the session opened. Establish the
-        # baseline now and credit nobody for what came before it.
+                                                                           
+                                                                 
         session.baseline = sorted(solved)
         session.save(update_fields=["baseline"])
         return {"achieved": 0, "baseline": len(session.baseline)}
@@ -458,15 +372,8 @@ def _observe_objectives(session) -> dict:
 
     return {"achieved": len(fresh), "total": session.objectives.count()}
 
-
 @require_http_methods(["POST"])
 def fire_attack(request, session_id):
-    """Send one catalogue case and record what it was.
-
-    Ground truth is written only after the traffic has left. A case recorded
-    for an attack that never went out is a false negative charged to the
-    defence, which is the one mistake this platform must not make.
-    """
     session = get_object_or_404(Session, pk=session_id)
 
     try:
@@ -486,9 +393,9 @@ def fire_attack(request, session_id):
 
     target_url = settings.TARGET_URL
     if origin:
-        # Another segment is reached by a routing name, but the request is
-        # still for the same site - so the wire says so. Otherwise a rotated
-        # attack would be logged against a hostname nobody ever dials.
+                                                                          
+                                                                            
+                                                                      
         target_url = origin["target_url"]
         spec = dict(case.get("request") or {})
         if spec:
@@ -500,8 +407,8 @@ def fire_attack(request, session_id):
 
     started_at = timezone.now()
     try:
-        # The tool target is the same door: an external tool that dialled the
-        # default one would leave by a different address than the case says.
+                                                                             
+                                                                            
         harness.fire(requests.Session(), case, target_url, target_url)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
@@ -516,12 +423,12 @@ def fire_attack(request, session_id):
         source_ip=case.get("source_ip"),
         started_at=started_at,
         ended_at=timezone.now(),
-        # The origin and the door it was dialled through, but *not* an
-        # address: origins are discovered from the attacker box, and a case
-        # fired here leaves from the platform, which has its own address on
-        # the same network. Recording that address would name a source no
-        # alert carries - the one mistake this platform must not make. The
-        # map is read off the alerts, which carry the true one.
+                                                                      
+                                                                           
+                                                                           
+                                                                         
+                                                                          
+                                                               
         meta=dict(
             harness.case_meta(case),
             **({"origin": origin["id"], "target_url": origin["target_url"]}
@@ -530,18 +437,10 @@ def fire_attack(request, session_id):
     )
     return _reply(_shape(recorded, CASE_FIELDS), status=201)
 
-
-# Asking for this instead of a place means "somewhere else than last time".
+                                                                           
 ROTATE = "rotate"
 
-
 def _origin_for(session, requested):
-    """Which place this attack leaves from, or None for the default door.
-
-    Rotation is counted off the session's own cases rather than held as
-    state: there is nothing to reset, and two windows onto one session cannot
-    disagree about whose turn it is.
-    """
     if not requested:
         return None
     if requested != ROTATE:
@@ -552,12 +451,10 @@ def _origin_for(session, requested):
         raise attacker.UnknownOrigin("the stack declares no origins to rotate through")
     return available[session.cases.count() % len(available)]
 
-
 @require_http_methods(["GET"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     return _reply(_shape(session, SESSION_FIELDS))
-
 
 @require_http_methods(["POST"])
 def close_session(request, session_id):
@@ -565,7 +462,6 @@ def close_session(request, session_id):
     session.ended_at = timezone.now()
     session.save(update_fields=["ended_at"])
     return _reply(_shape(session, SESSION_FIELDS))
-
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
@@ -592,20 +488,20 @@ def session_cases(request, session_id):
         meta=body.get("meta") or {},
     )
 
-    # Give the target a beat before answering. Measured on a live run: the
-    # shop records a solve about 80ms after it has answered the request that
-    # earned it, while the red team fires its next case about 70ms later - so
-    # every solve landed just inside the *following* case and attribution
-    # credited it there. The red team blocks on this response, so waiting here
-    # spaces the cases far enough apart for the target's own timestamps to fall
-    # in the right window. Cheap at fifteen cases; it belongs here rather than
-    # in the harness, which is the hypothesis and may not grow.
+                                                                          
+                                                                            
+                                                                             
+                                                                         
+                                                                              
+                                                                               
+                                                                              
+                                                               
     time.sleep(settings.TARGET_SETTLE)
 
-    # Best effort, and never at the cost of the case: what the red team did is
-    # what this endpoint exists to record, and losing it because the shop would
-    # not answer a side question would put a real attack on record as never
-    # having happened. `objectives: null` says the target could not be asked.
+                                                                              
+                                                                               
+                                                                           
+                                                                             
     try:
         observed = _observe_objectives(session)["achieved"]
     except objectives.ObjectivesUnavailable:
@@ -615,13 +511,7 @@ def session_cases(request, session_id):
         _shape(case, CASE_FIELDS) | {"objectives": observed}, status=201
     )
 
-
 def _case_errors(body):
-    """Reject a case before it reaches the database.
-
-    An unknown correlation strategy must never be stored: the scoring core
-    raises on it, which would turn one bad case into an unscorable session.
-    """
     errors = {
         field: ["This field is required."]
         for field in CASE_REQUIRED
@@ -635,14 +525,8 @@ def _case_errors(body):
         ]
     return errors
 
-
 @require_http_methods(["POST"])
 def ingest_detections(request, session_id):
-    """Pull Elasticsearch documents for the session window and store them.
-
-    Alerts already stored are skipped. Repeated calls must give the same result
-    so the blue team can fix a rule and re-ingest.
-    """
     session = get_object_or_404(Session, pk=session_id)
     start, end = _session_window(session)
 
@@ -658,9 +542,9 @@ def ingest_detections(request, session_id):
 
     alerts = elastic.normalize_all(documents)
 
-    # Documents that produced no alert at all. One document can produce
-    # several alerts (a ModSecurity transaction with several messages), so
-    # subtraction would not count this.
+                                                                       
+                                                                          
+                                       
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
@@ -673,15 +557,8 @@ def ingest_detections(request, session_id):
 
     return _reply({"ingested": ingested, "skipped": skipped})
 
-
 @require_http_methods(["GET"])
 def session_detections(request, session_id):
-    """The alerts, or just the ones a live console has not seen yet.
-
-    `?after=` is what keeps a two-second refresh cheap. A bad value is rejected
-    rather than ignored, because falling back to "everything" would arrive at
-    the console as a sudden flood of alerts that are not new.
-    """
     session = get_object_or_404(Session, pk=session_id)
     detections = session.detections.all()
 
@@ -693,31 +570,15 @@ def session_detections(request, session_id):
 
     return _reply([_listed(d) for d in detections])
 
-
 @require_http_methods(["GET"])
 def detection_detail(request, detection_id):
-    """One alert with the log record behind it, for the console's drawer."""
     detection = get_object_or_404(Detection, pk=detection_id)
     return _reply(
         _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
     )
 
-
 @require_http_methods(["GET"])
 def session_map(request, session_id):
-    """Where the attacks came from, as points a map can draw.
-
-    A location belongs to an address, not to an alert. The ingest pipeline
-    writes it onto the Elasticsearch document, and only Suricata's records keep
-    the whole document - ModSecurity's keep the message alone. So each address
-    is placed once, from whichever alert happened to carry it, and then every
-    alert from that address counts. Counting only the alerts that carry geo
-    would make the WAF invisible on the map and halve every origin.
-
-    Addresses that resolve to nothing are not guessed at. They are counted, and
-    said so, because "seventeen alerts from somewhere unplaceable" is a fact
-    about the range and an empty map is not.
-    """
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
 
@@ -761,15 +622,8 @@ def session_map(request, session_id):
         }
     )
 
-
 @require_http_methods(["GET"])
 def session_score(request, session_id):
-    """Score the stored cases against the stored alerts and snapshot it.
-
-    `?correlation=` overrides what every case declared, so the same traffic can
-    be scored both ways and the strategies compared. Only terminal windows
-    carry both a marker and a source, so only they answer differently.
-    """
     session = get_object_or_404(Session, pk=session_id)
 
     forced = request.GET.get("correlation")
@@ -815,7 +669,6 @@ def session_score(request, session_id):
         | {"objectives": board.__dict__, "breaches": _breach_rows(session, cases, result)}
     )
 
-
 def _attempts(cases, result):
     by_case = {match.case_id: match for match in result.matches}
     return [
@@ -828,7 +681,6 @@ def _attempts(cases, result):
         for case in cases
         if case.case_id in by_case
     ]
-
 
 def _breaches(session, cases, result):
     attempts = _attempts(cases, result)
@@ -847,7 +699,6 @@ def _breaches(session, cases, result):
         )
     return breaches
 
-
 def _breach_rows(session, cases, result):
     return [
         {
@@ -861,18 +712,7 @@ def _breach_rows(session, cases, result):
         for b in _breaches(session, cases, result)
     ]
 
-
 def _solved_at(objective, session, observed_at):
-    """When the target says it fell, if that can be believed.
-
-    Prefer it: the poll is always late, because `solved` flips after the
-    request that did it has been answered, and by then the red team may have
-    moved on to the next case - which is then credited with the breach.
-
-    Do not believe a stamp from before this session opened. The target
-    rewrites every one of them in bulk when it restores its own state, and a
-    restore is not a solve.
-    """
     stamp = objective.get("solved_at")
     if not stamp:
         return observed_at
@@ -883,13 +723,11 @@ def _solved_at(objective, session, observed_at):
     believable = session.started_at - CLOCK_SLACK <= solved_at <= observed_at
     return solved_at if believable else observed_at
 
-
 def _expectations(scenario):
     try:
         return wargames.expectations(scenario)
     except wargames.UnknownWargame:
         return {}
-
 
 def _per_case(result, expectations, signatures):
     return [
@@ -909,14 +747,7 @@ def _per_case(result, expectations, signatures):
         for m in result.matches
     ]
 
-
 def _wrong_reason_warnings(per_case):
-    """Say so when a true positive is not evidence of anything.
-
-    An alert inside the window is not an alert about the attack. Left
-    unreported, a rule set that catches every case for reasons unrelated to
-    any of them scores exactly as well as one that works.
-    """
     wrong = [c["name"] for c in per_case if c["detected"] and c["corroborated"] is False]
     if not wrong:
         return []
@@ -926,42 +757,28 @@ def _wrong_reason_warnings(per_case):
         f"positive is not evidence that the defence saw this attack."
     ]
 
-
 def _verdict(malicious: bool, detected: bool) -> str:
     if malicious:
         return "TP" if detected else "FN"
     return "FP" if detected else "TN"
 
-
 def _session_window(session):
-    """The session window. Still open means "up to now". One minute of slack."""
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     return start, end
-
 
 @require_http_methods(["GET"])
 def current_rules(request):
     return _reply({"content": suricata.current()})
 
-
 @require_http_methods(["POST"])
 def validate_rules(request):
-    """Validate only. Even on success, nothing is written and no RuleSet is made."""
     outcome = suricata.validate(_payload(request).get("content", ""))
     payload = {"ok": outcome.ok, "output": outcome.output}
     return _reply(payload, status=200 if outcome.ok else 400)
 
-
 @require_http_methods(["GET", "POST"])
 def suppressions(request):
-    """Silence a rule, or see what is silenced.
-
-    This is the loop no console closes: an analyst records "false positive"
-    and the rule that produced it is untouched, because recording verdicts and
-    editing detections belong to different teams and different tools. Here
-    they are the same button.
-    """
     expired = _restore_expired()
 
     if request.method == "GET":
@@ -1004,7 +821,6 @@ def suppressions(request):
     )
     return _reply(_shape(record, SUPPRESSION_FIELDS), status=201)
 
-
 @require_http_methods(["POST"])
 def restore_suppression(request, suppression_id):
     record = get_object_or_404(Suppression, pk=suppression_id, restored_at__isnull=True)
@@ -1013,14 +829,12 @@ def restore_suppression(request, suppression_id):
         return _reply({"detail": problem}, status=400)
     return _reply(_shape(record, SUPPRESSION_FIELDS))
 
-
 def _restore(record) -> str | None:
-    """Put one rule back. Returns what went wrong, or None."""
     try:
         content = suppress.restore(suricata.current(), record.sid, record.original)
     except KeyError:
-        # The line is already back - edited by hand, most likely. Nothing to
-        # undo, so stop tracking it rather than writing the rule in twice.
+                                                                            
+                                                                          
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
         return None
@@ -1028,18 +842,16 @@ def _restore(record) -> str | None:
     try:
         suricata.apply(content)
     except suricata.RuleApplyError as exc:
-        # Leave it on the books. A suppression that cannot be lifted is worse
-        # news than one that is still running, and silently marking it restored
-        # would leave the rule off with nothing saying so.
+                                                                             
+                                                                               
+                                                          
         return f"could not restore sid {record.sid}: {exc}"
 
     record.restored_at = timezone.now()
     record.save(update_fields=["restored_at"])
     return None
 
-
 def _restore_expired() -> list:
-    """Lift every suppression whose deadline has passed."""
     due = Suppression.objects.filter(
         restored_at__isnull=True, expires_at__lte=timezone.now()
     )
@@ -1048,7 +860,6 @@ def _restore_expired() -> list:
         problem = _restore(record)
         lifted.append({"sid": record.sid, "ok": problem is None, "detail": problem})
     return lifted
-
 
 @require_http_methods(["POST"])
 def apply_rules(request):

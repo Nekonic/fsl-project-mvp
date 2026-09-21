@@ -2,16 +2,6 @@
 {% block title %}Blue team{% endblock %}
 {% block nav %}<span class="text-sky-400">Blue team</span>{% endblock %}
 {% block nav_class %}w-full{% endblock %}
-{% comment %}
-One console for the blue team. Dashboard is the overview a room can read -
-counters, where it is coming from, top-N by each dimension, the trend. Live is
-the alert list, with filters and the whole log record behind a row.
-
-They are tabs rather than two URLs on purpose. Splitting them across screens
-is the operator's call, made by opening this page twice and leaving one on
-Dashboard - not a decision baked into the routes, which is what a second
-address would have made it.
-{% endcomment %}
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
@@ -316,9 +306,6 @@ address would have made it.
     suricata: "bg-violet-950 text-violet-300 border-violet-900",
     modsecurity: "bg-cyan-950 text-cyan-300 border-cyan-900",
   };
-  // Suricata severity runs 1 (worst) to 3; ModSecurity sends none, which is
-  // why every console that shows severity has a fourth, "informational" value.
-  // Colour and word together, never colour alone.
   const SEVERITY = {
     1: {bar: "bg-rose-500", text: "text-rose-400", word: "High"},
     2: {bar: "bg-amber-500", text: "text-amber-400", word: "Medium"},
@@ -333,14 +320,10 @@ address would have made it.
   let timer = null;
   let sourceFilter = "";
 
-  // -- tabs
   const showing = (name) =>
     document.querySelector(`[data-panel="${name}"]`).style.display !== "none";
 
   function showTab(name) {
-    // Set display rather than toggling `hidden`: these panels are flex
-    // containers, and which of the two display utilities wins depends on the
-    // order Tailwind emits them, which is not ours to rely on.
     document.querySelectorAll("[data-panel]").forEach((panel) => {
       panel.classList.remove("hidden");
       panel.style.display = panel.dataset.panel === name ? "" : "none";
@@ -357,12 +340,6 @@ address would have made it.
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
 
-  // -- the live loop. Ingest pulls whatever Elasticsearch has since last time,
-  // then only the rows this console has not seen are fetched.
-  // The overview, drawn from the same rows the list is drawn from. The two
-  // server-side parts - the map and the top-N tables - are skipped while the
-  // tab is hidden, because a request nobody is looking at is a request for
-  // nothing.
   function renderDashboard(force) {
     if (!force && !showing("dashboard")) return;
     renderCounters();
@@ -404,8 +381,6 @@ address would have made it.
   document.getElementById("live-toggle").addEventListener("click", () => setLive(!live));
   document.getElementById("interval").addEventListener("change", schedule);
 
-  // -- filtering happens here, not on the server: the console already holds
-  // every row it has been sent, so a filter should not cost a round trip.
   function visible() {
     const needle = document.getElementById("search").value.trim().toLowerCase();
     const orphansOnly = document.getElementById("only-orphans").checked;
@@ -418,12 +393,6 @@ address would have made it.
     });
   }
 
-  // What each address belongs to. An address on its own is not
-  // identification: the engine that raised an alert is obvious from the
-  // alert, but the segment and the place behind a source address are not, and
-  // an analyst reading a list of bare addresses does that lookup in their
-  // head. Asked of the server so the CIDR matching happens in one place - see
-  // /api/sessions/<id>/top/.
   let owners = {};
   const OWNERS_EVERY = 15000;
   let ownersAt = 0;
@@ -436,16 +405,12 @@ address would have made it.
     owners = Object.fromEntries(body.sources.map((s) => [s.src_ip, s]));
   }
 
-  // The projection bin/worldmap used for the coastlines: one unit per degree
-  // on a 360x180 viewBox, which is why a point lands on its own country.
   const projectX = (lon) => lon + 180;
   const projectY = (lat) => 90 - lat;
 
   const cell = "py-1 px-3 align-top";
   const num = (n) =>
     `<td class="${cell} text-right pr-3 tabular-nums text-slate-300">${esc(n)}</td>`;
-  // esc, always. Every value in these tables is part of an attack someone
-  // just sent - see base.html.
   const text = (s, tone) =>
     `<td class="${cell} ${tone || "text-slate-400"}">${esc(s) || "-"}</td>`;
   const empty = (columns) =>
@@ -467,8 +432,6 @@ address would have made it.
   }
 
   function renderTop(body) {
-    // An address with the zone it belongs to and where it geolocates - the
-    // two things that turn an address into something a reader can act on.
     fill("sources", body.sources, (s) => [
       text(s.src_ip, `font-mono text-xs ${s.outside ? "text-rose-300" : "text-slate-300"}`),
       text(s.zone),
@@ -488,8 +451,6 @@ address would have made it.
       num(s.alerts),
     ].join(""), 3);
 
-    // Decoded, because a path is read, not copied: the payload in a query
-    // string is the whole point of the row and %27+OR+1%3D1-- hides it.
     fill("paths", body.paths, (p) => [
       text(p.method, "text-xs text-slate-500"),
       text(decodePath(p.path), "font-mono text-xs text-slate-300 break-all"),
@@ -530,8 +491,6 @@ address would have made it.
 
     const busiest = Math.max(1, ...body.points.map((p) => p.detections));
     document.getElementById("map-points").innerHTML = body.points.map((p) => {
-      // Area, not radius, follows the count - otherwise one loud origin
-      // swallows the map.
       const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
       const where = [p.city, p.country].filter(Boolean).join(", ") || "unknown";
       return `
@@ -549,17 +508,12 @@ address would have made it.
       note.textContent = "nothing yet";
     } else {
       const places = body.points.length === 1 ? "1 country" : `${body.points.length} countries`;
-      // Say when events could not be placed rather than quietly drawing fewer
-      // than there are - an address inside the estate has no country.
       note.textContent = body.unlocated
         ? `${places} · ${body.unlocated} from addresses with no location`
         : places;
     }
   }
 
-  // The top-N tables ask Docker for the zone names, so they run on a slower
-  // clock than the event count. The zones change when the stack does, which
-  // is never during a session.
   const TOP_EVERY = 15000;
   let topAt = 0;
 
@@ -570,12 +524,8 @@ address would have made it.
     if (ok) renderTop(body);
   }
 
-  // A path is read, not copied: the payload in a query string is the point
-  // of the row, and %27+OR+1%3D1-- hides it.
-
   function renderAlerts() {
     const shown = visible();
-
 
     document.getElementById("shown").textContent =
       shown.length === rows.length ? `${rows.length} events`
@@ -583,7 +533,6 @@ address would have made it.
 
     document.getElementById("empty").classList.toggle("hidden", shown.length > 0);
 
-    // Newest first: a console is read from the top.
     document.getElementById("rows").innerHTML = shown.slice().reverse().slice(0, 300)
       .map((d) => `
       <tr data-id="${esc(d.id)}" class="alert-row border-t border-slate-900
@@ -631,7 +580,6 @@ address would have made it.
   });
   document.querySelector('.chip[data-source=""]').click();
 
-  // -- the drawer: the whole log record behind one line of the table.
   async function openDrawer(id) {
     const { ok, body } = await api(`/api/detections/${id}/`);
     if (!ok) return;
@@ -641,9 +589,6 @@ address would have made it.
       (body.marker ? ` - case ${body.marker.slice(0, 8)}` : " - unattributed");
     document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
 
-    // Only Suricata rules can be silenced from here: a ModSecurity alert
-    // carries no sid, and pretending otherwise would offer a button that
-    // cannot work.
     const sid = body.raw?.alert?.signature_id;
     const verdict = document.getElementById("drawer-verdict");
     verdict.classList.toggle("hidden", !sid);
@@ -679,14 +624,11 @@ address would have made it.
   document.getElementById("drawer-close").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
-  // -- score
   const VERDICT_STYLE = {
     TP: "text-emerald-400", TN: "text-emerald-400",
     FP: "text-amber-400", FN: "text-rose-400",
   };
 
-  // A true positive says something fired in the window, not that it was about
-  // this attack. `expect` is what the case declared should be able to find it.
   function evidence(c) {
     if (!c.detected) return `<span class="text-slate-600">-</span>`;
     if (c.corroborated === null) {
@@ -812,7 +754,6 @@ address would have made it.
     }).join("");
   }
 
-  // -- rules
   const editor = document.getElementById("editor");
   const output = document.getElementById("output");
 
@@ -831,7 +772,6 @@ address would have made it.
   document.getElementById("apply").addEventListener("click", async () => {
     const r = await post("/api/rules/apply/", {content: editor.value});
     show(r.ok ? "Applied and reloaded Suricata." : r.body.detail, r.ok);
-    // A rule change is the one thing that should re-score immediately.
     if (r.ok) renderScore();
   });
 
@@ -841,7 +781,6 @@ address would have made it.
     if (!ok) { panel.innerHTML = ""; return; }
 
     if (body.restored.length) {
-      // Reloading the editor: expiry rewrites the rule file underneath it.
       api("/api/rules/").then((r) => { if (r.ok) editor.value = r.body.content; });
     }
 

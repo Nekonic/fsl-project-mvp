@@ -1,9 +1,3 @@
-"""Every route in the project.
-
-Two apps' worth of routing is not worth three files and three copies of the
-same two imports.
-"""
-
 from django.urls import path
 
 from api import views

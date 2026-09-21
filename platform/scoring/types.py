@@ -1,5 +1,3 @@
-"""Value objects used in scoring. Knows nothing about I/O."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,10 +9,8 @@ CORRELATION_MARKER = "marker"
 CORRELATION_WINDOW = "window"
 CORRELATION_STRATEGIES = (CORRELATION_MARKER, CORRELATION_WINDOW)
 
-
 @dataclass(frozen=True)
 class CaseRecord:
-    """One piece of ground truth recorded by the red team."""
 
     case_id: str
     name: str
@@ -24,10 +20,8 @@ class CaseRecord:
     started_at: datetime
     ended_at: datetime
 
-
 @dataclass(frozen=True)
 class DetectionRecord:
-    """One alert from Suricata or ModSecurity."""
 
     detection_id: str
     source: str
@@ -35,7 +29,6 @@ class DetectionRecord:
     timestamp: datetime
     src_ip: str | None
     marker: str | None
-
 
 @dataclass(frozen=True)
 class CaseMatch:
@@ -45,13 +38,11 @@ class CaseMatch:
     detection_ids: tuple[str, ...]
     detected: bool
 
-
 @dataclass(frozen=True)
 class CorrelationResult:
     matches: tuple[CaseMatch, ...]
     unmatched_detection_ids: tuple[str, ...]
     warnings: tuple[str, ...]
-
 
 @dataclass(frozen=True)
 class Score:

@@ -14,16 +14,10 @@
       <span id="session-label" class="ml-auto text-slate-500"></span>
     </nav>
   </header>
-  {% comment %}
-  A monitoring console is not a document: it fills the screen and each panel
-  scrolls on its own. Pages that are documents keep the default.
-  {% endcomment %}
   <main class="{% block main_class %}max-w-5xl mx-auto px-6 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
   <script>
-    // The session lives in the URL, so no page is ever handed data by the
-    // server and two windows cannot drift onto different sessions.
     const sessionId = () => location.pathname.split("/")[2];
 
     async function api(path, options) {
@@ -32,19 +26,6 @@
       return { ok: response.ok, status: response.status, body };
     }
 
-    // Everything on these pages is an attack someone just sent. Putting any
-    // of it into innerHTML unescaped runs it: a script-tag payload goes out
-    // as a case, comes back as a request path, and the console that displays
-    // it is where the payload finally lands. A security tool executing the
-    // attacks it caught is the worst version of this bug, and it shipped.
-    //
-    // So: every value interpolated into markup goes through this. Use
-    // textContent where there is no markup to build.
-    //
-    // Nothing here may contain a literal closing script tag, not even inside
-    // a comment or a string: the HTML parser ends the element at the first
-    // one it sees and the rest stops being JavaScript. That is how this very
-    // comment broke the console while describing the bug it fixes.
     const ESCAPES = {
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     };

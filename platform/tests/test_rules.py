@@ -9,12 +9,10 @@ pytestmark = pytest.mark.django_db
 
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'
 
-
 def completed(returncode, stdout="", stderr=""):
     return subprocess.CompletedProcess(
         args=["docker"], returncode=returncode, stdout=stdout, stderr=stderr
     )
-
 
 def test_validate_returns_ok_when_suricata_test_succeeds():
     from rules import suricata
@@ -30,7 +28,6 @@ def test_validate_returns_ok_when_suricata_test_succeeds():
     assert "successfully loaded" in outcome.output
     write.assert_called_once_with(GOOD_RULE)
 
-
 def test_validate_returns_failure_output_verbatim():
     from rules import suricata
 
@@ -42,7 +39,6 @@ def test_validate_returns_failure_output_verbatim():
     assert outcome.ok is False
     assert "Error parsing signature" in outcome.output
 
-
 def test_apply_refuses_content_that_fails_validation():
     from rules import suricata
 
@@ -53,7 +49,6 @@ def test_apply_refuses_content_that_fails_validation():
             suricata.apply("garbage")
 
     write.assert_not_called()
-
 
 def test_apply_writes_then_reloads():
     from rules import suricata
@@ -70,7 +65,6 @@ def test_apply_writes_then_reloads():
     write.assert_called_once_with(GOOD_RULE)
     assert any("kill" in str(call) for call in run.call_args_list)
 
-
 def test_apply_restores_previous_rules_when_reload_fails():
     from rules import suricata
 
@@ -86,7 +80,6 @@ def test_apply_restores_previous_rules_when_reload_fails():
 
     assert write.call_args_list[-1].args[0] == "OLD\n"
 
-
 def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
 
@@ -99,7 +92,6 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
     assert response.json()["ok"] is True
     assert RuleSet.objects.count() == 0
 
-
 def test_validate_endpoint_reports_failure_as_400_with_output(client):
     with patch(
         "api.views.suricata.validate",
@@ -109,7 +101,6 @@ def test_validate_endpoint_reports_failure_as_400_with_output(client):
 
     assert response.status_code == 400
     assert "Error parsing signature" in response.json()["output"]
-
 
 def test_apply_endpoint_stores_and_marks_applied(client):
     from api.models import RuleSet
@@ -123,7 +114,6 @@ def test_apply_endpoint_stores_and_marks_applied(client):
     assert stored.content == GOOD_RULE
     assert stored.applied_at is not None
 
-
 def test_apply_endpoint_returns_400_and_stores_nothing_on_failure(client):
     from api.models import RuleSet
 
@@ -133,7 +123,6 @@ def test_apply_endpoint_returns_400_and_stores_nothing_on_failure(client):
     assert response.status_code == 400
     assert "bad rule" in response.json()["detail"]
     assert RuleSet.objects.count() == 0
-
 
 def test_rules_endpoint_returns_current_file_content(client):
     with patch("api.views.suricata.current", return_value=GOOD_RULE):

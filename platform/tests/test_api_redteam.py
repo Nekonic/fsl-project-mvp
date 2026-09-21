@@ -1,25 +1,16 @@
-"""The red team's REST surface: the catalogue, and firing one case.
-
-Firing is what the console could not do before, and the reason it had no red
-team screen: the rule is that every UI action is an API call first.
-"""
-
 from unittest.mock import patch
 
 import pytest
 
 pytestmark = pytest.mark.django_db
 
-
 @pytest.fixture
 def session_id(client):
     return client.post_json("/api/sessions/", {}).json()["id"]
 
-
 @pytest.fixture
 def a_case(client):
     return client.get("/api/wargames/juice-shop/cases/").json()[0]
-
 
 def test_wargames_lists_the_only_target(client):
     response = client.get("/api/wargames/")
@@ -28,23 +19,20 @@ def test_wargames_lists_the_only_target(client):
     assert [w["id"] for w in response.json()] == ["juice-shop"]
     assert response.json()[0]["cases"] > 0
 
-
 def test_case_catalogue_describes_what_each_button_fires(client):
     cases = client.get("/api/wargames/juice-shop/cases/").json()
 
     assert len(cases) > 1
     assert any(case["malicious"] for case in cases)
-    # Benign traffic must be reachable from the console too, or the operator
-    # can only ever drive the score in one direction.
+                                                                            
+                                                     
     assert any(not case["malicious"] for case in cases)
     for case in cases:
         assert case["name"]
         assert case["summary"]
 
-
 def test_case_catalogue_for_an_unknown_wargame_is_404(client):
     assert client.get("/api/wargames/nothing/cases/").status_code == 404
-
 
 def test_sessions_can_be_listed_newest_first(client):
     first = client.post_json("/api/sessions/", {}).json()["id"]
@@ -53,7 +41,6 @@ def test_sessions_can_be_listed_newest_first(client):
     listed = client.get("/api/sessions/").json()
 
     assert [s["id"] for s in listed][:2] == [second, first]
-
 
 def test_firing_a_case_sends_it_and_records_ground_truth(client, session_id, a_case):
     with patch("api.views.harness.fire") as fired:
@@ -68,11 +55,10 @@ def test_firing_a_case_sends_it_and_records_ground_truth(client, session_id, a_c
     assert [case["name"] for case in recorded] == [a_case["name"]]
     assert recorded[0]["malicious"] == a_case["malicious"]
 
-
 def test_the_marker_fired_is_the_case_id_recorded(client, session_id, a_case):
-    # The whole correlation rests on this. If the header and the ground truth
-    # disagree, every alert becomes unattributable and the score is silently
-    # meaningless.
+                                                                             
+                                                                            
+                  
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]})
 
@@ -80,7 +66,6 @@ def test_the_marker_fired_is_the_case_id_recorded(client, session_id, a_case):
     recorded = client.get(f"/api/sessions/{session_id}/cases/").json()[0]
 
     assert fired_case["case_id"] == recorded["case_id"]
-
 
 def test_firing_the_same_case_twice_records_two_attempts(client, session_id, a_case):
     with patch("api.views.harness.fire"):
@@ -94,7 +79,6 @@ def test_firing_the_same_case_twice_records_two_attempts(client, session_id, a_c
     assert len(recorded) == 2
     assert recorded[0]["case_id"] != recorded[1]["case_id"]
 
-
 def test_firing_an_unknown_case_is_404_and_records_nothing(client, session_id):
     with patch("api.views.harness.fire") as fired:
         response = client.post_json(
@@ -105,14 +89,12 @@ def test_firing_an_unknown_case_is_404_and_records_nothing(client, session_id):
     fired.assert_not_called()
     assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
 
-
 def test_firing_into_an_unknown_session_is_404(client, a_case):
     with patch("api.views.harness.fire") as fired:
         response = client.post_json("/api/sessions/9999/attacks/", {"case": a_case["name"]})
 
     assert response.status_code == 404
     fired.assert_not_called()
-
 
 def test_a_tool_that_will_not_run_is_reported_not_swallowed(client, session_id, a_case):
     from redteam.harness import ToolUnavailable
@@ -124,5 +106,5 @@ def test_a_tool_that_will_not_run_is_reported_not_swallowed(client, session_id, 
 
     assert response.status_code == 503
     assert "no image" in response.json()["detail"]
-    # Ground truth must not claim an attack that never left.
+                                                            
     assert client.get(f"/api/sessions/{session_id}/cases/").json() == []

@@ -2,28 +2,24 @@ from django.db import models
 
 from scoring.types import CaseRecord, DetectionRecord
 
-
 class Session(models.Model):
-    """One training session, i.e. one red team run."""
 
     scenario = models.CharField(max_length=128, default="juice-shop")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
-    # Objectives the target already considered solved when this session
-    # opened. Only what appears after this counts as the red team's doing,
-    # which also means the target never has to be reset between sessions.
-    #
-    # null means never established - the target was unreachable. It is not the
-    # same as "nothing was solved", and must not be treated as it: that would
-    # hand the red team credit for every objective solved before they arrived.
+                                                                       
+                                                                          
+                                                                         
+     
+                                                                              
+                                                                             
+                                                                              
     baseline = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]
 
-
 class Case(models.Model):
-    """One piece of ground truth recorded by the red team."""
 
     session = models.ForeignKey(Session, related_name="cases", on_delete=models.CASCADE)
     case_id = models.CharField(max_length=64, db_index=True)
@@ -51,9 +47,7 @@ class Case(models.Model):
             ended_at=self.ended_at,
         )
 
-
 class Detection(models.Model):
-    """One alert pulled from Elasticsearch."""
 
     session = models.ForeignKey(
         Session, related_name="detections", on_delete=models.CASCADE
@@ -81,15 +75,7 @@ class Detection(models.Model):
             marker=self.marker,
         )
 
-
 class Objective(models.Model):
-    """One objective the target itself judged to have been achieved.
-
-    Juice Shop decides this, not the platform, so it is ground truth nobody
-    here has to produce or be trusted on. `achieved_at` is when this process
-    first observed the flip, not the target's own timestamp - the target
-    rewrites those in bulk on restore.
-    """
 
     session = models.ForeignKey(
         Session, related_name="objectives", on_delete=models.CASCADE
@@ -104,9 +90,7 @@ class Objective(models.Model):
         ordering = ["achieved_at"]
         unique_together = [("session", "key")]
 
-
 class RuleSet(models.Model):
-    """One version of the Suricata rule file."""
 
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -116,17 +100,7 @@ class RuleSet(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-
 class Suppression(models.Model):
-    """One Suricata rule silenced on purpose, and when it comes back.
-
-    Every suppression is a false-negative bet, so it carries a deadline.
-    Sentinel's exceptions expire by default for exactly this reason, and a
-    range that lets a rule be silenced for good while the score stays clean is
-    teaching the wrong lesson.
-
-    `original` is the rule line verbatim, so putting it back cannot drift.
-    """
 
     sid = models.IntegerField()
     original = models.TextField()
@@ -138,9 +112,7 @@ class Suppression(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-
 class ScoreSnapshot(models.Model):
-    """A snapshot of a scoring run."""
 
     session = models.ForeignKey(Session, related_name="scores", on_delete=models.CASCADE)
     tp = models.IntegerField()

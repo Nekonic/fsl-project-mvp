@@ -1,34 +1,17 @@
 #!/usr/bin/env python3
-"""Turn Natural Earth land into SVG paths on an equirectangular grid.
-
-Run once; the output is committed. The console needs coastlines and must not
-fetch them at runtime - an isolated range should not depend on a CDN, and a
-map that silently fails to load is worse than no map.
-
-The projection is computed here rather than taken from a ready-made SVG on
-purpose. Most world SVGs described as equirectangular are clipped somewhere
-north of 83 and south of 56, so plotting a point with the textbook formula
-lands it tens of pixels off. Doing the projection ourselves means the grid and
-the points cannot disagree.
-
-    bin/worldmap land-110m.json > platform/console/templates/console/world.svg
-"""
+                      
 
 from __future__ import annotations
 
 import json
 import sys
 
-WIDTH, HEIGHT = 360.0, 180.0  # one unit per degree; viewBox "0 0 360 180"
-
+WIDTH, HEIGHT = 360.0, 180.0                                              
 
 def project(lon: float, lat: float) -> tuple[float, float]:
-    """Plate carrée. The console plots points with exactly this formula."""
     return (lon + 180.0) / 360.0 * WIDTH, (90.0 - lat) / 180.0 * HEIGHT
 
-
 def decode_arcs(topology: dict) -> list[list[tuple[float, float]]]:
-    """Undo TopoJSON's quantisation and delta encoding."""
     scale = topology["transform"]["scale"]
     translate = topology["transform"]["translate"]
     decoded = []
@@ -44,14 +27,12 @@ def decode_arcs(topology: dict) -> list[list[tuple[float, float]]]:
         decoded.append(points)
     return decoded
 
-
 def ring_points(arc_indices, arcs):
     points = []
     for index in arc_indices:
         arc = arcs[~index][::-1] if index < 0 else arcs[index]
         points.extend(arc[1:] if points else arc)
     return points
-
 
 def path_for(ring, arcs) -> str:
     points = ring_points(ring, arcs)
@@ -60,7 +41,6 @@ def path_for(ring, arcs) -> str:
     drawn = [f"M{x:.2f} {y:.2f}" for x, y in (project(*points[0]),)]
     drawn += [f"L{x:.2f} {y:.2f}" for x, y in (project(*p) for p in points[1:])]
     return "".join(drawn) + "Z"
-
 
 def main() -> int:
     topology = json.load(open(sys.argv[1]))
@@ -86,7 +66,6 @@ def main() -> int:
     print("".join(f'<path d="{d}"/>' for d in paths), end="")
     print("</g>")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
