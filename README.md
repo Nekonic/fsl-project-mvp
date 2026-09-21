@@ -16,6 +16,10 @@ TP/FP/FN/TN per attack case. It is reported beside the first, never folded into
 it: a defence that blocks everything scores perfectly on the second and loses
 every objective on the first.
 
+The console's stylesheet is generated from its own templates and committed, so
+the range needs no internet to render: `bin/build-css` regenerates it after a
+class is added, and a test says when that has been forgotten.
+
 `CLAUDE.md` is the working brief. `docs/ARCHITECTURE.md` is how it is put
 together. `docs/THREAT-MODEL.md` is which threat the cases stand for and which
 five of the eight life cycle stages never happen here. `docs/STATE.md` is where

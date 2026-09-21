@@ -45,6 +45,34 @@ else
   exit 1
 fi
 
+if "$PY" - <<'TARGETCHECK'
+import json, subprocess, sys, time
+
+DEADLINE = time.time() + 120
+while time.time() < DEADLINE:
+    done = subprocess.run(
+        ["docker", "inspect", "fsl-juice-shop", "--format", "{{json .State.Health}}"],
+        capture_output=True, text=True,
+    )
+    if done.returncode != 0:
+        print("fsl-juice-shop is not there", file=sys.stderr)
+        sys.exit(1)
+    health = json.loads(done.stdout or "null") or {}
+    if health.get("Status") == "healthy":
+        sys.exit(0)
+    time.sleep(3)
+
+print(f"still {health.get('Status')!r} after two minutes", file=sys.stderr)
+sys.exit(1)
+TARGETCHECK
+then
+  ok "target healthy"
+else
+  fail "the target is not healthy — attacks would leave and hit nothing, and"
+  echo "     the acceptance run would report TP 0 as if the defence had failed."
+  exit 1
+fi
+
 if docker image inspect fsl-kali >/dev/null 2>&1; then
   ok "attacker image present"
 else
