@@ -194,6 +194,13 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**One language at a time**
+- `scoring` returned English sentences meant for a screen, so four warnings
+  stayed English whatever language the console was in. It returns
+  `(key, *args)` now and the console looks the text up like everything else;
+  the prose left gated core with them. A test refuses a sentence in
+  `platform/scoring/`.
+
 **What the operator actually typed**
 - Every command typed at the terminal is recorded with the case that was open
   when it was typed: the box appends to a log on each prompt, stamping it with
@@ -238,12 +245,10 @@ matters is a scope decision: a C2 and a foothold is a large step, and the
 range may be more useful as a web-entry range that is honest about where it
 stops.
 
-### 2. The blue console's warnings are English on a Korean page
+### 2. A foothold to escalate from, or a decision not to
 
-`scoring` returns warning text and the console prints it as it comes. Every
-other string on the page goes through the table in `strings.html`; these do
-not, because they are produced server-side and some carry numbers. They are
-the last untranslated strings in the console.
+See item 1. It is the only thing left on this list, and it is a scope
+decision rather than a task.
 
 ## Known gaps
 

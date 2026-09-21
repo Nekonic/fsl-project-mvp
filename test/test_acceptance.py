@@ -55,7 +55,8 @@ def test_criterion_3_true_negative_is_not_zero(score):
 
 def test_score_has_no_pipeline_warnings(score):
     pipeline_warnings = [
-        w for w in score["warnings"] if "marker" in w or "source_ip" in w
+        w for w in score["warnings"]
+        if w[0] in ("score.warning.no_marker", "score.warning.no_source_ip")
     ]
 
     assert not pipeline_warnings, pipeline_warnings

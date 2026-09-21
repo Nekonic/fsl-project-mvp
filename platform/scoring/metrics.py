@@ -15,12 +15,7 @@ def score(result: CorrelationResult) -> Score:
 
     warnings = list(result.warnings)
     if fp + tn == 0:
-        warnings.append(
-            "There are no benign cases. Without normal traffic, a rule that "
-            "blocks everything scores perfectly. Scoring false positives is "
-            "the whole point of this platform, so add normal traffic to the "
-            "case file."
-        )
+        warnings.append(("score.warning.no_benign",))
 
     return Score(
         tp=tp,
