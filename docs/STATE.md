@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-20 (the board is top-N tables; the console no longer runs what it collects)
+Updated: 2026-09-20 (the target is a site, and the red team is a box with tools on it)
 
 ## Where things stand
 
@@ -11,7 +11,7 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
 phases; all four are done.
 
-`bin/verify` is green: 225 unit/API tests, 61 acceptance tests against the live
+`bin/verify` is green: 246 unit/API tests, 87 acceptance tests against the live
 stack. The hypothesis itself is untouched and still scores
 `TP=6 FN=0 FP=0 TN=6`.
 
@@ -19,7 +19,7 @@ stack. The hypothesis itself is untouched and still scores
 core_loc         611   gated, unchanged by the product work
 product_loc     3415   not gated (was 1031 before the console)
 dependencies       6
-services           9   kali and proxy, both raised by hand - see DECISIONS
+services           8   one attacker image now, not two - see DECISIONS
 tests            273   a floor: it may only go up
 ```
 
@@ -39,6 +39,41 @@ alert opens the whole Elasticsearch record behind it.
 Nothing. The product design is finished; the next item is not written yet.
 
 ## Done since v1.0
+
+- **The target is a site, not the appliance in front of it.** The shell was
+  told to attack `waf-edge:8080`, which tells an attacker that a WAF exists,
+  what it is called, and that the site is a lab on a high port. It answers to
+  `http://shop.com` now - no port, because a site does not have one.
+
+  Port 80 needed a sysctl (nginx runs as uid 101 in the CRS image) and a no-op
+  over the image's own low-port guard, whose assumption the sysctl makes
+  untrue. The host still publishes 8080: that is the operator's browser, not
+  the attacker's view.
+
+  The name was doing two jobs - naming the site and choosing which segment to
+  leave by - so they are separated. The public name is aliased on one segment,
+  which makes it unambiguous from a box attached to four; the `waf-<origin>`
+  names stay as pure routing and nobody types them. The shell always dials the
+  site, and the console's origin selector writes a file the stamping proxy
+  reads per request, rewriting the connection host while leaving `Host` alone.
+
+- **The red team is a box, not a button list.** Every case encodes a path only
+  this target has, which is right for a baseline and useless as an attacker.
+  The shell now has the tools to be one - nmap, whatweb, ffuf, gobuster,
+  nikto, sqlmap, hydra, curl, wget, nc, dig, jq - and the red window leads
+  with it, with the buttons below labelled as the scripted baseline.
+
+  One attacker image instead of two: a case with `tool:` runs in the same
+  image the shell opens on, so neither can depend on something the other
+  lacks. `services` went 9 to 8.
+
+  Two routes out, and the console says which: HTTP goes through the stamping
+  proxy and carries its address, raw TCP leaves from the box itself. A window
+  records whichever the work will use, because the wrong one matches no alert
+  and reads as a defence that missed.
+
+  The scanners are **not** cases, and that was measured rather than assumed -
+  see the backlog.
 
 - **The console no longer runs the attacks it collects.** A script-tag payload
   went out as a case, came back as a request path, and the board rendered it
@@ -445,31 +480,30 @@ Nothing. The product design is finished; the next item is not written yet.
 
 ## Backlog
 
-**Empty.** Every item a human put here is done. Per CLAUDE.md a session that
-finds this stops and says so rather than inventing the next one: what this
-should be is not a loop's to choose.
+### 1. A marker a scanner can carry
 
-The user's direction, now delivered: a topology anyone can see, defence at the
-network layer and not only at the application, real source addresses on a map,
-and a console shaped like something a person watches.
+Adding nmap and nikto to the catalogue was tried and withdrawn. The marker is
+appended as `--headers=X-FSL-Case: <id>`, which is sqlmap's syntax; neither
+tool takes it, so both came back `FN` with zero alerts while plainly reaching
+the target. That is a harness failure recorded as a defence failure.
 
-What the user has ruled out is in DECISIONS rather than here: layer 2 and NAC,
-pfSense and OPNsense, and switching to x86_64 before it is needed. Keeping a
-second copy of a decision in the file every session re-reads costs the reading
-and buys nothing.
+ffuf, gobuster, curl and whatweb all take a custom header, so a per-tool flag
+in `SUPPORTED_TOOLS` would cover most of it. nmap and nikto cannot carry one
+at all: either they are correlated by window - which needs the tool container
+to have a known address, and `--ip` on the run would give it one - or they
+stay at the shell, where a labelled window already scores them.
 
-Two things the range itself is now saying, which are observations and not
-items. Someone has to decide whether either is worth doing:
-
-- **There are two ways in, not one.** The platform sits on every segment, so
-  it crosses from outside to inside exactly as the WAF does. It is a known
-  simplification - it fires attacks, reads the target's challenge API and
-  writes to Elasticsearch, which in a real estate are three machines - but it
-  is a way past the defence, and the console now says so every refresh.
-- **`mgmt` is unwatched.** Suricata is in the WAF's namespace, so nothing is
-  listening on the management segment where Elasticsearch lives.
+Worth doing only if the scripted baseline should include recon at all. It may
+not: the argument for the shell is that recon is what a person does.
 
 ## Known gaps
+
+- **State the console can change survives the session that set it.** The
+  chosen origin and any rule suppression are files, with no expiry a test run
+  respects, and both fail as something else: "attributed to an address on the
+  wrong continent", "the probe raised no alert at all". The acceptance suite
+  resets the origin and refuses to run while anything is suppressed. Anything
+  added with that shape needs the same treatment.
 
 - **Never `docker network rm` a compose network while its containers run.**
   They reconnect without their service alias, nothing warns, and the failures

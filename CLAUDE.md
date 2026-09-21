@@ -167,7 +167,6 @@ directory. Same for `test/`.
 ```bash
 colima start --profile fsl          # arm64 host: ES crashes under x86 emulation
 docker compose up -d --build          # includes kali, the attacker's terminal
-docker compose --profile tools build
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
   -H 'Content-Type: application/json' \
   --data-binary @deploy/elastic/ingest-pipeline.json

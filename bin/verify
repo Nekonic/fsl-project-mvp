@@ -53,10 +53,10 @@ else
   exit 1
 fi
 
-if docker image inspect fsl-redteam-tools >/dev/null 2>&1; then
-  ok "redteam tool image present"
+if docker image inspect fsl-kali >/dev/null 2>&1; then
+  ok "attacker image present"
 else
-  fail "fsl-redteam-tools missing — docker compose --profile tools build"
+  fail "fsl-kali missing — docker compose build kali"
 fi
 
 # A git checkout or reset while the stack runs replaces the single files that

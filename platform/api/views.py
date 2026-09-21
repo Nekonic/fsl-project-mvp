@@ -5,6 +5,8 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timedelta
 
+from urllib.parse import urlsplit
+
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import Http404, JsonResponse
@@ -149,9 +151,14 @@ def attacker_box(request):
         {
             "container": settings.ATTACKER_CONTAINER,
             "source_ip": origin["source_ip"],
+            # Raw TCP leaves from the shell's own box, not the proxy's.
+            "direct_ip": origin["direct_ip"],
             "origin": origin["id"],
             "origin_label": origin["label"],
             "target_url": origin["target_url"],
+            # What a person types. The routing name above is how the platform
+            # and the proxy pick which address to leave by; nobody types it.
+            "public_url": settings.PUBLIC_TARGET_URL,
             "terminal_url": settings.ATTACKER_TERMINAL_URL,
         }
     )
@@ -344,6 +351,25 @@ def origins(request):
 
 
 @require_http_methods(["POST"])
+def attacker_origin(request):
+    """Choose which segment the terminal's traffic leaves by.
+
+    The attacker types the target's own name; this is what decides where that
+    request appears to come from, so nobody has to know the routing names.
+    """
+    origin_id = _payload(request).get("origin")
+    try:
+        chosen = attacker.find(origin_id)
+    except attacker.AttackerUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    except attacker.UnknownOrigin as exc:
+        raise Http404(str(exc))
+
+    attacker.set_origin(chosen["id"])
+    return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
+
+
+@require_http_methods(["POST"])
 def attacker_label(request):
     """Open or close the marker the proxy stamps on the attacker's traffic."""
     attacker.set_label(_payload(request).get("case_id"))
@@ -458,7 +484,19 @@ def fire_attack(request, session_id):
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
-    target_url = origin["target_url"] if origin else settings.TARGET_URL
+    target_url = settings.TARGET_URL
+    if origin:
+        # Another segment is reached by a routing name, but the request is
+        # still for the same site - so the wire says so. Otherwise a rotated
+        # attack would be logged against a hostname nobody ever dials.
+        target_url = origin["target_url"]
+        spec = dict(case.get("request") or {})
+        if spec:
+            spec["headers"] = dict(
+                spec.get("headers") or {},
+                Host=urlsplit(settings.PUBLIC_TARGET_URL).netloc,
+            )
+            case["request"] = spec
 
     started_at = timezone.now()
     try:

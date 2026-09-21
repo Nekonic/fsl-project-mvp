@@ -35,6 +35,19 @@ def stack_is_up():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def terminal_leaves_by_the_front_door(stack_is_up):
+    """Put the shell's origin back to the default before measuring anything.
+
+    The console can point the terminal's traffic at another segment, and the
+    proxy reads that choice from a file - so it survives the session that made
+    it. A run that starts with the shell pointed at Hong Kong attributes every
+    terminal case to an address on the wrong continent, and nothing says so.
+    """
+    requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
+                  timeout=60)
+
+
+@pytest.fixture(scope="session", autouse=True)
 def defence_is_on(stack_is_up):
     """Refuse to measure a defence that is switched off.
 
@@ -116,12 +129,13 @@ def from_attacker(path: str) -> None:
     """Send one request from the attacker's box, the way the terminal would.
 
     Goes out through the stamping proxy because that is how the container is
-    configured, so it carries a marker whenever a label is open.
+    configured, so it carries a marker whenever a label is open. Dialled by
+    the site's own name, which is what a person at that prompt types.
     """
     result = subprocess.run(
         [
             "docker", "exec", "fsl-kali", "curl", "-s", "-o", "/dev/null",
-            "--max-time", "20", f"http://waf:8080{path}",
+            "--max-time", "20", f"http://shop.com{path}",
         ],
         capture_output=True,
         text=True,

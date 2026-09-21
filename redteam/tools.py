@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 MARKER_HEADER = "X-FSL-Case"
 
-TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-redteam-tools")
+TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
 TOOL_NETWORK = os.environ.get("FSL_TOOL_NETWORK", "fsl_edge")
 
 
@@ -38,6 +38,13 @@ def network_for(target_url: str) -> str:
     return f"{project}_{host[len('waf-'):]}"
 
 # Tool name -> the executable to run inside the container.
+# Still one tool, and the reason is the marker rather than the image. A case
+# is correlated by a header this appends as `--headers=`, which is sqlmap's
+# syntax; nmap and nikto do not take it, so their traffic would carry no
+# marker and be scored as undetected - a harness failure charged to the
+# defence, which is the one mistake this platform must not make. The shell is
+# where those tools are used, and a labelled window scores them properly.
+# See docs/DECISIONS.md.
 SUPPORTED_TOOLS = {"sqlmap": "sqlmap"}
 
 
@@ -74,7 +81,14 @@ def build_tool_command(case: dict[str, Any], target_url: str) -> list[str]:
             f"{', '.join(sorted(SUPPORTED_TOOLS))}"
         )
 
-    args = [str(a).replace("{target}", target_url.rstrip("/")) for a in case["args"]]
+    # {target} is the URL; {target_host} is the host alone, for the tools that
+    # take a host rather than a URL - nmap, netcat, hydra - which are also the
+    # ones that ignore http_proxy.
+    host = urlsplit(target_url).hostname or ""
+    args = [
+        str(a).replace("{target}", target_url.rstrip("/")).replace("{target_host}", host)
+        for a in case["args"]
+    ]
 
     if case.get("correlation") == "marker":
         args.append(f"--headers={MARKER_HEADER}: {case['case_id']}")

@@ -36,7 +36,6 @@ Build the red team tool image (sqlmap) once. It is invoked one-shot with
 `docker run`, so it never comes up with the rest:
 
 ```bash
-docker compose --profile tools build
 ```
 
 On an arm64 host (Apple Silicon), Docker has to run arm64 natively.

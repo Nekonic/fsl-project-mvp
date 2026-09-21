@@ -1,0 +1,19 @@
+
+  FSL red team box.
+
+  Everything HTTP leaves through the stamping proxy, so the address an alert
+  carries is the proxy's, not this box's. Raw TCP - nmap, nc - does not go
+  through it and leaves from here. The red window prints both, and which one
+  a labelled window is scored against depends on which you use.
+
+    target       echo $FSL_TARGET      # the site, not the appliance
+    recon        nmap -sV -p 8080 $FSL_TARGET_HOST
+                 whatweb $FSL_TARGET
+    discovery    ffuf -u $FSL_TARGET/FUZZ -w /usr/share/wordlists/dirb/common.txt
+                 gobuster dir -u $FSL_TARGET -w /usr/share/wordlists/dirb/common.txt
+    scanning     nikto -h $FSL_TARGET
+    exploitation sqlmap -u "$FSL_TARGET/rest/products/search?q=1" --batch
+
+  Name a window in the red console before you start, and stop it when you are
+  done: everything sent in between is attributed to that name and scored.
+

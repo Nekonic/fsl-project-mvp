@@ -13,6 +13,7 @@ urlpatterns = [
     path("api/origins/", views.origins, name="origins"),
     path("api/attacker/", views.attacker_box),
     path("api/attacker/label/", views.attacker_label),
+    path("api/attacker/origin/", views.attacker_origin),
     path("api/wargames/", views.wargame_catalogue),
     path("api/wargames/<str:wargame_id>/cases/", views.wargame_cases),
     path("api/wargames/<str:wargame_id>/objectives/", views.wargame_objectives),

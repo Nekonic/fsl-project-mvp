@@ -1,8 +1,9 @@
-# The attacker's shell, served into the browser by ttyd.
+# The attacker's box, served into the browser by ttyd.
 #
-# Kali rather than a slim base carrying the same tools: the point of the red
-# team window is that it is the box an attacker would sit at, and the case
-# buttons beside it already cover the scripted half.
+# Kali rather than a slim base carrying two tools: the red team window is
+# meant to be the machine an attacker sits at, and an attacker does not sit at
+# a machine with curl on it. The case buttons are a scripted baseline for
+# scoring; this is where the work happens.
 FROM kalilinux/kali-rolling
 
 # Pin the official CDN. http.kali.org redirects to whichever mirror is near,
@@ -14,7 +15,9 @@ RUN rm -f /etc/apt/sources.list.d/*.sources \
       > /etc/apt/sources.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      curl nmap sqlmap ca-certificates \
+      ca-certificates curl wget \
+      nmap sqlmap nikto whatweb ffuf gobuster hydra \
+      netcat-traditional dnsutils jq nano wordlists dirb \
  && rm -rf /var/lib/apt/lists/*
 
 # ttyd is not packaged in Kali, so take the upstream static build, pinned and
@@ -26,6 +29,16 @@ RUN curl -fsSL -o /usr/local/bin/ttyd \
       "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.aarch64" \
  && echo "${TTYD_SHA256}  /usr/local/bin/ttyd" | sha256sum -c - \
  && chmod +x /usr/local/bin/ttyd
+
+# `wordlists` is mostly symlinks into the packages that own each list, so the
+# list a directory brute force reaches for only exists if dirb is installed -
+# and rockyou ships gzipped, which no tool reads. Both fixed here rather than
+# discovered at the prompt.
+RUN [ -f /usr/share/wordlists/rockyou.txt.gz ] \
+ && gunzip -f /usr/share/wordlists/rockyou.txt.gz || true
+
+COPY motd /etc/motd
+RUN echo 'cat /etc/motd' >> /root/.bashrc
 
 WORKDIR /root
 
