@@ -13,7 +13,7 @@ import yaml
 from requests.utils import requote_uri
 
 from redteam.tools import (
-    DOCKER_STARTUP_FAILURE,
+    STARTUP_FAILURE,
     ToolUnavailable,
     build_tool_command,
     is_tool_case,
@@ -133,7 +133,7 @@ def fire_tool(case: dict[str, Any], tool_target_url: str) -> None:
     except (OSError, subprocess.SubprocessError) as exc:
         raise unavailable(case["name"], str(exc)) from exc
 
-    if result.returncode == DOCKER_STARTUP_FAILURE:
+    if result.returncode == STARTUP_FAILURE:
         raise unavailable(case["name"], result.stderr.strip()[:200])
 
     if result.returncode != 0:

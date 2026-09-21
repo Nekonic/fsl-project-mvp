@@ -37,7 +37,7 @@ class ToolUnavailable(RuntimeError):
 
                                                                            
                                                                            
-DOCKER_STARTUP_FAILURE = 125
+STARTUP_FAILURE = 125
 
 def unavailable(case_name: str, detail: str) -> ToolUnavailable:
     return ToolUnavailable(

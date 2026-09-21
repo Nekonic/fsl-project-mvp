@@ -1,84 +1,88 @@
-import subprocess
 from unittest.mock import patch
 
 import pytest
 
+from range.ports import Ran, RangeUnavailable
 from rules.suricata import RuleApplyError, ValidationOutcome
 
 pytestmark = pytest.mark.django_db
 
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'
 
-def completed(returncode, stdout="", stderr=""):
-    return subprocess.CompletedProcess(
-        args=["docker"], returncode=returncode, stdout=stdout, stderr=stderr
-    )
+class Sensor:
+    def __init__(self, replies=None, unreachable=False):
+        self.calls = []
+        self.replies = replies or {}
+        self.unreachable = unreachable
 
-def test_validate_returns_ok_when_suricata_test_succeeds():
+    def __call__(self, argv, stdin=None, timeout=60.0):
+        if self.unreachable:
+            raise RangeUnavailable("fsl-suricata is not running")
+        self.calls.append((argv, stdin))
+        for needle, reply in self.replies.items():
+            if needle in " ".join(argv):
+                return reply
+        return Ran(0, "")
+
+def sensor_of(substrate):
+    return substrate.runner.call_args.args[0]
+
+def test_the_endpoint_asks_the_substrate_for_the_sensor_and_nothing_else():
+    from range.docker import Docker
+
+    substrate = Docker(hosts={"sensor": "fsl-suricata"})
+    run = substrate.runner("sensor")
+
+    with patch("range.docker.subprocess.run") as ran:
+        ran.return_value.returncode = 0
+        ran.return_value.stdout = "ok"
+        ran.return_value.stderr = ""
+        run(["suricata", "-T", "-S", "/x"])
+
+    argv = ran.call_args.args[0]
+    assert argv[:3] == ["docker", "exec", "fsl-suricata"], argv
+    assert argv[3:] == ["suricata", "-T", "-S", "/x"], argv
+
+def test_writing_through_the_substrate_opens_stdin():
+    from range.docker import Docker
+
+    run = Docker(hosts={"sensor": "fsl-suricata"}).runner("sensor")
+
+    with patch("range.docker.subprocess.run") as ran:
+        ran.return_value.returncode = 0
+        ran.return_value.stdout = ""
+        ran.return_value.stderr = ""
+        run(["sh", "-c", "cat > /x"], stdin=GOOD_RULE)
+
+    assert "-i" in ran.call_args.args[0], "docker exec without -i discards stdin"
+    assert ran.call_args.kwargs["input"] == GOOD_RULE
+
+def test_a_missing_sensor_is_unavailable_not_a_failed_command():
+    from range.docker import Docker
+
+    run = Docker(hosts={"sensor": "fsl-suricata"}).runner("sensor")
+
+    with patch("range.docker.subprocess.run") as ran:
+        ran.return_value.returncode = 1
+        ran.return_value.stdout = ""
+        ran.return_value.stderr = "Error: No such container: fsl-suricata"
+        with pytest.raises(RangeUnavailable):
+            run(["cat", "/x"])
+
+def test_a_role_no_host_fills_is_refused_before_anything_runs():
+    from range.docker import Docker
+
+    with pytest.raises(RangeUnavailable, match="sensor"):
+        Docker(hosts={}).runner("sensor")
+
+def test_the_rule_paths_are_the_sensors_own():
     from rules import suricata
 
-    with patch.object(suricata, "_write_candidate") as write, patch.object(
-        suricata,
-        "_run",
-        return_value=completed(0, "Configuration provided was successfully loaded"),
-    ):
-        outcome = suricata.validate(GOOD_RULE)
+    sensor = Sensor()
+    suricata.apply(GOOD_RULE, sensor)
 
-    assert outcome.ok is True
-    assert "successfully loaded" in outcome.output
-    write.assert_called_once_with(GOOD_RULE)
-
-def test_validate_returns_failure_output_verbatim():
-    from rules import suricata
-
-    with patch.object(suricata, "_write_candidate"), patch.object(
-        suricata, "_run", return_value=completed(1, "", "Error parsing signature")
-    ):
-        outcome = suricata.validate("garbage")
-
-    assert outcome.ok is False
-    assert "Error parsing signature" in outcome.output
-
-def test_apply_refuses_content_that_fails_validation():
-    from rules import suricata
-
-    with patch.object(
-        suricata, "validate", return_value=ValidationOutcome(ok=False, output="bad")
-    ), patch.object(suricata, "_write_rules") as write:
-        with pytest.raises(RuleApplyError, match="bad"):
-            suricata.apply("garbage")
-
-    write.assert_not_called()
-
-def test_apply_writes_then_reloads():
-    from rules import suricata
-
-    with patch.object(
-        suricata, "validate", return_value=ValidationOutcome(ok=True, output="ok")
-    ), patch.object(suricata, "_read_rules", return_value="OLD\n"), patch.object(
-        suricata, "_write_rules"
-    ) as write, patch.object(
-        suricata, "_run", return_value=completed(0)
-    ) as run:
-        suricata.apply(GOOD_RULE)
-
-    write.assert_called_once_with(GOOD_RULE)
-    assert any("kill" in str(call) for call in run.call_args_list)
-
-def test_apply_restores_previous_rules_when_reload_fails():
-    from rules import suricata
-
-    with patch.object(
-        suricata, "validate", return_value=ValidationOutcome(ok=True, output="ok")
-    ), patch.object(suricata, "_read_rules", return_value="OLD\n"), patch.object(
-        suricata, "_write_rules"
-    ) as write, patch.object(
-        suricata, "_run", return_value=completed(1, "", "no such container")
-    ):
-        with pytest.raises(RuleApplyError, match="no such container"):
-            suricata.apply(GOOD_RULE)
-
-    assert write.call_args_list[-1].args[0] == "OLD\n"
+    written = [argv for argv, stdin in sensor.calls if stdin is not None]
+    assert all("/var/lib/suricata/rules/" in " ".join(a) for a in written), written
 
 def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
@@ -108,7 +112,7 @@ def test_apply_endpoint_stores_and_marks_applied(client):
     with patch("api.views.suricata.apply") as applier:
         response = client.post_json("/api/rules/apply/", {"content": GOOD_RULE})
 
-    applier.assert_called_once_with(GOOD_RULE)
+    assert applier.call_args.args[0] == GOOD_RULE
     assert response.status_code == 200
     stored = RuleSet.objects.get()
     assert stored.content == GOOD_RULE

@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 
-from django.conf import settings
-
+RULE_PATH = "/var/lib/suricata/rules/local.rules"
+CANDIDATE_PATH = "/var/lib/suricata/rules/candidate.rules"
 RELOAD_SIGNAL = "USR2"
-_TIMEOUT = 60
 
 class RuleApplyError(RuntimeError):
     """The rules were not applied. The previous rule set is still live."""
@@ -17,55 +14,31 @@ class ValidationOutcome:
     ok: bool
     output: str
 
-def current() -> str:
-    return _read_rules()
+def current(sensor) -> str:
+    return sensor(["cat", RULE_PATH]).output
 
-def validate(content: str) -> ValidationOutcome:
-    _write_candidate(content)
-    result = _run(
-        [
-            "docker",
-            "exec",
-            settings.SURICATA_CONTAINER,
-            "suricata",
-            "-T",
-            "-S",
-            settings.SURICATA_CANDIDATE_PATH_IN_IDS,
-        ]
-    )
-    output = (result.stdout or "") + (result.stderr or "")
-    return ValidationOutcome(ok=result.returncode == 0, output=output.strip())
+def validate(content: str, sensor) -> ValidationOutcome:
+    _write(sensor, CANDIDATE_PATH, content)
+    ran = sensor(["suricata", "-T", "-S", CANDIDATE_PATH])
+    return ValidationOutcome(ok=ran.ok, output=ran.output.strip())
 
-def apply(content: str) -> None:
-    outcome = validate(content)
+def apply(content: str, sensor) -> None:
+    outcome = validate(content, sensor)
     if not outcome.ok:
         raise RuleApplyError(outcome.output)
 
-    previous = _read_rules()
-    _write_rules(content)
+    previous = current(sensor)
+    _write(sensor, RULE_PATH, content)
 
-    result = _run(["docker", "kill", "-s", RELOAD_SIGNAL, settings.SURICATA_CONTAINER])
-    if result.returncode != 0:
-        _write_rules(previous)
+    ran = sensor(["kill", "-" + RELOAD_SIGNAL, "1"])
+    if not ran.ok:
+        _write(sensor, RULE_PATH, previous)
         raise RuleApplyError(
             "reload failed, rolled back to the previous rule set: "
-            + ((result.stdout or "") + (result.stderr or "")).strip()
+            + ran.output.strip()
         )
 
-def _run(command: list[str]) -> subprocess.CompletedProcess:
-    try:
-        return subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return subprocess.CompletedProcess(
-            args=command, returncode=1, stdout="", stderr=str(exc)
-        )
-
-def _read_rules() -> str:
-    path = Path(settings.SURICATA_RULE_PATH)
-    return path.read_text() if path.exists() else ""
-
-def _write_rules(content: str) -> None:
-    Path(settings.SURICATA_RULE_PATH).write_text(content)
-
-def _write_candidate(content: str) -> None:
-    Path(settings.SURICATA_CANDIDATE_PATH).write_text(content)
+def _write(sensor, path: str, content: str) -> None:
+    ran = sensor(["sh", "-c", "cat > " + path], stdin=content)
+    if not ran.ok:
+        raise RuleApplyError(f"could not write {path}: {ran.output.strip()}")
