@@ -45,7 +45,9 @@ def defence_is_on(stack_is_up):
     )
 
 def reset_target() -> None:
-    (REPO_ROOT / "deploy/wiki/logs/read.log").write_text("")
+    record = REPO_ROOT / "deploy/wiki/logs/read.log"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text("")
 
     subprocess.run(
         ["docker", "compose", "rm", "-sf", "juice-shop"],

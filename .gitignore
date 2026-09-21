@@ -10,4 +10,5 @@ deploy/nginx/logs/
 # Scratch file the platform writes while validating rules. It lands inside
 # the repo because of the bind mount shared with Suricata, but it is not source.
 deploy/suricata/rules/candidate.rules
-deploy/wiki/logs/
+deploy/wiki/logs/*
+!deploy/wiki/logs/.gitkeep
