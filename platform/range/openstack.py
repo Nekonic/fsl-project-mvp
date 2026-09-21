@@ -15,6 +15,7 @@ BOOT = "POST {nova}/servers"
 CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
+VERSION = "version"
 
 SEGMENT_TAG = "fsl.segment.id"
 
@@ -126,7 +127,7 @@ class OpenStack:
             Node(name=server["name"], address=entry["addr"])
             for server in servers
             for entry in (server.get("addresses") or {}).get(network_name, [])
-            if entry.get(FIXED) == "fixed"
+            if entry.get(FIXED) == "fixed" and entry.get(VERSION, 4) == 4
         ]
         return tuple(sorted(found, key=lambda node: node.name))
 

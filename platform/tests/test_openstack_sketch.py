@@ -233,3 +233,53 @@ def test_starting_a_tool_is_a_cloud_call_the_sketch_does_not_make():
         "such verb: a tool is a server booted from a Glance image with a "
         "flavour and a key pair, and something has to delete it afterwards"
     )
+
+
+REFERENCE = {
+    "networks[].id, .name, .tags": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
+    "?tags-any=": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
+    "subnets[].cidr, .gateway_ip": "https://docs.openstack.org/api-ref/network/v2/#list-subnets",
+    "servers[].addresses[label][].addr, .OS-EXT-IPS:type, .version":
+        "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
+}
+
+def test_every_field_the_sketch_reads_is_one_the_api_reference_names():
+    source = pathlib.Path(openstack.__file__).read_text()
+
+    for field in ("\"id\"", "\"name\"", "\"tags\"", "\"cidr\"", "\"gateway_ip\"",
+                  "\"addr\"", "\"servers\"", "\"networks\"", "\"subnets\""):
+        assert field in source, (
+            f"{field} is how the sketch reads the cloud and nothing in it "
+            f"matches the published response any more. Checked against "
+            f"{REFERENCE}"
+        )
+    assert openstack.FIXED == "OS-EXT-IPS:type"
+    assert "tags-any" in openstack.NETWORKS
+
+
+def test_an_ipv6_address_is_not_taken_for_the_address_of_a_node():
+    dual = {
+        "servers": [{
+            "name": "fsl-waf",
+            "addresses": {"range1-edge-v4": [
+                {"addr": "fd00:5:188:10::9", "OS-EXT-IPS:type": "fixed", "version": 6},
+                {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4},
+            ]},
+        }]
+    }
+
+    def reader(call):
+        if "/v2.0/networks" in call:
+            return NETWORKS
+        if "/v2.0/subnets" in call:
+            return SUBNETS[call.rsplit("=", 1)[1]]
+        return dual
+
+    shape = openstack.OpenStack(declared.read(), CLOUD, get=reader).describe()
+    edge = next(s for s in shape.segments if s.id == "edge")
+
+    assert [n.address for n in edge.nodes] == ["5.188.10.9"], (
+        "Nova reports every fixed address a port has, and an instance with a "
+        "v6 address would have been drawn at it - while the console bins every "
+        "alert by an IPv4 subnet, so it would sit on no segment at all"
+    )
