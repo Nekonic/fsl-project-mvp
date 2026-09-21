@@ -68,10 +68,14 @@ def test_the_two_views_are_tabs_rather_than_one_screenful(client):
 
 def test_the_overview_reports_each_dimension_as_a_table(client):
     page = body(client, "/blue/1/")
+    english = strings()["en"]
 
-    for column in ("Source IP", "Zone", "Country", "Events", "Destination",
-                   "Signature", "Engine", "Method", "Path"):
-        assert f">{column}<" in page, column
+    for key in ("blue.col.src_ip", "blue.col.zone", "blue.col.country",
+                "blue.col.alerts", "blue.col.dest", "blue.col.signature",
+                "blue.col.engine", "blue.col.method", "blue.col.path"):
+        assert f'data-t="{key}"' in page, key
+        assert english.get(key), key
+
 
 def test_the_overview_says_nothing_about_how_the_range_is_built(client):
                                                                              
@@ -106,12 +110,74 @@ def test_a_template_comment_never_reaches_the_browser(client):
 
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
 
+def strings():
+    from tests.test_strings import tables
+    return tables()
+
+TEMPLATES = ["base.html", "main.html", "session.html", "red.html", "blue.html"]
+
+def test_a_rejected_fetch_comes_back_as_a_result_rather_than_a_throw():
+    source = (CONSOLE / "base.html").read_text()
+    helper = source[source.index("async function api("):]
+    helper = helper[:helper.index("\n    }")]
+
+    assert "try {" in helper and "catch" in helper, (
+        "api() lets a rejected fetch escape, so every caller that destructures "
+        "the result throws when a container is restarting"
+    )
+    assert "ok: false" in helper, (
+        "api() must report the failure as a result rather than swallow it"
+    )
+
+@pytest.mark.parametrize("name", TEMPLATES)
+def test_no_caller_reads_a_body_it_has_not_checked(name):
+    source = (CONSOLE / name).read_text()
+    offenders = [
+        source.count("\n", 0, position) + 1
+        for position in range(len(source))
+        if source.startswith("const { body } = await api(", position)
+    ]
+
+    assert not offenders, (
+        f"{name}:{offenders} destructures body without ok. With the stack down "
+        "api() returns an error object, so body.map/slice/filter throws and the "
+        "screen goes blank instead of saying what happened"
+    )
+
+def test_nothing_that_decides_a_recorded_address_can_move_while_recording():
+    source = (CONSOLE / "red.html").read_text()
+    lock = source[source.index("function lockCase("):]
+    lock = lock[:lock.index("\n  }")]
+
+    for control in ("window-name", "window-malicious", "window-route", "origin"):
+        assert control in lock, (
+            f"{control} stays live during a recording, and windowAddress() is read "
+            "at stop time, so the case can be recorded against an address that "
+            "never sent the traffic"
+        )
+
+def test_the_console_tells_a_quiet_range_from_a_dead_one():
+    source = (CONSOLE / "blue.html").read_text()
+    paint = source[source.index("function paintLive("):]
+    paint = paint[:paint.index("\n  }")]
+    english = strings()["en"]
+
+    assert "blue.live.unreachable" in paint, (
+        "the blue console renders an empty range and a dead one identically"
+    )
+    assert "reachable" in english["blue.live.unreachable"].lower()
+    assert "return" not in paint, (
+        "paintLive must still report live and paused while unreachable, or the "
+        "toggle gives no feedback at all when the stack is down"
+    )
+
+
                                                                              
                                                      
 UNTRUSTED = (
     ".signature", ".path", ".description", ".reason", ".src_ip", ".dest",
     ".marker", ".zone", ".country", ".city", ".summary", ".takes", ".detail",
-    ".subnet", ".label", ".category", "decodePath(",
+    ".subnet", ".label", ".category", ".scenario", ".host", "decodePath(",
 )
 
 def interpolations(source):
@@ -128,7 +194,7 @@ def interpolations(source):
 
         yield source.count("\n", 0, match.start()), source[match.end():i - 1]
 
-@pytest.mark.parametrize("name", ["blue.html", "red.html"])
+@pytest.mark.parametrize("name", ["blue.html", "red.html", "main.html"])
 def test_no_untrusted_value_is_written_into_markup_unescaped(name):
     source = (CONSOLE / name).read_text()
     offenders = []

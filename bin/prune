@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+import sys
+
+CONTAINER = "fsl-platform"
+
+REPORT = """
+import os, django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+django.setup()
+from django.db.models import Count
+from api.models import Session, Detection, Case, Objective
+
+keep = {keep}
+total = Session.objects.count()
+survivors = list(
+    Session.objects.order_by("-id").values_list("id", flat=True)[:keep]
+)
+doomed = Session.objects.exclude(id__in=survivors)
+print("sessions     %6d  keep %d  drop %d" % (total, len(survivors), doomed.count()))
+print("  of those still open: %d" % doomed.filter(ended_at=None).count())
+print("detections   %6d  drop %d"
+      % (Detection.objects.count(), Detection.objects.filter(session__in=doomed).count()))
+print("cases        %6d  drop %d"
+      % (Case.objects.count(), Case.objects.filter(session__in=doomed).count()))
+print("objectives   %6d  drop %d"
+      % (Objective.objects.count(), Objective.objects.filter(session__in=doomed).count()))
+"""
+
+DELETE = REPORT + """
+removed = doomed.delete()
+print()
+print("deleted:", removed[0], "rows")
+for model, count in sorted(removed[1].items()):
+    print("   %-28s %d" % (model, count))
+"""
+
+
+def run(script):
+    result = subprocess.run(
+        ["docker", "exec", "-i", CONTAINER, "python", "-"],
+        input=script, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr or "could not reach the platform container\n")
+        raise SystemExit(1)
+    return result.stdout
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Drop old sessions and everything hanging off them.",
+    )
+    parser.add_argument("--keep", type=int, default=20,
+                        help="how many of the newest sessions to keep (default 20)")
+    parser.add_argument("--apply", action="store_true",
+                        help="actually delete; without this nothing is written")
+    args = parser.parse_args()
+
+    if args.keep < 1:
+        parser.error("--keep must be at least 1")
+
+    script = (DELETE if args.apply else REPORT).format(keep=args.keep)
+    sys.stdout.write(run(script))
+
+    if not args.apply:
+        print()
+        print("dry run - nothing was deleted. Add --apply to do it.")
+
+
+if __name__ == "__main__":
+    main()

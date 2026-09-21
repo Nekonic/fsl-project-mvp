@@ -28,7 +28,6 @@ from api.models import (
     Detection,
     Objective,
     RuleSet,
-    ScoreSnapshot,
     Session,
     Suppression,
 )
@@ -64,11 +63,6 @@ SUPPRESSION_FIELDS = (
                                                                        
                                        
 SUPPRESSION_MINUTES = 60
-SCORE_FIELDS = (
-    "id", "tp", "fp", "fn", "tn", "precision", "recall", "f1",
-    "false_positive_rate", "warnings", "per_case", "computed_at",
-)
-
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
                                                                          
@@ -100,10 +94,32 @@ def _reply(payload, status=200):
 def _payload(request):
     return json.loads(request.body or b"{}")
 
+def _closed(session):
+    if session.ended_at is None:
+        return None
+    return _reply(
+        {"detail": f"session {session.pk} closed at {session.ended_at.isoformat()}"},
+        status=409,
+    )
+
+SESSION_PAGE = 25
+
 @require_http_methods(["GET", "POST"])
 def sessions(request):
     if request.method == "GET":
-        return _reply([_shape(s, SESSION_FIELDS) for s in Session.objects.all()])
+        try:
+            limit = max(1, min(SESSION_PAGE, int(request.GET.get("limit", SESSION_PAGE))))
+        except ValueError:
+            limit = SESSION_PAGE
+
+        found = Session.objects.order_by("-id")
+        state = request.GET.get("state")
+        if state == "open":
+            found = found.filter(ended_at=None)
+        elif state == "closed":
+            found = found.exclude(ended_at=None)
+
+        return _reply([_shape(s, SESSION_FIELDS) for s in found[:limit]])
 
     body = _payload(request)
     try:
@@ -147,13 +163,11 @@ def attacker_box(request):
                                               
 TOP_N = 25
 
-def _zones():
+def _segments():
     try:
         segments = topology.shape()["segments"]
     except topology.StackUnavailable:
-                                                                             
-                                   
-        return []
+        return [], {}
 
     zones = []
     for segment in segments:
@@ -161,7 +175,13 @@ def _zones():
             zones.append((ipaddress.ip_network(segment["subnet"]), segment))
         except ValueError:
             continue
-    return zones
+    hosts = {
+        node["address"]: node["name"]
+        for segment in segments
+        for node in segment["nodes"]
+        if node["address"]
+    }
+    return zones, hosts
 
 def _zone_of(address, zones):
     try:
@@ -177,7 +197,7 @@ def _http(detection):
 def session_top(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
-    zones = _zones()
+    zones, hosts = _segments()
 
                                                                               
                                           
@@ -199,6 +219,7 @@ def session_top(request, session_id):
                 zone = _zone_of(detection.src_ip, zones)
                 row = sources[detection.src_ip] = {
                     "src_ip": detection.src_ip,
+                    "host": hosts.get(detection.src_ip, ""),
                     "zone": zone["name"] if zone else "",
                     "outside": bool(zone and zone["outside"]),
                     "country": geo.get("country_name") or "",
@@ -217,6 +238,7 @@ def session_top(request, session_id):
                 zone = _zone_of(dest_ip, zones)
                 row = destinations[key] = {
                     "dest": key,
+                    "host": hosts.get(dest_ip, ""),
                     "zone": zone["name"] if zone else "",
                     "alerts": 0,
                 }
@@ -332,6 +354,11 @@ def wargame_objectives(request, wargame_id):
 def session_objectives(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
 
+    if request.method != "GET":
+        shut = _closed(session)
+        if shut:
+            return shut
+
     if request.method == "GET":
         return _reply(
             [_shape(o, OBJECTIVE_FIELDS) for o in session.objectives.all()]
@@ -375,6 +402,9 @@ def _observe_objectives(session) -> dict:
 @require_http_methods(["POST"])
 def fire_attack(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
+    shut = _closed(session)
+    if shut:
+        return shut
 
     try:
         case = wargames.find_case(session.scenario, _payload(request).get("case"))
@@ -469,6 +499,10 @@ def session_cases(request, session_id):
 
     if request.method == "GET":
         return _reply([_shape(c, CASE_FIELDS) for c in session.cases.all()])
+
+    shut = _closed(session)
+    if shut:
+        return shut
 
     body = _payload(request)
     errors = _case_errors(body)
@@ -650,23 +684,21 @@ def session_score(request, session_id):
     board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
     warnings = list(totals.warnings) + _wrong_reason_warnings(per_case)
 
-    snapshot = ScoreSnapshot.objects.create(
-        session=session,
-        tp=totals.tp,
-        fp=totals.fp,
-        fn=totals.fn,
-        tn=totals.tn,
-        precision=totals.precision,
-        recall=totals.recall,
-        f1=totals.f1,
-        false_positive_rate=totals.false_positive_rate,
-        warnings=warnings,
-        per_case=per_case,
-    )
-
     return _reply(
-        _shape(snapshot, SCORE_FIELDS)
-        | {"objectives": board.__dict__, "breaches": _breach_rows(session, cases, result)}
+        {
+            "tp": totals.tp,
+            "fp": totals.fp,
+            "fn": totals.fn,
+            "tn": totals.tn,
+            "precision": totals.precision,
+            "recall": totals.recall,
+            "f1": totals.f1,
+            "false_positive_rate": totals.false_positive_rate,
+            "warnings": warnings,
+            "per_case": per_case,
+            "objectives": board.__dict__,
+            "breaches": _breach_rows(session, cases, result),
+        }
     )
 
 def _attempts(cases, result):

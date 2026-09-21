@@ -12,16 +12,23 @@
       <a href="/" class="font-semibold text-slate-100">FSL</a>
       {% block nav %}{% endblock %}
       <span id="session-label" class="ml-auto text-slate-500"></span>
+      <button id="language" class="text-slate-500 hover:text-slate-200 text-xs"></button>
     </nav>
   </header>
   <main class="{% block main_class %}max-w-5xl mx-auto px-6 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+  {% include "console/strings.html" %}
   <script>
     const sessionId = () => location.pathname.split("/")[2];
 
     async function api(path, options) {
-      const response = await fetch(path, options);
+      let response;
+      try {
+        response = await fetch(path, options);
+      } catch (error) {
+        return { ok: false, status: 0, body: { detail: String(error) } };
+      }
       const body = await response.json().catch(() => ({}));
       return { ok: response.ok, status: response.status, body };
     }
@@ -40,8 +47,12 @@
     });
 
     if (sessionId()) {
-      document.getElementById("session-label").textContent = `session ${sessionId()}`;
+      document.getElementById("session-label").textContent = t("common.session", sessionId());
     }
+
+    document.getElementById("language").textContent = t("common.language");
+    document.getElementById("language").addEventListener("click", switchLanguage);
+    applyLanguage();
   </script>
   {% block script %}{% endblock %}
 </body>

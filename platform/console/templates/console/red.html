@@ -1,156 +1,136 @@
 {% extends "console/base.html" %}
-{% block title %}Red team{% endblock %}
-{% block nav %}<span class="text-rose-400">Red team</span>{% endblock %}
+{% block title %}FSL{% endblock %}
+{% block nav %}<span data-t="common.red_team" class="text-rose-400"></span>{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold text-slate-100 mb-2">Objectives</h1>
-<p class="text-slate-400 text-sm mb-5">
-  What you are actually trying to do. The shop decides whether you managed it -
-  nothing here is scored on your say-so. Firing payloads that trip an IDS rule
-  but take nothing is not an attack, it is noise.
-</p>
+<h1 data-t="red.heading.objectives" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
 
 <div class="grid grid-cols-3 gap-3 mb-5">
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Taken this session</div>
+    <div data-t="red.kpi.taken" class="text-slate-500 text-xs uppercase tracking-wide"></div>
     <div id="kpi-taken" class="text-2xl font-semibold text-rose-300 tabular-nums">0</div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Difficulty total</div>
+    <div data-t="red.kpi.difficulty_total" class="text-slate-500 text-xs uppercase tracking-wide"></div>
     <div id="kpi-stars" class="text-2xl font-semibold text-amber-300 tabular-nums">0</div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Available</div>
+    <div data-t="red.kpi.unsolved" class="text-slate-500 text-xs uppercase tracking-wide"></div>
     <div id="kpi-available" class="text-2xl font-semibold text-slate-300 tabular-nums">-</div>
   </div>
 </div>
 
 <div class="flex flex-wrap gap-2 mb-3 items-center">
-  <input id="objective-search" placeholder="filter objectives"
+  <input id="objective-search" data-t-placeholder="red.objectives.search"
     class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 min-w-56">
   <select id="objective-category"
     class="bg-slate-900 border border-slate-700 rounded px-2 py-2 text-xs text-slate-300">
-    <option value="">all categories</option>
+    <option value="" data-t="red.objectives.all_categories"></option>
   </select>
   <label class="flex items-center gap-2 text-xs text-slate-400 px-1">
     <input id="hide-solved" type="checkbox" checked class="accent-sky-600">
-    hide already solved
+    <span data-t="red.objectives.hide_solved"></span>
   </label>
 </div>
 
 <div id="objectives" class="border border-slate-800 rounded max-h-80 overflow-y-auto mb-10"></div>
 
-<h1 class="text-2xl font-semibold text-slate-100 mb-2">The box</h1>
-<p class="text-slate-400 text-sm mb-4">
-  A shell on Kali with the usual tools. Name a window, work, stop - everything
-  sent in between is attributed to that name and scored. Two addresses, and
-  which one an alert carries depends on the tool: anything HTTP leaves through
-  the stamping proxy, and raw TCP leaves from the box itself.
-</p>
+<h1 data-t="red.heading.machine" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
 
 <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Target</div>
+    <div data-t="red.box.target" class="text-slate-500 text-xs uppercase tracking-wide"></div>
     <div id="box-target" class="font-mono text-slate-200 mt-1 truncate">-</div>
-    <div class="text-slate-600 text-xs mt-1">$FSL_TARGET in the shell</div>
+    <div data-t="red.box.target.hint" class="text-slate-400 text-xs mt-1"></div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Through the proxy</div>
-    <div id="box-proxied" class="font-mono text-rose-300 mt-1">-</div>
-    <div class="text-slate-600 text-xs mt-1">curl, sqlmap, nikto, ffuf, gobuster</div>
+    <div data-t="red.box.proxied" class="text-slate-500 text-xs uppercase tracking-wide"></div>
+    <div id="box-proxied" class="font-mono text-slate-200 mt-1">-</div>
+    <div data-t="red.box.proxied.tools" class="text-slate-400 text-xs mt-1"></div>
   </div>
   <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div class="text-slate-500 text-xs uppercase tracking-wide">Direct</div>
-    <div id="box-direct" class="font-mono text-amber-300 mt-1">-</div>
-    <div class="text-slate-600 text-xs mt-1">nmap, nc, hydra - no http_proxy</div>
+    <div data-t="red.box.direct" class="text-slate-500 text-xs uppercase tracking-wide"></div>
+    <div id="box-direct" class="font-mono text-slate-200 mt-1">-</div>
+    <div data-t="red.box.direct.tools" class="text-slate-400 text-xs mt-1"></div>
   </div>
 </div>
 
 <div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
   <label class="text-sm">
-    <span class="block text-slate-400 text-xs mb-1">Name</span>
+    <span data-t="red.window.name" class="block text-slate-400 text-xs mb-1"></span>
     <input id="window-name" value="manual-attack"
            class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm w-56">
   </label>
   <label class="text-sm">
-    <span class="block text-slate-400 text-xs mb-1">Leaves by</span>
+    <span data-t="red.window.route" class="block text-slate-400 text-xs mb-1"></span>
     <select id="window-route"
       class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
-      <option value="proxy">the proxy - HTTP tools</option>
-      <option value="direct">directly - nmap, nc, hydra</option>
+      <option value="proxy" data-t="red.window.route.proxy"></option>
+      <option value="direct" data-t="red.window.route.direct"></option>
     </select>
   </label>
   <label class="text-sm flex items-center gap-2 pb-2">
     <input id="window-malicious" type="checkbox" checked class="accent-rose-600">
-    <span class="text-slate-400">this is an attack</span>
+    <span data-t="red.window.malicious" class="text-slate-400"></span>
   </label>
-  <button id="window-toggle"
-    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
-    Start
-  </button>
+  <button id="window-toggle" data-t="red.window.start"
+    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm"></button>
   <span id="window-status" class="text-slate-500 text-sm pb-2"></span>
 </div>
 
 <iframe id="terminal" class="w-full h-[28rem] border border-slate-800 rounded bg-black"></iframe>
 
-<h1 class="text-2xl font-semibold text-slate-100 mt-12 mb-2">Scripted baseline</h1>
-<p class="text-slate-400 text-sm mb-6">
-  The same twelve-odd cases every run, so the score can be compared with the
-  last one. Benign cases matter as much as the attacks: without them a rule
-  that blocks everything scores perfectly.
-</p>
+<h1 data-t="red.baseline.heading" class="text-2xl font-semibold text-slate-100 mt-12 mb-2"></h1>
 
 <div class="flex gap-3 mb-8 items-end flex-wrap">
   <label class="text-sm">
-    <span class="block text-slate-400 text-xs mb-1">Coming from</span>
+    <span data-t="red.baseline.origin" class="block text-slate-400 text-xs mb-1"></span>
     <select id="origin"
       class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
     </select>
   </label>
-  <button id="run-all"
-    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm">
-    Run every case
-  </button>
-  <button id="run-attacks"
-    class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">
-    Attacks only
-  </button>
-  <a id="to-blue" target="_blank"
-    class="px-4 py-2 rounded border border-sky-900 hover:border-sky-600 text-sky-400 text-sm">
-    Open blue window
-  </a>
+  <button id="run-all" data-t="red.baseline.run_all"
+    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm"></button>
+  <button id="run-attacks" data-t="red.baseline.run_attacks"
+    class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm"></button>
+  <a id="to-blue" target="_blank" data-t="red.baseline.open_blue"
+    class="px-4 py-2 rounded border border-sky-900 hover:border-sky-600 text-sky-400 text-sm"></a>
 </div>
 
 <div class="grid grid-cols-2 gap-8">
   <div>
-    <h2 class="text-sm uppercase tracking-wide text-rose-500 mb-3">Attacks</h2>
+    <h2 data-t="red.cases.attacks" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
     <div id="attacks" class="space-y-2"></div>
   </div>
   <div>
-    <h2 class="text-sm uppercase tracking-wide text-emerald-600 mb-3">Benign traffic</h2>
+    <h2 data-t="red.cases.benign" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
     <div id="benign" class="space-y-2"></div>
   </div>
 </div>
 
-<h2 class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3">Sent</h2>
+<h2 data-t="red.log.heading" class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3"></h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
-<p id="log-empty" class="text-slate-500 text-sm">Nothing sent yet.</p>
+<p id="log-empty" data-t="red.log.empty" class="text-slate-500 text-sm"></p>
 {% endblock %}
 {% block script %}
 <script>
   document.getElementById("to-blue").href = `/blue/${sessionId()}/`;
+  document.title = t("common.red_team");
 
   let catalogue = [];
+  let scenario = null;
+
+  const detail = (result) =>
+    result.body.detail || result.status || t("common.no_answer");
 
   function button(caseDef) {
-    const colour = caseDef.malicious
-      ? "border-rose-900 hover:border-rose-600"
-      : "border-emerald-900 hover:border-emerald-600";
     return `
       <button data-case="${esc(caseDef.name)}"
-        class="fire w-full text-left border ${colour} rounded px-3 py-2">
+        class="fire w-full text-left border border-slate-800 hover:border-slate-600 rounded px-3 py-2">
         <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
         <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
-        ${caseDef.takes ? `<div class="text-rose-400 text-xs mt-1">takes ${esc(caseDef.takes)}</div>` : ""}
+        ${caseDef.takes
+          ? `<div class="text-rose-400 text-xs mt-1">${esc(t("red.case.objective", caseDef.takes))}</div>`
+          : ""}
       </button>`;
   }
 
@@ -163,13 +143,12 @@
   }
 
   async function fire(name) {
-    note(`... ${name}`, "text-slate-500");
     const result = await post(`/api/sessions/${sessionId()}/attacks/`,
                               { case: name, origin: chosenOrigin() });
     if (result.ok) {
-      note(`sent ${name}`, "text-slate-300");
+      note(t("red.log.sent", name), "text-slate-300");
     } else {
-      note(`FAILED ${name} - ${result.body.detail || result.status}`, "text-amber-400");
+      note(t("red.log.fire_failed", name, detail(result)), "text-amber-400");
     }
     await pollObjectives();
     return result.ok;
@@ -181,12 +160,12 @@
     const select = document.getElementById("origin");
     const result = await api("/api/origins/");
     if (!result.ok) {
-      select.innerHTML = `<option value="">the front door</option>`;
+      select.innerHTML = `<option value="">${esc(t("red.origin.unavailable"))}</option>`;
       select.disabled = true;
       return;
     }
     select.innerHTML =
-      `<option value="rotate">Rotate - a different place each time</option>` +
+      `<option value="rotate">${esc(t("red.origin.rotate"))}</option>` +
       result.body.origins.map((origin) =>
         `<option value="${esc(origin.id)}">${esc(origin.label)} (${esc(origin.subnet)})</option>`
       ).join("");
@@ -196,7 +175,7 @@
   }
 
   async function fireMany(cases) {
-    const buttons = document.querySelectorAll("button");
+    const buttons = document.querySelectorAll("button:not(:disabled)");
     buttons.forEach((b) => (b.disabled = true));
     for (const caseDef of cases) {
       await fire(caseDef.name);
@@ -208,16 +187,24 @@
     const session = await api(`/api/sessions/${sessionId()}/`);
     if (!session.ok) {
       document.getElementById("attacks").innerHTML =
-        `<p class="text-amber-400 text-sm">No such session.</p>`;
+        `<p class="text-amber-400 text-sm">${esc(t("red.error.no_session"))}</p>`;
       return;
     }
 
-    const { body } = await api(`/api/wargames/${session.body.scenario}/cases/`);
-    catalogue = body;
+    scenario = session.body.scenario;
+    await loadObjectives();
+
+    const cases = await api(`/api/wargames/${scenario}/cases/`);
+    if (!cases.ok || !Array.isArray(cases.body)) {
+      document.getElementById("attacks").innerHTML =
+        `<p class="text-amber-400 text-sm">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
+      return;
+    }
+    catalogue = cases.body;
     document.getElementById("attacks").innerHTML =
-      body.filter((c) => c.malicious).map(button).join("");
+      catalogue.filter((c) => c.malicious).map(button).join("");
     document.getElementById("benign").innerHTML =
-      body.filter((c) => !c.malicious).map(button).join("");
+      catalogue.filter((c) => !c.malicious).map(button).join("");
 
     document.querySelectorAll(".fire").forEach((element) => {
       element.addEventListener("click", () => fire(element.dataset.case));
@@ -228,10 +215,10 @@
   const STAR = (n) => "*".repeat(n);
 
   async function loadObjectives() {
-    const result = await api(`/api/wargames/juice-shop/objectives/`);
+    const result = await api(`/api/wargames/${scenario}/objectives/`);
     if (!result.ok) {
       document.getElementById("objectives").innerHTML =
-        `<p class="text-amber-400 text-sm p-4">${esc(result.body.detail) || "target unreachable"}</p>`;
+        `<p class="text-amber-400 text-sm p-4">${esc(t("red.error.objectives", detail(result)))}</p>`;
       return;
     }
     objectives = result.body;
@@ -240,7 +227,7 @@
 
     const categories = [...new Set(objectives.map((o) => o.category))].sort();
     const select = document.getElementById("objective-category");
-    select.innerHTML = `<option value="">all categories</option>` +
+    select.innerHTML = `<option value="">${esc(t("red.objectives.all_categories"))}</option>` +
       categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     renderObjectives();
   }
@@ -263,10 +250,10 @@
         <span class="${o.solved ? "text-slate-500 line-through" : "text-slate-100"} text-sm w-56">
           ${esc(o.name)}</span>
         <span class="text-slate-500 text-xs w-48">${esc(o.category)}</span>
-        <span class="text-slate-600 text-xs flex-1 truncate" title="${esc(o.description)}"
+        <span class="text-slate-400 text-xs flex-1 truncate" title="${esc(o.description)}"
           >${esc(o.description)}</span>
       </div>`).join("") ||
-      `<p class="text-slate-500 text-sm p-4">Nothing matches.</p>`;
+      `<p class="text-slate-500 text-sm p-4">${esc(t("red.objectives.none"))}</p>`;
   }
 
   async function refreshTaken() {
@@ -277,10 +264,23 @@
       result.body.reduce((sum, o) => sum + o.difficulty, 0);
   }
 
+  let polling = null;
+
+  function stopPolling() {
+    if (polling === null) return;
+    clearInterval(polling);
+    polling = null;
+    note(t("red.log.session_closed"), "text-slate-500");
+  }
+
   async function pollObjectives() {
     const result = await post(`/api/sessions/${sessionId()}/objectives/`);
+    if (result.status === 409) {
+      stopPolling();
+      return;
+    }
     if (result.ok && result.body.achieved) {
-      note(`TAKEN ${result.body.achieved} objective(s)`, "text-rose-300 font-semibold");
+      note(t("red.log.taken", result.body.achieved), "text-rose-300 font-semibold");
       loadObjectives();
     }
     refreshTaken();
@@ -288,7 +288,6 @@
 
   ["objective-search", "objective-category", "hide-solved"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderObjectives);
-    document.getElementById(id).addEventListener("change", renderObjectives);
   });
 
   let attacker = null;
@@ -311,7 +310,7 @@
     await post("/api/attacker/origin/", { origin });
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
-      status(result.body.detail || "attacker box unavailable", "text-amber-400");
+      status(t("red.window.status.unavailable", detail(result)), "text-amber-400");
       document.getElementById("window-toggle").disabled = true;
       return;
     }
@@ -321,13 +320,29 @@
     }
     document.getElementById("box-target").textContent = attacker.public_url;
     document.getElementById("box-proxied").textContent = attacker.source_ip;
-    document.getElementById("box-direct").textContent = attacker.direct_ip || "not on this segment";
+    document.getElementById("box-direct").textContent =
+      attacker.direct_ip || t("red.box.direct.none");
 
     const route = document.getElementById("window-route");
     route.querySelector('[value="direct"]').disabled = !attacker.direct_ip;
     if (!attacker.direct_ip) route.value = "proxy";
 
-    status(`window will record ${windowAddress()}`);
+    status(t("red.window.status.will_record", windowAddress()));
+  }
+
+  const unlocked = new Set();
+
+  function lockCase(locked) {
+    ["window-name", "window-malicious", "window-route", "origin"].forEach((id) => {
+      const control = document.getElementById(id);
+      if (locked) {
+        if (!control.disabled) unlocked.add(id);
+        control.disabled = true;
+      } else if (unlocked.has(id)) {
+        control.disabled = false;
+      }
+    });
+    if (!locked) unlocked.clear();
   }
 
   async function toggleWindow() {
@@ -339,14 +354,13 @@
       windowCaseId = crypto.randomUUID();
       const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
       if (!labelled.ok) {
-        status("could not set the marker - is the proxy up?", "text-amber-400");
+        status(t("red.window.status.marker_failed", detail(labelled)), "text-amber-400");
         return;
       }
       openedAt = new Date();
-      toggle.textContent = "Stop";
-      name.disabled = malicious.disabled = true;
-      status(`recording from ${windowAddress()} - go and attack`, "text-rose-400");
-      note(`window open: ${name.value}`, "text-slate-500");
+      toggle.textContent = t("red.window.stop");
+      status(t("red.window.status.recording", windowAddress()), "text-rose-400");
+      note(t("red.log.case_started", name.value), "text-slate-500");
       return;
     }
 
@@ -362,14 +376,15 @@
     });
 
     note(
-      result.ok ? `window closed: ${name.value}` : `FAILED to record ${name.value}`,
+      result.ok
+        ? t("red.log.case_recorded", name.value)
+        : t("red.log.case_record_failed", name.value, detail(result)),
       result.ok ? "text-slate-300" : "text-amber-400",
     );
     await pollObjectives();
     openedAt = null;
-    toggle.textContent = "Start";
-    name.disabled = malicious.disabled = false;
-    status(`window will record ${windowAddress()}`);
+    toggle.textContent = t("red.window.start");
+    status(t("red.window.status.will_record", windowAddress()));
   }
 
   document.getElementById("window-toggle").addEventListener("click", toggleWindow);
@@ -381,8 +396,7 @@
 
   render();
   loadOrigins().then(loadTerminal);
-  loadObjectives();
   refreshTaken();
-  setInterval(pollObjectives, 10000);
+  polling = setInterval(pollObjectives, 10000);
 </script>
 {% endblock %}

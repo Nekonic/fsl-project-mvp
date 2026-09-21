@@ -2,6 +2,105 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
+SESSION_PAGE = 25
+
+CASE = {
+    "case_id": "11111111-1111-1111-1111-111111111111",
+    "name": "after-close", "malicious": True, "correlation": "window",
+    "started_at": "2026-09-21T10:00:00Z", "ended_at": "2026-09-21T10:00:05Z",
+}
+
+@pytest.fixture
+def closed(client):
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    client.post_json(f"/api/sessions/{session_id}/close/")
+    return session_id
+
+def test_a_closed_session_takes_no_more_cases(client, closed):
+    response = client.post_json(f"/api/sessions/{closed}/cases/", CASE)
+
+    assert response.status_code == 409, (
+        "a case recorded after the session closed is scored against a window "
+        "the alert ingest no longer covers, so it can only ever be a miss"
+    )
+
+def test_a_closed_session_fires_no_more_attacks(client, closed):
+    response = client.post_json(
+        f"/api/sessions/{closed}/attacks/", {"case": "sqli-login-bypass"}
+    )
+
+    assert response.status_code == 409
+
+def test_a_closed_session_claims_no_more_objectives(client, closed):
+    response = client.post_json(f"/api/sessions/{closed}/objectives/")
+
+    assert response.status_code == 409
+
+def test_a_closed_session_can_still_be_read(client, closed):
+    assert client.get(f"/api/sessions/{closed}/").status_code == 200
+    assert client.get(f"/api/sessions/{closed}/score/").status_code == 200
+    assert client.get(f"/api/sessions/{closed}/objectives/").status_code == 200
+
+
+def test_a_running_session_is_never_hidden_by_finished_ones(client):
+    running = client.post_json("/api/sessions/", {}).json()["id"]
+    for _ in range(SESSION_PAGE + 10):
+        later = client.post_json("/api/sessions/", {}).json()["id"]
+        client.post_json(f"/api/sessions/{later}/close/")
+
+    listed = [s["id"] for s in client.get("/api/sessions/?state=open").json()]
+
+    assert running in listed, (
+        f"session {running} is still open and fell off the list behind "
+        f"{SESSION_PAGE + 10} finished ones, so there is no way back to it"
+    )
+
+def test_asking_for_open_sessions_excludes_the_finished_ones(client):
+    open_id = client.post_json("/api/sessions/", {}).json()["id"]
+    closed_id = client.post_json("/api/sessions/", {}).json()["id"]
+    client.post_json(f"/api/sessions/{closed_id}/close/")
+
+    listed = [s["id"] for s in client.get("/api/sessions/?state=open").json()]
+
+    assert open_id in listed
+    assert closed_id not in listed
+
+def test_asking_for_finished_sessions_excludes_the_running_ones(client):
+    open_id = client.post_json("/api/sessions/", {}).json()["id"]
+    closed_id = client.post_json("/api/sessions/", {}).json()["id"]
+    client.post_json(f"/api/sessions/{closed_id}/close/")
+
+    listed = [s["id"] for s in client.get("/api/sessions/?state=closed").json()]
+
+    assert closed_id in listed
+    assert open_id not in listed
+
+
+def test_the_session_list_is_bounded_so_a_long_lived_range_stays_usable(client):
+    for _ in range(SESSION_PAGE + 5):
+        client.post_json("/api/sessions/", {})
+
+    listed = client.get("/api/sessions/").json()
+
+    assert len(listed) == SESSION_PAGE, (
+        f"the list returned {len(listed)} sessions; an unbounded list means every "
+        f"landing page load ships the whole history"
+    )
+
+def test_the_newest_sessions_are_the_ones_returned(client):
+    made = [client.post_json("/api/sessions/", {}).json()["id"]
+            for _ in range(SESSION_PAGE + 3)]
+
+    listed = [s["id"] for s in client.get("/api/sessions/").json()]
+
+    assert listed == sorted(made, reverse=True)[:SESSION_PAGE]
+
+def test_asking_for_fewer_sessions_returns_fewer(client):
+    for _ in range(4):
+        client.post_json("/api/sessions/", {})
+
+    assert len(client.get("/api/sessions/?limit=2").json()) == 2
+
 def test_create_session_returns_id_and_start_time(client):
     response = client.post_json("/api/sessions/", {"scenario": "juice-shop"})
 

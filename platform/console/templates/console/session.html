@@ -1,48 +1,65 @@
 {% extends "console/base.html" %}
-{% block title %}Session{% endblock %}
+{% block title %}FSL{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold text-slate-100 mb-2">Session ready</h1>
-<p class="text-slate-400 text-sm mb-8">
-  Two windows, side by side or on two screens. Traffic goes out of one and the
-  other is the console that sees what the defence made of it - open it twice
-  and leave one on Dashboard if you want the overview on its own screen.
-</p>
-
+<h1 data-t="session.heading" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
 <div class="grid grid-cols-2 gap-4 mb-10">
-  <a id="red" target="_blank"
+  <a id="red" href="#" target="_blank"
      class="border border-rose-900 rounded p-6 hover:border-rose-600 block">
-    <div class="text-rose-400 font-medium mb-1">Red team window</div>
-    <div class="text-slate-400 text-sm">
-      Fire catalogue cases at the target. Every case is labelled as it goes out,
-      which is what makes the score mean anything.
-    </div>
+    <div data-t="session.red.title" class="text-rose-400 font-medium mb-1"></div>
+    <div data-t="session.red.blurb" class="text-slate-400 text-sm"></div>
   </a>
-  <a id="blue" target="_blank"
+  <a id="blue" href="#" target="_blank"
      class="border border-sky-900 rounded p-6 hover:border-sky-600 block">
-    <div class="text-sky-400 font-medium mb-1">Blue team window</div>
-    <div class="text-slate-400 text-sm">
-      The overview - where it is coming from, what is being hit, the trend -
-      and the alert list behind it, with the whole log record under each row.
-      The score and the Suricata rules are here too.
-    </div>
+    <div data-t="session.blue.title" class="text-sky-400 font-medium mb-1"></div>
+    <div data-t="session.blue.blurb" class="text-slate-400 text-sm"></div>
   </a>
 </div>
 
-<button id="close" class="text-slate-500 hover:text-slate-300 text-sm underline">
-  Close this session
-</button>
-<p id="closed" class="text-slate-500 text-sm mt-3 hidden">
-  Closed. Scoring still works; no new traffic will be attributed to it.
-</p>
+<button id="close" data-t="session.close.button"
+        class="text-slate-500 hover:text-slate-300 text-sm underline"></button>
+
+<div id="confirm" class="hidden border border-slate-800 rounded p-4 max-w-xl">
+  <p data-t="session.close.consequence" class="text-slate-300 text-sm mb-3"></p>
+  <div class="flex gap-3">
+    <button id="confirm-close" data-t="session.close.confirm"
+            class="px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-sm"></button>
+    <button id="confirm-keep" data-t="session.close.keep"
+            class="px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-sm"></button>
+  </div>
+</div>
+
+<p id="closed" class="text-slate-500 text-sm mt-3 hidden"></p>
 {% endblock %}
 {% block script %}
 <script>
+  document.title = t("common.session", sessionId());
   document.getElementById("red").href = `/red/${sessionId()}/`;
   document.getElementById("blue").href = `/blue/${sessionId()}/`;
 
-  document.getElementById("close").addEventListener("click", async () => {
-    await post(`/api/sessions/${sessionId()}/close/`);
-    document.getElementById("closed").classList.remove("hidden");
+  const show = (id, visible) =>
+    document.getElementById(id).classList.toggle("hidden", !visible);
+
+  document.getElementById("close").addEventListener("click", () => {
+    show("close", false);
+    show("confirm", true);
+  });
+
+  document.getElementById("confirm-keep").addEventListener("click", () => {
+    show("confirm", false);
+    show("close", true);
+  });
+
+  document.getElementById("confirm-close").addEventListener("click", async () => {
+    const result = await post(`/api/sessions/${sessionId()}/close/`);
+    show("confirm", false);
+    const note = document.getElementById("closed");
+    note.textContent = result.ok
+      ? t("session.close.done") : t("session.close.failed");
+    note.title = result.ok ? "" : `${result.status}`;
+    note.classList.toggle("text-rose-400", !result.ok);
+    note.classList.toggle("text-slate-500", result.ok);
+    show("closed", true);
+    if (!result.ok) show("close", true);
   });
 </script>
 {% endblock %}

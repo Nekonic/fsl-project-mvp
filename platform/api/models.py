@@ -112,20 +112,3 @@ class Suppression(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-class ScoreSnapshot(models.Model):
-
-    session = models.ForeignKey(Session, related_name="scores", on_delete=models.CASCADE)
-    tp = models.IntegerField()
-    fp = models.IntegerField()
-    fn = models.IntegerField()
-    tn = models.IntegerField()
-    precision = models.FloatField()
-    recall = models.FloatField()
-    f1 = models.FloatField()
-    false_positive_rate = models.FloatField()
-    warnings = models.JSONField(default=list)
-    per_case = models.JSONField(default=list)
-    computed_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-computed_at"]
