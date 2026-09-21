@@ -20,6 +20,12 @@ class Counting:
     def runner(self, role, segment_id=""):
         raise AssertionError("reading the range is not running a command on it")
 
+    def launcher(self, segment_id):
+        def launch(image, argv, timeout=600.0):
+            raise AssertionError("no case here runs a tool")
+
+        return launch
+
 def polled(client, path):
     counter = Counting()
     with patch("api.views.substrate", lambda: counter):

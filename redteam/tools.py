@@ -7,14 +7,6 @@ from urllib.parse import urlsplit
 MARKER_HEADER = "X-FSL-Case"
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
-TOOL_NETWORK = os.environ.get("FSL_TOOL_NETWORK", "fsl_edge")
-
-def network_for(target_url: str) -> str:
-    host = urlsplit(target_url).hostname or ""
-    if not host.startswith("waf-"):
-        return TOOL_NETWORK
-    project = TOOL_NETWORK.split("_", 1)[0]
-    return f"{project}_{host[len('waf-'):]}"
 
                                                           
                                                                             
@@ -48,7 +40,7 @@ def unavailable(case_name: str, detail: str) -> ToolUnavailable:
 def is_tool_case(case: dict[str, Any]) -> bool:
     return bool(case.get("tool"))
 
-def build_tool_command(case: dict[str, Any], target_url: str) -> list[str]:
+def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
     tool = case["tool"]
     executable = SUPPORTED_TOOLS.get(tool)
     if executable is None:
@@ -69,13 +61,4 @@ def build_tool_command(case: dict[str, Any], target_url: str) -> list[str]:
     if case.get("correlation") == "marker":
         args.append(f"--headers={MARKER_HEADER}: {case['case_id']}")
 
-    return [
-        "docker",
-        "run",
-        "--rm",
-        "--network",
-        network_for(target_url),
-        TOOL_IMAGE,
-        executable,
-        *args,
-    ]
+    return TOOL_IMAGE, [executable, *args]

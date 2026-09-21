@@ -41,6 +41,12 @@ def stub(described=SHAPE, error=None):
                 raise error
             return described
 
+        def launcher(self, segment_id):
+            def launch(image, argv, timeout=600.0):
+                raise AssertionError("no case here runs a tool")
+
+            return launch
+
     return patch("api.views.substrate", Stub)
 
 def origins(described=SHAPE):

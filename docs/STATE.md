@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-22 (a segment is bound by a mark the range carries, not by its name)
+Updated: 2026-09-22 (the substrate starts the tools; core no longer shells out)
 
 ## Where things stand
 
@@ -89,8 +89,17 @@ the port and asserts nothing at runtime imports it. What it found is below;
 
 Closed since the sketch was written: which origin is the default, how the
 sensor is reloaded, whether a sensor is one of its segment's participants, how
-many subnets a segment may carry, and how a substrate object is bound to a
-declared segment.
+many subnets a segment may carry, how a substrate object is bound to a declared
+segment, and who starts a tool.
+
+**The substrate starts the tools.** `redteam/harness.py` is gated core and ran
+`docker run --rm --network ...` itself, with the network recovered by cutting
+`waf-` off the target's hostname and pasting the project name back on - the
+origin id it was built from had been thrown away two calls earlier. Core now
+takes a launcher, the same way it takes a sensor: no `subprocess` import
+remains in it. `Substrate.launcher(segment_id)` is the port's third verb, and
+`test/test_tool_cases.py` fires one end to end, which nothing did before -
+breaking the binding turns all three of its assertions red.
 
 **A segment is bound by a mark it carries.** The Docker adapter used to cut the
 compose project off the front of a network name, and the sketch matched a
@@ -106,11 +115,12 @@ filter, so the cloud is never asked for them.
 
 What is left for OpenStack, in order:
 
-1. **Name resolution.** Fifteen places name a host - `shop.com`,
-   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081` - and
-   `FSL_TOOL_NETWORK` still holds the literal `fsl_edge`. Compose gives those
-   away; Neutron does not. cloud-init writing `/etc/hosts` is the cheapest
-   answer that keeps `shop.com` a name, which is the product.
+1. **Name resolution.** Fourteen places name a host - `shop.com`,
+   `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose gives
+   those away; Neutron does not. cloud-init writing `/etc/hosts` is the cheapest
+   answer that keeps `shop.com` a name, which is the product. The fifteenth,
+   `FSL_TOOL_NETWORK`, is gone: a tool is launched on a segment id now, and the
+   substrate says what network that is.
 
 2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
    the WAF's namespace so it sees both legs of every proxied request. Neutron

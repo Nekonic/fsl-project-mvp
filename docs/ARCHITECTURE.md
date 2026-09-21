@@ -67,11 +67,29 @@ declaration states none of subnet, gateway, address, nodes or network.
 
 Only the subnets are fixed. No service is given an `ipv4_address`, so every
 address is DHCP-assigned and changes on recreate. `Substrate.describe()` reads
-live addresses once per request — `platform/range/docker.py:20-35` for Docker,
-the only file that asks it — which is why the API answers 503 rather than a
+live addresses once per request — `platform/range/docker.py` for Docker, the
+only file that asks it — which is why the API answers 503 rather than a
 stale picture when the substrate is unreachable
 (`platform/api/views.py:283-285`). `platform/topology.py` shapes that reading
 into the response and makes no call of its own.
+
+The port has three verbs. `describe()` reads the shape. `runner(role, segment)`
+runs a command on a host that is already standing — the sensor, the wiki, the
+target. `launcher(segment)` starts a throwaway host on a segment and waits for
+it to finish, which is what a tool case is: `docker run --rm --network` on
+Docker, and on Nova a server booted from an image that something has to delete
+afterwards. Core holds none of the three: `redteam/harness.py` is handed a
+launcher and `platform/rules/suricata.py` a runner, so neither imports
+`subprocess` and neither names a substrate.
+
+A substrate object is bound to a declared segment by a mark the range carries -
+`fsl.segment.id`, a Docker label and a Neutron tag - never by its name. Deriving
+it from a name is a rule, and the rule differs per substrate: compose prefixes
+the project and lets a network override its own name, Heat appends a stack
+suffix, Neutron does not keep names unique at all. Both adapters ask their
+substrate for marked objects only (`--filter label=`, `?tags-any=`), so nothing
+unmarked is part of the range and a shared Neutron project's other networks are
+never fetched.
 
 Three containers are multi-homed: the platform (all six), the WAF (four outside
 plus estate), the proxy (four outside). `platform/topology.py:5-18` marks a

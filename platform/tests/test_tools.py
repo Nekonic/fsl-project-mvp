@@ -2,11 +2,14 @@ import pytest
 
 from redteam.tools import (
     TOOL_IMAGE,
-    TOOL_NETWORK,
     UnsupportedTool,
-    build_tool_command,
     is_tool_case,
+    tool_argv,
 )
+
+def build_tool_command(case, target_url):
+    image, argv = tool_argv(case, target_url)
+    return [image, *argv]
 
 CASE = {
     "case_id": "abc-123",
@@ -22,14 +25,11 @@ def test_is_tool_case_detects_the_tool_field():
     assert is_tool_case(CASE) is True
     assert is_tool_case({"request": {"path": "/"}}) is False
 
-def test_command_runs_the_tool_image_on_the_stack_network():
-    command = build_tool_command(CASE, INTERNAL_TARGET)
+def test_the_case_names_the_image_and_the_tool_and_nothing_else():
+    image, argv = tool_argv(CASE, INTERNAL_TARGET)
 
-    assert command[:3] == ["docker", "run", "--rm"]
-    assert "--network" in command
-    assert command[command.index("--network") + 1] == TOOL_NETWORK
-    assert TOOL_IMAGE in command
-    assert "sqlmap" in command
+    assert image == TOOL_IMAGE
+    assert argv[0] == "sqlmap"
 
 def test_target_placeholder_is_substituted():
     command = build_tool_command(CASE, INTERNAL_TARGET)
@@ -75,60 +75,60 @@ def test_tool_case_in_the_default_file_declares_args():
                                                                             
                                                                       
 
-def test_missing_tool_image_raises_instead_of_being_swallowed():
-    import subprocess
-    from unittest.mock import patch
+def launcher(exit_code, output=""):
+    from range.ports import Ran
 
+    def launch(image, argv, timeout=600.0):
+        launch.started.append((image, argv))
+        return Ran(exit_code=exit_code, output=output)
+
+    launch.started = []
+    return launch
+
+def test_missing_tool_image_raises_instead_of_being_swallowed():
     from redteam.harness import fire_tool
     from redteam.tools import ToolUnavailable
 
-    failure = subprocess.CompletedProcess(
-        args=["docker"],
-        returncode=125,
-        stdout="",
-        stderr="Unable to find image 'fsl-kali:latest' locally",
-    )
-
-    with patch("redteam.harness.subprocess.run", return_value=failure):
-        with pytest.raises(ToolUnavailable, match="fsl-kali"):
-            fire_tool(dict(CASE), INTERNAL_TARGET)
+    with pytest.raises(ToolUnavailable, match="fsl-kali"):
+        fire_tool(
+            dict(CASE), INTERNAL_TARGET,
+            launcher(125, "Unable to find image 'fsl-kali:latest' locally"),
+        )
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
-                                                                         
-                                       
-    import subprocess
-    from unittest.mock import patch
-
     from redteam.harness import fire_tool
 
-    scan_failed = subprocess.CompletedProcess(
-        args=["docker"],
-        returncode=1,
-        stdout="all tested parameters do not appear to be injectable",
-        stderr="",
+    fire_tool(
+        dict(CASE), INTERNAL_TARGET,
+        launcher(1, "all tested parameters do not appear to be injectable"),
     )
 
-    with patch("redteam.harness.subprocess.run", return_value=scan_failed):
-        fire_tool(dict(CASE), INTERNAL_TARGET)                
-
                                                                             
 
-def test_a_tool_attacking_through_another_origin_runs_on_that_network():
-                                                                              
-                                                                         
-                                                                            
-                                                      
-    command = build_tool_command(
+def test_nothing_in_the_tool_command_names_a_substrate():
+    image, argv = tool_argv(
         {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
         "http://waf-edge-hk:8080",
     )
 
-    assert command[command.index("--network") + 1] == "fsl_edge-hk"
-
-def test_a_tool_attacking_through_the_front_door_runs_where_it_always_did():
-    command = build_tool_command(
-        {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
-        "http://waf-edge:8080",
+    assert "docker" not in [image, *argv], (
+        "the command was a docker run, so an attack could only ever be fired "
+        "from something with a Docker daemon on it"
+    )
+    assert not any("--network" in str(part) for part in argv), (
+        "which network a tool runs on was recovered by cutting 'waf-' off the "
+        "target's hostname and pasting the project back on, after the origin "
+        "id it was built from had already been thrown away"
     )
 
-    assert command[command.index("--network") + 1] == "fsl_edge"
+def test_core_does_not_start_anything_itself():
+    import pathlib
+
+    from redteam import harness
+
+    source = pathlib.Path(harness.__file__).read_text()
+
+    assert "subprocess" not in source, (
+        "redteam/harness.py is gated core and shelled out to docker run, so "
+        "the hypothesis could not be carried anywhere without a daemon"
+    )
