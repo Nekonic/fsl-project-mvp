@@ -44,11 +44,23 @@ def test_the_two_languages_carry_exactly_the_same_keys():
 
 def test_every_key_the_console_asks_for_exists():
     table = tables()
-    unknown = sorted(used_keys() - set(table["en"]))
+    asked, families = set(), set()
+    for key in used_keys():
+        (families if key.endswith(".") else asked).add(key)
 
+    unknown = sorted(asked - set(table["en"]))
     assert not unknown, (
         f"the console renders these keys and the table has no text for them, so the "
         f"raw key appears on screen: {unknown}"
+    )
+
+    empty = sorted(
+        family for family in families
+        if not any(key.startswith(family) for key in table["en"])
+    )
+    assert not empty, (
+        f"the console builds keys under {empty} out of data, and the table has "
+        f"nothing under them at all, so every one of them renders as its own id"
     )
 
 def test_no_string_in_the_table_is_left_untranslated():

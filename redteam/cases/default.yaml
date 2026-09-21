@@ -11,7 +11,9 @@
 # -- attacks ---------------------------------------------------------------
 - name: sqli-login-bypass
   malicious: true
-  technique: SQLi
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
   expect: "SQL"
   correlation: marker
   request:
@@ -28,7 +30,9 @@
 # it stays walked-past-proof.
 - name: sqli-or-1-1-plus-encoded
   malicious: true
-  technique: SQLi
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
   expect: "SQL"
   correlation: marker
   request:
@@ -42,7 +46,9 @@
 # An attack that trips a rule and achieves nothing is not an attack.
 - name: sqli-union-user-table
   malicious: true
-  technique: SQLi
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
   expect: "SQL"
   takes: unionSqlInjectionChallenge
   correlation: marker
@@ -54,7 +60,9 @@
 
 - name: xss-script-tag-in-search
   malicious: true
-  technique: XSS
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-63
   expect: "XSS"
   correlation: marker
   request:
@@ -65,7 +73,9 @@
 
 - name: xss-img-onerror
   malicious: true
-  technique: XSS
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-63
   expect: "XSS"
   correlation: marker
   request:
@@ -78,7 +88,9 @@
 # attacks anything. %2e%2e is sent verbatim and the WAF and IDS read it the same.
 - name: path-traversal-ftp
   malicious: true
-  technique: PathTraversal
+  stage: complete-mission
+  technique: T1190
+  pattern: CAPEC-126
   expect: "traversal"
   correlation: marker
   request:
@@ -89,7 +101,9 @@
 # harness substitutes {target}, since inside the fsl network localhost is not it.
 - name: sqlmap-boolean-blind
   malicious: true
-  technique: SQLi
+  stage: initial-reconnaissance
+  technique: T1595.002
+  pattern: CAPEC-66
   expect: "SQL"
   correlation: marker
   tool: sqlmap
@@ -117,7 +131,9 @@
 # thing on the board - an objective taken with nobody watching.
 - name: confidential-document-access
   malicious: true
-  technique: BrokenAccessControl
+  stage: complete-mission
+  technique: T1190
+  pattern: CAPEC-1
   takes: directoryListingChallenge
   correlation: marker
   request:
@@ -126,7 +142,9 @@
 
 - name: metrics-endpoint-scrape
   malicious: true
-  technique: SensitiveDataExposure
+  stage: initial-reconnaissance
+  technique: T1595.002
+  pattern: CAPEC-116
   takes: exposedMetricsChallenge
   correlation: marker
   request:
@@ -138,7 +156,9 @@
 # see check_path_preserved.
 - name: backup-file-null-byte
   malicious: true
-  technique: NullByte
+  stage: complete-mission
+  technique: T1190
+  pattern: CAPEC-52
   expect: "Restricted File"
   takes: forgottenDevBackupChallenge
   correlation: marker
