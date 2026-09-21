@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 RULE_PATH = "/var/lib/suricata/rules/local.rules"
 CANDIDATE_PATH = "/var/lib/suricata/rules/candidate.rules"
-RELOAD_SIGNAL = "USR2"
 
 class RuleApplyError(RuntimeError):
     """The rules were not applied. The previous rule set is still live."""
@@ -22,7 +21,7 @@ def validate(content: str, sensor) -> ValidationOutcome:
     ran = sensor(["suricata", "-T", "-S", CANDIDATE_PATH])
     return ValidationOutcome(ok=ran.ok, output=ran.output.strip())
 
-def apply(content: str, sensor) -> None:
+def apply(content: str, sensor, reload_command) -> None:
     outcome = validate(content, sensor)
     if not outcome.ok:
         raise RuleApplyError(outcome.output)
@@ -30,7 +29,7 @@ def apply(content: str, sensor) -> None:
     previous = current(sensor)
     _write(sensor, RULE_PATH, content)
 
-    ran = sensor(["kill", "-" + RELOAD_SIGNAL, "1"])
+    ran = sensor(list(reload_command))
     if not ran.ok:
         _write(sensor, RULE_PATH, previous)
         raise RuleApplyError(

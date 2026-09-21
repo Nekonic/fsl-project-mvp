@@ -201,3 +201,16 @@ def test_the_adapter_says_which_network_it_could_not_place():
     with pytest.raises(RangeUnavailable, match="edge"):
         with patch("range.docker.subprocess.run", _Run()):
             adapter.describe()
+
+def test_a_network_carrying_two_subnets_is_not_quietly_halved():
+    many = [dict(NETWORKS[0], IPAM={"Config": [
+        {"Subnet": "5.188.10.0/24", "Gateway": "5.188.10.1"},
+        {"Subnet": "fd00:5:188:10::/64", "Gateway": "fd00:5:188:10::1"},
+    ]})] + NETWORKS[1:]
+
+    with pytest.raises(RangeUnavailable, match="edge"):
+        with patch("range.docker.subprocess.run", _Run(networks=many)):
+            Docker(DECLARED).describe()
+
+def test_a_network_with_one_subnet_is_unaffected():
+    assert segment(describe(), "edge").subnet == "5.188.10.0/24"

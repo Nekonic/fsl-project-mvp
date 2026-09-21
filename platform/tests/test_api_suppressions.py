@@ -8,6 +8,7 @@ from rules.suricata import RuleApplyError
 
 pytestmark = pytest.mark.django_db
 
+RELOAD = ("kill", "-USR2", "1")
 RULES = (
     '# FSL MVP baseline rules.\n\n'
     'alert http any any -> any any (msg:"FSL SQLi attempt - URI"; sid:9000001; rev:1;)\n\n'
@@ -23,7 +24,7 @@ class Suricata:
     def current(self, sensor):
         return self.content
 
-    def apply(self, content, sensor):
+    def apply(self, content, sensor, reload_command=None):
         self.applied.append(content)
         self.content = content
 

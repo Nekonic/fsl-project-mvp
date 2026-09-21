@@ -5,6 +5,7 @@ import pytest
 from range.ports import Ran, RangeUnavailable
 from rules import suricata
 
+RELOAD = ("kill", "-USR2", "1")
 RULE = 'alert http any any -> any any (msg:"x"; sid:9000900; rev:1;)\n'
 
 class Sensor:
@@ -52,7 +53,7 @@ def test_applying_a_bad_rule_set_does_not_touch_the_live_rules():
     sensor = Sensor(fails_on="-T")
 
     with pytest.raises(suricata.RuleApplyError):
-        suricata.apply(RULE, sensor)
+        suricata.apply(RULE, sensor, RELOAD)
 
     assert not any("USR2" in " ".join(argv) for argv, _ in sensor.calls), (
         "the sensor was told to reload a rule set it had just rejected"
@@ -60,10 +61,10 @@ def test_applying_a_bad_rule_set_does_not_touch_the_live_rules():
 
 def test_a_reload_that_fails_rolls_the_rules_back():
     sensor = Sensor(fails_on="USR2")
-    suricata.apply(RULE, Sensor())
+    suricata.apply(RULE, Sensor(), RELOAD)
 
     with pytest.raises(suricata.RuleApplyError, match="rolled back"):
-        suricata.apply(RULE.replace("9000900", "9000901"), sensor)
+        suricata.apply(RULE.replace("9000900", "9000901"), sensor, RELOAD)
 
 def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
     with pytest.raises(RangeUnavailable):
@@ -71,6 +72,25 @@ def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
 
 def test_the_rules_come_back_the_way_they_went_in():
     sensor = Sensor()
-    suricata.apply(RULE, sensor)
+    suricata.apply(RULE, sensor, RELOAD)
 
     assert suricata.current(sensor) == RULE
+
+def test_how_the_sensor_is_reloaded_is_not_hard_coded_to_a_container():
+    import pathlib
+
+    source = pathlib.Path(suricata.__file__).read_text()
+
+    assert '"1"' not in source, (
+        "kill -USR2 1 is only right because Suricata is a container's "
+        "entrypoint. On an instance it is a service and the pid is not 1"
+    )
+
+def test_the_reload_command_comes_from_configuration():
+    from django.conf import settings
+
+    sensor = Sensor()
+    suricata.apply(RULE, sensor, RELOAD)
+
+    signalled = [argv for argv, _ in sensor.calls if "USR2" in " ".join(argv)]
+    assert signalled == [list(RELOAD)], signalled
