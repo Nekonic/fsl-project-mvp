@@ -23,19 +23,14 @@ docker compose up -d --build
 | | |
 |---|---|
 | http://localhost:8000 | blue team console, and `/api/` |
-| http://localhost:8080 | Juice Shop behind the WAF — the target |
+| http://localhost:8080 | the target, behind the WAF |
+| http://localhost:7681 | the attacker's shell, framed in the red window |
 | http://localhost:9200 | Elasticsearch |
 
 Register the Elasticsearch ingest pipeline once:
 
 ```bash
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip -H 'Content-Type: application/json' --data-binary @deploy/elastic/ingest-pipeline.json
-```
-
-Build the red team tool image (sqlmap) once. It is invoked one-shot with
-`docker run`, so it never comes up with the rest:
-
-```bash
 ```
 
 On an arm64 host (Apple Silicon), Docker has to run arm64 natively.

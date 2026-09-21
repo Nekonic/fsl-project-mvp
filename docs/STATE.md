@@ -14,9 +14,8 @@ phases; all four are done.
 `bin/verify` is green. It prints the scores; they are not written down here,
 because they move whenever the rules or the cases do.
 
-`metrics.json` holds the baseline - 611 core, 3996 product,
-6 dependencies, 9 services, 315 tests. Read it there rather
-than here: a copy in prose is a copy that goes stale, and this one did.
+`metrics.json` holds the baseline. Read it there rather than here: a copy in
+prose is a copy that goes stale, and this one already did twice.
 
 **You can now run the whole loop in a browser.** Open `/`, start a session,
 then open the two windows side by side: fire cases from one, watch the
@@ -83,26 +82,28 @@ One line each.
 
 ## Backlog
 
-The user's direction, from the red team playbook at 레드팀.com: the range
-should cover more of the attack lifecycle than initial access. The inside now
-exists; what is still missing is named below.
+The user's direction, from the Korean red team playbook at www.xn--hy1b43d247a.com:
+the range should cover more of the attack lifecycle than initial access. Its
+nine stages are attacker infrastructure, initial reconnaissance, initial
+access, foothold, privilege escalation, internal reconnaissance, lateral
+movement, persistence, mission. The inside now exists; what is missing is
+below.
 
 ### 1. A foothold to escalate from
 
-Still absent: 거점 확보, 권한 상승, 지속성 유지. There is no code execution on
-the target, so the estate is reached *through* the application rather than
-from a shell on it, and there is nothing to escalate. Whether that matters is
-a scope decision: a C2 and a foothold is a large step, and the range may be
-more useful as a web-entry range that is honest about where it stops.
+Absent: foothold, privilege escalation, persistence. There is no code
+execution on the target, so the estate is reached through the application
+rather than from a shell on it, and there is nothing to escalate. Whether that
+matters is a scope decision: a C2 and a foothold is a large step, and the
+range may be more useful as a web-entry range that is honest about where it
+stops.
 
-### 2. The vocabulary and the threat model
+### 2. Stage labels and a threat model
 
-Take the industry's words rather than invented ones - 공격 인프라 구축, 초기
-정찰, 초기 침투, 내부 정찰, 횡적 이동, 미션 수행 - and label the cases and the
-console with the stage each belongs to, plus the ATT&CK technique id. Add the
-위협 모델링 table and a 한계점 section to the docs: state the threat being
-emulated, the attacker's position, the TTP outline, and then what this range
-cannot show.
+Label each case and each console view with the lifecycle stage it belongs to
+and the ATT&CK technique id. Add a threat model table to the docs - the threat
+being emulated, the attacker's position, the C2, the TTP outline - and a
+limitations section saying what this range cannot show.
 
 ### 3. What the operator actually typed
 
