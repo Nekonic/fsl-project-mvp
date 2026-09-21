@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-22 (the range is declared, not discovered; name resolution next)
+Updated: 2026-09-22 (the declaration checked cold, and an OpenStack sketch against it)
 
 ## Where things stand
 
@@ -81,17 +81,52 @@ together: a network built and not declared, a segment declared and not built, a
 name or an origin changed on one side, or a role pointing at a container compose
 does not define, each fails the suite naming the segment or the role.
 
+`platform/range/openstack.py` is a **sketch**, not an adapter: it answers the
+same two verbs against Neutron and Nova with the cloud call itself left
+unimplemented, and it exists to be read. `test_openstack_sketch.py` holds it to
+the port and asserts nothing at runtime imports it. What it found is below;
+`topology.shape()` consumed its `Shape` unchanged, which is the part that works.
+
 What is left for OpenStack, in order:
 
-1. **Name resolution.** Fifteen places name a host - `shop.com`,
+1. **The declaration cannot say which origin is the default.** `attacker.origins`
+   flags it by `segment.network == ATTACKER_NETWORK`, and `ATTACKER_NETWORK` is
+   an env var holding the Docker network name `fsl_edge`. Against the sketch
+   every origin comes back `"default": false` and `find(None)` picks `edge`
+   only because it sorts first. Which origin is the default is identity, not
+   allocation; it belongs in the declaration as a flag on a segment.
+
+2. **Name resolution.** Fifteen places name a host - `shop.com`,
    `wiki.internal`, `juice-shop:3000`, `waf-edge-*`, `proxy:8081`. Compose
    gives those away; Neutron does not. cloud-init writing `/etc/hosts` is the
    cheapest answer that keeps `shop.com` a name, which is the product.
-2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
+3. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
    the WAF's namespace so it sees both legs of every proxied request. Neutron
    has no namespace sharing: either Suricata rides the WAF instance, or
    Tap-as-a-Service mirrors the ports. `Sensor(name, watches)` already carries
-   the relationship either way.
+   the relationship either way, but nothing *supplies* it: Docker reads it off
+   `NetworkMode: container:<id>` and Neutron has no such fact, so the sketch
+   assumes the sensor watches the gateway. That assumption belongs in the
+   declaration, beside the roles.
+
+4. **The sensor becomes a node.** On Docker Suricata owns no port, so it never
+   appears in a segment. On Nova it is an instance with its own addresses, and
+   `topology.shape()` then marks every segment it stands on as sensed - the
+   estate would claim a sensor it does not have.
+
+5. **`kill -USR2 1` is a substrate fact inside core.** `platform/rules/suricata.py`
+   reloads by signalling PID 1, which is only true because Suricata is a
+   container's entrypoint. On an instance it is a systemd unit. Either the
+   declaration carries the reload command or the port grows a third verb.
+
+6. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
+   which needs no credential. The sketch needs an ssh user, a key and an address
+   the platform can reach, and none of the three has anywhere to live. They are
+   credentials, so the answer is probably settings rather than the declaration -
+   but the declaration's `roles` values are host names in substrate vocabulary
+   (`fsl-kali` is a compose `container_name`, a Nova server name and, after
+   `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
+   and is not addressable.
 
 `docs/ARCHITECTURE.md` has the mechanism and the measured numbers.
 
@@ -179,6 +214,14 @@ it a window case says an attack happened and not what it was.
 
 ## Known gaps
 
+- `test_declaration.py` compares two files and never the running range. It
+  keys a compose network by its mapping key, so a `name:` override
+  (`estate: {name: corp-estate}`) passes the whole suite while the adapter
+  resolves the segment id `corp-estate`, which the declaration does not have:
+  `declared.segment()` falls back to a nameless, originless, silently-inside
+  segment. Four deliberate breakages - an undeclared network, a renamed
+  segment, a changed origin, a role pointing at no container - were each caught
+  by name, so the test is real; this is the one seam it does not cover.
 - The `platform` container still mounts the Docker socket, now reached as a
   non-root user through a group whose id compose passes as `DOCKER_GID`. It is
   still a container escape path and it disappears with the substrate: an
