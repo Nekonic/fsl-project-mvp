@@ -206,6 +206,26 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**The scoreboard stopped answering the party it is scoring**
+- `fsl-platform` sits on all six segments and `waitress` listens on 0.0.0.0, so
+  the red team's own terminal reached the scoring API. Measured before the fix:
+  `GET /api/rules/` from `fsl-kali` returned 200. `POST /api/rules/apply/` from
+  there rewrites the detector - blank it and every attack is a miss, match the
+  marker header and every attack is a hit - so every cell of the confusion
+  matrix was writable by the party being measured.
+- No accounts were added; CLAUDE.md's decision stands. The API refuses any
+  address that stands inside the range. The two callers are distinguishable
+  without a login, and it was measured rather than assumed: a request through
+  Docker's published port arrives from a segment's **gateway**, `5.188.10.1`,
+  and `fsl-kali` arrives as a **node**, `5.188.10.2`.
+- Live after the fix: operator 200, console 200, kali 403 with the reason.
+- The participant set is read once per thirty seconds, not per request - the
+  console polls several endpoints every few seconds and a read of the range is
+  four Docker round trips. A test pins it at one read per eight requests.
+- Still open: a host inside the range can send with another host's address, and
+  a container recreated inside the cache window keeps its old answer. Both are
+  written down in `docs/THREAT-MODEL.md` rather than left implied.
+
 **An alert remembers who held the address when it was written**
 - `Detection` stored an address and nothing else, and the dashboard named it by
   asking Docker who holds that address *now*. Compose assigns them by DHCP -

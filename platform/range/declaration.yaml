@@ -20,6 +20,7 @@ segments:
 
 roles:
   attacker: fsl-kali
+  scorer: fsl-platform
   gateway: fsl-waf
   proxy: fsl-proxy
   sensor: fsl-suricata

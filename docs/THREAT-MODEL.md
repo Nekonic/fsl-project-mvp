@@ -60,6 +60,18 @@ counts are against six requests chosen to look like attacks - an apostrophe in
 a search, the word `select` - not against a day of real shopping. They catch a
 rule that blocks everything; they do not estimate a false positive rate.
 
+**The scoreboard does not answer the range.** The platform stands on every
+segment, so until this was closed the attacker's own terminal could call the
+scoring API - no accounts, no authentication, `GET /api/rules/` answered it
+with 200. From there `POST /api/rules/apply/` rewrites the detector: blank the
+file and every attack is a miss, match the marker header and every attack is a
+hit. Every cell of the confusion matrix was writable by the party being
+measured. The API now refuses any address standing inside the range, which is
+not a login - the operator's console arrives through the published port, so its
+source is a segment's gateway rather than a participant. Two limits remain: the
+set of participants is cached for thirty seconds, and nothing stops a host
+inside the range from sending with another host's address.
+
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.
 
