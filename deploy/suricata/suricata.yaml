@@ -5,7 +5,7 @@ vars:
     HOME_NET: "[5.188.10.0/24,177.54.144.0/24,103.152.220.0/24,175.45.176.0/24,172.30.0.0/24,172.31.0.0/24]"
     EXTERNAL_NET: "any"
   port-groups:
-    HTTP_PORTS: "8080"
+    HTTP_PORTS: "[80,3000]"
 
 default-log-dir: /var/log/suricata/
 
