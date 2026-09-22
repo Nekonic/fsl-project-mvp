@@ -92,7 +92,9 @@ FSL_SENSOR_RELOAD = tuple(
 )
 
 FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
-FSL_SUBSTRATE_OPTIONS = {
-    "project": os.environ.get("FSL_PROJECT", "fsl"),
-    "declared": RANGE,
-}
+FSL_SUBSTRATE_OPTIONS = dict(
+    {
+        "range.docker.Docker": {"project": os.environ.get("FSL_PROJECT", "fsl")},
+    }.get(FSL_SUBSTRATE, {}),
+    declared=RANGE,
+)

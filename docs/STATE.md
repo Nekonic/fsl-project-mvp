@@ -219,6 +219,21 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**One place turns a name into a substrate**
+- `redteam/run.py` constructed `range.docker.Docker` by name while the
+  platform resolved `FSL_SUBSTRATE`. I put that there earlier in this session.
+  On any other substrate the console would fire attacks and the command line
+  would not, and nothing would say why. Both go through `range.substrate()`
+  now, and a test refuses a second `import_string` site.
+- Unifying them exposed the next one immediately: `FSL_SUBSTRATE_OPTIONS`
+  carried `project`, Docker's compose project name, whatever substrate was
+  selected. Options are keyed by substrate now and every one is given the
+  declaration. Checkable today without a cloud:
+  `FSL_SUBSTRATE=range.openstack.OpenStack .venv/bin/python redteam/run.py`
+  used to fail with `unexpected keyword argument 'project'` and now fails with
+  `missing 1 required positional argument: 'cloud'` - the thing a deployment
+  actually has to supply.
+
 **A destination is an address and a port**
 - `session_top` and the alert table pasted them into one field, `172.30.0.2:3000`,
   so nothing could sort or filter on either and a reader had to parse it back.
