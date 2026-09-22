@@ -206,6 +206,24 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**`$HTTP_PORTS` named a port on no wire the sensor watches**
+- It was `8080`, the host-published port. Docker translates that before the
+  packet reaches any interface in the WAF's namespace, so the only ports on
+  the tap are 80 (nginx) and 3000 (the backend leg). Every published HTTP
+  signature is written `$HOME_NET $HTTP_PORTS`, so a defender pasting one got
+  a rule that validated, a sensor that reloaded, a case scored FN, and no way
+  to tell a wrong regex from a wrong port variable.
+- A/B, same rule as sid 9000001 with only the port term changed, config loaded
+  inside the container checked each time: `"8080"` fired 0 while the shipped
+  rule using `any` fired 4; `"[80,3000]"` fired 2 against the same 4.
+- The first attempt to falsify this said the trap was not real. It was a bad
+  experiment - a 12-second wait that did not cover the sensor's start - and it
+  nearly buried a true finding. The A/B above verifies the loaded config from
+  inside the container before each half.
+- Two experiment rules were left behind in the shipped rule set during this,
+  because the file is the live artifact and an experiment writes to it.
+  `test_sensor_rules.py` refuses any sid at or above 9009000 in it.
+
 **A strategy that cannot place a case says which ones**
 - The comparison panel drew tp/fn/fp/tn for both strategies and threw the
   warnings away. Forcing time-window correlation onto cases that declare no
