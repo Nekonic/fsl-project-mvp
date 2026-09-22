@@ -206,6 +206,23 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**The score accounts for the evidence it throws away**
+- `correlate` computed `unmatched_detection_ids` and nothing read it. TP, FP,
+  FN and TN are counted over declared cases only, so an alert belonging to no
+  case entered no number at all. `false_positive_rate = fp/(fp+tn)` therefore
+  had a denominator equal to the benign case count - six - a granularity of
+  0.167, and was printed to two decimals. A defence that alerted on every
+  packet the range sends to itself and missed those six requests read 0.00.
+- The score reports `unattributed` and `benign_cases` now, and the console
+  shows the fraction (`1 / 6`) with the sentence "not a rate" beside it, and
+  the unplaced count in its own tile. An acceptance test asserts the three
+  numbers add up: attributed + unattributed == ingested.
+- Fixing the health check emptied this out on a clean run: every alert in a
+  `redteam/run.py` window now carries a marker, and an acceptance test refuses
+  a run where the stack alerted on its own traffic. The 162-of-170 unattributed
+  figure measured earlier was the health check firing CRS 920350 every ten
+  seconds, not a property of the design.
+
 **A defence cannot author its own evidence**
 - `corroborated` asked whether a case's `expect` substring appears in any
   signature attributed to it, and the defence writes those signatures. One rule

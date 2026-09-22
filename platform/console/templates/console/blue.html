@@ -681,10 +681,11 @@
       esc(t("blue.score.evidence.wrong_reason"))}</span>`;
   }
 
-  function tile(label, value) {
+  function tile(label, value, note) {
     return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
       <div class="text-slate-500 text-xs uppercase tracking-wide">${esc(label)}</div>
-      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${esc(value)}</div></div>`;
+      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${esc(value)}</div>
+      ${note ? `<div class="text-slate-400 text-xs mt-0.5">${esc(note)}</div>` : ""}</div>`;
   }
 
   async function renderScore() {
@@ -707,7 +708,10 @@
       tile(t("blue.score.tile.precision"), s.precision.toFixed(2)) +
       tile(t("blue.score.tile.recall"), s.recall.toFixed(2)) +
       tile(t("blue.score.tile.f1"), s.f1.toFixed(2)) +
-      tile(t("blue.score.tile.fp_rate"), s.false_positive_rate.toFixed(2));
+      tile(t("blue.score.tile.fp_rate"), `${s.fp} / ${s.benign_cases}`,
+           t("blue.score.tile.fp_rate.note", s.benign_cases)) +
+      tile(t("blue.score.tile.unattributed"), s.unattributed,
+           t("blue.score.tile.unattributed.note"));
 
     for (const w of s.warnings) {
       warnings.innerHTML += `<div class="bg-amber-950 border border-amber-800 rounded p-3

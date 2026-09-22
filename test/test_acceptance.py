@@ -101,3 +101,43 @@ def test_invalid_rule_is_rejected_and_not_applied():
 
     assert response.status_code == 400
     assert requests.get(f"{PLATFORM_URL}/api/rules/").json()["content"] == before
+
+def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
+    import requests
+
+    from conftest import PLATFORM_URL
+
+    listed = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+    ).json()
+    rows = listed if isinstance(listed, list) else listed["detections"]
+    attributed = sum(len(c["detection_ids"]) for c in score["per_case"])
+
+    assert attributed + score["unattributed"] == len(rows), (
+        f"{len(rows)} alerts ingested, {attributed} attributed to a case, "
+        f"{score['unattributed']} reported unplaced. The difference is "
+        f"evidence that entered no number and appears nowhere"
+    )
+
+def test_every_alert_in_the_window_is_the_red_team_s_own(session_id, score):
+    import requests
+
+    from conftest import PLATFORM_URL
+
+    listed = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+    ).json()
+    rows = listed if isinstance(listed, list) else listed["detections"]
+    unmarked = [d["signature"] for d in rows if not d["marker"]]
+
+    assert unmarked == [], (
+        f"the stack raised alerts on its own traffic during a red team run: "
+        f"{sorted(set(unmarked))}. Every one of them lands in the operator's "
+        f"evidence and in no number, and the last time this was true it was "
+        f"the WAF's health check firing CRS 920350 every ten seconds"
+    )
+
+def test_the_false_positive_denominator_is_the_benign_case_count(score):
+    benign = [c for c in score["per_case"] if not c["malicious"]]
+
+    assert score["benign_cases"] == len(benign) == score["fp"] + score["tn"]

@@ -739,6 +739,8 @@ def session_score(request, session_id):
             "recall": totals.recall,
             "f1": totals.f1,
             "false_positive_rate": totals.false_positive_rate,
+            "benign_cases": totals.fp + totals.tn,
+            "unattributed": len(result.unmatched_detection_ids),
             "warnings": warnings,
             "per_case": per_case,
             "objectives": board.__dict__,
