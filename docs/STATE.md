@@ -81,9 +81,17 @@ together: a network built and not declared, a segment declared and not built, a
 name or an origin changed on one side, or a role pointing at a container compose
 does not define, each fails the suite naming the segment or the role.
 
-`platform/range/openstack.py` is a **sketch**, not an adapter: it answers the
-same two verbs against Neutron and Nova with the cloud call itself left
-unimplemented, and it exists to be read. `test_openstack_sketch.py` holds it to
+`platform/range/openstack.py` **runs** now, against a fake cloud rather than a
+cloud. `http_reader` authenticates to Keystone v3, carries the token, states
+the Nova microversion it was written against, replaces a token the cloud has
+expired and retries once, and names any other refusal. `describe()` goes end
+to end over HTTP in `test_openstack_http.py` and comes back with a `Shape`.
+
+What that does **not** prove: the fake serves the reference's response shapes,
+not Neutron and Nova. Keystone scoping and domains are simplified, service
+catalogue discovery is skipped - endpoints are configuration - and `runner`
+(ssh) and `launcher` (a Nova boot) are still unimplemented. What changed is
+that the code is executed rather than only read. `test_openstack_sketch.py` holds it to
 the port and asserts nothing at runtime imports it. What it found is below;
 `topology.shape()` consumed its `Shape` unchanged, which is the part that works.
 
@@ -218,6 +226,17 @@ One line each.
 - Every value is escaped before it reaches the page, and there is a test that
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
+
+**The adapter runs**
+- `X-OpenStack-Nova-API-Version` is sent on every call. Nova's own guide: with
+  neither that header nor `OpenStack-API-Version`, it acts "as if the minimum
+  supported microversion was specified". The adapter would have been handed
+  2.1 silently while the sample its fields were checked against was 2.100.
+  The fields it reads carry no "New in version" marker, so 2.1 is enough - but
+  by luck, and now by statement.
+- A Keystone token has a lifetime and a console outstays it. A 401 now buys
+  one fresh token and one retry; a second 401 is reported. Without that the
+  range simply becomes unreadable after an hour, with no reason on screen.
 
 **A cloud answers in pages and the sketch read one**
 - Found in the vendor's own example, not by reasoning: Neutron's List Networks
