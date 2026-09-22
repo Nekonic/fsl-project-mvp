@@ -281,3 +281,71 @@ def test_the_keystone_url_is_the_only_address_a_deployment_must_know(keystone):
 
     assert "neutron" not in signature.parameters
     assert "nova" not in signature.parameters
+
+
+def test_a_token_about_to_expire_is_renewed_before_the_call(keystone):
+    from datetime import datetime, timedelta, timezone
+
+    soon = (datetime.now(timezone.utc) + timedelta(seconds=5)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+    CATALOG["token"]["expires_at"] = soon
+    try:
+        base = f"http://127.0.0.1:{keystone.port}"
+        ask = openstack.http_reader(
+            openstack.Cloud(keystone=base, neutron=base, nova=base,
+                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+            password="secret",
+        )
+        ask(f"{base}/v2.0/networks")
+        ask(f"{base}/v2.0/networks")
+    finally:
+        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
+
+    assert keystone.tokens == 2, (
+        "the token said it expires in five seconds and the adapter kept using "
+        "it, so the range goes unreadable mid-session and only a 401 tells it"
+    )
+
+def test_a_token_with_life_left_is_not_thrown_away(keystone):
+    from datetime import datetime, timedelta, timezone
+
+    later = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+    CATALOG["token"]["expires_at"] = later
+    try:
+        base = f"http://127.0.0.1:{keystone.port}"
+        ask = openstack.http_reader(
+            openstack.Cloud(keystone=base, neutron=base, nova=base,
+                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+            password="secret",
+        )
+        for _ in range(4):
+            ask(f"{base}/v2.0/networks")
+    finally:
+        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
+
+    assert keystone.tokens == 1, (
+        f"{keystone.tokens} tokens for four calls - re-authenticating on every "
+        f"request puts a Keystone round trip in front of every read"
+    )
+
+def test_a_token_with_no_expiry_is_used_until_it_is_refused(keystone):
+    CATALOG["token"].pop("expires_at", None)
+    try:
+        base = f"http://127.0.0.1:{keystone.port}"
+        ask = openstack.http_reader(
+            openstack.Cloud(keystone=base, neutron=base, nova=base,
+                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+            password="secret",
+        )
+        ask(f"{base}/v2.0/networks")
+        ask(f"{base}/v2.0/networks")
+    finally:
+        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
+
+    assert keystone.tokens == 1, (
+        "a response without expires_at made the adapter re-authenticate every "
+        "time rather than fall back to the 401 it already handles"
+    )

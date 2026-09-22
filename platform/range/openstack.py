@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dataclasses import dataclass, replace
@@ -19,6 +20,7 @@ CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 FIXED = "OS-EXT-IPS:type"
 PAGE_LIMIT = 50
 
+RENEW_BEFORE = timedelta(seconds=30)
 NOVA_MICROVERSION = "2.1"
 NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
 TOKEN_HEADER = "X-Auth-Token"
@@ -90,7 +92,7 @@ def _password_body(user: str, password: str, project: str) -> dict:
     }
 
 def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
-    held = {"token": ""}
+    held: dict = {"token": "", "expires": None}
 
     def authenticate() -> str:
         answered = _send(
@@ -98,6 +100,7 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
             _password_body(cloud.ssh_user, password, cloud.project), timeout,
         )
         held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
+        held["expires"] = _expiry(answered)
         if not held["token"]:
             raise RangeUnavailable(
                 f"{cloud.keystone} issued no {SUBJECT_TOKEN}, so nothing can "
@@ -107,7 +110,9 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
 
     def read(call: str) -> dict:
         url = call.split(" ", 1)[1] if " " in call else call
-        token = held["token"] or authenticate()
+        token = held["token"]
+        if not token or _spent(held["expires"]):
+            token = authenticate()
         answered = _send("get", url, token, None, timeout)
         if answered.status_code == 401:
             answered = _send("get", url, authenticate(), None, timeout)
@@ -119,6 +124,22 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
         return answered.json()
 
     return read
+
+def _expiry(answered) -> datetime | None:
+    stamp = ((answered.json().get("token") or {}) if answered.content else {}).get(
+        "expires_at"
+    )
+    if not stamp:
+        return None
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+def _spent(expires: datetime | None) -> bool:
+    if expires is None:
+        return False
+    return datetime.now(timezone.utc) + RENEW_BEFORE >= expires
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
     headers = {NOVA_VERSION_HEADER: NOVA_MICROVERSION}

@@ -249,9 +249,13 @@ One line each.
   `public` in `RegionOne`. A service the catalogue does not carry is refused by
   name and region rather than handed back as an empty URL that fails later
   somewhere else.
-- The same response carries `expires_at`. The adapter still waits for a 401 and
-  then re-authenticates; knowing the expiry it could renew before the call.
-  Next.
+- The same response carries `expires_at`, and the adapter uses it: a token
+  within 30 seconds of dying is replaced before the call rather than after a
+  401. The 401 retry stays as the backstop for a token the cloud rejects
+  early. Three tests hold the middle: renew when it is nearly spent, reuse
+  when it is not, and fall back to the 401 path when the response carries no
+  expiry at all. Without the middle one, "renew before expiry" collapses into
+  a Keystone round trip in front of every single read.
 
 **A tool runs where the attacker already is**
 - `launcher` raised NotImplementedError. Implementing it turned up the reason:
