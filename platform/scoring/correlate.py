@@ -75,7 +75,7 @@ def _warnings(
         warnings.append(("score.warning.no_marker",))
 
     missing_ip = [
-        c.case_id
+        c.name
         for c in cases
         if c.correlation == CORRELATION_WINDOW and c.source_ip is None
     ]
