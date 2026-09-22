@@ -24,27 +24,78 @@ NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
 TOKEN_HEADER = "X-Auth-Token"
 SUBJECT_TOKEN = "X-Subject-Token"
 
+NETWORK_SERVICE = "network"
+COMPUTE_SERVICE = "compute"
+
+def discover(
+    keystone: str,
+    user: str,
+    password: str,
+    project: str,
+    ssh_user: str,
+    ssh_key: str,
+    region: str = "RegionOne",
+    interface: str = "public",
+    timeout: float = 30.0,
+) -> "Cloud":
+    answered = _send(
+        "post", f"{keystone}/v3/auth/tokens", None,
+        _password_body(user, password, project), timeout,
+    )
+    if not answered.ok:
+        raise RangeUnavailable(
+            f"{keystone} refused the credentials with "
+            f"{answered.status_code}: {answered.text.strip()[:200]}"
+        )
+
+    catalog = (answered.json().get("token") or {}).get("catalog") or []
+    return Cloud(
+        keystone=keystone,
+        neutron=_endpoint(catalog, NETWORK_SERVICE, region, interface),
+        nova=_endpoint(catalog, COMPUTE_SERVICE, region, interface),
+        project=project,
+        ssh_user=ssh_user,
+        ssh_key=ssh_key,
+    )
+
+def _endpoint(catalog, service: str, region: str, interface: str) -> str:
+    for entry in catalog:
+        if entry.get("type") != service:
+            continue
+        for endpoint in entry.get("endpoints") or []:
+            if (endpoint.get("interface") == interface
+                    and endpoint.get("region_id") == region):
+                return endpoint.get("url") or ""
+    raise RangeUnavailable(
+        f"the token's catalogue carries no {service!r} service with a "
+        f"{interface!r} endpoint in {region!r}; the deployment has to say "
+        f"which region and interface this platform reaches the cloud by"
+    )
+
+def _password_body(user: str, password: str, project: str) -> dict:
+    return {
+        "auth": {
+            "identity": {
+                "methods": ["password"],
+                "password": {
+                    "user": {
+                        "name": user,
+                        "domain": {"id": "default"},
+                        "password": password,
+                    }
+                },
+            },
+            "scope": {"project": {"id": project}},
+        }
+    }
+
 def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
     held = {"token": ""}
 
     def authenticate() -> str:
-        body = {
-            "auth": {
-                "identity": {
-                    "methods": ["password"],
-                    "password": {
-                        "user": {
-                            "name": cloud.ssh_user,
-                            "domain": {"id": "default"},
-                            "password": password,
-                        }
-                    },
-                },
-                "scope": {"project": {"id": cloud.project}},
-            }
-        }
         answered = _send(
-            "post", f"{cloud.keystone}/v3/auth/tokens", None, body, timeout
+            "post", f"{cloud.keystone}/v3/auth/tokens", None,
+            _password_body(cloud.ssh_user, password, cloud.project), timeout,
         )
         held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
         if not held["token"]:

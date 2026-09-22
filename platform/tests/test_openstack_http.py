@@ -185,3 +185,99 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     assert [(s.name, s.watches) for s in shape.sensors] == [
         ("fsl-suricata", "fsl-waf")
     ]
+
+
+CATALOG = {
+    "token": {
+        "expires_at": "2015-11-07T02:58:43.578887Z",
+        "catalog": [
+            {"type": "identity", "name": "keystone", "endpoints": [
+                {"interface": "public", "region_id": "RegionOne",
+                 "url": "http://example.com/identity"}]},
+            {"type": "network", "name": "neutron", "endpoints": [
+                {"interface": "admin", "region_id": "RegionOne",
+                 "url": "http://admin.example.com:9696"},
+                {"interface": "public", "region_id": "RegionTwo",
+                 "url": "http://elsewhere.example.com:9696"},
+                {"interface": "public", "region_id": "RegionOne",
+                 "url": "http://example.com:9696"}]},
+            {"type": "compute", "name": "nova", "endpoints": [
+                {"interface": "admin", "region_id": "RegionOne",
+                 "url": "http://admin.example.com/compute/v2.1"},
+                {"interface": "public", "region_id": "RegionOne",
+                 "url": "http://example.com/compute/v2.1"}]},
+        ],
+    }
+}
+
+class Catalogued(Cloud):
+    def handler(self):
+        spy = self
+        base = super().handler()
+
+        class H(base):
+            def do_POST(self):
+                spy.tokens += 1
+                self._send(201, CATALOG, {"X-Subject-Token": f"tok{spy.tokens}"})
+
+        return H
+
+@pytest.fixture
+def keystone():
+    import threading
+    from http.server import HTTPServer
+
+    spy = Catalogued()
+    server = HTTPServer(("127.0.0.1", 0), spy.handler())
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    spy.port = server.server_port
+    yield spy
+    server.shutdown()
+
+def test_the_endpoints_come_from_the_token_not_from_configuration(keystone):
+    found = openstack.discover(
+        keystone=f"http://127.0.0.1:{keystone.port}",
+        user="fsl", password="secret", project="fsl",
+        ssh_user="fsl", ssh_key="/keys/fsl",
+    )
+
+    assert found.neutron == "http://example.com:9696"
+    assert found.nova == "http://example.com/compute/v2.1"
+
+def test_it_takes_the_interface_and_region_it_was_asked_for(keystone):
+    found = openstack.discover(
+        keystone=f"http://127.0.0.1:{keystone.port}",
+        user="fsl", password="secret", project="fsl",
+        ssh_user="fsl", ssh_key="/keys/fsl",
+        interface="admin",
+    )
+
+    assert (found.neutron, found.nova) == (
+        "http://admin.example.com:9696",
+        "http://admin.example.com/compute/v2.1",
+    ), (
+        "a catalogue carries public, admin and internal endpoints for the same "
+        "service, and a platform on a management network wants a different one "
+        "than a browser does"
+    )
+
+def test_a_service_the_catalogue_does_not_carry_is_named(keystone):
+    with pytest.raises(RangeUnavailable) as raised:
+        openstack.discover(
+            keystone=f"http://127.0.0.1:{keystone.port}",
+            user="fsl", password="secret", project="fsl",
+            ssh_user="fsl", ssh_key="/k", region="RegionThree",
+        )
+
+    assert "network" in str(raised.value) and "RegionThree" in str(raised.value), (
+        f"the deployment has to be told which service is missing from which "
+        f"region, not handed an empty URL: {raised.value}"
+    )
+
+def test_the_keystone_url_is_the_only_address_a_deployment_must_know(keystone):
+    import inspect
+
+    signature = inspect.signature(openstack.discover)
+
+    assert "neutron" not in signature.parameters
+    assert "nova" not in signature.parameters
