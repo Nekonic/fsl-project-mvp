@@ -15,10 +15,17 @@ BOOT = "POST {nova}/servers"
 CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
+PAGE_LIMIT = 50
 VERSION = "version"
 
 SEGMENT_TAG = "fsl.segment.id"
 
+
+def _next(links) -> str:
+    for link in links or []:
+        if link.get("rel") == "next" and link.get("href"):
+            return link["href"]
+    return ""
 
 def unimplemented(call: str) -> dict:
     raise NotImplementedError(
@@ -47,8 +54,8 @@ class OpenStack:
         wanted = ",".join(
             f"{SEGMENT_TAG}={segment.id}" for segment in self.declared.segments
         )
-        bound = self._bind(self._ask(NETWORKS, tags=wanted)["networks"])
-        servers = self._ask(SERVERS)["servers"]
+        bound = self._bind(self._all(NETWORKS, "networks", tags=wanted))
+        servers = self._all(SERVERS, "servers")
 
         segments = []
         for declared in self.declared.segments:
@@ -59,7 +66,7 @@ class OpenStack:
                     f"network of project {self.cloud.project!r} is tagged "
                     f"{SEGMENT_TAG}={declared.id}"
                 )
-            allocated = self._ask(SUBNETS, network=network["id"])["subnets"]
+            allocated = self._all(SUBNETS, "subnets", network=network["id"])
             first = allocated[0] if allocated else {}
             segments.append(
                 replace(
@@ -151,6 +158,23 @@ class OpenStack:
         raise RangeUnavailable(
             f"the host filling {role!r} ({host}) stands on no segment this "
             f"platform can address"
+        )
+
+    def _all(self, call: str, key: str, **binding) -> list:
+        page = self._ask(call, **binding)
+        found = list(page.get(key) or [])
+
+        for _ in range(PAGE_LIMIT):
+            href = _next(page.get(f"{key}_links"))
+            if not href:
+                return found
+            page = self.get(f"GET {href}")
+            found += list(page.get(key) or [])
+
+        raise RangeUnavailable(
+            f"{key} came back in more than {PAGE_LIMIT} pages, each one "
+            f"pointing at the next; the cloud is looping or the range is not "
+            f"what this platform is for"
         )
 
     def _ask(self, call: str, **binding) -> dict:
