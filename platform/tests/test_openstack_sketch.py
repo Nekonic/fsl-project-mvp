@@ -434,3 +434,101 @@ def test_a_paginated_server_list_is_read_to_the_end():
 
 def test_the_page_limit_is_stated_rather_than_hidden():
     assert openstack.PAGE_LIMIT >= 10, openstack.PAGE_LIMIT
+
+
+def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():
+    from unittest.mock import patch
+
+    from range.ports import Ran
+
+    adapter = sketch()
+    with patch("range.openstack.subprocess.run") as ran:
+        ran.return_value.returncode = 0
+        ran.return_value.stdout = "sqlmap 1.10"
+        ran.return_value.stderr = ""
+        answered = adapter.launcher("edge")("fsl-kali", ["sqlmap", "--version"])
+
+    argv = ran.call_args.args[0]
+    assert argv[0] == "ssh", argv
+    assert argv[-2:] == ["sqlmap", "--version"], argv
+    assert "5.188.10.7@".split("@")[0] in " ".join(argv), (
+        f"the tool did not run on the attacker's address on the edge segment: "
+        f"{argv}"
+    )
+    assert answered.output == "sqlmap 1.10"
+
+def test_a_tool_on_a_segment_the_attacker_does_not_stand_on_is_refused():
+    adapter = sketch()
+
+    with pytest.raises(RangeUnavailable) as raised:
+        adapter.launcher("edge-kp")("fsl-kali", ["sqlmap"])
+
+    assert "edge-kp" in str(raised.value) and "fsl-kali" in str(raised.value), (
+        "Nova has no docker run --rm: there is no way to boot a host, capture "
+        "its stdout and delete it in one call. A tool runs on an attacker that "
+        "already stands on that segment, so the range must provide one per "
+        "origin - and the declaration has a single attacker role"
+    )
+
+def test_the_image_is_not_silently_ignored():
+    adapter = sketch()
+
+    with pytest.raises(RangeUnavailable, match="image"):
+        adapter.launcher("edge")("some-other-image", ["sqlmap"])
+
+def test_reaching_a_host_does_not_read_the_whole_cloud_every_command():
+    from unittest.mock import patch
+
+    asked = []
+    adapter = openstack.OpenStack(
+        declared.read(), CLOUD, get=cloud_reader(asked=asked)
+    )
+    run = adapter.runner("gateway")
+    with patch("range.openstack.subprocess.run") as ran:
+        ran.return_value.returncode = 0
+        ran.return_value.stdout = ""
+        ran.return_value.stderr = ""
+        for _ in range(4):
+            run(["true"])
+
+    listings = [c for c in asked if "/v2.0/networks" in c]
+    assert len(listings) == 1, (
+        f"every command re-read the whole cloud: {len(listings)} network listings "
+        f"for four commands. Applying one Suricata rule set is a validate, a "
+        f"read, a write and a reload"
+    )
+
+
+def test_the_shape_is_read_once_per_adapter_and_not_once_per_platform():
+    asked = []
+    adapter = openstack.OpenStack(declared.read(), CLOUD, get=cloud_reader(asked=asked))
+
+    adapter.describe()
+    adapter.describe()
+
+    listings = [c for c in asked if "/v2.0/networks" in c]
+    assert len(listings) == 1, listings
+
+def test_a_new_adapter_sees_a_range_that_changed():
+    first = openstack.OpenStack(declared.read(), CLOUD, get=cloud_reader())
+    assert first.describe().segments
+
+    moved = {"networks": [
+        dict(n, id=n["id"] + "-new") for n in NETWORKS["networks"]
+    ]}
+    second = openstack.OpenStack(
+        declared.read(), CLOUD,
+        get=lambda call: (
+            moved if "/v2.0/networks" in call
+            else SUBNETS[call.rsplit("=", 1)[1].replace("-new", "")]
+            if "/v2.0/subnets" in call else SERVERS
+        ),
+    )
+
+    assert {s.network for s in second.describe().segments} != {
+        s.network for s in first.describe().segments
+    }, (
+        "the shape is memoised on the adapter, so a platform that kept one "
+        "adapter alive would keep answering with a range that no longer "
+        "exists. It must be built per request, as range.substrate() does"
+    )

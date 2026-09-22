@@ -140,7 +140,18 @@ What is left for OpenStack, in order:
    assumes the sensor watches the gateway. That assumption belongs in the
    declaration, beside the roles.
 
-3. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
+3. **The declaration has one attacker and the range has four origins.**
+   Nova has no call that boots a host, hands back its stdout and deletes it,
+   so a tool cannot be launched per attack the way `docker run --rm` does. It
+   runs on an attacker that already stands on that segment, which is what a
+   real range does - and which the declaration cannot express: `roles` names a
+   single `attacker`, while Docker got away with it by starting a container on
+   whichever network was asked for. Asking for a tool on a segment the
+   attacker does not stand on now says exactly that rather than running it
+   somewhere else. Either the declaration grows an attacker per origin, or the
+   range accepts one attacking position on OpenStack. A decision, not a task.
+
+4. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
    which needs no credential. The sketch needs an ssh user, a key and an address
    the platform can reach, and none of the three has anywhere to live. They are
    credentials, so the answer is probably settings rather than the declaration -
@@ -149,7 +160,7 @@ What is left for OpenStack, in order:
    `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
    and is not addressable.
 
-4. **Whether the operator still looks like an outsider.** The rule that stops
+5. **Whether the operator still looks like an outsider.** The rule that stops
    the red team calling the scoring API refuses any address standing in the
    range, and it works because the console arrives through Docker's published
    port and is therefore DNATed to a segment's gateway. A test runs the same
@@ -162,7 +173,7 @@ What is left for OpenStack, in order:
    out and lets the red team in, which is the failure worth testing first on
    a real cloud.
 
-5. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
+6. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
    floating address, and the adapter keeps the fixed one. An attack leaving the
    range through a Neutron router is source-NATed, so the address Suricata sees
    is the router's, not the attacker's - the stamping proxy solves this on
@@ -226,6 +237,19 @@ One line each.
 - Every value is escaped before it reaches the page, and there is a test that
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
+
+**A tool runs where the attacker already is**
+- `launcher` raised NotImplementedError. Implementing it turned up the reason:
+  there is no Nova equivalent of `docker run --rm image argv`. Booting is
+  minutes and output comes back only through a console log or ssh. So a tool
+  runs over ssh on the attacker standing on that segment, and asking for any
+  other image is refused rather than quietly ignored.
+- `runner` re-read the entire cloud on every command - networks, subnets and
+  servers, paginated - to find one address. Applying one Suricata rule set is
+  a validate, a read, a write and a reload: four full reads. The shape is read
+  once per adapter now, and `range.substrate()` builds a new adapter per
+  request, so nothing holds a range that has since changed. Both halves are
+  pinned by tests.
 
 **The adapter runs**
 - `X-OpenStack-Nova-API-Version` is sent on every call. Nova's own guide: with

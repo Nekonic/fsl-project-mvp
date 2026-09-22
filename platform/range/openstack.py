@@ -82,6 +82,7 @@ def _send(verb: str, url: str, token: str | None, body, timeout: float):
 VERSION = "version"
 
 SEGMENT_TAG = "fsl.segment.id"
+ATTACKER_ROLE = "attacker"
 
 
 def _next(links) -> str:
@@ -112,8 +113,14 @@ class OpenStack:
         self.declared = declared
         self.cloud = cloud
         self.get = get
+        self._shape: Shape | None = None
 
     def describe(self) -> Shape:
+        if self._shape is None:
+            self._shape = self._read()
+        return self._shape
+
+    def _read(self) -> Shape:
         wanted = ",".join(
             f"{SEGMENT_TAG}={segment.id}" for segment in self.declared.segments
         )
@@ -171,8 +178,17 @@ class OpenStack:
         return run
 
     def launcher(self, segment_id: str):
+        attacker = self.declared.roles.get(ATTACKER_ROLE, "")
+
         def launch(image: str, argv: list[str], timeout: float = 600.0) -> Ran:
-            return self._ask(BOOT, network=segment_id)
+            if image != attacker:
+                raise RangeUnavailable(
+                    f"asked to start {image!r} on {segment_id!r}. Nova has no "
+                    f"call that boots a host, hands back its output and "
+                    f"deletes it, so a tool runs on the attacker this range "
+                    f"already has - {attacker!r} - and no other image"
+                )
+            return self.runner(ATTACKER_ROLE, segment_id)(argv, timeout=timeout)
 
         return launch
 
@@ -221,6 +237,7 @@ class OpenStack:
         raise RangeUnavailable(
             f"the host filling {role!r} ({host}) stands on no segment this "
             f"platform can address"
+            + (f", and {segment_id!r} in particular" if segment_id else "")
         )
 
     def _all(self, call: str, key: str, **binding) -> list:
