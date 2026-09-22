@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+
+import requests
 from dataclasses import dataclass, replace
 
 from range.declared import Declaration
@@ -16,6 +18,67 @@ CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
 PAGE_LIMIT = 50
+
+NOVA_MICROVERSION = "2.1"
+NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
+TOKEN_HEADER = "X-Auth-Token"
+SUBJECT_TOKEN = "X-Subject-Token"
+
+def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
+    held = {"token": ""}
+
+    def authenticate() -> str:
+        body = {
+            "auth": {
+                "identity": {
+                    "methods": ["password"],
+                    "password": {
+                        "user": {
+                            "name": cloud.ssh_user,
+                            "domain": {"id": "default"},
+                            "password": password,
+                        }
+                    },
+                },
+                "scope": {"project": {"id": cloud.project}},
+            }
+        }
+        answered = _send(
+            "post", f"{cloud.keystone}/v3/auth/tokens", None, body, timeout
+        )
+        held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
+        if not held["token"]:
+            raise RangeUnavailable(
+                f"{cloud.keystone} issued no {SUBJECT_TOKEN}, so nothing can "
+                f"be asked of this cloud"
+            )
+        return held["token"]
+
+    def read(call: str) -> dict:
+        url = call.split(" ", 1)[1] if " " in call else call
+        token = held["token"] or authenticate()
+        answered = _send("get", url, token, None, timeout)
+        if answered.status_code == 401:
+            answered = _send("get", url, authenticate(), None, timeout)
+        if not answered.ok:
+            raise RangeUnavailable(
+                f"{url} answered {answered.status_code}: "
+                f"{answered.text.strip()[:200]}"
+            )
+        return answered.json()
+
+    return read
+
+def _send(verb: str, url: str, token: str | None, body, timeout: float):
+    headers = {NOVA_VERSION_HEADER: NOVA_MICROVERSION}
+    if token:
+        headers[TOKEN_HEADER] = token
+    try:
+        return getattr(requests, verb)(
+            url, headers=headers, json=body, timeout=timeout
+        )
+    except requests.RequestException as exc:
+        raise RangeUnavailable(f"could not reach {url}: {exc}") from exc
 VERSION = "version"
 
 SEGMENT_TAG = "fsl.segment.id"
