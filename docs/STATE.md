@@ -206,6 +206,22 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**A strategy that cannot place a case says which ones**
+- The comparison panel drew tp/fn/fp/tn for both strategies and threw the
+  warnings away. Forcing time-window correlation onto cases that declare no
+  source address gives every one of them a miss, so the panel showed a marker
+  column with detections beside a window column of zeroes, and the operator
+  read the second as a defence that failed rather than a question that cannot
+  be asked. The panel carries each strategy's warnings now.
+- `score.warning.no_source_ip` named case UUIDs. It names the cases.
+- Rejected the critics' proposal to populate `source_ip` for console-fired
+  cases from a new `scorer` role. Window correlation exists to score traffic
+  that carries no marker - the human at the terminal - and those cases do set
+  `source_ip` to the proxy: verified, session 622 scores `tp 1` under window.
+  Feeding it the judge's own address would measure "did an alert come from the
+  scoring platform within two seconds", which is not a fact about the defence.
+  A zero with a stated reason beats a number that looks like a score.
+
 **The score accounts for the evidence it throws away**
 - `correlate` computed `unmatched_detection_ids` and nothing read it. TP, FP,
   FN and TN are counted over declared cases only, so an alert belonging to no

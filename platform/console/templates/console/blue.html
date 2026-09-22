@@ -830,12 +830,14 @@
                  result.body.detail || result.status))}</div></div>`;
       }
       const s = result.body;
+      const why = (s.warnings || []).map((w) => `
+        <div class="text-amber-400/90 text-xs mt-2">${esc(t(...w))}</div>`).join("");
       return `<div class="border border-slate-800 rounded p-4">${heading}
         <div class="text-slate-100 tabular-nums">${
           esc(t("blue.score.comparison.counts", s.tp, s.fn, s.fp, s.tn))}</div>
         <div class="text-slate-500 text-sm mt-1 tabular-nums">${
           esc(t("blue.score.comparison.rates",
-                s.precision.toFixed(2), s.recall.toFixed(2)))}</div></div>`;
+                s.precision.toFixed(2), s.recall.toFixed(2)))}</div>${why}</div>`;
     }).join("");
   }
 
