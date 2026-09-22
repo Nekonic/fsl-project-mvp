@@ -206,6 +206,33 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**A defence cannot author its own evidence**
+- `corroborated` asked whether a case's `expect` substring appears in any
+  signature attributed to it, and the defence writes those signatures. One rule
+  - `msg:"SQL XSS traversal Restricted File"`, `http.uri; content:"/"` - carries
+  every `expect` value in the case file and fires on every request. Demonstrated
+  live: it took every malicious case as a TP with `corroborated: true`. The
+  block-everything defence the case file's own header says must not win, won.
+- A signature that also fired on a case declared benign in the same session now
+  corroborates nothing. The defender cannot fake discrimination, only claim it.
+  Same run after the change: `path-traversal-ftp`, whose only alert was the
+  catch-all, reports `corroborated: false` and raises `wrong_reason`, while the
+  two cases ModSecurity caught with its own signatures keep their credit. TP,
+  FP, FN and TN are untouched - `corroborated` is not an input to `detected`.
+- Two things the experiment turned up on its own. A rule that inspects no HTTP
+  buffer produces alerts with no `tx_id`, so the marker join cannot reach them
+  and they are attributed to nothing: 259 alerts, zero effect on any score. And
+  the acceptance suite restored "whatever rules were there when it started",
+  which cemented a rule set a previous run had broken; `conftest` now refuses to
+  run unless the sensor is carrying the rules this repo declares.
+
+**Two tests deleted for being worse than nothing**
+- `test_sensor_scope.py` and `test_attack_source.py` compared YAML strings and
+  asserted a routing decision. The first passed on `HOME_NET: "any"` and on
+  `HOME_NET: "[172.30.0.0/24]"` alike - and the second of those is the value
+  that makes the sensor match zero packets. Its green state was the blind state,
+  and `bin/verify --fast` runs only that suite.
+
 **A verify that fails for its own reasons**
 - `bin/verify` fired the acceptance suite the moment the platform answered,
   without waiting for the target. A run that started while Juice Shop was

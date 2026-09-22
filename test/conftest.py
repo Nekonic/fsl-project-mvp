@@ -34,6 +34,18 @@ def terminal_leaves_by_the_front_door(stack_is_up):
     requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
                   timeout=60)
 
+@pytest.fixture(scope="session")
+def baseline_rules(stack_is_up):
+    committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
+    live = requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
+
+    assert live == committed, (
+        "the sensor is not running the rule set this repo declares. A test "
+        "that captures 'whatever was there' and restores it would cement "
+        "somebody else's leftovers as the baseline."
+    )
+    return committed
+
 @pytest.fixture(scope="session", autouse=True)
 def defence_is_on(stack_is_up):
     active = requests.get(f"{PLATFORM_URL}/api/rules/suppressions/", timeout=60)
