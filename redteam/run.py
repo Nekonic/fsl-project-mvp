@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -10,8 +11,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "platform"))
 
-from range import declared              
-from range.docker import Docker              
+import django              
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+django.setup()
+
+from django.conf import settings              
+
+from range import substrate              
 from redteam import harness              
 from redteam.harness import DEFAULT_TOOL_TARGET, load_cases              
 
@@ -30,8 +37,9 @@ def main() -> int:
     parser.add_argument("--origin", default="")
     args = parser.parse_args()
 
-    declaration = declared.read()
-    launch = Docker(declaration).launcher(args.origin or declaration.default_origin)
+    launch = substrate().launcher(
+        args.origin or settings.RANGE.default_origin
+    )
 
     cases = load_cases(args.cases)
     attacks = sum(1 for c in cases if c["malicious"])
