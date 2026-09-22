@@ -224,7 +224,7 @@ def session_top(request, session_id):
                 zone = _zone_of(detection.src_ip, zones)
                 row = sources[detection.src_ip] = {
                     "src_ip": detection.src_ip,
-                    "host": hosts.get(detection.src_ip, ""),
+                    "host": detection.src_host,
                     "zone": zone["name"] if zone else "",
                     "outside": bool(zone and zone["outside"]),
                     "country": geo.get("country_name") or "",
@@ -243,7 +243,7 @@ def session_top(request, session_id):
                 zone = _zone_of(dest_ip, zones)
                 row = destinations[key] = {
                     "dest": key,
-                    "host": hosts.get(dest_ip, ""),
+                    "host": detection.dest_host,
                     "zone": zone["name"] if zone else "",
                     "alerts": 0,
                 }
@@ -623,10 +623,18 @@ def ingest_detections(request, session_id):
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
+    _, hosts = _segments()
+
     for alert in alerts:
         if alert["detection_id"] in known or alert["timestamp"] is None:
             continue
-        Detection.objects.create(session=session, **alert)
+        raw = alert.get("raw") or {}
+        Detection.objects.create(
+            session=session,
+            src_host=hosts.get(alert.get("src_ip"), ""),
+            dest_host=hosts.get(raw.get("dest_ip"), ""),
+            **alert,
+        )
         known.add(alert["detection_id"])
         ingested += 1
 

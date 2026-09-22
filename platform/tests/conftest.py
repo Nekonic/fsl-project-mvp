@@ -37,8 +37,13 @@ def no_real_substrate():
 
     def refuse(argv, **kwargs):
         if argv and argv[0] == "docker":
-            raise AssertionError(
-                f"a unit test reached the real substrate: {' '.join(argv)}"
+            from range.ports import RangeUnavailable
+
+            raise RangeUnavailable(
+                f"this unit test supplied no range, so {' '.join(argv[:3])} "
+                f"was refused. Production code sees the same state when the "
+                f"substrate is down; a test that needs a range must stub "
+                f"api.views.substrate"
             )
         return real(argv, **kwargs)
 

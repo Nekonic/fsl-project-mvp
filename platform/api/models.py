@@ -60,6 +60,8 @@ class Detection(models.Model):
     severity = models.IntegerField(null=True, blank=True)
     timestamp = models.DateTimeField()
     src_ip = models.GenericIPAddressField(null=True, blank=True)
+    src_host = models.CharField(max_length=128, blank=True, default="")
+    dest_host = models.CharField(max_length=128, blank=True, default="")
     marker = models.CharField(max_length=64, null=True, blank=True)
     raw = models.JSONField(default=dict, blank=True)
 

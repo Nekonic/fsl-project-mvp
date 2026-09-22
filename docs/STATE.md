@@ -206,6 +206,22 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**An alert remembers who held the address when it was written**
+- `Detection` stored an address and nothing else, and the dashboard named it by
+  asking Docker who holds that address *now*. Compose assigns them by DHCP -
+  nothing in the file pins one - so after a recreate the console reports
+  whichever container inherited it. `172.30.0.3` is the wiki today and was the
+  WAF when 885 alerts were written from it, which the dashboard would draw as
+  the wiki attacking the target.
+- The host is resolved once at ingest and stored on the row. Reproduced the bug
+  in a unit test first: ingest under one shape, read under another, and the
+  source came back `fsl-wiki`.
+- Ingest still works with no range at all - the evidence is in Elasticsearch,
+  not in Docker - and the name is simply blank. The unit guard that refused
+  a real substrate call now raises `RangeUnavailable` rather than
+  `AssertionError`, because a test that supplies no range and a range that is
+  down are the same state to the code, and production handles that one.
+
 **`$HTTP_PORTS` named a port on no wire the sensor watches**
 - It was `8080`, the host-published port. Docker translates that before the
   packet reaches any interface in the WAF's namespace, so the only ports on

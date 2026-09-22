@@ -130,7 +130,7 @@ def drawn(client):
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.5"),
         _alert("c", "172.30.0.3"), _alert("d", "10.9.9.9"),
     ]
-    with patch("api.views.elastic.fetch", return_value=(documents, None)):
+    with stub(), patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     with stub():
         return client.get(f"/api/sessions/{session_id}/topology/").json()
@@ -169,7 +169,7 @@ def counted(client):
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.3"),
         _alert("c", "172.30.0.2"), _alert("d", "10.9.9.9"),
     ]
-    with patch("api.views.elastic.fetch", return_value=(documents, None)):
+    with stub(), patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return sources(client, session_id)
 
@@ -212,7 +212,7 @@ def addressed(client):
         _addressed("b", "172.30.0.3", "172.30.0.2", 3000),
         _addressed("c", "10.9.9.9", "10.9.9.10"),
     ]
-    with patch("api.views.elastic.fetch", return_value=(documents, None)):
+    with stub(), patch("api.views.elastic.fetch", return_value=(documents, None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     with stub():
         return client.get(f"/api/sessions/{session_id}/top/").json()
