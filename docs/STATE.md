@@ -141,7 +141,20 @@ What is left for OpenStack, in order:
    `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
    and is not addressable.
 
-4. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
+4. **Whether the operator still looks like an outsider.** The rule that stops
+   the red team calling the scoring API refuses any address standing in the
+   range, and it works because the console arrives through Docker's published
+   port and is therefore DNATed to a segment's gateway. A test runs the same
+   rule against the sketch's `Shape` and gets the same participant set, so the
+   mechanism is on the port and not on Docker. What cannot be checked without
+   a cloud is the other half: whether a Neutron router presents the operator
+   as the gateway the way Docker does, or as something else. If it presents
+   the operator's own address, the rule still holds - that address stands on
+   no segment. If it presents a node's address, the rule locks the operator
+   out and lets the red team in, which is the failure worth testing first on
+   a real cloud.
+
+5. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
    floating address, and the adapter keeps the fixed one. An attack leaving the
    range through a Neutron router is source-NATed, so the address Suricata sees
    is the router's, not the attacker's - the stamping proxy solves this on
@@ -205,6 +218,31 @@ One line each.
 - Every value is escaped before it reaches the page, and there is a test that
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
+
+**A window that could not be read whole says so**
+- `elastic.fetch` reads 5000 records, oldest first, and `ingest_detections`
+  reported the shortfall to nobody. Measured on the live index: a three-day
+  window is 5000 read of 42,231. Oldest-first means truncation drops the
+  *newest* alerts, so the cases fired last become FN and the benign ones fired
+  last become TN - a busier red team makes the defence look better.
+- `Session.truncated` and `read_of` are set at ingest and never cleared by a
+  later ingest that happened to fit, and the score carries
+  `score.warning.truncated` with both counts. Verified live: a widened window
+  reported 5000 of 41,720 on the page, in both languages.
+
+**One of my own tests was asserting a falsehood**
+- Last round I added "no alert in a red team window may be unmarked". It went
+  red, and the product was right: the unmarked alerts were at 04:21:10 from
+  the proxy, and the session opened at 04:21:10.903. A window reaches a minute
+  either side, so it holds traffic from whatever used the range just before.
+  That is why `unattributed` is a reported number and not an assertion.
+- Narrowed to what it was built to catch - the stack alerting on traffic it
+  sent to itself, by loopback source or the numeric-Host signature - and
+  proved it still bites by reintroducing the health-check bug and watching it
+  go red, then removing it again.
+- It stays sensitive to the same minute of slack, so its failure message now
+  says to check whether the signature is still being produced before hunting
+  the code.
 
 **The scoreboard stopped answering the party it is scoring**
 - `fsl-platform` sits on all six segments and `waitress` listens on 0.0.0.0, so

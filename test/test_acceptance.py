@@ -119,7 +119,7 @@ def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
         f"evidence that entered no number and appears nowhere"
     )
 
-def test_every_alert_in_the_window_is_the_red_team_s_own(session_id, score):
+def test_the_stack_does_not_attack_itself(session_id, score):
     import requests
 
     from conftest import PLATFORM_URL
@@ -128,13 +128,22 @@ def test_every_alert_in_the_window_is_the_red_team_s_own(session_id, score):
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
     ).json()
     rows = listed if isinstance(listed, list) else listed["detections"]
-    unmarked = [d["signature"] for d in rows if not d["marker"]]
 
-    assert unmarked == [], (
-        f"the stack raised alerts on its own traffic during a red team run: "
-        f"{sorted(set(unmarked))}. Every one of them lands in the operator's "
-        f"evidence and in no number, and the last time this was true it was "
-        f"the WAF's health check firing CRS 920350 every ten seconds"
+    own = [
+        d["signature"] for d in rows
+        if d["src_ip"] in ("127.0.0.1", "::1")
+        or "numeric IP address" in d["signature"]
+    ]
+
+    assert own == [], (
+        f"the stack raised alerts on traffic it sent to itself: "
+        f"{sorted(set(own))}. Last time this was the WAF's health check "
+        f"curling a numeric host every ten seconds, tripping CRS 920350 and "
+        f"filing a false positive against the defence it is scoring.\n"
+        f"Before hunting the code: a session's window reaches a minute either "
+        f"side of the session, so this also goes red on residue from whatever "
+        f"used the range in the minute before this run. Check whether the "
+        f"signature is still being produced now, not only that it is in here."
     )
 
 def test_the_false_positive_denominator_is_the_benign_case_count(score):

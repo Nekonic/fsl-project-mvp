@@ -642,6 +642,9 @@ def ingest_detections(request, session_id):
     if truncated:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
+        session.truncated = True
+        session.read_of = [read, total]
+        session.save(update_fields=["truncated", "read_of"])
     return _reply(reply)
 
 @require_http_methods(["GET"])
@@ -736,6 +739,9 @@ def session_score(request, session_id):
     per_case = _per_case(result, _expectations(session.scenario), signatures)
     board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
     warnings = list(totals.warnings) + _wrong_reason_warnings(per_case)
+    if session.truncated:
+        read, total = session.read_of or [0, 0]
+        warnings.append(("score.warning.truncated", read, total))
 
     return _reply(
         {

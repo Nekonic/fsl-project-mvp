@@ -283,3 +283,49 @@ def test_an_ipv6_address_is_not_taken_for_the_address_of_a_node():
         "v6 address would have been drawn at it - while the console bins every "
         "alert by an IPv4 subnet, so it would sit on no segment at all"
     )
+
+
+def test_who_may_call_the_scoreboard_is_decided_on_the_port_not_on_docker():
+    from unittest.mock import patch
+
+    from api import reachability
+
+    shape = sketch().describe()
+
+    with patch("api.reachability.substrate", lambda: sketch()):
+        reachability.forget()
+        standing = reachability.scored_hosts()
+        reachability.forget()
+
+    addresses = {
+        node.address for segment in shape.segments for node in segment.nodes
+    }
+    scorer = declared.read().roles.get("scorer") or ""
+    mine = {
+        node.address for segment in shape.segments
+        for node in segment.nodes if node.name == scorer
+    }
+
+    assert standing == addresses - mine, (
+        "the rule that stops the red team calling the scoring API reads "
+        "addresses off Shape, so it should hold on any substrate that fills "
+        "Shape. If it does not, it grew a Docker assumption"
+    )
+    assert standing, "the sketch supplied no nodes, so this proved nothing"
+
+def test_nothing_on_nova_tells_the_scoreboard_the_operator_is_outside():
+    shape = sketch().describe()
+
+    gateways = {segment.gateway for segment in shape.segments if segment.gateway}
+    nodes = {n.address for s in shape.segments for n in s.nodes}
+
+    assert not (gateways & nodes), (
+        "a gateway that is also a node would let the red team in"
+    )
+    assert gateways, (
+        "On Docker the operator's console arrives from a segment's gateway "
+        "because the published port is DNATed, which is what distinguishes it "
+        "from a host inside the range. A Neutron router does the same for a "
+        "floating IP, but the sketch cannot confirm it without a cloud - this "
+        "test only records that Shape carries the gateway the rule needs"
+    )
