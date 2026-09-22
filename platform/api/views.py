@@ -85,8 +85,8 @@ def _listed(detection):
     port = raw.get("dest_port")
     return dict(
         _shape(detection, DETECTION_FIELDS),
-        dest=f"{raw['dest_ip']}:{port}" if raw.get("dest_ip") and port
-             else (raw.get("dest_ip") or ""),
+        dest_ip=raw.get("dest_ip") or "",
+        dest_port=port,
         method=http.get("http_method") or "",
         path=http.get("url") or "",
     )
@@ -236,13 +236,14 @@ def session_top(request, session_id):
 
         dest_ip = (detection.raw or {}).get("dest_ip")
         if dest_ip:
-            port = (detection.raw or {}).get("dest_port") or ""
-            key = f"{dest_ip}:{port}" if port else dest_ip
+            port = (detection.raw or {}).get("dest_port")
+            key = (dest_ip, port)
             row = destinations.get(key)
             if row is None:
                 zone = _zone_of(dest_ip, zones)
                 row = destinations[key] = {
-                    "dest": key,
+                    "dest_ip": dest_ip,
+                    "dest_port": port,
                     "host": detection.dest_host,
                     "zone": zone["name"] if zone else "",
                     "alerts": 0,

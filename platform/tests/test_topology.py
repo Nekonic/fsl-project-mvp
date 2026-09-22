@@ -223,22 +223,24 @@ def test_an_address_belonging_to_the_range_is_named_by_its_host(addressed):
     assert found["172.30.0.3"]["host"] == "fsl-waf"
 
 def test_a_destination_says_which_host_it_is(addressed):
-    found = {d["dest"]: d for d in addressed["destinations"]}
+    found = {(d["dest_ip"], d["dest_port"]): d for d in addressed["destinations"]}
 
-    assert found["5.188.10.4:80"]["host"] == "fsl-waf"
-    assert found["172.30.0.2:3000"]["host"] == "fsl-juice-shop"
+    assert found[("5.188.10.4", 80)]["host"] == "fsl-waf"
+    assert found[("172.30.0.2", 3000)]["host"] == "fsl-juice-shop"
 
 def test_the_same_host_on_two_segments_is_the_same_name_on_both(addressed):
     source = next(s for s in addressed["sources"] if s["src_ip"] == "172.30.0.3")
     destination = next(
-        d for d in addressed["destinations"] if d["dest"] == "5.188.10.4:80"
+        d for d in addressed["destinations"] if d["dest_ip"] == "5.188.10.4"
     )
 
     assert source["host"] == destination["host"] == "fsl-waf"
 
 def test_an_address_the_range_does_not_own_is_not_given_a_host(addressed):
     stranger = next(s for s in addressed["sources"] if s["src_ip"] == "10.9.9.9")
-    outbound = next(d for d in addressed["destinations"] if d["dest"] == "10.9.9.10:80")
+    outbound = next(
+        d for d in addressed["destinations"] if d["dest_ip"] == "10.9.9.10"
+    )
 
     assert stranger["host"] == ""
     assert outbound["host"] == ""

@@ -130,6 +130,7 @@
         <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
           <tr>
             <th data-t="blue.col.dest" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.port" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.zone" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
           </tr>
@@ -187,6 +188,7 @@
           <th data-t="blue.col.zone" class="text-left font-medium"></th>
           <th data-t="blue.col.country" class="text-left font-medium"></th>
           <th data-t="blue.col.dest" class="text-left font-medium"></th>
+          <th data-t="blue.col.port" class="text-left font-medium"></th>
           <th data-t="blue.col.path" class="text-left font-medium"></th>
           <th data-t="blue.col.case" class="text-left font-medium pr-3"></th>
         </tr>
@@ -462,10 +464,11 @@
     ].join(""), 4);
 
     fill("destinations", body.destinations, (d) => [
-      address(d.dest, d.host),
+      address(d.dest_ip, d.host),
+      num(d.dest_port === null ? "-" : d.dest_port),
       text(d.zone),
       num(d.alerts),
-    ].join(""), 3);
+    ].join(""), 4);
 
     fill("signatures", body.signatures, (s) => [
       text(s.signature, "text-slate-300"),
@@ -574,7 +577,10 @@
         <td class="text-slate-500 text-xs whitespace-nowrap">${
           esc([(owners[d.src_ip] || {}).city, (owners[d.src_ip] || {}).country]
             .filter(Boolean).join(", ")) || "-"}</td>
-        <td class="text-slate-400 font-mono text-xs whitespace-nowrap">${esc(d.dest) || "-"}</td>
+        <td class="text-slate-400 font-mono text-xs whitespace-nowrap">${
+          esc(d.dest_ip) || "-"}</td>
+        <td class="text-slate-400 font-mono text-xs whitespace-nowrap tabular-nums">${
+          d.dest_port === null || d.dest_port === undefined ? "-" : esc(d.dest_port)}</td>
         <td class="text-slate-400 font-mono text-xs max-w-md truncate"
             title="${esc(decodePath(d.path))}">${
           d.path ? esc(`${d.method} ${decodePath(d.path)}`) : "-"}</td>
