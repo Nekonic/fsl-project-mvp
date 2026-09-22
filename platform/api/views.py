@@ -807,6 +807,11 @@ def _expectations(scenario):
         return {}
 
 def _per_case(result, expectations, signatures):
+    indiscriminate = {
+        signatures[d]
+        for m in result.matches if not m.malicious
+        for d in m.detection_ids if d in signatures
+    }
     return [
         {
             "case_id": m.case_id,
@@ -819,6 +824,7 @@ def _per_case(result, expectations, signatures):
             "corroborated": scoreboard.corroborated(
                 expectations.get(m.name),
                 [signatures[d] for d in m.detection_ids if d in signatures],
+                indiscriminate,
             ),
         }
         for m in result.matches

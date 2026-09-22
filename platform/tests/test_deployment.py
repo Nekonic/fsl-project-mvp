@@ -125,17 +125,33 @@ def test_no_setting_is_read_by_nothing():
         f"reads as configuration somebody could change to an effect"
     )
 
-def test_a_health_check_asks_a_host_its_container_actually_listens_on():
+def test_the_wiki_is_checked_on_an_address_it_actually_listens_on():
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    check = " ".join(compose["services"]["wiki"]["healthcheck"]["test"])
+
+    assert "localhost" not in check, (
+        "busybox wget resolves localhost to ::1 first. The nginx entrypoint "
+        "adds an IPv6 listener by rewriting its own conf and this conf is "
+        "mounted read-only, so the check failed forever while the wiki served "
+        "every request it was given"
+    )
+
+def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
     import re
 
-    compose = (ROOT / "compose.yaml").read_text()
-    localhost = re.findall(r'test:.*?localhost.*', compose)
+    import yaml
 
-    assert localhost == [], (
-        f"{localhost} asks 'localhost', which resolves to ::1 first. The nginx "
-        f"entrypoint adds an IPv6 listener by editing its own conf, and these "
-        f"confs are mounted read-only, so the check fails forever while the "
-        f"container serves fine"
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    check = " ".join(compose["services"]["waf"]["healthcheck"]["test"])
+    host = re.search(r"https?://([^/\s\"]+)", check)
+
+    assert host and not re.fullmatch(r"[\d.]+(:\d+)?", host.group(1)), (
+        f"the WAF's own health check asks {host and host.group(1)!r}, and a "
+        f"numeric Host header trips CRS 920350. It runs every ten seconds, so "
+        f"the platform files a false positive against the defence it is "
+        f"scoring, forever, in every session"
     )
 
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():

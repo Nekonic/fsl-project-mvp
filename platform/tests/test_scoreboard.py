@@ -133,3 +133,31 @@ def test_a_deed_long_before_an_attack_is_not_dragged_into_it():
     )
 
     assert credited.case_id == "before"
+
+def test_a_signature_that_also_fires_on_traffic_meant_to_pass_corroborates_nothing():
+    catch_all = "SQL XSS traversal Restricted File"
+
+    assert corroborated("SQL", [catch_all], indiscriminate={catch_all}) is False, (
+        "the defence writes the signature text, so one rule whose msg contains "
+        "every expect value in the case file corroborates every attack. The "
+        "block-everything defence the case file says must not win, wins"
+    )
+
+def test_a_signature_that_only_ever_fired_on_the_attack_still_corroborates():
+    assert corroborated(
+        "SQL", ["FSL SQLi attempt - URI"], indiscriminate={"FSL deliberate false positive"}
+    ) is True
+
+def test_a_case_with_one_discriminating_alert_among_noise_is_corroborated():
+    assert corroborated(
+        "SQL",
+        ["SQL XSS traversal Restricted File", "FSL SQLi attempt - URI"],
+        indiscriminate={"SQL XSS traversal Restricted File"},
+    ) is True, (
+        "one indiscriminate alert alongside a real one hid the real one"
+    )
+
+def test_nothing_indiscriminate_is_the_same_answer_as_before():
+    assert corroborated("SQL", ["FSL SQLi attempt - URI"], indiscriminate=set()) is True
+    assert corroborated("SQL", ["FSL XSS attempt"], indiscriminate=set()) is False
+    assert corroborated(None, ["anything"], indiscriminate=set()) is None

@@ -126,7 +126,7 @@ services:
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
       interval: 10s
       timeout: 5s
       retries: 12

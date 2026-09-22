@@ -30,11 +30,12 @@ ATTRIBUTION_WINDOW = timedelta(minutes=2)
                                                                     
 CLOCK_SKEW = timedelta(milliseconds=100)
 
-def corroborated(expect: str | None, signatures) -> bool | None:
+def corroborated(expect: str | None, signatures, indiscriminate=()) -> bool | None:
     if not expect:
         return None
     needle = expect.lower()
-    return any(needle in signature.lower() for signature in signatures)
+    discriminating = [s for s in signatures if s not in indiscriminate]
+    return any(needle in signature.lower() for signature in discriminating)
 
 @dataclass(frozen=True)
 class Attempt:
