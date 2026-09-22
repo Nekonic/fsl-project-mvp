@@ -219,6 +219,14 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**A destination is an address and a port**
+- `session_top` and the alert table pasted them into one field, `172.30.0.2:3000`,
+  so nothing could sort or filter on either and a reader had to parse it back.
+  Two columns now, in both tables and both languages. The rows stay keyed on
+  the pair: one host on two of its addresses is still two rows, because the
+  WAF's outside leg is the attack arriving and its estate leg is the same
+  attack being forwarded inward, and those are worth telling apart.
+
 **A window that could not be read whole says so**
 - `elastic.fetch` reads 5000 records, oldest first, and `ingest_detections`
   reported the shortfall to nobody. Measured on the live index: a three-day
