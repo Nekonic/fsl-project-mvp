@@ -238,6 +238,21 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**The token hands back the endpoints**
+- The adapter took three addresses as configuration - Keystone, Neutron, Nova -
+  which is the name-resolution problem in its own file. Keystone's token
+  response carries a `catalog`, so `discover()` asks for the one address a
+  deployment cannot avoid knowing and reads the other two off the answer.
+- A catalogue holds `public`, `admin` and `internal` endpoints for the same
+  service in each region. A platform on a management network wants a different
+  one than a browser does, so which is a deployment's choice, defaulting to
+  `public` in `RegionOne`. A service the catalogue does not carry is refused by
+  name and region rather than handed back as an empty URL that fails later
+  somewhere else.
+- The same response carries `expires_at`. The adapter still waits for a 401 and
+  then re-authenticates; knowing the expiry it could renew before the call.
+  Next.
+
 **A tool runs where the attacker already is**
 - `launcher` raised NotImplementedError. Implementing it turned up the reason:
   there is no Nova equivalent of `docker run --rm image argv`. Booting is
