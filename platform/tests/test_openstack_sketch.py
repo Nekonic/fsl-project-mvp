@@ -329,3 +329,108 @@ def test_nothing_on_nova_tells_the_scoreboard_the_operator_is_outside():
         "floating IP, but the sketch cannot confirm it without a cloud - this "
         "test only records that Shape carries the gateway the rule needs"
     )
+
+
+def paged(pages):
+    calls = []
+
+    def get(call):
+        calls.append(call)
+        if "/v2.0/subnets" in call:
+            return SUBNETS[call.rsplit("=", 1)[1]]
+        if "/servers/detail" in call:
+            return SERVERS
+        return pages.pop(0) if pages else {"networks": []}
+
+    get.calls = calls
+    return get
+
+def test_a_list_that_arrives_in_pages_is_read_to_the_end():
+    everything = NETWORKS["networks"]
+    first = {
+        "networks": everything[:2],
+        "networks_links": [
+            {"href": "http://neutron:9696/v2.0/networks?marker=net-edge-br",
+             "rel": "next"},
+            {"href": "http://neutron:9696/v2.0/networks", "rel": "previous"},
+        ],
+    }
+    rest = {"networks": everything[2:]}
+
+    shape = openstack.OpenStack(
+        declared.read(), CLOUD, get=paged([first, rest])
+    ).describe()
+
+    assert {s.id for s in shape.segments} == set(ALLOCATED), (
+        "Neutron's own example response for List Networks is labelled 'first "
+        "page' and carries networks_links rel=next. Reading only the first "
+        "page drops whatever segments fall past the page limit, and describe() "
+        "then reports them as segments the cloud does not have"
+    )
+
+def test_following_a_page_asks_for_exactly_the_href_the_cloud_gave():
+    everything = NETWORKS["networks"]
+    href = "http://neutron:9696/v2.0/networks?limit=2&marker=net-edge-br"
+    get = paged([
+        {"networks": everything[:2],
+         "networks_links": [{"href": href, "rel": "next"}]},
+        {"networks": everything[2:]},
+    ])
+
+    openstack.OpenStack(declared.read(), CLOUD, get=get).describe()
+
+    followed = [c for c in get.calls if "marker=" in c]
+    assert followed == [f"GET {href}"], (
+        f"the next page was fetched by rebuilding a URL rather than by using "
+        f"the href the cloud handed back, so any filter or limit in it is "
+        f"lost: {followed}"
+    )
+
+def test_a_page_link_that_loops_does_not_hang_the_console():
+    href = "http://neutron:9696/v2.0/networks?marker=stuck"
+    forever = {
+        "networks": NETWORKS["networks"][:1],
+        "networks_links": [{"href": href, "rel": "next"}],
+    }
+
+    def get(call):
+        if "/v2.0/subnets" in call:
+            return SUBNETS[call.rsplit("=", 1)[1]]
+        if "/servers/detail" in call:
+            return SERVERS
+        return forever
+
+    with pytest.raises(RangeUnavailable, match="pages"):
+        openstack.OpenStack(declared.read(), CLOUD, get=get).describe()
+
+
+def test_a_paginated_server_list_is_read_to_the_end():
+    everything = SERVERS["servers"]
+
+    def get(call):
+        if "/v2.0/networks" in call:
+            return NETWORKS
+        if "/v2.0/subnets" in call:
+            return SUBNETS[call.rsplit("=", 1)[1]]
+        if "marker=" in call:
+            return {"servers": everything[1:]}
+        return {
+            "servers": everything[:1],
+            "servers_links": [
+                {"href": "http://nova:8774/servers/detail?marker=one",
+                 "rel": "next"}
+            ],
+        }
+
+    shape = openstack.OpenStack(declared.read(), CLOUD, get=get).describe()
+    named = {n.name for s in shape.segments for n in s.nodes}
+
+    assert "fsl-waf" in named, (
+        "Nova documents servers_links as present 'when the number of servers "
+        "exceeds limit parameter or [api]/max_limit', so on any range bigger "
+        "than one page the hosts past the first page vanish from the map and "
+        "from every alert's host name"
+    )
+
+def test_the_page_limit_is_stated_rather_than_hidden():
+    assert openstack.PAGE_LIMIT >= 10, openstack.PAGE_LIMIT

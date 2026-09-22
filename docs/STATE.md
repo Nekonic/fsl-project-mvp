@@ -219,6 +219,24 @@ One line each.
   says so. The console used to run the attacks it collected.
 - Every UI action is a REST call first.
 
+**A cloud answers in pages and the sketch read one**
+- Found in the vendor's own example, not by reasoning: Neutron's List Networks
+  sample response is labelled *first page* and carries
+  `networks_links` with `rel: next`. Nova documents `servers_links` as present
+  "when the number of servers exceeds limit parameter or [api]/max_limit".
+- The sketch took `["networks"]` off the first page and dropped the rest. A
+  segment past the page boundary makes `describe()` report it as a segment the
+  cloud does not have; an instance past it vanishes from the map and leaves
+  every one of its alerts with a blank host name. Both fail quietly and both
+  arrive the moment the range grows.
+- All three list calls follow the link now, by requesting the `href` the cloud
+  handed back rather than rebuilding a URL, so whatever filter or limit is
+  inside it survives. A link that loops stops after 50 pages and says so
+  instead of hanging the console.
+- This is the part of an OpenStack transition that can be checked without a
+  cloud: the responses come from the reference, so the behaviour is pinned to
+  what the vendor publishes rather than to what I assumed.
+
 **One place turns a name into a substrate**
 - `redteam/run.py` constructed `range.docker.Docker` by name while the
   platform resolved `FSL_SUBSTRATE`. I put that there earlier in this session.
