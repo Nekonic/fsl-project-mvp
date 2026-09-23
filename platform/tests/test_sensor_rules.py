@@ -45,3 +45,15 @@ def test_the_port_variable_names_ports_the_sensor_can_observe():
         "from the identical rule using any"
     )
     assert "80" in ports and "3000" in ports, ports
+
+
+def test_the_sensor_ties_an_alert_to_its_transaction_when_it_can():
+    import yaml
+
+    config = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / "deploy/suricata/suricata.yaml").read_text())
+
+    assert (config.get("detect") or {}).get("guess-applayer-tx") is True, (
+        "a rule written without an app-layer buffer alerts with no tx_id, the "
+        "marker join is keyed on (flow_id, tx_id), and the case it caught scored "
+        "a miss; Suricata guesses the transaction only when told to"
+    )
