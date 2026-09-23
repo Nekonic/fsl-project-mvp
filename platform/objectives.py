@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -11,6 +12,7 @@ from django.conf import settings
 from range.ports import RangeUnavailable
 
 _TIMEOUT = 15
+_SERVED = re.compile(r'(?P<at>\S+) 2\d\d "(?P<uri>[^"]*)"')
 
 class ObjectivesUnavailable(RuntimeError):
     pass
@@ -49,11 +51,19 @@ def solved_keys(wiki=None) -> set[str]:
     return taken
 
 def wiki_read_at(wiki, secret_path: str) -> str | None:
+    ran = wiki(["cat", settings.WIKI_READ_LOG])
+    if not ran.ok:
+        if "No such file" in ran.output:
+            return None
+        raise ObjectivesUnavailable(
+            f"could not read the wiki's access log: {ran.output.strip()[-200:]}"
+        )
+
     when = None
-    for line in wiki(["cat", settings.WIKI_READ_LOG]).output.splitlines():
-        stamp, _, rest = line.partition(" ")
-        if secret_path in rest:
-            when = stamp
+    for line in ran.output.splitlines():
+        served = _SERVED.match(line.lstrip("\0"))
+        if served and served["uri"] == secret_path:
+            when = served["at"]
     return when
 
 def _internal(wiki=None) -> dict[str, Any]:
