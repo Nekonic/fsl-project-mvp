@@ -25,6 +25,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "api.reachability.not_from_inside_the_range",
+    "api.unavailable.RangeUnavailableIs503",
 ]
 
 ROOT_URLCONF = "fsl.urls"

@@ -141,8 +141,6 @@ def sessions(request):
 def attacker_box(request):
     try:
         origin = attacker.find(substrate().describe(), request.GET.get("origin"))
-    except RangeUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
@@ -281,10 +279,7 @@ def session_top(request, session_id):
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    try:
-        shape = topology.shape(substrate().describe(), declared.read())
-    except RangeUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    shape = topology.shape(substrate().describe(), declared.read())
 
     subnets = []
     for segment in shape["segments"]:
@@ -313,10 +308,7 @@ def session_topology(request, session_id):
 
 @require_http_methods(["GET"])
 def origins(request):
-    try:
-        return _reply({"origins": attacker.origins(substrate().describe())})
-    except RangeUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    return _reply({"origins": attacker.origins(substrate().describe())})
 
 @require_http_methods(["GET"])
 def session_commands(request, session_id):
@@ -324,7 +316,7 @@ def session_commands(request, session_id):
 
     try:
         typed = operator_log.commands(substrate().runner("attacker"))
-    except (RangeUnavailable, operator_log.OperatorLogUnavailable) as exc:
+    except operator_log.OperatorLogUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
     return _reply({
@@ -345,8 +337,6 @@ def attacker_origin(request):
     origin_id = _payload(request).get("origin")
     try:
         chosen = attacker.find(substrate().describe(), origin_id)
-    except RangeUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
@@ -444,8 +434,6 @@ def fire_attack(request, session_id):
 
     try:
         origin = _origin_for(session, _payload(request).get("origin"))
-    except RangeUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
@@ -474,7 +462,7 @@ def fire_attack(request, session_id):
             ),
             target_url,
         )
-    except (harness.ToolUnavailable, RangeUnavailable) as exc:
+    except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
     recorded = Case.objects.create(
