@@ -137,3 +137,31 @@ def test_rules_applied_from_the_current_copy_go_through(client):
         applied = client.post_json("/api/rules/apply/", {"content": RULE + RULE.replace("9000901", "9000902"), "base": loaded["version"]})
 
     assert applied.status_code == 200, applied.content
+
+
+@pytest.mark.django_db
+def test_an_alert_read_before_its_request_gets_the_marker_when_the_request_arrives(client):
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    now = timezone.now()
+    flagged = ("a1", {
+        "fsl_source": "suricata", "event_type": "alert", "timestamp": now.isoformat(),
+        "src_ip": "5.188.10.5", "flow_id": 42, "tx_id": 0,
+        "alert": {"signature": "SQLi", "severity": 1},
+    })
+    request = ("h1", {
+        "fsl_source": "suricata", "event_type": "http", "timestamp": now.isoformat(),
+        "flow_id": 42, "tx_id": 0,
+        "http": {"request_headers": [{"name": "X-FSL-Case", "value": MARKER}]},
+    })
+    ingest = f"/api/sessions/{session_id}/ingest/"
+
+    with patch("api.views.elastic.fetch", return_value=([flagged], None)):
+        client.post_json(ingest)
+    with patch("api.views.elastic.fetch", return_value=([flagged, request], None)):
+        client.post_json(ingest)
+
+    assert Detection.objects.get(session_id=session_id, detection_id="a1").marker == MARKER, (
+        "the alert reached Elasticsearch before its own http event, was stored "
+        "without a marker, and every later tick skipped it as already known - "
+        "the case it caught never owned it"
+    )
