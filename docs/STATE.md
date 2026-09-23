@@ -269,7 +269,13 @@ One line each.
 - The port has `segments()`, which reads who stands where without the
   sensor; the reachability rule and the dashboard's zones and host names use
   it. `describe()` still refuses a misplaced sensor for anything that draws
-  one. Test doubles answer `segments()` too.
+  one. Test doubles answer `segments()` too. Checked live with Suricata
+  stopped past the cache window: the attacker box got 403.
+- The same live check showed the red console's origin list answering 503
+  while the sensor was down; nothing about where to attack from needs the
+  sensor. The origin list, the attacker box and origin choice read
+  `segments()` too - two docker round trips instead of four. Only the
+  topology drawing, which draws the sensor, still needs it.
 
 **Decisions the second audit left for a person**
 - **GeoIP stops on about 2026-10-18.** Elasticsearch's GeoIP downloader has

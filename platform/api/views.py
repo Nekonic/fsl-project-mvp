@@ -176,7 +176,7 @@ def sessions(request):
 @require_http_methods(["GET"])
 def attacker_box(request):
     try:
-        origin = attacker.find(substrate().describe(), request.GET.get("origin"))
+        origin = attacker.find(_standing(), request.GET.get("origin"))
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
@@ -200,13 +200,16 @@ def attacker_box(request):
                                               
 TOP_N = 25
 
+def _standing():
+    return Shape(segments=substrate().segments(), sensors=())
+
 def _segments():
     try:
-        listed = substrate().segments()
+        standing = _standing()
     except RangeUnavailable:
         return [], {}
 
-    segments = topology.shape(Shape(segments=listed, sensors=()), declared.read())["segments"]
+    segments = topology.shape(standing, declared.read())["segments"]
 
     zones = []
     for segment in segments:
@@ -338,7 +341,7 @@ def session_topology(request, session_id):
 
 @require_http_methods(["GET"])
 def origins(request):
-    return _reply({"origins": attacker.origins(substrate().describe())})
+    return _reply({"origins": attacker.origins(_standing())})
 
 @require_http_methods(["GET"])
 def session_commands(request, session_id):
@@ -366,7 +369,7 @@ def session_commands(request, session_id):
 def attacker_origin(request):
     origin_id = _payload(request).get("origin")
     try:
-        chosen = attacker.find(substrate().describe(), origin_id)
+        chosen = attacker.find(_standing(), origin_id)
     except attacker.UnknownOrigin as exc:
         raise Http404(str(exc))
 
@@ -549,7 +552,7 @@ def _origin_for(session, requested):
     if not requested:
         return None
 
-    described = substrate().describe()
+    described = _standing()
     if requested != ROTATE:
         return attacker.find(described, requested)
 

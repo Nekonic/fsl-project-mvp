@@ -99,6 +99,4 @@ def test_asking_where_to_attack_from_is_the_same_one_reading(client):
     assert _round_trips(client, "/api/origins/") == [
         "docker network ls",
         "docker network inspect",
-        "docker ps --filter",
-        "docker container inspect",
     ]
