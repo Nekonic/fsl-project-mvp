@@ -91,6 +91,60 @@ def test_the_live_indicator_carries_the_reason_the_platform_gave(client):
     )
     assert seen["title"] == reason
 
+HELD_INGEST = """
+let release;
+const answered = new Promise((resolve) => { release = resolve; });
+browser.serve((request) => request.route === "/api/sessions/1/ingest/"
+  ? answered.then(() => healthy(request))
+  : healthy(request));
+const ingests = () =>
+  browser.requests.filter((request) => request.route === "/api/sessions/1/ingest/").length;
+"""
+
+def test_a_slow_ingest_is_not_overtaken_by_the_next_poll(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + HELD_INGEST,
+        scenario="""
+          for (let interval = 0; interval < 4; interval += 1) await browser.poll();
+          const during = ingests();
+          release();
+          await browser.settle();
+          await browser.poll();
+          return {during, after: ingests()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        "four poll intervals passed while the first ingest was still running, and "
+        "each one started another ingest of the same session beside it"
+    )
+    assert seen["result"]["after"] == 2, "polling stopped once the slow ingest finished"
+
+def test_resuming_the_live_view_during_a_slow_ingest_does_not_start_another(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + HELD_INGEST,
+        scenario="""
+          await browser.click("live-toggle");
+          await browser.click("live-toggle");
+          const during = ingests();
+          release();
+          await browser.settle();
+          await browser.poll();
+          return {during, after: ingests(), label: browser.text("live-label")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        "pausing and resuming the live view started a second ingest while the "
+        "first was still running"
+    )
+    assert seen["result"]["after"] == 2, "polling stopped once the slow ingest finished"
+    assert seen["result"]["label"] == english("blue.live.on")
+
 def test_a_failed_ingest_keeps_the_last_truncation_warning(client):
     seen = open_page(
         client, "/blue/1/",
