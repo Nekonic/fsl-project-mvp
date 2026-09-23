@@ -153,8 +153,8 @@ def _record(
         json={
             "case_id": case["case_id"],
             "name": case["name"],
-            "malicious": bool(case["malicious"]),
-            "technique": case.get("technique") or "",
+            "malicious": case["malicious"],
+            **{key: case.get(key) or "" for key in ("stage", "technique", "pattern", "expect")},
             "correlation": case["correlation"],
             "source_ip": case.get("source_ip"),
             "started_at": started_at.isoformat(),
