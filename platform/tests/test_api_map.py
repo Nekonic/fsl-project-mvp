@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.sessions import open_session
+
 pytestmark = pytest.mark.django_db
 
 T0 = "2026-09-20T12:00:00Z"
@@ -35,7 +37,7 @@ def modsecurity(doc_id, src_ip, message="SQL Injection"):
 
 @pytest.fixture
 def session_id(client):
-    return client.post_json("/api/sessions/", {}).json()["id"]
+    return open_session(client)
 
 def ingest(client, session_id, documents):
     with patch("api.views.elastic.fetch", return_value=(documents, None)):

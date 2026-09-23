@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.sessions import open_session
+
 pytestmark = pytest.mark.django_db
 
 WINDOW_CASE = {
@@ -16,7 +18,7 @@ WINDOW_CASE = {
 
 @pytest.fixture
 def scored_session(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     client.post_json(f"/api/sessions/{session_id}/cases/", WINDOW_CASE)
 
     alert = (
@@ -72,7 +74,7 @@ def test_the_strategy_can_be_forced_for_comparison(client, scored_session):
     assert by_window["tp"] == 1
 
 def test_forcing_marker_on_traffic_that_carries_none_misses_it(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     client.post_json(f"/api/sessions/{session_id}/cases/", WINDOW_CASE)
 
     unmarked = (

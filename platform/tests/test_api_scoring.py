@@ -5,6 +5,8 @@ import pytest
 
 from ingest.elastic import ElasticUnavailable
 
+from tests.sessions import open_session
+
 pytestmark = pytest.mark.django_db
 
 T0 = datetime(2026, 9, 18, 12, 0, 0, tzinfo=timezone.utc)
@@ -13,7 +15,7 @@ BENIGN = "22222222-2222-4222-8222-222222222222"
 
 @pytest.fixture
 def session_with_cases(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     for case_id, name, malicious in ((ATTACK, "sqli", True), (BENIGN, "search", False)):
         client.post_json(f"/api/sessions/{session_id}/cases/", {
                 "case_id": case_id,
@@ -145,7 +147,7 @@ def _row_counts(connection):
     return counts
 
 def test_score_on_session_without_cases_warns_about_benign(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
 
     response = client.get(f"/api/sessions/{session_id}/score/")
 

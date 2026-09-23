@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.sessions import open_session
+
 pytestmark = pytest.mark.django_db
 
 T0 = datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
@@ -12,7 +14,7 @@ CASE = "path-traversal-ftp"
 
 @pytest.fixture
 def session_id(client):
-    return client.post_json("/api/sessions/", {}).json()["id"]
+    return open_session(client)
 
 def record(client, session_id, case_id):
     return client.post_json(f"/api/sessions/{session_id}/cases/", {

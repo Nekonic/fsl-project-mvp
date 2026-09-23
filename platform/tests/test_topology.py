@@ -7,6 +7,8 @@ import pytest
 import topology
 from range.ports import Node, RangeUnavailable, Segment, Sensor, Shape
 
+from tests.sessions import open_session
+
 EDGE = Segment(
     id="edge", name="Internet", origin="Moscow, Russia",
     subnet="5.188.10.0/24", network="fsl_edge", gateway="5.188.10.1",
@@ -125,7 +127,7 @@ def _alert(doc_id, src_ip):
 
 @pytest.fixture
 def drawn(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     documents = [
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.5"),
         _alert("c", "172.30.0.3"), _alert("d", "10.9.9.9"),
@@ -150,7 +152,7 @@ def test_an_address_on_no_segment_is_counted_rather_than_dropped(drawn):
     assert drawn["unplaced"] == 1
 
 def test_a_stack_that_cannot_be_read_is_503_not_a_blank_diagram(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
 
     with stub(error=RangeUnavailable("no daemon")):
         response = client.get(f"/api/sessions/{session_id}/topology/")
@@ -164,7 +166,7 @@ def sources(client, session_id):
 
 @pytest.fixture
 def counted(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     documents = [
         _alert("a", "5.188.10.3"), _alert("b", "5.188.10.3"),
         _alert("c", "172.30.0.2"), _alert("d", "10.9.9.9"),
@@ -206,7 +208,7 @@ def _addressed(doc_id, src_ip, dest_ip, dest_port=80):
 
 @pytest.fixture
 def addressed(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     documents = [
         _addressed("a", "5.188.10.2", "5.188.10.4"),
         _addressed("b", "172.30.0.3", "172.30.0.2", 3000),
@@ -246,7 +248,7 @@ def test_an_address_the_range_does_not_own_is_not_given_a_host(addressed):
     assert outbound["host"] == ""
 
 def test_a_stack_that_cannot_be_read_names_no_host_rather_than_guessing(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     with patch("api.views.elastic.fetch",
                return_value=([_addressed("a", "5.188.10.2", "5.188.10.4")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
@@ -258,7 +260,7 @@ def test_a_stack_that_cannot_be_read_names_no_host_rather_than_guessing(client):
     assert found["destinations"][0]["host"] == ""
 
 def test_a_stack_that_cannot_be_read_still_reports_the_addresses(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     with patch("api.views.elastic.fetch", return_value=([_alert("a", "5.188.10.3")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 
