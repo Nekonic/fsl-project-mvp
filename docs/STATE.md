@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (the range cannot reach its own judge)
+Updated: 2026-09-24 (the range cannot reach its own judge; the API refuses what it cannot mean)
 
 ## Where things stand
 
@@ -272,6 +272,20 @@ One line each.
   `*` to `127.0.0.1` with it, so the LAN no longer gets a root shell on 7681.
   A console opened from another machine needs a tunnel. `DJANGO_DEBUG=1` in
   compose stays: with loopback only, a traceback reaches the operator alone.
+
+**The API refuses what it cannot mean**
+- `POST /api/rules/apply/` with no `content`, or `null`, applied an empty rule
+  file: the sensor reloaded with nothing and every later attack scored a miss.
+  `content` must be a string now; an empty string sent on purpose still works.
+- A case's ground truth was checked for presence, not type: `"malicious":
+  "false"` was stored as an attack, turning a TN into a FN. It must be a
+  boolean; times must be ISO 8601 with an offset and in order, `source_ip` an
+  address, and a second copy of a case is 409 rather than a 500.
+- Malformed JSON, a body that is not an object, a suppression of `-5`, `0`,
+  `nan` or a billion minutes, and a cursor like `--1` were each a 500 or an
+  unbounded suppression. `_payload` raises `BadRequest`, which the same
+  middleware that answers `RangeUnavailable` (now `api/refusals.py`) turns into
+  400; a suppression lasts more than 0 and at most 24 hours.
 
 **Any view the range cannot answer is a 503 with the range's reason**
 - Rebuilding the platform image without the host's socket group

@@ -1,5 +1,6 @@
 import ipaddress
 import json
+import math
 import time
 import uuid
 from dataclasses import replace
@@ -9,6 +10,8 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.exceptions import BadRequest
+from django.db import IntegrityError
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -66,6 +69,7 @@ SUPPRESSION_FIELDS = (
                                                                        
                                        
 SUPPRESSION_MINUTES = 60
+SUPPRESSION_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
                                                                          
@@ -95,7 +99,21 @@ def _reply(payload, status=200):
     return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
 
 def _payload(request):
-    return json.loads(request.body or b"{}")
+    try:
+        body = json.loads(request.body or b"{}")
+    except ValueError as exc:
+        raise BadRequest(f"the body is not JSON: {exc}") from exc
+    if not isinstance(body, dict):
+        raise BadRequest(f"the body must be a JSON object, got {type(body).__name__}")
+    return body
+
+def _rule_file(request) -> str:
+    content = _payload(request).get("content")
+    if not isinstance(content, str):
+        raise BadRequest(
+            f'"content" must be the whole rule file as a string, got {content!r}'
+        )
+    return content
 
 def _closed(session):
     if session.ended_at is None:
@@ -535,20 +553,26 @@ def session_cases(request, session_id):
     if errors:
         return _reply(errors, status=400)
 
-    case = Case.objects.create(
-        session=session,
-        case_id=body["case_id"],
-        name=body["name"],
-        malicious=bool(body["malicious"]),
-        stage=body.get("stage") or "",
-        technique=body.get("technique") or "",
-        pattern=body.get("pattern") or "",
-        correlation=body["correlation"],
-        source_ip=body.get("source_ip"),
-        started_at=parse_datetime(body["started_at"]),
-        ended_at=parse_datetime(body["ended_at"]),
-        meta=body.get("meta") or {},
-    )
+    try:
+        case = Case.objects.create(
+            session=session,
+            case_id=body["case_id"],
+            name=body["name"],
+            malicious=body["malicious"],
+            stage=body.get("stage") or "",
+            technique=body.get("technique") or "",
+            pattern=body.get("pattern") or "",
+            correlation=body["correlation"],
+            source_ip=body.get("source_ip"),
+            started_at=_instant(body["started_at"]),
+            ended_at=_instant(body["ended_at"]),
+            meta=body.get("meta") or {},
+        )
+    except IntegrityError:
+        return _reply(
+            {"detail": f"case {body['case_id']} is already recorded in session {session.pk}"},
+            status=409,
+        )
 
                                                                           
                                                                             
@@ -573,12 +597,37 @@ def session_cases(request, session_id):
         _shape(case, CASE_FIELDS) | {"objectives": observed}, status=201
     )
 
+def _instant(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = parse_datetime(value)
+    except ValueError:
+        return None
+    if parsed is None or parsed.tzinfo is None:
+        return None
+    return parsed
+
 def _case_errors(body):
     errors = {
         field: ["This field is required."]
         for field in CASE_REQUIRED
         if body.get(field) is None
     }
+    if body.get("malicious") is not None and not isinstance(body["malicious"], bool):
+        errors["malicious"] = [f"must be true or false, got {body['malicious']!r}."]
+    for field in ("started_at", "ended_at"):
+        if body.get(field) is not None and _instant(body[field]) is None:
+            errors[field] = [f"must be an ISO 8601 time with its offset, got {body[field]!r}."]
+    started, ended = _instant(body.get("started_at")), _instant(body.get("ended_at"))
+    if started and ended and ended < started:
+        errors["ended_at"] = ["is before started_at."]
+    source = body.get("source_ip")
+    if source is not None:
+        try:
+            ipaddress.ip_address(source if isinstance(source, str) else "")
+        except ValueError:
+            errors["source_ip"] = [f"must be an IP address, got {source!r}."]
     correlation = body.get("correlation")
     if correlation is not None and correlation not in CORRELATION_STRATEGIES:
         errors["correlation"] = [
@@ -643,9 +692,10 @@ def session_detections(request, session_id):
 
     after = request.GET.get("after")
     if after is not None:
-        if not after.lstrip("-").isdigit():
+        try:
+            detections = detections.filter(id__gt=int(after, 10))
+        except ValueError:
             return _reply({"detail": f'"after" must be a row id, got {after!r}'}, 400)
-        detections = detections.filter(id__gt=int(after))
 
     return _reply([_listed(d) for d in detections])
 
@@ -857,10 +907,21 @@ def current_rules(request):
 
 @require_http_methods(["POST"])
 def validate_rules(request):
-    outcome = suricata.validate(_payload(request).get("content", ""),
-                                 substrate().runner("sensor"))
+    outcome = suricata.validate(_rule_file(request), substrate().runner("sensor"))
     payload = {"ok": outcome.ok, "output": outcome.output}
     return _reply(payload, status=200 if outcome.ok else 400)
+
+def _minutes(given) -> float:
+    try:
+        minutes = float(given)
+    except (TypeError, ValueError):
+        minutes = math.nan
+    if not 0 < minutes <= SUPPRESSION_LONGEST:
+        raise BadRequest(
+            f'"minutes" must be more than 0 and at most {SUPPRESSION_LONGEST}, '
+            f"got {given!r}"
+        )
+    return minutes
 
 @require_http_methods(["GET", "POST"])
 def suppressions(request):
@@ -883,8 +944,8 @@ def suppressions(request):
     except (TypeError, ValueError):
         return _reply({"detail": f'"sid" must be a rule id, got {body.get("sid")!r}'}, 400)
 
-    minutes = body.get("minutes") or SUPPRESSION_MINUTES
-    expires_at = timezone.now() + timedelta(minutes=float(minutes))
+    minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
+    expires_at = timezone.now() + timedelta(minutes=minutes)
     content = suricata.current(substrate().runner('sensor'))
 
     try:
@@ -948,7 +1009,7 @@ def _restore_expired() -> list:
 
 @require_http_methods(["POST"])
 def apply_rules(request):
-    content = _payload(request).get("content", "")
+    content = _rule_file(request)
     try:
         suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
