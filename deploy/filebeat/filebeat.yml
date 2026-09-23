@@ -4,6 +4,8 @@ filebeat.inputs:
     enabled: true
     paths:
       - /logs/suricata/eve.json
+    prospector.scanner.fingerprint.enabled: true
+    file_identity.fingerprint: ~
     parsers:
       - ndjson:
           target: ""
@@ -17,6 +19,8 @@ filebeat.inputs:
     enabled: true
     paths:
       - /logs/modsecurity/audit.log
+    prospector.scanner.fingerprint.enabled: true
+    file_identity.fingerprint: ~
     parsers:
       - ndjson:
           target: ""
