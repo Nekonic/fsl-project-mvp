@@ -124,11 +124,9 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
     if not messages:
         return []
 
-    headers = ((transaction.get("request") or {}).get("headers")) or {}
-    marker = _header_lookup(headers)
-    timestamp = _parse_time(transaction.get("time_stamp")) or _parse_time(
-        doc.get("@timestamp")
-    )
+    request = transaction.get("request") or {}
+    marker = _header_lookup(request.get("headers") or {})
+    timestamp = _parse_time(transaction.get("time_stamp")) or _parse_time(doc.get("@timestamp"))
     src_ip = transaction.get("client_ip")
 
     detections = []
@@ -148,7 +146,8 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
                 "timestamp": timestamp,
                 "src_ip": src_ip,
                 "marker": marker,
-                "raw": dict(message, src_geo=doc.get("src_geo") or {}),
+                "raw": dict(message, src_geo=doc.get("src_geo") or {}, request=request,
+                            host_ip=transaction.get("host_ip"), host_port=transaction.get("host_port")),
             }
         )
     return detections
