@@ -200,8 +200,11 @@ the id to `/label/origin` for the terminal, and makes `fire_attack` target
 `http://waf-<id>` with a `Host` header of `PUBLIC_TARGET_URL`'s netloc so the
 target still sees `shop.com` (`platform/api/views.py:408-420`). That re-adding is
 necessary because the `shop.com` alias is on `edge` alone (`compose.yaml:92-103`).
-`origin: "rotate"` is a round robin on `session.cases.count()`, not a random pick
-(`platform/api/views.py:457-466`).
+`origin: "rotate"` is a round robin, not a random pick, on `Session.rotation`: a
+per-session counter each rotated fire advances with `F("rotation") + 1` and
+reads back inside one transaction (`_origin_for` and `_take_turn` in
+`platform/api/views.py`). Two fires in flight at once take different turns, and
+pinned fires and cases posted from the terminal do not move it.
 
 **Through the WAF.** It listens on 80 and proxies to `juice-shop:3000`.
 ModSecurity runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly` — it
