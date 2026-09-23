@@ -49,6 +49,14 @@
       body: JSON.stringify(payload || {}),
     });
 
+    function onResume(catchUp) {
+      const back = () => {
+        if (document.visibilityState !== "hidden") catchUp();
+      };
+      document.addEventListener("visibilitychange", back);
+      window.addEventListener("online", back);
+    }
+
     if (sessionId()) {
       document.getElementById("session-label").textContent = t("common.session", sessionId());
     }
