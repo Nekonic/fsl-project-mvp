@@ -289,6 +289,48 @@ def test_evenly_spaced_alerts_fill_every_bar_of_the_histogram_alike(client, per_
         "while the other 47 shared everything else"
     )
 
+@pytest.mark.parametrize("counts, shown", [
+    ({"tp": 1, "fp": 0, "fn": 0, "tn": 1}, ("1.00", "1.00", "1.00")),
+    ({"tp": 0, "fp": 0, "fn": 2, "tn": 1}, ("-", "0.00", "0.00")),
+    ({"tp": 0, "fp": 1, "fn": 0, "tn": 0}, ("0.00", "-", "-")),
+    ({"tp": 0, "fp": 0, "fn": 0, "tn": 1}, ("-", "-", "-")),
+], ids=["all-defined", "nothing-flagged", "nothing-malicious", "only-benign"])
+def test_a_ratio_with_nothing_to_divide_by_is_shown_as_undefined(client, counts, shown):
+    tp, fp, fn = counts["tp"], counts["fp"], counts["fn"]
+    ratios = {
+        "precision": tp / (tp + fp) if tp + fp else 0.0,
+        "recall": tp / (tp + fn) if tp + fn else 0.0,
+    }
+    total = ratios["precision"] + ratios["recall"]
+    ratios["f1"] = 2 * ratios["precision"] * ratios["recall"] / total if total else 0.0
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"""
+          ANSWERS["/api/sessions/1/score/"] = {{
+            ...SCORE, ...{js(counts)}, ...{js(ratios)},
+            benign_cases: {counts["fp"] + counts["tn"]},
+          }};
+        """,
+        scenario="""
+          await browser.click('[data-tab="score"]');
+          return {tiles: tiles("totals"), comparison: browser.text("comparison")};
+        """,
+    )
+    precision, recall, _ = shown
+    tiles = seen["result"]["tiles"]
+
+    assert seen["errors"] == []
+    assert (
+        tiles[english("blue.score.tile.precision")],
+        tiles[english("blue.score.tile.recall")],
+        tiles[english("blue.score.tile.f1")],
+    ) == shown, (
+        "the API reports 0.0 for a ratio whose denominator is zero, and the "
+        "console showed it as 0.00, a score the defence did not earn or lose"
+    )
+    assert seen["result"]["comparison"].count(
+        english("blue.score.comparison.rates", precision, recall)) == 2
+
 INDICATOR = """
 const indicator = () => ({
   label: browser.text("live-label"),
