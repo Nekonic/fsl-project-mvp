@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (any view the range cannot answer is a 503 with the range's reason)
+Updated: 2026-09-24 (the range cannot reach its own judge)
 
 ## Where things stand
 
@@ -257,6 +257,21 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**The range cannot reach its own judge**
+- Found by a production-readiness audit: eight lens agents, two refuters per
+  finding, 34 of 34 serious findings survived. The largest: every published
+  port answered on every address, so from the attacker box and from the wiki,
+  their own segment's gateway forwarded `:8000` (the scoring and rules API),
+  `:9200` (Elasticsearch, unauthenticated), `:7681` and `:8080` back into the
+  platform - measured, eight of eight reached. The side being scored could
+  rewrite the rules or the alerts it is scored on. The reachability rule did
+  not see it: through the hairpin the request arrives from a gateway, which is
+  exactly how the operator arrives.
+- Every port is published on `127.0.0.1` now. The Mac's listeners went from
+  `*` to `127.0.0.1` with it, so the LAN no longer gets a root shell on 7681.
+  A console opened from another machine needs a tunnel. `DJANGO_DEBUG=1` in
+  compose stays: with loopback only, a traceback reaches the operator alone.
 
 **Any view the range cannot answer is a 503 with the range's reason**
 - Rebuilding the platform image without the host's socket group

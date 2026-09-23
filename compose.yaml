@@ -109,7 +109,7 @@ services:
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     environment:
       BACKEND: "http://juice-shop:3000"
       PORT: "80"
@@ -149,7 +149,7 @@ services:
     container_name: fsl-elasticsearch
     networks: [mgmt]
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -181,7 +181,7 @@ services:
     container_name: fsl-kali
     networks: [edge]
     ports:
-      - "7681:7681"
+      - "127.0.0.1:7681:7681"
     volumes:
       - ./data/label:/label:ro
     init: true
@@ -208,7 +208,7 @@ services:
       elasticsearch: {condition: service_healthy}
     networks: [edge, edge-br, edge-hk, edge-kp, estate, mgmt]
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"
