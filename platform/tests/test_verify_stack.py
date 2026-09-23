@@ -1,7 +1,9 @@
 import os
+import shlex
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -80,4 +82,44 @@ def test_a_stack_brought_up_from_this_checkout_is_restarted(
 
     assert RESTART in docker, (
         f"the guard refused the checkout that owns the stack:\n{done.stdout}"
+    )
+
+
+def test_a_measure_that_crashes_is_reported_as_a_crash_not_a_regression(
+    tmp_path, checkout
+):
+    executable(
+        checkout / ".venv/bin/python",
+        '[ "$1" = - ] || exit 0\n'
+        'script="$(cat)"\n'
+        'case "$script" in *bin/measure*) ;; *) exit 0 ;; esac\n'
+        f'printf "%s\\n" "$script" | exec {shlex.quote(sys.executable)} -\n',
+    )
+    executable(
+        checkout / "bin/measure",
+        "echo 'Traceback (most recent call last):' >&2\n"
+        "echo \"FileNotFoundError: No such file: 'platform/gone.py'\" >&2\n"
+        "exit 1\n",
+    )
+    (checkout / "metrics.json").write_text(
+        '{"core_loc": 1, "dependencies": 1, "services": 1, "tests": 1}\n'
+    )
+    executable(tmp_path / "tools/curl", "exit 0\n")
+    executable(
+        tmp_path / "tools/docker",
+        f'case "$1" in inspect) echo "{checkout}" ;; *) exit 0 ;; esac\n',
+    )
+
+    done = subprocess.run(
+        [str(checkout / "bin/verify")],
+        capture_output=True, text=True, timeout=60,
+        env={**os.environ, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"},
+    )
+
+    assert "measure crashed" in done.stdout, done.stdout
+    assert "platform/gone.py" in done.stdout, done.stdout
+    assert "metrics regressed" not in done.stdout, (
+        f"measure itself failed, so nothing was compared; calling that a "
+        f"regression sends the reader looking for a number that grew:\n"
+        f"{done.stdout}"
     )

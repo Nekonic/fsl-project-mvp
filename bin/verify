@@ -157,9 +157,12 @@ if "$PY" - <<'PY'
 import json, subprocess, sys, pathlib
 root = pathlib.Path(".")
 baseline_path = root / "metrics.json"
-current = json.loads(
-    subprocess.run(["./bin/measure", "--json"], capture_output=True, text=True).stdout
-)
+measured = subprocess.run(["./bin/measure", "--json"], capture_output=True, text=True)
+if measured.returncode:
+    said = measured.stderr.strip().splitlines() or [f"exit {measured.returncode}"]
+    print(f"\nmeasure crashed, so nothing was compared:\n  {said[-1]}")
+    sys.exit(3)
+current = json.loads(measured.stdout)
 if not baseline_path.exists():
     print("\nno metrics.json yet — run: bin/measure --save")
     sys.exit(0)
@@ -212,6 +215,8 @@ sys.exit(1 if failed else 0)
 PY
 then
   ok "no regression"
+elif [ $? = 3 ]; then
+  fail "measure crashed"
 else
   fail "metrics regressed"
 fi
