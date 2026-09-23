@@ -4,6 +4,8 @@
 <h1 data-t="main.title" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
 <p data-t="main.intro" class="text-slate-400 text-sm mb-8"></p>
 
+<p id="sessions-error" class="text-rose-400 text-sm mb-10 hidden"></p>
+
 <section id="running-panel" class="mb-10 hidden">
   <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-emerald-500 mb-3"></h2>
   <div id="running" class="space-y-2"></div>
@@ -21,8 +23,8 @@
 {% endblock %}
 {% block script %}
 <script>
-  function unavailable(what, result) {
-    const panel = document.getElementById("start-error");
+  function unavailable(what, result, panelId = "start-error") {
+    const panel = document.getElementById(panelId);
     panel.classList.remove("hidden");
     panel.textContent = t("main.unavailable", what,
                           result.body.detail || result.status || t("common.no_answer"));
@@ -86,9 +88,10 @@
     if (!running.ok || !Array.isArray(running.body)) {
       showPanel("running-panel", false);
       showPanel("finished-panel", false);
-      unavailable(t("main.the_sessions"), running);
+      unavailable(t("main.the_sessions"), running, "sessions-error");
       return;
     }
+    showPanel("sessions-error", false);
     showPanel("running-panel", running.body.length > 0);
     document.getElementById("running").innerHTML =
       running.body.map((s) => sessionRow(s, true)).join("");
@@ -100,7 +103,29 @@
       rows.map((s) => sessionRow(s, false)).join("");
   }
 
+  const SESSIONS_EVERY = 10000;
+  let refreshTimer = null;
+  let refreshing = false;
+  let refreshedAt = 0;
+
+  async function refreshSessions() {
+    if (refreshing) return;
+    refreshing = true;
+    clearTimeout(refreshTimer);
+    try {
+      await renderSessions();
+    } finally {
+      refreshing = false;
+      refreshedAt = Date.now();
+      refreshTimer = setTimeout(refreshSessions, SESSIONS_EVERY);
+    }
+  }
+
+  onResume(() => {
+    if (Date.now() - refreshedAt >= SESSIONS_EVERY) refreshSessions();
+  });
+
   renderWargames();
-  renderSessions();
+  refreshSessions();
 </script>
 {% endblock %}
