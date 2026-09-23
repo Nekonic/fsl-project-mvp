@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (rule changes happen one at a time)
+Updated: 2026-09-24 (a tick of the console reads only this session's evidence, and rule changes happen one at a time)
 
 ## Where things stand
 
@@ -257,6 +257,28 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A tick of the console reads only this session's evidence**
+- Filebeat identifies files by inode, and colima's virtiofs renumbers inodes
+  across a VM restart, so a restart re-ships both logs with a fresh
+  `@timestamp`. Seen live after tonight's restart: every document indexed in
+  the next ten minutes was an event more than an hour old. Ingest selects by
+  `@timestamp`, so those old alerts landed in whatever session was open. An
+  alert whose own event time is outside the session's window is now dropped
+  and counted as `stale`. The Filebeat side is a separate change.
+- Two overlapping console ticks died on the detection table's unique
+  constraint with a 500. Ingest inserts in bulk and ignores rows already
+  there.
+- A suppression only expired when someone opened the suppression list, which
+  an open console never does, so a sixty-minute silence lasted until someone
+  looked. The ingest tick lifts expired suppressions and says which in
+  `restored`; a sensor it cannot reach does not fail the tick.
+- `GET /api/rules/` carries a `version`, and an apply that names the `base` it
+  was edited from is refused with 409 when the sensor's rules have changed
+  since - the editor loaded before a suppression no longer writes the
+  silenced rule back. Without `base` the old behaviour stands.
+- Unit fixtures had sessions opened now and alerts from days before; they
+  open their sessions before their own times (`tests/sessions.py`).
 
 **Rule changes happen one at a time**
 - Every rule change was an unlocked read-modify-write of one file on eight

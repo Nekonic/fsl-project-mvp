@@ -1,4 +1,5 @@
 import functools
+import hashlib
 import ipaddress
 import json
 import math
@@ -673,6 +674,10 @@ def _case_errors(body):
 def ingest_detections(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     start, end = _session_window(session)
+    try:
+        restored = _restore_expired()
+    except RangeUnavailable:
+        restored = []
 
     try:
         documents, truncated = elastic.fetch(
@@ -684,7 +689,8 @@ def ingest_detections(request, session_id):
     known = set(
         Detection.objects.filter(session=session).values_list("detection_id", flat=True)
     )
-    ingested = 0
+    stale = 0
+    rows = []
 
     alerts = elastic.normalize_all(documents)
 
@@ -699,17 +705,23 @@ def ingest_detections(request, session_id):
     for alert in alerts:
         if alert["detection_id"] in known or alert["timestamp"] is None:
             continue
+        known.add(alert["detection_id"])
+        if not start <= alert["timestamp"] <= end:
+            stale += 1
+            continue
         raw = alert.get("raw") or {}
-        Detection.objects.create(
+        rows.append(Detection(
             session=session,
             src_host=hosts.get(alert.get("src_ip"), ""),
             dest_host=hosts.get(raw.get("dest_ip"), ""),
             **alert,
-        )
-        known.add(alert["detection_id"])
-        ingested += 1
+        ))
 
-    reply = {"ingested": ingested, "skipped": skipped}
+    before = Detection.objects.filter(session=session).count()
+    Detection.objects.bulk_create(rows, ignore_conflicts=True)
+    ingested = Detection.objects.filter(session=session).count() - before
+
+    reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "restored": restored}
     if truncated:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
@@ -944,7 +956,8 @@ def _session_window(session):
 
 @require_http_methods(["GET"])
 def current_rules(request):
-    return _reply({"content": suricata.current(substrate().runner('sensor'))})
+    content = suricata.current(substrate().runner('sensor'))
+    return _reply({"content": content, "version": _version(content)})
 
 @require_http_methods(["POST"])
 @_in_turn
@@ -1052,10 +1065,21 @@ def _restore_expired() -> list:
         lifted.append({"sid": record.sid, "ok": problem is None, "detail": problem})
     return lifted
 
+def _version(content: str) -> str:
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
 @require_http_methods(["POST"])
 @_in_turn
 def apply_rules(request):
     content = _rule_file(request)
+    base = _payload(request).get("base")
+    if base is not None:
+        live = _version(suricata.current(substrate().runner('sensor')))
+        if base != live:
+            return _reply({
+                "detail": "the sensor's rules changed since this copy was loaded "
+                          f"(loaded {base}, live {live}); reload them and edit again",
+            }, status=409)
     try:
         suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:

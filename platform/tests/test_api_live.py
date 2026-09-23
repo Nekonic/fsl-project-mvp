@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.sessions import open_session
+
 pytestmark = pytest.mark.django_db
 
 T0 = "2026-09-20T12:00:00Z"
@@ -20,7 +22,7 @@ def alert(doc_id, signature="SQLi"):
 
 @pytest.fixture
 def session_id(client):
-    return client.post_json("/api/sessions/", {}).json()["id"]
+    return open_session(client)
 
 def ingest(client, session_id, documents):
     with patch("api.views.elastic.fetch", return_value=(documents, None)):
@@ -79,7 +81,7 @@ def test_an_unknown_detection_is_404(client):
 def test_an_ingest_that_could_not_read_everything_says_so(client, monkeypatch):
     from ingest import elastic
 
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     monkeypatch.setattr(elastic, "fetch", lambda *a, **k: ([], (5000, 25937)))
 
     body = client.post_json(f"/api/sessions/{session_id}/ingest/").json()
@@ -92,7 +94,7 @@ def test_an_ingest_that_could_not_read_everything_says_so(client, monkeypatch):
 def test_an_ingest_that_read_everything_stays_quiet(client, monkeypatch):
     from ingest import elastic
 
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    session_id = open_session(client)
     monkeypatch.setattr(elastic, "fetch", lambda *a, **k: ([], None))
 
     assert "truncated" not in client.post_json(
