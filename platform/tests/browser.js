@@ -204,6 +204,8 @@ class Element {
     this.parentNode = null;
   }
 
+  get lastElementChild() { return this.children[this.children.length - 1] || null; }
+
   descendants() {
     return this.children.flatMap((c) => [c, ...c.descendants()]);
   }
