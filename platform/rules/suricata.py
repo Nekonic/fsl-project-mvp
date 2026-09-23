@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 RULE_PATH = "/var/lib/suricata/rules/local.rules"
-CANDIDATE_PATH = "/var/lib/suricata/rules/candidate.rules"
 
 class RuleApplyError(RuntimeError):
     """The rules were not applied. The previous rule set is still live."""
@@ -17,8 +16,7 @@ def current(sensor) -> str:
     return sensor(["cat", RULE_PATH]).output
 
 def validate(content: str, sensor) -> ValidationOutcome:
-    _write(sensor, CANDIDATE_PATH, content)
-    ran = sensor(["suricata", "-T", "-S", CANDIDATE_PATH])
+    ran = sensor(["suricata", "-T", "-S", "/dev/stdin"], stdin=content)
     return ValidationOutcome(ok=ran.ok, output=ran.output.strip())
 
 def apply(content: str, sensor, reload_command) -> None:
