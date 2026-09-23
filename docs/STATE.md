@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (an acceptance run leaves no session open)
+Updated: 2026-09-24 (the platform's store no longer lives in a checkout)
 
 ## Where things stand
 
@@ -257,6 +257,21 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**The platform's store no longer lives in a checkout**
+- From the second audit (nine unexamined areas, two refuters per finding,
+  14 of 16 serious findings confirmed). The SQLite file holding every
+  session, case, detection and objective was bind-mounted from `./data` of
+  whichever checkout ran `compose up` - tonight a Claude worktree, under a
+  git-ignored directory. Removing that worktree would have removed the only
+  store. It now lives in the named volume `fsl_platformdata`, like
+  Elasticsearch's and Filebeat's state; the image creates `/data` owned by
+  the platform user so a fresh volume is writable.
+- Moved tonight with the platform stopped: 56 sessions, 121 cases, 2,312
+  detections, 8 objectives, 210 suppressions, identical after. The old
+  `data/db.sqlite3` in this worktree is a stale copy from the moment of the
+  move; nothing reads it. `./data/label` stays a bind mount for the proxy
+  and the attacker box.
 
 **A WAF alert shows the request it judged**
 - ModSecurity detections stored one rule message and dropped the transaction,
