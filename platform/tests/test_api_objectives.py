@@ -30,7 +30,7 @@ def session_id(client):
         return client.post_json("/api/sessions/", {}).json()["id"]
 
 def poll(client, session_id, catalogue):
-    with patch("api.views.objectives.catalogue", return_value=catalogue):
+    with patch("api.views.objectives.observe", return_value=(catalogue, "")):
         return client.post_json(f"/api/sessions/{session_id}/objectives/")
 
 def test_the_catalogue_lists_what_can_be_taken(client):
@@ -65,7 +65,7 @@ def test_polling_again_records_nothing_twice(client, session_id):
 
 def test_a_target_that_cannot_be_reached_is_503_not_an_empty_scoreboard(client, session_id):
     with patch(
-        "api.views.objectives.catalogue",
+        "api.views.objectives.observe",
         side_effect=ObjectivesUnavailable("juice-shop is down"),
     ):
         response = client.post_json(f"/api/sessions/{session_id}/objectives/")
@@ -104,8 +104,8 @@ CASE = {
 
 def test_recording_a_case_notices_what_that_case_took(client, session_id):
     with patch(
-        "api.views.objectives.catalogue",
-        return_value=solved("errorHandlingChallenge", "loginAdminChallenge"),
+        "api.views.objectives.observe",
+        return_value=(solved("errorHandlingChallenge", "loginAdminChallenge"), ""),
     ):
         created = client.post_json(f"/api/sessions/{session_id}/cases/", CASE)
 
@@ -118,7 +118,7 @@ def test_ground_truth_survives_a_target_that_cannot_be_asked(client, session_id)
                                                                            
                             
     with patch(
-        "api.views.objectives.catalogue",
+        "api.views.objectives.observe",
         side_effect=ObjectivesUnavailable("juice-shop is down"),
     ):
         created = client.post_json(f"/api/sessions/{session_id}/cases/", CASE)
@@ -133,8 +133,8 @@ def test_a_session_with_no_baseline_still_records_cases(client):
         blind = client.post_json("/api/sessions/", {}).json()["id"]
 
     with patch(
-        "api.views.objectives.catalogue",
-        return_value=solved("errorHandlingChallenge"),
+        "api.views.objectives.observe",
+        return_value=(solved("errorHandlingChallenge"), ""),
     ):
         created = client.post_json(f"/api/sessions/{blind}/cases/", CASE)
 
@@ -148,10 +148,10 @@ def test_the_targets_own_solve_time_is_used_when_it_has_one(client, session_id):
     solved_at = client.get(f"/api/sessions/{session_id}/").json()["started_at"]
 
     with patch(
-        "api.views.objectives.catalogue",
-        return_value=solved(
+        "api.views.objectives.observe",
+        return_value=(solved(
             "errorHandlingChallenge", "loginAdminChallenge", solved_at=solved_at,
-        ),
+        ), ""),
     ):
         client.post_json(f"/api/sessions/{session_id}/objectives/")
 
@@ -166,11 +166,11 @@ def test_a_solve_time_older_than_the_session_is_not_believed(client, session_id)
 
     before = timezone.now() - timedelta(days=2)
     with patch(
-        "api.views.objectives.catalogue",
-        return_value=solved(
+        "api.views.objectives.observe",
+        return_value=(solved(
             "errorHandlingChallenge", "loginAdminChallenge",
             solved_at=before.isoformat(),
-        ),
+        ), ""),
     ):
         client.post_json(f"/api/sessions/{session_id}/objectives/")
 
