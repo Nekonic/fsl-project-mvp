@@ -1227,3 +1227,149 @@ def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
     )
     assert seen["result"]["closing"] == 2
     assert seen["result"]["closed"] == 2, "a closed session was checked because the page came back"
+
+MAIN_RANGE = r"""
+const WARGAMES = [{id: "juice-shop", name: "Juice Shop", description: "", cases: 3}];
+const opened = (id) =>
+  ({id, scenario: "juice-shop", started_at: "2026-09-23T10:00:00Z", ended_at: null});
+const closing = (session) => ({...session, ended_at: "2026-09-23T11:00:00Z"});
+let OPEN = [opened(7)];
+let CLOSED = [];
+const listing = (request) => {
+  if (request.route === "/api/wargames/") return {body: WARGAMES};
+  if (request.route === "/api/sessions/") {
+    return {body: request.query.state === "open" ? OPEN : CLOSED};
+  }
+  return {status: 404, body: {detail: "not served"}};
+};
+browser.serve(listing);
+const ids = (id) =>
+  [...browser.element(id).innerHTML.matchAll(/href="\/session\/(\d+)\/"/g)].map((m) => Number(m[1]));
+const listed = () => ({
+  running: ids("running"),
+  finished: ids("finished"),
+  runningShown: !browser.element("running-panel").classList.contains("hidden"),
+});
+const lists = () => browser.requests.filter(
+  (r) => r.route === "/api/sessions/" && r.query.state === "open").length;
+"""
+
+def test_the_session_list_catches_up_with_sessions_opened_and_closed_elsewhere(client):
+    seen = open_page(
+        client, "/",
+        setup=MAIN_RANGE,
+        scenario="""
+          const first = listed();
+          CLOSED = [closing(OPEN[0])];
+          OPEN = [opened(8)];
+          await browser.poll();
+          const later = listed();
+          CLOSED = [closing(OPEN[0]), ...CLOSED];
+          OPEN = [];
+          await browser.poll();
+          return {first, later, last: listed()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["first"] == {"running": [7], "finished": [], "runningShown": True}
+    assert seen["result"]["later"] == {"running": [8], "finished": [7], "runningShown": True}, (
+        "session 7 was closed and session 8 opened after the page was drawn, and "
+        "the page went on listing 7 as in progress and never showed 8"
+    )
+    assert seen["result"]["last"] == {"running": [], "finished": [8, 7], "runningShown": False}
+
+def test_a_main_page_woken_from_sleep_lists_the_sessions_once(client):
+    seen = open_page(
+        client, "/",
+        setup=MAIN_RANGE + ASLEEP,
+        scenario="""
+          sleep(HOUR);
+          const before = lists();
+          await shown("hidden");
+          const hidden = lists() - before;
+          OPEN = [opened(9)];
+          await wake();
+          const woke = {lists: lists() - before, running: listed().running};
+          await wake();
+          return {hidden, woke, again: lists() - before};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["hidden"] == 0, "a page going out of sight was listed for it"
+    assert seen["result"]["woke"] == {"lists": 1, "running": [9]}, (
+        "the page came back after an hour and went on showing the sessions it "
+        "had drawn before it slept until its timer came round"
+    )
+    assert seen["result"]["again"] == 1, (
+        "coming back into view and back online together listed once for each"
+    )
+
+def test_a_page_brought_back_while_its_list_is_loading_does_not_load_it_twice(client):
+    seen = open_page(
+        client, "/",
+        setup=MAIN_RANGE + ASLEEP + """
+          let release;
+          const answered = new Promise((resolve) => { release = resolve; });
+          browser.serve((request) => request.route === "/api/sessions/"
+            ? answered.then(() => listing(request))
+            : listing(request));
+        """,
+        scenario="""
+          sleep(HOUR);
+          await wake();
+          await browser.poll();
+          const during = lists();
+          release();
+          await browser.settle();
+          await browser.poll();
+          return {during, after: lists()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        "the list was still loading when the page came back into view, and a "
+        "second load started beside it"
+    )
+    assert seen["result"]["after"] == 2, "refreshing stopped once the slow list arrived"
+
+def test_a_session_list_that_answers_again_clears_its_own_error_only(client):
+    seen = open_page(
+        client, "/",
+        setup=MAIN_RANGE + """
+          const noCatalogue = (answer) => (request) => request.route === "/api/wargames/"
+            ? {status: 503, body: {detail: "the catalogue did not answer"}}
+            : answer(request);
+          browser.serve(noCatalogue((request) => request.route === "/api/sessions/"
+            ? {status: 503, body: {detail: "the database is locked"}}
+            : listing(request)));
+        """,
+        scenario="""
+          const said = (id) =>
+            browser.element(id).classList.contains("hidden") ? "" : browser.text(id);
+          const panels = () => ({
+            sessions: said("sessions-error"), start: said("start-error"), listed: listed(),
+          });
+          const failing = panels();
+          browser.serve(noCatalogue(listing));
+          await browser.poll();
+          return {failing, back: panels()};
+        """,
+    )
+    scenarios_down = english(
+        "main.unavailable", english("main.the_scenarios"), "the catalogue did not answer")
+
+    assert seen["errors"] == []
+    assert seen["result"]["failing"]["sessions"] == english(
+        "main.unavailable", english("main.the_sessions"), "the database is locked")
+    assert seen["result"]["failing"]["start"] == scenarios_down
+    assert seen["result"]["back"] == {
+        "sessions": "",
+        "start": scenarios_down,
+        "listed": {"running": [7], "finished": [], "runningShown": True},
+    }, (
+        "the session list answered again, and the page either kept saying it "
+        "could not be read or took the scenarios' own error away with it"
+    )
