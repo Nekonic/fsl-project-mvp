@@ -215,10 +215,21 @@ def _send(verb: str, url: str, token: str | None, body, timeout: float):
     except requests.RequestException as exc:
         raise RangeUnavailable(f"could not reach {url}: {exc}") from exc
 VERSION = "version"
+IP_VERSION = "ip_version"
 
 SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 
+
+def _one_ipv4_subnet(segment_id: str, allocated: list[dict]) -> dict:
+    ipv4 = [subnet for subnet in allocated if subnet.get(IP_VERSION, 4) == 4]
+    if len(ipv4) > 1:
+        raise RangeUnavailable(
+            f"the segment {segment_id!r} carries {len(ipv4)} IPv4 subnets "
+            f"{[subnet.get('cidr', '') for subnet in ipv4]} and alerts are "
+            f"binned by exactly one. Which one is a decision nobody has taken."
+        )
+    return ipv4[0] if ipv4 else {}
 
 def _generations(servers: list[dict]) -> dict[str, str]:
     found = {}
@@ -289,13 +300,13 @@ class OpenStack:
                     f"{SEGMENT_TAG}={declared.id}"
                 )
             allocated = self._all(SUBNETS, "subnets", network=network["id"])
-            first = allocated[0] if allocated else {}
+            bound_subnet = _one_ipv4_subnet(declared.id, allocated)
             segments.append(
                 replace(
                     declared,
-                    subnet=first.get("cidr", ""),
+                    subnet=bound_subnet.get("cidr", ""),
                     network=network["id"],
-                    gateway=first.get("gateway_ip", ""),
+                    gateway=bound_subnet.get("gateway_ip", ""),
                     nodes=self._nodes(network["name"], servers),
                 )
             )

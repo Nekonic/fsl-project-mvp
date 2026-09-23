@@ -178,6 +178,45 @@ def test_the_cloud_is_asked_only_for_the_networks_the_range_marked():
     assert tagged("edge") in listing
 
 
+def edge_allocated(subnets):
+    reader = cloud_reader()
+
+    def get(call):
+        if "/v2.0/subnets" in call and call.endswith("=net-edge"):
+            return {"subnets": subnets}
+        return reader(call)
+
+    return openstack.OpenStack(declared.read(), CLOUD, get=get)
+
+
+def test_a_dual_stack_segment_is_bound_to_its_ipv4_subnet():
+    edge = next(s for s in edge_allocated([
+        {"cidr": "fd00:5:188:10::/64", "gateway_ip": "fd00:5:188:10::1",
+         "ip_version": 6},
+        {"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1", "ip_version": 4},
+    ]).describe().segments if s.id == "edge")
+
+    assert (edge.subnet, edge.gateway) == ("5.188.10.0/24", "5.188.10.1"), (
+        "the segment took whichever subnet Neutron listed first, so a "
+        "dual-stack network became an IPv6 zone and every IPv4 alert from it "
+        "sat on no segment at all"
+    )
+
+
+def test_a_segment_with_two_ipv4_subnets_is_refused_and_named():
+    with pytest.raises(RangeUnavailable) as raised:
+        edge_allocated([
+            {"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1", "ip_version": 4},
+            {"cidr": "5.188.11.0/24", "gateway_ip": "5.188.11.1", "ip_version": 4},
+        ]).describe()
+
+    assert "'edge'" in str(raised.value), raised.value
+    assert "5.188.11.0/24" in str(raised.value), (
+        "alerts are binned by exactly one subnet, and which of two it is was "
+        "decided by the order Neutron listed them in"
+    )
+
+
 def test_two_networks_claiming_the_same_segment_are_refused_not_guessed():
     doubled = {"networks": NETWORKS["networks"] + [
         {"id": "net-edge-2", "name": "range1-edge-legacy", "tags": [tagged("edge")]}
@@ -245,7 +284,8 @@ def test_starting_a_tool_is_a_cloud_call_the_sketch_does_not_make():
 REFERENCE = {
     "networks[].id, .name, .tags": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
     "?tags-any=": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
-    "subnets[].cidr, .gateway_ip": "https://docs.openstack.org/api-ref/network/v2/#list-subnets",
+    "subnets[].cidr, .gateway_ip, .ip_version":
+        "https://docs.openstack.org/api-ref/network/v2/#list-subnets",
     "servers[].addresses[label][].addr, .OS-EXT-IPS:type, .version":
         "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
     "servers[].id, .OS-SRV-USG:launched_at":
@@ -256,7 +296,8 @@ def test_every_field_the_sketch_reads_is_one_the_api_reference_names():
     source = pathlib.Path(openstack.__file__).read_text()
 
     for field in ("\"id\"", "\"name\"", "\"tags\"", "\"cidr\"", "\"gateway_ip\"",
-                  "\"addr\"", "\"servers\"", "\"networks\"", "\"subnets\""):
+                  "\"addr\"", "\"servers\"", "\"networks\"", "\"subnets\"",
+                  "\"ip_version\""):
         assert field in source, (
             f"{field} is how the sketch reads the cloud and nothing in it "
             f"matches the published response any more. Checked against "
