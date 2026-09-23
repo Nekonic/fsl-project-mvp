@@ -406,9 +406,12 @@ def session_objectives(request, session_id):
         return _reply({"detail": str(exc)}, status=503)
 
 def _observe_objectives(session) -> dict:
-    solved = {o["key"]: o for o in objectives.catalogue(substrate().runner("wiki")) if o["solved"]}
+    found, unreadable = objectives.observe(substrate().runner("wiki"))
+    solved = {o["key"]: o for o in found if o["solved"]}
 
     if session.baseline is None:
+        if unreadable:
+            raise objectives.ObjectivesUnavailable(unreadable)
                                                                            
                                                                  
         session.baseline = sorted(solved)
@@ -433,7 +436,10 @@ def _observe_objectives(session) -> dict:
     ]
     Objective.objects.bulk_create(fresh)
 
-    return {"achieved": len(fresh), "total": session.objectives.count()}
+    observed = {"achieved": len(fresh), "total": session.objectives.count()}
+    if unreadable:
+        observed["unreadable"] = unreadable
+    return observed
 
 @require_http_methods(["POST"])
 def fire_attack(request, session_id):
@@ -483,6 +489,8 @@ def fire_attack(request, session_id):
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
 
+    finished_at = timezone.now()
+    Session.objects.filter(pk=session.pk, ended_at__lt=finished_at).update(ended_at=finished_at)
     recorded = Case.objects.create(
         session=session,
         case_id=case["case_id"],
@@ -494,7 +502,7 @@ def fire_attack(request, session_id):
         correlation=case["correlation"],
         source_ip=case.get("source_ip"),
         started_at=started_at,
-        ended_at=timezone.now(),
+        ended_at=finished_at,
                                                                       
                                                                            
                                                                            
@@ -533,8 +541,20 @@ def session_detail(request, session_id):
 @require_http_methods(["POST"])
 def close_session(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    session.ended_at = timezone.now()
-    session.save(update_fields=["ended_at"])
+    shut = _closed(session)
+    if shut:
+        return shut
+
+    try:
+        _observe_objectives(session)
+    except (objectives.ObjectivesUnavailable, RangeUnavailable):
+        pass
+
+    closed_at = timezone.now()
+    if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
+        session.refresh_from_db()
+        return _closed(session)
+    session.ended_at = closed_at
     return _reply(_shape(session, SESSION_FIELDS))
 
 @require_http_methods(["GET", "POST"])

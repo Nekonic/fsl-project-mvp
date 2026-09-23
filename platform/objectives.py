@@ -29,7 +29,18 @@ INTERNAL = {
 }
 
 def catalogue(wiki=None) -> list[dict[str, Any]]:
-    return [_summarise(c) for c in _fetch()] + [_internal(wiki)]
+    found, unreadable = observe(wiki)
+    if unreadable:
+        raise ObjectivesUnavailable(unreadable)
+    return found
+
+def observe(wiki=None) -> tuple[list[dict[str, Any]], str]:
+    found = [_summarise(c) for c in _fetch()]
+    try:
+        found.append(_internal(wiki))
+    except ObjectivesUnavailable as exc:
+        return found, str(exc)
+    return found, ""
 
 def solved_keys(wiki=None) -> set[str]:
     taken = {c["key"] for c in _fetch() if c.get("solved")}

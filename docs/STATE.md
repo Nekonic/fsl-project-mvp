@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (the range cannot reach its own judge; the API refuses what it cannot mean)
+Updated: 2026-09-24 (a session closes once, and what it lost at the end is on its board)
 
 ## Where things stand
 
@@ -257,6 +257,21 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A session closes once, and what it lost at the end is on its board**
+- Closing was a bare write of `ended_at`, and the session page always offers
+  Close: a second close moved the end, widening the window its alerts are read
+  from into later sessions' traffic. A closed session answers 409.
+- Nothing observed the target at close. The board polls every ten seconds, so
+  a breach in the last seconds was never recorded and the session read as
+  untouched. Close takes one last observation first.
+- An attack still running when the session closed was recorded with its
+  evidence outside the window it is scored from. The session's end now
+  stretches to cover a case that finishes after it.
+- Since unreadable wiki became an error, it also threw away every verdict
+  Juice Shop gave in the same read. The session path keeps Juice Shop's
+  answer and reports the wiki as `unreadable`; a session with no baseline yet
+  still waits for a full read, which is the recorded late-baseline decision.
 
 **The range cannot reach its own judge**
 - Found by a production-readiness audit: eight lens agents, two refuters per
