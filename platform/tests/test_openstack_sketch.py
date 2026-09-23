@@ -1,5 +1,6 @@
 import inspect
 import pathlib
+import shlex
 
 import pytest
 
@@ -13,6 +14,7 @@ CLOUD = openstack.Cloud(
     neutron="http://neutron:9696",
     nova="http://nova:8774",
     project="fsl",
+    user="fsl",
     ssh_user="fsl",
     ssh_key="/keys/fsl",
 )
@@ -445,12 +447,14 @@ def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():
     with patch("range.openstack.subprocess.run") as ran:
         ran.return_value.returncode = 0
         ran.return_value.stdout = "sqlmap 1.10"
-        ran.return_value.stderr = ""
+        ran.return_value.stderr = f"{openstack.EXIT_MARK}0\n"
         answered = adapter.launcher("edge")("fsl-kali", ["sqlmap", "--version"])
 
     argv = ran.call_args.args[0]
     assert argv[0] == "ssh", argv
-    assert argv[-2:] == ["sqlmap", "--version"], argv
+    assert shlex.split(argv[-1])[:4] == [
+        "sh", "-c", "--", f"sqlmap --version; {openstack.EXIT_REPORT}",
+    ], argv
     assert "5.188.10.7@".split("@")[0] in " ".join(argv), (
         f"the tool did not run on the attacker's address on the edge segment: "
         f"{argv}"
@@ -487,7 +491,7 @@ def test_reaching_a_host_does_not_read_the_whole_cloud_every_command():
     with patch("range.openstack.subprocess.run") as ran:
         ran.return_value.returncode = 0
         ran.return_value.stdout = ""
-        ran.return_value.stderr = ""
+        ran.return_value.stderr = f"{openstack.EXIT_MARK}0\n"
         for _ in range(4):
             run(["true"])
 

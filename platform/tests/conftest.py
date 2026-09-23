@@ -30,8 +30,12 @@ def no_settle(settings):
     settings.TARGET_SETTLE = 0
 
 @pytest.fixture(autouse=True)
-def no_real_substrate():
+def no_real_substrate(request):
     import subprocess
+
+    if request.node.get_closest_marker("stands_in_for_docker"):
+        yield
+        return
 
     real = subprocess.run
 

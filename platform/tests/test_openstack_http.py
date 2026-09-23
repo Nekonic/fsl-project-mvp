@@ -15,6 +15,8 @@ class Cloud:
         self.tokens = 0
         self.expire_after = None
         self.always_401 = False
+        self.logins = []
+        self.refuse_logins = False
 
     def handler(self):
         cloud = self
@@ -33,7 +35,18 @@ class Cloud:
                 self.end_headers()
                 self.wfile.write(raw)
 
+            def _login(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                user = body["auth"]["identity"]["password"]["user"]["name"]
+                cloud.logins.append(user)
+
             def do_POST(self):
+                self._login()
+                if cloud.refuse_logins:
+                    return self._send(401, {"error": {
+                        "code": 401, "title": "Unauthorized",
+                        "message": "The account is disabled for user: fsl",
+                    }})
                 cloud.tokens += 1
                 self._send(201, {"token": {}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
 
@@ -69,7 +82,7 @@ def reader(spy):
     base = f"http://127.0.0.1:{spy.port}"
     return openstack.http_reader(
         openstack.Cloud(keystone=base, neutron=base, nova=base, project="fsl",
-                        ssh_user="fsl", ssh_key="/keys/fsl"),
+                        user="fsl", ssh_user="fsl", ssh_key="/keys/fsl"),
         password="secret",
     )
 
@@ -118,7 +131,7 @@ def test_a_cloud_that_is_not_there_is_unavailable_not_a_crash():
     ask = openstack.http_reader(
         openstack.Cloud(keystone="http://127.0.0.1:1", neutron="http://127.0.0.1:1",
                         nova="http://127.0.0.1:1", project="fsl",
-                        ssh_user="fsl", ssh_key="/k"),
+                        user="fsl", ssh_user="fsl", ssh_key="/k"),
         password="secret",
     )
 
@@ -170,7 +183,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
             roles=one.roles, watches=one.watches, default_origin=one.default_origin,
         )
         cloudspec = openstack.Cloud(keystone=base, neutron=base, nova=base,
-                                    project="fsl", ssh_user="fsl", ssh_key="/k")
+                                    project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k")
         shape = openstack.OpenStack(
             only_edge, cloudspec, get=openstack.http_reader(cloudspec, "secret")
         ).describe()
@@ -217,6 +230,7 @@ class Catalogued(Cloud):
 
         class H(base):
             def do_POST(self):
+                self._login()
                 spy.tokens += 1
                 self._send(201, CATALOG, {"X-Subject-Token": f"tok{spy.tokens}"})
 
@@ -294,7 +308,7 @@ def test_a_token_about_to_expire_is_renewed_before_the_call(keystone):
         base = f"http://127.0.0.1:{keystone.port}"
         ask = openstack.http_reader(
             openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
             password="secret",
         )
         ask(f"{base}/v2.0/networks")
@@ -318,7 +332,7 @@ def test_a_token_with_life_left_is_not_thrown_away(keystone):
         base = f"http://127.0.0.1:{keystone.port}"
         ask = openstack.http_reader(
             openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
             password="secret",
         )
         for _ in range(4):
@@ -337,7 +351,7 @@ def test_a_token_with_no_expiry_is_used_until_it_is_refused(keystone):
         base = f"http://127.0.0.1:{keystone.port}"
         ask = openstack.http_reader(
             openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", ssh_user="fsl", ssh_key="/k"),
+                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
             password="secret",
         )
         ask(f"{base}/v2.0/networks")
@@ -348,4 +362,51 @@ def test_a_token_with_no_expiry_is_used_until_it_is_refused(keystone):
     assert keystone.tokens == 1, (
         "a response without expires_at made the adapter re-authenticate every "
         "time rather than fall back to the 401 it already handles"
+    )
+
+def test_the_cloud_is_read_as_the_keystone_user_not_the_ssh_login(cloud):
+    base = f"http://127.0.0.1:{cloud.port}"
+    ask = openstack.http_reader(
+        openstack.Cloud(keystone=base, neutron=base, nova=base, project="fsl",
+                        user="range-operator", ssh_user="debian", ssh_key="/k"),
+        password="secret",
+    )
+
+    ask(f"{base}/v2.0/networks")
+
+    assert cloud.logins == ["range-operator"], (
+        f"the account a platform signs in to Keystone with and the login on "
+        f"an instance's image are two different people: {cloud.logins}"
+    )
+
+def test_discovery_remembers_who_it_signed_in_as(keystone):
+    found = openstack.discover(
+        keystone=f"http://127.0.0.1:{keystone.port}",
+        user="range-operator", password="secret", project="fsl",
+        ssh_user="debian", ssh_key="/k",
+    )
+
+    assert (found.user, found.ssh_user) == ("range-operator", "debian")
+
+def test_a_refused_sign_in_is_named_rather_than_blamed_on_a_missing_header(cloud):
+    cloud.refuse_logins = True
+
+    with pytest.raises(RangeUnavailable) as raised:
+        reader(cloud)(f"http://127.0.0.1:{cloud.port}/v2.0/networks")
+
+    assert "401" in str(raised.value) and "disabled" in str(raised.value), (
+        f"Keystone said why it refused and the operator was told only that "
+        f"no token header came back: {raised.value}"
+    )
+
+def test_discovery_carries_the_deployment_s_ssh_config(keystone):
+    found = openstack.discover(
+        keystone=f"http://127.0.0.1:{keystone.port}",
+        user="fsl", password="secret", project="fsl",
+        ssh_user="debian", ssh_key="/k", ssh_config="/etc/fsl/ssh_config",
+    )
+
+    assert found.ssh_config == "/etc/fsl/ssh_config", (
+        "a platform that reaches the range through a bastion says so in an "
+        "ssh config, and discovery is the only way a deployment builds a Cloud"
     )
