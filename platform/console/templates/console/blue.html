@@ -742,6 +742,8 @@
       esc(t("blue.score.evidence.wrong_reason"))}</span>`;
   }
 
+  const rate = (value, cases) => cases > 0 ? value.toFixed(2) : "-";
+
   function tile(label, value, note) {
     return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
       <div class="text-slate-500 text-xs uppercase tracking-wide">${esc(label)}</div>
@@ -766,9 +768,9 @@
     document.getElementById("totals").innerHTML =
       tile(t("blue.score.tile.tp"), s.tp) + tile(t("blue.score.tile.fn"), s.fn) +
       tile(t("blue.score.tile.fp"), s.fp) + tile(t("blue.score.tile.tn"), s.tn) +
-      tile(t("blue.score.tile.precision"), s.precision.toFixed(2)) +
-      tile(t("blue.score.tile.recall"), s.recall.toFixed(2)) +
-      tile(t("blue.score.tile.f1"), s.f1.toFixed(2)) +
+      tile(t("blue.score.tile.precision"), rate(s.precision, s.tp + s.fp)) +
+      tile(t("blue.score.tile.recall"), rate(s.recall, s.tp + s.fn)) +
+      tile(t("blue.score.tile.f1"), rate(s.f1, s.tp + s.fn)) +
       tile(t("blue.score.tile.fp_rate"), `${s.fp} / ${s.benign_cases}`,
            t("blue.score.tile.fp_rate.note", s.benign_cases)) +
       tile(t("blue.score.tile.unattributed"), s.unattributed,
@@ -899,7 +901,7 @@
           esc(t("blue.score.comparison.counts", s.tp, s.fn, s.fp, s.tn))}</div>
         <div class="text-slate-500 text-sm mt-1 tabular-nums">${
           esc(t("blue.score.comparison.rates",
-                s.precision.toFixed(2), s.recall.toFixed(2)))}</div>${why}</div>`;
+                rate(s.precision, s.tp + s.fp), rate(s.recall, s.tp + s.fn)))}</div>${why}</div>`;
     }).join("");
   }
 
