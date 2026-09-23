@@ -34,9 +34,14 @@ def drawn(stack_is_up):
     session_map = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
     ).json()
+    listed = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+    ).json()
     return dict(
         session_map,
         points=[p for p in session_map["points"] if own & set(p["ips"])],
+        every_point=session_map["points"],
+        listed=listed,
     )
 
 def test_the_attack_is_placed_somewhere(drawn):
@@ -59,7 +64,21 @@ def test_the_point_carries_coordinates_a_map_can_use(drawn):
     assert point["ips"]
 
 def test_traffic_inside_the_estate_is_counted_but_not_placed(drawn):
-                                                                            
-                                                                            
-    assert drawn["unlocated"] >= 0
-    assert isinstance(drawn["unlocated"], int)
+    placed = {ip for point in drawn["every_point"] for ip in point["ips"]}
+    unplaced = [d for d in drawn["listed"] if d["src_ip"] not in placed]
+
+    assert unplaced, (
+        "every detection in the session was placed, so nothing here shows "
+        "what the map does with traffic it cannot locate. Suricata's alerts "
+        "on the inside leg, from the WAF to the target, should be among them"
+    )
+    assert drawn["unlocated"] == len(unplaced), (
+        f"{len(unplaced)} detections come from no placed address and the map "
+        f"reports {drawn['unlocated']} unlocated"
+    )
+    assert sum(p["detections"] for p in drawn["every_point"]) + drawn["unlocated"] == len(
+        drawn["listed"]
+    ), (
+        "the map and the alert list disagree on how many detections the "
+        "session holds, so the map dropped or double-counted some"
+    )

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, from_attacker, reset_target
+from conftest import PLATFORM_URL, from_attacker, reset_target, score_when_ready
 
                                                                              
                                                                             
@@ -20,6 +20,8 @@ from conftest import PLATFORM_URL, from_attacker, reset_target
 REACHABLE = [
     ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
 ]
+
+TRIPS_A_RULE = "/rest/products/search?q=%3Cscript%3Ealert%281%29%3C%2Fscript%3E"
 
 def _now():
     return datetime.now(timezone.utc)
@@ -66,6 +68,7 @@ def breach_session(unsolved):
     try:
         started = _now()
         from_attacker(path)
+        from_attacker(TRIPS_A_RULE)
         requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60)
     finally:
         requests.post(f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": None}, timeout=30)
@@ -80,10 +83,10 @@ def breach_session(unsolved):
         timeout=30,
     )
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)
-    return session_id, key
+    return session_id, key, case_id
 
 def test_the_target_decides_an_objective_was_taken(breach_session):
-    session_id, key = breach_session
+    session_id, key, _ = breach_session
 
     taken = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=30
@@ -101,7 +104,7 @@ def test_the_target_decides_an_objective_was_taken(breach_session):
 def test_objectives_solved_before_the_session_are_not_counted(breach_session):
                                                                            
                                                                      
-    session_id, _ = breach_session
+    session_id, _, _ = breach_session
     fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=60).json()["id"]
 
     requests.post(f"{PLATFORM_URL}/api/sessions/{fresh}/objectives/", timeout=60)
@@ -111,18 +114,32 @@ def test_objectives_solved_before_the_session_are_not_counted(breach_session):
     ).json() == []
 
 def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(breach_session):
-    session_id, key = breach_session
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/ingest/", timeout=180)
+    session_id, key, case_id = breach_session
 
-    scored = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60).json()
+    def fired(totals):
+        return next(
+            (c for c in totals["per_case"] if c["case_id"] == case_id), {}
+        )
+
+    scored = score_when_ready(
+        session_id, until=lambda totals: bool(fired(totals).get("detection_ids"))
+    )
+    own = fired(scored)
 
     assert scored["objectives"]["objectives"] >= 1
     breach = next(b for b in scored["breaches"] if b["key"] == key)
-                                                                              
-                                                                             
-                                
     assert breach["difficulty"] >= 1
-    assert breach["detected"] is (len(breach["detection_ids"]) > 0)
+    assert own.get("detection_ids"), (
+        f"the attack that took {key} (case {case_id}) drew no detection, and a "
+        f"breach credited to it then reads exactly like one credited to "
+        f"nothing, so this proves nothing about attribution"
+    )
+    assert (breach["detected"], sorted(breach["detection_ids"])) == (
+        own["detected"], sorted(own["detection_ids"])
+    ), (
+        f"{key} was taken by case {case_id}, and the breach does not carry that "
+        f"case's detections - it was credited to another attack or to none"
+    )
 
                                                                            
                                           
