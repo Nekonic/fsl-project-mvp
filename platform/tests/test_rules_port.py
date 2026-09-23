@@ -100,3 +100,14 @@ def test_the_reload_command_comes_from_configuration():
 
     signalled = [argv for argv, _ in sensor.calls if "USR2" in " ".join(argv)]
     assert signalled == [list(RELOAD)], signalled
+
+def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
+    sensor = Sensor()
+
+    suricata.validate(RULE, sensor)
+
+    assert sensor.calls == [(["suricata", "-T", "-S", "/dev/stdin"], RULE)], (
+        f"validation wrote the rules to one shared candidate file and then "
+        f"tested whatever that file held when the self-test started, so two "
+        f"requests at once could approve each other's rules: {sensor.calls}"
+    )

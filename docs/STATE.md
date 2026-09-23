@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (the console, verify and the unit suite stop hiding what went wrong)
+Updated: 2026-09-24 (rule changes happen one at a time)
 
 ## Where things stand
 
@@ -257,6 +257,19 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**Rule changes happen one at a time**
+- Every rule change was an unlocked read-modify-write of one file on eight
+  waitress threads. Two suppressions at once each read the same file and
+  wrote back their own edit: reproduced, the second erased the first and a
+  rule the list called silenced stayed live. Validate, apply, suppress,
+  restore and expiry now take one lock. It is a process lock, and waitress
+  runs one process; a second process would need a lock that is not.
+- Validation wrote the candidate to one shared file and then tested whatever
+  that file held when the self-test started, so two requests could approve
+  each other's rules. Suricata reads the candidate from `/dev/stdin` instead
+  (checked live: valid rc 0, a bad keyword rc 1 naming `/dev/stdin` line 1).
+  No candidate file exists any more; `core_loc` fell by two.
 
 **The console, verify and the unit suite stop hiding what went wrong**
 - Built in parallel by three agents in their own worktrees, reviewed and

@@ -1,6 +1,8 @@
+import functools
 import ipaddress
 import json
 import math
+import threading
 import time
 import uuid
 from dataclasses import replace
@@ -69,6 +71,14 @@ SUPPRESSION_FIELDS = (
                                                                        
                                        
 SUPPRESSION_MINUTES = 60
+RULE_CHANGES = threading.RLock()
+
+def _in_turn(change):
+    @functools.wraps(change)
+    def one_at_a_time(*args, **kwargs):
+        with RULE_CHANGES:
+            return change(*args, **kwargs)
+    return one_at_a_time
 SUPPRESSION_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
@@ -937,6 +947,7 @@ def current_rules(request):
     return _reply({"content": suricata.current(substrate().runner('sensor'))})
 
 @require_http_methods(["POST"])
+@_in_turn
 def validate_rules(request):
     outcome = suricata.validate(_rule_file(request), substrate().runner("sensor"))
     payload = {"ok": outcome.ok, "output": outcome.output}
@@ -955,6 +966,7 @@ def _minutes(given) -> float:
     return minutes
 
 @require_http_methods(["GET", "POST"])
+@_in_turn
 def suppressions(request):
     expired = _restore_expired()
 
@@ -999,6 +1011,7 @@ def suppressions(request):
     return _reply(_shape(record, SUPPRESSION_FIELDS), status=201)
 
 @require_http_methods(["POST"])
+@_in_turn
 def restore_suppression(request, suppression_id):
     record = get_object_or_404(Suppression, pk=suppression_id, restored_at__isnull=True)
     problem = _restore(record)
@@ -1028,6 +1041,7 @@ def _restore(record) -> str | None:
     record.save(update_fields=["restored_at"])
     return None
 
+@_in_turn
 def _restore_expired() -> list:
     due = Suppression.objects.filter(
         restored_at__isnull=True, expires_at__lte=timezone.now()
@@ -1039,6 +1053,7 @@ def _restore_expired() -> list:
     return lifted
 
 @require_http_methods(["POST"])
+@_in_turn
 def apply_rules(request):
     content = _rule_file(request)
     try:

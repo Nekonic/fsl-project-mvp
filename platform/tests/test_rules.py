@@ -83,8 +83,8 @@ def test_the_rule_paths_are_the_sensors_own():
     sensor = Sensor()
     suricata.apply(GOOD_RULE, sensor, RELOAD)
 
-    written = [argv for argv, stdin in sensor.calls if stdin is not None]
-    assert all("/var/lib/suricata/rules/" in " ".join(a) for a in written), written
+    written = [argv for argv, stdin in sensor.calls if argv[:2] == ["sh", "-c"]]
+    assert written and all("/var/lib/suricata/rules/" in " ".join(a) for a in written), written
 
 def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
