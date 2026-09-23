@@ -9,16 +9,17 @@ from range.ports import Ran, RangeUnavailable
 SECRET = "/runbooks/deploy.html"
 
 class Host:
-    def __init__(self, reply="", unreachable=False):
+    def __init__(self, reply="", unreachable=False, exit_code=0):
         self.calls = []
         self.reply = reply
         self.unreachable = unreachable
+        self.exit_code = exit_code
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         if self.unreachable:
             raise RangeUnavailable("that host is not there")
         self.calls.append((argv, stdin))
-        return Ran(0, self.reply)
+        return Ran(self.exit_code, self.reply)
 
     @property
     def written(self):
@@ -58,6 +59,18 @@ def test_choosing_an_origin_goes_through_the_port():
 def test_a_proxy_that_cannot_be_reached_is_not_a_silent_success():
     with pytest.raises(RangeUnavailable):
         attacker.set_label("c0ffee", Host(unreachable=True))
+
+@pytest.mark.parametrize("write", [attacker.set_label, attacker.set_origin])
+def test_a_write_the_proxy_could_not_make_is_not_a_silent_success(write):
+    refused = "sh: can't create /label/origin: Read-only file system"
+
+    with pytest.raises(attacker.AttackerUnavailable) as raised:
+        write("c0ffee", Host(reply=refused, exit_code=1))
+
+    assert refused in str(raised.value), (
+        "the proxy said why it could not take the write and the platform "
+        "dropped the reason"
+    )
 
 def test_the_path_asked_for_is_the_one_inside_the_wiki():
     from django.conf import settings

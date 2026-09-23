@@ -75,4 +75,8 @@ def set_label(case_id: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)
 
 def _write(proxy, where: str, value: str | None) -> None:
-    proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
+    ran = proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
+    if not ran.ok:
+        raise AttackerUnavailable(
+            f"the proxy could not write {where}: {ran.output.strip()[:200]}"
+        )
