@@ -48,6 +48,188 @@ const failing = (route, detail, when = () => true) => (request) =>
 browser.serve(healthy);
 """
 
+ALERTS = r"""
+const alert = (id, fields = {}) => ({
+  id, detection_id: `es-${id}:0`, source: "suricata", signature: "FSL SQLi attempt - URI",
+  severity: 3, timestamp: "2026-09-23T16:25:54Z", src_ip: "5.188.10.3", marker: null,
+  dest_ip: "10.10.0.5", dest_port: 80, method: "GET", path: "/rest/products/search",
+  ...fields,
+});
+let DETECTIONS = [];
+const answerAlerts = (request) => {
+  if (request.route === "/api/sessions/1/detections/") {
+    return {body: DETECTIONS.filter((d) => d.id > Number(request.query.after || 0))};
+  }
+  const detail = /^\/api\/detections\/(\d+)\/$/.exec(request.route);
+  if (detail) {
+    const found = DETECTIONS.find((d) => d.id === Number(detail[1]));
+    return {body: {...found, raw: {}, session: 1}};
+  }
+  return healthy(request);
+};
+browser.serve(answerAlerts);
+const table = (id) => Object.fromEntries(
+  browser.element(id).innerHTML.split("<tr ").slice(1).map((row) => [
+    /data-id="([^"]*)"/.exec(row)[1],
+    row.split(/<td\b/).slice(1).map((cell) =>
+      cell.slice(cell.indexOf(">") + 1).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()),
+  ]));
+const column = (index) => Object.fromEntries(
+  Object.entries(table("rows")).map(([id, cells]) => [id, cells[index]]));
+const caseColumn = () => column(10);
+const tiles = (id) => Object.fromEntries(
+  browser.element(id).innerHTML.split('<div class="bg-slate-900/60').slice(1).map((tile) =>
+    [...tile.matchAll(/<div class="[^"]*">([^<]*)<\/div>/g)].slice(0, 2).map((m) => m[1].trim())));
+const onlyUnattributed = async () => {
+  browser.element("only-orphans").checked = true;
+  await browser.force("only-orphans", "on");
+};
+"""
+
+SQLI_CASE = "6f1d2c3b-5a4e-4f60-9b8a-7c6d5e4f3a2b"
+
+PLACED = f"""
+DETECTIONS = [
+  alert(1),
+  alert(2, {{marker: {js(SQLI_CASE)}}}),
+  alert(3),
+];
+ANSWERS["/api/sessions/1/score/"] = {{
+  ...SCORE, tp: 2, tn: 0, benign_cases: 0, unattributed: 1,
+  per_case: [
+    {{case_id: "0b9e8d7c-window", name: "manual probe", malicious: true, detected: true,
+      verdict: "TP", detection_ids: ["es-1:0"], expect: "", corroborated: null}},
+    {{case_id: {js(SQLI_CASE)}, name: "sqli-union-user-table", malicious: true,
+      detected: true, verdict: "TP", detection_ids: ["es-2:0"], expect: "SQL",
+      corroborated: true}},
+  ],
+}};
+"""
+
+def test_the_unattributed_tile_counts_what_the_score_places_in_no_case(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + """
+          DETECTIONS = [
+            alert(1, {marker: "0d5a1c2e-3b4f-4a6d-8e9f-a0b1c2d3e4f5"}),
+            alert(2, {marker: "9b7f3e41-2c5d-4e6f-8a9b-c0d1e2f3a4b5"}),
+            alert(3),
+          ];
+          ANSWERS["/api/sessions/1/score/"] = {
+            ...SCORE, tp: 0, tn: 0, benign_cases: 0, unattributed: 3, per_case: [],
+          };
+        """,
+        scenario="""
+          const dashboard = browser.text("kpi-orphan");
+          await browser.click('[data-tab="score"]');
+          return {dashboard, score: tiles("totals")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["score"][english("blue.score.tile.unattributed")] == "3"
+    assert seen["result"]["dashboard"] == "3", (
+        "two alerts carried a case marker that belongs to no case in the session, "
+        "and the Dashboard counted only the one without a marker while the Score "
+        "tab counted all three as belonging to no case"
+    )
+
+def test_an_alert_a_window_case_placed_is_not_shown_as_unattributed(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACED,
+        scenario="""
+          const tile = browser.text("kpi-orphan");
+          const cases = caseColumn();
+          await onlyUnattributed();
+          return {tile, cases, filtered: Object.keys(table("rows")), shown: browser.text("shown")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["tile"] == "1", (
+        "an alert with no marker that a window case claimed was counted as unattributed"
+    )
+    assert seen["result"]["cases"] == {
+        "1": "manual probe",
+        "2": "sqli-union-user-table",
+        "3": english("blue.unattributed"),
+    }
+    assert seen["result"]["filtered"] == ["3"]
+    assert seen["result"]["shown"] == english("blue.alerts.count.filtered", 1, 3)
+
+def test_a_case_recorded_after_its_alerts_arrived_takes_them_out_of_the_unattributed(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACED + """
+          const placedLater = ANSWERS["/api/sessions/1/score/"];
+          ANSWERS["/api/sessions/1/score/"] = {
+            ...placedLater, unattributed: 2, per_case: placedLater.per_case.slice(1),
+          };
+        """,
+        scenario="""
+          const before = {tile: browser.text("kpi-orphan"), cases: caseColumn()};
+          ANSWERS["/api/sessions/1/score/"] = placedLater;
+          await browser.poll();
+          return {before, after: {tile: browser.text("kpi-orphan"), cases: caseColumn()}};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"]["tile"] == "2"
+    assert seen["result"]["after"] == {
+        "tile": "1",
+        "cases": {
+            "1": "manual probe",
+            "2": "sqli-union-user-table",
+            "3": english("blue.unattributed"),
+        },
+    }, (
+        "the window case was recorded at Stop, after its alerts had arrived, and "
+        "the console kept showing them unattributed because no new alert came in"
+    )
+
+def test_the_drawer_names_the_case_the_score_placed_the_alert_in(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACED,
+        scenario="""
+          const meta = [];
+          for (const id of [1, 2, 3]) {
+            await openDrawer(id);
+            meta.push(browser.text("drawer-meta"));
+          }
+          return meta;
+        """,
+    )
+    at, source = "2026-09-23T16:25:54Z", "5.188.10.3"
+
+    assert seen["errors"] == []
+    assert seen["result"] == [
+        english("blue.drawer.meta.attributed", "suricata", at, source, "manual probe"),
+        english("blue.drawer.meta.attributed", "suricata", at, source, "sqli-union-user-table"),
+        english("blue.drawer.meta.unattributed", "suricata", at, source),
+    ]
+
+def test_an_unreadable_score_leaves_the_unattributed_count_unknown(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACED + """
+          browser.serve((request) => request.route === "/api/sessions/1/score/"
+            ? {status: 500, body: {detail: "the catalogue could not be read"}}
+            : answerAlerts(request));
+        """,
+        scenario="""
+          return {tile: browser.text("kpi-orphan"), cases: caseColumn()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"tile": "-", "cases": {"1": "-", "2": "-", "3": "-"}}, (
+        "the score could not be read and the console fell back to counting "
+        "alerts without a marker, which is not what belongs to no case"
+    )
+
 INDICATOR = """
 const indicator = () => ({
   label: browser.text("live-label"),

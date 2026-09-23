@@ -354,15 +354,44 @@
     setReachable(!failed, failed && detail(failed));
     if (!result.ok) return;
 
-    if (result.body.length) {
+    const arrived = result.body.length > 0;
+    if (arrived) {
       rows = rows.concat(result.body);
       lastId = Math.max(...result.body.map((d) => d.id));
       await loadOwners();
+    }
+    const moved = await loadPlacement();
+    if (arrived || moved) {
       renderAlerts();
       renderDashboard();
       if (showing("score")) renderScore();
     }
   }
+
+  let placed = null;
+
+  function placements(cases) {
+    const found = {};
+    for (const c of cases) {
+      for (const id of c.detection_ids) {
+        const names = found[id] = found[id] || [];
+        if (!names.includes(c.name)) names.push(c.name);
+      }
+    }
+    return found;
+  }
+
+  async function loadPlacement() {
+    const score = await api(`/api/sessions/${sessionId()}/score/`);
+    const next = score.ok ? placements(score.body.per_case) : null;
+    const moved = JSON.stringify(next) !== JSON.stringify(placed);
+    placed = next;
+    return moved;
+  }
+
+  const unplaced = (d) => placed !== null && !placed[d.detection_id];
+  const caseOf = (d) => placed === null ? "-"
+    : unplaced(d) ? t("blue.unattributed") : placed[d.detection_id].join(", ");
 
   let ticking = false;
 
@@ -429,7 +458,7 @@
     const orphansOnly = document.getElementById("only-orphans").checked;
     return rows.filter((d) => {
       if (sourceFilter && d.source !== sourceFilter) return false;
-      if (orphansOnly && d.marker) return false;
+      if (orphansOnly && !unplaced(d)) return false;
       if (!needle) return true;
       return [d.signature, d.src_ip, d.marker].some(
         (value) => (value || "").toLowerCase().includes(needle));
@@ -476,7 +505,7 @@
     document.getElementById("kpi-suricata").textContent = of("suricata");
     document.getElementById("kpi-modsec").textContent = of("modsecurity");
     document.getElementById("kpi-orphan").textContent =
-      rows.filter((d) => !d.marker).length;
+      placed === null ? "-" : rows.filter(unplaced).length;
   }
 
   function renderTop(body) {
@@ -608,8 +637,8 @@
         <td class="text-slate-400 font-mono text-xs max-w-md truncate"
             title="${esc(decodePath(d.path))}">${
           d.path ? esc(`${d.method} ${decodePath(d.path)}`) : "-"}</td>
-        <td class="pr-3 font-mono text-xs ${d.marker ? "text-slate-300" : "text-slate-400"}">
-          ${d.marker ? esc(d.marker.slice(0, 8)) : esc(t("blue.unattributed"))}</td>
+        <td class="pr-3 text-xs ${unplaced(d) ? "text-slate-400" : "text-slate-300"}">
+          ${esc(caseOf(d))}</td>
       </tr>`).join("");
 
     document.querySelectorAll(".alert-row").forEach((row) => {
@@ -637,10 +666,9 @@
     if (!ok) return;
     document.getElementById("drawer-signature").textContent = body.signature;
     const from = body.src_ip || t("blue.drawer.meta.src_unknown");
-    document.getElementById("drawer-meta").textContent = body.marker
-      ? t("blue.drawer.meta.attributed",
-          body.source, body.timestamp, from, body.marker.slice(0, 8))
-      : t("blue.drawer.meta.unattributed", body.source, body.timestamp, from);
+    document.getElementById("drawer-meta").textContent = unplaced(body)
+      ? t("blue.drawer.meta.unattributed", body.source, body.timestamp, from)
+      : t("blue.drawer.meta.attributed", body.source, body.timestamp, from, caseOf(body));
     document.getElementById("drawer-raw").textContent = JSON.stringify(body.raw, null, 2);
 
     const sid = body.raw?.alert?.signature_id;
