@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (the OpenStack substrate can be selected)
+Updated: 2026-09-23 (any view the range cannot answer is a 503 with the range's reason)
 
 ## Where things stand
 
@@ -257,6 +257,18 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**Any view the range cannot answer is a 503 with the range's reason**
+- Rebuilding the platform image without the host's socket group
+  (`DOCKER_GID=$(bin/docker-gid)`) made every docker call "permission
+  denied". Before the runners told a daemon error from a failed command, the
+  rules endpoint would have served that text as the rule file with a 200;
+  after, it was a bare 500, and so were validate, apply, suppress and the
+  attacker label - none of them handled `RangeUnavailable`.
+- One middleware, `api/unavailable.py`, answers `RangeUnavailable` from any
+  view with 503 and the range's own words, and the six per-view copies of
+  that handler are gone. `_segments()` still swallows it on purpose: a
+  dashboard draws without zones rather than not at all.
 
 **The OpenStack substrate can be selected**
 - `FSL_SUBSTRATE=range.openstack.OpenStack` failed on a missing `cloud`
