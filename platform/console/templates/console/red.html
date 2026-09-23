@@ -329,6 +329,7 @@
   let attacker = null;
   let openedAt = null;
   let windowCaseId = null;
+  let recordedFrom = null;
 
   const status = (text, tone) => {
     const element = document.getElementById("window-status");
@@ -387,15 +388,23 @@
     const malicious = document.getElementById("window-malicious");
 
     if (!openedAt) {
+      const from = {
+        address: windowAddress(),
+        origin: attacker.origin,
+        route: document.getElementById("window-route").value,
+      };
+      lockCase(true);
       windowCaseId = crypto.randomUUID();
       const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
       if (!labelled.ok) {
+        lockCase(false);
         status(t("red.window.status.marker_failed", detail(labelled)), "text-amber-400");
         return;
       }
+      recordedFrom = from;
       openedAt = new Date();
       toggle.textContent = t("red.window.stop");
-      status(t("red.window.status.recording", windowAddress()), "text-rose-400");
+      status(t("red.window.status.recording", from.address), "text-rose-400");
       note(t("red.log.case_started", name.value), "text-slate-500");
       return;
     }
@@ -406,7 +415,8 @@
       name: name.value,
       malicious: malicious.checked,
       correlation: "window",
-      source_ip: windowAddress(),
+      source_ip: recordedFrom.address,
+      meta: { origin: recordedFrom.origin, route: recordedFrom.route },
       started_at: openedAt.toISOString(),
       ended_at: new Date().toISOString(),
     });
@@ -419,6 +429,8 @@
     );
     await pollObjectives();
     openedAt = null;
+    recordedFrom = null;
+    lockCase(false);
     toggle.textContent = t("red.window.start");
     status(t("red.window.status.will_record", windowAddress()));
   }
