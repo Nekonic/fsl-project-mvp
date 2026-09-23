@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a failed read is no longer taken for an answer)
+Updated: 2026-09-24 (second audit: seventeen agent-built fixes merged; decisions listed)
 
 ## Where things stand
 
@@ -257,6 +257,70 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**Decisions the second audit left for a person**
+- **GeoIP stops on about 2026-10-18.** Elasticsearch's GeoIP downloader has
+  not succeeded since 2026-09-18 (`_ingest/geoip/stats`: 0 successful, 1
+  failed), and its databases expire 30 days after the last update. After
+  that nothing new is placed on the map. Either mount GeoLite2 `.mmdb` files
+  (a MaxMind account and licence) and disable the downloader, or let it
+  lapse knowingly.
+- **Which clock selects evidence.** Ingest selects by `@timestamp`, which is
+  Filebeat's read clock; ModSecurity records reach Elasticsearch about 15
+  minutes late, so a session's WAF evidence can arrive after it is scored.
+  Rewriting `@timestamp` to the event time in the pipeline fixes it at the
+  source, and the existing index would then hold both meanings unless it is
+  backfilled.
+- **Whether verify may share a stack with a person.** It now touches only
+  the sessions it made, but it still resets the target, the rules and the
+  attacker's origin under anyone using the console.
+- **The console's clock** (UTC as the server and the operator log use, or
+  local), and whether the API should answer an undefined precision or recall
+  with null instead of 0.0 (the console already shows "-").
+- **How the ratchet counts:** statements instead of physical lines (joining
+  a wrapped line "shrank" core tonight, see "A WAF alert shows the request
+  it judged"), the baseline read from `HEAD` instead of the working tree, and
+  whether `scoreboard.py` and parts of the views are core.
+- Made here with a default, to be confirmed: ModSecurity severity 0-2 is
+  High (CRS's blocking rule carries 0, its attack rules 2); an OpenStack
+  segment binds its single IPv4 subnet and refuses a second.
+- Not done: the terminal's leftover label after a page reload, a tool that
+  outlives its timeout, a rule indented enough that Suricata skips it
+  (waits for the counting decision), the marker join for alerts without a
+  transaction id, and freezing each case's `expect` with the case.
+
+**Seventeen agent-built fixes from the second audit**
+- Five agents in their own worktrees, reviewed and merged here, verified
+  together on the live stack (unit 760, acceptance 122).
+- The terminal's label and origin were written without checking the write:
+  a failed write answered 200. A failed write is 503 with the proxy's words;
+  a `case_id` that is not a plain string (0, false, a dict, CRLF) is 400
+  before it can reach an HTTP header; the red window keeps its state and
+  reverts the origin when the proxy refuses.
+- The blue console's Unattributed tile counted alerts without a marker, not
+  alerts no case owns - 26 against the Score tab's 427 on one session. It
+  reads the score's own case list now. ModSecurity severity is read on its
+  own scale (its 186 blocking decisions showed as Info), the histogram's
+  newest bar holds its share, and an undefined precision or recall shows "-".
+- The internal objective counted any log line containing the runbook path,
+  a 404 included, and a failed read as "not taken". The wiki logs status
+  and path as fields; only a 2xx of the exact path counts. The wiki was
+  recreated tonight for the new format; reads logged before it are ignored.
+- Silencing or restoring a rule edited the first textual match, so sid 100
+  could hit sid 1000's line or a msg containing "sid:100". It matches the
+  rule's own sid option.
+- `test/range.py` counted an unreachable Docker daemon as a command that ran;
+  it now reads the exit status the host reports, as the platform does (the
+  target has no shell, so it reports through its own node). A segment mark
+  carried by two compose networks is caught. Two acceptance assertions that
+  compared a value with itself now check the fired case's own evidence.
+- `bin/measure` crashed on a staged rename, a space or a non-ASCII name, and
+  counted a symlinked file twice (479 -> 550 on a scratch copy); it reads
+  `git ls-files -z` and regular files only, and verify says "measure
+  crashed" instead of "regressed". Services are counted as Compose sees
+  them, and measure refuses an override file or an `include:`. The test
+  floor counts only tests pytest collects and refuses duplicate names.
+  `data/` is ignored only at the root. Every number stayed the same.
 
 **A failed read is no longer taken for an answer**
 - `suricata.current()` returned whatever `cat` printed, exit status unread:
