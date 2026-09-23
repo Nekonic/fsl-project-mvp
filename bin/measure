@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "metrics.json"
@@ -29,7 +30,8 @@ CORE = (
     "redteam/harness.py",
 )
 
-TEST_DIRS = ("platform/tests", "test")
+TEST_DIRS = ("platform/tests/", "test/")
+TEST_FILES = "test_*.py"
 
 COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
 COMPOSE_OVERRIDES = (
@@ -88,13 +90,22 @@ def dependencies() -> int:
 
 def tests() -> int:
     total = 0
-    for directory in TEST_DIRS:
-        for path in sorted((ROOT / directory).glob("*.py")):
-            total += sum(
-                1
-                for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
-                if line.startswith("def test_")
+    for path in tracked_files():
+        if not path.startswith(TEST_DIRS) or not PurePosixPath(path).match(TEST_FILES):
+            continue
+        module = ast.parse((ROOT / path).read_bytes(), filename=path)
+        names = [
+            node.name
+            for node in module.body
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+        ]
+        twice = sorted({name for name in names if names.count(name) > 1})
+        if twice:
+            raise SystemExit(
+                f"measure: {path} defines {', '.join(twice)} more than once, "
+                f"and pytest runs only the last of each"
             )
+        total += len(names)
     return total
 
 def services() -> int:

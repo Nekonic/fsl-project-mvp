@@ -100,6 +100,40 @@ def test_a_symlink_is_not_counted_as_what_it_points_at(repo):
     )
 
 
+def test_only_tests_pytest_would_collect_are_counted(repo):
+    write(
+        repo, "platform/tests/test_collected.py",
+        'def test_one():\n    pass\n\n\nSOURCE = """\ndef test_in_a_string():\n'
+        '    pass\n"""\n',
+    )
+    write(repo, "platform/tests/deeper/test_nested.py", "def test_two():\n    pass\n")
+    write(repo, "platform/tests/helpers.py", "def test_never_collected():\n    pass\n")
+    write(repo, "test/conftest.py", "def test_nor_this():\n    pass\n")
+    git(repo, "add", ".")
+
+    assert measured(repo)["tests"] == 2, (
+        "a def test_ in a file pytest never collects, or inside a string, runs "
+        "nothing, and counting it lets a real test go without the floor noticing"
+    )
+
+
+def test_two_tests_with_one_name_in_a_module_are_refused(repo):
+    write(
+        repo, "test/test_twice.py",
+        "def test_same():\n    assert False\n\n\ndef test_same():\n    pass\n",
+    )
+    git(repo, "add", ".")
+
+    done = run_measure(repo)
+
+    assert done.returncode != 0, (
+        f"the second test_same replaces the first, so pytest runs one test "
+        f"and the floor counted two:\n{done.stdout}"
+    )
+    assert "test/test_twice.py" in done.stderr, done.stderr
+    assert "test_same" in done.stderr, done.stderr
+
+
 COMPOSE_SHAPES = {
     "this repo": (ROOT / "compose.yaml").read_text(),
     "indented by four": (
