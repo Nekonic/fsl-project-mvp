@@ -341,7 +341,13 @@
 
   async function tick() {
     const ingested = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
-    if (ingested.ok) setTruncated(ingested.body.truncated);
+    if (ingested.ok) {
+      setTruncated(ingested.body.truncated);
+      if (ingested.body.restored?.length) {
+        loadRules();
+        renderSuppressions();
+      }
+    }
     const result = await api(
       `/api/sessions/${sessionId()}/detections/?after=${lastId}`);
     const failed = [ingested, result].find((answer) => !answer.ok);
