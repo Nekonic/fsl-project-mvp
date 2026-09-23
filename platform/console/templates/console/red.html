@@ -300,16 +300,20 @@
       result.body.reduce((sum, o) => sum + o.difficulty, 0);
   }
 
-  let polling = null;
+  const CHECK_EVERY = 10000;
+  let timer = null;
+  let checking = false;
+  let recheck = false;
+  let closed = false;
 
   function stopPolling() {
-    if (polling === null) return;
-    clearInterval(polling);
-    polling = null;
+    if (closed) return;
+    closed = true;
+    clearTimeout(timer);
     note(t("red.log.session_closed"), "text-slate-500");
   }
 
-  async function pollObjectives() {
+  async function checkObjectives() {
     const result = await post(`/api/sessions/${sessionId()}/objectives/`);
     if (result.status === 409) {
       stopPolling();
@@ -317,9 +321,32 @@
     }
     if (result.ok && result.body.achieved) {
       note(t("red.log.taken", result.body.achieved), "text-rose-300 font-semibold");
-      loadObjectives();
+      await loadObjectives();
     }
-    refreshTaken();
+    await refreshTaken();
+  }
+
+  async function pollObjectives() {
+    if (checking) {
+      recheck = true;
+      return;
+    }
+    checking = true;
+    clearTimeout(timer);
+    try {
+      do {
+        recheck = false;
+        await checkObjectives();
+      } while (recheck && !closed);
+    } finally {
+      checking = false;
+      schedule();
+    }
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (!closed && !checking) timer = setTimeout(pollObjectives, CHECK_EVERY);
   }
 
   ["objective-search", "objective-category", "hide-solved"].forEach((id) => {
@@ -462,6 +489,6 @@
   render();
   loadOrigins().then(loadTerminal);
   refreshTaken();
-  polling = setInterval(pollObjectives, 10000);
+  schedule();
 </script>
 {% endblock %}
