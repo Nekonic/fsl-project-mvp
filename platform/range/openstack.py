@@ -23,6 +23,7 @@ BOOT = "POST {nova}/servers"
 CALLS = (TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT)
 
 FIXED = "OS-EXT-IPS:type"
+LAUNCHED = "OS-SRV-USG:launched_at"
 PAGE_LIMIT = 50
 
 RENEW_BEFORE = timedelta(seconds=30)
@@ -171,6 +172,19 @@ SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 
 
+def _generations(servers: list[dict]) -> dict[str, str]:
+    found = {}
+    for server in servers:
+        if not server.get("id"):
+            continue
+        booted = "".join(c for c in str(server.get(LAUNCHED) or "") if c.isdigit())
+        generation = "-".join(filter(None, ("fsl", server["id"], booted)))
+        for entries in (server.get("addresses") or {}).values():
+            for entry in entries:
+                if entry.get(FIXED) == "fixed":
+                    found[entry["addr"]] = generation
+    return found
+
 def _next(links) -> str:
     for link in links or []:
         if link.get("rel") == "next" and link.get("href"):
@@ -202,6 +216,7 @@ class OpenStack:
         self.cloud = cloud
         self.get = get
         self._shape: Shape | None = None
+        self._generations: dict[str, str] = {}
 
     def describe(self) -> Shape:
         if self._shape is None:
@@ -214,6 +229,7 @@ class OpenStack:
         )
         bound = self._bind(self._all(NETWORKS, "networks", tags=wanted))
         servers = self._all(SERVERS, "servers")
+        self._generations = _generations(servers)
 
         segments = []
         for declared in self.declared.segments:
@@ -247,7 +263,8 @@ class OpenStack:
             address = self._address(role, host, segment_id)
             with tempfile.TemporaryDirectory() as scratch:
                 said = Path(scratch) / "ssh.log"
-                command = self._ssh(address, stdin is not None, said)
+                config = self._config(Path(scratch) / "ssh_config", address)
+                command = self._ssh(address, stdin is not None, said, config)
                 command.append(shlex.join(reporting(argv)))
                 try:
                     done = subprocess.run(
@@ -261,24 +278,25 @@ class OpenStack:
                     ) from exc
                 except (OSError, subprocess.SubprocessError) as exc:
                     raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
-                complaint = " ".join(said.read_text().split()) if said.exists() else ""
+                complaint = " ".join(filter(None, (
+                    line.strip("@ ") for line in
+                    (said.read_text() if said.exists() else "").splitlines()
+                )))
 
             finished = reported(done.stderr or "")
             if finished is None:
                 raise RangeUnavailable(
                     f"{host} at {address} never reported the command "
                     f"finishing: "
-                    + (complaint[-600:] or "the connection ended before it did")
+                    + (complaint[:1000] or "the connection ended before it did")
                 )
             code, stderr = finished
             return Ran(exit_code=code, output=(done.stdout or "") + stderr)
 
         return run
 
-    def _ssh(self, address: str, reads_input: bool, log: Path) -> list[str]:
-        command = ["ssh"]
-        if self.cloud.ssh_config:
-            command += ["-F", self.cloud.ssh_config]
+    def _ssh(self, address: str, reads_input: bool, log: Path, config: Path) -> list[str]:
+        command = ["ssh", "-F", str(config)]
         if not reads_input:
             command.append("-n")
         return command + [
@@ -286,13 +304,28 @@ class OpenStack:
             "-E", str(log),
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
             "-o", "LogLevel=ERROR",
-            "-o", f"ConnectTimeout={CONNECT_TIMEOUT}",
-            "-o", f"ServerAliveInterval={SERVER_ALIVE_INTERVAL}",
-            "-o", f"ServerAliveCountMax={SERVER_ALIVE_COUNT_MAX}",
             f"{self.cloud.ssh_user}@{address}",
         ]
+
+    def _config(self, written: Path, address: str) -> Path:
+        lines = []
+        if self.cloud.ssh_config:
+            lines.append(f"Include {Path(self.cloud.ssh_config).resolve()}")
+        generation = self._generations.get(address)
+        if generation:
+            lines += [f"Host {address}", f"  HostKeyAlias {generation}"]
+        lines += [
+            "Host *",
+            "  BatchMode yes",
+            "  LogLevel ERROR",
+            "  StrictHostKeyChecking accept-new",
+            f"  ConnectTimeout {CONNECT_TIMEOUT}",
+            f"  ServerAliveInterval {SERVER_ALIVE_INTERVAL}",
+            f"  ServerAliveCountMax {SERVER_ALIVE_COUNT_MAX}",
+        ]
+        written.write_text("\n".join(lines) + "\n")
+        return written
 
     def launcher(self, segment_id: str):
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")

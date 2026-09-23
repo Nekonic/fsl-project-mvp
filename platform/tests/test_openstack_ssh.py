@@ -100,7 +100,12 @@ def host(tmp_path):
     state["daemon"].wait()
 
 
-def adapter(host) -> openstack.OpenStack:
+FIRST_BOOT = "2026-09-23T10:00:00.000000"
+
+
+def adapter(
+    host, server_id="kali-1", launched_at=FIRST_BOOT, **cloud
+) -> openstack.OpenStack:
     declaration = declared.read()
     standing = declaration.segments[0].id
     networks = {
@@ -116,7 +121,9 @@ def adapter(host) -> openstack.OpenStack:
     servers = {
         "servers": [
             {
+                "id": server_id,
                 "name": declaration.roles["attacker"],
+                openstack.LAUNCHED: launched_at,
                 "addresses": {
                     f"net-{standing}": [
                         {"addr": "127.0.0.1", openstack.FIXED: "fixed"}
@@ -133,17 +140,18 @@ def adapter(host) -> openstack.OpenStack:
             return {"subnets": []}
         return servers
 
-    cloud = openstack.Cloud(
-        keystone="http://keystone.invalid",
-        neutron="http://neutron.invalid",
-        nova="http://nova.invalid",
-        project="fsl",
-        user="fsl",
-        ssh_user=pwd.getpwuid(os.getuid()).pw_name,
-        ssh_key=str(host["key"]),
-        ssh_config=str(host["home"] / "ssh_config"),
-    )
-    return openstack.OpenStack(declaration, cloud, get=get)
+    reaching = openstack.Cloud(**{
+        "keystone": "http://keystone.invalid",
+        "neutron": "http://neutron.invalid",
+        "nova": "http://nova.invalid",
+        "project": "fsl",
+        "user": "fsl",
+        "ssh_user": pwd.getpwuid(os.getuid()).pw_name,
+        "ssh_key": str(host["key"]),
+        "ssh_config": str(host["home"] / "ssh_config"),
+        **cloud,
+    })
+    return openstack.OpenStack(declaration, reaching, get=get)
 
 
 def attacker(host):
@@ -221,24 +229,108 @@ def test_a_host_met_for_the_first_time_is_reached(host):
     )
 
 
-def test_a_host_whose_key_changed_is_refused_and_says_why(host):
-    run = attacker(host)
-    assert run(["true"]).exit_code == 0
-
+def another_key_answers(host, name="host-b"):
     host["daemon"].kill()
     host["daemon"].wait()
-    host["daemon"] = start_sshd(
-        host["home"], host["port"], keygen(host["home"] / "host-b")
-    )
+    host["daemon"] = start_sshd(host["home"], host["port"], keygen(host["home"] / name))
+
+
+def test_another_machine_at_an_instance_s_address_is_refused(host):
+    assert attacker(host)(["true"]).exit_code == 0
+
+    another_key_answers(host)
 
     with pytest.raises(RangeUnavailable) as raised:
-        run(["true"])
+        adapter(host).runner("attacker")(["true"])
 
+    assert "REMOTE HOST IDENTIFICATION HAS CHANGED" in str(raised.value)
     assert "Host key verification failed" in str(raised.value), (
-        f"a changed key at a known address is either a rebuilt instance or "
-        f"someone in between, and the operator has to be told which check "
-        f"failed rather than that there is no ssh: {raised.value}"
+        f"Nova says the same instance has stood there since the same boot, "
+        f"so a different key is someone else answering at its address: "
+        f"{raised.value}"
     )
+
+
+def test_a_rebuilt_instance_is_reached_again(host):
+    assert attacker(host)(["true"]).exit_code == 0
+
+    another_key_answers(host)
+    rebuilt = adapter(host, launched_at="2026-09-23T11:30:00.000000")
+
+    assert rebuilt.runner("attacker")(["true"]).exit_code == 0, (
+        "a rebuild recreates the root disk and cloud-init makes new host keys, "
+        "so every rebuild on a range that is rebuilt constantly locked the "
+        "platform out of that role until someone edited known_hosts by hand"
+    )
+
+
+def test_a_new_instance_given_an_old_address_is_reached(host):
+    assert attacker(host)(["true"]).exit_code == 0
+
+    another_key_answers(host)
+    replaced = adapter(host, server_id="kali-2")
+
+    assert replaced.runner("attacker")(["true"]).exit_code == 0, (
+        "Neutron hands a fixed address to the next instance, and that instance "
+        "is not an impostor of the last one"
+    )
+
+
+def test_a_reboot_is_not_a_rebuild(host):
+    assert attacker(host)(["true"]).exit_code == 0
+
+    another_key_answers(host)
+
+    with pytest.raises(RangeUnavailable):
+        adapter(host, launched_at=FIRST_BOOT).runner("attacker")(["true"])
+
+
+def test_a_deployment_that_pins_its_own_keys_is_not_overruled(host):
+    (host["home"] / "ssh_config").write_text(
+        f"Port {host['port']}\n"
+        f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
+        "StrictHostKeyChecking yes\n"
+    )
+
+    with pytest.raises(RangeUnavailable, match="Host key verification failed"):
+        attacker(host)(["true"])
+
+
+def test_a_deployment_s_bastion_is_not_given_the_instance_s_key(host, tmp_path):
+    bastion_port = free_port()
+    bastion = start_sshd(tmp_path, bastion_port, keygen(tmp_path / "bastion"))
+    try:
+        (host["home"] / "ssh_config").write_text(
+            f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
+            f"Host jump\n"
+            f"  HostName 127.0.0.1\n"
+            f"  Port {bastion_port}\n"
+            f"  User {pwd.getpwuid(os.getuid()).pw_name}\n"
+            f"  IdentityFile {host['key']}\n"
+            f"  IdentitiesOnly yes\n"
+            f"  BatchMode yes\n"
+            f"Host 127.0.0.1\n"
+            f"  Port {host['port']}\n"
+            f"  ProxyJump jump\n"
+        )
+        run = attacker(host)
+
+        first = run(["true"])
+        assert (first.exit_code, first.output) == (0, ""), (
+            f"the jump host's own ssh wrote into the command's output: {first}"
+        )
+        assert run(["true"]).exit_code == 0, (
+            "the jump host's key was filed under the instance's alias, so the "
+            "second connection took the bastion for an impostor"
+        )
+    finally:
+        for pid in descendants(bastion.pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        bastion.kill()
+        bastion.wait()
 
 
 def test_a_refused_login_is_named(host):
