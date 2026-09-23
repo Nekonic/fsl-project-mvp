@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a case keeps what it was judged by; the consoles survive long uptime)
+Updated: 2026-09-24 (WAF evidence lag measured; origin drift and per-engine marker warning left with their options)
 
 ## Where things stand
 
@@ -330,11 +330,30 @@ One line each.
   (a MaxMind account and licence) and disable the downloader, or let it
   lapse knowingly.
 - **Which clock selects evidence.** Ingest selects by `@timestamp`, which is
-  Filebeat's read clock; ModSecurity records reach Elasticsearch about 15
-  minutes late, so a session's WAF evidence can arrive after it is scored.
-  Rewriting `@timestamp` to the event time in the pipeline fixes it at the
-  source, and the existing index would then hold both meanings unless it is
-  backfilled.
+  Filebeat's read clock, with a one-minute tail past the session's end. The
+  audit saw ModSecurity records land about 15 minutes late; measured
+  tonight over two hours of normal operation the lag is 5 s at the median
+  and 17 s at worst, so that was an episode, not the rule (the hour of the
+  Filebeat switch shows days-old events, which is the one-time re-ship).
+  Rewriting `@timestamp` to the event time in the pipeline would remove the
+  dependency on the read clock at the source; the existing index would then
+  hold both meanings unless it is backfilled.
+- **The terminal's origin file holds an address, and the WAF's address
+  moves.** `/label/origin` gets the WAF's address on the chosen segment when
+  the origin is set, and the proxy sends every terminal request there.
+  Compose pins no addresses, and Elasticsearch's history shows the WAF's
+  edge address going .4 -> .5 -> .4 across recreations. After a recreate the
+  terminal keeps using the old address until the red page is reloaded or an
+  origin is chosen. Pinning the WAF's addresses safely needs a reserved
+  dynamic range in each network's IPAM, which means recreating the networks;
+  the alternative is the platform rewriting the file whenever it reads the
+  range and finds it stale.
+- **A `no_marker` warning per engine.** It fires only when no detection of
+  the session carries a marker, so a sensor that lost every marker stays
+  silent while the WAF still has them. Narrowing it per engine would also
+  warn on every session whose Suricata alerts are all from raw TCP, which
+  never carries a marker; worth doing only with that distinction, and it
+  costs core lines.
 - **Whether verify may share a stack with a person.** It now touches only
   the sessions it made, but it still resets the target, the rules and the
   attacker's origin under anyone using the console.
