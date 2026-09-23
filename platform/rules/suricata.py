@@ -1,28 +1,26 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 RULE_PATH = "/var/lib/suricata/rules/local.rules"
 
 class RuleApplyError(RuntimeError):
     pass
 
-@dataclass(frozen=True)
-class ValidationOutcome:
-    ok: bool
-    output: str
+class RulesUnreadable(RuntimeError):
+    pass
 
 def current(sensor) -> str:
-    return sensor(["cat", RULE_PATH]).output
+    ran = sensor(["cat", RULE_PATH])
+    if not ran.ok:
+        raise RulesUnreadable(f"could not read {RULE_PATH}: {ran.output.strip()}")
+    return ran.output
 
-def validate(content: str, sensor) -> ValidationOutcome:
-    ran = sensor(["suricata", "-T", "-S", "/dev/stdin"], stdin=content)
-    return ValidationOutcome(ok=ran.ok, output=ran.output.strip())
+def validate(content: str, sensor):
+    return sensor(["suricata", "-T", "-S", "/dev/stdin"], stdin=content)
 
 def apply(content: str, sensor, reload_command) -> None:
     outcome = validate(content, sensor)
     if not outcome.ok:
-        raise RuleApplyError(outcome.output)
+        raise RuleApplyError(outcome.output.strip())
 
     previous = current(sensor)
     _write(sensor, RULE_PATH, content)

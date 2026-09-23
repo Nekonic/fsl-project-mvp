@@ -2,6 +2,7 @@ from django.core.exceptions import BadRequest
 from django.http import JsonResponse
 
 from range.ports import RangeUnavailable
+from rules.suricata import RulesUnreadable
 
 
 class Refusals:
@@ -12,7 +13,7 @@ class Refusals:
         return self.get_response(request)
 
     def process_exception(self, request, exception):
-        if isinstance(exception, RangeUnavailable):
+        if isinstance(exception, (RangeUnavailable, RulesUnreadable)):
             return JsonResponse({"detail": str(exception)}, status=503)
         if isinstance(exception, BadRequest):
             return JsonResponse({"detail": str(exception)}, status=400)

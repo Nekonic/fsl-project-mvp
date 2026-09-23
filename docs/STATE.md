@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (verify prunes only the sessions its run listed)
+Updated: 2026-09-24 (a failed read is no longer taken for an answer)
 
 ## Where things stand
 
@@ -257,6 +257,22 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A failed read is no longer taken for an answer**
+- `suricata.current()` returned whatever `cat` printed, exit status unread:
+  a rule file that could not be read was served as the rules (the editor
+  would apply the error text back), and an expired suppression was edited
+  from that text and recorded as lifted while its rule stayed silenced. It
+  raises `RulesUnreadable` now, which the refusals middleware answers 503 and
+  the ingest tick tolerates; nothing is recorded as lifted. `core_loc` fell by
+  one: `validate` returns the runner's own result instead of a copy of it.
+- A search that lost a shard answers 200 with fewer hits, and ingest read the
+  window as complete. It asks Elasticsearch with
+  `allow_partial_search_results=false`, so a lost shard is an error it
+  already reports.
+- A console poll and a close observing the target at once both saw an
+  objective as new, and the second died on the unique constraint.
+  Objectives are inserted ignoring rows already there, as detections are.
 
 **The platform's store no longer lives in a checkout**
 - From the second audit (nine unexamined areas, two refuters per finding,

@@ -4,7 +4,7 @@ import pytest
 
 from range.declared import Declaration
 from range.ports import EXIT_MARK, Ran, RangeUnavailable, reporting
-from rules.suricata import RuleApplyError, ValidationOutcome
+from rules.suricata import RuleApplyError
 
 pytestmark = pytest.mark.django_db
 
@@ -90,7 +90,7 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
 
     with patch(
-        "api.views.suricata.validate", return_value=ValidationOutcome(ok=True, output="ok")
+        "api.views.suricata.validate", return_value=Ran(0, "ok")
     ):
         response = client.post_json("/api/rules/validate/", {"content": GOOD_RULE})
 
@@ -101,7 +101,7 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
 def test_validate_endpoint_reports_failure_as_400_with_output(client):
     with patch(
         "api.views.suricata.validate",
-        return_value=ValidationOutcome(ok=False, output="Error parsing signature"),
+        return_value=Ran(1, "Error parsing signature"),
     ):
         response = client.post_json("/api/rules/validate/", {"content": "x"})
 
