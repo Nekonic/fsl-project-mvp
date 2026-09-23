@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a rule without an app-layer buffer credits the case it caught)
+Updated: 2026-09-24 (a case keeps what it was judged by; the consoles survive long uptime)
 
 ## Where things stand
 
@@ -258,6 +258,30 @@ One line each.
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
 
+**A case keeps what it was judged by, and rotation takes turns**
+- The score read each case's `expect` from the case file as it is now, so
+  editing the file re-scored sessions already closed and an unparseable file
+  broke old scores. `Case.expect` is stored when the case is recorded
+  (migration 0009; NULL for older cases, which still read the file). The
+  harness no longer coerces `malicious` with `bool()`, the catalogue is
+  checked when it loads (boolean `malicious`, unique names, exactly one of
+  request or tool), and a session for an unknown scenario is refused.
+- Origin rotation used the session's case count, so two fires at once, or a
+  pinned or hand-posted case in between, repeated or skipped an origin. A
+  per-session counter advanced with `F()` (migration 0010) gives each
+  rotated fire its own turn; a fire that then fails still uses one.
+
+**The consoles survive long uptime**
+- The red objective poll was an unguarded `setInterval`, and the blue tick
+  did not wait for the map, the top tables and the score panels it started,
+  so a slow answer was asked for again on every poll. Both wait now.
+- After a sleep or a background tab neither caught up until its next timer;
+  both poll once when the page is visible or online again, never in a burst.
+- The red log grew one line per attack forever (kept to the newest 200), an
+  objective taken reset the operator's category filter, and two overlapping
+  score draws showed each warning twice. Measured over 60 ticks of 40 alerts
+  the blue page stayed at 312 nodes and 18 listeners.
+
 **A rule without an app-layer buffer credits the case it caught**
 - Suricata writes a `tx_id` into an alert only when the rule inspects an
   application-layer buffer, and the marker join is keyed on
@@ -326,8 +350,11 @@ One line each.
   segment binds its single IPv4 subnet and refuses a second.
 - Not done: the terminal's leftover label after a page reload, a tool that
   outlives its timeout, a rule indented enough that Suricata skips it
-  (waits for the counting decision), the marker join for alerts without a
-  transaction id, and freezing each case's `expect` with the case.
+  (waits for the counting decision), how long Elasticsearch keeps
+  `fsl-logs-*` (nothing expires it, and a full disk makes indices read-only
+  and Filebeat stop silently - a retention length is a person's call, since
+  it deletes evidence), and the landing page's session list, which never
+  refreshes.
 
 **Seventeen agent-built fixes from the second audit**
 - Five agents in their own worktrees, reviewed and merged here, verified
