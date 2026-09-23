@@ -267,6 +267,28 @@ def test_each_engine_s_severity_is_read_on_its_own_scale(client):
         "injection as Medium"
     )
 
+@pytest.mark.parametrize("per_bar", [1, 10])
+def test_evenly_spaced_alerts_fill_every_bar_of_the_histogram_alike(client, per_bar):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"""
+          const START = Date.parse("2026-09-23T16:00:00Z");
+          const COUNT = 48 * {per_bar};
+          DETECTIONS = Array.from({{length: COUNT}}, (_, i) =>
+            alert(i + 1, {{timestamp: new Date(START + i * 60000).toISOString()}}));
+        """,
+        scenario="""
+          return [...browser.element("histogram").innerHTML.matchAll(/title="([^"]*)"/g)]
+            .map((m) => m[1]);
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == [english("blue.histogram.bar_title", per_bar)] * 48, (
+        "the newest bar held only the alerts at the single latest timestamp, "
+        "while the other 47 shared everything else"
+    )
+
 INDICATOR = """
 const indicator = () => ({
   label: browser.text("live-label"),
