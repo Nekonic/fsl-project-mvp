@@ -358,7 +358,6 @@
     if (arrived) {
       rows = rows.concat(result.body);
       lastId = Math.max(...result.body.map((d) => d.id));
-      await loadOwners();
     }
     const moved = await loadPlacement();
     if (arrived || moved) {
@@ -471,18 +470,6 @@
       return [d.signature, d.src_ip, d.marker].some(
         (value) => (value || "").toLowerCase().includes(needle));
     });
-  }
-
-  let owners = {};
-  const OWNERS_EVERY = 15000;
-  let ownersAt = 0;
-
-  async function loadOwners(force) {
-    if (!force && Date.now() - ownersAt < OWNERS_EVERY) return;
-    ownersAt = Date.now();
-    const { ok, body } = await api(`/api/sessions/${sessionId()}/top/`);
-    if (!ok) return;
-    owners = Object.fromEntries(body.sources.map((s) => [s.src_ip, s]));
   }
 
   const projectX = (lon) => lon + 180;
@@ -630,14 +617,11 @@
         <td><span class="border rounded px-1.5 py-0.5 text-xs
           border-slate-700 text-slate-400">${esc(d.source)}</span></td>
         <td class="text-slate-200">${esc(d.signature)}</td>
-        <td class="font-mono text-xs ${
-          (owners[d.src_ip] || {}).outside ? "text-rose-300" : "text-slate-400"
-        }">${esc(d.src_ip) || "-"}</td>
+        <td class="font-mono text-xs ${d.outside ? "text-rose-300" : "text-slate-400"}">${
+          esc(d.src_ip) || "-"}</td>
+        <td class="text-slate-500 text-xs whitespace-nowrap">${esc(d.zone) || "-"}</td>
         <td class="text-slate-500 text-xs whitespace-nowrap">${
-          esc((owners[d.src_ip] || {}).zone) || "-"}</td>
-        <td class="text-slate-500 text-xs whitespace-nowrap">${
-          esc([(owners[d.src_ip] || {}).city, (owners[d.src_ip] || {}).country]
-            .filter(Boolean).join(", ")) || "-"}</td>
+          esc([d.city, d.country].filter(Boolean).join(", ")) || "-"}</td>
         <td class="text-slate-400 font-mono text-xs whitespace-nowrap">${
           esc(d.dest_ip) || "-"}</td>
         <td class="text-slate-400 font-mono text-xs whitespace-nowrap tabular-nums">${
@@ -974,7 +958,6 @@
 
   loadRules();
   renderSuppressions();
-  loadOwners(true).then(() => { renderAlerts(); renderDashboard(true); });
   showTab("dashboard");
   setLive(true);
 </script>
