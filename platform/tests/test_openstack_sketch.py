@@ -1,5 +1,6 @@
 import inspect
 import pathlib
+import re
 import shlex
 
 import pytest
@@ -106,18 +107,22 @@ def test_the_sketch_offers_the_same_port_the_docker_adapter_does():
         ) == inspect.signature(getattr(docker.Docker, verb))
 
 
-def test_nothing_at_runtime_imports_the_sketch():
+def test_nothing_at_runtime_imports_the_openstack_adapter():
+    importing = re.compile(
+        r"^\s*(from range\.openstack import|import range\.openstack|"
+        r"from range import .*\bopenstack\b)", re.M,
+    )
     importers = [
         str(path.relative_to(PLATFORM))
         for path in PLATFORM.rglob("*.py")
         if path.parent.name != "tests"
         and path.name != "openstack.py"
-        and "openstack" in path.read_text()
+        and importing.search(path.read_text())
     ]
 
     assert importers == [], (
-        f"the sketch exists to be read, not run, and {importers} would carry "
-        f"an unfinished adapter into a release"
+        f"{importers} import the OpenStack adapter, so a Docker deployment "
+        f"loads it too. It is loaded by name, only when FSL_SUBSTRATE says so"
     )
 
 

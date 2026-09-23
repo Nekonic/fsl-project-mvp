@@ -38,6 +38,54 @@ SUBJECT_TOKEN = "X-Subject-Token"
 NETWORK_SERVICE = "network"
 COMPUTE_SERVICE = "compute"
 
+SETTINGS = {
+    "keystone": "FSL_OPENSTACK_KEYSTONE",
+    "user": "FSL_OPENSTACK_USER",
+    "password": "FSL_OPENSTACK_PASSWORD",
+    "project": "FSL_OPENSTACK_PROJECT",
+    "ssh_user": "FSL_OPENSTACK_SSH_USER",
+    "ssh_key": "FSL_OPENSTACK_SSH_KEY",
+}
+
+_connected: dict[tuple, tuple["Cloud", object]] = {}
+
+def connect(
+    declared: Declaration,
+    keystone: str = "",
+    user: str = "",
+    password: str = "",
+    project: str = "",
+    ssh_user: str = "",
+    ssh_key: str = "",
+    ssh_config: str = "",
+    region: str = "RegionOne",
+    interface: str = "public",
+) -> "OpenStack":
+    given = {
+        "keystone": keystone, "user": user, "password": password,
+        "project": project, "ssh_user": ssh_user, "ssh_key": ssh_key,
+    }
+    missing = [SETTINGS[name] for name, value in given.items() if not value]
+    if missing:
+        raise RangeUnavailable(
+            f"the OpenStack substrate reaches no cloud without "
+            f"{', '.join(missing)}"
+        )
+
+    known = (keystone, user, password, project, ssh_user, ssh_key,
+             ssh_config, region, interface)
+    if known not in _connected:
+        cloud = discover(
+            keystone, user, password, project, ssh_user, ssh_key,
+            region=region, interface=interface, ssh_config=ssh_config,
+        )
+        _connected[known] = (cloud, http_reader(cloud, password))
+    cloud, reader = _connected[known]
+    return OpenStack(declared, cloud, get=reader)
+
+def forget() -> None:
+    _connected.clear()
+
 def discover(
     keystone: str,
     user: str,
