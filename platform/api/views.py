@@ -449,9 +449,11 @@ def _observe_objectives(session) -> dict:
         if key not in ignore
         for at, earliest, latest in [_achieved(objective, session, observed_at)]
     ]
-    Objective.objects.bulk_create(fresh)
+    before = session.objectives.count()
+    Objective.objects.bulk_create(fresh, ignore_conflicts=True)
 
-    observed = {"achieved": len(fresh), "total": session.objectives.count()}
+    total = session.objectives.count()
+    observed = {"achieved": total - before, "total": total}
     if unreadable:
         observed["unreadable"] = unreadable
     return observed
@@ -677,7 +679,7 @@ def ingest_detections(request, session_id):
     start, end = _session_window(session)
     try:
         restored = _restore_expired()
-    except RangeUnavailable:
+    except (RangeUnavailable, suricata.RulesUnreadable):
         restored = []
 
     try:
@@ -964,7 +966,7 @@ def current_rules(request):
 @_in_turn
 def validate_rules(request):
     outcome = suricata.validate(_rule_file(request), substrate().runner("sensor"))
-    payload = {"ok": outcome.ok, "output": outcome.output}
+    payload = {"ok": outcome.ok, "output": outcome.output.strip()}
     return _reply(payload, status=200 if outcome.ok else 400)
 
 def _minutes(given) -> float:

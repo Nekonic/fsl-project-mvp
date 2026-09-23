@@ -111,3 +111,13 @@ def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
         f"tested whatever that file held when the self-test started, so two "
         f"requests at once could approve each other's rules: {sensor.calls}"
     )
+
+def test_a_rule_file_that_cannot_be_read_is_not_served_as_the_rules():
+    class Unreadable(Sensor):
+        def __call__(self, argv, stdin=None, timeout=60.0):
+            if argv[0] == "cat":
+                return Ran(1, "cat: can't open '/var/lib/suricata/rules/local.rules': Permission denied")
+            return super().__call__(argv, stdin, timeout)
+
+    with pytest.raises(suricata.RulesUnreadable, match="Permission denied"):
+        suricata.current(Unreadable())

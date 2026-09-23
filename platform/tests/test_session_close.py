@@ -95,3 +95,30 @@ def test_an_attack_that_was_running_when_the_session_closed_is_still_in_its_wind
         "closed while it ran, so its evidence fell outside the window it is "
         "scored from and it counted as a miss"
     )
+
+
+def test_two_observations_at_once_record_an_objective_once(client, session_id):
+    from api import views
+    from api.models import Objective
+
+    real = views._achieved
+    underway = []
+
+    def overtaken(objective, session, observed_at):
+        if not underway:
+            underway.append(True)
+            with patch("objectives._fetch", return_value=solved()):
+                client.post_json(f"/api/sessions/{session_id}/objectives/")
+        return real(objective, session, observed_at)
+
+    with patch("objectives._fetch", return_value=solved()), patch(
+        "api.views._achieved", side_effect=overtaken
+    ):
+        response = client.post_json(f"/api/sessions/{session_id}/objectives/")
+
+    assert response.status_code == 200, (
+        f"a console poll and a close observed the target at once, both saw "
+        f"the objective as new, and the second died on the unique constraint: "
+        f"{response.status_code}"
+    )
+    assert Objective.objects.filter(session_id=session_id).count() == 1

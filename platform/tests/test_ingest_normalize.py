@@ -314,3 +314,22 @@ def test_a_waf_detection_keeps_where_its_source_is():
         "the map places an address by the detections it has, and an address "
         "the WAF alone caught was never placed anywhere"
     )
+
+
+def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
+    from unittest.mock import patch
+
+    from ingest import elastic
+
+    with patch("ingest.elastic.requests.post") as posted:
+        posted.return_value.ok = True
+        posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
+        try:
+            elastic.fetch("http://es:9200", "fsl-logs-*", datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
+        except elastic.ElasticUnavailable:
+            pass
+
+    assert "allow_partial_search_results=false" in posted.call_args.args[0], (
+        "a search that lost a shard answers 200 with fewer hits, and ingest "
+        "read the window as complete"
+    )

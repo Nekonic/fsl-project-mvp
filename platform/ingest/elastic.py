@@ -36,7 +36,7 @@ def fetch(
 
     try:
         response = requests.post(
-            f"{url.rstrip('/')}/{index}/_search",
+            f"{url.rstrip('/')}/{index}/_search?allow_partial_search_results=false",
             json=query,
             timeout=timeout,
         )
