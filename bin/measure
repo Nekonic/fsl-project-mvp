@@ -31,6 +31,16 @@ CORE = (
 
 TEST_DIRS = ("platform/tests", "test")
 
+COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
+COMPOSE_OVERRIDES = (
+    "compose.override.yml",
+    "compose.override.yaml",
+    "docker-compose.override.yml",
+    "docker-compose.override.yaml",
+)
+YAML_KEY = re.compile(r"""(["']?)([A-Za-z0-9._-]+)\1[ \t]*:(?:[ \t]|$)""")
+BLOCK_VALUE = re.compile(r"[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?")
+
 METRICS = ("core_loc", "product_loc", "dependencies", "services", "tests")
 GATED = ("core_loc", "dependencies", "services")                 
 FLOOR = ("tests",)                 
@@ -88,22 +98,60 @@ def tests() -> int:
     return total
 
 def services() -> int:
-    compose = ROOT / "compose.yaml"
-    if not compose.exists():
-        return 0
+    for name in COMPOSE_OVERRIDES:
+        if (ROOT / name).exists():
+            raise SystemExit(
+                f"measure: {name} exists, and Compose merges it into the stack; "
+                f"move its services into compose.yaml or delete it"
+            )
+    for name in COMPOSE_FILES:
+        if (ROOT / name).exists():
+            return len(service_names(ROOT / name))
+    return 0
 
-    inside = False
-    count = 0
-    for line in compose.read_text().splitlines():
-        if re.match(r"^services:\s*$", line):
-            inside = True
+def service_names(compose: Path) -> set[str]:
+    def refuse(number: int, what: str) -> None:
+        raise SystemExit(
+            f"measure: {compose.name} line {number}: {what}; measure counts the "
+            f"services written out one per key under a block-style services:"
+        )
+
+    lines = [
+        (number, line)
+        for number, line in enumerate(compose.read_text().splitlines(), 1)
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if lines and lines[0][1].rstrip() == "---":
+        lines = lines[1:]
+    names: set[str] = set()
+    inside = seen = False
+    indent = None
+    for number, line in lines:
+        depth = len(line) - len(line.lstrip(" "))
+        text = line[depth:].rstrip()
+        if depth == 0:
+            key = YAML_KEY.match(text)
+            if not key:
+                refuse(number, "not a top-level key")
+            if key[2] == "include":
+                refuse(number, "include: adds services from other files")
+            inside = key[2] == "services"
+            if inside and (seen or not BLOCK_VALUE.fullmatch(text[key.end():])):
+                refuse(number, "services is not one block mapping")
+            seen = seen or inside
             continue
-        if inside:
-            if re.match(r"^\S", line):                                     
-                break
-            if re.match(r"^  [A-Za-z0-9_.-]+:\s*$", line):
-                count += 1
-    return count
+        if not inside:
+            continue
+        indent = depth if indent is None else indent
+        if depth > indent:
+            continue
+        if text.startswith("<<"):
+            refuse(number, "<< merges services in from an anchor")
+        key = YAML_KEY.match(text)
+        if depth < indent or not key:
+            refuse(number, "not a service name")
+        names.add(key[2])
+    return names
 
 def measure() -> dict[str, int]:
     core, product, _ = production_loc()

@@ -1,13 +1,33 @@
+import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = "services:\n  web:\n    image: nginx:1.27\n"
+
+
+def load_measure():
+    loader = SourceFileLoader("measure", str(ROOT / "bin/measure"))
+    module = importlib.util.module_from_spec(
+        importlib.util.spec_from_loader("measure", loader)
+    )
+    loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def measure(tmp_path, monkeypatch):
+    module = load_measure()
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    return module
 
 
 def git(root, *argv):
@@ -78,3 +98,99 @@ def test_a_symlink_is_not_counted_as_what_it_points_at(repo):
         "a tracked symlink holds a path, not code: counting its target counts "
         "that file twice, and a dangling one or one to a directory crashed"
     )
+
+
+COMPOSE_SHAPES = {
+    "this repo": (ROOT / "compose.yaml").read_text(),
+    "indented by four": (
+        "services:\n    web:\n        image: a:1\n    db:\n        image: b:1\n"
+    ),
+    "anchored and aliased": (
+        "services:\n  web: &web\n    image: a:1\n  worker: *web\n"
+    ),
+    "flow values": (
+        'services:\n  web: {image: "a:1"}\n  db: {image: "b:1"}\n'
+    ),
+    "quoted and commented": (
+        "services:   # the stack\n"
+        '  "web":   # the target\n'
+        "    image: a:1\n"
+        "  'db':\n"
+        "    image: b:1\n"
+    ),
+    "anchored mapping with merged bodies": (
+        "x-base: &base\n  image: a:1\n"
+        "services: &all\n  web:\n    <<: *base\n  db:\n    <<: *base\n"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "text", COMPOSE_SHAPES.values(), ids=list(COMPOSE_SHAPES)
+)
+def test_services_are_counted_as_yaml_reads_them(measure, tmp_path, text):
+    (tmp_path / "compose.yaml").write_text(text)
+
+    assert measure.services() == len(yaml.safe_load(text)["services"]), (
+        "a service measure cannot see is a service the gate lets in for free"
+    )
+
+
+def test_services_are_read_from_the_file_compose_would_pick(measure, tmp_path):
+    (tmp_path / "docker-compose.yml").write_text(COMPOSE)
+
+    assert measure.services() == 1
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "compose.override.yml",
+        "compose.override.yaml",
+        "docker-compose.override.yml",
+        "docker-compose.override.yaml",
+    ],
+)
+def test_an_override_file_is_refused_by_name(measure, tmp_path, name):
+    (tmp_path / "compose.yaml").write_text(COMPOSE)
+    (tmp_path / name).write_text("services:\n  hidden:\n    image: a:1\n")
+
+    with pytest.raises(SystemExit, match=re.escape(name)):
+        measure.services()
+
+
+UNCOUNTABLE = {
+    "include": (
+        "include:\n  - more.yaml\nservices:\n  web:\n    image: a:1\n",
+        "line 1: include",
+    ),
+    "services merged in": (
+        "x-more: &more\n  db:\n    image: b:1\n"
+        "services:\n  <<: *more\n  web:\n    image: a:1\n",
+        "line 5: <<",
+    ),
+    "flow mapping": (
+        'services: {web: {image: "a:1"}, db: {image: "b:1"}}\n',
+        "line 1: services",
+    ),
+    "aliased mapping": (
+        "x-all: &all\n  web:\n    image: a:1\nservices: *all\n",
+        "line 4: services",
+    ),
+    "tab indent": (
+        "services:\n\tweb:\n\t\timage: a:1\n",
+        "line 2",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "text, named", UNCOUNTABLE.values(), ids=list(UNCOUNTABLE)
+)
+def test_services_measure_cannot_count_are_refused_not_skipped(
+    measure, tmp_path, text, named
+):
+    (tmp_path / "compose.yaml").write_text(text)
+
+    with pytest.raises(SystemExit, match=re.escape(named)):
+        measure.services()
