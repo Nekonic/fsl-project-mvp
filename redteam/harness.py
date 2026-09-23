@@ -29,7 +29,7 @@ DEFAULT_TOOL_TARGET = "http://waf:8080"
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
 
 class CaseRequestAltered(RuntimeError):
-    """The request went out differently than declared, so ground truth is false."""
+    pass
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
     with open(path, encoding="utf-8") as handle:

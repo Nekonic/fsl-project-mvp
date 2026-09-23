@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 LOG_PATH = "/var/log/fsl/commands.log"
 
 class OperatorLogUnavailable(RuntimeError):
-    """The box is there and its log could not be read, so nothing is known."""
+    pass
 
 @dataclass(frozen=True)
 class Command:
