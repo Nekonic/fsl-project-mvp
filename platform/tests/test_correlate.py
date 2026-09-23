@@ -96,6 +96,16 @@ def test_window_case_rejects_detection_outside_slack():
 
     assert result.matches[0].detected is False
 
+def test_window_case_rejects_detection_before_slack():
+    result = correlate(
+        [case(correlation="window", source_ip="10.0.0.1", start=0, end=5)],
+        [det(detection_id="edge", src_ip="10.0.0.1", at=-2),
+         det(detection_id="too-early", src_ip="10.0.0.1", at=-2.001)],
+    )
+
+    assert result.matches[0].detection_ids == ("edge",)
+    assert result.unmatched_detection_ids == ("too-early",)
+
 def test_window_case_never_matches_by_marker():
                                                                             
     result = correlate(
