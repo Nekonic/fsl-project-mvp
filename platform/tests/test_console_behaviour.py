@@ -303,6 +303,50 @@ def test_restoring_a_suppression_reloads_the_rules_editor(client):
         "the editor kept the suppressed rule file after the rule was restored"
     )
 
+def test_a_suppression_the_ingest_lifted_reloads_the_editor_and_the_list(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE + """
+          ANSWERS["/api/rules/"] = SILENCED_RULES;
+          ANSWERS["/api/rules/suppressions/"] = {suppressions: [SUPPRESSION], restored: []};
+        """,
+        scenario="""
+          const rules = () => browser.requests.filter((request) => request.method === "GET"
+            && ["/api/rules/", "/api/rules/suppressions/"].includes(request.route)).length;
+          const shown = () => ({
+            editor: browser.element("editor").value, list: browser.text("suppressions"),
+          });
+          const before = shown();
+          const read = rules();
+          await browser.poll();
+          const quiet = rules() - read;
+          ANSWERS["/api/sessions/1/ingest/"] = {
+            ingested: 0, skipped: 0, restored: [{sid: 2100001, ok: true, detail: null}],
+          };
+          ANSWERS["/api/rules/"] = LIVE_RULES;
+          ANSWERS["/api/rules/suppressions/"] = {suppressions: [], restored: []};
+          await browser.poll();
+          const after = shown();
+          await browser.click("apply");
+          return {before, quiet, after, base: applies()[0].base};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"]["editor"] == f"# {RULE}"
+    assert "2100001" in seen["result"]["before"]["list"]
+    assert seen["result"]["quiet"] == 0, (
+        "a tick that lifted nothing re-read the rule file and would overwrite "
+        "whatever was being typed in the editor"
+    )
+    assert seen["result"]["after"] == {
+        "editor": RULE, "list": english("blue.rules.suppression.empty"),
+    }, (
+        "the ingest lifted an expired suppression and the console kept showing "
+        "the rule suppressed, in the list and in the editor an Apply would write back"
+    )
+    assert seen["result"]["base"] == "a1"
+
 def test_apply_names_the_version_of_the_rules_the_editor_was_filled_from(client):
     seen = open_page(
         client, "/blue/1/",
