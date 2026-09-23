@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (an address only the WAF caught is on the map)
+Updated: 2026-09-23 (a command over ssh is the command that was asked for)
 
 ## Where things stand
 
@@ -88,10 +88,10 @@ expired and retries once, and names any other refusal. `describe()` goes end
 to end over HTTP in `test_openstack_http.py` and comes back with a `Shape`.
 
 What that does **not** prove: the fake serves the reference's response shapes,
-not Neutron and Nova. Keystone scoping and domains are simplified, service
-catalogue discovery is skipped - endpoints are configuration - and `runner`
-(ssh) and `launcher` (a Nova boot) are still unimplemented. What changed is
-that the code is executed rather than only read. `test_openstack_sketch.py` holds it to
+not Neutron and Nova, and `runner` runs against an unprivileged sshd on
+127.0.0.1 in `test_openstack_ssh.py`, not against an instance. Keystone is
+simplified: the user's domain is always `default` and the project is an id.
+What changed is that the code is executed rather than only read. `test_openstack_sketch.py` holds it to
 the port and asserts nothing at runtime imports it. What it found is below;
 `topology.shape()` consumed its `Shape` unchanged, which is the part that works.
 
@@ -151,11 +151,14 @@ What is left for OpenStack, in order:
    somewhere else. Either the declaration grows an attacker per origin, or the
    range accepts one attacking position on OpenStack. A decision, not a task.
 
-4. **Nothing says how to get a shell.** `runner()` on Docker is `docker exec`,
-   which needs no credential. The sketch needs an ssh user, a key and an address
-   the platform can reach, and none of the three has anywhere to live. They are
-   credentials, so the answer is probably settings rather than the declaration -
-   but the declaration's `roles` values are host names in substrate vocabulary
+4. **Nothing supplies the shell's credentials.** `runner()` on Docker is
+   `docker exec`, which needs no credential. `Cloud` now carries the Keystone
+   user, the ssh login, a key and an optional ssh config (a bastion goes
+   there), and `discover()` takes all of them - but no setting feeds it:
+   `FSL_SUBSTRATE_OPTIONS` hands OpenStack only the declaration. The platform
+   image (`python:3.13-slim`) has no ssh client either. They are credentials,
+   so the answer is probably settings rather than the declaration - but the
+   declaration's `roles` values are host names in substrate vocabulary
    (`fsl-kali` is a compose `container_name`, a Nova server name and, after
    `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
    and is not addressable.
@@ -179,9 +182,9 @@ What is left for OpenStack, in order:
    is the router's, not the attacker's - the stamping proxy solves this on
    Docker and has no Neutron equivalent yet.
 
-**What the sketch is, exactly.** It cannot be run: there is no cloud here, and
-writing HTTP calls nobody can execute would only look like an adapter. What it
-can be is checked. Every field it reads is one the published API reference
+**What the sketch is, exactly.** There is no cloud here, so it runs against
+fakes built from the vendor's published responses and against a local sshd.
+Every field it reads is one the published API reference
 names - `networks[].id`, `.name`, `.tags` and the `tags-any` filter from the
 Networking v2.0 reference, `subnets[].cidr` and `.gateway_ip` from the same,
 and `servers[].addresses` keyed by the network's label with `addr` and
@@ -270,6 +273,41 @@ One line each.
   pipeline Elasticsearch runs is not the committed one - it is installed by
   hand, so it drifts silently otherwise. Records indexed before the change
   stay unplaced.
+
+**A command over ssh is the command that was asked for**
+- Run against a real sshd rather than a mocked `subprocess.run`, the runner
+  broke the port's contract. ssh(1): arguments "will be appended to the
+  command, separated by spaces" and handed to the remote shell, so `'a b'`
+  arrived as two arguments and `c;d` ran `d`. argv is quoted now.
+- An argv starting with `-o` was read by ssh as its own option - options are
+  parsed after the destination too - and ran a `ProxyCommand` on the platform.
+  The remote command now always starts `sh -c --`; the `--` matters twice,
+  because the remote `sh` also takes a script starting with `-` as options
+  (checked in dash, busybox and bash, the shells the range's images carry).
+- ssh(1): it "exits with the exit status of the remote command or with 255 if
+  an error occurred", so 255 said nothing. sqlmap exits 255 on an unhandled
+  exception; that is a tool that ran. The remote shell now reports the
+  command's status last on stderr: with the report it is `Ran`, whatever the
+  code - a `kill -9` is 137, as on Docker; without it the connection ended
+  first and it is `RangeUnavailable`.
+- ssh's own messages go to a log (`-E`), not into `Ran.output`; the first
+  contact's "Permanently added" line used to land there. That log is the reason
+  a failure gives: host key verification, permission denied, refused.
+- `BatchMode` alone refuses every host key nobody has seen - every instance of
+  a fresh cloud. `-n` when there is no input: the remote `cat` read the
+  platform's own stdin. `IdentitiesOnly`: an agent holding six other keys used
+  up `MaxAuthTries` first. `ConnectTimeout` and `ServerAlive*`: a host that
+  accepted and said nothing, or went silent mid-command, held the call for
+  the whole timeout, 600 s for a tool.
+- In both adapters: a timeout says it was one and that the command may still
+  be running (it is not killed on the host), and output that is not UTF-8 no
+  longer raises `UnicodeDecodeError` - neither `Ran` nor `RangeUnavailable`, so
+  no caller handled it, on a path that reads logs the red team can write.
+- The Keystone sign-in sent the ssh login as its user name. `Cloud.user` and
+  `Cloud.ssh_user` are separate, and a refused sign-in carries Keystone's reason
+  instead of "no X-Subject-Token".
+- Found by five sourced critics with a refuter each: 8 of 17 findings survived.
+  Every fix has a test that fails without it (13 mutants, 13 caught).
 
 **A tool runs where the attacker already is**
 - `launcher` raised NotImplementedError. Implementing it turned up the reason:

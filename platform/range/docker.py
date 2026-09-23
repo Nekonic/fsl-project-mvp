@@ -64,8 +64,13 @@ class Docker:
             try:
                 done = subprocess.run(
                     command, input=stdin, capture_output=True,
-                    text=True, timeout=timeout,
+                    text=True, errors="replace", timeout=timeout,
                 )
+            except subprocess.TimeoutExpired as exc:
+                raise RangeUnavailable(
+                    f"{host} did not finish within {timeout:.0f}s and may "
+                    f"still be running it"
+                ) from exc
             except (OSError, subprocess.SubprocessError) as exc:
                 raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
             output = (done.stdout or "") + (done.stderr or "")
@@ -84,8 +89,14 @@ class Docker:
             ]
             try:
                 done = subprocess.run(
-                    command, capture_output=True, text=True, timeout=timeout,
+                    command, capture_output=True, text=True, errors="replace",
+                    timeout=timeout,
                 )
+            except subprocess.TimeoutExpired as exc:
+                raise RangeUnavailable(
+                    f"{image} did not finish within {timeout:.0f}s and may "
+                    f"still be running"
+                ) from exc
             except (OSError, subprocess.SubprocessError) as exc:
                 raise RangeUnavailable(f"could not start {image}: {exc}") from exc
             return Ran(

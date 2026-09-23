@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import re
+import shlex
 import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
 from dataclasses import dataclass, replace
@@ -21,6 +25,12 @@ FIXED = "OS-EXT-IPS:type"
 PAGE_LIMIT = 50
 
 RENEW_BEFORE = timedelta(seconds=30)
+CONNECT_TIMEOUT = 10
+SERVER_ALIVE_INTERVAL = 15
+SERVER_ALIVE_COUNT_MAX = 3
+EXIT_MARK = "fsl.exit="
+EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
+REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 NOVA_MICROVERSION = "2.1"
 NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
 TOKEN_HEADER = "X-Auth-Token"
@@ -38,8 +48,24 @@ def discover(
     ssh_key: str,
     region: str = "RegionOne",
     interface: str = "public",
+    ssh_config: str = "",
     timeout: float = 30.0,
 ) -> "Cloud":
+    answered = _signed_in(keystone, user, password, project, timeout)
+
+    catalog = (answered.json().get("token") or {}).get("catalog") or []
+    return Cloud(
+        keystone=keystone,
+        neutron=_endpoint(catalog, NETWORK_SERVICE, region, interface),
+        nova=_endpoint(catalog, COMPUTE_SERVICE, region, interface),
+        project=project,
+        user=user,
+        ssh_user=ssh_user,
+        ssh_key=ssh_key,
+        ssh_config=ssh_config,
+    )
+
+def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float):
     answered = _send(
         "post", f"{keystone}/v3/auth/tokens", None,
         _password_body(user, password, project), timeout,
@@ -49,16 +75,7 @@ def discover(
             f"{keystone} refused the credentials with "
             f"{answered.status_code}: {answered.text.strip()[:200]}"
         )
-
-    catalog = (answered.json().get("token") or {}).get("catalog") or []
-    return Cloud(
-        keystone=keystone,
-        neutron=_endpoint(catalog, NETWORK_SERVICE, region, interface),
-        nova=_endpoint(catalog, COMPUTE_SERVICE, region, interface),
-        project=project,
-        ssh_user=ssh_user,
-        ssh_key=ssh_key,
-    )
+    return answered
 
 def _endpoint(catalog, service: str, region: str, interface: str) -> str:
     for entry in catalog:
@@ -95,9 +112,8 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
     held: dict = {"token": "", "expires": None}
 
     def authenticate() -> str:
-        answered = _send(
-            "post", f"{cloud.keystone}/v3/auth/tokens", None,
-            _password_body(cloud.ssh_user, password, cloud.project), timeout,
+        answered = _signed_in(
+            cloud.keystone, cloud.user, password, cloud.project, timeout
         )
         held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
         held["expires"] = _expiry(answered)
@@ -157,6 +173,12 @@ SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 
 
+def _reporting_exit(argv: list[str]) -> str:
+    return shlex.join([
+        "sh", "-c", "--",
+        f"{shlex.join(argv)}; {EXIT_REPORT}",
+    ])
+
 def _next(links) -> str:
     for link in links or []:
         if link.get("rel") == "next" and link.get("href"):
@@ -176,8 +198,10 @@ class Cloud:
     neutron: str
     nova: str
     project: str
+    user: str
     ssh_user: str
     ssh_key: str
+    ssh_config: str = ""
 
 
 class OpenStack:
@@ -229,25 +253,56 @@ class OpenStack:
 
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
             address = self._address(role, host, segment_id)
-            command = [
-                "ssh", "-i", self.cloud.ssh_key, "-o", "BatchMode=yes",
-                f"{self.cloud.ssh_user}@{address}", *argv,
-            ]
-            try:
-                done = subprocess.run(
-                    command, input=stdin, capture_output=True,
-                    text=True, timeout=timeout,
+            with tempfile.TemporaryDirectory() as scratch:
+                said = Path(scratch) / "ssh.log"
+                command = self._ssh(address, stdin is not None, said)
+                command.append(_reporting_exit(argv))
+                try:
+                    done = subprocess.run(
+                        command, input=stdin, capture_output=True,
+                        text=True, errors="replace", timeout=timeout,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise RangeUnavailable(
+                        f"{host} did not finish within {timeout:.0f}s and may "
+                        f"still be running it"
+                    ) from exc
+                except (OSError, subprocess.SubprocessError) as exc:
+                    raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+                complaint = " ".join(said.read_text().split()) if said.exists() else ""
+
+            reported = REPORTED.match(done.stderr or "")
+            if reported is None:
+                raise RangeUnavailable(
+                    f"{host} at {address} never reported the command "
+                    f"finishing: "
+                    + (complaint[-600:] or "the connection ended before it did")
                 )
-            except (OSError, subprocess.SubprocessError) as exc:
-                raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
-            if done.returncode == 255:
-                raise RangeUnavailable(f"no ssh to {host} at {address}")
             return Ran(
-                exit_code=done.returncode,
-                output=(done.stdout or "") + (done.stderr or ""),
+                exit_code=int(reported[2]),
+                output=(done.stdout or "") + reported[1] + reported[3],
             )
 
         return run
+
+    def _ssh(self, address: str, reads_input: bool, log: Path) -> list[str]:
+        command = ["ssh"]
+        if self.cloud.ssh_config:
+            command += ["-F", self.cloud.ssh_config]
+        if not reads_input:
+            command.append("-n")
+        return command + [
+            "-i", self.cloud.ssh_key,
+            "-E", str(log),
+            "-o", "BatchMode=yes",
+            "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "LogLevel=ERROR",
+            "-o", f"ConnectTimeout={CONNECT_TIMEOUT}",
+            "-o", f"ServerAliveInterval={SERVER_ALIVE_INTERVAL}",
+            "-o", f"ServerAliveCountMax={SERVER_ALIVE_COUNT_MAX}",
+            f"{self.cloud.ssh_user}@{address}",
+        ]
 
     def launcher(self, segment_id: str):
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")
