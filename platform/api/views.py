@@ -708,6 +708,15 @@ def ingest_detections(request, session_id):
 
     alerts = elastic.normalize_all(documents)
 
+    unmarked = set(
+        Detection.objects.filter(session=session, marker=None).values_list("detection_id", flat=True)
+    )
+    for alert in alerts:
+        if alert["marker"] and alert["detection_id"] in unmarked:
+            Detection.objects.filter(
+                session=session, detection_id=alert["detection_id"], marker=None
+            ).update(marker=alert["marker"])
+
                                                                        
                                                                           
                                        

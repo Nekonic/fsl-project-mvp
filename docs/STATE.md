@@ -272,6 +272,12 @@ One line each.
   a keep-alive flow with several requests in flight is still not guessed. The
   sensor was restarted with it tonight (`suricata --dump-config` shows it)
   and the same live test passes.
+- An alert that reached Elasticsearch before its own http event was stored
+  without a marker, and every later tick skipped it as already known, so the
+  case it caught never owned it. A tick now gives a stored marker-less alert
+  the marker its request brings, reading only the marker-less rows once per
+  tick. How often it happens live was not measured; the order is Suricata's
+  and Filebeat's, not ours.
 
 **A stopped sensor no longer opens the judge to the range**
 - With every port on loopback, the attacker box still reaches the platform
