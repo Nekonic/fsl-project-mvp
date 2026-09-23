@@ -121,9 +121,6 @@
   let catalogue = [];
   let scenario = null;
 
-  const detail = (result) =>
-    result.body.detail || result.status || t("common.no_answer");
-
   async function showCoverage() {
     const listed = await api("/api/wargames/");
     if (!listed.ok || !Array.isArray(listed.body)) return;

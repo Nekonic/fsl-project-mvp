@@ -33,6 +33,9 @@
       return { ok: response.ok, status: response.status, body };
     }
 
+    const detail = (result) =>
+      result.body.detail || result.status || t("common.no_answer");
+
     const ESCAPES = {
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     };
