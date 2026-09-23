@@ -1,7 +1,7 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, score_when_ready
+from conftest import PLATFORM_URL, score_when_ready, seen_by_both_engines
 
                                                                            
                                                                               
@@ -22,15 +22,10 @@ def _run(cases):
         assert fired.status_code == 201, fired.text
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-                                                                          
-                                                                            
-    def control_landed(totals):
-        return any(
-            case["name"] == CONTROL_CASE and case["detected"]
-            for case in totals["per_case"]
-        )
+    def control_seen_by_both(totals):
+        return seen_by_both_engines(session_id, totals, name=CONTROL_CASE)
 
-    return score_when_ready(session_id, until=control_landed)
+    return session_id, score_when_ready(session_id, until=control_seen_by_both)
 
 def _verdict(score, name):
     return next(c["verdict"] for c in score["per_case"] if c["name"] == name)
@@ -52,7 +47,7 @@ def silenced(stack_is_up):
         )
 
 def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
-    before = _run([SILENCED_CASE, CONTROL_CASE])
+    _, before = _run([SILENCED_CASE, CONTROL_CASE])
 
     assert _verdict(before, SILENCED_CASE) == "TP", (
         "the attack was not detected even with its rule on, so this test cannot "
@@ -60,8 +55,13 @@ def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
     )
 
 def test_silencing_the_rule_turns_the_attack_into_a_miss(silenced):
-    after = _run([SILENCED_CASE, CONTROL_CASE])
+    session_id, after = _run([SILENCED_CASE, CONTROL_CASE])
 
+    assert seen_by_both_engines(session_id, after, name=CONTROL_CASE), (
+        f"{CONTROL_CASE} was fired after {SILENCED_CASE} and never reached the "
+        f"score from both engines, so an alert for the silenced case may simply "
+        f"not have landed yet and a miss here proves nothing"
+    )
     assert _verdict(after, SILENCED_CASE) == "FN", (
         "the rule was silenced and the attack was still detected - either the "
         "reload did not happen or something else catches it"

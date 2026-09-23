@@ -15,6 +15,8 @@ TARGET_URL = "http://localhost:8080"
 
 SESSION_LINE = re.compile(r"^session (\d+) done$")
 
+ENGINES = {"suricata", "modsecurity"}
+
 def _reachable(url: str) -> bool:
     try:
         requests.get(url, timeout=3)
@@ -135,6 +137,22 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
     )
     assert last, "never got a score back. Check Elasticsearch and Filebeat."
     return last
+
+def credited_to(session_id: int, totals: dict, **case) -> list[dict]:
+    found = next(
+        (c for c in totals["per_case"]
+         if all(c[field] == value for field, value in case.items())),
+        None,
+    )
+    if found is None:
+        return []
+    listed = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+    ).json()
+    return [d for d in listed if d["detection_id"] in found["detection_ids"]]
+
+def seen_by_both_engines(session_id: int, totals: dict, **case) -> bool:
+    return ENGINES <= {d["source"] for d in credited_to(session_id, totals, **case)}
 
 @pytest.fixture(scope="session")
 def session_id(stack_is_up):
