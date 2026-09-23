@@ -95,6 +95,17 @@ FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
 FSL_SUBSTRATE_OPTIONS = dict(
     {
         "range.docker.Docker": {"project": os.environ.get("FSL_PROJECT", "fsl")},
+        "range.openstack.connect": {
+            "keystone": os.environ.get("FSL_OPENSTACK_KEYSTONE", ""),
+            "user": os.environ.get("FSL_OPENSTACK_USER", ""),
+            "password": os.environ.get("FSL_OPENSTACK_PASSWORD", ""),
+            "project": os.environ.get("FSL_OPENSTACK_PROJECT", ""),
+            "ssh_user": os.environ.get("FSL_OPENSTACK_SSH_USER", ""),
+            "ssh_key": os.environ.get("FSL_OPENSTACK_SSH_KEY", ""),
+            "ssh_config": os.environ.get("FSL_OPENSTACK_SSH_CONFIG", ""),
+            "region": os.environ.get("FSL_OPENSTACK_REGION", "RegionOne"),
+            "interface": os.environ.get("FSL_OPENSTACK_INTERFACE", "public"),
+        },
     }.get(FSL_SUBSTRATE, {}),
     declared=RANGE,
 )

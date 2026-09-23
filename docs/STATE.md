@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (a rebuilt instance is trusted again; an impostor is not)
+Updated: 2026-09-23 (the OpenStack substrate can be selected)
 
 ## Where things stand
 
@@ -151,17 +151,15 @@ What is left for OpenStack, in order:
    somewhere else. Either the declaration grows an attacker per origin, or the
    range accepts one attacking position on OpenStack. A decision, not a task.
 
-4. **Nothing supplies the shell's credentials.** `runner()` on Docker is
-   `docker exec`, which needs no credential. `Cloud` now carries the Keystone
-   user, the ssh login, a key and an optional ssh config (a bastion goes
-   there), and `discover()` takes all of them - but no setting feeds it:
-   `FSL_SUBSTRATE_OPTIONS` hands OpenStack only the declaration. The platform
-   image (`python:3.13-slim`) has no ssh client either. They are credentials,
-   so the answer is probably settings rather than the declaration - but the
-   declaration's `roles` values are host names in substrate vocabulary
-   (`fsl-kali` is a compose `container_name`, a Nova server name and, after
-   `removeprefix("fsl-")`, a compose unit), and a Nova server name is not unique
-   and is not addressable.
+4. **A role is found by a Nova server name.** The credentials are settled:
+   `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*` (keystone,
+   user, password, project, ssh user, key, optional ssh config, region,
+   interface), and a missing one is refused by its variable's name. What is
+   not settled is the declaration's `roles` values: host names in substrate
+   vocabulary (`fsl-kali` is a compose `container_name`, a Nova server name
+   and, after `removeprefix("fsl-")`, a compose unit), and a Nova server name
+   is not unique. Segments are bound by a tag for the same reason; roles are
+   not yet.
 
 5. **Whether the operator still looks like an outsider.** The rule that stops
    the red team calling the scoring API refuses any address standing in the
@@ -259,6 +257,18 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**The OpenStack substrate can be selected**
+- `FSL_SUBSTRATE=range.openstack.OpenStack` failed on a missing `cloud`
+  argument: nothing turned settings into one. `range.openstack.connect` does,
+  from `FSL_OPENSTACK_*`, and `/api/origins/` draws a range end to end through
+  Django against a fake Keystone, Neutron and Nova.
+- `range.substrate()` builds an adapter per request, so each request would
+  have signed in to Keystone and read its catalogue again. The discovered
+  endpoints and the reader holding the token are kept per set of
+  credentials; a test counts the tokens.
+- The platform image had no ssh client, so every runner call from it on
+  OpenStack would have been `FileNotFoundError`. It carries `openssh-client`.
 
 **A rebuilt instance is trusted again; an impostor is not**
 - The critics' top finding. Trust-on-first-use keyed by address locks the

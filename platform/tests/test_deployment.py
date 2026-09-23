@@ -162,3 +162,9 @@ def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
         "run reports TP 0 - which the session protocol answers with git reset "
         "--hard. A flaky red is worse than a slow verify"
     )
+
+def test_the_image_carries_the_ssh_client_the_openstack_runner_calls():
+    assert "openssh-client" in DOCKERFILE.read_text(), (
+        "python:3.13-slim has no ssh, so on OpenStack every runner and "
+        "launcher call from this image fails with FileNotFoundError"
+    )
