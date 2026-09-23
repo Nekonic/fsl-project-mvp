@@ -342,9 +342,22 @@
       ? attacker.direct_ip
       : attacker.source_ip;
 
+  let confirmedOrigin = null;
+
   async function loadTerminal() {
+    const select = document.getElementById("origin");
     const origin = chosenOrigin() === "rotate" ? "" : chosenOrigin();
-    await post("/api/attacker/origin/", { origin });
+    const moved = await post("/api/attacker/origin/", { origin });
+    if (!moved.ok) {
+      status(t("red.window.status.origin_failed", detail(moved)), "text-amber-400");
+      if (confirmedOrigin === null) {
+        document.getElementById("window-toggle").disabled = true;
+      } else {
+        select.value = confirmedOrigin;
+      }
+      return;
+    }
+    confirmedOrigin = select.value;
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
       status(t("red.window.status.unavailable", detail(result)), "text-amber-400");
@@ -409,7 +422,11 @@
       return;
     }
 
-    await post("/api/attacker/label/", { case_id: null });
+    const cleared = await post("/api/attacker/label/", { case_id: null });
+    if (!cleared.ok) {
+      status(t("red.window.status.clear_failed", detail(cleared)), "text-amber-400");
+      return;
+    }
     const result = await post(`/api/sessions/${sessionId()}/cases/`, {
       case_id: windowCaseId,
       name: name.value,

@@ -522,3 +522,119 @@ def test_a_window_that_could_not_start_leaves_its_controls_usable(client):
     assert seen["result"]["controls"] == UNLOCKED, (
         "a window that never started left its controls locked"
     )
+
+def test_a_window_whose_marker_could_not_be_cleared_keeps_recording(client):
+    reason = "the proxy could not write /label/active: Read-only file system"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          const refusingToClear = (request) =>
+            request.route === "/api/attacker/label/" && request.body.case_id === null
+              ? {{status: 503, body: {{detail: {js(reason)}}}}}
+              : healthy(request);
+          const recorded = () => browser.requests.filter(
+            (r) => r.method === "POST" && r.route === "/api/sessions/1/cases/").length;
+          const state = () => ({{
+            toggle: browser.text("window-toggle"),
+            status: browser.text("window-status"),
+            controls: disabled(),
+            recorded: recorded(),
+          }});
+        """,
+        scenario="""
+          await browser.click("window-toggle");
+          browser.serve(refusingToClear);
+          await browser.click("window-toggle");
+          const refused = state();
+          browser.serve(healthy);
+          await browser.click("window-toggle");
+          return {refused, retried: state()};
+        """,
+    )
+    refused, retried = seen["result"]["refused"], seen["result"]["retried"]
+
+    assert seen["errors"] == []
+    assert refused["status"] == english("red.window.status.clear_failed", reason), (
+        "the proxy kept stamping the case after Stop and the window did not say so"
+    )
+    assert refused["toggle"] == english("red.window.stop")
+    assert refused["controls"] == LOCKED
+    assert refused["recorded"] == 0, (
+        "the case was recorded as ended while the proxy was still stamping its "
+        "marker into the terminal's traffic"
+    )
+    assert retried["toggle"] == english("red.window.start")
+    assert retried["controls"] == UNLOCKED
+    assert retried["recorded"] == 1
+
+def test_an_origin_the_proxy_did_not_take_puts_the_select_back(client):
+    reason = "the proxy could not write /label/origin: Read-only file system"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          const refusingOrigin = (request) =>
+            request.method === "POST" && request.route === "/api/attacker/origin/"
+              ? {{status: 503, body: {{detail: {js(reason)}}}}}
+              : healthy(request);
+        """,
+        scenario="""
+          const before = browser.element("origin").value;
+          browser.serve(refusingOrigin);
+          await browser.choose("origin", "edge-br");
+          const refused = {
+            origin: browser.element("origin").value,
+            status: browser.text("window-status"),
+            proxied: browser.text("box-proxied"),
+            toggle: browser.element("window-toggle").disabled,
+          };
+          browser.serve(healthy);
+          await browser.click("window-toggle");
+          await browser.click("window-toggle");
+          const posted = browser.requests.filter(
+            (r) => r.method === "POST" && r.route === "/api/sessions/1/cases/");
+          return {before, refused, posted: posted.map((r) => r.body)};
+        """,
+    )
+    refused = seen["result"]["refused"]
+    [case] = seen["result"]["posted"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == "edge"
+    assert refused["status"] == english("red.window.status.origin_failed", reason)
+    assert refused["origin"] == "edge", (
+        "the proxy refused the move to edge-br and the select still showed edge-br, "
+        "so the operator believed the terminal left from Sao Paulo while it still "
+        "left from Moscow"
+    )
+    assert refused["proxied"] == "5.188.10.3"
+    assert refused["toggle"] is False
+    assert case["source_ip"] == "5.188.10.3"
+    assert case["meta"]["origin"] == "edge"
+
+def test_a_first_origin_the_proxy_did_not_take_leaves_no_window_to_start(client):
+    reason = "the proxy could not write /label/origin: Read-only file system"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          browser.serve((request) =>
+            request.method === "POST" && request.route === "/api/attacker/origin/"
+              ? {{status: 503, body: {{detail: {js(reason)}}}}}
+              : healthy(request));
+        """,
+        scenario="""
+          await browser.click("window-toggle");
+          return {
+            status: browser.text("window-status"),
+            toggle: browser.element("window-toggle").disabled,
+            labelled: browser.requests.filter((r) => r.route === "/api/attacker/label/").length,
+          };
+        """,
+    )
+
+    assert seen["errors"] == [], (
+        "Start was pressed on a window that never learned where the terminal "
+        "leaves from"
+    )
+    assert seen["result"]["status"] == english("red.window.status.origin_failed", reason)
+    assert seen["result"]["toggle"] is True
+    assert seen["result"]["labelled"] == 0
