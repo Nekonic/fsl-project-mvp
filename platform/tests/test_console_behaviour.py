@@ -230,6 +230,43 @@ def test_an_unreadable_score_leaves_the_unattributed_count_unknown(client):
         "alerts without a marker, which is not what belongs to no case"
     )
 
+SEVERITIES = [
+    ("suricata", 1, "high"),
+    ("suricata", 2, "medium"),
+    ("suricata", 3, "low"),
+    ("suricata", 4, "info"),
+    ("suricata", None, "info"),
+    ("modsecurity", 0, "high"),
+    ("modsecurity", 2, "high"),
+    ("modsecurity", 3, "medium"),
+    ("modsecurity", 4, "medium"),
+    ("modsecurity", 5, "low"),
+    ("modsecurity", 7, "low"),
+    ("modsecurity", None, "info"),
+]
+
+def test_each_engine_s_severity_is_read_on_its_own_scale(client):
+    detections = ", ".join(
+        f"alert({index}, {{source: {js(source)}, severity: {js(severity)}}})"
+        for index, (source, severity, _) in enumerate(SEVERITIES, start=1)
+    )
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"DETECTIONS = [{detections}];",
+        scenario="return column(1);",
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {
+        str(index): english(f"blue.alerts.severity.{level}")
+        for index, (_, _, level) in enumerate(SEVERITIES, start=1)
+    }, (
+        "ModSecurity reports the syslog scale, where CRS marks an attack 2 "
+        "(CRITICAL) and its blocking rule 949110 carries 0, and the console read "
+        "it on Suricata's 1 to 3 scale: a WAF block showed as Info and a SQL "
+        "injection as Medium"
+    )
+
 INDICATOR = """
 const indicator = () => ({
   label: browser.text("live-label"),

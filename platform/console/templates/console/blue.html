@@ -297,13 +297,15 @@
   document.title = t("blue.title");
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
 
-  const SEVERITY = {
-    1: {text: "text-rose-400", key: "blue.alerts.severity.high"},
-    2: {text: "text-amber-400", key: "blue.alerts.severity.medium"},
-    3: {text: "text-sky-400", key: "blue.alerts.severity.low"},
-  };
+  const HIGH = {text: "text-rose-400", key: "blue.alerts.severity.high"};
+  const MEDIUM = {text: "text-amber-400", key: "blue.alerts.severity.medium"};
+  const LOW = {text: "text-sky-400", key: "blue.alerts.severity.low"};
   const INFORMATIONAL = {text: "text-slate-500", key: "blue.alerts.severity.info"};
-  const severityOf = (d) => SEVERITY[d.severity] || INFORMATIONAL;
+  const SEVERITY = {
+    suricata: {1: HIGH, 2: MEDIUM, 3: LOW},
+    modsecurity: {0: HIGH, 1: HIGH, 2: HIGH, 3: MEDIUM, 4: MEDIUM, 5: LOW, 6: LOW, 7: LOW},
+  };
+  const severityOf = (d) => (SEVERITY[d.source] || {})[d.severity] || INFORMATIONAL;
 
   let rows = [];
   let lastId = 0;
