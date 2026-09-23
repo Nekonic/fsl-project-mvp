@@ -96,12 +96,15 @@ where this can be falsified: attacks are detected, benign traffic passes.
 test floor. `bin/measure` prints the numbers; `CLAUDE.md` explains what each
 one is for.
 
-Sessions accumulate — every acceptance run creates several. `bin/verify` prunes
-them after a full run, and `bin/prune` does it by hand:
+Sessions accumulate — every acceptance run creates about twenty. `bin/verify`
+records the newest session before the run and afterwards deletes only the
+closed sessions newer than it, so nothing a person made or still has open is
+touched. `bin/prune` does it by hand:
 
 ```bash
 bin/prune --keep 20           # says what it would delete
 bin/prune --keep 20 --apply   # deletes it
+bin/prune --after 812 --apply # only the closed sessions newer than 812
 ```
 
 ## Layout
