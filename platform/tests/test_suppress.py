@@ -54,3 +54,29 @@ def test_only_the_named_rule_is_touched_when_two_are_silenced():
 
     assert find(back, 9000001) is not None
     assert find(back, 9000003) is None
+
+RIVAL = 'alert http any any -> any any (msg:"FSL replaces sid:100"; sid:1000; rev:1;)'
+RULE = 'alert http any any -> any any (msg:"FSL original"; sid:100; rev:1;)'
+
+def test_a_msg_that_names_a_sid_does_not_make_its_rule_that_sid():
+    assert find(f"{RIVAL}\n{RULE}\n", 100) == RULE
+
+def test_silencing_sid_100_leaves_sid_1000_alone():
+    out = silence(f"{RIVAL}\n{RULE}\n", 100, "t")
+
+    assert out == f"{RIVAL}\n{MARKER} until t\n#{RULE}\n"
+
+def test_restoring_sid_100_leaves_sid_1000_and_its_marker_silenced():
+    both = f"{MARKER} until t1\n#{RIVAL}\n{MARKER} until t2\n#{RULE}\n"
+
+    assert restore(both, 100, RULE) == f"{MARKER} until t1\n#{RIVAL}\n{RULE}\n"
+
+def test_silencing_comments_the_rule_not_a_commented_copy_of_it():
+    out = silence(f"#{RULE}\n{RULE}\n", 100, "t")
+
+    assert out == f"#{RULE}\n{MARKER} until t\n#{RULE}\n"
+
+def test_restoring_uncomments_the_silenced_rule_not_a_commented_copy_of_it():
+    kept = f"#{RULE}\n{MARKER} until t\n#{RULE}\n"
+
+    assert restore(kept, 100, RULE) == f"#{RULE}\n{RULE}\n"
