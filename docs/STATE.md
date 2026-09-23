@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a WAF alert shows the request it judged)
+Updated: 2026-09-24 (an acceptance run leaves no session open)
 
 ## Where things stand
 
@@ -364,8 +364,12 @@ One line each.
   about twenty, so every verify deleted every session a person had made. It
   now prunes only closed sessions its own run made (first run: kept 29,
   dropped 11). It also refuses to restart a stack another checkout brought up,
-  instead of testing that tree's code under this tree's name. Acceptance
-  leaves about nine sessions open per run; nothing prunes those yet.
+  instead of testing that tree's code under this tree's name.
+- Acceptance left about nine sessions open per run, and the console's first
+  screen lists open sessions: after tonight's runs the operator saw 25 test
+  sessions "in progress". The run now closes every session it opened, so
+  prune takes all of them (24 on the first run). The 25 already open are
+  left for a person to close: nothing proves none of them is theirs.
 - Five unit tests could not fail on the regression they were named for (a
   rollback test that primed a throwaway sensor, one window edge, the
   false-positive denominator with as many attacks as benign cases). Each now

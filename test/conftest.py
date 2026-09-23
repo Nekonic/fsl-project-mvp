@@ -31,6 +31,26 @@ def stack_is_up():
             f"could not reach {url}. Run `{start_hint()}` first."
         )
 
+def _newest_session() -> int:
+    listed = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=60).json()
+    return listed[0]["id"] if listed else 0
+
+@pytest.fixture(scope="session", autouse=True)
+def the_run_leaves_no_session_open(stack_is_up):
+    before = _newest_session()
+    yield
+    for _ in range(10):
+        opened = [
+            s["id"] for s in requests.get(
+                f"{PLATFORM_URL}/api/sessions/?state=open&limit=25", timeout=60
+            ).json()
+            if s["id"] > before
+        ]
+        if not opened:
+            return
+        for session_id in opened:
+            requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+
 @pytest.fixture(scope="session", autouse=True)
 def terminal_leaves_by_the_front_door(stack_is_up):
     requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
