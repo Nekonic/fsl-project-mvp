@@ -1130,6 +1130,38 @@ def test_the_red_log_stops_growing_and_keeps_the_newest_lines(client):
     )
     assert seen["newest"] == english("red.log.sent", "the-last-one")
 
+def test_an_objective_taken_keeps_the_category_the_operator_chose(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + """
+          const objective = (key, name, category) =>
+            ({key, name, category, difficulty: 1, description: "", solved: false});
+          ANSWERS["GET /api/wargames/juice-shop/objectives/"] = () => [
+            objective("loginAdmin", "Login Admin", "Injection"),
+            objective("domXss", "DOM XSS", "XSS"),
+          ];
+          ANSWERS["POST /api/sessions/1/objectives/"] = () => ({achieved: 1});
+          const filter = () => ({
+            category: browser.element("objective-category").value,
+            listed: ["Login Admin", "DOM XSS"].filter(
+              (name) => browser.element("objectives").innerHTML.includes(name)),
+          });
+        """,
+        scenario="""
+          await browser.choose("objective-category", "XSS");
+          const chosen = filter();
+          await browser.poll();
+          return {chosen, after: filter()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["chosen"] == {"category": "XSS", "listed": ["DOM XSS"]}
+    assert seen["result"]["after"] == {"category": "XSS", "listed": ["DOM XSS"]}, (
+        "an objective fell, the category list was drawn again, and the filter "
+        "the operator had chosen went back to every category"
+    )
+
 def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
     seen = open_page(
         client, "/red/1/",

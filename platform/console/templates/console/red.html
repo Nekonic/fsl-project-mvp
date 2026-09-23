@@ -267,8 +267,10 @@
 
     const categories = [...new Set(objectives.map((o) => o.category))].sort();
     const select = document.getElementById("objective-category");
+    const chosen = select.value;
     select.innerHTML = `<option value="">${esc(t("red.objectives.all_categories"))}</option>` +
       categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    if (categories.includes(chosen)) select.value = chosen;
     renderObjectives();
   }
 
