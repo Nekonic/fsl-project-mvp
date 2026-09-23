@@ -5,7 +5,7 @@ from dataclasses import dataclass
 RULE_PATH = "/var/lib/suricata/rules/local.rules"
 
 class RuleApplyError(RuntimeError):
-    """The rules were not applied. The previous rule set is still live."""
+    pass
 
 @dataclass(frozen=True)
 class ValidationOutcome:

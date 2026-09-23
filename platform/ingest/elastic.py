@@ -10,7 +10,7 @@ MARKER_HEADER = "X-FSL-Case"
 _MARKER_KEY = MARKER_HEADER.lower()
 
 class ElasticUnavailable(RuntimeError):
-    """Cannot reach ES, or the index is absent. Distinct from "nothing detected"."""
+    pass
 
 def fetch(
     url: str,

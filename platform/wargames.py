@@ -18,7 +18,7 @@ WARGAMES = {
 }
 
 class UnknownWargame(KeyError):
-    """Asked for a wargame that is not in the catalogue."""
+    pass
 
 def catalogue() -> list[dict[str, Any]]:
     return [_summarise(wargame) for wargame in WARGAMES.values()]

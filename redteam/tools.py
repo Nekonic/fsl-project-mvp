@@ -19,13 +19,10 @@ TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
 SUPPORTED_TOOLS = {"sqlmap": "sqlmap"}
 
 class UnsupportedTool(ValueError):
-    """The case declared a tool this MVP does not know."""
+    pass
 
 class ToolUnavailable(RuntimeError):
-    """The tool never ran, so no attack went out and ground truth is false.
-
-    Counting that as a miss records a harness failure as a defence failure.
-    """
+    pass
 
                                                                            
                                                                            

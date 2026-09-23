@@ -10,11 +10,7 @@ EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 
 class RangeUnavailable(RuntimeError):
-    """The substrate could not be reached, so nothing is known about the range.
-
-    Distinct from a command that ran and failed. A caller that confuses the two
-    records its own breakage as a result about the defence.
-    """
+    pass
 
 @dataclass(frozen=True)
 class Ran:
@@ -58,31 +54,23 @@ class Runner(Protocol):
     def __call__(
         self, argv: list[str], stdin: str | None = None, timeout: float = 60.0
     ) -> Ran:
-        """Run argv on the host this runner is bound to.
-
-        Returns Ran when the command ran, whatever it exited with. Raises
-        RangeUnavailable when it could not be dispatched at all.
-        """
+        ...
 
 class Launcher(Protocol):
     def __call__(
         self, image: str, argv: list[str], timeout: float = 600.0
     ) -> Ran:
-        """Start a throwaway host from image on the segment this is bound to.
-
-        Returns when it has finished. Raises RangeUnavailable when nothing
-        could be started at all.
-        """
+        ...
 
 class Substrate(Protocol):
     def describe(self) -> Shape:
-        """The range as it is now. Raises RangeUnavailable rather than guessing."""
+        ...
 
     def runner(self, role: str, segment_id: str = "") -> Runner:
-        """A Runner bound to the host filling that role, on that segment."""
+        ...
 
     def launcher(self, segment_id: str) -> Launcher:
-        """A Launcher that starts throwaway hosts on that segment."""
+        ...
 
 def reporting(argv: list[str]) -> list[str]:
     return ["sh", "-c", "--", f"{shlex.join(argv)}; {EXIT_REPORT}"]
