@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a stopped sensor no longer opens the judge to the range)
+Updated: 2026-09-24 (a rule without an app-layer buffer credits the case it caught)
 
 ## Where things stand
 
@@ -257,6 +257,21 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A rule without an app-layer buffer credits the case it caught**
+- Suricata writes a `tx_id` into an alert only when the rule inspects an
+  application-layer buffer, and the marker join is keyed on
+  `(flow_id, tx_id)`. A rule written without one - the textbook
+  `content:"UNION"` with no `http.uri` - caught the case's request and was
+  owned by nothing: reproduced live, the rule fired twice on the case's own
+  request and the case owned only the WAF's detections. When such a rule is
+  the only one that catches an attack, the case scores a miss.
+- `detect: guess-applayer-tx: yes` in the sensor's config. Suricata's docs:
+  it ties the alert to a transaction "if the matching signature doesn't have
+  app-layer keywords", and only when exactly one live transaction exists, so
+  a keep-alive flow with several requests in flight is still not guessed. The
+  sensor was restarted with it tonight (`suricata --dump-config` shows it)
+  and the same live test passes.
 
 **A stopped sensor no longer opens the judge to the range**
 - With every port on loopback, the attacker box still reaches the platform
@@ -868,7 +883,9 @@ One line each.
   FP, FN and TN are untouched - `corroborated` is not an input to `detected`.
 - Two things the experiment turned up on its own. A rule that inspects no HTTP
   buffer produces alerts with no `tx_id`, so the marker join cannot reach them
-  and they are attributed to nothing: 259 alerts, zero effect on any score. And
+  and they are attributed to nothing: 259 alerts. "Zero effect on any score"
+  held only because another rule caught the same cases; see "A rule without
+  an app-layer buffer credits the case it caught". And
   the acceptance suite restored "whatever rules were there when it started",
   which cemented a rule set a previous run had broken; `conftest` now refuses to
   run unless the sensor is carrying the rules this repo declares.
