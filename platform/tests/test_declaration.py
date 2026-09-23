@@ -22,6 +22,14 @@ def built(compose):
             }
     return realised
 
+def carriers(compose):
+    found = {}
+    for key, network in (compose.get("networks") or {}).items():
+        segment_id = ((network or {}).get("labels") or {}).get(MARK)
+        if segment_id:
+            found.setdefault(segment_id, []).append(key)
+    return found
+
 def unmarked(compose):
     return sorted(
         key for key, network in (compose.get("networks") or {}).items()
@@ -52,6 +60,13 @@ def drift(compose, declaration):
             f"the network compose builds from {key!r} carries no {MARK}, so "
             f"nothing on it says which declared segment it realises"
         )
+    for segment_id, keys in sorted(carriers(compose).items()):
+        if len(keys) > 1:
+            complaints.append(
+                f"compose builds {len(keys)} networks carrying "
+                f"{MARK}={segment_id!r} ({', '.join(sorted(keys))}), so "
+                f"nothing says which of them the segment is"
+            )
 
     for segment_id in sorted(set(realised) - set(declared)):
         complaints.append(
@@ -117,6 +132,19 @@ def test_a_segment_compose_builds_and_nobody_declared_is_caught():
         "compose builds the network 'edge-cn' and the declaration says nothing "
         "about it, so the console would show a segment with no name and no origin"
     ]
+
+def test_one_segment_marked_on_two_networks_is_caught():
+    compose, declaration = documents()
+    compose["networks"]["estate-legacy"] = dict(compose["networks"]["estate"])
+
+    assert drift(compose, declaration) == [
+        "compose builds 2 networks carrying fsl.segment.id='estate' "
+        "(estate, estate-legacy), so nothing says which of them the segment is"
+    ], (
+        "the second network overwrote the first in the check and both agreed "
+        "with the declaration, while the Docker adapter refuses the stack "
+        "compose would build from it"
+    )
 
 def test_a_segment_declared_and_never_built_is_caught():
     compose, declaration = documents()
