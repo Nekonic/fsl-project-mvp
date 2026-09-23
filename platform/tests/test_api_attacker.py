@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from attacker import AttackerUnavailable
-from range.ports import Shape
+from range.ports import Ran, Shape
 
 pytestmark = pytest.mark.django_db
 
@@ -11,12 +11,19 @@ pytestmark = pytest.mark.django_db
                                                                         
 HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
          "target_url": "http://5.188.10.9:8080", "subnet": "", "network": "fsl_edge",
-         "default": True}]
+         "address": "5.188.10.9", "default": True}]
+REFUSED = "sh: can't create /label/origin: Read-only file system"
 
-def stub():
+def refusing(argv, stdin=None, timeout=60.0):
+    return Ran(1, REFUSED)
+
+def stub(proxy=None):
     class Stub:
         def describe(self):
             return Shape(segments=(), sensors=())
+
+        def runner(self, role, segment_id=""):
+            return proxy
 
     return patch("api.views.substrate", Stub)
 
@@ -37,6 +44,21 @@ def test_attacker_that_is_not_running_is_503_not_a_guess(client):
 
     assert response.status_code == 503
     assert "fsl-kali" in response.json()["detail"]
+
+@pytest.mark.parametrize("path, body", [
+    ("/api/attacker/label/", {"case_id": "c0ffee"}),
+    ("/api/attacker/label/", {"case_id": None}),
+    ("/api/attacker/origin/", {"origin": "edge"}),
+])
+def test_a_label_or_origin_the_proxy_did_not_take_is_503_with_its_reason(client, path, body):
+    with stub(proxy=refusing), patch("api.views.attacker.origins", return_value=HOME):
+        response = client.post_json(path, body)
+
+    assert response.status_code == 503, (
+        f"{path} answered {response.status_code} for a write the proxy refused, "
+        f"so the console believed the terminal was stamped or moved when it was not"
+    )
+    assert REFUSED in response.json()["detail"]
 
 def test_a_terminal_window_is_recorded_as_a_window_case(client):
                                                                            
