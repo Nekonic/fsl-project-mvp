@@ -52,7 +52,7 @@ from scoring.types import CORRELATION_STRATEGIES
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
-    "correlation", "source_ip", "started_at", "ended_at", "meta",
+    "expect", "correlation", "source_ip", "started_at", "ended_at", "meta",
 )
 DETECTION_FIELDS = (
     "id", "detection_id", "source", "signature", "severity", "timestamp",
@@ -160,7 +160,13 @@ def sessions(request):
 
         return _reply([_shape(s, SESSION_FIELDS) for s in found[:limit]])
 
-    body = _payload(request)
+    scenario = _payload(request).get("scenario")
+    if scenario is None:
+        scenario = "juice-shop"
+    if not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
+        raise BadRequest(
+            f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
+        )
     try:
         baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
     except objectives.ObjectivesUnavailable:
@@ -168,9 +174,7 @@ def sessions(request):
                                                                                
                                                                               
         baseline = None
-    session = Session.objects.create(
-        scenario=body.get("scenario") or "juice-shop", baseline=baseline
-    )
+    session = Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
 @require_http_methods(["GET"])
@@ -523,10 +527,11 @@ def fire_attack(request, session_id):
         session=session,
         case_id=case["case_id"],
         name=case["name"],
-        malicious=bool(case["malicious"]),
+        malicious=case["malicious"],
         stage=case.get("stage") or "",
         technique=case.get("technique") or "",
         pattern=case.get("pattern") or "",
+        expect=case.get("expect") or "",
         correlation=case["correlation"],
         source_ip=case.get("source_ip"),
         started_at=started_at,
@@ -610,6 +615,7 @@ def session_cases(request, session_id):
             stage=body.get("stage") or "",
             technique=body.get("technique") or "",
             pattern=body.get("pattern") or "",
+            expect=body.get("expect"),
             correlation=body["correlation"],
             source_ip=body.get("source_ip"),
             started_at=_instant(body["started_at"]),
@@ -664,6 +670,8 @@ def _case_errors(body):
     }
     if body.get("malicious") is not None and not isinstance(body["malicious"], bool):
         errors["malicious"] = [f"must be true or false, got {body['malicious']!r}."]
+    if body.get("expect") is not None and not isinstance(body["expect"], str):
+        errors["expect"] = [f"must be text or null, got {body['expect']!r}."]
     for field in ("started_at", "ended_at"):
         if body.get(field) is not None and _instant(body[field]) is None:
             errors[field] = [f"must be an ISO 8601 time with its offset, got {body[field]!r}."]
@@ -843,7 +851,7 @@ def session_score(request, session_id):
 
     result = correlate(records, [d.to_record() for d in detections])
     totals = compute_score(result)
-    per_case = _per_case(result, _expectations(session.scenario), signatures)
+    per_case = _per_case(result, _expected(session.scenario, cases), signatures)
     board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
     warnings = list(totals.warnings) + _wrong_reason_warnings(per_case)
     if session.truncated:
@@ -931,6 +939,14 @@ def _achieved(objective, session, observed_at):
         solved_at + resolution + scoreboard.CLOCK_SKEW,
     )
 
+def _expected(scenario, cases):
+    unrecorded = any(case.expect is None for case in cases)
+    catalogue = _expectations(scenario) if unrecorded else {}
+    return {
+        case.case_id: catalogue.get(case.name) if case.expect is None else case.expect
+        for case in cases
+    }
+
 def _expectations(scenario):
     try:
         return wargames.expectations(scenario)
@@ -951,9 +967,9 @@ def _per_case(result, expectations, signatures):
             "detected": m.detected,
             "verdict": _verdict(m.malicious, m.detected),
             "detection_ids": list(m.detection_ids),
-            "expect": expectations.get(m.name) or "",
+            "expect": expectations.get(m.case_id) or "",
             "corroborated": scoreboard.corroborated(
-                expectations.get(m.name),
+                expectations.get(m.case_id),
                 [signatures[d] for d in m.detection_ids if d in signatures],
                 indiscriminate,
             ),

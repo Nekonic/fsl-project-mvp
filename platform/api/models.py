@@ -30,6 +30,7 @@ class Case(models.Model):
     stage = models.CharField(max_length=32, blank=True, default="")
     technique = models.CharField(max_length=64, blank=True, default="")
     pattern = models.CharField(max_length=32, blank=True, default="")
+    expect = models.CharField(max_length=128, null=True)
     correlation = models.CharField(max_length=16)
     source_ip = models.GenericIPAddressField(null=True, blank=True)
     started_at = models.DateTimeField()

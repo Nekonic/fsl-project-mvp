@@ -148,6 +148,25 @@ def test_a_well_formed_case_is_still_recorded(client, session_id):
     assert response.status_code == 201, response.content
 
 
+@pytest.mark.parametrize("given", [7, True, ["SQL"], {"text": "SQL"}])
+def test_what_a_case_should_be_found_by_is_text_or_nothing(client, session_id, given):
+    response = record(client, session_id, a_case(expect=given))
+
+    assert response.status_code == 400, (
+        f"expect={given!r} was accepted: it is matched against alert signatures "
+        f"as text, so anything else would be judged on its repr"
+    )
+    assert "expect" in response.json()
+
+
+@pytest.mark.parametrize("given", ["SQL", "", None])
+def test_what_a_case_should_be_found_by_is_recorded_as_given(client, session_id, given):
+    response = record(client, session_id, a_case(expect=given))
+
+    assert response.status_code == 201, response.content
+    assert response.json()["expect"] == given
+
+
 @pytest.mark.parametrize("given", [
     0, False, 123, {}, ["c0ffee"], "a\r\nb", "a\r\nX-Other: 1", "two words",
     "tab\tbetween", "nul\x00", "zero​width", " ",

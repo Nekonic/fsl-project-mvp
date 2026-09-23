@@ -20,6 +20,9 @@ WARGAMES = {
 class UnknownWargame(KeyError):
     pass
 
+class InvalidCatalogue(ValueError):
+    pass
+
 def catalogue() -> list[dict[str, Any]]:
     return [_summarise(wargame) for wargame in WARGAMES.values()]
 
@@ -27,7 +30,7 @@ def cases(wargame_id: str) -> list[dict[str, Any]]:
     return [
         {
             "name": case["name"],
-            "malicious": bool(case["malicious"]),
+            "malicious": case["malicious"],
             "stage": case.get("stage") or "",
             "technique": case.get("technique") or "",
             "pattern": case.get("pattern") or "",
@@ -60,7 +63,28 @@ def _load(wargame_id: str) -> list[dict[str, Any]]:
     if wargame_id not in WARGAMES:
         raise UnknownWargame(wargame_id)
     path = Path(settings.WARGAME_CASES_DIR) / WARGAMES[wargame_id]["case_file"]
-    return load_cases(path)
+    return checked(load_cases(path), path)
+
+def checked(loaded: Any, source) -> list[dict[str, Any]]:
+    if not isinstance(loaded, list) or not all(isinstance(case, dict) for case in loaded):
+        raise InvalidCatalogue(f"{source}: a catalogue is a list of cases")
+    for case in loaded:
+        name = case.get("name")
+        if not isinstance(case.get("malicious"), bool):
+            raise InvalidCatalogue(
+                f"{source}: {name!r} must say malicious: true or false, "
+                f"got {case.get('malicious')!r}"
+            )
+        if bool(case.get("request")) == bool(case.get("tool")):
+            raise InvalidCatalogue(
+                f"{source}: {name!r} must either send a request or run a tool, "
+                f"and not both"
+            )
+    names = [case.get("name") for case in loaded]
+    twice = sorted({str(name) for name in names if names.count(name) > 1})
+    if twice:
+        raise InvalidCatalogue(f"{source}: {', '.join(twice)} named more than once")
+    return loaded
 
 def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
     loaded = _load(wargame["id"])

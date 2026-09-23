@@ -101,6 +101,19 @@ def test_asking_for_fewer_sessions_returns_fewer(client):
 
     assert len(client.get("/api/sessions/?limit=2").json()) == 2
 
+@pytest.mark.parametrize("scenario", ["nope", ["x"], 3])
+def test_a_session_for_a_wargame_that_does_not_exist_is_refused(client, scenario):
+    from api.models import Session
+
+    response = client.post_json("/api/sessions/", {"scenario": scenario})
+
+    assert response.status_code == 400, (
+        f"a session was opened for {scenario!r}: every attack fired into it is "
+        f"looked up in a catalogue that does not exist, and its score is judged "
+        f"against no expectations at all"
+    )
+    assert not Session.objects.exists()
+
 def test_create_session_returns_id_and_start_time(client):
     response = client.post_json("/api/sessions/", {"scenario": "juice-shop"})
 

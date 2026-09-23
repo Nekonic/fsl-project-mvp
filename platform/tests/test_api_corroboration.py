@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
+from redteam.harness import load_cases
 from tests.sessions import open_session
 
 pytestmark = pytest.mark.django_db
@@ -105,3 +108,67 @@ def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
     assert s["per_case"][0]["detected"] is True
     assert s["per_case"][0]["corroborated"] is None
     assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])
+
+CASES_DIR = Path(__file__).resolve().parents[2] / "redteam/cases"
+MATCHING = "FSL path traversal attempt"
+
+def edited_catalogue(directory):
+    edited = load_cases(CASES_DIR / "default.yaml")
+    for case in edited:
+        if case["name"] == CASE:
+            case["expect"] = "SQL"
+    directory.mkdir()
+    (directory / "default.yaml").write_text(yaml.safe_dump(edited))
+    return str(directory)
+
+def unparseable_catalogue(directory):
+    directory.mkdir()
+    (directory / "default.yaml").write_text("- name: [unclosed\n  malicious: true\n")
+    return str(directory)
+
+def judged(response):
+    return response.status_code, [
+        (c["name"], c["expect"], c["corroborated"]) for c in response.json()["per_case"]
+    ]
+
+def rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path):
+    with patch("api.views.elastic.fetch", return_value=([alert(case_id, MATCHING)], None)):
+        client.post_json(f"/api/sessions/{session_id}/ingest/")
+    client.post_json(f"/api/sessions/{session_id}/close/")
+    scored = [judged(client.get(f"/api/sessions/{session_id}/score/"))]
+    settings.WARGAME_CASES_DIR = edited_catalogue(tmp_path / "edited")
+    scored.append(judged(client.get(f"/api/sessions/{session_id}/score/")))
+    settings.WARGAME_CASES_DIR = unparseable_catalogue(tmp_path / "broken")
+    scored.append(judged(client.get(f"/api/sessions/{session_id}/score/")))
+    return scored
+
+def test_an_attack_fired_from_the_console_keeps_the_expectation_it_was_fired_under(
+    client, session_id, settings, tmp_path
+):
+    with patch("api.views.harness.fire"):
+        fired = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": CASE}).json()
+
+    scored = rescored_after_the_catalogue_changes(
+        client, session_id, fired["case_id"], settings, tmp_path
+    )
+
+    assert fired["expect"] == "traversal"
+    assert scored == [(200, [(CASE, "traversal", True)])] * 3, (
+        "a closed session was scored against the case file as it is now: editing "
+        "an expectation rewrote an old verdict, and a file that no longer parses "
+        "took every old score down with it"
+    )
+
+def test_a_case_recorded_through_the_api_keeps_the_expectation_it_was_recorded_with(
+    client, session_id, settings, tmp_path
+):
+    case_id = "44444444-4444-4444-8444-444444444444"
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": case_id, "name": CASE, "malicious": True, "expect": "traversal",
+        "correlation": "marker", "started_at": T0.isoformat(),
+        "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
+    })
+
+    scored = rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path)
+
+    assert scored == [(200, [(CASE, "traversal", True)])] * 3

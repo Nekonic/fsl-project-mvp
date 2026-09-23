@@ -134,6 +134,47 @@ def test_case_meta_describes_an_http_case():
 
     assert case_meta(case) == {"request": {"method": "GET", "path": "/x"}}
 
+def recorded(case):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from redteam.harness import _record
+
+    posted = []
+
+    class Platform:
+        def post(self, url, json, timeout):
+            posted.append(json)
+            return SimpleNamespace(raise_for_status=lambda: None)
+
+    now = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    _record(Platform(), "http://platform", 1, dict(
+        {"case_id": "c", "name": "n", "correlation": "marker",
+         "request": {"method": "GET", "path": "/"}},
+        **case,
+    ), now, now)
+    return posted[0]
+
+def test_the_harness_records_whether_a_case_is_an_attack_as_the_file_says_it():
+    assert recorded({"malicious": "false"})["malicious"] == "false", (
+        "the harness turned the string \"false\" into True before the platform "
+        "could refuse it: a benign case typed wrongly was recorded as an attack"
+    )
+
+def test_the_harness_records_what_the_case_was_to_be_found_by():
+    posted = recorded({
+        "malicious": True, "stage": "exploitation", "technique": "T1190",
+        "pattern": "CAPEC-66", "expect": "SQL",
+    })
+
+    assert {field: posted.get(field) for field in ("stage", "technique", "pattern", "expect")} == {
+        "stage": "exploitation", "technique": "T1190",
+        "pattern": "CAPEC-66", "expect": "SQL",
+    }, (
+        "a case fired by the harness was scored against whatever the case file "
+        "said at scoring time, not what it said when the attack ran"
+    )
+
 def test_case_meta_describes_a_tool_case_without_a_request():
                                                                                
                              

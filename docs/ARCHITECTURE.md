@@ -357,6 +357,10 @@ value it is given; `session_cases` does (`platform/api/views.py:488-490,534-539`
 should contain. An alert that does not mention the attack's own mechanism is
 reported `corroborated: false` — still a TP, but flagged, so a rule set that
 catches everything for unrelated reasons does not score as well as one that works.
+The `expect` a case is judged by is recorded with the case (`Case.expect`) when
+it is fired or posted, so editing or breaking the case file does not re-judge a
+finished session. Only a case recorded before that column existed (NULL) is
+judged against the case file as it is now.
 
 ### What keeps them apart
 
