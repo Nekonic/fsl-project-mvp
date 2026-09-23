@@ -125,7 +125,8 @@ else
   echo "     docker compose up -d --force-recreate waf suricata"
 fi
 
-NEWEST_BEFORE="$(./bin/prune --newest 2>/dev/null)"
+FSL_ACCEPTANCE_SESSIONS="$(mktemp)"
+export FSL_ACCEPTANCE_SESSIONS
 
 section "acceptance (live stack)"
 if "$PY" -m pytest test/ -q -p no:cacheprovider; then
@@ -135,12 +136,10 @@ else
 fi
 
 section "housekeeping"
-if ! [[ "$NEWEST_BEFORE" =~ ^[0-9]+$ ]]; then
-  printf '     the newest session before this run was unreadable, so nothing was pruned\n'
-elif pruned="$(./bin/prune --after "$NEWEST_BEFORE" --apply 2>&1)"; then
-  ok "$(printf '%s\n' "$pruned" | head -1) - only sessions this run closed"
+if pruned="$(./bin/prune --ids "$FSL_ACCEPTANCE_SESSIONS" --apply 2>&1)"; then
+  ok "$(printf '%s\n' "$pruned" | head -1) - only sessions this run made"
 else
-  printf '     could not prune the sessions this run made; run bin/prune --after %s yourself\n' "$NEWEST_BEFORE"
+  printf '     could not prune the sessions this run made; their ids are in %s\n' "$FSL_ACCEPTANCE_SESSIONS"
 fi
 
 section "ratchet"

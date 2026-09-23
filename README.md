@@ -104,7 +104,7 @@ touched. `bin/prune` does it by hand:
 ```bash
 bin/prune --keep 20           # says what it would delete
 bin/prune --keep 20 --apply   # deletes it
-bin/prune --after 812 --apply # only the closed sessions newer than 812
+bin/prune --ids run.txt --apply # only the closed sessions whose ids run.txt lists
 ```
 
 ## Layout
