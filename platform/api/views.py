@@ -104,15 +104,29 @@ def _request_of(raw):
     return (request.get("method") or "", request.get("uri") or "",
             raw.get("host_ip") or "", raw.get("host_port"))
 
-def _listed(detection):
+def _listed(detection, zones, located):
     method, path, dest_ip, dest_port = _request_of(detection.raw or {})
+    zone = _zone_of(detection.src_ip, zones) if detection.src_ip else None
+    geo = located.get(detection.src_ip) or {}
     return dict(
         _shape(detection, DETECTION_FIELDS),
         dest_ip=dest_ip,
         dest_port=dest_port,
         method=method,
         path=path,
+        zone=zone["name"] if zone else "",
+        outside=bool(zone and zone["outside"]),
+        country=geo.get("country_name") or "",
+        city=geo.get("city_name") or "",
     )
+
+def _located(session, addresses):
+    located = {}
+    carried = session.detections.filter(src_ip__in=addresses)
+    for address, geo in carried.values_list("src_ip", "raw__src_geo"):
+        if geo and address not in located:
+            located[address] = geo
+    return located
 
 def _reply(payload, status=200):
     return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
@@ -779,7 +793,11 @@ def session_detections(request, session_id):
         except ValueError:
             return _reply({"detail": f'"after" must be a row id, got {after!r}'}, 400)
 
-    return _reply([_listed(d) for d in detections])
+    detections = list(detections)
+    addresses = {d.src_ip for d in detections if d.src_ip}
+    zones, _ = _segments() if addresses else ([], {})
+    located = _located(session, addresses) if addresses else {}
+    return _reply([_listed(d, zones, located) for d in detections])
 
 @require_http_methods(["GET"])
 def detection_detail(request, detection_id):

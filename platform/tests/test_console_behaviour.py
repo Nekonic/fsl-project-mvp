@@ -1254,6 +1254,67 @@ const lists = () => browser.requests.filter(
   (r) => r.route === "/api/sessions/" && r.query.state === "open").length;
 """
 
+PLACES = r"""
+const whereFrom = () => ({
+  zone: column(5),
+  place: column(6),
+  outside: Object.fromEntries(
+    browser.element("rows").innerHTML.split("<tr ").slice(1).map((row) => [
+      /data-id="([^"]*)"/.exec(row)[1],
+      row.split(/<td\b/)[5].includes("text-rose-300"),
+    ])),
+});
+const MOSCOW = {zone: "Internet", outside: true, country: "Russia", city: "Moscow"};
+"""
+
+def test_an_alert_says_where_it_came_from_when_the_busiest_sources_do_not_list_it(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACES + """
+          DETECTIONS = [
+            alert(1, {src_ip: "5.188.10.99", ...MOSCOW}),
+            alert(2, {src_ip: "172.30.0.2", zone: "Application estate", outside: false,
+                      country: "", city: ""}),
+          ];
+        """,
+        scenario="return whereFrom();",
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {
+        "zone": {"1": "Internet", "2": "Application estate"},
+        "place": {"1": "Moscow, Russia", "2": "-"},
+        "outside": {"1": True, "2": False},
+    }, (
+        "both alerts said where they came from, and the table looked their "
+        "sources up in the top 25 instead, which listed neither"
+    )
+
+def test_a_new_source_is_placed_as_soon_as_its_alert_arrives(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACES,
+        scenario="""
+          const before = whereFrom();
+          DETECTIONS.push(alert(5, {src_ip: "5.188.10.7", ...MOSCOW, city: ""}));
+          ANSWERS["/api/sessions/1/top/"] = {
+            sources: [{src_ip: "5.188.10.7", host: "", ...MOSCOW, city: "", alerts: 1}],
+            destinations: [], signatures: [], paths: [],
+          };
+          await browser.poll();
+          return {before, after: whereFrom()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == {"zone": {}, "place": {}, "outside": {}}
+    assert seen["result"]["after"] == {
+        "zone": {"5": "Internet"}, "place": {"5": "Russia"}, "outside": {"5": True},
+    }, (
+        "a source seen for the first time showed no zone or place until the top "
+        "tables were next read, fifteen seconds later"
+    )
+
 def test_the_session_list_catches_up_with_sessions_opened_and_closed_elsewhere(client):
     seen = open_page(
         client, "/",

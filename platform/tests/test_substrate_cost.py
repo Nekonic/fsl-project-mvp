@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.test_alert_place import busiest_and_one_more
 from tests.test_origins import PLACES
 from tests.test_range_shape import _Run
 from tests.test_topology import SHAPE
@@ -46,6 +47,16 @@ def test_drawing_the_topology_asks_the_range_once(client, session_id):
 
 def test_counting_the_busiest_addresses_asks_the_range_once(client, session_id):
     assert polled(client, f"/api/sessions/{session_id}/top/") == 1
+
+def test_listing_alerts_asks_the_range_once_and_an_empty_page_not_at_all(client):
+    session = busiest_and_one_more()
+    path = f"/api/sessions/{session.id}/detections/"
+    last = max(row["id"] for row in client.get(path).json())
+
+    assert [polled(client, path), polled(client, f"{path}?after={last}")] == [1, 0], (
+        "the blue console asks for new alerts every few seconds, and most of "
+        "those pages are empty"
+    )
 
 def test_listing_the_origins_asks_the_range_once(client):
     assert polled(client, "/api/origins/") == 1
