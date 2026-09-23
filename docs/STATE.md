@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (a range that cannot answer says so)
+Updated: 2026-09-23 (a rebuilt instance is trusted again; an impostor is not)
 
 ## Where things stand
 
@@ -259,6 +259,33 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A rebuilt instance is trusted again; an impostor is not**
+- The critics' top finding. Trust-on-first-use keyed by address locks the
+  platform out of every rebuilt instance for good: a rebuild recreates the
+  root disk (Nova api-ref) and cloud-init makes new host keys by default
+  (`ssh_deletekeys: Default: true`), on the same fixed IP. Reproduced: every
+  later call to that role refused until someone ran `ssh-keygen -R` inside the
+  platform.
+- A host key is now filed under the instance's generation, not its address:
+  `HostKeyAlias fsl-<server id>-<launched_at>`. Nova's own source resets
+  `launched_at` on rebuild (`_do_rebuild_instance` ->
+  `_update_instance_after_spawn`, `nova/compute/manager.py`) and never on
+  reboot. So a rebuild or a new instance on an old address is met for the
+  first time, and a different key from an instance Nova says has not changed
+  is refused - with the fingerprint and the offending known_hosts line.
+- The adapter writes an ssh config per call that `Include`s the deployment's
+  first. ssh takes the first value it finds, so a deployment that pins keys
+  (`StrictHostKeyChecking yes`, its own known_hosts) is no longer overruled by
+  a command-line `accept-new`, and the alias is scoped to the instance's
+  address so a `ProxyJump` bastion does not have its key filed under it.
+  Both run in the tests, bastion included.
+- Still trust-on-first-use per generation. Where known_hosts lives is the
+  deployment's (ssh's default is the platform user's home, which a container
+  loses). The stronger answer is reading each instance's keys off its console
+  (`os-getConsoleOutput`; cloud-init prints them between `BEGIN SSH HOST KEY
+  KEYS` markers), with two caveats found by the critics: libvirt returns only
+  the last 100 KiB of the console, and the guest writes its own console.
 
 **A range that cannot answer says so**
 - Firing a case, opening a session and reading objectives each let

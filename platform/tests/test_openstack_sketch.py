@@ -243,6 +243,8 @@ REFERENCE = {
     "subnets[].cidr, .gateway_ip": "https://docs.openstack.org/api-ref/network/v2/#list-subnets",
     "servers[].addresses[label][].addr, .OS-EXT-IPS:type, .version":
         "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
+    "servers[].id, .OS-SRV-USG:launched_at":
+        "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
 }
 
 def test_every_field_the_sketch_reads_is_one_the_api_reference_names():
@@ -256,6 +258,7 @@ def test_every_field_the_sketch_reads_is_one_the_api_reference_names():
             f"{REFERENCE}"
         )
     assert openstack.FIXED == "OS-EXT-IPS:type"
+    assert openstack.LAUNCHED == "OS-SRV-USG:launched_at"
     assert "tags-any" in openstack.NETWORKS
 
 
