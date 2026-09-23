@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, from_attacker, score_when_ready
+from conftest import (
+    PLATFORM_URL, from_attacker, score_when_ready, seen_by_both_engines,
+)
 from range import ATTACKER, start_hint
 
                                                                            
@@ -49,14 +51,14 @@ def window_session(stack_is_up):
     ).json()["id"]
 
     started = _now()
-    from_attacker(ATTACK_PATH)
-    _record_window(session_id, "terminal-sqli", True, source_ip, started, _now())
+    from_attacker(BENIGN_PATH)
+    _record_window(session_id, "terminal-benign", False, source_ip, started, _now())
 
     time.sleep(GAP_SECONDS)
 
     started = _now()
-    from_attacker(BENIGN_PATH)
-    _record_window(session_id, "terminal-benign", False, source_ip, started, _now())
+    from_attacker(ATTACK_PATH)
+    _record_window(session_id, "terminal-sqli", True, source_ip, started, _now())
 
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)
     return session_id
@@ -65,7 +67,9 @@ def window_session(stack_is_up):
 def window_score(window_session):
     def ready(totals):
         verdicts = {case["name"]: case["verdict"] for case in totals["per_case"]}
-        return verdicts.get("terminal-sqli") == "TP"
+        return verdicts.get("terminal-sqli") == "TP" and seen_by_both_engines(
+            window_session, totals, name="terminal-sqli"
+        )
 
     return score_when_ready(window_session, until=ready)
 
@@ -74,9 +78,14 @@ def test_an_unlabelled_attack_is_scored_by_time_and_source(window_score):
 
     assert verdicts["terminal-sqli"] == "TP"
 
-def test_benign_terminal_traffic_in_its_own_window_stays_clean(window_score):
+def test_benign_terminal_traffic_in_its_own_window_stays_clean(window_session, window_score):
                                                                               
                                                                            
+    assert seen_by_both_engines(window_session, window_score, name="terminal-sqli"), (
+        "the attack sent after the benign request was not seen by both engines, "
+        "so an alert the benign request drew may not have landed yet and a clean "
+        "benign window proves nothing"
+    )
     verdicts = {case["name"]: case["verdict"] for case in window_score["per_case"]}
 
     assert verdicts["terminal-benign"] == "TN"
