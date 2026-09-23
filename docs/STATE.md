@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a breach belongs to the attack that was running when the target recorded it)
+Updated: 2026-09-24 (the console, verify and the unit suite stop hiding what went wrong)
 
 ## Where things stand
 
@@ -257,6 +257,31 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**The console, verify and the unit suite stop hiding what went wrong**
+- Built in parallel by three agents in their own worktrees, reviewed and
+  merged here, verified on the live stack together.
+- The blue console showed a pulsing green "Live" while every poll failed:
+  `setReachable()` existed and nothing called it. Two Score-tab error
+  branches threw `ReferenceError` before writing their error, so the panel
+  kept its last numbers. The console now has a behaviour harness,
+  `platform/tests/browser.py` + `browser.js`: it runs each page's scripts under
+  node with a small hand-written DOM and a fetch stub. No npm, no dependency.
+- A manual window was recorded with whatever origin was selected at Stop;
+  `lockCase()` was dead code. Window correlation matches an alert's source to
+  that address, so the window's real traffic went unmatched. The address,
+  origin and route are taken at Start and the controls are locked while
+  recording.
+- `bin/verify` pruned to the 20 newest sessions, and one acceptance run makes
+  about twenty, so every verify deleted every session a person had made. It
+  now prunes only closed sessions its own run made (first run: kept 29,
+  dropped 11). It also refuses to restart a stack another checkout brought up,
+  instead of testing that tree's code under this tree's name. Acceptance
+  leaves about nine sessions open per run; nothing prunes those yet.
+- Five unit tests could not fail on the regression they were named for (a
+  rollback test that primed a throwaway sensor, one window edge, the
+  false-positive denominator with as many attacks as benign cases). Each now
+  fails against its mutant.
 
 **A breach belongs to the attack that was running when the target recorded it**
 - `attribute()` credited any case that had started within two minutes before
