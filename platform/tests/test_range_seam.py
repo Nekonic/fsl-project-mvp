@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.browser import node
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEAM_PATH = REPO_ROOT / "test" / "range.py"
 
@@ -79,8 +81,11 @@ def test_every_operation_refuses_a_role_with_no_host(dispatch):
         with pytest.raises(seam.RangeUnavailable):
             call()
 
+def finished(code, stderr=""):
+    return f"{stderr}{seam.EXIT_MARK}{code}\n"
+
 def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch):
-    dispatch(returncode=1, stdout="", stderr="nmap: not found")
+    dispatch(returncode=0, stdout="", stderr=finished(1, "nmap: not found"))
     substrate = seam.Docker()
 
     ran = substrate.run(seam.ATTACKER, ["sh", "-c", "command -v nmap"])
@@ -90,7 +95,7 @@ def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch):
     assert "not found" in ran.stderr
 
 def test_a_command_that_ran_and_passed_keeps_its_two_streams_apart(dispatch):
-    dispatch(returncode=0, stdout="5.188.10.4 \n", stderr="warning")
+    dispatch(returncode=0, stdout="5.188.10.4 \n", stderr=finished(0, "warning"))
     substrate = seam.Docker()
 
     ran = substrate.run(seam.ATTACKER, ["sh", "-c", "hostname -I"])
@@ -124,15 +129,75 @@ def test_a_command_that_never_finished_is_not_a_failed_command(dispatch):
         substrate.run(seam.ATTACKER, ["sleep", "99"])
 
 def test_a_command_is_dispatched_to_the_host_filling_the_role(dispatch):
-    fake = dispatch()
+    fake = dispatch(stderr=finished(0))
     substrate = seam.Docker()
 
     substrate.run(seam.SENSOR, ["tail", "-5", "/var/log/suricata/eve.json"])
 
     assert fake.commands == [[
         "docker", "exec", "fsl-suricata",
-        "tail", "-5", "/var/log/suricata/eve.json",
+        *seam.through_shell(["tail", "-5", "/var/log/suricata/eve.json"]),
     ]]
+
+def test_a_daemon_that_cannot_be_reached_is_not_a_failed_command(dispatch):
+    dispatch(returncode=1, stderr=(
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
+        "Is the docker daemon running?\n"
+    ))
+    substrate = seam.Docker()
+
+    with pytest.raises(seam.RangeUnavailable) as raised:
+        substrate.run(seam.ATTACKER, ["curl", "http://juice-shop:3000/"])
+
+    assert seam.ATTACKER in str(raised.value), raised.value
+    assert "Cannot connect" in str(raised.value), (
+        "docker's own exit status of 1 was taken for the command's, so an "
+        "assertion that the attacker cannot reach the target passed with no "
+        "daemon to run anything"
+    )
+
+def test_the_exit_status_is_the_one_the_host_reported(dispatch):
+    dispatch(returncode=0, stdout="", stderr=finished(127, "sh: 1: nmap: not found\n"))
+    substrate = seam.Docker()
+
+    ran = substrate.run(seam.ATTACKER, ["nmap", "--version"])
+
+    assert (ran.exit_code, ran.stderr) == (127, "sh: 1: nmap: not found\n")
+
+def test_the_target_has_no_shell_and_reports_through_its_node(dispatch):
+    fake = dispatch(stdout="200\n", stderr=finished(0))
+    substrate = seam.Docker()
+
+    ran = substrate.run(seam.TARGET, ["/nodejs/bin/node", "-e", "1"])
+
+    assert fake.commands[0][:4] == ["docker", "exec", "fsl-juice-shop", "/nodejs/bin/node"], (
+        "the target is a distroless image: a command wrapped in sh would fail "
+        "there before it ran"
+    )
+    assert (ran.exit_code, ran.stdout) == (0, "200\n")
+
+def run_here(wrapped, interpreter):
+    done = subprocess.run(
+        [interpreter, *wrapped[1:]], capture_output=True, text=True, timeout=30,
+    )
+    return done.stdout, seam.reported(done.stderr)
+
+@pytest.mark.parametrize("through, interpreter", [
+    ("through_shell", "/bin/sh"), ("through_node", None),
+])
+def test_the_report_survives_a_real_interpreter(through, interpreter):
+    wrap = getattr(seam, through)
+    interpreter = interpreter or node()
+
+    said, status = run_here(
+        wrap([node(), "-e", "console.log('200'); console.error('warn'); process.exit(4)"]),
+        interpreter,
+    )
+    assert said == "200\n"
+    assert status == (4, "warn\n")
+
+    _, missing = run_here(wrap(["/nonexistent/fsl-tool", "--flag"]), interpreter)
+    assert missing is not None and missing[0] == 127, missing
 
 def test_the_segments_a_role_sits_on_come_back_as_names(dispatch):
     dispatch(stdout=json.dumps({"fsl_edge": {}, "fsl_estate": {}}))
