@@ -394,6 +394,7 @@
     : unplaced(d) ? t("blue.unattributed") : placed[d.detection_id].join(", ");
 
   let ticking = false;
+  let polledAt = 0;
 
   async function poll() {
     if (ticking) return;
@@ -403,16 +404,23 @@
       await tick();
     } finally {
       ticking = false;
+      polledAt = Date.now();
       schedule();
     }
   }
 
+  const interval = () => Number(document.getElementById("interval").value);
+
   function schedule() {
     clearTimeout(timer);
     if (live && !ticking) {
-      timer = setTimeout(poll, Number(document.getElementById("interval").value));
+      timer = setTimeout(poll, interval());
     }
   }
+
+  onResume(() => {
+    if (live && Date.now() - polledAt >= interval()) poll();
+  });
 
   let reachable = true;
   let unreachableDetail = "";

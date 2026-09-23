@@ -268,6 +268,7 @@ document.documentElement = document.querySelector("html");
 document.head = document.querySelector("head");
 document.body = document.querySelector("body");
 document.cookie = "";
+document.visibilityState = "visible";
 document.getElementById = (id) => document.descendants().find((e) => e.id === id) || null;
 document.createElement = (tag) => new Element(tag);
 
@@ -363,6 +364,7 @@ const browser = {
 };
 
 const record = (level) => (...parts) => logged.push(`${level}: ${parts.map(String).join(" ")}`);
+const windowEvents = new Element("#window");
 
 const sandbox = {
   document,
@@ -388,8 +390,9 @@ const sandbox = {
   clearTimeout: cancel,
   requestAnimationFrame: schedule(false),
   matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-  addEventListener() {},
-  removeEventListener() {},
+  addEventListener: (type, listener) => windowEvents.addEventListener(type, listener),
+  removeEventListener: (type, listener) => windowEvents.removeEventListener(type, listener),
+  dispatchEvent: (event) => windowEvents.dispatchEvent(event),
 };
 sandbox.window = sandbox;
 sandbox.self = sandbox;

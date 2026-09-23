@@ -374,6 +374,63 @@ def test_the_live_indicator_carries_the_reason_the_platform_gave(client):
     )
     assert seen["title"] == reason
 
+ASLEEP = """
+let now = Date.now();
+Date.now = () => now;
+const sleep = (ms) => { now += ms; };
+const HOUR = 60 * 60 * 1000;
+const shown = async (state) => {
+  document.visibilityState = state;
+  document.dispatchEvent({type: "visibilitychange"});
+  await browser.settle();
+};
+const wake = async () => {
+  document.visibilityState = "visible";
+  document.dispatchEvent({type: "visibilitychange"});
+  window.dispatchEvent({type: "online"});
+  await browser.settle();
+};
+const count = (method, route) =>
+  browser.requests.filter((r) => r.method === method && r.route === route).length;
+"""
+
+def test_a_blue_console_woken_from_sleep_catches_up_once(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + INDICATOR + ASLEEP,
+        scenario="""
+          const ingests = () => count("POST", "/api/sessions/1/ingest/");
+          browser.serve(browser.offline);
+          await browser.poll();
+          const asleep = indicator();
+          sleep(HOUR);
+          const before = ingests();
+          await shown("hidden");
+          const hidden = ingests() - before;
+          browser.serve(healthy);
+          await wake();
+          const woke = {polls: ingests() - before, indicator: indicator()};
+          await wake();
+          const again = ingests() - before;
+          await browser.click("live-toggle");
+          sleep(HOUR);
+          await wake();
+          return {asleep, hidden, woke, again, paused: ingests() - before};
+        """,
+    )["result"]
+
+    assert seen["asleep"]["label"] == english("blue.live.unreachable")
+    assert seen["hidden"] == 0, "a page going out of sight was polled for it"
+    assert seen["woke"]["polls"] == 1, (
+        "the page came back after an hour and waited for its timer, which a "
+        "browser holds back for a page it did not show, before it looked again"
+    )
+    assert seen["woke"]["indicator"]["label"] == english("blue.live.on")
+    assert seen["again"] == 1, (
+        "coming back into view and back online together polled once for each"
+    )
+    assert seen["paused"] == 1, "a paused console polled because it came back into view"
+
 HELD_INGEST = """
 let release;
 const answered = new Promise((resolve) => { release = resolve; });
@@ -1039,3 +1096,38 @@ def test_an_attack_fired_during_a_check_is_checked_once_that_check_ends(client):
         "the check that was running began before the attack landed, and the "
         "one the attack asked for was dropped instead of run after it"
     )
+
+def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + ASLEEP,
+        scenario="""
+          const checks = () => count("POST", "/api/sessions/1/objectives/");
+          sleep(HOUR);
+          await wake();
+          const woke = checks();
+          await wake();
+          const again = checks();
+          browser.serve((request) =>
+            request.method === "POST" && request.route === "/api/sessions/1/objectives/"
+              ? {status: 409, body: {detail: "closed"}}
+              : healthy(request));
+          sleep(HOUR);
+          await wake();
+          const closing = checks();
+          sleep(HOUR);
+          await wake();
+          return {woke, again, closing, closed: checks()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["woke"] == 1, (
+        "the page came back after an hour and waited for its timer before it "
+        "looked for objectives taken while it was away"
+    )
+    assert seen["result"]["again"] == 1, (
+        "coming back into view and back online together checked once for each"
+    )
+    assert seen["result"]["closing"] == 2
+    assert seen["result"]["closed"] == 2, "a closed session was checked because the page came back"

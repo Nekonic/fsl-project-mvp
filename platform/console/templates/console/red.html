@@ -305,6 +305,7 @@
   let checking = false;
   let recheck = false;
   let closed = false;
+  let checkedAt = 0;
 
   function stopPolling() {
     if (closed) return;
@@ -340,6 +341,7 @@
       } while (recheck && !closed);
     } finally {
       checking = false;
+      checkedAt = Date.now();
       schedule();
     }
   }
@@ -348,6 +350,10 @@
     clearTimeout(timer);
     if (!closed && !checking) timer = setTimeout(pollObjectives, CHECK_EVERY);
   }
+
+  onResume(() => {
+    if (!closed && !checking && Date.now() - checkedAt >= CHECK_EVERY) pollObjectives();
+  });
 
   ["objective-search", "objective-category", "hide-solved"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderObjectives);
