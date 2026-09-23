@@ -160,3 +160,122 @@ def test_an_operator_log_that_cannot_be_read_says_so_instead_of_keeping_its_last
     assert seen["result"]["failed"] == english("blue.score.operator.unavailable", reason), (
         "the log that could not be read kept showing the commands of the last one that could"
     )
+
+RED_RANGE = """
+const ORIGINS = [
+  {id: "edge", network: "fsl_edge", label: "Moscow, Russia", subnet: "5.188.10.0/24",
+   source_ip: "5.188.10.3", direct_ip: "5.188.10.2", address: "5.188.10.4",
+   target_url: "http://5.188.10.4", default: true},
+  {id: "edge-br", network: "fsl_edge-br", label: "Sao Paulo, Brazil",
+   subnet: "177.54.144.0/24", source_ip: "177.54.144.2", direct_ip: "",
+   address: "177.54.144.3", target_url: "http://177.54.144.3", default: false},
+];
+const chosen = (id) => ORIGINS.find((o) => o.id === id) || ORIGINS.find((o) => o.default);
+const box = (origin) => ({
+  container: "fsl-kali", source_ip: origin.source_ip, direct_ip: origin.direct_ip,
+  origin: origin.id, origin_label: origin.label, target_url: origin.target_url,
+  public_url: "http://shop.com", terminal_url: "http://localhost:7681",
+});
+const ANSWERS = {
+  "GET /api/origins/": () => ({origins: ORIGINS}),
+  "GET /api/attacker/": (request) => box(chosen(request.query.origin)),
+  "POST /api/attacker/origin/": (request) => {
+    const origin = chosen(request.body.origin);
+    return {origin: origin.id, source_ip: origin.source_ip};
+  },
+  "POST /api/attacker/label/": () => ({ok: true}),
+  "GET /api/sessions/1/": () => ({id: 1, scenario: "juice-shop"}),
+  "GET /api/wargames/": () => [{id: "juice-shop", covers: [], uncovered: []}],
+  "GET /api/wargames/juice-shop/cases/": () => [],
+  "GET /api/wargames/juice-shop/objectives/": () => [],
+  "GET /api/sessions/1/objectives/": () => [],
+  "POST /api/sessions/1/objectives/": () => ({achieved: 0}),
+  "POST /api/sessions/1/cases/": (request) => request.body,
+};
+const healthy = (request) => {
+  const answer = ANSWERS[`${request.method} ${request.route}`];
+  return answer ? {body: answer(request)} : {status: 404, body: {detail: "not served"}};
+};
+const CONTROLS = ["window-name", "window-malicious", "window-route", "origin"];
+const disabled = () =>
+  Object.fromEntries(CONTROLS.map((id) => [id, browser.element(id).disabled]));
+browser.serve(healthy);
+"""
+
+UNLOCKED = {control: False for control in ("window-name", "window-malicious", "window-route", "origin")}
+LOCKED = {control: True for control in UNLOCKED}
+
+def test_nothing_that_decides_the_recorded_address_can_be_changed_while_recording(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE,
+        scenario="""
+          const before = disabled();
+          await browser.click("window-toggle");
+          const recording = disabled();
+          const moved = [];
+          for (const [id, value] of [["window-name", "renamed"],
+                                     ["window-route", "direct"], ["origin", "edge-br"]]) {
+            if (await browser.choose(id, value)) moved.push(id);
+          }
+          await browser.click("window-toggle");
+          return {before, recording, moved, after: disabled()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == UNLOCKED
+    assert seen["result"]["recording"] == LOCKED, (
+        "the origin, route, name and disposition stayed live while recording, so "
+        "the case could be stored against an address that never sent the traffic"
+    )
+    assert seen["result"]["moved"] == []
+    assert seen["result"]["after"] == UNLOCKED
+
+def test_a_window_is_recorded_against_the_address_it_was_started_from(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE,
+        scenario="""
+          await browser.choose("window-route", "direct");
+          await browser.click("window-toggle");
+          const shown = browser.text("window-status");
+          await browser.force("origin", "edge-br");
+          await browser.click("window-toggle");
+          const posted = browser.requests.filter(
+            (r) => r.method === "POST" && r.route === "/api/sessions/1/cases/");
+          return {shown, posted: posted.map((r) => r.body)};
+        """,
+    )
+    [case] = seen["result"]["posted"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["shown"] == english("red.window.status.recording", "5.188.10.2")
+    assert case["correlation"] == "window"
+    assert case["source_ip"] == "5.188.10.2", (
+        "the window was started from the attacker's direct address on edge and "
+        "recorded against whatever origin and route were selected at Stop; window "
+        "correlation matches alerts by this address, so its alerts went unmatched"
+    )
+    assert case["meta"] == {"origin": "edge", "route": "direct"}
+
+def test_a_window_that_could_not_start_leaves_its_controls_usable(client):
+    reason = "fsl-proxy is not running"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          browser.serve((request) => request.route === "/api/attacker/label/"
+            ? {{status: 503, body: {{detail: {js(reason)}}}}}
+            : healthy(request));
+        """,
+        scenario="""
+          await browser.click("window-toggle");
+          return {controls: disabled(), status: browser.text("window-status")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["status"] == english("red.window.status.marker_failed", reason)
+    assert seen["result"]["controls"] == UNLOCKED, (
+        "a window that never started left its controls locked"
+    )
