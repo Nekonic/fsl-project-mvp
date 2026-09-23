@@ -52,6 +52,16 @@ def test_a_suppression_carries_a_deadline(client, ids):
     assert created["expires_at"] > created["created_at"]
     assert created["restored_at"] is None
 
+def test_a_suppression_lasts_as_long_as_was_asked(client, ids):
+    from django.utils.dateparse import parse_datetime
+
+    created = client.post_json(
+        "/api/rules/suppressions/", {"sid": 9000001, "minutes": 7}
+    ).json()
+
+    lasts = parse_datetime(created["expires_at"]) - parse_datetime(created["created_at"])
+    assert abs(lasts - timedelta(minutes=7)) < timedelta(seconds=5), lasts
+
 def test_silencing_a_rule_that_does_not_exist_changes_nothing(client, ids):
     response = client.post_json("/api/rules/suppressions/", {"sid": 4242})
 

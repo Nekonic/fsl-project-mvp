@@ -60,6 +60,27 @@ def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, sessio
     assert any(w[0] == "score.warning.wrong_reason" and CASE in w[1]
                for w in s["warnings"])
 
+def test_an_attack_nobody_saw_is_missed_not_caught_for_the_wrong_reason(client, session_id):
+    missed = "33333333-3333-4333-8333-333333333333"
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": missed, "name": "sqli-login-bypass", "malicious": True,
+        "correlation": "marker", "started_at": T0.isoformat(),
+        "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
+    })
+
+    s = scored(client, session_id, "FSL XSS attempt - script tag or event handler")
+
+    by_name = {c["name"]: c for c in s["per_case"]}
+    assert by_name["sqli-login-bypass"]["expect"] == "SQL"
+    assert by_name["sqli-login-bypass"]["verdict"] == "FN"
+    assert [w for w in s["warnings"] if w[0] == "score.warning.wrong_reason"] == [
+        ["score.warning.wrong_reason", CASE]
+    ], (
+        "the warning must name the attack an unrelated rule caught, and only "
+        "that one. An attack no alert touched is a false negative; naming it "
+        "here reports it twice, once as missed and once as found"
+    )
+
 def test_the_expectation_is_reported_so_the_judgement_can_be_checked(client, session_id):
     s = scored(client, session_id, "FSL path traversal attempt")
 

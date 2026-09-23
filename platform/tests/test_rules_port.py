@@ -60,11 +60,17 @@ def test_applying_a_bad_rule_set_does_not_touch_the_live_rules():
     )
 
 def test_a_reload_that_fails_rolls_the_rules_back():
-    sensor = Sensor(fails_on="USR2")
-    suricata.apply(RULE, Sensor(), RELOAD)
+    sensor = Sensor()
+    suricata.apply(RULE, sensor, RELOAD)
+    sensor.fails_on = "USR2"
 
     with pytest.raises(suricata.RuleApplyError, match="rolled back"):
         suricata.apply(RULE.replace("9000900", "9000901"), sensor, RELOAD)
+
+    assert suricata.current(sensor) == RULE, (
+        "the reload failed and the error says rolled back, but the sensor "
+        "still holds the rule set it could not load"
+    )
 
 def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
     with pytest.raises(RangeUnavailable):
