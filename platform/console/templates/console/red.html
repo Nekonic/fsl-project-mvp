@@ -169,12 +169,16 @@
       </div>`;
   }
 
+  const LOG_LINES = 200;
+
   function note(text, tone) {
     document.getElementById("log-empty").classList.add("hidden");
     const line = document.createElement("div");
     line.className = tone;
     line.textContent = text;
-    document.getElementById("log").prepend(line);
+    const log = document.getElementById("log");
+    log.prepend(line);
+    while (log.children.length > LOG_LINES) log.lastElementChild.remove();
   }
 
   async function fire(name) {

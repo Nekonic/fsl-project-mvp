@@ -1097,6 +1097,39 @@ def test_an_attack_fired_during_a_check_is_checked_once_that_check_ends(client):
         "one the attack asked for was dropped instead of run after it"
     )
 
+def test_the_red_log_stops_growing_and_keeps_the_newest_lines(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + """
+          ANSWERS["GET /api/wargames/juice-shop/cases/"] = () => Array.from(
+            {length: 10}, (_, n) => ({name: `case-${n}`, summary: "", malicious: true}));
+          ANSWERS["POST /api/sessions/1/attacks/"] = (request) => ({case: request.body.case});
+          const lines = () => browser.element("log").children;
+          const runAll = async (times) => {
+            for (let run = 0; run < times; run += 1) await browser.click("run-all");
+          };
+        """,
+        scenario="""
+          await runAll(50);
+          const halfway = lines().length;
+          await runAll(50);
+          await fire("the-last-one");
+          return {
+            halfway,
+            end: lines().length,
+            newest: lines()[0].textContent,
+            fired: browser.requests.filter((r) => r.route === "/api/sessions/1/attacks/").length,
+          };
+        """,
+    )["result"]
+
+    assert seen["fired"] == 1001
+    assert seen["end"] == seen["halfway"] < 1000, (
+        f"a thousand attacks left {seen['end']} lines in the log, one per attack, "
+        f"and a console left open all day keeps every one of them"
+    )
+    assert seen["newest"] == english("red.log.sent", "the-last-one")
+
 def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
     seen = open_page(
         client, "/red/1/",
