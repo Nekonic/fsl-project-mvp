@@ -270,3 +270,22 @@ def test_the_terminal_s_address_follows_the_chosen_origin(client):
     assert response.json()["source_ip"] == "103.152.220.7"
     assert response.json()["direct_ip"] == "103.152.220.7"
     assert response.json()["target_url"] == "http://103.152.220.9:8080"
+
+
+@pytest.mark.django_db
+def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
+    class SensorDown:
+        def segments(self):
+            return SHAPE.segments
+
+        def describe(self):
+            raise RangeUnavailable("fsl-suricata is declared to watch fsl-waf and stands in nothing")
+
+    with patch("api.views.substrate", SensorDown):
+        listed = client.get("/api/origins/")
+        box = client.get("/api/attacker/")
+
+    assert (listed.status_code, box.status_code) == (200, 200), (
+        "the red console could not list where to attack from, or reach its own "
+        "terminal, while the sensor was down - neither needs the sensor"
+    )
