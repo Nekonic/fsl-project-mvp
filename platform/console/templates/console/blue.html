@@ -677,6 +677,7 @@
     result.title = "";
     result.textContent = t("blue.drawer.suppress.done", sid,
       new Date(applied.body.expires_at).toLocaleTimeString());
+    loadRules();
     renderSuppressions();
   });
 
@@ -888,14 +889,23 @@
     if (r.ok) renderScore();
   });
 
+  async function loadRules() {
+    const r = await api("/api/rules/");
+    if (r.ok) editor.value = r.body.content;
+  }
+
+  async function restoreSuppression(id) {
+    const restored = await post(`/api/rules/suppressions/${id}/restore/`);
+    if (restored.ok) await loadRules();
+    await renderSuppressions();
+  }
+
   async function renderSuppressions() {
     const { ok, body } = await api("/api/rules/suppressions/");
     const panel = document.getElementById("suppressions");
     if (!ok) { panel.innerHTML = ""; return; }
 
-    if (body.restored.length) {
-      api("/api/rules/").then((r) => { if (r.ok) editor.value = r.body.content; });
-    }
+    if (body.restored.length) loadRules();
 
     panel.innerHTML = body.suppressions.map((s) => `
       <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
@@ -913,15 +923,11 @@
       `<p class="text-slate-500 text-sm p-4">${esc(t("blue.rules.suppression.empty"))}</p>`;
 
     panel.querySelectorAll(".lift").forEach((button) => {
-      button.addEventListener("click", async () => {
-        await post(`/api/rules/suppressions/${button.dataset.id}/restore/`);
-        api("/api/rules/").then((r) => { if (r.ok) editor.value = r.body.content; });
-        renderSuppressions();
-      });
+      button.addEventListener("click", () => restoreSuppression(button.dataset.id));
     });
   }
 
-  api("/api/rules/").then((r) => { editor.value = r.ok ? r.body.content : ""; });
+  loadRules();
   renderSuppressions();
   loadOwners(true).then(() => { renderAlerts(); renderDashboard(true); });
   showTab("dashboard");

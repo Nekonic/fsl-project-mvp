@@ -215,6 +215,81 @@ def test_an_operator_log_that_cannot_be_read_says_so_instead_of_keeping_its_last
         "the log that could not be read kept showing the commands of the last one that could"
     )
 
+RULE = 'alert http any any -> any any (msg:"sqli"; sid:2100001; rev:1;)'
+
+RULES_RANGE = f"""
+const RULE = {js(RULE)};
+const LIVE_RULES = {{content: RULE, version: "a1"}};
+const SILENCED_RULES = {{content: `# ${{RULE}}`, version: "b2"}};
+const SUPPRESSION = {{
+  id: 1, sid: 2100001, reason: "noisy", created_at: "2026-09-23T16:25:54Z",
+  expires_at: "2026-09-23T16:55:54Z", restored_at: null,
+}};
+ANSWERS["/api/rules/"] = LIVE_RULES;
+const ROUTES = {{
+  "GET /api/detections/7/": () => ({{
+    body: {{
+      id: 7, signature: "sqli", source: "suricata", timestamp: "2026-09-23T16:25:54Z",
+      src_ip: "5.188.10.3", marker: null, raw: {{alert: {{signature_id: 2100001}}}},
+    }},
+  }}),
+  "POST /api/rules/suppressions/": () => {{
+    ANSWERS["/api/rules/"] = SILENCED_RULES;
+    ANSWERS["/api/rules/suppressions/"] = {{suppressions: [SUPPRESSION], restored: []}};
+    return {{status: 201, body: SUPPRESSION}};
+  }},
+  "POST /api/rules/suppressions/1/restore/": () => {{
+    ANSWERS["/api/rules/"] = LIVE_RULES;
+    ANSWERS["/api/rules/suppressions/"] = {{suppressions: [], restored: []}};
+    return {{body: {{...SUPPRESSION, restored_at: "2026-09-23T16:30:00Z"}}}};
+  }},
+}};
+const routed = (request) => {{
+  const route = ROUTES[`${{request.method}} ${{request.route}}`];
+  return route ? route(request) : healthy(request);
+}};
+browser.serve(routed);
+"""
+
+def test_suppressing_from_the_drawer_reloads_the_rules_editor(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE,
+        scenario="""
+          const before = browser.element("editor").value;
+          await openDrawer(7);
+          await browser.click("suppress");
+          return {before, after: browser.element("editor").value};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == RULE
+    assert seen["result"]["after"] == f"# {RULE}", (
+        "the editor kept the rule file from before the suppression, so the next "
+        "Apply would write the suppressed rule back while the list still showed "
+        "it suppressed"
+    )
+
+def test_restoring_a_suppression_reloads_the_rules_editor(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE,
+        scenario="""
+          await openDrawer(7);
+          await browser.click("suppress");
+          const suppressed = browser.element("editor").value;
+          await restoreSuppression(1);
+          return {suppressed, restored: browser.element("editor").value};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["suppressed"] == f"# {RULE}"
+    assert seen["result"]["restored"] == RULE, (
+        "the editor kept the suppressed rule file after the rule was restored"
+    )
+
 RED_RANGE = """
 const ORIGINS = [
   {id: "edge", network: "fsl_edge", label: "Moscow, Russia", subnet: "5.188.10.0/24",
