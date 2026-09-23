@@ -14,7 +14,8 @@ from urllib.parse import urlsplit
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import BadRequest
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -564,7 +565,12 @@ def _origin_for(session, requested):
     available = attacker.origins(described)
     if not available:
         raise attacker.UnknownOrigin("the stack declares no origins to rotate through")
-    return available[session.cases.count() % len(available)]
+    return available[_take_turn(session) % len(available)]
+
+def _take_turn(session):
+    with transaction.atomic():
+        Session.objects.filter(pk=session.pk).update(rotation=F("rotation") + 1)
+        return Session.objects.values_list("rotation", flat=True).get(pk=session.pk) - 1
 
 @require_http_methods(["GET"])
 def session_detail(request, session_id):

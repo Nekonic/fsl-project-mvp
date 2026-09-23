@@ -254,6 +254,79 @@ def test_rotation_moves_on_with_every_attack(client, session_id):
         "http://5.188.10.9:8080",
     ], "rotation stalled: every attack would land on the same pin"
 
+ROTATE = {"case": "sqli-login-bypass", "origin": "rotate"}
+
+def test_two_rotated_attacks_in_flight_at_once_leave_from_different_places(client, session_id):
+    left_from = []
+
+    def still_running(http, case, target_url, *rest):
+        left_from.append(target_url)
+        if len(left_from) == 1:
+            client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.harness.fire", side_effect=still_running):
+        client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    assert len(left_from) == 2
+    assert left_from[0] != left_from[1], (
+        "the second rotated attack was fired while the first was still running, "
+        "so no case had been recorded yet and both took the same turn: two "
+        "attacks left from one place and one origin was skipped"
+    )
+
+def test_a_rotated_attack_that_starts_while_another_reads_the_range_takes_its_own_turn(
+    client, session_id
+):
+    reads = []
+
+    def read_while_another_starts(described):
+        reads.append(described)
+        if len(reads) == 1:
+            client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+        return PLACES
+
+    with stub(), patch("api.views.attacker.origins", side_effect=read_while_another_starts), \
+            patch("api.views.harness.fire") as fired:
+        client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    left_from = [call.args[2] for call in fired.call_args_list]
+    assert len(left_from) == 2
+    assert left_from[0] != left_from[1], (
+        "both attacks loaded the session before either took a turn, and the "
+        "turn was written back from what each had loaded rather than advanced "
+        "in the database"
+    )
+
+def test_attacks_pinned_to_a_place_or_recorded_by_hand_do_not_move_the_rotation(
+    client, session_id
+):
+    rotated = []
+    for step in ("rotate", "edge-hk", "rotate", "recorded", "rotate"):
+        if step == "recorded":
+            with patch("api.views._observe_objectives", return_value={"achieved": 0}):
+                recorded = client.post_json(f"/api/sessions/{session_id}/cases/", {
+                    "case_id": "55555555-5555-4555-8555-555555555555",
+                    "name": "terminal-something", "malicious": True,
+                    "correlation": "window", "source_ip": "5.188.10.7",
+                    "started_at": "2026-09-24T10:00:00Z",
+                    "ended_at": "2026-09-24T10:00:01Z",
+                })
+            assert recorded.status_code == 201, recorded.content
+            continue
+        _, fired = _fire(client, session_id, {"case": "sqli-login-bypass", "origin": step})
+        if step == "rotate":
+            rotated.append(fired.call_args.args[2])
+
+    assert rotated == [
+        "http://5.188.10.9:8080",
+        "http://177.54.144.9:8080",
+        "http://103.152.220.9:8080",
+    ], (
+        "the rotation counted every case in the session, so an attack pinned to "
+        "one place or a case typed in the terminal shifted it and skipped an origin"
+    )
+
 def test_an_origin_that_does_not_exist_is_refused(client, session_id):
     response, fired = _fire(
         client, session_id, {"case": "sqli-login-bypass", "origin": "edge-mars"}

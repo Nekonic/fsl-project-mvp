@@ -17,6 +17,7 @@ class Session(models.Model):
     baseline = models.JSONField(null=True, blank=True, default=None)
     truncated = models.BooleanField(default=False)
     read_of = models.JSONField(null=True, blank=True, default=None)
+    rotation = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-started_at"]
