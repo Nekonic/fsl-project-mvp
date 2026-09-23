@@ -1,7 +1,7 @@
 {
   "core_loc": 480,
-  "product_loc": 5097,
+  "product_loc": 5156,
   "dependencies": 6,
   "services": 9,
-  "tests": 687
+  "tests": 705
 }

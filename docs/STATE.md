@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a tick of the console reads only this session's evidence, and rule changes happen one at a time)
+Updated: 2026-09-24 (only the platform's own pages can make it act; Filebeat no longer re-ships on a VM restart)
 
 ## Where things stand
 
@@ -257,6 +257,49 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**Only the platform's own pages can make it act**
+- No CSRF, Origin or `Sec-Fetch-Site` check existed and bodies were parsed as
+  JSON whatever they claimed to be, so any page open in the operator's
+  browser could apply rules, close a session or move the attacker's label.
+  `:8080` (the target) is the same site as `:8000` (the platform), and making
+  the target run script is what the red team is scored on - so `same-site`
+  is refused too, not only `cross-site`. A write with a body must be
+  `application/json` (415 otherwise), which a cross-site page cannot send
+  without a preflight. No platform page can be framed. No accounts were
+  added; this needs none.
+
+**Filebeat no longer re-ships its logs when the VM restarts**
+- Both inputs identify a file by fingerprint instead of inode. Filebeat 8.15
+  does not migrate the registry between identities, so the switch re-shipped
+  both logs once: applied tonight with `docker compose up -d --force-recreate
+  filebeat`, 76,836 -> 105,709 documents (+28,873), settled in 33 seconds, no
+  session open. The duplicates stay in today's index; ingest's `stale` guard
+  keeps them out of later sessions. From 8.18 the switch would migrate
+  instead of re-reading.
+- The platform image refuses to build without `DOCKER_GID` (the socket's
+  group; `bin/docker-gid`). The silent default of 0 built a platform that got
+  "permission denied" on every docker call - it happened tonight. Commands
+  that build nothing still run without it. Start with
+  `DOCKER_GID=$(bin/docker-gid) docker compose up -d --build`.
+
+**The console runs one poll at a time and never writes back a stale rule file**
+- Ticks were `setInterval` with no guard, so a slow ingest let them overlap.
+  The next tick is scheduled when the current one finishes.
+- The editor re-reads the rules after a suppress, a restore, an apply and a
+  tick that lifted a suppression, and applies with the `base` it loaded; a
+  409 shows the platform's reason and reloads. Any unsaved edit in the
+  editor is replaced by those reloads - a trade-off, not an accident.
+
+**Acceptance tests assert on the evidence of the case they fired**
+- Several waited for "detected" and then asserted something else, or counted
+  session-wide and passed on other tests' traffic (the front-door console
+  test passed with its own attack removed). The suppression test now waits
+  until Suricata has spoken, the benign window is judged after its own
+  evidence could have landed, origins, map, strategy comparison and case
+  objectives look only at the fired case's marker and addresses, and a run
+  that fails mid-label clears the terminal's label. Written by an agent that
+  could not run them; they passed here on the live stack (122).
 
 **A tick of the console reads only this session's evidence**
 - Filebeat identifies files by inode, and colima's virtiofs renumbers inodes
