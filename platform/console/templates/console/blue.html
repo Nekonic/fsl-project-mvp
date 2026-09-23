@@ -333,12 +333,11 @@
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
 
-  function renderDashboard(force) {
+  async function renderDashboard(force) {
     if (!force && !showing("dashboard")) return;
     renderCounters();
     renderHistogram();
-    renderMap();
-    loadTop(force);
+    await Promise.all([renderMap(), loadTop(force)]);
   }
 
   async function tick() {
@@ -346,8 +345,7 @@
     if (ingested.ok) {
       setTruncated(ingested.body.truncated);
       if (ingested.body.restored?.length) {
-        loadRules();
-        renderSuppressions();
+        await Promise.all([loadRules(), renderSuppressions()]);
       }
     }
     const result = await api(
@@ -365,8 +363,8 @@
     const moved = await loadPlacement();
     if (arrived || moved) {
       renderAlerts();
-      renderDashboard();
-      if (showing("score")) renderScore();
+      await renderDashboard();
+      if (showing("score")) await renderScore();
     }
   }
 
@@ -790,8 +788,7 @@
         <td class="text-xs">${evidence(c)}</td>
       </tr>`).join("");
 
-    renderComparison();
-    renderOperatorLog();
+    await Promise.all([renderComparison(), renderOperatorLog()]);
   }
 
   async function renderOperatorLog() {

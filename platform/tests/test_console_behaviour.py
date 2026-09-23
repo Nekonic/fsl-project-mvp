@@ -405,6 +405,55 @@ def test_a_slow_ingest_is_not_overtaken_by_the_next_poll(client):
     )
     assert seen["result"]["after"] == 2, "polling stopped once the slow ingest finished"
 
+HELD_READ = """
+let release;
+const answered = new Promise((resolve) => { release = resolve; });
+const holding = (route) => (request) => request.route === route
+  ? answered.then(() => answerAlerts(request))
+  : answerAlerts(request);
+const asked = (route) => browser.requests.filter((request) => request.route === route).length;
+let arriving = 100;
+const arrive = () => { DETECTIONS.push(alert(arriving)); arriving += 1; };
+"""
+
+@pytest.mark.parametrize("route, tab, restoring", [
+    ("/api/sessions/1/map/", "dashboard", False),
+    ("/api/sessions/1/commands/", "score", False),
+    ("/api/sessions/1/cases/", "score", False),
+    ("/api/rules/suppressions/", "rules", True),
+])
+def test_what_a_poll_draws_finishes_before_the_next_poll(client, route, tab, restoring):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + HELD_READ + (
+            'ANSWERS["/api/sessions/1/ingest/"] = {ingested: 0, skipped: 0, restored: [{id: 1}]};'
+            if restoring else ""
+        ),
+        scenario=f"""
+          await browser.click('[data-tab="{tab}"]');
+          browser.serve(holding({js(route)}));
+          const before = asked({js(route)});
+          for (let interval = 0; interval < 4; interval += 1) {{
+            arrive();
+            await browser.poll();
+          }}
+          const during = asked({js(route)}) - before;
+          release();
+          await browser.settle();
+          arrive();
+          await browser.poll();
+          return {{during, after: asked({js(route)}) - before}};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        f"{route} did not answer, and every poll on the {tab} tab asked for it "
+        f"again beside the one still open: the poll waited for its own reads but "
+        f"not for what it started drawing"
+    )
+    assert seen["result"]["after"] == 2, "polling stopped once the slow read finished"
+
 def test_resuming_the_live_view_during_a_slow_ingest_does_not_start_another(client):
     seen = open_page(
         client, "/blue/1/",
