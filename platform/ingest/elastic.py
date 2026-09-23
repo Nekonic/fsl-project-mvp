@@ -148,7 +148,7 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
                 "timestamp": timestamp,
                 "src_ip": src_ip,
                 "marker": marker,
-                "raw": message,
+                "raw": dict(message, src_geo=doc.get("src_geo") or {}),
             }
         )
     return detections
