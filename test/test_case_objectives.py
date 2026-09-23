@@ -54,6 +54,10 @@ def test_a_breach_is_credited_to_the_attack_that_took_it(score, claims):
             f"{breach['key']} was taken by {owner}, which the defence detected, "
             f"yet the breach reads MISSED - it was credited to the wrong attack"
         )
+        assert set(breach["detection_ids"]) == set(verdicts[owner]["detection_ids"]), (
+            f"{breach['key']} was taken by {owner}, yet the breach carries another "
+            f"attack's detections - it was credited to the wrong attack"
+        )
 
     assert checked, (
         "no objective-taking case was detected, so this proves nothing. Either "

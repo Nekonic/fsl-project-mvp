@@ -1,7 +1,9 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, score_when_ready
+from conftest import (
+    PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines,
+)
 
 CASE = "sqli-login-bypass"
 EDGE_COUNTRY = "Russia"
@@ -16,17 +18,26 @@ def drawn(stack_is_up):
         json={"case": CASE}, timeout=300,
     )
     assert sent.status_code == 201, sent.text
+    case_id = sent.json()["case_id"]
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
                                                                             
                                                                   
-    def case_detected(totals):
-        return any(c["name"] == CASE and c["detected"] for c in totals["per_case"])
+    def case_seen_by_both(totals):
+        return seen_by_both_engines(session_id, totals, case_id=case_id)
 
-    score_when_ready(session_id, until=case_detected)
-    return requests.get(
+    score = score_when_ready(session_id, until=case_seen_by_both)
+    own = {
+        d["src_ip"] for d in credited_to(session_id, score, case_id=case_id)
+        if d["src_ip"]
+    }
+    session_map = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
     ).json()
+    return dict(
+        session_map,
+        points=[p for p in session_map["points"] if own & set(p["ips"])],
+    )
 
 def test_the_attack_is_placed_somewhere(drawn):
     assert drawn["points"], (
