@@ -341,9 +341,11 @@
 
   async function tick() {
     const ingested = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
-    setTruncated(ingested.ok ? ingested.body.truncated : null);
+    if (ingested.ok) setTruncated(ingested.body.truncated);
     const result = await api(
       `/api/sessions/${sessionId()}/detections/?after=${lastId}`);
+    const failed = [ingested, result].find((answer) => !answer.ok);
+    setReachable(!failed, failed && detail(failed));
     if (!result.ok) return;
 
     if (result.body.length) {
@@ -384,10 +386,10 @@
     }
   }
 
-  function setReachable(ok, detail) {
+  function setReachable(ok, reason) {
     if (ok === reachable) return;
     reachable = ok;
-    unreachableDetail = ok ? "" : (detail || "");
+    unreachableDetail = ok ? "" : (reason || "");
     paintLive();
   }
 
@@ -821,7 +823,8 @@
   }
 
   async function renderComparison() {
-    const scored = await Promise.all(["marker", "window"].map((strategy) =>
+    const strategies = ["marker", "window"];
+    const scored = await Promise.all(strategies.map((strategy) =>
       api(`/api/sessions/${sessionId()}/score/?correlation=${strategy}`)));
     const titles = [t("blue.score.strategy.marker"), t("blue.score.strategy.window")];
 
