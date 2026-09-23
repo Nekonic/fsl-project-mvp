@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (WAF evidence lag measured; origin drift and per-engine marker warning left with their options)
+Updated: 2026-09-24 (every alert row carries its own zone and place; the landing page stays current)
 
 ## Where things stand
 
@@ -258,6 +258,19 @@ One line each.
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
 
+**Every alert row carries its own zone and place**
+- The blue alert table borrowed zone and country from `/top/`, which lists
+  25 sources on a slower cadence, so an alert from the 26th busiest source,
+  or a source new since the last top refresh, showed neither. Each row of
+  `GET /detections/` now carries `zone`, `outside`, `country` and `city`,
+  with the range read once per non-empty page and places found in one
+  query; a WAF alert takes its place from Suricata's record of the same
+  address. Seen in a real browser: zone and country on every row, WAF rows
+  included.
+- The landing page never refreshed its session list, so over hours it
+  showed closed sessions as in progress. It reloads on the same guarded
+  timer and resume rule as the consoles.
+
 **A case keeps what it was judged by, and rotation takes turns**
 - The score read each case's `expect` from the case file as it is now, so
   editing the file re-scored sessions already closed and an unparseable file
@@ -372,8 +385,7 @@ One line each.
   (waits for the counting decision), how long Elasticsearch keeps
   `fsl-logs-*` (nothing expires it, and a full disk makes indices read-only
   and Filebeat stop silently - a retention length is a person's call, since
-  it deletes evidence), and the landing page's session list, which never
-  refreshes.
+  it deletes evidence).
 
 **Seventeen agent-built fixes from the second audit**
 - Five agents in their own worktrees, reviewed and merged here, verified
