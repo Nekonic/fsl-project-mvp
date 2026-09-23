@@ -921,3 +921,72 @@ def test_a_first_origin_the_proxy_did_not_take_leaves_no_window_to_start(client)
     assert seen["result"]["status"] == english("red.window.status.origin_failed", reason)
     assert seen["result"]["toggle"] is True
     assert seen["result"]["labelled"] == 0
+
+HELD_CHECK = """
+let release;
+const answered = new Promise((resolve) => { release = resolve; });
+const holding = (method, route) => (request) =>
+  request.method === method && request.route === route
+    ? answered.then(() => healthy(request))
+    : healthy(request);
+const sent = (method, route) =>
+  browser.requests.filter((r) => r.method === method && r.route === route).length;
+const CHECK = ["POST", "/api/sessions/1/objectives/"];
+ANSWERS["POST /api/sessions/1/attacks/"] = (request) => ({case: request.body.case});
+"""
+
+@pytest.mark.parametrize("method, route, achieved", [
+    ("POST", "/api/sessions/1/objectives/", 0),
+    ("GET", "/api/sessions/1/objectives/", 0),
+    ("GET", "/api/wargames/juice-shop/objectives/", 1),
+])
+def test_a_slow_objective_check_is_not_overtaken_by_the_next_one(client, method, route, achieved):
+    held = f"[{js(method)}, {js(route)}]"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + HELD_CHECK
+        + f'ANSWERS["POST /api/sessions/1/objectives/"] = () => ({{achieved: {achieved}}});',
+        scenario=f"""
+          browser.serve(holding(...{held}));
+          const before = sent(...{held});
+          for (let interval = 0; interval < 4; interval += 1) await browser.poll();
+          const during = sent(...{held}) - before;
+          release();
+          await browser.settle();
+          await browser.poll();
+          return {{during, after: sent(...{held}) - before}};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        f"{method} {route} did not answer for four poll intervals, and each "
+        f"interval sent another beside it"
+    )
+    assert seen["result"]["after"] == 2, "polling stopped once the slow check finished"
+
+def test_an_attack_fired_during_a_check_is_checked_once_that_check_ends(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + HELD_CHECK,
+        scenario="""
+          browser.serve(holding(...CHECK));
+          await browser.poll();
+          fire("sqli-login");
+          await browser.settle();
+          const during = sent(...CHECK);
+          release();
+          await browser.settle();
+          return {during, after: sent(...CHECK)};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["during"] == 1, (
+        "the attack asked for a check while one was still running and got a "
+        "second one beside it"
+    )
+    assert seen["result"]["after"] == 2, (
+        "the check that was running began before the attack landed, and the "
+        "one the attack asked for was dropped instead of run after it"
+    )
