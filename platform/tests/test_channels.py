@@ -86,7 +86,7 @@ def test_the_path_asked_for_is_the_one_inside_the_wiki():
     )
 
 def test_the_wiki_is_asked_for_its_own_record():
-    wiki = Host(reply=f'2026-09-21T14:54:24+00:00 172.30.0.2 "GET {SECRET}" 200\n')
+    wiki = Host(reply=f'2026-09-21T14:54:24+00:00 200 "{SECRET}" 172.30.0.2 "GET {SECRET} HTTP/1.1" "node"\n')
 
     when = objectives.wiki_read_at(wiki, SECRET)
 
