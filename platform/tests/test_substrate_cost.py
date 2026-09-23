@@ -13,6 +13,9 @@ class Counting:
         self.described = described
         self.calls = 0
 
+    def segments(self):
+        return self.describe().segments
+
     def describe(self):
         self.calls += 1
         return self.described

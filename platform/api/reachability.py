@@ -20,7 +20,7 @@ def scored_hosts() -> frozenset[str]:
         return known
 
     try:
-        described = substrate().describe()
+        segments = substrate().segments()
     except RangeUnavailable:
         _cached = (time.monotonic(), frozenset())
         return frozenset()
@@ -28,7 +28,7 @@ def scored_hosts() -> frozenset[str]:
     scorer = settings.RANGE.roles.get("scorer") or ""
     known = frozenset(
         node.address
-        for segment in described.segments
+        for segment in segments
         for node in segment.nodes
         if node.address and node.name != scorer
     )

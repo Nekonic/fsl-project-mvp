@@ -41,7 +41,7 @@ from ingest import elastic
 from redteam import harness
 import operator_log
 from range import declared, substrate
-from range.ports import RangeUnavailable
+from range.ports import RangeUnavailable, Shape
 from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
@@ -202,11 +202,11 @@ TOP_N = 25
 
 def _segments():
     try:
-        described = substrate().describe()
+        listed = substrate().segments()
     except RangeUnavailable:
         return [], {}
 
-    segments = topology.shape(described, declared.read())["segments"]
+    segments = topology.shape(Shape(segments=listed, sensors=()), declared.read())["segments"]
 
     zones = []
     for segment in segments:
