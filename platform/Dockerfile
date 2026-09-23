@@ -1,5 +1,8 @@
 FROM python:3.13-slim
 
+ARG DOCKER_GID
+RUN [ -n "$DOCKER_GID" ] || { echo 'DOCKER_GID is empty, so the platform could not reach the docker socket. Build with DOCKER_GID=$(bin/docker-gid) docker compose up -d --build' >&2; exit 1; }
+
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-client \
@@ -10,7 +13,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-ARG DOCKER_GID=0
 RUN useradd --system --create-home --uid 10001 fsl \
  && (getent group ${DOCKER_GID} || groupadd --gid ${DOCKER_GID} dockersock) \
  && usermod --append --groups $(getent group ${DOCKER_GID} | cut -d: -f1) fsl \

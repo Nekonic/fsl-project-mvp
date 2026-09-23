@@ -202,7 +202,7 @@ services:
     build:
       context: ./platform
       args:
-        DOCKER_GID: "${DOCKER_GID:-0}"
+        DOCKER_GID: "${DOCKER_GID:-}"
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}

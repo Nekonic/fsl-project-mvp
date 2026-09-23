@@ -38,7 +38,7 @@ fi
 section "stack"
 owner="$(docker inspect fsl-platform --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
 if [ -z "$owner" ]; then
-  fail "fsl-platform is not there — docker compose up -d --build"
+  fail 'fsl-platform is not there — DOCKER_GID=$(bin/docker-gid) docker compose up -d --build'
   echo
   echo "Skipping acceptance tests: the stack must be up."
   exit 1
@@ -47,11 +47,11 @@ if [ "$(cd "$owner" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
   fail "the stack was brought up from $owner, not from $ROOT"
   echo "     restarting it would run that tree's code and call it this one's."
   echo "     Run bin/verify there, or, if nobody is using that stack,"
-  echo "     docker compose up -d --build from here."
+  echo '     DOCKER_GID=$(bin/docker-gid) docker compose up -d --build from here.'
   exit 1
 fi
 if ! docker compose restart platform >/dev/null 2>&1; then
-  fail "platform could not be restarted — docker compose up -d --build"
+  fail 'platform could not be restarted — DOCKER_GID=$(bin/docker-gid) docker compose up -d --build'
   echo
   echo "Skipping acceptance tests: the stack must be up."
   exit 1

@@ -99,7 +99,7 @@ class Docker:
 
     def start_hint(self, *roles: str, fresh: bool = False) -> str:
         if not roles:
-            return "docker compose up -d --build"
+            return "DOCKER_GID=$(bin/docker-gid) docker compose up -d --build"
         units = " ".join(self._host(role).unit for role in roles)
         flag = " --force-recreate" if fresh else ""
         return f"docker compose up -d{flag} {units}"

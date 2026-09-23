@@ -100,6 +100,102 @@ def test_finding_the_socket_group_is_not_left_to_the_operator():
         "answers 200 with 'permission denied' in the body"
     )
 
+def socket_group_in_compose():
+    import re
+
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    value = str(compose["services"]["platform"]["build"]["args"]["DOCKER_GID"])
+    return value, re.fullmatch(r"\$\{DOCKER_GID(?:(:?[-?])(.*))?\}", value)
+
+def test_a_build_without_the_socket_group_is_not_handed_one():
+    value, reference = socket_group_in_compose()
+
+    assert reference and not (reference.group(2) or ""), (
+        f"compose builds the platform with DOCKER_GID={value!r}. On colima the "
+        f"socket's group is not 0, and every documented start command omitted "
+        f"the variable, so the platform built quietly and every docker call it "
+        f"made answered 'permission denied'"
+    )
+
+def test_compose_commands_that_build_nothing_run_without_the_socket_group():
+    value, reference = socket_group_in_compose()
+
+    assert not (reference and "?" in (reference.group(1) or "")), (
+        f"{value!r} makes compose refuse every command, logs and ps included, "
+        f"whenever the variable is unset; only the build needs it"
+    )
+
+def dockerfile_instructions():
+    joined = DOCKERFILE.read_text().replace("\\\n", " ")
+    return [
+        (keyword, args.strip())
+        for keyword, _, args in (line.strip().partition(" ") for line in joined.splitlines())
+        if keyword and not keyword.startswith("#")
+    ]
+
+def test_the_image_has_no_socket_group_of_its_own_to_fall_back_on():
+    declared = [
+        args for keyword, args in dockerfile_instructions()
+        if keyword == "ARG" and args.split("=")[0] == "DOCKER_GID"
+    ]
+
+    assert declared and all(args.split("=", 1)[1:] in ([], [""]) for args in declared), (
+        f"the Dockerfile declares {declared}: a plain docker build without the "
+        f"argument joins that group and cannot reach the socket"
+    )
+
+def test_the_image_refuses_to_build_without_the_socket_group():
+    steps = [
+        args for keyword, args in dockerfile_instructions()
+        if keyword == "RUN" and "DOCKER_GID" in args
+    ]
+    guard = steps[0] if steps else ""
+
+    assert guard and not any(
+        command in guard for command in ("useradd", "groupadd", "usermod")
+    ), (
+        "no step checks DOCKER_GID before the first one that creates a user or "
+        "a group with it, so an empty value builds an image that cannot reach "
+        "the socket"
+    )
+
+    refused = subprocess.run(
+        ["sh", "-c", guard], capture_output=True, text=True,
+        env={**os.environ, "DOCKER_GID": ""},
+    )
+    allowed = subprocess.run(
+        ["sh", "-c", guard], capture_output=True, text=True,
+        env={**os.environ, "DOCKER_GID": "991"},
+    )
+
+    assert refused.returncode != 0 and "bin/docker-gid" in refused.stderr, (
+        "an empty DOCKER_GID has to stop the build and say where the value "
+        "comes from"
+    )
+    assert allowed.returncode == 0, allowed.stderr
+
+def test_every_documented_build_passes_the_socket_group():
+    import re
+
+    places = [
+        *ROOT.glob("*.md"), *(ROOT / "docs").glob("*.md"),
+        *(ROOT / "test").iterdir(), *(ROOT / "bin").iterdir(),
+    ]
+    bare = [
+        f"{path.relative_to(ROOT)}: {line.strip()}"
+        for path in places if path.is_file()
+        for line in path.read_text(errors="ignore").splitlines()
+        for build in re.finditer(r"docker compose up\b[^\n\"'`]*--build", line)
+        if not line[:build.start()].endswith("DOCKER_GID=$(bin/docker-gid) ")
+    ]
+
+    assert not bare, (
+        f"these tell the operator to build the platform without the socket's "
+        f"group, which the build now refuses: {bare}"
+    )
+
 def test_no_setting_is_read_by_nothing():
     import pathlib
 
