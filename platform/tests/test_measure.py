@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -132,6 +133,36 @@ def test_two_tests_with_one_name_in_a_module_are_refused(repo):
     )
     assert "test/test_twice.py" in done.stderr, done.stderr
     assert "test_same" in done.stderr, done.stderr
+
+
+SOURCE_TREES = ("platform", "redteam", "deploy")
+
+
+def ignored_python(root):
+    listed = git(
+        root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard",
+        "--", *SOURCE_TREES,
+    )
+    return [path for path in os.fsdecode(listed).split("\0") if path.endswith(".py")]
+
+
+def test_no_python_file_under_the_source_trees_is_ignored(tmp_path):
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    shutil.copy(ROOT / ".gitignore", probe / ".gitignore")
+    git(probe, "init", "-q")
+    for tree in SOURCE_TREES:
+        write(probe, f"{tree}/data/model.py", "a = 1\n")
+    write(probe, "data/label/origin", "edge\n")
+
+    assert ignored_python(probe) == [], (
+        "an ignored .py file is neither tracked nor untracked, so measure "
+        "never counts it and verify's untracked check never sees it"
+    )
+    assert ignored_python(ROOT) == []
+    assert subprocess.run(
+        ["git", "check-ignore", "-q", "data/label/origin"], cwd=probe
+    ).returncode == 0, "the stack's own data/ at the root must stay ignored"
 
 
 COMPOSE_SHAPES = {

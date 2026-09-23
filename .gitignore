@@ -3,7 +3,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 db.sqlite3
-data/
+/data/
 deploy/suricata/logs/
 deploy/nginx/logs/
 
