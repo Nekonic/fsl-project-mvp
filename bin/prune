@@ -6,20 +6,33 @@ import sys
 
 CONTAINER = "fsl-platform"
 
-REPORT = """
+SETUP = """
 import os, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 django.setup()
-from django.db.models import Count
+from django.db.models import Max
 from api.models import Session, Detection, Case, Objective
+"""
 
-keep = {keep}
-total = Session.objects.count()
+NEWEST = SETUP + """
+print(Session.objects.aggregate(newest=Max("id"))["newest"] or 0)
+"""
+
+ALL_BUT_THE_NEWEST = """
 survivors = list(
-    Session.objects.order_by("-id").values_list("id", flat=True)[:keep]
+    Session.objects.order_by("-id").values_list("id", flat=True)[:{keep}]
 )
 doomed = Session.objects.exclude(id__in=survivors)
-print("sessions     %6d  keep %d  drop %d" % (total, len(survivors), doomed.count()))
+"""
+
+CLOSED_AFTER = """
+doomed = Session.objects.filter(id__gt={after}).exclude(ended_at=None)
+"""
+
+REPORT = """
+total = Session.objects.count()
+dropped = doomed.count()
+print("sessions     %6d  keep %d  drop %d" % (total, total - dropped, dropped))
 print("  of those still open: %d" % doomed.filter(ended_at=None).count())
 print("detections   %6d  drop %d"
       % (Detection.objects.count(), Detection.objects.filter(session__in=doomed).count()))
@@ -29,13 +42,21 @@ print("objectives   %6d  drop %d"
       % (Objective.objects.count(), Objective.objects.filter(session__in=doomed).count()))
 """
 
-DELETE = REPORT + """
+DELETE = """
 removed = doomed.delete()
 print()
 print("deleted:", removed[0], "rows")
 for model, count in sorted(removed[1].items()):
     print("   %-28s %d" % (model, count))
 """
+
+
+def script(keep=20, after=None, apply=False):
+    if after is None:
+        chosen = ALL_BUT_THE_NEWEST.format(keep=keep)
+    else:
+        chosen = CLOSED_AFTER.format(after=after)
+    return SETUP + chosen + REPORT + (DELETE if apply else "")
 
 
 def run(script):
@@ -53,17 +74,26 @@ def main():
     parser = argparse.ArgumentParser(
         description="Drop old sessions and everything hanging off them.",
     )
-    parser.add_argument("--keep", type=int, default=20,
+    chosen = parser.add_mutually_exclusive_group()
+    chosen.add_argument("--keep", type=int, default=20,
                         help="how many of the newest sessions to keep (default 20)")
+    chosen.add_argument("--after", type=int, metavar="ID",
+                        help="drop only the closed sessions newer than session ID; "
+                             "open ones and ID itself are never touched")
+    chosen.add_argument("--newest", action="store_true",
+                        help="print the newest session id, for a later --after")
     parser.add_argument("--apply", action="store_true",
                         help="actually delete; without this nothing is written")
     args = parser.parse_args()
 
-    if args.keep < 1:
+    if args.newest:
+        sys.stdout.write(run(NEWEST))
+        return
+
+    if args.after is None and args.keep < 1:
         parser.error("--keep must be at least 1")
 
-    script = (DELETE if args.apply else REPORT).format(keep=args.keep)
-    sys.stdout.write(run(script))
+    sys.stdout.write(run(script(keep=args.keep, after=args.after, apply=args.apply)))
 
     if not args.apply:
         print()

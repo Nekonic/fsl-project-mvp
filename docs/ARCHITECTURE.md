@@ -403,12 +403,13 @@ excluded from both LOC numbers.
 
 `bin/verify` runs unit and API tests, then — unless `--fast` — checks the stack is
 up, validates the Suricata config through the API, runs `test/` against the live
-stack, prunes old sessions, and refuses the change if a gated number grew or the
-test floor fell. `metrics.json` holds the baseline.
+stack, prunes the sessions that run made, and refuses the change if a gated
+number grew or the test floor fell. `metrics.json` holds the baseline.
 
 `bin/prune` deletes all but the newest N sessions and everything cascading off
-them. It is a dry run unless given `--apply`, and `bin/verify` runs it after a
-full pass.
+them, or with `--after ID` only the closed sessions newer than `ID`. It is a dry
+run unless given `--apply`. `bin/verify` reads `bin/prune --newest` before the
+acceptance run and prunes `--after` it once the run is done.
 
 ---
 
