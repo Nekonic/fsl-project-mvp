@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shlex
 import subprocess
 import tempfile
@@ -11,7 +10,9 @@ import requests
 from dataclasses import dataclass, replace
 
 from range.declared import Declaration
-from range.ports import Node, Ran, RangeUnavailable, Segment, Sensor, Shape
+from range.ports import (
+    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, reported, reporting,
+)
 
 TOKEN = "POST {keystone}/v3/auth/tokens"
 NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}&tags-any={tags}"
@@ -28,9 +29,6 @@ RENEW_BEFORE = timedelta(seconds=30)
 CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
-EXIT_MARK = "fsl.exit="
-EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
-REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 NOVA_MICROVERSION = "2.1"
 NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
 TOKEN_HEADER = "X-Auth-Token"
@@ -173,12 +171,6 @@ SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 
 
-def _reporting_exit(argv: list[str]) -> str:
-    return shlex.join([
-        "sh", "-c", "--",
-        f"{shlex.join(argv)}; {EXIT_REPORT}",
-    ])
-
 def _next(links) -> str:
     for link in links or []:
         if link.get("rel") == "next" and link.get("href"):
@@ -256,7 +248,7 @@ class OpenStack:
             with tempfile.TemporaryDirectory() as scratch:
                 said = Path(scratch) / "ssh.log"
                 command = self._ssh(address, stdin is not None, said)
-                command.append(_reporting_exit(argv))
+                command.append(shlex.join(reporting(argv)))
                 try:
                     done = subprocess.run(
                         command, input=stdin, capture_output=True,
@@ -271,17 +263,15 @@ class OpenStack:
                     raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
                 complaint = " ".join(said.read_text().split()) if said.exists() else ""
 
-            reported = REPORTED.match(done.stderr or "")
-            if reported is None:
+            finished = reported(done.stderr or "")
+            if finished is None:
                 raise RangeUnavailable(
                     f"{host} at {address} never reported the command "
                     f"finishing: "
                     + (complaint[-600:] or "the connection ended before it did")
                 )
-            return Ran(
-                exit_code=int(reported[2]),
-                output=(done.stdout or "") + reported[1] + reported[3],
-            )
+            code, stderr = finished
+            return Ran(exit_code=code, output=(done.stdout or "") + stderr)
 
         return run
 

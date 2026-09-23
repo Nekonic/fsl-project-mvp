@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import re
+import shlex
 from dataclasses import dataclass, field
 from typing import Protocol
+
+EXIT_MARK = "fsl.exit="
+EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
+_REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 
 class RangeUnavailable(RuntimeError):
     """The substrate could not be reached, so nothing is known about the range.
@@ -77,3 +83,12 @@ class Substrate(Protocol):
 
     def launcher(self, segment_id: str) -> Launcher:
         """A Launcher that starts throwaway hosts on that segment."""
+
+def reporting(argv: list[str]) -> list[str]:
+    return ["sh", "-c", "--", f"{shlex.join(argv)}; {EXIT_REPORT}"]
+
+def reported(stderr: str) -> tuple[int, str] | None:
+    found = _REPORTED.match(stderr)
+    if found is None:
+        return None
+    return int(found[2]), found[1] + found[3]

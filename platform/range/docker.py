@@ -5,7 +5,9 @@ import subprocess
 from dataclasses import replace
 
 from range.declared import Declaration
-from range.ports import Node, Ran, RangeUnavailable, Segment, Sensor, Shape
+from range.ports import (
+    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, reported, reporting,
+)
 
 def _one_subnet(network_name: str, config: list) -> str:
     allocated = [entry.get("Subnet", "") for entry in config if entry.get("Subnet")]
@@ -60,7 +62,7 @@ class Docker:
             command = ["docker", "exec"]
             if stdin is not None:
                 command.append("-i")
-            command += [host, *argv]
+            command += [host, *reporting(argv)]
             try:
                 done = subprocess.run(
                     command, input=stdin, capture_output=True,
@@ -73,10 +75,15 @@ class Docker:
                 ) from exc
             except (OSError, subprocess.SubprocessError) as exc:
                 raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
-            output = (done.stdout or "") + (done.stderr or "")
-            if done.returncode == 126 or "No such container" in output:
-                raise RangeUnavailable(f"{host} is not running")
-            return Ran(exit_code=done.returncode, output=output)
+            finished = reported(done.stderr or "")
+            if finished is None:
+                said = (done.stderr or done.stdout or "").strip()[:300]
+                raise RangeUnavailable(
+                    f"{host} never reported the command finishing: "
+                    + (said or f"docker exited {done.returncode}")
+                )
+            code, stderr = finished
+            return Ran(exit_code=code, output=(done.stdout or "") + stderr)
 
         return run
 

@@ -108,3 +108,21 @@ def test_a_tool_that_will_not_run_is_reported_not_swallowed(client, session_id, 
     assert "no image" in response.json()["detail"]
                                                             
     assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
+
+def test_a_range_that_cannot_start_the_tool_is_503_with_its_reason(client, session_id, a_case):
+    from range.ports import RangeUnavailable
+
+    with patch(
+        "api.views.harness.fire",
+        side_effect=RangeUnavailable("no ssh to fsl-kali: Host key verification failed."),
+    ):
+        response = client.post_json(
+            f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]}
+        )
+
+    assert response.status_code == 503
+    assert "Host key verification failed" in response.json()["detail"], (
+        "the reason the range gave was thrown away and the operator got "
+        "Django's generic Server Error page"
+    )
+    assert client.get(f"/api/sessions/{session_id}/cases/").json() == []

@@ -177,3 +177,25 @@ def test_a_solve_time_older_than_the_session_is_not_believed(client, session_id)
     taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
 
     assert not taken[0]["achieved_at"].startswith(before.isoformat()[:10])
+
+def test_a_session_opens_while_the_wiki_cannot_be_asked(client):
+    with patch("objectives._fetch", return_value=[]):
+        response = client.post_json("/api/sessions/", {})
+
+    assert response.status_code == 201, (
+        "the wiki is a container the red team can take down, and opening a "
+        "session asked it for the baseline and died with a bare 500"
+    )
+    from api.models import Session
+
+    assert Session.objects.get(pk=response.json()["id"]).baseline is None, (
+        "with no baseline the first poll takes one, rather than crediting the "
+        "red team with everything already solved"
+    )
+
+def test_objectives_say_why_the_wiki_cannot_be_asked(client):
+    with patch("objectives._fetch", return_value=[]):
+        response = client.get("/api/wargames/juice-shop/objectives/")
+
+    assert response.status_code == 503
+    assert "wiki" in response.json()["detail"]

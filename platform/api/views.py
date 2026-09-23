@@ -474,7 +474,7 @@ def fire_attack(request, session_id):
             ),
             target_url,
         )
-    except harness.ToolUnavailable as exc:
+    except (harness.ToolUnavailable, RangeUnavailable) as exc:
         return _reply({"detail": str(exc)}, status=503)
 
     recorded = Case.objects.create(
