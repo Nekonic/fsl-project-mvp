@@ -3,7 +3,9 @@ import ipaddress
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, score_when_ready
+from conftest import (
+    PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines,
+)
 
 CASE = "sqli-login-bypass"
 
@@ -47,25 +49,32 @@ def two_places(elsewhere, stack_is_up):
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
 
-    for origin in ("", elsewhere["id"]):
+    case_ids = {}
+    for place, origin in (("front", ""), ("elsewhere", elsewhere["id"])):
         sent = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
             json={"case": CASE, "origin": origin}, timeout=300,
         )
         assert sent.status_code == 201, sent.text
+        case_ids[place] = sent.json()["case_id"]
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-    def both_detected(totals):
-        return sum(
-            1 for c in totals["per_case"] if c["name"] == CASE and c["detected"]
-        ) >= 2
+    def both_seen_by_both(totals):
+        return all(
+            seen_by_both_engines(session_id, totals, case_id=case_id)
+            for case_id in case_ids.values()
+        )
 
-    score_when_ready(session_id, until=both_detected)
+    score = score_when_ready(session_id, until=both_seen_by_both)
     return {
         "session_id": session_id,
-        "detections": requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-        ).json(),
+        "sources": {
+            place: {
+                d["src_ip"] for d in credited_to(session_id, score, case_id=case_id)
+                if d["src_ip"]
+            }
+            for place, case_id in case_ids.items()
+        },
         "map": requests.get(
             f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
         ).json(),
@@ -73,7 +82,7 @@ def two_places(elsewhere, stack_is_up):
 
 def test_an_attack_sent_from_elsewhere_arrives_from_elsewhere(two_places, elsewhere):
     subnet = ipaddress.ip_network(elsewhere["subnet"])
-    sources = {d["src_ip"] for d in two_places["detections"] if d["src_ip"]}
+    sources = two_places["sources"]["elsewhere"]
     from_there = {ip for ip in sources if ipaddress.ip_address(ip) in subnet}
 
     assert from_there, (
@@ -83,12 +92,19 @@ def test_an_attack_sent_from_elsewhere_arrives_from_elsewhere(two_places, elsewh
     )
 
 def test_the_two_attacks_did_not_come_from_the_same_address(two_places):
-    sources = {d["src_ip"] for d in two_places["detections"] if d["src_ip"]}
+    front = two_places["sources"]["front"]
+    there = two_places["sources"]["elsewhere"]
 
-    assert len(sources) >= 2, f"every alert came from {sources}"
+    assert front and there - front, (
+        f"the attack sent from elsewhere came from {sorted(there)} and the one "
+        f"through the front door from {sorted(front)}"
+    )
 
 def test_the_map_draws_more_than_one_place(two_places):
-    countries = {p["country"] for p in two_places["map"]["points"]}
+    own = two_places["sources"]["front"] | two_places["sources"]["elsewhere"]
+    countries = {
+        p["country"] for p in two_places["map"]["points"] if own & set(p["ips"])
+    }
 
     assert len(countries) >= 2, (
         f"the map has one pin - {sorted(countries)} - so either the second "

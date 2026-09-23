@@ -5,7 +5,9 @@ import uuid
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, TARGET_URL
+from conftest import (
+    PLATFORM_URL, TARGET_URL, credited_to, score_when_ready, seen_by_both_engines,
+)
 from range import SENSOR, run
 
 EDGE = ipaddress.ip_network("5.188.10.0/24")
@@ -73,12 +75,13 @@ def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
         json={"case": "sqli-login-bypass"}, timeout=300,
     )
     assert fired.status_code == 201, fired.text
+    case_id = fired.json()["case_id"]
 
-    import time; time.sleep(6)
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/ingest/", timeout=300)
-    detections = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
+    def seen_by_both(totals):
+        return seen_by_both_engines(session_id, totals, case_id=case_id)
+
+    score = score_when_ready(session_id, until=seen_by_both)
+    detections = credited_to(session_id, score, case_id=case_id)
     assert detections, "the console's attack produced no detections"
 
     sources = {d["src_ip"] for d in detections if d["src_ip"]}

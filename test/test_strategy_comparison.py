@@ -18,13 +18,16 @@ def _label(case_id):
     assert response.ok, response.text
 
 @pytest.fixture(scope="module")
-def labelled_session(stack_is_up):
+def case_id():
+    return str(uuid.uuid4())
+
+@pytest.fixture(scope="module")
+def labelled_session(stack_is_up, case_id):
     source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=30
     ).json()["id"]
 
-    case_id = str(uuid.uuid4())
     _label(case_id)
     try:
         started = _now()
@@ -65,13 +68,13 @@ def ready(labelled_session):
     score_when_ready(labelled_session, until=lambda totals: totals["tp"] > 0)
     return labelled_session
 
-def test_the_proxy_marked_free_form_traffic(ready):
+def test_the_proxy_marked_free_form_traffic(ready, case_id):
     detections = requests.get(
         f"{PLATFORM_URL}/api/sessions/{ready}/detections/", timeout=30
     ).json()
 
-    assert any(detection["marker"] for detection in detections), (
-        "no alert carried a marker, so the proxy did not stamp the window"
+    assert any(detection["marker"] == case_id for detection in detections), (
+        "no alert carried this window's marker, so the proxy did not stamp the window"
     )
 
 def test_both_strategies_find_the_same_attack(ready):
