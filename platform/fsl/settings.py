@@ -24,6 +24,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "api.refusals.SameOriginOnly",
     "api.reachability.not_from_inside_the_range",
     "api.refusals.Refusals",
 ]
