@@ -25,6 +25,9 @@ SHAPE = Shape(
 from range.ports import Ran
 
 class Stub:
+    def segments(self):
+        return SHAPE.segments
+
     def describe(self):
         return SHAPE
 
@@ -110,6 +113,9 @@ def test_a_range_that_cannot_be_read_does_not_lock_everyone_out(client):
     from range.ports import RangeUnavailable
 
     class Gone(Stub):
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             raise RangeUnavailable("docker is not there")
 
@@ -135,6 +141,9 @@ def test_deciding_who_may_call_does_not_read_the_range_on_every_request(client):
     class Counting(Stub):
         calls = 0
 
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             Counting.calls += 1
             return SHAPE
@@ -156,4 +165,21 @@ def test_a_range_that_comes_back_is_noticed_within_the_cache_window():
         f"the set of hosts standing in the range is cached for "
         f"{reachability.TTL}s, so a container recreated inside that window "
         f"keeps its old answer"
+    )
+
+
+def test_a_stopped_sensor_does_not_open_the_judge_to_the_range(client):
+    from range.ports import RangeUnavailable
+
+    class SensorDown(Stub):
+        def describe(self):
+            raise RangeUnavailable("fsl-suricata is declared to watch fsl-waf and stands in nothing")
+
+    with ranged(SensorDown):
+        answered = get(client, "/api/rules/", "5.188.10.2")
+
+    assert answered.status_code == 403, (
+        f"stopping the sensor made describe() fail, the rule failed open, and "
+        f"the attacker box reached the rules API ({answered.status_code}). "
+        f"Who stands inside the range does not depend on where the sensor is"
     )

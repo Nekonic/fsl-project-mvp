@@ -32,6 +32,9 @@ SHAPE = Shape(
 
 def stub(described=SHAPE, error=None):
     class Stub:
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             if error is not None:
                 raise error

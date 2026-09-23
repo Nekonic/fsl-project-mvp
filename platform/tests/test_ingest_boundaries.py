@@ -28,6 +28,9 @@ class Sensor:
     def runner(self, role, segment_id=""):
         return self
 
+    def segments(self):
+        return self.describe().segments
+
     def describe(self):
         from range.ports import Shape
         return Shape(segments=(), sensors=())

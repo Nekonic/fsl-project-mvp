@@ -29,6 +29,9 @@ AFTER_A_RECREATE = Shape(
 
 def stub(shape):
     class Stub:
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             return shape
 
@@ -100,6 +103,9 @@ def test_the_range_being_unreachable_does_not_lose_the_alert(client):
     }
 
     class Gone:
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             raise RangeUnavailable("docker is not there")
 

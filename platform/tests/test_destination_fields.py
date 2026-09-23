@@ -22,6 +22,9 @@ SHAPE = Shape(
 )
 
 class Stub:
+    def segments(self):
+        return self.describe().segments
+
     def describe(self):
         return SHAPE
 

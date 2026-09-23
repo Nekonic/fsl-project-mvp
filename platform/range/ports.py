@@ -66,6 +66,9 @@ class Substrate(Protocol):
     def describe(self) -> Shape:
         ...
 
+    def segments(self) -> tuple[Segment, ...]:
+        ...
+
     def runner(self, role: str, segment_id: str = "") -> Runner:
         ...
 

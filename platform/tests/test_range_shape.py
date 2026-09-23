@@ -312,3 +312,14 @@ def test_a_declared_sensor_the_substrate_confirms_is_reported():
     assert [(s.name, s.watches) for s in describe().sensors] == [
         ("fsl-suricata", "fsl-waf"),
     ]
+
+def test_the_segments_are_known_while_the_sensor_is_not_where_it_should_be():
+    elsewhere = dict(MODES, **{"fsl-suricata": "fsl_mgmt"})
+
+    with patch("range.docker.subprocess.run", _Run(modes=elsewhere)):
+        listed = Docker(DECLARED).segments()
+
+    assert {s.id for s in listed} == {s.id for s in DECLARED.segments}, (
+        "a stopped or misplaced sensor made the whole range unreadable, and "
+        "everything that only needs to know who stands where failed with it"
+    )

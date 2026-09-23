@@ -19,6 +19,9 @@ def refusing(argv, stdin=None, timeout=60.0):
 
 def stub(proxy=None):
     class Stub:
+        def segments(self):
+            return self.describe().segments
+
         def describe(self):
             return Shape(segments=(), sensors=())
 

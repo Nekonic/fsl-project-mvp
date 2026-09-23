@@ -282,6 +282,9 @@ class OpenStack:
             self._shape = self._read()
         return self._shape
 
+    def segments(self) -> tuple[Segment, ...]:
+        return self.describe().segments
+
     def _read(self) -> Shape:
         wanted = ",".join(
             f"{SEGMENT_TAG}={segment.id}" for segment in self.declared.segments

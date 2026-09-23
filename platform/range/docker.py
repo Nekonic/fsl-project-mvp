@@ -30,6 +30,16 @@ class Docker:
         self.project = project
 
     def describe(self) -> Shape:
+        networks = self._networks()
+        return Shape(
+            segments=tuple(self._placed(networks)),
+            sensors=self._sensors(networks),
+        )
+
+    def segments(self) -> tuple[Segment, ...]:
+        return tuple(self._placed(self._networks()))
+
+    def _networks(self) -> list[dict]:
         names = self._lines([
             "network", "ls",
             "--filter", f"label={PROJECT_LABEL}={self.project}",
@@ -41,17 +51,12 @@ class Docker:
                 f"no network of project {self.project!r} carries {SEGMENT_LABEL}"
             )
 
-        networks = [
+        return [
             json.loads(line)
             for line in self._read(
                 ["network", "inspect", "--format", "{{json .}}", *names]
             ).splitlines()
         ]
-
-        return Shape(
-            segments=tuple(self._placed(networks)),
-            sensors=self._sensors(networks),
-        )
 
     def runner(self, role: str, segment_id: str = ""):
         host = self.declared.roles.get(role)

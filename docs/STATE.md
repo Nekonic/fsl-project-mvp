@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (second audit: seventeen agent-built fixes merged; decisions listed)
+Updated: 2026-09-24 (a stopped sensor no longer opens the judge to the range)
 
 ## Where things stand
 
@@ -257,6 +257,19 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A stopped sensor no longer opens the judge to the range**
+- With every port on loopback, the attacker box still reaches the platform
+  directly on its own segment (`5.188.10.5:8000`), and the only thing that
+  answers it 403 is the rule refusing addresses that stand in the range.
+  That rule read the range through `describe()`, and the Docker adapter's
+  `describe()` refuses when the sensor is not where the declaration says -
+  which is what a stopped sensor looks like. The rule then failed open:
+  stop Suricata and the attacker box could apply rules.
+- The port has `segments()`, which reads who stands where without the
+  sensor; the reachability rule and the dashboard's zones and host names use
+  it. `describe()` still refuses a misplaced sensor for anything that draws
+  one. Test doubles answer `segments()` too.
 
 **Decisions the second audit left for a person**
 - **GeoIP stops on about 2026-10-18.** Elasticsearch's GeoIP downloader has
