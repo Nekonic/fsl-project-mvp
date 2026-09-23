@@ -216,6 +216,7 @@ def test_an_operator_log_that_cannot_be_read_says_so_instead_of_keeping_its_last
     )
 
 RULE = 'alert http any any -> any any (msg:"sqli"; sid:2100001; rev:1;)'
+CONFLICT = "the rule file changed since it was loaded"
 
 RULES_RANGE = f"""
 const RULE = {js(RULE)};
@@ -243,7 +244,19 @@ const ROUTES = {{
     ANSWERS["/api/rules/suppressions/"] = {{suppressions: [], restored: []}};
     return {{body: {{...SUPPRESSION, restored_at: "2026-09-23T16:30:00Z"}}}};
   }},
+  "POST /api/rules/apply/": (request) => {{
+    if (request.body.base !== ANSWERS["/api/rules/"].version) {{
+      return {{status: 409, body: {{detail: {js(CONFLICT)}}}}};
+    }}
+    applied += 1;
+    ANSWERS["/api/rules/"] = {{content: request.body.content, version: `applied-${{applied}}`}};
+    return {{body: {{id: applied, content: request.body.content}}}};
+  }},
 }};
+let applied = 0;
+const applies = () => browser.requests
+  .filter((request) => request.method === "POST" && request.route === "/api/rules/apply/")
+  .map((request) => request.body);
 const routed = (request) => {{
   const route = ROUTES[`${{request.method}} ${{request.route}}`];
   return route ? route(request) : healthy(request);
@@ -289,6 +302,63 @@ def test_restoring_a_suppression_reloads_the_rules_editor(client):
     assert seen["result"]["restored"] == RULE, (
         "the editor kept the suppressed rule file after the rule was restored"
     )
+
+def test_apply_names_the_version_of_the_rules_the_editor_was_filled_from(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE,
+        scenario="""
+          await browser.click("apply");
+          await browser.click("apply");
+          await openDrawer(7);
+          await browser.click("suppress");
+          await browser.click("apply");
+          return {applies: applies(), said: browser.text("output")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert [body.get("base") for body in seen["result"]["applies"]] == [
+        "a1", "applied-1", "b2",
+    ], (
+        "Apply did not name the version it was loaded from, or kept naming the "
+        "one from before its own apply or a suppression"
+    )
+    assert seen["result"]["applies"][-1]["content"] == f"# {RULE}"
+    assert seen["result"]["said"] == english("blue.rules.applied")
+
+def test_apply_over_a_rule_file_that_changed_since_it_was_loaded_says_so_and_reloads(client):
+    theirs = 'drop http any any -> any any (msg:"theirs"; sid:2100002; rev:1;)'
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE,
+        scenario=f"""
+          ANSWERS["/api/rules/"] = {{content: {js(theirs)}, version: "z9"}};
+          await browser.force("editor", "mine");
+          await browser.click("apply");
+          const refused = {{
+            said: browser.text("output"),
+            style: browser.element("output").className,
+            editor: browser.element("editor").value,
+          }};
+          await browser.click("apply");
+          return {{refused, applies: applies(), said: browser.text("output")}};
+        """,
+    )
+    refused = seen["result"]["refused"]
+
+    assert seen["errors"] == []
+    assert refused["said"] == english("blue.rules.apply_failed", CONFLICT), (
+        "the platform refused an Apply over a rule file that had changed and the "
+        "console did not say why"
+    )
+    assert "text-rose-300" in refused["style"]
+    assert refused["editor"] == theirs, (
+        "the refused Apply left the editor on the rules it was loaded from, so "
+        "the next Apply would be refused again or overwrite the change"
+    )
+    assert [body.get("base") for body in seen["result"]["applies"]] == ["a1", "z9"]
+    assert seen["result"]["said"] == english("blue.rules.applied")
 
 RED_RANGE = """
 const ORIGINS = [

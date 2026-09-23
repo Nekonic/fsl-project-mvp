@@ -869,6 +869,7 @@
 
   const editor = document.getElementById("editor");
   const output = document.getElementById("output");
+  let rulesVersion = null;
 
   function show(text, ok) {
     output.textContent = text;
@@ -883,15 +884,18 @@
   });
 
   document.getElementById("apply").addEventListener("click", async () => {
-    const r = await post("/api/rules/apply/", {content: editor.value});
+    const r = await post("/api/rules/apply/", {content: editor.value, base: rulesVersion});
     show(r.ok ? t("blue.rules.applied")
               : t("blue.rules.apply_failed", r.body.detail || r.status), r.ok);
+    if (r.ok || r.status === 409) loadRules();
     if (r.ok) renderScore();
   });
 
   async function loadRules() {
     const r = await api("/api/rules/");
-    if (r.ok) editor.value = r.body.content;
+    if (!r.ok) return;
+    editor.value = r.body.content;
+    rulesVersion = r.body.version;
   }
 
   async function restoreSuppression(id) {
