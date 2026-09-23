@@ -303,3 +303,14 @@ def test_a_fetch_that_hit_the_cap_says_what_it_lost(monkeypatch):
         "the window held 25937 documents and only 5000 were read; a caller "
         "that cannot see that scores a session on a fifth of its evidence"
     )
+
+def test_a_waf_detection_keeps_where_its_source_is():
+    doc = modsec_doc([{"message": "SQL Injection Attack Detected", "details": {}}])
+    doc["src_geo"] = {"country_name": "Brazil", "location": {"lat": -23.5, "lon": -46.6}}
+
+    [det] = normalize("es1", doc)
+
+    assert det["raw"]["src_geo"]["country_name"] == "Brazil", (
+        "the map places an address by the detections it has, and an address "
+        "the WAF alone caught was never placed anywhere"
+    )

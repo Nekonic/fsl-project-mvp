@@ -16,6 +16,22 @@
           }
         ]
       }
+    },
+    {
+      "geoip": {
+        "field": "transaction.client_ip",
+        "target_field": "src_geo",
+        "ignore_missing": true,
+        "on_failure": [
+          {
+            "set": {
+              "field": "src_geo.error",
+              "value": "lookup failed",
+              "override": true
+            }
+          }
+        ]
+      }
     }
   ]
 }

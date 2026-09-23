@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-22 (the substrate starts the tools; core no longer shells out)
+Updated: 2026-09-23 (an address only the WAF caught is on the map)
 
 ## Where things stand
 
@@ -256,6 +256,20 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**An address only the WAF caught is on the map**
+- `test_origins` went red once in two identical runs. The session's Brazil
+  detections were ModSecurity's; Suricata's Brazil alerts reached
+  Elasticsearch six seconds after the event and after the test had read the
+  map. A ModSecurity record carries its source as `transaction.client_ip`
+  with no `src_ip`, and the pipeline geolocated `src_ip` with
+  `ignore_missing`, so it skipped every one: an address the WAF alone caught
+  was never placed, whatever the timing.
+- The pipeline geolocates both fields, ingest keeps the record's `src_geo` on
+  each WAF detection, and an acceptance test refuses to run the suite when the
+  pipeline Elasticsearch runs is not the committed one - it is installed by
+  hand, so it drifts silently otherwise. Records indexed before the change
+  stay unplaced.
 
 **A tool runs where the attacker already is**
 - `launcher` raised NotImplementedError. Implementing it turned up the reason:
