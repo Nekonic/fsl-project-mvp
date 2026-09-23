@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -17,6 +20,18 @@ WIKI = "wiki"
 GATEWAY = "gateway"
 
 ROLES = (ATTACKER, TARGET, SENSOR, WIKI, GATEWAY)
+
+EXIT_MARK = "fsl.exit="
+_REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
+
+TARGET_NODE = "/nodejs/bin/node"
+NODE_REPORT = (
+    "const ran = require('child_process').spawnSync("
+    "process.argv[1], process.argv.slice(2), {stdio: 'inherit'});"
+    "if (ran.error) process.stderr.write(ran.error.message + '\\n');"
+    f"process.stderr.write('{EXIT_MARK}' + (ran.error ? 127 : ran.status ?? "
+    "128 + require('os').constants.signals[ran.signal]) + '\\n');"
+)
 
 class RangeUnavailable(RuntimeError):
     pass
@@ -35,17 +50,38 @@ class Ran:
     def output(self) -> str:
         return self.stdout + self.stderr
 
+def through_shell(argv: list[str]) -> list[str]:
+    return [
+        "sh", "-c", "--",
+        f'{shlex.join(argv)}; printf "{EXIT_MARK}%d\\n" "$?" >&2',
+    ]
+
+def through_node(argv: list[str]) -> list[str]:
+    return [TARGET_NODE, "-e", NODE_REPORT, "--", *argv]
+
+def reported(stderr: str) -> tuple[int, str] | None:
+    found = _REPORTED.match(stderr)
+    if found is None:
+        return None
+    return int(found[2]), found[1] + found[3]
+
 @dataclass(frozen=True)
 class Host:
     node: str
     unit: str
+    reporting: Callable[[list[str]], list[str]] = through_shell
 
 def declared_roles() -> dict[str, str]:
     document = yaml.safe_load(DECLARATION.read_text()) or {}
     return dict(document.get("roles") or {})
 
+WITHOUT_A_SHELL = {TARGET: through_node}
+
 DOCKER_HOSTS = {
-    role: Host(node=node, unit=node.removeprefix("fsl-"))
+    role: Host(
+        node=node, unit=node.removeprefix("fsl-"),
+        reporting=WITHOUT_A_SHELL.get(role, through_shell),
+    )
     for role, node in declared_roles().items()
 }
 
@@ -56,15 +92,20 @@ class Docker:
         self.root = Path(root)
 
     def run(self, role: str, argv, timeout: float = 60.0) -> Ran:
-        node = self._host(role).node
-        done = self._dispatch(["docker", "exec", node, *argv], timeout)
-        merged = done.stdout + done.stderr
-        if done.returncode == 126 or "No such container" in merged:
+        host = self._host(role)
+        done = self._dispatch(
+            ["docker", "exec", host.node, *host.reporting(list(argv))], timeout
+        )
+        finished = reported(done.stderr or "")
+        if finished is None:
+            said = (done.stderr or done.stdout or "").strip()[:300]
             raise RangeUnavailable(
-                f"the host filling {role!r} ({node}) is not running, so the "
-                f"command never ran"
+                f"the host filling {role!r} ({host.node}) never reported the "
+                f"command finishing, so it may never have run: "
+                + (said or f"docker exited {done.returncode}")
             )
-        return Ran(exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr)
+        code, stderr = finished
+        return Ran(exit_code=code, stdout=done.stdout, stderr=stderr)
 
     def segments(self, role: str, timeout: float = 60.0) -> frozenset[str]:
         node = self._host(role).node
