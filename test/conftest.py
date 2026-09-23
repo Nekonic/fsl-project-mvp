@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import sys
@@ -31,25 +32,33 @@ def stack_is_up():
             f"could not reach {url}. Run `{start_hint()}` first."
         )
 
-def _newest_session() -> int:
-    listed = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=60).json()
-    return listed[0]["id"] if listed else 0
+MADE_BY_THIS_RUN: set[int] = set()
+
+def made_by_this_run(session_id: int) -> int:
+    MADE_BY_THIS_RUN.add(session_id)
+    listed = os.environ.get("FSL_ACCEPTANCE_SESSIONS")
+    if listed:
+        with open(listed, "a", encoding="utf-8") as ids:
+            ids.write(f"{session_id}\n")
+    return session_id
 
 @pytest.fixture(scope="session", autouse=True)
 def the_run_leaves_no_session_open(stack_is_up):
-    before = _newest_session()
-    yield
-    for _ in range(10):
-        opened = [
-            s["id"] for s in requests.get(
-                f"{PLATFORM_URL}/api/sessions/?state=open&limit=25", timeout=60
-            ).json()
-            if s["id"] > before
-        ]
-        if not opened:
-            return
-        for session_id in opened:
-            requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+    real_post = requests.post
+
+    def post(url, *args, **kwargs):
+        answer = real_post(url, *args, **kwargs)
+        if url.rstrip("/") == f"{PLATFORM_URL}/api/sessions" and answer.status_code == 201:
+            made_by_this_run(answer.json()["id"])
+        return answer
+
+    requests.post = post
+    try:
+        yield
+    finally:
+        requests.post = real_post
+        for session_id in sorted(MADE_BY_THIS_RUN):
+            real_post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
 @pytest.fixture(scope="session", autouse=True)
 def terminal_leaves_by_the_front_door(stack_is_up):
@@ -128,7 +137,7 @@ def run_redteam() -> int:
     for line in result.stdout.splitlines():
         found = SESSION_LINE.match(line.strip())
         if found:
-            return int(found.group(1))
+            return made_by_this_run(int(found.group(1)))
     raise AssertionError(f"no session number in output:\n{result.stdout}")
 
 def from_attacker(path: str) -> None:

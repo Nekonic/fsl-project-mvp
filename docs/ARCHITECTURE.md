@@ -407,9 +407,10 @@ stack, prunes the sessions that run made, and refuses the change if a gated
 number grew or the test floor fell. `metrics.json` holds the baseline.
 
 `bin/prune` deletes all but the newest N sessions and everything cascading off
-them, or with `--after ID` only the closed sessions newer than `ID`. It is a dry
-run unless given `--apply`. `bin/verify` reads `bin/prune --newest` before the
-acceptance run and prunes `--after` it once the run is done.
+them, or with `--ids FILE` only the closed sessions whose ids the file lists. It
+is a dry run unless given `--apply`. `bin/verify` hands the acceptance run a file
+in `FSL_ACCEPTANCE_SESSIONS`; the run appends every session it makes, closes them
+when it is done, and verify prunes exactly those.
 
 ---
 

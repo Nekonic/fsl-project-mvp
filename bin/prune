@@ -25,8 +25,8 @@ survivors = list(
 doomed = Session.objects.exclude(id__in=survivors)
 """
 
-CLOSED_AFTER = """
-doomed = Session.objects.filter(id__gt={after}).exclude(ended_at=None)
+CLOSED_LISTED = """
+doomed = Session.objects.filter(id__in={ids}).exclude(ended_at=None)
 """
 
 REPORT = """
@@ -51,11 +51,11 @@ for model, count in sorted(removed[1].items()):
 """
 
 
-def script(keep=20, after=None, apply=False):
-    if after is None:
+def script(keep=20, ids=None, apply=False):
+    if ids is None:
         chosen = ALL_BUT_THE_NEWEST.format(keep=keep)
     else:
-        chosen = CLOSED_AFTER.format(after=after)
+        chosen = CLOSED_LISTED.format(ids=sorted(ids))
     return SETUP + chosen + REPORT + (DELETE if apply else "")
 
 
@@ -77,11 +77,11 @@ def main():
     chosen = parser.add_mutually_exclusive_group()
     chosen.add_argument("--keep", type=int, default=20,
                         help="how many of the newest sessions to keep (default 20)")
-    chosen.add_argument("--after", type=int, metavar="ID",
-                        help="drop only the closed sessions newer than session ID; "
-                             "open ones and ID itself are never touched")
+    chosen.add_argument("--ids", metavar="FILE",
+                        help="drop only the closed sessions whose ids FILE lists, "
+                             "one per line; open ones are never touched")
     chosen.add_argument("--newest", action="store_true",
-                        help="print the newest session id, for a later --after")
+                        help="print the newest session id")
     parser.add_argument("--apply", action="store_true",
                         help="actually delete; without this nothing is written")
     args = parser.parse_args()
@@ -90,10 +90,15 @@ def main():
         sys.stdout.write(run(NEWEST))
         return
 
-    if args.after is None and args.keep < 1:
+    if args.ids is None and args.keep < 1:
         parser.error("--keep must be at least 1")
 
-    sys.stdout.write(run(script(keep=args.keep, after=args.after, apply=args.apply)))
+    ids = None
+    if args.ids is not None:
+        with open(args.ids, encoding="utf-8") as listed:
+            ids = {int(line) for line in listed if line.strip()}
+
+    sys.stdout.write(run(script(keep=args.keep, ids=ids, apply=args.apply)))
 
     if not args.apply:
         print()

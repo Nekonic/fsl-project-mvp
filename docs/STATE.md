@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (the platform's store no longer lives in a checkout)
+Updated: 2026-09-24 (verify prunes only the sessions its run listed)
 
 ## Where things stand
 
@@ -385,6 +385,14 @@ One line each.
   sessions "in progress". The run now closes every session it opened, so
   prune takes all of them (24 on the first run). The 25 already open are
   left for a person to close: nothing proves none of them is theirs.
+- "Newer than the run's first id" still meant "made by the run", so a session
+  a person opened while verify ran would have been closed and deleted. The
+  run now lists every session it makes (the acceptance suite records each
+  `POST /api/sessions/` and each `session N done` from the red team script)
+  in the file `FSL_ACCEPTANCE_SESSIONS` names; it closes exactly those and
+  `bin/prune --ids` deletes exactly those. Whether verify should share a
+  stack with a person at all is still open: it also resets the target, the
+  rules and the attacker's origin.
 - Five unit tests could not fail on the regression they were named for (a
   rollback test that primed a throwaway sensor, one window edge, the
   false-positive denominator with as many attacks as benign cases). Each now
