@@ -1,5 +1,3 @@
-import threading
-import time
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -59,30 +57,31 @@ def test_an_old_alert_shipped_again_is_not_evidence_of_this_session(client):
     assert answer["stale"] == 1
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_two_ingests_at_once_neither_fails_nor_doubles(client):
+    from ingest.elastic import normalize_all
+
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    ingest = f"/api/sessions/{session_id}/ingest/"
     documents = [alert(f"d{n}", timezone.now()) for n in range(5)]
+    overtaken = []
+    underway = []
 
-    def slow_fetch(*args, **kwargs):
-        time.sleep(0.3)
-        return documents, None
+    def overtaken_after_reading_what_it_has(found):
+        if not underway:
+            underway.append(True)
+            overtaken.append(client.post_json(ingest).status_code)
+        return normalize_all(found)
 
-    answers = []
+    with patch("api.views.elastic.fetch", return_value=(documents, None)), patch(
+        "api.views.elastic.normalize_all", side_effect=overtaken_after_reading_what_it_has
+    ):
+        first = client.post_json(ingest)
 
-    def ingest():
-        answers.append(client.post_json(f"/api/sessions/{session_id}/ingest/").status_code)
-
-    with patch("api.views.elastic.fetch", side_effect=slow_fetch):
-        both = [threading.Thread(target=ingest) for _ in range(2)]
-        for thread in both:
-            thread.start()
-        for thread in both:
-            thread.join()
-
-    assert answers == [200, 200], (
-        f"two console ticks overlapped and one ingest died on the unique "
-        f"constraint: {answers}"
+    assert [first.status_code, *overtaken] == [200, 200], (
+        f"a second console tick stored the same alerts after the first had "
+        f"read what it already had, and the first died on the unique "
+        f"constraint: {[first.status_code, *overtaken]}"
     )
     assert Detection.objects.filter(session_id=session_id).count() == 5
 
