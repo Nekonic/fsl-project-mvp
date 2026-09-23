@@ -375,7 +375,15 @@ def attacker_origin(request):
 
 @require_http_methods(["POST"])
 def attacker_label(request):
-    attacker.set_label(_payload(request).get("case_id"), substrate().runner("proxy"))
+    case_id = _payload(request).get("case_id")
+    if case_id not in (None, "") and not (
+        isinstance(case_id, str) and case_id.isprintable() and " " not in case_id
+    ):
+        raise BadRequest(
+            '"case_id" must be one marker with no spaces or control characters, '
+            f"or null to clear the label, got {case_id!r}"
+        )
+    attacker.set_label(case_id or None, substrate().runner("proxy"))
     return _reply({"ok": True})
 
 @require_http_methods(["GET"])

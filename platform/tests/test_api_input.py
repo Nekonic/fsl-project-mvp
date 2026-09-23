@@ -146,3 +146,38 @@ def test_a_well_formed_case_is_still_recorded(client, session_id):
     response = record(client, session_id, a_case(source_ip="5.188.10.5", correlation="window"))
 
     assert response.status_code == 201, response.content
+
+
+@pytest.mark.parametrize("given", [
+    0, False, 123, {}, ["c0ffee"], "a\r\nb", "a\r\nX-Other: 1", "two words",
+    "tab\tbetween", "nul\x00", "zero​width", " ",
+])
+def test_a_label_that_is_not_one_marker_is_refused_before_the_proxy_stamps_it(client, given):
+    with patch("api.views.attacker.set_label") as labelled:
+        response = client.post_json("/api/attacker/label/", {"case_id": given})
+
+    assert response.status_code == 400, (
+        f"case_id={given!r} answered {response.status_code}; the proxy puts the "
+        f"label into the X-FSL-Case header of every request the terminal sends, "
+        f"so a line break there writes headers of the caller's choosing"
+    )
+    assert response.json()["detail"]
+    labelled.assert_not_called()
+
+
+@pytest.mark.parametrize("given", [None, ""])
+def test_a_label_can_still_be_cleared(client, given):
+    with patch("api.views.attacker.set_label") as labelled:
+        response = client.post_json("/api/attacker/label/", {"case_id": given})
+
+    assert response.status_code == 200
+    assert labelled.call_args.args[0] in (None, "")
+
+
+@pytest.mark.parametrize("given", ["44444444-4444-4444-8444-444444444444", "sqli-login-bypass"])
+def test_a_marker_is_stamped_as_given(client, given):
+    with patch("api.views.attacker.set_label") as labelled:
+        response = client.post_json("/api/attacker/label/", {"case_id": given})
+
+    assert response.status_code == 200
+    assert labelled.call_args.args[0] == given
