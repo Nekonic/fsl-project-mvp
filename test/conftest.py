@@ -36,6 +36,17 @@ def terminal_leaves_by_the_front_door(stack_is_up):
     requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
                   timeout=60)
 
+@pytest.fixture(scope="session", autouse=True)
+def terminal_carries_no_case(stack_is_up):
+    cleared = requests.post(
+        f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": ""}, timeout=60
+    )
+    assert cleared.ok, (
+        f"could not clear the terminal's case label: {cleared.text}. A label "
+        f"left behind by an earlier run stamps every request from the terminal "
+        f"with a case that is not in this run."
+    )
+
 @pytest.fixture(scope="session")
 def baseline_rules(stack_is_up):
     committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
