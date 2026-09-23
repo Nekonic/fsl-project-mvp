@@ -32,7 +32,7 @@ SIGSEGV under x86 emulation.
 
 ```bash
 colima start --profile fsl
-docker compose up -d --build
+DOCKER_GID=$(bin/docker-gid) docker compose up -d --build
 ```
 
 Register the Elasticsearch ingest pipeline once. It attaches geo data to the
