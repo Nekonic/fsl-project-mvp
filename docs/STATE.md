@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-23 (a command over ssh is the command that was asked for)
+Updated: 2026-09-23 (a range that cannot answer says so)
 
 ## Where things stand
 
@@ -259,6 +259,26 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A range that cannot answer says so**
+- Firing a case, opening a session and reading objectives each let
+  `RangeUnavailable` through as Django's bare 500, dropping the reason the
+  range gave. The first is a 503 with it now; a wiki that cannot be read is
+  `ObjectivesUnavailable`, so a session still opens and takes its baseline on
+  the first poll.
+- On Docker a stopped container was not even an error. `docker exec` exits 1
+  for "is not running", for "Cannot connect to the Docker daemon" and for a
+  command that failed, and the runner recognised only "No such container". A
+  stopped wiki read as a wiki nobody had read - the internal objective scored
+  as not taken - and a daemon error could come back as the rules file's
+  content. Found by stopping the wiki against the live stack, after the unit
+  tests had passed. Both adapters now use the report ssh needed, shared in
+  `range/ports.py`: the command runs under `sh -c --` and prints its own exit
+  status, and without that report nothing ran.
+- `bin/verify` restarts the platform before the acceptance run. It serves with
+  waitress, which never reloads, and the process answering this session's
+  verifies had started before the code under test: the acceptance half had
+  been checking whatever was loaded when the container last started.
 
 **An address only the WAF caught is on the map**
 - `test_origins` went red once in two identical runs. The session's Brazil

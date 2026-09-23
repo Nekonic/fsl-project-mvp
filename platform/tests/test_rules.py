@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from range.declared import Declaration
-from range.ports import Ran, RangeUnavailable
+from range.ports import EXIT_MARK, Ran, RangeUnavailable, reporting
 from rules.suricata import RuleApplyError, ValidationOutcome
 
 pytestmark = pytest.mark.django_db
@@ -38,12 +38,12 @@ def test_the_endpoint_asks_the_substrate_for_the_sensor_and_nothing_else():
     with patch("range.docker.subprocess.run") as ran:
         ran.return_value.returncode = 0
         ran.return_value.stdout = "ok"
-        ran.return_value.stderr = ""
+        ran.return_value.stderr = f"{EXIT_MARK}0\n"
         run(["suricata", "-T", "-S", "/x"])
 
     argv = ran.call_args.args[0]
     assert argv[:3] == ["docker", "exec", "fsl-suricata"], argv
-    assert argv[3:] == ["suricata", "-T", "-S", "/x"], argv
+    assert argv[3:] == reporting(["suricata", "-T", "-S", "/x"]), argv
 
 def test_writing_through_the_substrate_opens_stdin():
     from range.docker import Docker
@@ -53,7 +53,7 @@ def test_writing_through_the_substrate_opens_stdin():
     with patch("range.docker.subprocess.run") as ran:
         ran.return_value.returncode = 0
         ran.return_value.stdout = ""
-        ran.return_value.stderr = ""
+        ran.return_value.stderr = f"{EXIT_MARK}0\n"
         run(["sh", "-c", "cat > /x"], stdin=GOOD_RULE)
 
     assert "-i" in ran.call_args.args[0], "docker exec without -i discards stdin"

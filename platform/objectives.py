@@ -8,10 +8,12 @@ from typing import Any
 
 from django.conf import settings
 
+from range.ports import RangeUnavailable
+
 _TIMEOUT = 15
 
 class ObjectivesUnavailable(RuntimeError):
-    """The target is not answering, so nothing can be said about objectives."""
+    pass
 
                                                                                
                                                                
@@ -48,6 +50,10 @@ def _internal(wiki=None) -> dict[str, Any]:
     try:
         if wiki is not None:
             when = wiki_read_at(wiki, settings.WIKI_SECRET_PATH)
+    except RangeUnavailable as exc:
+        raise ObjectivesUnavailable(
+            f"could not read the wiki's access log: {exc}"
+        ) from exc
     except OSError:
                                                                             
                                                                   

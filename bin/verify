@@ -36,10 +36,20 @@ if [ "$FAST" = 1 ]; then
 fi
 
 section "stack"
+if ! docker compose restart platform >/dev/null 2>&1; then
+  fail "platform could not be restarted — docker compose up -d --build"
+  echo
+  echo "Skipping acceptance tests: the stack must be up."
+  exit 1
+fi
+for _ in $(seq 60); do
+  curl -fsS -o /dev/null --max-time 5 http://localhost:8000/api/rules/ && break
+  sleep 1
+done
 if curl -fsS -o /dev/null --max-time 5 http://localhost:8000/api/rules/; then
-  ok "platform responding"
+  ok "platform restarted on the tree being verified"
 else
-  fail "platform not responding — docker compose up -d --build"
+  fail "platform not responding after a restart — docker compose logs platform"
   echo
   echo "Skipping acceptance tests: the stack must be up."
   exit 1
