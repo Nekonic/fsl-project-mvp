@@ -91,6 +91,8 @@ class Objective(models.Model):
     category = models.CharField(max_length=128, blank=True, default="")
     difficulty = models.IntegerField(default=1)
     achieved_at = models.DateTimeField()
+    earliest = models.DateTimeField(null=True, blank=True)
+    latest = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["achieved_at"]

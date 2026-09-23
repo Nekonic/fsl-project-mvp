@@ -50,9 +50,12 @@ from scoreboard import ATTRIBUTION_WINDOW, Attempt, attribute
 
 T0 = datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
 
-def attempt(seconds, case_id="c", detected=True):
+def attempt(seconds, case_id="c", detected=True, lasted=0, malicious=True):
+    started_at = T0 + timedelta(seconds=seconds)
     return Attempt(
-        case_id=case_id, started_at=T0 + timedelta(seconds=seconds),
+        case_id=case_id, started_at=started_at,
+        ended_at=started_at + timedelta(seconds=lasted),
+        malicious=malicious,
         detected=detected, detection_ids=("d",) if detected else (),
     )
 
@@ -161,3 +164,54 @@ def test_nothing_indiscriminate_is_the_same_answer_as_before():
     assert corroborated("SQL", ["FSL SQLi attempt - URI"], indiscriminate=set()) is True
     assert corroborated("SQL", ["FSL XSS attempt"], indiscriminate=set()) is False
     assert corroborated(None, ["anything"], indiscriminate=set()) is None
+
+
+def test_a_breach_late_in_a_long_window_belongs_to_that_window():
+    window = attempt(0, "terminal", lasted=300)
+
+    credited = attribute(T0 + timedelta(seconds=181), [window])
+
+    assert credited is window, (
+        "a five-minute terminal window took an objective three minutes in and "
+        "the breach was scored as nobody's, undetected at full damage, because "
+        "only the window's first two minutes counted"
+    )
+
+
+def test_traffic_meant_to_pass_never_takes_an_objective():
+    browsing = attempt(0, "benign-browse", detected=True, malicious=False)
+
+    assert attribute(T0 + timedelta(seconds=5), [browsing]) is None, (
+        "a benign case's false positive 'detected' a breach it could not have "
+        "caused, and the breach was scored as caught"
+    )
+
+
+def test_the_target_s_own_stamp_is_not_stretched_to_a_case_long_finished():
+    finished = attempt(0, "sqli", lasted=0.02)
+    stamped = T0 + timedelta(seconds=75)
+
+    credited = attribute(
+        stamped, [finished],
+        earliest=stamped - timedelta(milliseconds=100),
+        latest=stamped + timedelta(milliseconds=101),
+    )
+
+    assert credited is None, (
+        "the target stamped the breach 75 seconds after the only case had "
+        "finished, and the two-minute allowance meant for polling lag handed "
+        "it to that case"
+    )
+
+
+def test_a_stamp_truncated_to_the_second_still_reaches_its_own_case():
+    took_it = attempt(1.5, "ssrf", lasted=0.2)
+    truncated = T0 + timedelta(seconds=1)
+
+    credited = attribute(
+        truncated, [took_it],
+        earliest=truncated - timedelta(milliseconds=100),
+        latest=truncated + timedelta(seconds=1, milliseconds=100),
+    )
+
+    assert credited is took_it

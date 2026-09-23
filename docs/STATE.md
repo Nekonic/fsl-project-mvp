@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (a session closes once, and what it lost at the end is on its board)
+Updated: 2026-09-24 (a breach belongs to the attack that was running when the target recorded it)
 
 ## Where things stand
 
@@ -257,6 +257,21 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A breach belongs to the attack that was running when the target recorded it**
+- `attribute()` credited any case that had started within two minutes before
+  a breach, and read neither when it ended nor whether it was an attack. A
+  breach three minutes into a five-minute terminal window belonged to nobody
+  and scored undetected at full damage; a benign case's false positive
+  "detected" a breach 75 seconds after that case had finished.
+- Now only a malicious case can take an objective, and it is a candidate when
+  it overlaps the interval the breach could have happened in. With the
+  target's own stamp that is the stamp plus its resolution, and 100 ms either
+  side: Juice Shop writes milliseconds, the wiki's nginx log whole seconds - a
+  read at .900 is stamped .000, before the case that caused it. Without a
+  stamp it is the two minutes before the breach was seen, as before. The
+  interval is stored with the objective (migration 0008); rows from before it
+  keep the old rule.
 
 **A session closes once, and what it lost at the end is on its board**
 - Closing was a bare write of `ended_at`, and the session page always offers

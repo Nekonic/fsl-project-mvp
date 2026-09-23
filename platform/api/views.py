@@ -429,10 +429,13 @@ def _observe_objectives(session) -> dict:
             name=objective["name"],
             category=objective["category"],
             difficulty=objective["difficulty"],
-            achieved_at=_solved_at(objective, session, observed_at),
+            achieved_at=at,
+            earliest=earliest,
+            latest=latest,
         )
         for key, objective in solved.items()
         if key not in ignore
+        for at, earliest, latest in [_achieved(objective, session, observed_at)]
     ]
     Objective.objects.bulk_create(fresh)
 
@@ -827,6 +830,8 @@ def _attempts(cases, result):
         scoreboard.Attempt(
             case_id=case.case_id,
             started_at=case.started_at,
+            ended_at=case.ended_at,
+            malicious=case.malicious,
             detected=bool(by_case[case.case_id].detected),
             detection_ids=tuple(by_case[case.case_id].detection_ids),
         )
@@ -838,7 +843,9 @@ def _breaches(session, cases, result):
     attempts = _attempts(cases, result)
     breaches = []
     for objective in session.objectives.all():
-        credited = scoreboard.attribute(objective.achieved_at, attempts)
+        credited = scoreboard.attribute(
+            objective.achieved_at, attempts, objective.earliest, objective.latest
+        )
         breaches.append(
             scoreboard.Breach(
                 key=objective.key,
@@ -864,16 +871,20 @@ def _breach_rows(session, cases, result):
         for b in _breaches(session, cases, result)
     ]
 
-def _solved_at(objective, session, observed_at):
+def _achieved(objective, session, observed_at):
     stamp = objective.get("solved_at")
-    if not stamp:
-        return observed_at
     try:
-        solved_at = datetime.fromisoformat(stamp)
+        solved_at = datetime.fromisoformat(stamp) if stamp else None
     except ValueError:
-        return observed_at
-    believable = session.started_at - CLOCK_SLACK <= solved_at <= observed_at
-    return solved_at if believable else observed_at
+        solved_at = None
+    if solved_at is None or not session.started_at - CLOCK_SLACK <= solved_at <= observed_at:
+        return observed_at, None, None
+    resolution = timedelta(milliseconds=1) if "." in stamp else timedelta(seconds=1)
+    return (
+        solved_at,
+        solved_at - scoreboard.CLOCK_SKEW,
+        solved_at + resolution + scoreboard.CLOCK_SKEW,
+    )
 
 def _expectations(scenario):
     try:

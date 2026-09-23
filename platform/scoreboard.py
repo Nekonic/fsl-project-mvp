@@ -42,16 +42,25 @@ class Attempt:
 
     case_id: str
     started_at: datetime
+    ended_at: datetime
+    malicious: bool
     detected: bool
     detection_ids: tuple[str, ...]
 
-def attribute(achieved_at: datetime, attempts: list[Attempt]) -> Attempt | None:
+def attribute(
+    achieved_at: datetime,
+    attempts: list[Attempt],
+    earliest: datetime | None = None,
+    latest: datetime | None = None,
+) -> Attempt | None:
+    earliest = earliest or achieved_at - ATTRIBUTION_WINDOW
+    latest = latest or achieved_at + CLOCK_SKEW
     candidates = [
         attempt
         for attempt in attempts
-        if attempt.started_at - CLOCK_SKEW
-        <= achieved_at
-        <= attempt.started_at + ATTRIBUTION_WINDOW
+        if attempt.malicious
+        and attempt.started_at <= latest
+        and earliest <= attempt.ended_at
     ]
     return max(candidates, key=lambda attempt: attempt.started_at, default=None)
 
