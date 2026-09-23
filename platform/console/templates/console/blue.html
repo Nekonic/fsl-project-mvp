@@ -358,9 +358,25 @@
     }
   }
 
+  let ticking = false;
+
+  async function poll() {
+    if (ticking) return;
+    ticking = true;
+    clearTimeout(timer);
+    try {
+      await tick();
+    } finally {
+      ticking = false;
+      schedule();
+    }
+  }
+
   function schedule() {
-    clearInterval(timer);
-    if (live) timer = setInterval(tick, Number(document.getElementById("interval").value));
+    clearTimeout(timer);
+    if (live && !ticking) {
+      timer = setTimeout(poll, Number(document.getElementById("interval").value));
+    }
   }
 
   let reachable = true;
@@ -396,8 +412,8 @@
   function setLive(on) {
     live = on;
     paintLive();
-    schedule();
-    if (on) tick();
+    if (on) poll();
+    else schedule();
   }
   document.getElementById("live-toggle").addEventListener("click", () => setLive(!live));
   document.getElementById("interval").addEventListener("change", schedule);

@@ -292,18 +292,14 @@ function fetch(path, options = {}) {
     body: options.body === undefined ? null : JSON.parse(options.body),
   };
   requests.push(request);
-  let served;
-  try {
-    served = answer(request);
-  } catch (error) {
-    return Promise.reject(error);
-  }
-  const status = served.status ?? 200;
-  const payload = JSON.stringify(served.body ?? {});
-  return Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(JSON.parse(payload)),
+  return new Promise((resolve) => resolve(answer(request))).then((served) => {
+    const status = served.status ?? 200;
+    const payload = JSON.stringify(served.body ?? {});
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(JSON.parse(payload)),
+    };
   });
 }
 
