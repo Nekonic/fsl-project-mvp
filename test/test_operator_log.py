@@ -20,10 +20,12 @@ def recorded(stack_is_up):
     requests.post(
         f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": marker}, timeout=60
     )
-    typed(f"nmap --version")
-    requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": None}, timeout=60
-    )
+    try:
+        typed(f"nmap --version")
+    finally:
+        requests.post(
+            f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": None}, timeout=60
+        )
     typed("echo after")
 
     listed = requests.get(
