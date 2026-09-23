@@ -555,7 +555,7 @@
     const last = Math.max(...times);
     const buckets = new Array(48).fill(0);
     const span = Math.max(last - first, 1);
-    times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 47))]++);
+    times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 48))]++);
 
     const tallest = Math.max(...buckets, 1);
     histogram.innerHTML = buckets.map((n) => `
