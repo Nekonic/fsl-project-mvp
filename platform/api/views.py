@@ -94,16 +94,23 @@ CLOCK_SLACK = timedelta(seconds=5)
 def _shape(obj, fields):
     return {name: getattr(obj, name) for name in fields}
 
-def _listed(detection):
-    raw = detection.raw or {}
+def _request_of(raw):
     http = raw.get("http") or {}
-    port = raw.get("dest_port")
+    if http or raw.get("dest_ip"):
+        return (http.get("http_method") or "", http.get("url") or "",
+                raw.get("dest_ip") or "", raw.get("dest_port"))
+    request = raw.get("request") or {}
+    return (request.get("method") or "", request.get("uri") or "",
+            raw.get("host_ip") or "", raw.get("host_port"))
+
+def _listed(detection):
+    method, path, dest_ip, dest_port = _request_of(detection.raw or {})
     return dict(
         _shape(detection, DETECTION_FIELDS),
-        dest_ip=raw.get("dest_ip") or "",
-        dest_port=port,
-        method=http.get("http_method") or "",
-        path=http.get("url") or "",
+        dest_ip=dest_ip,
+        dest_port=dest_port,
+        method=method,
+        path=path,
     )
 
 def _reply(payload, status=200):
@@ -222,9 +229,6 @@ def _zone_of(address, zones):
         return None
     return next((s for network, s in zones if parsed in network), None)
 
-def _http(detection):
-    return (detection.raw or {}).get("http") or {}
-
 @require_http_methods(["GET"])
 def session_top(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
@@ -242,7 +246,7 @@ def session_top(request, session_id):
 
     sources, destinations, signatures, paths = {}, {}, {}, {}
     for detection in detections:
-        http = _http(detection)
+        method, url, dest_ip, port = _request_of(detection.raw or {})
 
         if detection.src_ip:
             row = sources.get(detection.src_ip)
@@ -261,9 +265,7 @@ def session_top(request, session_id):
                 }
             row["alerts"] += 1
 
-        dest_ip = (detection.raw or {}).get("dest_ip")
         if dest_ip:
-            port = (detection.raw or {}).get("dest_port")
             key = (dest_ip, port)
             row = destinations.get(key)
             if row is None:
@@ -285,9 +287,8 @@ def session_top(request, session_id):
         })
         row["alerts"] += 1
 
-        url = http.get("url")
         if url:
-            key = (http.get("http_method") or "", url)
+            key = (method, url)
             row = paths.setdefault(key, {
                 "method": key[0],
                 "path": url,
@@ -713,7 +714,7 @@ def ingest_detections(request, session_id):
         rows.append(Detection(
             session=session,
             src_host=hosts.get(alert.get("src_ip"), ""),
-            dest_host=hosts.get(raw.get("dest_ip"), ""),
+            dest_host=hosts.get(_request_of(raw)[2], ""),
             **alert,
         ))
 

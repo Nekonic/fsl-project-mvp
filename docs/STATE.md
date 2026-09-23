@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (only the platform's own pages can make it act; Filebeat no longer re-ships on a VM restart)
+Updated: 2026-09-24 (a WAF alert shows the request it judged)
 
 ## Where things stand
 
@@ -257,6 +257,16 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A WAF alert shows the request it judged**
+- ModSecurity detections stored one rule message and dropped the transaction,
+  while the console read path, method and destination from Suricata's shape.
+  WAF alerts showed "-" in the alert table and were missing from Top paths
+  and Top destinations, beside a Total that counted them. Ingest keeps the
+  request and the host address and port with each WAF detection, and one
+  helper in the views reads either engine's shape. `core_loc` fell by one.
+- The last docstrings in production code are gone, as CLAUDE.md asks; the
+  contract they described is in the names and the tests.
 
 **Only the platform's own pages can make it act**
 - No CSRF, Origin or `Sec-Fetch-Site` check existed and bodies were parsed as
