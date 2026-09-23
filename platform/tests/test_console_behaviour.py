@@ -511,6 +511,37 @@ def test_what_a_poll_draws_finishes_before_the_next_poll(client, route, tab, res
     )
     assert seen["result"]["after"] == 2, "polling stopped once the slow read finished"
 
+def test_two_draws_of_the_score_at_once_show_each_warning_once(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + """
+          ANSWERS["/api/sessions/1/score/"] = {
+            ...SCORE, warnings: [["score.warning.truncated", 10000, 26000]],
+          };
+          let release;
+          const answered = new Promise((resolve) => { release = resolve; });
+          const holdingScore = (request) =>
+            request.route === "/api/sessions/1/score/" && !request.query.correlation
+              ? answered.then(() => healthy(request))
+              : healthy(request);
+        """,
+        scenario="""
+          browser.serve(holdingScore);
+          await browser.click('[data-tab="score"]');
+          await browser.click('[data-tab="score"]');
+          release();
+          await browser.settle();
+          return browser.element("warnings").innerHTML.split("bg-amber-950").length - 1;
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == 1, (
+        "two draws of the score overlapped, as a poll and a click on the tab can, "
+        "and both cleared the warnings before either added its own, so each warning "
+        f"showed {seen['result']} times"
+    )
+
 def test_resuming_the_live_view_during_a_slow_ingest_does_not_start_another(client):
     seen = open_page(
         client, "/blue/1/",
