@@ -23,3 +23,13 @@ def test_the_sensor_and_the_target_are_pinned_by_digest():
 
     assert sensor and all("@sha256:" in i for i in sensor), sensor
     assert target and all("@sha256:" in i for i in target), target
+
+def test_every_published_port_answers_on_loopback_only():
+    published = re.findall(r"^\s+-\s+\"([^\"]+:\d+)\"\s*$", COMPOSE.read_text(), re.M)
+    everywhere = [p for p in published if not p.startswith("127.0.0.1:")]
+
+    assert published and not everywhere, (
+        f"{everywhere} are published on every address, so each segment's gateway "
+        f"forwards them back into the range and colima's forwarder offers them "
+        f"to the whole LAN"
+    )
