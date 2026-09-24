@@ -77,12 +77,11 @@ def test_a_destination_is_an_address_and_a_port_not_a_string(client):
     top = scored(client, [("172.30.0.2", 3000)])
 
     row = top["destinations"][0]
-    assert row["dest_ip"] == "172.30.0.2"
-    assert row["dest_port"] == 3000
-    assert ":" not in str(row.get("dest_ip")), (
+    assert row["dest_ip"] == "172.30.0.2", (
         "the address and the port were pasted into one field, so the table "
         "cannot sort or filter on either and a reader has to parse it"
     )
+    assert row["dest_port"] == 3000
 
 def test_one_host_on_two_of_its_addresses_is_still_two_rows(client):
     top = scored(client, [("5.188.10.4", 80), ("172.30.0.5", 80)])

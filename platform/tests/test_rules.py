@@ -26,10 +26,7 @@ class Sensor:
                 return reply
         return Ran(0, "")
 
-def sensor_of(substrate):
-    return substrate.runner.call_args.args[0]
-
-def test_the_endpoint_asks_the_substrate_for_the_sensor_and_nothing_else():
+def test_the_docker_runner_execs_in_the_sensor_container():
     from range.docker import Docker
 
     substrate = Docker(Declaration(roles={"sensor": "fsl-suricata"}))

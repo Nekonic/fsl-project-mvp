@@ -293,15 +293,10 @@ def test_a_network_with_nothing_to_bind_it_is_caught():
     ]
 
 def test_every_network_the_stack_builds_says_which_segment_it_is():
-    compose = yaml.safe_load(COMPOSE.read_text())
+    found = unmarked(yaml.safe_load(COMPOSE.read_text()))
 
-    unmarked = sorted(
-        key for key, network in compose["networks"].items()
-        if not ((network or {}).get("labels") or {}).get("fsl.segment.id")
-    )
-
-    assert unmarked == [], (
-        f"nothing on {unmarked} says which declared segment it realises, so "
+    assert found == [], (
+        f"nothing on {found} says which declared segment it realises, so "
         f"the adapter has to guess from the name it happens to have"
     )
 
