@@ -53,7 +53,7 @@ curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
 
 Inside the range the target is `http://shop.com` on port 80 — no appliance name
 in the URL, no port to remember. That alias lives on the `edge` network, where
-Kali is (`compose.yaml:94`); the other three attacker networks reach the same
+Kali is (`compose.yaml:101`); the other three attacker networks reach the same
 WAF through the stamping proxy.
 
 ## Running a round
@@ -164,7 +164,7 @@ any migration the backup predates.
 | `redteam/` | attack execution and ground truth |
 | `wargame/` | the applications under defence |
 | `deploy/`, `compose.yaml` | the stack |
-| `bin/` | verify, measure, prune, and the world map generator |
+| `bin/` | verify, measure, prune, backup, build-css, docker-gid, and the world map generator |
 | `test/` | the acceptance criteria |
 | `docs/` | architecture, threat model, state, vocabulary |
 

@@ -112,12 +112,12 @@ reach `juice-shop:3000`, Kali can reach `shop.com`, and they share no network.
  |       \--raw TCP (nmap, nc): no proxy, kali's own src ---+     |
  |   platform --console-fired case, Host: shop.com----------+     |
  |                                                          v     |
- |                              waf  (aliases waf-edge, shop.com) |
+ |                              waf  (alias shop.com)             |
  +---------------------------------------------------------------+
  +------------------+ +------------------+ +--------------------+
  | edge-br          | | edge-hk          | | edge-kp            |
  | proxy, platform  | | proxy, platform  | | proxy, platform    |
- | waf =waf-edge-br | | waf =waf-edge-hk | | waf =waf-edge-kp   |
+ | waf              | | waf              | | waf                |
  +------------------+ +------------------+ +--------------------+
    no kali here: the "direct" route exists on edge only
    no shop.com here either: that alias is on edge alone
@@ -146,7 +146,7 @@ reach `juice-shop:3000`, Kali can reach `shop.com`, and they share no network.
  OFF-NETWORK EDGES (mounts and docker exec, not traffic):
    suricata eve.json --> deploy/suricata/logs --> filebeat
    modsec audit.log  --> deploy/nginx/logs    --> filebeat
-   platform --docker exec--> wiki:  cat /var/log/nginx/read.log
+   platform --docker exec--> wiki:  grep <secret path> /var/log/nginx/read.log
    platform --docker exec--> proxy: /label/{active,origin}
                              (./data/label, mounted read-only into kali)
    platform --> named volume platformdata:/data --> db.sqlite3
@@ -194,10 +194,10 @@ reports the proxy's address, because `ATTACKER_SOURCE_CONTAINER` is `fsl-proxy`
 (`platform/fsl/settings.py:48`). A console-fired case does not come from there.
 This matters only to window correlation, which matches on address.
 
-**The proxy.** `deploy/proxy/stamp.py:13-28` does two things per request: if
+**The proxy.** `deploy/proxy/stamp.py:13-25` does two things per request: if
 `/label/active` is non-empty it sets `X-FSL-Case` to its contents; if
-`/label/origin` is non-empty it rewrites the upstream host to `waf-<origin>`,
-putting the client's original `Host` back. No TLS interception is configured, so
+`/label/origin` is non-empty it sends the request to the address written there,
+keeping the client's original `Host`. No TLS interception is configured, so
 the proxy is an environment variable and not an enforcement point —
 `curl --noproxy '*'` skips it, which is what `test/test_segmentation.py:18` does.
 Both label files are written by the platform with `docker exec` into the proxy
@@ -205,13 +205,11 @@ Both label files are written by the platform with `docker exec` into the proxy
 `platform/range/docker.py`), the only channel between the two. The platform
 mounts no part of `./data`.
 
-**Origins.** `platform/attacker.py:21-47` derives the list from the same
-reading of the range: the segments the proxy stands on that carry an
-`fsl.origin` label. Choosing one writes
-the id to `/label/origin` for the terminal, and makes `fire_attack` target
-`http://waf-<id>` with a `Host` header of `PUBLIC_TARGET_URL`'s netloc so the
-target still sees `shop.com` (`platform/api/views.py:408-420`). That re-adding is
-necessary because the `shop.com` alias is on `edge` alone (`compose.yaml:92-103`).
+**Origins.** `platform/attacker.py:23-51` lists the segments the proxy stands on
+that the declaration gives an origin. Choosing one writes the WAF's address on
+that segment to `/label/origin`, and makes `fire_attack` target that address
+with `Host: shop.com` (`platform/api/views.py:483-490`), because the `shop.com`
+alias exists on `edge` only (`compose.yaml:101`).
 `origin: "rotate"` is a round robin, not a random pick, on `Session.rotation`: a
 per-session counter each rotated fire advances with `F("rotation") + 1` and
 reads back inside one transaction (`_origin_for` and `_take_turn` in
@@ -285,10 +283,10 @@ builds a map from `(flow_id, tx_id)` to the marker found on the http documents a
 copies it onto the alerts. Filtering the fetch to `event_type: alert` would leave
 every alert unattributed and collapse the score.
 
-**Caps.** `elastic.fetch` takes `size=5000` and sorts ascending, and nothing
-compares `hits.total` against it (`platform/ingest/elastic.py:20-56`). The query
-has no `event_type` filter, so http records count against the same 5000. A busy
-session silently loses its newest evidence.
+**Caps.** `elastic.fetch` reads at most 5000 documents, oldest first, and http
+records count against the same 5000 (`platform/ingest/elastic.py:15-60`). A
+session with more loses its newest evidence; the ingest reply and the score both
+say so (`truncated`, `score.warning.truncated`).
 
 **What Elasticsearch is used for, and what it is not.** The ingest pipeline does
 geoip at index time (`deploy/elastic/ingest-pipeline.json`), which is why there is
@@ -336,12 +334,14 @@ its category to "Lateral Movement"; the code gives no reason for 6.
 **Baseline.** A session snapshots the already-solved keys at creation
 (`Session.baseline`) and never credits them. Nothing in `platform/` truncates the
 wiki's `read.log`, so after one successful SSRF every later session baselines
-`internalRunbookRead` out until the file is cleared — which `test/conftest.py:47-50`
-does and nothing else does.
+`internalRunbookRead` out until the file is cleared, which only the acceptance
+tests do (`test/conftest.py:103-106`, `test/test_inside.py:56-58`).
 
-**Attribution is purely temporal.** `scoreboard.attribute()` keeps attempts within
-`started_at - 100ms .. started_at + 2min` of the deed and takes the latest
-(`platform/scoreboard.py:47-55`). No candidate means the breach is built with
+**Attribution is purely temporal.** `scoreboard.attribute()` takes the
+latest-starting malicious attempt that overlaps the objective's window
+(`platform/scoreboard.py:29-44`): from 100 ms before the solve (2 min for
+challenges Juice Shop stamps late) to just after it (`_achieved` in
+`platform/api/views.py`). No candidate means the breach is built with
 `detected=False`. A case's `takes:` key is displayed but nothing in the scoring
 path reads it, so a case can be credited with an objective it never claimed.
 
@@ -396,9 +396,9 @@ server-rendered strings are the `<title>` blocks.
 
 A **session** is a time window plus a baseline. Open means new traffic is
 correlated into it; closed sets `ended_at` and nothing else changes.
-`GET /api/sessions/` takes `?state=open|closed` and `?limit=`, capped at 25
-(`platform/api/views.py:97-114`); the landing page asks for open sessions
-uncapped and the last 10 closed ones, so a running session is never hidden behind
+`GET /api/sessions/` takes `?state=open|closed` and `?limit=` (default and
+maximum 25, `platform/api/views.py:147-162`); the landing page asks for up to 25
+open sessions and the last 10 closed ones, so a running session is never hidden behind
 finished ones.
 
 Django models are `Session`, `Case`, `Detection`, `Objective`, `RuleSet`,
@@ -444,13 +444,13 @@ when it is done, and verify prunes exactly those.
   `alert`. Nothing in the range ever stops a request.
 - **No code execution on the target.** The estate is reached through the
   application, so there is no foothold and nothing to escalate.
-- **No operator log of what was typed.** The proxy sees HTTP requests; nothing
-  sees `nmap`. A window case records that an attack happened, not what it was.
+- **Typed commands are recorded only in the Kali shell.**
+  `deploy/kali/operator-log.sh` logs each command with the active label;
+  `GET /api/sessions/<id>/commands/` returns them. A command run any other way is
+  not recorded.
 - **No aggregation in Elasticsearch**, and no `geo_point` mapping (§3).
 - **One user, one session.** No accounts, and nothing stops two people opening
   the same session.
-- **The console needs the internet.** `platform/console/templates/console/base.html:7` loads Tailwind from
-  `cdn.tailwindcss.com` on every page, so an isolated range renders unstyled.
 
 ---
 
@@ -460,7 +460,7 @@ when it is done, and verify prunes exactly those.
 |---|---|---|
 | "`bin/measure` prints four numbers" | `CLAUDE.md` | Five. |
 | The no-comments rule exempts only `deploy/suricata/rules/` | `CLAUDE.md` | `deploy/nginx/allow-low-port.sh:2-12` is an eleven-line rationale comment in a non-exempt file. It explains why the image's port check is overridden and is worth keeping; the rule has not caught up with it. |
-| "Two browser windows" | `CLAUDE.md`, `README.md` | Four screens; the console calls them consoles, not windows. |
+| "Two browser windows" | `CLAUDE.md` | Four screens; the console calls them consoles, not windows. |
 
 `docs/superpowers/specs/` holds the design documents. They are a finished
 historical record, not a description of the current system.
