@@ -9,13 +9,15 @@ from range.ports import Ran
 
 CONF = pathlib.Path(__file__).resolve().parents[2] / "deploy/wiki/nginx.conf"
 SECRET = "/runbooks/deploy.html"
-STAMP = "2026-09-24T10:01:02+00:00"
+STAMP = "2026-09-24T10:01:02.123+00:00"
+MSEC = "1790244062.123"
 
 
 def written(status, uri, request=None):
     layout = re.search(r"log_format\s+read\s+'([^']*)'", CONF.read_text())[1]
     values = {
-        "time_iso8601": STAMP,
+        "time_iso8601": "2026-09-24T10:01:02+00:00",
+        "msec": MSEC,
         "status": str(status),
         "uri": uri,
         "remote_addr": "172.30.0.2",
@@ -75,3 +77,20 @@ def test_the_board_reports_an_unreadable_log_instead_of_an_objective_not_taken()
 
     assert found == []
     assert "I/O error" in unreadable
+
+
+def test_a_read_is_stamped_to_the_millisecond():
+    layout = re.search(r"log_format\s+read\s+'([^']*)'", CONF.read_text())[1]
+
+    assert layout.startswith("$msec "), (
+        "nginx's $time_iso8601 is to the second, so a read at .900 was stamped "
+        ".000 and could be credited to a case that started within that second "
+        "after it; $msec is 'time in seconds with a milliseconds resolution'"
+    )
+    assert objectives.wiki_read_at(wiki(written(200, SECRET)), SECRET) == STAMP
+
+
+def test_a_line_logged_before_the_change_is_still_read():
+    before = f'2026-09-24T10:01:02+00:00 200 "{SECRET}" 172.30.0.2 "GET {SECRET} HTTP/1.1" "node"\n'
+
+    assert objectives.wiki_read_at(wiki(before), SECRET) == "2026-09-24T10:01:02+00:00"

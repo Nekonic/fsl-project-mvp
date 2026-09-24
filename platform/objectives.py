@@ -4,6 +4,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -79,8 +80,14 @@ def wiki_read_at(wiki, secret_path: str) -> str | None:
     for line in ran.output.splitlines():
         served = _SERVED.match(line.lstrip("\0"))
         if served and served["uri"] == secret_path:
-            when = served["at"]
+            when = _instant(served["at"])
     return when
+
+def _instant(logged: str) -> str:
+    try:
+        return datetime.fromtimestamp(float(logged), timezone.utc).isoformat(timespec="milliseconds")
+    except ValueError:
+        return logged
 
 def _internal(wiki=None) -> dict[str, Any]:
     when = None
