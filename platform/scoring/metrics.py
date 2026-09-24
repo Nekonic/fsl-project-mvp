@@ -14,7 +14,7 @@ def score(result: CorrelationResult) -> Score:
     false_positive_rate = _ratio(fp, fp + tn)
 
     warnings = list(result.warnings)
-    if fp + tn == 0:
+    if tp + fn and not fp + tn:
         warnings.append(("score.warning.no_benign",))
 
     return Score(
