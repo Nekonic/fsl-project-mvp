@@ -123,7 +123,6 @@ services:
       PARANOIA: "1"
       ANOMALY_INBOUND: "5"
     volumes:
-      - ./deploy/nginx/modsecurity-overrides.conf:/etc/nginx/templates/modsecurity.d/modsecurity-override.conf.template:ro
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
     healthcheck:
