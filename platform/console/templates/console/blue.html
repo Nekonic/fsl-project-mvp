@@ -894,7 +894,8 @@
 
   const editor = document.getElementById("editor");
   const output = document.getElementById("output");
-  let rulesVersion = null;
+  const NEVER_READ = "never-read";
+  let rulesVersion = NEVER_READ;
 
   function show(text, ok) {
     output.textContent = text;
@@ -918,7 +919,10 @@
 
   async function loadRules() {
     const r = await api("/api/rules/");
-    if (!r.ok) return;
+    if (!r.ok) {
+      show(t("blue.rules.load_failed", detail(r)), false);
+      return;
+    }
     editor.value = r.body.content;
     rulesVersion = r.body.version;
   }
