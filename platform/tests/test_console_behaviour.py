@@ -1170,6 +1170,50 @@ def test_a_first_origin_the_proxy_did_not_take_leaves_no_window_to_start(client)
     assert seen["result"]["toggle"] is True
     assert seen["result"]["labelled"] == 0
 
+@pytest.mark.parametrize("method, route", [
+    pytest.param("POST", "/api/attacker/origin/", id="origin-refused"),
+    pytest.param("GET", "/api/attacker/", id="box-unreadable"),
+])
+def test_a_window_can_start_once_an_origin_goes_through_after_a_failed_one(client, method, route):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          let failures = 1;
+          browser.serve((request) => {{
+            if (request.method === {js(method)} && request.route === {js(route)} && failures) {{
+              failures -= 1;
+              return {{status: 503, body: {{detail: "the proxy did not answer in time"}}}};
+            }}
+            return healthy(request);
+          }});
+        """,
+        scenario="""
+          const atLoad = browser.element("window-toggle").disabled;
+          await browser.choose("origin", "edge-br");
+          const moved = {
+            toggle: browser.element("window-toggle").disabled,
+            status: browser.text("window-status"),
+          };
+          await browser.click("window-toggle");
+          await browser.click("window-toggle");
+          const recorded = browser.requests.filter(
+            (r) => r.method === "POST" && r.route === "/api/sessions/1/cases/").map((r) => r.body);
+          return {atLoad, moved, recorded};
+        """,
+    )
+    moved = seen["result"]["moved"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["atLoad"] is True
+    assert moved["status"] == english("red.window.status.will_record", "177.54.144.2")
+    assert moved["toggle"] is False, (
+        "the proxy took the origin and the window said which address it would "
+        "record, and Start stayed disabled until the page was reloaded"
+    )
+    [case] = seen["result"]["recorded"]
+    assert case["source_ip"] == "177.54.144.2"
+    assert case["meta"]["origin"] == "edge-br"
+
 HELD_CHECK = """
 let release;
 const answered = new Promise((resolve) => { release = resolve; });
