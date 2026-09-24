@@ -2,7 +2,7 @@
 
 The handover between sessions. Keep it true; it is all the next session gets.
 
-Updated: 2026-09-24 (every alert row carries its own zone and place; the landing page stays current)
+Updated: 2026-09-25 (a review of the night's own changes: twenty-four fixes merged)
 
 ## Where things stand
 
@@ -257,6 +257,48 @@ One line each.
   when it is not, and fall back to the 401 path when the response carries no
   expiry at all. Without the middle one, "renew before expiry" collapses into
   a Keystone round trip in front of every single read.
+
+**A review of the night's own changes**
+- Seven reviewers went over the 72 commits made on 2026-09-23/24, two
+  refuters per serious finding: 8 confirmed (6 distinct), none refuted, 31
+  minor. Five agents fixed them in their own worktrees; merged here and
+  verified together (unit 879, acceptance 123).
+- **An attack still running at close lost what it took.** Close observes
+  and then ends the session, and every later observation answered 409, so a
+  breach the running case caused after that went nowhere, though its window
+  was stretched over it. A fire now observes the target once it has
+  recorded its case, closed session or not.
+- **DNS rebinding passed the same-origin check.** It compared Origin with the
+  request's own Host while `ALLOWED_HOSTS` was `*`. The default is
+  `localhost,127.0.0.1,[::1]`; `DJANGO_ALLOWED_HOSTS` still overrides it, and
+  the console now answers only at those names.
+- **An explicit `"base": null` applied unchecked,** and the console sent
+  exactly that when its first read of the rules failed. Null is a 409; the
+  console shows the failed read and never applies without a version.
+- **A lift that could not apply was retried on every tick, and each report
+  wiped the editor.** When a rule carrying the sid is already active (the
+  operator replaced it), the lift drops the marker and the commented
+  original and says "superseded"; the console reloads only on a lift that
+  worked.
+- **Challenges Juice Shop checks on a later request** (13 of them, listed
+  from the running target's own `verify.js`) are stamped when checked, not
+  when broken, so the narrow interval credited nobody. Their stamp is an
+  upper bound only, reaching back the two-minute window. The objective board
+  keeps Juice Shop's objectives when only the wiki cannot be read.
+- **A wiki read is stamped to the millisecond** (`$msec`), so it can no
+  longer be credited to a case that started in the same second after it.
+- **The WAF's health check went through to Juice Shop,** so Suricata logged
+  it about 360 times an hour, and a session's 5,000-document read was used
+  up after about 14 hours. It asks `/healthz`, which the WAF answers itself;
+  the WAF and the sensor were recreated for it.
+- Also: case posts without `expect` store none rather than NULL, overflowing
+  numbers are 400s, an ingest tick takes the rules lock only when a lift is
+  due, a close that could not read the target says so, console requests
+  that never answer give up (90 s; long actions 15 min), origin changes
+  reach the proxy one at a time, `verify --fast` fails when measure does,
+  the loopback guard reads ports as Compose does, and the OpenStack adapter
+  reads a deployment config at any path, names a bastion's failure and
+  re-discovers endpoints that moved.
 
 **Every alert row carries its own zone and place**
 - The blue alert table borrowed zone and country from `/top/`, which lists
@@ -678,7 +720,9 @@ One line each.
   (`StrictHostKeyChecking yes`, its own known_hosts) is no longer overruled by
   a command-line `accept-new`, and the alias is scoped to the instance's
   address so a `ProxyJump` bastion does not have its key filed under it.
-  Both run in the tests, bastion included.
+  Both run in the tests, bastion included. A deployment that checks keys
+  strictly gets no generation alias at all (the adapter asks `ssh -G`): its
+  pins are looked up by address, so it re-pins after a rebuild itself.
 - Still trust-on-first-use per generation. Where known_hosts lives is the
   deployment's (ssh's default is the platform user's home, which a container
   loses). The stronger answer is reading each instance's keys off its console
