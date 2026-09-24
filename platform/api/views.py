@@ -1131,16 +1131,20 @@ def _restore(record) -> tuple[bool, str | None]:
         )
     return True, None
 
-@_in_turn
-def _restore_expired() -> list:
-    due = Suppression.objects.filter(
+def _due():
+    return Suppression.objects.filter(
         restored_at__isnull=True, expires_at__lte=timezone.now()
     )
-    lifted = []
-    for record in list(due):
-        ok, detail = _restore(record)
-        lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
-    return lifted
+
+def _restore_expired() -> list:
+    if not _due().exists():
+        return []
+    with RULE_CHANGES:
+        lifted = []
+        for record in list(_due()):
+            ok, detail = _restore(record)
+            lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
+        return lifted
 
 def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
