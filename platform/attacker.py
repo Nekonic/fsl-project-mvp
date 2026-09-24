@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -53,16 +52,12 @@ def origins(described) -> list[dict]:
 def find(described, origin_id: str | None) -> dict:
     available = origins(described)
     if not origin_id:
-        return next(
-            (o for o in available if o["default"]),
-            available[0] if available else {},
-        ) or _unknown(None, available)
+        if not available:
+            raise UnknownOrigin("the stack offers no origin to attack from")
+        return next((o for o in available if o["default"]), available[0])
     for origin in available:
         if origin["id"] == origin_id:
             return origin
-    return _unknown(origin_id, available)
-
-def _unknown(origin_id, available):
     raise UnknownOrigin(
         f"no origin {origin_id!r}; the stack offers "
         f"{[o['id'] for o in available]}"
