@@ -1,11 +1,8 @@
-# FSL MVP baseline rules. The blue team edits this file from the console.
-# sids live in the 9000000 range.
+# FSL baseline rules. The blue team edits this file from the console.
+# sids are in the 9000000 range.
 #
-# `[\s+]` rather than `\s` wherever whitespace is expected inside a query or a
-# form body. A space sent as `+` is a space to the application but not to
-# `\s`, so `%27+OR+1%3D1--` walked past these while `%27%20OR%201%3D1--` was
-# caught. ModSecurity covered for it, which is why it went unnoticed for so
-# long. Verified both ways.
+# Match whitespace in a query or form body with [\s+], not \s: a space sent
+# as + is a space to the application but not to \s.
 
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi attempt - URI"; flow:established,to_server; http.uri; pcre:"/(\x27[\s+]*(or|and)[\s+]*[\x27\d]|union[\s+]+select|--[\s+]|\x27[\s+]*--|\x27[\s+]*\x29)/i"; sid:9000001; rev:1;)
 
@@ -13,6 +10,6 @@ alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi attempt - request b
 
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL XSS attempt - script tag or event handler"; flow:established,to_server; http.uri; pcre:"/(<script|%3cscript|javascript:|onerror[\s+]*%?3?d?[\s+]*=)/i"; sid:9000003; rev:1;)
 
-# http.uri is the normalised buffer: %2F is decoded and dot segments are
-# removed. Traversal has to be matched on the raw buffer. Verified live.
+# http.uri is normalised: %2F is decoded and dot segments are removed, so
+# traversal is matched on the raw buffer.
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL path traversal attempt"; flow:established,to_server; http.uri.raw; pcre:"/(\.\.(%2f|%5c|[\/\\])|%2e%2e)/i"; sid:9000004; rev:2;)

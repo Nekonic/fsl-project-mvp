@@ -238,6 +238,9 @@ One line each.
 - Red case cards name their objective from the list the page already has,
   rewriting only that line, so a late list cannot unlock cards mid-run. The
   stub DOM in `tests/browser.js` now parses `innerHTML`, so tests can click.
+- A session with nothing fired shows no no-benign warning (raised only beside
+  a malicious case, and it says to fire the benign ones), coverage of nothing
+  as `-` (the API sends `null`), and each warning once.
 - Polls run one at a time, catch up once on wake, and give up after 90 s.
 - `_segments()` swallows `RangeUnavailable` on purpose: the dashboard draws
   without zones rather than not at all. Uncaught elsewhere, it is a 503.
