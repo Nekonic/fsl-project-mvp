@@ -140,6 +140,33 @@ def test_rules_applied_from_the_current_copy_go_through(client):
 
 
 @pytest.mark.django_db
+def test_rules_from_an_editor_that_never_loaded_them_are_refused(client):
+    sensor = Sensor(RULE + RULE.replace("9000901", "9000902"))
+
+    with patch("api.views.substrate", return_value=sensor):
+        blind = client.post_json("/api/rules/apply/", {"content": "mine\n", "base": None})
+
+    assert blind.status_code == 409, (
+        "the editor's first read failed, so it held no version and sent base "
+        "null, and the whole rule file was replaced by what was typed into "
+        "an editor that had never shown it"
+    )
+    assert "nothing" in blind.json()["detail"]
+    assert sensor.rules == RULE + RULE.replace("9000901", "9000902")
+
+
+@pytest.mark.django_db
+def test_a_caller_that_sends_no_base_still_applies_without_the_check(client):
+    sensor = Sensor(RULE)
+
+    with patch("api.views.substrate", return_value=sensor):
+        applied = client.post_json("/api/rules/apply/", {"content": "mine\n"})
+
+    assert applied.status_code == 200, applied.content
+    assert sensor.rules == "mine\n"
+
+
+@pytest.mark.django_db
 def test_an_alert_read_before_its_request_gets_the_marker_when_the_request_arrives(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     now = timezone.now()
