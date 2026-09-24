@@ -5,7 +5,8 @@ import pytest
 from range.ports import Ran, RangeUnavailable
 from rules import suricata
 
-RELOAD = ("kill", "-USR2", "1")
+RELOAD = ("suricatasc", "-c", "reload-rules")
+RELOADED = '{"message":"done","return":"OK"}\n'
 RULE = 'alert http any any -> any any (msg:"x"; sid:9000900; rev:1;)\n'
 
 class Sensor:
@@ -27,6 +28,8 @@ class Sensor:
             return Ran(0, self.files.get(argv[1], ""))
         if self.fails_on and self.fails_on in joined:
             return Ran(1, "bad rule")
+        if argv == list(RELOAD):
+            return Ran(0, RELOADED)
         return Ran(0, "")
 
 def test_core_never_names_the_substrate():
@@ -55,14 +58,14 @@ def test_applying_a_bad_rule_set_does_not_touch_the_live_rules():
     with pytest.raises(suricata.RuleApplyError):
         suricata.apply(RULE, sensor, RELOAD)
 
-    assert not any("USR2" in " ".join(argv) for argv, _ in sensor.calls), (
+    assert not any("reload-rules" in " ".join(argv) for argv, _ in sensor.calls), (
         "the sensor was told to reload a rule set it had just rejected"
     )
 
 def test_a_reload_that_fails_rolls_the_rules_back():
     sensor = Sensor()
     suricata.apply(RULE, sensor, RELOAD)
-    sensor.fails_on = "USR2"
+    sensor.fails_on = "reload-rules"
 
     with pytest.raises(suricata.RuleApplyError, match="rolled back"):
         suricata.apply(RULE.replace("9000900", "9000901"), sensor, RELOAD)
@@ -98,8 +101,8 @@ def test_the_reload_command_comes_from_configuration():
     sensor = Sensor()
     suricata.apply(RULE, sensor, RELOAD)
 
-    signalled = [argv for argv, _ in sensor.calls if "USR2" in " ".join(argv)]
-    assert signalled == [list(RELOAD)], signalled
+    reloaded = [argv for argv, _ in sensor.calls if "reload-rules" in " ".join(argv)]
+    assert reloaded == [list(RELOAD)], reloaded
 
 def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
     sensor = Sensor()

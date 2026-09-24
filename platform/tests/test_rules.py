@@ -8,7 +8,7 @@ from rules.suricata import RuleApplyError
 
 pytestmark = pytest.mark.django_db
 
-RELOAD = ("kill", "-USR2", "1")
+RELOAD = ("suricatasc", "-c", "reload-rules")
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'
 
 class Sensor:
@@ -80,7 +80,7 @@ def test_a_role_no_host_fills_is_refused_before_anything_runs():
 def test_the_rule_paths_are_the_sensors_own():
     from rules import suricata
 
-    sensor = Sensor()
+    sensor = Sensor(replies={"reload-rules": Ran(0, '{"message":"done","return":"OK"}')})
     suricata.apply(GOOD_RULE, sensor, RELOAD)
 
     written = [argv for argv, stdin in sensor.calls if argv[:2] == ["sh", "-c"]]

@@ -26,7 +26,7 @@ def apply(content: str, sensor, reload_command) -> None:
     _write(sensor, RULE_PATH, content)
 
     ran = sensor(list(reload_command))
-    if not ran.ok:
+    if not ran.ok or '"return":"OK"' not in ran.output.replace(" ", ""):
         _write(sensor, RULE_PATH, previous)
         raise RuleApplyError(
             "reload failed, rolled back to the previous rule set: "
