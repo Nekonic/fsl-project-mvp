@@ -20,13 +20,22 @@ def silence(content: str, sid: int, until: str) -> str:
     return "".join(lines)
 
 def restore(content: str, sid: int, original: str) -> str:
+    lines, at = _silenced(content, sid, original)
+    lines[at] = lines[at][1:]
+    del lines[at - 1]
+    return "".join(lines)
+
+def discard(content: str, sid: int, original: str) -> str:
+    lines, at = _silenced(content, sid, original)
+    del lines[at - 1:at + 1]
+    return "".join(lines)
+
+def _silenced(content: str, sid: int, original: str) -> tuple[list[str], int]:
     lines = content.splitlines(keepends=True)
     for at in range(1, len(lines)):
         marked = lines[at - 1].startswith(f"{MARKER} until ")
         if marked and lines[at].rstrip("\r\n") == f"#{original}" and _sid(lines[at]) == sid:
-            lines[at] = lines[at][1:]
-            del lines[at - 1]
-            return "".join(lines)
+            return lines, at
     raise KeyError(sid)
 
 def _active(lines: list[str], sid: int) -> int | None:

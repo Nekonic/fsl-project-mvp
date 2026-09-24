@@ -118,6 +118,62 @@ def test_a_suppression_can_be_lifted_by_hand(client, ids):
     assert response.json()["restored_at"] is not None
     assert ids.content == RULES
 
+REWORDED = 'alert http any any -> any any (msg:"FSL SQLi attempt - URI, reworded"; sid:9000001; rev:1;)\n'
+
+def refuses_a_duplicate_signature(ids):
+    def apply(content, sensor, reload_command=None):
+        active = [l for l in content.splitlines() if "sid:9000001" in l and not l.startswith("#")]
+        if len(active) > 1:
+            raise RuleApplyError(f'Duplicate signature "{active[-1]}"')
+        ids.apply(content, sensor, reload_command)
+
+    return patch("api.views.suricata.apply", apply)
+
+def the_replacement_alone_carries_the_sid(content):
+    from suppress import MARKER
+
+    assert MARKER not in content
+    assert [line for line in content.splitlines() if "sid:9000001" in line] == [REWORDED.strip()], (
+        "the lift uncommented the silenced original beside the rule that replaced "
+        "it: two active rules with one sid and rev, which suricata -T refuses as "
+        "a duplicate signature on every try"
+    )
+
+def test_a_lift_whose_rule_was_replaced_meanwhile_is_done_once_and_says_so(client, ids):
+    from api.models import Suppression
+
+    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
+    ids.content += REWORDED
+    Suppression.objects.filter(pk=created["id"]).update(
+        expires_at=timezone.now() - timedelta(seconds=1)
+    )
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+
+    with patch("api.views.elastic.fetch", return_value=([], None)), refuses_a_duplicate_signature(ids):
+        first = client.post_json(f"/api/sessions/{session_id}/ingest/").json()["restored"]
+        applied = len(ids.applied)
+        second = client.post_json(f"/api/sessions/{session_id}/ingest/").json()["restored"]
+
+    assert [(r["sid"], r["ok"]) for r in first] == [(9000001, True)]
+    assert "superseded" in first[0]["detail"]
+    assert second == [] and len(ids.applied) == applied, (
+        "the lift was tried again on the next tick"
+    )
+    the_replacement_alone_carries_the_sid(ids.content)
+    assert "FSL XSS attempt" in ids.content
+
+def test_a_suppression_lifted_by_hand_after_its_rule_was_replaced_says_so(client, ids):
+    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
+    ids.content += REWORDED
+
+    with refuses_a_duplicate_signature(ids):
+        response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
+
+    assert response.status_code == 200, response.content
+    assert response.json()["restored_at"] is not None
+    assert "superseded" in response.json()["detail"]
+    the_replacement_alone_carries_the_sid(ids.content)
+
 def test_a_suppression_that_cannot_be_lifted_stays_on_the_books(client, ids):
                                                                      
     created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()

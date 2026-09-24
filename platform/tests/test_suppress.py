@@ -1,6 +1,6 @@
 import pytest
 
-from suppress import MARKER, find, restore, silence
+from suppress import MARKER, discard, find, restore, silence
 
 RULES = '''# FSL MVP baseline rules.
 
@@ -80,3 +80,14 @@ def test_restoring_uncomments_the_silenced_rule_not_a_commented_copy_of_it():
     kept = f"#{RULE}\n{MARKER} until t\n#{RULE}\n"
 
     assert restore(kept, 100, RULE) == f"#{RULE}\n{RULE}\n"
+
+REPLACEMENT = 'alert http any any -> any any (msg:"FSL original, reworded"; sid:100; rev:1;)'
+
+def test_discarding_drops_the_marker_and_the_silenced_copy_and_nothing_else():
+    replaced = f"#{RULE}\n{MARKER} until t\n#{RULE}\n{REPLACEMENT}\n"
+
+    assert discard(replaced, 100, RULE) == f"#{RULE}\n{REPLACEMENT}\n"
+
+def test_discarding_what_is_not_silenced_is_refused():
+    with pytest.raises(KeyError):
+        discard(f"{RULE}\n", 100, RULE)
