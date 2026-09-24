@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-MARKER_HEADER = "X-FSL-Case"
-
 CORRELATION_MARKER = "marker"
 CORRELATION_WINDOW = "window"
 CORRELATION_STRATEGIES = (CORRELATION_MARKER, CORRELATION_WINDOW)

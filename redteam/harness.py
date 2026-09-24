@@ -12,6 +12,7 @@ import yaml
 from requests.utils import requote_uri
 
 from redteam.tools import (
+    MARKER_HEADER,
     STARTUP_FAILURE,
     ToolUnavailable,
     is_tool_case,
@@ -19,7 +20,6 @@ from redteam.tools import (
     unavailable,
 )
 
-MARKER_HEADER = "X-FSL-Case"
 REQUEST_TIMEOUT = 15.0
 TOOL_TIMEOUT = 600.0
 
