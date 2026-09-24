@@ -18,10 +18,7 @@ outputs:
       filetype: regular
       filename: eve.json
       types:
-        - alert:
-            payload: no
-            http: yes
-            metadata: yes
+        - alert
         - http:
             extended: yes
             dump-all-headers: request
