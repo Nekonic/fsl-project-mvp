@@ -30,7 +30,7 @@ fi
 
 if [ "$FAST" = 1 ]; then
   section "metrics (not gated in --fast)"
-  ./bin/measure
+  ./bin/measure || fail "measure crashed - the full run will fail on it too"
   [ "$FAILED" = 0 ] && printf '\n\033[32mfast check passed\033[0m — run bin/verify before committing\n'
   exit "$FAILED"
 fi
