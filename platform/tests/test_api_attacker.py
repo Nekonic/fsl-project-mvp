@@ -7,8 +7,6 @@ from range.ports import Ran, Shape
 
 pytestmark = pytest.mark.django_db
 
-                                                                              
-                                                                        
 HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
          "target_url": "http://5.188.10.9:8080", "subnet": "", "network": "fsl_edge",
          "address": "5.188.10.9", "default": True}]
@@ -64,7 +62,6 @@ def test_a_label_or_origin_the_proxy_did_not_take_is_503_with_its_reason(client,
     assert REFUSED in response.json()["detail"]
 
 def test_a_terminal_window_is_recorded_as_a_window_case(client):
-                                                                           
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
 
     created = client.post_json(f"/api/sessions/{session_id}/cases/", {

@@ -43,7 +43,6 @@ def test_the_catalogue_lists_what_can_be_taken(client):
     }
 
 def test_objectives_solved_before_the_session_are_not_the_red_teams(client, session_id):
-                                                                        
     assert poll(client, session_id, solved("errorHandlingChallenge")).json()["achieved"] == 0
     assert client.get(f"/api/sessions/{session_id}/objectives/").json() == []
 
@@ -74,9 +73,6 @@ def test_a_target_that_cannot_be_reached_is_503_not_an_empty_scoreboard(client, 
     assert "juice-shop is down" in response.json()["detail"]
 
 def test_a_session_opened_blind_credits_nobody_for_what_came_before(client):
-                                                                        
-                                                                            
-                                              
     with patch(
         "api.views.objectives.solved_keys",
         side_effect=ObjectivesUnavailable("down"),
@@ -89,7 +85,6 @@ def test_a_session_opened_blind_credits_nobody_for_what_came_before(client):
     assert first.json()["baseline"] == 1
     assert client.get(f"/api/sessions/{session_id}/objectives/").json() == []
 
-                                          
     later = poll(client, session_id, solved("errorHandlingChallenge", "loginAdminChallenge"))
     assert later.json()["achieved"] == 1
 
@@ -114,9 +109,6 @@ def test_recording_a_case_notices_what_that_case_took(client, session_id):
     assert [o["name"] for o in taken] == ["Login Admin"]
 
 def test_ground_truth_survives_a_target_that_cannot_be_asked(client, session_id):
-                                                                            
-                                                                           
-                            
     with patch(
         "api.views.objectives.observe",
         side_effect=ObjectivesUnavailable("juice-shop is down"),
@@ -139,12 +131,9 @@ def test_a_session_with_no_baseline_still_records_cases(client):
         created = client.post_json(f"/api/sessions/{blind}/cases/", CASE)
 
     assert created.status_code == 201
-                                                                        
     assert client.get(f"/api/sessions/{blind}/objectives/").json() == []
 
 def test_the_targets_own_solve_time_is_used_when_it_has_one(client, session_id):
-                                                                               
-                                                              
     solved_at = client.get(f"/api/sessions/{session_id}/").json()["started_at"]
 
     with patch(
@@ -160,8 +149,6 @@ def test_the_targets_own_solve_time_is_used_when_it_has_one(client, session_id):
     assert taken[0]["achieved_at"] == solved_at
 
 def test_a_solve_time_older_than_the_session_is_not_believed(client, session_id):
-                                                                          
-                                                                            
     from django.utils import timezone
 
     before = timezone.now() - timedelta(days=2)

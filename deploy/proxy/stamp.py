@@ -19,9 +19,6 @@ def request(flow):
     if not address:
         return
 
-                                                                              
-                                                                         
-                                         
     asked_for = flow.request.host_header
     flow.request.host = address
     if asked_for:

@@ -11,8 +11,6 @@ from tests.sessions import open_session
 pytestmark = pytest.mark.django_db
 
 T0 = datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
-                                                                         
-                                    
 CASE = "path-traversal-ftp"
 
 @pytest.fixture
@@ -54,9 +52,6 @@ def test_the_right_rule_corroborates_the_true_positive(client, session_id):
     assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])
 
 def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, session_id):
-                                                                            
-                                                                         
-                                                                           
     s = scored(client, session_id, "FSL XSS attempt - script tag or event handler")
 
     assert s["tp"] == 1
@@ -92,8 +87,6 @@ def test_the_expectation_is_reported_so_the_judgement_can_be_checked(client, ses
     assert s["per_case"][0]["expect"] == "traversal"
 
 def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
-                                                                             
-                                                                          
     case_id = "22222222-2222-4222-8222-222222222222"
     client.post_json(f"/api/sessions/{session_id}/cases/", {
         "case_id": case_id, "name": "terminal-something", "malicious": True,

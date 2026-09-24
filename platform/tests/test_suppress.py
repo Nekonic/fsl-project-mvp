@@ -25,9 +25,7 @@ def test_silencing_comments_the_rule_and_says_when_it_returns():
 
     assert f'{MARKER} until 2026-09-20T13:00:00Z' in out
     assert '#alert http any any -> any any (msg:"FSL SQLi attempt - URI"' in out
-                                                                  
     assert 'sid:9000001' in out
-                                   
     assert find(out, 9000003) is not None
 
 def test_silencing_a_rule_that_is_not_there_is_refused():

@@ -18,8 +18,6 @@ _SERVED = re.compile(r'(?P<at>\S+) 2\d\d "(?P<uri>[^"]*)"')
 class ObjectivesUnavailable(RuntimeError):
     pass
 
-                                                                               
-                                                               
 INTERNAL = {
     "key": "internalRunbookRead",
     "name": "Internal runbook read",
@@ -99,8 +97,6 @@ def _internal(wiki=None) -> dict[str, Any]:
             f"could not read the wiki's access log: {exc}"
         ) from exc
     except OSError:
-                                                                            
-                                                                  
         pass
 
     return dict(INTERNAL, solved=bool(when), solved_at=when)
@@ -128,10 +124,6 @@ def _summarise(challenge: dict[str, Any]) -> dict[str, Any]:
         "difficulty": int(challenge.get("difficulty") or 1),
         "description": challenge.get("description") or "",
         "solved": bool(challenge.get("solved")),
-                                                                           
-                                                                           
-                                                                      
-                                                                       
         "solved_at": challenge.get("updatedAt") or None,
         "stamped_late": challenge["key"] in CHECKED_ON_A_LATER_REQUEST,
     }

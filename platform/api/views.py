@@ -48,8 +48,6 @@ from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES
 
-                                                                            
-                                                       
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
@@ -59,8 +57,6 @@ DETECTION_FIELDS = (
     "id", "detection_id", "source", "signature", "severity", "timestamp",
     "src_ip", "marker",
 )
-                                                                          
-                                                                       
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
@@ -68,10 +64,6 @@ SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
 
-                                                                             
-                                                                            
-                                                                       
-                                       
 SUPPRESSION_MINUTES = 60
 RULE_CHANGES = threading.RLock()
 
@@ -84,12 +76,6 @@ def _in_turn(change):
 SUPPRESSION_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
-                                                                         
-                                                                    
-                                                                          
-                                                                          
-                                                                      
-            
 CLOCK_SLACK = timedelta(seconds=5)
 
 def _shape(obj, fields):
@@ -185,9 +171,6 @@ def sessions(request):
     try:
         baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
     except objectives.ObjectivesUnavailable:
-                                                                            
-                                                                               
-                                                                              
         baseline = None
     session = Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
@@ -203,20 +186,15 @@ def attacker_box(request):
         {
             "container": settings.ATTACKER_CONTAINER,
             "source_ip": origin["source_ip"],
-                                                                       
             "direct_ip": origin["direct_ip"],
             "origin": origin["id"],
             "origin_label": origin["label"],
             "target_url": origin["target_url"],
-                                                                             
-                                                                            
             "public_url": settings.PUBLIC_TARGET_URL,
             "terminal_url": settings.ATTACKER_TERMINAL_URL,
         }
     )
 
-                                                                            
-                                              
 TOP_N = 25
 
 def _standing():
@@ -257,8 +235,6 @@ def session_top(request, session_id):
     detections = list(session.detections.all())
     zones, hosts = _segments()
 
-                                                                              
-                                          
     located = {}
     for detection in detections:
         if detection.src_ip and detection.src_ip not in located:
@@ -350,8 +326,6 @@ def session_topology(request, session_id):
             continue
         found = next((s for network, s in subnets if address in network), None)
         if found is None:
-                                                                              
-                                                                       
             unplaced += 1
         else:
             found["alerts"] += 1
@@ -454,8 +428,6 @@ def _observe_objectives(session) -> dict:
     if session.baseline is None:
         if unreadable:
             raise objectives.ObjectivesUnavailable(unreadable)
-                                                                           
-                                                                 
         session.baseline = sorted(solved)
         session.save(update_fields=["baseline"])
         return {"achieved": 0, "baseline": len(session.baseline)}
@@ -510,9 +482,6 @@ def fire_attack(request, session_id):
 
     target_url = settings.TARGET_URL
     if origin:
-                                                                          
-                                                                            
-                                                                      
         target_url = origin["target_url"]
         spec = dict(case.get("request") or {})
         if spec:
@@ -524,8 +493,6 @@ def fire_attack(request, session_id):
 
     started_at = timezone.now()
     try:
-                                                                             
-                                                                            
         harness.fire(
             requests.Session(), case, target_url,
             substrate().launcher(
@@ -551,12 +518,6 @@ def fire_attack(request, session_id):
         source_ip=case.get("source_ip"),
         started_at=started_at,
         ended_at=finished_at,
-                                                                      
-                                                                           
-                                                                           
-                                                                         
-                                                                          
-                                                               
         meta=dict(
             harness.case_meta(case),
             **({"origin": origin["id"], "target_url": origin["target_url"]}
@@ -571,7 +532,6 @@ def fire_attack(request, session_id):
         pass
     return _reply(_shape(recorded, CASE_FIELDS), status=201)
 
-                                                                           
 ROTATE = "rotate"
 
 def _origin_for(session, requested):
@@ -657,20 +617,8 @@ def session_cases(request, session_id):
             status=409,
         )
 
-                                                                          
-                                                                            
-                                                                             
-                                                                         
-                                                                              
-                                                                               
-                                                                              
-                                                               
     time.sleep(settings.TARGET_SETTLE)
 
-                                                                              
-                                                                               
-                                                                           
-                                                                             
     try:
         observed = _observe_objectives(session)["achieved"]
     except objectives.ObjectivesUnavailable:
@@ -754,9 +702,6 @@ def ingest_detections(request, session_id):
                 session=session, detection_id=alert["detection_id"], marker=None
             ).update(marker=alert["marker"])
 
-                                                                       
-                                                                          
-                                       
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
@@ -1114,8 +1059,6 @@ def _restore(record) -> tuple[bool, str | None]:
     try:
         content = lift(current, record.sid, record.original)
     except KeyError:
-                                                                            
-                                                                          
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
         return True, None
@@ -1123,9 +1066,6 @@ def _restore(record) -> tuple[bool, str | None]:
     try:
         suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
-
-
-
         return False, f"could not restore sid {record.sid}: {exc}"
 
     record.restored_at = timezone.now()

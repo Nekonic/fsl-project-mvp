@@ -85,9 +85,6 @@ def test_both_strategies_find_the_same_attack(ready):
     assert by_window["tp"] == 1, "the window path missed traffic from its own source"
 
 def test_the_two_strategies_are_reported_separately(ready):
-                                                                            
-                                                                           
-             
     by_marker = _scored(ready, "marker")
     by_window = _scored(ready, "window")
 

@@ -3,9 +3,6 @@ import requests
 
 from conftest import PLATFORM_URL, score_when_ready, seen_by_both_engines
 
-                                                                           
-                                                                              
-                                                                  
 SID = 9000004
 SILENCED_CASE = "path-traversal-ftp"
 CONTROL_CASE = "sqli-login-bypass"
@@ -66,7 +63,6 @@ def test_silencing_the_rule_turns_the_attack_into_a_miss(silenced):
         "the rule was silenced and the attack was still detected - either the "
         "reload did not happen or something else catches it"
     )
-                                                             
     assert _verdict(after, CONTROL_CASE) == "TP"
 
 def test_a_silenced_rule_is_on_the_books_with_a_deadline(silenced):

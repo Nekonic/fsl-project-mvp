@@ -3,31 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-                                                                             
-                                                                       
-                                                                      
 DETECTED_WEIGHT = 0.5
 
-                                                                         
-                                                                            
-                                                                         
-                                                                              
-                                                            
 ATTRIBUTION_WINDOW = timedelta(minutes=2)
 
-                                                                               
-                                                                             
-                                                                           
-                                                                              
-                                                                      
-                                                                           
-                                                                             
-                                                                              
-                                                                  
- 
-                                                                            
-                                                                        
-                                                                    
 CLOCK_SKEW = timedelta(milliseconds=100)
 
 def corroborated(expect: str | None, signatures, indiscriminate=()) -> bool | None:
@@ -101,7 +80,6 @@ def tally(breaches: list[Breach], false_positives: int) -> Scoreboard:
         undetected=len(missed),
         detected_difficulty=detected_difficulty,
         undetected_difficulty=undetected_difficulty,
-                                                                   
         coverage=detected_difficulty / total if total else 1.0,
         damage=undetected_difficulty + DETECTED_WEIGHT * detected_difficulty,
         false_positives=false_positives,

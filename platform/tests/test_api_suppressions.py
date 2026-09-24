@@ -43,7 +43,6 @@ def test_silencing_a_rule_comments_it_out_and_reloads(client, ids):
     assert response.json()["sid"] == 9000001
     assert ids.applied, "the IDS was never told"
     assert '#alert http any any -> any any (msg:"FSL SQLi attempt - URI"' in ids.content
-                                  
     assert 'alert http any any -> any any (msg:"FSL XSS' in ids.content
 
 def test_a_suppression_carries_a_deadline(client, ids):
@@ -76,7 +75,6 @@ def test_a_sid_that_is_not_a_number_is_rejected(client, ids):
     assert not ids.applied
 
 def test_a_rule_file_the_ids_refuses_is_not_recorded(client, ids):
-                                                                         
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad config")):
         response = client.post_json("/api/rules/suppressions/", {"sid": 9000001})
 
@@ -175,7 +173,6 @@ def test_a_suppression_lifted_by_hand_after_its_rule_was_replaced_says_so(client
     the_replacement_alone_carries_the_sid(ids.content)
 
 def test_a_suppression_that_cannot_be_lifted_stays_on_the_books(client, ids):
-                                                                     
     created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
 
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad config")):

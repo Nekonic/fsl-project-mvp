@@ -21,8 +21,6 @@ def drawn(stack_is_up):
     case_id = sent.json()["case_id"]
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-                                                                            
-                                                                  
     def case_seen_by_both(totals):
         return seen_by_both_engines(session_id, totals, case_id=case_id)
 

@@ -152,10 +152,6 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
         )
     return detections
 
-                                                                                
-                                                                              
-                                                                               
-                                                                  
 
 def _suricata_marker(http: dict[str, Any]) -> str | None:
     for header in http.get("request_headers") or []:
@@ -172,7 +168,6 @@ def _parse_time(value: Any) -> datetime | None:
     if not value:
         return None
     text = str(value)
-                                                                 
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     elif len(text) >= 5 and text[-5] in "+-" and ":" not in text[-5:]:
@@ -182,8 +177,6 @@ def _parse_time(value: Any) -> datetime | None:
     except ValueError:
         pass
 
-                                                                            
-                                                                          
     for fmt in ("%a %b %d %H:%M:%S %Y", "%a %b %d %H:%M:%S.%f %Y"):
         try:
             return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)

@@ -24,8 +24,6 @@ def test_case_catalogue_describes_what_each_button_fires(client):
 
     assert len(cases) > 1
     assert any(case["malicious"] for case in cases)
-                                                                            
-                                                     
     assert any(not case["malicious"] for case in cases)
     for case in cases:
         assert case["name"]
@@ -56,9 +54,6 @@ def test_firing_a_case_sends_it_and_records_ground_truth(client, session_id, a_c
     assert recorded[0]["malicious"] == a_case["malicious"]
 
 def test_the_marker_fired_is_the_case_id_recorded(client, session_id, a_case):
-                                                                             
-                                                                            
-                  
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]})
 
@@ -106,7 +101,6 @@ def test_a_tool_that_will_not_run_is_reported_not_swallowed(client, session_id, 
 
     assert response.status_code == 503
     assert "no image" in response.json()["detail"]
-                                                            
     assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
 
 def test_a_range_that_cannot_start_the_tool_is_503_with_its_reason(client, session_id, a_case):

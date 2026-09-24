@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-                      
 
 from __future__ import annotations
 
 import json
 import sys
 
-WIDTH, HEIGHT = 360.0, 180.0                                              
+WIDTH, HEIGHT = 360.0, 180.0
 
 def project(lon: float, lat: float) -> tuple[float, float]:
     return (lon + 180.0) / 360.0 * WIDTH, (90.0 - lat) / 180.0 * HEIGHT

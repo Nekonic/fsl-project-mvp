@@ -49,8 +49,6 @@ def test_the_outside_is_outside_and_the_estate_is_not(drawn):
     assert "mgmt" not in outside
 
 def test_every_address_on_the_picture_is_on_its_own_subnet(drawn):
-                                                                           
-                                                                
     for segment in drawn["segments"]:
         network = ipaddress.ip_network(segment["subnet"])
         for box in segment["nodes"]:
@@ -77,8 +75,6 @@ def test_a_way_in_is_marked_as_one(drawn):
     assert "fsl-waf" in ways, f"marked instead: {sorted(ways)}"
 
 def test_the_sensor_is_placed_where_it_watches(drawn):
-                                                                            
-                                                                        
     assert {s["name"] for s in drawn["sensors"]} == {"fsl-suricata"}
     assert drawn["sensors"][0]["watches"] == "fsl-waf"
 
@@ -90,8 +86,6 @@ def test_the_segment_the_attack_arrived_on_carries_it(drawn):
     )
 
 def test_the_diagram_and_the_alert_stream_are_one_object(drawn):
-                                                                              
-                                                                            
     placed = sum(s["alerts"] for s in drawn["segments"])
 
     assert placed + drawn["unplaced"] == len(drawn["detections"]), (
@@ -99,13 +93,6 @@ def test_the_diagram_and_the_alert_stream_are_one_object(drawn):
         f"{len(drawn['detections'])} alerts"
     )
 
-                                                                           
-                                                                         
-                                                                           
-                                                                            
-                                                                              
-                                                                           
-                     
 
 @pytest.fixture(scope="module")
 def top(drawn):
@@ -122,8 +109,6 @@ def test_an_address_is_named_by_the_zone_it_is_actually_on(top, drawn):
     for source in top["sources"]:
         if not source["zone"]:
             continue
-                                                                            
-                                                                           
         ranges = [ipaddress.ip_network(s["subnet"]) for s in drawn["segments"]
                   if s["name"] == source["zone"]]
         assert any(ipaddress.ip_address(source["src_ip"]) in r for r in ranges), source
@@ -133,10 +118,6 @@ def test_the_attack_came_from_outside_and_the_row_says_so(top):
 
     assert outside, f"nothing outside: {[s['src_ip'] for s in top['sources']]}"
 
-                                                                           
-                                                                              
-                                                                              
-                                                                      
     assert any(s["country"] for s in outside), (
         f"no address on public space resolved to a country: "
         f"{[s['src_ip'] for s in outside]}. The geoip pipeline is not running, "
@@ -144,9 +125,6 @@ def test_the_attack_came_from_outside_and_the_row_says_so(top):
     )
 
 def test_the_board_says_what_was_attacked_and_how(top):
-                                                                           
-                                                                         
-                                    
     assert top["destinations"], "no destination was recorded for any alert"
     assert any(d["zone"] for d in top["destinations"])
     assert top["paths"], "no request path was recorded for any alert"

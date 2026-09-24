@@ -8,14 +8,6 @@ MARKER_HEADER = "X-FSL-Case"
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
 
-                                                          
-                                                                            
-                                                                           
-                                                                        
-                                                                       
-                                                                             
-                                                                         
- 
 SUPPORTED_TOOLS = {"sqlmap": "sqlmap"}
 
 class UnsupportedTool(ValueError):
@@ -24,8 +16,6 @@ class UnsupportedTool(ValueError):
 class ToolUnavailable(RuntimeError):
     pass
 
-                                                                           
-                                                                           
 STARTUP_FAILURE = 125
 
 def unavailable(case_name: str, detail: str) -> ToolUnavailable:
@@ -46,9 +36,6 @@ def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
             f"{', '.join(sorted(SUPPORTED_TOOLS))}"
         )
 
-                                                                              
-                                                                              
-                                  
     host = urlsplit(target_url).hostname or ""
     args = [
         str(a).replace("{target}", target_url.rstrip("/")).replace("{target_host}", host)

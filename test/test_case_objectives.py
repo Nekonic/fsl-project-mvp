@@ -65,6 +65,4 @@ def test_a_breach_is_credited_to_the_attack_that_took_it(score, claims):
     )
 
 def test_the_defence_is_credited_with_some_of_what_it_saw(score):
-                                                                              
-                               
     assert score["objectives"]["coverage"] > 0

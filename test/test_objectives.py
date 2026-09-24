@@ -6,17 +6,6 @@ import requests
 
 from conftest import PLATFORM_URL, from_attacker, reset_target, score_when_ready
 
-                                                                             
-                                                                            
-                                                                             
-                                                                           
-                                               
-                                                                              
-                                                                       
-                                                                         
-                                                                            
-                                                                              
-                                                                             
 REACHABLE = [
     ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
 ]
@@ -37,9 +26,6 @@ def unsolved(stack_is_up):
         if key not in solved:
             return key, path
 
-                                                                             
-                                                                      
-                                             
     reset_target()
 
     catalogue = requests.get(
@@ -92,18 +78,11 @@ def test_the_target_decides_an_objective_was_taken(breach_session):
         f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=30
     ).json()
 
-                                                                             
-                                                                              
-                                                                            
-                                                                              
-                                                                       
     keys = [o["key"] for o in taken]
     assert key in keys, keys
     assert all(o["difficulty"] >= 1 for o in taken)
 
 def test_objectives_solved_before_the_session_are_not_counted(breach_session):
-                                                                           
-                                                                     
     session_id, _, _ = breach_session
     fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=60).json()["id"]
 
@@ -141,8 +120,6 @@ def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(breach_ses
         f"case's detections - it was credited to another attack or to none"
     )
 
-                                                                           
-                                          
     seen = [b["detected"] for b in scored["breaches"]]
     if all(seen) or not any(seen):
         assert scored["objectives"]["coverage"] == (1.0 if seen[0] else 0.0)

@@ -1,5 +1,3 @@
-                     
-
 from __future__ import annotations
 
 import argparse
@@ -11,16 +9,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "platform"))
 
-import django              
+import django
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 django.setup()
 
-from django.conf import settings              
+from django.conf import settings
 
-from range import substrate              
-from redteam import harness              
-from redteam.harness import DEFAULT_TOOL_TARGET, load_cases              
+from range import substrate
+from redteam import harness
+from redteam.harness import DEFAULT_TOOL_TARGET, load_cases
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 

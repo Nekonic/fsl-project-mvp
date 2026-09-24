@@ -19,11 +19,6 @@ def fired(stack_is_up):
         assert sent.status_code == 201, sent.text
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-                                                                             
-                                                                           
-                                                                           
-                                                                           
-                               
     def control_seen_by_both(totals):
         control = next(
             (c for c in totals["per_case"] if c["name"] == PERCENT), None
@@ -57,12 +52,10 @@ def _engines(fired, name):
     }
 
 def test_both_encodings_are_detected_by_the_stack(fired):
-                                                              
     assert _case(fired, PERCENT)["verdict"] == "TP"
     assert _case(fired, PLUS)["verdict"] == "TP"
 
 def test_the_control_is_caught_by_both_engines(fired):
-                                                                       
     assert {"suricata", "modsecurity"} <= _engines(fired, PERCENT)
 
 def test_the_ids_catches_the_plus_encoding_too(fired):

@@ -162,9 +162,6 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
                 return last
         time.sleep(5)
 
-                                                                               
-                                                                              
-                                                                                
     detections = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
     ).json()

@@ -55,7 +55,6 @@ def test_marker_case_without_matching_marker_is_undetected():
     assert result.unmatched_detection_ids == ("d1",)
 
 def test_marker_case_ignores_time_and_ip():
-                                                                         
     result = correlate(
         [case(case_id="c1", source_ip="10.0.0.1")],
         [det(detection_id="d1", marker="c1", src_ip="10.0.0.9", at=9999)],
@@ -107,7 +106,6 @@ def test_window_case_rejects_detection_before_slack():
     assert result.unmatched_detection_ids == ("too-early",)
 
 def test_window_case_never_matches_by_marker():
-                                                                            
     result = correlate(
         [case(case_id="c1", correlation="window", source_ip="10.0.0.1", start=0, end=5)],
         [det(marker="c1", src_ip="10.0.0.9", at=3)],
@@ -138,7 +136,6 @@ def test_warns_when_no_detection_carries_a_marker():
     assert ("score.warning.no_marker",) in result.warnings
 
 def test_no_marker_warning_when_there_are_no_detections_at_all():
-                                                                         
     result = correlate([case(case_id="c1")], [])
 
     assert result.warnings == ()

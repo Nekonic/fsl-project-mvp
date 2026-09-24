@@ -61,33 +61,17 @@ ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
 ATTACKER_ORIGIN_FILE = os.environ.get("ATTACKER_ORIGIN_FILE", "/label/origin")
 ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
 
-                                                                              
-                                                                             
-                                                       
 TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
-                                                                             
-                                                                          
-                                                         
 PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
 
-                                                                              
-                                                                     
 WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")
 WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
-                                                                              
-                                                                         
-                                                                           
 WARGAME_API_URL = os.environ.get("WARGAME_API_URL", "http://juice-shop:3000")
-                                                                              
-                                                                             
-                                                                               
-                                                            
 TARGET_SETTLE = float(os.environ.get("TARGET_SETTLE", "0.25"))
 WARGAME_CASES_DIR = os.environ.get(
     "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
 )
 
-                                                                                
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
 FSL_SENSOR_RELOAD = tuple(

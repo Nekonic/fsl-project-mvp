@@ -9,15 +9,12 @@ import requests
 from conftest import PLATFORM_URL
 from range import ATTACKER, SENSOR, run
 
-                                                                         
-                                                                            
-                                             
 TOOLS = [
-    "nmap", "whatweb",                                
-    "ffuf", "gobuster",                                
-    "nikto", "sqlmap",                                        
-    "hydra",                                                         
-    "curl", "wget", "nc", "dig", "jq",                   
+    "nmap", "whatweb",
+    "ffuf", "gobuster",
+    "nikto", "sqlmap",
+    "hydra",
+    "curl", "wget", "nc", "dig", "jq",
 ]
 
 def in_box(*argv, timeout=60):
@@ -33,17 +30,12 @@ def test_the_box_has_the_tool(stack_is_up, tool):
     )
 
 def test_a_directory_brute_force_has_a_wordlist_to_use(stack_is_up):
-                                                                        
-                                                                            
-                                                                          
-                                   
     found = in_box("sh", "-c", "wc -l < /usr/share/wordlists/dirb/common.txt")
 
     assert found.ok, "no directory wordlist on the box"
     assert int(found.stdout.strip()) > 100
 
 def test_the_shell_is_told_what_to_attack(stack_is_up):
-                                                                 
     target = in_box("sh", "-c", "echo $FSL_TARGET").stdout.strip()
     host = in_box("sh", "-c", "echo $FSL_TARGET_HOST").stdout.strip()
 
@@ -55,9 +47,6 @@ def box(stack_is_up):
     return requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=120).json()
 
 def test_the_console_reports_both_addresses_the_box_can_leave_by(box):
-                                                                             
-                                                                             
-                  
     assert box["source_ip"], box
     assert box["direct_ip"], box
     assert box["source_ip"] != box["direct_ip"], (
@@ -78,11 +67,6 @@ def test_the_proxied_address_is_not_the_box(box):
 
     assert box["source_ip"] not in mine
 
-                                                                            
-                                                                          
-                                                                           
-                                                                        
-                              
 
 PUBLIC_HOST = "shop.com"
 
