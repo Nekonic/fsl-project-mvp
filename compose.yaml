@@ -135,8 +135,6 @@ services:
   suricata:
     image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
     container_name: fsl-suricata
-    depends_on:
-      waf: {condition: service_started}
     network_mode: "service:waf"
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]

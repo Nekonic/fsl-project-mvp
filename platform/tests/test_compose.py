@@ -120,3 +120,28 @@ def test_the_waf_s_health_check_never_reaches_the_sensor():
         f"session open 14 hours reads health checks and never the alerts after "
         f"them"
     )
+
+def test_the_sensor_restarts_with_the_waf_whose_network_it_watches():
+    suricata = yaml.safe_load(COMPOSE.read_text())["services"]["suricata"]
+    declared = (suricata.get("depends_on") or {}).get("waf")
+
+    assert suricata["network_mode"] == "service:waf"
+    assert declared is None or declared.get("restart") is True, (
+        f"suricata declares depends_on waf as {declared}. network_mode "
+        f"service:waf already gives it that dependency with restart: true, and "
+        f"a declaration without restart replaces it: compose then restarts the "
+        f"waf and leaves suricata, which captures inside the waf's network "
+        f"namespace, as it was"
+    )
+
+def test_the_red_box_s_recon_line_scans_the_port_the_target_listens_on():
+    listening = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]["environment"]["PORT"]
+    motd = (COMPOSE.parent / "deploy/kali/motd").read_text()
+    scanned = re.search(r"nmap .*-p (\S+) \$FSL_TARGET_HOST", motd)
+
+    assert scanned and listening in scanned[1].split(","), (
+        f"the red box's cheat sheet scans port {scanned and scanned[1]!r} of "
+        f"shop.com and the waf behind that name listens on {listening}. The "
+        f"box is on the edge network, not the host, so a port only the host "
+        f"publishes reads as closed"
+    )
