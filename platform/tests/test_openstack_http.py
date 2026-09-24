@@ -138,6 +138,19 @@ def test_a_cloud_that_is_not_there_is_unavailable_not_a_crash():
     with pytest.raises(RangeUnavailable):
         ask("GET http://127.0.0.1:1/v2.0/networks")
 
+def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach():
+    from range import declared
+
+    far = "http://127.0.0.1:1"
+    cloudspec = openstack.Cloud(keystone=far, neutron=far, nova=far, project="fsl",
+                                user="fsl", ssh_user="fsl", ssh_key="/k")
+    adapter = openstack.OpenStack(
+        declared.read(), cloudspec, get=openstack.http_reader(cloudspec, "secret")
+    )
+
+    with pytest.raises(RangeUnavailable, match=f"could not reach {far}"):
+        adapter.describe()
+
 
 REAL_SHAPES = {
     "networks": [
