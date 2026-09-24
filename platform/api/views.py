@@ -208,19 +208,22 @@ def _segments():
 
     segments = topology.shape(standing, declared.read())["segments"]
 
-    zones = []
-    for segment in segments:
-        try:
-            zones.append((ipaddress.ip_network(segment["subnet"]), segment))
-        except ValueError:
-            continue
     hosts = {
         node["address"]: node["name"]
         for segment in segments
         for node in segment["nodes"]
         if node["address"]
     }
-    return zones, hosts
+    return _zones(segments), hosts
+
+def _zones(segments):
+    zones = []
+    for segment in segments:
+        try:
+            zones.append((ipaddress.ip_network(segment["subnet"]), segment))
+        except ValueError:
+            continue
+    return zones
 
 def _zone_of(address, zones):
     try:
@@ -309,26 +312,17 @@ def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     shape = topology.shape(substrate().describe(), declared.read())
 
-    subnets = []
     for segment in shape["segments"]:
         segment["alerts"] = 0
-        try:
-            subnets.append((ipaddress.ip_network(segment["subnet"]), segment))
-        except ValueError:
-            continue
+    zones = _zones(shape["segments"])
 
     unplaced = 0
     for detection in session.detections.all():
-        try:
-            address = ipaddress.ip_address(detection.src_ip or "")
-        except ValueError:
-            unplaced += 1
-            continue
-        found = next((s for network, s in subnets if address in network), None)
-        if found is None:
+        zone = _zone_of(detection.src_ip or "", zones)
+        if zone is None:
             unplaced += 1
         else:
-            found["alerts"] += 1
+            zone["alerts"] += 1
 
     return _reply({**shape, "unplaced": unplaced})
 
@@ -830,7 +824,8 @@ def session_score(request, session_id):
     result = correlate(records, [d.to_record() for d in detections])
     totals = compute_score(result)
     per_case = _per_case(result, _expected(session.scenario, cases), signatures)
-    board = scoreboard.tally(_breaches(session, cases, result), totals.fp)
+    breaches = _breaches(session, cases, result)
+    board = scoreboard.tally(breaches, totals.fp)
     warnings = list(totals.warnings) + _wrong_reason_warnings(per_case)
     if session.truncated:
         read, total = session.read_of or [0, 0]
@@ -851,7 +846,9 @@ def session_score(request, session_id):
             "warnings": warnings,
             "per_case": per_case,
             "objectives": board.__dict__,
-            "breaches": _breach_rows(session, cases, result),
+            "breaches": [
+                dict(b.__dict__, detection_ids=list(b.detection_ids)) for b in breaches
+            ],
         }
     )
 
@@ -888,19 +885,6 @@ def _breaches(session, cases, result):
             )
         )
     return breaches
-
-def _breach_rows(session, cases, result):
-    return [
-        {
-            "key": b.key,
-            "name": b.name,
-            "category": b.category,
-            "difficulty": b.difficulty,
-            "detected": b.detected,
-            "detection_ids": list(b.detection_ids),
-        }
-        for b in _breaches(session, cases, result)
-    ]
 
 def _achieved(objective, session, observed_at):
     stamp = objective.get("solved_at")

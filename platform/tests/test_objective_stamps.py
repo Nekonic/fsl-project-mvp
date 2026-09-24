@@ -112,3 +112,14 @@ def test_a_challenge_the_target_solves_during_the_attack_keeps_its_narrow_interv
     assert [(b["key"], b["detected"]) for b in score["breaches"]] == [
         ("loginAdminChallenge", False)
     ]
+
+
+@pytest.mark.django_db
+def test_a_breach_row_carries_the_objective_and_the_alerts_that_saw_it(client):
+    score = _stamped_after_a_detected_window(
+        client, CHECKED_ON_THE_NEXT_REQUEST, timedelta(milliseconds=300)
+    )
+
+    assert score["breaches"] == [
+        dict(CHECKED_ON_THE_NEXT_REQUEST, detected=True, detection_ids=["es1"])
+    ]
