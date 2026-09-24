@@ -24,7 +24,7 @@ const SCORE = {
   per_case: [], breaches: [],
   objectives: {
     objectives: 0, difficulty_total: 0, detected: 0, undetected: 0,
-    detected_difficulty: 0, undetected_difficulty: 0, coverage: 1.0,
+    detected_difficulty: 0, undetected_difficulty: 0, coverage: null,
     damage: 0.0, false_positives: 0,
   },
 };
@@ -355,6 +355,29 @@ def test_a_ratio_with_nothing_to_divide_by_is_shown_as_undefined(client, counts,
     )
     assert seen["result"]["comparison"].count(
         english("blue.score.comparison.rates", precision, recall)) == 2
+
+@pytest.mark.parametrize("coverage, shown", [
+    (None, "-"), (0.0, "0%"), (0.25, "25%"),
+], ids=["nothing-taken", "all-missed", "a-quarter-seen"])
+def test_coverage_of_nothing_taken_is_shown_as_undefined(client, coverage, shown):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"""
+          ANSWERS["/api/sessions/1/score/"] = {{
+            ...SCORE, objectives: {{...SCORE.objectives, coverage: {js(coverage)}}},
+          }};
+        """,
+        scenario="""
+          await browser.click('[data-tab="score"]');
+          return tiles("breach-totals");
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"][english("blue.score.breaches.tile.coverage")] == shown, (
+        "the API has no coverage figure when nothing was taken, and the console "
+        "drew one anyway"
+    )
 
 INDICATOR = """
 const indicator = () => ({

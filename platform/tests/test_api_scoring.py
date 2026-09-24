@@ -157,6 +157,14 @@ def test_score_on_session_without_cases_does_not_warn_about_benign(client):
         "cases to a case file that already has them"
     )
 
+def test_score_on_session_with_nothing_taken_has_no_coverage(client):
+    session_id = open_session(client)
+
+    objectives = client.get(f"/api/sessions/{session_id}/score/").json()["objectives"]
+
+    assert objectives["difficulty_total"] == 0
+    assert objectives["coverage"] is None
+
 def test_score_on_session_with_only_attacks_warns_about_benign(client):
     session_id = open_session(client)
     client.post_json(f"/api/sessions/{session_id}/cases/", {

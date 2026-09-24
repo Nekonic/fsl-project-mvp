@@ -312,13 +312,13 @@ and served under `objectives`.
 
 | Quantity | Formula |
 |---|---|
-| `coverage` | `detected_difficulty / total_difficulty`, and `1.0` when the total is 0 |
+| `coverage` | `detected_difficulty / total_difficulty`, and `null` when the total is 0 |
 | `damage` | `undetected_difficulty + 0.5 * detected_difficulty` |
 
-Coverage weighs by difficulty, not count (`platform/tests/test_scoreboard.py:36`).
-An untouched session reads coverage 100% and damage 0. "A lost objective nobody
-detected counts double" lives in `damage`: there is no `* 2`, only the 1.0
-against 0.5 ratio.
+Coverage weighs by difficulty, not count (`platform/tests/test_scoreboard.py:31`).
+An untouched session has no coverage figure, which the console draws as `-`,
+and damage 0. "A lost objective nobody detected counts double" lives in
+`damage`: there is no `* 2`, only the 1.0 against 0.5 ratio.
 
 **The target judges itself.** `platform/objectives.py:52-65` GETs the target's
 `/api/Challenges/` and reads each challenge's own `solved` flag and `updatedAt`.

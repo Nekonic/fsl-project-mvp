@@ -6,12 +6,19 @@ def breach(difficulty, detected, key="k"):
         difficulty=difficulty, detected=detected, detection_ids=("d1",) if detected else (),
     )
 
-def test_an_untouched_session_is_full_coverage_not_zero():
+def test_an_untouched_session_has_no_coverage_figure():
     scored = tally([], false_positives=0)
 
     assert scored.objectives == 0
-    assert scored.coverage == 1.0
+    assert scored.coverage is None, (
+        "nothing was taken, and the scoreboard said the defence saw 100% of it"
+    )
     assert scored.damage == 0
+
+def test_objectives_all_lost_unseen_are_zero_coverage_not_no_figure():
+    scored = tally([breach(3, detected=False)], false_positives=0)
+
+    assert scored.coverage == 0.0
 
 def test_an_undetected_breach_costs_more_than_a_detected_one():
     seen = tally([breach(4, detected=True)], false_positives=0)
