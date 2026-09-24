@@ -50,11 +50,23 @@ out to `docker exec` in five files.
 Two mechanics were measured against the running stack rather than assumed, and
 both are load-bearing:
 
-- Suricata is PID 1 in its container, so `kill -USR2 1` through the runner is
-  exactly `docker kill -s USR2`. With stdin round-tripping through
-  `docker exec -i`, write, validate and reload collapse into one operation.
-  That is why the port has two verbs and not five, and why five settings and
-  four compose environment lines went away.
+- The sensor is reloaded with `suricatasc -c reload-rules` over Suricata's
+  unix command socket, through the runner. It used to be `kill -USR2 1`, which
+  worked only because Suricata was its container's PID 1; on an OpenStack
+  instance PID 1 is init. The socket command blocks until the reload is done,
+  and `apply()` accepts it only on `"return":"OK"`, because the 8.0 Rust
+  client exits 0 on a NOK. Anything else rolls back. The socket exists only
+  with `unix-command: enabled: yes` (Suricata opens none when the section is
+  absent), read at startup: a sensor started before that line answers
+  "Unable to connect socket" and every rule change rolls back until it is
+  restarted. On OpenStack set `FSL_SENSOR_RELOAD="suricatasc -c reload-rules
+  /run/suricata/suricata-command.socket"` (split on whitespace), with
+  `sudo -n` in front if the ssh user cannot open it. OK means the reload ran
+  to the end, not that it succeeded: the handler ignores the engine's return
+  value, so `suricata -T` beforehand is still what catches a bad rule. With
+  stdin round-tripping through `docker exec -i`, write, validate and reload
+  collapse into one operation. That is why the port has two verbs and not
+  five.
 - The marker lives only on Suricata `http` documents, never on `alert` ones -
   0 of 3,969 alerts carry `http.request_headers`. Any change that filters the
   ingest to `event_type: alert` destroys correlation entirely.
@@ -306,6 +318,24 @@ One line each.
   the loopback guard reads ports as Compose does, and the OpenStack adapter
   reads a deployment config at any path, names a bastion's failure and
   re-discovers endpoints that moved.
+- The comment strip (`1320d1b`) had overwritten each comment with spaces
+  rather than deleting it: 397 lines of nothing but spaces, some 78 wide, in
+  48 files, and 15 code lines trailing the width of their lost comment. All
+  gone; the diff is empty ignoring whitespace and no count moved.
+- **The store has a backup.** `bin/backup` runs SQLite's online backup API
+  inside the platform (`FSL_PLATFORM_EXEC`, default `docker exec -i
+  fsl-platform python -`), streams the bytes out so nothing is left in the
+  container, checks `integrity_check` and writes `backups/db-<UTC>.sqlite3`
+  only if it passes, then prints each table's rows. A store the checkout's
+  models are ahead of is kept, its missing tables listed as `absent`.
+  Restore is written in README and has never been run.
+- **The red console asks the wiki only for the lines naming the secret**
+  (`grep -a -F`), not the whole never-rotated log every 10 s: 98 bytes
+  instead of 12 KB today, and the log grows about 580 KB a day of health
+  checks. `-a` matters: the live log starts with 1,031 NULs from a
+  truncation, and without it GNU grep hides the match and BSD grep prints
+  "Binary file matches". Exit 1 is "nobody read it". Proved through both
+  runners, the OpenStack one against a real sshd.
 
 **Every alert row carries its own zone and place**
 - The blue alert table borrowed zone and country from `/top/`, which lists
