@@ -13,9 +13,8 @@ def _one_subnet(network_name: str, config: list) -> str:
     allocated = [entry.get("Subnet", "") for entry in config if entry.get("Subnet")]
     if len(allocated) > 1:
         raise RangeUnavailable(
-            f"the segment {network_name!r} carries {len(allocated)} subnets "
-            f"{allocated} and alerts are binned by exactly one. Which one is a "
-            f"decision nobody has taken."
+            f"network {network_name!r} has {len(allocated)} subnets {allocated}; "
+            f"alerts are binned by one subnet per segment, so give it exactly one"
         )
     return allocated[0] if allocated else ""
 
@@ -222,7 +221,6 @@ class Docker:
             raise RangeUnavailable(f"docker {' '.join(argv[:2])}: {exc}") from exc
         if done.returncode != 0:
             raise RangeUnavailable(
-                f"docker {' '.join(argv[:2])}: {done.stderr.strip()[:200]} "
-                f"The shape of the range can only be read from the range."
+                f"docker {' '.join(argv[:2])}: {done.stderr.strip()[:200]}"
             )
         return done.stdout
