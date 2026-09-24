@@ -13,6 +13,7 @@ from django.conf import settings
 from range.ports import RangeUnavailable
 
 _TIMEOUT = 15
+_NO_LINE_SELECTED = 1
 _SERVED = re.compile(r'(?P<at>\S+) 2\d\d "(?P<uri>[^"]*)"')
 
 class ObjectivesUnavailable(RuntimeError):
@@ -66,7 +67,9 @@ def solved_keys(wiki=None) -> set[str]:
     return taken
 
 def wiki_read_at(wiki, secret_path: str) -> str | None:
-    ran = wiki(["cat", settings.WIKI_READ_LOG])
+    ran = wiki(["grep", "-a", "-F", "--", secret_path, settings.WIKI_READ_LOG])
+    if ran.exit_code == _NO_LINE_SELECTED:
+        return None
     if not ran.ok:
         if "No such file" in ran.output:
             return None
