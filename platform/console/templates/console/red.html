@@ -382,28 +382,47 @@
       : attacker.source_ip;
 
   let confirmedOrigin = null;
+  let describedOrigin = null;
+  let moving = false;
+  let moveAgain = false;
 
   async function loadTerminal() {
+    if (moving) {
+      moveAgain = true;
+      return;
+    }
+    moving = true;
+    const toggle = document.getElementById("window-toggle");
+    toggle.disabled = true;
+    try {
+      do {
+        moveAgain = false;
+        await moveTerminal();
+      } while (moveAgain);
+    } finally {
+      moving = false;
+      toggle.disabled = describedOrigin === null || describedOrigin !== confirmedOrigin;
+    }
+  }
+
+  async function moveTerminal() {
     const select = document.getElementById("origin");
-    const origin = chosenOrigin() === "rotate" ? "" : chosenOrigin();
+    const wanted = select.value;
+    const origin = wanted === "rotate" ? "" : wanted;
     const moved = await post("/api/attacker/origin/", { origin });
     if (!moved.ok) {
       status(t("red.window.status.origin_failed", detail(moved)), "text-amber-400");
-      if (confirmedOrigin === null) {
-        document.getElementById("window-toggle").disabled = true;
-      } else {
-        select.value = confirmedOrigin;
-      }
+      if (confirmedOrigin !== null) select.value = confirmedOrigin;
       return;
     }
-    confirmedOrigin = select.value;
+    confirmedOrigin = wanted;
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
       status(t("red.window.status.unavailable", detail(result)), "text-amber-400");
-      document.getElementById("window-toggle").disabled = true;
       return;
     }
     attacker = result.body;
+    describedOrigin = wanted;
     if (!document.getElementById("terminal").src) {
       document.getElementById("terminal").src = attacker.terminal_url;
     }
@@ -417,7 +436,6 @@
     if (!attacker.direct_ip) route.value = "proxy";
 
     status(t("red.window.status.will_record", windowAddress()));
-    document.getElementById("window-toggle").disabled = false;
   }
 
   const unlocked = new Set();

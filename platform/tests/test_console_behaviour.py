@@ -1214,6 +1214,135 @@ def test_a_window_can_start_once_an_origin_goes_through_after_a_failed_one(clien
     assert case["source_ip"] == "177.54.144.2"
     assert case["meta"]["origin"] == "edge-br"
 
+OVERLAPPING = """
+ORIGINS.push({id: "edge-hk", network: "fsl_edge-hk", label: "Kwai Chung, Hong Kong",
+  subnet: "103.152.220.0/24", source_ip: "103.152.220.2", direct_ip: "",
+  address: "103.152.220.3", target_url: "http://103.152.220.3", default: false});
+const held = [];
+const holding = (method, route) => (request) =>
+  request.method === method && request.route === route
+    ? new Promise((resolve) => held.push({request, resolve}))
+    : healthy(request);
+const shown = () => ({
+  select: browser.element("origin").value,
+  proxied: browser.text("box-proxied"),
+  toggle: browser.element("window-toggle").disabled,
+});
+const recordWindow = async () => {
+  await browser.click("window-toggle");
+  await browser.click("window-toggle");
+  return browser.requests.filter(
+    (r) => r.method === "POST" && r.route === "/api/sessions/1/cases/").map((r) => r.body);
+};
+const moves = () => browser.requests.filter(
+  (r) => r.method === "POST" && r.route === "/api/attacker/origin/").map((r) => r.body.origin);
+"""
+
+def test_an_origin_refused_while_another_was_moving_leaves_the_window_on_the_one_taken(client):
+    reason = "the proxy could not write /label/origin: Read-only file system"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + OVERLAPPING + f"""
+          const refused = () => ({{status: 503, body: {{detail: {js(reason)}}}}});
+        """,
+        scenario="""
+          browser.serve(holding("POST", "/api/attacker/origin/"));
+          await browser.choose("origin", "edge-br");
+          await browser.choose("origin", "edge-hk");
+          const first = held.shift();
+          first.resolve(healthy(first.request));
+          await browser.settle();
+          const second = held.shift();
+          second.resolve(refused());
+          await browser.settle();
+          browser.serve(healthy);
+          const after = shown();
+          return {moves: moves(), after, status: browser.text("window-status"),
+                  recorded: await recordWindow()};
+        """,
+    )
+    after = seen["result"]["after"]
+    [case] = seen["result"]["recorded"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["moves"] == ["edge", "edge-br", "edge-hk"]
+    assert seen["result"]["status"] == english("red.window.status.origin_failed", reason)
+    assert after == {"select": "edge-br", "proxied": "177.54.144.2", "toggle": False}, (
+        "the proxy took Sao Paulo and refused Hong Kong, and the select was put "
+        "back on Hong Kong, the origin it had just refused"
+    )
+    assert case["source_ip"] == "177.54.144.2"
+    assert case["meta"]["origin"] == "edge-br"
+
+def test_a_window_is_recorded_from_the_origin_the_proxy_was_told_last(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + OVERLAPPING,
+        scenario="""
+          browser.serve(holding("GET", "/api/attacker/"));
+          await browser.choose("origin", "edge-br");
+          await browser.choose("origin", "edge-hk");
+          const moving = shown();
+          while (held.length) {
+            const latest = held.pop();
+            latest.resolve(healthy(latest.request));
+            await browser.settle();
+          }
+          browser.serve(healthy);
+          const lastMove = moves().pop();
+          return {moving, lastMove, after: shown(), recorded: await recordWindow()};
+        """,
+    )
+    [case] = seen["result"]["recorded"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["moving"]["toggle"] is True, (
+        "Start could be pressed while the proxy was still being moved, and the "
+        "window would be recorded from the origin it was leaving"
+    )
+    assert seen["result"]["lastMove"] == "edge-hk"
+    assert seen["result"]["after"] == {
+        "select": "edge-hk", "proxied": "103.152.220.2", "toggle": False,
+    }
+    assert case["source_ip"] == "103.152.220.2", (
+        "the proxy was last told Hong Kong, and an earlier box read that answered "
+        "late put the window back on Sao Paulo, whose alerts it would never match"
+    )
+    assert case["meta"]["origin"] == "edge-hk"
+
+def test_a_window_cannot_start_from_the_box_of_an_origin_the_proxy_has_left(client):
+    reason = "docker did not answer in time"
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          const unreadableBox = (request) =>
+            request.method === "GET" && request.route === "/api/attacker/"
+              ? {{status: 503, body: {{detail: {js(reason)}}}}}
+              : healthy(request);
+        """,
+        scenario="""
+          const before = browser.element("window-toggle").disabled;
+          browser.serve(unreadableBox);
+          await browser.choose("origin", "edge-br");
+          await browser.click("window-toggle");
+          return {
+            before,
+            toggle: browser.element("window-toggle").disabled,
+            status: browser.text("window-status"),
+            labelled: browser.requests.filter((r) => r.route === "/api/attacker/label/").length,
+          };
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] is False
+    assert seen["result"]["status"] == english("red.window.status.unavailable", reason)
+    assert seen["result"]["toggle"] is True, (
+        "the proxy moved to Sao Paulo and its box could not be read, and Start "
+        "stayed ready to record from the Moscow address the terminal had left"
+    )
+    assert seen["result"]["labelled"] == 0
+
 HELD_CHECK = """
 let release;
 const answered = new Promise((resolve) => { release = resolve; });
