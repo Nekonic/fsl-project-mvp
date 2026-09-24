@@ -1038,7 +1038,7 @@ def validate_rules(request):
 def _minutes(given) -> float:
     try:
         minutes = float(given)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         minutes = math.nan
     if not 0 < minutes <= SUPPRESSION_LONGEST:
         raise BadRequest(
@@ -1066,7 +1066,7 @@ def suppressions(request):
     body = _payload(request)
     try:
         sid = int(body.get("sid"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return _reply({"detail": f'"sid" must be a rule id, got {body.get("sid")!r}'}, 400)
 
     minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
