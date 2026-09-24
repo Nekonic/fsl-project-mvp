@@ -966,9 +966,12 @@ def _achieved(objective, session, observed_at):
     if solved_at is None or not session.started_at - CLOCK_SLACK <= solved_at <= observed_at:
         return observed_at, None, None
     resolution = timedelta(milliseconds=1) if "." in stamp else timedelta(seconds=1)
+    lookback = (
+        scoreboard.ATTRIBUTION_WINDOW if objective.get("stamped_late") else scoreboard.CLOCK_SKEW
+    )
     return (
         solved_at,
-        solved_at - scoreboard.CLOCK_SKEW,
+        solved_at - lookback,
         solved_at + resolution + scoreboard.CLOCK_SKEW,
     )
 

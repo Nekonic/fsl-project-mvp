@@ -30,6 +30,22 @@ INTERNAL = {
     ),
 }
 
+CHECKED_ON_A_LATER_REQUEST = frozenset({
+    "changeProductChallenge",
+    "feedbackChallenge",
+    "knownVulnerableComponentChallenge",
+    "weirdCryptoChallenge",
+    "typosquattingNpmChallenge",
+    "typosquattingAngularChallenge",
+    "hiddenImageChallenge",
+    "supplyChainAttackChallenge",
+    "dlpPastebinDataLeakChallenge",
+    "csafChallenge",
+    "leakedApiKeyChallenge",
+    "vulnerableDockerImageChallenge",
+    "systemPromptExtractionChallenge",
+})
+
 def catalogue(wiki=None) -> list[dict[str, Any]]:
     found, unreadable = observe(wiki)
     if unreadable:
@@ -110,4 +126,5 @@ def _summarise(challenge: dict[str, Any]) -> dict[str, Any]:
                                                                       
                                                                        
         "solved_at": challenge.get("updatedAt") or None,
+        "stamped_late": challenge["key"] in CHECKED_ON_A_LATER_REQUEST,
     }
