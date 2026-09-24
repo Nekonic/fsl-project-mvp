@@ -563,6 +563,12 @@ def fire_attack(request, session_id):
                if origin else {}),
         ),
     )
+
+    time.sleep(settings.TARGET_SETTLE)
+    try:
+        _observe_objectives(session)
+    except (objectives.ObjectivesUnavailable, RangeUnavailable):
+        pass
     return _reply(_shape(recorded, CASE_FIELDS), status=201)
 
                                                                            

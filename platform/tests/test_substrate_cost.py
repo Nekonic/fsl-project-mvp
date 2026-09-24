@@ -68,6 +68,7 @@ def test_firing_from_an_origin_asks_the_range_once(client, session_id):
     counter = Counting()
     with patch("api.views.substrate", lambda: counter), \
             patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views._observe_objectives"), \
             patch("api.views.harness.fire"):
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/",
@@ -80,6 +81,7 @@ def test_firing_from_an_origin_asks_the_range_once(client, session_id):
 def test_firing_by_the_front_door_does_not_ask_the_range_at_all(client, session_id):
     counter = Counting()
     with patch("api.views.substrate", lambda: counter), \
+            patch("api.views._observe_objectives"), \
             patch("api.views.harness.fire"):
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/", {"case": "sqli-login-bypass"},
