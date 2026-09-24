@@ -115,13 +115,19 @@ request = urllib.request.Request(
 )
 try:
     sys.exit(0 if json.load(urllib.request.urlopen(request, timeout=30))["ok"] else 1)
-except Exception:
+except urllib.error.HTTPError as refused:
+    said = json.load(refused)
+    print(said.get("output") or said.get("detail") or refused, file=sys.stderr)
+    sys.exit(1)
+except OSError as error:
+    print(error, file=sys.stderr)
     sys.exit(1)
 RULECHECK
 then
   ok "suricata can read its config"
 else
-  fail "suricata cannot read its config — its bind-mounted files were replaced"
+  fail "suricata could not validate deploy/suricata/rules/local.rules (reason above)"
+  echo "     if it names a file it cannot open, the bind mounts went stale:"
   echo "     docker compose up -d --force-recreate waf suricata"
 fi
 

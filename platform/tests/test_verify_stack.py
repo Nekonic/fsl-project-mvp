@@ -1,9 +1,12 @@
+import http.server
+import json
 import os
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -122,6 +125,72 @@ def test_a_measure_that_crashes_is_reported_as_a_crash_not_a_regression(
         f"measure itself failed, so nothing was compared; calling that a "
         f"regression sends the reader looking for a number that grew:\n"
         f"{done.stdout}"
+    )
+
+
+@pytest.fixture
+def sensor_refusing():
+    refusal = {"ok": False, "output": 'E: detect-parse: no terminating ";" found at line 3'}
+
+    class Refusing(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            body = json.dumps(refusal).encode()
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Refusing)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server.server_address[1], refusal["output"]
+    server.shutdown()
+
+
+def test_a_rule_file_the_sensor_refuses_is_reported_with_the_sensors_reason(
+    tmp_path, checkout, sensor_refusing
+):
+    port, reason = sensor_refusing
+    rules = checkout / "deploy/suricata/rules/local.rules"
+    rules.parent.mkdir(parents=True)
+    rules.write_text('alert http any any -> any any (msg:"x"; sid:1\n')
+    executable(
+        checkout / ".venv/bin/python",
+        '[ "$1" = - ] || exit 0\n'
+        'script="$(cat)"\n'
+        'case "$script" in *api/rules/validate*) ;; *) exit 0 ;; esac\n'
+        f'printf "%s\\n" "$script" | sed "s#localhost:8000#127.0.0.1:{port}#" '
+        f'| exec {shlex.quote(sys.executable)} -\n',
+    )
+    executable(tmp_path / "tools/curl", "exit 0\n")
+    executable(
+        tmp_path / "tools/docker",
+        f'case "$1" in inspect) echo "{checkout}" ;; *) exit 0 ;; esac\n',
+    )
+    unproxied = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+
+    done = subprocess.run(
+        [str(checkout / "bin/verify")],
+        capture_output=True, text=True, timeout=60,
+        env={
+            **unproxied,
+            "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin",
+            "TMPDIR": str(tmp_path),
+        },
+    )
+
+    said = done.stdout + done.stderr
+    assert reason in said, (
+        f"the sensor said why it refused the rule file and verify threw that "
+        f"away:\n{said}"
+    )
+    assert "bind-mounted files were replaced" not in said, (
+        f"a rule the sensor cannot parse was blamed on the bind mounts, and "
+        f"the fix offered was a recreate that leaves the rule broken:\n{said}"
     )
 
 
