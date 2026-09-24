@@ -763,12 +763,11 @@
 
     document.getElementById("totals").innerHTML =
       tile(t("blue.score.tile.tp"), s.tp) + tile(t("blue.score.tile.fn"), s.fn) +
-      tile(t("blue.score.tile.fp"), s.fp) + tile(t("blue.score.tile.tn"), s.tn) +
+      tile(t("blue.score.tile.fp"), s.fp, t("blue.score.tile.fp_of_benign", s.benign_cases)) +
+      tile(t("blue.score.tile.tn"), s.tn) +
       tile(t("blue.score.tile.precision"), rate(s.precision, s.tp + s.fp)) +
       tile(t("blue.score.tile.recall"), rate(s.recall, s.tp + s.fn)) +
       tile(t("blue.score.tile.f1"), rate(s.f1, s.tp + s.fn)) +
-      tile(t("blue.score.tile.fp_rate"), `${s.fp} / ${s.benign_cases}`,
-           t("blue.score.tile.fp_rate.note", s.benign_cases)) +
       tile(t("blue.score.tile.unattributed"), s.unattributed,
            t("blue.score.tile.unattributed.note"));
 
