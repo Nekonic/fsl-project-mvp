@@ -233,6 +233,11 @@ One line each.
 **The console**
 - One blue console: Dashboard, Live, Scoreboard, Rules; top-N, map and trend.
 - Every value is escaped before it reaches the page, and a test says so.
+  Juice Shop's HTML descriptions are therefore turned into plain text by the
+  API (`objectives._displayed`), or the escaping shows their tags.
+- Red case cards name their objective from the list the page already has,
+  rewriting only that line, so a late list cannot unlock cards mid-run. The
+  stub DOM in `tests/browser.js` now parses `innerHTML`, so tests can click.
 - Polls run one at a time, catch up once on wake, and give up after 90 s.
 - `_segments()` swallows `RangeUnavailable` on purpose: the dashboard draws
   without zones rather than not at all. Uncaught elsewhere, it is a 503.
