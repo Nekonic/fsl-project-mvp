@@ -1852,3 +1852,42 @@ def test_range_work_is_not_given_up_while_the_range_is_still_doing_it(
         f"POST {route} runs a tool or reloads the sensor, which can take ten "
         f"minutes, and the console gave it up while the range was still doing it"
     )
+
+
+def test_the_top_tables_catch_up_with_alerts_that_arrived_just_after_the_page_opened(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ASLEEP + """
+          const ARRIVED = [{
+            id: 1, detection_id: "a1", source: "suricata", signature: "FSL SQLi attempt - URI",
+            severity: 1, timestamp: "2026-09-25T00:00:00Z", src_ip: "5.188.10.5", marker: null,
+            dest_ip: "5.188.10.4", dest_port: 80, method: "POST", path: "/rest/user/login",
+            zone: "Internet", outside: true, country: "Russia", city: "",
+          }];
+          const TOP = {
+            sources: [{src_ip: "5.188.10.5", host: "", zone: "Internet", outside: true,
+                       country: "Russia", country_code: "RU", city: "", alerts: 1}],
+            destinations: [], signatures: [], paths: [],
+          };
+        """,
+        scenario="""
+          ANSWERS["/api/sessions/1/detections/"] = ARRIVED;
+          ANSWERS["/api/sessions/1/top/"] = TOP;
+          await browser.poll();
+          ANSWERS["/api/sessions/1/detections/"] = [];
+          sleep(16000);
+          await browser.poll();
+          sleep(16000);
+          await browser.poll();
+          return browser.element("sources").innerHTML;
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert "5.188.10.5" in seen["result"], (
+        "the page read the top tables when it opened, before any alert, and the "
+        "first alerts arrived inside the fifteen seconds it waits between "
+        "reads; that read was skipped, not put off, and with no newer alert "
+        "nothing asked again - the tables stayed empty beside a total of 4 "
+        "(seen in a real browser on session 1484)"
+    )

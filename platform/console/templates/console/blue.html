@@ -359,12 +359,15 @@
     if (arrived) {
       rows = rows.concat(result.body);
       lastId = Math.max(...result.body.map((d) => d.id));
+      topBehind = true;
     }
     const moved = await loadPlacement();
     if (arrived || moved) {
       renderAlerts();
       await renderDashboard();
       if (showing("score")) await renderScore();
+    } else if (showing("dashboard")) {
+      await loadTop();
     }
   }
 
@@ -591,10 +594,12 @@
 
   const TOP_EVERY = 15000;
   let topAt = 0;
+  let topBehind = false;
 
   async function loadTop(force) {
-    if (!force && Date.now() - topAt < TOP_EVERY) return;
+    if (!force && (!topBehind || Date.now() - topAt < TOP_EVERY)) return;
     topAt = Date.now();
+    topBehind = false;
     const { ok, body } = await api(`/api/sessions/${sessionId()}/top/`);
     if (ok) renderTop(body);
   }
