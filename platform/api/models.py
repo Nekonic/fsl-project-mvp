@@ -98,7 +98,6 @@ class RuleSet(models.Model):
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     applied_at = models.DateTimeField(null=True, blank=True)
-    validation_output = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]

@@ -59,7 +59,7 @@ DETECTION_FIELDS = (
 )
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
-RULESET_FIELDS = ("id", "content", "created_at", "applied_at", "validation_output")
+RULESET_FIELDS = ("id", "content", "created_at", "applied_at")
 SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
@@ -1097,7 +1097,5 @@ def apply_rules(request):
     except suricata.RuleApplyError as exc:
         return _reply({"detail": str(exc)}, status=400)
 
-    ruleset = RuleSet.objects.create(
-        content=content, applied_at=timezone.now(), validation_output=""
-    )
+    ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))

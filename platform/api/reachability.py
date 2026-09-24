@@ -42,12 +42,13 @@ def forget() -> None:
 
 def not_from_inside_the_range(get_response):
     def middleware(request):
-        if (request.META.get("REMOTE_ADDR") or "") in scored_hosts():
+        address = request.META.get("REMOTE_ADDR") or ""
+        if address in scored_hosts():
             return JsonResponse(
                 {
                     "detail": (
-                        "this address stands inside the range, and the range "
-                        "does not answer the party it is scoring"
+                        f"{address} is a host in the range; the platform "
+                        "refuses requests from scored hosts"
                     )
                 },
                 status=403,
