@@ -61,7 +61,7 @@ class Scoreboard:
     undetected: int
     detected_difficulty: int
     undetected_difficulty: int
-    coverage: float
+    coverage: float | None
     damage: float
     false_positives: int
 
@@ -80,7 +80,7 @@ def tally(breaches: list[Breach], false_positives: int) -> Scoreboard:
         undetected=len(missed),
         detected_difficulty=detected_difficulty,
         undetected_difficulty=undetected_difficulty,
-        coverage=detected_difficulty / total if total else 1.0,
+        coverage=detected_difficulty / total if total else None,
         damage=undetected_difficulty + DETECTED_WEIGHT * detected_difficulty,
         false_positives=false_positives,
     )

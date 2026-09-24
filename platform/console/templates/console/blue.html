@@ -832,7 +832,8 @@
          <div class="text-slate-400 text-xs mt-0.5">${
            esc(t("blue.score.breaches.tile.difficulty", o.undetected_difficulty))}</div>
        </div>` +
-      tile(t("blue.score.breaches.tile.coverage"), `${Math.round(o.coverage * 100)}%`) +
+      tile(t("blue.score.breaches.tile.coverage"),
+           o.coverage === null ? "-" : `${Math.round(o.coverage * 100)}%`) +
       tile(t("blue.score.breaches.tile.damage"), o.damage.toFixed(1));
 
     if (!s.breaches.length) {
