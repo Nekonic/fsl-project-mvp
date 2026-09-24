@@ -67,9 +67,12 @@ def test_the_container_does_not_run_djangos_development_server():
     )
 
 def test_the_container_does_not_run_as_root():
-    assert "USER " in DOCKERFILE.read_text(), (
-        "the platform mounts the docker socket; running it as root makes a "
-        "container escape a root escape"
+    users = [args for keyword, args in dockerfile_instructions() if keyword == "USER"]
+
+    assert users and users[-1].split(":")[0] not in ("root", "0"), (
+        f"the image ends as user {users[-1:] or ['root']}. The platform mounts "
+        f"the docker socket; running it as root makes a container escape a "
+        f"root escape"
     )
 
 

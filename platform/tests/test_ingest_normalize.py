@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from ingest.elastic import normalize
 
 MARKER = "11111111-1111-4111-8111-111111111111"
@@ -306,15 +308,21 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
 
     from ingest import elastic
 
+    window = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
+
     with patch("ingest.elastic.requests.post") as posted:
         posted.return_value.ok = True
         posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
-        try:
-            elastic.fetch("http://es:9200", "fsl-logs-*", datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
-        except elastic.ElasticUnavailable:
-            pass
+        elastic.fetch("http://es:9200", "fsl-logs-*", *window)
 
     assert "allow_partial_search_results=false" in posted.call_args.args[0], (
         "a search that lost a shard answers 200 with fewer hits, and ingest "
         "read the window as complete"
     )
+
+    with patch("ingest.elastic.requests.post") as posted:
+        posted.return_value.ok = False
+        posted.return_value.status_code = 503
+        posted.return_value.text = '{"error":{"type":"search_phase_execution_exception"}}'
+        with pytest.raises(elastic.ElasticUnavailable, match="503"):
+            elastic.fetch("http://es:9200", "fsl-logs-*", *window)

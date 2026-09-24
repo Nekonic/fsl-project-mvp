@@ -130,15 +130,31 @@ def test_no_korean_is_written_outside_the_string_table():
     )
 
 def test_nothing_the_platform_sends_to_the_page_is_prose():
-    import pathlib
+    from datetime import datetime, timezone
 
-    root = pathlib.Path(__file__).resolve().parents[1]
-    source = "\n".join(
-        path.read_text() for path in (root / "scoring").rglob("*.py")
-    )
+    from scoring.correlate import correlate
+    from scoring.metrics import score
+    from scoring.types import CaseRecord, DetectionRecord
 
-    assert "There are no benign" not in source and "Check the eve-log" not in source, (
-        "scoring is the hypothesis and it held English sentences meant for a "
-        "screen, so every warning on the console was English whatever language "
-        "the rest of the page was in"
+    at = datetime(2026, 9, 25, tzinfo=timezone.utc)
+    cases = [
+        CaseRecord("a1", "sqli", True, "marker", None, at, at),
+        CaseRecord("a2", "scan", True, "window", None, at, at),
+    ]
+    detections = [DetectionRecord("d1", "suricata", "x", at, "5.188.10.2", None)]
+
+    keys = [warning[0] for warning in score(correlate(cases, detections)).warnings]
+    english = tables()["en"]
+
+    assert {
+        "score.warning.no_marker", "score.warning.no_source_ip", "score.warning.no_benign",
+    } <= set(keys), keys
+    unknown = [
+        key for key in keys
+        if not re.fullmatch(r"score\.warning\.[a-z_]+", key) or key not in english
+    ]
+    assert not unknown, (
+        f"the console looks every score warning up in the string table and these "
+        f"are not in it, so they reach the screen as written whatever language "
+        f"the page is in: {unknown}"
     )

@@ -26,10 +26,10 @@ def test_is_tool_case_detects_the_tool_field():
     assert is_tool_case({"request": {"path": "/"}}) is False
 
 def test_the_case_names_the_image_and_the_tool_and_nothing_else():
-    image, argv = tool_argv(CASE, INTERNAL_TARGET)
-
-    assert image == TOOL_IMAGE
-    assert argv[0] == "sqlmap"
+    assert tool_argv(CASE, INTERNAL_TARGET) == (TOOL_IMAGE, [
+        "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
+        "--headers=X-FSL-Case: abc-123",
+    ])
 
 def test_target_placeholder_is_substituted():
     command = build_tool_command(CASE, INTERNAL_TARGET)

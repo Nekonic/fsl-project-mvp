@@ -208,8 +208,12 @@ def test_the_segments_a_role_sits_on_come_back_as_names(dispatch):
 def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
     dispatch(stdout=json.dumps({"fsl_edge": {}}))
     substrate = seam.Docker()
+    attacker = substrate.segments(seam.ATTACKER)
+    dispatch(stdout=json.dumps({"fsl_estate": {}}))
+    target = substrate.segments(seam.TARGET)
 
-    assert substrate.segments(seam.ATTACKER)
+    assert (attacker, target) == (frozenset({"fsl_edge"}), frozenset({"fsl_estate"}))
+    assert not attacker & target
 
 def test_segments_of_a_host_that_is_not_there_is_an_outage(dispatch):
     dispatch(returncode=1, stderr="Error: No such object: fsl-juice-shop")

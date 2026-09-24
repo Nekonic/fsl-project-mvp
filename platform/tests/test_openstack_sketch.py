@@ -483,8 +483,20 @@ def test_a_paginated_server_list_is_read_to_the_end():
         "from every alert's host name"
     )
 
-def test_the_page_limit_is_stated_rather_than_hidden():
+def test_a_list_as_long_as_the_page_limit_is_read_to_the_end():
     assert openstack.PAGE_LIMIT >= 10, openstack.PAGE_LIMIT
+
+    everything = NETWORKS["networks"]
+    following = [{"href": "http://neutron:9696/v2.0/networks?marker=next", "rel": "next"}]
+    pages = (
+        [{"networks": everything[:3], "networks_links": following}]
+        + [{"networks": [], "networks_links": following}] * (openstack.PAGE_LIMIT - 2)
+        + [{"networks": everything[3:]}]
+    )
+
+    shape = openstack.OpenStack(declared.read(), CLOUD, get=paged(pages)).describe()
+
+    assert {s.id for s in shape.segments} == set(ALLOCATED)
 
 
 def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():

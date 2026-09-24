@@ -54,7 +54,7 @@ def test_the_two_views_are_tabs_rather_than_one_screenful(client):
 
     for tab in ("dashboard", "alerts", "score", "rules"):
         assert f'data-tab="{tab}"' in page, tab
-        assert f'data-panel="{tab}"' in page or tab == "alerts", tab
+        assert f'data-panel="{tab}"' in page, tab
 
 def test_the_overview_reports_each_dimension_as_a_table(client):
     page = body(client, "/blue/1/")

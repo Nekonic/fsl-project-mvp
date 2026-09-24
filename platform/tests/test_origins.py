@@ -140,7 +140,11 @@ def test_a_segment_that_carries_no_origin_is_not_a_place_to_attack_from():
 
 def test_a_network_the_attacker_is_not_on_is_not_an_origin():
     elsewhere = Shape(
-        segments=tuple(s for s in SHAPE.segments if s.id != "edge-br"),
+        segments=tuple(
+            replace(s, nodes=tuple(n for n in s.nodes if n.name != PROXY))
+            if s.id == "edge-br" else s
+            for s in SHAPE.segments
+        ),
         sensors=(),
     )
 

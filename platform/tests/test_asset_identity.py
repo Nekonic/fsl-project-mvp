@@ -22,7 +22,9 @@ AFTER_A_RECREATE = Shape(
         Segment(id="estate", name="Application estate", subnet="172.30.0.0/24",
                 network="fsl_estate",
                 nodes=(Node("fsl-wiki", "172.30.0.3"),
-                       Node("fsl-juice-shop", "172.30.0.2"))),
+                       Node("fsl-waf", "172.30.0.2"))),
+        Segment(id="edge", name="Internet", subnet="10.9.9.0/24",
+                network="fsl_edge", nodes=(Node("fsl-kali", "10.9.9.9"),)),
     ),
     sensors=(),
 )
