@@ -11,8 +11,8 @@ that covers everything.
 |---|---|
 | **Threat emulated** | An unauthenticated attacker on the public internet, against a shop that is exposed to it. Opportunistic rather than targeted: no phishing, no insider, no stolen credentials. |
 | **Attacker's position** | Outside, on one of four Internet segments, each with its own address range and a geographic origin the declaration names. No account on the target, no code on it, no presence inside the estate. |
-| **Command and control** | **None.** Every attack is a request made from the attacker's box through a stamping proxy, and nothing is left behind to call home. There is no implant, no beacon, no channel to catch. A blue team here is reading web traffic, not hunting C2. |
-| **What the attacker is after** | The shop's own challenges. Juice Shop decides when one has fallen and flips its `solved` flag; the platform never decides that for itself. |
+| **Command and control** | **None.** Attacks are requests sent from Kali or from the platform; nothing is left on the target to call home. |
+| **What the attacker is after** | The shop's own challenges, which Juice Shop marks `solved` itself, plus one objective the platform adds: reading the internal wiki, judged from the wiki's access log. |
 | **What the defence has** | Suricata on the gateway's traffic and ModSecurity in front of the application, both reporting into one index. The defender writes and silences rules; nothing else. |
 
 ## The stages it reaches
@@ -44,21 +44,19 @@ not, computed from the cases rather than written down, so it cannot drift.
 **The ATT&CK mapping is coarse, and has to be.** Every exploitation case is
 T1190, because that is the only Enterprise technique for exploiting a
 public-facing application: ATT&CK does not distinguish SQL injection from path
-traversal, and was never meant to. The `pattern` field carries the mechanism -
-CAPEC, which is the catalogue that does distinguish them - and the console
-links both to their definitions so a reader can check the label rather than
-trust it. A table of techniques that is the same id nine times says nothing;
-this is why there are two fields and not one.
+traversal, and was never meant to. The `pattern` field carries the mechanism as
+a CAPEC id, which does distinguish them, and the console links both ids to their
+definitions.
 
 **The target judges whether it was beaten, and only about its own challenges.**
 An attack that achieves something Juice Shop has no challenge for is scored as
 achieving nothing. The objective score is as complete as Juice Shop's challenge
 list and no more.
 
-**Benign traffic is a handful of cases, not a population.** False positive
-counts are against six requests chosen to look like attacks - an apostrophe in
-a search, the word `select` - not against a day of real shopping. They catch a
-rule that blocks everything; they do not estimate a false positive rate.
+**Benign traffic is six cases, not a population.** Two of them look like
+attacks (an apostrophe in a search, the word `select`); none is a day of real
+shopping. They catch a rule that blocks everything; they do not estimate a false
+positive rate.
 
 **The scoreboard does not answer the range.** The platform stands on every
 segment, so until this was closed the attacker's own terminal could call the
@@ -75,7 +73,7 @@ inside the range from sending with another host's address.
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.
 
-**The attacker's own actions are only partly recorded.** The proxy sees HTTP
-requests and labels them. Anything typed at the terminal that is not HTTP -
-`nmap`, a raw socket - leaves an alert with no case behind it, and a window
-case says an attack happened without saying what it was.
+**The attacker's own actions are only partly recorded.** The proxy labels HTTP
+requests. Commands typed in the Kali shell are logged with the active label
+(`GET /api/sessions/<id>/commands/`), but non-HTTP traffic such as `nmap` still
+draws alerts that no marker ties to a case.
