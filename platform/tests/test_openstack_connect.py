@@ -137,6 +137,26 @@ def test_a_missing_credential_is_named_by_the_setting_that_supplies_it(cloud):
     assert "FSL_OPENSTACK_PROJECT" in str(raised.value)
 
 
+def test_a_deployment_ssh_config_that_is_not_there_is_refused_by_name(
+    cloud, tmp_path, monkeypatch
+):
+    typo = tmp_path / "fsl_ssh_confg"
+
+    with pytest.raises(RangeUnavailable) as raised:
+        openstack.connect(**options(cloud, ssh_config=str(typo)))
+
+    assert "FSL_OPENSTACK_SSH_CONFIG" in str(raised.value), (
+        f"ssh skips an Include that matches no file without a word, so the "
+        f"deployment's key pinning was dropped and nothing said so: "
+        f"{raised.value}"
+    )
+    assert str(typo) in str(raised.value)
+
+    (tmp_path / "fsl ssh_config").write_text("")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    openstack.connect(**options(cloud, ssh_config="~/fsl ssh_config"))
+
+
 def test_the_console_draws_an_openstack_range(cloud, client, settings):
     settings.FSL_SUBSTRATE = "range.openstack.connect"
     settings.FSL_SUBSTRATE_OPTIONS = options(cloud)
