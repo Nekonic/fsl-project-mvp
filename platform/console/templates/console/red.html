@@ -183,7 +183,7 @@
 
   async function fire(name) {
     const result = await post(`/api/sessions/${sessionId()}/attacks/`,
-                              { case: name, origin: chosenOrigin() });
+                              { case: name, origin: chosenOrigin() }, PATIENCE_FOR_RANGE_WORK);
     if (result.ok) {
       note(t("red.log.sent", name), "text-slate-300");
     } else {

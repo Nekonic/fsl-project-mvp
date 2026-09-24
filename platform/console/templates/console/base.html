@@ -22,15 +22,24 @@
   <script>
     const sessionId = () => location.pathname.split("/")[2];
 
-    async function api(path, options) {
-      let response;
+    const PATIENCE = 90 * 1000;
+    const PATIENCE_FOR_RANGE_WORK = 15 * 60 * 1000;
+
+    async function api(path, options, patience = PATIENCE) {
+      const abandon = new AbortController();
+      const timer = setTimeout(() => abandon.abort(), patience);
       try {
-        response = await fetch(path, options);
+        const response = await fetch(path, { ...options, signal: abandon.signal });
+        const body = await response.json().catch(() => ({}));
+        if (!abandon.signal.aborted) return { ok: response.ok, status: response.status, body };
       } catch (error) {
-        return { ok: false, status: 0, body: { detail: String(error) } };
+        if (!abandon.signal.aborted) return { ok: false, status: 0, body: { detail: String(error) } };
+      } finally {
+        clearTimeout(timer);
       }
-      const body = await response.json().catch(() => ({}));
-      return { ok: response.ok, status: response.status, body };
+      return {
+        ok: false, status: 0, body: { detail: t("common.no_answer_within", patience / 1000) },
+      };
     }
 
     const detail = (result) =>
@@ -43,11 +52,11 @@
       String(value === null || value === undefined ? "" : value)
         .replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
-    const post = (path, payload) => api(path, {
+    const post = (path, payload, patience) => api(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
-    });
+    }, patience);
 
     function onResume(catchUp) {
       const back = () => {

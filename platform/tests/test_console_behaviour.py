@@ -1545,3 +1545,137 @@ def test_a_session_list_that_answers_again_clears_its_own_error_only(client):
         "the session list answered again, and the page either kept saying it "
         "could not be read or took the scenarios' own error away with it"
     )
+
+NEVER_ANSWERED = """
+let unanswered = true;
+const hanging = (answer, held) => (request) =>
+  unanswered && held(request) ? new Promise(() => {}) : answer(request);
+const stalling = (answer, held) => (request) =>
+  unanswered && held(request) ? {...answer(request), bodyNeverArrives: true} : answer(request);
+"""
+MINUTE = 60 * 1000
+
+@pytest.mark.parametrize("lost", ["hanging", "stalling"])
+def test_a_request_the_platform_never_answers_is_given_up_as_unreachable(client, lost):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + INDICATOR + NEVER_ANSWERED + f"""
+          const isIngest = (request) => request.route === "/api/sessions/1/ingest/";
+          browser.serve({lost}(healthy, isIngest));
+          const ingests = () => browser.requests.filter(isIngest).length;
+        """,
+        scenario=f"""
+          await browser.wait({MINUTE});
+          const waiting = {{ingests: ingests(), indicator: indicator()}};
+          await browser.wait({MINUTE // 2});
+          const givenUp = {{ingests: ingests(), indicator: indicator()}};
+          unanswered = false;
+          await browser.poll();
+          return {{waiting, givenUp, back: {{ingests: ingests(), indicator: indicator()}}}};
+        """,
+    )
+    waiting, given_up, back = (seen["result"][k] for k in ("waiting", "givenUp", "back"))
+
+    assert seen["errors"] == []
+    assert waiting["ingests"] == 1
+    assert waiting["indicator"]["label"] == english("blue.live.on"), (
+        "an ingest a minute old was given up, and ingest can wait that long "
+        "behind a rule change before it answers"
+    )
+    assert given_up["indicator"]["label"] == english("blue.live.unreachable"), (
+        "one ingest never answered and the console went on saying Live without "
+        "ever polling again"
+    )
+    assert given_up["indicator"]["title"] == english("common.no_answer_within", 90)
+    assert back["ingests"] == 2
+    assert back["indicator"]["label"] == english("blue.live.on")
+
+@pytest.mark.parametrize("path, served, answer, held", [
+    pytest.param("/blue/1/", BLUE_RANGE, "healthy",
+                 'request.route === "/api/sessions/1/ingest/"', id="blue-ingest"),
+    pytest.param("/red/1/", RED_RANGE, "healthy",
+                 'request.method === "POST" && request.route === "/api/sessions/1/objectives/"',
+                 id="red-objective-check"),
+    pytest.param("/", MAIN_RANGE, "listing",
+                 'request.route === "/api/sessions/" && request.query.state === "open"',
+                 id="main-session-list"),
+])
+def test_a_poll_whose_request_is_never_answered_polls_again_once_it_gives_up(
+        client, path, served, answer, held):
+    seen = open_page(
+        client, path,
+        setup=served + NEVER_ANSWERED + f"""
+          const held = (request) => {held};
+          browser.serve(hanging({answer}, held));
+          const polled = () => browser.requests.filter(held).length;
+        """,
+        scenario=f"""
+          for (let interval = 0; interval < 4; interval += 1) await browser.poll();
+          const waiting = polled();
+          await browser.wait({10 * MINUTE});
+          unanswered = false;
+          await browser.poll();
+          return {{waiting, after: polled()}};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["waiting"] == 1
+    assert seen["result"]["after"] == 2, (
+        f"{path} sent one poll the platform never answered and never polled again"
+    )
+
+RANGE_WORK = """
+let release;
+const released = new Promise((resolve) => { release = resolve; });
+const holding = (answer, method, route) => (request) =>
+  request.method === method && request.route === route
+    ? released.then(() => answer(request))
+    : answer(request);
+"""
+
+@pytest.mark.parametrize("path, served, answer, route, act, shown, expected", [
+    pytest.param(
+        "/red/1/", RED_RANGE + 'ANSWERS["POST /api/sessions/1/attacks/"] = () => ({});',
+        "healthy", "/api/sessions/1/attacks/", 'fire("sqlmap-boolean-blind");',
+        'browser.text("log")', english("red.log.sent", "sqlmap-boolean-blind"), id="fire"),
+    pytest.param(
+        "/blue/1/", BLUE_RANGE + RULES_RANGE,
+        "routed", "/api/rules/apply/", 'browser.click("apply");',
+        'browser.text("output")', english("blue.rules.applied"), id="apply"),
+    pytest.param(
+        "/blue/1/", BLUE_RANGE + RULES_RANGE
+        + 'ROUTES["POST /api/rules/validate/"] = () => ({body: {ok: true, output: "valid"}});',
+        "routed", "/api/rules/validate/", 'browser.click("validate");',
+        'browser.text("output")', "valid", id="validate"),
+    pytest.param(
+        "/blue/1/", BLUE_RANGE + RULES_RANGE,
+        "routed", "/api/rules/suppressions/",
+        'openDrawer(7).then(() => browser.click("suppress"));',
+        'browser.element("editor").value', f"# {RULE}", id="suppress"),
+    pytest.param(
+        "/blue/1/", BLUE_RANGE + RULES_RANGE + 'ANSWERS["/api/rules/"] = SILENCED_RULES;',
+        "routed", "/api/rules/suppressions/1/restore/", "restoreSuppression(1);",
+        'browser.element("editor").value', RULE, id="restore"),
+])
+def test_range_work_is_not_given_up_while_the_range_is_still_doing_it(
+        client, path, served, answer, route, act, shown, expected):
+    seen = open_page(
+        client, path,
+        setup=served + RANGE_WORK + f"browser.serve(holding({answer}, 'POST', {js(route)}));",
+        scenario=f"""
+          {act}
+          await browser.settle();
+          await browser.wait({10 * MINUTE});
+          release();
+          await browser.settle();
+          await browser.settle();
+          return {shown};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == expected, (
+        f"POST {route} runs a tool or reloads the sensor, which can take ten "
+        f"minutes, and the console gave it up while the range was still doing it"
+    )
