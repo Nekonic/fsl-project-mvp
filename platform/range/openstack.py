@@ -48,6 +48,8 @@ SETTINGS = {
     "ssh_user": "FSL_OPENSTACK_SSH_USER",
     "ssh_key": "FSL_OPENSTACK_SSH_KEY",
     "ssh_config": "FSL_OPENSTACK_SSH_CONFIG",
+    "region": "FSL_OPENSTACK_REGION",
+    "interface": "FSL_OPENSTACK_INTERFACE",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
@@ -148,9 +150,9 @@ def _endpoint(catalog, service: str, region: str, interface: str) -> str:
                     and endpoint.get("region_id") == region):
                 return endpoint.get("url") or ""
     raise RangeUnavailable(
-        f"the token's catalogue carries no {service!r} service with a "
-        f"{interface!r} endpoint in {region!r}; the deployment has to say "
-        f"which region and interface this platform reaches the cloud by"
+        f"the token's catalogue has no {service!r} endpoint with interface "
+        f"{interface!r} in region {region!r}; set {SETTINGS['region']} and "
+        f"{SETTINGS['interface']} to a region and interface it lists"
     )
 
 def _password_body(user: str, password: str, project: str) -> dict:
@@ -241,9 +243,9 @@ def _one_ipv4_subnet(segment_id: str, allocated: list[dict]) -> dict:
     ipv4 = [subnet for subnet in allocated if subnet.get(IP_VERSION, 4) == 4]
     if len(ipv4) > 1:
         raise RangeUnavailable(
-            f"the segment {segment_id!r} carries {len(ipv4)} IPv4 subnets "
-            f"{[subnet.get('cidr', '') for subnet in ipv4]} and alerts are "
-            f"binned by exactly one. Which one is a decision nobody has taken."
+            f"segment {segment_id!r} has {len(ipv4)} IPv4 subnets "
+            f"{[subnet.get('cidr', '') for subnet in ipv4]}; alerts are binned "
+            f"by one subnet per segment, so give its network exactly one IPv4 subnet"
         )
     return ipv4[0] if ipv4 else {}
 
