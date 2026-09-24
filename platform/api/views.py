@@ -641,7 +641,7 @@ def session_cases(request, session_id):
             stage=body.get("stage") or "",
             technique=body.get("technique") or "",
             pattern=body.get("pattern") or "",
-            expect=body.get("expect"),
+            expect=body.get("expect") or "",
             correlation=body["correlation"],
             source_ip=body.get("source_ip"),
             started_at=_instant(body["started_at"]),
