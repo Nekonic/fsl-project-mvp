@@ -50,10 +50,16 @@ Nothing half-finished. The last session left the tree green and committed.
   with stdin, so the port has no rule verbs. Validation reads `/dev/stdin`,
   never a shared file. Rule changes take one process lock: enough for
   waitress's single process, not for two.
+- **A rules apply cannot overwrite a newer file.** `GET /api/rules/` returns a
+  `version`; an apply whose `base` is not the live version, `null` included,
+  is a 409. One with no `base` is unchecked, so the console always sends it.
 - **`$HTTP_PORTS` is `[80,3000]`**, the ports on the WAF's wire. Docker
   translates `8080` before the sensor sees it (same rule A/B: `8080` 0 alerts,
-  `[80,3000]` 2, `any` 4). `test_sensor_rules.py` refuses sids at or above
-  9009000, which experiments had left in the shipped rules.
+  `[80,3000]` 2, `any` 4).
+- **A rule experiment writes to the shipped rules file**, the live artifact,
+  so it uses sids at or above 9009000 and `test_sensor_rules.py` refuses those.
+  Before each half of an A/B, check the loaded config inside the container: a
+  12-second wait that missed the sensor's start nearly buried the one above.
 - **Filebeat identifies files by fingerprint**: colima's virtiofs renumbers
   inodes when the VM restarts, and inode identity re-shipped both logs. 8.15
   does not migrate the registry, so changing identity again re-ships once.
@@ -74,11 +80,14 @@ Nothing half-finished. The last session left the tree green and committed.
 - **Every published port is on `127.0.0.1`.** Before, each segment's gateway
   forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
   (8 of 8 reached). `DJANGO_DEBUG=1` is safe only because of this. Another
-  machine needs a tunnel; `ALLOWED_HOSTS` defaults to loopback names.
+  machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
+  `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at `*`
+  DNS rebinding passed the same-origin check, which trusts the request's Host.
 - **The platform refuses any address standing in the range** (403;
   participants cached 30 s). The operator arrives from a segment's gateway
   (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
-  `segments()`, which needs no sensor; it fails open when that call raises.
+  `segments()`, which needs no sensor. If that raises `RangeUnavailable` it
+  fails open for the 30 s the empty answer is cached; any other error is a 500.
 - **Same-site writes are refused too**: `:8080` (the target) and `:8000` are
   one site, and making the target run script is what the red team is scored
   on. A write with a body must be `application/json`.
@@ -179,8 +188,9 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   indented enough that Suricata skips it (waits on the ratchet question);
   retention for `fsl-logs-*` (nothing expires it; a full disk makes indices
   read-only and Filebeat stop silently; expiry deletes evidence).
-- **21 sessions from 2026-09-23 left open by acceptance runs.** Nothing proves
-  none is a person's.
+- **45 of the store's 60 sessions are open**, all started 2026-09-23 between
+  16:56 and 17:44 by acceptance runs. Nothing proves none is a person's. Count
+  them in `/data/db.sqlite3`: `GET /api/sessions/` returns at most 25.
 - Backlog item 1 and OpenStack item 3 are decisions too.
 
 ## Done since v1.0
@@ -208,16 +218,24 @@ One line each.
 - A breach goes to a malicious case that was running when the target stamped it.
 - 13 challenges Juice Shop checks on a later request carry upper-bound stamps.
 - A TP is corroborated by an `expect` match from a rule that hit no benign case.
-- A case stores the `expect` it was judged by; editing cases re-scores nothing.
+  Failing that only raises `wrong_reason`; it is not an input to `detected`.
+- A case recorded since migration 0009 stores the `expect` it was judged by.
+  Older ones hold NULL (123 of the store's 125) and read the current catalogue,
+  so editing cases re-scores their sessions.
 - The score reports `unattributed` and `benign_cases`; FP is shown as `1 / 6`.
 - `scoring/` returns `(key, *args)`, never sentences, and a test holds it there.
 - Silencing a rule is the verdict; the ingest tick lifts it when it expires.
-- A session closes once, observes the target at close, and covers late cases.
+- A session closes once and observes the target at close. A case still running
+  then stretches its end and observes the target anyway, or its breach is lost.
+- An unreadable wiki keeps Juice Shop's verdicts and reports `unreadable`; a
+  session with no baseline yet waits for a full read (a recorded decision).
 
 **The console**
 - One blue console: Dashboard, Live, Scoreboard, Rules; top-N, map and trend.
 - Every value is escaped before it reaches the page, and a test says so.
 - Polls run one at a time, catch up once on wake, and give up after 90 s.
+- `_segments()` swallows `RangeUnavailable` on purpose: the dashboard draws
+  without zones rather than not at all. Uncaught elsewhere, it is a 503.
 - `platform/tests/browser.py` runs each page's scripts under node, without npm.
 - Tailwind is built by `bin/build-css` and inlined; rebuild after a new class.
 
@@ -261,9 +279,11 @@ says the second, because that is what is true today.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
 - The Kali terminal on 7681 is an unauthenticated root shell, loopback only.
-- `elastic.fetch` reads at most 5000 documents per ingest, `http` records
-  included (a three-day window read 5000 of 42,231), and flags the shortfall.
-  Paging with `search_after` needs a monotonic write-time field; one `set:
+- `elastic.fetch` reads at most 5000 documents per ingest, oldest first, `http`
+  records included (a three-day window read 5000 of 42,231). Truncation drops
+  the newest: the last cases fired become FN and the last benign ones TN, so a
+  busier red team looks better defended. `Session.truncated` and `read_of` flag
+  it and stay set after a later ingest that fits. Paging with `search_after` needs a monotonic write-time field; one `set:
   _ingest.timestamp` processor gives it, and any ES-only store needs it too.
 - ModSecurity's `Detection.raw` holds the rule message, request, host and
   place, not the whole audit record.
@@ -292,5 +312,10 @@ says the second, because that is what is true today.
   2.5 s median, 7.9 s p90, so 64% of WAF alerts would miss their 2 s window;
   re-querying turned one session's 66 detections into 98; 85 tests stand on
   `patch(elastic.fetch)`. The motivating 40 ms was a Docker call, not Django.
+- **Asserting that no alert in a red team window is unmarked.** It is false: a
+  window reaches a minute either side, so it holds whatever used the range
+  just before. That is why `unattributed` is reported, not asserted;
+  acceptance checks only for the stack alerting on its own traffic (loopback
+  source or the numeric-Host signature).
 - **Feeding window correlation the scorer's address.** It would measure the
   judge, not the defence; a zero with a stated reason beats that number.
