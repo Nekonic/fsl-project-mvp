@@ -64,6 +64,41 @@ def test_what_the_target_lost_since_the_last_poll_is_recorded_at_close(client, s
     )
 
 
+WIKI_READ = {"key": "internalRunbookRead", "name": "x", "category": "", "difficulty": 1,
+             "description": "", "solved": False, "solved_at": None}
+
+
+def test_a_close_that_could_not_read_the_target_says_so(client, session_id):
+    with patch("objectives._fetch", side_effect=ObjectivesUnavailable("juice-shop timed out")):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert response.json()["ended_at"] is not None
+    assert "juice-shop timed out" in response.json().get("unobserved", ""), (
+        "the close's last look at the target failed and the session was closed "
+        "anyway, answering exactly as a close that looked: whatever was taken "
+        "since the last poll is lost and nothing said so"
+    )
+
+
+def test_a_close_that_could_not_read_the_wiki_says_so(client, session_id):
+    with patch("objectives._fetch", return_value=JUICE):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert "wiki" in response.json().get("unobserved", "")
+
+
+def test_a_close_that_read_everything_has_nothing_to_confess(client, session_id):
+    with patch("objectives._fetch", return_value=JUICE), patch(
+        "objectives._internal", return_value=WIKI_READ
+    ):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert "unobserved" not in response.json()
+
+
 def test_a_wiki_that_cannot_be_read_does_not_throw_away_what_the_target_said(client, session_id):
     with patch("objectives._fetch", return_value=solved()):
         response = client.post_json(f"/api/sessions/{session_id}/objectives/")
