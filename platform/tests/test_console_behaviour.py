@@ -611,7 +611,7 @@ def test_a_strategy_that_cannot_be_scored_says_so_instead_of_keeping_its_last_nu
 
     assert seen["result"]["scored"].count(counts) == 2
     assert seen["errors"] == [], "the comparison threw instead of reporting the failure"
-    assert english("blue.score.comparison.error", "window", reason) in seen["result"]["failed"]
+    assert english("blue.score.comparison.error", reason) in seen["result"]["failed"]
     assert seen["result"]["failed"].count(counts) == 1, (
         "the strategy that failed kept showing the numbers of the last one that did not"
     )
@@ -1032,6 +1032,29 @@ def test_a_window_is_recorded_against_the_address_it_was_started_from(client):
         "correlation matches alerts by this address, so its alerts went unmatched"
     )
     assert case["meta"] == {"origin": "edge", "route": "direct"}
+
+@pytest.mark.parametrize("answer, said", [
+    ("({status: 404, body: {}})", ("red.error.no_session",)),
+    ("({status: 503, body: {detail: 'the database is locked'}})",
+     ("red.error.session", "the database is locked")),
+    ("browser.offline()", ("red.error.session", "TypeError: Failed to fetch")),
+], ids=["missing", "refused", "unreachable"])
+def test_a_session_that_could_not_be_read_is_not_said_to_be_missing(client, answer, said):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + f"""
+          browser.serve((request) => request.method === "GET" && request.route === "/api/sessions/1/"
+            ? {answer}
+            : healthy(request));
+        """,
+        scenario='return browser.text("attacks");',
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == english(*said), (
+        "the page told the operator the session does not exist, and to start "
+        "another, when the platform had only failed to answer for it"
+    )
 
 def test_a_window_that_could_not_start_leaves_its_controls_usable(client):
     reason = "fsl-proxy is not running"
@@ -1717,6 +1740,29 @@ def test_a_session_list_that_answers_again_clears_its_own_error_only(client):
     }, (
         "the session list answered again, and the page either kept saying it "
         "could not be read or took the scenarios' own error away with it"
+    )
+
+def test_a_session_that_could_not_be_closed_says_why(client):
+    reason = "session 1 closed at 2026-09-23T11:00:00+00:00"
+    seen = open_page(
+        client, "/session/1/",
+        setup=f"""
+          browser.serve((request) =>
+            request.method === "POST" && request.route === "/api/sessions/1/close/"
+              ? {{status: 409, body: {{detail: {js(reason)}}}}}
+              : {{status: 404, body: {{}}}});
+        """,
+        scenario="""
+          await browser.click("close");
+          await browser.click("confirm-close");
+          return browser.text("closed");
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == english("session.close.failed", reason), (
+        "the session was already closed elsewhere, and the page hid that and "
+        "told the operator to check the platform was running and try again"
     )
 
 NEVER_ANSWERED = """

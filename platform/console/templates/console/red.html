@@ -225,8 +225,10 @@
   async function render() {
     const session = await api(`/api/sessions/${sessionId()}/`);
     if (!session.ok) {
+      const said = session.status === 404
+        ? t("red.error.no_session") : t("red.error.session", detail(session));
       document.getElementById("attacks").innerHTML =
-        `<p class="text-amber-400 text-sm">${esc(t("red.error.no_session"))}</p>`;
+        `<p class="text-amber-400 text-sm">${esc(said)}</p>`;
       return;
     }
 
