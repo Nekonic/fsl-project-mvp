@@ -287,6 +287,13 @@ One line each.
   keeps Juice Shop's objectives when only the wiki cannot be read.
 - **A wiki read is stamped to the millisecond** (`$msec`), so it can no
   longer be credited to a case that started in the same second after it.
+- **Found by walking the operator's flow in a real browser, not by a
+  reviewer:** the blue dashboard's top tables stayed empty beside a total of
+  4. They read `/top/` at most every 15 s; the page read it when it opened,
+  the first alerts arrived inside those 15 s, that read was skipped rather
+  than put off, and with no newer alert nothing asked again. A skipped read
+  is now owed and taken on the next tick after the 15 s. Seen fixed live on
+  a fresh session.
 - **The WAF's health check went through to Juice Shop,** so Suricata logged
   it about 360 times an hour, and a session's 5,000-document read was used
   up after about 14 hours. It asks `/healthz`, which the WAF answers itself;
