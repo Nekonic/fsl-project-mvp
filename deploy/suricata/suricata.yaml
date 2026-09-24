@@ -9,6 +9,9 @@ vars:
 
 default-log-dir: /var/log/suricata/
 
+unix-command:
+  enabled: yes
+
 outputs:
   - eve-log:
       enabled: yes

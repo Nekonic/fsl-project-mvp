@@ -75,7 +75,7 @@ WARGAME_CASES_DIR = os.environ.get(
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
 FSL_SENSOR_RELOAD = tuple(
-    os.environ.get("FSL_SENSOR_RELOAD", "kill -USR2 1").split()
+    os.environ.get("FSL_SENSOR_RELOAD", "suricatasc -c reload-rules").split()
 )
 
 FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")

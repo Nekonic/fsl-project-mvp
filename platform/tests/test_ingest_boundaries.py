@@ -40,6 +40,8 @@ class Sensor:
             return Ran(0, self.rules)
         if argv[:2] == ["sh", "-c"] and suricata.RULE_PATH in argv[-1]:
             self.rules = stdin
+        if "reload-rules" in argv:
+            return Ran(0, '{"message":"done","return":"OK"}')
         return Ran(0, "")
 
 
