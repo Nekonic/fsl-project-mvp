@@ -143,14 +143,24 @@ reach `juice-shop:3000`, Kali can reach `shop.com`, and they share no network.
  |   platform --_search fsl-logs-*--> elasticsearch              |
  +---------------------------------------------------------------+
 
- OFF-NETWORK EDGES (bind mounts, not traffic):
+ OFF-NETWORK EDGES (mounts and docker exec, not traffic):
    suricata eve.json --> deploy/suricata/logs --> filebeat
    modsec audit.log  --> deploy/nginx/logs    --> filebeat
-   wiki read.log     --> deploy/wiki/logs     --> platform (ro)
-   platform --> data/label/{active,origin} --> proxy
-   platform --> ./data:/data --> db.sqlite3
-   platform --> /var/run/docker.sock --> docker run, topology, reload
+   platform --docker exec--> wiki:  cat /var/log/nginx/read.log
+   platform --docker exec--> proxy: /label/{active,origin}
+                             (./data/label, mounted read-only into kali)
+   platform --> named volume platformdata:/data --> db.sqlite3
+   platform --> /var/run/docker.sock --> docker run, docker exec, topology, reload
 ```
+
+**The store is not in the checkout.** Every session, case, detection, objective,
+rule set and suppression is in `/data/db.sqlite3` on the named volume
+`platformdata` (`compose.yaml`, `DJANGO_DB_PATH`), so removing the worktree that
+ran `compose up` leaves it, and a `data/db.sqlite3` in a checkout is a copy
+frozen when the store moved (b819dab) that nothing reads. `docker compose down
+-v` deletes the volume together with Elasticsearch's `esdata`, and nothing backs
+it up. The volume is writable by the platform's user only in an image built
+after that move: the Dockerfile creates `/data` and gives it to `fsl`.
 
 The eth0–eth4 mapping holds on the running stack and follows compose's network
 priorities (`compose.yaml:91-106`), but nothing enforces it:
@@ -190,8 +200,10 @@ This matters only to window correlation, which matches on address.
 putting the client's original `Host` back. No TLS interception is configured, so
 the proxy is an environment variable and not an enforcement point —
 `curl --noproxy '*'` skips it, which is what `test/test_segmentation.py:18` does.
-Both label files are written by the platform through the shared `./data/label`
-mount (`platform/attacker.py:67-77`), the only channel between the two.
+Both label files are written by the platform with `docker exec` into the proxy
+(`_write` in `platform/attacker.py`, through `runner("proxy")` in
+`platform/range/docker.py`), the only channel between the two. The platform
+mounts no part of `./data`.
 
 **Origins.** `platform/attacker.py:21-47` derives the list from the same
 reading of the range: the segments the proxy stands on that carry an
