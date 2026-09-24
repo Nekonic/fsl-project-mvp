@@ -51,3 +51,63 @@ def test_two_suppressions_at_once_both_take_effect(client):
         f"edit, and the second erased the first: {live} is still live while "
         f"the suppression list says it is silenced"
     )
+
+
+def tick_while_a_rule_change_runs(client, change_takes):
+    from api import views
+
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    holding, finished = threading.Event(), threading.Event()
+
+    def validating():
+        with views.RULE_CHANGES:
+            holding.set()
+            finished.wait(change_takes)
+
+    change = threading.Thread(target=validating)
+    change.start()
+    holding.wait()
+    started = time.monotonic()
+    with patch("api.views.elastic.fetch", return_value=([], None)):
+        response = client.post_json(f"/api/sessions/{session_id}/ingest/")
+    took = time.monotonic() - started
+    finished.set()
+    change.join()
+    return response, took
+
+
+def test_a_tick_with_nothing_to_lift_does_not_wait_behind_a_rule_change(client):
+    response, took = tick_while_a_rule_change_runs(client, change_takes=2.0)
+
+    assert response.status_code == 200, response.content
+    assert took < 1.0, (
+        f"the tick took {took:.2f}s: it waited for a validate or apply to "
+        f"finish although no suppression was due, so every blue window's "
+        f"alert feed stopped for the length of a suricata -T run"
+    )
+
+
+def test_a_tick_with_a_lift_due_still_waits_its_turn(client):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from api.models import Suppression
+    from suppress import MARKER
+    from tests.test_ingest_boundaries import Sensor
+
+    Suppression.objects.create(
+        sid=9000901, original=TWO_RULES.splitlines()[0], reason="",
+        expires_at=timezone.now() - timedelta(minutes=1),
+    )
+    sensor = Sensor(f"{MARKER} until t\n#{TWO_RULES}")
+
+    with patch("api.views.substrate", return_value=sensor):
+        response, took = tick_while_a_rule_change_runs(client, change_takes=0.5)
+
+    assert response.status_code == 200, response.content
+    assert took >= 0.4, (
+        f"the lift ran after {took:.2f}s, beside a rule change still in "
+        f"progress, and one of the two writes erased the other"
+    )
+    assert [r["ok"] for r in response.json()["restored"]] == [True]
