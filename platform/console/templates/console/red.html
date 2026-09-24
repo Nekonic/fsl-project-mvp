@@ -417,6 +417,7 @@
     if (!attacker.direct_ip) route.value = "proxy";
 
     status(t("red.window.status.will_record", windowAddress()));
+    document.getElementById("window-toggle").disabled = false;
   }
 
   const unlocked = new Set();
