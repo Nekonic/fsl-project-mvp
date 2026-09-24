@@ -641,6 +641,37 @@ def test_a_failed_ingest_keeps_the_last_truncation_warning(client):
         "part of the evidence, although nothing more of it had been read"
     )
 
+def test_a_warning_already_shown_at_the_top_is_not_repeated_in_each_strategy_panel(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + """
+          const NO_BENIGN = ["score.warning.no_benign"];
+          const UNPLACED = ["score.warning.no_source_ip", "sqli-login-bypass"];
+          browser.serve((request) => {
+            if (request.route !== "/api/sessions/1/score/") return healthy(request);
+            const own = request.query.correlation === "window" ? [UNPLACED] : [];
+            return {body: {...SCORE, tn: 0, benign_cases: 0, warnings: [NO_BENIGN, ...own]}};
+          });
+        """,
+        scenario="""
+          await browser.click('[data-tab="score"]');
+          return {top: browser.text("warnings"), panels: browser.text("comparison")};
+        """,
+    )
+    no_benign = english("score.warning.no_benign")
+    unplaced = english("score.warning.no_source_ip", "sqli-login-bypass")
+
+    assert seen["errors"] == []
+    assert seen["result"]["top"].count(no_benign) == 1
+    assert seen["result"]["panels"].count(no_benign) == 0, (
+        "the warning at the top of the scoreboard was drawn again inside both "
+        "strategy panels, three times on one screen"
+    )
+    assert seen["result"]["panels"].count(unplaced) == 1, (
+        "a warning only the window strategy raises is the reason its numbers "
+        "differ, and the panel stopped showing it"
+    )
+
 def test_a_strategy_that_cannot_be_scored_says_so_instead_of_keeping_its_last_numbers(client):
     reason = "the window strategy found no session window"
     seen = open_page(
