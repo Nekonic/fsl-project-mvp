@@ -5,6 +5,7 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from typing import Any
 
 from django.conf import settings
@@ -122,8 +123,16 @@ def _summarise(challenge: dict[str, Any]) -> dict[str, Any]:
         "name": challenge["name"],
         "category": challenge.get("category") or "",
         "difficulty": int(challenge.get("difficulty") or 1),
-        "description": challenge.get("description") or "",
+        "description": _displayed(challenge.get("description") or ""),
         "solved": bool(challenge.get("solved")),
         "solved_at": challenge.get("updatedAt") or None,
         "stamped_late": challenge["key"] in CHECKED_ON_A_LATER_REQUEST,
     }
+
+def _displayed(fragment: str) -> str:
+    shown: list[str] = []
+    parser = HTMLParser(convert_charrefs=True)
+    parser.handle_data = shown.append
+    parser.feed(fragment)
+    parser.close()
+    return " ".join("".join(shown).split())
