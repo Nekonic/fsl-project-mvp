@@ -128,7 +128,10 @@ committed transaction and nothing of one still in progress, and the bytes come
 back over the `docker exec` pipe; no copy is left inside the container. The
 file gets its `.sqlite3` name only after `PRAGMA integrity_check` has passed on
 the host. `backups/` is ignored by git. If the platform is down, or the copy
-fails the check, it exits 1, says why and keeps nothing. A platform that does
+fails the check, it exits 1, says why and keeps nothing. A store the platform
+has not yet migrated to the checkout, such as one taken between a pull and the
+restart that applies the pull's migration, is kept all the same; a table it does
+not have yet is listed as `absent`. A platform that does
 not run in Docker is reached by pointing `FSL_PLATFORM_EXEC` at any command that
 runs `python -` with the platform's settings importable; the default is
 `docker exec -i fsl-platform python -`.

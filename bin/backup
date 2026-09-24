@@ -86,8 +86,16 @@ def check(path):
                 raise SystemExit(
                     "backup: the snapshot fails integrity_check:\n" + "\n".join(verdict)
                 )
+            present = {
+                name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            if not present & {table for _, table in TABLES}:
+                raise SystemExit(
+                    "backup: the snapshot is not the platform's store: it holds none of its tables"
+                )
             return {
                 table: db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                if table in present else None
                 for _, table in TABLES
             }
     except sqlite3.Error as error:
@@ -124,7 +132,8 @@ def main():
     print(kept)
     print(f"  {len(image)} bytes, integrity_check ok")
     for label, table in TABLES:
-        print(f"  {label:<14} {rows[table]:>8}")
+        count = "absent" if rows[table] is None else rows[table]
+        print(f"  {label:<14} {count:>8}")
 
 
 if __name__ == "__main__":

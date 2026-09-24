@@ -197,6 +197,46 @@ def test_every_table_the_platform_keeps_is_counted(backup):
     assert {table for _, table in backup.module.TABLES} == stored
 
 
+def test_a_store_the_platform_has_not_yet_migrated_to_the_checkout_is_still_kept(
+    backup, tmp_path, monkeypatch
+):
+    store = tmp_path / "db.sqlite3"
+    monkeypatch.chdir(ROOT / "platform")
+    monkeypatch.setenv("DJANGO_DB_PATH", str(store))
+    subprocess.run(
+        [sys.executable, "manage.py", "migrate", "api", "0002", "--noinput", "--skip-checks"],
+        check=True, capture_output=True,
+    )
+    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
+
+    printed = backup()
+
+    [kept] = backup.module.BACKUPS.iterdir()
+    assert kept.name.endswith(".sqlite3")
+    assert dump(kept) == dump(store)
+    assert re.search(r"^\s*suppressions\s+absent$", printed, re.M), (
+        f"0003 adds api_suppression; a store taken before the platform has "
+        f"applied it is the backup most worth having:\n{printed}"
+    )
+    assert re.search(r"^\s*sessions\s+0$", printed, re.M), printed
+
+
+def test_a_database_holding_none_of_the_platform_s_tables_is_not_kept(
+    backup, monkeypatch, tmp_path
+):
+    other = tmp_path / "other.sqlite3"
+    with closing(sqlite3.connect(other)) as db:
+        db.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, note TEXT)")
+        db.execute("INSERT INTO notes (note) VALUES ('not the platform')")
+        db.commit()
+    answering(monkeypatch, tmp_path, other.read_bytes())
+
+    said = failure(backup)
+
+    assert "not the platform's store" in said
+    assert backup.kept() == []
+
+
 def test_backups_stay_out_of_git():
     listed = load_backup().BACKUPS / "db-20260925T000000Z.sqlite3"
 
