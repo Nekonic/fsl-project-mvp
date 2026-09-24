@@ -276,8 +276,11 @@ document.createElement = (tag) => new Element(tag);
 
 const timers = new Map();
 let nextTimer = 1;
+let clock = 0;
+const LONGEST_POLL = 60 * 1000;
 const schedule = (repeat) => (callback, delay) => {
-  timers.set(nextTimer, { callback, delay, repeat });
+  const wait = Number(delay) || 0;
+  timers.set(nextTimer, { callback, delay: wait, repeat, due: clock + wait });
   return nextTimer++;
 };
 const cancel = (id) => { timers.delete(id); };
@@ -295,14 +298,29 @@ function fetch(path, options = {}) {
     body: options.body === undefined ? null : JSON.parse(options.body),
   };
   requests.push(request);
-  return new Promise((resolve) => resolve(answer(request))).then((served) => {
+  const signal = options.signal;
+  const answered = new Promise((resolve) => resolve(answer(request))).then((served) => {
     const status = served.status ?? 200;
     const payload = JSON.stringify(served.body ?? {});
     return {
       ok: status >= 200 && status < 300,
       status,
-      json: () => Promise.resolve(JSON.parse(payload)),
+      json: () => served.bodyNeverArrives
+        ? new Promise((resolve, reject) => {
+          if (signal) signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        })
+        : Promise.resolve(JSON.parse(payload)),
     };
+  });
+  if (!signal) return answered;
+  return new Promise((resolve, reject) => {
+    const abandoned = () => reject(signal.reason);
+    if (signal.aborted) {
+      abandoned();
+      return;
+    }
+    signal.addEventListener("abort", abandoned, { once: true });
+    answered.then(resolve, reject);
   });
 }
 
@@ -324,6 +342,16 @@ function element(reference) {
   const found = document.getElementById(reference) || document.querySelector(reference);
   if (!found) throw new Error(`the page has no element ${reference}`);
   return found;
+}
+
+async function runTimers(due) {
+  for (const [id, timer] of [...timers]) {
+    if (!due(timer)) continue;
+    if (timer.repeat) timer.due = clock + timer.delay;
+    else timers.delete(id);
+    guard(() => timer.callback());
+  }
+  await settle();
 }
 
 function change(target, value) {
@@ -356,12 +384,10 @@ const browser = {
     change(element(reference), value);
     await settle();
   },
-  async poll() {
-    for (const [id, timer] of [...timers]) {
-      if (!timer.repeat) timers.delete(id);
-      guard(() => timer.callback());
-    }
-    await settle();
+  poll: () => runTimers((timer) => timer.delay <= LONGEST_POLL),
+  wait(ms) {
+    clock += ms;
+    return runTimers((timer) => timer.due <= clock);
   },
 };
 
@@ -384,6 +410,7 @@ const sandbox = {
   sessionStorage: storage(),
   console: { log: record("log"), info: record("info"), warn: record("warn"), error: record("error") },
   crypto: { randomUUID: () => nodeCrypto.randomUUID() },
+  AbortController,
   URL,
   URLSearchParams,
   setInterval: schedule(true),

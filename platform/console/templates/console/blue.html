@@ -692,7 +692,7 @@
     const result = document.getElementById("suppress-result");
     const applied = await post("/api/rules/suppressions/", {
       sid, reason: document.getElementById("suppress-reason").value,
-    });
+    }, PATIENCE_FOR_RANGE_WORK);
     if (!applied.ok) {
       result.className = "text-xs mt-2 text-rose-400";
       result.title = applied.body.detail || applied.status;
@@ -906,12 +906,14 @@
   }
 
   document.getElementById("validate").addEventListener("click", async () => {
-    const r = await post("/api/rules/validate/", {content: editor.value});
+    const r = await post(
+      "/api/rules/validate/", {content: editor.value}, PATIENCE_FOR_RANGE_WORK);
     show(r.body.output || t("blue.rules.output.none"), r.ok);
   });
 
   document.getElementById("apply").addEventListener("click", async () => {
-    const r = await post("/api/rules/apply/", {content: editor.value, base: rulesVersion});
+    const r = await post(
+      "/api/rules/apply/", {content: editor.value, base: rulesVersion}, PATIENCE_FOR_RANGE_WORK);
     show(r.ok ? t("blue.rules.applied")
               : t("blue.rules.apply_failed", r.body.detail || r.status), r.ok);
     if (r.ok || r.status === 409) loadRules();
@@ -943,7 +945,8 @@
   }
 
   async function restoreSuppression(id) {
-    const restored = await post(`/api/rules/suppressions/${id}/restore/`);
+    const restored = await post(
+      `/api/rules/suppressions/${id}/restore/`, {}, PATIENCE_FOR_RANGE_WORK);
     if (restored.ok) await loadRules();
     await renderSuppressions();
   }
