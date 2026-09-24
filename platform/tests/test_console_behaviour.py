@@ -1651,6 +1651,60 @@ def test_an_objective_falling_does_not_draw_the_case_cards_again(client):
         "the ones drawn in their place could be clicked in the middle of it"
     )
 
+def test_objective_names_arriving_during_a_run_leave_the_case_cards_locked_until_it_ends(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + TAKING + """
+          let readable = false;
+          let releaseAttack;
+          const attackHeld = new Promise((resolve) => { releaseAttack = resolve; });
+          ANSWERS["POST /api/sessions/1/objectives/"] = () => ({achieved: 1});
+          ANSWERS["POST /api/sessions/1/attacks/"] = (request) => ({case: request.body.case});
+          browser.serve((request) => {
+            if (!readable && request.route === "/api/wargames/juice-shop/objectives/") {
+              return {status: 503, body: {detail: "the target did not answer"}};
+            }
+            if (request.route === "/api/sessions/1/attacks/" && request.body.case === "metrics-scrape") {
+              return attackHeld.then(() => healthy(request));
+            }
+            return healthy(request);
+          });
+          const locked = () => browser.element("attacks").querySelectorAll(".fire").map((b) => b.disabled);
+          const fired = () => browser.requests
+            .filter((r) => r.route === "/api/sessions/1/attacks/").map((r) => r.body.case);
+        """,
+        scenario="""
+          const before = cards();
+          readable = true;
+          await browser.click("run-all");
+          const during = {cards: cards(), locked: locked()};
+          await browser.click('[data-case="ftp-listing"]');
+          during.fired = fired();
+          releaseAttack();
+          await browser.settle();
+          const after = {locked: locked()};
+          await browser.click('[data-case="ftp-listing"]');
+          after.fired = fired();
+          return {before, during, after};
+        """,
+    )
+    during = seen["result"]["during"]
+    after = seen["result"]["after"]
+
+    assert seen["errors"] == []
+    assert english("red.case.objective", "directoryListingChallenge") in seen["result"]["before"]
+    assert english("red.case.objective", "Confidential Document") in during["cards"]
+    assert during["locked"] == [True, True], (
+        "the objective names arrived in the middle of Run all, and the case "
+        "cards showing them could be clicked while the run was still firing"
+    )
+    assert during["fired"] == ["ftp-listing", "metrics-scrape"], (
+        "a case card clicked during Run all fired beside the run instead of "
+        "waiting for it"
+    )
+    assert after["locked"] == [False, False], "the case cards stayed locked after the run ended"
+    assert after["fired"] == ["ftp-listing", "metrics-scrape", "ftp-listing"]
+
 def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
     seen = open_page(
         client, "/red/1/",

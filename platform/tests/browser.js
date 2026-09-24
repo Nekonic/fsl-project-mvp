@@ -22,9 +22,17 @@ function guard(run) {
 }
 
 const camel = (name) => name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+const kebab = (name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", times: "×" };
 const decode = (text) => text.replace(/&(amp|lt|gt|quot|#39|times);/g, (_, name) => ENTITIES[name]);
 const visibleText = (html) => decode(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+const escapeText = (text) => String(text).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+const escapeAttribute = (text) => escapeText(text).replace(/"/g, "&quot;");
+const VOID = new Set([
+  "AREA", "BASE", "BR", "COL", "EMBED", "HR", "IMG", "INPUT", "LINK", "META", "SOURCE", "TRACK", "WBR",
+]);
+const TOKEN = /<!--[\s\S]*?-->|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)((?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*\/?>|[^<]+|</g;
+const ATTRIBUTE = /([^\s=>\/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
 function splitTop(text, separator) {
   const parts = [];
@@ -127,6 +135,8 @@ class Element {
     this.selected = "selected" in attrs;
     this.ownText = text;
     this.markup = null;
+    this.nodes = null;
+    this.stale = false;
     this.chosen = this.tagName === "SELECT" ? null : (attrs.value ?? "");
     for (const [name, value] of Object.entries(attrs)) this.setAttribute(name, value);
   }
@@ -163,22 +173,35 @@ class Element {
   set value(value) { this.chosen = String(value); }
 
   get textContent() {
-    if (this.markup !== null) return visibleText(this.markup);
+    if (this.nodes !== null) return visibleText(this.innerHTML);
     return this.ownText + this.children.map((c) => c.textContent).join("");
   }
 
   set textContent(value) {
     this.ownText = String(value);
     this.markup = null;
+    this.nodes = null;
+    this.stale = false;
     this.children = [];
+    changed(this.parentNode);
   }
 
-  get innerHTML() { return this.markup ?? ""; }
+  get innerHTML() {
+    if (this.stale) {
+      this.markup = this.nodes.map(serialize).join("");
+      this.stale = false;
+    }
+    return this.markup ?? "";
+  }
 
   set innerHTML(value) {
     this.markup = String(value);
     this.ownText = "";
-    this.children = [];
+    this.nodes = parse(this.markup);
+    this.stale = false;
+    this.children = this.nodes.filter((node) => node instanceof Element);
+    this.children.forEach((child) => { child.parentNode = this; });
+    changed(this.parentNode);
     if (this.tagName === "SELECT") {
       const first = /<option[^>]*\bvalue="([^"]*)"/.exec(this.markup);
       this.chosen = first ? decode(first[1]) : "";
@@ -190,18 +213,25 @@ class Element {
   appendChild(node) {
     node.parentNode = this;
     this.children.push(node);
+    if (this.nodes !== null) this.nodes.push(node);
+    changed(this);
     return node;
   }
 
   prepend(...nodes) {
     nodes.forEach((node) => { node.parentNode = this; });
     this.children.unshift(...nodes);
+    if (this.nodes !== null) this.nodes.unshift(...nodes);
+    changed(this);
   }
 
   remove() {
-    if (!this.parentNode) return;
-    this.parentNode.children = this.parentNode.children.filter((c) => c !== this);
+    const parent = this.parentNode;
+    if (!parent) return;
+    parent.children = parent.children.filter((c) => c !== this);
+    if (parent.nodes !== null) parent.nodes = parent.nodes.filter((n) => n !== this);
     this.parentNode = null;
+    changed(parent);
   }
 
   get lastElementChild() { return this.children[this.children.length - 1] || null; }
@@ -253,6 +283,57 @@ for (const name of REFLECTED) {
     get() { return this.attributes[name] ?? ""; },
     set(value) { this.attributes[name] = String(value); },
   });
+}
+
+function changed(element) {
+  for (let at = element; at; at = at.parentNode) {
+    if (at.nodes !== null) at.stale = true;
+  }
+}
+
+function parse(markup) {
+  const fragment = new Element("#fragment");
+  fragment.nodes = [];
+  const open = [fragment];
+  for (const [token, closing, tag, attributes = ""] of markup.matchAll(TOKEN)) {
+    const parent = open[open.length - 1];
+    if (token.startsWith("<!--")) continue;
+    if (closing) {
+      const depth = open.map((e) => e.tagName).lastIndexOf(closing.toUpperCase());
+      if (depth > 0) open.length = depth;
+      continue;
+    }
+    if (!tag) {
+      parent.nodes.push(decode(token));
+      continue;
+    }
+    const attrs = Object.fromEntries([...attributes.matchAll(ATTRIBUTE)].map(
+      ([, name, dq, sq, bare]) => [name.toLowerCase(), decode(dq ?? sq ?? bare ?? "")]));
+    const element = new Element(tag, attrs);
+    element.nodes = [];
+    element.stale = true;
+    element.parentNode = parent;
+    parent.children.push(element);
+    parent.nodes.push(element);
+    if (!VOID.has(element.tagName) && !token.endsWith("/>")) open.push(element);
+  }
+  return fragment.nodes;
+}
+
+function serialize(node) {
+  if (!(node instanceof Element)) return escapeText(node);
+  const tag = node.tagName.toLowerCase();
+  const attributes = [
+    ...(node.id ? [["id", node.id]] : []),
+    ...(node.className ? [["class", node.className]] : []),
+    ...Object.entries(node.dataset).map(([name, value]) => [`data-${kebab(name)}`, value]),
+    ...Object.entries(node.attributes),
+  ].map(([name, value]) => (value === "" ? ` ${name}` : ` ${name}="${escapeAttribute(value)}"`)).join("");
+  if (VOID.has(node.tagName)) return `<${tag}${attributes}>`;
+  const inside = node.nodes !== null
+    ? node.nodes.map(serialize).join("")
+    : escapeText(node.ownText) + node.children.map(serialize).join("");
+  return `<${tag}${attributes}>${inside}</${tag}>`;
 }
 
 function makeEvent(type, extra = {}) {
