@@ -116,6 +116,17 @@ def test_the_board_reports_an_unreadable_log_instead_of_an_objective_not_taken()
     assert "I/O error" in unreadable
 
 
+def test_a_runner_that_fails_on_this_host_leaves_the_log_unreadable_not_unread():
+    def fails_here(argv, stdin=None, timeout=60.0):
+        raise OSError(28, "No space left on device")
+
+    with patch("objectives._fetch", return_value=[]):
+        found, unreadable = objectives.observe(fails_here)
+
+    assert found == []
+    assert "No space left on device" in unreadable
+
+
 def test_a_read_is_stamped_to_the_millisecond():
     layout = re.search(r"log_format\s+read\s+'([^']*)'", CONF.read_text())[1]
 
