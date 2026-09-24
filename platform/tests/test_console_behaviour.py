@@ -289,6 +289,31 @@ def test_evenly_spaced_alerts_fill_every_bar_of_the_histogram_alike(client, per_
         "while the other 47 shared everything else"
     )
 
+def test_the_false_positives_are_shown_once_with_the_benign_cases_they_are_out_of(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + """
+          ANSWERS["/api/sessions/1/score/"] = {
+            ...SCORE, tp: 4, fn: 2, fp: 3, tn: 5, benign_cases: 8,
+          };
+        """,
+        scenario=r"""
+          await browser.click('[data-tab="score"]');
+          return browser.element("totals").innerHTML.split('<div class="bg-slate-900/60').slice(1)
+            .map((tile) => [...tile.matchAll(/<div class="[^"]*">([^<]*)<\/div>/g)]
+              .map((m) => m[1].trim()));
+        """,
+    )
+    showing_fp = [tile for tile in seen["result"] if "3" in tile[1]]
+
+    assert seen["errors"] == []
+    assert showing_fp == [
+        [english("blue.score.tile.fp"), "3", english("blue.score.tile.fp_of_benign", 8)],
+    ], (
+        "the grid showed the false positives on two tiles, FP and False "
+        "positives, and only one of them said how many benign cases they are out of"
+    )
+
 @pytest.mark.parametrize("counts, shown", [
     ({"tp": 1, "fp": 0, "fn": 0, "tn": 1}, ("1.00", "1.00", "1.00")),
     ({"tp": 0, "fp": 0, "fn": 2, "tn": 1}, ("-", "0.00", "0.00")),
