@@ -154,6 +154,23 @@ def test_a_segment_nothing_arrived_on_says_zero_rather_than_nothing(drawn):
 def test_an_address_on_no_segment_is_counted_rather_than_dropped(drawn):
     assert drawn["unplaced"] == 1
 
+def test_an_alert_with_no_source_is_unplaced_and_a_segment_with_no_subnet_says_zero(client):
+    from api.models import Detection
+    from tests.sessions import OPENED
+
+    session_id = open_session(client)
+    Detection.objects.create(
+        session_id=session_id, detection_id="no-source", source="suricata",
+        signature="FSL SQLi attempt", timestamp=OPENED, src_ip=None,
+    )
+    unsized = Shape(segments=(EDGE, replace(MGMT, subnet="")), sensors=SHAPE.sensors)
+
+    with stub(unsized):
+        drawn = client.get(f"/api/sessions/{session_id}/topology/").json()
+
+    assert drawn["unplaced"] == 1
+    assert segment(drawn, "mgmt")["alerts"] == 0
+
 def test_a_stack_that_cannot_be_read_is_503_not_a_blank_diagram(client):
     session_id = open_session(client)
 
