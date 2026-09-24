@@ -30,6 +30,8 @@ RENEW_BEFORE = timedelta(seconds=30)
 CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
+PINNING = {"stricthostkeychecking true", "stricthostkeychecking ask"}
+ALIASED = "hostkeyalias"
 NOVA_MICROVERSION = "2.1"
 NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
 TOKEN_HEADER = "X-Auth-Token"
@@ -371,13 +373,10 @@ class OpenStack:
         ]
 
     def _config(self, written: Path, address: str) -> Path:
-        lines = []
+        included = []
         if self.cloud.ssh_config:
-            lines.append(f"Include {Path(self.cloud.ssh_config).resolve()}")
-        generation = self._generations.get(address)
-        if generation:
-            lines += [f"Host {address}", f"  HostKeyAlias {generation}"]
-        lines += [
+            included.append(f"Include {Path(self.cloud.ssh_config).resolve()}")
+        defaults = [
             "Host *",
             "  BatchMode yes",
             "  LogLevel ERROR",
@@ -386,8 +385,27 @@ class OpenStack:
             f"  ServerAliveInterval {SERVER_ALIVE_INTERVAL}",
             f"  ServerAliveCountMax {SERVER_ALIVE_COUNT_MAX}",
         ]
-        written.write_text("\n".join(lines) + "\n")
+        written.write_text("\n".join(included + defaults) + "\n")
+        generation = self._generations.get(address)
+        if generation and not self._deployment_checks_keys(written, address):
+            aliased = [f"Host {address}", f"  HostKeyAlias {generation}"]
+            written.write_text("\n".join(included + aliased + defaults) + "\n")
         return written
+
+    def _deployment_checks_keys(self, config: Path, address: str) -> bool:
+        try:
+            resolved = subprocess.run(
+                ["ssh", "-G", "-F", str(config), f"{self.cloud.ssh_user}@{address}"],
+                capture_output=True, text=True, errors="replace",
+                timeout=CONNECT_TIMEOUT,
+            ).stdout.splitlines()
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RangeUnavailable(
+                f"could not read how ssh would reach {address}: {exc}"
+            ) from exc
+        return bool(PINNING & set(resolved)) or any(
+            line.startswith(f"{ALIASED} ") for line in resolved
+        )
 
     def launcher(self, segment_id: str):
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")

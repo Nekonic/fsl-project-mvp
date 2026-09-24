@@ -285,15 +285,58 @@ def test_a_reboot_is_not_a_rebuild(host):
         adapter(host, launched_at=FIRST_BOOT).runner("attacker")(["true"])
 
 
-def test_a_deployment_that_pins_its_own_keys_is_not_overruled(host):
+def pinned_by_address(host, key: pathlib.Path, checking="yes"):
+    pinned = host["home"] / "pinned"
+    pinned.write_text(
+        f"[127.0.0.1]:{host['port']} {key.with_suffix('.pub').read_text()}"
+    )
     (host["home"] / "ssh_config").write_text(
         f"Port {host['port']}\n"
-        f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
-        "StrictHostKeyChecking yes\n"
+        f"UserKnownHostsFile {pinned}\n"
+        f"StrictHostKeyChecking {checking}\n"
     )
 
-    with pytest.raises(RangeUnavailable, match="Host key verification failed"):
+
+def test_a_deployment_that_pins_its_own_keys_is_not_overruled(host):
+    pinned_by_address(host, keygen(host["home"] / "someone-else"))
+
+    with pytest.raises(RangeUnavailable) as raised:
         attacker(host)(["true"])
+
+    assert "REMOTE HOST IDENTIFICATION HAS CHANGED" in str(raised.value), (
+        f"the deployment pinned another key at this address, so the host "
+        f"answering is not the one it trusts: {raised.value}"
+    )
+
+
+@pytest.mark.parametrize("checking", ["yes", "ask"])
+def test_a_key_the_deployment_pinned_by_address_is_accepted(host, checking):
+    pinned_by_address(host, host["home"] / "host-a", checking)
+
+    ran = attacker(host)(["true"])
+
+    assert ran.exit_code == 0, (
+        f"the deployment pinned this host's own key under its address and "
+        f"checks strictly, so its key was looked up under the platform's "
+        f"alias instead and every host was refused: {ran}"
+    )
+
+
+def test_a_deployment_s_own_host_key_alias_is_the_one_keys_are_filed_under(host):
+    known = host["home"] / "known_hosts"
+    (host["home"] / "ssh_config").write_text(
+        f"Port {host['port']}\n"
+        f"UserKnownHostsFile {known}\n"
+        "Match final\n"
+        "  HostKeyAlias kali.range\n"
+    )
+
+    assert attacker(host)(["true"]).exit_code == 0
+    assert known.read_text().startswith("kali.range "), (
+        f"a Match final block is read in a second pass, after the platform's "
+        f"own alias was already taken, so the deployment's name for this host "
+        f"was ignored: {known.read_text()!r}"
+    )
 
 
 def test_a_deployment_s_bastion_is_not_given_the_instance_s_key(host, tmp_path):
