@@ -197,5 +197,20 @@ def test_objectives_say_why_the_wiki_cannot_be_asked(client):
     with patch("objectives._fetch", return_value=[]):
         response = client.get("/api/wargames/juice-shop/objectives/")
 
-    assert response.status_code == 503
-    assert "wiki" in response.json()["detail"]
+    internal = next(o for o in response.json() if o["key"] == "internalRunbookRead")
+    assert internal["solved"] is None
+    assert "wiki" in internal["unreadable"]
+
+def test_the_board_keeps_the_targets_objectives_when_only_the_wiki_cannot_be_asked(client):
+    taken = {"key": "loginAdminChallenge", "name": "Login Admin", "category": "Injection",
+             "difficulty": 2, "solved": True, "updatedAt": None}
+    with patch("objectives._fetch", return_value=[taken]):
+        response = client.get("/api/wargames/juice-shop/objectives/")
+
+    assert response.status_code == 200, (
+        "the wiki could not be read and the whole board answered 503, so the "
+        "red console replaced every Juice Shop objective with an error at the "
+        "moment one of them fell"
+    )
+    board = {o["key"]: o["solved"] for o in response.json()}
+    assert board == {"loginAdminChallenge": True, "internalRunbookRead": None}
