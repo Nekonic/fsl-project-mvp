@@ -783,7 +783,7 @@
         <td class="text-xs">${evidence(c)}</td>
       </tr>`).join("");
 
-    await Promise.all([renderComparison(), renderOperatorLog()]);
+    await Promise.all([renderComparison(s.warnings), renderOperatorLog()]);
   }
 
   async function renderOperatorLog() {
@@ -870,7 +870,8 @@
       </table>`;
   }
 
-  async function renderComparison() {
+  async function renderComparison(shownAbove) {
+    const alreadyShown = new Set(shownAbove.map((w) => t(...w)));
     const strategies = ["marker", "window"];
     const scored = await Promise.all(strategies.map((strategy) =>
       api(`/api/sessions/${sessionId()}/score/?correlation=${strategy}`)));
@@ -886,8 +887,10 @@
             esc(t("blue.score.comparison.error", detail(result)))}</div></div>`;
       }
       const s = result.body;
-      const why = (s.warnings || []).map((w) => `
-        <div class="text-amber-400/90 text-xs mt-2">${esc(t(...w))}</div>`).join("");
+      const why = (s.warnings || []).map((w) => t(...w))
+        .filter((text) => !alreadyShown.has(text))
+        .map((text) => `
+        <div class="text-amber-400/90 text-xs mt-2">${esc(text)}</div>`).join("");
       return `<div class="border border-slate-800 rounded p-4">${heading}
         <div class="text-slate-100 tabular-nums">${
           esc(t("blue.score.comparison.counts", s.tp, s.fn, s.fp, s.tn))}</div>
