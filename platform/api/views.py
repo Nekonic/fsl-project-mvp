@@ -1141,13 +1141,14 @@ def _version(content: str) -> str:
 @_in_turn
 def apply_rules(request):
     content = _rule_file(request)
-    base = _payload(request).get("base")
-    if base is not None:
+    body = _payload(request)
+    if "base" in body:
+        base = body["base"]
         live = _version(suricata.current(substrate().runner('sensor')))
         if base != live:
             return _reply({
                 "detail": "the sensor's rules changed since this copy was loaded "
-                          f"(loaded {base}, live {live}); reload them and edit again",
+                          f"(loaded {base or 'nothing'}, live {live}); reload them and edit again",
             }, status=409)
     try:
         suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
