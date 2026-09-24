@@ -222,6 +222,9 @@ pinned fires and cases posted from the terminal do not move it.
 ModSecurity runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly` — it
 never blocks. The one local override stops CRS rule 920273 firing on the marker
 header the platform itself adds (`deploy/nginx/modsecurity-overrides.conf:2`).
+Its health check asks `/healthz`, which the image's nginx answers itself and
+never proxies, so it puts nothing on an interface Suricata reads; asking `/`
+put an http event into Elasticsearch every ten seconds.
 
 **The estate is reached only through the application.** The documented path to
 the wiki is SSRF: post `imageUrl=http://wiki.internal/runbooks/deploy.html` to
