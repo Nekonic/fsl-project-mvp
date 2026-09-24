@@ -62,6 +62,28 @@ def test_a_suppression_length_outside_what_makes_sense_is_refused(client, minute
     read.assert_not_called()
 
 
+@pytest.mark.parametrize("raw", [
+    b'{"sid": Infinity}',
+    b'{"sid": -Infinity}',
+    b'{"sid": 1e400}',
+    b'{"sid": 9000001, "minutes": ' + b"9" * 400 + b"}",
+], ids=["sid-infinity", "sid-minus-infinity", "sid-1e400", "minutes-400-digits"])
+def test_a_number_too_big_to_convert_is_400_not_500(client, raw):
+    with patch("api.views.suricata.current", return_value=RULE) as read, patch(
+        "api.views.suricata.apply"
+    ) as applied:
+        response = client.post("/api/rules/suppressions/", raw, content_type="application/json")
+
+    assert response.status_code == 400, (
+        f"{raw[:40]!r} answered {response.status_code}: Python's JSON takes "
+        f"Infinity, 1e400 and a 400-digit integer, and neither int() nor "
+        f"float() can hold them"
+    )
+    assert response.json()["detail"]
+    read.assert_not_called()
+    applied.assert_not_called()
+
+
 @pytest.mark.parametrize("after", ["--1", "²", "1e3"])
 def test_a_cursor_that_is_not_a_number_is_400(client, after):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
