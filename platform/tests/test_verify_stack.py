@@ -123,3 +123,26 @@ def test_a_measure_that_crashes_is_reported_as_a_crash_not_a_regression(
         f"regression sends the reader looking for a number that grew:\n"
         f"{done.stdout}"
     )
+
+
+def test_a_fast_check_whose_measure_refuses_does_not_pass(checkout):
+    executable(
+        checkout / "bin/measure",
+        "echo 'measure: compose.override.yml exists, and Compose merges it "
+        "into the stack' >&2\n"
+        "exit 1\n",
+    )
+
+    done = subprocess.run(
+        [str(checkout / "bin/verify"), "--fast"],
+        capture_output=True, text=True, timeout=60,
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+    )
+
+    assert done.returncode != 0 and "fast check passed" not in done.stdout, (
+        f"measure could not read this tree and --fast called the baseline "
+        f"green anyway. The full run at the end fails on the same refusal, "
+        f"and the session protocol answers that with git reset --hard, so the "
+        f"session's work is thrown away every time:\n{done.stdout}"
+    )
+    assert "measure" in done.stdout, done.stdout
