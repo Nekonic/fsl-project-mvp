@@ -54,8 +54,7 @@
     show("confirm", false);
     const note = document.getElementById("closed");
     note.textContent = result.ok
-      ? t("session.close.done") : t("session.close.failed");
-    note.title = result.ok ? "" : `${result.status}`;
+      ? t("session.close.done") : t("session.close.failed", detail(result));
     note.classList.toggle("text-rose-400", !result.ok);
     note.classList.toggle("text-slate-500", result.ok);
     show("closed", true);

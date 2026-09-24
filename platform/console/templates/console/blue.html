@@ -883,8 +883,7 @@
         return `<div class="border border-slate-800 rounded p-4">${heading}
           <div class="text-amber-400 text-sm" title="${
             esc(result.body.detail || result.status)}">${
-            esc(t("blue.score.comparison.error", strategies[i],
-                 result.body.detail || result.status))}</div></div>`;
+            esc(t("blue.score.comparison.error", detail(result)))}</div></div>`;
       }
       const s = result.body;
       const why = (s.warnings || []).map((w) => `

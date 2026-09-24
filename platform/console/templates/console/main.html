@@ -23,17 +23,16 @@
 {% endblock %}
 {% block script %}
 <script>
-  function unavailable(what, result, panelId = "start-error") {
+  function showError(text, panelId = "start-error") {
     const panel = document.getElementById(panelId);
     panel.classList.remove("hidden");
-    panel.textContent = t("main.unavailable", what,
-                          result.body.detail || result.status || t("common.no_answer"));
+    panel.textContent = text;
   }
 
   async function renderWargames() {
     const result = await api("/api/wargames/");
     if (!result.ok || !Array.isArray(result.body)) {
-      unavailable(t("main.the_scenarios"), result);
+      showError(t("main.unavailable", t("main.the_scenarios"), detail(result)));
       return;
     }
     document.getElementById("wargames").innerHTML = result.body.map((wargame) => `
@@ -55,7 +54,7 @@
         const started = await post("/api/sessions/", { scenario: button.dataset.wargame });
         if (!started.ok || !started.body.id) {
           button.disabled = false;
-          unavailable(t("main.a_session"), started);
+          showError(t("main.start_failed", detail(started)));
           return;
         }
         location.href = `/session/${started.body.id}/`;
@@ -88,7 +87,7 @@
     if (!running.ok || !Array.isArray(running.body)) {
       showPanel("running-panel", false);
       showPanel("finished-panel", false);
-      unavailable(t("main.the_sessions"), running, "sessions-error");
+      showError(t("main.unavailable", t("main.the_sessions"), detail(running)), "sessions-error");
       return;
     }
     showPanel("sessions-error", false);
