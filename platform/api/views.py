@@ -605,16 +605,19 @@ def close_session(request, session_id):
         return shut
 
     try:
-        _observe_objectives(session)
-    except (objectives.ObjectivesUnavailable, RangeUnavailable):
-        pass
+        unobserved = _observe_objectives(session).get("unreadable")
+    except (objectives.ObjectivesUnavailable, RangeUnavailable) as exc:
+        unobserved = str(exc)
 
     closed_at = timezone.now()
     if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
         session.refresh_from_db()
         return _closed(session)
     session.ended_at = closed_at
-    return _reply(_shape(session, SESSION_FIELDS))
+    reply = _shape(session, SESSION_FIELDS)
+    if unobserved:
+        reply["unobserved"] = unobserved
+    return _reply(reply)
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
