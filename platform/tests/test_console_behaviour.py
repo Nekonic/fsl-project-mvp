@@ -1525,6 +1525,132 @@ def test_an_objective_taken_keeps_the_category_the_operator_chose(client):
         "the operator had chosen went back to every category"
     )
 
+TAKING = """
+const objective = (key, name) =>
+  ({key, name, category: "Sensitive Data Exposure", difficulty: 1, description: "", solved: false});
+ANSWERS["GET /api/wargames/juice-shop/objectives/"] = () => [
+  objective("directoryListingChallenge", "Confidential Document"),
+  objective("exposedMetricsChallenge", "Exposed Metrics"),
+];
+const taking = (name, takes) => ({name, summary: `GET /${name}`, malicious: true, takes});
+ANSWERS["GET /api/wargames/juice-shop/cases/"] = () => [
+  taking("ftp-listing", "directoryListingChallenge"),
+  taking("metrics-scrape", "exposedMetricsChallenge"),
+];
+const cards = () => browser.text("attacks");
+"""
+
+def test_a_case_card_names_the_objective_it_takes(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + TAKING + """
+          let releaseCases;
+          const casesHeld = new Promise((resolve) => { releaseCases = resolve; });
+          browser.serve((request) => request.route === "/api/wargames/juice-shop/cases/"
+            ? casesHeld.then(() => healthy(request))
+            : healthy(request));
+        """,
+        scenario="""
+          const objectivesFirst = browser.requests.some(
+            (r) => r.route === "/api/wargames/juice-shop/objectives/");
+          releaseCases();
+          await browser.settle();
+          return {objectivesFirst, cards: cards()};
+        """,
+    )
+    shown = seen["result"]["cards"]
+
+    assert seen["errors"] == []
+    assert seen["result"]["objectivesFirst"] is True
+    for name in ("Confidential Document", "Exposed Metrics"):
+        assert english("red.case.objective", name) in shown, (
+            f"the card for the case that takes {name} showed the target's internal "
+            f"key for it, which the objective list on the same page never shows"
+        )
+    assert "directoryListingChallenge" not in shown
+    assert "exposedMetricsChallenge" not in shown
+
+def test_a_case_card_drawn_before_the_objectives_arrived_names_them_once_they_do(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + TAKING + """
+          let readable = false;
+          browser.serve((request) =>
+            !readable && request.route === "/api/wargames/juice-shop/objectives/"
+              ? {status: 503, body: {detail: "the target did not answer"}}
+              : healthy(request));
+          ANSWERS["POST /api/sessions/1/objectives/"] = () => ({achieved: 1});
+        """,
+        scenario="""
+          const before = cards();
+          readable = true;
+          await browser.poll();
+          return {before, after: cards()};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert english("red.case.objective", "directoryListingChallenge") in seen["result"]["before"], (
+        "the cases were drawn while the objectives could not be read, and the "
+        "card said nothing about the objective its case takes"
+    )
+    assert english("red.case.objective", "Confidential Document") in seen["result"]["after"], (
+        "the objectives arrived after the cases were drawn, and the cards kept "
+        "the internal key instead of the name the objective list shows"
+    )
+    assert "directoryListingChallenge" not in seen["result"]["after"]
+
+def test_a_case_card_whose_objective_is_not_listed_shows_its_key(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + TAKING + """
+          ANSWERS["GET /api/wargames/juice-shop/cases/"] = () => [
+            taking("ftp-listing", "directoryListingChallenge"),
+            taking("retired", "retiredChallenge"),
+          ];
+        """,
+        scenario="return cards();",
+    )
+
+    assert seen["errors"] == []
+    assert english("red.case.objective", "retiredChallenge") in seen["result"], (
+        "a case takes an objective the target does not list, and its card named "
+        "no objective at all"
+    )
+    assert english("red.case.objective", "Confidential Document") in seen["result"]
+
+def test_an_objective_falling_does_not_draw_the_case_cards_again(client):
+    seen = open_page(
+        client, "/red/1/",
+        setup=RED_RANGE + TAKING + """
+          ANSWERS["POST /api/sessions/1/objectives/"] = () => ({achieved: 1});
+          const attacks = browser.element("attacks");
+          const markup = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(attacks), "innerHTML");
+          let drawn = 0;
+          Object.defineProperty(attacks, "innerHTML", {
+            get() { return markup.get.call(this); },
+            set(value) { drawn += 1; markup.set.call(this, value); },
+          });
+          const reads = () => browser.requests.filter(
+            (r) => r.route === "/api/wargames/juice-shop/objectives/").length;
+        """,
+        scenario="""
+          const loaded = {drawn, reads: reads()};
+          await browser.poll();
+          await browser.poll();
+          return {loaded, fell: {drawn: drawn - loaded.drawn, reads: reads() - loaded.reads}};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["loaded"]["drawn"] == 1
+    assert seen["result"]["fell"]["reads"] == 2
+    assert seen["result"]["fell"]["drawn"] == 0, (
+        "an objective fell and the case cards were drawn again with the names "
+        "they already showed; a run in progress had disabled their buttons, and "
+        "the ones drawn in their place could be clicked in the middle of it"
+    )
+
 def test_a_red_console_woken_from_sleep_checks_its_objectives_once(client):
     seen = open_page(
         client, "/red/1/",

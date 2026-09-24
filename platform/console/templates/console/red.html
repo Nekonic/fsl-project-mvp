@@ -162,11 +162,22 @@
           <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
           <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
           ${caseDef.takes
-            ? `<div class="text-rose-400 text-xs mt-1">${esc(t("red.case.objective", caseDef.takes))}</div>`
+            ? `<div class="text-rose-400 text-xs mt-1">${esc(t("red.case.objective", objectiveName(caseDef.takes)))}</div>`
             : ""}
         </button>
         ${labels(caseDef)}
       </div>`;
+  }
+
+  function drawCases() {
+    document.getElementById("attacks").innerHTML =
+      catalogue.filter((c) => c.malicious).map(button).join("");
+    document.getElementById("benign").innerHTML =
+      catalogue.filter((c) => !c.malicious).map(button).join("");
+
+    document.querySelectorAll(".fire").forEach((element) => {
+      element.addEventListener("click", () => fire(element.dataset.case));
+    });
   }
 
   const LOG_LINES = 200;
@@ -243,18 +254,13 @@
     }
     catalogue = cases.body;
     await showCoverage();
-    document.getElementById("attacks").innerHTML =
-      catalogue.filter((c) => c.malicious).map(button).join("");
-    document.getElementById("benign").innerHTML =
-      catalogue.filter((c) => !c.malicious).map(button).join("");
-
-    document.querySelectorAll(".fire").forEach((element) => {
-      element.addEventListener("click", () => fire(element.dataset.case));
-    });
+    drawCases();
   }
 
   let objectives = [];
   const STAR = (n) => "*".repeat(n);
+  const objectiveName = (key) => objectives.find((o) => o.key === key)?.name || key;
+  const namesOnCards = () => JSON.stringify(catalogue.map((c) => objectiveName(c.takes)));
 
   async function loadObjectives() {
     const result = await api(`/api/wargames/${scenario}/objectives/`);
@@ -263,7 +269,9 @@
         `<p class="text-amber-400 text-sm p-4">${esc(t("red.error.objectives", detail(result)))}</p>`;
       return;
     }
+    const drawnWith = namesOnCards();
     objectives = result.body;
+    if (namesOnCards() !== drawnWith) drawCases();
     document.getElementById("kpi-available").textContent =
       objectives.filter((o) => !o.solved).length;
 
