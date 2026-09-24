@@ -339,6 +339,26 @@ def test_a_deployment_s_own_host_key_alias_is_the_one_keys_are_filed_under(host)
     )
 
 
+@pytest.mark.parametrize("named", [
+    "~/deploy/ssh_config",
+    "{home}/deploy dir/ssh_config",
+    '{home}/the "range" at 100% [${HOME}] back\\slash/ssh_config',
+])
+def test_a_deployment_config_is_read_whatever_its_path_holds(host, monkeypatch, named):
+    monkeypatch.setenv("HOME", str(host["home"]))
+    named = named.replace("{home}", str(host["home"]))
+    placed = pathlib.Path(named).expanduser()
+    placed.parent.mkdir()
+    (host["home"] / "ssh_config").rename(placed)
+
+    run = adapter(host, ssh_config=named).runner("attacker")
+
+    assert run(["true"]).exit_code == 0, (
+        f"the deployment's ssh config holds the port this host answers on, "
+        f"and {named!r} was not the file ssh was told to include"
+    )
+
+
 def test_a_deployment_s_bastion_is_not_given_the_instance_s_key(host, tmp_path):
     bastion_port = free_port()
     bastion = start_sshd(tmp_path, bastion_port, keygen(tmp_path / "bastion"))

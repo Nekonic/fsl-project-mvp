@@ -47,6 +47,7 @@ SETTINGS = {
     "project": "FSL_OPENSTACK_PROJECT",
     "ssh_user": "FSL_OPENSTACK_SSH_USER",
     "ssh_key": "FSL_OPENSTACK_SSH_KEY",
+    "ssh_config": "FSL_OPENSTACK_SSH_CONFIG",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
@@ -72,6 +73,12 @@ def connect(
         raise RangeUnavailable(
             f"the OpenStack substrate reaches no cloud without "
             f"{', '.join(missing)}"
+        )
+    if ssh_config and not Path(ssh_config).expanduser().is_file():
+        raise RangeUnavailable(
+            f"{SETTINGS['ssh_config']} names {ssh_config} and there is no such "
+            f"file. ssh includes a file that is not there without a word and "
+            f"connects as if the deployment had configured nothing"
         )
 
     known = (keystone, user, password, project, ssh_user, ssh_key,
@@ -375,7 +382,9 @@ class OpenStack:
     def _config(self, written: Path, address: str) -> Path:
         included = []
         if self.cloud.ssh_config:
-            included.append(f"Include {Path(self.cloud.ssh_config).resolve()}")
+            linked = written.with_name("deployment_ssh_config")
+            linked.symlink_to(Path(self.cloud.ssh_config).expanduser().resolve())
+            included.append(f'Include "{linked}"')
         defaults = [
             "Host *",
             "  BatchMode yes",
