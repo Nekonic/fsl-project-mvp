@@ -7,11 +7,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 DOCKERFILE = ROOT / "platform/Dockerfile"
 
 def setting(name, **env):
+    given = {**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings", **env}
     done = subprocess.run(
         [sys.executable, "-c",
          f"import fsl.settings as s; print(repr(s.{name}))"],
         cwd=ROOT / "platform", capture_output=True, text=True,
-        env={**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings", **env},
+        env={key: value for key, value in given.items() if value is not None},
     )
     assert done.returncode == 0, done.stderr[-400:]
     return eval(done.stdout.strip())
@@ -29,6 +30,14 @@ def test_the_hosts_it_answers_for_are_configurable():
     hosts = setting("ALLOWED_HOSTS", DJANGO_ALLOWED_HOSTS="range.example,10.0.0.5")
 
     assert hosts == ["range.example", "10.0.0.5"]
+
+def test_unless_told_otherwise_it_answers_only_to_the_names_of_this_machine():
+    hosts = setting("ALLOWED_HOSTS", DJANGO_ALLOWED_HOSTS=None)
+
+    assert hosts == ["localhost", "127.0.0.1", "[::1]"], (
+        f"{hosts}: any Host was accepted, so a page on another name re-resolved "
+        f"to 127.0.0.1 passes as the platform's own origin"
+    )
 
 def test_serving_without_a_secret_is_refused_when_debug_is_off():
     done = subprocess.run(

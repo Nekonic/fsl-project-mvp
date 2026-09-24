@@ -134,7 +134,8 @@ agent takes a human's place later, there should be nothing to change.
 ## A warning
 
 Local lab only. Elasticsearch runs with security disabled, Django with
-`DEBUG=1` and `ALLOWED_HOSTS=*`, the Docker socket is mounted into the platform
+`DEBUG=1` (it answers only to `localhost`, `127.0.0.1` and `[::1]` unless
+`DJANGO_ALLOWED_HOSTS` names more), the Docker socket is mounted into the platform
 container so it can validate rules, and the Kali shell on 7681 is an
 unauthenticated root shell. Both of those last two are container escape paths.
 None of this belongs on a network you do not own.
