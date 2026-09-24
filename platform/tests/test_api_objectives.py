@@ -118,6 +118,22 @@ def test_ground_truth_survives_a_target_that_cannot_be_asked(client, session_id)
     assert created.status_code == 201
     assert client.get(f"/api/sessions/{session_id}/cases/").json()[0]["name"] == "some-attack"
 
+def test_ground_truth_survives_a_range_that_cannot_reach_the_target(client, session_id):
+    from range.ports import RangeUnavailable
+
+    with patch("api.views.substrate") as substrate:
+        substrate.return_value.runner.side_effect = RangeUnavailable(
+            "no host fills the role 'wiki'"
+        )
+        created = client.post_json(f"/api/sessions/{session_id}/cases/", CASE)
+
+    assert created.status_code == 201, (
+        f"the case was stored but the reply was {created.status_code}; the "
+        f"harness stops the run on it and a retry gets 409"
+    )
+    assert created.json()["objectives"] is None
+    assert client.get(f"/api/sessions/{session_id}/cases/").json()[0]["name"] == "some-attack"
+
 def test_a_session_with_no_baseline_still_records_cases(client):
     with patch(
         "api.views.objectives.solved_keys", side_effect=ObjectivesUnavailable("down")
