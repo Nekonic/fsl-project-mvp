@@ -5,7 +5,6 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from django.conf import settings
@@ -95,12 +94,10 @@ def _internal(wiki=None) -> dict[str, Any]:
     try:
         if wiki is not None:
             when = wiki_read_at(wiki, settings.WIKI_SECRET_PATH)
-    except RangeUnavailable as exc:
+    except (RangeUnavailable, OSError) as exc:
         raise ObjectivesUnavailable(
             f"could not read the wiki's access log: {exc}"
         ) from exc
-    except OSError:
-        pass
 
     return dict(INTERNAL, solved=bool(when), solved_at=when)
 
