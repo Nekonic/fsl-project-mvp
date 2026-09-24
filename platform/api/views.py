@@ -621,7 +621,7 @@ def session_cases(request, session_id):
 
     try:
         observed = _observe_objectives(session)["achieved"]
-    except objectives.ObjectivesUnavailable:
+    except (objectives.ObjectivesUnavailable, RangeUnavailable):
         observed = None
 
     return _reply(
