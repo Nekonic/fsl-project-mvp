@@ -106,3 +106,17 @@ def test_the_platform_s_store_outlives_the_checkout_that_started_it():
         f"whichever checkout ran compose up. The sessions, cases and scores are "
         f"the only store there is, and removing that checkout removes them"
     )
+
+def test_the_waf_s_health_check_never_reaches_the_sensor():
+    check = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]["healthcheck"]["test"]
+    asked = re.search(r"https?://[^/\s\"]+(/[^\s\"]*)?", " ".join(check))
+
+    assert asked and asked.group(1) == "/healthz", (
+        f"the WAF's health check asks {asked and asked.group(1)!r}. The image's "
+        f"nginx answers /healthz itself and proxies every other path to "
+        f"juice-shop over the estate leg, where Suricata writes an http event "
+        f"for it: 360 an hour for as long as the stack runs. Ingest reads at "
+        f"most 5000 documents of a session's window, oldest first, so a "
+        f"session open 14 hours reads health checks and never the alerts after "
+        f"them"
+    )
