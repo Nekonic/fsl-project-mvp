@@ -253,10 +253,10 @@ One line each.
   applied. Error messages say what to change, a swallowed wiki or range error
   is reported, 23 tests that could not fail now can, config restating
   defaults is gone (`eve-log.alert.http` was a deprecated no-op). The 59 that
-  one refuter rejected were not applied. Worth a second look: ingest calls
-  `_segments()` too, so a range outage stores those alerts without the host
-  that held the address, for good; the Protocols in `range/ports.py` have no
-  user; `test_operator_log.py:120` accepts the 200 its name rules out.
+  one refuter rejected were not applied; rechecked, they are deliberate
+  (ingest blanks the host during a range outage, `c83ea24`, pinned by
+  `test_asset_identity.py`; the Protocols in `range/ports.py` state the port)
+  or already caught elsewhere.
 
 ## Backlog
 
