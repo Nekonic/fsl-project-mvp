@@ -1096,32 +1096,40 @@ def suppressions(request):
 @_in_turn
 def restore_suppression(request, suppression_id):
     record = get_object_or_404(Suppression, pk=suppression_id, restored_at__isnull=True)
-    problem = _restore(record)
-    if problem:
-        return _reply({"detail": problem}, status=400)
-    return _reply(_shape(record, SUPPRESSION_FIELDS))
+    ok, detail = _restore(record)
+    if not ok:
+        return _reply({"detail": detail}, status=400)
+    return _reply(_shape(record, SUPPRESSION_FIELDS) | {"detail": detail})
 
-def _restore(record) -> str | None:
+def _restore(record) -> tuple[bool, str | None]:
+    current = suricata.current(substrate().runner('sensor'))
+    superseded = suppress.find(current, record.sid) is not None
+    lift = suppress.discard if superseded else suppress.restore
     try:
-        content = suppress.restore(suricata.current(substrate().runner('sensor')), record.sid, record.original)
+        content = lift(current, record.sid, record.original)
     except KeyError:
                                                                             
                                                                           
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
-        return None
+        return True, None
 
     try:
         suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     except suricata.RuleApplyError as exc:
-                                                                             
-                                                                               
-                                                          
-        return f"could not restore sid {record.sid}: {exc}"
+
+
+
+        return False, f"could not restore sid {record.sid}: {exc}"
 
     record.restored_at = timezone.now()
     record.save(update_fields=["restored_at"])
-    return None
+    if superseded:
+        return True, (
+            f"sid {record.sid} was superseded by an active rule carrying it, so "
+            f"the silenced original was dropped rather than restored"
+        )
+    return True, None
 
 @_in_turn
 def _restore_expired() -> list:
@@ -1130,8 +1138,8 @@ def _restore_expired() -> list:
     )
     lifted = []
     for record in list(due):
-        problem = _restore(record)
-        lifted.append({"sid": record.sid, "ok": problem is None, "detail": problem})
+        ok, detail = _restore(record)
+        lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
     return lifted
 
 def _version(content: str) -> str:
