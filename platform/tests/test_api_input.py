@@ -36,6 +36,13 @@ def test_an_empty_rule_file_given_on_purpose_is_still_applied(client):
     applied.assert_called_once()
 
 
+def test_applying_rules_replies_with_no_validation_output_it_never_kept(client):
+    with patch("api.views.suricata.apply"):
+        response = client.post_json("/api/rules/apply/", {"content": RULE})
+
+    assert set(response.json()) == {"id", "content", "created_at", "applied_at"}
+
+
 @pytest.mark.parametrize("path", [
     "/api/sessions/", "/api/rules/apply/", "/api/rules/validate/",
     "/api/rules/suppressions/", "/api/attacker/label/",
