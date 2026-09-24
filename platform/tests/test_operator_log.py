@@ -82,7 +82,7 @@ def test_an_open_session_takes_everything_since_it_started():
 
 pytestmark = pytest.mark.django_db
 
-def session_with(client, commands_output):
+def session_with(client, commands_output, exit_code=0):
     from unittest.mock import patch
 
     from api.models import Session
@@ -95,7 +95,7 @@ def session_with(client, commands_output):
     class Stub:
         def runner(self, role, segment_id=""):
             assert role == "attacker", role
-            return reader(commands_output)
+            return reader(commands_output, exit_code)
 
     with patch("api.views.substrate", Stub):
         return session, client.get(f"/api/sessions/{session.id}/commands/")
@@ -114,10 +114,14 @@ def test_the_console_can_ask_what_was_typed_during_a_session(client):
 
 def test_a_log_that_cannot_be_read_is_503_and_not_an_empty_list(client):
     _, response = session_with(
-        client, "cat: /var/log/fsl/commands.log: Permission denied"
+        client, "cat: /var/log/fsl/commands.log: Permission denied", exit_code=1
     )
 
-    assert response.status_code == 200 or response.status_code == 503
+    assert response.status_code == 503, (
+        "a log the box refused to show came back as nobody having typed "
+        "anything, so the window case scores an attack nobody can see"
+    )
+    assert "Permission denied" in response.json()["detail"]
 
 def test_the_attacker_box_writes_what_it_is_asked_to_read():
     import pathlib
