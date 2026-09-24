@@ -159,12 +159,24 @@ def test_what_a_case_should_be_found_by_is_text_or_nothing(client, session_id, g
     assert "expect" in response.json()
 
 
-@pytest.mark.parametrize("given", ["SQL", "", None])
+@pytest.mark.parametrize("given", ["SQL", ""])
 def test_what_a_case_should_be_found_by_is_recorded_as_given(client, session_id, given):
     response = record(client, session_id, a_case(expect=given))
 
     assert response.status_code == 201, response.content
     assert response.json()["expect"] == given
+
+
+@pytest.mark.parametrize("posted", [{}, {"expect": None}])
+def test_a_case_posted_with_no_expectation_is_recorded_as_having_none(client, session_id, posted):
+    response = record(client, session_id, a_case(**posted))
+
+    assert response.status_code == 201, response.content
+    assert response.json()["expect"] == "", (
+        "a case posted with no expectation was stored as null, which means "
+        "recorded before expectations were kept, so its score is judged by the "
+        "case file as it is now"
+    )
 
 
 @pytest.mark.parametrize("given", [

@@ -21,7 +21,7 @@ def session_id(client):
 
 def record(client, session_id, case_id):
     return client.post_json(f"/api/sessions/{session_id}/cases/", {
-        "case_id": case_id, "name": CASE, "malicious": True,
+        "case_id": case_id, "name": CASE, "malicious": True, "expect": "traversal",
         "technique": "PathTraversal", "correlation": "marker",
         "started_at": T0.isoformat(),
         "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
@@ -68,7 +68,7 @@ def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, sessio
 def test_an_attack_nobody_saw_is_missed_not_caught_for_the_wrong_reason(client, session_id):
     missed = "33333333-3333-4333-8333-333333333333"
     client.post_json(f"/api/sessions/{session_id}/cases/", {
-        "case_id": missed, "name": "sqli-login-bypass", "malicious": True,
+        "case_id": missed, "name": "sqli-login-bypass", "malicious": True, "expect": "SQL",
         "correlation": "marker", "started_at": T0.isoformat(),
         "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
     })
@@ -172,3 +172,22 @@ def test_a_case_recorded_through_the_api_keeps_the_expectation_it_was_recorded_w
     scored = rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path)
 
     assert scored == [(200, [(CASE, "traversal", True)])] * 3
+
+def test_a_terminal_window_is_not_judged_by_the_case_file_it_happens_to_be_named_in(
+    client, session_id, settings, tmp_path
+):
+    case_id = "55555555-5555-4555-8555-555555555555"
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": case_id, "name": CASE, "malicious": True,
+        "correlation": "marker", "started_at": T0.isoformat(),
+        "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
+    })
+
+    scored = rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path)
+
+    assert scored == [(200, [(CASE, "", None)])] * 3, (
+        "the red console's terminal window posts no expectation, the case was "
+        "stored as if recorded before expectations were kept, and its session "
+        "was scored by the case file as it is now - a file that no longer "
+        "parses took the score down with it"
+    )
