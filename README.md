@@ -97,9 +97,11 @@ test floor. `bin/measure` prints the numbers; `CLAUDE.md` explains what each
 one is for.
 
 Sessions accumulate — every acceptance run creates about twenty. `bin/verify`
-records the newest session before the run and afterwards deletes only the
-closed sessions newer than it, so nothing a person made or still has open is
-touched. `bin/prune` does it by hand:
+hands the run a file in `FSL_ACCEPTANCE_SESSIONS`, the run writes there the id
+of every session it creates and closes them when it is done, and verify then
+deletes only the closed sessions that file lists (`bin/prune --ids`), so
+nothing a person made or still has open is touched. `bin/prune` does it by
+hand:
 
 ```bash
 bin/prune --keep 20           # says what it would delete
