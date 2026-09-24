@@ -109,6 +109,47 @@ bin/prune --keep 20 --apply   # deletes it
 bin/prune --ids run.txt --apply # only the closed sessions whose ids run.txt lists
 ```
 
+## The store
+
+Everything the platform records — sessions, cases, detections, objectives,
+rule sets, suppressions — is one SQLite file, `/data/db.sqlite3` in the
+`platformdata` volume (`fsl_platformdata` to Docker), mounted into
+`fsl-platform`. The raw logs stay in Elasticsearch's volume, `esdata`, which
+this does not copy.
+
+`bin/backup` copies it while the platform keeps serving:
+
+```bash
+bin/backup      # backups/db-<UTC time>.sqlite3, then its row counts
+```
+
+It runs SQLite's online backup API inside the platform, so the copy holds every
+committed transaction and nothing of one still in progress, and the bytes come
+back over the `docker exec` pipe; no copy is left inside the container. The
+file gets its `.sqlite3` name only after `PRAGMA integrity_check` has passed on
+the host. `backups/` is ignored by git. If the platform is down, or the copy
+fails the check, it exits 1, says why and keeps nothing. A platform that does
+not run in Docker is reached by pointing `FSL_PLATFORM_EXEC` at any command that
+runs `python -` with the platform's settings importable; the default is
+`docker exec -i fsl-platform python -`.
+
+Restoring is by hand. Stop the platform so nothing writes, copy the file into
+the volume as the platform's own user, and start it again:
+
+```bash
+docker compose stop platform
+docker run --rm --network none -v fsl_platformdata:/data \
+  -v "$PWD/backups:/backups:ro" fsl-platform \
+  sh -c 'rm -f /data/db.sqlite3-journal && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
+docker compose start platform
+```
+
+The copy runs in the platform's image because that image runs as the user the
+store belongs to; `docker cp` would leave the file owned by root and the
+platform unable to write it. A `-journal` left by the old file must go with it,
+or SQLite would replay it onto the restored one. On start the platform applies
+any migration the backup predates.
+
 ## Layout
 
 | | |
