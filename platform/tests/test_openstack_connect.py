@@ -18,6 +18,8 @@ class Cloud:
     def __init__(self):
         self.tokens = 0
         self.port = 0
+        self.services = ""
+        self.gone = set()
 
     def handler(self):
         cloud = self
@@ -53,7 +55,7 @@ class Cloud:
             def do_POST(self):
                 self.rfile.read(int(self.headers["Content-Length"]))
                 cloud.tokens += 1
-                here = f"http://127.0.0.1:{cloud.port}"
+                here = cloud.services or f"http://127.0.0.1:{cloud.port}"
                 self._send(201, {"token": {"catalog": [
                     {"type": "network", "endpoints": [{
                         "interface": "public", "region_id": "RegionOne", "url": here,
@@ -64,6 +66,8 @@ class Cloud:
                 ]}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
 
             def do_GET(self):
+                if self.server.server_port in cloud.gone:
+                    return self._send(404, {"error": self.path})
                 if "/v2.0/networks" in self.path:
                     return self._send(200, {"networks": [
                         {"id": f"net-{s.id}", "name": f"range-{s.id}",
@@ -126,6 +130,40 @@ def test_a_request_does_not_sign_in_again(cloud):
         f"range.substrate() builds an adapter per request, and each one signed "
         f"in to Keystone and read its catalogue again: {cloud.tokens - after_one} "
         f"more tokens for three more requests"
+    )
+
+
+def serving(cloud) -> HTTPServer:
+    server = HTTPServer(("127.0.0.1", 0), cloud.handler())
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    cloud.services = f"http://127.0.0.1:{server.server_port}"
+    return server
+
+
+@pytest.mark.parametrize("left_behind", ["closed", "answering 404"])
+def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
+    before = serving(cloud)
+    try:
+        openstack.connect(**options(cloud)).describe()
+        after = serving(cloud)
+        if left_behind == "closed":
+            before.shutdown()
+            before.server_close()
+        else:
+            cloud.gone.add(before.server_port)
+        try:
+            shape = openstack.connect(**options(cloud)).describe()
+        finally:
+            after.shutdown()
+            after.server_close()
+    finally:
+        before.shutdown()
+        before.server_close()
+
+    assert [s.id for s in shape.segments] == [s.id for s in declared.read().segments], (
+        "Keystone listed the network and compute services somewhere new and "
+        "the platform went on asking where the first catalogue said they "
+        "were, until it was restarted"
     )
 
 

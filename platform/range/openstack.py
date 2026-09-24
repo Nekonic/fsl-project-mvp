@@ -52,6 +52,9 @@ SETTINGS = {
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
 
+class EndpointGone(RangeUnavailable):
+    pass
+
 def connect(
     declared: Declaration,
     keystone: str = "",
@@ -83,14 +86,17 @@ def connect(
 
     known = (keystone, user, password, project, ssh_user, ssh_key,
              ssh_config, region, interface)
-    if known not in _connected:
+
+    def rediscover() -> tuple[Cloud, object]:
         cloud = discover(
             keystone, user, password, project, ssh_user, ssh_key,
             region=region, interface=interface, ssh_config=ssh_config,
         )
         _connected[known] = (cloud, http_reader(cloud, password))
-    cloud, reader = _connected[known]
-    return OpenStack(declared, cloud, get=reader)
+        return _connected[known]
+
+    cloud, reader = _connected.get(known) or rediscover()
+    return OpenStack(declared, cloud, get=reader, rediscover=rediscover)
 
 def forget() -> None:
     _connected.clear()
@@ -189,7 +195,8 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
         if answered.status_code == 401:
             answered = _send("get", url, authenticate(), None, timeout)
         if not answered.ok:
-            raise RangeUnavailable(
+            refused = EndpointGone if answered.status_code == 404 else RangeUnavailable
+            raise refused(
                 f"{url} answered {answered.status_code}: "
                 f"{answered.text.strip()[:200]}"
             )
@@ -222,7 +229,7 @@ def _send(verb: str, url: str, token: str | None, body, timeout: float):
             url, headers=headers, json=body, timeout=timeout
         )
     except requests.RequestException as exc:
-        raise RangeUnavailable(f"could not reach {url}: {exc}") from exc
+        raise EndpointGone(f"could not reach {url}: {exc}") from exc
 VERSION = "version"
 IP_VERSION = "ip_version"
 
@@ -279,16 +286,25 @@ class Cloud:
 
 
 class OpenStack:
-    def __init__(self, declared: Declaration, cloud: Cloud, get=unimplemented):
+    def __init__(
+        self, declared: Declaration, cloud: Cloud, get=unimplemented, rediscover=None
+    ):
         self.declared = declared
         self.cloud = cloud
         self.get = get
+        self.rediscover = rediscover
         self._shape: Shape | None = None
         self._generations: dict[str, str] = {}
 
     def describe(self) -> Shape:
         if self._shape is None:
-            self._shape = self._read()
+            try:
+                self._shape = self._read()
+            except EndpointGone:
+                if self.rediscover is None:
+                    raise
+                self.cloud, self.get = self.rediscover()
+                self._shape = self._read()
         return self._shape
 
     def segments(self) -> tuple[Segment, ...]:
