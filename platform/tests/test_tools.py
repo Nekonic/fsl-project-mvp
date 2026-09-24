@@ -69,11 +69,6 @@ def test_tool_case_in_the_default_file_declares_args():
             f"{case['name']}  does not use {{target}}, so its target is hardcoded"
         )
 
-                                                                              
- 
-                                                                          
-                                                                            
-                                                                      
 
 def launcher(exit_code, output=""):
     from range.ports import Ran
@@ -103,7 +98,6 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
         launcher(1, "all tested parameters do not appear to be injectable"),
     )
 
-                                                                            
 
 def test_nothing_in_the_tool_command_names_a_substrate():
     image, argv = tool_argv(

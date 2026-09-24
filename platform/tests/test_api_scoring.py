@@ -155,8 +155,6 @@ def test_score_on_session_without_cases_warns_about_benign(client):
     assert any(w[0] == "score.warning.no_benign" for w in response.json()["warnings"])
 
 def test_ingest_skipped_counts_documents_not_alerts(client, session_with_cases):
-                                                                            
-                                                               
     modsec = (
         "m1",
         {

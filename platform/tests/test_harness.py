@@ -53,8 +53,6 @@ def test_build_request_omits_marker_for_window_cases():
     assert "X-FSL-Case" not in prepared.headers
 
 def test_build_request_carries_json_body_and_params():
-                                                                            
-                                           
     case = {
         "case_id": "abc",
         "correlation": "marker",
@@ -90,11 +88,6 @@ def test_default_cases_have_unique_names():
 
     assert len(names) == len(set(names))
 
-                                                                              
- 
-                                                                       
-                                                                           
-                                             
 
 def test_check_path_preserved_accepts_an_unaltered_path():
     from redteam.harness import check_path_preserved
@@ -116,13 +109,12 @@ def test_check_path_preserved_accepts_percent_encoded_traversal():
     check_path_preserved(path, f"http://h{path}")
 
 def test_default_cases_survive_request_preparation():
-                                                                     
     from redteam.harness import check_path_preserved
     from redteam.tools import is_tool_case
 
     for case in load_cases(DEFAULT_CASES):
         if is_tool_case(case):
-            continue                                        
+            continue
         case = dict(case, case_id="probe")
         prepared = build_request(dict(case, case_id="probe"), BASE)
         check_path_preserved(case["request"]["path"], prepared.url)
@@ -176,8 +168,6 @@ def test_the_harness_records_what_the_case_was_to_be_found_by():
     )
 
 def test_case_meta_describes_a_tool_case_without_a_request():
-                                                                               
-                             
     from redteam.harness import case_meta
 
     case = {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}

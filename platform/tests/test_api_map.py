@@ -22,8 +22,6 @@ def suricata(doc_id, src_ip, geo=None, signature="SQLi"):
     return (doc_id, source)
 
 def modsecurity(doc_id, src_ip, message="SQL Injection"):
-                                                                              
-                                                                     
     return (
         doc_id,
         {
@@ -61,8 +59,6 @@ def test_an_address_the_pipeline_could_not_place_is_not_invented(client, session
     assert drawn["unlocated"] == 1
 
 def test_an_alert_without_geo_still_counts_once_its_address_is_known(client, session_id):
-                                                                              
-                                                  
     drawn = ingest(client, session_id, [
         suricata("a", "5.188.10.2", MOSCOW),
         modsecurity("m", "5.188.10.2"),

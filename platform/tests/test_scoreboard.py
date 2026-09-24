@@ -7,8 +7,6 @@ def breach(difficulty, detected, key="k"):
     )
 
 def test_an_untouched_session_is_full_coverage_not_zero():
-                                                                        
-                                                      
     scored = tally([], false_positives=0)
 
     assert scored.objectives == 0
@@ -24,7 +22,6 @@ def test_an_undetected_breach_costs_more_than_a_detected_one():
     assert missed.damage == 4
 
 def test_coverage_weighs_by_difficulty_not_by_count():
-                                                                           
     scored = tally(
         [breach(1, True, "a"), breach(1, True, "b"), breach(6, False, "c")],
         false_positives=0,
@@ -36,8 +33,6 @@ def test_coverage_weighs_by_difficulty_not_by_count():
     assert scored.coverage == 2 / 8
 
 def test_false_positives_are_reported_beside_damage_never_inside_it():
-                                                                           
-                                                                             
     quiet = tally([breach(3, detected=True)], false_positives=0)
     noisy = tally([breach(3, detected=True)], false_positives=9)
 
@@ -67,8 +62,6 @@ def test_an_objective_is_credited_to_the_last_attempt_before_it():
     assert credited.case_id == "second"
 
 def test_polling_lag_does_not_lose_the_attribution():
-                                                                               
-                                                  
     credited = attribute(T0 + timedelta(seconds=5), [attempt(0)])
 
     assert credited is not None
@@ -86,8 +79,6 @@ from scoreboard import corroborated
 ANOMALY = "Inbound Anomaly Score Exceeded (Total Score: 5)"
 
 def test_a_case_that_declares_nothing_is_not_judged():
-                                                                       
-                                                                              
     assert corroborated(None, ["FSL SQLi attempt - URI"]) is None
     assert corroborated("", ["FSL SQLi attempt - URI"]) is None
 
@@ -100,24 +91,14 @@ def test_the_match_is_case_insensitive_because_signatures_are_prose():
     assert corroborated("TRAVERSAL", ["FSL path traversal attempt"]) is True
 
 def test_an_alert_about_something_else_does_not_corroborate():
-                                                                             
-                                                                    
     assert corroborated("traversal", ["FSL XSS attempt - script tag"]) is False
 
 def test_a_generic_anomaly_alert_alone_does_not_corroborate():
-                                                                            
-                                                                       
     assert corroborated("SQL", [ANOMALY]) is False
     assert corroborated("SQL", [ANOMALY, "SQL Injection Attack Detected"]) is True
 
-                                                                            
 
 def test_a_deed_stamped_just_before_its_own_attack_still_belongs_to_it():
-                                                                            
-                                                                               
-                                                                         
-                                                                         
-                                                                   
     attempts = [attempt(0, "before"), attempt(0.33, "took-it")]
 
     credited = attribute(
@@ -127,8 +108,6 @@ def test_a_deed_stamped_just_before_its_own_attack_still_belongs_to_it():
     assert credited.case_id == "took-it"
 
 def test_a_deed_long_before_an_attack_is_not_dragged_into_it():
-                                                                           
-                                                       
     attempts = [attempt(0, "before"), attempt(0.33, "after")]
 
     credited = attribute(

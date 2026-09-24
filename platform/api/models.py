@@ -7,13 +7,6 @@ class Session(models.Model):
     scenario = models.CharField(max_length=128, default="juice-shop")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
-                                                                       
-                                                                          
-                                                                         
-     
-                                                                              
-                                                                             
-                                                                              
     baseline = models.JSONField(null=True, blank=True, default=None)
     truncated = models.BooleanField(default=False)
     read_of = models.JSONField(null=True, blank=True, default=None)

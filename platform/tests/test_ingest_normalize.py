@@ -69,9 +69,6 @@ def modsec_doc(messages):
     }
 
 def test_modsecurity_header_name_is_matched_case_insensitively():
-                                                                              
-                                                                            
-                                  
     doc = modsec_doc([{"message": "SQLi"}])
     doc["transaction"]["request"]["headers"] = {"x-fsl-case": MARKER}
 
@@ -113,12 +110,6 @@ def test_raw_document_is_preserved():
 
     assert det["raw"]["alert"]["signature"] == "ET WEB SQL Injection"
 
-                                                                              
- 
-                                                                            
-                                                                           
-                                                    
-                                                                      
 
 def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
     return (
@@ -142,7 +133,7 @@ def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
 def suricata_alert_event(flow_id=42, doc_id="a1"):
     doc = suricata_alert()
     doc["flow_id"] = flow_id
-    doc["http"] = {"url": "/rest/products/search"}                           
+    doc["http"] = {"url": "/rest/products/search"}
     return (doc_id, doc)
 
 def test_normalize_all_joins_marker_from_http_event_by_flow_id():
@@ -208,11 +199,6 @@ def test_modsecurity_unparseable_timestamp_falls_back_to_beat_timestamp():
 
     assert det["timestamp"] == datetime(2026, 9, 18, 15, 25, 2, tzinfo=timezone.utc)
 
-                                                                              
- 
-                                                                           
-                                                                             
-                                                                 
 
 def keepalive_pair(tx_id, marker, flow_id=7):
     alert = suricata_alert()
@@ -254,7 +240,6 @@ def test_marker_does_not_leak_to_a_transaction_without_one():
     marked = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     documents = keepalive_pair(0, marked)
 
-                                          
     alert = suricata_alert()
     alert["flow_id"] = 7
     alert["tx_id"] = 1

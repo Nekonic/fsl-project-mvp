@@ -55,7 +55,6 @@ def test_perfect_defense():
     assert (s.precision, s.recall, s.f1, s.false_positive_rate) == (1.0, 1.0, 1.0, 0.0)
 
 def test_block_everything_is_punished_by_false_positive_rate():
-                                                                         
     s = score(
         result(
             match("a", malicious=True, detected=True),

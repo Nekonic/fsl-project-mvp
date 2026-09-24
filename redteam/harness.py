@@ -23,7 +23,6 @@ MARKER_HEADER = "X-FSL-Case"
 REQUEST_TIMEOUT = 15.0
 TOOL_TIMEOUT = 600.0
 
-                                                                                  
 DEFAULT_TOOL_TARGET = "http://waf:8080"
 
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
@@ -114,15 +113,11 @@ def fire(
 
     prepared = build_request(case, target_url)
 
-                                                                             
-                          
     check_path_preserved(case["request"]["path"], prepared.url)
 
     try:
         http.send(prepared, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as exc:
-                                                                       
-                                                                        
         print(f"  ! {case['name']}: request failed - {exc}")
 
 def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
@@ -136,8 +131,6 @@ def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
         raise unavailable(case["name"], result.output.strip()[:200])
 
     if result.exit_code != 0:
-                                                                             
-                                                                           
         print(f"  . {case['name']}: tool exited {result.exit_code}")
 
 def _record(

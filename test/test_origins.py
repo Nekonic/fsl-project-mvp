@@ -25,16 +25,11 @@ def test_the_stack_offers_more_than_one_place_to_attack_from(origins):
     assert len(origins) >= 2, f"only {[o['id'] for o in origins]}"
 
 def test_each_origin_is_a_different_subnet(origins):
-                                                                           
-                                                                           
-                                                                 
     subnets = [o["subnet"] for o in origins]
 
     assert len(set(subnets)) == len(subnets), subnets
 
 def test_an_origin_s_address_is_actually_on_its_subnet(origins):
-                                                                             
-                                                                   
     for origin in origins:
         assert ipaddress.ip_address(origin["source_ip"]) in ipaddress.ip_network(
             origin["subnet"]
@@ -112,9 +107,6 @@ def test_the_map_draws_more_than_one_place(two_places):
     )
 
 def test_rotation_does_not_stay_in_one_place(stack_is_up, origins):
-                                                                           
-                                                                            
-                                 
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]

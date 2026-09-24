@@ -20,8 +20,6 @@ def test_page_renders(client, path):
 
 @pytest.mark.parametrize("path", PAGES)
 def test_page_fetches_its_data_from_the_api(client, path):
-                                                                           
-                                                                                   
     body = client.get(path).content.decode()
 
     assert "/api/" in body
@@ -37,12 +35,6 @@ def test_pages_do_not_query_the_database(client):
 
     assert len(queries) == 0
 
-                                                                              
-                                                                              
-                                                                           
-                                                                             
-                                                                             
-                                      
 
 OVERVIEW = ['id="kpi-total"', 'id="map-points"', 'id="sources"',
             'id="destinations"', 'id="signatures"', 'id="paths"']
@@ -58,8 +50,6 @@ def test_the_blue_console_carries_both_views(client):
         assert marker in page, marker
 
 def test_the_two_views_are_tabs_rather_than_one_screenful(client):
-                                                                             
-                                                                   
     page = body(client, "/blue/1/")
 
     for tab in ("dashboard", "alerts", "score", "rules"):
@@ -78,8 +68,6 @@ def test_the_overview_reports_each_dimension_as_a_table(client):
 
 
 def test_the_overview_says_nothing_about_how_the_range_is_built(client):
-                                                                             
-                                                                             
     page = body(client, "/blue/1/")
 
     for invented in ("ways in", "unwatched", "crosses"):
@@ -94,19 +82,10 @@ def test_the_console_fills_the_screen_rather_than_scrolling_as_a_page(client):
     assert "h-screen" in page and "overflow-hidden" in page
 
 def test_a_template_comment_never_reaches_the_browser(client):
-                                                                              
-                                                                         
     for path in PAGES:
         page = body(client, path)
         assert "{#" not in page and "#}" not in page, path
 
-                                                                            
-                                                                             
-                                                                          
-                                                                             
-                                                                              
-                                                                            
-                                                 
 
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
 
@@ -194,8 +173,6 @@ def test_the_console_tells_a_quiet_range_from_a_dead_one():
     )
 
 
-                                                                             
-                                                     
 UNTRUSTED = (
     ".signature", ".path", ".description", ".reason", ".src_ip", ".dest",
     ".marker", ".zone", ".country", ".city", ".summary", ".takes", ".detail",
@@ -224,8 +201,6 @@ def test_no_untrusted_value_is_written_into_markup_unescaped(name):
     for line, expression in interpolations(source):
         if "esc(" in expression:
             continue
-                                                                          
-                                                             
         emitted = expression.split("?", 1)[1] if "?" in expression else expression
         if not any(field in emitted for field in UNTRUSTED):
             continue

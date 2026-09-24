@@ -68,8 +68,6 @@ def test_the_strategy_can_be_forced_for_comparison(client, scored_session):
         f"/api/sessions/{scored_session}/score/?correlation=window"
     ).json()
 
-                                                                             
-                                                          
     assert by_marker["tp"] == 1
     assert by_window["tp"] == 1
 
@@ -93,8 +91,6 @@ def test_forcing_marker_on_traffic_that_carries_none_misses_it(client):
     by_window = client.get(f"/api/sessions/{session_id}/score/?correlation=window").json()
     by_marker = client.get(f"/api/sessions/{session_id}/score/?correlation=marker").json()
 
-                                                                            
-                                                          
     assert by_window["tp"] == 1
     assert by_marker["fn"] == 1
 

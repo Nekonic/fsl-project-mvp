@@ -36,9 +36,6 @@ def _outside(alerts):
 @pytest.fixture
 def probe(stack_is_up):
     token = f"zz{uuid.uuid4().hex[:10]}"
-                                                                            
-                                                                    
-                                                            
     requests.get(
         f"{TARGET_URL}/rest/products/search?q=%27%20OR%201%3D1--%20{token}",
         timeout=30,
@@ -57,8 +54,6 @@ def test_the_front_door_is_on_the_outside(probe):
     )
 
 def test_the_inside_leg_is_still_the_inside(probe):
-                                                                            
-                                                                            
     inside = {
         a["src_ip"] for a in probe
         if ipaddress.ip_address(a["src_ip"]) in ESTATE
@@ -67,8 +62,6 @@ def test_the_inside_leg_is_still_the_inside(probe):
     assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe)}"
 
 def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
-                                                                              
-                                                               
     session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
     fired = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",

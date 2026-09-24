@@ -10,9 +10,6 @@ from conftest import (
 )
 from range import ATTACKER, start_hint
 
-                                                                           
-                                                                     
-                                            
 GAP_SECONDS = 6
 
 ATTACK_PATH = "/rest/products/search?q=%27%20OR%201%3D1--"
@@ -79,8 +76,6 @@ def test_an_unlabelled_attack_is_scored_by_time_and_source(window_score):
     assert verdicts["terminal-sqli"] == "TP"
 
 def test_benign_terminal_traffic_in_its_own_window_stays_clean(window_session, window_score):
-                                                                              
-                                                                           
     assert seen_by_both_engines(window_session, window_score, name="terminal-sqli"), (
         "the attack sent after the benign request was not seen by both engines, "
         "so an alert the benign request drew may not have landed yet and a clean "

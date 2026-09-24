@@ -49,7 +49,6 @@ def test_after_the_latest_row_returns_nothing(client, session_id):
     ).json() == []
 
 def test_a_nonsense_after_is_rejected_rather_than_ignored(client, session_id):
-                                                                          
     response = client.get(f"/api/sessions/{session_id}/detections/?after=soon")
 
     assert response.status_code == 400
@@ -63,7 +62,6 @@ def test_one_alert_carries_the_whole_log_behind_it(client, session_id):
 
     assert detail.status_code == 200
     assert detail.json()["signature"] == "path traversal"
-                                                                             
     assert detail.json()["raw"]["fsl_source"] == "suricata"
     assert detail.json()["raw"]["alert"]["signature"] == "path traversal"
 

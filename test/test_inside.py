@@ -13,8 +13,6 @@ def _in(role, *argv, timeout=60):
 
 def _status_from(role, url, node=False):
     if node:
-                                                                             
-                                                        
         script = (
             f"require('http').get('{url}', r => {{ console.log(r.statusCode);"
             f" r.resume(); r.on('end', () => process.exit(0)); }})"
@@ -27,14 +25,11 @@ def _status_from(role, url, node=False):
     ).stdout.strip()
 
 def test_the_inside_is_not_reachable_from_the_internet(stack_is_up):
-                                                                              
-                                                                 
     assert _status_from(ATTACKER, INSIDE) == "000", (
         "the attacker's box can reach the internal wiki directly"
     )
 
 def test_the_inside_is_reachable_from_the_application(stack_is_up):
-                                                                          
     assert _status_from(TARGET, INSIDE, node=True) == "200"
 
 def test_the_wiki_keeps_its_own_record_of_what_was_read(stack_is_up):
@@ -85,8 +80,6 @@ def test_the_application_can_be_made_to_read_the_inside(taken_through_the_app):
     )
 
 def test_the_visit_came_from_the_application_not_from_outside(taken_through_the_app):
-                                                                              
-                                                                    
     reads = [l for l in taken_through_the_app.splitlines() if SECRET in l]
 
     assert reads
