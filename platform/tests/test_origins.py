@@ -53,6 +53,9 @@ def stub(described=SHAPE, error=None):
 
             return launch
 
+        def runner(self, role, segment_id=""):
+            raise RangeUnavailable(f"this stub range runs nothing on {role}")
+
     return patch("api.views.substrate", Stub)
 
 def origins(described=SHAPE):

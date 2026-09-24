@@ -5,6 +5,7 @@ import pytest
 from django.utils import timezone
 
 from api.models import Session
+from objectives import ObjectivesUnavailable
 
 pytestmark = pytest.mark.django_db
 
@@ -122,3 +123,66 @@ def test_two_observations_at_once_record_an_objective_once(client, session_id):
         f"{response.status_code}"
     )
     assert Objective.objects.filter(session_id=session_id).count() == 1
+
+
+def fire_closing_meanwhile(client, session_id, target, breach_during_fire):
+    a_case = client.get("/api/wargames/juice-shop/cases/").json()[0]["name"]
+
+    def closes_then_breaches(*args, **kwargs):
+        client.post_json(f"/api/sessions/{session_id}/close/")
+        if breach_during_fire:
+            target["challenges"] = solved(timezone.now().isoformat())
+
+    with patch("objectives._fetch", side_effect=lambda: target["challenges"]), patch(
+        "api.views.harness.fire", side_effect=closes_then_breaches
+    ), patch("api.views._origin_for", return_value=None):
+        return client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case})
+
+
+def test_what_an_attack_still_running_at_close_took_is_on_the_board(client, session_id):
+    response = fire_closing_meanwhile(client, session_id, {"challenges": JUICE}, True)
+
+    assert response.status_code == 201, response.content
+    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
+    assert [o["key"] for o in taken] == ["loginAdminChallenge"], (
+        "the close read the target before the attack still running took the "
+        "objective, every later observation was refused as closed, and the "
+        "breach inside the stretched window reached no board"
+    )
+    score = client.get(f"/api/sessions/{session_id}/score/").json()
+    assert score["objectives"]["objectives"] == 1
+
+
+def test_a_solve_the_target_records_a_moment_after_the_attack_is_still_seen(
+    client, session_id, settings
+):
+    settings.TARGET_SETTLE = 0.25
+    target = {"challenges": JUICE}
+
+    def target_catches_up(seconds):
+        if seconds == settings.TARGET_SETTLE:
+            target["challenges"] = solved(timezone.now().isoformat())
+
+    with patch("api.views.time.sleep", side_effect=target_catches_up):
+        response = fire_closing_meanwhile(client, session_id, target, False)
+
+    assert response.status_code == 201, response.content
+    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
+    assert [o["key"] for o in taken] == ["loginAdminChallenge"], (
+        "the target records a solve a moment after answering the request that "
+        "earned it, and the fire read the target before that moment"
+    )
+
+
+def test_a_target_that_cannot_be_read_after_the_attack_does_not_lose_the_attack(
+    client, session_id
+):
+    a_case = client.get("/api/wargames/juice-shop/cases/").json()[0]["name"]
+
+    with patch("objectives._fetch", side_effect=ObjectivesUnavailable("timed out")), patch(
+        "api.views.harness.fire"
+    ), patch("api.views._origin_for", return_value=None):
+        response = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case})
+
+    assert response.status_code == 201, response.content
+    assert Session.objects.get(pk=session_id).cases.count() == 1
