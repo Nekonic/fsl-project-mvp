@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+
+import argparse
+import inspect
+import os
+import shlex
+import sqlite3
+import subprocess
+from contextlib import closing
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BACKUPS = ROOT / "backups"
+PLATFORM_EXEC = "docker exec -i fsl-platform python -"
+TIMEOUT = 120
+
+TABLES = (
+    ("sessions", "api_session"),
+    ("cases", "api_case"),
+    ("detections", "api_detection"),
+    ("objectives", "api_objective"),
+    ("rule sets", "api_ruleset"),
+    ("suppressions", "api_suppression"),
+)
+
+IMPORTS = """
+import os, sqlite3, sys
+from pathlib import Path
+"""
+
+WRITE_THE_STORE = """
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+from django.conf import settings
+sys.stdout.buffer.write(snapshot(settings.DATABASES["default"]["NAME"]))
+"""
+
+
+def snapshot(path):
+    source = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=rw", uri=True)
+    copy = sqlite3.connect(":memory:")
+    try:
+        source.backup(copy)
+        return copy.serialize()
+    finally:
+        copy.close()
+        source.close()
+
+
+def program():
+    return IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
+
+
+def fetch():
+    way_in = os.environ.get("FSL_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
+    command = shlex.split(way_in)
+    try:
+        done = subprocess.run(
+            command, input=program().encode(), capture_output=True, timeout=TIMEOUT,
+        )
+    except OSError as error:
+        raise SystemExit(
+            f"backup: cannot run {command[0]!r}: {error.strerror}. FSL_PLATFORM_EXEC "
+            f"is the command that runs python in the platform's environment "
+            f"(default: {PLATFORM_EXEC})"
+        )
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"backup: no snapshot from {way_in!r} within {TIMEOUT}s; "
+            f"something may be holding the store locked"
+        )
+    if done.returncode != 0:
+        said = done.stderr.decode(errors="replace").strip() or "(nothing on stderr)"
+        raise SystemExit(
+            f"backup: no snapshot; {way_in!r} exited {done.returncode}:\n{said}"
+        )
+    return done.stdout
+
+
+def check(path):
+    try:
+        read_only = path.as_uri() + "?mode=ro&immutable=1"
+        with closing(sqlite3.connect(read_only, uri=True)) as db:
+            verdict = [row[0] for row in db.execute("PRAGMA integrity_check")]
+            if verdict != ["ok"]:
+                raise SystemExit(
+                    "backup: the snapshot fails integrity_check:\n" + "\n".join(verdict)
+                )
+            return {
+                table: db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for _, table in TABLES
+            }
+    except sqlite3.Error as error:
+        raise SystemExit(f"backup: the snapshot is not the platform's store: {error}")
+
+
+def keep(image):
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    BACKUPS.mkdir(parents=True, exist_ok=True)
+    partial = BACKUPS / f"db-{stamp}.partial"
+    kept = BACKUPS / f"db-{stamp}.sqlite3"
+    try:
+        with open(partial, "wb") as out:
+            out.write(image)
+            out.flush()
+            os.fsync(out.fileno())
+        rows = check(partial)
+        os.replace(partial, kept)
+    finally:
+        partial.unlink(missing_ok=True)
+    return kept, rows
+
+
+def main():
+    argparse.ArgumentParser(
+        description="Snapshot the platform's store into backups/ while it keeps "
+                    "serving. FSL_PLATFORM_EXEC chooses how to reach the platform "
+                    f"(default: {PLATFORM_EXEC}).",
+    ).parse_args()
+
+    image = fetch()
+    kept, rows = keep(image)
+
+    print(kept)
+    print(f"  {len(image)} bytes, integrity_check ok")
+    for label, table in TABLES:
+        print(f"  {label:<14} {rows[table]:>8}")
+
+
+if __name__ == "__main__":
+    main()

@@ -12,3 +12,4 @@ deploy/nginx/logs/
 deploy/suricata/rules/candidate.rules
 deploy/wiki/logs/*
 !deploy/wiki/logs/.gitkeep
+/backups/
