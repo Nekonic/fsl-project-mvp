@@ -483,7 +483,8 @@ def test_what_a_poll_draws_finishes_before_the_next_poll(client, route, tab, res
     seen = open_page(
         client, "/blue/1/",
         setup=BLUE_RANGE + ALERTS + HELD_READ + (
-            'ANSWERS["/api/sessions/1/ingest/"] = {ingested: 0, skipped: 0, restored: [{id: 1}]};'
+            'ANSWERS["/api/sessions/1/ingest/"] = '
+            '{ingested: 0, skipped: 0, restored: [{sid: 2100001, ok: true, detail: null}]};'
             if restoring else ""
         ),
         scenario=f"""
@@ -766,6 +767,81 @@ def test_a_suppression_the_ingest_lifted_reloads_the_editor_and_the_list(client)
         "the rule suppressed, in the list and in the editor an Apply would write back"
     )
     assert seen["result"]["base"] == "a1"
+
+def test_a_lift_that_failed_leaves_the_editor_alone_and_says_why_once(client):
+    reason = "could not restore sid 2100001: reload failed, rolled back to the previous rule set"
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE + f"""
+          const FAILED = [{{sid: 2100001, ok: false, detail: {js(reason)}}}];
+          ANSWERS["/api/rules/"] = SILENCED_RULES;
+          ANSWERS["/api/rules/suppressions/"] = {{suppressions: [SUPPRESSION], restored: FAILED}};
+          ANSWERS["/api/sessions/1/ingest/"] = {{ingested: 0, skipped: 0, restored: FAILED}};
+          ROUTES["POST /api/rules/validate/"] = () => ({{body: {{ok: true, output: "valid"}}}});
+          const reads = () => browser.requests.filter(
+            (request) => request.method === "GET" && request.route === "/api/rules/").length;
+        """,
+        scenario="""
+          await browser.click('[data-tab="rules"]');
+          const said = browser.text("output");
+          const before = reads();
+          await browser.force("editor", "# my half-written fix");
+          await browser.poll();
+          const typed = browser.element("editor").value;
+          await browser.click("validate");
+          await browser.poll();
+          await browser.poll();
+          await renderSuppressions();
+          await browser.settle();
+          return {
+            said, typed, reads: reads() - before,
+            editor: browser.element("editor").value, output: browser.text("output"),
+          };
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["said"] == english("blue.rules.lift_failed", 2100001, reason), (
+        "an expired suppression could not be lifted and the console never said why"
+    )
+    assert seen["result"]["typed"] == "# my half-written fix", (
+        "a poll whose lift failed restored nothing and still replaced the editor, "
+        "so the operator lost what they were typing every few seconds"
+    )
+    assert seen["result"]["reads"] == 0
+    assert seen["result"]["editor"] == "# my half-written fix"
+    assert seen["result"]["output"] == "valid", (
+        "the same failed lift was reported again on a later poll, over what the "
+        "operator had asked for since"
+    )
+
+def test_a_rule_whose_lift_went_through_is_reported_again_when_a_later_lift_fails(client):
+    reason = "could not restore sid 2100001: reload failed, rolled back to the previous rule set"
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE + f"""
+          const lifting = (ok) => ({{
+            ingested: 0, skipped: 0, restored: [{{sid: 2100001, ok, detail: ok ? null : {js(reason)}}}],
+          }});
+          ROUTES["POST /api/rules/validate/"] = () => ({{body: {{ok: true, output: "valid"}}}});
+        """,
+        scenario="""
+          ANSWERS["/api/sessions/1/ingest/"] = lifting(false);
+          await browser.poll();
+          await browser.click("validate");
+          ANSWERS["/api/sessions/1/ingest/"] = lifting(true);
+          await browser.poll();
+          ANSWERS["/api/sessions/1/ingest/"] = lifting(false);
+          await browser.poll();
+          return browser.text("output");
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == english("blue.rules.lift_failed", 2100001, reason), (
+        "sid 2100001 was lifted, silenced again, and its second lift failed "
+        "without a word because the first failure had already been reported"
+    )
 
 def test_apply_names_the_version_of_the_rules_the_editor_was_filled_from(client):
     seen = open_page(

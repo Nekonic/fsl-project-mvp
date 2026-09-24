@@ -344,7 +344,8 @@
     const ingested = await api(`/api/sessions/${sessionId()}/ingest/`, {method: "POST"});
     if (ingested.ok) {
       setTruncated(ingested.body.truncated);
-      if (ingested.body.restored?.length) {
+      sayFailedLiftsOnce(ingested.body.restored);
+      if (anyLifted(ingested.body.restored)) {
         await Promise.all([loadRules(), renderSuppressions()]);
       }
     }
@@ -927,6 +928,20 @@
     rulesVersion = r.body.version;
   }
 
+  const anyLifted = (restored) => (restored || []).some((lift) => lift.ok);
+  const failedLiftsSaid = new Set();
+
+  function sayFailedLiftsOnce(restored) {
+    for (const lift of restored || []) {
+      if (lift.ok) {
+        failedLiftsSaid.delete(lift.sid);
+      } else if (!failedLiftsSaid.has(lift.sid)) {
+        failedLiftsSaid.add(lift.sid);
+        show(t("blue.rules.lift_failed", lift.sid, lift.detail), false);
+      }
+    }
+  }
+
   async function restoreSuppression(id) {
     const restored = await post(`/api/rules/suppressions/${id}/restore/`);
     if (restored.ok) await loadRules();
@@ -938,7 +953,8 @@
     const panel = document.getElementById("suppressions");
     if (!ok) { panel.innerHTML = ""; return; }
 
-    if (body.restored.length) loadRules();
+    sayFailedLiftsOnce(body.restored);
+    if (anyLifted(body.restored)) loadRules();
 
     panel.innerHTML = body.suppressions.map((s) => `
       <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
