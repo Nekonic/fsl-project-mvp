@@ -1,1102 +1,236 @@
 # State
 
 The handover between sessions. Keep it true; it is all the next session gets.
+Finished work is one line each; the detail is in `git log`, `README.md` and
+`docs/ARCHITECTURE.md`.
 
-Updated: 2026-09-25 (a review of the night's own changes: twenty-four fixes merged)
+Updated: 2026-09-25 (compressed from 1,180 lines; claims rechecked against code)
 
 ## Where things stand
 
 The repo moved from "prove the hypothesis" to "build the smallest product that
 demonstrates it" on 2026-09-20. The design is in
-`docs/superpowers/specs/2026-09-20-product-flow-design.md` and runs in four
-phases; all four are done.
+`docs/superpowers/specs/2026-09-20-product-flow-design.md`; all four of its
+phases are done.
 
-`bin/verify` is green. It prints the scores; they are not written down here,
-because they move whenever the rules or the cases do.
+`bin/verify` is green and prints the scores. Neither they nor the baseline are
+copied here; read `metrics.json`. Copies in prose went stale twice.
 
-`metrics.json` holds the baseline. Read it there rather than here: a copy in
-prose is a copy that goes stale, and this one already did twice.
-
-**You can now run the whole loop in a browser.** Open `/`, start a session,
-then open the two windows side by side: fire cases from one, watch the
-score move in the other, edit a Suricata rule and fire again. The red window
-also has a Kali terminal - name an attack, press start, type it, press stop,
-and it is scored two ways at once - by time and source, and by a marker the
-proxy stamps - with both answers side by side in the blue window.
-
-The blue window is a live console now: it ingests and redraws on a timer, so
-alerts arrive while you watch rather than when you press something, and any
-alert opens the whole Elasticsearch record behind it.
+The whole loop runs in a browser. Open `/`, start a session, open the red and
+blue consoles side by side, fire cases from one, watch the score move in the
+other, edit a Suricata rule and fire again. An attack typed at the red
+console's Kali terminal between start and stop is scored by time and source
+and by the proxy's marker. The blue console ingests on a timer, and any alert
+opens its whole Elasticsearch record.
 
 ## In progress
 
 Nothing half-finished. The last session left the tree green and committed.
 
+## Measured mechanics a change can break
+
+- **The marker is only on Suricata `http` documents**, never on `alert` ones
+  (0 of 3,969 alerts carried `http.request_headers`). Filtering ingest to
+  `event_type: alert` destroys correlation.
+- **The marker join is keyed on `(flow_id, tx_id)`**, and Suricata writes
+  `tx_id` only for rules that inspect an app-layer buffer. `detect:
+  guess-applayer-tx: yes` fills it when only one transaction is live; without
+  it a rule like `content:"UNION"` with no `http.uri` credits no case. An alert
+  stored before its http event gets its marker on a later tick.
+- **The sensor reloads over its unix command socket**: `suricatasc -c
+  reload-rules` through the runner, not `kill -USR2 1`, which needed Suricata
+  to be PID 1. `apply()` accepts only `"return":"OK"` (the 8.0 client exits 0
+  on NOK) and rolls back otherwise. The socket needs `unix-command: enabled:
+  yes` at startup; a sensor started without it answers "Unable to connect
+  socket" and rolls back every change until restarted. OK means the reload ran,
+  not that it worked, so `suricata -T` first still catches a bad rule. On
+  OpenStack set `FSL_SENSOR_RELOAD="suricatasc -c reload-rules
+  /run/suricata/suricata-command.socket"`, with `sudo -n` in front if needed.
+- **Rules are written, validated and reloaded as commands through `runner`**
+  with stdin, so the port has no rule verbs. Validation reads `/dev/stdin`,
+  never a shared file. Rule changes take one process lock: enough for
+  waitress's single process, not for two.
+- **`$HTTP_PORTS` is `[80,3000]`**, the ports on the WAF's wire. Docker
+  translates `8080` before the sensor sees it (same rule A/B: `8080` 0 alerts,
+  `[80,3000]` 2, `any` 4). `test_sensor_rules.py` refuses sids at or above
+  9009000, which experiments had left in the shipped rules.
+- **Filebeat identifies files by fingerprint**: colima's virtiofs renumbers
+  inodes when the VM restarts, and inode identity re-shipped both logs. 8.15
+  does not migrate the registry, so changing identity again re-ships once.
+  Ingest drops an alert whose event time is outside the window, as `stale`.
+- **The ingest pipeline is installed by hand** (CLAUDE.md, Running it) and
+  geolocates `src_ip` and ModSecurity's `transaction.client_ip`. Acceptance
+  fails if the live pipeline or the sensor's `local.rules` differ from the
+  committed ones.
+- **The WAF's health check asks `/healthz`**, which the WAF answers itself;
+  sent through to Juice Shop it alerted every ten seconds and used up a
+  session's 5,000-document read in about 14 hours. The wiki's check asks
+  `127.0.0.1`: its conf is read-only, so nginx adds no IPv6 listener.
+- **Build with `DOCKER_GID=$(bin/docker-gid)`**; the image refuses to build
+  without it. Read on the Mac instead of inside the VM, the gid comes back `1`.
+- **The store is the named volume `fsl_platformdata`**, not `./data` of
+  whichever checkout ran `compose up`; `./data/label` is still a bind mount.
+  `bin/backup` copies the store live; restore (README) has never been run.
+- **Every published port is on `127.0.0.1`.** Before, each segment's gateway
+  forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
+  (8 of 8 reached). `DJANGO_DEBUG=1` is safe only because of this. Another
+  machine needs a tunnel; `ALLOWED_HOSTS` defaults to loopback names.
+- **The platform refuses any address standing in the range** (403;
+  participants cached 30 s). The operator arrives from a segment's gateway
+  (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
+  `segments()`, which needs no sensor; it fails open when that call raises.
+- **Same-site writes are refused too**: `:8080` (the target) and `:8000` are
+  one site, and making the target run script is what the red team is scored
+  on. A write with a body must be `application/json`.
+- **`bin/verify`** restarts the platform first (waitress never reloads), waits
+  up to two minutes for the target (else TP 0 reads as a failed defence),
+  refuses a stack another checkout brought up, and prunes only the sessions its
+  run listed in `FSL_ACCEPTANCE_SESSIONS`.
+- **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
+  an untracked file. It refuses a compose override or `include:`, counts only
+  tests pytest collects and refuses duplicate names. It counts physical lines,
+  so joining a wrapped line "shrinks" core: never do that.
+
 ## The substrate seam
 
-Docker was the MVP shortcut; OpenStack was always the target. That move is now
-most of the way done, and the remaining work is named below rather than
-guessed at.
+Docker was the MVP shortcut; OpenStack is the target. `platform/range/` is the
+port: `describe() -> Shape`, `segments()` (who stands where, without the
+sensor), `runner(role, segment)` and `launcher(segment)`. `range.substrate()`
+is the one place a name becomes an adapter (`FSL_SUBSTRATE`, options keyed by
+substrate; a test refuses a second `import_string`), and `redteam/run.py` uses
+it too. Core, `topology.py`, `attacker.py` and `objectives.py` never call
+Docker. `test/range.py` is the acceptance suite's side of the port.
 
-`platform/range/` holds the port: `describe() -> Shape` and
-`runner(role, segment) -> Runner`. `platform/range/docker.py` implements both,
-and `platform/range/declaration.yaml` tells it what the range means.
-Nothing under `platform/scoring/`, `platform/ingest/`, `platform/rules/` or
-`redteam/harness.py` contains the word docker, and neither does
-`platform/topology.py`, `platform/attacker.py` or `platform/objectives.py`.
-`test/range.py` is the same idea for the acceptance suite, which used to shell
-out to `docker exec` in five files.
+`platform/range/declaration.yaml` declares per segment an id, a name and an
+attack origin, a role table, and `watches: {sensor: gateway}`; the Docker
+adapter, `fsl/settings.py` and `test/range.py` read it. Identity is declared,
+allocation reported: a declared subnet that disagreed with the real one would
+bin alerts by a subnet nothing lives on. `test_declaration.py` holds
+`compose.yaml` to it. A segment is bound by its `fsl.segment.id` mark (Docker
+label, Neutron tag), never by name: compose overrides, Heat stack suffixes,
+non-unique Neutron names and a project called `fsl_lab` broke name rules.
 
-Two mechanics were measured against the running stack rather than assumed, and
-both are load-bearing:
+`platform/range/openstack.py` runs only against fakes built from the published
+API reference's responses and a local unprivileged sshd, not a cloud; Keystone
+is simplified (domain `default`, project by id). It is loaded only by name, and
+a test holds every field it reads to the reference. It reads endpoints off the
+Keystone v3 token's catalogue (`public`, `RegionOne` by default), renews the
+token 30 s before `expires_at` and retries a 401 once, sends the Nova
+microversion, follows `next` links (at most 50 pages), asks Neutron only for
+tagged networks, and keeps fixed IPv4 addresses.
 
-- The sensor is reloaded with `suricatasc -c reload-rules` over Suricata's
-  unix command socket, through the runner. It used to be `kill -USR2 1`, which
-  worked only because Suricata was its container's PID 1; on an OpenStack
-  instance PID 1 is init. The socket command blocks until the reload is done,
-  and `apply()` accepts it only on `"return":"OK"`, because the 8.0 Rust
-  client exits 0 on a NOK. Anything else rolls back. The socket exists only
-  with `unix-command: enabled: yes` (Suricata opens none when the section is
-  absent), read at startup: a sensor started before that line answers
-  "Unable to connect socket" and every rule change rolls back until it is
-  restarted. On OpenStack set `FSL_SENSOR_RELOAD="suricatasc -c reload-rules
-  /run/suricata/suricata-command.socket"` (split on whitespace), with
-  `sudo -n` in front if the ssh user cannot open it. OK means the reload ran
-  to the end, not that it succeeded: the handler ignores the engine's return
-  value, so `suricata -T` beforehand is still what catches a bad rule. With
-  stdin round-tripping through `docker exec -i`, write, validate and reload
-  collapse into one operation. That is why the port has two verbs and not
-  five.
-- The marker lives only on Suricata `http` documents, never on `alert` ones -
-  0 of 3,969 alerts carry `http.request_headers`. Any change that filters the
-  ingest to `event_type: alert` destroys correlation entirely.
+Left for OpenStack, in order:
 
-The range is now **declared**. `platform/range/declaration.yaml` holds the one
-substrate-neutral statement of it - per segment an id, the name a person reads
-and the origin it attacks from, plus the role table naming the host that fills
-each job - and three readers share it: `range/docker.py` merges the declared
-identity into what the daemon allocated, `fsl/settings.py` takes the attacker
-and proxy identity from it instead of restating them, and `test/range.py` builds
-the acceptance suite's host table from it. The adapter no longer reads
-`fsl.segment` or `fsl.origin`; it asks Docker only for addresses and membership,
-which is exactly the set of questions Neutron can answer.
+1. **Name resolution.** Compose gives away `shop.com`, `wiki.internal`,
+   `juice-shop:3000` and `proxy:8081`; Neutron does not. cloud-init writing
+   `/etc/hosts` is the cheapest answer that keeps `shop.com`, and a target
+   with no name is not the product.
+2. **Where the sensor sits.** Docker shares the WAF's namespace and the adapter
+   confirms `watches`; on Nova nothing confirms it. Either Suricata rides the
+   WAF instance or Tap-as-a-Service mirrors its ports.
+3. **One attacker, four origins (a decision).** Nova cannot boot a host per
+   tool and hand back its output, so a tool runs over ssh on the attacker on
+   that segment, and other segments are refused. Declare an attacker per
+   origin, or accept one attacking position on OpenStack.
+4. **Roles are found by Nova server name**, which is not unique; segments are
+   bound by tag for that reason, roles not yet. Credentials are settled:
+   `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*`, each refused
+   by name when missing.
+5. **Does the operator still look like an outsider?** The reachability rule
+   works because Docker DNATs the published port to a gateway. A Neutron router
+   presenting the operator's own address is fine; one presenting a node's
+   locks the operator out and lets the red team in. Test this first on a cloud.
+6. **Floating IPs and router SNAT.** The adapter keeps the fixed address. A
+   router's SNAT makes Suricata see the router, not the attacker; the stamping
+   proxy has no Neutron equivalent yet.
 
-The subnet stays substrate-assigned, deliberately. Identity is declared,
-allocation is reported: a subnet written into the declaration would be an
-address fact the platform does not own, and when it disagreed with the one the
-range handed out the console would bin alerts by a subnet nothing lives on.
-Gateway settles it - nobody can declare that at all.
+Settled since the sketch: the default origin, the sensor reload, whether a
+sensor is a participant, subnets per segment, binding, and who starts a tool.
 
-`compose.yaml` is the Docker realisation of the declaration and nothing
-generates one from the other, so `platform/tests/test_declaration.py` holds them
-together: a network built and not declared, a segment declared and not built, a
-name or an origin changed on one side, or a role pointing at a container compose
-does not define, each fails the suite naming the segment or the role.
+## Decisions left for a person
 
-`platform/range/openstack.py` **runs** now, against a fake cloud rather than a
-cloud. `http_reader` authenticates to Keystone v3, carries the token, states
-the Nova microversion it was written against, replaces a token the cloud has
-expired and retries once, and names any other refusal. `describe()` goes end
-to end over HTTP in `test_openstack_http.py` and comes back with a `Shape`.
-
-What that does **not** prove: the fake serves the reference's response shapes,
-not Neutron and Nova, and `runner` runs against an unprivileged sshd on
-127.0.0.1 in `test_openstack_ssh.py`, not against an instance. Keystone is
-simplified: the user's domain is always `default` and the project is an id.
-What changed is that the code is executed rather than only read. `test_openstack_sketch.py` holds it to
-the port and asserts nothing at runtime imports it. What it found is below;
-`topology.shape()` consumed its `Shape` unchanged, which is the part that works.
-
-Closed since the sketch was written: which origin is the default, how the
-sensor is reloaded, whether a sensor is one of its segment's participants, how
-many subnets a segment may carry, how a substrate object is bound to a declared
-segment, and who starts a tool.
-
-**The substrate starts the tools.** `redteam/harness.py` is gated core and ran
-`docker run --rm --network ...` itself, with the network recovered by cutting
-`waf-` off the target's hostname and pasting the project name back on - the
-origin id it was built from had been thrown away two calls earlier. Core now
-takes a launcher, the same way it takes a sensor: no `subprocess` import
-remains in it. `Substrate.launcher(segment_id)` is the port's third verb, and
-`test/test_tool_cases.py` fires one end to end, which nothing did before -
-breaking the binding turns all three of its assertions red.
-
-**A segment is bound by a mark it carries.** The Docker adapter used to cut the
-compose project off the front of a network name, and the sketch matched a
-Neutron network whose name happened to equal the declared id. Both were rules,
-and both were wrong: compose lets a network override its own name, Heat appends
-a stack suffix to every one it builds, Neutron does not keep names unique, and a
-project called `fsl_lab` swallowed part of itself. Now whoever builds the range
-marks each network with the segment it realises - a Docker label, a Neutron tag,
-`fsl.segment.id` in both - and the adapter reads it. Nothing else is part of the
-range, which is also the answer to a shared Neutron project handing back other
-tenants' networks: the listing is filtered by `tags-any`, a documented Neutron
-filter, so the cloud is never asked for them.
-
-What is left for OpenStack, in order:
-
-1. **Name resolution.** Nine places still name a host - `shop.com`,
-   `wiki.internal`, `juice-shop:3000`, `proxy:8081`. Compose gives those away;
-   Neutron does not. cloud-init writing `/etc/hosts` is the cheapest answer
-   that keeps `shop.com` a name, which is the product - and `shop.com` is the
-   one name worth keeping, because a range where the target has no name is not
-   the product. The other two classes are gone: `FSL_TOOL_NETWORK`, and the
-   five `waf-<origin>` aliases.
-
-2. **The sensor's placement.** `network_mode: "service:waf"` puts Suricata in
-   the WAF's namespace so it sees both legs of every proxied request. Neutron
-   has no namespace sharing: either Suricata rides the WAF instance, or
-   Tap-as-a-Service mirrors the ports. `Sensor(name, watches)` already carries
-   the relationship either way, but nothing *supplies* it: Docker reads it off
-   `NetworkMode: container:<id>` and Neutron has no such fact, so the sketch
-   assumes the sensor watches the gateway. That assumption belongs in the
-   declaration, beside the roles.
-
-3. **The declaration has one attacker and the range has four origins.**
-   Nova has no call that boots a host, hands back its stdout and deletes it,
-   so a tool cannot be launched per attack the way `docker run --rm` does. It
-   runs on an attacker that already stands on that segment, which is what a
-   real range does - and which the declaration cannot express: `roles` names a
-   single `attacker`, while Docker got away with it by starting a container on
-   whichever network was asked for. Asking for a tool on a segment the
-   attacker does not stand on now says exactly that rather than running it
-   somewhere else. Either the declaration grows an attacker per origin, or the
-   range accepts one attacking position on OpenStack. A decision, not a task.
-
-4. **A role is found by a Nova server name.** The credentials are settled:
-   `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*` (keystone,
-   user, password, project, ssh user, key, optional ssh config, region,
-   interface), and a missing one is refused by its variable's name. What is
-   not settled is the declaration's `roles` values: host names in substrate
-   vocabulary (`fsl-kali` is a compose `container_name`, a Nova server name
-   and, after `removeprefix("fsl-")`, a compose unit), and a Nova server name
-   is not unique. Segments are bound by a tag for the same reason; roles are
-   not yet.
-
-5. **Whether the operator still looks like an outsider.** The rule that stops
-   the red team calling the scoring API refuses any address standing in the
-   range, and it works because the console arrives through Docker's published
-   port and is therefore DNATed to a segment's gateway. A test runs the same
-   rule against the sketch's `Shape` and gets the same participant set, so the
-   mechanism is on the port and not on Docker. What cannot be checked without
-   a cloud is the other half: whether a Neutron router presents the operator
-   as the gateway the way Docker does, or as something else. If it presents
-   the operator's own address, the rule still holds - that address stands on
-   no segment. If it presents a node's address, the rule locks the operator
-   out and lets the red team in, which is the failure worth testing first on
-   a real cloud.
-
-6. **Floating IPs and router SNAT.** A Nova instance reports both a fixed and a
-   floating address, and the adapter keeps the fixed one. An attack leaving the
-   range through a Neutron router is source-NATed, so the address Suricata sees
-   is the router's, not the attacker's - the stamping proxy solves this on
-   Docker and has no Neutron equivalent yet.
-
-**What the sketch is, exactly.** There is no cloud here, so it runs against
-fakes built from the vendor's published responses and against a local sshd.
-Every field it reads is one the published API reference
-names - `networks[].id`, `.name`, `.tags` and the `tags-any` filter from the
-Networking v2.0 reference, `subnets[].cidr` and `.gateway_ip` from the same,
-and `servers[].addresses` keyed by the network's label with `addr` and
-`OS-EXT-IPS:type` from Nova's own List Servers Detailed example. A test holds
-it to them. Reading that example is also what found the last bug in it: Nova
-reports every fixed address a port has, including IPv6, and the sketch would
-have drawn an instance at a v6 address while the console bins every alert by
-an IPv4 subnet.
-
-`docs/ARCHITECTURE.md` has the mechanism and the measured numbers.
+- **GeoIP stops on about 2026-10-18.** The downloader has not succeeded since
+  2026-09-18 (`_ingest/geoip/stats`: 0 successful, still so on 2026-09-25) and
+  its databases expire after 30 days. Mount GeoLite2 `.mmdb` files (MaxMind
+  account and licence) and disable the downloader, or let it lapse knowingly.
+- **Which clock selects evidence.** Ingest uses `@timestamp`, Filebeat's read
+  clock, with a one-minute tail; measured lag is 5 s median, 17 s worst.
+  Rewriting it to event time in the pipeline removes the dependency, but the
+  index then holds both meanings unless backfilled.
+- **The terminal's origin file holds the WAF's address, which moves** across
+  recreations (.4, .5, .4); the terminal keeps the old one until the red page
+  reloads or an origin is chosen. Pin addresses (a reserved IPAM range, so the
+  networks are recreated), or have the platform rewrite a stale file.
+- **`no_marker` per engine.** It fires only when no detection has a marker, so
+  a sensor that lost all of them is silent while the WAF keeps its own. Per
+  engine it must not warn on raw-TCP-only sessions, and it costs core lines.
+- **Whether verify may share a stack with a person.** It touches only its own
+  sessions but resets the target, the rules and the attacker's origin.
+- **The console's clock** (UTC like the server and operator log, or local), and
+  whether an undefined precision or recall should be null, not 0.0.
+- **How the ratchet counts:** statements instead of physical lines, the
+  baseline from `HEAD` instead of the working tree, and whether `scoreboard.py`
+  and parts of the views are core.
+- **Defaults to confirm:** ModSecurity severity 0-2 is High (CRS's blocking
+  rule carries 0, its attack rules 2); an OpenStack segment binds its single
+  IPv4 subnet and refuses a second.
+- **Not done, waiting on a call:** the terminal's label left after a page
+  reload; a tool outliving its timeout (not killed on the host); a rule
+  indented enough that Suricata skips it (waits on the ratchet question);
+  retention for `fsl-logs-*` (nothing expires it; a full disk makes indices
+  read-only and Filebeat stop silently; expiry deletes evidence).
+- **21 sessions from 2026-09-23 left open by acceptance runs.** Nothing proves
+  none is a person's.
+- Backlog item 1 and OpenStack item 3 are decisions too.
 
 ## Done since v1.0
 
 One line each.
 
 **The range**
-- The platform is told what the range means rather than asking the daemon:
-  one declaration, a Docker adapter that fills in what it allocated, and a test
-  that fails when compose and the declaration disagree.
-- Three segments plus four origin networks; the WAF is the only intended way
-  across, and the published port arrives on the outside one.
-- The attacks come from four countries, chosen in the console; the stamping
-  proxy rewrites the upstream so nobody types a routing name.
-- The target is `http://shop.com` on port 80 - no appliance name, no port.
-- The estate has an inside: an internal wiki reachable from the application
-  and nowhere else, taken by SSRF, judged by its own access log.
-- Filebeat's registry is a named volume, so a recreate does not re-ship every
-  log it has ever read.
+- Three segments, the Internet as four origin networks, crossed only at the WAF.
+- Attacks come from four countries chosen in the console.
+- The target is `http://shop.com` on port 80: no appliance name, no port.
+- An internal wiki, reached only through the app by SSRF, judges its own reads.
+- An alert stores the host that held its address at ingest; addresses move.
 
 **The red team**
-- One attacker image. Kali with nmap, whatweb, ffuf, gobuster, nikto, sqlmap,
-  hydra and a wordlist; the same image a `tool:` case runs in.
-- The shell is the red team; the case file is a scripted baseline. A labelled
-  window is scored by time and source and by a marker the proxy stamps.
-- Two routes out of the box - through the proxy for HTTP, direct for raw TCP -
-  and the window records whichever the work used.
+- One Kali image (nmap, sqlmap, ffuf, hydra and more); `tool:` cases run in it.
+- The shell is the red team; the case file is a scripted baseline.
+- Two routes out: the proxy for HTTP, direct for raw TCP; windows record which.
+- A window's address, origin and route are fixed at Start, not at Stop.
+- Typed commands are kept per case: `GET /api/sessions/<id>/commands/`.
+- Cases carry a Mandiant stage and ATT&CK and CAPEC ids, linked in the console.
 - Cases declare what they take, and seven objectives fall instead of two.
 
 **The score**
-- Objectives lead it: the target flips its own `solved`, so the platform
-  labels nothing about what an attack achieved.
-- A breach is credited to the attack that took it, using the target's own
-  timestamp, with a tolerance for the two clocks involved.
-- A true positive has to name the right rule: a case declares `expect`, and an
-  alert that does not mention the attack's mechanism is reported uncorroborated.
-- Silencing a rule is the verdict, and it expires by itself.
+- Objectives lead it: the target flips its own `solved`.
+- A breach goes to a malicious case that was running when the target stamped it.
+- 13 challenges Juice Shop checks on a later request carry upper-bound stamps.
+- A TP is corroborated by an `expect` match from a rule that hit no benign case.
+- A case stores the `expect` it was judged by; editing cases re-scores nothing.
+- The score reports `unattributed` and `benign_cases`; FP is shown as `1 / 6`.
+- `scoring/` returns `(key, *args)`, never sentences, and a test holds it there.
+- Silencing a rule is the verdict; the ingest tick lifts it when it expires.
+- A session closes once, observes the target at close, and covers late cases.
 
 **The console**
-- One blue console: Dashboard, Live, Scoreboard, Rules. It ingests on a timer,
-  and any alert opens the whole Elasticsearch record behind it.
-- The dashboard is top-N tables - source addresses with their zone and
-  country, destinations, signatures, request paths - plus a map and a trend.
-- Every value is escaped before it reaches the page, and there is a test that
-  says so. The console used to run the attacks it collected.
-- Every UI action is a REST call first.
+- One blue console: Dashboard, Live, Scoreboard, Rules; top-N, map and trend.
+- Every value is escaped before it reaches the page, and a test says so.
+- Polls run one at a time, catch up once on wake, and give up after 90 s.
+- `platform/tests/browser.py` runs each page's scripts under node, without npm.
+- Tailwind is built by `bin/build-css` and inlined; rebuild after a new class.
 
-**The token hands back the endpoints**
-- The adapter took three addresses as configuration - Keystone, Neutron, Nova -
-  which is the name-resolution problem in its own file. Keystone's token
-  response carries a `catalog`, so `discover()` asks for the one address a
-  deployment cannot avoid knowing and reads the other two off the answer.
-- A catalogue holds `public`, `admin` and `internal` endpoints for the same
-  service in each region. A platform on a management network wants a different
-  one than a browser does, so which is a deployment's choice, defaulting to
-  `public` in `RegionOne`. A service the catalogue does not carry is refused by
-  name and region rather than handed back as an empty URL that fails later
-  somewhere else.
-- The same response carries `expires_at`, and the adapter uses it: a token
-  within 30 seconds of dying is replaced before the call rather than after a
-  401. The 401 retry stays as the backstop for a token the cloud rejects
-  early. Three tests hold the middle: renew when it is nearly spent, reuse
-  when it is not, and fall back to the 401 path when the response carries no
-  expiry at all. Without the middle one, "renew before expiry" collapses into
-  a Keystone round trip in front of every single read.
-
-**A review of the night's own changes**
-- Seven reviewers went over the 72 commits made on 2026-09-23/24, two
-  refuters per serious finding: 8 confirmed (6 distinct), none refuted, 31
-  minor. Five agents fixed them in their own worktrees; merged here and
-  verified together (unit 879, acceptance 123).
-- **An attack still running at close lost what it took.** Close observes
-  and then ends the session, and every later observation answered 409, so a
-  breach the running case caused after that went nowhere, though its window
-  was stretched over it. A fire now observes the target once it has
-  recorded its case, closed session or not.
-- **DNS rebinding passed the same-origin check.** It compared Origin with the
-  request's own Host while `ALLOWED_HOSTS` was `*`. The default is
-  `localhost,127.0.0.1,[::1]`; `DJANGO_ALLOWED_HOSTS` still overrides it, and
-  the console now answers only at those names.
-- **An explicit `"base": null` applied unchecked,** and the console sent
-  exactly that when its first read of the rules failed. Null is a 409; the
-  console shows the failed read and never applies without a version.
-- **A lift that could not apply was retried on every tick, and each report
-  wiped the editor.** When a rule carrying the sid is already active (the
-  operator replaced it), the lift drops the marker and the commented
-  original and says "superseded"; the console reloads only on a lift that
-  worked.
-- **Challenges Juice Shop checks on a later request** (13 of them, listed
-  from the running target's own `verify.js`) are stamped when checked, not
-  when broken, so the narrow interval credited nobody. Their stamp is an
-  upper bound only, reaching back the two-minute window. The objective board
-  keeps Juice Shop's objectives when only the wiki cannot be read.
-- **A wiki read is stamped to the millisecond** (`$msec`), so it can no
-  longer be credited to a case that started in the same second after it.
-- **Found by walking the operator's flow in a real browser, not by a
-  reviewer:** the blue dashboard's top tables stayed empty beside a total of
-  4. They read `/top/` at most every 15 s; the page read it when it opened,
-  the first alerts arrived inside those 15 s, that read was skipped rather
-  than put off, and with no newer alert nothing asked again. A skipped read
-  is now owed and taken on the next tick after the 15 s. Seen fixed live on
-  a fresh session.
-- **The WAF's health check went through to Juice Shop,** so Suricata logged
-  it about 360 times an hour, and a session's 5,000-document read was used
-  up after about 14 hours. It asks `/healthz`, which the WAF answers itself;
-  the WAF and the sensor were recreated for it.
-- Also: case posts without `expect` store none rather than NULL, overflowing
-  numbers are 400s, an ingest tick takes the rules lock only when a lift is
-  due, a close that could not read the target says so, console requests
-  that never answer give up (90 s; long actions 15 min), origin changes
-  reach the proxy one at a time, `verify --fast` fails when measure does,
-  the loopback guard reads ports as Compose does, and the OpenStack adapter
-  reads a deployment config at any path, names a bastion's failure and
-  re-discovers endpoints that moved.
-- The comment strip (`1320d1b`) had overwritten each comment with spaces
-  rather than deleting it: 397 lines of nothing but spaces, some 78 wide, in
-  48 files, and 15 code lines trailing the width of their lost comment. All
-  gone; the diff is empty ignoring whitespace and no count moved.
-- **The store has a backup.** `bin/backup` runs SQLite's online backup API
-  inside the platform (`FSL_PLATFORM_EXEC`, default `docker exec -i
-  fsl-platform python -`), streams the bytes out so nothing is left in the
-  container, checks `integrity_check` and writes `backups/db-<UTC>.sqlite3`
-  only if it passes, then prints each table's rows. A store the checkout's
-  models are ahead of is kept, its missing tables listed as `absent`.
-  Restore is written in README and has never been run.
-- **The red console asks the wiki only for the lines naming the secret**
-  (`grep -a -F`), not the whole never-rotated log every 10 s: 98 bytes
-  instead of 12 KB today, and the log grows about 580 KB a day of health
-  checks. `-a` matters: the live log starts with 1,031 NULs from a
-  truncation, and without it GNU grep hides the match and BSD grep prints
-  "Binary file matches". Exit 1 is "nobody read it". Proved through both
-  runners, the OpenStack one against a real sshd.
-
-**Every alert row carries its own zone and place**
-- The blue alert table borrowed zone and country from `/top/`, which lists
-  25 sources on a slower cadence, so an alert from the 26th busiest source,
-  or a source new since the last top refresh, showed neither. Each row of
-  `GET /detections/` now carries `zone`, `outside`, `country` and `city`,
-  with the range read once per non-empty page and places found in one
-  query; a WAF alert takes its place from Suricata's record of the same
-  address. Seen in a real browser: zone and country on every row, WAF rows
-  included.
-- The landing page never refreshed its session list, so over hours it
-  showed closed sessions as in progress. It reloads on the same guarded
-  timer and resume rule as the consoles.
-
-**A case keeps what it was judged by, and rotation takes turns**
-- The score read each case's `expect` from the case file as it is now, so
-  editing the file re-scored sessions already closed and an unparseable file
-  broke old scores. `Case.expect` is stored when the case is recorded
-  (migration 0009; NULL for older cases, which still read the file). The
-  harness no longer coerces `malicious` with `bool()`, the catalogue is
-  checked when it loads (boolean `malicious`, unique names, exactly one of
-  request or tool), and a session for an unknown scenario is refused.
-- Origin rotation used the session's case count, so two fires at once, or a
-  pinned or hand-posted case in between, repeated or skipped an origin. A
-  per-session counter advanced with `F()` (migration 0010) gives each
-  rotated fire its own turn; a fire that then fails still uses one.
-
-**The consoles survive long uptime**
-- The red objective poll was an unguarded `setInterval`, and the blue tick
-  did not wait for the map, the top tables and the score panels it started,
-  so a slow answer was asked for again on every poll. Both wait now.
-- After a sleep or a background tab neither caught up until its next timer;
-  both poll once when the page is visible or online again, never in a burst.
-- The red log grew one line per attack forever (kept to the newest 200), an
-  objective taken reset the operator's category filter, and two overlapping
-  score draws showed each warning twice. Measured over 60 ticks of 40 alerts
-  the blue page stayed at 312 nodes and 18 listeners.
-
-**A rule without an app-layer buffer credits the case it caught**
-- Suricata writes a `tx_id` into an alert only when the rule inspects an
-  application-layer buffer, and the marker join is keyed on
-  `(flow_id, tx_id)`. A rule written without one - the textbook
-  `content:"UNION"` with no `http.uri` - caught the case's request and was
-  owned by nothing: reproduced live, the rule fired twice on the case's own
-  request and the case owned only the WAF's detections. When such a rule is
-  the only one that catches an attack, the case scores a miss.
-- `detect: guess-applayer-tx: yes` in the sensor's config. Suricata's docs:
-  it ties the alert to a transaction "if the matching signature doesn't have
-  app-layer keywords", and only when exactly one live transaction exists, so
-  a keep-alive flow with several requests in flight is still not guessed. The
-  sensor was restarted with it tonight (`suricata --dump-config` shows it)
-  and the same live test passes.
-- An alert that reached Elasticsearch before its own http event was stored
-  without a marker, and every later tick skipped it as already known, so the
-  case it caught never owned it. A tick now gives a stored marker-less alert
-  the marker its request brings, reading only the marker-less rows once per
-  tick. How often it happens live was not measured; the order is Suricata's
-  and Filebeat's, not ours.
-
-**A stopped sensor no longer opens the judge to the range**
-- With every port on loopback, the attacker box still reaches the platform
-  directly on its own segment (`5.188.10.5:8000`), and the only thing that
-  answers it 403 is the rule refusing addresses that stand in the range.
-  That rule read the range through `describe()`, and the Docker adapter's
-  `describe()` refuses when the sensor is not where the declaration says -
-  which is what a stopped sensor looks like. The rule then failed open:
-  stop Suricata and the attacker box could apply rules.
-- The port has `segments()`, which reads who stands where without the
-  sensor; the reachability rule and the dashboard's zones and host names use
-  it. `describe()` still refuses a misplaced sensor for anything that draws
-  one. Test doubles answer `segments()` too. Checked live with Suricata
-  stopped past the cache window: the attacker box got 403.
-- The same live check showed the red console's origin list answering 503
-  while the sensor was down; nothing about where to attack from needs the
-  sensor. The origin list, the attacker box and origin choice read
-  `segments()` too - two docker round trips instead of four. Only the
-  topology drawing, which draws the sensor, still needs it.
-
-**Decisions the second audit left for a person**
-- **GeoIP stops on about 2026-10-18.** Elasticsearch's GeoIP downloader has
-  not succeeded since 2026-09-18 (`_ingest/geoip/stats`: 0 successful, 1
-  failed), and its databases expire 30 days after the last update. After
-  that nothing new is placed on the map. Either mount GeoLite2 `.mmdb` files
-  (a MaxMind account and licence) and disable the downloader, or let it
-  lapse knowingly.
-- **Which clock selects evidence.** Ingest selects by `@timestamp`, which is
-  Filebeat's read clock, with a one-minute tail past the session's end. The
-  audit saw ModSecurity records land about 15 minutes late; measured
-  tonight over two hours of normal operation the lag is 5 s at the median
-  and 17 s at worst, so that was an episode, not the rule (the hour of the
-  Filebeat switch shows days-old events, which is the one-time re-ship).
-  Rewriting `@timestamp` to the event time in the pipeline would remove the
-  dependency on the read clock at the source; the existing index would then
-  hold both meanings unless it is backfilled.
-- **The terminal's origin file holds an address, and the WAF's address
-  moves.** `/label/origin` gets the WAF's address on the chosen segment when
-  the origin is set, and the proxy sends every terminal request there.
-  Compose pins no addresses, and Elasticsearch's history shows the WAF's
-  edge address going .4 -> .5 -> .4 across recreations. After a recreate the
-  terminal keeps using the old address until the red page is reloaded or an
-  origin is chosen. Pinning the WAF's addresses safely needs a reserved
-  dynamic range in each network's IPAM, which means recreating the networks;
-  the alternative is the platform rewriting the file whenever it reads the
-  range and finds it stale.
-- **A `no_marker` warning per engine.** It fires only when no detection of
-  the session carries a marker, so a sensor that lost every marker stays
-  silent while the WAF still has them. Narrowing it per engine would also
-  warn on every session whose Suricata alerts are all from raw TCP, which
-  never carries a marker; worth doing only with that distinction, and it
-  costs core lines.
-- **Whether verify may share a stack with a person.** It now touches only
-  the sessions it made, but it still resets the target, the rules and the
-  attacker's origin under anyone using the console.
-- **The console's clock** (UTC as the server and the operator log use, or
-  local), and whether the API should answer an undefined precision or recall
-  with null instead of 0.0 (the console already shows "-").
-- **How the ratchet counts:** statements instead of physical lines (joining
-  a wrapped line "shrank" core tonight, see "A WAF alert shows the request
-  it judged"), the baseline read from `HEAD` instead of the working tree, and
-  whether `scoreboard.py` and parts of the views are core.
-- Made here with a default, to be confirmed: ModSecurity severity 0-2 is
-  High (CRS's blocking rule carries 0, its attack rules 2); an OpenStack
-  segment binds its single IPv4 subnet and refuses a second.
-- Not done: the terminal's leftover label after a page reload, a tool that
-  outlives its timeout, a rule indented enough that Suricata skips it
-  (waits for the counting decision), how long Elasticsearch keeps
-  `fsl-logs-*` (nothing expires it, and a full disk makes indices read-only
-  and Filebeat stop silently - a retention length is a person's call, since
-  it deletes evidence).
-
-**Seventeen agent-built fixes from the second audit**
-- Five agents in their own worktrees, reviewed and merged here, verified
-  together on the live stack (unit 760, acceptance 122).
-- The terminal's label and origin were written without checking the write:
-  a failed write answered 200. A failed write is 503 with the proxy's words;
-  a `case_id` that is not a plain string (0, false, a dict, CRLF) is 400
-  before it can reach an HTTP header; the red window keeps its state and
-  reverts the origin when the proxy refuses.
-- The blue console's Unattributed tile counted alerts without a marker, not
-  alerts no case owns - 26 against the Score tab's 427 on one session. It
-  reads the score's own case list now. ModSecurity severity is read on its
-  own scale (its 186 blocking decisions showed as Info), the histogram's
-  newest bar holds its share, and an undefined precision or recall shows "-".
-- The internal objective counted any log line containing the runbook path,
-  a 404 included, and a failed read as "not taken". The wiki logs status
-  and path as fields; only a 2xx of the exact path counts. The wiki was
-  recreated tonight for the new format; reads logged before it are ignored.
-- Silencing or restoring a rule edited the first textual match, so sid 100
-  could hit sid 1000's line or a msg containing "sid:100". It matches the
-  rule's own sid option.
-- `test/range.py` counted an unreachable Docker daemon as a command that ran;
-  it now reads the exit status the host reports, as the platform does (the
-  target has no shell, so it reports through its own node). A segment mark
-  carried by two compose networks is caught. Two acceptance assertions that
-  compared a value with itself now check the fired case's own evidence.
-- `bin/measure` crashed on a staged rename, a space or a non-ASCII name, and
-  counted a symlinked file twice (479 -> 550 on a scratch copy); it reads
-  `git ls-files -z` and regular files only, and verify says "measure
-  crashed" instead of "regressed". Services are counted as Compose sees
-  them, and measure refuses an override file or an `include:`. The test
-  floor counts only tests pytest collects and refuses duplicate names.
-  `data/` is ignored only at the root. Every number stayed the same.
-
-**A failed read is no longer taken for an answer**
-- `suricata.current()` returned whatever `cat` printed, exit status unread:
-  a rule file that could not be read was served as the rules (the editor
-  would apply the error text back), and an expired suppression was edited
-  from that text and recorded as lifted while its rule stayed silenced. It
-  raises `RulesUnreadable` now, which the refusals middleware answers 503 and
-  the ingest tick tolerates; nothing is recorded as lifted. `core_loc` fell by
-  one: `validate` returns the runner's own result instead of a copy of it.
-- A search that lost a shard answers 200 with fewer hits, and ingest read the
-  window as complete. It asks Elasticsearch with
-  `allow_partial_search_results=false`, so a lost shard is an error it
-  already reports.
-- A console poll and a close observing the target at once both saw an
-  objective as new, and the second died on the unique constraint.
-  Objectives are inserted ignoring rows already there, as detections are.
-
-**The platform's store no longer lives in a checkout**
-- From the second audit (nine unexamined areas, two refuters per finding,
-  14 of 16 serious findings confirmed). The SQLite file holding every
-  session, case, detection and objective was bind-mounted from `./data` of
-  whichever checkout ran `compose up` - tonight a Claude worktree, under a
-  git-ignored directory. Removing that worktree would have removed the only
-  store. It now lives in the named volume `fsl_platformdata`, like
-  Elasticsearch's and Filebeat's state; the image creates `/data` owned by
-  the platform user so a fresh volume is writable.
-- Moved tonight with the platform stopped: 56 sessions, 121 cases, 2,312
-  detections, 8 objectives, 210 suppressions, identical after. The old
-  `data/db.sqlite3` in this worktree is a stale copy from the moment of the
-  move; nothing reads it. `./data/label` stays a bind mount for the proxy
-  and the attacker box.
-
-**A WAF alert shows the request it judged**
-- ModSecurity detections stored one rule message and dropped the transaction,
-  while the console read path, method and destination from Suricata's shape.
-  WAF alerts showed "-" in the alert table and were missing from Top paths
-  and Top destinations, beside a Total that counted them. Ingest keeps the
-  request and the host address and port with each WAF detection, and one
-  helper in the views reads either engine's shape. `core_loc` fell by one.
-- The last docstrings in production code are gone, as CLAUDE.md asks; the
-  contract they described is in the names and the tests.
-
-**Only the platform's own pages can make it act**
-- No CSRF, Origin or `Sec-Fetch-Site` check existed and bodies were parsed as
-  JSON whatever they claimed to be, so any page open in the operator's
-  browser could apply rules, close a session or move the attacker's label.
-  `:8080` (the target) is the same site as `:8000` (the platform), and making
-  the target run script is what the red team is scored on - so `same-site`
-  is refused too, not only `cross-site`. A write with a body must be
-  `application/json` (415 otherwise), which a cross-site page cannot send
-  without a preflight. No platform page can be framed. No accounts were
-  added; this needs none.
-
-**Filebeat no longer re-ships its logs when the VM restarts**
-- Both inputs identify a file by fingerprint instead of inode. Filebeat 8.15
-  does not migrate the registry between identities, so the switch re-shipped
-  both logs once: applied tonight with `docker compose up -d --force-recreate
-  filebeat`, 76,836 -> 105,709 documents (+28,873), settled in 33 seconds, no
-  session open. The duplicates stay in today's index; ingest's `stale` guard
-  keeps them out of later sessions. From 8.18 the switch would migrate
-  instead of re-reading.
-- The platform image refuses to build without `DOCKER_GID` (the socket's
-  group; `bin/docker-gid`). The silent default of 0 built a platform that got
-  "permission denied" on every docker call - it happened tonight. Commands
-  that build nothing still run without it. Start with
-  `DOCKER_GID=$(bin/docker-gid) docker compose up -d --build`.
-
-**The console runs one poll at a time and never writes back a stale rule file**
-- Ticks were `setInterval` with no guard, so a slow ingest let them overlap.
-  The next tick is scheduled when the current one finishes.
-- The editor re-reads the rules after a suppress, a restore, an apply and a
-  tick that lifted a suppression, and applies with the `base` it loaded; a
-  409 shows the platform's reason and reloads. Any unsaved edit in the
-  editor is replaced by those reloads - a trade-off, not an accident.
-
-**Acceptance tests assert on the evidence of the case they fired**
-- Several waited for "detected" and then asserted something else, or counted
-  session-wide and passed on other tests' traffic (the front-door console
-  test passed with its own attack removed). The suppression test now waits
-  until Suricata has spoken, the benign window is judged after its own
-  evidence could have landed, origins, map, strategy comparison and case
-  objectives look only at the fired case's marker and addresses, and a run
-  that fails mid-label clears the terminal's label. Written by an agent that
-  could not run them; they passed here on the live stack (122).
-
-**A tick of the console reads only this session's evidence**
-- Filebeat identifies files by inode, and colima's virtiofs renumbers inodes
-  across a VM restart, so a restart re-ships both logs with a fresh
-  `@timestamp`. Seen live after tonight's restart: every document indexed in
-  the next ten minutes was an event more than an hour old. Ingest selects by
-  `@timestamp`, so those old alerts landed in whatever session was open. An
-  alert whose own event time is outside the session's window is now dropped
-  and counted as `stale`. The Filebeat side is a separate change.
-- Two overlapping console ticks died on the detection table's unique
-  constraint with a 500. Ingest inserts in bulk and ignores rows already
-  there.
-- A suppression only expired when someone opened the suppression list, which
-  an open console never does, so a sixty-minute silence lasted until someone
-  looked. The ingest tick lifts expired suppressions and says which in
-  `restored`; a sensor it cannot reach does not fail the tick.
-- `GET /api/rules/` carries a `version`, and an apply that names the `base` it
-  was edited from is refused with 409 when the sensor's rules have changed
-  since - the editor loaded before a suppression no longer writes the
-  silenced rule back. Without `base` the old behaviour stands.
-- Unit fixtures had sessions opened now and alerts from days before; they
-  open their sessions before their own times (`tests/sessions.py`).
-
-**Rule changes happen one at a time**
-- Every rule change was an unlocked read-modify-write of one file on eight
-  waitress threads. Two suppressions at once each read the same file and
-  wrote back their own edit: reproduced, the second erased the first and a
-  rule the list called silenced stayed live. Validate, apply, suppress,
-  restore and expiry now take one lock. It is a process lock, and waitress
-  runs one process; a second process would need a lock that is not.
-- Validation wrote the candidate to one shared file and then tested whatever
-  that file held when the self-test started, so two requests could approve
-  each other's rules. Suricata reads the candidate from `/dev/stdin` instead
-  (checked live: valid rc 0, a bad keyword rc 1 naming `/dev/stdin` line 1).
-  No candidate file exists any more; `core_loc` fell by two.
-
-**The console, verify and the unit suite stop hiding what went wrong**
-- Built in parallel by three agents in their own worktrees, reviewed and
-  merged here, verified on the live stack together.
-- The blue console showed a pulsing green "Live" while every poll failed:
-  `setReachable()` existed and nothing called it. Two Score-tab error
-  branches threw `ReferenceError` before writing their error, so the panel
-  kept its last numbers. The console now has a behaviour harness,
-  `platform/tests/browser.py` + `browser.js`: it runs each page's scripts under
-  node with a small hand-written DOM and a fetch stub. No npm, no dependency.
-- A manual window was recorded with whatever origin was selected at Stop;
-  `lockCase()` was dead code. Window correlation matches an alert's source to
-  that address, so the window's real traffic went unmatched. The address,
-  origin and route are taken at Start and the controls are locked while
-  recording.
-- `bin/verify` pruned to the 20 newest sessions, and one acceptance run makes
-  about twenty, so every verify deleted every session a person had made. It
-  now prunes only closed sessions its own run made (first run: kept 29,
-  dropped 11). It also refuses to restart a stack another checkout brought up,
-  instead of testing that tree's code under this tree's name.
-- Acceptance left about nine sessions open per run, and the console's first
-  screen lists open sessions: after tonight's runs the operator saw 25 test
-  sessions "in progress". The run now closes every session it opened, so
-  prune takes all of them (24 on the first run). The 25 already open are
-  left for a person to close: nothing proves none of them is theirs.
-- "Newer than the run's first id" still meant "made by the run", so a session
-  a person opened while verify ran would have been closed and deleted. The
-  run now lists every session it makes (the acceptance suite records each
-  `POST /api/sessions/` and each `session N done` from the red team script)
-  in the file `FSL_ACCEPTANCE_SESSIONS` names; it closes exactly those and
-  `bin/prune --ids` deletes exactly those. Whether verify should share a
-  stack with a person at all is still open: it also resets the target, the
-  rules and the attacker's origin.
-- Five unit tests could not fail on the regression they were named for (a
-  rollback test that primed a throwaway sensor, one window edge, the
-  false-positive denominator with as many attacks as benign cases). Each now
-  fails against its mutant.
-
-**A breach belongs to the attack that was running when the target recorded it**
-- `attribute()` credited any case that had started within two minutes before
-  a breach, and read neither when it ended nor whether it was an attack. A
-  breach three minutes into a five-minute terminal window belonged to nobody
-  and scored undetected at full damage; a benign case's false positive
-  "detected" a breach 75 seconds after that case had finished.
-- Now only a malicious case can take an objective, and it is a candidate when
-  it overlaps the interval the breach could have happened in. With the
-  target's own stamp that is the stamp plus its resolution, and 100 ms either
-  side: Juice Shop writes milliseconds, the wiki's nginx log whole seconds - a
-  read at .900 is stamped .000, before the case that caused it. Without a
-  stamp it is the two minutes before the breach was seen, as before. The
-  interval is stored with the objective (migration 0008); rows from before it
-  keep the old rule.
-
-**A session closes once, and what it lost at the end is on its board**
-- Closing was a bare write of `ended_at`, and the session page always offers
-  Close: a second close moved the end, widening the window its alerts are read
-  from into later sessions' traffic. A closed session answers 409.
-- Nothing observed the target at close. The board polls every ten seconds, so
-  a breach in the last seconds was never recorded and the session read as
-  untouched. Close takes one last observation first.
-- An attack still running when the session closed was recorded with its
-  evidence outside the window it is scored from. The session's end now
-  stretches to cover a case that finishes after it.
-- Since unreadable wiki became an error, it also threw away every verdict
-  Juice Shop gave in the same read. The session path keeps Juice Shop's
-  answer and reports the wiki as `unreadable`; a session with no baseline yet
-  still waits for a full read, which is the recorded late-baseline decision.
-
-**The range cannot reach its own judge**
-- Found by a production-readiness audit: eight lens agents, two refuters per
-  finding, 34 of 34 serious findings survived. The largest: every published
-  port answered on every address, so from the attacker box and from the wiki,
-  their own segment's gateway forwarded `:8000` (the scoring and rules API),
-  `:9200` (Elasticsearch, unauthenticated), `:7681` and `:8080` back into the
-  platform - measured, eight of eight reached. The side being scored could
-  rewrite the rules or the alerts it is scored on. The reachability rule did
-  not see it: through the hairpin the request arrives from a gateway, which is
-  exactly how the operator arrives.
-- Every port is published on `127.0.0.1` now. The Mac's listeners went from
-  `*` to `127.0.0.1` with it, so the LAN no longer gets a root shell on 7681.
-  A console opened from another machine needs a tunnel. `DJANGO_DEBUG=1` in
-  compose stays: with loopback only, a traceback reaches the operator alone.
-
-**The API refuses what it cannot mean**
-- `POST /api/rules/apply/` with no `content`, or `null`, applied an empty rule
-  file: the sensor reloaded with nothing and every later attack scored a miss.
-  `content` must be a string now; an empty string sent on purpose still works.
-- A case's ground truth was checked for presence, not type: `"malicious":
-  "false"` was stored as an attack, turning a TN into a FN. It must be a
-  boolean; times must be ISO 8601 with an offset and in order, `source_ip` an
-  address, and a second copy of a case is 409 rather than a 500.
-- Malformed JSON, a body that is not an object, a suppression of `-5`, `0`,
-  `nan` or a billion minutes, and a cursor like `--1` were each a 500 or an
-  unbounded suppression. `_payload` raises `BadRequest`, which the same
-  middleware that answers `RangeUnavailable` (now `api/refusals.py`) turns into
-  400; a suppression lasts more than 0 and at most 24 hours.
-
-**Any view the range cannot answer is a 503 with the range's reason**
-- Rebuilding the platform image without the host's socket group
-  (`DOCKER_GID=$(bin/docker-gid)`) made every docker call "permission
-  denied". Before the runners told a daemon error from a failed command, the
-  rules endpoint would have served that text as the rule file with a 200;
-  after, it was a bare 500, and so were validate, apply, suppress and the
-  attacker label - none of them handled `RangeUnavailable`.
-- One middleware, `api/unavailable.py`, answers `RangeUnavailable` from any
-  view with 503 and the range's own words, and the six per-view copies of
-  that handler are gone. `_segments()` still swallows it on purpose: a
-  dashboard draws without zones rather than not at all.
-
-**The OpenStack substrate can be selected**
-- `FSL_SUBSTRATE=range.openstack.OpenStack` failed on a missing `cloud`
-  argument: nothing turned settings into one. `range.openstack.connect` does,
-  from `FSL_OPENSTACK_*`, and `/api/origins/` draws a range end to end through
-  Django against a fake Keystone, Neutron and Nova.
-- `range.substrate()` builds an adapter per request, so each request would
-  have signed in to Keystone and read its catalogue again. The discovered
-  endpoints and the reader holding the token are kept per set of
-  credentials; a test counts the tokens.
-- The platform image had no ssh client, so every runner call from it on
-  OpenStack would have been `FileNotFoundError`. It carries `openssh-client`.
-
-**A rebuilt instance is trusted again; an impostor is not**
-- The critics' top finding. Trust-on-first-use keyed by address locks the
-  platform out of every rebuilt instance for good: a rebuild recreates the
-  root disk (Nova api-ref) and cloud-init makes new host keys by default
-  (`ssh_deletekeys: Default: true`), on the same fixed IP. Reproduced: every
-  later call to that role refused until someone ran `ssh-keygen -R` inside the
-  platform.
-- A host key is now filed under the instance's generation, not its address:
-  `HostKeyAlias fsl-<server id>-<launched_at>`. Nova's own source resets
-  `launched_at` on rebuild (`_do_rebuild_instance` ->
-  `_update_instance_after_spawn`, `nova/compute/manager.py`) and never on
-  reboot. So a rebuild or a new instance on an old address is met for the
-  first time, and a different key from an instance Nova says has not changed
-  is refused - with the fingerprint and the offending known_hosts line.
-- The adapter writes an ssh config per call that `Include`s the deployment's
-  first. ssh takes the first value it finds, so a deployment that pins keys
-  (`StrictHostKeyChecking yes`, its own known_hosts) is no longer overruled by
-  a command-line `accept-new`, and the alias is scoped to the instance's
-  address so a `ProxyJump` bastion does not have its key filed under it.
-  Both run in the tests, bastion included. A deployment that checks keys
-  strictly gets no generation alias at all (the adapter asks `ssh -G`): its
-  pins are looked up by address, so it re-pins after a rebuild itself.
-- Still trust-on-first-use per generation. Where known_hosts lives is the
-  deployment's (ssh's default is the platform user's home, which a container
-  loses). The stronger answer is reading each instance's keys off its console
-  (`os-getConsoleOutput`; cloud-init prints them between `BEGIN SSH HOST KEY
-  KEYS` markers), with two caveats found by the critics: libvirt returns only
-  the last 100 KiB of the console, and the guest writes its own console.
-
-**A range that cannot answer says so**
-- Firing a case, opening a session and reading objectives each let
-  `RangeUnavailable` through as Django's bare 500, dropping the reason the
-  range gave. The first is a 503 with it now; a wiki that cannot be read is
-  `ObjectivesUnavailable`, so a session still opens and takes its baseline on
-  the first poll.
-- On Docker a stopped container was not even an error. `docker exec` exits 1
-  for "is not running", for "Cannot connect to the Docker daemon" and for a
-  command that failed, and the runner recognised only "No such container". A
-  stopped wiki read as a wiki nobody had read - the internal objective scored
-  as not taken - and a daemon error could come back as the rules file's
-  content. Found by stopping the wiki against the live stack, after the unit
-  tests had passed. Both adapters now use the report ssh needed, shared in
-  `range/ports.py`: the command runs under `sh -c --` and prints its own exit
-  status, and without that report nothing ran.
-- `bin/verify` restarts the platform before the acceptance run. It serves with
-  waitress, which never reloads, and the process answering this session's
-  verifies had started before the code under test: the acceptance half had
-  been checking whatever was loaded when the container last started.
-
-**An address only the WAF caught is on the map**
-- `test_origins` went red once in two identical runs. The session's Brazil
-  detections were ModSecurity's; Suricata's Brazil alerts reached
-  Elasticsearch six seconds after the event and after the test had read the
-  map. A ModSecurity record carries its source as `transaction.client_ip`
-  with no `src_ip`, and the pipeline geolocated `src_ip` with
-  `ignore_missing`, so it skipped every one: an address the WAF alone caught
-  was never placed, whatever the timing.
-- The pipeline geolocates both fields, ingest keeps the record's `src_geo` on
-  each WAF detection, and an acceptance test refuses to run the suite when the
-  pipeline Elasticsearch runs is not the committed one - it is installed by
-  hand, so it drifts silently otherwise. Records indexed before the change
-  stay unplaced.
-
-**A command over ssh is the command that was asked for**
-- Run against a real sshd rather than a mocked `subprocess.run`, the runner
-  broke the port's contract. ssh(1): arguments "will be appended to the
-  command, separated by spaces" and handed to the remote shell, so `'a b'`
-  arrived as two arguments and `c;d` ran `d`. argv is quoted now.
-- An argv starting with `-o` was read by ssh as its own option - options are
-  parsed after the destination too - and ran a `ProxyCommand` on the platform.
-  The remote command now always starts `sh -c --`; the `--` matters twice,
-  because the remote `sh` also takes a script starting with `-` as options
-  (checked in dash, busybox and bash, the shells the range's images carry).
-- ssh(1): it "exits with the exit status of the remote command or with 255 if
-  an error occurred", so 255 said nothing. sqlmap exits 255 on an unhandled
-  exception; that is a tool that ran. The remote shell now reports the
-  command's status last on stderr: with the report it is `Ran`, whatever the
-  code - a `kill -9` is 137, as on Docker; without it the connection ended
-  first and it is `RangeUnavailable`.
-- ssh's own messages go to a log (`-E`), not into `Ran.output`; the first
-  contact's "Permanently added" line used to land there. That log is the reason
-  a failure gives: host key verification, permission denied, refused.
-- `BatchMode` alone refuses every host key nobody has seen - every instance of
-  a fresh cloud. `-n` when there is no input: the remote `cat` read the
-  platform's own stdin. `IdentitiesOnly`: an agent holding six other keys used
-  up `MaxAuthTries` first. `ConnectTimeout` and `ServerAlive*`: a host that
-  accepted and said nothing, or went silent mid-command, held the call for
-  the whole timeout, 600 s for a tool.
-- In both adapters: a timeout says it was one and that the command may still
-  be running (it is not killed on the host), and output that is not UTF-8 no
-  longer raises `UnicodeDecodeError` - neither `Ran` nor `RangeUnavailable`, so
-  no caller handled it, on a path that reads logs the red team can write.
-- The Keystone sign-in sent the ssh login as its user name. `Cloud.user` and
-  `Cloud.ssh_user` are separate, and a refused sign-in carries Keystone's reason
-  instead of "no X-Subject-Token".
-- Found by five sourced critics with a refuter each: 8 of 17 findings survived.
-  Every fix has a test that fails without it (13 mutants, 13 caught).
-
-**A tool runs where the attacker already is**
-- `launcher` raised NotImplementedError. Implementing it turned up the reason:
-  there is no Nova equivalent of `docker run --rm image argv`. Booting is
-  minutes and output comes back only through a console log or ssh. So a tool
-  runs over ssh on the attacker standing on that segment, and asking for any
-  other image is refused rather than quietly ignored.
-- `runner` re-read the entire cloud on every command - networks, subnets and
-  servers, paginated - to find one address. Applying one Suricata rule set is
-  a validate, a read, a write and a reload: four full reads. The shape is read
-  once per adapter now, and `range.substrate()` builds a new adapter per
-  request, so nothing holds a range that has since changed. Both halves are
-  pinned by tests.
-
-**The adapter runs**
-- `X-OpenStack-Nova-API-Version` is sent on every call. Nova's own guide: with
-  neither that header nor `OpenStack-API-Version`, it acts "as if the minimum
-  supported microversion was specified". The adapter would have been handed
-  2.1 silently while the sample its fields were checked against was 2.100.
-  The fields it reads carry no "New in version" marker, so 2.1 is enough - but
-  by luck, and now by statement.
-- A Keystone token has a lifetime and a console outstays it. A 401 now buys
-  one fresh token and one retry; a second 401 is reported. Without that the
-  range simply becomes unreadable after an hour, with no reason on screen.
-
-**A cloud answers in pages and the sketch read one**
-- Found in the vendor's own example, not by reasoning: Neutron's List Networks
-  sample response is labelled *first page* and carries
-  `networks_links` with `rel: next`. Nova documents `servers_links` as present
-  "when the number of servers exceeds limit parameter or [api]/max_limit".
-- The sketch took `["networks"]` off the first page and dropped the rest. A
-  segment past the page boundary makes `describe()` report it as a segment the
-  cloud does not have; an instance past it vanishes from the map and leaves
-  every one of its alerts with a blank host name. Both fail quietly and both
-  arrive the moment the range grows.
-- All three list calls follow the link now, by requesting the `href` the cloud
-  handed back rather than rebuilding a URL, so whatever filter or limit is
-  inside it survives. A link that loops stops after 50 pages and says so
-  instead of hanging the console.
-- This is the part of an OpenStack transition that can be checked without a
-  cloud: the responses come from the reference, so the behaviour is pinned to
-  what the vendor publishes rather than to what I assumed.
-
-**One place turns a name into a substrate**
-- `redteam/run.py` constructed `range.docker.Docker` by name while the
-  platform resolved `FSL_SUBSTRATE`. I put that there earlier in this session.
-  On any other substrate the console would fire attacks and the command line
-  would not, and nothing would say why. Both go through `range.substrate()`
-  now, and a test refuses a second `import_string` site.
-- Unifying them exposed the next one immediately: `FSL_SUBSTRATE_OPTIONS`
-  carried `project`, Docker's compose project name, whatever substrate was
-  selected. Options are keyed by substrate now and every one is given the
-  declaration. Checkable today without a cloud:
-  `FSL_SUBSTRATE=range.openstack.OpenStack .venv/bin/python redteam/run.py`
-  used to fail with `unexpected keyword argument 'project'` and now fails with
-  `missing 1 required positional argument: 'cloud'` - the thing a deployment
-  actually has to supply.
-
-**A destination is an address and a port**
-- `session_top` and the alert table pasted them into one field, `172.30.0.2:3000`,
-  so nothing could sort or filter on either and a reader had to parse it back.
-  Two columns now, in both tables and both languages. The rows stay keyed on
-  the pair: one host on two of its addresses is still two rows, because the
-  WAF's outside leg is the attack arriving and its estate leg is the same
-  attack being forwarded inward, and those are worth telling apart.
-
-**A window that could not be read whole says so**
-- `elastic.fetch` reads 5000 records, oldest first, and `ingest_detections`
-  reported the shortfall to nobody. Measured on the live index: a three-day
-  window is 5000 read of 42,231. Oldest-first means truncation drops the
-  *newest* alerts, so the cases fired last become FN and the benign ones fired
-  last become TN - a busier red team makes the defence look better.
-- `Session.truncated` and `read_of` are set at ingest and never cleared by a
-  later ingest that happened to fit, and the score carries
-  `score.warning.truncated` with both counts. Verified live: a widened window
-  reported 5000 of 41,720 on the page, in both languages.
-
-**One of my own tests was asserting a falsehood**
-- Last round I added "no alert in a red team window may be unmarked". It went
-  red, and the product was right: the unmarked alerts were at 04:21:10 from
-  the proxy, and the session opened at 04:21:10.903. A window reaches a minute
-  either side, so it holds traffic from whatever used the range just before.
-  That is why `unattributed` is a reported number and not an assertion.
-- Narrowed to what it was built to catch - the stack alerting on traffic it
-  sent to itself, by loopback source or the numeric-Host signature - and
-  proved it still bites by reintroducing the health-check bug and watching it
-  go red, then removing it again.
-- It stays sensitive to the same minute of slack, so its failure message now
-  says to check whether the signature is still being produced before hunting
-  the code.
-
-**The scoreboard stopped answering the party it is scoring**
-- `fsl-platform` sits on all six segments and `waitress` listens on 0.0.0.0, so
-  the red team's own terminal reached the scoring API. Measured before the fix:
-  `GET /api/rules/` from `fsl-kali` returned 200. `POST /api/rules/apply/` from
-  there rewrites the detector - blank it and every attack is a miss, match the
-  marker header and every attack is a hit - so every cell of the confusion
-  matrix was writable by the party being measured.
-- No accounts were added; CLAUDE.md's decision stands. The API refuses any
-  address that stands inside the range. The two callers are distinguishable
-  without a login, and it was measured rather than assumed: a request through
-  Docker's published port arrives from a segment's **gateway**, `5.188.10.1`,
-  and `fsl-kali` arrives as a **node**, `5.188.10.2`.
-- Live after the fix: operator 200, console 200, kali 403 with the reason.
-- The participant set is read once per thirty seconds, not per request - the
-  console polls several endpoints every few seconds and a read of the range is
-  four Docker round trips. A test pins it at one read per eight requests.
-- Still open: a host inside the range can send with another host's address, and
-  a container recreated inside the cache window keeps its old answer. Both are
-  written down in `docs/THREAT-MODEL.md` rather than left implied.
-
-**An alert remembers who held the address when it was written**
-- `Detection` stored an address and nothing else, and the dashboard named it by
-  asking Docker who holds that address *now*. Compose assigns them by DHCP -
-  nothing in the file pins one - so after a recreate the console reports
-  whichever container inherited it. `172.30.0.3` is the wiki today and was the
-  WAF when 885 alerts were written from it, which the dashboard would draw as
-  the wiki attacking the target.
-- The host is resolved once at ingest and stored on the row. Reproduced the bug
-  in a unit test first: ingest under one shape, read under another, and the
-  source came back `fsl-wiki`.
-- Ingest still works with no range at all - the evidence is in Elasticsearch,
-  not in Docker - and the name is simply blank. The unit guard that refused
-  a real substrate call now raises `RangeUnavailable` rather than
-  `AssertionError`, because a test that supplies no range and a range that is
-  down are the same state to the code, and production handles that one.
-
-**`$HTTP_PORTS` named a port on no wire the sensor watches**
-- It was `8080`, the host-published port. Docker translates that before the
-  packet reaches any interface in the WAF's namespace, so the only ports on
-  the tap are 80 (nginx) and 3000 (the backend leg). Every published HTTP
-  signature is written `$HOME_NET $HTTP_PORTS`, so a defender pasting one got
-  a rule that validated, a sensor that reloaded, a case scored FN, and no way
-  to tell a wrong regex from a wrong port variable.
-- A/B, same rule as sid 9000001 with only the port term changed, config loaded
-  inside the container checked each time: `"8080"` fired 0 while the shipped
-  rule using `any` fired 4; `"[80,3000]"` fired 2 against the same 4.
-- The first attempt to falsify this said the trap was not real. It was a bad
-  experiment - a 12-second wait that did not cover the sensor's start - and it
-  nearly buried a true finding. The A/B above verifies the loaded config from
-  inside the container before each half.
-- Two experiment rules were left behind in the shipped rule set during this,
-  because the file is the live artifact and an experiment writes to it.
-  `test_sensor_rules.py` refuses any sid at or above 9009000 in it.
-
-**A strategy that cannot place a case says which ones**
-- The comparison panel drew tp/fn/fp/tn for both strategies and threw the
-  warnings away. Forcing time-window correlation onto cases that declare no
-  source address gives every one of them a miss, so the panel showed a marker
-  column with detections beside a window column of zeroes, and the operator
-  read the second as a defence that failed rather than a question that cannot
-  be asked. The panel carries each strategy's warnings now.
-- `score.warning.no_source_ip` named case UUIDs. It names the cases.
-- Rejected the critics' proposal to populate `source_ip` for console-fired
-  cases from a new `scorer` role. Window correlation exists to score traffic
-  that carries no marker - the human at the terminal - and those cases do set
-  `source_ip` to the proxy: verified, session 622 scores `tp 1` under window.
-  Feeding it the judge's own address would measure "did an alert come from the
-  scoring platform within two seconds", which is not a fact about the defence.
-  A zero with a stated reason beats a number that looks like a score.
-
-**The score accounts for the evidence it throws away**
-- `correlate` computed `unmatched_detection_ids` and nothing read it. TP, FP,
-  FN and TN are counted over declared cases only, so an alert belonging to no
-  case entered no number at all. `false_positive_rate = fp/(fp+tn)` therefore
-  had a denominator equal to the benign case count - six - a granularity of
-  0.167, and was printed to two decimals. A defence that alerted on every
-  packet the range sends to itself and missed those six requests read 0.00.
-- The score reports `unattributed` and `benign_cases` now, and the console
-  shows the fraction (`1 / 6`) with the sentence "not a rate" beside it, and
-  the unplaced count in its own tile. An acceptance test asserts the three
-  numbers add up: attributed + unattributed == ingested.
-- Fixing the health check emptied this out on a clean run: every alert in a
-  `redteam/run.py` window now carries a marker, and an acceptance test refuses
-  a run where the stack alerted on its own traffic. The 162-of-170 unattributed
-  figure measured earlier was the health check firing CRS 920350 every ten
-  seconds, not a property of the design.
-
-**A defence cannot author its own evidence**
-- `corroborated` asked whether a case's `expect` substring appears in any
-  signature attributed to it, and the defence writes those signatures. One rule
-  - `msg:"SQL XSS traversal Restricted File"`, `http.uri; content:"/"` - carries
-  every `expect` value in the case file and fires on every request. Demonstrated
-  live: it took every malicious case as a TP with `corroborated: true`. The
-  block-everything defence the case file's own header says must not win, won.
-- A signature that also fired on a case declared benign in the same session now
-  corroborates nothing. The defender cannot fake discrimination, only claim it.
-  Same run after the change: `path-traversal-ftp`, whose only alert was the
-  catch-all, reports `corroborated: false` and raises `wrong_reason`, while the
-  two cases ModSecurity caught with its own signatures keep their credit. TP,
-  FP, FN and TN are untouched - `corroborated` is not an input to `detected`.
-- Two things the experiment turned up on its own. A rule that inspects no HTTP
-  buffer produces alerts with no `tx_id`, so the marker join cannot reach them
-  and they are attributed to nothing: 259 alerts. "Zero effect on any score"
-  held only because another rule caught the same cases; see "A rule without
-  an app-layer buffer credits the case it caught". And
-  the acceptance suite restored "whatever rules were there when it started",
-  which cemented a rule set a previous run had broken; `conftest` now refuses to
-  run unless the sensor is carrying the rules this repo declares.
-
-**Two tests deleted for being worse than nothing**
-- `test_sensor_scope.py` and `test_attack_source.py` compared YAML strings and
-  asserted a routing decision. The first passed on `HOME_NET: "any"` and on
-  `HOME_NET: "[172.30.0.0/24]"` alike - and the second of those is the value
-  that makes the sensor match zero packets. Its green state was the blind state,
-  and `bin/verify --fast` runs only that suite.
-
-**A verify that fails for its own reasons**
-- `bin/verify` fired the acceptance suite the moment the platform answered,
-  without waiting for the target. A run that started while Juice Shop was
-  still coming up reported TP 0 - "no attack was detected at all" - which the
-  session protocol answers with `git reset --hard`. It waits for the target's
-  own health now, up to two minutes, and says why if it never arrives.
-- Four health checks asked `localhost`, which resolves to `::1` first. The
-  nginx entrypoint adds an IPv6 listener by editing its own conf and these
-  confs are mounted read-only, so the wiki had been `unhealthy` for 513
-  consecutive checks while serving every request it was given. They ask
-  `127.0.0.1` now, and every container in the stack reports true.
-
-**The console needs no internet**
-- Tailwind came from `cdn.tailwindcss.com` on every page: a browser-side JIT
-  compiler, fetched at render time, which Tailwind documents as a development
-  tool. An isolated range - which is what this is for - met an unstyled
-  console. `bin/build-css` runs the Tailwind CLI over the console's own
-  templates and commits the 16KB result, which `base.html` inlines, so there
-  is no static-file serving, no new dependency and no network. Verified by
-  sampling computed styles on the blue console before and after: nine
-  selectors, identical to the character. A test refuses a template that
-  fetches anything, and another refuses a utility that is used and not built.
-
-**One language at a time**
-- `scoring` returned English sentences meant for a screen, so four warnings
-  stayed English whatever language the console was in. It returns
-  `(key, *args)` now and the console looks the text up like everything else;
-  the prose left gated core with them. A test refuses a sentence in
-  `platform/scoring/`.
-
-**What the operator actually typed**
-- Every command typed at the terminal is recorded with the case that was open
-  when it was typed: the box appends to a log on each prompt, stamping it with
-  the marker the proxy is already labelling traffic with, and the platform
-  reads it through `runner("attacker")`.
-  `GET /api/sessions/<id>/commands/` returns what was typed inside the
-  session's window. `nmap` leaves a record now, not just an alert with no case
-  behind it, and the blue console's scoreboard draws it beside the per-case
-  table - time, the case that was open, the command.
-
-**Where an attack sits in an intrusion**
-- Every attack case carries the Mandiant life cycle stage it belongs to, an
-  ATT&CK technique id and a CAPEC pattern id, and the console links both ids to
-  the catalogue that defines them. `technique: SQLi` was an abbreviation from
-  nowhere; T1190 and CAPEC-66 can be checked.
-- The catalogue reports which stages the cases reach and which five of the
-  eight they never do, computed from the cases rather than written down, and
-  the red console says both. `docs/THREAT-MODEL.md` says which threat is being
-  emulated, that there is no C2 at all, and what the range cannot show.
+**Operations and tests**
+- The wiki log starts with NULs; it is read with `grep -a`, or the match hides.
+- OpenStack host keys are filed per instance generation, so a rebuild is new.
+- Acceptance tests assert on their own case's evidence and close their sessions.
+- Acceptance fails a run in which the stack alerted on its own traffic.
+- Unit fixtures open sessions before their alert times, or `stale` drops them.
+- Two tests comparing YAML strings were deleted; one passed on a blind sensor.
 
 **Smaller**
-- Dropped djangorestframework and Kibana; collapsed the Django boilerplate;
-  shrank `redteam/harness.py`; deleted the dead marker-probing.
-- Tried to replace Django entirely and did not: it cost more lines than it
-  saved.
+- Dropped djangorestframework, Kibana, Django boilerplate, dead marker-probing.
 
 ## Backlog
 
@@ -1123,58 +257,40 @@ says the second, because that is what is true today.
 
 ## Known gaps
 
-- `test_declaration.py` compares two files and never the running range. Six
-  deliberate breakages - an undeclared network, an unmarked one, a renamed
-  segment, a changed origin, a removed origin, a role pointing at no container -
-  are each caught by name, and a `name:` override no longer breaks anything
-  because the binding is a label rather than the name. It still cannot see a
-  range that does not match either file.
-- The `platform` container still mounts the Docker socket, now reached as a
-  non-root user through a group whose id compose passes as `DOCKER_GID`
-  (`bin/docker-gid` prints it; read off the host instead of inside the VM it
-  comes back `1` and the platform answers 200 with `permission denied` in the
-  body). It is still a container escape path and it disappears with the substrate: an
-  OpenStack adapter authenticates rather than mounting anything.
-- The Kali terminal on 7681 is an unauthenticated root shell. Local lab only.
-- `elastic.fetch` reads at most 5000 documents per ingest and has no
-  `event_type` filter, so `http` records burn the same budget. It now reports
-  what it could not read and the console says so, but a long session still
-  scores on part of its evidence. Paginating with `search_after` needs a
-  monotonic write-time field, which the index does not have; one
-  `set: _ingest.timestamp` processor in the pipeline would give it one.
-- `Detection.raw` for ModSecurity holds only the `message` sub-object. The
-  drawer now names the CRS rule and says the ruleset lives in the WAF, so the
-  operator is not stuck, but the record is still a fragment.
-- The operator log lives inside the attacker box and is lost when it is
-  recreated, and its stamps are whole seconds - a session's window is widened
-  to whole seconds to match, so two sessions less than a second apart would
-  each claim the other's commands.
-- Two labelled terminal windows less than four seconds apart overlap, because
-  `WINDOW_SLACK` is two seconds at each end. The console does not say so.
+- `test_declaration.py` compares two files, never the running range.
+- The platform mounts the Docker socket (non-root, via the socket's group): an
+  escape path that goes away with the OpenStack adapter.
+- The Kali terminal on 7681 is an unauthenticated root shell, loopback only.
+- `elastic.fetch` reads at most 5000 documents per ingest, `http` records
+  included (a three-day window read 5000 of 42,231), and flags the shortfall.
+  Paging with `search_after` needs a monotonic write-time field; one `set:
+  _ingest.timestamp` processor gives it, and any ES-only store needs it too.
+- ModSecurity's `Detection.raw` holds the rule message, request, host and
+  place, not the whole audit record.
+- The operator log is lost when the attacker box is recreated, and its whole
+  seconds let sessions under a second apart claim each other's commands.
+- Two labelled windows under four seconds apart overlap (`WINDOW_SLACK` is two
+  seconds each end), and the console does not say so.
 - Nothing stops two people opening the same session in four windows. One user,
   one session was a deliberate scope decision.
+- A range host can send with another's address, and one recreated within the
+  30 s cache keeps its old answer (`docs/THREAT-MODEL.md`).
+- The rule editor's unsaved text is replaced when it reloads after a change: a
+  trade-off against writing back a stale file.
+- OpenStack host keys are trust-on-first-use per generation, kept in the
+  platform user's home (lost with the container) unless the deployment's ssh
+  config says otherwise. Reading them from `os-getConsoleOutput` is stronger,
+  but libvirt returns only the last 100 KiB and the guest writes its console.
+- `docs/ARCHITECTURE.md` section 7 still lists the operator log and the
+  Tailwind CDN as absences; both are done.
 
 ## Tried and thrown away
 
-**Elasticsearch as the only store, 2026-09-22.** The idea was to delete the
-Django `Detection` table and query the index directly: one copy of the truth,
-no 5000-document cap, aggregations instead of Python loops. Killed at the
-scoping stage, before any production code, by three measurements:
-
-- Window correlation has no Elasticsearch form. Both event clocks are mapped
-  `keyword`; the only `date` field is filebeat's read clock, which runs ahead
-  of ModSecurity's by a median of 2.5s and p90 of 7.9s against a two-second
-  `WINDOW_SLACK`. 64% of ModSecurity alerts would land in the wrong window.
-- It does not re-derive the same score, it changes it. One session's frozen 66
-  detections come back as 98 when its window is re-queried, and no closed
-  session could be told from a regression.
-- 85 of the tests are written against the `patch(elastic.fetch)` seam and the
-  floor may only rise, so most of the work is rewriting tests to stand still.
-
-The motivating measurement was also wrong, which is the more useful lesson:
-`/top/` at 44-82ms against an aggregation at 3-9ms is not Django versus
-Elasticsearch. `/map/` walks the same rows in Python in 3.5ms; the 40ms was the
-Docker call in `_segments()`, since removed.
-
-Worth keeping from it: a `set: _ingest.timestamp` processor is the one line
-every future version of that idea depends on.
+- **Replacing Django entirely.** It cost more lines than it saved.
+- **Elasticsearch as the only store, 2026-09-22**, killed before any code:
+  both event clocks are `keyword` and the read clock leads ModSecurity's by
+  2.5 s median, 7.9 s p90, so 64% of WAF alerts would miss their 2 s window;
+  re-querying turned one session's 66 detections into 98; 85 tests stand on
+  `patch(elastic.fetch)`. The motivating 40 ms was a Docker call, not Django.
+- **Feeding window correlation the scorer's address.** It would measure the
+  judge, not the defence; a zero with a stated reason beats that number.
