@@ -49,7 +49,7 @@ CHECKED_ON_A_LATER_REQUEST = frozenset({
 def catalogue(wiki=None) -> list[dict[str, Any]]:
     found, unreadable = observe(wiki)
     if unreadable:
-        raise ObjectivesUnavailable(unreadable)
+        found.append(dict(INTERNAL, solved=None, solved_at=None, unreadable=unreadable))
     return found
 
 def observe(wiki=None) -> tuple[list[dict[str, Any]], str]:
