@@ -824,6 +824,41 @@ def test_apply_over_a_rule_file_that_changed_since_it_was_loaded_says_so_and_rel
     assert [body.get("base") for body in seen["result"]["applies"]] == ["a1", "z9"]
     assert seen["result"]["said"] == english("blue.rules.applied")
 
+def test_an_editor_that_never_read_the_rules_cannot_apply_over_them(client):
+    reason = "the sensor did not answer"
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE + f"""
+          browser.serve((request) => request.method === "GET" && request.route === "/api/rules/"
+            ? {{status: 503, body: {{detail: {js(reason)}}}}}
+            : routed(request));
+        """,
+        scenario="""
+          const unread = {editor: browser.element("editor").value, said: browser.text("output")};
+          await browser.force("editor", "mine");
+          browser.serve(routed);
+          await browser.click("apply");
+          return {unread, applies: applies(), editor: browser.element("editor").value};
+        """,
+    )
+    unread = seen["result"]["unread"]
+    [apply] = seen["result"]["applies"]
+
+    assert seen["errors"] == []
+    assert unread["editor"] == ""
+    assert unread["said"] == english("blue.rules.load_failed", reason), (
+        "the rules could not be read and the editor stood empty with nothing to "
+        "say so, which reads as a sensor with no rules"
+    )
+    assert isinstance(apply.get("base"), str), (
+        "Apply from an editor that never held the rules named no version, which "
+        "asks the platform to replace the whole file without checking it"
+    )
+    assert seen["result"]["editor"] == RULE, (
+        "the platform refused the Apply and the editor was not filled from the "
+        "rules it now could read"
+    )
+
 RED_RANGE = """
 const ORIGINS = [
   {id: "edge", network: "fsl_edge", label: "Moscow, Russia", subnet: "5.188.10.0/24",
