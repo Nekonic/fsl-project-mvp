@@ -396,6 +396,28 @@ def test_a_deployment_s_bastion_is_not_given_the_instance_s_key(host, tmp_path):
         bastion.wait()
 
 
+def test_why_a_bastion_could_not_be_reached_is_named(host):
+    closed = free_port()
+    (host["home"] / "ssh_config").write_text(
+        f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
+        f"Host jump\n"
+        f"  HostName 127.0.0.1\n"
+        f"  Port {closed}\n"
+        f"Host 127.0.0.1\n"
+        f"  Port {host['port']}\n"
+        f"  ProxyJump jump\n"
+    )
+
+    with pytest.raises(RangeUnavailable) as raised:
+        attacker(host)(["true"])
+
+    assert f"port {closed}: Connection refused" in str(raised.value), (
+        f"ssh runs the jump host's connection as a second ssh that does not "
+        f"write to the first one's log, so its reason was thrown away: "
+        f"{raised.value}"
+    )
+
+
 def test_a_refused_login_is_named(host):
     (host["home"] / "authorized_keys").write_text("")
 

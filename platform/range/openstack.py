@@ -349,9 +349,10 @@ class OpenStack:
                     ) from exc
                 except (OSError, subprocess.SubprocessError) as exc:
                     raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+                logged = said.read_text() if said.exists() else ""
                 complaint = " ".join(filter(None, (
                     line.strip("@ ") for line in
-                    (said.read_text() if said.exists() else "").splitlines()
+                    f"{logged}\n{done.stderr or ''}".splitlines()
                 )))
 
             finished = reported(done.stderr or "")
