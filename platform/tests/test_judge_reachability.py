@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -158,13 +159,40 @@ def test_deciding_who_may_call_does_not_read_the_range_on_every_request(client):
         f"cost a full read of the range: {Counting.calls} reads for 8 requests"
     )
 
-def test_a_range_that_comes_back_is_noticed_within_the_cache_window():
+def test_a_range_that_comes_back_is_noticed_within_the_cache_window(monkeypatch):
     from api import reachability
+    from range.ports import RangeUnavailable
 
     assert reachability.TTL <= 60, (
         f"the set of hosts standing in the range is cached for "
         f"{reachability.TTL}s, so a container recreated inside that window "
         f"keeps its old answer"
+    )
+
+    now = [1000.0]
+    monkeypatch.setattr(reachability, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    class Returning(Stub):
+        reads = 0
+
+        def segments(self):
+            Returning.reads += 1
+            if Returning.reads == 1:
+                raise RangeUnavailable("docker is not there")
+            return SHAPE.segments
+
+    with patch("api.reachability.substrate", Returning):
+        gone = reachability.scored_hosts()
+        now[0] += reachability.TTL - 1
+        still_gone = reachability.scored_hosts()
+        now[0] += 2
+        back = reachability.scored_hosts()
+
+    assert gone == still_gone == frozenset()
+    assert Returning.reads == 2, Returning.reads
+    assert "5.188.10.2" in back, (
+        f"the range came back after {reachability.TTL}s and the attacker box is "
+        f"still not refused: {sorted(back)}"
     )
 
 

@@ -309,8 +309,18 @@ def test_a_sensor_that_is_not_where_it_was_declared_to_be_is_refused():
             Docker(DECLARED).describe()
 
 def test_a_declared_sensor_the_substrate_confirms_is_reported():
-    assert [(s.name, s.watches) for s in describe().sensors] == [
-        ("fsl-suricata", "fsl-waf"),
+    on_the_target = Declaration(
+        segments=DECLARED.segments,
+        roles=dict(DECLARED.roles, target="fsl-juice-shop"),
+        watches={"sensor": "target"},
+    )
+    beside_the_target = dict(MODES, **{"fsl-suricata": "container:ccc"})
+
+    with patch("range.docker.subprocess.run", _Run(modes=beside_the_target)):
+        shape = Docker(on_the_target).describe()
+
+    assert [(s.name, s.watches) for s in shape.sensors] == [
+        ("fsl-suricata", "fsl-juice-shop"),
     ]
 
 def test_the_segments_are_known_while_the_sensor_is_not_where_it_should_be():

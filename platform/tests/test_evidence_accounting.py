@@ -44,8 +44,8 @@ def test_the_score_says_how_much_evidence_it_could_not_place(client):
 
     assert totals["unattributed"] == 7, (
         "seven alerts belonged to no case and the score reported only the "
-        "sixteen decisions it could make. An operator reading fp=0 cannot see "
-        "that the sensor was shouting the whole time"
+        "three case decisions it could make. An operator reading fp=0 cannot "
+        "see that the sensor fired seven times"
     )
 
 def test_the_false_positive_denominator_is_on_screen(client):
@@ -74,12 +74,20 @@ def test_the_false_positive_rate_is_over_benign_cases_not_attacks(client):
     )
 
 def test_no_alert_of_the_session_is_missing_from_the_accounting(client):
-    session = session_with(alerts_matching_no_case=5)
+    from api.models import Detection
+
+    session = session_with(alerts_matching_no_case=5, benign_that_alerted=1)
+    Detection.objects.create(
+        session=session, detection_id="attack-alert-0", source="suricata",
+        signature="FSL SQLi attempt - URI", severity=2,
+        timestamp=timezone.now(), src_ip="172.30.0.4", marker="attack-0", raw={},
+    )
 
     totals = client.get(f"/api/sessions/{session.id}/score/").json()
     attributed = sum(len(c["detection_ids"]) for c in totals["per_case"])
     listed = client.get(f"/api/sessions/{session.id}/detections/").json()
 
+    assert attributed == 2, attributed
     assert attributed + totals["unattributed"] == len(listed), (
         f"{len(listed)} alerts were ingested, {attributed} were attributed to "
         f"a case and {totals['unattributed']} were reported unattributed. The "

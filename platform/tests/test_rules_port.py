@@ -1,4 +1,6 @@
 import pathlib
+import re
+from unittest.mock import patch
 
 import pytest
 
@@ -10,11 +12,12 @@ RELOADED = '{"message":"done","return":"OK"}\n'
 RULE = 'alert http any any -> any any (msg:"x"; sid:9000900; rev:1;)\n'
 
 class Sensor:
-    def __init__(self, *, fails_on="", unreachable_on=""):
+    def __init__(self, *, fails_on="", unreachable_on="", reload=RELOAD):
         self.calls = []
         self.files = {}
         self.fails_on = fails_on
         self.unreachable_on = unreachable_on
+        self.reload = reload
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         self.calls.append((argv, stdin))
@@ -28,7 +31,7 @@ class Sensor:
             return Ran(0, self.files.get(argv[1], ""))
         if self.fails_on and self.fails_on in joined:
             return Ran(1, "bad rule")
-        if argv == list(RELOAD):
+        if argv == list(self.reload):
             return Ran(0, RELOADED)
         return Ran(0, "")
 
@@ -39,7 +42,9 @@ def test_core_never_names_the_substrate():
         "platform/rules/ is gated core and would have to be rewritten for any "
         "substrate that is not Docker"
     )
-    assert "range" not in source.split("\n")[0], "core must not import the port"
+    assert not re.search(r"^\s*(from|import)\s+range\b", source, re.M), (
+        "core must not import the port"
+    )
 
 def test_a_rule_set_that_suricata_accepts_validates():
     outcome = suricata.validate(RULE, Sensor())
@@ -95,14 +100,21 @@ def test_how_the_sensor_is_reloaded_is_not_hard_coded_to_a_container():
         "entrypoint. On an instance it is a service and the pid is not 1"
     )
 
-def test_the_reload_command_comes_from_configuration():
-    from django.conf import settings
+@pytest.mark.django_db
+def test_the_reload_command_comes_from_configuration(client, settings):
+    settings.FSL_SENSOR_RELOAD = ("reload-it",)
+    sensor = Sensor(reload=("reload-it",))
 
-    sensor = Sensor()
-    suricata.apply(RULE, sensor, RELOAD)
+    class Standing:
+        def runner(self, role, segment_id=""):
+            return sensor
 
-    reloaded = [argv for argv, _ in sensor.calls if "reload-rules" in " ".join(argv)]
-    assert reloaded == [list(RELOAD)], reloaded
+    with patch("api.views.substrate", Standing):
+        applied = client.post_json("/api/rules/apply/", {"content": RULE})
+
+    assert applied.status_code == 200, applied.content
+    reloaded = [argv for argv, _ in sensor.calls if "reload" in " ".join(argv)]
+    assert reloaded == [["reload-it"]], reloaded
 
 def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
     sensor = Sensor()

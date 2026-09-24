@@ -123,6 +123,8 @@ def test_a_401_that_survives_a_fresh_token_is_reported_not_looped(cloud):
     with pytest.raises(RangeUnavailable, match="401"):
         ask(f"GET http://127.0.0.1:{cloud.port}/v2.0/networks")
 
+    assert cloud.tokens == 2, cloud.tokens
+
 def test_anything_else_the_cloud_refuses_is_named(cloud):
     with pytest.raises(RangeUnavailable, match="404"):
         reader(cloud)(f"GET http://127.0.0.1:{cloud.port}/nope")

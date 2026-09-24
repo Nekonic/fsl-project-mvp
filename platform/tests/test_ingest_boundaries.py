@@ -139,6 +139,7 @@ def test_rules_applied_from_the_current_copy_go_through(client):
         applied = client.post_json("/api/rules/apply/", {"content": RULE + RULE.replace("9000901", "9000902"), "base": loaded["version"]})
 
     assert applied.status_code == 200, applied.content
+    assert sensor.rules == RULE + RULE.replace("9000901", "9000902")
 
 
 @pytest.mark.django_db
