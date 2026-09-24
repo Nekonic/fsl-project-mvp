@@ -93,10 +93,19 @@ def test_correlation_warnings_are_carried_through():
 
     assert ("carried through",) in s.warnings
 
-def test_empty_result_is_all_zero_with_warning():
+def test_empty_result_is_all_zero_and_not_warned_about_benign_cases():
     s = score(result())
 
     assert (s.tp, s.fp, s.fn, s.tn) == (0, 0, 0, 0)
+    assert ("score.warning.no_benign",) not in s.warnings, (
+        "a session in which nothing has been fired yet was told its case file "
+        "has no benign cases; there is no attack beside which benign traffic "
+        "is missing"
+    )
+
+def test_a_missed_attack_with_nothing_benign_beside_it_is_warned_about():
+    s = score(result(match("a", malicious=True, detected=False)))
+
     assert ("score.warning.no_benign",) in s.warnings
 
 

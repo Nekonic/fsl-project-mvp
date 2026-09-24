@@ -158,3 +158,13 @@ def test_nothing_the_platform_sends_to_the_page_is_prose():
         f"are not in it, so they reach the screen as written whatever language "
         f"the page is in: {unknown}"
     )
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_the_benign_warning_names_the_red_console_controls_that_run_benign_cases(language):
+    table = tables()[language]
+    advice = table["score.warning.no_benign"]
+
+    assert table["red.baseline.run_all"] in advice and table["red.cases.benign"] in advice, (
+        "the warning that no benign case was run sends the operator to the red "
+        "console, and does not name the controls there by the labels they carry"
+    )

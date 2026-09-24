@@ -146,12 +146,27 @@ def _row_counts(connection):
             counts[table] = cursor.fetchone()[0]
     return counts
 
-def test_score_on_session_without_cases_warns_about_benign(client):
+def test_score_on_session_without_cases_does_not_warn_about_benign(client):
     session_id = open_session(client)
 
     response = client.get(f"/api/sessions/{session_id}/score/")
 
     assert response.status_code == 200
+    assert not any(w[0] == "score.warning.no_benign" for w in response.json()["warnings"]), (
+        "a session nobody has fired a case in yet was told to add benign "
+        "cases to a case file that already has them"
+    )
+
+def test_score_on_session_with_only_attacks_warns_about_benign(client):
+    session_id = open_session(client)
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": ATTACK, "name": "sqli", "malicious": True, "correlation": "marker",
+        "source_ip": "172.20.0.5", "started_at": T0.isoformat(),
+        "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
+    })
+
+    response = client.get(f"/api/sessions/{session_id}/score/")
+
     assert any(w[0] == "score.warning.no_benign" for w in response.json()["warnings"])
 
 def test_ingest_skipped_counts_documents_not_alerts(client, session_with_cases):
