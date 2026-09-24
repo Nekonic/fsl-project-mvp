@@ -98,9 +98,5 @@ def test_the_match_was_made_without_a_marker(window_session, window_score):
         f"{PLATFORM_URL}/api/sessions/{window_session}/detections/", timeout=30
     ).json()
 
-    markers = {
-        detection["marker"]
-        for detection in detections
-        if detection["id"] in matched or detection["detection_id"] in matched
-    }
-    assert markers <= {None}, f"expected unlabelled traffic, saw markers {markers}"
+    markers = {d["marker"] for d in detections if d["detection_id"] in matched}
+    assert markers == {None}, f"expected unlabelled traffic, saw markers {markers}"

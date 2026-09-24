@@ -103,14 +103,9 @@ def test_invalid_rule_is_rejected_and_not_applied():
     assert requests.get(f"{PLATFORM_URL}/api/rules/").json()["content"] == before
 
 def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
-    import requests
-
-    from conftest import PLATFORM_URL
-
-    listed = requests.get(
+    rows = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
     ).json()
-    rows = listed if isinstance(listed, list) else listed["detections"]
     attributed = sum(len(c["detection_ids"]) for c in score["per_case"])
 
     assert attributed + score["unattributed"] == len(rows), (
@@ -120,14 +115,9 @@ def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
     )
 
 def test_the_stack_does_not_attack_itself(session_id, score):
-    import requests
-
-    from conftest import PLATFORM_URL
-
-    listed = requests.get(
+    rows = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
     ).json()
-    rows = listed if isinstance(listed, list) else listed["detections"]
 
     own = [
         d["signature"] for d in rows

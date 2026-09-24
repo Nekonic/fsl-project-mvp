@@ -72,17 +72,21 @@ def test_a_silenced_rule_is_on_the_books_with_a_deadline(silenced):
     assert live, "a silenced rule that nothing records is a rule silenced for good"
     assert live[0]["expires_at"] > live[0]["created_at"]
 
-def test_restoring_brings_the_rule_back(stack_is_up):
+def test_restoring_brings_the_rule_back(baseline_rules):
     created = requests.post(
         f"{PLATFORM_URL}/api/rules/suppressions/",
         json={"sid": SID, "minutes": 10}, timeout=300,
-    ).json()
-    assert f"sid:{SID}" in requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
-
-    requests.post(
-        f"{PLATFORM_URL}/api/rules/suppressions/{created['id']}/restore/", timeout=300
+    )
+    assert created.status_code == 201, created.text
+    silenced = requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
+    assert not any(
+        line.startswith("alert") and f"sid:{SID};" in line for line in silenced.splitlines()
     )
 
+    restored = requests.post(
+        f"{PLATFORM_URL}/api/rules/suppressions/{created.json()['id']}/restore/", timeout=300
+    )
+    assert restored.ok, restored.text
+
     content = requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
-    assert "fsl-suppressed" not in content
-    assert f"#alert" not in content.replace("# FSL", "")
+    assert content == baseline_rules
