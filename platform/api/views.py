@@ -93,26 +93,30 @@ def _request_of(raw):
 
 def _listed(detection, zones, located):
     method, path, dest_ip, dest_port = _request_of(detection.raw or {})
-    zone = _zone_of(detection.src_ip, zones) if detection.src_ip else None
-    geo = located.get(detection.src_ip) or {}
     return dict(
         _shape(detection, DETECTION_FIELDS),
         dest_ip=dest_ip,
         dest_port=dest_port,
         method=method,
         path=path,
-        zone=zone["name"] if zone else "",
-        outside=bool(zone and zone["outside"]),
-        country=geo.get("country_name") or "",
-        city=geo.get("city_name") or "",
+        **_place(detection.src_ip, zones, located),
     )
 
-def _located(session, addresses):
+def _place(address, zones, located):
+    zone = _zone_of(address, zones) if address else None
+    geo = located.get(address) or {}
+    return {
+        "zone": zone["name"] if zone else "",
+        "outside": bool(zone and zone["outside"]),
+        "country": geo.get("country_name") or "",
+        "city": geo.get("city_name") or "",
+    }
+
+def _located(detections):
     located = {}
-    carried = session.detections.filter(src_ip__in=addresses)
-    for address, geo in carried.values_list("src_ip", "raw__src_geo"):
-        if geo and address not in located:
-            located[address] = geo
+    for address, geo in detections.values_list("src_ip", "raw__src_geo"):
+        if address and geo:
+            located.setdefault(address, geo)
     return located
 
 def _reply(payload, status=200):
@@ -230,65 +234,38 @@ def session_top(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
     zones, hosts = _segments()
-
-    located = {}
-    for detection in detections:
-        if detection.src_ip and detection.src_ip not in located:
-            geo = (detection.raw or {}).get("src_geo") or {}
-            if geo:
-                located[detection.src_ip] = geo
+    located = _located(session.detections)
 
     sources, destinations, signatures, paths = {}, {}, {}, {}
+
+    def count(table, key, row):
+        if key not in table:
+            table[key] = dict(row(), alerts=0)
+        table[key]["alerts"] += 1
+
     for detection in detections:
         method, url, dest_ip, port = _request_of(detection.raw or {})
-
-        if detection.src_ip:
-            row = sources.get(detection.src_ip)
-            if row is None:
-                geo = located.get(detection.src_ip) or {}
-                zone = _zone_of(detection.src_ip, zones)
-                row = sources[detection.src_ip] = {
-                    "src_ip": detection.src_ip,
-                    "host": detection.src_host,
-                    "zone": zone["name"] if zone else "",
-                    "outside": bool(zone and zone["outside"]),
-                    "country": geo.get("country_name") or "",
-                    "country_code": geo.get("country_iso_code") or "",
-                    "city": geo.get("city_name") or "",
-                    "alerts": 0,
-                }
-            row["alerts"] += 1
-
+        address = detection.src_ip
+        if address:
+            count(sources, address, lambda: {
+                "src_ip": address,
+                "host": detection.src_host,
+                **_place(address, zones, located),
+                "country_code": (located.get(address) or {}).get("country_iso_code") or "",
+            })
         if dest_ip:
-            key = (dest_ip, port)
-            row = destinations.get(key)
-            if row is None:
-                zone = _zone_of(dest_ip, zones)
-                row = destinations[key] = {
-                    "dest_ip": dest_ip,
-                    "dest_port": port,
-                    "host": detection.dest_host,
-                    "zone": zone["name"] if zone else "",
-                    "alerts": 0,
-                }
-            row["alerts"] += 1
-
-        key = (detection.signature, detection.source)
-        row = signatures.setdefault(key, {
+            count(destinations, (dest_ip, port), lambda: {
+                "dest_ip": dest_ip,
+                "dest_port": port,
+                "host": detection.dest_host,
+                "zone": _place(dest_ip, zones, {})["zone"],
+            })
+        count(signatures, (detection.signature, detection.source), lambda: {
             "signature": detection.signature,
             "engine": detection.source,
-            "alerts": 0,
         })
-        row["alerts"] += 1
-
         if url:
-            key = (method, url)
-            row = paths.setdefault(key, {
-                "method": key[0],
-                "path": url,
-                "alerts": 0,
-            })
-            row["alerts"] += 1
+            count(paths, (method, url), lambda: {"method": method, "path": url})
 
     def top(rows):
         return sorted(rows, key=lambda r: -r["alerts"])[:TOP_N]
@@ -686,7 +663,7 @@ def session_detections(request, session_id):
     detections = list(detections)
     addresses = {d.src_ip for d in detections if d.src_ip}
     zones, _ = _segments() if addresses else ([], {})
-    located = _located(session, addresses) if addresses else {}
+    located = _located(session.detections.filter(src_ip__in=addresses)) if addresses else {}
     return _reply([_listed(d, zones, located) for d in detections])
 
 @require_http_methods(["GET"])
