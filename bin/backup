@@ -47,16 +47,13 @@ def snapshot(path):
         source.close()
 
 
-def program():
-    return IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
-
-
 def fetch():
     way_in = os.environ.get("FSL_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
     command = shlex.split(way_in)
+    program = IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
     try:
         done = subprocess.run(
-            command, input=program().encode(), capture_output=True, timeout=TIMEOUT,
+            command, input=program.encode(), capture_output=True, timeout=TIMEOUT,
         )
     except OSError as error:
         raise SystemExit(
