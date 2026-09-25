@@ -10,13 +10,26 @@ from range.ports import RangeUnavailable, Segment
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 
 @dataclass(frozen=True)
+class Site:
+    label: str
+    lat: float
+    lon: float
+
+@dataclass(frozen=True)
 class Declaration:
     segments: tuple[Segment, ...] = ()
     roles: dict[str, str] = field(default_factory=dict)
     watches: dict[str, str] = field(default_factory=dict)
     default_origin: str = ""
+    defended_site: Site | None = None
 
     def check(self) -> None:
+        site = self.defended_site
+        if site and not (-90 <= site.lat <= 90 and -180 <= site.lon <= 180):
+            raise ValueError(
+                f"defended_site {site.label!r} is at lat {site.lat}, lon "
+                f"{site.lon}, which is not on the globe"
+            )
         for sensing, sensed in self.watches.items():
             missing = [r for r in (sensing, sensed) if r not in self.roles]
             if missing:
@@ -41,6 +54,11 @@ class Declaration:
             f"origin. Declared: {sorted(s.id for s in self.segments)}"
         )
 
+def _site(entry) -> Site | None:
+    if not entry:
+        return None
+    return Site(label=entry["label"], lat=float(entry["lat"]), lon=float(entry["lon"]))
+
 def read(path: Path = DECLARATION) -> Declaration:
     document = yaml.safe_load(Path(path).read_text()) or {}
     found = Declaration(
@@ -55,6 +73,7 @@ def read(path: Path = DECLARATION) -> Declaration:
         roles=dict(document.get("roles") or {}),
         watches=dict(document.get("watches") or {}),
         default_origin=document.get("default_origin") or "",
+        defended_site=_site(document.get("defended_site")),
     )
     found.check()
     return found

@@ -754,6 +754,11 @@ def detection_detail(request, detection_id):
         _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
     )
 
+def _target(site):
+    if site is None:
+        return None
+    return {"lat": site.lat, "lon": site.lon, "label": site.label}
+
 @require_http_methods(["GET"])
 def session_map(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
@@ -796,6 +801,7 @@ def session_map(request, session_id):
         {
             "points": sorted(points.values(), key=lambda p: -p["detections"]),
             "unlocated": unlocated,
+            "target": _target(settings.RANGE.defended_site),
         }
     )
 

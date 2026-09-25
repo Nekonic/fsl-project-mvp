@@ -339,3 +339,28 @@ def test_a_sensor_compose_gives_its_own_stack_is_caught():
         "'suricata' network_mode 'of its own', so it would see none of that "
         "host's traffic"
     ]
+
+def test_the_declaration_says_where_the_defended_site_is():
+    from range import declared
+
+    site = declared.read().defended_site
+
+    assert (site.label, site.lat, site.lon) == ("Seoul, Korea", 37.5665, 126.978), (
+        "the target sits on a lab address that geolocates nowhere useful, so "
+        "where the map draws it has to be declared"
+    )
+
+@pytest.mark.parametrize("lat, lon", [(91.0, 0.0), (-90.5, 0.0), (0.0, 180.5), (0.0, -181.0)])
+def test_a_defended_site_off_the_globe_is_refused(lat, lon):
+    from range.declared import Declaration, Site
+
+    with pytest.raises(ValueError, match="defended_site"):
+        Declaration(defended_site=Site(label="Nowhere", lat=lat, lon=lon)).check()
+
+def test_a_declaration_without_a_defended_site_still_loads(tmp_path):
+    from range import declared
+
+    written = tmp_path / "declaration.yaml"
+    written.write_text("segments:\n  - id: edge\n    origin: Moscow, Russia\n")
+
+    assert declared.read(written).defended_site is None
