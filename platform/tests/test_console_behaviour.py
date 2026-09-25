@@ -78,7 +78,7 @@ const column = (index) => Object.fromEntries(
   Object.entries(table("rows")).map(([id, cells]) => [id, cells[index]]));
 const caseColumn = () => column(10);
 const tiles = (id) => Object.fromEntries(
-  browser.element(id).innerHTML.split('<div class="bg-slate-900/60').slice(1).map((tile) =>
+  browser.element(id).innerHTML.split('<div class="bg-panel').slice(1).map((tile) =>
     [...tile.matchAll(/<div class="[^"]*">([^<]*)<\/div>/g)].slice(0, 2).map((m) => m[1].trim())));
 const onlyUnattributed = async () => {
   browser.element("only-orphans").checked = true;
@@ -405,7 +405,7 @@ def test_the_false_positives_are_shown_once_with_the_benign_cases_they_are_out_o
         """,
         scenario=r"""
           await browser.click('[data-tab="score"]');
-          return browser.element("totals").innerHTML.split('<div class="bg-slate-900/60').slice(1)
+          return browser.element("totals").innerHTML.split('<div class="bg-panel').slice(1)
             .map((tile) => [...tile.matchAll(/<div class="[^"]*">([^<]*)<\/div>/g)]
               .map((m) => m[1].trim()));
         """,
@@ -509,9 +509,9 @@ def test_the_live_indicator_says_not_reachable_while_the_platform_does_not_answe
     assert down["label"] == english("blue.live.unreachable"), (
         "every poll failed and the console still showed a pulsing Live"
     )
-    assert "bg-rose-500" in down["dot"] and "bg-emerald-400" not in down["dot"]
+    assert "bg-danger" in down["dot"] and "bg-success" not in down["dot"]
     assert back["label"] == english("blue.live.on")
-    assert "bg-emerald-400" in back["dot"] and back["title"] == ""
+    assert "bg-success" in back["dot"] and back["title"] == ""
 
 def test_the_live_indicator_carries_the_reason_the_platform_gave(client):
     reason = "Elasticsearch did not answer at http://elasticsearch:9200"
@@ -686,7 +686,7 @@ def test_two_draws_of_the_score_at_once_show_each_warning_once(client):
           await browser.click('[data-tab="score"]');
           release();
           await browser.settle();
-          return browser.element("warnings").innerHTML.split("bg-amber-950").length - 1;
+          return browser.element("warnings").innerHTML.split("bg-warning-soft").length - 1;
         """,
     )
 
@@ -1077,7 +1077,7 @@ def test_apply_over_a_rule_file_that_changed_since_it_was_loaded_says_so_and_rel
         "the platform refused an Apply over a rule file that had changed and the "
         "console did not say why"
     )
-    assert "text-rose-300" in refused["style"]
+    assert "text-danger" in refused["style"]
     assert refused["editor"] == theirs, (
         "the refused Apply left the editor on the rules it was loaded from, so "
         "the next Apply would be refused again or overwrite the change"
@@ -1953,7 +1953,7 @@ const whereFrom = () => ({
   outside: Object.fromEntries(
     browser.element("rows").innerHTML.split("<tr ").slice(1).map((row) => [
       /data-id="([^"]*)"/.exec(row)[1],
-      row.split(/<td\b/)[5].includes("text-rose-300"),
+      row.split(/<td\b/)[5].includes("text-danger"),
     ])),
 });
 const MOSCOW = {zone: "Internet", outside: true, country: "Russia", city: "Moscow"};

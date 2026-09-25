@@ -1,21 +1,21 @@
 {% extends "console/base.html" %}
 {% block title %}Blue team{% endblock %}
-{% block nav %}<span data-t="blue.title" class="text-sky-400"></span>{% endblock %}
+{% block nav %}<span data-t="blue.title" class="text-primary font-medium"></span>{% endblock %}
 {% block nav_class %}w-full{% endblock %}
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
 <style>
   :root {
-    --map-sea: #fbfcfd;
-    --map-land: #d3dae6;
-    --map-border: #abb4c4;
-    --map-point: #bd271e;
-    --map-line: rgb(189 39 30 / 0.45);
-    --map-target: #0077cc;
+    --map-sea: var(--panel);
+    --map-land: var(--border-subdued);
+    --map-border: var(--border);
+    --map-point: var(--danger);
+    --map-line: color-mix(in srgb, var(--danger) 45%, transparent);
+    --map-target: var(--primary);
   }
 </style>
-<div id="tabs" class="flex gap-3 mb-3 border-b border-slate-800 items-center shrink-0">
+<div id="tabs" class="flex gap-3 mb-3 border-b border-line items-center shrink-0">
   <button data-tab="dashboard" data-t="blue.tab.dashboard" class="tab px-4 py-2 text-sm"></button>
   <button data-tab="alerts" data-t="blue.tab.alerts" class="tab px-4 py-2 text-sm"></button>
   <button data-tab="score" data-t="blue.tab.score" class="tab px-4 py-2 text-sm"></button>
@@ -23,51 +23,51 @@
 
   <div class="ml-auto flex items-center gap-3">
     <button id="live-toggle"
-      class="flex items-center gap-2 px-3 py-1.5 rounded border border-slate-700
-             hover:border-slate-500 text-xs">
-      <span id="live-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      class="flex items-center gap-2 px-3 py-1.5 rounded bg-panel border border-line
+             hover:border-primary text-heading text-xs">
+      <span id="live-dot" class="w-2 h-2 rounded-full bg-success"></span>
       <span id="live-label"></span>
     </button>
     <select id="interval" data-t-title="blue.interval.title"
-      class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300">
+      class="bg-panel border border-line rounded text-heading px-2 py-1.5 text-xs">
       <option value="2000">2s</option>
       <option value="5000" selected>5s</option>
       <option value="15000">15s</option>
     </select>
     <a id="to-red" data-t="blue.nav.to_red" target="_blank"
-       class="text-sm text-rose-400 hover:text-rose-300"></a>
+       class="text-sm text-danger hover:underline"></a>
   </div>
 </div>
 
-<p id="truncated" class="hidden shrink-0 mb-2 border border-amber-800 bg-amber-950
-   rounded px-3 py-2 text-amber-200 text-sm"></p>
+<p id="truncated" class="hidden shrink-0 mb-2 border border-warning-soft bg-warning-soft
+   rounded px-3 py-2 text-warning text-sm"></p>
 
 <section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto">
 <div class="grid grid-cols-4 gap-3 shrink-0">
-  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div data-t="blue.kpi.total" class="text-slate-500 text-xs uppercase tracking-widest"></div>
-    <div id="kpi-total" class="text-4xl font-semibold text-slate-100 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded px-4 py-2">
+    <div data-t="blue.kpi.total" class="text-muted text-xs uppercase tracking-widest"></div>
+    <div id="kpi-total" class="text-4xl font-semibold text-heading tabular-nums">0</div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div class="text-slate-500 text-xs uppercase tracking-widest">Suricata</div>
-    <div id="kpi-suricata" class="text-4xl font-semibold text-violet-300 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded px-4 py-2">
+    <div class="text-muted text-xs uppercase tracking-widest">Suricata</div>
+    <div id="kpi-suricata" class="text-4xl font-semibold text-accent tabular-nums">0</div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div class="text-slate-500 text-xs uppercase tracking-widest">ModSecurity</div>
-    <div id="kpi-modsec" class="text-4xl font-semibold text-cyan-300 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded px-4 py-2">
+    <div class="text-muted text-xs uppercase tracking-widest">ModSecurity</div>
+    <div id="kpi-modsec" class="text-4xl font-semibold text-primary tabular-nums">0</div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
-    <div data-t="blue.unattributed" class="text-slate-500 text-xs uppercase tracking-widest"></div>
-    <div id="kpi-orphan" class="text-4xl font-semibold text-amber-300 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded px-4 py-2">
+    <div data-t="blue.unattributed" class="text-muted text-xs uppercase tracking-widest"></div>
+    <div id="kpi-orphan" class="text-4xl font-semibold text-warning tabular-nums">0</div>
   </div>
 </div>
 
 <div class="shrink-0 grid grid-cols-2 auto-rows-[18rem] gap-3 xl:shrink xl:flex-1 xl:min-h-0
             xl:grid-cols-12 xl:grid-rows-[minmax(0,1fr)_13rem]">
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
-    <div class="flex items-center gap-3 px-4 py-2 border-b border-slate-800 shrink-0">
-      <span data-t="blue.map.title" class="text-sm uppercase tracking-widest text-slate-500"></span>
-      <span id="map-note" class="text-sm text-slate-400 ml-auto"></span>
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-4">
+    <div class="flex items-center gap-3 px-4 py-2 border-b border-line-subdued shrink-0">
+      <span data-t="blue.map.title" class="text-sm uppercase tracking-widest text-muted"></span>
+      <span id="map-note" class="text-sm text-muted ml-auto"></span>
     </div>
     <div class="flex-1 min-h-0 p-2 flex">
       <svg viewBox="0 0 360 160" class="w-full h-full block" preserveAspectRatio="xMidYMid meet">
@@ -83,13 +83,13 @@
     </div>
   </section>
 
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-4">
     <div data-t="blue.sources.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
-                text-sm uppercase tracking-widest text-slate-500"></div>
+         class="px-4 py-2 border-b border-line-subdued shrink-0 truncate
+                text-sm uppercase tracking-widest text-muted"></div>
     <div class="flex-1 min-h-0 overflow-auto">
       <table class="w-full text-sm break-keep">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+        <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                       whitespace-nowrap">
           <tr>
             <th data-t="blue.col.src_ip" class="text-left py-1.5 px-3 font-medium"></th>
@@ -103,13 +103,13 @@
     </div>
   </section>
 
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-4">
     <div data-t="blue.signatures.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
-                text-sm uppercase tracking-widest text-slate-500"></div>
+         class="px-4 py-2 border-b border-line-subdued shrink-0 truncate
+                text-sm uppercase tracking-widest text-muted"></div>
     <div class="flex-1 min-h-0 overflow-auto">
       <table class="w-full text-sm break-keep">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+        <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                       whitespace-nowrap">
           <tr>
             <th data-t="blue.col.signature" class="text-left py-1.5 px-3 font-medium"></th>
@@ -122,23 +122,23 @@
     </div>
   </section>
 
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-3">
-    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 border-b border-slate-800
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-3">
+    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 border-b border-line-subdued
                 shrink-0">
       <span data-t="blue.histogram.title"
-            class="text-sm uppercase tracking-widest text-slate-500 whitespace-nowrap"></span>
-      <span id="histogram-range" class="text-xs text-slate-500 ml-auto whitespace-nowrap"></span>
+            class="text-sm uppercase tracking-widest text-muted whitespace-nowrap"></span>
+      <span id="histogram-range" class="text-xs text-muted ml-auto whitespace-nowrap"></span>
     </div>
     <div id="histogram" class="flex-1 min-h-0 flex items-end justify-center gap-px p-2"></div>
   </section>
 
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-4">
     <div data-t="blue.destinations.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
-                text-sm uppercase tracking-widest text-slate-500"></div>
+         class="px-4 py-2 border-b border-line-subdued shrink-0 truncate
+                text-sm uppercase tracking-widest text-muted"></div>
     <div class="flex-1 min-h-0 overflow-auto">
       <table class="w-full text-sm break-keep">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+        <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                       whitespace-nowrap">
           <tr>
             <th data-t="blue.col.dest" class="text-left py-1.5 px-3 font-medium"></th>
@@ -152,13 +152,13 @@
     </div>
   </section>
 
-  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-5">
+  <section class="min-h-0 min-w-0 flex flex-col bg-panel border border-line rounded xl:col-span-5">
     <div data-t="blue.paths.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
-                text-sm uppercase tracking-widest text-slate-500"></div>
+         class="px-4 py-2 border-b border-line-subdued shrink-0 truncate
+                text-sm uppercase tracking-widest text-muted"></div>
     <div class="flex-1 min-h-0 overflow-auto">
       <table class="w-full text-sm break-keep">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+        <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                       whitespace-nowrap">
           <tr>
             <th data-t="blue.col.method" class="text-left py-1.5 px-3 font-medium"></th>
@@ -173,25 +173,25 @@
 </div>
 </section>
 
-<section data-panel="alerts" class="flex-1 min-h-0 flex flex-col border border-slate-800 rounded">
-  <div class="flex items-center gap-3 px-3 py-2 border-b border-slate-800 shrink-0">
+<section data-panel="alerts" class="flex-1 min-h-0 flex flex-col bg-panel border border-line rounded">
+  <div class="flex items-center gap-3 px-3 py-2 border-b border-line-subdued shrink-0">
     <input id="search" data-t-placeholder="blue.alerts.search.placeholder"
-      class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs flex-1 min-w-32">
+      class="bg-panel border border-line rounded text-heading placeholder:text-muted px-2 py-1 text-xs flex-1 min-w-32">
     <div class="flex gap-1" id="source-filter">
       <button data-source="" data-t="blue.alerts.filter.all"
         class="chip px-2 py-1 rounded text-xs border"></button>
       <button data-source="suricata" class="chip px-2 py-1 rounded text-xs border">Suricata</button>
       <button data-source="modsecurity" class="chip px-2 py-1 rounded text-xs border">ModSecurity</button>
     </div>
-    <label class="flex items-center gap-1.5 text-xs text-slate-400">
-      <input id="only-orphans" type="checkbox" class="accent-amber-500">
+    <label class="flex items-center gap-1.5 text-xs text-body">
+      <input id="only-orphans" type="checkbox" class="accent-warning">
       <span data-t="blue.alerts.filter.orphans_only"></span>
     </label>
-    <span id="shown" class="text-xs text-slate-500"></span>
+    <span id="shown" class="text-xs text-muted"></span>
   </div>
   <div class="flex-1 min-h-0 overflow-auto">
     <table class="w-full text-sm break-keep">
-      <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+      <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                     whitespace-nowrap">
         <tr>
           <th data-t="blue.col.time" class="text-left py-2 px-3 font-medium"></th>
@@ -209,22 +209,23 @@
       </thead>
       <tbody id="rows"></tbody>
     </table>
-    <p id="empty" data-t="blue.alerts.empty" class="text-slate-500 text-sm p-6 text-center"></p>
+    <p id="empty" data-t="blue.alerts.empty" class="text-muted text-sm p-6 text-center"></p>
   </div>
 </section>
 
 <section data-panel="score" class="hidden flex-1 min-h-0 overflow-y-auto">
   <h2 data-t="blue.score.breaches.heading"
-      class="text-lg font-semibold text-slate-100 mb-4"></h2>
+      class="text-lg font-semibold text-heading mb-4"></h2>
   <div id="breach-totals" class="grid grid-cols-4 gap-3 mb-4"></div>
-  <div id="breach-table" class="border border-slate-800 rounded mb-10"></div>
+  <div id="breach-table" class="bg-panel border border-line rounded mb-10"></div>
 
   <h2 data-t="blue.score.detection.heading"
-      class="text-lg font-semibold text-slate-100 mb-1"></h2>
+      class="text-lg font-semibold text-heading mb-1"></h2>
   <div id="warnings" class="mb-5 space-y-2"></div>
   <div id="totals" class="grid grid-cols-4 gap-3 mb-8"></div>
+  <div class="bg-panel border border-line rounded overflow-hidden">
   <table class="w-full text-sm break-keep">
-    <thead class="text-slate-400 border-b border-slate-800 whitespace-nowrap">
+    <thead class="bg-subdued text-muted border-b border-line whitespace-nowrap">
       <tr><th data-t="blue.col.case" class="text-left py-2 px-3"></th>
           <th data-t="blue.score.case.col.truth" class="text-left py-2 px-3"></th>
           <th data-t="blue.score.case.col.disposition" class="text-left py-2 px-3"></th>
@@ -233,66 +234,69 @@
     </thead>
     <tbody id="per-case"></tbody>
   </table>
+  </div>
 
   <h2 data-t="blue.score.operator.heading"
-      class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-1"></h2>
-  <p data-t="blue.score.operator.note" class="text-xs text-slate-500 mb-3"></p>
+      class="text-sm uppercase tracking-wide text-muted mt-10 mb-1"></h2>
+  <p data-t="blue.score.operator.note" class="text-xs text-muted mb-3"></p>
+  <div class="bg-panel border border-line rounded overflow-hidden">
   <table class="w-full text-sm break-keep">
-    <thead class="text-slate-400 border-b border-slate-800 whitespace-nowrap">
+    <thead class="bg-subdued text-muted border-b border-line whitespace-nowrap">
       <tr><th data-t="blue.score.operator.col.at" class="text-left py-2 px-3 w-52"></th>
           <th data-t="blue.col.case" class="text-left py-2 px-3 w-64"></th>
           <th data-t="blue.score.operator.col.command" class="text-left py-2 px-3"></th></tr>
     </thead>
     <tbody id="operator-log"></tbody>
   </table>
+  </div>
 
   <h2 data-t="blue.score.comparison.heading"
-      class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3"></h2>
+      class="text-sm uppercase tracking-wide text-muted mt-10 mb-3"></h2>
   <div id="comparison" class="grid grid-cols-2 gap-4"></div>
 </section>
 
 <section data-panel="rules" class="hidden flex-1 min-h-0 overflow-y-auto">
-  <h2 data-t="blue.rules.heading" class="text-lg font-semibold text-slate-100 mb-3"></h2>
+  <h2 data-t="blue.rules.heading" class="text-lg font-semibold text-heading mb-3"></h2>
   <textarea id="editor" spellcheck="false"
-    class="w-full h-80 bg-slate-900 border border-slate-800 rounded p-4 font-mono
-           text-sm text-slate-200"></textarea>
+    class="w-full h-80 bg-panel border border-line rounded p-4 font-mono
+           text-sm text-heading"></textarea>
   <div class="flex gap-3 mt-4">
     <button id="validate" data-t="blue.rules.validate"
-      class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm"></button>
+      class="px-4 py-2 rounded bg-panel border border-line hover:bg-subdued text-heading text-sm"></button>
     <button id="apply" data-t="blue.rules.apply"
-      class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm"></button>
+      class="px-4 py-2 rounded bg-primary hover:bg-primary-strong text-inverse text-sm"></button>
   </div>
-  <pre id="output" class="hidden mt-4 bg-slate-900 border border-slate-800 rounded p-4
-       text-xs whitespace-pre-wrap text-slate-300"></pre>
+  <pre id="output" class="hidden mt-4 bg-subdued border border-line rounded p-4
+       text-xs whitespace-pre-wrap text-body"></pre>
 
   <h2 data-t="blue.rules.suppressions.heading"
-      class="text-lg font-semibold text-slate-100 mt-10 mb-1"></h2>
-  <div id="suppressions" class="border border-slate-800 rounded"></div>
+      class="text-lg font-semibold text-heading mt-10 mb-1"></h2>
+  <div id="suppressions" class="bg-panel border border-line rounded"></div>
 </section>
 
-<div id="drawer" class="fixed inset-y-0 right-0 w-[36rem] max-w-full bg-slate-950
-     border-l border-slate-800 translate-x-full transition-transform duration-200
+<div id="drawer" class="fixed inset-y-0 right-0 w-[36rem] max-w-full bg-panel
+     border-l border-line shadow-xl translate-x-full transition-transform duration-200
      overflow-y-auto z-50">
-  <div class="sticky top-0 bg-slate-950 border-b border-slate-800 px-5 py-4
+  <div class="sticky top-0 bg-panel border-b border-line px-5 py-4
               flex items-center gap-3">
     <div class="flex-1 min-w-0">
-      <div id="drawer-signature" class="text-slate-100 truncate"></div>
-      <div id="drawer-meta" class="text-slate-500 text-xs mt-0.5"></div>
+      <div id="drawer-signature" class="text-heading font-medium truncate"></div>
+      <div id="drawer-meta" class="text-muted text-xs mt-0.5"></div>
     </div>
     <button id="drawer-close" data-t-title="blue.drawer.close"
-      class="text-slate-500 hover:text-slate-200 text-xl px-2">
+      class="text-muted hover:text-heading text-xl px-2">
       &times;
     </button>
   </div>
-  <div id="drawer-verdict" class="px-5 py-4 border-b border-slate-800 hidden">
+  <div id="drawer-verdict" class="px-5 py-4 border-b border-line hidden">
     <div data-t="blue.drawer.suppress.heading"
-         class="text-slate-500 text-xs uppercase tracking-wide mb-2"></div>
+         class="text-muted text-xs uppercase tracking-wide mb-2"></div>
     <div class="flex gap-2 items-center">
       <input id="suppress-reason" data-t-placeholder="blue.drawer.suppress.reason_placeholder"
-        class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
-      <p id="suppress-why" class="hidden text-slate-400 text-sm"></p>
+        class="flex-1 bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm">
+      <p id="suppress-why" class="hidden text-body text-sm"></p>
       <button id="suppress"
-        class="px-3 py-2 rounded bg-amber-700 hover:bg-amber-600 text-white text-sm
+        class="px-3 py-2 rounded bg-warning hover:bg-warning-soft border border-warning text-heading text-sm
                whitespace-nowrap"><span id="suppress-sid"></span></button>
     </div>
     <p id="suppress-result" class="text-xs mt-2"></p>
@@ -300,9 +304,9 @@
 
   <div class="p-5">
     <div data-t="blue.drawer.raw.heading"
-         class="text-slate-500 text-xs uppercase tracking-wide mb-2"></div>
-    <pre id="drawer-raw" class="bg-slate-900 border border-slate-800 rounded p-4
-         text-xs whitespace-pre-wrap break-all text-slate-300 leading-relaxed"></pre>
+         class="text-muted text-xs uppercase tracking-wide mb-2"></div>
+    <pre id="drawer-raw" class="bg-subdued border border-line rounded p-4
+         text-xs whitespace-pre-wrap break-all text-body leading-relaxed"></pre>
   </div>
 </div>
 {% endblock %}
@@ -311,14 +315,19 @@
   document.title = t("blue.title");
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
 
-  const HIGH = {text: "text-rose-400", key: "blue.alerts.severity.high"};
-  const MEDIUM = {text: "text-amber-400", key: "blue.alerts.severity.medium"};
-  const LOW = {text: "text-sky-400", key: "blue.alerts.severity.low"};
-  const INFORMATIONAL = {text: "text-slate-500", key: "blue.alerts.severity.info"};
+  const HIGH = {text: "text-danger", key: "blue.alerts.severity.high"};
+  const MEDIUM = {text: "text-warning", key: "blue.alerts.severity.medium"};
+  const LOW = {text: "text-primary", key: "blue.alerts.severity.low"};
+  const INFORMATIONAL = {text: "text-muted", key: "blue.alerts.severity.info"};
   const SEVERITY = {
     suricata: {1: HIGH, 2: MEDIUM, 3: LOW},
     modsecurity: {0: HIGH, 1: HIGH, 2: HIGH, 3: MEDIUM, 4: MEDIUM, 5: LOW, 6: LOW, 7: LOW},
   };
+  const ENGINE_TONE = {
+    suricata: "bg-accent-soft border-accent-soft text-accent",
+    modsecurity: "bg-primary-soft border-primary-soft text-primary",
+  };
+  const engineTone = (source) => ENGINE_TONE[source] || "border-line text-body";
   const severityOf = (d) => (SEVERITY[d.source] || {})[d.severity] || INFORMATIONAL;
 
   let rows = [];
@@ -338,7 +347,7 @@
     document.querySelectorAll(".tab").forEach((tab) => {
       const on = tab.dataset.tab === name;
       tab.className = `tab px-4 py-2 text-sm ${on
-        ? "text-slate-100 border-b-2 border-sky-500" : "text-slate-500 hover:text-slate-300"}`;
+        ? "text-primary font-medium border-b-2 border-primary" : "text-muted hover:text-heading"}`;
     });
     if (name === "score") renderScore();
     if (name === "dashboard") renderDashboard(true);
@@ -451,9 +460,9 @@
     label.textContent = reachable ? (live ? t("blue.live.on") : t("blue.live.paused"))
                                   : (live ? t("blue.live.unreachable") : t("blue.live.paused"));
     document.getElementById("live-dot").className = !live
-      ? "w-2 h-2 rounded-full bg-slate-600"
-      : reachable ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
-                  : "w-2 h-2 rounded-full bg-rose-500 animate-pulse";
+      ? "w-2 h-2 rounded-full bg-muted"
+      : reachable ? "w-2 h-2 rounded-full bg-success animate-pulse"
+                  : "w-2 h-2 rounded-full bg-danger animate-pulse";
     toggle.title = reachable ? "" : (unreachableDetail || t("blue.live.unreachable_title"));
   }
 
@@ -521,21 +530,21 @@
   const cut = (escaped, escapedTitle) =>
     `<div class="truncate"${titled(escapedTitle)}>${escaped || "-"}</div>`;
   const num = (n) =>
-    `<td class="${cell} text-right whitespace-nowrap tabular-nums text-slate-300">${esc(n)}</td>`;
+    `<td class="${cell} text-right whitespace-nowrap tabular-nums text-heading">${esc(n)}</td>`;
   const text = (s, tone) =>
-    `<td class="${cell} ${tone || "text-slate-400"}">${esc(s) || "-"}</td>`;
+    `<td class="${cell} ${tone || "text-body"}">${esc(s) || "-"}</td>`;
   const address = (value, host, tone) =>
-    `<td class="${cell} font-mono text-xs whitespace-nowrap ${tone || "text-slate-300"}">${
+    `<td class="${cell} font-mono text-xs whitespace-nowrap ${tone || "text-heading"}">${
       esc(value)}` +
-    (host ? `<div class="font-sans text-slate-400 mt-0.5">${esc(host)}</div>` : "") +
+    (host ? `<div class="font-sans text-muted mt-0.5">${esc(host)}</div>` : "") +
     `</td>`;
   const empty = (columns) =>
-    `<tr><td class="${cell} text-slate-500" colspan="${columns}">${
+    `<tr><td class="${cell} text-muted" colspan="${columns}">${
       esc(t("blue.table.empty"))}</td></tr>`;
 
   function fill(id, rows, row, columns) {
     document.getElementById(id).innerHTML =
-      rows.map((r) => `<tr class="border-t border-slate-800/70">${row(r)}</tr>`).join("")
+      rows.map((r) => `<tr class="border-t border-line-subdued">${row(r)}</tr>`).join("")
       || empty(columns);
   }
 
@@ -550,7 +559,7 @@
 
   function renderTop(body) {
     fill("sources", body.sources, (s) => [
-      address(s.src_ip, s.host, s.outside ? "text-rose-300" : "text-slate-300"),
+      address(s.src_ip, s.host, s.outside ? "text-danger" : "text-heading"),
       text(s.zone),
       text([s.city, s.country].filter(Boolean).join(", ")),
       num(s.alerts),
@@ -564,14 +573,14 @@
     ].join(""), 4);
 
     fill("signatures", body.signatures, (s) => [
-      `<td class="${cell} text-slate-300">${clamped(esc(s.signature), "min-w-40")}</td>`,
-      text(s.engine, "text-xs text-slate-400 whitespace-nowrap"),
+      `<td class="${cell} text-heading">${clamped(esc(s.signature), "min-w-40")}</td>`,
+      text(s.engine, "text-xs text-muted whitespace-nowrap"),
       num(s.alerts),
     ].join(""), 3);
 
     fill("paths", body.paths, (p) => [
-      text(p.method, "text-xs text-slate-500 whitespace-nowrap"),
-      `<td class="${cell} w-full max-w-0 min-w-32 font-mono text-xs text-slate-300">${
+      text(p.method, "text-xs text-muted whitespace-nowrap"),
+      `<td class="${cell} w-full max-w-0 min-w-32 font-mono text-xs text-heading">${
         cut(esc(decodePath(p.path)), esc(decodePath(p.path)))}</td>`,
       num(p.alerts),
     ].join(""), 3);
@@ -586,7 +595,7 @@
   }
 
   const bar = (n, tallest, width) => `
-    <div class="${width} bg-sky-600/70 rounded-sm" title="${esc(t("blue.histogram.bar_title", n))}"
+    <div class="${width} bg-teal rounded-sm" title="${esc(t("blue.histogram.bar_title", n))}"
          style="height:${Math.max(n / tallest * 100, n ? 6 : 1)}%"></div>`;
 
   function renderHistogram() {
@@ -692,27 +701,27 @@
 
     document.getElementById("rows").innerHTML = shown.slice().reverse().slice(0, 300)
       .map((d) => `
-      <tr data-id="${esc(d.id)}" class="alert-row border-t border-slate-900
-          hover:bg-slate-900/60 cursor-pointer">
-        <td class="${alertCell} text-slate-500 font-mono text-xs whitespace-nowrap">
+      <tr data-id="${esc(d.id)}" class="alert-row border-t border-line-subdued
+          hover:bg-primary-soft cursor-pointer">
+        <td class="${alertCell} text-muted font-mono text-xs whitespace-nowrap">
           ${esc((d.timestamp || "").replace("T", " ").slice(0, 19))}</td>
-        <td class="${alertCell} ${severityOf(d).text} text-xs whitespace-nowrap">${
+        <td class="${alertCell} ${severityOf(d).text} text-xs font-medium whitespace-nowrap">${
           esc(t(severityOf(d).key))}</td>
         <td class="${alertCell} whitespace-nowrap"><span class="border rounded px-1.5 py-0.5 text-xs
-          border-slate-700 text-slate-400">${esc(d.source)}</span></td>
-        <td class="${alertCell} w-1/3 text-slate-200">${clamped(esc(d.signature), "min-w-56")}</td>
-        <td class="${alertCell} ${d.outside ? "text-rose-300" : "text-slate-400"}
+          ${engineTone(d.source)}">${esc(d.source)}</span></td>
+        <td class="${alertCell} w-1/3 text-heading">${clamped(esc(d.signature), "min-w-56")}</td>
+        <td class="${alertCell} ${d.outside ? "text-danger" : "text-body"}
             font-mono text-xs whitespace-nowrap">${esc(d.src_ip) || "-"}</td>
-        <td class="${alertCell} text-slate-500 text-xs whitespace-nowrap">${esc(d.zone) || "-"}</td>
-        <td class="${alertCell} text-slate-500 text-xs whitespace-nowrap">${
+        <td class="${alertCell} text-muted text-xs whitespace-nowrap">${esc(d.zone) || "-"}</td>
+        <td class="${alertCell} text-muted text-xs whitespace-nowrap">${
           esc([d.city, d.country].filter(Boolean).join(", ")) || "-"}</td>
-        <td class="${alertCell} text-slate-400 font-mono text-xs whitespace-nowrap">${
+        <td class="${alertCell} text-body font-mono text-xs whitespace-nowrap">${
           esc(d.dest_ip) || "-"}</td>
-        <td class="${alertCell} text-slate-400 font-mono text-xs whitespace-nowrap tabular-nums">${
+        <td class="${alertCell} text-body font-mono text-xs whitespace-nowrap tabular-nums">${
           d.dest_port === null || d.dest_port === undefined ? "-" : esc(d.dest_port)}</td>
-        <td class="${alertCell} w-1/6 max-w-0 min-w-40 text-slate-400 font-mono text-xs">${
+        <td class="${alertCell} w-1/6 max-w-0 min-w-40 text-body font-mono text-xs">${
           d.path ? cut(esc(`${d.method} ${decodePath(d.path)}`), esc(decodePath(d.path))) : "-"}</td>
-        <td class="${alertCell} text-xs ${unplaced(d) ? "text-slate-400" : "text-slate-300"}">
+        <td class="${alertCell} text-xs ${unplaced(d) ? "text-muted" : "text-heading"}">
           ${caseCell(d)}</td>
       </tr>`).join("");
 
@@ -729,7 +738,7 @@
       document.querySelectorAll(".chip").forEach((other) => {
         const on = other.dataset.source === sourceFilter;
         other.className = `chip px-3 py-2 rounded text-xs border ${on
-          ? "border-sky-600 text-sky-300 bg-sky-950/40" : "border-slate-700 text-slate-400"}`;
+          ? "border-primary text-primary bg-primary-soft" : "bg-panel border-line text-body hover:border-primary"}`;
       });
       renderAlerts();
     });
@@ -776,13 +785,13 @@
       sid, reason: document.getElementById("suppress-reason").value,
     }, PATIENCE_FOR_RANGE_WORK);
     if (!applied.ok) {
-      result.className = "text-xs mt-2 text-rose-400";
+      result.className = "text-xs mt-2 text-danger";
       result.title = applied.body.detail || applied.status;
       result.textContent =
         t("blue.drawer.suppress.failed", applied.body.detail || applied.status);
       return;
     }
-    result.className = "text-xs mt-2 text-amber-300";
+    result.className = "text-xs mt-2 text-warning";
     result.title = "";
     result.textContent = t("blue.drawer.suppress.done", sid,
       new Date(applied.body.expires_at).toLocaleTimeString());
@@ -794,23 +803,23 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
   const VERDICT_STYLE = {
-    TP: "text-emerald-400", TN: "text-emerald-400",
-    FP: "text-amber-400", FN: "text-rose-400",
+    TP: "text-success", TN: "text-success",
+    FP: "text-warning", FN: "text-danger",
   };
 
   function evidence(c) {
-    if (!c.detected) return `<span class="text-slate-400">-</span>`;
+    if (!c.detected) return `<span class="text-muted">-</span>`;
     if (c.corroborated === null) {
-      return `<span class="text-slate-400" title="${
+      return `<span class="text-muted" title="${
         esc(t("blue.score.evidence.unjudged_title"))}">${
         esc(t("blue.score.evidence.unjudged"))}</span>`;
     }
     if (c.corroborated) {
-      return `<span class="text-emerald-500" title="${
+      return `<span class="text-success" title="${
         esc(t("blue.score.evidence.match_title", c.expect))}">${
         esc(t("blue.score.evidence.match", c.expect))}</span>`;
     }
-    return `<span class="text-amber-400 font-semibold" title="${
+    return `<span class="text-warning font-semibold" title="${
       esc(t("blue.score.evidence.wrong_reason_title", c.expect))}">${
       esc(t("blue.score.evidence.wrong_reason"))}</span>`;
   }
@@ -818,10 +827,10 @@
   const rate = (value, cases) => cases > 0 ? value.toFixed(2) : "-";
 
   function tile(label, value, note) {
-    return `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-      <div class="text-slate-500 text-xs uppercase tracking-wide">${esc(label)}</div>
-      <div class="text-2xl font-semibold text-slate-100 tabular-nums">${esc(value)}</div>
-      ${note ? `<div class="text-slate-400 text-xs mt-0.5">${esc(note)}</div>` : ""}</div>`;
+    return `<div class="bg-panel border border-line rounded p-3">
+      <div class="text-muted text-xs uppercase tracking-wide">${esc(label)}</div>
+      <div class="text-2xl font-semibold text-heading tabular-nums">${esc(value)}</div>
+      ${note ? `<div class="text-muted text-xs mt-0.5">${esc(note)}</div>` : ""}</div>`;
   }
 
   async function renderScore() {
@@ -830,8 +839,8 @@
 
     const score = await api(`/api/sessions/${sessionId()}/score/`);
     if (!score.ok) {
-      warnings.innerHTML = `<div class="bg-rose-950 border border-rose-800 rounded p-3
-        text-rose-200 text-sm" title="${esc(score.body.detail || score.status)}">${
+      warnings.innerHTML = `<div class="bg-danger-soft border border-danger-soft rounded p-3
+        text-danger text-sm" title="${esc(score.body.detail || score.status)}">${
         esc(t("blue.score.failed", score.body.detail || score.status))}</div>`;
       return;
     }
@@ -848,11 +857,11 @@
       tile(t("blue.score.tile.unattributed"), s.unattributed,
            t("blue.score.tile.unattributed.note"));
 
-    warnings.innerHTML = s.warnings.map((w) => `<div class="bg-amber-950 border
-      border-amber-800 rounded p-3 text-amber-200 text-sm">${esc(t(...w))}</div>`).join("");
+    warnings.innerHTML = s.warnings.map((w) => `<div class="bg-warning-soft border
+      border-warning-soft rounded p-3 text-warning text-sm">${esc(t(...w))}</div>`).join("");
 
     document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
-      <tr class="border-b border-slate-900">
+      <tr class="border-b border-line-subdued last:border-b-0">
         <td class="py-2 px-3">${esc(c.name)}</td>
         <td class="py-2 px-3 whitespace-nowrap">${
           esc(c.malicious ? t("blue.score.case.malicious") : t("blue.score.case.benign"))}</td>
@@ -861,7 +870,7 @@
         <td class="py-2 px-3 text-right whitespace-nowrap tabular-nums">${
           c.detection_ids.length}</td>
         <td class="py-2 px-3 text-xs">${evidence(c)}</td>
-      </tr>`).join("") || `<tr><td colspan="5" class="py-2 px-3 text-slate-500 text-xs">${
+      </tr>`).join("") || `<tr><td colspan="5" class="py-2 px-3 text-muted text-xs">${
         esc(t("blue.score.case.empty"))}</td></tr>`;
 
     await Promise.all([renderComparison(s.warnings), renderOperatorLog()]);
@@ -871,24 +880,24 @@
     const body = document.getElementById("operator-log");
     const typed = await api(`/api/sessions/${sessionId()}/commands/`);
     if (!typed.ok || !Array.isArray(typed.body.commands)) {
-      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-amber-400 text-xs">${
+      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-warning text-xs">${
         esc(t("blue.score.operator.unavailable", detail(typed)))}</td></tr>`;
       return;
     }
     if (!typed.body.commands.length) {
-      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-slate-500 text-xs">${
+      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-muted text-xs">${
         esc(t("blue.score.operator.empty"))}</td></tr>`;
       return;
     }
 
     const named = await caseNames();
     body.innerHTML = typed.body.commands.map((c) => `
-      <tr class="border-b border-slate-900">
-        <td class="py-2 px-3 text-slate-400 tabular-nums whitespace-nowrap">${esc(c.at)}</td>
-        <td class="py-2 px-3 text-slate-400">${esc(
+      <tr class="border-b border-line-subdued last:border-b-0">
+        <td class="py-2 px-3 text-muted tabular-nums whitespace-nowrap">${esc(c.at)}</td>
+        <td class="py-2 px-3 text-muted">${esc(
           c.case_id ? (named[c.case_id] || c.case_id) : t("blue.score.operator.unlabelled")
         )}</td>
-        <td class="py-2 px-3 font-mono text-slate-200 break-all">${esc(c.text)}</td>
+        <td class="py-2 px-3 font-mono text-heading break-all">${esc(c.text)}</td>
       </tr>`).join("");
   }
 
@@ -901,16 +910,16 @@
   function renderBreaches(s) {
     const o = s.objectives;
     const missed = o.undetected
-      ? "text-rose-400"
-      : "text-slate-100";
+      ? "text-danger"
+      : "text-heading";
 
     document.getElementById("breach-totals").innerHTML =
       tile(t("blue.score.breaches.tile.objectives"), o.objectives) +
-      `<div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-         <div class="text-slate-500 text-xs uppercase tracking-wide">${
+      `<div class="bg-panel border border-line rounded p-3">
+         <div class="text-muted text-xs uppercase tracking-wide">${
            esc(t("blue.score.breaches.tile.undetected"))}</div>
          <div class="text-2xl font-semibold ${missed} tabular-nums">${o.undetected}</div>
-         <div class="text-slate-400 text-xs mt-0.5">${
+         <div class="text-muted text-xs mt-0.5">${
            esc(t("blue.score.breaches.tile.difficulty", o.undetected_difficulty))}</div>
        </div>` +
       tile(t("blue.score.breaches.tile.coverage"),
@@ -919,7 +928,7 @@
 
     if (!s.breaches.length) {
       document.getElementById("breach-table").innerHTML =
-        `<p class="text-slate-500 text-sm p-5 text-center">${
+        `<p class="text-muted text-sm p-5 text-center">${
           esc(t("blue.score.breaches.empty"))}</p>`;
       return;
     }
@@ -927,7 +936,7 @@
     document.getElementById("breach-table").innerHTML = `
       <div class="overflow-x-auto">
       <table class="w-full text-sm break-keep">
-        <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide
+        <thead class="bg-subdued text-muted text-xs uppercase tracking-wide
                       whitespace-nowrap">
           <tr><th class="text-left py-2 px-3 font-medium">${
                 esc(t("blue.score.breaches.col.difficulty"))}</th>
@@ -940,16 +949,16 @@
               <th class="text-right py-2 px-3 font-medium">${esc(t("blue.col.alerts"))}</th></tr>
         </thead>
         <tbody>${s.breaches.map((b) => `
-          <tr class="border-t border-slate-900">
-            <td class="py-2 px-3 text-amber-400 font-mono text-xs whitespace-nowrap">
+          <tr class="border-t border-line-subdued">
+            <td class="py-2 px-3 text-warning font-mono text-xs whitespace-nowrap">
               ${"*".repeat(b.difficulty)}</td>
-            <td class="py-2 px-3 text-slate-100">${esc(b.name)}</td>
-            <td class="py-2 px-3 text-slate-500 text-xs">${esc(b.category)}</td>
-            <td class="${b.detected ? "text-amber-400" : "text-rose-400"}
+            <td class="py-2 px-3 text-heading">${esc(b.name)}</td>
+            <td class="py-2 px-3 text-muted text-xs">${esc(b.category)}</td>
+            <td class="${b.detected ? "text-warning" : "text-danger"}
                 py-2 px-3 whitespace-nowrap font-semibold text-xs">
               ${esc(b.detected ? t("blue.score.breaches.detected")
                                : t("blue.score.breaches.missed"))}</td>
-            <td class="py-2 px-3 text-right text-slate-400 tabular-nums">${
+            <td class="py-2 px-3 text-right text-muted tabular-nums">${
               b.detection_ids.length}</td>
           </tr>`).join("")}</tbody>
       </table>
@@ -964,11 +973,11 @@
     const titles = [t("blue.score.strategy.marker"), t("blue.score.strategy.window")];
 
     document.getElementById("comparison").innerHTML = scored.map((result, i) => {
-      const heading = `<div class="text-slate-500 text-xs uppercase tracking-wide mb-2">${
+      const heading = `<div class="text-muted text-xs uppercase tracking-wide mb-2">${
         esc(titles[i])}</div>`;
       if (!result.ok) {
-        return `<div class="border border-slate-800 rounded p-4">${heading}
-          <div class="text-amber-400 text-sm" title="${
+        return `<div class="bg-panel border border-line rounded p-4">${heading}
+          <div class="text-warning text-sm" title="${
             esc(result.body.detail || result.status)}">${
             esc(t("blue.score.comparison.error", detail(result)))}</div></div>`;
       }
@@ -976,11 +985,11 @@
       const why = (s.warnings || []).map((w) => t(...w))
         .filter((text) => !alreadyShown.has(text))
         .map((text) => `
-        <div class="text-amber-400/90 text-xs mt-2">${esc(text)}</div>`).join("");
-      return `<div class="border border-slate-800 rounded p-4">${heading}
-        <div class="text-slate-100 tabular-nums">${
+        <div class="text-warning text-xs mt-2">${esc(text)}</div>`).join("");
+      return `<div class="bg-panel border border-line rounded p-4">${heading}
+        <div class="text-heading tabular-nums">${
           esc(t("blue.score.comparison.counts", s.tp, s.fn, s.fp, s.tn))}</div>
-        <div class="text-slate-500 text-sm mt-1 tabular-nums">${
+        <div class="text-muted text-sm mt-1 tabular-nums">${
           esc(t("blue.score.comparison.rates",
                 rate(s.precision, s.tp + s.fp), rate(s.recall, s.tp + s.fn)))}</div>${why}</div>`;
     }).join("");
@@ -993,9 +1002,9 @@
 
   function show(text, ok) {
     output.textContent = text;
-    output.className = `mt-4 bg-slate-900 border rounded p-4 text-xs
-      whitespace-pre-wrap ${ok ? "border-emerald-800 text-emerald-300"
-                               : "border-rose-800 text-rose-300"}`;
+    output.className = `mt-4 border rounded p-4 text-xs
+      whitespace-pre-wrap ${ok ? "bg-success-soft border-success-soft text-success"
+                               : "bg-danger-soft border-danger-soft text-danger"}`;
   }
 
   document.getElementById("validate").addEventListener("click", async () => {
@@ -1053,19 +1062,19 @@
     if (anyLifted(body.restored)) loadRules();
 
     panel.innerHTML = body.suppressions.map((s) => `
-      <div class="border-t border-slate-900 px-4 py-3 flex items-center gap-4">
-        <span class="text-amber-300 font-mono text-sm">${
+      <div class="border-t border-line-subdued first:border-t-0 px-4 py-3 flex items-center gap-4">
+        <span class="text-warning font-mono text-sm">${
           esc(t("blue.rules.suppression.sid", s.sid))}</span>
-        <span class="text-slate-400 text-sm flex-1">${
+        <span class="text-muted text-sm flex-1">${
           esc(s.reason) || esc(t("blue.rules.suppression.no_reason"))}</span>
-        <span class="text-slate-500 text-xs">${
+        <span class="text-muted text-xs">${
           esc(t("blue.rules.suppression.back_at",
                 new Date(s.expires_at).toLocaleTimeString()))}</span>
         <button data-id="${esc(s.id)}"
-          class="lift px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 text-xs">${
+          class="lift px-3 py-1.5 rounded bg-panel border border-line hover:border-primary text-heading text-xs">${
           esc(t("blue.rules.suppression.restore"))}</button>
       </div>`).join("") ||
-      `<p class="text-slate-500 text-sm p-4">${esc(t("blue.rules.suppression.empty"))}</p>`;
+      `<p class="text-muted text-sm p-4">${esc(t("blue.rules.suppression.empty"))}</p>`;
 
     panel.querySelectorAll(".lift").forEach((button) => {
       button.addEventListener("click", () => restoreSuppression(button.dataset.id));

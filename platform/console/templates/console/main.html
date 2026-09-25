@@ -1,23 +1,23 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
 {% block content %}
-<h1 data-t="main.title" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
-<p data-t="main.intro" class="text-slate-400 text-sm mb-8"></p>
+<h1 data-t="main.title" class="text-2xl font-semibold text-heading mb-2"></h1>
+<p data-t="main.intro" class="text-muted text-sm mb-8"></p>
 
-<p id="sessions-error" class="text-rose-400 text-sm mb-10 hidden"></p>
+<p id="sessions-error" class="text-danger text-sm mb-10 hidden"></p>
 
 <section id="running-panel" class="mb-10 hidden">
-  <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-emerald-500 mb-3"></h2>
+  <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-success mb-3"></h2>
   <div id="running" class="space-y-2"></div>
 </section>
 
-<h2 data-t="main.scenarios" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
+<h2 data-t="main.scenarios" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
 <div id="wargames" class="grid gap-4 mb-10"></div>
-<p id="start-error" class="text-rose-400 text-sm mb-10 hidden"></p>
+<p id="start-error" class="text-danger text-sm mb-10 hidden"></p>
 
 <details id="finished-panel" class="mt-4">
   <summary data-t="main.finished"
-    class="text-sm uppercase tracking-wide text-slate-500 cursor-pointer select-none"></summary>
+    class="text-sm uppercase tracking-wide text-muted cursor-pointer select-none"></summary>
   <div id="finished" class="space-y-2 mt-3"></div>
 </details>
 {% endblock %}
@@ -36,14 +36,14 @@
       return;
     }
     document.getElementById("wargames").innerHTML = result.body.map((wargame) => `
-      <div class="border border-slate-800 rounded p-5 flex items-center gap-6">
+      <div class="bg-panel border border-line rounded p-5 flex items-center gap-6">
         <div class="flex-1">
-          <div class="text-slate-100 font-medium">${esc(wargame.name)}</div>
-          <div class="text-slate-400 text-sm mt-1">${esc(wargame.description)}</div>
-          <div class="text-slate-400 text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
+          <div class="text-heading font-medium">${esc(wargame.name)}</div>
+          <div class="text-body text-sm mt-1">${esc(wargame.description)}</div>
+          <div class="text-muted text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
         </div>
         <button data-wargame="${esc(wargame.id)}"
-          class="start px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm">
+          class="start px-4 py-2 rounded bg-primary hover:bg-primary-strong text-inverse text-sm">
           ${esc(t("main.start"))}
         </button>
       </div>`).join("");
@@ -64,15 +64,15 @@
 
   function sessionRow(session, running) {
     const state = running ? t("main.open") : t("main.closed");
-    const tone = running ? "text-emerald-400" : "text-slate-400";
+    const tone = running ? "text-success" : "text-muted";
     return `
       <a href="/session/${esc(session.id)}/"
-         class="block border rounded px-4 py-3 ${running
-           ? "border-emerald-900 hover:border-emerald-600"
-           : "border-slate-800 hover:border-slate-600"}">
-        <span class="text-slate-100">${esc(t("common.session", session.id))}</span>
-        <span class="text-slate-500 text-sm ml-3">${esc(session.scenario)}</span>
-        <span class="text-slate-400 text-xs ml-3">${
+         class="block bg-panel border rounded px-4 py-3 ${running
+           ? "border-success-soft hover:border-success"
+           : "border-line hover:border-primary"}">
+        <span class="text-heading">${esc(t("common.session", session.id))}</span>
+        <span class="text-body text-sm ml-3">${esc(session.scenario)}</span>
+        <span class="text-muted text-xs ml-3">${
           esc((session.started_at || "").replace("T", " ").slice(0, 19))}</span>
         <span class="text-xs ml-3 ${tone}">${esc(state)}</span>
       </a>`;
