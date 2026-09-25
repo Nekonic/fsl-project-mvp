@@ -6,7 +6,8 @@ from dataclasses import replace
 
 from range.declared import Declaration
 from range.ports import (
-    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, reported, reporting,
+    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute, reported,
+    reporting,
 )
 
 def _one_subnet(network_name: str, config: list) -> str:
@@ -39,12 +40,7 @@ class Docker:
         return tuple(self._placed(self._networks()))
 
     def _networks(self) -> list[dict]:
-        names = self._lines([
-            "network", "ls",
-            "--filter", f"label={PROJECT_LABEL}={self.project}",
-            "--filter", f"label={SEGMENT_LABEL}",
-            "--format", "{{.Name}}",
-        ])
+        names = self._named(SEGMENT_LABEL)
         if not names:
             raise RangeUnavailable(
                 f"no network of project {self.project!r} carries {SEGMENT_LABEL}"
@@ -58,36 +54,22 @@ class Docker:
         ]
 
     def runner(self, role: str, segment_id: str = ""):
-        host = self.declared.roles.get(role)
-        if host is None:
-            raise RangeUnavailable(f"no host fills the role {role!r}")
+        host = self.declared.host(role)
 
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
             command = ["docker", "exec"]
             if stdin is not None:
                 command.append("-i")
             command += [host, *reporting(argv)]
-            try:
-                done = subprocess.run(
-                    command, input=stdin, capture_output=True,
-                    text=True, errors="replace", timeout=timeout,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise RangeUnavailable(
-                    f"{host} did not finish within {timeout:.0f}s and may "
-                    f"still be running it"
-                ) from exc
-            except (OSError, subprocess.SubprocessError) as exc:
-                raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
-            finished = reported(done.stderr or "")
-            if finished is None:
+            done = execute(host, command, stdin, timeout)
+            ran = reported(done)
+            if ran is None:
                 said = (done.stderr or done.stdout or "").strip()[:300]
                 raise RangeUnavailable(
                     f"{host} never reported the command finishing: "
                     + (said or f"docker exited {done.returncode}")
                 )
-            code, stderr = finished
-            return Ran(exit_code=code, output=(done.stdout or "") + stderr)
+            return ran
 
         return run
 
@@ -118,12 +100,7 @@ class Docker:
         return launch
 
     def _network_of(self, segment_id: str) -> str:
-        found = self._lines([
-            "network", "ls",
-            "--filter", f"label={PROJECT_LABEL}={self.project}",
-            "--filter", f"label={SEGMENT_LABEL}={segment_id}",
-            "--format", "{{.Name}}",
-        ])
+        found = self._named(f"{SEGMENT_LABEL}={segment_id}")
         if len(found) != 1:
             raise RangeUnavailable(
                 f"{len(found)} networks of project {self.project!r} carry "
@@ -163,7 +140,7 @@ class Docker:
             self.declared.segment(segment_id),
             subnet=_one_subnet(network["Name"], config),
             network=network["Name"],
-            gateway=(config[0].get("Gateway", "") if config else ""),
+            gateway=config[0].get("Gateway", ""),
             nodes=tuple(nodes),
         )
 
@@ -178,9 +155,7 @@ class Docker:
         }
         modes = self._modes()
         found = []
-        for sensing, sensed in sorted(self.declared.watches.items()):
-            name = self.declared.roles[sensing]
-            host = self.declared.roles[sensed]
+        for name, host in self.declared.watching():
             sharing = named.get(modes.get(name, "").partition(":")[2], "")
             if sharing != host:
                 raise RangeUnavailable(
@@ -208,6 +183,14 @@ class Docker:
             if name:
                 modes[name.lstrip("/")] = mode
         return modes
+
+    def _named(self, label: str) -> list[str]:
+        return self._lines([
+            "network", "ls",
+            "--filter", f"label={PROJECT_LABEL}={self.project}",
+            "--filter", f"label={label}",
+            "--format", "{{.Name}}",
+        ])
 
     def _lines(self, argv: list[str]) -> list[str]:
         return [line.strip() for line in self._read(argv).splitlines() if line.strip()]

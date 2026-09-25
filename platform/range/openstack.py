@@ -11,7 +11,8 @@ from dataclasses import dataclass, replace
 
 from range.declared import Declaration
 from range.ports import (
-    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, reported, reporting,
+    Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute, reported,
+    reporting,
 )
 
 TOKEN = "POST {keystone}/v3/auth/tokens"
@@ -31,14 +32,10 @@ CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
 PINNING = {"stricthostkeychecking true", "stricthostkeychecking ask"}
-ALIASED = "hostkeyalias"
 NOVA_MICROVERSION = "2.1"
-NOVA_VERSION_HEADER = "X-OpenStack-Nova-API-Version"
-TOKEN_HEADER = "X-Auth-Token"
 SUBJECT_TOKEN = "X-Subject-Token"
-
-NETWORK_SERVICE = "network"
-COMPUTE_SERVICE = "compute"
+SEGMENT_TAG = "fsl.segment.id"
+ATTACKER_ROLE = "attacker"
 
 SETTINGS = {
     "keystone": "FSL_OPENSTACK_KEYSTONE",
@@ -120,8 +117,8 @@ def discover(
     catalog = (answered.json().get("token") or {}).get("catalog") or []
     return Cloud(
         keystone=keystone,
-        neutron=_endpoint(catalog, NETWORK_SERVICE, region, interface),
-        nova=_endpoint(catalog, COMPUTE_SERVICE, region, interface),
+        neutron=_endpoint(catalog, "network", region, interface),
+        nova=_endpoint(catalog, "compute", region, interface),
         project=project,
         user=user,
         ssh_user=ssh_user,
@@ -218,29 +215,21 @@ def _expiry(answered) -> datetime | None:
         return None
 
 def _spent(expires: datetime | None) -> bool:
-    if expires is None:
-        return False
-    return datetime.now(timezone.utc) + RENEW_BEFORE >= expires
+    return expires is not None and datetime.now(timezone.utc) + RENEW_BEFORE >= expires
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
-    headers = {NOVA_VERSION_HEADER: NOVA_MICROVERSION}
+    headers = {"X-OpenStack-Nova-API-Version": NOVA_MICROVERSION}
     if token:
-        headers[TOKEN_HEADER] = token
+        headers["X-Auth-Token"] = token
     try:
         return getattr(requests, verb)(
             url, headers=headers, json=body, timeout=timeout
         )
     except requests.RequestException as exc:
         raise EndpointGone(f"could not reach {url}: {exc}") from exc
-VERSION = "version"
-IP_VERSION = "ip_version"
-
-SEGMENT_TAG = "fsl.segment.id"
-ATTACKER_ROLE = "attacker"
-
 
 def _one_ipv4_subnet(segment_id: str, allocated: list[dict]) -> dict:
-    ipv4 = [subnet for subnet in allocated if subnet.get(IP_VERSION, 4) == 4]
+    ipv4 = [subnet for subnet in allocated if subnet.get("ip_version", 4) == 4]
     if len(ipv4) > 1:
         raise RangeUnavailable(
             f"segment {segment_id!r} has {len(ipv4)} IPv4 subnets "
@@ -261,12 +250,6 @@ def _generations(servers: list[dict]) -> dict[str, str]:
                 if entry.get(FIXED) == "fixed":
                     found[entry["addr"]] = generation
     return found
-
-def _next(links) -> str:
-    for link in links or []:
-        if link.get("rel") == "next" and link.get("href"):
-            return link["href"]
-    return ""
 
 def unimplemented(call: str) -> dict:
     raise NotImplementedError(
@@ -344,9 +327,7 @@ class OpenStack:
         return Shape(segments=tuple(segments), sensors=self._sensors(servers))
 
     def runner(self, role: str, segment_id: str = ""):
-        host = self.declared.roles.get(role)
-        if host is None:
-            raise RangeUnavailable(f"no host fills the role {role!r}")
+        host = self.declared.host(role)
 
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
             address = self._address(role, host, segment_id)
@@ -355,33 +336,21 @@ class OpenStack:
                 config = self._config(Path(scratch) / "ssh_config", address)
                 command = self._ssh(address, stdin is not None, said, config)
                 command.append(shlex.join(reporting(argv)))
-                try:
-                    done = subprocess.run(
-                        command, input=stdin, capture_output=True,
-                        text=True, errors="replace", timeout=timeout,
-                    )
-                except subprocess.TimeoutExpired as exc:
-                    raise RangeUnavailable(
-                        f"{host} did not finish within {timeout:.0f}s and may "
-                        f"still be running it"
-                    ) from exc
-                except (OSError, subprocess.SubprocessError) as exc:
-                    raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+                done = execute(host, command, stdin, timeout)
                 logged = said.read_text() if said.exists() else ""
                 complaint = " ".join(filter(None, (
                     line.strip("@ ") for line in
                     f"{logged}\n{done.stderr or ''}".splitlines()
                 )))
 
-            finished = reported(done.stderr or "")
-            if finished is None:
+            ran = reported(done)
+            if ran is None:
                 raise RangeUnavailable(
                     f"{host} at {address} never reported the command "
                     f"finishing: "
                     + (complaint[:1000] or "the connection ended before it did")
                 )
-            code, stderr = finished
-            return Ran(exit_code=code, output=(done.stdout or "") + stderr)
+            return ran
 
         return run
 
@@ -432,7 +401,7 @@ class OpenStack:
                 f"could not read how ssh would reach {address}: {exc}"
             ) from exc
         return bool(PINNING & set(resolved)) or any(
-            line.startswith(f"{ALIASED} ") for line in resolved
+            line.startswith("hostkeyalias ") for line in resolved
         )
 
     def launcher(self, segment_id: str):
@@ -471,19 +440,17 @@ class OpenStack:
             Node(name=server["name"], address=entry["addr"])
             for server in servers
             for entry in (server.get("addresses") or {}).get(network_name, [])
-            if entry.get(FIXED) == "fixed" and entry.get(VERSION, 4) == 4
+            if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4
         ]
         return tuple(sorted(found, key=lambda node: node.name))
 
     def _sensors(self, servers: list[dict]) -> tuple[Sensor, ...]:
         standing = {server["name"] for server in servers}
-        found = []
-        for sensing, sensed in sorted(self.declared.watches.items()):
-            name = self.declared.roles[sensing]
-            host = self.declared.roles[sensed]
-            if name in standing and host in standing:
-                found.append(Sensor(name=name, watches=host))
-        return tuple(found)
+        return tuple(
+            Sensor(name=name, watches=host)
+            for name, host in self.declared.watching()
+            if name in standing and host in standing
+        )
 
     def _address(self, role: str, host: str, segment_id: str) -> str:
         for segment in self.describe().segments:
@@ -499,11 +466,14 @@ class OpenStack:
         )
 
     def _all(self, call: str, key: str, **binding) -> list:
-        page = self._ask(call, **binding)
+        page = self.get(call.format(**vars(self.cloud), **binding))
         found = list(page.get(key) or [])
 
         for _ in range(PAGE_LIMIT):
-            href = _next(page.get(f"{key}_links"))
+            href = next((
+                link["href"] for link in page.get(f"{key}_links") or []
+                if link.get("rel") == "next" and link.get("href")
+            ), "")
             if not href:
                 return found
             page = self.get(f"GET {href}")
@@ -513,15 +483,4 @@ class OpenStack:
             f"{key} came back in more than {PAGE_LIMIT} pages, each one "
             f"pointing at the next; the cloud is looping or the range is not "
             f"what this platform is for"
-        )
-
-    def _ask(self, call: str, **binding) -> dict:
-        return self.get(
-            call.format(
-                keystone=self.cloud.keystone,
-                neutron=self.cloud.neutron,
-                nova=self.cloud.nova,
-                project=self.cloud.project,
-                **binding,
-            )
         )
