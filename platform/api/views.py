@@ -681,7 +681,7 @@ def session_detections(request, session_id):
         try:
             detections = detections.filter(id__gt=int(after, 10))
         except ValueError:
-            return _reply({"detail": f'"after" must be a row id, got {after!r}'}, 400)
+            raise BadRequest(f'"after" must be a row id, got {after!r}')
 
     detections = list(detections)
     addresses = {d.src_ip for d in detections if d.src_ip}
@@ -753,12 +753,9 @@ def session_score(request, session_id):
 
     forced = request.GET.get("correlation")
     if forced is not None and forced not in CORRELATION_STRATEGIES:
-        return _reply(
-            {
-                "detail": f'"{forced}" is not a valid strategy; expected one of '
-                f"{', '.join(CORRELATION_STRATEGIES)}."
-            },
-            status=400,
+        raise BadRequest(
+            f'"{forced}" is not a valid strategy; expected one of '
+            f"{', '.join(CORRELATION_STRATEGIES)}."
         )
 
     cases = list(session.cases.all())
@@ -908,7 +905,7 @@ def _session_window(session):
 
 @require_http_methods(["GET"])
 def current_rules(request):
-    content = suricata.current(substrate().runner('sensor'))
+    content = _live_rules()
     return _reply({"content": content, "version": _version(content)})
 
 @require_http_methods(["POST"])
@@ -950,11 +947,11 @@ def suppressions(request):
     try:
         sid = int(body.get("sid"))
     except (TypeError, ValueError, OverflowError):
-        return _reply({"detail": f'"sid" must be a rule id, got {body.get("sid")!r}'}, 400)
+        raise BadRequest(f'"sid" must be a rule id, got {body.get("sid")!r}')
 
     minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
     expires_at = timezone.now() + timedelta(minutes=minutes)
-    content = suricata.current(substrate().runner('sensor'))
+    content = _live_rules()
 
     try:
         silenced = suppress.silence(content, sid, expires_at.isoformat())
@@ -962,7 +959,7 @@ def suppressions(request):
         raise Http404(f"no active rule carries sid {sid}")
 
     original = suppress.find(content, sid)
-    suricata.apply(silenced, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
+    _apply(silenced)
 
     record = Suppression.objects.create(
         sid=sid,
@@ -982,20 +979,18 @@ def restore_suppression(request, suppression_id):
     return _reply(_shape(record, SUPPRESSION_FIELDS) | {"detail": detail})
 
 def _restore(record) -> tuple[bool, str | None]:
-    current = suricata.current(substrate().runner('sensor'))
+    current = _live_rules()
     superseded = suppress.find(current, record.sid) is not None
     lift = suppress.discard if superseded else suppress.restore
     try:
         content = lift(current, record.sid, record.original)
     except KeyError:
-        record.restored_at = timezone.now()
-        record.save(update_fields=["restored_at"])
-        return True, None
-
-    try:
-        suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
-    except suricata.RuleApplyError as exc:
-        return False, f"could not restore sid {record.sid}: {exc}"
+        content = superseded = None
+    if content is not None:
+        try:
+            _apply(content)
+        except suricata.RuleApplyError as exc:
+            return False, f"could not restore sid {record.sid}: {exc}"
 
     record.restored_at = timezone.now()
     record.save(update_fields=["restored_at"])
@@ -1021,6 +1016,12 @@ def _restore_expired() -> list:
             lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
         return lifted
 
+def _live_rules():
+    return suricata.current(substrate().runner("sensor"))
+
+def _apply(content):
+    suricata.apply(content, substrate().runner("sensor"), settings.FSL_SENSOR_RELOAD)
+
 def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
@@ -1031,12 +1032,12 @@ def apply_rules(request):
     body = _payload(request)
     if "base" in body:
         base = body["base"]
-        live = _version(suricata.current(substrate().runner('sensor')))
+        live = _version(_live_rules())
         if base != live:
-            return _reply({
-                "detail": "the sensor's rules changed since this copy was loaded "
-                          f"(loaded {base or 'nothing'}, live {live}); reload them and edit again",
-            }, status=409)
-    suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
+            raise Conflict(
+                "the sensor's rules changed since this copy was loaded "
+                f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
+            )
+    _apply(content)
     ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))
