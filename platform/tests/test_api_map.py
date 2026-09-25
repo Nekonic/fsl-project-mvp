@@ -7,6 +7,7 @@ from tests.sessions import open_session
 pytestmark = pytest.mark.django_db
 
 T0 = "2026-09-20T12:00:00Z"
+SEOUL = {"lat": 37.5665, "lon": 126.978, "label": "Seoul, Korea"}
 MOSCOW = {
     "country_name": "Russia", "country_iso_code": "RU",
     "continent_name": "Europe", "location": {"lat": 55.7386, "lon": 37.6068},
@@ -95,7 +96,19 @@ def test_points_come_back_busiest_first(client, session_id):
 def test_a_session_with_nothing_in_it_draws_nothing(client, session_id):
     drawn = client.get(f"/api/sessions/{session_id}/map/").json()
 
-    assert drawn == {"points": [], "unlocated": 0}
+    assert drawn == {"points": [], "unlocated": 0, "target": SEOUL}
+
+def test_the_target_is_where_the_range_declares_the_defended_site(client, session_id):
+    drawn = ingest(client, session_id, [suricata("a", "5.188.10.2", MOSCOW)])
+
+    assert drawn["target"] == SEOUL
+
+def test_a_range_that_declares_no_site_draws_no_target(client, session_id, settings):
+    from dataclasses import replace
+
+    settings.RANGE = replace(settings.RANGE, defended_site=None)
+
+    assert client.get(f"/api/sessions/{session_id}/map/").json()["target"] is None
 
 def test_the_map_of_a_session_that_does_not_exist_is_404(client):
     assert client.get("/api/sessions/9999/map/").status_code == 404

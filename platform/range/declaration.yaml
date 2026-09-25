@@ -1,5 +1,10 @@
 default_origin: edge
 
+defended_site:
+  label: Seoul, Korea
+  lat: 37.5665
+  lon: 126.9780
+
 segments:
   - id: edge
     name: Internet
