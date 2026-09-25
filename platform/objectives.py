@@ -91,10 +91,8 @@ def _instant(logged: str) -> str:
         return logged
 
 def _internal(wiki=None) -> dict[str, Any]:
-    when = None
     try:
-        if wiki is not None:
-            when = wiki_read_at(wiki, settings.WIKI_SECRET_PATH)
+        when = None if wiki is None else wiki_read_at(wiki, settings.WIKI_SECRET_PATH)
     except (RangeUnavailable, OSError) as exc:
         raise ObjectivesUnavailable(
             f"could not read the wiki's access log: {exc}"

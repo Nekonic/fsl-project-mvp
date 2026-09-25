@@ -13,8 +13,7 @@ def corroborated(expect: str | None, signatures, indiscriminate=()) -> bool | No
     if not expect:
         return None
     needle = expect.lower()
-    discriminating = [s for s in signatures if s not in indiscriminate]
-    return any(needle in signature.lower() for signature in discriminating)
+    return any(needle in s.lower() for s in signatures if s not in indiscriminate)
 
 @dataclass(frozen=True)
 class Attempt:

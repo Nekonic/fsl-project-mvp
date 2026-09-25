@@ -23,12 +23,10 @@ def commands(attacker, path: str = LOG_PATH) -> list[Command]:
             f"could not read {path}: {ran.output.strip()[:200]}"
         )
 
-    found = []
-    for line in ran.output.splitlines():
-        record = _record(line)
-        if record is not None:
-            found.append(record)
-    return found
+    return [
+        record for line in ran.output.splitlines()
+        if (record := _record(line)) is not None
+    ]
 
 RESOLUTION = timedelta(seconds=1)
 
@@ -43,19 +41,12 @@ def within(
     ]
 
 def _record(line: str) -> Command | None:
-    stamp, tab, rest = line.partition("\t")
-    if not tab:
-        return None
+    stamp, _, rest = line.partition("\t")
     marker, tab, text = rest.partition("\t")
     if not tab or not text:
         return None
-    at = _parse(stamp)
-    if at is None:
-        return None
-    return Command(at=at, marker=marker, text=text)
-
-def _parse(stamp: str) -> datetime | None:
     try:
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return None
+    return Command(at=at, marker=marker, text=text)
