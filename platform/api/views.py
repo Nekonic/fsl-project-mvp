@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import BadRequest
 from django.db import IntegrityError, transaction
 from django.db.models import F
@@ -121,7 +120,7 @@ def _located(detections):
     return located
 
 def _reply(payload, status=200):
-    return JsonResponse(payload, status=status, encoder=DjangoJSONEncoder, safe=False)
+    return JsonResponse(payload, status=status, safe=False)
 
 def _payload(request):
     try:

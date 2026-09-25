@@ -22,8 +22,7 @@ def scored_hosts() -> frozenset[str]:
     try:
         segments = substrate().segments()
     except RangeUnavailable:
-        _cached = (time.monotonic(), frozenset())
-        return frozenset()
+        segments = ()
 
     scorer = settings.RANGE.roles.get("scorer") or ""
     known = frozenset(
