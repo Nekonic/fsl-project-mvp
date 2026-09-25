@@ -232,6 +232,13 @@ One line each.
 
 **The console**
 - One blue console: Dashboard, Live, Scoreboard, Rules; top-N, map and trend.
+- The map is Equal Earth cut at 60°S (24 KB, was 68), draws the declared
+  `defended_site` (Seoul) and a bowed line from each origin to it; its
+  colours are six `--map-*` variables. `bin/worldmap`'s input
+  `land-110m.json` is not in the repo; this map was rebuilt from the old SVG's
+  own coordinates and has not been regenerated from the real file.
+- Tables read at half a screen: every cell padded, IPs and counts never
+  wrap, signatures clamp to two lines with the full text in `title`.
 - Every value is escaped before it reaches the page, and a test says so.
   Juice Shop's HTML descriptions are therefore turned into plain text by the
   API (`objectives._displayed`), or the escaping shows their tags.
@@ -257,6 +264,12 @@ One line each.
 
 **Smaller**
 - Dropped djangorestframework, Kibana, Django boilerplate, dead marker-probing.
+- 2026-09-25 shrink: the refusals middleware answers 409/404/503/400 so views
+  raise; both substrates share one `execute()`/`reported()` in `ports.py`;
+  `views.py` 1,107 -> 999, core_loc 477 -> 472. Docs 1,252 -> 496 lines; the
+  2026-09-18 design spec was superseded and deleted, its live decisions moved
+  to ARCHITECTURE. `attacker.origins()` now reads the declaration loaded at
+  startup, so an edit to it needs a restart.
 - A slop sweep (2026-09-25): 139 findings, 80 upheld by two refuters each and
   applied. Error messages say what to change, a swallowed wiki or range error
   is reported, 23 tests that could not fail now can, config restating
@@ -317,8 +330,6 @@ says the second, because that is what is true today.
   platform user's home (lost with the container) unless the deployment's ssh
   config says otherwise. Reading them from `os-getConsoleOutput` is stronger,
   but libvirt returns only the last 100 KiB and the guest writes its console.
-- `docs/ARCHITECTURE.md` section 7 still lists the operator log and the
-  Tailwind CDN as absences; both are done.
 
 ## Tried and thrown away
 
