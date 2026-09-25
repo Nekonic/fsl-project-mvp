@@ -32,7 +32,7 @@
 <p id="truncated" class="hidden shrink-0 mb-2 border border-amber-800 bg-amber-950
    rounded px-3 py-2 text-amber-200 text-sm"></p>
 
-<section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3">
+<section data-panel="dashboard" class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto">
 <div class="grid grid-cols-4 gap-3 shrink-0">
   <div class="bg-slate-900/60 border border-slate-800 rounded px-4 py-2">
     <div data-t="blue.kpi.total" class="text-slate-500 text-xs uppercase tracking-widest"></div>
@@ -52,8 +52,9 @@
   </div>
 </div>
 
-<div class="flex-1 min-h-0 grid grid-cols-12 gap-3">
-  <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
+<div class="shrink-0 grid grid-cols-2 auto-rows-[18rem] gap-3 xl:shrink xl:flex-1 xl:min-h-0
+            xl:grid-cols-12 xl:grid-rows-[minmax(0,1fr)_13rem]">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
     <div class="flex items-center gap-3 px-4 py-2 border-b border-slate-800 shrink-0">
       <span data-t="blue.map.title" class="text-sm uppercase tracking-widest text-slate-500"></span>
       <span id="map-note" class="text-sm text-slate-400 ml-auto"></span>
@@ -73,18 +74,19 @@
     </div>
   </section>
 
-  <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
     <div data-t="blue.sources.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0
+         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
                 text-sm uppercase tracking-widest text-slate-500"></div>
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+    <div class="flex-1 min-h-0 overflow-auto">
+      <table class="w-full text-sm break-keep">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+                      whitespace-nowrap">
           <tr>
             <th data-t="blue.col.src_ip" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.zone" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.country" class="text-left py-1.5 px-3 font-medium"></th>
-            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
+            <th data-t="blue.col.alerts" class="text-right py-1.5 px-3 font-medium"></th>
           </tr>
         </thead>
         <tbody id="sources"></tbody>
@@ -92,47 +94,48 @@
     </div>
   </section>
 
-  <section class="col-span-3 min-h-0 flex flex-col border border-slate-800 rounded">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
     <div data-t="blue.signatures.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0
+         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
                 text-sm uppercase tracking-widest text-slate-500"></div>
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+    <div class="flex-1 min-h-0 overflow-auto">
+      <table class="w-full text-sm break-keep">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+                      whitespace-nowrap">
           <tr>
             <th data-t="blue.col.signature" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.engine" class="text-left py-1.5 px-3 font-medium"></th>
-            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
+            <th data-t="blue.col.alerts" class="text-right py-1.5 px-3 font-medium"></th>
           </tr>
         </thead>
         <tbody id="signatures"></tbody>
       </table>
     </div>
   </section>
-</div>
 
-<div class="shrink-0 grid grid-cols-12 gap-3" style="height:13rem">
-  <section class="col-span-3 flex flex-col border border-slate-800 rounded">
-    <div class="flex items-center gap-2 px-4 py-2 border-b border-slate-800 shrink-0">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-3">
+    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 border-b border-slate-800
+                shrink-0">
       <span data-t="blue.histogram.title"
-            class="text-sm uppercase tracking-widest text-slate-500"></span>
-      <span id="histogram-range" class="text-xs text-slate-500 ml-auto"></span>
+            class="text-sm uppercase tracking-widest text-slate-500 whitespace-nowrap"></span>
+      <span id="histogram-range" class="text-xs text-slate-500 ml-auto whitespace-nowrap"></span>
     </div>
-    <div id="histogram" class="flex-1 flex items-end gap-px p-2"></div>
+    <div id="histogram" class="flex-1 min-h-0 flex items-end justify-center gap-px p-2"></div>
   </section>
 
-  <section class="col-span-4 min-h-0 flex flex-col border border-slate-800 rounded">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-4">
     <div data-t="blue.destinations.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0
+         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
                 text-sm uppercase tracking-widest text-slate-500"></div>
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+    <div class="flex-1 min-h-0 overflow-auto">
+      <table class="w-full text-sm break-keep">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+                      whitespace-nowrap">
           <tr>
             <th data-t="blue.col.dest" class="text-left py-1.5 px-3 font-medium"></th>
-            <th data-t="blue.col.port" class="text-left py-1.5 px-3 font-medium"></th>
+            <th data-t="blue.col.port" class="text-right py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.zone" class="text-left py-1.5 px-3 font-medium"></th>
-            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
+            <th data-t="blue.col.alerts" class="text-right py-1.5 px-3 font-medium"></th>
           </tr>
         </thead>
         <tbody id="destinations"></tbody>
@@ -140,17 +143,18 @@
     </div>
   </section>
 
-  <section class="col-span-5 min-h-0 flex flex-col border border-slate-800 rounded">
+  <section class="min-h-0 min-w-0 flex flex-col border border-slate-800 rounded xl:col-span-5">
     <div data-t="blue.paths.title"
-         class="px-4 py-2 border-b border-slate-800 shrink-0
+         class="px-4 py-2 border-b border-slate-800 shrink-0 truncate
                 text-sm uppercase tracking-widest text-slate-500"></div>
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+    <div class="flex-1 min-h-0 overflow-auto">
+      <table class="w-full text-sm break-keep">
+        <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+                      whitespace-nowrap">
           <tr>
             <th data-t="blue.col.method" class="text-left py-1.5 px-3 font-medium"></th>
             <th data-t="blue.col.path" class="text-left py-1.5 px-3 font-medium"></th>
-            <th data-t="blue.col.alerts" class="text-right font-medium pr-3"></th>
+            <th data-t="blue.col.alerts" class="text-right py-1.5 px-3 font-medium"></th>
           </tr>
         </thead>
         <tbody id="paths"></tbody>
@@ -176,21 +180,22 @@
     </label>
     <span id="shown" class="text-xs text-slate-500"></span>
   </div>
-  <div class="flex-1 min-h-0 overflow-y-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+  <div class="flex-1 min-h-0 overflow-auto">
+    <table class="w-full text-sm break-keep">
+      <thead class="bg-slate-900/95 text-slate-500 text-xs uppercase tracking-wide sticky top-0
+                    whitespace-nowrap">
         <tr>
           <th data-t="blue.col.time" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.severity" class="text-left font-medium"></th>
-          <th data-t="blue.col.engine" class="text-left font-medium"></th>
-          <th data-t="blue.col.signature" class="text-left font-medium"></th>
-          <th data-t="blue.col.src_ip" class="text-left font-medium"></th>
-          <th data-t="blue.col.zone" class="text-left font-medium"></th>
-          <th data-t="blue.col.country" class="text-left font-medium"></th>
-          <th data-t="blue.col.dest" class="text-left font-medium"></th>
-          <th data-t="blue.col.port" class="text-left font-medium"></th>
-          <th data-t="blue.col.path" class="text-left font-medium"></th>
-          <th data-t="blue.col.case" class="text-left font-medium pr-3"></th>
+          <th data-t="blue.col.severity" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.engine" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.signature" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.src_ip" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.zone" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.country" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.dest" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.port" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.path" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.case" class="text-left py-2 px-3 font-medium"></th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -209,13 +214,13 @@
       class="text-lg font-semibold text-slate-100 mb-1"></h2>
   <div id="warnings" class="mb-5 space-y-2"></div>
   <div id="totals" class="grid grid-cols-4 gap-3 mb-8"></div>
-  <table class="w-full text-sm">
-    <thead class="text-slate-400 border-b border-slate-800">
-      <tr><th data-t="blue.col.case" class="text-left py-2"></th>
-          <th data-t="blue.score.case.col.truth" class="text-left"></th>
-          <th data-t="blue.score.case.col.disposition" class="text-left"></th>
-          <th data-t="blue.col.alerts" class="text-left"></th>
-          <th data-t="blue.score.case.col.evidence" class="text-left"></th></tr>
+  <table class="w-full text-sm break-keep">
+    <thead class="text-slate-400 border-b border-slate-800 whitespace-nowrap">
+      <tr><th data-t="blue.col.case" class="text-left py-2 px-3"></th>
+          <th data-t="blue.score.case.col.truth" class="text-left py-2 px-3"></th>
+          <th data-t="blue.score.case.col.disposition" class="text-left py-2 px-3"></th>
+          <th data-t="blue.col.alerts" class="text-right py-2 px-3"></th>
+          <th data-t="blue.score.case.col.evidence" class="text-left py-2 px-3"></th></tr>
     </thead>
     <tbody id="per-case"></tbody>
   </table>
@@ -223,11 +228,11 @@
   <h2 data-t="blue.score.operator.heading"
       class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-1"></h2>
   <p data-t="blue.score.operator.note" class="text-xs text-slate-500 mb-3"></p>
-  <table class="w-full text-sm">
-    <thead class="text-slate-400 border-b border-slate-800">
-      <tr><th data-t="blue.score.operator.col.at" class="text-left py-2 w-52"></th>
-          <th data-t="blue.col.case" class="text-left w-64"></th>
-          <th data-t="blue.score.operator.col.command" class="text-left"></th></tr>
+  <table class="w-full text-sm break-keep">
+    <thead class="text-slate-400 border-b border-slate-800 whitespace-nowrap">
+      <tr><th data-t="blue.score.operator.col.at" class="text-left py-2 px-3 w-52"></th>
+          <th data-t="blue.col.case" class="text-left py-2 px-3 w-64"></th>
+          <th data-t="blue.score.operator.col.command" class="text-left py-2 px-3"></th></tr>
     </thead>
     <tbody id="operator-log"></tbody>
   </table>
@@ -248,7 +253,7 @@
     <button id="apply" data-t="blue.rules.apply"
       class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm"></button>
   </div>
-  <pre id="output" class="mt-4 bg-slate-900 border border-slate-800 rounded p-4
+  <pre id="output" class="hidden mt-4 bg-slate-900 border border-slate-800 rounded p-4
        text-xs whitespace-pre-wrap text-slate-300"></pre>
 
   <h2 data-t="blue.rules.suppressions.heading"
@@ -480,12 +485,19 @@
   const projectY = (lat) => 90 - lat;
 
   const cell = "py-1 px-3 align-top";
+  const alertCell = "py-2 px-3 align-top";
+  const titled = (escaped) => escaped ? ` title="${escaped}"` : "";
+  const clamped = (escaped, width) =>
+    `<div class="line-clamp-2 ${width}"${titled(escaped)}>${escaped || "-"}</div>`;
+  const cut = (escaped, escapedTitle) =>
+    `<div class="truncate"${titled(escapedTitle)}>${escaped || "-"}</div>`;
   const num = (n) =>
-    `<td class="${cell} text-right pr-3 tabular-nums text-slate-300">${esc(n)}</td>`;
+    `<td class="${cell} text-right whitespace-nowrap tabular-nums text-slate-300">${esc(n)}</td>`;
   const text = (s, tone) =>
     `<td class="${cell} ${tone || "text-slate-400"}">${esc(s) || "-"}</td>`;
   const address = (value, host, tone) =>
-    `<td class="${cell} font-mono text-xs ${tone || "text-slate-300"}">${esc(value)}` +
+    `<td class="${cell} font-mono text-xs whitespace-nowrap ${tone || "text-slate-300"}">${
+      esc(value)}` +
     (host ? `<div class="font-sans text-slate-400 mt-0.5">${esc(host)}</div>` : "") +
     `</td>`;
   const empty = (columns) =>
@@ -523,14 +535,15 @@
     ].join(""), 4);
 
     fill("signatures", body.signatures, (s) => [
-      text(s.signature, "text-slate-300"),
-      text(s.engine, "text-xs text-slate-400"),
+      `<td class="${cell} text-slate-300">${clamped(esc(s.signature), "min-w-40")}</td>`,
+      text(s.engine, "text-xs text-slate-400 whitespace-nowrap"),
       num(s.alerts),
     ].join(""), 3);
 
     fill("paths", body.paths, (p) => [
-      text(p.method, "text-xs text-slate-500"),
-      text(decodePath(p.path), "font-mono text-xs text-slate-300 break-all"),
+      text(p.method, "text-xs text-slate-500 whitespace-nowrap"),
+      `<td class="${cell} w-full max-w-0 min-w-32 font-mono text-xs text-slate-300">${
+        cut(esc(decodePath(p.path)), esc(decodePath(p.path)))}</td>`,
       num(p.alerts),
     ].join(""), 3);
   }
@@ -543,6 +556,10 @@
     }
   }
 
+  const bar = (n, tallest, width) => `
+    <div class="${width} bg-sky-600/70 rounded-sm" title="${esc(t("blue.histogram.bar_title", n))}"
+         style="height:${Math.max(n / tallest * 100, n ? 6 : 1)}%"></div>`;
+
   function renderHistogram() {
     const times = rows.map((d) => Date.parse(d.timestamp)).filter(Number.isFinite);
     const histogram = document.getElementById("histogram");
@@ -550,18 +567,24 @@
 
     const first = Math.min(...times);
     const last = Math.max(...times);
+    const from = new Date(first).toLocaleTimeString();
+    const to = new Date(last).toLocaleTimeString();
+    const range = document.getElementById("histogram-range");
+    if (from === to) {
+      histogram.innerHTML = bar(times.length, times.length, "w-3");
+      range.textContent = from;
+      return;
+    }
+
     const buckets = new Array(48).fill(0);
-    const span = Math.max(last - first, 1);
+    const span = last - first;
     times.forEach((t) => buckets[Math.min(47, Math.floor((t - first) / span * 48))]++);
 
     const tallest = Math.max(...buckets, 1);
-    histogram.innerHTML = buckets.map((n) => `
-      <div class="flex-1 bg-sky-600/70 rounded-sm" title="${esc(t("blue.histogram.bar_title", n))}"
-           style="height:${Math.max(n / tallest * 100, n ? 6 : 1)}%"></div>`).join("");
-    document.getElementById("histogram-range").textContent = t(
-      "blue.histogram.range",
-      new Date(first).toLocaleTimeString(), new Date(last).toLocaleTimeString());
+    histogram.innerHTML = buckets.map((n) => bar(n, tallest, "flex-1")).join("");
+    range.textContent = t("blue.histogram.range", from, to);
   }
+
 
   async function renderMap() {
     const { ok, body } = await api(`/api/sessions/${sessionId()}/map/`);
@@ -617,25 +640,25 @@
       .map((d) => `
       <tr data-id="${esc(d.id)}" class="alert-row border-t border-slate-900
           hover:bg-slate-900/60 cursor-pointer">
-        <td class="py-2 px-3 text-slate-500 font-mono text-xs whitespace-nowrap">
+        <td class="${alertCell} text-slate-500 font-mono text-xs whitespace-nowrap">
           ${esc((d.timestamp || "").replace("T", " ").slice(0, 19))}</td>
-        <td class="${severityOf(d).text} text-xs">${esc(t(severityOf(d).key))}</td>
-        <td><span class="border rounded px-1.5 py-0.5 text-xs
+        <td class="${alertCell} ${severityOf(d).text} text-xs whitespace-nowrap">${
+          esc(t(severityOf(d).key))}</td>
+        <td class="${alertCell} whitespace-nowrap"><span class="border rounded px-1.5 py-0.5 text-xs
           border-slate-700 text-slate-400">${esc(d.source)}</span></td>
-        <td class="text-slate-200">${esc(d.signature)}</td>
-        <td class="font-mono text-xs ${d.outside ? "text-rose-300" : "text-slate-400"}">${
-          esc(d.src_ip) || "-"}</td>
-        <td class="text-slate-500 text-xs whitespace-nowrap">${esc(d.zone) || "-"}</td>
-        <td class="text-slate-500 text-xs whitespace-nowrap">${
+        <td class="${alertCell} text-slate-200">${clamped(esc(d.signature), "min-w-56")}</td>
+        <td class="${alertCell} ${d.outside ? "text-rose-300" : "text-slate-400"}
+            font-mono text-xs whitespace-nowrap">${esc(d.src_ip) || "-"}</td>
+        <td class="${alertCell} text-slate-500 text-xs">${esc(d.zone) || "-"}</td>
+        <td class="${alertCell} text-slate-500 text-xs">${
           esc([d.city, d.country].filter(Boolean).join(", ")) || "-"}</td>
-        <td class="text-slate-400 font-mono text-xs whitespace-nowrap">${
+        <td class="${alertCell} text-slate-400 font-mono text-xs whitespace-nowrap">${
           esc(d.dest_ip) || "-"}</td>
-        <td class="text-slate-400 font-mono text-xs whitespace-nowrap tabular-nums">${
+        <td class="${alertCell} text-slate-400 font-mono text-xs whitespace-nowrap tabular-nums">${
           d.dest_port === null || d.dest_port === undefined ? "-" : esc(d.dest_port)}</td>
-        <td class="text-slate-400 font-mono text-xs max-w-md truncate"
-            title="${esc(decodePath(d.path))}">${
-          d.path ? esc(`${d.method} ${decodePath(d.path)}`) : "-"}</td>
-        <td class="pr-3 text-xs ${unplaced(d) ? "text-slate-400" : "text-slate-300"}">
+        <td class="${alertCell} w-full max-w-0 min-w-40 text-slate-400 font-mono text-xs">${
+          d.path ? cut(esc(`${d.method} ${decodePath(d.path)}`), esc(decodePath(d.path))) : "-"}</td>
+        <td class="${alertCell} text-xs ${unplaced(d) ? "text-slate-400" : "text-slate-300"}">
           ${esc(caseOf(d))}</td>
       </tr>`).join("");
 
@@ -776,12 +799,16 @@
 
     document.getElementById("per-case").innerHTML = s.per_case.map((c) => `
       <tr class="border-b border-slate-900">
-        <td class="py-2">${esc(c.name)}</td>
-        <td>${esc(c.malicious ? t("blue.score.case.malicious") : t("blue.score.case.benign"))}</td>
-        <td class="${VERDICT_STYLE[c.verdict]} font-semibold">${esc(c.verdict)}</td>
-        <td class="tabular-nums">${c.detection_ids.length}</td>
-        <td class="text-xs">${evidence(c)}</td>
-      </tr>`).join("");
+        <td class="py-2 px-3">${esc(c.name)}</td>
+        <td class="py-2 px-3 whitespace-nowrap">${
+          esc(c.malicious ? t("blue.score.case.malicious") : t("blue.score.case.benign"))}</td>
+        <td class="py-2 px-3 whitespace-nowrap ${VERDICT_STYLE[c.verdict]} font-semibold">${
+          esc(c.verdict)}</td>
+        <td class="py-2 px-3 text-right whitespace-nowrap tabular-nums">${
+          c.detection_ids.length}</td>
+        <td class="py-2 px-3 text-xs">${evidence(c)}</td>
+      </tr>`).join("") || `<tr><td colspan="5" class="py-2 px-3 text-slate-500 text-xs">${
+        esc(t("blue.score.case.empty"))}</td></tr>`;
 
     await Promise.all([renderComparison(s.warnings), renderOperatorLog()]);
   }
@@ -790,12 +817,12 @@
     const body = document.getElementById("operator-log");
     const typed = await api(`/api/sessions/${sessionId()}/commands/`);
     if (!typed.ok || !Array.isArray(typed.body.commands)) {
-      body.innerHTML = `<tr><td colspan="3" class="py-2 text-amber-400 text-xs">${
+      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-amber-400 text-xs">${
         esc(t("blue.score.operator.unavailable", detail(typed)))}</td></tr>`;
       return;
     }
     if (!typed.body.commands.length) {
-      body.innerHTML = `<tr><td colspan="3" class="py-2 text-slate-500 text-xs">${
+      body.innerHTML = `<tr><td colspan="3" class="py-2 px-3 text-slate-500 text-xs">${
         esc(t("blue.score.operator.empty"))}</td></tr>`;
       return;
     }
@@ -803,11 +830,11 @@
     const named = await caseNames();
     body.innerHTML = typed.body.commands.map((c) => `
       <tr class="border-b border-slate-900">
-        <td class="py-2 text-slate-400 tabular-nums whitespace-nowrap">${esc(c.at)}</td>
-        <td class="text-slate-400">${esc(
+        <td class="py-2 px-3 text-slate-400 tabular-nums whitespace-nowrap">${esc(c.at)}</td>
+        <td class="py-2 px-3 text-slate-400">${esc(
           c.case_id ? (named[c.case_id] || c.case_id) : t("blue.score.operator.unlabelled")
         )}</td>
-        <td class="font-mono text-slate-200">${esc(c.text)}</td>
+        <td class="py-2 px-3 font-mono text-slate-200 break-all">${esc(c.text)}</td>
       </tr>`).join("");
   }
 
@@ -844,30 +871,35 @@
     }
 
     document.getElementById("breach-table").innerHTML = `
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide">
+      <div class="overflow-x-auto">
+      <table class="w-full text-sm break-keep">
+        <thead class="bg-slate-900/80 text-slate-500 text-xs uppercase tracking-wide
+                      whitespace-nowrap">
           <tr><th class="text-left py-2 px-3 font-medium">${
                 esc(t("blue.score.breaches.col.difficulty"))}</th>
-              <th class="text-left font-medium">${
+              <th class="text-left py-2 px-3 font-medium">${
                 esc(t("blue.score.breaches.col.objective"))}</th>
-              <th class="text-left font-medium">${
+              <th class="text-left py-2 px-3 font-medium">${
                 esc(t("blue.score.breaches.col.category"))}</th>
-              <th class="text-left font-medium">${
+              <th class="text-left py-2 px-3 font-medium">${
                 esc(t("blue.score.breaches.col.detection"))}</th>
-              <th class="text-left font-medium pr-3">${esc(t("blue.col.alerts"))}</th></tr>
+              <th class="text-right py-2 px-3 font-medium">${esc(t("blue.col.alerts"))}</th></tr>
         </thead>
         <tbody>${s.breaches.map((b) => `
           <tr class="border-t border-slate-900">
-            <td class="py-2 px-3 text-amber-400 font-mono text-xs">
+            <td class="py-2 px-3 text-amber-400 font-mono text-xs whitespace-nowrap">
               ${"*".repeat(b.difficulty)}</td>
-            <td class="text-slate-100">${esc(b.name)}</td>
-            <td class="text-slate-500 text-xs">${esc(b.category)}</td>
-            <td class="${b.detected ? "text-amber-400" : "text-rose-400"} font-semibold text-xs">
+            <td class="py-2 px-3 text-slate-100">${esc(b.name)}</td>
+            <td class="py-2 px-3 text-slate-500 text-xs">${esc(b.category)}</td>
+            <td class="${b.detected ? "text-amber-400" : "text-rose-400"}
+                py-2 px-3 whitespace-nowrap font-semibold text-xs">
               ${esc(b.detected ? t("blue.score.breaches.detected")
                                : t("blue.score.breaches.missed"))}</td>
-            <td class="pr-3 text-slate-400 tabular-nums">${b.detection_ids.length}</td>
+            <td class="py-2 px-3 text-right text-slate-400 tabular-nums">${
+              b.detection_ids.length}</td>
           </tr>`).join("")}</tbody>
-      </table>`;
+      </table>
+      </div>`;
   }
 
   async function renderComparison(shownAbove) {
