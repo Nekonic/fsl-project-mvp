@@ -194,17 +194,14 @@
       <thead class="bg-subdued text-muted text-xs uppercase tracking-wide sticky top-0
                     whitespace-nowrap">
         <tr>
-          <th data-t="blue.col.time" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.severity" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.engine" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.signature" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.src_ip" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.zone" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.country" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.dest" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.port" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.path" class="text-left py-2 px-3 font-medium"></th>
-          <th data-t="blue.col.case" class="text-left py-2 px-3 font-medium"></th>
+          <th data-t="blue.col.time" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.severity" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.engine" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.signature" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.src_ip" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.dest" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.path" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
+          <th data-t="blue.col.case" class="text-left py-2 px-2 first:pl-3 last:pr-3 font-medium"></th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -523,7 +520,7 @@
   }
 
   const cell = "py-1 px-3 align-top";
-  const alertCell = "py-2 px-3 align-top";
+  const alertCell = "py-2 px-2 first:pl-3 last:pr-3 align-top";
   const titled = (escaped) => escaped ? ` title="${escaped}"` : "";
   const clamped = (escaped, width) =>
     `<div class="line-clamp-2 ${width}"${titled(escaped)}>${escaped || "-"}</div>`;
@@ -690,6 +687,12 @@
     if (ok) renderTop(body);
   }
 
+  const stampOf = (d) => d.timestamp.replace("T", " ").slice(0, 19);
+  const placeOf = (d) =>
+    [d.zone, [d.city, d.country].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+  const destinationOf = (d) => d.dest_ip && (
+    d.dest_port === null || d.dest_port === undefined ? d.dest_ip : `${d.dest_ip}:${d.dest_port}`);
+
   function renderAlerts() {
     const shown = visible();
 
@@ -703,23 +706,19 @@
       .map((d) => `
       <tr data-id="${esc(d.id)}" class="alert-row border-t border-line-subdued
           hover:bg-primary-soft cursor-pointer">
-        <td class="${alertCell} text-muted font-mono text-xs whitespace-nowrap">
-          ${esc((d.timestamp || "").replace("T", " ").slice(0, 19))}</td>
+        <td class="${alertCell} text-muted font-mono text-xs whitespace-nowrap tabular-nums">${
+          d.timestamp ? `<span${titled(esc(stampOf(d)))}>${esc(stampOf(d).slice(11))}</span>` : "-"}</td>
         <td class="${alertCell} ${severityOf(d).text} text-xs font-medium whitespace-nowrap">${
           esc(t(severityOf(d).key))}</td>
         <td class="${alertCell} whitespace-nowrap"><span class="border rounded px-1.5 py-0.5 text-xs
           ${engineTone(d.source)}">${esc(d.source)}</span></td>
-        <td class="${alertCell} w-1/3 text-heading">${clamped(esc(d.signature), "min-w-56")}</td>
-        <td class="${alertCell} ${d.outside ? "text-danger" : "text-body"}
-            font-mono text-xs whitespace-nowrap">${esc(d.src_ip) || "-"}</td>
-        <td class="${alertCell} text-muted text-xs whitespace-nowrap">${esc(d.zone) || "-"}</td>
-        <td class="${alertCell} text-muted text-xs whitespace-nowrap">${
-          esc([d.city, d.country].filter(Boolean).join(", ")) || "-"}</td>
-        <td class="${alertCell} text-body font-mono text-xs whitespace-nowrap">${
-          esc(d.dest_ip) || "-"}</td>
+        <td class="${alertCell} w-1/3 text-heading">${clamped(esc(d.signature), "min-w-36")}</td>
+        <td class="${alertCell} ${d.outside ? "text-danger" : "text-body"} font-mono text-xs">
+          <div class="whitespace-nowrap">${esc(d.src_ip) || "-"}</div>${
+          placeOf(d) ? `<div class="font-sans text-muted mt-0.5">${esc(placeOf(d))}</div>` : ""}</td>
         <td class="${alertCell} text-body font-mono text-xs whitespace-nowrap tabular-nums">${
-          d.dest_port === null || d.dest_port === undefined ? "-" : esc(d.dest_port)}</td>
-        <td class="${alertCell} w-1/6 max-w-0 min-w-40 text-body font-mono text-xs">${
+          esc(destinationOf(d)) || "-"}</td>
+        <td class="${alertCell} w-1/4 max-w-0 min-w-36 text-body font-mono text-xs">${
           d.path ? cut(esc(`${d.method} ${decodePath(d.path)}`), esc(decodePath(d.path))) : "-"}</td>
         <td class="${alertCell} text-xs ${unplaced(d) ? "text-muted" : "text-heading"}">
           ${caseCell(d)}</td>

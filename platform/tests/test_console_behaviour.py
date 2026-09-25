@@ -76,7 +76,7 @@ const table = (id) => Object.fromEntries(
   ]));
 const column = (index) => Object.fromEntries(
   Object.entries(table("rows")).map(([id, cells]) => [id, cells[index]]));
-const caseColumn = () => column(10);
+const caseColumn = () => column(7);
 const tiles = (id) => Object.fromEntries(
   browser.element(id).innerHTML.split('<div class="bg-panel').slice(1).map((tile) =>
     [...tile.matchAll(/<div class="[^"]*">([^<]*)<\/div>/g)].slice(0, 2).map((m) => m[1].trim())));
@@ -341,7 +341,8 @@ def test_a_signature_or_path_cut_short_on_screen_keeps_its_full_text_in_the_titl
 
     assert seen["errors"] == []
     assert seen["result"] == {
-        "alerts": [signature, shown], "signatures": [signature], "paths": [shown],
+        "alerts": ["2026-09-23 16:25:54", signature, shown],
+        "signatures": [signature], "paths": [shown],
     }, (
         "a signature is clamped to two lines and a request path to one, and "
         "whatever was cut off could not be read anywhere on the page"
@@ -1948,12 +1949,11 @@ const lists = () => browser.requests.filter(
 
 PLACES = r"""
 const whereFrom = () => ({
-  zone: column(5),
-  place: column(6),
+  source: column(4),
   outside: Object.fromEntries(
     browser.element("rows").innerHTML.split("<tr ").slice(1).map((row) => [
       /data-id="([^"]*)"/.exec(row)[1],
-      row.split(/<td\b/)[5].includes("text-danger"),
+      row.split(/<td\b/)[5].split("<div")[0].includes("text-danger"),
     ])),
 });
 const MOSCOW = {zone: "Internet", outside: true, country: "Russia", city: "Moscow"};
@@ -1974,12 +1974,84 @@ def test_an_alert_says_where_it_came_from_when_the_busiest_sources_do_not_list_i
 
     assert seen["errors"] == []
     assert seen["result"] == {
-        "zone": {"1": "Internet", "2": "Application estate"},
-        "place": {"1": "Moscow, Russia", "2": "-"},
+        "source": {"1": "5.188.10.99 Internet · Moscow, Russia", "2": "172.30.0.2 Application estate"},
         "outside": {"1": True, "2": False},
     }, (
         "both alerts said where they came from, and the table looked their "
         "sources up in the top 25 instead, which listed neither"
+    )
+
+def test_an_alert_s_source_is_one_cell_with_its_zone_and_country_under_the_address(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + PLACES + """
+          DETECTIONS = [
+            alert(1, {src_ip: "5.188.10.99", ...MOSCOW, city: ""}),
+            alert(2, {src_ip: "10.10.0.9", zone: "", outside: false, country: "", city: ""}),
+          ];
+        """,
+        scenario=r"""
+          const under = Object.fromEntries(
+            browser.element("rows").innerHTML.split("<tr ").slice(1).map((row) => [
+              /data-id="([^"]*)"/.exec(row)[1],
+              (/<div class="[^"]*text-muted[^"]*">([^<]*)<\/div>/.exec(row.split(/<td\b/)[5]) || [])[1]
+                || null,
+            ]));
+          return {source: whereFrom().source, under};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {
+        "source": {"1": "5.188.10.99 Internet · Russia", "2": "10.10.0.9"},
+        "under": {"1": "Internet · Russia", "2": None},
+    }, (
+        "the source address, its zone and its country took three columns, and "
+        "at 1280 px they pushed the case column off the screen"
+    )
+
+def test_an_alert_s_destination_reads_as_address_and_port(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + """
+          DETECTIONS = [
+            alert(1),
+            alert(2, {dest_port: null}),
+            alert(3, {dest_ip: null, dest_port: null}),
+          ];
+        """,
+        scenario="return column(5);",
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"1": "10.10.0.5:80", "2": "10.10.0.5", "3": "-"}, (
+        "the destination address and its port are one fact, and two columns for "
+        "it pushed the case column off the screen"
+    )
+
+def test_an_alert_s_time_shows_the_clock_and_keeps_the_whole_stamp_in_the_title(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + """
+          DETECTIONS = [alert(1), alert(2, {timestamp: null})];
+        """,
+        scenario=r"""
+          const titles = Object.fromEntries(
+            browser.element("rows").innerHTML.split("<tr ").slice(1).map((row) => [
+              /data-id="([^"]*)"/.exec(row)[1],
+              (/title="([^"]*)"/.exec(row.split(/<td\b/)[1]) || [])[1] || null,
+            ]));
+          return {shown: column(0), titles};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {
+        "shown": {"1": "16:25:54", "2": "-"},
+        "titles": {"1": "2026-09-23 16:25:54", "2": None},
+    }, (
+        "every alert in a session carries the same date, and printing it on each "
+        "row cost the width the case column needed"
     )
 
 def test_a_new_source_is_placed_as_soon_as_its_alert_arrives(client):
@@ -1999,9 +2071,9 @@ def test_a_new_source_is_placed_as_soon_as_its_alert_arrives(client):
     )
 
     assert seen["errors"] == []
-    assert seen["result"]["before"] == {"zone": {}, "place": {}, "outside": {}}
+    assert seen["result"]["before"] == {"source": {}, "outside": {}}
     assert seen["result"]["after"] == {
-        "zone": {"5": "Internet"}, "place": {"5": "Russia"}, "outside": {"5": True},
+        "source": {"5": "5.188.10.7 Internet · Russia"}, "outside": {"5": True},
     }, (
         "a source seen for the first time showed no zone or place until the top "
         "tables were next read, fifteen seconds later"
