@@ -60,13 +60,9 @@
       <span id="map-note" class="text-sm text-slate-400 ml-auto"></span>
     </div>
     <div class="flex-1 min-h-0 p-2 flex">
-      <svg viewBox="0 0 360 180" class="w-full h-full block" preserveAspectRatio="xMidYMid meet">
-        <rect width="360" height="180" fill="#0b1220"/>
-        <g stroke="#172033" stroke-width="0.15">
-          <line x1="0" y1="90" x2="360" y2="90"/>
-          <line x1="180" y1="0" x2="180" y2="180"/>
-        </g>
-        <g fill="#1e293b" stroke="#334155" stroke-width="0.2">
+      <svg viewBox="0 0 360 160" class="w-full h-full block" preserveAspectRatio="xMidYMid meet">
+        <rect width="360" height="160" fill="#0b1220"/>
+        <g fill="#1e293b" stroke="#334155" stroke-width="0.2" stroke-linejoin="round">
           {% include "console/world.svg" %}
         </g>
         <g id="map-points"></g>
@@ -484,8 +480,25 @@
     });
   }
 
-  const projectX = (lon) => lon + 180;
-  const projectY = (lat) => 90 - lat;
+  const EE_M = Math.sqrt(3) / 2;
+  const [EE_A1, EE_A2, EE_A3, EE_A4] = [1.340264, -0.081106, 0.000893, 0.003796];
+  function equalEarth(lon, lat) {
+    const l = Math.asin(EE_M * Math.sin(lat * Math.PI / 180));
+    const l2 = l * l;
+    const l6 = l2 * l2 * l2;
+    return [
+      lon * Math.PI / 180 * Math.cos(l)
+        / (EE_M * (EE_A1 + 3 * EE_A2 * l2 + l6 * (7 * EE_A3 + 9 * EE_A4 * l2))),
+      l * (EE_A1 + EE_A2 * l2 + l6 * (EE_A3 + EE_A4 * l2)),
+    ];
+  }
+  const MAP_WIDTH = 360;
+  const MAP_SCALE = MAP_WIDTH / 2 / equalEarth(180, 0)[0];
+  const MAP_TOP = equalEarth(0, 90)[1];
+  function projectOnMap(lon, lat) {
+    const [x, y] = equalEarth(lon, lat);
+    return [MAP_WIDTH / 2 + MAP_SCALE * x, MAP_SCALE * (MAP_TOP - y)];
+  }
 
   const cell = "py-1 px-3 align-top";
   const alertCell = "py-2 px-3 align-top";
@@ -598,13 +611,12 @@
       const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
       const where = [p.city, p.country].filter(Boolean).join(", ")
         || t("blue.map.place.unknown");
+      const [x, y] = projectOnMap(p.lon, p.lat);
       return `
         <g>
           <title>${esc(t("blue.map.point_title", where, p.detections, p.ips.join(", ")))}</title>
-          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r + 2}"
-                  fill="#f43f5e" opacity="0.15"/>
-          <circle cx="${projectX(p.lon)}" cy="${projectY(p.lat)}" r="${r}"
-                  fill="#f43f5e" opacity="0.85"/>
+          <circle cx="${x}" cy="${y}" r="${r + 2}" fill="#f43f5e" opacity="0.15"/>
+          <circle cx="${x}" cy="${y}" r="${r}" fill="#f43f5e" opacity="0.85"/>
         </g>`;
     }).join("");
 
