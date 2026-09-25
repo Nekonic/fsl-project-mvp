@@ -44,11 +44,11 @@ def cases(wargame_id: str) -> list[dict[str, Any]]:
     ]
 
 def _references(case: dict[str, Any]) -> dict[str, str]:
-    found = {
-        field: lifecycle.reference(case.get(field) or "")
+    return {
+        field: url
         for field in ("technique", "pattern")
+        if (url := lifecycle.reference(case.get(field) or ""))
     }
-    return {field: url for field, url in found.items() if url}
 
 def expectations(wargame_id: str) -> dict[str, str]:
     return {case["name"]: case.get("expect") or "" for case in _load(wargame_id)}
