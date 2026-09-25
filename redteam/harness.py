@@ -31,8 +31,7 @@ class CaseRequestAltered(RuntimeError):
     pass
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
-    with open(path, encoding="utf-8") as handle:
-        return yaml.safe_load(handle) or []
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8")) or []
 
 def build_request(case: dict[str, Any], base_url: str) -> requests.PreparedRequest:
     spec = case["request"]
@@ -75,30 +74,27 @@ def run(
 ) -> int:
     http = requests.Session()
     platform_url = platform_url.rstrip("/")
-    session_id = _open_session(http, platform_url)
+    opened = http.post(
+        f"{platform_url}/api/sessions/",
+        json={"scenario": "juice-shop"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    opened.raise_for_status()
+    session_id = opened.json()["id"]
 
     for case in cases:
         case = dict(case)
         case.setdefault("case_id", str(uuid.uuid4()))
         case.setdefault("correlation", "marker")
 
-        started_at = _now()
+        started_at = datetime.now(timezone.utc)
         fire(http, case, target_url, launch, tool_target_url)
-        _record(http, platform_url, session_id, case, started_at, _now())
+        _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
 
     http.post(
         f"{platform_url}/api/sessions/{session_id}/close/", timeout=REQUEST_TIMEOUT
     )
     return session_id
-
-def _open_session(http: requests.Session, platform_url: str) -> int:
-    response = http.post(
-        f"{platform_url}/api/sessions/",
-        json={"scenario": "juice-shop"},
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()["id"]
 
 def fire(
     http: requests.Session,
@@ -157,6 +153,3 @@ def _record(
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
