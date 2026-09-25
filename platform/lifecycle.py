@@ -19,9 +19,8 @@ _PATTERN = re.compile(r"^CAPEC-(\d+)$")
 def reference(identifier: str) -> str:
     technique = _TECHNIQUE.match(identifier or "")
     if technique:
-        parent, sub = technique.groups()
-        tail = f"{parent}/{sub}/" if sub else f"{parent}/"
-        return f"https://attack.mitre.org/techniques/T{tail}"
+        path = "/".join(filter(None, technique.groups()))
+        return f"https://attack.mitre.org/techniques/T{path}/"
 
     pattern = _PATTERN.match(identifier or "")
     if pattern:

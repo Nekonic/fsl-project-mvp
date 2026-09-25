@@ -127,10 +127,22 @@ def discover(
     )
 
 def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float):
-    answered = _send(
-        "post", f"{keystone}/v3/auth/tokens", None,
-        _password_body(user, password, project), timeout,
-    )
+    body = {
+        "auth": {
+            "identity": {
+                "methods": ["password"],
+                "password": {
+                    "user": {
+                        "name": user,
+                        "domain": {"id": "default"},
+                        "password": password,
+                    }
+                },
+            },
+            "scope": {"project": {"id": project}},
+        }
+    }
+    answered = _send("post", f"{keystone}/v3/auth/tokens", None, body, timeout)
     if not answered.ok:
         raise RangeUnavailable(
             f"{keystone} refused the credentials with "
@@ -151,23 +163,6 @@ def _endpoint(catalog, service: str, region: str, interface: str) -> str:
         f"{interface!r} in region {region!r}; set {SETTINGS['region']} and "
         f"{SETTINGS['interface']} to a region and interface it lists"
     )
-
-def _password_body(user: str, password: str, project: str) -> dict:
-    return {
-        "auth": {
-            "identity": {
-                "methods": ["password"],
-                "password": {
-                    "user": {
-                        "name": user,
-                        "domain": {"id": "default"},
-                        "password": password,
-                    }
-                },
-            },
-            "scope": {"project": {"id": project}},
-        }
-    }
 
 def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
     held: dict = {"token": "", "expires": None}
