@@ -464,7 +464,19 @@ def fire_attack(request, session_id):
 
     finished_at = timezone.now()
     Session.objects.filter(pk=session.pk, ended_at__lt=finished_at).update(ended_at=finished_at)
-    recorded = Case.objects.create(
+    recorded = _record_case(
+        session, case, started_at, finished_at,
+        dict(
+            harness.case_meta(case),
+            **({"origin": origin["id"], "target_url": origin["target_url"]}
+               if origin else {}),
+        ),
+    )
+    _settle_and_observe(session)
+    return _reply(_shape(recorded, CASE_FIELDS), status=201)
+
+def _record_case(session, case, started_at, ended_at, meta):
+    return Case.objects.create(
         session=session,
         case_id=case["case_id"],
         name=case["name"],
@@ -476,20 +488,16 @@ def fire_attack(request, session_id):
         correlation=case["correlation"],
         source_ip=case.get("source_ip"),
         started_at=started_at,
-        ended_at=finished_at,
-        meta=dict(
-            harness.case_meta(case),
-            **({"origin": origin["id"], "target_url": origin["target_url"]}
-               if origin else {}),
-        ),
+        ended_at=ended_at,
+        meta=meta,
     )
 
+def _settle_and_observe(session):
     time.sleep(settings.TARGET_SETTLE)
     try:
-        _observe_objectives(session)
+        return _observe_objectives(session)["achieved"]
     except (objectives.ObjectivesUnavailable, RangeUnavailable):
-        pass
-    return _reply(_shape(recorded, CASE_FIELDS), status=201)
+        return None
 
 ROTATE = "rotate"
 
@@ -549,36 +557,14 @@ def session_cases(request, session_id):
         return _reply(errors, status=400)
 
     try:
-        case = Case.objects.create(
-            session=session,
-            case_id=body["case_id"],
-            name=body["name"],
-            malicious=body["malicious"],
-            stage=body.get("stage") or "",
-            technique=body.get("technique") or "",
-            pattern=body.get("pattern") or "",
-            expect=body.get("expect") or "",
-            correlation=body["correlation"],
-            source_ip=body.get("source_ip"),
-            started_at=_instant(body["started_at"]),
-            ended_at=_instant(body["ended_at"]),
-            meta=body.get("meta") or {},
+        case = _record_case(
+            session, body, _instant(body["started_at"]), _instant(body["ended_at"]),
+            body.get("meta") or {},
         )
     except IntegrityError:
-        return _reply(
-            {"detail": f"case {body['case_id']} is already recorded in session {session.pk}"},
-            status=409,
-        )
-
-    time.sleep(settings.TARGET_SETTLE)
-
-    try:
-        observed = _observe_objectives(session)["achieved"]
-    except (objectives.ObjectivesUnavailable, RangeUnavailable):
-        observed = None
-
+        raise Conflict(f"case {body['case_id']} is already recorded in session {session.pk}")
     return _reply(
-        _shape(case, CASE_FIELDS) | {"objectives": observed}, status=201
+        _shape(case, CASE_FIELDS) | {"objectives": _settle_and_observe(session)}, status=201
     )
 
 def _instant(value):
