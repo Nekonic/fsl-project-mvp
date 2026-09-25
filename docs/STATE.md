@@ -237,6 +237,10 @@ One line each.
   colours are six `--map-*` variables. `bin/worldmap`'s input
   `land-110m.json` is not in the repo; this map was rebuilt from the old SVG's
   own coordinates and has not been regenerated from the real file.
+- The console is light: Elastic EUI Borealis 8.1.0 light tokens as CSS
+  variables in `base.html`; `bin/build-css` builds only semantic colour
+  names, so a default Tailwind colour builds nothing and a test refuses it.
+  The Kali terminal stays black. No web fonts (offline).
 - Tables read at half a screen: every cell padded, IPs and counts never
   wrap, signatures clamp to two lines with the full text in `title`.
 - Every value is escaped before it reaches the page, and a test says so.
