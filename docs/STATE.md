@@ -241,6 +241,8 @@ One line each.
   variables in `base.html`; `bin/build-css` builds only semantic colour
   names, so a default Tailwind colour builds nothing and a test refuses it.
   The Kali terminal stays black. No web fonts (offline).
+- The Alerts table has 8 columns (source carries zone and country, the
+  destination reads IP:port, time is HH:MM:SS) so path and case show at 1280.
 - Tables read at half a screen: every cell padded, IPs and counts never
   wrap, signatures clamp to two lines with the full text in `title`.
 - Every value is escaped before it reaches the page, and a test says so.
