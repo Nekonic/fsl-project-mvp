@@ -289,6 +289,80 @@ def test_evenly_spaced_alerts_fill_every_bar_of_the_histogram_alike(client, per_
         "while the other 47 shared everything else"
     )
 
+@pytest.mark.parametrize("stamps", [
+    pytest.param(["2026-09-24T20:33:27Z"] * 3, id="one-instant"),
+    pytest.param(
+        ["2026-09-24T20:33:27Z", "2026-09-24T20:33:27.270Z", "2026-09-24T20:33:27.270Z"],
+        id="one-second"),
+])
+def test_alerts_within_one_second_draw_one_bar_at_one_time(client, stamps):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS
+        + f"DETECTIONS = {js(stamps)}.map((timestamp, i) => alert(i + 1, {{timestamp}}));",
+        scenario="""
+          return {
+            bars: [...browser.element("histogram").innerHTML.matchAll(/title="([^"]*)"/g)]
+              .map((m) => m[1]),
+            range: browser.text("histogram-range"),
+            instant: new Date("2026-09-24T20:33:27Z").toLocaleTimeString(),
+          };
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["bars"] == [english("blue.histogram.bar_title", 3)], (
+        "every alert fell inside the one second the range label can show, and "
+        "the chart drew a bar at each end of 48 as if they spanned the whole "
+        "range (seen in a real browser on session 1591)"
+    )
+    assert seen["result"]["range"] == seen["result"]["instant"]
+
+def test_a_signature_or_path_cut_short_on_screen_keeps_its_full_text_in_the_title(client):
+    signature = 'Restricted SQL Character Anomaly Detection (args): "<b>" & 12 characters'
+    path = "/rest/products/search?q=%27%29%29%20UNION%20SELECT%20id%2C%20email%20FROM%20Users--"
+    shown = "/rest/products/search?q=')) UNION SELECT id, email FROM Users--"
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"""
+          DETECTIONS = [alert(1, {{signature: {js(signature)}, path: {js(path)}}})];
+          ANSWERS["/api/sessions/1/top/"] = {{
+            sources: [], destinations: [],
+            signatures: [{{signature: {js(signature)}, engine: "modsecurity", alerts: 1}}],
+            paths: [{{method: "GET", path: {js(path)}, alerts: 1}}],
+          }};
+        """,
+        scenario="""
+          const titles = (id) =>
+            browser.element(id).querySelectorAll("[title]").map((element) => element.title);
+          return {alerts: titles("rows"), signatures: titles("signatures"), paths: titles("paths")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {
+        "alerts": [signature, shown], "signatures": [signature], "paths": [shown],
+    }, (
+        "a signature is clamped to two lines and a request path to one, and "
+        "whatever was cut off could not be read anywhere on the page"
+    )
+
+def test_a_score_with_no_case_run_says_so_under_the_case_table(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE,
+        scenario="""
+          await browser.click('[data-tab="score"]');
+          return browser.text("per-case");
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == english("blue.score.case.empty"), (
+        "the case table showed its header and nothing under it, which reads "
+        "as a table still loading rather than a session with no case run"
+    )
+
 def test_the_false_positives_are_shown_once_with_the_benign_cases_they_are_out_of(client):
     seen = open_page(
         client, "/blue/1/",
@@ -1012,6 +1086,26 @@ def test_an_editor_that_never_read_the_rules_cannot_apply_over_them(client):
     assert seen["result"]["editor"] == RULE, (
         "the platform refused the Apply and the editor was not filled from the "
         "rules it now could read"
+    )
+
+def test_the_rules_result_box_stays_hidden_until_there_is_a_result(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + RULES_RANGE
+        + 'ROUTES["POST /api/rules/validate/"] = () => ({body: {ok: true, output: "valid"}});',
+        scenario="""
+          await browser.click('[data-tab="rules"]');
+          const hidden = () => browser.element("output").classList.contains("hidden");
+          const before = hidden();
+          await browser.click("validate");
+          return {before, after: hidden(), said: browser.text("output")};
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"before": True, "after": False, "said": "valid"}, (
+        "the result box under Validate and Apply stood empty and bordered before "
+        "either was pressed, which reads as a result that came back blank"
     )
 
 RED_RANGE = """
