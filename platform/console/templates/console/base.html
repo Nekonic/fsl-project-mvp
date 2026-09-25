@@ -1,18 +1,56 @@
 <!DOCTYPE html>
-<html lang="en" class="bg-slate-950">
+<html lang="en" class="bg-page">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}FSL{% endblock %}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #ECF1F9;
+      --panel: #FFFFFF;
+      --subdued: #F6F9FC;
+      --border: #CAD3E2;
+      --border-subdued: #E3E8F2;
+      --heading: #111C2C;
+      --text: #384861;
+      --text-muted: #516381;
+      --text-inverse: #FFFFFF;
+      --primary: #0B64DD;
+      --primary-text: #1750BA;
+      --primary-soft: #F1F6FF;
+      --primary-line: #BFDBFF;
+      --danger: #C61E25;
+      --danger-text: #A71627;
+      --danger-soft: #FFF3F1;
+      --danger-line: #FFC9C2;
+      --warning: #FACB3D;
+      --warning-text: #825803;
+      --warning-soft: #FFF7E2;
+      --warning-line: #FCD883;
+      --success: #008A5E;
+      --success-text: #09724D;
+      --success-soft: #E9FFF7;
+      --success-line: #AEE8D2;
+      --accent: #BC1E70;
+      --accent-text: #A11262;
+      --accent-soft: #FFF0F8;
+      --accent-line: #FFC7DB;
+      --teal: #008B87;
+      --terminal: #000000;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --font-mono: 'Roboto Mono', Menlo, Consolas, Courier, monospace;
+    }
+  </style>
   <style>{% include "console/tailwind.css" %}</style>
 </head>
-<body class="bg-slate-950 text-slate-200 font-sans {% block body_class %}{% endblock %}">
-  <header class="border-b border-slate-800">
+<body class="bg-page text-body font-sans {% block body_class %}{% endblock %}">
+  <header class="bg-panel border-b border-line">
     <nav class="{% block nav_class %}max-w-5xl mx-auto{% endblock %} px-6 py-3 flex gap-6 text-sm items-center">
-      <a href="/" class="font-semibold text-slate-100">FSL</a>
+      <a href="/" class="font-semibold text-heading">FSL</a>
       {% block nav %}{% endblock %}
-      <span id="session-label" class="ml-auto text-slate-500"></span>
-      <button id="language" class="text-slate-500 hover:text-slate-200 text-xs"></button>
+      <span id="session-label" class="ml-auto text-muted"></span>
+      <button id="language" class="text-muted hover:text-primary text-xs"></button>
     </nav>
   </header>
   <main class="{% block main_class %}max-w-5xl mx-auto px-6 py-8{% endblock %}">

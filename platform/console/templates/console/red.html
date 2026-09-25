@@ -1,117 +1,117 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
-{% block nav %}<span data-t="common.red_team" class="text-rose-400"></span>{% endblock %}
+{% block nav %}<span data-t="common.red_team" class="text-danger font-medium"></span>{% endblock %}
 {% block content %}
-<h1 data-t="red.heading.objectives" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
+<h1 data-t="red.heading.objectives" class="text-2xl font-semibold text-heading mb-2"></h1>
 
 <div class="grid grid-cols-3 gap-3 mb-5">
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.kpi.taken" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="kpi-taken" class="text-2xl font-semibold text-rose-300 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.kpi.taken" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="kpi-taken" class="text-2xl font-semibold text-danger tabular-nums">0</div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.kpi.difficulty_total" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="kpi-stars" class="text-2xl font-semibold text-amber-300 tabular-nums">0</div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.kpi.difficulty_total" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="kpi-stars" class="text-2xl font-semibold text-warning tabular-nums">0</div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.kpi.unsolved" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="kpi-available" class="text-2xl font-semibold text-slate-300 tabular-nums">-</div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.kpi.unsolved" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="kpi-available" class="text-2xl font-semibold text-heading tabular-nums">-</div>
   </div>
 </div>
 
 <div class="flex flex-wrap gap-2 mb-3 items-center">
   <input id="objective-search" data-t-placeholder="red.objectives.search"
-    class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 min-w-56">
+    class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm flex-1 min-w-56">
   <select id="objective-category"
-    class="bg-slate-900 border border-slate-700 rounded px-2 py-2 text-xs text-slate-300">
+    class="bg-panel border border-line rounded text-heading placeholder:text-muted px-2 py-2 text-xs">
     <option value="" data-t="red.objectives.all_categories"></option>
   </select>
-  <label class="flex items-center gap-2 text-xs text-slate-400 px-1">
-    <input id="hide-solved" type="checkbox" checked class="accent-sky-600">
+  <label class="flex items-center gap-2 text-xs text-body px-1">
+    <input id="hide-solved" type="checkbox" checked class="accent-primary">
     <span data-t="red.objectives.hide_solved"></span>
   </label>
 </div>
 
-<div id="objectives" class="border border-slate-800 rounded max-h-80 overflow-y-auto mb-10"></div>
+<div id="objectives" class="bg-panel border border-line rounded max-h-80 overflow-y-auto mb-10"></div>
 
-<h1 data-t="red.heading.machine" class="text-2xl font-semibold text-slate-100 mb-2"></h1>
+<h1 data-t="red.heading.machine" class="text-2xl font-semibold text-heading mb-2"></h1>
 
 <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.box.target" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="box-target" class="font-mono text-slate-200 mt-1 truncate">-</div>
-    <div data-t="red.box.target.hint" class="text-slate-400 text-xs mt-1"></div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.box.target" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="box-target" class="font-mono text-heading mt-1 truncate">-</div>
+    <div data-t="red.box.target.hint" class="text-muted text-xs mt-1"></div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.box.proxied" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="box-proxied" class="font-mono text-slate-200 mt-1">-</div>
-    <div data-t="red.box.proxied.tools" class="text-slate-400 text-xs mt-1"></div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.box.proxied" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="box-proxied" class="font-mono text-heading mt-1">-</div>
+    <div data-t="red.box.proxied.tools" class="text-muted text-xs mt-1"></div>
   </div>
-  <div class="bg-slate-900/60 border border-slate-800 rounded p-3">
-    <div data-t="red.box.direct" class="text-slate-500 text-xs uppercase tracking-wide"></div>
-    <div id="box-direct" class="font-mono text-slate-200 mt-1">-</div>
-    <div data-t="red.box.direct.tools" class="text-slate-400 text-xs mt-1"></div>
+  <div class="bg-panel border border-line rounded p-3">
+    <div data-t="red.box.direct" class="text-muted text-xs uppercase tracking-wide"></div>
+    <div id="box-direct" class="font-mono text-heading mt-1">-</div>
+    <div data-t="red.box.direct.tools" class="text-muted text-xs mt-1"></div>
   </div>
 </div>
 
-<div class="border border-slate-800 rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
+<div class="bg-panel border border-line rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
   <label class="text-sm">
-    <span data-t="red.window.name" class="block text-slate-400 text-xs mb-1"></span>
+    <span data-t="red.window.name" class="block text-muted text-xs mb-1"></span>
     <input id="window-name" value="manual-attack"
-           class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm w-56">
+           class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm w-56">
   </label>
   <label class="text-sm">
-    <span data-t="red.window.route" class="block text-slate-400 text-xs mb-1"></span>
+    <span data-t="red.window.route" class="block text-muted text-xs mb-1"></span>
     <select id="window-route"
-      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+      class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm">
       <option value="proxy" data-t="red.window.route.proxy"></option>
       <option value="direct" data-t="red.window.route.direct"></option>
     </select>
   </label>
   <label class="text-sm flex items-center gap-2 pb-2">
-    <input id="window-malicious" type="checkbox" checked class="accent-rose-600">
-    <span data-t="red.window.malicious" class="text-slate-400"></span>
+    <input id="window-malicious" type="checkbox" checked class="accent-danger">
+    <span data-t="red.window.malicious" class="text-body"></span>
   </label>
   <button id="window-toggle" data-t="red.window.start"
-    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm"></button>
-  <span id="window-status" class="text-slate-500 text-sm pb-2"></span>
+    class="px-4 py-2 rounded bg-danger hover:bg-danger-strong text-inverse text-sm"></button>
+  <span id="window-status" class="text-muted text-sm pb-2"></span>
 </div>
 
-<iframe id="terminal" class="w-full h-[28rem] border border-slate-800 rounded bg-black"></iframe>
+<iframe id="terminal" class="w-full h-[28rem] border border-line rounded bg-terminal"></iframe>
 
-<h1 data-t="red.baseline.heading" class="text-2xl font-semibold text-slate-100 mt-12 mb-2"></h1>
+<h1 data-t="red.baseline.heading" class="text-2xl font-semibold text-heading mt-12 mb-2"></h1>
 
 <div class="flex gap-3 mb-8 items-end flex-wrap">
   <label class="text-sm">
-    <span data-t="red.baseline.origin" class="block text-slate-400 text-xs mb-1"></span>
+    <span data-t="red.baseline.origin" class="block text-muted text-xs mb-1"></span>
     <select id="origin"
-      class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+      class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm">
     </select>
   </label>
   <button id="run-all" data-t="red.baseline.run_all"
-    class="px-4 py-2 rounded bg-rose-700 hover:bg-rose-600 text-white text-sm"></button>
+    class="px-4 py-2 rounded bg-danger hover:bg-danger-strong text-inverse text-sm"></button>
   <button id="run-attacks" data-t="red.baseline.run_attacks"
-    class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm"></button>
+    class="px-4 py-2 rounded bg-panel border border-line hover:bg-subdued text-heading text-sm"></button>
   <a id="to-blue" target="_blank" data-t="red.baseline.open_blue"
-    class="px-4 py-2 rounded border border-sky-900 hover:border-sky-600 text-sky-400 text-sm"></a>
+    class="px-4 py-2 rounded bg-panel border border-primary-soft hover:border-primary text-primary text-sm"></a>
 </div>
 
-<p id="covers" class="text-xs text-slate-500 mb-6"></p>
+<p id="covers" class="text-xs text-muted mb-6"></p>
 
 <div class="grid grid-cols-2 gap-8">
   <div>
-    <h2 data-t="red.cases.attacks" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
+    <h2 data-t="red.cases.attacks" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
     <div id="attacks" class="space-y-2"></div>
   </div>
   <div>
-    <h2 data-t="red.cases.benign" class="text-sm uppercase tracking-wide text-slate-500 mb-3"></h2>
+    <h2 data-t="red.cases.benign" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
     <div id="benign" class="space-y-2"></div>
   </div>
 </div>
 
-<h2 data-t="red.log.heading" class="text-sm uppercase tracking-wide text-slate-500 mt-10 mb-3"></h2>
+<h2 data-t="red.log.heading" class="text-sm uppercase tracking-wide text-muted mt-10 mb-3"></h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
-<p id="log-empty" data-t="red.log.empty" class="text-slate-500 text-sm"></p>
+<p id="log-empty" data-t="red.log.empty" class="text-muted text-sm"></p>
 {% endblock %}
 {% block script %}
 <script>
@@ -139,16 +139,16 @@
     const id = caseDef[field];
     const href = (caseDef.references || {})[field];
     if (!id) return "";
-    if (!href) return `<span class="text-slate-600">${esc(id)}</span>`;
+    if (!href) return `<span class="text-muted">${esc(id)}</span>`;
     return `<a href="${esc(href)}" target="_blank" rel="noopener"
-      class="text-slate-500 hover:text-slate-300 underline decoration-dotted">${esc(id)}</a>`;
+      class="text-primary underline decoration-dotted">${esc(id)}</a>`;
   }
 
   function labels(caseDef) {
     if (!caseDef.stage) return "";
     return `
       <div class="px-3 pb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        <span class="text-slate-400">${esc(t("stage." + caseDef.stage))}</span>
+        <span class="text-body">${esc(t("stage." + caseDef.stage))}</span>
         ${reference(caseDef, "technique")}
         ${reference(caseDef, "pattern")}
       </div>`;
@@ -156,13 +156,13 @@
 
   function button(caseDef) {
     return `
-      <div class="border border-slate-800 hover:border-slate-600 rounded">
+      <div class="bg-panel border border-line hover:border-primary rounded">
         <button data-case="${esc(caseDef.name)}"
           class="fire w-full text-left px-3 py-2">
-          <div class="text-slate-100 text-sm">${esc(caseDef.name)}</div>
-          <div class="text-slate-500 text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
+          <div class="text-heading text-sm font-medium">${esc(caseDef.name)}</div>
+          <div class="text-muted text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
           ${caseDef.takes
-            ? `<div data-takes="${esc(caseDef.takes)}" class="text-rose-400 text-xs mt-1">${
+            ? `<div data-takes="${esc(caseDef.takes)}" class="text-danger text-xs mt-1">${
               esc(t("red.case.objective", objectiveName(caseDef.takes)))}</div>`
             : ""}
         </button>
@@ -192,9 +192,9 @@
     const result = await post(`/api/sessions/${sessionId()}/attacks/`,
                               { case: name, origin: chosenOrigin() }, PATIENCE_FOR_RANGE_WORK);
     if (result.ok) {
-      note(t("red.log.sent", name), "text-slate-300");
+      note(t("red.log.sent", name), "text-body");
     } else {
-      note(t("red.log.fire_failed", name, detail(result)), "text-amber-400");
+      note(t("red.log.fire_failed", name, detail(result)), "text-warning");
     }
     await pollObjectives();
     return result.ok;
@@ -235,7 +235,7 @@
       const said = session.status === 404
         ? t("red.error.no_session") : t("red.error.session", detail(session));
       document.getElementById("attacks").innerHTML =
-        `<p class="text-amber-400 text-sm">${esc(said)}</p>`;
+        `<p class="text-warning text-sm">${esc(said)}</p>`;
       return;
     }
 
@@ -245,7 +245,7 @@
     const cases = await api(`/api/wargames/${scenario}/cases/`);
     if (!cases.ok || !Array.isArray(cases.body)) {
       document.getElementById("attacks").innerHTML =
-        `<p class="text-amber-400 text-sm">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
+        `<p class="text-warning text-sm">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
       return;
     }
     catalogue = cases.body;
@@ -268,7 +268,7 @@
     const result = await api(`/api/wargames/${scenario}/objectives/`);
     if (!result.ok) {
       document.getElementById("objectives").innerHTML =
-        `<p class="text-amber-400 text-sm p-4">${esc(t("red.error.objectives", detail(result)))}</p>`;
+        `<p class="text-warning text-sm p-4">${esc(t("red.error.objectives", detail(result)))}</p>`;
       return;
     }
     objectives = result.body;
@@ -298,15 +298,15 @@
     }).sort((a, b) => a.difficulty - b.difficulty);
 
     document.getElementById("objectives").innerHTML = shown.map((o) => `
-      <div class="border-t border-slate-900 px-3 py-2 flex gap-3 items-baseline">
-        <span class="text-amber-400 font-mono text-xs w-12">${esc(STAR(o.difficulty))}</span>
-        <span class="${o.solved ? "text-slate-500 line-through" : "text-slate-100"} text-sm w-56">
+      <div class="border-t border-line-subdued px-3 py-2 flex gap-3 items-baseline">
+        <span class="text-warning font-mono text-xs w-12">${esc(STAR(o.difficulty))}</span>
+        <span class="${o.solved ? "text-muted line-through" : "text-heading"} text-sm w-56">
           ${esc(o.name)}</span>
-        <span class="text-slate-500 text-xs w-48">${esc(o.category)}</span>
-        <span class="text-slate-400 text-xs flex-1 truncate" title="${esc(o.description)}"
+        <span class="text-muted text-xs w-48">${esc(o.category)}</span>
+        <span class="text-body text-xs flex-1 truncate" title="${esc(o.description)}"
           >${esc(o.description)}</span>
       </div>`).join("") ||
-      `<p class="text-slate-500 text-sm p-4">${esc(t("red.objectives.none"))}</p>`;
+      `<p class="text-muted text-sm p-4">${esc(t("red.objectives.none"))}</p>`;
   }
 
   async function refreshTaken() {
@@ -328,7 +328,7 @@
     if (closed) return;
     closed = true;
     clearTimeout(timer);
-    note(t("red.log.session_closed"), "text-slate-500");
+    note(t("red.log.session_closed"), "text-muted");
   }
 
   async function checkObjectives() {
@@ -338,7 +338,7 @@
       return;
     }
     if (result.ok && result.body.achieved) {
-      note(t("red.log.taken", result.body.achieved), "text-rose-300 font-semibold");
+      note(t("red.log.taken", result.body.achieved), "text-danger font-semibold");
       await loadObjectives();
     }
     await refreshTaken();
@@ -384,7 +384,7 @@
   const status = (text, tone) => {
     const element = document.getElementById("window-status");
     element.textContent = text;
-    element.className = `text-sm pb-2 ${tone || "text-slate-500"}`;
+    element.className = `text-sm pb-2 ${tone || "text-muted"}`;
   };
 
   const windowAddress = () =>
@@ -422,14 +422,14 @@
     const origin = wanted === "rotate" ? "" : wanted;
     const moved = await post("/api/attacker/origin/", { origin });
     if (!moved.ok) {
-      status(t("red.window.status.origin_failed", detail(moved)), "text-amber-400");
+      status(t("red.window.status.origin_failed", detail(moved)), "text-warning");
       if (confirmedOrigin !== null) select.value = confirmedOrigin;
       return;
     }
     confirmedOrigin = wanted;
     const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
     if (!result.ok) {
-      status(t("red.window.status.unavailable", detail(result)), "text-amber-400");
+      status(t("red.window.status.unavailable", detail(result)), "text-warning");
       return;
     }
     attacker = result.body;
@@ -480,20 +480,20 @@
       const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
       if (!labelled.ok) {
         lockCase(false);
-        status(t("red.window.status.marker_failed", detail(labelled)), "text-amber-400");
+        status(t("red.window.status.marker_failed", detail(labelled)), "text-warning");
         return;
       }
       recordedFrom = from;
       openedAt = new Date();
       toggle.textContent = t("red.window.stop");
-      status(t("red.window.status.recording", from.address), "text-rose-400");
-      note(t("red.log.case_started", name.value), "text-slate-500");
+      status(t("red.window.status.recording", from.address), "text-danger");
+      note(t("red.log.case_started", name.value), "text-muted");
       return;
     }
 
     const cleared = await post("/api/attacker/label/", { case_id: null });
     if (!cleared.ok) {
-      status(t("red.window.status.clear_failed", detail(cleared)), "text-amber-400");
+      status(t("red.window.status.clear_failed", detail(cleared)), "text-warning");
       return;
     }
     const result = await post(`/api/sessions/${sessionId()}/cases/`, {
@@ -511,7 +511,7 @@
       result.ok
         ? t("red.log.case_recorded", name.value)
         : t("red.log.case_record_failed", name.value, detail(result)),
-      result.ok ? "text-slate-300" : "text-amber-400",
+      result.ok ? "text-body" : "text-warning",
     );
     await pollObjectives();
     openedAt = null;

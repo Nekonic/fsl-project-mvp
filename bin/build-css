@@ -8,10 +8,73 @@ trap 'rm -rf "$WORK"' EXIT
 
 printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > "$WORK/in.css"
 
+cat > "$WORK/tailwind.config.js" <<CONFIG
+const tone = (name) => ({
+  DEFAULT: \`var(--\${name})\`,
+  strong: \`var(--\${name}-text)\`,
+  soft: \`var(--\${name}-soft)\`,
+});
+
+module.exports = {
+  content: ["$CONSOLE/*.html"],
+  theme: {
+    colors: {
+      transparent: "transparent",
+      current: "currentColor",
+      inherit: "inherit",
+    },
+    fontFamily: {
+      sans: "var(--font-sans)",
+      mono: "var(--font-mono)",
+    },
+    extend: {
+      backgroundColor: {
+        page: "var(--bg)",
+        panel: "var(--panel)",
+        subdued: "var(--subdued)",
+        muted: "var(--text-muted)",
+        terminal: "var(--terminal)",
+        teal: "var(--teal)",
+        primary: tone("primary"),
+        danger: tone("danger"),
+        warning: tone("warning"),
+        success: tone("success"),
+        accent: tone("accent"),
+      },
+      borderColor: {
+        DEFAULT: "var(--border)",
+        line: { DEFAULT: "var(--border)", subdued: "var(--border-subdued)" },
+        primary: { DEFAULT: "var(--primary)", soft: "var(--primary-line)" },
+        danger: { DEFAULT: "var(--danger)", soft: "var(--danger-line)" },
+        warning: { DEFAULT: "var(--warning)", soft: "var(--warning-line)" },
+        success: { DEFAULT: "var(--success)", soft: "var(--success-line)" },
+        accent: { DEFAULT: "var(--accent)", soft: "var(--accent-line)" },
+      },
+      textColor: {
+        heading: "var(--heading)",
+        body: "var(--text)",
+        muted: "var(--text-muted)",
+        inverse: "var(--text-inverse)",
+        primary: "var(--primary-text)",
+        danger: "var(--danger-text)",
+        warning: "var(--warning-text)",
+        success: "var(--success-text)",
+        accent: "var(--accent-text)",
+      },
+      accentColor: {
+        primary: "var(--primary)",
+        danger: "var(--danger)",
+        warning: "var(--warning-text)",
+      },
+    },
+  },
+};
+CONFIG
+
 npx --yes tailwindcss@3 \
+  -c "$WORK/tailwind.config.js" \
   -i "$WORK/in.css" \
   -o "$CONSOLE/tailwind.css" \
-  --content "$CONSOLE/*.html" \
   --minify
 
 printf 'wrote %s (%s bytes)\n' \
