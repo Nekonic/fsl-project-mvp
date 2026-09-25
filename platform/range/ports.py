@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import subprocess
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -78,8 +79,24 @@ class Substrate(Protocol):
 def reporting(argv: list[str]) -> list[str]:
     return ["sh", "-c", "--", f"{shlex.join(argv)}; {EXIT_REPORT}"]
 
-def reported(stderr: str) -> tuple[int, str] | None:
-    found = _REPORTED.match(stderr)
+def reported(done: subprocess.CompletedProcess) -> Ran | None:
+    found = _REPORTED.match(done.stderr or "")
     if found is None:
         return None
-    return int(found[2]), found[1] + found[3]
+    return Ran(exit_code=int(found[2]), output=(done.stdout or "") + found[1] + found[3])
+
+def execute(
+    host: str, command: list[str], stdin: str | None, timeout: float
+) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(
+            command, input=stdin, capture_output=True,
+            text=True, errors="replace", timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RangeUnavailable(
+            f"{host} did not finish within {timeout:.0f}s and may "
+            f"still be running it"
+        ) from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RangeUnavailable(f"could not reach {host}: {exc}") from exc

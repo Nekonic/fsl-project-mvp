@@ -44,6 +44,18 @@ class Declaration:
                 f"segment an attack can start from. Outside: {sorted(outside)}"
             )
 
+    def host(self, role: str) -> str:
+        host = self.roles.get(role)
+        if host is None:
+            raise RangeUnavailable(f"no host fills the role {role!r}")
+        return host
+
+    def watching(self) -> list[tuple[str, str]]:
+        return [
+            (self.roles[sensing], self.roles[sensed])
+            for sensing, sensed in sorted(self.watches.items())
+        ]
+
     def segment(self, segment_id: str) -> Segment:
         for segment in self.segments:
             if segment.id == segment_id:
