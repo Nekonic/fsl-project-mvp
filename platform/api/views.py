@@ -61,6 +61,7 @@ DETECTION_FIELDS = (
 DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at")
+SCORE_FIELDS = ("tp", "fp", "fn", "tn", "precision", "recall", "f1", "false_positive_rate")
 SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
@@ -588,7 +589,8 @@ def _case_errors(body):
 @require_http_methods(["POST"])
 def ingest_detections(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    start, end = _session_window(session)
+    start = session.started_at - timedelta(minutes=1)
+    end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     try:
         restored = _restore_expired()
     except (RangeUnavailable, suricata.RulesUnreadable):
@@ -598,17 +600,13 @@ def ingest_detections(request, session_id):
         settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end
     )
 
-    known = set(
-        Detection.objects.filter(session=session).values_list("detection_id", flat=True)
-    )
+    held = dict(session.detections.values_list("detection_id", "marker"))
+    known = set(held)
+    unmarked = {detection_id for detection_id, marker in held.items() if marker is None}
     stale = 0
     rows = []
 
     alerts = elastic.normalize_all(documents)
-
-    unmarked = set(
-        Detection.objects.filter(session=session, marker=None).values_list("detection_id", flat=True)
-    )
     for alert in alerts:
         if alert["marker"] and alert["detection_id"] in unmarked:
             Detection.objects.filter(
@@ -635,9 +633,9 @@ def ingest_detections(request, session_id):
             **alert,
         ))
 
-    before = Detection.objects.filter(session=session).count()
+    before = session.detections.count()
     Detection.objects.bulk_create(rows, ignore_conflicts=True)
-    ingested = Detection.objects.filter(session=session).count() - before
+    ingested = session.detections.count() - before
 
     reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "restored": restored}
     if truncated:
@@ -673,15 +671,11 @@ def detection_detail(request, detection_id):
         _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
     )
 
-def _target(site):
-    if site is None:
-        return None
-    return {"lat": site.lat, "lon": site.lon, "label": site.label}
-
 @require_http_methods(["GET"])
 def session_map(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
+    site = settings.RANGE.defended_site
 
     located = {}
     for detection in detections:
@@ -720,7 +714,7 @@ def session_map(request, session_id):
         {
             "points": sorted(points.values(), key=lambda p: -p["detections"]),
             "unlocated": unlocated,
-            "target": _target(settings.RANGE.defended_site),
+            "target": site and _shape(site, ("lat", "lon", "label")),
         }
     )
 
@@ -755,14 +749,7 @@ def session_score(request, session_id):
 
     return _reply(
         {
-            "tp": totals.tp,
-            "fp": totals.fp,
-            "fn": totals.fn,
-            "tn": totals.tn,
-            "precision": totals.precision,
-            "recall": totals.recall,
-            "f1": totals.f1,
-            "false_positive_rate": totals.false_positive_rate,
+            **_shape(totals, SCORE_FIELDS),
             "benign_cases": totals.fp + totals.tn,
             "unattributed": len(result.unmatched_detection_ids),
             "warnings": warnings,
@@ -827,18 +814,16 @@ def _achieved(objective, session, observed_at):
     )
 
 def _expected(scenario, cases):
-    unrecorded = any(case.expect is None for case in cases)
-    catalogue = _expectations(scenario) if unrecorded else {}
+    catalogue = {}
+    if any(case.expect is None for case in cases):
+        try:
+            catalogue = wargames.expectations(scenario)
+        except wargames.UnknownWargame:
+            pass
     return {
         case.case_id: catalogue.get(case.name) if case.expect is None else case.expect
         for case in cases
     }
-
-def _expectations(scenario):
-    try:
-        return wargames.expectations(scenario)
-    except wargames.UnknownWargame:
-        return {}
 
 def _per_case(result, expectations, signatures):
     indiscriminate = {
@@ -874,11 +859,6 @@ def _verdict(malicious: bool, detected: bool) -> str:
     if malicious:
         return "TP" if detected else "FN"
     return "FP" if detected else "TN"
-
-def _session_window(session):
-    start = session.started_at - timedelta(minutes=1)
-    end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
-    return start, end
 
 @require_http_methods(["GET"])
 def current_rules(request):
