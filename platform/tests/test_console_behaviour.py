@@ -347,6 +347,38 @@ def test_a_signature_or_path_cut_short_on_screen_keeps_its_full_text_in_the_titl
         "whatever was cut off could not be read anywhere on the page"
     )
 
+def test_an_alert_placed_in_two_cases_breaks_between_the_names_and_never_inside_one(client):
+    names = ["sqlmap-boolean-blind", "<i>nikto</i>-web-scan"]
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + ALERTS + f"""
+          DETECTIONS = [alert(1)];
+          ANSWERS["/api/sessions/1/score/"] = {{
+            ...SCORE, tp: 2, tn: 0, benign_cases: 0, unattributed: 0,
+            per_case: {js(names)}.map((name, i) => ({{
+              case_id: `case-${{i}}`, name, malicious: true, detected: true, verdict: "TP",
+              detection_ids: ["es-1:0"], expect: "", corroborated: null,
+            }})),
+          }};
+        """,
+        scenario="""
+          return {
+            cases: caseColumn(),
+            unbroken: [...browser.element("rows").innerHTML
+              .matchAll(/<span class="whitespace-nowrap">([^<]*)<\\/span>/g)].map((m) => m[1]),
+          };
+        """,
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["cases"] == {"1": "sqlmap-boolean-blind , &lt;i&gt;nikto&lt;/i&gt;-web-scan"}
+    assert seen["result"]["unbroken"] == [
+        "sqlmap-boolean-blind", "&lt;i&gt;nikto&lt;/i&gt;-web-scan",
+    ], (
+        "a case name broke at each hyphen, so sqlmap-boolean-blind read as "
+        "three lines in a column with room to spare"
+    )
+
 def test_a_score_with_no_case_run_says_so_under_the_case_table(client):
     seen = open_page(
         client, "/blue/1/",
