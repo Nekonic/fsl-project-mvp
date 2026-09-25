@@ -5,6 +5,16 @@
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
 {% block content %}
+<style>
+  :root {
+    --map-sea: #fbfcfd;
+    --map-land: #d3dae6;
+    --map-border: #abb4c4;
+    --map-point: #bd271e;
+    --map-line: rgb(189 39 30 / 0.45);
+    --map-target: #0077cc;
+  }
+</style>
 <div id="tabs" class="flex gap-3 mb-3 border-b border-slate-800 items-center shrink-0">
   <button data-tab="dashboard" data-t="blue.tab.dashboard" class="tab px-4 py-2 text-sm"></button>
   <button data-tab="alerts" data-t="blue.tab.alerts" class="tab px-4 py-2 text-sm"></button>
@@ -61,11 +71,14 @@
     </div>
     <div class="flex-1 min-h-0 p-2 flex">
       <svg viewBox="0 0 360 160" class="w-full h-full block" preserveAspectRatio="xMidYMid meet">
-        <rect width="360" height="160" fill="#0b1220"/>
-        <g fill="#1e293b" stroke="#334155" stroke-width="0.2" stroke-linejoin="round">
+        <rect width="360" height="160" style="fill: var(--map-sea)"/>
+        <g style="fill: var(--map-land); stroke: var(--map-border)" stroke-width="0.2"
+           stroke-linejoin="round">
           {% include "console/world.svg" %}
         </g>
-        <g id="map-points"></g>
+        <g id="map-lines" style="fill: none; stroke: var(--map-line)" stroke-linecap="round"></g>
+        <g id="map-points" style="fill: var(--map-point)"></g>
+        <g id="map-target" style="fill: var(--map-target); stroke: var(--map-sea)"></g>
       </svg>
     </div>
   </section>
@@ -602,31 +615,57 @@
   }
 
 
+  const located = (place) => Number.isFinite(place.lat) && Number.isFinite(place.lon);
+  const fixed = (n) => n.toFixed(2);
+
+  function bowed([x0, y0], [x1, y1]) {
+    let [bx, by] = [(y0 - y1) * 0.2, (x1 - x0) * 0.2];
+    if (by > 0) [bx, by] = [-bx, -by];
+    const [cx, cy] = [(x0 + x1) / 2 + bx, (y0 + y1) / 2 + by];
+    return `M${fixed(x0)} ${fixed(y0)}Q${fixed(cx)} ${fixed(cy)} ${fixed(x1)} ${fixed(y1)}`;
+  }
+
   async function renderMap() {
     const { ok, body } = await api(`/api/sessions/${sessionId()}/map/`);
     if (!ok) return;
 
-    const busiest = Math.max(1, ...body.points.map((p) => p.detections));
-    document.getElementById("map-points").innerHTML = body.points.map((p) => {
-      const r = 1.2 + 4.5 * Math.sqrt(p.detections / busiest);
+    const points = body.points.filter(located);
+    const target = body.target;
+    const home = target && projectOnMap(target.lon, target.lat);
+    const busiest = Math.max(1, ...points.map((p) => p.detections));
+    const weight = (p) => Math.sqrt(p.detections / busiest);
+
+    document.getElementById("map-lines").innerHTML = home ? points.map((p) =>
+      `<path d="${bowed(projectOnMap(p.lon, p.lat), home)}" stroke-width="${fixed(0.4 + 1.4 * weight(p))}"/>`
+    ).join("") : "";
+
+    document.getElementById("map-points").innerHTML = points.map((p) => {
+      const r = 1.2 + 4.5 * weight(p);
       const where = [p.city, p.country].filter(Boolean).join(", ")
         || t("blue.map.place.unknown");
-      const [x, y] = projectOnMap(p.lon, p.lat);
+      const [x, y] = projectOnMap(p.lon, p.lat).map(fixed);
       return `
         <g>
           <title>${esc(t("blue.map.point_title", where, p.detections, p.ips.join(", ")))}</title>
-          <circle cx="${x}" cy="${y}" r="${r + 2}" fill="#f43f5e" opacity="0.15"/>
-          <circle cx="${x}" cy="${y}" r="${r}" fill="#f43f5e" opacity="0.85"/>
+          <circle cx="${x}" cy="${y}" r="${fixed(r + 2)}" opacity="0.2"/>
+          <circle cx="${x}" cy="${y}" r="${fixed(r)}" opacity="0.9"/>
         </g>`;
     }).join("");
 
+    document.getElementById("map-target").innerHTML = home ? `
+        <g>
+          <title>${esc(t("blue.map.target_title", target.label))}</title>
+          <circle cx="${fixed(home[0])}" cy="${fixed(home[1])}" r="5" opacity="0.2" stroke="none"/>
+          <circle cx="${fixed(home[0])}" cy="${fixed(home[1])}" r="2.4" stroke-width="0.8"/>
+        </g>` : "";
+
     const note = document.getElementById("map-note");
-    if (!body.points.length && !body.unlocated) {
+    if (!points.length && !body.unlocated) {
       note.textContent = t("blue.map.note.empty");
     } else if (body.unlocated) {
-      note.textContent = t("blue.map.note.unlocated", body.points.length, body.unlocated);
+      note.textContent = t("blue.map.note.unlocated", points.length, body.unlocated);
     } else {
-      note.textContent = t("blue.map.note.located", body.points.length);
+      note.textContent = t("blue.map.note.located", points.length);
     }
   }
 
