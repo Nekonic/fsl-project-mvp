@@ -2322,3 +2322,106 @@ def test_the_top_tables_catch_up_with_alerts_that_arrived_just_after_the_page_op
         "nothing asked again - the tables stayed empty beside a total of 4 "
         "(seen in a real browser on session 1484)"
     )
+
+MAP = """
+const SEOUL = {lat: 37.5665, lon: 126.978, label: "Seoul, Korea"};
+const origin = (lat, lon, detections, fields = {}) => ({
+  lat, lon, detections, country: "Russia", country_code: "RU", city: "Moscow",
+  ips: ["5.188.10.2"], ...fields,
+});
+const drawnMap = () => {
+  const ends = (d) => {
+    const n = d.match(/-?\\d+(?:\\.\\d+)?/g).map(Number);
+    return {from: n.slice(0, 2), bend: n.slice(2, 4), to: n.slice(4, 6)};
+  };
+  const at = ([x, y]) => [Number(x.toFixed(2)), Number(y.toFixed(2))];
+  return {
+    lines: browser.element("map-lines").querySelectorAll("path").map((path) => ({
+      ...ends(path.getAttribute("d")), width: Number(path.getAttribute("stroke-width")),
+    })),
+    points: browser.element("map-points").querySelectorAll("title").map((t) => t.textContent),
+    target: browser.element("map-target").querySelectorAll("title").map((t) => t.textContent),
+    markup: browser.element("map-points").innerHTML + browser.element("map-target").innerHTML,
+    moscow: at(projectOnMap(37.61, 55.74)),
+    saoPaulo: at(projectOnMap(-46.63, -23.55)),
+    seoul: at(projectOnMap(126.978, 37.5665)),
+    note: browser.text("map-note"),
+  };
+};
+"""
+
+def test_the_map_draws_the_target_and_a_line_from_each_located_origin(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + MAP + """
+          ANSWERS["/api/sessions/1/map/"] = {
+            points: [origin(55.74, 37.61, 8), origin(-23.55, -46.63, 2, {city: "Sao Paulo"})],
+            unlocated: 3, target: SEOUL,
+          };
+        """,
+        scenario="return drawnMap();",
+    )
+
+    assert seen["errors"] == []
+    drawn = seen["result"]
+    assert drawn["target"] == [english("blue.map.target_title", "Seoul, Korea")]
+    assert [(line["from"], line["to"]) for line in drawn["lines"]] == [
+        (drawn["moscow"], drawn["seoul"]), (drawn["saoPaulo"], drawn["seoul"]),
+    ]
+    assert drawn["lines"][0]["width"] > drawn["lines"][1]["width"], (
+        "a line is as thick as the origin is busy, and Moscow sent four times the alerts"
+    )
+    for line in drawn["lines"]:
+        (x0, y0), (cx, cy), (x1, y1) = line["from"], line["bend"], line["to"]
+        off_the_chord = abs((x1 - x0) * (cy - y0) - (y1 - y0) * (cx - x0))
+        assert off_the_chord > 1, "the line is drawn straight instead of bowed"
+    assert len(drawn["points"]) == 2
+    assert drawn["note"] == english("blue.map.note.unlocated", 2, 3)
+
+def test_an_origin_without_a_location_gets_no_point_and_no_line(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + MAP + """
+          ANSWERS["/api/sessions/1/map/"] = {
+            points: [origin(55.74, 37.61, 8), origin(null, null, 4, {city: ""})],
+            unlocated: 0, target: SEOUL,
+          };
+        """,
+        scenario="return drawnMap();",
+    )
+
+    assert seen["errors"] == []
+    assert [line["from"] for line in seen["result"]["lines"]] == [seen["result"]["moscow"]]
+    assert len(seen["result"]["points"]) == 1
+
+def test_a_range_with_no_declared_site_draws_origins_without_lines(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + MAP + """
+          ANSWERS["/api/sessions/1/map/"] = {
+            points: [origin(55.74, 37.61, 8)], unlocated: 0, target: null,
+          };
+        """,
+        scenario="return drawnMap();",
+    )
+
+    assert seen["errors"] == []
+    assert seen["result"]["lines"] == [] and seen["result"]["target"] == []
+    assert len(seen["result"]["points"]) == 1
+
+def test_every_value_on_the_map_is_escaped(client):
+    seen = open_page(
+        client, "/blue/1/",
+        setup=BLUE_RANGE + MAP + """
+          ANSWERS["/api/sessions/1/map/"] = {
+            points: [origin(55.74, 37.61, 8, {city: "<b>Moscow</b>", ips: ['"><img>']})],
+            unlocated: 0, target: {...SEOUL, label: "<i>Seoul</i>"},
+          };
+        """,
+        scenario="return drawnMap();",
+    )
+
+    assert seen["errors"] == []
+    markup = seen["result"]["markup"]
+    assert "<b>" not in markup and "<i>" not in markup and "<img>" not in markup
+    assert "&lt;b&gt;Moscow" in markup and "&lt;i&gt;Seoul" in markup

@@ -114,3 +114,17 @@ def test_nothing_south_of_sixty_is_drawn():
 
     assert lowest <= world.HEIGHT
     assert world.project(0, -60)[1] == pytest.approx(world.HEIGHT, abs=0.05)
+
+MAP_COLOURS = ("--map-sea", "--map-land", "--map-border", "--map-point", "--map-line", "--map-target")
+
+def test_the_map_takes_every_colour_from_one_set_of_variables():
+    page = (WORLD.parent / "blue.html").read_text()
+    markup = page[page.index('<svg viewBox'):page.index("</svg>")]
+    drawing = page[page.index("async function renderMap"):page.index('getElementById("map-note")')]
+
+    assert re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(", markup + drawing) == [], (
+        "a colour written into the map itself has to be found and changed by "
+        "hand when the console is rethemed"
+    )
+    assert [page.count(f"{name}:") for name in MAP_COLOURS] == [1] * len(MAP_COLOURS)
+    assert [name for name in MAP_COLOURS if f"var({name})" not in page] == []
