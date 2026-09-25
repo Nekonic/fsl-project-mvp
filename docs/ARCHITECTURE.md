@@ -1,466 +1,235 @@
 # Architecture
 
-The mechanism: what the range is made of, how traffic and evidence move through
-it, and how the two numbers are computed. The working rules are in `CLAUDE.md`.
-What is true of the running system today is in `docs/STATE.md`.
+How the range is built, how traffic and evidence move through it, and the
+design decisions behind it. How the score is defined is in `CLAUDE.md`; open
+problems and measured quirks are in `docs/STATE.md`.
 
-Every structural claim carries the file that proves it. Where a document in this
-repo disagrees with the code, the code is the fact; those are collected in §8.
+The hypothesis the repo started from: red team attacks can be labelled with
+ground truth, and Suricata and ModSecurity alerts can be matched to those
+labels automatically, so false positives and negatives can be scored
+mechanically. The objective score was added on top once that held.
 
----
+## The range
 
-## 1. What the range is made of
-
-Nine compose services on six Docker networks. `platform/range/declaration.yaml`
-says what they mean and `compose.yaml` builds them: no Terraform, no
-provisioning step, no router.
+Nine compose services on six Docker networks.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
-| `fsl-juice-shop` | `bkimminich/juice-shop` | estate | — |
-| `fsl-wiki` | `nginx:alpine`, alias `wiki.internal` | estate | — |
-| `fsl-waf` | `owasp/modsecurity-crs:nginx` | edge, edge-br, edge-hk, edge-kp, estate | 8080 → 80 |
-| `fsl-suricata` | `jasonish/suricata` | none of its own | — |
+| `fsl-juice-shop` | `bkimminich/juice-shop` | estate | |
+| `fsl-wiki` | `nginx`, alias `wiki.internal` | estate | |
+| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `shop.com` on edge | edge, edge-br, edge-hk, edge-kp, estate | 8080 |
+| `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | — |
-| `fsl-kali` | built from `deploy/kali` | edge | 7681 |
-| `fsl-proxy` | built from `deploy/proxy` | edge, edge-br, edge-hk, edge-kp | — |
-| `fsl-platform` | built from `./platform` | all six | 8000 |
+| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
+| `fsl-kali` | `deploy/kali` | edge | 7681 |
+| `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
+| `fsl-platform` | `platform/` (Django) | all six | 8000 |
 
-| Network | Subnet (allocated) | Name (declared) | Origin (declared) |
+| Network | Subnet | Name | Origin |
 |---|---|---|---|
 | `edge` | 5.188.10.0/24 | Internet | Moscow, Russia |
 | `edge-br` | 177.54.144.0/24 | Internet | Sao Paulo, Brazil |
 | `edge-hk` | 103.152.220.0/24 | Internet | Kwai Chung, Hong Kong |
 | `edge-kp` | 175.45.176.0/24 | Internet | North Korea |
-| `estate` | 172.30.0.0/24 | Application estate | — |
-| `mgmt` | 172.31.0.0/24 | Management | — |
+| `estate` | 172.30.0.0/24 | Application estate | |
+| `mgmt` | 172.31.0.0/24 | Management | |
 
-**The platform is told what the range means, not asked.**
-`platform/range/declaration.yaml` is the one substrate-neutral statement of it:
-per segment an id, the name a person reads and the origin it attacks from, plus
-the role table (`attacker`, `gateway`, `proxy`, `sensor`, `target`, `wiki`) that
-says which host fills each job. `compose.yaml` is the Docker *realisation* of
-that file — its network labels at `compose.yaml:3-48` and its `container_name`
-lines say the same things in Docker's vocabulary — and nothing generates one
-from the other, so `platform/tests/test_declaration.py` compares them and names
-the segment or the role that drifted.
+Segmentation is Docker network membership only: no firewall, no iptables, no
+ACL. `test/test_segmentation.py` asserts it against the live stack (Kali
+reaches `shop.com` but not `juice-shop:3000`). Only the subnets are fixed;
+container addresses are assigned by Docker and change on recreate, so the
+platform reads them live on every request and answers 503 when it cannot
+reach the substrate.
 
-A segment is **outside** if and only if the declaration gives it a non-empty
-`origin` — the only definition anywhere (`platform/range/ports.py:38-39`,
-supplied at `platform/range/declared.py:23-35`) — and that text is the origin name
-the console shows (`platform/attacker.py:38`). The Docker adapter no longer
-reads `fsl.segment` or `fsl.origin`: it asks the daemon only for what only the
-daemon knows, and merges the declared identity into it
-(`platform/range/docker.py:63-81`). Neutron can answer which networks a project
-has and what it allocated on them; it cannot answer what they mean.
-
-**The subnet is not declared.** The declaration carries identity; the substrate
-carries allocation. A subnet written into the declaration would be an address
-fact the platform does not own — Docker hands it out from `ipam`, Neutron may
-hand it out from a subnet pool — and if the two disagreed the console would draw
-a segment whose own nodes' addresses fall outside it, and place alerts by a
-subnet nothing lives on (`platform/api/views.py:179,291` bin every alert by
-`ip_network(segment["subnet"])`). Gateway settles it: nobody can declare that at
-all, and it travels with the subnet. `test_declaration.py` asserts the
-declaration states none of subnet, gateway, address, nodes or network.
-
-Only the subnets are fixed. No service is given an `ipv4_address`, so every
-address is DHCP-assigned and changes on recreate. `Substrate.describe()` reads
-live addresses once per request — `platform/range/docker.py` for Docker, the
-only file that asks it — which is why the API answers 503 rather than a
-stale picture when the substrate is unreachable
-(`platform/api/views.py:283-285`). `platform/topology.py` shapes that reading
-into the response and makes no call of its own.
-
-The port has three verbs. `describe()` reads the shape. `runner(role, segment)`
-runs a command on a host that is already standing — the sensor, the wiki, the
-target. `launcher(segment)` starts a throwaway host on a segment and waits for
-it to finish, which is what a tool case is: `docker run --rm --network` on
-Docker, and on Nova a server booted from an image that something has to delete
-afterwards. Core holds none of the three: `redteam/harness.py` is handed a
-launcher and `platform/rules/suricata.py` a runner, so neither imports
-`subprocess` and neither names a substrate.
-
-A substrate object is bound to a declared segment by a mark the range carries -
-`fsl.segment.id`, a Docker label and a Neutron tag - never by its name. Deriving
-it from a name is a rule, and the rule differs per substrate: compose prefixes
-the project and lets a network override its own name, Heat appends a stack
-suffix, Neutron does not keep names unique at all. Both adapters ask their
-substrate for marked objects only (`--filter label=`, `?tags-any=`), so nothing
-unmarked is part of the range and a shared Neutron project's other networks are
-never fetched.
-
-Three containers are multi-homed: the platform (all six), the WAF (four outside
-plus estate), the proxy (four outside). `platform/topology.py:5-18` marks a
-node as a crossing when it sits on both sides, so two are drawn as ways in: the
-WAF and the platform itself. "The WAF is the only way across" is true of the
-attacker's traffic, not of the stack.
-
-Segmentation is Docker network membership. There is no firewall, no iptables
-rule and no ACL anywhere in `deploy/`. The guarantee is what
-`test/test_segmentation.py:30-64` asserts against the live stack: Kali cannot
-reach `juice-shop:3000`, Kali can reach `shop.com`, and they share no network.
+The platform, the WAF and the proxy are multi-homed. The attacker's traffic
+crosses into the estate only at the WAF, but the platform stands on every
+segment, which is why the API guards itself (`docs/THREAT-MODEL.md`).
 
 ```
- OUTSIDE  (segments the declaration gives an origin)
+ edge      kali --HTTP via http_proxy--> proxy:8081 --+
+           kali --raw TCP (nmap, nc), no proxy--------+
+           platform --console-fired case--------------+
+ edge-br                                              |
+ edge-hk   proxy, platform (no kali, no shop.com)     |
+ edge-kp                                              v
+         fsl-waf: nginx + ModSecurity CRS, DetectionOnly
+         fsl-suricata in the same network namespace, af-packet on all five
+         interfaces, so it sees client->WAF and WAF->juice-shop
+                                                      |
+ estate    juice-shop:3000 --SSRF--> wiki.internal <--+
+ mgmt      filebeat --> elasticsearch <-- platform
 
- +---------------------------------------------------------------+
- | edge      5.188.10.0/24     "Internet" / Moscow, Russia        |
- |   kali --HTTP, http_proxy env--> proxy :8081 ------------+     |
- |      \                                                   |     |
- |       \--raw TCP (nmap, nc): no proxy, kali's own src ---+     |
- |   platform --console-fired case, Host: shop.com----------+     |
- |                                                          v     |
- |                              waf  (alias shop.com)             |
- +---------------------------------------------------------------+
- +------------------+ +------------------+ +--------------------+
- | edge-br          | | edge-hk          | | edge-kp            |
- | proxy, platform  | | proxy, platform  | | proxy, platform    |
- | waf              | | waf              | | waf                |
- +------------------+ +------------------+ +--------------------+
-   no kali here: the "direct" route exists on edge only
-   no shop.com here either: that alias is on edge alone
-        |  HTTP :80, Host: shop.com, X-FSL-Case stamped by proxy
-        v
- ########## fsl-waf #############################################
- #  nginx + ModSecurity CRS, DetectionOnly (never blocks)       #
- #  five interfaces: eth0 edge, eth1 br, eth2 hk, eth3 kp,      #
- #                   eth4 estate                                #
- #  fsl-suricata shares this netns (network_mode: service:waf)  #
- #  and sniffs all five with af-packet => sees BOTH legs        #
- ################################################################
-        |  proxied to BACKEND http://juice-shop:3000
-        v
- +---------------------------------------------------------------+
- | estate  172.30.0.0/24  (inside)                               |
- |   waf --> juice-shop --SSRF (imageUrl=...)--> wiki            |
- |   platform                                                    |
- +---------------------------------------------------------------+
- +---------------------------------------------------------------+
- | mgmt    172.31.0.0/24  (inside)                               |
- |   filebeat --bulk--> elasticsearch :9200                      |
- |   platform --_search fsl-logs-*--> elasticsearch              |
- +---------------------------------------------------------------+
-
- OFF-NETWORK EDGES (mounts and docker exec, not traffic):
-   suricata eve.json --> deploy/suricata/logs --> filebeat
-   modsec audit.log  --> deploy/nginx/logs    --> filebeat
-   platform --docker exec--> wiki:  grep <secret path> /var/log/nginx/read.log
-   platform --docker exec--> proxy: /label/{active,origin}
-                             (./data/label, mounted read-only into kali)
-   platform --> named volume platformdata:/data --> db.sqlite3
-   platform --> /var/run/docker.sock --> docker run, docker exec, topology, reload
+ Not network traffic:
+   eve.json, ModSecurity audit.log --bind mounts--> filebeat
+   platform --docker exec--> wiki (read log), proxy (/label files), suricata (rules)
+   platform --docker run--> throwaway fsl-kali for tool cases
+   platform --> volume platformdata --> /data/db.sqlite3
 ```
 
-**The store is not in the checkout.** Every session, case, detection, objective,
-rule set and suppression is in `/data/db.sqlite3` on the named volume
-`platformdata` (`compose.yaml`, `DJANGO_DB_PATH`), so removing the worktree that
-ran `compose up` leaves it, and a `data/db.sqlite3` in a checkout is a copy
-frozen when the store moved (b819dab) that nothing reads. `docker compose down
--v` deletes the volume together with Elasticsearch's `esdata`, and nothing backs
-it up. The volume is writable by the platform's user only in an image built
-after that move: the Dockerfile creates `/data` and gives it to `fsl`.
+`deploy/suricata/suricata.yaml` names the interfaces eth0 to eth4 and relies on
+Docker attaching the WAF's networks in the priority order set in
+`compose.yaml`. Nothing checks that mapping.
 
-The eth0–eth4 mapping holds on the running stack and follows compose's network
-priorities (`compose.yaml:91-106`), but nothing enforces it:
-`deploy/suricata/suricata.yaml:26-46` hard-codes the interface names and the
-association is an inference about Docker's attach order.
+## The declaration and the substrate seam
 
----
+Docker is the MVP's substrate; OpenStack is the target. The platform never
+asks Docker what the range means. It is told, by
+`platform/range/declaration.yaml`: per segment an id, a display name and an
+attack origin; a role table (attacker, scorer, gateway, proxy, sensor, target,
+wiki); which host the sensor watches; the default origin; and the defended
+site the map draws lines to (Seoul). A segment is outside if and only if it
+declares an origin.
 
-## 2. The path a request takes
+**Identity is declared, allocation is reported.** The declaration holds no
+subnet, gateway or address. Those come from the substrate, because Docker and
+Neutron both hand them out, and a declared subnet that disagreed with the real
+one would bin alerts by a subnet nothing lives on. `compose.yaml` repeats the
+identity in network labels; `platform/tests/test_declaration.py` holds the two
+files to each other, but never checks the running range.
 
-Three things send traffic at the target, from three addresses, and a fourth
-address shows up in the alerts.
+**Objects are bound by a mark, never by name.** Each segment carries
+`fsl.segment.id` as a Docker label or a Neutron tag, and the adapters fetch only
+marked objects. Name rules broke on compose prefixes and overrides, Heat stack
+suffixes and non-unique Neutron names.
 
-| Route | Sent by | Source address in the alert | Marker |
-|---|---|---|---|
-| Terminal, HTTP | Kali via `http_proxy=http://proxy:8081` | the proxy's address on the current origin | stamped by the proxy |
-| Terminal, raw TCP | Kali directly (nmap, nc) | Kali's own address, edge only | none |
-| Console case | the platform container | the platform's address on that origin | set by the harness, or by sqlmap's `--headers=` |
+`platform/range/ports.py` is the port. Core code and most of the platform see
+only its four verbs:
 
-`compose.yaml:184-188` sets the proxy env on Kali only, so `harness.fire` inside
-the Django process goes straight to the WAF (`platform/api/views.py:408-426`).
+- `describe()` returns the shape: segments, their nodes and addresses, sensors;
+- `segments()` returns who stands where, without asking about the sensor;
+- `runner(role, segment)` runs a command on a standing host (the sensor, the
+  wiki, the proxy);
+- `launcher(segment)` runs a one-shot tool on a segment and returns its output.
 
-The fourth address is the docker bridge gateway on `edge`: anything arriving
-through the published host port 8080 rather than from a container — a browser,
-`curl localhost:8080` — reaches the WAF from there, and
-`platform/api/views.py:207-221` files it under the edge segment with no host name
-and no geo.
+`range.substrate()` builds the adapter named by `FSL_SUBSTRATE`.
+`redteam/harness.py` is handed a launcher and `platform/rules/suricata.py` a
+runner, so neither imports `subprocess` or names a substrate.
 
-Two different addresses are both called "the attacker". `GET /api/attacker/`
-reports the proxy's address, because `ATTACKER_SOURCE_CONTAINER` is `fsl-proxy`
-(`platform/fsl/settings.py:48`). A console-fired case does not come from there.
-This matters only to window correlation, which matches on address.
-
-**The proxy.** `deploy/proxy/stamp.py:13-25` does two things per request: if
-`/label/active` is non-empty it sets `X-FSL-Case` to its contents; if
-`/label/origin` is non-empty it sends the request to the address written there,
-keeping the client's original `Host`. No TLS interception is configured, so
-the proxy is an environment variable and not an enforcement point —
-`curl --noproxy '*'` skips it, which is what `test/test_segmentation.py:18` does.
-Both label files are written by the platform with `docker exec` into the proxy
-(`_write` in `platform/attacker.py`, through `runner("proxy")` in
-`platform/range/docker.py`), the only channel between the two. The platform
-mounts no part of `./data`.
-
-**Origins.** `platform/attacker.py:23-51` lists the segments the proxy stands on
-that the declaration gives an origin. Choosing one writes the WAF's address on
-that segment to `/label/origin`, and makes `fire_attack` target that address
-with `Host: shop.com` (`platform/api/views.py:483-490`), because the `shop.com`
-alias exists on `edge` only (`compose.yaml:101`).
-`origin: "rotate"` is a round robin, not a random pick, on `Session.rotation`: a
-per-session counter each rotated fire advances with `F("rotation") + 1` and
-reads back inside one transaction (`_origin_for` and `_take_turn` in
-`platform/api/views.py`). Two fires in flight at once take different turns, and
-pinned fires and cases posted from the terminal do not move it.
-
-**Through the WAF.** It listens on 80 and proxies to `juice-shop:3000`.
-ModSecurity runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly` — it
-never blocks. The one local override stops CRS rule 920273 firing on the marker
-header the platform itself adds (`deploy/nginx/modsecurity-overrides.conf:2`).
-Its health check asks `/healthz`, which the image's nginx answers itself and
-never proxies, so it puts nothing on an interface Suricata reads; asking `/`
-put an http event into Elasticsearch every ten seconds.
-
-**The estate is reached only through the application.** The documented path to
-the wiki is SSRF: post `imageUrl=http://wiki.internal/runbooks/deploy.html` to
-`/profile/image/url` and juice-shop fetches it (`test/test_inside.py:69-97`). No
-case in `redteam/cases/default.yaml` does this; from the console it is a
-hand-typed terminal action.
-
----
-
-## 3. The path an alert takes
-
-```
-[kali shell] --http_proxy--> [mitmdump stamp.py] ---+
-   X-FSL-Case read from /label/active               |
-[harness / sqlmap] -- sets X-FSL-Case itself ------>+
-                                                    v
-                    [nginx :80 + ModSecurity DetectionOnly]
-                          |                          |
-        audit.log (JSON, Serial)              wire traffic
-        deploy/nginx/logs/                          |
-              |                 [Suricata, netns of waf, af-packet]
-              |                 eve.json: alert + http events
-              |                 deploy/suricata/logs/
-              +--------> [Filebeat] <----------------+
-                 filestream + ndjson; adds fsl_source
-                            |
-                            v
-          [ES 8.15] index fsl-logs-YYYY.MM.dd
-                    pipeline fsl-geoip: src_ip -> src_geo
-                            |
-      POST /api/sessions/<id>/ingest/   (blue console timer)
-                            |
-              elastic.fetch: _search on fsl-logs-*,
-              @timestamp range, size 5000, sort asc
-                            |
-              normalize_all: fsl_source picks the parser;
-              (flow_id, tx_id) join lifts the marker
-              from the http doc onto the alert doc
-                            |
-                            v
-              [SQLite] Detection(session, detection_id)
-```
-
-**The sensor sees both legs.** `network_mode: "service:waf"` puts Suricata in the
-WAF's namespace (`compose.yaml:137`), so af-packet on eth0–eth4 is the WAF's own
-five interfaces. One proxied request is seen twice: client→WAF on an edge
-interface, WAF→juice-shop on estate. `HOME_NET` covers all six subnets and the
-rules are written `$EXTERNAL_NET any -> $HOME_NET any`, so both legs alert.
-`deploy/suricata/rules/local.rules` holds four `alert` rules, sids 9000001–9000004
-(SQLi in URI, SQLi in body, XSS, path traversal). None is a `drop`.
-
-**Why the marker needs a join.** The eve log emits two event types: `alert`
-(payload off, http on) and `http` with `dump-all-headers: request`
-(`deploy/suricata/suricata.yaml:17-24`). Only the second dumps headers, so an
-alert document carries an `http` object **without** `http.request_headers` and can
-never yield a marker on its own. `platform/ingest/elastic.py:60-80` therefore
-builds a map from `(flow_id, tx_id)` to the marker found on the http documents and
-copies it onto the alerts. Filtering the fetch to `event_type: alert` would leave
-every alert unattributed and collapse the score.
-
-**Caps.** `elastic.fetch` reads at most 5000 documents, oldest first, and http
-records count against the same 5000 (`platform/ingest/elastic.py:15-60`). A
-session with more loses its newest evidence; the ingest reply and the score both
-say so (`truncated`, `score.warning.truncated`).
-
-**What Elasticsearch is used for, and what it is not.** The ingest pipeline does
-geoip at index time (`deploy/elastic/ingest-pipeline.json`), which is why there is
-no Logstash; a failed lookup sets `src_geo.error` rather than dropping the doc.
-Nothing else uses Elasticsearch's query engine: there is no aggregation anywhere
-in `platform/`, so the map and the four top-N tables are recomputed in Python over
-the Django copy (`platform/api/views.py:191-251`). `src_geo.location` is mapped as
-two floats rather than a `geo_point` — there is no index template — so the geo
-aggregations would not work as things stand.
-
----
-
-## 4. The two numbers
-
-`GET /api/sessions/<id>/score/` is the only place they meet
-(`platform/api/views.py:639-682`). It is GET-only and writes nothing;
-`ScoreSnapshot` was deleted in migration `0004`, so there is no score history.
-
-### Number one — what the red team took
-
-Computed by the pure function `scoreboard.tally()` (`platform/scoreboard.py:79-98`)
-and served under `objectives`.
-
-| Quantity | Formula |
-|---|---|
-| `coverage` | `detected_difficulty / total_difficulty`, and `null` when the total is 0 |
-| `damage` | `undetected_difficulty + 0.5 * detected_difficulty` |
-
-Coverage weighs by difficulty, not count (`platform/tests/test_scoreboard.py:31`).
-An untouched session has no coverage figure, which the console draws as `-`,
-and damage 0. "A lost objective nobody detected counts double" lives in
-`damage`: there is no `* 2`, only the 1.0 against 0.5 ratio.
-
-**The target judges itself.** `platform/objectives.py:52-65` GETs the target's
-`/api/Challenges/` and reads each challenge's own `solved` flag and `updatedAt`.
-The platform applies no rule of its own; an unreachable target raises
-`ObjectivesUnavailable` and the API answers 503 rather than reporting zero.
-
-The exception is `internalRunbookRead`, which the platform judges by scanning the
-wiki's nginx access log for `WIKI_SECRET_PATH` (`platform/objectives.py:16-50`).
-The ground truth is still orthogonal to the detector — it is the wiki's own
-record — but the judging is the platform's. Its difficulty is hard-coded to 6 and
-its category to "Lateral Movement"; the code gives no reason for 6.
-
-**Baseline.** A session snapshots the already-solved keys at creation
-(`Session.baseline`) and never credits them. Nothing in `platform/` truncates the
-wiki's `read.log`, so after one successful SSRF every later session baselines
-`internalRunbookRead` out until the file is cleared, which only the acceptance
-tests do (`test/conftest.py:103-106`, `test/test_inside.py:56-58`).
-
-**Attribution is purely temporal.** `scoreboard.attribute()` takes the
-latest-starting malicious attempt that overlaps the objective's window
-(`platform/scoreboard.py:29-44`): from 100 ms before the solve (2 min for
-challenges Juice Shop stamps late) to just after it (`_achieved` in
-`platform/api/views.py`). No candidate means the breach is built with
-`detected=False`. A case's `takes:` key is displayed but nothing in the scoring
-path reads it, so a case can be credited with an objective it never claimed.
-
-### Number two — what the defence got wrong
-
-`platform/scoring/metrics.py:5-38`, from the correlation result alone:
-
-```
-tp = malicious AND detected      fp = benign AND detected
-fn = malicious AND NOT detected  tn = benign AND NOT detected
-precision = tp/(tp+fp)   recall = tp/(tp+fn)   f1 = 2pr/(p+r)
-false_positive_rate = fp/(fp+tn)
-```
-
-Every ratio returns `0.0` on a zero denominator.
-
-**One case is one verdict.** `correlate()` collects every matching detection id
-per case and sets `detected = bool(hits)` (`platform/scoring/correlate.py:32-43`);
-`platform/scoring/metrics.py:6-9` counts one per `CaseMatch`.
-`sqlmap-boolean-blind` produces many alerts and counts once. The converse is
-unconstrained: each case is scanned against the full detection list independently,
-so two window cases whose intervals overlap both claim the same alert.
-
-**Two correlation strategies.** `marker` matches on the `X-FSL-Case` header;
-`window` matches on source address and time. Only terminal cases carry both, so
-only they can disagree, and a disagreement is a result about the scoring method
-rather than about the defence. `fire_attack` does not validate the `correlation`
-value it is given; `session_cases` does (`platform/api/views.py:488-490,534-539`).
-
-**Corroboration.** A case declares `expect`, a substring the raising signature
-should contain. An alert that does not mention the attack's own mechanism is
-reported `corroborated: false` — still a TP, but flagged, so a rule set that
-catches everything for unrelated reasons does not score as well as one that works.
-The `expect` a case is judged by is recorded with the case (`Case.expect`) when
-it is fired or posted, so editing or breaking the case file does not re-judge a
-finished session. Only a case recorded before that column existed (NULL) is
-judged against the case file as it is now.
-
-### What keeps them apart
-
-They are returned side by side and never combined. A defence that blocks
-everything scores perfectly on number two and loses every objective on number one.
-
----
-
-## 5. The console and the API
-
-Four screens, all fetching `/api/` from the browser: `/` (start or resume),
-`/session/<id>/` (the two links), `/red/<id>/`, `/blue/<id>/`
-(`platform/fsl/urls.py:32-35`). The REST-first rule holds: the only
-server-rendered strings are the `<title>` blocks.
-
-A **session** is a time window plus a baseline. Open means new traffic is
-correlated into it; closed sets `ended_at` and nothing else changes.
-`GET /api/sessions/` takes `?state=open|closed` and `?limit=` (default and
-maximum 25, `platform/api/views.py:147-162`); the landing page asks for up to 25
-open sessions and the last 10 closed ones, so a running session is never hidden behind
-finished ones.
-
-Django models are `Session`, `Case`, `Detection`, `Objective`, `RuleSet`,
-`Suppression`. `Detection.raw` holds a copy of the Elasticsearch document, so
-every alert exists twice.
-
-**The string table.** Every visible string is a key in
-`platform/console/templates/console/strings.html`, which holds `en` and `ko`
-tables and the `t()` helper. Markup carries `data-t="key"` on an empty element and
-`applyLanguage()` fills it on load; a missing key renders as the key itself rather
-than blank. Korean lives in that file and nowhere else, which
-`platform/tests/test_strings.py` enforces along with key-set parity, placeholder
-parity, and a check that no string was left untranslated.
-
----
-
-## 6. The ratchet
-
-`bin/measure` prints five numbers. `core_loc` (`platform/scoring/`,
-`platform/ingest/`, `platform/rules/`, `redteam/harness.py`), `dependencies` and
-`services` are gated and may only fall. `tests` counts `def test_` definitions and
-may only rise. `product_loc` is reported and not gated. Docs, `bin/` and tests are
-excluded from both LOC numbers.
-
-`bin/verify` runs unit and API tests, then — unless `--fast` — checks the stack is
-up, validates the Suricata config through the API, runs `test/` against the live
-stack, prunes the sessions that run made, and refuses the change if a gated
-number grew or the test floor fell. `metrics.json` holds the baseline.
-
-`bin/prune` deletes all but the newest N sessions and everything cascading off
-them, or with `--ids FILE` only the closed sessions whose ids the file lists. It
-is a dry run unless given `--apply`. `bin/verify` hands the acceptance run a file
-in `FSL_ACCEPTANCE_SESSIONS`; the run appends every session it makes, closes them
-when it is done, and verify prunes exactly those.
-
----
-
-## 7. Absences
-
-- **No score history.** `ScoreSnapshot` was removed; nothing records what a
-  session scored before a rule changed.
-- **No blocking.** ModSecurity is `DetectionOnly` and every Suricata rule is
-  `alert`. Nothing in the range ever stops a request.
-- **No code execution on the target.** The estate is reached through the
-  application, so there is no foothold and nothing to escalate.
-- **Typed commands are recorded only in the Kali shell.**
-  `deploy/kali/operator-log.sh` logs each command with the active label;
-  `GET /api/sessions/<id>/commands/` returns them. A command run any other way is
-  not recorded.
-- **No aggregation in Elasticsearch**, and no `geo_point` mapping (§3).
-- **One user, one session.** No accounts, and nothing stops two people opening
-  the same session.
-
----
-
-## 8. Where the repo's own docs are not true
-
-| Claim | Where | Reality |
+| | Docker (`range.docker.Docker`) | OpenStack (`range.openstack.connect`) |
 |---|---|---|
-| "`bin/measure` prints four numbers" | `CLAUDE.md` | Five. |
-| The no-comments rule exempts only `deploy/suricata/rules/` | `CLAUDE.md` | `deploy/nginx/allow-low-port.sh:2-12` is an eleven-line rationale comment in a non-exempt file. It explains why the image's port check is overridden and is worth keeping; the rule has not caught up with it. |
-| "Two browser windows" | `CLAUDE.md` | Four screens; the console calls them consoles, not windows. |
+| shape | `docker network ls/inspect`, label filter | Keystone v3, Neutron with `tags-any`, Nova |
+| runner | `docker exec` | `ssh` to the instance |
+| launcher | `docker run --rm --network <segment>` | runs the tool over ssh on the declared attacker; any other image is refused, because Nova cannot boot a host, return its output and delete it |
+| tested against | the live stack | fakes built from the published API reference and a local sshd; never a cloud |
 
-`docs/superpowers/specs/` holds the design documents. They are a finished
-historical record, not a description of the current system.
+The OpenStack adapter also removes the Docker socket from the platform, which
+is a container escape path. What is left before it can run on a cloud (name
+resolution, sensor placement, one attacker or four, roles by server name, how
+the operator's address appears through a router, SNAT) is listed in
+`docs/STATE.md` under "The substrate seam".
+
+## Where requests come from
+
+| Route | Sender | Source address in the alert | Marker |
+|---|---|---|---|
+| Terminal, HTTP | Kali, through `proxy:8081` | the proxy, on the chosen origin | added by the proxy |
+| Terminal, raw TCP | Kali directly | Kali, on `edge` only | none |
+| Console case, HTTP | the platform | the platform, on the chosen origin | added by the harness |
+| Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
+| CLI run, browser | the host, through port 8080 | the `edge` bridge gateway | added by the harness; none from a browser |
+
+The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
+and, when `/label/origin` names an address, forwards the request there with the
+original `Host`. The platform writes both files with `docker exec`. There is no
+TLS interception, so the proxy is an environment variable, not an enforcement
+point: `curl --noproxy '*'` skips it.
+
+Choosing an origin points traffic at the WAF's address on that segment with
+`Host: shop.com`, because the `shop.com` alias exists on `edge` only. `rotate`
+is a per-session round robin, not a random pick.
+
+The WAF runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly`, and
+every Suricata rule is `alert`. Nothing in the range blocks a request.
+
+The wiki is reached only through the application, by SSRF: Juice Shop fetches
+`imageUrl` posted to `/profile/image/url`. No scripted case does this.
+
+## Where alerts go
+
+```
+WAF (ModSecurity) -> audit.log --+
+Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-*
+                                     (fsl_source)   pipeline fsl-geoip
+                                                          |
+             blue console timer -> POST /api/sessions/<id>/ingest/
+                                                          |
+             parse per fsl_source, lift the marker onto alerts, store
+             as Detection rows in SQLite
+```
+
+ModSecurity's audit log carries the request headers, so its alerts carry the
+marker directly. Suricata's alert events carry no request headers; only its
+`http` events do (with `dump-all-headers: request`; `custom: [X-FSL-Case]` has
+no effect). Ingest copies the marker from the `http` event onto the alert with
+the same `(flow_id, tx_id)`. Joining on `flow_id` alone attributed every alert
+on a keep-alive connection to its first case.
+
+Elasticsearch is used for storage and for geoip at index time, which is why
+there is no Logstash. Nothing uses its query engine beyond a time-range
+search: the map and top-N tables are computed in Python over the SQLite copy,
+and `src_geo.location` is mapped as two floats, not a `geo_point`. The world map
+is an Equal Earth projection cut at 60 degrees south, generated by
+`bin/worldmap`.
+
+## How the scores are computed
+
+**Objectives.** The platform reads the target's `/api/Challenges/` and uses its
+`solved` flags and timestamps as they are; an unreachable target is a 503,
+never a zero. The one objective the platform judges itself is
+`internalRunbookRead`: a successful read of a secret wiki page in the wiki's
+own access log. Its difficulty of 6 has no recorded reason. A session
+snapshots the objectives already solved when it starts and never credits them.
+Nothing clears the wiki log except the acceptance tests, so after one
+successful SSRF later sessions start with the runbook already read.
+
+A taken objective goes to the malicious case that started latest among those
+running when the target stamped it. Attribution is by time only: a case's
+`takes:` field is shown in the red console but not read by scoring.
+
+`coverage` is detected difficulty over total difficulty, `null` when nothing
+was taken. `damage` is undetected difficulty plus half of detected
+difficulty; that ratio is where "an undetected loss counts double" lives.
+
+**Detection.** A case is matched to alerts by one of two strategies, declared
+per case:
+
+- `marker`: the alert carries the case's `X-FSL-Case` value;
+- `window`: the alert's source address matches the case's and its time falls
+  within the case's start and end, with two seconds of slack each side.
+
+There is no fallback from one to the other. A marker case whose marker was
+lost should show up as a miss, not be covered for by the window. Terminal cases
+carry both, and `?correlation=marker|window|both` on the score endpoint forces
+a strategy so the two can be compared. A disagreement is a finding about the
+scoring method, not the defence.
+
+A case's `expect` is stored with the case when it is fired, so editing the
+case file does not re-judge a finished session. Alert severity and rule type
+are not used.
+
+The score endpoint is read-only and keeps no history.
+
+## Decisions
+
+- **One case file for attacks and benign traffic.** Separate files make it easy
+  to forget the benign half.
+- **The harness refuses to send a rewritten path.** `requests` turns
+  `/ftp/../../etc/passwd` into `/etc/passwd`; sending that would record an
+  attack that never left and score the harness's failure as the defence's.
+  Percent-encoding differences are allowed.
+- **A tool that cannot start raises; a tool that exits non-zero counts.**
+  sqlmap exits non-zero when it finds nothing, but its traffic went out.
+- **Suricata shares the WAF's network namespace** rather than using host
+  networking, whose meaning varies with the Docker host (on macOS it is the
+  VM's). The WAF's interfaces carry both legs of every request.
+- **No Kibana.** The blue console lists detections and Elasticsearch still
+  answers ad-hoc queries. The production repo can add it back.
+- **Elasticsearch is a single node with a 512 MB heap** so the whole stack fits
+  in a default Docker memory allowance.
+- **Missing data is an error, not a zero.** An unreachable Elasticsearch,
+  target or substrate is a 503. A score with no benign cases, or with marker
+  cases and no marker on any alert, carries a warning.
+- **Console-fired cases send one case per HTTP connection**, while the CLI
+  keeps one connection for a whole run. Measured on the same twelve cases,
+  both gave identical scores and per-case alert counts. The acceptance tests
+  drive the CLI, so the shared-connection case stays tested.
