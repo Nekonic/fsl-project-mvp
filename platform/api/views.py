@@ -30,6 +30,7 @@ import scoreboard
 import suppress
 import topology
 import wargames
+from api.refusals import Conflict
 from api.models import (
     Case,
     Detection,
@@ -134,13 +135,9 @@ def _rule_file(request) -> str:
         )
     return content
 
-def _closed(session):
-    if session.ended_at is None:
-        return None
-    return _reply(
-        {"detail": f"session {session.pk} closed at {session.ended_at.isoformat()}"},
-        status=409,
-    )
+def _refuse_closed(session):
+    if session.ended_at is not None:
+        raise Conflict(f"session {session.pk} closed at {session.ended_at.isoformat()}")
 
 SESSION_PAGE = 25
 
@@ -177,11 +174,7 @@ def sessions(request):
 
 @require_http_methods(["GET"])
 def attacker_box(request):
-    try:
-        origin = attacker.find(_standing(), request.GET.get("origin"))
-    except attacker.UnknownOrigin as exc:
-        raise Http404(str(exc))
-
+    origin = attacker.find(_standing(), request.GET.get("origin"))
     return _reply(
         {
             "container": settings.ATTACKER_CONTAINER,
@@ -334,11 +327,7 @@ def origins(request):
 def session_commands(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
 
-    try:
-        typed = operator_log.commands(substrate().runner("attacker"))
-    except operator_log.OperatorLogUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
-
+    typed = operator_log.commands(substrate().runner("attacker"))
     return _reply({
         "commands": [
             {
@@ -354,12 +343,7 @@ def session_commands(request, session_id):
 
 @require_http_methods(["POST"])
 def attacker_origin(request):
-    origin_id = _payload(request).get("origin")
-    try:
-        chosen = attacker.find(_standing(), origin_id)
-    except attacker.UnknownOrigin as exc:
-        raise Http404(str(exc))
-
+    chosen = attacker.find(_standing(), _payload(request).get("origin"))
     attacker.set_origin(chosen["address"], substrate().runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
@@ -391,29 +375,17 @@ def wargame_cases(request, wargame_id):
 def wargame_objectives(request, wargame_id):
     if wargame_id not in wargames.WARGAMES:
         raise Http404(wargame_id)
-    try:
-        return _reply(objectives.catalogue(substrate().runner("wiki")))
-    except objectives.ObjectivesUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    return _reply(objectives.catalogue(substrate().runner("wiki")))
 
 @require_http_methods(["GET", "POST"])
 def session_objectives(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-
-    if request.method != "GET":
-        shut = _closed(session)
-        if shut:
-            return shut
-
     if request.method == "GET":
         return _reply(
             [_shape(o, OBJECTIVE_FIELDS) for o in session.objectives.all()]
         )
-
-    try:
-        return _reply(_observe_objectives(session))
-    except objectives.ObjectivesUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    _refuse_closed(session)
+    return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
     found, unreadable = objectives.observe(substrate().runner("wiki"))
@@ -457,22 +429,15 @@ def _observe_objectives(session) -> dict:
 @require_http_methods(["POST"])
 def fire_attack(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    shut = _closed(session)
-    if shut:
-        return shut
-
+    _refuse_closed(session)
+    body = _payload(request)
     try:
-        case = wargames.find_case(session.scenario, _payload(request).get("case"))
+        case = wargames.find_case(session.scenario, body.get("case"))
     except wargames.UnknownWargame as exc:
         raise Http404(str(exc))
-
     case = dict(case, case_id=str(uuid.uuid4()))
     case.setdefault("correlation", "marker")
-
-    try:
-        origin = _origin_for(session, _payload(request).get("origin"))
-    except attacker.UnknownOrigin as exc:
-        raise Http404(str(exc))
+    origin = _origin_for(session, body.get("origin"))
 
     target_url = settings.TARGET_URL
     if origin:
@@ -554,10 +519,7 @@ def session_detail(request, session_id):
 @require_http_methods(["POST"])
 def close_session(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    shut = _closed(session)
-    if shut:
-        return shut
-
+    _refuse_closed(session)
     try:
         unobserved = _observe_objectives(session).get("unreadable")
     except (objectives.ObjectivesUnavailable, RangeUnavailable) as exc:
@@ -566,7 +528,7 @@ def close_session(request, session_id):
     closed_at = timezone.now()
     if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
         session.refresh_from_db()
-        return _closed(session)
+        _refuse_closed(session)
     session.ended_at = closed_at
     reply = _shape(session, SESSION_FIELDS)
     if unobserved:
@@ -580,10 +542,7 @@ def session_cases(request, session_id):
     if request.method == "GET":
         return _reply([_shape(c, CASE_FIELDS) for c in session.cases.all()])
 
-    shut = _closed(session)
-    if shut:
-        return shut
-
+    _refuse_closed(session)
     body = _payload(request)
     errors = _case_errors(body)
     if errors:
@@ -672,12 +631,9 @@ def ingest_detections(request, session_id):
     except (RangeUnavailable, suricata.RulesUnreadable):
         restored = []
 
-    try:
-        documents, truncated = elastic.fetch(
-            settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end
-        )
-    except elastic.ElasticUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    documents, truncated = elastic.fetch(
+        settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end
+    )
 
     known = set(
         Detection.objects.filter(session=session).values_list("detection_id", flat=True)
@@ -1020,10 +976,7 @@ def suppressions(request):
         raise Http404(f"no active rule carries sid {sid}")
 
     original = suppress.find(content, sid)
-    try:
-        suricata.apply(silenced, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
-    except suricata.RuleApplyError as exc:
-        return _reply({"detail": str(exc)}, status=400)
+    suricata.apply(silenced, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
 
     record = Suppression.objects.create(
         sid=sid,
@@ -1098,10 +1051,6 @@ def apply_rules(request):
                 "detail": "the sensor's rules changed since this copy was loaded "
                           f"(loaded {base or 'nothing'}, live {live}); reload them and edit again",
             }, status=409)
-    try:
-        suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
-    except suricata.RuleApplyError as exc:
-        return _reply({"detail": str(exc)}, status=400)
-
+    suricata.apply(content, substrate().runner('sensor'), settings.FSL_SENSOR_RELOAD)
     ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))

@@ -1,8 +1,24 @@
 from django.core.exceptions import BadRequest
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 
+import attacker
+import objectives
+import operator_log
+from ingest.elastic import ElasticUnavailable
 from range.ports import RangeUnavailable
-from rules.suricata import RulesUnreadable
+from rules.suricata import RuleApplyError, RulesUnreadable
+
+UNAVAILABLE = (
+    RangeUnavailable,
+    RulesUnreadable,
+    objectives.ObjectivesUnavailable,
+    operator_log.OperatorLogUnavailable,
+    ElasticUnavailable,
+)
+
+
+class Conflict(Exception):
+    pass
 
 
 class Refusals:
@@ -13,10 +29,14 @@ class Refusals:
         return self.get_response(request)
 
     def process_exception(self, request, exception):
-        if isinstance(exception, (RangeUnavailable, RulesUnreadable)):
+        if isinstance(exception, attacker.UnknownOrigin):
+            raise Http404(str(exception)) from exception
+        if isinstance(exception, UNAVAILABLE):
             return JsonResponse({"detail": str(exception)}, status=503)
-        if isinstance(exception, BadRequest):
+        if isinstance(exception, (BadRequest, RuleApplyError)):
             return JsonResponse({"detail": str(exception)}, status=400)
+        if isinstance(exception, Conflict):
+            return JsonResponse({"detail": str(exception)}, status=409)
         return None
 
 
