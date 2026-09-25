@@ -241,6 +241,9 @@ One line each.
   variables in `base.html`; `bin/build-css` builds only semantic colour
   names, so a default Tailwind colour builds nothing and a test refuses it.
   The Kali terminal stays black. No web fonts (offline).
+- The FSL Suricata rules carry `classtype:web-application-attack`
+  (priority 1 in the sensor's classification.config); without a classtype
+  every one arrived as severity 3 and the console called an SQLi "low".
 - The Alerts table has 8 columns (source carries zone and country, the
   destination reads IP:port, time is HH:MM:SS) so path and case show at 1280.
 - Tables read at half a screen: every cell padded, IPs and counts never
