@@ -11,9 +11,9 @@ RUN rm -f /etc/apt/sources.list.d/*.sources \
  && rm -rf /var/lib/apt/lists/*
 
 ARG TTYD_VERSION=1.7.7
-ARG TTYD_SHA256=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
+ARG TTYD_SHA256=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 RUN curl -fsSL -o /usr/local/bin/ttyd \
-      "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.aarch64" \
+      "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64" \
  && echo "${TTYD_SHA256}  /usr/local/bin/ttyd" | sha256sum -c - \
  && chmod +x /usr/local/bin/ttyd
 

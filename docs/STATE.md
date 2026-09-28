@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-09-25 (compressed from 1,180 lines; claims rechecked against code)
+Updated: 2026-09-28
 
 ## Where things stand
 
@@ -191,7 +191,7 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 - **45 of the store's 60 sessions are open**, all started 2026-09-23 between
   16:56 and 17:44 by acceptance runs. Nothing proves none is a person's. Count
   them in `/data/db.sqlite3`: `GET /api/sessions/` returns at most 25.
-- Backlog item 1 and OpenStack item 3 are decisions too.
+- OpenStack item 3 is a decision too.
 
 ## Done since v1.0
 
@@ -264,6 +264,9 @@ One line each.
 - Tailwind is built by `bin/build-css` and inlined; rebuild after a new class.
 
 **Operations and tests**
+- Every service runs as `linux/amd64`, the architecture production runs. A
+  compose test holds it, and another refuses a Dockerfile that fetches an ARM
+  binary. A full `bin/verify` on it took 7 min 26 s.
 - The wiki log starts with NULs; it is read with `grep -a`, or the match hides.
 - OpenStack host keys are filed per instance generation, so a rebuild is new.
 - Acceptance tests assert on their own case's evidence and close their sessions.
@@ -290,26 +293,18 @@ One line each.
 
 ## Backlog
 
-The user's direction, from the Korean red team playbook at www.xn--hy1b43d247a.com:
-the range should cover more of the attack lifecycle than initial access. Its
-nine stages are attacker infrastructure, initial reconnaissance, initial
-access, foothold, privilege escalation, internal reconnaissance, lateral
-movement, persistence, mission. The inside now exists; what is missing is
-below.
+The range is a web-entry range for now: attacks that come in through the
+application, such as taking data out of a database. A foothold, privilege
+escalation and persistence are a later goal, not this list's (decided
+2026-09-28; `docs/THREAT-MODEL.md` already says so).
 
-### 1. A foothold to escalate from
+### 1. A second wargame: the Django board
 
-Absent: foothold, privilege escalation, persistence. There is no code
-execution on the target, so the estate is reached through the application
-rather than from a shell on it, and there is nothing to escalate. Whether that
-matters is a scope decision: a C2 and a foothold is a large step, and the
-range may be more useful as a web-entry range that is honest about where it
-stops.
-
-It is the only item left on this list, and it is a decision rather than a
-task: either the range grows a C2 and a foothold, or it says in the product
-that it is a web-entry range and stops there. `docs/THREAT-MODEL.md` currently
-says the second, because that is what is true today.
+Designed in `docs/superpowers/specs/2026-09-28-django-board-design.md`: an
+ordinary Django board on MySQL behind the WAF as `board.com`, a detection-only
+target with no objectives. `services` goes from 9 to 11, approved by the user.
+Later targets, as intended: a WordPress company site, then a Java school
+management system.
 
 ## Known gaps
 
