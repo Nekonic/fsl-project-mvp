@@ -213,6 +213,12 @@ def test_every_container_is_named_after_the_service_that_builds_it():
         f"name the declaration gives it, which stops working here: {odd}"
     )
 
+def test_the_board_and_its_database_are_declared_so_openstack_can_find_them():
+    _, declaration = documents()
+
+    assert declaration["roles"].get("board") == "fsl-board"
+    assert declaration["roles"].get("board-db") == "fsl-board-db"
+
 def test_the_loader_reads_back_exactly_what_the_file_says():
     from range import declared
 

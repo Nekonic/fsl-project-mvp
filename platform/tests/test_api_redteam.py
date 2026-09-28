@@ -12,12 +12,12 @@ def session_id(client):
 def a_case(client):
     return client.get("/api/wargames/juice-shop/cases/").json()[0]
 
-def test_wargames_lists_the_only_target(client):
+def test_wargames_lists_every_target(client):
     response = client.get("/api/wargames/")
 
     assert response.status_code == 200
-    assert [w["id"] for w in response.json()] == ["juice-shop"]
-    assert response.json()[0]["cases"] > 0
+    assert [w["id"] for w in response.json()] == ["juice-shop", "board"]
+    assert all(w["cases"] > 0 for w in response.json())
 
 def test_case_catalogue_describes_what_each_button_fires(client):
     cases = client.get("/api/wargames/juice-shop/cases/").json()

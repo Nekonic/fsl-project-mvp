@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from django.conf import settings
 
@@ -14,8 +15,27 @@ WARGAMES = {
         "name": "OWASP Juice Shop",
         "description": "A deliberately insecure shop, behind the WAF and the IDS.",
         "case_file": "default.yaml",
-    }
+        "public_url": settings.PUBLIC_TARGET_URL,
+        "judged": True,
+    },
+    "board": {
+        "id": "board",
+        "name": "Community board",
+        "description": (
+            "An ordinary Django board on MySQL, behind the WAF and the IDS. "
+            "It keeps no score of its own, so only the defence is scored."
+        ),
+        "case_file": "board.yaml",
+        "public_url": settings.BOARD_PUBLIC_URL,
+        "judged": False,
+    },
 }
+
+def judged(wargame_id: str) -> bool:
+    return WARGAMES[wargame_id]["judged"]
+
+def host(wargame_id: str) -> str:
+    return urlsplit(WARGAMES[wargame_id]["public_url"]).netloc
 
 class UnknownWargame(KeyError):
     pass
@@ -93,6 +113,8 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "id": wargame["id"],
         "name": wargame["name"],
         "description": wargame["description"],
+        "public_url": wargame["public_url"],
+        "judged": wargame["judged"],
         "cases": len(loaded),
         "covers": [stage for stage in lifecycle.STAGES if stage in reached],
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],

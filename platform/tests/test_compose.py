@@ -38,6 +38,29 @@ def test_every_service_runs_on_x86_64():
         f"whatever architecture the Docker host has: {elsewhere}"
     )
 
+def networks_of(service):
+    joined = service.get("networks") or []
+    return sorted(joined if isinstance(joined, list) else joined)
+
+def test_the_board_and_its_database_stand_inside_the_estate_only():
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+
+    for name in ("board", "board-db"):
+        assert networks_of(services[name]) == ["estate"], (name, networks_of(services[name]))
+        assert not services[name].get("ports"), f"{name} is published past the WAF"
+
+def test_the_board_is_reached_by_name_through_the_waf():
+    waf = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]
+    outside = [n for n in waf["networks"] if n.startswith("edge")]
+
+    missing = [n for n in outside if "board.com" not in (waf["networks"][n] or {}).get("aliases", [])]
+    assert not missing, f"an attacker on {missing} cannot resolve board.com"
+
+def test_the_database_is_pinned_by_digest():
+    database = [i for i in images() if i.startswith("mysql")]
+
+    assert database and all("@sha256:" in i for i in database), database
+
 def test_no_image_downloads_a_binary_built_for_another_architecture():
     root = COMPOSE.parent
     dockerfiles = [*(root / "deploy").glob("*/Dockerfile"), root / "platform" / "Dockerfile"]

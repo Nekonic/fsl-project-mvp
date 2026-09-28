@@ -9,8 +9,6 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from urllib.parse import urlsplit
-
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from django.db import IntegrityError, transaction
@@ -169,10 +167,12 @@ def sessions(request):
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
-    try:
-        baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
-    except objectives.ObjectivesUnavailable:
-        baseline = None
+    baseline = []
+    if wargames.judged(scenario):
+        try:
+            baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
+        except objectives.ObjectivesUnavailable:
+            baseline = None
     session = Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
@@ -352,6 +352,8 @@ def wargame_cases(request, wargame_id):
 def wargame_objectives(request, wargame_id):
     if wargame_id not in wargames.WARGAMES:
         raise Http404(wargame_id)
+    if not wargames.judged(wargame_id):
+        return _reply([])
     return _reply(objectives.catalogue(substrate().runner("wiki")))
 
 @require_http_methods(["GET", "POST"])
@@ -365,6 +367,8 @@ def session_objectives(request, session_id):
     return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
+    if not wargames.judged(session.scenario):
+        return {"achieved": 0, "total": 0}
     found, unreadable = objectives.observe(substrate().runner("wiki"))
     solved = {o["key"]: o for o in found if o["solved"]}
 
@@ -416,16 +420,11 @@ def fire_attack(request, session_id):
     case.setdefault("correlation", "marker")
     origin = _origin_for(session, body.get("origin"))
 
-    target_url = settings.TARGET_URL
-    if origin:
-        target_url = origin["target_url"]
-        spec = dict(case.get("request") or {})
-        if spec:
-            spec["headers"] = dict(
-                spec.get("headers") or {},
-                Host=urlsplit(settings.PUBLIC_TARGET_URL).netloc,
-            )
-            case["request"] = spec
+    target_url = origin["target_url"] if origin else settings.TARGET_URL
+    spec = dict(case.get("request") or {})
+    if spec:
+        spec["headers"] = dict(spec.get("headers") or {}, Host=wargames.host(session.scenario))
+        case["request"] = spec
 
     started_at = timezone.now()
     try:

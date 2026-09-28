@@ -1,0 +1,17 @@
+{% extends "posts/base.html" %}
+{% block content %}
+  <h1 class="h3 mb-4">게시글</h1>
+  <div class="list-group">
+    {% for post in posts %}
+      <a class="list-group-item list-group-item-action" href="{% url 'post_detail' post.pk %}">
+        <div class="d-flex w-100 justify-content-between">
+          <h2 class="h6 mb-1">{{ post.title }}</h2>
+          <small>{{ post.created_at|date:"Y-m-d H:i" }}</small>
+        </div>
+        <small class="text-muted">{{ post.author.username }}</small>
+      </a>
+    {% empty %}
+      <p class="text-muted">아직 글이 없습니다.</p>
+    {% endfor %}
+  </div>
+{% endblock %}
