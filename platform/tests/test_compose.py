@@ -26,6 +26,29 @@ def test_the_sensor_and_the_target_are_pinned_by_digest():
     assert sensor and all("@sha256:" in i for i in sensor), sensor
     assert target and all("@sha256:" in i for i in target), target
 
+def test_every_service_runs_on_x86_64():
+    elsewhere = {
+        name: service.get("platform")
+        for name, service in yaml.safe_load(COMPOSE.read_text())["services"].items()
+        if service.get("platform") != "linux/amd64"
+    }
+
+    assert not elsewhere, (
+        f"production is OpenStack on x86_64; these services would run on "
+        f"whatever architecture the Docker host has: {elsewhere}"
+    )
+
+def test_no_image_downloads_a_binary_built_for_another_architecture():
+    root = COMPOSE.parent
+    dockerfiles = [*(root / "deploy").glob("*/Dockerfile"), root / "platform" / "Dockerfile"]
+    foreign = [
+        str(path.relative_to(root))
+        for path in dockerfiles
+        if re.search(r"aarch64|arm64", path.read_text())
+    ]
+
+    assert not foreign, f"these fetch an ARM binary into an x86_64 image: {foreign}"
+
 def host_ip(entry):
     if isinstance(entry, dict):
         return entry.get("host_ip")
