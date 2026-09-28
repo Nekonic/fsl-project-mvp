@@ -75,6 +75,42 @@ services:
       retries: 18
       start_period: 30s
 
+  board:
+    platform: linux/amd64
+    build: ./deploy/board
+    container_name: fsl-board
+    depends_on:
+      board-db: {condition: service_healthy}
+    networks: [estate]
+    environment:
+      BOARD_DB_HOST: "board-db"
+      BOARD_DB_NAME: "board"
+      BOARD_DB_USER: "board"
+      BOARD_DB_PASSWORD: "board"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 40s
+
+  board-db:
+    platform: linux/amd64
+    image: mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    container_name: fsl-board-db
+    networks: [estate]
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "board"
+      MYSQL_USER: "board"
+      MYSQL_PASSWORD: "board"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uboard", "-pboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
+
   wiki:
     platform: linux/amd64
     image: nginx@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
@@ -101,13 +137,16 @@ services:
     networks:
       edge:
         priority: 100
-        aliases: [shop.com]
+        aliases: [shop.com, board.com]
       edge-br:
         priority: 90
+        aliases: [board.com]
       edge-hk:
         priority: 90
+        aliases: [board.com]
       edge-kp:
         priority: 90
+        aliases: [board.com]
       estate:
         priority: 10
     sysctls:
@@ -128,6 +167,7 @@ services:
     volumes:
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - ./deploy/nginx/logs:/var/log/modsecurity
+      - ./deploy/nginx/board.conf:/etc/nginx/conf.d/board.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
       interval: 10s

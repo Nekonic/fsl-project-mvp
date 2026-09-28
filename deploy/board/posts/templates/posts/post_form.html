@@ -1,0 +1,15 @@
+{% extends "posts/base.html" %}
+{% block title %}글쓰기{% endblock %}
+{% block content %}
+  <h1 class="h4 mb-4">글쓰기</h1>
+  <form action="{% url 'post_new' %}" method="post">
+    {% csrf_token %}
+    <div class="mb-3">
+      <input class="form-control" type="text" name="title" placeholder="제목">
+    </div>
+    <div class="mb-3">
+      <textarea class="form-control" name="body" rows="8" placeholder="내용"></textarea>
+    </div>
+    <button class="btn btn-primary" type="submit">등록</button>
+  </form>
+{% endblock %}

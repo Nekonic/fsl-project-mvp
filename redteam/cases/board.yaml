@@ -1,0 +1,114 @@
+# The community board is an ordinary Django site on MySQL. It ships no
+# challenges and keeps no score, so nothing here `takes:` an objective; these
+# cases exist to be caught, or not, by the WAF and the IDS. The board's own
+# defence is Django's: the ORM parameterises queries and the templates escape
+# output, so the app resists these on its own. What is measured is whether the
+# defence in front of it saw the attempt.
+#
+# Benign cases matter as much as the attacks. Without them a rule that blocks
+# everything scores perfectly. `normal-search-with-apostrophe` is the one that
+# separates a rule keyed on a quote from one keyed on injection.
+
+# -- attacks ---------------------------------------------------------------
+- name: board-sqli-search
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "' OR 1=1--"
+
+- name: board-sqli-login-bypass
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  request:
+    method: POST
+    path: /accounts/login/
+    data:
+      username: "' OR 1=1--"
+      password: "anything"
+
+- name: board-sqli-union-search
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "x' UNION SELECT username,password,3 FROM auth_user--"
+
+- name: board-xss-script-tag-in-search
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-63
+  expect: "XSS"
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "<script>alert(1)</script>"
+
+- name: board-xss-img-onerror-in-comment
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-63
+  expect: "XSS"
+  correlation: marker
+  request:
+    method: POST
+    path: /posts/1/comments/
+    data:
+      body: "<img src=x onerror=alert(1)>"
+
+- name: board-path-traversal-static
+  malicious: true
+  stage: complete-mission
+  technique: T1190
+  pattern: CAPEC-126
+  expect: "traversal"
+  correlation: marker
+  request:
+    method: GET
+    path: /static/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
+
+# -- benign ----------------------------------------------------------------
+- name: board-normal-search
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "release notes"
+
+- name: board-normal-search-with-apostrophe
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "O'Brien"
+
+- name: board-normal-post-list
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /

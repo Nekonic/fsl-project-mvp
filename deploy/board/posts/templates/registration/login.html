@@ -1,0 +1,16 @@
+{% extends "posts/base.html" %}
+{% block title %}로그인{% endblock %}
+{% block content %}
+  <h1 class="h4 mb-4">로그인</h1>
+  <form action="{% url 'login' %}" method="post" style="max-width: 360px">
+    {% csrf_token %}
+    <div class="mb-3">
+      <input class="form-control" type="text" name="username" placeholder="아이디">
+    </div>
+    <div class="mb-3">
+      <input class="form-control" type="password" name="password" placeholder="비밀번호">
+    </div>
+    <button class="btn btn-primary" type="submit">로그인</button>
+    <input type="hidden" name="next" value="{{ next }}">
+  </form>
+{% endblock %}

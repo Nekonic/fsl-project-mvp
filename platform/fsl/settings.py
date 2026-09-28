@@ -63,6 +63,7 @@ ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhos
 
 TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
 PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
+BOARD_PUBLIC_URL = os.environ.get("BOARD_PUBLIC_URL", "http://board.com")
 
 WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")
 WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
