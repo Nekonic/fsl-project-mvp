@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-09-28
+Updated: 2026-09-29
 
 ## Where things stand
 
@@ -263,6 +263,18 @@ One line each.
 - `platform/tests/browser.py` runs each page's scripts under node, without npm.
 - Tailwind is built by `bin/build-css` and inlined; rebuild after a new class.
 
+**A second target**
+- A Django board on MySQL stands behind the WAF as `board.com`, a second
+  wargame. It is `deploy/board/`: an ordinary site (posts, comments, search,
+  login) with no planted holes, so the app resists on its own and the WAF and
+  IDS are what score. `objectives.py` reads per scenario now; a board session
+  observes nothing and lists no objectives (`wargames.judged`). Its cases are
+  `redteam/cases/board.yaml`; the same FSL Suricata rules fire on it because
+  Suricata watches the WAF whatever the vhost.
+- The board vhost is `deploy/nginx/board.conf`, mounted into the WAF; ModSec is
+  on at the http level so it covers the board without extra config. The board
+  is on `estate` only and `board-db` is not published.
+
 **Operations and tests**
 - Every service runs as `linux/amd64`, the architecture production runs. A
   compose test holds it, and another refuses a Dockerfile that fetches an ARM
@@ -298,13 +310,16 @@ application, such as taking data out of a database. A foothold, privilege
 escalation and persistence are a later goal, not this list's (decided
 2026-09-28; `docs/THREAT-MODEL.md` already says so).
 
-### 1. A second wargame: the Django board
+The board (item 1) is built. The next targets, as intended: a WordPress
+company site (PHP), then a Java school management system. Neither is specified
+yet; both plug in where the board did.
 
-Designed in `docs/superpowers/specs/2026-09-28-django-board-design.md`: an
-ordinary Django board on MySQL behind the WAF as `board.com`, a detection-only
-target with no objectives. `services` goes from 9 to 11, approved by the user.
-Later targets, as intended: a WordPress company site, then a Java school
-management system.
+### 1. A WordPress company site
+
+A second detection-only target on the same seam the board proved: declared in
+`declaration.yaml`, reached by its own name through the WAF, `judged: False`,
+its own case file. Not yet designed. It adds services, so it needs the same
+approval the board's did.
 
 ## Known gaps
 
