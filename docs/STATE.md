@@ -60,8 +60,8 @@ Nothing half-finished. The last session left the tree green and committed.
   so it uses sids at or above 9009000 and `test_sensor_rules.py` refuses those.
   Before each half of an A/B, check the loaded config inside the container: a
   12-second wait that missed the sensor's start nearly buried the one above.
-- **Filebeat identifies files by fingerprint**: colima's virtiofs renumbers
-  inodes when the VM restarts, and inode identity re-shipped both logs. 8.15
+- **Filebeat identifies files by fingerprint**: inodes are renumbered when the
+  Docker host restarts, and inode identity re-shipped both logs. 8.15
   does not migrate the registry, so changing identity again re-ships once.
   Ingest drops an alert whose event time is outside the window, as `stale`.
 - **The ingest pipeline is installed by hand** (CLAUDE.md, Running it) and
@@ -73,7 +73,7 @@ Nothing half-finished. The last session left the tree green and committed.
   session's 5,000-document read in about 14 hours. The wiki's check asks
   `127.0.0.1`: its conf is read-only, so nginx adds no IPv6 listener.
 - **Build with `DOCKER_GID=$(bin/docker-gid)`**; the image refuses to build
-  without it. Read on the Mac instead of inside the VM, the gid comes back `1`.
+  without it.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live; restore (README) has never been run.

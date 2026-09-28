@@ -179,7 +179,7 @@ directory. Same for `test/`.
 ## Running it
 
 ```bash
-colima start --profile fsl          # arm64 host: ES crashes under x86 emulation
+colima start --profile fsl
 DOCKER_GID=$(bin/docker-gid) docker compose up -d --build   # includes kali, the attacker's terminal
 curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
   -H 'Content-Type: application/json' \
