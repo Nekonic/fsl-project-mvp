@@ -310,16 +310,24 @@ application, such as taking data out of a database. A foothold, privilege
 escalation and persistence are a later goal, not this list's (decided
 2026-09-28; `docs/THREAT-MODEL.md` already says so).
 
-The board (item 1) is built. The next targets, as intended: a WordPress
-company site (PHP), then a Java school management system. Neither is specified
-yet; both plug in where the board did.
+The board is built. Before more targets, confirm the range runs on OpenStack:
+the adapter has only ever run against fakes, never a real cloud. More targets
+(a WordPress site, a Java system) come after that and plug in where the board
+did.
 
-### 1. A WordPress company site
+### 1. Confirm the OpenStack migration
 
-A second detection-only target on the same seam the board proved: declared in
-`declaration.yaml`, reached by its own name through the WAF, `judged: False`,
-its own case file. Not yet designed. It adds services, so it needs the same
-approval the board's did.
+`range/openstack.py` is written and unit-tested against fakes. Against a real
+kolla-ansible cloud its read path now works: it authenticates, reads the
+endpoint catalogue, and lists Neutron networks and Nova servers
+(`FSL_SUBSTRATE=range.openstack.connect`, `FSL_OPENSTACK_*`). It has never
+booted a server, and the range is not deployed there: no network carries the
+`fsl.segment.id` tag, so `describe()` raises rather than returning a shape.
+Confirm next, in order: deploy the declared range (tagged networks, subnets,
+role-named servers) and have `describe()`/`segments()` read it back; then the
+six open items under "The substrate seam" above. The cloud is small (one
+compute node, a few GB free, only a cirros image and m1.tiny), so booting the
+whole range there needs images, flavours and room first.
 
 ## Known gaps
 
