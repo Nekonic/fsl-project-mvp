@@ -12,9 +12,6 @@ project lives elsewhere.
 
 ## Bringing it up
 
-On an arm64 host run Docker natively: Elasticsearch's amd64 JVM dies with
-SIGSEGV under x86 emulation.
-
 ```bash
 colima start --profile fsl
 DOCKER_GID=$(bin/docker-gid) docker compose up -d --build

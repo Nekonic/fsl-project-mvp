@@ -220,8 +220,8 @@ The score endpoint is read-only and keeps no history.
 - **A tool that cannot start raises; a tool that exits non-zero counts.**
   sqlmap exits non-zero when it finds nothing, but its traffic went out.
 - **Suricata shares the WAF's network namespace** rather than using host
-  networking, whose meaning varies with the Docker host (on macOS it is the
-  VM's). The WAF's interfaces carry both legs of every request.
+  networking, whose meaning varies with the Docker host. The WAF's interfaces
+  carry both legs of every request.
 - **No Kibana.** The blue console lists detections and Elasticsearch still
   answers ad-hoc queries. The production repo can add it back.
 - **Elasticsearch is a single node with a 512 MB heap** so the whole stack fits

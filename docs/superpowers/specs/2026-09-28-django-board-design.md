@@ -58,14 +58,11 @@ console says the target is detection-only.
 
 ## Platform constraints
 
-**x86_64 only.** Production is OpenStack on x86_64, and a second architecture
-would mean a second development environment. Every image is `linux/amd64`;
-the Mac runs them under emulation inside the aarch64 colima VM, which was
-measured working on 2026-09-20 at a cost in speed (Elasticsearch starts in
-about 60 s against 6 s native). Switching the existing stack is its own item
-and comes before the board, so the board is built on amd64 from the start.
+**x86_64 only.** Production is OpenStack on x86_64. Every image is
+`linux/amd64`. Switching the existing stack is its own item and comes before
+the board, so the board is built on amd64 from the start.
 
-**Not Mac-only.** The board must run on OpenStack as it runs on Docker:
+**Runs on OpenStack as it runs on Docker:**
 
 - `board` and `board-db` are declared as roles in
   `platform/range/declaration.yaml`, and `test_declaration.py` holds
@@ -74,9 +71,6 @@ and comes before the board, so the board is built on amd64 from the start.
 - Configuration comes from the environment; no host-specific paths.
 - `board.com` joins the name resolution item in `docs/STATE.md` (OpenStack
   item 1).
-
-A kolla-ansible OpenStack test cloud is available on the VPN at `10.0.0.100`,
-with `10.0.0.200` as its external address.
 
 ## The measure
 
@@ -93,8 +87,7 @@ WordPress, the Java system, objectives on the board, planted vulnerabilities.
 
 ## Order
 
-1. Switch the stack to x86_64 and measure what it costs `bin/verify` on the
-   Mac.
+1. Switch the stack to x86_64.
 2. Build the board on top of it.
 
 ## Tests
