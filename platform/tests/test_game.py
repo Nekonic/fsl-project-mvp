@@ -5,11 +5,11 @@ import game
 T0 = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
 
 
-def attempt(case_id, malicious, stage, delay_seconds):
+def attempt(case_id, malicious, stage, delay_seconds, blocked=False):
     detected_at = None if delay_seconds is None else T0 + timedelta(seconds=delay_seconds)
     return game.Attempt(
         case_id=case_id, malicious=malicious, stage=stage,
-        started_at=T0, detected_at=detected_at,
+        started_at=T0, detected_at=detected_at, blocked=blocked,
     )
 
 
@@ -91,6 +91,39 @@ def test_a_strong_defence_ends_ahead_and_a_breached_one_behind():
     )
 
     assert strong.balance > 0 > weak.balance
+
+
+def test_response_is_absent_until_something_is_blocked():
+    attempts = [attempt("a", True, "initial-compromise", 5)]
+
+    assert game.response(attempts) is None
+
+
+def test_blocking_an_attack_raises_response_and_blocking_a_benign_lowers_it():
+    stopped = game.response([attempt("a", True, "initial-compromise", 5, blocked=True)])
+    collateral = game.response([
+        attempt("a", True, "initial-compromise", 5, blocked=True),
+        attempt("b", False, "", None, blocked=True),
+    ])
+
+    assert stopped == 1.0
+    assert collateral < stopped
+
+
+def test_blocking_the_attack_lifts_the_defender_balance():
+    taken = [game.Taken(key="x", difficulty=4, detected=True)]
+
+    passed = game.settle(
+        [attempt("a", True, "initial-compromise", 60)], taken, tp=1, fp=0, fn=0, tn=1
+    )
+    blocked = game.settle(
+        [attempt("a", True, "initial-compromise", 60, blocked=True)],
+        taken, tp=1, fp=0, fn=0, tn=1,
+    )
+
+    assert blocked.response == 1.0
+    assert passed.response is None
+    assert blocked.balance > passed.balance
 
 
 def test_the_pillars_are_reported_beside_the_balance():

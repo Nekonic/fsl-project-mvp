@@ -780,6 +780,7 @@ def _game(session, cases, detections, result, breaches, totals):
             stage=case.stage or "",
             started_at=case.started_at,
             detected_at=first_hit.get(case.case_id),
+            blocked=bool(case.meta.get("blocked")),
         )
         for case in cases
     ]

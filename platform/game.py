@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 FAST = timedelta(seconds=10)
 SLOW = timedelta(seconds=120)
 
-WEIGHTS = {"speed": 0.30, "accuracy": 0.40, "coverage": 0.30}
+WEIGHTS = {"speed": 0.25, "accuracy": 0.30, "coverage": 0.20, "response": 0.25}
 
 FALSE_POSITIVE_COST = 1.0
 DETECTED_TAKE = 0.5
@@ -19,6 +19,7 @@ class Attempt:
     stage: str
     started_at: datetime
     detected_at: datetime | None
+    blocked: bool = False
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,16 @@ def accuracy(tp: int, fp: int, fn: int, tn: int) -> float:
     return max(0.0, recall - false_positive_rate)
 
 
+def response(attempts: list[Attempt]) -> float | None:
+    if not any(a.blocked for a in attempts):
+        return None
+    malicious = [a for a in attempts if a.malicious]
+    benign = [a for a in attempts if not a.malicious]
+    contained = sum(1 for a in malicious if a.blocked) / len(malicious) if malicious else 0.0
+    availability_cost = sum(1 for a in benign if a.blocked) / len(benign) if benign else 0.0
+    return contained - availability_cost
+
+
 def attacker_take(taken: list[Taken]) -> float:
     return sum(t.difficulty * (DETECTED_TAKE if t.detected else 1.0) for t in taken)
 
@@ -89,10 +100,13 @@ def settle(
         "speed": speed(attempts),
         "accuracy": accuracy(tp, fp, fn, tn),
         "coverage": coverage(attempts),
+        "response": response(attempts),
     }
-    at_stake = sum(t.difficulty for t in taken)
-    quality = sum(WEIGHTS[name] * value for name, value in pillars.items())
+    present = {name: value for name, value in pillars.items() if value is not None}
+    total_weight = sum(WEIGHTS[name] for name in present)
+    quality = sum(WEIGHTS[name] * value for name, value in present.items()) / total_weight
 
+    at_stake = sum(t.difficulty for t in taken)
     attacker = attacker_take(taken)
     defender = quality * at_stake - FALSE_POSITIVE_COST * fp
 
@@ -103,6 +117,6 @@ def settle(
         speed=pillars["speed"],
         accuracy=pillars["accuracy"],
         coverage=pillars["coverage"],
-        response=None,
+        response=pillars["response"],
         weights=dict(WEIGHTS),
     )
