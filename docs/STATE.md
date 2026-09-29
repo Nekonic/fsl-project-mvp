@@ -346,12 +346,24 @@ Left:
 
 ### 2. Deploy the range on OpenStack (later)
 
-`range/openstack.py`'s read path works against the real kolla cloud (auth,
-catalogue, Neutron and Nova reads); it has never booted a server and the range
-is not deployed there (no `fsl.segment.id`-tagged network, so `describe()`
-raises). This matters only for the non-Linux/multi-VM case above; the one-VM
-Docker deployment does not use it. The cloud is small (one compute node, a few
-GB free, only a cirros image and m1.tiny).
+`range/openstack.py`'s read path works against the real kolla cloud, and the
+cloud now boots our x86_64 VMs: an Ubuntu 24.04 instance came up ACTIVE and was
+reached over SSH from outside. So the pieces exist; the range itself is still
+not deployed there (no `fsl.segment.id`-tagged network, so `describe()`
+raises). This path is for the non-Linux/multi-VM case; the one-VM Docker
+deployment does not use it. What deploying the range needs, learned booting
+that first VM:
+
+- **Instances need `--config-drive true`.** The cloud's Neutron metadata
+  service is unreliable (cloud-init fell back to `DataSourceNone` and injected
+  no SSH key); a config drive delivers the key without the metadata network.
+- **Booting is emulated (QEMU, not KVM), so it is slow** and every image must
+  be amd64.
+- Set up once: image `ubuntu-24.04`, flavour `fsl.small` (2 GB/2 vCPU/12 GB),
+  keypair `fsl-claude`, security group `fsl-sg` (22/80/3000/icmp). The cloud is
+  small (one compute node, ~5 GB free), so the estate must be sized to fit.
+- If instances stall in `BUILD` with `host=None`, the scheduler pipeline is
+  wedged: restart `rabbitmq` then the `nova_*` containers.
 
 ## Known gaps
 
