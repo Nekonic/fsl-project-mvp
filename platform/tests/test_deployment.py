@@ -5,6 +5,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 DOCKERFILE = ROOT / "platform/Dockerfile"
+ENTRYPOINT = ROOT / "platform/entrypoint.sh"
 
 def setting(name, **env):
     given = {**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings", **env}
@@ -66,146 +67,94 @@ def test_the_container_does_not_run_djangos_development_server():
         "unfit for anything but development"
     )
 
-def test_the_container_does_not_run_as_root():
-    users = [args for keyword, args in dockerfile_instructions() if keyword == "USER"]
+def test_the_platform_serves_as_a_non_root_user():
+    steps = ENTRYPOINT.read_text()
 
-    assert users and users[-1].split(":")[0] not in ("root", "0"), (
-        f"the image ends as user {users[-1:] or ['root']}. The platform mounts "
-        f"the docker socket; running it as root makes a container escape a "
-        f"root escape"
+    assert "gosu fsl" in steps and "waitress-serve" in steps, steps
+    assert steps.index("gosu fsl") < steps.index("waitress-serve"), (
+        "the platform mounts the docker socket; serving as root makes a "
+        "container escape a root escape. It drops to fsl before waitress"
+    )
+    assert "USER root" not in DOCKERFILE.read_text()
+
+def test_socket_access_is_granted_by_group_resolved_at_start():
+    steps = ENTRYPOINT.read_text()
+
+    assert "/var/run/docker.sock" in steps and "stat -c %g" in steps, (
+        "the socket's group differs per host; the platform reads it at start "
+        "rather than being handed it, so a plain `docker compose up` works"
+    )
+    assert "usermod" in steps and "gosu fsl" in steps, (
+        "granting the socket by running as root makes a container escape a "
+        "root escape; fsl joins the socket's group instead"
     )
 
+def test_an_existing_socket_group_does_not_break_start():
+    assert "getent group" in ENTRYPOINT.read_text(), (
+        "groupadd fails when the gid is already a group, and on some hosts the "
+        "socket gid is one the image already uses; guard it with getent first"
+    )
 
-def test_socket_access_is_granted_by_group_not_by_root():
+def test_the_build_needs_no_argument_from_the_operator():
+    assert "DOCKER_GID" not in DOCKERFILE.read_text(), (
+        "a required build argument breaks `docker compose up` on a fresh host; "
+        "the platform resolves the socket group at start instead"
+    )
+
+def test_the_entrypoint_is_executable():
+    assert os.access(ENTRYPOINT, os.X_OK), (
+        "compose runs /app/entrypoint.sh directly; without the executable bit "
+        "the platform container never starts"
+    )
+
+def test_the_entrypoint_migrates_before_it_serves():
+    steps = ENTRYPOINT.read_text()
+
+    assert "migrate" in steps and steps.index("migrate") < steps.index("waitress-serve"), (
+        "serving before the database is migrated answers every request with a "
+        "500 until the first migrate lands"
+    )
+
+def test_the_platform_registers_the_geoip_pipeline_by_name():
+    import register_pipeline
+
+    assert register_pipeline.endpoint("http://elasticsearch:9200/") == (
+        "http://elasticsearch:9200/_ingest/pipeline/fsl-geoip"
+    ), "ingest reads through fsl-geoip; a different name geolocates nothing"
+
+def test_the_pipeline_the_platform_registers_is_a_geoip_pipeline():
+    import json
+
+    pipeline = json.loads((ROOT / "deploy/elastic/ingest-pipeline.json").read_text())
+    processors = [next(iter(step)) for step in pipeline.get("processors", [])]
+
+    assert "geoip" in processors, (
+        f"the file the platform PUTs as fsl-geoip has no geoip processor: {processors}"
+    )
+
+def test_the_image_carries_the_docker_cli_for_the_runner():
     text = DOCKERFILE.read_text()
 
-    assert "DOCKER_GID" in text, (
-        "the platform needs the docker socket, which is group-owned. Granting "
-        "it by running as root makes a container escape a root escape; the gid "
-        "differs per host so it has to be a build argument"
-    )
-    assert "USER fsl" in text
-
-def test_the_lab_passes_the_hosts_own_socket_group():
-    compose = (ROOT / "compose.yaml").read_text()
-
-    assert "DOCKER_GID" in compose, (
-        "the image takes a DOCKER_GID build argument and compose never sets "
-        "it, so the platform cannot reach the daemon"
+    assert "docker:" in text and "/usr/local/bin/docker" in text, (
+        "the Docker substrate shells out to `docker`; without the cli in the "
+        "image every runner and launcher call fails"
     )
 
-def test_a_socket_group_the_image_already_has_does_not_break_the_build():
-    text = DOCKERFILE.read_text()
-
-    assert "getent group" in text, (
-        "groupadd fails when the gid is already taken, and on this host the "
-        "socket's group is 991, which the python image already uses. The build "
-        "died with GID '991' already exists and the stack could not come up"
-    )
-
-def test_finding_the_socket_group_is_not_left_to_the_operator():
-    script = ROOT / "bin/docker-gid"
-
-    assert script.exists() and os.access(script, os.X_OK), (
-        "the gid has to be read inside the VM the daemon runs in; read off the "
-        "host it comes back 1, the build joins the wrong group and the platform "
-        "answers 200 with 'permission denied' in the body"
-    )
-
-def socket_group_in_compose():
-    import re
-
-    import yaml
-
-    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
-    value = str(compose["services"]["platform"]["build"]["args"]["DOCKER_GID"])
-    return value, re.fullmatch(r"\$\{DOCKER_GID(?:(:?[-?])(.*))?\}", value)
-
-def test_a_build_without_the_socket_group_is_not_handed_one():
-    value, reference = socket_group_in_compose()
-
-    assert reference and not (reference.group(2) or ""), (
-        f"compose builds the platform with DOCKER_GID={value!r}. On colima the "
-        f"socket's group is not 0, and every documented start command omitted "
-        f"the variable, so the platform built quietly and every docker call it "
-        f"made answered 'permission denied'"
-    )
-
-def test_compose_commands_that_build_nothing_run_without_the_socket_group():
-    value, reference = socket_group_in_compose()
-
-    assert not (reference and "?" in (reference.group(1) or "")), (
-        f"{value!r} makes compose refuse every command, logs and ps included, "
-        f"whenever the variable is unset; only the build needs it"
-    )
-
-def dockerfile_instructions():
-    joined = DOCKERFILE.read_text().replace("\\\n", " ")
-    return [
-        (keyword, args.strip())
-        for keyword, _, args in (line.strip().partition(" ") for line in joined.splitlines())
-        if keyword and not keyword.startswith("#")
-    ]
-
-def test_the_image_has_no_socket_group_of_its_own_to_fall_back_on():
-    declared = [
-        args for keyword, args in dockerfile_instructions()
-        if keyword == "ARG" and args.split("=")[0] == "DOCKER_GID"
-    ]
-
-    assert declared and all(args.split("=", 1)[1:] in ([], [""]) for args in declared), (
-        f"the Dockerfile declares {declared}: a plain docker build without the "
-        f"argument joins that group and cannot reach the socket"
-    )
-
-def test_the_image_refuses_to_build_without_the_socket_group():
-    steps = [
-        args for keyword, args in dockerfile_instructions()
-        if keyword == "RUN" and "DOCKER_GID" in args
-    ]
-    guard = steps[0] if steps else ""
-
-    assert guard and not any(
-        command in guard for command in ("useradd", "groupadd", "usermod")
-    ), (
-        "no step checks DOCKER_GID before the first one that creates a user or "
-        "a group with it, so an empty value builds an image that cannot reach "
-        "the socket"
-    )
-
-    refused = subprocess.run(
-        ["sh", "-c", guard], capture_output=True, text=True,
-        env={**os.environ, "DOCKER_GID": ""},
-    )
-    allowed = subprocess.run(
-        ["sh", "-c", guard], capture_output=True, text=True,
-        env={**os.environ, "DOCKER_GID": "991"},
-    )
-
-    assert refused.returncode != 0 and "bin/docker-gid" in refused.stderr, (
-        "an empty DOCKER_GID has to stop the build and say where the value "
-        "comes from"
-    )
-    assert allowed.returncode == 0, allowed.stderr
-
-def test_every_documented_build_passes_the_socket_group():
-    import re
-
+def test_the_documented_bring_up_is_a_single_compose_up():
     places = [
         *ROOT.glob("*.md"), *(ROOT / "docs").glob("*.md"),
         *(ROOT / "test").iterdir(), *(ROOT / "bin").iterdir(),
     ]
-    bare = [
+    stale = [
         f"{path.relative_to(ROOT)}: {line.strip()}"
         for path in places if path.is_file()
         for line in path.read_text(errors="ignore").splitlines()
-        for build in re.finditer(r"docker compose up\b[^\n\"'`]*--build", line)
-        if not line[:build.start()].endswith("DOCKER_GID=$(bin/docker-gid) ")
+        if "DOCKER_GID" in line or "docker-gid" in line
     ]
 
-    assert not bare, (
-        f"these tell the operator to build the platform without the socket's "
-        f"group, which the build now refuses: {bare}"
+    assert not stale, (
+        f"bring-up is a plain `docker compose up`; these still name the old "
+        f"socket-group step: {stale}"
     )
 
 def test_no_setting_is_read_by_nothing():

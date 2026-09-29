@@ -12,19 +12,19 @@ project lives elsewhere.
 
 ## Bringing it up
 
+On a host with Docker, clone the repo and bring the stack up:
+
 ```bash
-colima start --profile fsl
-DOCKER_GID=$(bin/docker-gid) docker compose up -d --build
-python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
+docker compose up -d --build
 ```
 
-Register the Elasticsearch ingest pipeline once. It adds geo data to source
-addresses.
+The platform sorts out the docker socket group and registers the Elasticsearch
+ingest pipeline (which geolocates source addresses) on start, so there is
+nothing else to run. To fire the scripted cases from the command line rather
+than the console:
 
 ```bash
-curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
-  -H 'Content-Type: application/json' \
-  --data-binary @deploy/elastic/ingest-pipeline.json
+python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 ```
 
 | Port | |

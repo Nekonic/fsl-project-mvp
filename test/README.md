@@ -6,7 +6,7 @@ only HTTP and never imports platform code: it sees the system from outside.
 The stack must be running.
 
 ```bash
-DOCKER_GID=$(bin/docker-gid) docker compose up -d --build
+docker compose up -d --build
 python -m pytest test/ -v
 ```
 
