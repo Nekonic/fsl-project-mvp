@@ -312,24 +312,41 @@ application, such as taking data out of a database. A foothold, privilege
 escalation and persistence are a later goal, not this list's (decided
 2026-09-28; `docs/THREAT-MODEL.md` already says so).
 
-The board is built. Before more targets, confirm the range runs on OpenStack:
-the adapter has only ever run against fakes, never a real cloud. More targets
-(a WordPress site, a Java system) come after that and plug in where the board
+The scoring redesign is the active work. The deployment target is now settled:
+one Ubuntu 24.04 x86_64 instance where you clone and run `docker compose up` —
+the whole stack in Docker on one VM. `range/openstack.py` (a Nova server per
+segment) is only needed if a target must be non-Linux (FreeBSD, Windows), since
+those cannot be containers; every current target is Linux, so it is not on this
+path. More targets (a WordPress site, a Java system) plug in where the board
 did.
 
-### 1. Confirm the OpenStack migration
+### 1. The scoring redesign (in progress)
 
-`range/openstack.py` is written and unit-tested against fakes. Against a real
-kolla-ansible cloud its read path now works: it authenticates, reads the
-endpoint catalogue, and lists Neutron networks and Nova servers
-(`FSL_SUBSTRATE=range.openstack.connect`, `FSL_OPENSTACK_*`). It has never
-booted a server, and the range is not deployed there: no network carries the
-`fsl.segment.id` tag, so `describe()` raises rather than returning a shape.
-Confirm next, in order: deploy the declared range (tagged networks, subnets,
-role-named servers) and have `describe()`/`segments()` read it back; then the
-six open items under "The substrate seam" above. The cloud is small (one
-compute node, a few GB free, only a cirros image and m1.tiny), so booting the
-whole range there needs images, flavours and room first.
+Design in `docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`. One
+zero-sum balance; the defence is a single score of four pillars (speed,
+accuracy, coverage, response); revealed only when the session closes. The
+target still decides which objectives fell.
+
+Done: `platform/game.py` settles speed + accuracy + coverage against the
+attacker's take into one balance (`GET /api/sessions/<id>/score/` carries
+`game`, withheld until `ended_at`). Left:
+- **Response pillar** needs blocking to exist. Turn the WAF from `DetectionOnly`
+  to blocking and/or Suricata inline, record a per-case `blocked` disposition
+  (distinct from `detected`), then add block-efficacy and the availability cost
+  of blocking benign traffic. This is also the user's "IPS/IDS/Firewall basics".
+- **Console**: show the four pillars and the balance after close, with the
+  declared weights visible; keep alerts and the rules editor live during the run.
+- **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
+  `DETECTED_TAKE`); tune once the console shows them.
+
+### 2. Deploy the range on OpenStack (later)
+
+`range/openstack.py`'s read path works against the real kolla cloud (auth,
+catalogue, Neutron and Nova reads); it has never booted a server and the range
+is not deployed there (no `fsl.segment.id`-tagged network, so `describe()`
+raises). This matters only for the non-Linux/multi-VM case above; the one-VM
+Docker deployment does not use it. The cloud is small (one compute node, a few
+GB free, only a cirros image and m1.tiny).
 
 ## Known gaps
 
