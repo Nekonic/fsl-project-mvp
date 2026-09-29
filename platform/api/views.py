@@ -22,6 +22,7 @@ from django.views.decorators.http import require_http_methods
 import requests
 
 import attacker
+import game
 import objectives
 import scoreboard
 import suppress
@@ -756,8 +757,38 @@ def session_score(request, session_id):
             "breaches": [
                 dict(b.__dict__, detection_ids=list(b.detection_ids)) for b in breaches
             ],
+            "game": _game(session, cases, detections, result, breaches, totals),
         }
     )
+
+def _game(session, cases, detections, result, breaches, totals):
+    if session.ended_at is None:
+        return {"revealed": False}
+
+    detected_at = {d.detection_id: d.timestamp for d in detections}
+    first_hit = {
+        match.case_id: min(
+            (detected_at[d] for d in match.detection_ids if d in detected_at),
+            default=None,
+        )
+        for match in result.matches
+    }
+    attempts = [
+        game.Attempt(
+            case_id=case.case_id,
+            malicious=case.malicious,
+            stage=case.stage or "",
+            started_at=case.started_at,
+            detected_at=first_hit.get(case.case_id),
+        )
+        for case in cases
+    ]
+    taken = [
+        game.Taken(key=b.key, difficulty=b.difficulty, detected=b.detected)
+        for b in breaches
+    ]
+    settled = game.settle(attempts, taken, totals.tp, totals.fp, totals.fn, totals.tn)
+    return dict(settled.__dict__, revealed=True)
 
 def _attempts(cases, result):
     by_case = {match.case_id: match for match in result.matches}

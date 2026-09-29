@@ -139,9 +139,9 @@ def test_every_dependency_is_imported_by_something():
         f"declared and never imported, so every build pulls them for nothing: {unused}"
     )
 
-    run = root / "platform/Dockerfile"
+    run = (root / "platform/Dockerfile").read_text() + (root / "platform/entrypoint.sh").read_text()
     for name in RUN_NOT_IMPORTED - {"pytest", "pytest-django"}:
-        assert name in run.read_text() or name == "django", (
+        assert name in run or name == "django", (
             f"{name} is exempt from the import check because something runs it, "
-            f"but nothing in the Dockerfile does"
+            f"but nothing in the Dockerfile or entrypoint does"
         )
