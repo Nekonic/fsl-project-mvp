@@ -327,13 +327,18 @@ zero-sum balance; the defence is a single score of four pillars (speed,
 accuracy, coverage, response); revealed only when the session closes. The
 target still decides which objectives fell.
 
-Done: `platform/game.py` settles speed + accuracy + coverage against the
-attacker's take into one balance (`GET /api/sessions/<id>/score/` carries
-`game`, withheld until `ended_at`). Left:
-- **Response pillar** needs blocking to exist. Turn the WAF from `DetectionOnly`
-  to blocking and/or Suricata inline, record a per-case `blocked` disposition
-  (distinct from `detected`), then add block-efficacy and the availability cost
-  of blocking benign traffic. This is also the user's "IPS/IDS/Firewall basics".
+Done: `platform/game.py` settles all four pillars against the attacker's take
+into one balance (`GET /api/sessions/<id>/score/` carries `game`, withheld
+until `ended_at`). Speed, accuracy and coverage are computed from data already
+recorded; the response pillar's math is in place too (attacks blocked lift the
+balance, benign blocked is an availability cost) and stays absent until a case
+is actually blocked. A case carries its blocked disposition in `meta["blocked"]`.
+Left:
+- **Turn blocking on.** Nothing sets `meta["blocked"]` yet because nothing
+  blocks: the WAF is `DetectionOnly` and Suricata is IDS. This is the user's
+  "IPS/IDS/Firewall basics" and it needs an infrastructure decision (how
+  blocking physically happens, and who toggles it), then wiring that records
+  which cases were blocked.
 - **Console**: show the four pillars and the balance after close, with the
   declared weights visible; keep alerts and the rules editor live during the run.
 - **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
