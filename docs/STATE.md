@@ -72,8 +72,10 @@ Nothing half-finished. The last session left the tree green and committed.
   sent through to Juice Shop it alerted every ten seconds and used up a
   session's 5,000-document read in about 14 hours. The wiki's check asks
   `127.0.0.1`: its conf is read-only, so nginx adds no IPv6 listener.
-- **Build with `DOCKER_GID=$(bin/docker-gid)`**; the image refuses to build
-  without it.
+- **Bring-up is a single `docker compose up -d --build`.** The platform's
+  entrypoint reads the docker socket's group from the socket at start, adds
+  `fsl` to it, drops root with `gosu`, and registers the `fsl-geoip` ingest
+  pipeline itself, so a fresh host needs no build argument and no manual PUT.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live; restore (README) has never been run.

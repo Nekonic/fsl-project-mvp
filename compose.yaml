@@ -246,10 +246,7 @@ services:
 
   platform:
     platform: linux/amd64
-    build:
-      context: ./platform
-      args:
-        DOCKER_GID: "${DOCKER_GID:-}"
+    build: ./platform
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -267,5 +264,6 @@ services:
     volumes:
       - ./platform:/app
       - ./redteam:/app/redteam:ro
+      - ./deploy/elastic:/app/deploy/elastic:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - platformdata:/data

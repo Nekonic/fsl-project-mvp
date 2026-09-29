@@ -179,13 +179,12 @@ directory. Same for `test/`.
 ## Running it
 
 ```bash
-colima start --profile fsl
-DOCKER_GID=$(bin/docker-gid) docker compose up -d --build   # includes kali, the attacker's terminal
-curl -X PUT http://localhost:9200/_ingest/pipeline/fsl-geoip \
-  -H 'Content-Type: application/json' \
-  --data-binary @deploy/elastic/ingest-pipeline.json
+docker compose up -d --build          # includes kali, the attacker's terminal
 .venv/bin/python redteam/run.py       # or drive it from the console at /
 ```
+
+The platform sets up the docker socket group and registers the Elasticsearch
+ingest pipeline on start, so `docker compose up` is the whole bring-up.
 
 The console is the point now: open `/`, start a session, and open the red and
 blue windows side by side. The terminal in the red window is on 7681. HTTP

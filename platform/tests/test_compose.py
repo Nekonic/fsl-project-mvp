@@ -61,6 +61,26 @@ def test_the_database_is_pinned_by_digest():
 
     assert database and all("@sha256:" in i for i in database), database
 
+def test_the_platform_needs_no_build_argument_to_come_up():
+    platform = yaml.safe_load(COMPOSE.read_text())["services"]["platform"]
+    build = platform.get("build")
+    args = build.get("args") if isinstance(build, dict) else None
+
+    assert not args, (
+        f"a fresh host runs `docker compose up` with nothing else; a required "
+        f"build arg breaks that. The platform sorts the docker socket group out "
+        f"at start instead: {args}"
+    )
+
+def test_the_platform_registers_the_ingest_pipeline_itself():
+    platform = yaml.safe_load(COMPOSE.read_text())["services"]["platform"]
+    mounted = [v for v in platform["volumes"] if "deploy/elastic" in v]
+
+    assert mounted, (
+        "bring-up would still need a manual pipeline PUT; mount deploy/elastic "
+        "so the platform can register fsl-geoip on start"
+    )
+
 def test_no_image_downloads_a_binary_built_for_another_architecture():
     root = COMPOSE.parent
     dockerfiles = [*(root / "deploy").glob("*/Dockerfile"), root / "platform" / "Dockerfile"]
