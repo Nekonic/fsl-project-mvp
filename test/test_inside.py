@@ -1,8 +1,8 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, REPO_ROOT
-from range import ATTACKER, TARGET, WIKI, run
+from conftest import PLATFORM_URL
+from range import ATTACKER, TARGET, WIKI, forget_wiki_reads, run
 
 INSIDE = "http://wiki.internal/"
 SECRET = "/runbooks/deploy.html"
@@ -53,9 +53,7 @@ def test_the_inside_is_an_objective_the_target_judges(stack_is_up):
 
 @pytest.fixture(scope="module")
 def taken_through_the_app(stack_is_up):
-    record = REPO_ROOT / "deploy/wiki/logs/read.log"
-    record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text("")
+    forget_wiki_reads()
 
     script = f'''
       T=$(curl -s --max-time 20 -H "Content-Type: application/json" \\

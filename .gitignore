@@ -9,3 +9,4 @@ deploy/nginx/logs/
 deploy/wiki/logs/*
 !deploy/wiki/logs/.gitkeep
 /backups/
+/openstack.env

@@ -1,0 +1,149 @@
+heat_template_version: 2021-04-16
+
+description: >
+  The platform VM: Ubuntu 24.04 whose first boot clones the repo and brings the
+  whole platform up with docker compose. The API password is added over ssh.
+
+parameters:
+  keystone:
+    type: string
+  user:
+    type: string
+    default: fsl-range
+  image:
+    type: string
+    default: ubuntu-24.04
+  flavor:
+    type: string
+    default: m1.windows
+  key_name:
+    type: string
+    default: fsl-claude
+  external_network:
+    type: string
+    default: provider
+  cidr:
+    type: string
+    default: 10.20.0.0/24
+  dns:
+    type: comma_delimited_list
+    default: [8.8.8.8, 8.8.4.4]
+  repository:
+    type: string
+    default: https://github.com/Nekonic/fsl-project-mvp.git
+  ref:
+    type: string
+    default: dev
+
+resources:
+  network:
+    type: OS::Neutron::Net
+    properties:
+      name: fsl-platform
+
+  subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: fsl-platform
+      network: {get_resource: network}
+      cidr: {get_param: cidr}
+      dns_nameservers: {get_param: dns}
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: fsl-platform
+      external_gateway_info:
+        network: {get_param: external_network}
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: {get_resource: router}
+      subnet: {get_resource: subnet}
+
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: fsl-platform
+      rules:
+        - {protocol: tcp, port_range_min: 22, port_range_max: 22}
+        - {protocol: icmp}
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: {get_resource: network}
+      fixed_ips: [{subnet: {get_resource: subnet}}]
+      security_groups: [{get_resource: security_group}]
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    depends_on: router_interface
+    properties:
+      floating_network: {get_param: external_network}
+      port_id: {get_resource: port}
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: fsl-platform
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      key_name: {get_param: key_name}
+      networks: [{port: {get_resource: port}}]
+      config_drive: true
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            "%keystone%": {get_param: keystone}
+            "%user%": {get_param: user}
+            "%project%": {get_param: "OS::project_id"}
+            "%repository%": {get_param: repository}
+            "%ref%": {get_param: ref}
+            "%mtu%": {get_attr: [network, mtu]}
+          template: |
+            #cloud-config
+            package_update: true
+            packages: [docker.io, docker-compose-v2, git]
+            swap:
+              filename: /swapfile
+              size: 4G
+            write_files:
+              - path: /etc/docker/daemon.json
+                content: |
+                  {"mtu": %mtu%, "default-network-opts": {"bridge": {"com.docker.network.driver.mtu": "%mtu%"}}}
+              - path: /root/openstack.env
+                permissions: "0600"
+                content: |
+                  FSL_OPENSTACK_KEYSTONE=%keystone%
+                  FSL_OPENSTACK_USER=%user%
+                  FSL_OPENSTACK_PROJECT=%project%
+                  FSL_OPENSTACK_SSH_USER=ubuntu
+                  FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
+              - path: /etc/systemd/system/fsl-platform.service
+                content: |
+                  [Unit]
+                  Requires=docker.service
+                  After=docker.service network-online.target
+                  Wants=network-online.target
+                  [Service]
+                  Type=oneshot
+                  RemainAfterExit=yes
+                  TimeoutStartSec=0
+                  ExecStart=/usr/bin/docker compose -f /opt/fsl/compose.yaml up -d --build
+                  [Install]
+                  WantedBy=multi-user.target
+            runcmd:
+              - [git, clone, --branch, "%ref%", "%repository%", /opt/fsl]
+              - [mv, /root/openstack.env, /opt/fsl/openstack.env]
+              - [chown, -R, "ubuntu:ubuntu", /opt/fsl]
+              - [usermod, -aG, docker, ubuntu]
+              - [systemctl, daemon-reload]
+              - [systemctl, enable, --now, fsl-platform.service]
+
+outputs:
+  address:
+    description: The floating IP the platform is reached at, by ssh.
+    value: {get_attr: [floating_ip, floating_ip_address]}

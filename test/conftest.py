@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 import requests
 
-from range import ATTACKER, GATEWAY, SENSOR, TARGET, recreate, run, start_hint
+from range import (
+    ATTACKER, GATEWAY, SENSOR, TARGET, forget_wiki_reads, recreate, run, start_hint,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = "http://localhost:8000"
@@ -101,9 +103,7 @@ def defence_is_on(stack_is_up):
     )
 
 def reset_target() -> None:
-    record = REPO_ROOT / "deploy/wiki/logs/read.log"
-    record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text("")
+    forget_wiki_reads()
 
     recreate(TARGET)
 

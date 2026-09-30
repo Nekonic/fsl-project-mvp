@@ -20,6 +20,7 @@ WIKI = "wiki"
 GATEWAY = "gateway"
 
 ROLES = (ATTACKER, TARGET, SENSOR, WIKI, GATEWAY)
+WIKI_READ_LOG = "/var/log/nginx/read.log"
 
 EXIT_MARK = "fsl.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
@@ -175,6 +176,11 @@ def segments(role: str, timeout: float = 60.0) -> frozenset[str]:
 
 def recreate(role: str, timeout: float = 300.0) -> None:
     RANGE.recreate(role, timeout=timeout)
+
+def forget_wiki_reads() -> None:
+    cleared = run(WIKI, ["truncate", "-s", "0", WIKI_READ_LOG])
+    if not cleared.ok:
+        raise RangeUnavailable(f"the wiki kept its read log: {cleared.output[-300:]}")
 
 def start_hint(*roles: str, fresh: bool = False) -> str:
     return RANGE.start_hint(*roles, fresh=fresh)
