@@ -57,6 +57,7 @@ volumes:
   esdata:
   filebeatdata:
   platformdata:
+  waflogs:
 
 services:
   juice-shop:
@@ -160,13 +161,13 @@ services:
       MODSEC_AUDIT_ENGINE: "RelevantOnly"
       MODSEC_AUDIT_LOG_FORMAT: "JSON"
       MODSEC_AUDIT_LOG_TYPE: "Serial"
-      MODSEC_AUDIT_LOG: "/var/log/modsecurity/audit.log"
+      MODSEC_AUDIT_LOG: "/var/log/modsecurity/audit/audit.log"
       MODSEC_AUDIT_LOG_PARTS: "ABIJDEFHZ"
       PARANOIA: "1"
       ANOMALY_INBOUND: "5"
     volumes:
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
-      - ./deploy/nginx/logs:/var/log/modsecurity
+      - waflogs:/var/log/modsecurity/audit
       - ./deploy/nginx/board.conf:/etc/nginx/conf.d/board.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
@@ -217,7 +218,7 @@ services:
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./deploy/suricata/logs:/logs/suricata:ro
-      - ./deploy/nginx/logs:/logs/modsecurity:ro
+      - waflogs:/logs/modsecurity:ro
       - filebeatdata:/usr/share/filebeat/data
 
   kali:
@@ -261,6 +262,10 @@ services:
       TARGET_URL: "http://shop.com"
       PUBLIC_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
+    env_file:
+      - path: ./openstack.env
+        required: false
+        format: raw
     volumes:
       - ./platform:/app
       - ./redteam:/app/redteam:ro

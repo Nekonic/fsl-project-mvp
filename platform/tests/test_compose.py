@@ -211,3 +211,22 @@ def test_the_red_box_s_recon_line_scans_the_port_the_target_listens_on():
         f"box is on the edge network, not the host, so a port only the host "
         f"publishes reads as closed"
     )
+
+def test_the_waf_writes_its_audit_log_where_its_own_user_can():
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    audit_dir = services["waf"]["environment"]["MODSEC_AUDIT_LOG"].rsplit("/", 1)[0]
+    [source] = [
+        volume.split(":")[0] for volume in services["waf"]["volumes"]
+        if volume.split(":")[1] == audit_dir
+    ]
+
+    assert audit_dir == "/var/log/modsecurity/audit" and not source.startswith("."), (
+        f"{source} on {audit_dir}: the WAF runs as nginx, a bind mount's "
+        f"directory is created by dockerd as root, and only the image's "
+        f"audit directory belongs to nginx, which a named volume copies. On a "
+        f"Linux Docker host the audit log never appeared"
+    )
+    assert any(volume.startswith(f"{source}:") and volume.endswith(":ro")
+               for volume in services["filebeat"]["volumes"]), (
+        "Filebeat does not read the volume the WAF writes"
+    )
