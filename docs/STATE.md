@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 ## Where things stand
 
@@ -298,6 +298,8 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Stack**: every service `linux/amd64`; `docker compose up` is the whole
   bring-up (the platform entrypoint sets the socket group and registers the
   ingest pipeline).
+- **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
+  the OpenStack cloud as one Heat stack (backlog 2, step 1).
 
 ## Backlog
 
@@ -342,9 +344,50 @@ Left:
 The user's architecture, in this order (reorder if the user says so). Each
 step ends with `describe()`/`segments()` and the acceptance suite reading it.
 
-1. **The platform VM**: an Ubuntu 24.04 VM on the cloud whose cloud-init runs
-   `docker compose up`; it authenticates to the API as the member-role
-   `fsl-range` user.
+1. **The platform VM: done (2026-10-01).** `deploy/openstack/platform.yaml`
+   is a Heat stack (a member may create stacks): network `fsl-platform`
+   (`10.20.0.0/24`), a router to `provider`, a floating IP, a group opening
+   only ssh and ping, and an Ubuntu 24.04 server whose cloud-init installs
+   Docker, clones `repository` at `ref` into `/opt/fsl` and enables
+   `fsl-platform.service`, which runs `docker compose up -d --build` on every
+   boot. cloud-init writes every `FSL_OPENSTACK_*` setting but the password to
+   `/opt/fsl/openstack.env` (0600, git-ignored), which compose gives the
+   platform with `format: raw`; the operator appends the password over ssh
+   (`README.md`). Checked on the cloud: a fresh stack
+   went from create to all 11 services up in 3 min 20 s, and inside the
+   platform container `FSL_SUBSTRATE=range.openstack.connect` returned the six
+   `fsl-*` segments and `fsl-juice-shop` from `describe()` and `segments()`.
+   The platform itself stays on the Docker substrate until step 2. `bin/verify`
+   on the VM: acceptance 126 of 126; the unit run fails only the 102 tests that
+   need node, which the VM does not have.
+   - **The tenant network's MTU is 1450** and Docker's bridges default to
+     1500: TLS downloads from GitHub hung in the Kali build until curl timed
+     out. The template writes the network's `mtu` attribute into
+     `/etc/docker/daemon.json` (`mtu` and `default-network-opts`).
+   - **Flavor** `m1.windows` (2 vCPU, 4 GB, 60 GB) is the largest a member can
+     use; the stack takes about 2.4 GB, and cloud-init adds 4 GB of swap.
+     Kibana (step 6) will need a bigger flavor, which only an admin can create.
+   - **`ref` defaults to `dev`**, so the template clones this work only after
+     it is pushed. The check above cloned a snapshot of this branch served
+     from the operator's machine on the LAN.
+   - **The password stays out of the user data.** The first version passed it
+     as a hidden Heat parameter into cloud-init; Nova's metadata service
+     answered from inside the Kali container (`meta_data.json`, 200), and the
+     user data it serves would have carried the password.
+   - **Acceptance cleared the wiki's read log by writing the host file**, which
+     works on colima's mounts but not on a Linux Docker host, where the wiki
+     writes it as root: 21 errors on the VM. `test/range.py`'s
+     `forget_wiki_reads()` truncates it inside the wiki instead.
+   - **ModSecurity logged nothing on a Linux Docker host.** Its audit log was a
+     bind mount of `deploy/nginx/logs`, which dockerd creates as root, and the
+     WAF runs as nginx; colima's mounts hid it. It now sits on the named volume
+     `waflogs` at the image's own `audit` directory, which belongs to nginx and
+     which a fresh volume copies; Filebeat reads the volume read-only.
+   - `FSL_OPENSTACK_SSH_KEY` names `/data/ssh/id_ed25519`, which nothing
+     creates yet: step 2 makes it and registers it as a Nova keypair.
+   - The kolla venv on the host has no Heat client; the stack was driven from
+     a separate venv with `python-openstackclient` and `python-heatclient`.
+   - Stack `fsl-platform` is still up, at floating IP `192.168.0.209`.
 2. **The fabric from the platform, through the API**: one Internet network
    with a subnet per origin country (30, from a public traffic ranking, placed
    by GeoIP, about 100 addresses weighted by traffic), the estate and
