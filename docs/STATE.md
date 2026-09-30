@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-09-29
+Updated: 2026-09-30
 
 ## Where things stand
 
@@ -195,115 +195,25 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   them in `/data/db.sqlite3`: `GET /api/sessions/` returns at most 25.
 - OpenStack item 3 is a decision too.
 
-## Done since v1.0
+## What exists now
 
-One line each.
+The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
-**The range**
-- Three segments, the Internet as four origin networks, crossed only at the WAF.
-- Attacks come from four countries chosen in the console.
-- The target is `http://shop.com` on port 80: no appliance name, no port.
-- An internal wiki, reached only through the app by SSRF, judges its own reads.
-- An alert stores the host that held its address at ingest; addresses move.
-
-**The red team**
-- One Kali image (nmap, sqlmap, ffuf, hydra and more); `tool:` cases run in it.
-- The shell is the red team; the case file is a scripted baseline.
-- Two routes out: the proxy for HTTP, direct for raw TCP; windows record which.
-- A window's address, origin and route are fixed at Start, not at Stop.
-- Typed commands are kept per case: `GET /api/sessions/<id>/commands/`.
-- Cases carry a Mandiant stage and ATT&CK and CAPEC ids, linked in the console.
-- Cases declare what they take, and seven objectives fall instead of two.
-
-**The score**
-- Objectives lead it: the target flips its own `solved`.
-- A breach goes to a malicious case that was running when the target stamped it.
-- 13 challenges Juice Shop checks on a later request carry upper-bound stamps.
-- A TP is corroborated by an `expect` match from a rule that hit no benign case.
-  Failing that only raises `wrong_reason`; it is not an input to `detected`.
-- A case recorded since migration 0009 stores the `expect` it was judged by.
-  Older ones hold NULL (123 of the store's 125) and read the current catalogue,
-  so editing cases re-scores their sessions.
-- The score reports `unattributed` and `benign_cases`; FP is shown as `1 / 6`.
-- `scoring/` returns `(key, *args)`, never sentences, and a test holds it there.
-- Silencing a rule is the verdict; the ingest tick lifts it when it expires.
-- A session closes once and observes the target at close. A case still running
-  then stretches its end and observes the target anyway, or its breach is lost.
-- An unreadable wiki keeps Juice Shop's verdicts and reports `unreadable`; a
-  session with no baseline yet waits for a full read (a recorded decision).
-
-**The console**
-- One blue console: Dashboard, Live, Scoreboard, Rules; top-N, map and trend.
-- The map is Equal Earth cut at 60°S (24 KB, was 68), draws the declared
-  `defended_site` (Seoul) and a bowed line from each origin to it; its
-  colours are six `--map-*` variables. `bin/worldmap`'s input
-  `land-110m.json` is not in the repo; this map was rebuilt from the old SVG's
-  own coordinates and has not been regenerated from the real file.
-- The console is light: Elastic EUI Borealis 8.1.0 light tokens as CSS
-  variables in `base.html`; `bin/build-css` builds only semantic colour
-  names, so a default Tailwind colour builds nothing and a test refuses it.
-  The Kali terminal stays black. No web fonts (offline).
-- The FSL Suricata rules carry `classtype:web-application-attack`
-  (priority 1 in the sensor's classification.config); without a classtype
-  every one arrived as severity 3 and the console called an SQLi "low".
-- The Alerts table has 8 columns (source carries zone and country, the
-  destination reads IP:port, time is HH:MM:SS) so path and case show at 1280.
-- Tables read at half a screen: every cell padded, IPs and counts never
-  wrap, signatures clamp to two lines with the full text in `title`.
-- Every value is escaped before it reaches the page, and a test says so.
-  Juice Shop's HTML descriptions are therefore turned into plain text by the
-  API (`objectives._displayed`), or the escaping shows their tags.
-- Red case cards name their objective from the list the page already has,
-  rewriting only that line, so a late list cannot unlock cards mid-run. The
-  stub DOM in `tests/browser.js` now parses `innerHTML`, so tests can click.
-- A session with nothing fired shows no no-benign warning (raised only beside
-  a malicious case, and it says to fire the benign ones), coverage of nothing
-  as `-` (the API sends `null`), and each warning once.
-- Polls run one at a time, catch up once on wake, and give up after 90 s.
-- `_segments()` swallows `RangeUnavailable` on purpose: the dashboard draws
-  without zones rather than not at all. Uncaught elsewhere, it is a 503.
-- `platform/tests/browser.py` runs each page's scripts under node, without npm.
-- Tailwind is built by `bin/build-css` and inlined; rebuild after a new class.
-
-**A second target**
-- A Django board on MySQL stands behind the WAF as `board.com`, a second
-  wargame. It is `deploy/board/`: an ordinary site (posts, comments, search,
-  login) with no planted holes, so the app resists on its own and the WAF and
-  IDS are what score. `objectives.py` reads per scenario now; a board session
-  observes nothing and lists no objectives (`wargames.judged`). Its cases are
-  `redteam/cases/board.yaml`; the same FSL Suricata rules fire on it because
-  Suricata watches the WAF whatever the vhost.
-- The board vhost is `deploy/nginx/board.conf`, mounted into the WAF; ModSec is
-  on at the http level so it covers the board without extra config. The board
-  is on `estate` only and `board-db` is not published.
-
-**Operations and tests**
-- Every service runs as `linux/amd64`, the architecture production runs. A
-  compose test holds it, and another refuses a Dockerfile that fetches an ARM
-  binary. A full `bin/verify` on it took 7 min 26 s.
-- The wiki log starts with NULs; it is read with `grep -a`, or the match hides.
-- OpenStack host keys are filed per instance generation, so a rebuild is new.
-- Acceptance tests assert on their own case's evidence and close their sessions.
-- Acceptance fails a run in which the stack alerted on its own traffic.
-- Unit fixtures open sessions before their alert times, or `stale` drops them.
-- Two tests comparing YAML strings were deleted; one passed on a blind sensor.
-
-**Smaller**
-- Dropped djangorestframework, Kibana, Django boilerplate, dead marker-probing.
-- 2026-09-25 shrink: the refusals middleware answers 409/404/503/400 so views
-  raise; both substrates share one `execute()`/`reported()` in `ports.py`;
-  `views.py` 1,107 -> 999, core_loc 477 -> 472. Docs 1,252 -> 496 lines; the
-  2026-09-18 design spec was superseded and deleted, its live decisions moved
-  to ARCHITECTURE. `attacker.origins()` now reads the declaration loaded at
-  startup, so an edit to it needs a restart.
-- A slop sweep (2026-09-25): 139 findings, 80 upheld by two refuters each and
-  applied. Error messages say what to change, a swallowed wiki or range error
-  is reported, 23 tests that could not fail now can, config restating
-  defaults is gone (`eve-log.alert.http` was a deprecated no-op). The 59 that
-  one refuter rejected were not applied; rechecked, they are deliberate
-  (ingest blanks the host during a range outage, `c83ea24`, pinned by
-  `test_asset_identity.py`; the Protocols in `range/ports.py` state the port)
-  or already caught elsewhere.
+- **Range**: three segments plus four Internet origin countries, crossed only
+  at the WAF; target `http://shop.com`; an internal wiki reachable only by SSRF
+  that judges its own reads.
+- **Red team**: one Kali image; cases fired from the console or a labelled
+  shell; each case carries a Mandiant stage, ATT&CK/CAPEC ids, and what it takes.
+- **Two targets**: Juice Shop (judged — it flips its own `solved`) and a
+  detection-only Django board on MySQL behind the WAF as `board.com`.
+  `objectives.py` reads per scenario; a board session lists no objectives.
+- **Score**: objectives (target-decided) beside detection TP/FP/FN/TN with the
+  `corroborated` gate; the zero-sum game score is being layered on (backlog 1).
+- **Console**: one blue console (Dashboard, Live, Scoreboard, Rules), light
+  theme, world map, every value escaped.
+- **Stack**: every service `linux/amd64`; `docker compose up` is the whole
+  bring-up (the platform entrypoint sets the socket group and registers the
+  ingest pipeline).
 
 ## Backlog
 
@@ -344,26 +254,20 @@ Left:
 - **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
   `DETECTED_TAKE`); tune once the console shows them.
 
-### 2. Deploy the range on OpenStack (later)
+### 2. Deploy the range on OpenStack (next session)
 
-`range/openstack.py`'s read path works against the real kolla cloud, and the
-cloud now boots our x86_64 VMs: an Ubuntu 24.04 instance came up ACTIVE and was
-reached over SSH from outside. So the pieces exist; the range itself is still
-not deployed there (no `fsl.segment.id`-tagged network, so `describe()`
+`range/openstack.py`'s read path works against a real kolla cloud. The range
+is not deployed there yet (no `fsl.segment.id`-tagged network, so `describe()`
 raises). This path is for the non-Linux/multi-VM case; the one-VM Docker
-deployment does not use it. What deploying the range needs, learned booting
-that first VM:
+deployment does not use it.
 
-- **Instances need `--config-drive true`.** The cloud's Neutron metadata
-  service is unreliable (cloud-init fell back to `DataSourceNone` and injected
-  no SSH key); a config drive delivers the key without the metadata network.
-- **Booting is emulated (QEMU, not KVM), so it is slow** and every image must
-  be amd64.
-- Set up once: image `ubuntu-24.04`, flavour `fsl.small` (2 GB/2 vCPU/12 GB),
-  keypair `fsl-claude`, security group `fsl-sg` (22/80/3000/icmp). The cloud is
-  small (one compute node, ~5 GB free), so the estate must be sized to fit.
-- If instances stall in `BUILD` with `host=None`, the scheduler pipeline is
-  wedged: restart `rabbitmq` then the `nova_*` containers.
+A fresh KVM cloud is at `master@192.168.0.100` (ssh key `fsl_claude`,
+passwordless sudo). The earlier cloud was emulated (TCG), which saturated its
+single node at two VMs; KVM removes that ceiling. Steps to resume: create the
+image/flavour/keypair/security group, the six tagged segment networks, a
+role-named target VM, then run `describe()`/`segments()` against it. Instances
+need `--config-drive true` (the earlier cloud's metadata was unreliable; verify
+on the new one). See the `openstack-test-cloud` memory for operational detail.
 
 ## Known gaps
 
