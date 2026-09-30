@@ -132,6 +132,22 @@ tagged networks, and keeps fixed IPv4 addresses.
 
 **Deployed on the KVM cloud (2026-09-30).** `master@192.168.0.100` (ssh key
 `fsl_claude`, passwordless sudo); its API endpoints are on `192.168.0.110`.
+It runs kolla-ansible 2026.1 (Gazpacho, the 22.x series; the host has
+22.2.1.dev9), Ubuntu images, ML2/Open vSwitch, inventory `/root/all-in-one`.
+**Tap-as-a-Service is on (2026-09-30, the user's go-ahead):**
+`enable_neutron_taas: "yes"` in `globals.yml` (the previous file is
+`globals.yml.before-taas`), then `kolla-ansible reconfigure -i
+/root/all-in-one -t neutron`. kolla-ansible 2026.1 has a bug here: it lists
+`taas` in `service_plugins` for all three Neutron API services but writes
+`neutron_taas.conf` only for `neutron-server`, so `neutron_rpc_server` and
+`neutron_periodic_worker` exited ("No providers specified for 'TAAS'") and
+every agent read as dead until fixed. The fix is kolla's own per-service
+override: `/etc/kolla/config/neutron/neutron-rpc-server.conf` and
+`neutron-periodic-worker.conf`, each a copy of `neutron_taas.conf`, then
+reconfigure again. A later reconfigure keeps them. Checked as `fsl-range`: a
+member creates a tap service and a `BOTH` tap flow on the target's port; the
+flow goes ACTIVE, the service stays DOWN until its port is on a VM, and
+`br-tap` exists.
 The range lives in project `fsl-range` (id `64ffc2a247464ebdae21cfdae0f96d90`)
 as user `fsl-range` with the `member` role, not admin. Its password is only in
 `/root/fsl-range.password` on the host; `/root/fsl-range-openrc.sh` sources
@@ -158,10 +174,12 @@ Left for OpenStack, in order:
 2. **Where the sensor sits.** Docker shares the WAF's namespace and the adapter
    confirms `watches`; on Nova nothing confirms it. Either Suricata rides the
    WAF instance or Tap-as-a-Service mirrors its ports.
-3. **One attacker, four origins (a decision).** Nova cannot boot a host per
-   tool and hand back its output, so a tool runs over ssh on the attacker on
-   that segment, and other segments are refused. Declare an attacker per
-   origin, or accept one attacking position on OpenStack.
+3. **One attacker, every origin (decided by the user, 2026-09-30).** One Kali
+   VM with a Neutron port on each origin network, and several addresses per
+   origin so a blocked attacker can move to another (how many is not
+   decided). The adapter still runs a tool on "the attacker on that segment"
+   and refuses other segments; it has to find this one attacker on all of
+   them.
 4. **Roles are found by Nova server name**, which is not unique; segments are
    bound by tag for that reason, roles not yet. Credentials are settled:
    `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*`, each refused
@@ -177,42 +195,89 @@ Left for OpenStack, in order:
 Settled since the sketch: the default origin, the sensor reload, whether a
 sensor is a participant, subnets per segment, binding, and who starts a tool.
 
+## Decided on 2026-09-30 (the user)
+
+- **Blocking works as in practice**: the blue team turns the WAF's blocking
+  mode and the IPS's drop rules on and off itself.
+- **An IPS outage is an infrastructure fault**, not part of the exercise; it
+  is neither planned for nor scored.
+- **Objectives do not centre on Juice Shop.** The board's user database
+  (Django `auth_user`: accounts and password hashes) becomes something the red
+  team can take. How the board judges from its own side that it was taken is
+  still to design; the platform must not decide it. Juice Shop's
+  continue-code restore is not pursued.
+- **GeoIP is loaded once**, not refreshed: country ranges rarely move. It
+  still needs a durable home, a bind mount for `config/ingest-geoip` with the
+  downloader off. Today the files sit inside the container: the downloader
+  failed at every Elasticsearch start (it runs before `.geoip_databases` has
+  an active primary, then waits three days), one of its two download
+  addresses (`172.64.66.1`) does not connect through the VPN, and turning it
+  off on 2026-09-30 deleted the downloaded databases, as documented. The same
+  GeoLite2 files were fetched from `geoip.elastic.co` (md5 checked) and copied
+  in; they vanish when the container is recreated.
+- **Evidence is selected by event time**: `@timestamp` set from Suricata's
+  `timestamp` and ModSecurity's own time, as ECS defines it and Elastic's own
+  pipelines do, with every range VM's clock kept by chrony. Today it is
+  Filebeat's read time, 5 s late median and 17 s worst.
+- **The console shows Korean time** (UTC on hover), and an undefined
+  precision or recall shows `-`.
+- **ModSecurity severities stay** until the tutorial work tunes them to
+  practice.
+- **Origins**: 30 countries from a public ranking of Internet traffic (no API
+  token), each wherever GeoIP places it, Hong Kong and Taiwan included; about
+  100 addresses, more to bigger traffic, at least one each.
+- **A tool's source address is set when it sends**: the attacker VM rewrites
+  its outgoing packets to the chosen country's address, so every tool gets it
+  whether or not it has a source option.
+- **The terminal's moving WAF address** is a Docker artefact; on OpenStack
+  addresses are fixed.
+- **The platform VM lives inside OpenStack**: an Ubuntu 24.04 VM where
+  `docker compose up` brings the whole platform up, cloud-native in feel;
+  booting it should be all it takes (cloud-init runs the bring-up). It then
+  reaches the OpenStack API from inside, and browsers reach it by a floating
+  IP, which the loopback-only ports and missing login do not allow yet.
+- **No Korean or commercial WAF**, to stay clear of licensing: the WAF is
+  nginx + ModSecurity v3 + CRS (all Apache-2.0).
+- **pfSense goes in** as the edge firewall, and Suricata runs as its package,
+  managed in the pfSense GUI (placement spec, "pfSense").
+- **The blue team reads alerts in Kibana**, read-only, and the blue dashboard
+  mostly goes. Kibana returns to compose (a gated `services` step the user's
+  call justifies), with Elasticsearch security on for a read-only role.
+- **The platform UI is a left sidebar with three panes shown inside the
+  page**: pfSense, Kibana, a terminal. No new-tab buttons. Kibana is framed
+  directly. pfSense refuses framing and has no setting for it, so its pane is
+  the Nova noVNC console of a small VM whose kiosk browser has the pfSense GUI
+  open; the platform asks `POST /servers/{id}/remote-consoles` (member role,
+  microversion 2.6+) for a fresh URL each time the pane opens (tokens last
+  600 s; an open session outlives them). The terminal pane is ttyd, as Kali's
+  already is. Horizon is never shown to users.
+- **Session start/stop and the scoreboard stay on the landing page `/`**,
+  outside the sidebar; the sidebar is only the work screen.
+- **Tap-as-a-Service is dropped from the design**: it was there for a sensor
+  the blue team could not tamper with, which is no longer assumed. It stays
+  enabled on the cloud, off every path.
+
+## Left to engineering (no decision needed)
+
+- `no_marker` per engine, without warning on raw-TCP-only sessions.
+- `bin/verify` refuses to run while a person's session is open.
+- The ratchet counts statements with the baseline from `HEAD`, and
+  `scoreboard.py` moves into core.
+- The terminal's label cleared on page load and at Stop; a tool killed on the
+  attacker when its timeout passes; the rule editor refuses a rule indented so
+  far that Suricata skips it; `fsl-logs-*` expire after 30 days, with a disk
+  warning.
+
 ## Decisions left for a person
 
-- **GeoIP stops on about 2026-10-18.** The downloader has not succeeded since
-  2026-09-18 (`_ingest/geoip/stats`: 0 successful, still so on 2026-09-25) and
-  its databases expire after 30 days. Mount GeoLite2 `.mmdb` files (MaxMind
-  account and licence) and disable the downloader, or let it lapse knowingly.
-- **Which clock selects evidence.** Ingest uses `@timestamp`, Filebeat's read
-  clock, with a one-minute tail; measured lag is 5 s median, 17 s worst.
-  Rewriting it to event time in the pipeline removes the dependency, but the
-  index then holds both meanings unless backfilled.
-- **The terminal's origin file holds the WAF's address, which moves** across
-  recreations (.4, .5, .4); the terminal keeps the old one until the red page
-  reloads or an origin is chosen. Pin addresses (a reserved IPAM range, so the
-  networks are recreated), or have the platform rewrite a stale file.
-- **`no_marker` per engine.** It fires only when no detection has a marker, so
-  a sensor that lost all of them is silent while the WAF keeps its own. Per
-  engine it must not warn on raw-TCP-only sessions, and it costs core lines.
-- **Whether verify may share a stack with a person.** It touches only its own
-  sessions but resets the target, the rules and the attacker's origin.
-- **The console's clock** (UTC like the server and operator log, or local), and
-  whether an undefined precision or recall should be null, not 0.0.
-- **How the ratchet counts:** statements instead of physical lines, the
-  baseline from `HEAD` instead of the working tree, and whether `scoreboard.py`
-  and parts of the views are core.
-- **Defaults to confirm:** ModSecurity severity 0-2 is High (CRS's blocking
-  rule carries 0, its attack rules 2); an OpenStack segment binds its single
-  IPv4 subnet and refuses a second.
-- **Not done, waiting on a call:** the terminal's label left after a page
-  reload; a tool outliving its timeout (not killed on the host); a rule
-  indented enough that Suricata skips it (waits on the ratchet question);
-  retention for `fsl-logs-*` (nothing expires it; a full disk makes indices
-  read-only and Filebeat stop silently; expiry deletes evidence).
-- **45 of the store's 60 sessions are open**, all started 2026-09-23 between
-  16:56 and 17:44 by acceptance runs. Nothing proves none is a person's. Count
-  them in `/data/db.sqlite3`: `GET /api/sessions/` returns at most 25.
-- OpenStack item 3 is a decision too.
+- **The tutorial**, to be designed later (the user).
+- **Getting pfSense CE**: its only installer comes from a $0 Netgate Store
+  checkout with an account, which the user has to do.
+- **How browsers reach the platform VM** from outside, now that it is on a
+  floating IP: a login, a front proxy, or both.
+- The reasoning behind the placement and the WAF console is in
+  `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
+  `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`.
 
 ## What exists now
 
@@ -241,13 +306,12 @@ application, such as taking data out of a database. A foothold, privilege
 escalation and persistence are a later goal, not this list's (decided
 2026-09-28; `docs/THREAT-MODEL.md` already says so).
 
-The scoring redesign is the active work. The deployment target is now settled:
-one Ubuntu 24.04 x86_64 instance where you clone and run `docker compose up` —
-the whole stack in Docker on one VM. `range/openstack.py` (a Nova server per
-segment) is only needed if a target must be non-Linux (FreeBSD, Windows), since
-those cannot be containers; every current target is Linux, so it is not on this
-path. More targets (a WordPress site, a Java system) plug in where the board
-did.
+The deployment target (the user, 2026-09-30): the platform is an Ubuntu 24.04
+VM inside the OpenStack cloud, brought up by `docker compose up`, and it
+creates the range's VMs through the OpenStack API. Every product decision
+behind the build is in "Decided on 2026-09-30" above and in
+`docs/superpowers/specs/2026-09-30-openstack-range-placement.md`. More targets
+(a WordPress site, a Java system) plug in where the board did.
 
 ### 1. The scoring redesign (in progress)
 
@@ -264,14 +328,41 @@ balance, benign blocked is an availability cost) and stays absent until a case
 is actually blocked. A case carries its blocked disposition in `meta["blocked"]`.
 Left:
 - **Turn blocking on.** Nothing sets `meta["blocked"]` yet because nothing
-  blocks: the WAF is `DetectionOnly` and Suricata is IDS. This is the user's
-  "IPS/IDS/Firewall basics" and it needs an infrastructure decision (how
-  blocking physically happens, and who toggles it), then wiring that records
-  which cases were blocked.
-- **Console**: show the four pillars and the balance after close, with the
-  declared weights visible; keep alerts and the rules editor live during the run.
+  blocks. Decided: as in practice, the blue team turns on blocking itself, in
+  the pfSense GUI (Suricata drop rules) and the WAF's mode. Left: record which
+  cases were blocked, read from the target side. Lands with item 2.
+- **The scoreboard after close** on the landing page: the four pillars and the
+  balance, with the declared weights visible. Alerts move to Kibana and rules
+  to pfSense (item 2), so the live dashboard and rules editor go.
 - **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
   `DETECTED_TAKE`); tune once the console shows them.
+
+### 2. Build the range on OpenStack
+
+The user's architecture, in this order (reorder if the user says so). Each
+step ends with `describe()`/`segments()` and the acceptance suite reading it.
+
+1. **The platform VM**: an Ubuntu 24.04 VM on the cloud whose cloud-init runs
+   `docker compose up`; it authenticates to the API as the member-role
+   `fsl-range` user.
+2. **The fabric from the platform, through the API**: one Internet network
+   with a subnet per origin country (30, from a public traffic ranking, placed
+   by GeoIP, about 100 addresses weighted by traffic), the estate and
+   management networks. This replaces `bin/openstack-range`; the declaration
+   gains a segment with many origin subnets.
+3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL (its user
+   database becomes an objective, judged from the board's side), the wiki,
+   and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
+   scripts in the repo, then snapshots.
+4. **pfSense CE** as the edge firewall with Suricata as its package; its logs
+   by syslog to Elasticsearch. Needs the user first: the installer comes only
+   from a $0 Netgate Store checkout with an account.
+5. **Kali VM** holding the country addresses, with the source rewritten as
+   packets leave.
+6. **The sidebar**: Kibana (Elasticsearch security on, a read-only blue role),
+   the pfSense pane through a kiosk browser VM's noVNC console, and ttyd.
+7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
+   lifecycle (Stop rebuilds).
 
 ## Known gaps
 
