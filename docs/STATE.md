@@ -121,14 +121,33 @@ bin alerts by a subnet nothing lives on. `test_declaration.py` holds
 label, Neutron tag), never by name: compose overrides, Heat stack suffixes,
 non-unique Neutron names and a project called `fsl_lab` broke name rules.
 
-`platform/range/openstack.py` runs only against fakes built from the published
-API reference's responses and a local unprivileged sshd, not a cloud; Keystone
+`platform/range/openstack.py` is unit-tested against fakes built from the
+published API reference's responses and a local unprivileged sshd; Keystone
 is simplified (domain `default`, project by id). It is loaded only by name, and
 a test holds every field it reads to the reference. It reads endpoints off the
 Keystone v3 token's catalogue (`public`, `RegionOne` by default), renews the
 token 30 s before `expires_at` and retries a 401 once, sends the Nova
 microversion, follows `next` links (at most 50 pages), asks Neutron only for
 tagged networks, and keeps fixed IPv4 addresses.
+
+**Deployed on the KVM cloud (2026-09-30).** `master@192.168.0.100` (ssh key
+`fsl_claude`, passwordless sudo); its API endpoints are on `192.168.0.110`.
+The range lives in project `fsl-range` (id `64ffc2a247464ebdae21cfdae0f96d90`)
+as user `fsl-range` with the `member` role, not admin. Its password is only in
+`/root/fsl-range.password` on the host; `/root/fsl-range-openrc.sh` sources
+it. `bin/openstack-range up|down` (run on the host with that openrc, the
+`openstack` CLI from `/root/kolla-venv`, and `FSL_RANGE_PUBLIC_KEY` for the
+first keypair) creates keypair `fsl-claude`, security group `fsl-sg`
+(22/80/3000/icmp), six networks `fsl-<id>` tagged `fsl.segment.id=<id>` with
+compose's subnets, and `fsl-juice-shop` (ubuntu-24.04, m1.small, config drive)
+on `fsl-estate`. Re-running `up` creates nothing. Through
+`FSL_SUBSTRATE=range.openstack.connect` from the Mac, `describe()` returned
+all six segments with their declared names and origins, the subnets, `.1`
+gateways and network ids Neutron lists, `fsl-juice-shop` at its fixed address
+on `estate`, and no sensors (no gateway or sensor server stands);
+`segments()` returned the same. Not exercised: `runner()`/`launcher()` (the
+tenant networks have no router or floating IP, so the Mac cannot reach the
+VM), and the VM is bare Ubuntu with the target's name, no Juice Shop.
 
 Left for OpenStack, in order:
 
@@ -254,19 +273,12 @@ Left:
 - **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
   `DETECTED_TAKE`); tune once the console shows them.
 
-### 2. Deploy the range on OpenStack (next session)
-
-`range/openstack.py`'s read path works against a real kolla cloud. The range
-is not deployed there yet (no `fsl.segment.id`-tagged network, so `describe()`
-raises). This path is for the non-Linux/multi-VM case; the one-VM Docker
-deployment does not use it.
-
-KVM cloud at `master@192.168.0.100` (ssh key `fsl_claude`, passwordless sudo).
-Steps: create the image/flavour/keypair/security group, the six
-`fsl.segment.id`-tagged networks, a role-named target VM, then run
-`describe()`/`segments()` against it. See the `openstack-test-cloud` memory.
-
 ## Known gaps
+
+- The first full `bin/verify` right after `docker compose up -d --build`
+  (2026-09-30) failed 56 tests in `test_console_behaviour.py` that passed in
+  `--fast` before it, alone, as a file, and in the next full run. The cause
+  was not found; the output was truncated.
 
 - `test_declaration.py` compares two files, never the running range.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
