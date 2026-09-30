@@ -261,13 +261,10 @@ is not deployed there yet (no `fsl.segment.id`-tagged network, so `describe()`
 raises). This path is for the non-Linux/multi-VM case; the one-VM Docker
 deployment does not use it.
 
-A fresh KVM cloud is at `master@192.168.0.100` (ssh key `fsl_claude`,
-passwordless sudo). The earlier cloud was emulated (TCG), which saturated its
-single node at two VMs; KVM removes that ceiling. Steps to resume: create the
-image/flavour/keypair/security group, the six tagged segment networks, a
-role-named target VM, then run `describe()`/`segments()` against it. Instances
-need `--config-drive true` (the earlier cloud's metadata was unreliable; verify
-on the new one). See the `openstack-test-cloud` memory for operational detail.
+KVM cloud at `master@192.168.0.100` (ssh key `fsl_claude`, passwordless sudo).
+Steps: create the image/flavour/keypair/security group, the six
+`fsl.segment.id`-tagged networks, a role-named target VM, then run
+`describe()`/`segments()` against it. See the `openstack-test-cloud` memory.
 
 ## Known gaps
 
