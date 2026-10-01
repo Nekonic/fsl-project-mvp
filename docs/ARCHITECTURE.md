@@ -31,9 +31,9 @@ and one more `include:` line; the measure counts the services it adds.
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
-| `fsl-kali` | `deploy/kali` | edge | 7681 |
+| `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
-| `fsl-platform` | `platform/` (Django) | all six | 8000 |
+| `fsl-platform` | `platform/` (Django under waitress, behind nginx, which also serves Kali's terminal at `/terminal/`) | all six | 8000 |
 
 | Network | Subnet | Name | Origin |
 |---|---|---|---|

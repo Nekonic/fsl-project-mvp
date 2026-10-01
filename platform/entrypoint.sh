@@ -13,8 +13,12 @@ if [ -S "$SOCK" ]; then
   fi
 fi
 
+nginx -c /app/nginx.conf
+
 exec gosu fsl sh -c '
   python manage.py migrate --noinput
   python register_pipeline.py
-  exec waitress-serve --listen=0.0.0.0:8000 --threads=8 fsl.wsgi:application
+  exec waitress-serve --listen=127.0.0.1:8001 --threads=8 \
+    --trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for \
+    --clear-untrusted-proxy-headers fsl.wsgi:application
 '

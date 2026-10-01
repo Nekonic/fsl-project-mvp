@@ -81,8 +81,8 @@ flowchart LR
     scoring["scoring"]
   end
 
-  person -->|":7681"| kali
   person -->|":8000"| console
+  console -->|"/terminal/"| kali
   kali --> proxy
   proxy --> waf
   waf --> juice
@@ -121,13 +121,13 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, and `/api/` | a person's browser |
-| 7681 | the attacker's Kali shell, framed inside the red console | a person's browser |
+| 8000 | the console, `/api/`, and the attacker's terminal at `/terminal/` | a person's browser |
 | 8080 | the target, through the WAF | the command-line cases and the acceptance tests |
 | 9200 | Elasticsearch | the acceptance tests |
 
-A person needs only 8000 and 7681. Every port is published on `127.0.0.1`
-only. Inside the range both targets sit
+A person needs only 8000: nginx inside the platform's image takes it and
+hands `/terminal/` to Kali's ttyd, which publishes no port of its own. Every
+port is published on `127.0.0.1` only. Inside the range both targets sit
 behind the WAF on port 80: Juice Shop as `http://shop.com` (on the `edge`
 network only) and the board as `http://board.com` (on every edge network). A
 session is on Juice Shop unless it is created with `{"scenario": "board"}`.
@@ -167,10 +167,10 @@ from a file, so it never reaches a command line, and recreate the platform:
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
 The stack's `address` output is the floating IP. The ports stay on the VM's
-loopback, so a person reaches the two they need through ssh:
+loopback, so a person reaches the one they need through ssh:
 
 ```bash
-ssh -L 8000:127.0.0.1:8000 -L 7681:127.0.0.1:7681 ubuntu@ADDRESS
+ssh -L 8000:127.0.0.1:8000 ubuntu@ADDRESS
 ```
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
@@ -268,7 +268,7 @@ owned by `fsl`); the whole procedure has not been run against a live stack.
 Elasticsearch runs without security and Django with `DEBUG=1`. Django answers
 only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
 names more; to use the range from another machine, tunnel to it. The Docker
-socket is mounted into the platform, and the Kali shell on 7681 is an
+socket is mounted into the platform, and the Kali shell at `/terminal/` is an
 unauthenticated root shell. Both are container escape paths.
 
 The same holds on the platform VM. There the project's password is also plain

@@ -188,7 +188,7 @@ The platform sets up the docker socket group and registers the Elasticsearch
 ingest pipeline on start, so `docker compose up` is the whole bring-up.
 
 The console is the point now: open `/`, start a session, and open the red and
-blue windows side by side. The terminal in the red window is on 7681. HTTP
+blue windows side by side. The terminal in the red window is ttyd at `/terminal/` on the platform's port. HTTP
 from it goes out through the stamping proxy, so alerts carry the proxy's
 address; raw TCP ignores the proxy and carries Kali's own.
 
