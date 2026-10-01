@@ -93,6 +93,8 @@ openstack:
     fsl-kali:
       segments: [internet, mgmt]
       setup: deploy/kali/setup.sh
-      files: [deploy/kali]
+      files: [deploy/kali, deploy/proxy/stamp.py]
+      base: kali-rolling
     fsl-waf:
       segments: [estate, mgmt]
+      names: [shop.com, board.com]

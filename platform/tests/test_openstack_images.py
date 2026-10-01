@@ -101,6 +101,24 @@ def test_an_empty_project_boots_one_builder_per_declared_image(cloud):
         config = yaml.safe_load(base64.b64decode(server["user_data"]).decode())
         assert server["metadata"][images.BUNDLE] in config["runcmd"][0][-1]
 
+def test_a_host_builds_on_its_own_base_image_when_it_declares_one(cloud):
+    from range.declared import Declaration, Host
+
+    cloud.images.append({"id": "img-kali", "name": "kali-rolling", "status": "active"})
+    decl = Declaration(
+        roles={"attacker": "fsl-kali"},
+        hosts={"fsl-kali": Host(setup="deploy/kali/motd", files=("deploy/kali/motd",),
+                                base="kali-rolling", segments=("internet", "mgmt"))},
+    )
+    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04",
+                            flavor="m1.small", network="net-platform")
+
+    openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_images()
+
+    assert cloud.builder("fsl-kali")["imageRef"] == "img-kali", (
+        "a host built on Ubuntu's base could not be Kali; the declared base wins"
+    )
+
 def test_building_needs_a_network_that_reaches_the_internet_and_names_its_setting(cloud):
     with pytest.raises(RangeUnavailable, match="FSL_OPENSTACK_BUILD_NETWORK"):
         adapter(cloud, network="").ensure_images()

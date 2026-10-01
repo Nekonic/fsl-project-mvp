@@ -29,6 +29,7 @@ class Origin:
 class Host:
     setup: str = ""
     image: str = ""
+    base: str = ""
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
@@ -131,6 +132,7 @@ def _hosts(entries) -> dict[str, Host]:
         name: Host(
             setup=entry.get("setup") or "",
             image=entry.get("image") or "",
+            base=entry.get("base") or "",
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),

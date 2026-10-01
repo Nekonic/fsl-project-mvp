@@ -41,8 +41,15 @@ def test_the_openstack_flavor_adds_pfsense_and_kali_and_takes_the_waf_off_the_in
     assert d.hosts["fsl-pfsense"].setup == ""
     assert d.hosts["fsl-kali"].segments == ("internet", "mgmt")
     assert d.hosts["fsl-kali"].setup == "deploy/kali/setup.sh"
+    assert d.hosts["fsl-kali"].base == "kali-rolling", (
+        "the attacker is a real Kali image, not the estate's Ubuntu builder base"
+    )
     assert d.hosts["fsl-waf"].segments == ("estate", "mgmt"), (
         "the WAF stands behind pfSense now, on the estate only"
+    )
+    assert set(d.hosts["fsl-waf"].names) == {"shop.com", "board.com"}, (
+        "the attacker reaches the targets by name through the WAF, so the WAF "
+        "carries their names on the estate"
     )
 
 def test_an_unknown_flavor_is_just_the_base():
