@@ -199,7 +199,20 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 A failed build shows the end of its console under `detail`; `DELETE` on the
 same path removes failed builders and images built from older scripts.
 
-`openstack stack delete fsl-platform` removes all of it.
+With the images ready, one POST boots the WAF, Juice Shop, the wiki and the
+board, each from its image, and the platform reaches them over ssh on
+`mgmt`:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
+```
+
+The range lives outside the stack. Take it down in order, `DELETE` on
+`/api/range/slot/` and then on `/api/range/fabric/`, before
+`openstack stack delete fsl-platform` or a stack update that replaces the
+server: the platform's ssh key lives on the VM, so a new VM makes a new key,
+and the fabric reports the old keypair as drift. The images stay; they are
+the slow part.
 
 The stack boots with the keypair `key_name` names, which has to be in the
 project first:
