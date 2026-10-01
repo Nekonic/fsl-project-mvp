@@ -245,7 +245,7 @@ def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environm
     assert keys == str(sorted([
         "declared", "keystone", "user", "password", "project", "ssh_user",
         "ssh_key", "ssh_config", "region", "interface", "source", "base_image",
-        "flavor", "build_network",
+        "flavor", "build_network", "platform",
     ]))
     assert values == "https://keystone.example:5000 /etc/fsl/ssh_config"
 

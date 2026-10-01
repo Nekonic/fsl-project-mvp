@@ -39,14 +39,25 @@ DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
 FLAVORS = "GET {nova}/flavors"
 ACTION = "POST {nova}/servers/{server}/action"
 DELETE_SERVER = "DELETE {nova}/servers/{server}"
+SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
+CREATE_GROUP = "POST {neutron}/v2.0/security-groups"
+CREATE_RULE = "POST {neutron}/v2.0/security-group-rules"
+DELETE_GROUP = "DELETE {neutron}/v2.0/security-groups/{group}"
+CREATE_PORT = "POST {neutron}/v2.0/ports"
+DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
+ATTACH = "POST {nova}/servers/{server}/os-interface"
 
 CALLS = (
     TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT, PROJECT_NETWORKS, PROJECT_SUBNETS,
     PORTS, CREATE_NETWORK, TAG_NETWORK, CREATE_SUBNETS, DELETE_SUBNET,
     DELETE_NETWORK, KEYPAIRS, IMPORT_KEYPAIR, DELETE_KEYPAIR, IMAGES,
-    DELETE_IMAGE, FLAVORS, ACTION, DELETE_SERVER,
+    DELETE_IMAGE, FLAVORS, ACTION, DELETE_SERVER, SECURITY_GROUPS, CREATE_GROUP,
+    CREATE_RULE, DELETE_GROUP, CREATE_PORT, DELETE_PORT, ATTACH,
 )
-DELETES = {"subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR}
+DELETES = {
+    "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
+    "group": DELETE_GROUP, "port": DELETE_PORT,
+}
 
 FIXED = "OS-EXT-IPS:type"
 LAUNCHED = "OS-SRV-USG:launched_at"
@@ -76,6 +87,7 @@ SETTINGS = {
     "base_image": "FSL_OPENSTACK_BASE_IMAGE",
     "flavor": "FSL_OPENSTACK_FLAVOR",
     "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
+    "platform": "FSL_OPENSTACK_PLATFORM",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
@@ -98,6 +110,7 @@ def connect(
     base_image: str = "",
     flavor: str = "",
     build_network: str = "",
+    platform: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -128,7 +141,8 @@ def connect(
         return _connected[known]
 
     cloud, reader = _connected.get(known) or rediscover()
-    build = Build(source=source, base_image=base_image, flavor=flavor, network=build_network)
+    build = Build(source=source, base_image=base_image, flavor=flavor,
+                  network=build_network, platform=platform)
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
 
 def forget() -> None:
@@ -339,6 +353,7 @@ class Build:
     base_image: str = ""
     flavor: str = ""
     network: str = ""
+    platform: str = ""
 
 
 class OpenStack:
@@ -541,7 +556,8 @@ class OpenStack:
         )
 
     def _address(self, role: str, host: str, segment_id: str) -> str:
-        for segment in self.describe().segments:
+        segments = sorted(self.describe().segments, key=lambda s: s.id != fabric.MANAGEMENT)
+        for segment in segments:
             if segment_id and segment.id != segment_id:
                 continue
             for node in segment.nodes:
@@ -554,12 +570,15 @@ class OpenStack:
         )
 
     def plan_fabric(self) -> fabric.Plan:
-        return fabric.plan(self.declared, *self._fabric_standing(), self._public_key())
+        networks, subnets, keypairs, groups = self._fabric_standing()
+        return fabric.plan(self.declared, networks, subnets, keypairs, self._public_key(),
+                           groups, self._reached(networks))
 
     def ensure_fabric(self) -> fabric.Plan:
         public_key = self._public_key(make=True)
-        networks, subnets, keypairs = self._fabric_standing()
-        plan = fabric.plan(self.declared, networks, subnets, keypairs, public_key)
+        networks, subnets, keypairs, groups = self._fabric_standing()
+        plan = fabric.plan(self.declared, networks, subnets, keypairs, public_key,
+                           groups, self._reached(networks))
         if plan.drifted:
             raise Drifted("; ".join(plan.drifted))
         carriers = {
@@ -575,22 +594,59 @@ class OpenStack:
             self.get(self._call(IMPORT_KEYPAIR), {
                 "keypair": {"name": fabric.KEYPAIR, "public_key": public_key}
             })
+        named = {group["name"]: group["id"] for group in groups}
+        for name in plan.groups:
+            named[name] = self.get(self._call(CREATE_GROUP), {
+                "security_group": {"name": name}
+            })["security_group"]["id"]
+            if name == fabric.RANGE_GROUP:
+                self.get(self._call(CREATE_RULE), {"security_group_rule": {
+                    "security_group_id": named[name], "direction": "ingress",
+                    "ethertype": "IPv4",
+                }})
+        if plan.reach:
+            self._attach(carriers[fabric.MANAGEMENT], named[fabric.REACH_GROUP])
         self._shape = None
         return plan
 
+    def _reached(self, networks: list) -> bool:
+        if not self.build.platform:
+            return True
+        management = fabric.bound(self.declared, networks).get(fabric.MANAGEMENT)
+        return management is not None and any(
+            port.get("device_id") == self.build.platform
+            for port in self._all(PORTS, "ports", network=management["id"])
+        )
+
+    def _attach(self, network: str, group: str) -> None:
+        port = self.get(self._call(CREATE_PORT), {"port": {
+            "network_id": network, "name": f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}",
+            "security_groups": [group],
+        }})["port"]["id"]
+        try:
+            self.get(self._call(ATTACH, server=self.build.platform), {
+                "interfaceAttachment": {"port_id": port}
+            })
+        except RangeUnavailable:
+            self.get(self._call(DELETE_PORT, port=port))
+            raise
+
     def teardown_fabric(self) -> list[tuple[str, str]]:
-        networks, subnets, keypairs = self._fabric_standing()
+        networks, subnets, keypairs, groups = self._fabric_standing()
+        own = []
         for network in fabric.bound(self.declared, networks).values():
-            standing = [
+            servers = [
                 port for port in self._all(PORTS, "ports", network=network["id"])
                 if str(port.get("device_owner") or "").startswith("compute:")
             ]
+            own += [("port", p["id"]) for p in servers if p.get("device_id") == self.build.platform]
+            standing = [p for p in servers if p.get("device_id") != self.build.platform]
             if standing:
                 raise RangeUnavailable(
                     f"{len(standing)} server port(s) still stand on "
                     f"{network['name']}; delete those servers first"
                 )
-        steps = fabric.teardown(self.declared, networks, subnets, keypairs)
+        steps = own + fabric.teardown(self.declared, networks, subnets, keypairs, groups)
         for kind, ident in steps:
             self.get(self._call(DELETES[kind], **{kind: ident}))
         self._shape = None
@@ -609,7 +665,7 @@ class OpenStack:
             raise
         return created["id"]
 
-    def _fabric_standing(self) -> tuple[list, list, list]:
+    def _fabric_standing(self) -> tuple[list, list, list, list]:
         return (
             self._all(PROJECT_NETWORKS, "networks"),
             self._all(PROJECT_SUBNETS, "subnets"),
@@ -617,6 +673,7 @@ class OpenStack:
                 entry["keypair"]
                 for entry in self.get(self._call(KEYPAIRS)).get("keypairs") or []
             ],
+            self._all(SECURITY_GROUPS, "security_groups"),
         )
 
     def _public_key(self, make: bool = False) -> str:

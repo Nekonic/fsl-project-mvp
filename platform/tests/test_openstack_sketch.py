@@ -2,6 +2,7 @@ import inspect
 import pathlib
 import re
 import shlex
+import subprocess
 
 import pytest
 
@@ -633,3 +634,38 @@ def test_a_new_adapter_sees_a_range_that_changed():
         "adapter alive would keep answering with a range that no longer "
         "exists. It must be built per request, as range.substrate() does"
     )
+
+
+ON_THREE = {"servers": [{
+    "id": "srv-waf", "name": "fsl-waf",
+    "addresses": {
+        "range1-internet-v4": [{"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"}],
+        "range1-estate-v4": [{"addr": "172.30.0.9", "OS-EXT-IPS:type": "fixed"}],
+        "range1-mgmt-v4": [{"addr": "172.31.0.9", "OS-EXT-IPS:type": "fixed"}],
+    },
+}]}
+
+def reached_at(monkeypatch, segment_id=""):
+    base = cloud_reader()
+
+    def get(call):
+        return ON_THREE if "/servers/detail" in call else base(call)
+
+    reached = []
+
+    def execute(host, command, stdin, timeout):
+        reached.append(command[-2])
+        return subprocess.CompletedProcess(command, 0, "", f"{ports.EXIT_MARK}0\n")
+
+    monkeypatch.setattr(openstack, "execute", execute)
+    openstack.OpenStack(declared.read(), CLOUD, get=get).runner("gateway", segment_id)(["true"])
+    return reached
+
+def test_a_host_is_reached_on_management_when_no_segment_is_named(monkeypatch):
+    assert reached_at(monkeypatch) == ["fsl@172.31.0.9"], (
+        "the platform stands only on management; the WAF's first address is "
+        "an origin gateway it has no route to"
+    )
+
+def test_a_named_segment_still_picks_the_address_there(monkeypatch):
+    assert reached_at(monkeypatch, "estate") == ["fsl@172.30.0.9"]

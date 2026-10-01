@@ -198,3 +198,34 @@ def test_git_never_takes_the_credentials_file():
     )
 
     assert ignored.returncode == 0, "the cloud's password would be one commit away"
+
+
+def test_boot_tells_the_platform_which_server_it_is_before_bringing_it_up():
+    commands = [" ".join(map(str, step)) for step in cloud_config()["runcmd"]]
+    told = next(i for i, c in enumerate(commands) if f"{SETTINGS['platform']}=" in c)
+    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+
+    assert "cloud-init query instance_id" in commands[told]
+    assert "/opt/fsl/openstack.env" in commands[told]
+    assert told < started, (
+        "the platform attaches itself to management by its own server id; "
+        "read after compose started, it would start without it"
+    )
+
+def test_a_network_the_platform_attaches_later_is_configured_by_dhcp():
+    [written] = [
+        entry for entry in cloud_config()["write_files"]
+        if entry["path"].startswith("/etc/systemd/network/")
+    ]
+    lines = written["content"].splitlines()
+    commands = [" ".join(map(str, step)) for step in cloud_config()["runcmd"]]
+
+    assert "Name=en*" in lines and "DHCP=ipv4" in lines
+    assert "UseRoutes=false" in lines and "UseDNS=false" in lines, (
+        "management has no gateway and no name server of the platform's; "
+        "taking either would move the platform's way out"
+    )
+    assert "networkctl reload" in commands, (
+        "networkd reads a file written after it started only on reload, so "
+        "the port attached later would come up with no address"
+    )

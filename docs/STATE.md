@@ -491,6 +491,20 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    - **Ubuntu 24.04's libmodsecurity is 3.0.12**, which cannot parse CRS
      4.25's `XML://@*` targets (REQUEST-901 line 333); the OWASP image runs
      3.0.16. Hence the compile, about five minutes on one vCPU.
+   - **Done (2026-10-01): the platform on management.** The fabric also
+     makes two security groups, `fsl-range` (all IPv4 in, for every range
+     port; anti-spoofing stays on) and `fsl-reach` (nothing in), and, when
+     `FSL_OPENSTACK_PLATFORM` names the platform's own server, a port
+     `fsl-platform.mgmt` in `fsl-reach` attached to it through
+     `os-interface`. Teardown deletes that port first and still refuses any
+     other server's. The template writes the server id at boot (`cloud-init
+     query instance_id`) and a networkd file that DHCPs any NIC netplan does
+     not claim, without its routes or DNS, then `networkctl reload`s. The
+     runner reaches a host at its `mgmt` address unless a segment is named.
+     Checked on the cloud: the live platform VM, given that file and its id,
+     got `ens7` at `10.31.0.18/24` with its default route unchanged, the
+     platform container connected to `10.31.0.1:53` through Docker's NAT,
+     and a second POST read `clean`.
    - **`README.ko.md` and `ARCHITECTURE.ko.md` do not describe step 3**:
      writing them means writing Korean, which CLAUDE.md keeps out of files.
    - **Nova here answers 404 for the console of a guest that is off**

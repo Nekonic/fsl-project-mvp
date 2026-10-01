@@ -9,6 +9,7 @@ from range.ports import Drifted, RangeUnavailable
 class Neutron:
     def __init__(self):
         self.networks, self.subnets, self.keypairs, self.ports = [], [], [], []
+        self.groups, self.rules = [], []
         self.calls = []
         self.refuse_tags = False
         self.ids = itertools.count(1)
@@ -28,6 +29,8 @@ class Neutron:
                 return {"ports": [p for p in self.ports if p["network_id"] == network]}
             if resource == "os-keypairs":
                 return {"keypairs": [{"keypair": k} for k in self.keypairs]}
+            if resource == "v2.0/security-groups":
+                return {"security_groups": self.groups}
         if verb == "POST" and resource == "v2.0/networks":
             created = dict(body["network"], id=f"net-{next(self.ids)}", tags=[])
             self.networks.append(created)
@@ -44,13 +47,29 @@ class Neutron:
                 subnet.setdefault("gateway_ip", subnet["cidr"].replace("0/24", "1"))
             self.subnets += made
             return {"subnets": made}
+        if verb == "POST" and resource == "v2.0/security-groups":
+            made = dict(body["security_group"], id=f"sg-{next(self.ids)}")
+            self.groups.append(made)
+            return {"security_group": made}
+        if verb == "POST" and resource == "v2.0/security-group-rules":
+            self.rules.append(dict(body["security_group_rule"]))
+            return {"security_group_rule": body["security_group_rule"]}
+        if verb == "POST" and resource == "v2.0/ports":
+            made = dict(body["port"], id=f"port-{next(self.ids)}", device_id="", device_owner="")
+            self.ports.append(made)
+            return {"port": made}
+        if verb == "POST" and resource.endswith("/os-interface"):
+            port = next(p for p in self.ports if p["id"] == body["interfaceAttachment"]["port_id"])
+            port.update(device_id=resource.split("/")[1], device_owner="compute:nova")
+            return {"interfaceAttachment": body["interfaceAttachment"]}
         if verb == "POST" and resource == "os-keypairs":
             self.keypairs.append(dict(body["keypair"]))
             return {"keypair": body["keypair"]}
         if verb == "DELETE":
             kind, ident = resource.rsplit("/", 2)[-2:]
             pool = {"networks": self.networks, "subnets": self.subnets,
-                    "os-keypairs": self.keypairs}[kind]
+                    "os-keypairs": self.keypairs, "ports": self.ports,
+                    "security-groups": self.groups}[kind]
             pool[:] = [r for r in pool if r.get("id", r.get("name")) != ident]
             return {}
         raise AssertionError(call)
@@ -62,14 +81,74 @@ class Neutron:
 def cloud():
     return Neutron()
 
-@pytest.fixture
-def adapter(cloud, tmp_path):
-    spec = openstack.Cloud(
+def spec(tmp_path):
+    return openstack.Cloud(
         keystone="http://keystone:5000", neutron="http://neutron:9696",
         nova="http://nova:8774", project="fsl", user="fsl",
         ssh_user="ubuntu", ssh_key=str(tmp_path / "ssh" / "id_ed25519"),
     )
-    return openstack.OpenStack(declared.read(), spec, get=cloud)
+
+@pytest.fixture
+def adapter(cloud, tmp_path):
+    return openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud)
+
+@pytest.fixture
+def platform(cloud, tmp_path):
+    return openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud,
+                               build=openstack.Build(platform="srv-platform"))
+
+def network_of(cloud, segment):
+    return next(n for n in cloud.networks if f"{fabric.TAG}={segment}" in n["tags"])
+
+def test_the_range_group_lets_anything_in_and_the_reach_group_nothing(cloud, adapter):
+    adapter.ensure_fabric()
+
+    groups = {g["name"]: g["id"] for g in cloud.groups}
+    assert set(groups) == {fabric.RANGE_GROUP, fabric.REACH_GROUP}
+    assert cloud.rules == [{"security_group_id": groups[fabric.RANGE_GROUP],
+                            "direction": "ingress", "ethertype": "IPv4"}], (
+        "a new group lets everything out and nothing in; the range's hosts "
+        "are defended by the WAF, not by Neutron, and the platform's port on "
+        "management must take nothing a range host starts"
+    )
+
+def test_the_platform_joins_management_through_a_port_in_the_reach_group(cloud, platform):
+    platform.ensure_fabric()
+
+    [port] = cloud.ports
+    reach = next(g["id"] for g in cloud.groups if g["name"] == fabric.REACH_GROUP)
+    assert port["network_id"] == network_of(cloud, fabric.MANAGEMENT)["id"]
+    assert port["security_groups"] == [reach]
+    assert port["device_id"] == "srv-platform"
+
+def test_a_platform_already_on_management_is_not_attached_again(cloud, platform):
+    platform.ensure_fabric()
+    written = len(cloud.writes())
+
+    plan = platform.ensure_fabric()
+
+    assert len(cloud.writes()) == written and not plan.reach
+
+def test_a_platform_that_does_not_know_its_own_server_attaches_nothing(cloud, adapter):
+    adapter.ensure_fabric()
+
+    assert cloud.ports == []
+
+def test_taking_it_down_detaches_the_platform_first(cloud, platform):
+    platform.ensure_fabric()
+
+    platform.teardown_fabric()
+
+    assert cloud.ports == [] and cloud.networks == [] and cloud.groups == []
+
+def test_another_server_on_management_still_refuses_teardown(cloud, platform):
+    platform.ensure_fabric()
+    cloud.ports.append({"id": "port-x", "network_id": network_of(cloud, fabric.MANAGEMENT)["id"],
+                        "device_id": "srv-waf", "device_owner": "compute:nova"})
+
+    with pytest.raises(RangeUnavailable, match="fsl-mgmt"):
+        platform.teardown_fabric()
+    assert len(cloud.ports) == 2
 
 def test_building_on_an_empty_project_makes_the_whole_fabric(cloud, adapter):
     adapter.ensure_fabric()
@@ -133,7 +212,7 @@ def test_taking_it_down_removes_only_what_the_fabric_owns(cloud, adapter):
     adapter.teardown_fabric()
 
     assert [n["id"] for n in cloud.networks] == ["net-scratch"]
-    assert cloud.subnets == [] and cloud.keypairs == []
+    assert cloud.subnets == [] and cloud.keypairs == [] and cloud.groups == []
 
 def test_planning_only_reads(cloud, adapter):
     plan = adapter.plan_fabric()
