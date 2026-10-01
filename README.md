@@ -221,6 +221,39 @@ project first:
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
+### The pfSense image
+
+pfSense CE has no cloud image and no scripted install: its only installer is
+Netgate's online one (`netgate-installer-v1.2-RELEASE-amd64.iso`, from a $0
+Netgate Store checkout), and installing CE with it needs no account. The
+cloud has no volume service, so the install goes onto a server's own root
+disk through Nova's stable rescue, which boots the ISO as a CD-ROM and keeps
+the server's disk attached. As `fsl-range`:
+
+```bash
+openstack image create netgate-installer --file netgate-installer.iso --disk-format iso --container-format bare --private --property hw_rescue_device=cdrom --property hw_rescue_bus=scsi --property hw_scsi_model=virtio-scsi
+openstack network create fsl-pfsense-build-lan
+openstack subnet create --network fsl-pfsense-build-lan --subnet-range 192.168.1.0/24 --no-dhcp --gateway none fsl-pfsense-build-lan
+openstack server create --image cirros-0.6.3 --flavor m1.small --network fsl-platform --network fsl-pfsense-build-lan --wait fsl-pfsense-build
+openstack server rescue --image netgate-installer fsl-pfsense-build
+openstack console url show --novnc fsl-pfsense-build
+```
+
+On that console: accept the notice, Install, WAN `vtnet0` (the
+`fsl-platform` port, which reaches the Internet) by DHCP, LAN `vtnet1` at
+its defaults, Install CE, ZFS and GPT on `vtbd0`, the current stable
+version, then Halt; Reboot would start the installer again. Then
+`openstack server unrescue fsl-pfsense-build`, check that pfSense boots to
+its menu, halt it with option 6, and:
+
+```bash
+openstack server image create --name fsl-pfsense --wait fsl-pfsense-build
+openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio --property os_distro=freebsd fsl-pfsense
+```
+
+Delete `fsl-pfsense-build` and the build LAN afterwards. pfSense writes to
+the video console, so `openstack console log show` stays empty; use noVNC.
+
 ## Running a round
 
 Open http://localhost:8000, start a session, and open the red and blue consoles
