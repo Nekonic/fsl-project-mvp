@@ -102,7 +102,7 @@ def test_no_image_downloads_a_binary_built_for_another_architecture():
 def host_ip(entry):
     if isinstance(entry, dict):
         return entry.get("host_ip")
-    address = str(entry).split("/")[0]
+    address = re.sub(r"\$\{FSL_PUBLISH:-([^}]*)\}", r"\1", str(entry).split("/")[0])
     if address.startswith("["):
         return address[1:address.index("]")]
     return ":".join(address.split(":")[:-2]) or None
@@ -255,3 +255,20 @@ def test_every_wargame_is_one_folder_the_stack_includes():
     assert {path.split("/")[1] for path in folders} == set(WARGAMES), (
         "the console offers a wargame with no folder, or a folder with no wargame"
     )
+
+def test_only_the_platform_may_be_published_on_another_address_and_only_by_choice():
+    chosen = {
+        name: entry
+        for name, service in composed.services().items()
+        for entry in service.get("ports") or []
+        if "${" in str(entry)
+    }
+
+    assert chosen == {"platform": "${FSL_PUBLISH:-127.0.0.1}:8000:8000"}, chosen
+
+def test_the_address_a_vm_publishes_on_stays_out_of_git():
+    import subprocess
+
+    ignored = subprocess.run(["git", "check-ignore", "-q", ".env"], cwd=COMPOSE.parent)
+
+    assert ignored.returncode == 0

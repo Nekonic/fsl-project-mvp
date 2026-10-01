@@ -98,7 +98,7 @@ def test_docker_inside_it_fits_its_packets_to_the_network():
         "build step's TLS download from GitHub hangs until it times out"
     )
 
-def test_only_ssh_and_ping_reach_it():
+def test_a_browser_reaches_the_platform_at_the_floating_ip():
     [group] = resources_of("OS::Neutron::SecurityGroup")
     opened = {
         (rule["protocol"], rule.get("port_range_min"), rule.get("port_range_max"))
@@ -106,9 +106,27 @@ def test_only_ssh_and_ping_reach_it():
         if rule.get("direction", "ingress") == "ingress"
     }
 
-    assert opened == {("tcp", 22, 22), ("icmp", None, None)}, (
-        f"{opened}: the platform publishes on loopback only and is reached "
-        f"through an ssh tunnel until a login stands in front of it"
+    assert opened == {("tcp", 22, 22), ("tcp", 8000, 8000), ("icmp", None, None)}, opened
+
+def test_the_vm_publishes_the_platform_on_its_own_address():
+    [server] = resources_of("OS::Nova::Server")
+    params = server["user_data"]["str_replace"]["params"]
+    [fixed] = [k for k, v in params.items() if v == {"get_attr": ["port", "fixed_ips", 0, "ip_address"]}]
+    [compose_env] = [e for e in cloud_config()["write_files"] if e["path"].endswith("/compose.env")]
+    moved = [" ".join(c) for c in cloud_config()["runcmd"]]
+
+    assert compose_env["content"].splitlines() == [f"FSL_PUBLISH={fixed}"]
+    assert f"mv {compose_env['path']} /opt/fsl/.env" in moved, moved
+
+def test_django_answers_to_the_floating_ip():
+    [server] = resources_of("OS::Nova::Server")
+    params = server["user_data"]["str_replace"]["params"]
+    [floating] = [k for k, v in params.items() if v == {"get_attr": ["floating_ip", "floating_ip_address"]}]
+    lines = written_credentials()["content"].splitlines()
+
+    assert f"DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],{floating}" in lines, (
+        "Django refuses a Host it was not told about, so the floating IP "
+        "would answer 400 to every browser"
     )
 
 def test_the_password_never_enters_the_user_data():
@@ -126,7 +144,7 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
 
     assert names == {
         SETTINGS[name] for name in REQUIRED_BY_CONNECT if name != "password"
-    } | {"FSL_SUBSTRATE"}, names
+    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS"}, names
 
 def test_the_platform_on_the_vm_builds_and_reads_the_cloud_range():
     lines = written_credentials()["content"].splitlines()

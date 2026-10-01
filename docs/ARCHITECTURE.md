@@ -155,7 +155,7 @@ names a substrate.
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
 | runner | `docker exec` | `ssh` to the instance |
 | launcher | `docker run --rm --network <segment>` | `runner("attacker")`: runs the tool over ssh on the declared attacker; any other image is refused, because Nova cannot boot a host, return its output and delete it |
-| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, `describe()` and `segments()`, which need only the API, returned the six segments `bin/openstack-range` built, from inside the platform VM too; `runner()` and `launcher()` have not run on a cloud |
+| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric through `/api/range/fabric/` and `describe()` read it back as the thirty origins, estate and mgmt; `runner()` and `launcher()` have not run on a cloud |
 
 Compose mounts the Docker socket into the platform whatever the substrate, and
 the entrypoint adds the platform user to its group. It is a container escape
@@ -408,7 +408,7 @@ by the member-role user `fsl-range`. Horizon is never shown to users.
 
 - network and subnet `fsl-platform`;
 - a router to the external network, and a floating IP;
-- a security group opening tcp/22 and ICMP to any address;
+- a security group opening tcp/22, tcp/8000 and ICMP to any address;
 - the Nova server `fsl-platform`, with a config drive.
 
 Its parameters and their defaults are in `README.md`.
@@ -421,8 +421,9 @@ adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
 runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
 
 So today the whole compose range above, all eleven services, runs inside one
-Nova VM. Its ports stay on the VM's loopback and are reached through an ssh
-tunnel (`README.md`).
+Nova VM. 8000 is published on the VM's own address and opened in its
+security group, so a browser reaches the console at the floating IP; the
+other ports stay on the VM's loopback.
 
 cloud-init writes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PROJECT` (the stack's
 own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519` to
@@ -446,8 +447,6 @@ one Internet network by CIDR. The VM's router attaches only its own subnet,
 so the platform reads the range through the API and reaches no range host
 yet; later steps put hosts there and attach the platform to `mgmt`.
 
-`bin/openstack-range` is the stand-in the fabric replaces; it goes once the
-fabric has run on the cloud.
 
 ### Decided, not built: the range on OpenStack
 

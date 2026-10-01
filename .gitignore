@@ -10,3 +10,4 @@ wargames/juice-shop/wiki/logs/*
 !wargames/juice-shop/wiki/logs/.gitkeep
 /backups/
 /openstack.env
+/.env
