@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests import composed
+
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = "services:\n  web:\n    image: nginx:1.27\n"
 
@@ -166,7 +168,6 @@ def test_no_python_file_under_the_source_trees_is_ignored(tmp_path):
 
 
 COMPOSE_SHAPES = {
-    "this repo": (ROOT / "compose.yaml").read_text(),
     "indented by four": (
         "services:\n    web:\n        image: a:1\n    db:\n        image: b:1\n"
     ),
@@ -201,6 +202,12 @@ def test_services_are_counted_as_yaml_reads_them(measure, tmp_path, text):
     )
 
 
+def test_this_repo_s_services_are_counted_as_compose_reads_them(measure, monkeypatch):
+    monkeypatch.setattr(measure, "ROOT", ROOT)
+
+    assert measure.services() == len(composed.services())
+
+
 def test_services_are_read_from_the_file_compose_would_pick(measure, tmp_path):
     (tmp_path / "docker-compose.yml").write_text(COMPOSE)
 
@@ -224,11 +231,54 @@ def test_an_override_file_is_refused_by_name(measure, tmp_path, name):
         measure.services()
 
 
+def test_services_in_included_files_are_counted(measure, tmp_path):
+    (tmp_path / "compose.yaml").write_text(
+        "include:\n  - wargames/a/compose.yaml\n  - 'wargames/b/compose.yaml'\n"
+        "services:\n  web:\n    image: a:1\n"
+    )
+    for name, count in (("a", 2), ("b", 1)):
+        (tmp_path / "wargames" / name).mkdir(parents=True)
+        (tmp_path / "wargames" / name / "compose.yaml").write_text(
+            "services:\n" + "".join(
+                f"  {name}{n}:\n    image: a:1\n" for n in range(count)
+            )
+        )
+
+    assert measure.services() == 4, (
+        "a service in an included file is a service the gate lets in for free"
+    )
+
+
+INCLUDES_MEASURE_CANNOT_FOLLOW = {
+    "missing file": ("include:\n  - gone.yaml\n", "line 2: gone.yaml"),
+    "long syntax": ("include:\n  - path: more.yaml\n", "line 2"),
+    "flow list": ("include: [more.yaml]\n", "line 1: include"),
+}
+
+
+@pytest.mark.parametrize(
+    "text, named", INCLUDES_MEASURE_CANNOT_FOLLOW.values(),
+    ids=list(INCLUDES_MEASURE_CANNOT_FOLLOW),
+)
+def test_an_include_measure_cannot_follow_is_refused(measure, tmp_path, text, named):
+    (tmp_path / "compose.yaml").write_text(text + "services:\n  web:\n    image: a:1\n")
+    (tmp_path / "more.yaml").write_text("services:\n  db:\n    image: b:1\n")
+
+    with pytest.raises(SystemExit, match=re.escape(named)):
+        measure.services()
+
+
+def test_a_service_defined_twice_across_files_is_refused(measure, tmp_path):
+    (tmp_path / "compose.yaml").write_text(
+        "include:\n  - more.yaml\nservices:\n  web:\n    image: a:1\n"
+    )
+    (tmp_path / "more.yaml").write_text("services:\n  web:\n    image: b:1\n")
+
+    with pytest.raises(SystemExit, match="web"):
+        measure.services()
+
+
 UNCOUNTABLE = {
-    "include": (
-        "include:\n  - more.yaml\nservices:\n  web:\n    image: a:1\n",
-        "line 1: include",
-    ),
     "services merged in": (
         "x-more: &more\n  db:\n    image: b:1\n"
         "services:\n  <<: *more\n  web:\n    image: a:1\n",

@@ -4,8 +4,9 @@ import yaml
 import attacker as ATTACKER
 import pytest
 
+from tests import composed
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "compose.yaml"
 DECLARATION = ROOT / "platform" / "range" / "declaration.yaml"
 
 MARK = "fsl.segment.id"
@@ -114,7 +115,7 @@ def drift(compose, declaration):
 
 def documents():
     return (
-        yaml.safe_load(COMPOSE.read_text()),
+        composed.document(),
         yaml.safe_load(DECLARATION.read_text()),
     )
 
@@ -299,7 +300,7 @@ def test_a_network_with_nothing_to_bind_it_is_caught():
     ]
 
 def test_every_network_the_stack_builds_says_which_segment_it_is():
-    found = unmarked(yaml.safe_load(COMPOSE.read_text()))
+    found = unmarked(composed.document())
 
     assert found == [], (
         f"nothing on {found} says which declared segment it realises, so "

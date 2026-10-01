@@ -9,7 +9,7 @@ from range.ports import Ran
 from tests.test_docker_runner import RUNS_WHAT_IT_IS_GIVEN, docker_that
 from tests.test_openstack_ssh import attacker, host
 
-CONF = pathlib.Path(__file__).resolve().parents[2] / "deploy/wiki/nginx.conf"
+CONF = pathlib.Path(__file__).resolve().parents[2] / "wargames/juice-shop/wiki/nginx.conf"
 SECRET = "/runbooks/deploy.html"
 STAMP = "2026-09-24T10:01:02.123+00:00"
 MSEC = "1790244062.123"

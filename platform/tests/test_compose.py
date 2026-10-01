@@ -3,10 +3,13 @@ import re
 
 import yaml
 
-COMPOSE = pathlib.Path(__file__).resolve().parent.parent.parent / "compose.yaml"
+from tests import composed
+from wargames import WARGAMES
+
+COMPOSE = composed.COMPOSE
 
 def images():
-    return re.findall(r"^\s+image:\s*(\S+)", COMPOSE.read_text(), re.M)
+    return re.findall(r"^\s+image:\s*(\S+)", composed.text(), re.M)
 
 def test_every_image_is_pinned_to_something_that_cannot_move():
     floating = [
@@ -29,7 +32,7 @@ def test_the_sensor_and_the_target_are_pinned_by_digest():
 def test_every_service_runs_on_x86_64():
     elsewhere = {
         name: service.get("platform")
-        for name, service in yaml.safe_load(COMPOSE.read_text())["services"].items()
+        for name, service in composed.services().items()
         if service.get("platform") != "linux/amd64"
     }
 
@@ -43,14 +46,14 @@ def networks_of(service):
     return sorted(joined if isinstance(joined, list) else joined)
 
 def test_the_board_and_its_database_stand_inside_the_estate_only():
-    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    services = composed.services()
 
     for name in ("board", "board-db"):
         assert networks_of(services[name]) == ["estate"], (name, networks_of(services[name]))
         assert not services[name].get("ports"), f"{name} is published past the WAF"
 
 def test_the_board_is_reached_by_name_through_the_waf():
-    waf = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]
+    waf = composed.services()["waf"]
     outside = [n for n in waf["networks"] if n.startswith("edge")]
 
     missing = [n for n in outside if "board.com" not in (waf["networks"][n] or {}).get("aliases", [])]
@@ -62,7 +65,7 @@ def test_the_database_is_pinned_by_digest():
     assert database and all("@sha256:" in i for i in database), database
 
 def test_the_platform_needs_no_build_argument_to_come_up():
-    platform = yaml.safe_load(COMPOSE.read_text())["services"]["platform"]
+    platform = composed.services()["platform"]
     build = platform.get("build")
     args = build.get("args") if isinstance(build, dict) else None
 
@@ -73,7 +76,7 @@ def test_the_platform_needs_no_build_argument_to_come_up():
     )
 
 def test_the_platform_registers_the_ingest_pipeline_itself():
-    platform = yaml.safe_load(COMPOSE.read_text())["services"]["platform"]
+    platform = composed.services()["platform"]
     mounted = [v for v in platform["volumes"] if "deploy/elastic" in v]
 
     assert mounted, (
@@ -83,7 +86,11 @@ def test_the_platform_registers_the_ingest_pipeline_itself():
 
 def test_no_image_downloads_a_binary_built_for_another_architecture():
     root = COMPOSE.parent
-    dockerfiles = [*(root / "deploy").glob("*/Dockerfile"), root / "platform" / "Dockerfile"]
+    dockerfiles = [
+        *(root / "deploy").glob("*/Dockerfile"),
+        *(root / "wargames").glob("*/*/Dockerfile"),
+        root / "platform" / "Dockerfile",
+    ]
     foreign = [
         str(path.relative_to(root))
         for path in dockerfiles
@@ -111,10 +118,11 @@ def unpinned(text):
     return [(service, entry) for service, entry, host in published(text) if host != "127.0.0.1"]
 
 def test_every_published_port_answers_on_loopback_only():
-    text = COMPOSE.read_text()
+    texts = [path.read_text() for path in composed.files()]
+    loose = [entry for text in texts for entry in unpinned(text)]
 
-    assert list(published(text)) and not unpinned(text), (
-        f"{unpinned(text)} are not bound to 127.0.0.1, so each segment's "
+    assert any(list(published(text)) for text in texts) and not loose, (
+        f"{loose} are not bound to 127.0.0.1, so each segment's "
         f"gateway forwards them back into the range and colima's forwarder "
         f"offers them to the whole LAN"
     )
@@ -158,7 +166,7 @@ services:
     )
 
 def test_the_platform_s_store_outlives_the_checkout_that_started_it():
-    compose = yaml.safe_load(COMPOSE.read_text())
+    compose = composed.document()
     platform = compose["services"]["platform"]
     store = platform["environment"]["DJANGO_DB_PATH"].rsplit("/", 1)[0]
     mounted = {
@@ -174,7 +182,7 @@ def test_the_platform_s_store_outlives_the_checkout_that_started_it():
     )
 
 def test_the_waf_s_health_check_never_reaches_the_sensor():
-    check = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]["healthcheck"]["test"]
+    check = composed.services()["waf"]["healthcheck"]["test"]
     asked = re.search(r"https?://[^/\s\"]+(/[^\s\"]*)?", " ".join(check))
 
     assert asked and asked.group(1) == "/healthz", (
@@ -188,7 +196,7 @@ def test_the_waf_s_health_check_never_reaches_the_sensor():
     )
 
 def test_the_sensor_restarts_with_the_waf_whose_network_it_watches():
-    suricata = yaml.safe_load(COMPOSE.read_text())["services"]["suricata"]
+    suricata = composed.services()["suricata"]
     declared = (suricata.get("depends_on") or {}).get("waf")
 
     assert suricata["network_mode"] == "service:waf"
@@ -201,7 +209,7 @@ def test_the_sensor_restarts_with_the_waf_whose_network_it_watches():
     )
 
 def test_the_red_box_s_recon_line_scans_the_port_the_target_listens_on():
-    listening = yaml.safe_load(COMPOSE.read_text())["services"]["waf"]["environment"]["PORT"]
+    listening = composed.services()["waf"]["environment"]["PORT"]
     motd = (COMPOSE.parent / "deploy/kali/motd").read_text()
     scanned = re.search(r"nmap .*-p (\S+) \$FSL_TARGET_HOST", motd)
 
@@ -213,7 +221,7 @@ def test_the_red_box_s_recon_line_scans_the_port_the_target_listens_on():
     )
 
 def test_the_waf_writes_its_audit_log_where_its_own_user_can():
-    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    services = composed.services()
     audit_dir = services["waf"]["environment"]["MODSEC_AUDIT_LOG"].rsplit("/", 1)[0]
     [source] = [
         volume.split(":")[0] for volume in services["waf"]["volumes"]
@@ -229,4 +237,21 @@ def test_the_waf_writes_its_audit_log_where_its_own_user_can():
     assert any(volume.startswith(f"{source}:") and volume.endswith(":ro")
                for volume in services["filebeat"]["volumes"]), (
         "Filebeat does not read the volume the WAF writes"
+    )
+
+def test_every_wargame_is_one_folder_the_stack_includes():
+    included = {
+        str(path.relative_to(composed.ROOT)) for path in composed.files()[1:]
+    }
+    folders = {
+        str(path.relative_to(composed.ROOT))
+        for path in (composed.ROOT / "wargames").glob("*/compose.yaml")
+    }
+
+    assert folders and included == folders, (
+        f"compose.yaml includes {sorted(included)} and the wargames folder holds "
+        f"{sorted(folders)}: a wargame is added or removed as one folder"
+    )
+    assert {path.split("/")[1] for path in folders} == set(WARGAMES), (
+        "the console offers a wargame with no folder, or a folder with no wargame"
     )

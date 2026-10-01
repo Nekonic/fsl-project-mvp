@@ -1,0 +1,33 @@
+services:
+  juice-shop:
+    platform: linux/amd64
+    image: bkimminich/juice-shop@sha256:73c53fbf442e8337b3ea3d98c7e8550308854701ebdfce4cc39768f36b75430e
+    container_name: fsl-juice-shop
+    networks: [estate]
+    healthcheck:
+      test:
+        - CMD
+        - /nodejs/bin/node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/rest/admin/application-version',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  wiki:
+    platform: linux/amd64
+    image: nginx@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
+    container_name: fsl-wiki
+    networks:
+      estate:
+        aliases: [wiki.internal]
+    volumes:
+      - ./wiki/site:/usr/share/nginx/html:ro
+      - ./wiki/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./wiki/logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
