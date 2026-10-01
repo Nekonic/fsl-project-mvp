@@ -172,16 +172,16 @@ on `fsl-estate`. Re-running `up` creates nothing. Through
 all six segments with their declared names and origins, the subnets, `.1`
 gateways and network ids Neutron lists, `fsl-juice-shop` at its fixed address
 on `estate`, and no sensors (no gateway or sensor server stands);
-`segments()` returned the same. Not exercised: `runner()`/`launcher()` (the
-tenant networks have no router or floating IP, so the Mac cannot reach the
-VM), and the VM is bare Ubuntu with the target's name, no Juice Shop.
+`segments()` returned the same. That stand-in is gone; since step 3 of
+backlog 2 the platform VM reaches the range's hosts over `mgmt` and
+`runner()` has run on each of them (`launcher()` has not run on a cloud).
 
 Left for OpenStack, in order:
 
 1. **Name resolution.** Compose gives away `shop.com`, `wiki.internal`,
-   `juice-shop:3000` and `proxy:8081`; Neutron does not. cloud-init writing
-   `/etc/hosts` is the cheapest answer that keeps `shop.com`, and a target
-   with no name is not the product.
+   `juice-shop:3000` and `proxy:8081`; Neutron does not. Inside the estate
+   it is done: the slot's user data appends every host's declared names to
+   `/etc/hosts`. Left: `shop.com` and `board.com` for the attacker (step 5).
 2. **Where the sensor sits.** Docker shares the WAF's namespace and the adapter
    confirms `watches`; on Nova nothing confirms it. Either Suricata rides the
    WAF instance or Tap-as-a-Service mirrors its ports.
@@ -192,7 +192,8 @@ Left for OpenStack, in order:
    and refuses other segments; it has to find this one attacker on all of
    them.
 4. **Roles are found by Nova server name**, which is not unique; segments are
-   bound by tag for that reason, roles not yet. Credentials are settled:
+   bound by tag for that reason, roles not yet. The slot marks its servers
+   with metadata `fsl_host`, which `describe()` does not read yet. Credentials are settled:
    `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*`, each refused
    by name when missing.
 5. **Does the operator still look like an outsider?** The reachability rule
@@ -289,6 +290,11 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 ## Decisions left for a person
 
 - **The tutorial**, to be designed later (the user).
+- **How the board judges that its user database was taken** (held out of
+  backlog 2 step 3 by the user, 2026-10-01). The board's `auth_user`
+  (accounts and password hashes) on the board VM's MySQL is to be an
+  objective, decided from the board's side like Juice Shop's `solved`, never
+  by the platform. The board VM stands on the cloud; nothing judges yet.
 - **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind", which
@@ -327,6 +333,11 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   ingest pipeline).
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
+- **The range on OpenStack**: the platform builds the networks, the golden
+  images and the slot (WAF, Juice Shop, wiki, board as VMs) through
+  `/api/range/fabric/`, `/images/` and `/slot/`, and reaches every host over
+  ssh on `mgmt` (backlog 2, steps 2 and 3). No attacker, pfSense or sensor
+  VM yet.
 
 ## Backlog
 
@@ -414,7 +425,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      creates yet: step 2 makes it and registers it as a Nova keypair.
    - The kolla venv on the host has no Heat client; the stack was driven from
      a separate venv with `python-openstackclient` and `python-heatclient`.
-   - Stack `fsl-platform` is still up, at floating IP `192.168.0.210`.
+   - Stack `fsl-platform` is still up, at floating IP `192.168.0.210`
+     (server replaced on 2026-10-01 by a stack update; see step 3).
 2. **Done (2026-10-01): the fabric from the platform, through the API**: one Internet network
    with a subnet per origin country (30, from a public traffic ranking, placed
    by GeoIP, about 100 addresses weighted by traffic), the estate and
@@ -456,11 +468,12 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `fsl-claude`; a POST rebuilt it clean. `bin/openstack-range` is gone.
      On the VM 8000 is bound to the VM's address, not loopback, so the
      acceptance suite's `localhost:8000` no longer reaches it there.
-3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL, the wiki,
-   and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
-   scripts in the repo, then snapshots. Left out of this step (the user,
-   2026-10-01): making the board's user database an objective, judged from
-   the board's side; it is still to design.
+3. **Done (2026-10-01): targets and the WAF as VMs**: Juice Shop, the board
+   on MySQL, the wiki, and the WAF VM (nginx + ModSecurity + CRS). Golden
+   images come from setup scripts in the repo, then snapshots. Left out of
+   this step (the user, 2026-10-01): making the board's user database an
+   objective, judged from the board's side; it is still to design (see
+   "Decisions left for a person").
    - **Done (2026-10-01): the images.** `declaration.yaml`'s `hosts:` names,
      per VM, a setup script and the files it needs (`deploy/waf/`,
      `wargames/juice-shop/shop/`, the wiki's conf and site,
@@ -534,6 +547,23 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      subnet's gateway, here the WAF's own address; hence the `bootcmd`.
      Without a config drive a guest gets no metadata at all: only its first
      NIC asks DHCP, and on the gateway that is the Internet, DHCP off.
+   - **Checked end to end from the template (2026-10-01).** With the slot
+     and the fabric taken down through the API (the platform's own port
+     went first, then 32 subnets, 3 networks, the keypair and both groups,
+     leaving only the stack and the images), a Heat `PATCH` of
+     `fsl-platform` with this template and a clone of this branch served
+     from the Mac on the LAN replaced the server (new id `7ed3db88...`) and
+     kept `192.168.0.210`. cloud-init wrote `FSL_OPENSTACK_PLATFORM` and
+     `FSL_OPENSTACK_BUILD_NETWORK`; after the password, one POST each built
+     the fabric (the VM took `ens7`, `10.31.0.195`, by the template's
+     networkd file), found the four images current, and booted the slot,
+     and `describe()` and the runner gave the results above again. The
+     range is left standing that way. Heat was driven by its REST API with
+     `requests`; no Heat client was installed.
+   - **The platform's ssh key lives on the VM** (`/data/ssh`, a named
+     volume), so a replaced platform VM makes a new one and the fabric
+     reports `fsl-platform` as drift; take the slot and the fabric down
+     first (README).
    - **`README.ko.md` and `ARCHITECTURE.ko.md` do not describe step 3**:
      writing them means writing Korean, which CLAUDE.md keeps out of files.
    - **Nova here answers 404 for the console of a guest that is off**
