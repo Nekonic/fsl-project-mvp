@@ -10,6 +10,98 @@ throwaway prototype; the production project lives elsewhere.
 - `docs/THREAT-MODEL.md`: what the range emulates and what it leaves out
 - `docs/STATE.md`: where the work stands
 
+## How it fits together
+
+### Where it runs
+
+On the OpenStack cloud the whole stack runs inside one VM, which one Heat
+stack (`deploy/openstack/platform.yaml`) creates. The platform reads the range through the OpenStack API as the
+member-role user `fsl-range`; the range it scores is still the Docker one
+inside the VM (backlog 2 in `docs/STATE.md` moves it onto OpenStack).
+
+```mermaid
+flowchart TB
+  person(["browser"])
+
+  subgraph cloud["OpenStack project fsl-range"]
+    api["OpenStack API<br/>Keystone, Neutron, Nova"]
+    subgraph heat["Heat stack fsl-platform"]
+      fip["floating IP<br/>ssh and ping only"]
+      subgraph vm["platform VM, Ubuntu 24.04"]
+        unit["fsl-platform.service<br/>docker compose up -d --build"]
+        stack["the compose stack<br/>(next graph)"]
+      end
+    end
+    subgraph standin["stand-in range, bin/openstack-range"]
+      nets["six networks fsl-*<br/>tagged fsl.segment.id"]
+      target["VM fsl-juice-shop<br/>bare Ubuntu"]
+    end
+  end
+
+  person -->|"ssh tunnel"| fip
+  fip --> vm
+  unit -->|"every boot"| stack
+  stack -->|"describe(), segments()"| api
+  api -.->|lists| nets
+  api -.->|lists| target
+```
+
+### Inside the stack
+
+The red team attacks through the blue team's defences into a wargame; the
+blue team's sensors log into Elasticsearch; the platform referees, scoring
+from those alerts and from the target's own verdict. The platform, red and
+blue teams are in the top `compose.yaml`; each wargame is a folder under
+`wargames/` that it includes, so a new wargame is a new folder and one more
+`include:` line.
+
+```mermaid
+flowchart LR
+  person(["browser"])
+
+  subgraph red["Red team"]
+    kali["kali<br/>attack terminal"]
+    proxy["proxy<br/>labels each case"]
+  end
+
+  subgraph blue["Blue team"]
+    waf["waf<br/>nginx + ModSecurity CRS"]
+    suricata["suricata<br/>IDS on the WAF's traffic"]
+    filebeat["filebeat"]
+    es[("elasticsearch")]
+  end
+
+  subgraph wargames["Wargames, wargames/*"]
+    juice["juice-shop<br/>and the wiki behind it"]
+    board["board<br/>and its MySQL"]
+  end
+
+  subgraph platform["Platform, the referee"]
+    console["console and /api/"]
+    scoring["scoring"]
+  end
+
+  person -->|":7681"| kali
+  person -->|":8000"| console
+  kali --> proxy
+  proxy --> waf
+  waf --> juice
+  waf --> board
+  suricata -.->|watches| waf
+  waf -.->|audit log| filebeat
+  suricata -.->|alerts| filebeat
+  filebeat --> es
+  es -->|alerts| scoring
+  juice -.->|own verdict| scoring
+  console --> scoring
+```
+
+Left out to keep the lines readable: Kali's raw TCP goes straight to the WAF
+without the proxy; the platform fires scripted cases at the WAF itself; and
+through the substrate (`docker exec` here, ssh on OpenStack) it writes the
+sensor's rules and the proxy's case label and reads the wiki's read log and
+the attacker's command log. The networks are in `docs/ARCHITECTURE.md`.
+
 ## Bringing it up
 
 On a host with Docker, clone the repo and bring the stack up:
