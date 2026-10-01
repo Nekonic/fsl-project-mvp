@@ -6,11 +6,12 @@ import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from dataclasses import dataclass, replace
 
-from range import fabric
+from range import fabric, images
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -33,11 +34,17 @@ DELETE_NETWORK = "DELETE {neutron}/v2.0/networks/{network}"
 KEYPAIRS = "GET {nova}/os-keypairs"
 IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
 DELETE_KEYPAIR = "DELETE {nova}/os-keypairs/{keypair}"
+IMAGES = "GET {glance}/v2/images?name={name}"
+DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
+FLAVORS = "GET {nova}/flavors"
+ACTION = "POST {nova}/servers/{server}/action"
+DELETE_SERVER = "DELETE {nova}/servers/{server}"
 
 CALLS = (
     TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT, PROJECT_NETWORKS, PROJECT_SUBNETS,
     PORTS, CREATE_NETWORK, TAG_NETWORK, CREATE_SUBNETS, DELETE_SUBNET,
-    DELETE_NETWORK, KEYPAIRS, IMPORT_KEYPAIR, DELETE_KEYPAIR,
+    DELETE_NETWORK, KEYPAIRS, IMPORT_KEYPAIR, DELETE_KEYPAIR, IMAGES,
+    DELETE_IMAGE, FLAVORS, ACTION, DELETE_SERVER,
 )
 DELETES = {"subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR}
 
@@ -65,6 +72,10 @@ SETTINGS = {
     "ssh_config": "FSL_OPENSTACK_SSH_CONFIG",
     "region": "FSL_OPENSTACK_REGION",
     "interface": "FSL_OPENSTACK_INTERFACE",
+    "source": "FSL_SOURCE",
+    "base_image": "FSL_OPENSTACK_BASE_IMAGE",
+    "flavor": "FSL_OPENSTACK_FLAVOR",
+    "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
@@ -83,6 +94,10 @@ def connect(
     ssh_config: str = "",
     region: str = "RegionOne",
     interface: str = "public",
+    source: str = "",
+    base_image: str = "",
+    flavor: str = "",
+    build_network: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -113,7 +128,8 @@ def connect(
         return _connected[known]
 
     cloud, reader = _connected.get(known) or rediscover()
-    return OpenStack(declared, cloud, get=reader, rediscover=rediscover)
+    build = Build(source=source, base_image=base_image, flavor=flavor, network=build_network)
+    return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
 
 def forget() -> None:
     _connected.clear()
@@ -137,6 +153,7 @@ def discover(
         keystone=keystone,
         neutron=_endpoint(catalog, "network", region, interface),
         nova=_endpoint(catalog, "compute", region, interface),
+        glance=_endpoint(catalog, "image", region, interface),
         project=project,
         user=user,
         ssh_user=ssh_user,
@@ -313,14 +330,25 @@ class Cloud:
     ssh_user: str
     ssh_key: str
     ssh_config: str = ""
+    glance: str = ""
+
+
+@dataclass(frozen=True)
+class Build:
+    source: str = ""
+    base_image: str = ""
+    flavor: str = ""
+    network: str = ""
 
 
 class OpenStack:
     def __init__(
-        self, declared: Declaration, cloud: Cloud, get=unimplemented, rediscover=None
+        self, declared: Declaration, cloud: Cloud, get=unimplemented, rediscover=None,
+        build: Build = Build(),
     ):
         self.declared = declared
         self.cloud = cloud
+        self.build = build
         self.get = get
         self.rediscover = rediscover
         self._shape: Shape | None = None
@@ -606,6 +634,105 @@ class OpenStack:
                     f"ssh-keygen could not make {private}: {made.stderr.strip()[:200]}"
                 )
         return public.read_text().strip() if public.exists() else ""
+
+    def plan_images(self) -> images.Plan:
+        return self._image_plan(self._bundles())
+
+    def ensure_images(self) -> images.Plan:
+        bundles = self._bundles()
+        plan = self._image_plan(bundles)
+        made = {bundle.host: bundle for bundle in bundles}
+        missing = [found for found in plan.images if found.state == "missing"]
+        if missing:
+            base = self._builder_base()
+            for found in missing:
+                self.get(self._call(BOOT), {"server": {
+                    **base,
+                    "name": images.BUILDER + found.host,
+                    "user_data": images.user_data(made[found.host]),
+                    "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
+                }})
+        for found in plan.images:
+            if found.state == "built":
+                self.get(self._call(ACTION, server=found.builder), {"os-stop": None})
+            elif found.state == "stopped":
+                self.get(self._call(ACTION, server=found.builder), {"createImage": {
+                    "name": found.host, "metadata": {images.BUNDLE: found.bundle},
+                }})
+            elif found.state == "ready" and found.builder:
+                self.get(self._call(DELETE_SERVER, server=found.builder))
+        return self._image_plan(bundles)
+
+    def clean_images(self) -> list[tuple[str, str]]:
+        removed = images.removable(self.plan_images())
+        for kind, ident in removed:
+            gone = DELETE_IMAGE if kind == "image" else DELETE_SERVER
+            self.get(self._call(gone, image=ident, server=ident))
+        return removed
+
+    def _bundles(self) -> tuple[images.Bundle, ...]:
+        return tuple(
+            images.bundle(Path(self.build.source), host, entry.setup, entry.files)
+            for host, entry in self.declared.hosts.items()
+        )
+
+    def _image_plan(self, bundles) -> images.Plan:
+        found = [
+            image for bundle in bundles
+            for image in self.get(self._call(IMAGES, name=quote(bundle.host))).get("images") or []
+        ]
+        digests = {bundle.digest for bundle in bundles}
+        builders = [
+            server for server in self._all(SERVERS, "servers")
+            if images.BUILDS in (server.get("metadata") or {})
+        ]
+        consoles = {
+            server["id"]: self._console(server["id"])
+            for server in builders
+            if server.get("status") == "ACTIVE"
+            and server["metadata"].get(images.BUNDLE) in digests
+        }
+        return images.plan(bundles, found, builders, consoles)
+
+    def _console(self, server: str) -> str:
+        try:
+            said = self.get(self._call(ACTION, server=server), {"os-getConsoleOutput": {}})
+        except EndpointGone:
+            return ""
+        return said.get("output") or ""
+
+    def _builder_base(self) -> dict:
+        if not self.build.network:
+            raise RangeUnavailable(
+                f"an image is built on a server that downloads its packages, so "
+                f"it needs a network that reaches the Internet; set "
+                f"{SETTINGS['build_network']} to one"
+            )
+        bases = [
+            image for image in self.get(
+                self._call(IMAGES, name=quote(self.build.base_image))
+            ).get("images") or []
+            if image.get("status") == "active"
+        ]
+        if len(bases) != 1:
+            raise RangeUnavailable(
+                f"images are built on {self.build.base_image!r} and the cloud has "
+                f"{len(bases)} active images by that name; set "
+                f"{SETTINGS['base_image']} to one it has exactly once"
+            )
+        flavor = next((
+            entry["id"] for entry in self.get(self._call(FLAVORS)).get("flavors") or []
+            if entry.get("name") == self.build.flavor
+        ), None)
+        if flavor is None:
+            raise RangeUnavailable(
+                f"the cloud has no flavor {self.build.flavor!r}; set "
+                f"{SETTINGS['flavor']} to one it lists"
+            )
+        return {
+            "imageRef": bases[0]["id"], "flavorRef": flavor,
+            "networks": [{"uuid": self.build.network}], "config_drive": True,
+        }
 
     def _call(self, call: str, **binding) -> str:
         return call.format(**vars(self.cloud), **binding)

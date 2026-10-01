@@ -256,6 +256,11 @@ CATALOG = {
                  "url": "http://admin.example.com/compute/v2.1"},
                 {"interface": "public", "region_id": "RegionOne",
                  "url": "http://example.com/compute/v2.1"}]},
+            {"type": "image", "name": "glance", "endpoints": [
+                {"interface": "admin", "region_id": "RegionOne",
+                 "url": "http://admin.example.com:9292"},
+                {"interface": "public", "region_id": "RegionOne",
+                 "url": "http://example.com:9292"}]},
         ],
     }
 }

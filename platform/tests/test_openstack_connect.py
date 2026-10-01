@@ -81,6 +81,9 @@ class Cloud:
                     {"type": "compute", "endpoints": [{
                         "interface": "public", "region_id": "RegionOne", "url": here,
                     }]},
+                    {"type": "image", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
                 ]}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
 
             def do_GET(self):
@@ -241,7 +244,8 @@ def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environm
     keys, values = read.stdout.strip().splitlines()
     assert keys == str(sorted([
         "declared", "keystone", "user", "password", "project", "ssh_user",
-        "ssh_key", "ssh_config", "region", "interface",
+        "ssh_key", "ssh_config", "region", "interface", "source", "base_image",
+        "flavor", "build_network",
     ]))
     assert values == "https://keystone.example:5000 /etc/fsl/ssh_config"
 

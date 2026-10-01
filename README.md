@@ -186,6 +186,19 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 `GET` on the same path shows what is missing, present, drifted or left
 over, and `DELETE` takes it down, refused while a server stands on it.
 
+The range's VMs boot from golden images the platform builds from the setup
+scripts `declaration.yaml` names under `hosts:`. Each POST moves every build
+one step (boot a builder, stop it once its setup reports, snapshot it, delete
+it), so repeat it until the answer says `"clean": true`; it takes about
+seven minutes:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
+```
+
+A failed build shows the end of its console under `detail`; `DELETE` on the
+same path removes failed builders and images built from older scripts.
+
 `openstack stack delete fsl-platform` removes all of it.
 
 The stack boots with the keypair `key_name` names, which has to be in the

@@ -456,10 +456,46 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `fsl-claude`; a POST rebuilt it clean. `bin/openstack-range` is gone.
      On the VM 8000 is bound to the VM's address, not loopback, so the
      acceptance suite's `localhost:8000` no longer reaches it there.
-3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL (its user
-   database becomes an objective, judged from the board's side), the wiki,
+3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL, the wiki,
    and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
-   scripts in the repo, then snapshots.
+   scripts in the repo, then snapshots. Left out of this step (the user,
+   2026-10-01): making the board's user database an objective, judged from
+   the board's side; it is still to design.
+   - **Done (2026-10-01): the images.** `declaration.yaml`'s `hosts:` names,
+     per VM, a setup script and the files it needs (`deploy/waf/`,
+     `wargames/juice-shop/shop/`, the wiki's conf and site,
+     `wargames/board/image/` and the board's app). `range/images.py` packs
+     each into a tar.gz whose digest is over paths, modes and contents; the
+     platform boots a builder `fsl-build-<host>` from `ubuntu-24.04` on
+     `FSL_OPENSTACK_BUILD_NETWORK` (the platform's own network, which has a
+     router; the template writes it) with the bundle in its user data. The
+     builder runs the setup and prints `fsl-image-ready <digest>` or
+     `fsl-image-failed <digest>` to its console and stays up; the platform
+     reads the console, stops a ready builder, snapshots it as `<host>` with
+     the property `fsl_bundle`, and deletes the builder once the image is
+     active. Every state comes from the cloud, so `POST
+     /api/range/images/` is repeated until `clean`; `GET` reads, `DELETE`
+     removes failed builders and images of another bundle. Versions match
+     the Docker range: Juice Shop 20.2.0 on node 24.19.0, CRS 4.25.1,
+     ModSecurity 3.0.16 compiled with connector 1.0.4 against Ubuntu's nginx
+     1.24.0, each download pinned by sha256; the board runs Ubuntu's MySQL
+     8.0 on the same VM.
+   - **Checked on the cloud (2026-10-01):** the platform VM, given this tree
+     and `FSL_OPENSTACK_BUILD_NETWORK`, built `fsl-waf` (4.8 GB),
+     `fsl-juice-shop`, `fsl-wiki` and `fsl-board` (2.3 to 3.2 GB, min disk
+     20) by repeated POSTs, each carrying the digest the Mac computes, with no
+     builder left. Setup takes about two minutes for Juice Shop and the
+     wiki, four for the board and seven for the WAF. The first WAF builds
+     failed and said why on the console (CRS on 3.0.12, then a missing
+     modules directory); `DELETE` cleared each and the next POST rebuilt.
+   - **Ubuntu 24.04's libmodsecurity is 3.0.12**, which cannot parse CRS
+     4.25's `XML://@*` targets (REQUEST-901 line 333); the OWASP image runs
+     3.0.16. Hence the compile, about five minutes on one vCPU.
+   - **`README.ko.md` and `ARCHITECTURE.ko.md` do not describe step 3**:
+     writing them means writing Korean, which CLAUDE.md keeps out of files.
+   - **Nova here answers 404 for the console of a guest that is off**
+     ("Guest does not have a console available"), so a builder that powered
+     itself off could never say how its setup went.
 4. **pfSense CE** as the edge firewall with Suricata as its package; its logs
    by syslog to Elasticsearch. Needs the user first: the installer comes only
    from a $0 Netgate Store checkout with an account.
@@ -484,7 +520,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
 - The first full `bin/verify` right after `docker compose up -d --build`
   (2026-09-30) failed 56 tests in `test_console_behaviour.py` that passed in
   `--fast` before it, alone, as a file, and in the next full run. The cause
-  was not found; the output was truncated.
+  was not found; the output was truncated. It recurred on 2026-10-01 as two
+  acceptance failures (one case of ten detected) that passed when rerun.
 
 - `test_declaration.py` compares two files, never the running range.
 - The platform mounts the Docker socket (non-root, via the socket's group): an

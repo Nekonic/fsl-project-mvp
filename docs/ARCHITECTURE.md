@@ -447,6 +447,15 @@ one Internet network by CIDR. The VM's router attaches only its own subnet,
 so the platform reads the range through the API and reaches no range host
 yet; later steps put hosts there and attach the platform to `mgmt`.
 
+The hosts boot from golden images, built through `/api/range/images/` and
+planned by `range/images.py`. `declaration.yaml`'s `hosts:` gives each VM a
+setup script and the files it needs; the platform packs them into its
+builder's user data, boots the builder on its own network (the one with a
+router), reads the builder's console for the line the setup prints when it
+ends, then stops and snapshots it. The image carries the bundle's digest, so
+an edited script shows up as an image of another bundle rather than a
+silently stale one.
+
 
 ### Decided, not built: the range on OpenStack
 
