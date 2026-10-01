@@ -126,7 +126,15 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
 
     assert names == {
         SETTINGS[name] for name in REQUIRED_BY_CONNECT if name != "password"
-    }, names
+    } | {"FSL_SUBSTRATE"}, names
+
+def test_the_platform_on_the_vm_builds_and_reads_the_cloud_range():
+    lines = written_credentials()["content"].splitlines()
+
+    assert "FSL_SUBSTRATE=range.openstack.connect" in lines, (
+        "the platform VM would keep scoring the Docker range inside itself "
+        "and /api/range/fabric/ would answer that compose builds it"
+    )
 
 def test_the_credentials_reach_the_platform_as_written():
     entry = credentials_file()

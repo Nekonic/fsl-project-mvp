@@ -17,6 +17,8 @@ class Cloud:
         self.always_401 = False
         self.logins = []
         self.refuse_logins = False
+        self.written = []
+        self.write_answers = []
 
     def handler(self):
         cloud = self
@@ -40,7 +42,27 @@ class Cloud:
                 user = body["auth"]["identity"]["password"]["user"]["name"]
                 cloud.logins.append(user)
 
+            def _write(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length)) if length else None
+                cloud.written.append((self.command, self.path, body, dict(self.headers)))
+                code, answer = cloud.write_answers.pop(0) if cloud.write_answers else (201, body)
+                if answer is None:
+                    self.send_response(code)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self._send(code, answer)
+
+            def do_PUT(self):
+                self._write()
+
+            def do_DELETE(self):
+                self._write()
+
             def do_POST(self):
+                if not self.path.startswith("/v3/auth/tokens"):
+                    return self._write()
                 self._login()
                 if cloud.refuse_logins:
                     return self._send(401, {"error": {
@@ -425,3 +447,35 @@ def test_discovery_carries_the_deployment_s_ssh_config(keystone):
         "a platform that reaches the range through a bastion says so in an "
         "ssh config, and discovery is the only way a deployment builds a Cloud"
     )
+
+
+def test_a_write_sends_its_verb_its_body_and_the_token_and_reads_the_answer(cloud):
+    body = {"network": {"name": "fsl-internet"}}
+    cloud.write_answers = [(201, {"network": {"id": "net-1", "name": "fsl-internet"}})]
+
+    answered = reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/networks", body)
+
+    verb, path, sent, headers = cloud.written[0]
+    assert (verb, path, sent) == ("POST", "/v2.0/networks", body)
+    assert headers.get("X-Auth-Token") == "tok1"
+    assert answered == {"network": {"id": "net-1", "name": "fsl-internet"}}
+
+def test_a_delete_answered_with_no_body_is_done(cloud):
+    cloud.write_answers = [(204, None)]
+
+    assert reader(cloud)(f"DELETE http://127.0.0.1:{cloud.port}/v2.0/subnets/sub-1") == {}
+    assert cloud.written[0][:2] == ("DELETE", "/v2.0/subnets/sub-1")
+
+def test_a_write_refused_for_its_token_is_signed_in_again_and_sent_once_more(cloud):
+    cloud.write_answers = [(401, {"error": {"message": "token expired"}}), (200, {"tags": ["x"]})]
+
+    answered = reader(cloud)(f"PUT http://127.0.0.1:{cloud.port}/v2.0/networks/n/tags", {"tags": ["x"]})
+
+    assert answered == {"tags": ["x"]}
+    assert cloud.tokens == 2 and len(cloud.written) == 2
+
+def test_a_refused_write_names_its_address_and_answer(cloud):
+    cloud.write_answers = [(409, {"NeutronError": {"message": "overlaps with another subnet"}})]
+
+    with pytest.raises(RangeUnavailable, match="409.*overlaps"):
+        reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/subnets", {"subnets": []})

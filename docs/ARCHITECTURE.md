@@ -435,19 +435,19 @@ The platform service reads the file with `env_file` (`required: false`,
 `format: raw`), so compose passes it through without interpolating or
 unquoting.
 
-The platform on the VM still uses the Docker adapter, and could not use the
-OpenStack one yet:
+The platform on the VM uses the OpenStack adapter (`FSL_SUBSTRATE`, written
+by cloud-init) and builds the range's networks itself through
+`/api/range/fabric/`, planned by `range/fabric.py`: one `internet` network
+with a subnet per declared origin (DHCP off), `estate` on 10.30.0.0/24 and
+`mgmt` on 10.31.0.0/24 with no gateway, off every compose and platform-VM
+subnet, and the keypair `fsl-platform` from a key the platform makes at
+`/data/ssh/id_ed25519`. `describe()` binds each origin to its subnet of the
+one Internet network by CIDR. The VM's router attaches only its own subnet,
+so the platform reads the range through the API and reaches no range host
+yet; later steps put hosts there and attach the platform to `mgmt`.
 
-- `openstack.env` sets no `FSL_SUBSTRATE`, so the default
-  `range.docker.Docker` is chosen and the `FSL_OPENSTACK_*` settings are not
-  used;
-- nothing creates `/data/ssh/id_ed25519`;
-- the VM's router attaches only its own subnet, and `bin/openstack-range`
-  creates no router, so the VM has no route to the range's networks.
-
-`bin/openstack-range` builds a stand-in range for the adapter: the six
-segments as tagged networks and one bare Ubuntu server named
-`fsl-juice-shop`, with no Juice Shop on it. How to run it is in `README.md`.
+`bin/openstack-range` is the stand-in the fabric replaces; it goes once the
+fabric has run on the cloud.
 
 ### Decided, not built: the range on OpenStack
 

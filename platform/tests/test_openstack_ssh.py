@@ -8,11 +8,12 @@ import subprocess
 import tempfile
 import threading
 import time
+from dataclasses import replace
 
 import pytest
 
 from range import declared, openstack
-from range.ports import RangeUnavailable
+from range.ports import RangeUnavailable, Segment
 
 SSHD = shutil.which("sshd") or "/usr/sbin/sshd"
 
@@ -106,7 +107,9 @@ FIRST_BOOT = "2026-09-23T10:00:00.000000"
 def adapter(
     host, server_id="kali-1", launched_at=FIRST_BOOT, **cloud
 ) -> openstack.OpenStack:
-    declaration = declared.read()
+    declaration = replace(
+        declared.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
+    )
     standing = declaration.segments[0].id
     networks = {
         "networks": [

@@ -29,19 +29,27 @@ ALLOCATED = {
 def tagged(segment_id):
     return f"{openstack.SEGMENT_TAG}={segment_id}"
 
+CARRIER = {origin.id: origin.segment for origin in declared.read().origins}
+
+def carrier(segment_id):
+    return CARRIER.get(segment_id, segment_id)
+
 NETWORKS = {
     "networks": [
         {"id": f"net-{name}", "name": f"range1-{name}-v4", "tags": [tagged(name)]}
-        for name in ALLOCATED
+        for name in dict.fromkeys(carrier(segment) for segment in ALLOCATED)
     ]
     + [{"id": "net-unrelated", "name": "tenant-scratch", "tags": []}]
 }
 
 SUBNETS = {
     f"net-{name}": {
-        "subnets": [{"cidr": cidr, "gateway_ip": cidr.replace("0/24", "1")}]
+        "subnets": [
+            {"cidr": cidr, "gateway_ip": cidr.replace("0/24", "1")}
+            for segment, cidr in ALLOCATED.items() if carrier(segment) == name
+        ]
     }
-    for name, cidr in ALLOCATED.items()
+    for name in dict.fromkeys(carrier(segment) for segment in ALLOCATED)
 }
 
 SERVERS = {
@@ -49,13 +57,13 @@ SERVERS = {
         {
             "name": "fsl-kali",
             "addresses": {
-                "range1-ru-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
+                "range1-internet-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
             },
         },
         {
             "name": "fsl-waf",
             "addresses": {
-                "range1-ru-v4": [
+                "range1-internet-v4": [
                     {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"},
                     {"addr": "192.0.2.9", "OS-EXT-IPS:type": "floating"},
                 ],
@@ -136,7 +144,7 @@ def test_the_cloud_supplies_only_what_it_allocated():
     edge = next(s for s in sketch().describe().segments if s.id == "ru")
 
     assert (edge.subnet, edge.gateway, edge.network) == (
-        "5.188.10.0/24", "5.188.10.1", "net-ru",
+        "5.188.10.0/24", "5.188.10.1", "net-internet",
     )
     assert [(node.name, node.address) for node in edge.nodes] == [
         ("fsl-kali", "5.188.10.7"), ("fsl-waf", "5.188.10.9"),
@@ -155,7 +163,7 @@ def test_a_network_the_range_does_not_tag_is_dropped_not_drawn():
 def test_a_segment_is_bound_by_its_tag_and_not_by_what_it_is_called():
     edge = next(s for s in sketch().describe().segments if s.id == "ru")
 
-    assert edge.network == "net-ru", (
+    assert edge.network == "net-internet", (
         "the segment was found by a network whose name happened to equal the "
         "declared id. Neutron names are neither unique nor the operator's to "
         "keep, and Heat appends its own stack suffix to every one of them"
@@ -172,14 +180,14 @@ def test_the_cloud_is_asked_only_for_the_networks_the_range_marked():
         "every network in the project came back and the adapter sorted them "
         "out afterwards; a shared project hands back other people's networks"
     )
-    assert tagged("ru") in listing
+    assert tagged("internet") in listing
 
 
-def edge_allocated(subnets):
+def allocated_on(network_id, subnets):
     reader = cloud_reader()
 
     def get(call):
-        if "/v2.0/subnets" in call and call.endswith("=net-ru"):
+        if "/v2.0/subnets" in call and call.endswith(f"={network_id}"):
             return {"subnets": subnets}
         return reader(call)
 
@@ -187,13 +195,13 @@ def edge_allocated(subnets):
 
 
 def test_a_dual_stack_segment_is_bound_to_its_ipv4_subnet():
-    edge = next(s for s in edge_allocated([
-        {"cidr": "fd00:5:188:10::/64", "gateway_ip": "fd00:5:188:10::1",
+    estate = next(s for s in allocated_on("net-estate", [
+        {"cidr": "fd00:172:30::/64", "gateway_ip": "fd00:172:30::1",
          "ip_version": 6},
-        {"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1", "ip_version": 4},
-    ]).describe().segments if s.id == "ru")
+        {"cidr": "172.30.0.0/24", "gateway_ip": "172.30.0.1", "ip_version": 4},
+    ]).describe().segments if s.id == "estate")
 
-    assert (edge.subnet, edge.gateway) == ("5.188.10.0/24", "5.188.10.1"), (
+    assert (estate.subnet, estate.gateway) == ("172.30.0.0/24", "172.30.0.1"), (
         "the segment took whichever subnet Neutron listed first, so a "
         "dual-stack network became an IPv6 zone and every IPv4 alert from it "
         "sat on no segment at all"
@@ -202,13 +210,13 @@ def test_a_dual_stack_segment_is_bound_to_its_ipv4_subnet():
 
 def test_a_segment_with_two_ipv4_subnets_is_refused_and_named():
     with pytest.raises(RangeUnavailable) as raised:
-        edge_allocated([
-            {"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1", "ip_version": 4},
-            {"cidr": "5.188.11.0/24", "gateway_ip": "5.188.11.1", "ip_version": 4},
+        allocated_on("net-estate", [
+            {"cidr": "172.30.0.0/24", "gateway_ip": "172.30.0.1", "ip_version": 4},
+            {"cidr": "172.30.1.0/24", "gateway_ip": "172.30.1.1", "ip_version": 4},
         ]).describe()
 
-    assert "'ru'" in str(raised.value), raised.value
-    assert "5.188.11.0/24" in str(raised.value), (
+    assert "'estate'" in str(raised.value), raised.value
+    assert "172.30.1.0/24" in str(raised.value), (
         "alerts are binned by exactly one subnet, and which of two it is was "
         "decided by the order Neutron listed them in"
     )
@@ -216,13 +224,44 @@ def test_a_segment_with_two_ipv4_subnets_is_refused_and_named():
 
 def test_two_networks_claiming_the_same_segment_are_refused_not_guessed():
     doubled = {"networks": NETWORKS["networks"] + [
-        {"id": "net-ru-2", "name": "range1-ru-legacy", "tags": [tagged("ru")]}
+        {"id": "net-internet-2", "name": "range1-internet-legacy", "tags": [tagged("internet")]}
     ]}
 
     with pytest.raises(RangeUnavailable) as raised:
         sketch(doubled).describe()
 
-    assert "both carry" in str(raised.value) and "'ru'" in str(raised.value)
+    assert "both carry" in str(raised.value) and "'internet'" in str(raised.value)
+
+
+def test_every_origin_is_one_subnet_of_the_internet_network_and_keeps_its_own_hosts():
+    shape = sketch().describe()
+    by_id = {segment.id: segment for segment in shape.segments}
+    origins = declared.read().origins
+
+    assert [(by_id[o.id].subnet, by_id[o.id].network) for o in origins] == [
+        (o.subnet, "net-internet") for o in origins
+    ]
+    assert [n.name for n in by_id["ru"].nodes] == ["fsl-kali", "fsl-waf"]
+    assert not by_id["us"].nodes, (
+        "every host on the shared Internet network was put on every origin, "
+        "so an alert from Moscow could be binned to Seattle"
+    )
+
+
+def test_a_subnet_no_origin_declares_is_refused_and_named():
+    stray = SUBNETS["net-internet"]["subnets"] + [
+        {"cidr": "175.45.176.0/24", "gateway_ip": "175.45.176.1"}
+    ]
+
+    with pytest.raises(RangeUnavailable, match="175.45.176.0/24"):
+        allocated_on("net-internet", stray).describe()
+
+
+def test_an_origin_the_cloud_gave_no_subnet_is_named():
+    short = [s for s in SUBNETS["net-internet"]["subnets"] if s["cidr"] != "103.152.220.0/24"]
+
+    with pytest.raises(RangeUnavailable, match="origin 'hk' is declared on 103.152.220.0/24"):
+        allocated_on("net-internet", short).describe()
 
 
 def test_a_segment_the_cloud_does_not_have_is_named_rather_than_skipped():
@@ -309,7 +348,7 @@ def test_an_ipv6_address_is_not_taken_for_the_address_of_a_node():
     dual = {
         "servers": [{
             "name": "fsl-waf",
-            "addresses": {"range1-ru-v4": [
+            "addresses": {"range1-internet-v4": [
                 {"addr": "fd00:5:188:10::9", "OS-EXT-IPS:type": "fixed", "version": 6},
                 {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4},
             ]},

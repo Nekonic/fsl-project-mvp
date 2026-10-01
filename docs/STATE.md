@@ -430,13 +430,23 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `bin/pick-origins` reproduces the table; legacy /8s are skipped so no
      origin is an institution's block. `test_origin_placement` checks all
      thirty through the live `fsl-geoip` pipeline.
-   - Left, in order (design from a judged workflow): a pure fabric planner
-     (`range/fabric.py`); a write path in the OpenStack adapter (POST, PUT,
-     DELETE beside GET); `describe()` binding one Internet network and its
-     origin subnets by CIDR; `ensure`/`teardown` and the keypair behind
-     `GET/POST/DELETE /api/range/fabric/` (409 on Docker); then the run on
-     the cloud, the platform VM switched to `range.openstack.connect`, and
-     `bin/openstack-range` deleted.
+   - **Done (2026-10-01): the fabric in code.** `range/fabric.py` is a pure
+     planner: from the declaration and what the project holds it lists the
+     networks (`internet`, `estate` 10.30.0.0/24, `mgmt` 10.31.0.0/24 with no
+     gateway, off every compose and platform-VM subnet), the 32 subnets
+     (DHCP off on the thirty origins), the keypair `fsl-platform`, and what
+     drifted or is left over. The OpenStack adapter sends any verb (a 401
+     re-signs and resends once), binds each origin to its subnet of the one
+     Internet network by CIDR and keeps only hosts inside it, refuses a
+     subnet no origin declares, and gains `plan_fabric`, `ensure_fabric`
+     (create, then tag, deleting a network it could not tag; one bulk subnet
+     POST; makes `/data/ssh/id_ed25519` and imports it) and `teardown_fabric`
+     (refused while a server port stands). `GET/POST/DELETE
+     /api/range/fabric/` exposes them; Docker answers 409, drift is a 409.
+   - Left: the run on the cloud (remove the stand-in range but keep keypair
+     `fsl-claude`, which the platform stack boots with; switch the platform
+     VM to `range.openstack.connect`; POST, GET, DELETE, POST), then delete
+     `bin/openstack-range`.
 3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL (its user
    database becomes an objective, judged from the board's side), the wiki,
    and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
