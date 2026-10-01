@@ -251,6 +251,12 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   microversion 2.6+) for a fresh URL each time the pane opens (tokens last
   600 s; an open session outlives them). The terminal pane is ttyd, as Kali's
   already is. Horizon is never shown to users.
+- **One published port (2026-10-01)**: everything happens on the website, so
+  the platform's port is the only one published. The terminal, and Kibana
+  when it comes, are reached through it by path. 8080 and 9200 are used only
+  by the command-line cases and the acceptance suite; they stop being
+  published and those reach the target and Elasticsearch from inside the
+  range, through `test/range.py`'s runner.
 - **Session start/stop and the scoreboard stay on the landing page `/`**,
   outside the sidebar; the sidebar is only the work screen.
 - **Tap-as-a-Service is dropped from the design**: it was there for a sensor
@@ -402,8 +408,16 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    from a $0 Netgate Store checkout with an account.
 5. **Kali VM** holding the country addresses, with the source rewritten as
    packets leave.
-6. **The sidebar**: Kibana (Elasticsearch security on, a read-only blue role),
-   the pfSense pane through a kiosk browser VM's noVNC console, and ttyd.
+6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
+   read-only blue role), the pfSense pane through a kiosk browser VM's noVNC
+   console, and ttyd, all behind the platform's one published port, with no
+   service or package added. ttyd speaks WebSocket, which waitress cannot
+   carry, so nginx (from apt) runs inside the platform's image on 8000: `/`
+   to waitress on `127.0.0.1`, `/terminal/` to `kali:7681` (ttyd `-b
+   /terminal`). waitress trusts only `127.0.0.1` for `X-Forwarded-For`, so the
+   refusal of range addresses reads the real client as before, and the
+   terminal path asks the platform the same question first. Acceptance and
+   the command-line cases stop using 8080 and 9200.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
 

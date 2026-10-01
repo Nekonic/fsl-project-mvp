@@ -27,14 +27,15 @@ nothing else to run. Firing the scripted cases from the command line and
 python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 ```
 
-| Port | |
-|---|---|
-| 8000 | the console, and `/api/` |
-| 8080 | the target, through the WAF |
-| 7681 | the attacker's Kali shell, framed inside the red console |
-| 9200 | Elasticsearch |
+| Port | | Used by |
+|---|---|---|
+| 8000 | the console, and `/api/` | a person's browser |
+| 7681 | the attacker's Kali shell, framed inside the red console | a person's browser |
+| 8080 | the target, through the WAF | the command-line cases and the acceptance tests |
+| 9200 | Elasticsearch | the acceptance tests |
 
-Every port is published on `127.0.0.1` only. Inside the range both targets sit
+A person needs only 8000 and 7681. Every port is published on `127.0.0.1`
+only. Inside the range both targets sit
 behind the WAF on port 80: Juice Shop as `http://shop.com` (on the `edge`
 network only) and the board as `http://board.com` (on every edge network). A
 session is on Juice Shop unless it is created with `{"scenario": "board"}`.
@@ -73,10 +74,8 @@ from a file, so it never reaches a command line, and recreate the platform:
 | `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-`ref` has to name a pushed branch or tag whose `compose.yaml` has the
-`openstack.env` `env_file` entry; without it the platform gets none of the
-`FSL_OPENSTACK_*` settings. The stack's `address` output is the floating IP.
-The ports stay on the VM's loopback, so reach them through ssh:
+The stack's `address` output is the floating IP. The ports stay on the VM's
+loopback, so a person reaches the two they need through ssh:
 
 ```bash
 ssh -L 8000:127.0.0.1:8000 -L 7681:127.0.0.1:7681 ubuntu@ADDRESS
@@ -122,9 +121,8 @@ bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
 
-The full run restarts the platform and resets
-the target, the rules and the attacker's origin, so do not run it against a
-stack someone is using. It deletes only the sessions its own run created.
+The full run restarts the platform and resets the target, the rules and the
+attacker's origin, so do not run it against a stack someone is using. It deletes only the sessions its own run created.
 `bin/prune` deletes sessions by hand and is a dry run without `--apply`:
 
 ```bash
@@ -170,7 +168,8 @@ The image's entrypoint ignores its arguments and starts the server, so
 makes the copy the platform's user's, where `docker cp` would leave it owned
 by root and unwritable. The old `-journal` has to go, or SQLite would replay
 it onto the restored file. On start the platform applies any migration the
-backup predates. This procedure has not been run yet.
+backup predates. The copy has been checked on a scratch volume (it lands
+owned by `fsl`); the whole procedure has not been run against a live stack.
 
 ## Local lab only
 
