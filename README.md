@@ -27,24 +27,24 @@ flowchart TB
   subgraph cloud["OpenStack project fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
     subgraph heat["Heat stack fsl-platform"]
-      fip["floating IP<br/>ssh and ping only"]
+      fip["floating IP<br/>8000, ssh and ping"]
       subgraph vm["platform VM, Ubuntu 24.04"]
         unit["fsl-platform.service<br/>docker compose up -d --build"]
         stack["the compose stack<br/>(next graph)"]
       end
     end
-    subgraph standin["stand-in range, bin/openstack-range"]
-      nets["six networks fsl-*<br/>tagged fsl.segment.id"]
-      target["VM fsl-juice-shop<br/>bare Ubuntu"]
+    subgraph fabric_box["range networks, built by the platform"]
+      internet["fsl-internet<br/>30 origin subnets"]
+      inside["fsl-estate, fsl-mgmt"]
     end
   end
 
-  person -->|"ssh tunnel"| fip
+  person -->|":8000"| fip
   fip --> vm
   unit -->|"every boot"| stack
-  stack -->|"describe(), segments()"| api
-  api -.->|lists| nets
-  api -.->|lists| target
+  stack -->|"/api/range/fabric/, describe()"| api
+  api -.->|builds and lists| internet
+  api -.->|builds and lists| inside
 ```
 
 ### Inside the stack
@@ -127,8 +127,9 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 9200 | Elasticsearch | the acceptance tests |
 
 A person needs only 8000: nginx inside the platform's image takes it and
-hands `/terminal/` to Kali's ttyd, which publishes no port of its own. Every
-port is published on `127.0.0.1` only. Inside the range both targets sit
+hands `/terminal/` to Kali's ttyd, which publishes no port of its own. On
+the Mac every port is published on `127.0.0.1` only; on the platform VM 8000
+is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). Inside the range both targets sit
 behind the WAF on port 80: Juice Shop as `http://shop.com` (on the `edge`
 network only) and the board as `http://board.com` (on every edge network). A
 session is on Juice Shop unless it is created with `{"scenario": "board"}`.
@@ -167,22 +168,19 @@ from a file, so it never reaches a command line, and recreate the platform:
 | `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-The stack's `address` output is the floating IP. The ports stay on the VM's
-loopback, so a person reaches the one they need through ssh:
-
-```bash
-ssh -L 8000:127.0.0.1:8000 ubuntu@ADDRESS
-```
+The stack's `address` output is the floating IP, and the console is at
+`http://ADDRESS:8000/`, with no login yet. The other ports stay on the VM's
+loopback.
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
 `bin/backup` and the restore below there. `systemctl status fsl-platform`
 shows how the last boot's bring-up went.
 
 With the password in, the platform builds the range's networks through its
-own API, from the VM:
+own API:
 
 ```bash
-ssh ubuntu@ADDRESS 'curl -s -X POST -H "Content-Type: application/json" -d "{}" http://127.0.0.1:8000/api/range/fabric/'
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
 ```
 
 `GET` on the same path shows what is missing, present, drifted or left
@@ -190,13 +188,12 @@ over, and `DELETE` takes it down, refused while a server stands on it.
 
 `openstack stack delete fsl-platform` removes all of it.
 
-`bin/openstack-range up|down`, the stand-in the fabric replaces, run on the
-cloud host with the project's openrc, builds a stand-in range on the same
-cloud: the `fsl-claude` keypair
-that `key_name` defaults to (from `FSL_RANGE_PUBLIC_KEY`), security group
-`fsl-sg` (tcp 22, 80 and 3000, and ICMP), six networks `fsl-<id>` tagged
-`fsl.segment.id=<id>` with compose's subnets, and the server `fsl-juice-shop`.
-`down` removes it.
+The stack boots with the keypair `key_name` names, which has to be in the
+project first:
+
+```bash
+openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
+```
 
 ## Running a round
 
@@ -279,10 +276,10 @@ owned by `fsl`); the whole procedure has not been run against a live stack.
 
 Elasticsearch runs without security and Django with `DEBUG=1`. Django answers
 only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
-names more; to use the range from another machine, tunnel to it. The Docker
+names more; the platform VM adds its floating IP. The Docker
 socket is mounted into the platform, and the Kali shell at `/terminal/` is an
 unauthenticated root shell. Both are container escape paths.
 
 The same holds on the platform VM. There the project's password is also plain
 text in `/opt/fsl/openstack.env` and in the platform container's environment.
-The VM's ssh port is open to any address.
+The VM's ssh and 8000 are open to any address, and 8000 asks for no login.

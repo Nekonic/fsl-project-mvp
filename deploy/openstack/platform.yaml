@@ -68,6 +68,7 @@ resources:
       name: fsl-platform
       rules:
         - {protocol: tcp, port_range_min: 22, port_range_max: 22}
+        - {protocol: tcp, port_range_min: 8000, port_range_max: 8000}
         - {protocol: icmp}
 
   port:
@@ -103,6 +104,8 @@ resources:
             "%repository%": {get_param: repository}
             "%ref%": {get_param: ref}
             "%mtu%": {get_attr: [network, mtu]}
+            "%fixed_ip%": {get_attr: [port, fixed_ips, 0, ip_address]}
+            "%floating_ip%": {get_attr: [floating_ip, floating_ip_address]}
           template: |
             #cloud-config
             package_update: true
@@ -118,11 +121,15 @@ resources:
                 permissions: "0600"
                 content: |
                   FSL_SUBSTRATE=range.openstack.connect
+                  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
                   FSL_OPENSTACK_KEYSTONE=%keystone%
                   FSL_OPENSTACK_USER=%user%
                   FSL_OPENSTACK_PROJECT=%project%
                   FSL_OPENSTACK_SSH_USER=ubuntu
                   FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
+              - path: /root/compose.env
+                content: |
+                  FSL_PUBLISH=%fixed_ip%
               - path: /etc/systemd/system/fsl-platform.service
                 content: |
                   [Unit]
@@ -139,6 +146,7 @@ resources:
             runcmd:
               - [git, clone, --branch, "%ref%", "%repository%", /opt/fsl]
               - [mv, /root/openstack.env, /opt/fsl/openstack.env]
+              - [mv, /root/compose.env, /opt/fsl/.env]
               - [chown, -R, "ubuntu:ubuntu", /opt/fsl]
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]

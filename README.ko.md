@@ -28,24 +28,24 @@ flowchart TB
   subgraph cloud["OpenStack 프로젝트 fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
     subgraph heat["Heat 스택 fsl-platform"]
-      fip["floating IP<br/>ssh와 ping만"]
+      fip["floating IP<br/>8000, ssh, ping"]
       subgraph vm["플랫폼 VM, Ubuntu 24.04"]
         unit["fsl-platform.service<br/>docker compose up -d --build"]
         stack["compose 스택<br/>(다음 그래프)"]
       end
     end
-    subgraph standin["임시 레인지, bin/openstack-range"]
-      nets["fsl-* 네트워크 6개<br/>fsl.segment.id 태그"]
-      target["VM fsl-juice-shop<br/>빈 Ubuntu"]
+    subgraph fabric_box["레인지 네트워크, 플랫폼이 만듦"]
+      internet["fsl-internet<br/>출발지 서브넷 30개"]
+      inside["fsl-estate, fsl-mgmt"]
     end
   end
 
-  person -->|"ssh 터널"| fip
+  person -->|":8000"| fip
   fip --> vm
   unit -->|"부팅할 때마다"| stack
-  stack -->|"describe(), segments()"| api
-  api -.->|조회| nets
-  api -.->|조회| target
+  stack -->|"/api/range/fabric/, describe()"| api
+  api -.->|만들고 조회| internet
+  api -.->|만들고 조회| inside
 ```
 
 ### 스택 내부
@@ -129,7 +129,8 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 사람에게 필요한 포트는 8000 하나입니다. 플랫폼 이미지 안의 nginx가 이 포트를 받아
 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않습니다.
-모든 포트는 `127.0.0.1`에만 공개됩니다. 레인지 안에서는 두 대상 시스템 모두
+Mac에서는 모든 포트를 `127.0.0.1`에만 공개합니다. 플랫폼 VM에서는 8000을 VM 자기
+주소에 공개합니다(`.env`의 `FSL_PUBLISH`). 레인지 안에서는 두 대상 시스템 모두
 웹방화벽 뒤 80번 포트에 있습니다. Juice Shop은 `http://shop.com`(`edge`
 네트워크에서만), 게시판은 `http://board.com`(모든 edge 네트워크에서)입니다. 세션은
 `{"scenario": "board"}`로 만들지 않으면 Juice Shop을 대상으로 합니다.
@@ -168,22 +169,18 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 | `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 됨 |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-스택의 `address` 출력값이 floating IP입니다. 포트는 VM의 loopback에만 있으므로,
-필요한 포트에는 ssh로 접근합니다.
-
-```bash
-ssh -L 8000:127.0.0.1:8000 ubuntu@ADDRESS
-```
+스택의 `address` 출력값이 floating IP이고, 콘솔은 `http://ADDRESS:8000/`에서 바로
+열립니다. 아직 로그인은 없습니다. 나머지 포트는 VM의 loopback에만 있습니다.
 
 VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`입니다. compose,
 `bin/backup`, 아래의 복원 절차는 거기서 실행합니다. 마지막 부팅 때 스택이 어떻게
 올라왔는지는 `systemctl status fsl-platform`으로 봅니다.
 
-비밀번호를 넣고 나면 플랫폼이 레인지의 네트워크를 만듭니다. VM에서 플랫폼 자신의
-API를 호출합니다.
+비밀번호를 넣고 나면 플랫폼이 레인지의 네트워크를 만듭니다. 플랫폼 자신의 API를
+호출합니다.
 
 ```bash
-ssh ubuntu@ADDRESS 'curl -s -X POST -H "Content-Type: application/json" -d "{}" http://127.0.0.1:8000/api/range/fabric/'
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
 ```
 
 같은 경로에 `GET`을 보내면 없는 것, 있는 것, 설정이 어긋난 것, 선언에 없는데 남아 있는 것을
@@ -192,12 +189,12 @@ ssh ubuntu@ADDRESS 'curl -s -X POST -H "Content-Type: application/json" -d "{}" 
 
 `openstack stack delete fsl-platform`은 이 모두를 지웁니다.
 
-`bin/openstack-range up|down`은 fabric이 대체하는 임시 수단입니다. 프로젝트의
-openrc를 가지고 클라우드 호스트에서 실행하면 같은 클라우드에 임시 레인지를
-만듭니다. 만드는 것은 `key_name`의 기본값인 `fsl-claude` 키페어
-(`FSL_RANGE_PUBLIC_KEY`에서 읽음), 보안 그룹 `fsl-sg`(tcp 22, 80, 3000과 ICMP),
-compose의 서브넷을 쓰고 `fsl.segment.id=<id>` 태그가 붙은 네트워크 6개 `fsl-<id>`,
-서버 `fsl-juice-shop`입니다. `down`은 이를 지웁니다.
+스택은 `key_name`이 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저
+있어야 합니다.
+
+```bash
+openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
+```
 
 ## 라운드 진행
 
@@ -279,10 +276,10 @@ docker compose start platform
 
 Elasticsearch는 보안 기능 없이, Django는 `DEBUG=1`로 돕니다. Django는
 `DJANGO_ALLOWED_HOSTS`에 더 지정하지 않는 한 `localhost`, `127.0.0.1`, `[::1]`에만
-응답합니다. 다른 기기에서 레인지를 쓰려면 터널로 접속합니다. 플랫폼에는 Docker
+응답합니다. 플랫폼 VM은 여기에 자기 floating IP를 더합니다. 플랫폼에는 Docker
 소켓이 마운트되어 있고, `/terminal/`의 Kali 셸은 인증 없는 root 셸입니다. 둘 다
 컨테이너 탈출 경로입니다.
 
 플랫폼 VM에서도 마찬가지입니다. 게다가 VM에서는 프로젝트 비밀번호가
 `/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에 평문으로 들어 있습니다.
-VM의 ssh 포트는 모든 주소에 열려 있습니다.
+VM의 ssh와 8000은 모든 주소에 열려 있고, 8000은 로그인을 묻지 않습니다.

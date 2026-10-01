@@ -79,7 +79,10 @@ Nothing half-finished. The last session left the tree green and committed.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live; restore (README) has never been run.
-- **Every published port is on `127.0.0.1`.** Before, each segment's gateway
+- **Every published port is on `127.0.0.1`, except 8000 on the platform VM**,
+  which cloud-init binds to the VM's own address (`FSL_PUBLISH` in `.env`)
+  and opens to any address with no login (the user, 2026-10-01); Django
+  answers to its floating IP. Before, each segment's gateway
   forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
   (8 of 8 reached). `DJANGO_DEBUG=1` is safe only because of this. Another
   machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
@@ -159,9 +162,9 @@ flow goes ACTIVE, the service stays DOWN until its port is on a VM, and
 The range lives in project `fsl-range` (id `64ffc2a247464ebdae21cfdae0f96d90`)
 as user `fsl-range` with the `member` role, not admin. Its password is only in
 `/root/fsl-range.password` on the host; `/root/fsl-range-openrc.sh` sources
-it. `bin/openstack-range up|down` (run on the host with that openrc, the
-`openstack` CLI from `/root/kolla-venv`, and `FSL_RANGE_PUBLIC_KEY` for the
-first keypair) creates keypair `fsl-claude`, security group `fsl-sg`
+it. A stand-in, `bin/openstack-range`, was the first range here, removed
+on 2026-10-01 once the platform built its own (backlog 2, step 2); it made
+keypair `fsl-claude` (which the platform stack still boots with), `fsl-sg`
 (22/80/3000/icmp), six networks `fsl-<id>` tagged `fsl.segment.id=<id>` with
 compose's subnets, and `fsl-juice-shop` (ubuntu-24.04, m1.small, config drive)
 on `fsl-estate`. Re-running `up` creates nothing. Through
@@ -294,8 +297,6 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   move to the production repo.
 - **Getting pfSense CE**: its only installer comes from a $0 Netgate Store
   checkout with an account, which the user has to do.
-- **How browsers reach the platform VM** from outside, now that it is on a
-  floating IP: a login, a front proxy, or both.
 - The reasoning behind the placement and the WAF console is in
   `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
   `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`.
@@ -413,8 +414,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      creates yet: step 2 makes it and registers it as a Nova keypair.
    - The kolla venv on the host has no Heat client; the stack was driven from
      a separate venv with `python-openstackclient` and `python-heatclient`.
-   - Stack `fsl-platform` is still up, at floating IP `192.168.0.209`.
-2. **The fabric from the platform, through the API**: one Internet network
+   - Stack `fsl-platform` is still up, at floating IP `192.168.0.210`.
+2. **Done (2026-10-01): the fabric from the platform, through the API**: one Internet network
    with a subnet per origin country (30, from a public traffic ranking, placed
    by GeoIP, about 100 addresses weighted by traffic), the estate and
    management networks. This replaces `bin/openstack-range`; the declaration
@@ -443,10 +444,18 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      POST; makes `/data/ssh/id_ed25519` and imports it) and `teardown_fabric`
      (refused while a server port stands). `GET/POST/DELETE
      /api/range/fabric/` exposes them; Docker answers 409, drift is a 409.
-   - Left: the run on the cloud (remove the stand-in range but keep keypair
-     `fsl-claude`, which the platform stack boots with; switch the platform
-     VM to `range.openstack.connect`; POST, GET, DELETE, POST), then delete
-     `bin/openstack-range`.
+   - **Checked on the cloud (2026-10-01).** The stand-in range was removed
+     (keypair `fsl-claude` kept), the platform stack rebuilt from the new
+     template at floating IP `192.168.0.210`, where a browser opens the
+     console on 8000 directly. Its platform, on `range.openstack.connect`,
+     built `fsl-internet` with the thirty origin subnets, `fsl-estate`
+     10.30.0.0/24 and `fsl-mgmt` 10.31.0.0/24 (DHCP on, no gateway) and the
+     keypair `fsl-platform`; a second POST wrote nothing (32 present);
+     `describe()` read back 32 segments from three networks; DELETE removed
+     32 subnets, 3 networks and the keypair and left `fsl-platform` and
+     `fsl-claude`; a POST rebuilt it clean. `bin/openstack-range` is gone.
+     On the VM 8000 is bound to the VM's address, not loopback, so the
+     acceptance suite's `localhost:8000` no longer reaches it there.
 3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL (its user
    database becomes an objective, judged from the board's side), the wiki,
    and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
