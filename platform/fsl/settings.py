@@ -53,7 +53,8 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
 
-RANGE = declared.read()
+FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
+RANGE = declared.read(flavor=declared.flavor_for(FSL_SUBSTRATE))
 
 ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
@@ -79,7 +80,6 @@ FSL_SENSOR_RELOAD = tuple(
     os.environ.get("FSL_SENSOR_RELOAD", "suricatasc -c reload-rules").split()
 )
 
-FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
 FSL_SUBSTRATE_OPTIONS = dict(
     {
         "range.docker.Docker": {"project": os.environ.get("FSL_PROJECT", "fsl")},

@@ -79,3 +79,20 @@ hosts:
     names: [board, board-db]
     setup: wargames/board/image/setup.sh
     files: [wargames/board/image, wargames/board/app]
+
+openstack:
+  roles:
+    edge: fsl-pfsense
+    sensor: fsl-pfsense
+  watches:
+    sensor: edge
+  hosts:
+    fsl-pfsense:
+      segments: [internet, estate, mgmt]
+      image: fsl-pfsense
+    fsl-kali:
+      segments: [internet, mgmt]
+      setup: deploy/kali/setup.sh
+      files: [deploy/kali]
+    fsl-waf:
+      segments: [estate, mgmt]

@@ -27,7 +27,8 @@ class Origin:
 
 @dataclass(frozen=True)
 class Host:
-    setup: str
+    setup: str = ""
+    image: str = ""
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
@@ -62,6 +63,15 @@ class Declaration:
                 f"{', '.join(roleless)} would be built as an image and no role "
                 f"names it, so nothing in the range would ever reach it"
             )
+        for name, host in sorted(self.hosts.items()):
+            if bool(host.setup) == bool(host.image):
+                raise ValueError(
+                    f"host {name!r} declares "
+                    + ("both a setup script and a prebuilt image"
+                       if host.setup else "neither a setup script nor a prebuilt image")
+                    + "; a host is either built from a script in the repo or "
+                    "boots from an image the cloud already holds"
+                )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
             raise ValueError(
@@ -119,7 +129,8 @@ def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
 def _hosts(entries) -> dict[str, Host]:
     return {
         name: Host(
-            setup=entry["setup"],
+            setup=entry.get("setup") or "",
+            image=entry.get("image") or "",
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),
@@ -127,8 +138,25 @@ def _hosts(entries) -> dict[str, Host]:
         for name, entry in (entries or {}).items()
     }
 
-def read(path: Path = DECLARATION) -> Declaration:
-    document = yaml.safe_load(Path(path).read_text()) or {}
+def _overlaid(document: dict, flavor: str) -> dict:
+    overlay = (document.get(flavor) or {}) if flavor else {}
+    if not overlay:
+        return document
+    merged = dict(document)
+    merged["roles"] = {**(document.get("roles") or {}), **(overlay.get("roles") or {})}
+    if "watches" in overlay:
+        merged["watches"] = overlay["watches"]
+    hosts = {name: dict(entry) for name, entry in (document.get("hosts") or {}).items()}
+    for name, entry in (overlay.get("hosts") or {}).items():
+        hosts[name] = {**hosts.get(name, {}), **(entry or {})}
+    merged["hosts"] = hosts
+    return merged
+
+def flavor_for(substrate: str) -> str:
+    return "openstack" if substrate.startswith("range.openstack") else ""
+
+def read(path: Path = DECLARATION, flavor: str = "") -> Declaration:
+    document = _overlaid(yaml.safe_load(Path(path).read_text()) or {}, flavor)
     entries = document.get("segments") or []
     origins = {entry["id"]: _origins(entry) for entry in entries}
     found = Declaration(
