@@ -7,8 +7,12 @@ from range.ports import RangeUnavailable
 
 TAG = "fsl.segment.id"
 KEYPAIR = "fsl-platform"
-INSIDE = {"estate": "10.30.0.0/24", "mgmt": "10.31.0.0/24"}
-NO_DEFAULT_ROUTE = {"mgmt"}
+MANAGEMENT = "mgmt"
+INSIDE = {"estate": "10.30.0.0/24", MANAGEMENT: "10.31.0.0/24"}
+NO_DEFAULT_ROUTE = {MANAGEMENT}
+RANGE_GROUP = "fsl-range"
+REACH_GROUP = "fsl-reach"
+GROUPS = (RANGE_GROUP, REACH_GROUP)
 
 @dataclass(frozen=True)
 class Subnet:
@@ -23,13 +27,16 @@ class Plan:
     networks: tuple[str, ...] = ()
     subnets: tuple[Subnet, ...] = ()
     keypair: bool = False
+    groups: tuple[str, ...] = ()
+    reach: bool = False
     present: tuple[str, ...] = ()
     drifted: tuple[str, ...] = ()
     leftovers: tuple[str, ...] = ()
 
     @property
     def clean(self) -> bool:
-        return not (self.networks or self.subnets or self.keypair or self.drifted)
+        return not (self.networks or self.subnets or self.keypair or self.groups
+                    or self.reach or self.drifted)
 
 def wanted(declaration: Declaration) -> tuple[Subnet, ...]:
     origins = {origin.id for origin in declaration.origins}
@@ -99,7 +106,7 @@ def _differs(found: dict, subnet: Subnet) -> list[str]:
     return differences
 
 def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list,
-         public_key: str) -> Plan:
+         public_key: str, groups: list = (), reached: bool = True) -> Plan:
     want, segments, bound, drifted, leftovers = _bound(declaration, networks)
     create, present = [], []
     for subnet in want:
@@ -128,21 +135,29 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
     key = next((k for k in keypairs if k["name"] == KEYPAIR), None)
     if key and not _same_key(key["public_key"], public_key):
         drifted.append(f"keypair {KEYPAIR} holds another public key")
+    named = {name: [g for g in groups if g["name"] == name] for name in GROUPS}
+    drifted += [
+        f"{len(found)} security groups are called {name}"
+        for name, found in named.items() if len(found) > 1
+    ]
     return Plan(
         networks=tuple(segment for segment in segments if segment not in bound),
         subnets=tuple(create),
         keypair=key is None,
+        groups=tuple(name for name, found in named.items() if not found),
+        reach=not reached,
         present=tuple(present),
         drifted=tuple(drifted),
         leftovers=tuple(leftovers),
     )
 
 def teardown(declaration: Declaration, networks: list, subnets: list,
-             keypairs: list) -> list[tuple[str, str]]:
+             keypairs: list, groups: list = ()) -> list[tuple[str, str]]:
     _, _, bound, _, _ = _bound(declaration, networks)
     owned = {network["id"] for network in bound.values()}
     return (
         [("subnet", s["id"]) for s in subnets if s["network_id"] in owned]
         + [("network", network_id) for network_id in owned]
         + [("keypair", k["name"]) for k in keypairs if k["name"] == KEYPAIR]
+        + [("group", g["id"]) for name in GROUPS for g in groups if g["name"] == name]
     )

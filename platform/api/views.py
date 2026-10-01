@@ -1038,6 +1038,8 @@ def _fabric_plan(plan):
             for s in plan.subnets
         ],
         "keypair": plan.keypair,
+        "groups": list(plan.groups),
+        "reach": plan.reach,
         "present": list(plan.present),
         "drifted": list(plan.drifted),
         "leftovers": list(plan.leftovers),

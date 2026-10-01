@@ -456,6 +456,14 @@ ends, then stops and snapshots it. The image carries the bundle's digest, so
 an edited script shows up as an image of another bundle rather than a
 silently stale one.
 
+The fabric also makes two security groups: `fsl-range`, which every range
+port joins and which lets any IPv4 in (the WAF defends the range, not
+Neutron; anti-spoofing stays on), and `fsl-reach`, which lets nothing in.
+The platform attaches itself to `mgmt` through a port in `fsl-reach`, found
+by its own server id (`FSL_OPENSTACK_PLATFORM`, written at boot), so it can
+ssh to every host while no host can open a connection to it. The runner
+reaches a host at its `mgmt` address unless the caller names a segment.
+
 
 ### Decided, not built: the range on OpenStack
 

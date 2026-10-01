@@ -18,6 +18,8 @@ class Built:
             networks=("internet",),
             subnets=(fabric.Subnet("internet", "fsl-us", "73.0.0.0/24", False, True),),
             keypair=True,
+            groups=("fsl-reach",),
+            reach=True,
             present=("fsl-estate",),
             leftovers=("network fsl-edge carries fsl.segment.id=edge, which the declaration does not name",),
         )
@@ -53,6 +55,7 @@ def test_reading_the_fabric_says_what_is_missing_and_what_is_left_over(client, b
         "dhcp": False, "gateway": True,
     }]
     assert answer["keypair"] is True and answer["clean"] is False
+    assert answer["groups"] == ["fsl-reach"] and answer["reach"] is True
     assert answer["leftovers"] and answer["present"] == ["fsl-estate"]
     assert built.ensured == 0
 

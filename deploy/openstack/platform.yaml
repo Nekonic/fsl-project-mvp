@@ -129,6 +129,15 @@ resources:
                   FSL_OPENSTACK_SSH_USER=ubuntu
                   FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
                   FSL_OPENSTACK_BUILD_NETWORK=%network%
+              - path: /etc/systemd/network/90-fsl-attached.network
+                content: |
+                  [Match]
+                  Name=en*
+                  [Network]
+                  DHCP=ipv4
+                  [DHCPv4]
+                  UseRoutes=false
+                  UseDNS=false
               - path: /root/compose.env
                 content: |
                   FSL_PUBLISH=%fixed_ip%
@@ -149,6 +158,8 @@ resources:
               - [git, clone, --branch, "%ref%", "%repository%", /opt/fsl]
               - [mv, /root/openstack.env, /opt/fsl/openstack.env]
               - [mv, /root/compose.env, /opt/fsl/.env]
+              - [sh, -c, "echo FSL_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/fsl/openstack.env"]
+              - [networkctl, reload]
               - [chown, -R, "ubuntu:ubuntu", /opt/fsl]
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]

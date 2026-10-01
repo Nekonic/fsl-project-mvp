@@ -97,6 +97,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
             "base_image": os.environ.get("FSL_OPENSTACK_BASE_IMAGE", "ubuntu-24.04"),
             "flavor": os.environ.get("FSL_OPENSTACK_FLAVOR", "m1.small"),
             "build_network": os.environ.get("FSL_OPENSTACK_BUILD_NETWORK", ""),
+            "platform": os.environ.get("FSL_OPENSTACK_PLATFORM", ""),
         },
     }.get(FSL_SUBSTRATE, {}),
     declared=RANGE,
