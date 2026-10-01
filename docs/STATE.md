@@ -25,7 +25,18 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
-Nothing half-finished. The last session left the tree green and committed.
+Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). Landed so
+far, green and committed: an OpenStack declaration **flavor**. `declaration.yaml`
+gains an `openstack:` overlay that `declared.read(flavor="openstack")` merges
+over the base; `declared.flavor_for()` picks it from `FSL_SUBSTRATE`, and
+`settings.RANGE` (and the console's topology view) use it. The Docker base is
+unchanged, so `bin/verify` stays green. In the OpenStack flavor `edge`=fsl-pfsense
+is the sensor (`watches: {sensor: edge}`), the WAF drops to estate+mgmt, and
+`fsl-pfsense` (prebuilt image `fsl-pfsense`) and `fsl-kali` are hosts. A host now
+declares a `setup:` script **or** a prebuilt `image:`, never both. Left in these
+steps: the slot booting pfSense/Kali, pfSense config over mgmt (interfaces, the
+origin .1 aliases, no-NAT pass of WAF:80, Suricata HOME_NET), the pfSense and
+Kali images, the log pipeline, and the cloud end-to-end run.
 
 ## Measured mechanics a change can break
 

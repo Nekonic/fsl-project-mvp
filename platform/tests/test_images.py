@@ -170,6 +170,30 @@ def test_what_cleaning_removes_is_leftovers_and_failures_never_a_ready_image():
 
     assert images.removable(plan) == [("image", "img-old"), ("server", "srv-wiki")]
 
+def test_a_prebuilt_image_the_cloud_already_holds_is_ready_with_no_builder():
+    glance = [{"id": "img-pf", "name": "fsl-pfsense", "status": "active"}]
+
+    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+    [found] = plan.images
+
+    assert found.host == "fsl-pfsense"
+    assert found.state == "ready" and found.image == "img-pf" and not found.builder
+    assert plan.clean
+
+def test_a_prebuilt_image_the_cloud_lacks_is_missing_and_names_what_to_build():
+    plan = images.plan((), [], [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+    [found] = plan.images
+
+    assert found.state == "missing" and "fsl-pfsense" in found.detail
+    assert not plan.clean
+
+def test_a_prebuilt_image_is_never_what_cleaning_removes():
+    glance = [{"id": "img-pf", "name": "fsl-pfsense", "status": "active"}]
+
+    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+
+    assert images.removable(plan) == []
+
 def test_every_host_with_an_image_is_one_the_range_gives_a_role():
     declaration = declared.read()
 

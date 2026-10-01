@@ -699,7 +699,8 @@ class OpenStack:
         bundles = self._bundles()
         plan = self._image_plan(bundles)
         made = {bundle.host: bundle for bundle in bundles}
-        missing = [found for found in plan.images if found.state == "missing"]
+        missing = [found for found in plan.images
+                   if found.state == "missing" and found.host in made]
         if missing:
             base = self._builder_base()
             for found in missing:
@@ -731,12 +732,22 @@ class OpenStack:
         return tuple(
             images.bundle(Path(self.build.source), host, entry.setup, entry.files)
             for host, entry in self.declared.hosts.items()
+            if entry.setup
+        )
+
+    def _prebuilt(self) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            (host, entry.image)
+            for host, entry in self.declared.hosts.items()
+            if entry.image
         )
 
     def _image_plan(self, bundles) -> images.Plan:
+        prebuilt = self._prebuilt()
+        names = {bundle.host for bundle in bundles} | {image for _, image in prebuilt}
         found = [
-            image for bundle in bundles
-            for image in self.get(self._call(IMAGES, name=quote(bundle.host))).get("images") or []
+            image for name in names
+            for image in self.get(self._call(IMAGES, name=quote(name))).get("images") or []
         ]
         digests = {bundle.digest for bundle in bundles}
         builders = [
@@ -749,7 +760,7 @@ class OpenStack:
             if server.get("status") == "ACTIVE"
             and server["metadata"].get(images.BUNDLE) in digests
         }
-        return images.plan(bundles, found, builders, consoles)
+        return images.plan(bundles, found, builders, consoles, prebuilt=prebuilt)
 
     def _console(self, server: str) -> str:
         try:
@@ -806,6 +817,7 @@ class OpenStack:
         group = next((g["id"] for g in groups if g["name"] == fabric.RANGE_GROUP), None)
         if group is None:
             raise Drifted(f"the fabric has no security group {fabric.RANGE_GROUP}; build the fabric first")
+        edge = slot.edge_of(self.declared)
         for port in plan.ports:
             body = {"network_id": bound[port.segment]["id"], "name": port.name,
                     "security_groups": [group]}
@@ -813,6 +825,8 @@ class OpenStack:
                 body["fixed_ips"] = [
                     {"subnet_id": subnet, "ip_address": address} for subnet, address in port.fixed_ips
                 ]
+            if port.host == edge and port.segment != fabric.MANAGEMENT:
+                body["allowed_address_pairs"] = [{"ip_address": "0.0.0.0/0"}]
             ports.append(self.get(self._call(CREATE_PORT), {"port": body})["port"])
         named = {port["name"]: port for port in ports if port.get("name")}
         names = {
@@ -826,20 +840,22 @@ class OpenStack:
         for host in plan.boot:
             entry = self.declared.hosts[host]
             facing = [named[slot.port_name(host, s)] for s in entry.segments if s in outside]
-            self.get(self._call(BOOT), {"server": {
+            server = {
                 "name": host, "imageRef": ready[host], "flavorRef": flavor,
                 "networks": [{"port": named[slot.port_name(host, s)]["id"]} for s in entry.segments],
                 "config_drive": True, "key_name": fabric.KEYPAIR,
-                "user_data": slot.user_data(
+                "metadata": {slot.HOST: host},
+            }
+            if not entry.image:
+                server["user_data"] = slot.user_data(
                     names,
                     mac=facing[0]["mac_address"] if facing else "",
                     addresses=tuple(
                         f"{fixed['ip_address']}/{prefixes[fixed['subnet_id']]}"
                         for port in facing for fixed in port["fixed_ips"]
                     ),
-                ),
-                "metadata": {slot.HOST: host},
-            }})
+                )
+            self.get(self._call(BOOT), {"server": server})
         self._shape = None
         return self._slot()[0]
 

@@ -138,8 +138,22 @@ def _state(bundle: Bundle, current: dict | None, builder: dict | None, consoles:
                      detail=(builder.get("fault") or {}).get("message", "") or "Nova put it in ERROR")
     return Image(**known, state="building", detail=f"since {builder.get('created', '')}")
 
-def plan(bundles, images: list, builders: list, consoles: dict) -> Plan:
+def _prebuilt_state(host: str, image_name: str, images: list) -> Image:
+    current = next(
+        (i for i in images if i.get("name") == image_name and i.get("status") == "active"),
+        None,
+    )
+    if current:
+        return Image(host=host, bundle="", state="ready", image=current["id"])
+    return Image(
+        host=host, bundle="", state="missing",
+        detail=f"the cloud holds no active image {image_name!r}; build it by hand "
+               f"(README) - this platform cannot build it from a script",
+    )
+
+def plan(bundles, images: list, builders: list, consoles: dict, prebuilt=()) -> Plan:
     found, leftovers = [], []
+    found += [_prebuilt_state(host, image_name, images) for host, image_name in prebuilt]
     hosts = {b.host for b in bundles}
     for made in bundles:
         named = [i for i in images if i.get("name") == made.host]
