@@ -301,8 +301,6 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   sits against "GeoIP is loaded once" (step 7 of backlog 2). Cloudflare
   Radar's shares are CC BY-NC 4.0, fine here, to be looked at before they
   move to the production repo.
-- **Getting pfSense CE**: its only installer comes from a $0 Netgate Store
-  checkout with an account, which the user has to do.
 - The reasoning behind the placement and the WAF console is in
   `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
   `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`.
@@ -570,8 +568,27 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      ("Guest does not have a console available"), so a builder that powered
      itself off could never say how its setup went.
 4. **pfSense CE** as the edge firewall with Suricata as its package; its logs
-   by syslog to Elasticsearch. Needs the user first: the installer comes only
-   from a $0 Netgate Store checkout with an account.
+   by syslog to Elasticsearch.
+   - **Done (2026-10-02): the image.** The user downloaded
+     `netgate-installer-v1.2-RELEASE-amd64.iso` and agreed to its notice
+     being accepted. Glance holds it as `netgate-installer` (with
+     `hw_rescue_device=cdrom`, `hw_rescue_bus=scsi`) and the result as
+     `fsl-pfsense`: pfSense CE 2.9.0-RELEASE on ZFS, WAN `vtnet0` by DHCP,
+     LAN `vtnet1` 192.168.1.1/24, default admin login, qcow2, 1.7 GB, min
+     disk 20, `hw_vif_model`/`hw_disk_bus` virtio, `os_distro=freebsd`. It
+     was installed by hand (README, "The pfSense image"): a member cannot
+     attach a blank disk here (no Cinder, no flavor with ephemeral disk), so
+     a cirros server was rescued from the ISO, which Nova's stable rescue
+     boots as a CD-ROM with the server's own disk still attached as
+     `vtbd0`; the installer went onto that, and the server was unrescued
+     and snapshotted. Installing CE asked for no account, only Internet
+     (the `fsl-platform` network). A second server booted from the image
+     came up to the console menu with its own device id.
+   - **Driving noVNC from the browser pane**: keys go through only as key
+     presses (`key`), not as typed text; click the canvas first.
+   - Left: pfSense in the range (WAN holding the origins' gateways, LAN
+     toward the WAF, without NAT), Suricata as its package with a custom
+     `HOME_NET`, logs by syslog to Elasticsearch, and the GUI pane.
 5. **Kali VM** holding the country addresses, with the source rewritten as
    packets leave.
 6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
