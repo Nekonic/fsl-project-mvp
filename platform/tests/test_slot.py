@@ -7,7 +7,7 @@ import yaml
 from range import declared, fabric, slot
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DECLARED = declared.read()
+DECLARED = declared.read(flavor="openstack")
 READY = {host: f"img-{host}" for host in DECLARED.hosts}
 
 def fabric_standing():
@@ -36,19 +36,31 @@ def test_an_empty_slot_boots_every_host_with_a_port_on_each_of_its_segments():
         f"{p.host}.{p.segment}" for p in plan.ports
     }
 
-def test_the_gateway_holds_every_origins_gateway_on_the_internet():
-    gateway = DECLARED.roles["gateway"]
+def test_the_edge_holds_every_origins_gateway_on_the_internet():
+    edge = DECLARED.roles["edge"]
 
-    [port] = [p for p in planned().ports if p.segment == "internet"]
+    [port] = [p for p in planned().ports if p.segment == "internet" and p.host == edge]
 
-    assert port.host == gateway
     assert sorted(address for _, address in port.fixed_ips) == sorted(
         o.subnet.replace("0/24", "1") for o in DECLARED.origins
     )
     assert {subnet for subnet, _ in port.fixed_ips} == {f"sub-fsl-{o.id}" for o in DECLARED.origins}
 
-def test_a_port_on_a_network_with_dhcp_takes_the_address_neutron_gives():
-    assert all(not p.fixed_ips for p in planned().ports if p.segment != "internet")
+def test_the_edge_holds_the_estate_gateway_so_the_estate_routes_through_it():
+    edge = DECLARED.roles["edge"]
+
+    [port] = [p for p in planned().ports if p.host == edge and p.segment == "estate"]
+
+    assert [address for _, address in port.fixed_ips] == ["10.30.0.1"], (
+        "the estate's hosts default-route to the edge, so the edge has to "
+        "answer at the estate's gateway address"
+    )
+
+def test_only_the_edge_uses_fixed_addresses_every_other_host_takes_what_neutron_gives():
+    edge = DECLARED.roles["edge"]
+
+    assert all(not p.fixed_ips for p in planned().ports if p.host != edge)
+    assert all(not p.fixed_ips for p in planned().ports if p.segment == fabric.MANAGEMENT)
 
 def test_a_host_standing_is_not_booted_again_and_its_ports_stay():
     servers = [{"id": "srv-1", "name": "fsl-wiki", "status": "ACTIVE",
@@ -81,14 +93,27 @@ def test_a_fabric_without_a_segment_blocks_the_slot_by_name():
 
     assert any("estate" in reason for reason in plan.blocked)
 
-def test_only_the_gateway_may_stand_on_the_internet_for_now(tmp_path):
+def test_the_attacker_stands_on_the_internet_beside_the_edge():
+    attacker = DECLARED.roles["attacker"]
+
+    plan = planned()
+
+    assert attacker in plan.boot
+    assert ("fsl-kali", "internet") in {(p.host, p.segment) for p in plan.ports}
+    assert not any("fsl-kali" in reason for reason in plan.blocked)
+
+def test_the_waf_no_longer_stands_on_the_internet():
+    assert "internet" not in DECLARED.hosts["fsl-waf"].segments
+    assert not [p for p in planned().ports if p.host == "fsl-waf" and p.segment == "internet"]
+
+def test_a_host_that_is_neither_edge_nor_attacker_may_not_stand_on_the_internet(tmp_path):
     document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
-    document["hosts"]["fsl-wiki"]["segments"].append("internet")
+    document["openstack"]["hosts"]["fsl-wiki"] = {"segments": ["estate", "mgmt", "internet"]}
     path = tmp_path / "declaration.yaml"
     path.write_text(yaml.safe_dump(document))
     networks, subnets = fabric_standing()
 
-    plan = slot.plan(declared.read(path), networks, subnets, [], [], READY)
+    plan = slot.plan(declared.read(path, flavor="openstack"), networks, subnets, [], [], READY)
 
     assert any("fsl-wiki" in reason and "internet" in reason for reason in plan.blocked)
 

@@ -14,10 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 DECLARED = declared.read()
 
 class Cloud:
-    def __init__(self):
+    def __init__(self, decl=DECLARED, source=ROOT):
+        self.decl = decl
         self.ids = itertools.count(1)
         self.networks, self.subnets = [], []
-        for want in fabric.wanted(DECLARED):
+        for want in fabric.wanted(decl):
             net_id = f"net-{want.segment}"
             if not any(n["id"] == net_id for n in self.networks):
                 self.networks.append({"id": net_id, "name": f"fsl-{want.segment}",
@@ -30,14 +31,18 @@ class Cloud:
         self.groups = [{"id": "sg-range", "name": fabric.RANGE_GROUP},
                        {"id": "sg-reach", "name": fabric.REACH_GROUP}]
         self.images = [{"id": "img-ubuntu", "name": "ubuntu-24.04", "status": "active"}]
-        for host, entry in DECLARED.hosts.items():
-            digest = images.bundle(ROOT, host, entry.setup, entry.files).digest
+        for host, entry in decl.hosts.items():
+            if entry.image:
+                self.images.append({"id": f"img-{host}", "name": entry.image, "status": "active"})
+                continue
+            digest = images.bundle(source, host, entry.setup, entry.files).digest
             self.images.append({"id": f"img-{host}", "name": host, "status": "active",
                                 images.BUNDLE: digest})
         self.ports, self.servers, self.calls = [], [], []
 
     def allocate(self, network_id):
-        [subnet] = [s for s in self.subnets if s["network_id"] == network_id and s["enable_dhcp"]]
+        on_net = [s for s in self.subnets if s["network_id"] == network_id]
+        subnet = next((s for s in on_net if s["enable_dhcp"]), on_net[0])
         taken = {f["ip_address"] for p in self.ports for f in p["fixed_ips"]}
         hosts = ipaddress.ip_network(subnet["cidr"]).hosts()
         free = next(str(a) for a in itertools.islice(hosts, 10, None) if str(a) not in taken)
@@ -101,10 +106,75 @@ SPEC = openstack.Cloud(
 def cloud():
     return Cloud()
 
-def adapter(cloud):
+def adapter(cloud, decl=DECLARED):
     build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", flavor="m1.small",
                             network="net-platform", platform="srv-platform")
-    return openstack.OpenStack(DECLARED, SPEC, get=cloud, build=build)
+    return openstack.OpenStack(decl, SPEC, get=cloud, build=build)
+
+def edge_declaration():
+    from range.declared import Declaration, Host, Origin, Segment
+
+    return Declaration(
+        segments=(
+            Segment(id="ru", name="Internet", origin="Russia"),
+            Segment(id="estate", name="Estate"),
+            Segment(id="mgmt", name="Management"),
+        ),
+        origins=(Origin(id="ru", label="Russia", country="RU",
+                        subnet="5.188.10.0/24", share=1.0, addresses=1, segment="ru"),),
+        roles={"edge": "fsl-pf", "gateway": "fsl-waf", "attacker": "fsl-kali",
+               "sensor": "fsl-pf", "scorer": "fsl-platform", "target": "fsl-shop"},
+        watches={"sensor": "edge"},
+        hosts={
+            "fsl-pf": Host(image="pf-base", segments=("ru", "estate", "mgmt")),
+            "fsl-waf": Host(setup="waf/setup.sh", files=("waf",), segments=("estate", "mgmt")),
+            "fsl-kali": Host(setup="waf/setup.sh", files=("waf",), segments=("ru", "mgmt")),
+        },
+        default_origin="ru",
+    )
+
+def test_the_prebuilt_edge_boots_from_its_image_with_no_cloud_init(tmp_path):
+    (tmp_path / "waf").mkdir()
+    (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
+    decl = edge_declaration()
+    cloud = Cloud(decl, source=tmp_path)
+    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04",
+                            flavor="m1.small", network="net-platform", platform="srv-platform")
+
+    openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_slot()
+
+    pf = cloud.booted("fsl-pf")
+    assert pf["imageRef"] == "img-fsl-pf"
+    assert "user_data" not in pf or not pf["user_data"], (
+        "pfSense is FreeBSD and runs no cloud-init; a Linux cloud-config would "
+        "be ignored at best and the platform configures it over ssh instead"
+    )
+    assert cloud.booted("fsl-waf")["user_data"], "the Linux hosts still learn names"
+
+def test_the_edge_forwarding_ports_may_carry_any_source_so_it_can_route_un_natted(tmp_path):
+    (tmp_path / "waf").mkdir()
+    (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
+    decl = edge_declaration()
+    cloud = Cloud(decl, source=tmp_path)
+    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04",
+                            flavor="m1.small", network="net-platform", platform="srv-platform")
+
+    openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_slot()
+
+    pairs = {"0.0.0.0/0"}
+    for segment in ("ru", "estate"):
+        port = cloud.port(f"fsl-pf.{segment}")
+        assert {p["ip_address"] for p in port.get("allowed_address_pairs") or []} == pairs, (
+            f"the edge routes packets whose source is not its own on {segment}; "
+            f"Neutron anti-spoofing drops those without an address pair"
+        )
+    mgmt = cloud.port("fsl-pf.mgmt")
+    assert not mgmt.get("allowed_address_pairs"), (
+        "management carries no forwarded traffic, so it keeps strict anti-spoofing"
+    )
+    assert not cloud.port("fsl-waf.estate").get("allowed_address_pairs"), (
+        "a backend host sends only as itself"
+    )
 
 def test_every_host_boots_from_its_own_image_on_its_own_ports(cloud):
     adapter(cloud).ensure_slot()

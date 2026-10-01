@@ -11,6 +11,8 @@ from range.declared import Declaration
 
 HOST = "fsl_host"
 GATEWAY_ROLE = "gateway"
+EDGE_ROLE = "edge"
+ATTACKER_ROLE = "attacker"
 NAMED_ON = "estate"
 
 @dataclass(frozen=True)
@@ -34,20 +36,22 @@ class Plan:
 def port_name(host: str, segment: str) -> str:
     return f"{host}.{segment}"
 
-def _gateways(declaration: Declaration, network: dict, subnets: list) -> tuple[tuple[str, str], ...]:
-    declared = {origin.subnet for origin in declaration.origins}
+def _gateways(network: dict, subnets: list) -> tuple[tuple[str, str], ...]:
     return tuple(
         (subnet["id"], subnet["gateway_ip"])
         for subnet in subnets
-        if subnet["network_id"] == network["id"] and subnet["cidr"] in declared
-        and subnet.get("gateway_ip")
+        if subnet["network_id"] == network["id"] and subnet.get("gateway_ip")
     )
+
+def edge_of(declaration: Declaration) -> str:
+    return declaration.roles.get(EDGE_ROLE) or declaration.roles.get(GATEWAY_ROLE, "")
 
 def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
          servers: list, ready: dict) -> Plan:
     bound = fabric.bound(declaration, networks)
     outside = {origin.segment for origin in declaration.origins}
-    gateway = declaration.roles.get(GATEWAY_ROLE, "")
+    edge = edge_of(declaration)
+    may_stand_outside = {host for host in (edge, declaration.roles.get(ATTACKER_ROLE, "")) if host}
     named = {(port.get("network_id"), port.get("name")) for port in ports}
     boot, create, standing, blocked = [], [], [], []
     for host, entry in declaration.hosts.items():
@@ -66,9 +70,9 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
         if fabric.MANAGEMENT not in entry.segments:
             reasons.append(f"{host} is not on {fabric.MANAGEMENT}, where the platform reaches it")
         reasons += [
-            f"{host} is declared on {segment}, where only the gateway stands until "
-            f"the attacker VM is built"
-            for segment in entry.segments if segment in outside and host != gateway
+            f"{host} is declared on {segment}, where only the edge and the "
+            f"attacker stand"
+            for segment in entry.segments if segment in outside and host not in may_stand_outside
         ]
         if reasons:
             blocked += reasons
@@ -78,7 +82,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
             name = port_name(host, segment)
             if (bound[segment]["id"], name) in named:
                 continue
-            fixed = _gateways(declaration, bound[segment], subnets) if segment in outside else ()
+            fixed = _gateways(bound[segment], subnets) if host == edge else ()
             create.append(Port(host=host, segment=segment, name=name, fixed_ips=fixed))
     return Plan(boot=tuple(boot), ports=tuple(create), standing=tuple(standing),
                 blocked=tuple(blocked))
