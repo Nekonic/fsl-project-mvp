@@ -1028,3 +1028,34 @@ def apply_rules(request):
     _apply(content)
     ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))
+
+def _fabric_plan(plan):
+    return {
+        "networks": list(plan.networks),
+        "subnets": [
+            {"segment": s.segment, "name": s.name, "cidr": s.cidr,
+             "dhcp": s.dhcp, "gateway": s.gateway}
+            for s in plan.subnets
+        ],
+        "keypair": plan.keypair,
+        "present": list(plan.present),
+        "drifted": list(plan.drifted),
+        "leftovers": list(plan.leftovers),
+        "clean": plan.clean,
+    }
+
+@require_http_methods(["GET", "POST", "DELETE"])
+def range_fabric(request):
+    adapter = substrate()
+    if not hasattr(adapter, "plan_fabric"):
+        raise Conflict(
+            "compose builds this range; the fabric is built through the "
+            "OpenStack API only"
+        )
+    if request.method == "GET":
+        return _reply(_fabric_plan(adapter.plan_fabric()))
+    with RULE_CHANGES:
+        if request.method == "POST":
+            return _reply(_fabric_plan(adapter.ensure_fabric()))
+        removed = adapter.teardown_fabric()
+    return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})

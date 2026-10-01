@@ -13,6 +13,9 @@ _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 class RangeUnavailable(RuntimeError):
     pass
 
+class Drifted(RuntimeError):
+    pass
+
 @dataclass(frozen=True)
 class Ran:
     exit_code: int

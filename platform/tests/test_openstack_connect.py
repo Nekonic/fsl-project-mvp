@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import os
 import pathlib
@@ -24,17 +25,34 @@ class Cloud:
     def handler(self):
         cloud = self
         declaration = declared.read()
-        numbered = {f"net-{s.id}": n for n, s in enumerate(declaration.segments)}
+        origins = {o.id: o for o in declaration.origins}
+        carriers = list(dict.fromkeys(
+            origins[s.id].segment if s.id in origins else s.id for s in declaration.segments
+        ))
+        numbered = {f"net-{c}": n for n, c in enumerate(carriers)}
+
+        def allocated(network_id):
+            carrier = network_id.removeprefix("net-")
+            if carrier in {o.segment for o in origins.values()}:
+                return [
+                    {"cidr": o.subnet, "gateway_ip": str(next(ipaddress.ip_network(o.subnet).hosts()))}
+                    for o in origins.values() if o.segment == carrier
+                ]
+            n = numbered[network_id]
+            return [{"cidr": f"198.51.{n}.0/24", "gateway_ip": f"198.51.{n}.1"}]
 
         def standing(role, host):
             return {
                 "id": role, "name": declaration.roles[role],
                 "addresses": {
-                    f"range-{s.id}": [{
-                        "addr": f"198.51.{numbered[f'net-{s.id}']}.{host}",
-                        openstack.FIXED: "fixed",
-                    }]
-                    for s in declaration.segments if s.origin
+                    f"range-{origin.segment}": [
+                        {
+                            "addr": str(list(ipaddress.ip_network(o.subnet).hosts())[host - 1]),
+                            openstack.FIXED: "fixed",
+                        }
+                        for o in origins.values()
+                    ]
+                    for origin in list(origins.values())[:1]
                 },
             }
 
@@ -70,15 +88,12 @@ class Cloud:
                     return self._send(404, {"error": self.path})
                 if "/v2.0/networks" in self.path:
                     return self._send(200, {"networks": [
-                        {"id": f"net-{s.id}", "name": f"range-{s.id}",
-                         "tags": [f"{openstack.SEGMENT_TAG}={s.id}"]}
-                        for s in declaration.segments
+                        {"id": f"net-{c}", "name": f"range-{c}",
+                         "tags": [f"{openstack.SEGMENT_TAG}={c}"]}
+                        for c in carriers
                     ]})
                 if "/v2.0/subnets" in self.path:
-                    n = numbered[self.path.rsplit("=", 1)[1]]
-                    return self._send(200, {"subnets": [
-                        {"cidr": f"198.51.{n}.0/24", "gateway_ip": f"198.51.{n}.1"}
-                    ]})
+                    return self._send(200, {"subnets": allocated(self.path.rsplit("=", 1)[1])})
                 if "/servers/detail" in self.path:
                     return self._send(200, {"servers": [
                         standing("proxy", 5), standing("gateway", 4),

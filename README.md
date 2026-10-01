@@ -177,10 +177,21 @@ On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
 `bin/backup` and the restore below there. `systemctl status fsl-platform`
 shows how the last boot's bring-up went.
 
+With the password in, the platform builds the range's networks through its
+own API, from the VM:
+
+```bash
+ssh ubuntu@ADDRESS 'curl -s -X POST -H "Content-Type: application/json" -d "{}" http://127.0.0.1:8000/api/range/fabric/'
+```
+
+`GET` on the same path shows what is missing, present, drifted or left
+over, and `DELETE` takes it down, refused while a server stands on it.
+
 `openstack stack delete fsl-platform` removes all of it.
 
-`bin/openstack-range up|down`, run on the cloud host with the project's
-openrc, builds a stand-in range on the same cloud: the `fsl-claude` keypair
+`bin/openstack-range up|down`, the stand-in the fabric replaces, run on the
+cloud host with the project's openrc, builds a stand-in range on the same
+cloud: the `fsl-claude` keypair
 that `key_name` defaults to (from `FSL_RANGE_PUBLIC_KEY`), security group
 `fsl-sg` (tcp 22, 80 and 3000, and ICMP), six networks `fsl-<id>` tagged
 `fsl.segment.id=<id>` with compose's subnets, and the server `fsl-juice-shop`.

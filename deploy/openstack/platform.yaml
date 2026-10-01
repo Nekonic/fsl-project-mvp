@@ -117,6 +117,7 @@ resources:
               - path: /root/openstack.env
                 permissions: "0600"
                 content: |
+                  FSL_SUBSTRATE=range.openstack.connect
                   FSL_OPENSTACK_KEYSTONE=%keystone%
                   FSL_OPENSTACK_USER=%user%
                   FSL_OPENSTACK_PROJECT=%project%

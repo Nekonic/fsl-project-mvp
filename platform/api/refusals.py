@@ -5,7 +5,7 @@ import attacker
 import objectives
 import operator_log
 from ingest.elastic import ElasticUnavailable
-from range.ports import RangeUnavailable
+from range.ports import Drifted, RangeUnavailable
 from rules.suricata import RuleApplyError, RulesUnreadable
 
 UNAVAILABLE = (
@@ -35,7 +35,7 @@ class Refusals:
             return JsonResponse({"detail": str(exception)}, status=503)
         if isinstance(exception, (BadRequest, RuleApplyError)):
             return JsonResponse({"detail": str(exception)}, status=400)
-        if isinstance(exception, Conflict):
+        if isinstance(exception, (Conflict, Drifted)):
             return JsonResponse({"detail": str(exception)}, status=409)
         return None
 
