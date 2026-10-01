@@ -59,7 +59,7 @@ ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
 ATTACKER_ORIGIN_FILE = os.environ.get("ATTACKER_ORIGIN_FILE", "/label/origin")
-ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "http://localhost:7681")
+ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "/terminal/")
 
 TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
 PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")

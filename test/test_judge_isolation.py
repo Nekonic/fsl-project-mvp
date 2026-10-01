@@ -5,7 +5,7 @@ import pytest
 
 from range import ATTACKER, WIKI, run
 
-PUBLISHED = {8000: "the scoring API", 9200: "Elasticsearch", 7681: "the attacker's shell", 8080: "the front door"}
+PUBLISHED = {8000: "the scoring API", 9200: "Elasticsearch", 8080: "the front door"}
 
 
 def gateway_of(role: str) -> str:

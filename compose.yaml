@@ -161,8 +161,6 @@ services:
     build: ./deploy/kali
     container_name: fsl-kali
     networks: [edge]
-    ports:
-      - "127.0.0.1:7681:7681"
     volumes:
       - ./data/label:/label:ro
     init: true

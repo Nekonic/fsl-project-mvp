@@ -85,6 +85,13 @@ Nothing half-finished. The last session left the tree green and committed.
   machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
   `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at `*`
   DNS rebinding passed the same-origin check, which trusts the request's Host.
+- **nginx inside the platform's image owns 8000.** waitress listens on
+  `127.0.0.1:8001` and takes the client from `X-Forwarded-For`, which nginx
+  sets to `$remote_addr` and waitress trusts only from `127.0.0.1`; anything
+  that reads `REMOTE_ADDR` sees the real client. `/terminal/` goes to ttyd
+  only after `auth_request` to `/api/attacker/` answers 2xx; a 403 passes
+  through, and any other answer (Django's 400 for a Host it does not allow)
+  becomes nginx's 500, still refused.
 - **The platform refuses any address standing in the range** (403;
   participants cached 30 s). The operator arrives from a segment's gateway
   (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
@@ -254,10 +261,11 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   already is. Horizon is never shown to users.
 - **One published port (2026-10-01)**: everything happens on the website, so
   the platform's port is the only one published. The terminal, and Kibana
-  when it comes, are reached through it by path. 8080 and 9200 are used only
-  by the command-line cases and the acceptance suite; they stop being
-  published and those reach the target and Elasticsearch from inside the
-  range, through `test/range.py`'s runner.
+  when it comes, are reached through it by path. 9200 stays published for
+  the acceptance suite, which is all that uses it (the user, 2026-10-01).
+  8080 is used only by the command-line cases and the acceptance suite; it
+  stops being published and those reach the target from inside the range,
+  through `test/range.py`'s runner.
 - **Session start/stop and the scoreboard stay on the landing page `/`**,
   outside the sidebar; the sidebar is only the work screen.
 - **Tap-as-a-Service is dropped from the design**: it was there for a sensor
@@ -416,13 +424,14 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
 6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
    read-only blue role), the pfSense pane through a kiosk browser VM's noVNC
    console, and ttyd, all behind the platform's one published port, with no
-   service or package added. ttyd speaks WebSocket, which waitress cannot
-   carry, so nginx (from apt) runs inside the platform's image on 8000: `/`
-   to waitress on `127.0.0.1`, `/terminal/` to `kali:7681` (ttyd `-b
-   /terminal`). waitress trusts only `127.0.0.1` for `X-Forwarded-For`, so the
-   refusal of range addresses reads the real client as before, and the
-   terminal path asks the platform the same question first. Acceptance and
-   the command-line cases stop using 8080 and 9200.
+   service or package added. **The terminal is done (2026-10-01):** nginx
+   (from apt) runs inside the platform's image on 8000, `/` to waitress on
+   `127.0.0.1:8001`, `/terminal/` to `kali:7681` (ttyd `-b /terminal`), and
+   7681 is no longer published. waitress trusts only `127.0.0.1` for
+   `X-Forwarded-For`, so the refusal of range addresses reads the real client
+   as before; `/terminal/` asks `/api/attacker/` first (`auth_request`), and
+   acceptance checks that a range host gets 403 there. Left: Kibana, the
+   pfSense pane, and acceptance and the command-line cases off 8080.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
 
@@ -436,7 +445,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
 - `test_declaration.py` compares two files, never the running range.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
-- The Kali terminal on 7681 is an unauthenticated root shell, loopback only.
+- The Kali terminal at `/terminal/` is an unauthenticated root shell to
+  whoever reaches the platform's port, which is published on loopback only.
 - `elastic.fetch` reads at most 5000 documents per ingest, oldest first, `http`
   records included (a three-day window read 5000 of 42,231). Truncation drops
   the newest: the last cases fired become FN and the last benign ones TN, so a

@@ -29,4 +29,4 @@ RUN mkdir -p /var/log/fsl \
 WORKDIR /root
 
 EXPOSE 7681
-CMD ["ttyd", "-W", "-p", "7681", "bash"]
+CMD ["ttyd", "-W", "-b", "/terminal", "-p", "7681", "bash"]
