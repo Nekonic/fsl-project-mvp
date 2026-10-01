@@ -53,6 +53,10 @@ networks:
       config:
         - subnet: 172.31.0.0/24
 
+include:
+  - wargames/juice-shop/compose.yaml
+  - wargames/board/compose.yaml
+
 volumes:
   esdata:
   filebeatdata:
@@ -60,75 +64,6 @@ volumes:
   waflogs:
 
 services:
-  juice-shop:
-    platform: linux/amd64
-    image: bkimminich/juice-shop@sha256:73c53fbf442e8337b3ea3d98c7e8550308854701ebdfce4cc39768f36b75430e
-    container_name: fsl-juice-shop
-    networks: [estate]
-    healthcheck:
-      test:
-        - CMD
-        - /nodejs/bin/node
-        - -e
-        - "require('http').get('http://127.0.0.1:3000/rest/admin/application-version',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 30s
-
-  board:
-    platform: linux/amd64
-    build: ./deploy/board
-    container_name: fsl-board
-    depends_on:
-      board-db: {condition: service_healthy}
-    networks: [estate]
-    environment:
-      BOARD_DB_HOST: "board-db"
-      BOARD_DB_NAME: "board"
-      BOARD_DB_USER: "board"
-      BOARD_DB_PASSWORD: "board"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).status==200 else 1)"]
-      interval: 10s
-      timeout: 5s
-      retries: 24
-      start_period: 40s
-
-  board-db:
-    platform: linux/amd64
-    image: mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
-    container_name: fsl-board-db
-    networks: [estate]
-    environment:
-      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
-      MYSQL_DATABASE: "board"
-      MYSQL_USER: "board"
-      MYSQL_PASSWORD: "board"
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uboard", "-pboard"]
-      interval: 10s
-      timeout: 5s
-      retries: 24
-      start_period: 30s
-
-  wiki:
-    platform: linux/amd64
-    image: nginx@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
-    container_name: fsl-wiki
-    networks:
-      estate:
-        aliases: [wiki.internal]
-    volumes:
-      - ./deploy/wiki/site:/usr/share/nginx/html:ro
-      - ./deploy/wiki/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./deploy/wiki/logs:/var/log/nginx
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   waf:
     platform: linux/amd64
     image: owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05

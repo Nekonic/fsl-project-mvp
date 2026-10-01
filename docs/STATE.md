@@ -98,7 +98,8 @@ Nothing half-finished. The last session left the tree green and committed.
   refuses a stack another checkout brought up, and prunes only the sessions its
   run listed in `FSL_ACCEPTANCE_SESSIONS`.
 - **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
-  an untracked file. It refuses a compose override or `include:`, counts only
+  an untracked file. It refuses a compose override, follows a block-style
+  `include:` of plain paths (each wargame's file), counts only
   tests pytest collects and refuses duplicate names. It counts physical lines,
   so joining a wrapped line "shrinks" core: never do that.
 
@@ -297,6 +298,10 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Two targets**: Juice Shop (judged — it flips its own `solved`) and a
   detection-only Django board on MySQL behind the WAF as `board.com`.
   `objectives.py` reads per scenario; a board session lists no objectives.
+  Each wargame is one folder, `wargames/<id>/`, whose `compose.yaml` the top
+  one includes: `juice-shop` holds Juice Shop and the wiki its SSRF reaches,
+  `board` the board and its MySQL. A test holds the folders, the includes and
+  the console's catalogue to each other.
 - **Score**: objectives (target-decided) beside detection TP/FP/FN/TN with the
   `corroborated` gate; the zero-sum game score is being layered on (backlog 1).
 - **Console**: one blue console (Dashboard, Live, Scoreboard, Rules), light

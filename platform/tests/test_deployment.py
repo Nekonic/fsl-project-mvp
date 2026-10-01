@@ -3,6 +3,8 @@ import pathlib
 import subprocess
 import sys
 
+from tests import composed
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 DOCKERFILE = ROOT / "platform/Dockerfile"
 ENTRYPOINT = ROOT / "platform/entrypoint.sh"
@@ -169,7 +171,7 @@ def test_no_setting_is_read_by_nothing():
     used = "\n".join(
         path.read_text() for path in root.rglob("*.py")
         if path.name != "settings.py" and path.parent.name != "tests"
-    ) + (root.parent / "compose.yaml").read_text()
+    ) + composed.text()
 
     unread = sorted(
         name for name in declared
@@ -183,9 +185,7 @@ def test_no_setting_is_read_by_nothing():
     )
 
 def test_the_wiki_is_checked_on_an_address_it_actually_listens_on():
-    import yaml
-
-    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    compose = composed.document()
     check = " ".join(compose["services"]["wiki"]["healthcheck"]["test"])
 
     assert "localhost" not in check, (
@@ -198,9 +198,7 @@ def test_the_wiki_is_checked_on_an_address_it_actually_listens_on():
 def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
     import re
 
-    import yaml
-
-    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    compose = composed.document()
     check = " ".join(compose["services"]["waf"]["healthcheck"]["test"])
     host = re.search(r"https?://([^/\s\"]+)", check)
 

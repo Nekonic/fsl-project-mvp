@@ -15,12 +15,16 @@ mechanically. The objective score was added on top once that held.
 
 ## The range
 
-Eleven compose services on six Docker networks.
+Eleven compose services on six Docker networks. The targets are grouped by
+wargame, one folder each under `wargames/`, whose `compose.yaml` the top
+`compose.yaml` includes: `juice-shop` (Juice Shop and the wiki its SSRF
+reaches) and `board` (the board and its MySQL). A new wargame is a new folder
+and one more `include:` line; the measure counts the services it adds.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
 | `fsl-juice-shop` | `bkimminich/juice-shop` | estate | |
-| `fsl-board` | `deploy/board` (Django under gunicorn, port 8000) | estate | |
+| `fsl-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
 | `fsl-board-db` | `mysql` | estate | |
 | `fsl-wiki` | `nginx`, alias `wiki.internal` | estate | |
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `shop.com` on edge, `board.com` on all four edge networks | edge, edge-br, edge-hk, edge-kp, estate | 8080 |

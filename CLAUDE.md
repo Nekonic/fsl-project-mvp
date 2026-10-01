@@ -170,6 +170,7 @@ how suppression works.
 | `platform/attacker.py` | the only file that knows the attacker box and its marker |
 | `redteam/` | attack execution and ground truth |
 | `deploy/`, `compose.yaml` | the stack |
+| `wargames/<id>/` | one wargame each: its services (`compose.yaml`, included by the top one) and their files |
 | `test/` | acceptance criteria, over HTTP only |
 
 `platform/` is **not** a Python package — `platform` is a stdlib module name.
