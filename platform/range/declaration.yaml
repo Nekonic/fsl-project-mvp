@@ -58,3 +58,17 @@ roles:
 
 watches:
   sensor: gateway
+
+hosts:
+  fsl-waf:
+    setup: deploy/waf/setup.sh
+    files: [deploy/waf]
+  fsl-juice-shop:
+    setup: wargames/juice-shop/shop/setup.sh
+    files: [wargames/juice-shop/shop]
+  fsl-wiki:
+    setup: wargames/juice-shop/wiki/setup.sh
+    files: [wargames/juice-shop/wiki/nginx.conf, wargames/juice-shop/wiki/site]
+  fsl-board:
+    setup: wargames/board/image/setup.sh
+    files: [wargames/board/image, wargames/board/app]

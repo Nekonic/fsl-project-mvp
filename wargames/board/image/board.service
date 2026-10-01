@@ -1,0 +1,15 @@
+[Unit]
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+User=board
+WorkingDirectory=/opt/board
+Environment=BOARD_DB_HOST=localhost
+Environment=PATH=/opt/board/venv/bin:/usr/bin:/bin
+ExecStart=/opt/board/entrypoint.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

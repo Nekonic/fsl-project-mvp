@@ -195,6 +195,7 @@ services:
       TARGET_URL: "http://shop.com"
       PUBLIC_TARGET_URL: "http://shop.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
+      FSL_SOURCE: "/src"
     env_file:
       - path: ./openstack.env
         required: false
@@ -203,5 +204,7 @@ services:
       - ./platform:/app
       - ./redteam:/app/redteam:ro
       - ./deploy/elastic:/app/deploy/elastic:ro
+      - ./deploy:/src/deploy:ro
+      - ./wargames:/src/wargames:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - platformdata:/data

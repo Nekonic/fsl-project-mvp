@@ -106,6 +106,7 @@ resources:
             "%mtu%": {get_attr: [network, mtu]}
             "%fixed_ip%": {get_attr: [port, fixed_ips, 0, ip_address]}
             "%floating_ip%": {get_attr: [floating_ip, floating_ip_address]}
+            "%network%": {get_resource: network}
           template: |
             #cloud-config
             package_update: true
@@ -127,6 +128,7 @@ resources:
                   FSL_OPENSTACK_PROJECT=%project%
                   FSL_OPENSTACK_SSH_USER=ubuntu
                   FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
+                  FSL_OPENSTACK_BUILD_NETWORK=%network%
               - path: /root/compose.env
                 content: |
                   FSL_PUBLISH=%fixed_ip%

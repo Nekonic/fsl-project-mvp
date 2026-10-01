@@ -144,7 +144,33 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
 
     assert names == {
         SETTINGS[name] for name in REQUIRED_BY_CONNECT if name != "password"
-    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS"}, names
+    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", SETTINGS["build_network"]}, names
+
+def test_images_are_built_on_the_platforms_own_network_which_reaches_the_internet():
+    [server] = resources_of("OS::Nova::Server")
+    bound = server["user_data"]["str_replace"]["params"]
+    lines = written_credentials()["content"].splitlines()
+
+    assert f"{SETTINGS['build_network']}=%network%" in lines
+    assert bound["%network%"] == {"get_resource": "network"}
+    [router] = resources_of("OS::Neutron::Router")
+    assert router["external_gateway_info"], (
+        "a builder downloads its packages; on a network with no way out its "
+        "setup fails at the first apt-get"
+    )
+
+def test_the_platform_reads_the_image_sources_it_bundles():
+    service = platform_service()
+    source = service["environment"]["FSL_SOURCE"]
+    mounted = {
+        volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
+    }
+    from range import declared
+
+    for host, entry in declared.read().hosts.items():
+        for path in (entry.setup, *entry.files):
+            assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
+                       for m in mounted), (host, path)
 
 def test_the_platform_on_the_vm_builds_and_reads_the_cloud_range():
     lines = written_credentials()["content"].splitlines()

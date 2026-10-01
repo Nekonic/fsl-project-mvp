@@ -26,11 +26,17 @@ class Origin:
     segment: str
 
 @dataclass(frozen=True)
+class Host:
+    setup: str
+    files: tuple[str, ...] = ()
+
+@dataclass(frozen=True)
 class Declaration:
     segments: tuple[Segment, ...] = ()
     origins: tuple[Origin, ...] = ()
     roles: dict[str, str] = field(default_factory=dict)
     watches: dict[str, str] = field(default_factory=dict)
+    hosts: dict[str, Host] = field(default_factory=dict)
     default_origin: str = ""
     defended_site: Site | None = None
 
@@ -48,6 +54,12 @@ class Declaration:
                     f"{sensing!r} is declared to watch {sensed!r} and nothing "
                     f"fills {', '.join(sorted(missing))}"
                 )
+        roleless = sorted(set(self.hosts) - set(self.roles.values()))
+        if roleless:
+            raise ValueError(
+                f"{', '.join(roleless)} would be built as an image and no role "
+                f"names it, so nothing in the range would ever reach it"
+            )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
             raise ValueError(
@@ -102,6 +114,12 @@ def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
         return tuple(Segment(id=o.id, name=name, origin=o.label) for o in origins)
     return (Segment(id=entry["id"], name=name, origin=entry.get("origin") or ""),)
 
+def _hosts(entries) -> dict[str, Host]:
+    return {
+        name: Host(setup=entry["setup"], files=tuple(entry.get("files") or ()))
+        for name, entry in (entries or {}).items()
+    }
+
 def read(path: Path = DECLARATION) -> Declaration:
     document = yaml.safe_load(Path(path).read_text()) or {}
     entries = document.get("segments") or []
@@ -115,6 +133,7 @@ def read(path: Path = DECLARATION) -> Declaration:
         origins=tuple(origin for entry in entries for origin in origins[entry["id"]]),
         roles=dict(document.get("roles") or {}),
         watches=dict(document.get("watches") or {}),
+        hosts=_hosts(document.get("hosts")),
         default_origin=document.get("default_origin") or "",
         defended_site=_site(document.get("defended_site")),
     )

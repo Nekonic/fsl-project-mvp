@@ -1044,14 +1044,41 @@ def _fabric_plan(plan):
         "clean": plan.clean,
     }
 
+def _built_by_the_cloud(adapter, plans: str, what: str):
+    if not hasattr(adapter, plans):
+        raise Conflict(
+            f"compose builds this range; the {what} built through the "
+            f"OpenStack API only"
+        )
+    return adapter
+
+def _image_plan(plan):
+    return {
+        "images": [
+            {"host": i.host, "bundle": i.bundle, "state": i.state,
+             "image": i.image, "builder": i.builder, "detail": i.detail}
+            for i in plan.images
+        ],
+        "leftovers": [
+            {"kind": kind, "id": ident, "why": why} for kind, ident, why in plan.leftovers
+        ],
+        "clean": plan.clean,
+    }
+
+@require_http_methods(["GET", "POST", "DELETE"])
+def range_images(request):
+    adapter = _built_by_the_cloud(substrate(), "plan_images", "images are")
+    if request.method == "GET":
+        return _reply(_image_plan(adapter.plan_images()))
+    with RULE_CHANGES:
+        if request.method == "POST":
+            return _reply(_image_plan(adapter.ensure_images()))
+        removed = adapter.clean_images()
+    return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
+
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):
-    adapter = substrate()
-    if not hasattr(adapter, "plan_fabric"):
-        raise Conflict(
-            "compose builds this range; the fabric is built through the "
-            "OpenStack API only"
-        )
+    adapter = _built_by_the_cloud(substrate(), "plan_fabric", "fabric is")
     if request.method == "GET":
         return _reply(_fabric_plan(adapter.plan_fabric()))
     with RULE_CHANGES:
