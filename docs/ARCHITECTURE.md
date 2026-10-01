@@ -155,7 +155,7 @@ names a substrate.
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
 | runner | `docker exec` | `ssh` to the instance |
 | launcher | `docker run --rm --network <segment>` | `runner("attacker")`: runs the tool over ssh on the declared attacker; any other image is refused, because Nova cannot boot a host, return its output and delete it |
-| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric through `/api/range/fabric/` and `describe()` read it back as the thirty origins, estate and mgmt; `runner()` and `launcher()` have not run on a cloud |
+| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` has not run on a cloud |
 
 Compose mounts the Docker socket into the platform whatever the substrate, and
 the entrypoint adds the platform user to its group. It is a container escape
@@ -463,6 +463,15 @@ The platform attaches itself to `mgmt` through a port in `fsl-reach`, found
 by its own server id (`FSL_OPENSTACK_PLATFORM`, written at boot), so it can
 ssh to every host while no host can open a connection to it. The runner
 reaches a host at its `mgmt` address unless the caller names a segment.
+
+The slot is the hosts themselves, through `/api/range/slot/`, planned by
+`range/slot.py`. Each host has a port per declared segment, named
+`<host>.<segment>`, all in `fsl-range`. The host filling `gateway` holds
+every origin's gateway address on one Internet port, and since cloud-init
+configures only the first, its user data adds the rest at every boot.
+Every host's user data appends the estate names (`juice-shop`,
+`wiki.internal`, `board`) to `/etc/hosts`, which is how the WAF finds its
+upstreams and Juice Shop the wiki.
 
 
 ### Decided, not built: the range on OpenStack

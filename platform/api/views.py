@@ -1078,6 +1078,33 @@ def range_images(request):
         removed = adapter.clean_images()
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
+def _slot_plan(plan):
+    return {
+        "boot": list(plan.boot),
+        "ports": [
+            {"host": p.host, "segment": p.segment, "name": p.name,
+             "addresses": [address for _, address in p.fixed_ips]}
+            for p in plan.ports
+        ],
+        "standing": [
+            {"host": host, "server": server, "status": status}
+            for host, server, status in plan.standing
+        ],
+        "blocked": list(plan.blocked),
+        "clean": plan.clean,
+    }
+
+@require_http_methods(["GET", "POST", "DELETE"])
+def range_slot(request):
+    adapter = _built_by_the_cloud(substrate(), "plan_slot", "slot is")
+    if request.method == "GET":
+        return _reply(_slot_plan(adapter.plan_slot()))
+    with RULE_CHANGES:
+        if request.method == "POST":
+            return _reply(_slot_plan(adapter.ensure_slot()))
+        removed = adapter.teardown_slot()
+    return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
+
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):
     adapter = _built_by_the_cloud(substrate(), "plan_fabric", "fabric is")

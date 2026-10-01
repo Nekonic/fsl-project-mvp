@@ -61,14 +61,21 @@ watches:
 
 hosts:
   fsl-waf:
+    segments: [internet, estate, mgmt]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
   fsl-juice-shop:
+    segments: [estate, mgmt]
+    names: [juice-shop]
     setup: wargames/juice-shop/shop/setup.sh
     files: [wargames/juice-shop/shop]
   fsl-wiki:
+    segments: [estate, mgmt]
+    names: [wiki, wiki.internal]
     setup: wargames/juice-shop/wiki/setup.sh
     files: [wargames/juice-shop/wiki/nginx.conf, wargames/juice-shop/wiki/site]
   fsl-board:
+    segments: [estate, mgmt]
+    names: [board, board-db]
     setup: wargames/board/image/setup.sh
     files: [wargames/board/image, wargames/board/app]
