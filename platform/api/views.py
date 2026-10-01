@@ -40,7 +40,7 @@ from api.models import (
 from ingest import elastic
 from redteam import harness
 import operator_log
-from range import declared, substrate
+from range import substrate
 from range.ports import RangeUnavailable, Shape
 from rules import suricata
 from scoring.correlate import correlate
@@ -204,7 +204,7 @@ def _segments():
     except RangeUnavailable:
         return [], {}
 
-    segments = topology.shape(standing, declared.read())["segments"]
+    segments = topology.shape(standing, settings.RANGE)["segments"]
 
     hosts = {
         node["address"]: node["name"]
@@ -281,7 +281,7 @@ def session_top(request, session_id):
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    shape = topology.shape(substrate().describe(), declared.read())
+    shape = topology.shape(substrate().describe(), settings.RANGE)
 
     for segment in shape["segments"]:
         segment["alerts"] = 0
