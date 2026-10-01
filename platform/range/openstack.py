@@ -702,8 +702,8 @@ class OpenStack:
         missing = [found for found in plan.images
                    if found.state == "missing" and found.host in made]
         if missing:
-            base = self._builder_base()
             for found in missing:
+                base = self._builder_base(self.declared.hosts[found.host].base or self.build.base_image)
                 self.get(self._call(BOOT), {"server": {
                     **base,
                     "name": images.BUILDER + found.host,
@@ -769,7 +769,7 @@ class OpenStack:
             return ""
         return said.get("output") or ""
 
-    def _builder_base(self) -> dict:
+    def _builder_base(self, base_image: str) -> dict:
         if not self.build.network:
             raise RangeUnavailable(
                 f"an image is built on a server that downloads its packages, so "
@@ -778,15 +778,15 @@ class OpenStack:
             )
         bases = [
             image for image in self.get(
-                self._call(IMAGES, name=quote(self.build.base_image))
+                self._call(IMAGES, name=quote(base_image))
             ).get("images") or []
             if image.get("status") == "active"
         ]
         if len(bases) != 1:
             raise RangeUnavailable(
-                f"images are built on {self.build.base_image!r} and the cloud has "
+                f"images are built on {base_image!r} and the cloud has "
                 f"{len(bases)} active images by that name; set "
-                f"{SETTINGS['base_image']} to one it has exactly once"
+                f"{SETTINGS['base_image']} (or the host's base) to one it has exactly once"
             )
         return {
             "imageRef": bases[0]["id"], "flavorRef": self._flavor(),

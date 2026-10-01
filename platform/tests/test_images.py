@@ -206,6 +206,16 @@ def test_every_image_is_built_from_files_the_repo_holds():
         assert entry.setup in members(bundle), host
         images.user_data(bundle)
 
+def test_every_script_built_openstack_host_bundles_from_the_repo():
+    hosts = declared.read(flavor="openstack").hosts
+    assert "fsl-kali" in hosts
+    for host, entry in hosts.items():
+        if not entry.setup:
+            continue
+        bundle = images.bundle(ROOT, host, entry.setup, entry.files)
+        assert entry.setup in members(bundle), host
+        images.user_data(bundle)
+
 def test_a_host_with_an_image_and_no_role_is_refused(tmp_path):
     document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
     document["hosts"]["fsl-stray"] = {"setup": "stray.sh"}
