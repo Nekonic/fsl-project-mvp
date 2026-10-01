@@ -13,18 +13,18 @@ KALI = "fsl-kali"
 WAF = "fsl-waf"
 
 EDGE = Segment(
-    id="edge", name="Internet", origin="Moscow, Russia",
+    id="ru", name="Internet", origin="Russia",
     subnet="5.188.10.0/24", network="fsl_edge",
     nodes=(Node(PROXY, "5.188.10.7"), Node(KALI, "5.188.10.2"),
            Node(WAF, "5.188.10.9")),
 )
 HK = Segment(
-    id="edge-hk", name="Internet", origin="Kwai Chung, Hong Kong",
+    id="hk", name="Internet", origin="Hong Kong",
     subnet="103.152.220.0/24", network="fsl_edge-hk",
     nodes=(Node(PROXY, "103.152.220.7"), Node(WAF, "103.152.220.9")),
 )
 BR = Segment(
-    id="edge-br", name="Internet", origin="Sao Paulo, Brazil",
+    id="br", name="Internet", origin="Brazil",
     subnet="177.54.144.0/24", network="fsl_edge-br",
     nodes=(Node(PROXY, "177.54.144.7"), Node(WAF, "177.54.144.9")),
 )
@@ -62,16 +62,16 @@ def origins(described=SHAPE):
     return attacker.origins(described)
 
 def test_every_declared_network_is_an_origin():
-    assert {o["id"] for o in origins()} == {"edge", "edge-hk", "edge-br"}
+    assert {o["id"] for o in origins()} == {"ru", "hk", "br"}
 
 def test_an_origin_carries_both_addresses_the_terminal_can_leave_by():
-    edge = next(o for o in origins() if o["id"] == "edge")
+    edge = next(o for o in origins() if o["id"] == "ru")
 
     assert edge["source_ip"] == "5.188.10.7"
     assert edge["direct_ip"] == "5.188.10.2"
 
 def test_an_origin_the_attacker_box_cannot_reach_says_so():
-    hk = next(o for o in origins() if o["id"] == "edge-hk")
+    hk = next(o for o in origins() if o["id"] == "hk")
 
     assert hk["direct_ip"] == ""
 
@@ -85,21 +85,21 @@ def test_a_missing_attacker_box_does_not_lose_the_origins():
     )
 
     assert {o["id"] for o in origins(without_kali)} == {
-        "edge", "edge-hk", "edge-br",
+        "ru", "hk", "br",
     }
 
 def test_an_origin_carries_the_address_the_attack_will_come_from():
     found = {o["id"]: o["source_ip"] for o in origins()}
 
-    assert found["edge-hk"] == "103.152.220.7"
-    assert found["edge"] == "5.188.10.7"
+    assert found["hk"] == "103.152.220.7"
+    assert found["ru"] == "5.188.10.7"
 
 def test_an_attack_leaves_for_an_address_the_range_gave():
-    hk = next(o for o in origins() if o["id"] == "edge-hk")
+    hk = next(o for o in origins() if o["id"] == "hk")
 
     assert hk["target_url"] == "http://103.152.220.9:8080", (
         "the address was a name assembled out of the origin id - 'waf-' plus "
-        "'edge-hk' - which only resolves because compose was asked to put that "
+        "'hk' - which only resolves because compose was asked to put that "
         "alias on that network. Neutron hands out no aliases"
     )
 
@@ -108,7 +108,7 @@ def test_an_origin_with_no_way_in_is_not_offered():
 
     listed = attacker.origins(Shape(segments=(EDGE, stranded), sensors=()))
 
-    assert [o["id"] for o in listed] == ["edge"], (
+    assert [o["id"] for o in listed] == ["ru"], (
         "an origin whose segment the gateway does not stand on was offered, "
         "and an attack fired from it would have gone nowhere"
     )
@@ -124,16 +124,16 @@ def test_no_name_is_assembled_from_an_origin_id_anywhere():
         )
 
 def test_the_label_is_the_stack_s_own_description():
-    hk = next(o for o in origins() if o["id"] == "edge-hk")
+    hk = next(o for o in origins() if o["id"] == "hk")
 
-    assert hk["label"] == "Kwai Chung, Hong Kong"
+    assert hk["label"] == "Hong Kong"
     assert hk["subnet"] == "103.152.220.0/24"
 
 def test_origins_are_in_a_stable_order_because_rotation_depends_on_it():
     assert [o["id"] for o in origins()] == sorted(o["id"] for o in origins())
 
 def test_the_default_origin_is_the_one_the_terminal_already_used():
-    assert [o["id"] for o in origins() if o["default"]] == ["edge"]
+    assert [o["id"] for o in origins() if o["default"]] == ["ru"]
 
 def test_a_segment_that_carries_no_origin_is_not_a_place_to_attack_from():
     assert "estate" not in {o["id"] for o in origins()}
@@ -142,13 +142,13 @@ def test_a_network_the_attacker_is_not_on_is_not_an_origin():
     elsewhere = Shape(
         segments=tuple(
             replace(s, nodes=tuple(n for n in s.nodes if n.name != PROXY))
-            if s.id == "edge-br" else s
+            if s.id == "br" else s
             for s in SHAPE.segments
         ),
         sensors=(),
     )
 
-    assert {o["id"] for o in origins(elsewhere)} == {"edge", "edge-hk"}
+    assert {o["id"] for o in origins(elsewhere)} == {"ru", "hk"}
 
 def test_an_attacker_box_on_nothing_at_all_is_an_error_not_an_empty_list():
     nowhere = Shape(
@@ -171,7 +171,7 @@ def test_the_default_origin_answers_when_none_was_asked_for():
     assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.7"
 
 def test_a_chosen_origin_answers_with_its_own_address():
-    assert attacker.find(SHAPE, "edge-hk")["source_ip"] == "103.152.220.7"
+    assert attacker.find(SHAPE, "hk")["source_ip"] == "103.152.220.7"
 
 def test_an_unknown_origin_is_refused_rather_than_falling_back():
     with pytest.raises(attacker.UnknownOrigin):
@@ -180,13 +180,13 @@ def test_an_unknown_origin_is_refused_rather_than_falling_back():
 pytestmark = pytest.mark.django_db
 
 PLACES = [
-    {"id": "edge", "label": "Moscow, Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
+    {"id": "ru", "label": "Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
      "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
      "network": "fsl_edge", "default": True},
-    {"id": "edge-br", "label": "Sao Paulo, Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
+    {"id": "br", "label": "Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
      "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
      "network": "fsl_edge-br", "default": False},
-    {"id": "edge-hk", "label": "Kwai Chung, Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
+    {"id": "hk", "label": "Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
      "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
      "network": "fsl_edge-hk", "default": False},
 ]
@@ -209,7 +209,7 @@ def test_the_console_can_ask_where_it_may_attack_from(client):
 
     assert response.status_code == 200
     assert [o["id"] for o in response.json()["origins"]] == [
-        "edge", "edge-br", "edge-hk",
+        "ru", "br", "hk",
     ]
 
 def test_origins_that_cannot_be_discovered_are_503_not_an_empty_list(client):
@@ -230,7 +230,7 @@ def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session
 
 def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
     response, fired = _fire(
-        client, session_id, {"case": "sqli-login-bypass", "origin": "edge-hk"}
+        client, session_id, {"case": "sqli-login-bypass", "origin": "hk"}
     )
 
     assert response.status_code == 201
@@ -238,11 +238,11 @@ def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
 
 def test_the_origin_is_recorded_but_not_an_address(client, session_id):
     response, _ = _fire(
-        client, session_id, {"case": "sqli-login-bypass", "origin": "edge-hk"}
+        client, session_id, {"case": "sqli-login-bypass", "origin": "hk"}
     )
     meta = response.json()["meta"]
 
-    assert meta["origin"] == "edge-hk"
+    assert meta["origin"] == "hk"
     assert meta["target_url"] == "http://103.152.220.9:8080"
     assert "source_ip" not in meta
 
@@ -309,7 +309,7 @@ def test_attacks_pinned_to_a_place_or_recorded_by_hand_do_not_move_the_rotation(
     client, session_id
 ):
     rotated = []
-    for step in ("rotate", "edge-hk", "rotate", "recorded", "rotate"):
+    for step in ("rotate", "hk", "rotate", "recorded", "rotate"):
         if step == "recorded":
             with patch("api.views._observe_objectives", return_value={"achieved": 0}):
                 recorded = client.post_json(f"/api/sessions/{session_id}/cases/", {
@@ -344,7 +344,7 @@ def test_an_origin_that_does_not_exist_is_refused(client, session_id):
 
 def test_the_terminal_s_address_follows_the_chosen_origin(client):
     with stub(), patch("api.views.attacker.origins", return_value=PLACES):
-        response = client.get("/api/attacker/?origin=edge-hk")
+        response = client.get("/api/attacker/?origin=hk")
 
     assert response.status_code == 200
     assert response.json()["source_ip"] == "103.152.220.7"

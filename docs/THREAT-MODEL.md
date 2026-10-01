@@ -8,7 +8,7 @@ cannot show.
 | | |
 |---|---|
 | **Threat emulated** | An unauthenticated attacker on the public internet, against a shop exposed to it. Opportunistic rather than targeted: no phishing, no insider, no stolen credentials. |
-| **Attacker's position** | Outside, on one of four Internet segments, each with its own address range and a declared geographic origin. No account on the target, no code on it, no presence inside the estate. |
+| **Attacker's position** | Outside, from one of the Internet origins the range builds (four on Docker, thirty declared), each with its own address range and a declared country that GeoIP agrees with. No account on the target, no code on it, no presence inside the estate. |
 | **Command and control** | None. Attacks are requests sent from Kali or from the platform; nothing left on the target calls home. |
 | **What the attacker is after** | Juice Shop's challenges, which it marks `solved` itself, plus reading the internal wiki, judged from the wiki's access log. |
 | **What the defence has** | Suricata on the WAF's traffic and ModSecurity in front of the application, both reporting into one index. The defender writes and silences rules, nothing else. |

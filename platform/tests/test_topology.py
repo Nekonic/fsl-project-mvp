@@ -10,7 +10,7 @@ from range.ports import Node, RangeUnavailable, Segment, Sensor, Shape
 from tests.sessions import open_session
 
 EDGE = Segment(
-    id="edge", name="Internet", origin="Moscow, Russia",
+    id="ru", name="Internet", origin="Russia",
     subnet="5.188.10.0/24", network="fsl_edge", gateway="5.188.10.1",
     nodes=(Node("fsl-waf", "5.188.10.4"), Node("fsl-proxy", "5.188.10.3")),
 )
@@ -49,12 +49,12 @@ def segment(found, segment_id):
     return next(s for s in found["segments"] if s["id"] == segment_id)
 
 def test_every_segment_of_the_stack_is_on_the_picture():
-    assert [s["id"] for s in shape()["segments"]] == ["edge", "estate", "mgmt"]
+    assert [s["id"] for s in shape()["segments"]] == ["ru", "estate", "mgmt"]
 
 def test_the_outside_is_marked_as_outside():
     found = shape()
 
-    assert segment(found, "edge")["outside"] is True
+    assert segment(found, "ru")["outside"] is True
     assert segment(found, "estate")["outside"] is False
 
 def test_outside_segments_come_first_because_that_is_the_way_in():
@@ -63,7 +63,7 @@ def test_outside_segments_come_first_because_that_is_the_way_in():
 def test_a_segment_is_called_something_a_person_can_read():
     found = shape()
 
-    assert segment(found, "edge")["name"] == "Internet"
+    assert segment(found, "ru")["name"] == "Internet"
     assert segment(found, "estate")["name"] == "Application estate"
 
 def test_a_segment_nobody_named_falls_back_to_its_own_id():
@@ -108,7 +108,7 @@ def test_the_sensor_appears_on_every_segment_it_can_see():
     found = shape()
     watched = {s["id"] for s in found["segments"] if s["sensor"]}
 
-    assert watched == {"edge", "estate"}
+    assert watched == {"ru", "estate"}
 
 def test_drawing_the_picture_never_names_the_substrate():
     source = pathlib.Path(topology.__file__).read_text()
@@ -143,7 +143,7 @@ def drawn(client):
 def test_a_segment_carries_what_arrived_on_it(drawn):
     counted = {s["id"]: s["alerts"] for s in drawn["segments"]}
 
-    assert counted["edge"] == 2
+    assert counted["ru"] == 2
     assert counted["estate"] == 1
 
 def test_a_segment_nothing_arrived_on_says_zero_rather_than_nothing(drawn):

@@ -205,18 +205,22 @@ README and `headers/modsecurity/transaction.h`, ModSecurity-nginx, nginx
 
 ## Thirty origins
 
-**The ranking.** Cloudflare Radar is the one source that measures traffic
-rather than people: its API `GET /radar/http/top/locations` ranks locations
-by share of HTTP requests over up to 52 weeks, can keep only
-`botClass=LIKELY_HUMAN` (which drops data-centre bot traffic that inflates
-the US, NL, SG, IE and HK), and is CC BY-NC 4.0 behind a free API token with
-Radar read access. Its public charts sit behind a bot check, so no Radar
-number was verified here and none is frozen into the range; the numbers come
-from the API with the token, saved with their date range. APNIC's per-AS
-population (verified) counts users, not traffic, and would put China first;
-it is the right source for picking each country's real prefixes (its largest
-networks), so GeoIP places each address where intended. The NC clause needs a
-look if the list moves to the production repo.
+**The ranking (frozen 2026-10-01).** Cloudflare Radar's share of HTTP
+requests by location, all traffic, 2025-09-29 to 2026-09-28, read without a
+token from the public Data Explorer (ranks 20 to 30 from the page's own data
+route). The bot-filtered variant drops Hong Kong, so the unfiltered one is
+used. ITU's traffic series has no figure for the US, France, the Netherlands
+or Singapore. The data is CC BY-NC 4.0; the NC clause needs a look if the
+list moves to the production repo. About 100 addresses are split by the
+largest-remainder method with a floor of one (US 35 down to 1 each for the
+last eleven).
+
+**The prefixes.** `bin/pick-origins` takes each country's largest IPv4 block
+from RIPEstat's country resource list, skips /8s IANA lists as legacy (so no
+6/8 or 53/8), and keeps its first /24 if RIPEstat's GeoLite2 places the whole
+/24 in that country. The three prefixes the range already used (Russia,
+Brazil, Hong Kong) are kept. All thirty also pass the live `fsl-geoip`
+pipeline, which an acceptance test repeats.
 
 **The OpenStack shape.** One Neutron network with 30 subnets, one per
 country, not 30 networks:

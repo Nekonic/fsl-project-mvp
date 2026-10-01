@@ -27,7 +27,7 @@ and one more `include:` line; the measure counts the services it adds.
 | `fsl-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
 | `fsl-board-db` | `mysql` | estate | |
 | `fsl-wiki` | `nginx`, alias `wiki.internal` | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `shop.com` on edge, `board.com` on all four edge networks | edge, edge-br, edge-hk, edge-kp, estate | 8080 |
+| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `shop.com` on edge, `board.com` on all four edge networks | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
@@ -35,14 +35,22 @@ and one more `include:` line; the measure counts the services it adds.
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
 | `fsl-platform` | `platform/` (Django under waitress, behind nginx, which also serves Kali's terminal at `/terminal/`) | all six | 8000 |
 
-| Network | Subnet | Name | Origin |
-|---|---|---|---|
-| `edge` | 5.188.10.0/24 | Internet | Moscow, Russia |
-| `edge-br` | 177.54.144.0/24 | Internet | Sao Paulo, Brazil |
-| `edge-hk` | 103.152.220.0/24 | Internet | Kwai Chung, Hong Kong |
-| `edge-kp` | 175.45.176.0/24 | Internet | North Korea |
-| `estate` | 172.30.0.0/24 | Application estate | |
-| `mgmt` | 172.31.0.0/24 | Management | |
+| Network | Segment | Subnet | Name | Origin |
+|---|---|---|---|---|
+| `edge` | `ru` | 5.188.10.0/24 | Internet | Russia |
+| `edge-br` | `br` | 177.54.144.0/24 | Internet | Brazil |
+| `edge-hk` | `hk` | 103.152.220.0/24 | Internet | Hong Kong |
+| `edge-us` | `us` | 73.0.0.0/24 | Internet | United States |
+| `estate` | `estate` | 172.30.0.0/24 | Application estate | |
+| `mgmt` | `mgmt` | 172.31.0.0/24 | Management | |
+
+The declaration lists thirty origins on one Internet segment, the top thirty
+countries by Cloudflare Radar's share of HTTP requests, each with a /24 that
+GeoIP places in it and a share of about 100 attack addresses. Docker builds
+four of them, one network each, because a bridge holds one IPv4 subnet; the
+OpenStack fabric builds all thirty as subnets of one network.
+`bin/pick-origins` reproduces the table, and an acceptance test checks every
+subnet against the pipeline scoring reads.
 
 Segmentation is Docker network membership only: no firewall, no iptables, no
 ACL. `test/test_segmentation.py` asserts it against the live stack (Kali
@@ -63,7 +71,7 @@ segment, which is why the API guards itself (`docs/THREAT-MODEL.md`).
            platform --console-fired case--------------+
  edge-br                                              |
  edge-hk   proxy, platform (no kali, no shop.com)     |
- edge-kp                                              v
+ edge-us                                              v
          fsl-waf: nginx + ModSecurity CRS, DetectionOnly, port 80
          fsl-suricata in the same network namespace, af-packet on all five
          interfaces, so it sees client->WAF and WAF->target

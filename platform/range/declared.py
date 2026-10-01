@@ -16,8 +16,19 @@ class Site:
     lon: float
 
 @dataclass(frozen=True)
+class Origin:
+    id: str
+    label: str
+    country: str
+    subnet: str
+    share: float
+    addresses: int
+    segment: str
+
+@dataclass(frozen=True)
 class Declaration:
     segments: tuple[Segment, ...] = ()
+    origins: tuple[Origin, ...] = ()
     roles: dict[str, str] = field(default_factory=dict)
     watches: dict[str, str] = field(default_factory=dict)
     default_origin: str = ""
@@ -71,17 +82,37 @@ def _site(entry) -> Site | None:
         return None
     return Site(label=entry["label"], lat=float(entry["lat"]), lon=float(entry["lon"]))
 
+def _origins(entry) -> tuple[Origin, ...]:
+    return tuple(
+        Origin(
+            id=origin["id"],
+            label=origin["label"],
+            country=origin["country"],
+            subnet=origin["subnet"],
+            share=float(origin["share"]),
+            addresses=int(origin["addresses"]),
+            segment=entry["id"],
+        )
+        for origin in entry.get("origins") or []
+    )
+
+def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
+    name = entry.get("name") or entry["id"]
+    if origins:
+        return tuple(Segment(id=o.id, name=name, origin=o.label) for o in origins)
+    return (Segment(id=entry["id"], name=name, origin=entry.get("origin") or ""),)
+
 def read(path: Path = DECLARATION) -> Declaration:
     document = yaml.safe_load(Path(path).read_text()) or {}
+    entries = document.get("segments") or []
+    origins = {entry["id"]: _origins(entry) for entry in entries}
     found = Declaration(
         segments=tuple(
-            Segment(
-                id=entry["id"],
-                name=entry.get("name") or entry["id"],
-                origin=entry.get("origin") or "",
-            )
-            for entry in document.get("segments") or []
+            segment
+            for entry in entries
+            for segment in _segments(entry, origins[entry["id"]])
         ),
+        origins=tuple(origin for entry in entries for origin in origins[entry["id"]]),
         roles=dict(document.get("roles") or {}),
         watches=dict(document.get("watches") or {}),
         default_origin=document.get("default_origin") or "",

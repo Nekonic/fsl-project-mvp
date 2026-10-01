@@ -286,6 +286,12 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 ## Decisions left for a person
 
 - **The tutorial**, to be designed later (the user).
+- **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
+  asks for old databases to be deleted within 30 days of a new release and
+  for the line "This product includes GeoLite Data created by MaxMind", which
+  sits against "GeoIP is loaded once" (step 7 of backlog 2). Cloudflare
+  Radar's shares are CC BY-NC 4.0, fine here, to be looked at before they
+  move to the production repo.
 - **Getting pfSense CE**: its only installer comes from a $0 Netgate Store
   checkout with an account, which the user has to do.
 - **How browsers reach the platform VM** from outside, now that it is on a
@@ -298,8 +304,9 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 
 The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
-- **Range**: three segments plus four Internet origin countries, crossed only
-  at the WAF; target `http://shop.com`; an internal wiki reachable only by SSRF
+- **Range**: an Internet segment with thirty declared origin countries (Docker
+  builds four: Russia, the default, Brazil, Hong Kong, United States), the
+  estate and management, crossed only at the WAF; target `http://shop.com`; an internal wiki reachable only by SSRF
   that judges its own reads.
 - **Red team**: one Kali image; cases fired from the console or a labelled
   shell; each case carries a Mandiant stage, ATT&CK/CAPEC ids, and what it takes.
@@ -412,6 +419,24 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    by GeoIP, about 100 addresses weighted by traffic), the estate and
    management networks. This replaces `bin/openstack-range`; the declaration
    gains a segment with many origin subnets.
+   - **Done (2026-10-01): the thirty origins.** `declaration.yaml` has one
+     `internet` segment whose `origins` list the top thirty countries by
+     Cloudflare Radar's HTTP request share (frozen with its window), each with
+     a /24 that GeoIP places there and its share of 100 addresses;
+     `declared.read()` flattens each origin into a segment, so the port and
+     its callers did not change, and `Declaration.origins` keeps the table.
+     The default origin is `ru`, as before. Docker builds four (ru, br, hk,
+     and us on 73.0.0.0/24 in place of North Korea, which the ranking drops).
+     `bin/pick-origins` reproduces the table; legacy /8s are skipped so no
+     origin is an institution's block. `test_origin_placement` checks all
+     thirty through the live `fsl-geoip` pipeline.
+   - Left, in order (design from a judged workflow): a pure fabric planner
+     (`range/fabric.py`); a write path in the OpenStack adapter (POST, PUT,
+     DELETE beside GET); `describe()` binding one Internet network and its
+     origin subnets by CIDR; `ensure`/`teardown` and the keypair behind
+     `GET/POST/DELETE /api/range/fabric/` (409 on Docker); then the run on
+     the cloud, the platform VM switched to `range.openstack.connect`, and
+     `bin/openstack-range` deleted.
 3. **Targets and the WAF as VMs**: Juice Shop, the board on MySQL (its user
    database becomes an objective, judged from the board's side), the wiki,
    and the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup

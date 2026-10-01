@@ -39,12 +39,12 @@ def node(drawn, segment_id):
 def test_the_picture_has_the_segments_the_stack_actually_has(drawn):
     ids = {s["id"] for s in drawn["segments"]}
 
-    assert {"edge", "estate", "mgmt"} <= ids, sorted(ids)
+    assert {"ru", "estate", "mgmt"} <= ids, sorted(ids)
 
 def test_the_outside_is_outside_and_the_estate_is_not(drawn):
     outside = {s["id"] for s in drawn["segments"] if s["outside"]}
 
-    assert "edge" in outside
+    assert "ru" in outside
     assert "estate" not in outside
     assert "mgmt" not in outside
 
@@ -57,7 +57,7 @@ def test_every_address_on_the_picture_is_on_its_own_subnet(drawn):
             )
 
 def test_the_waf_has_a_foot_on_each_side(drawn):
-    assert "fsl-waf" in node(drawn, "edge")
+    assert "fsl-waf" in node(drawn, "ru")
     assert "fsl-waf" in node(drawn, "estate")
 
 def test_the_target_is_only_ever_on_the_inside(drawn):
@@ -144,15 +144,20 @@ def test_the_running_range_matches_what_was_declared(session_id):
         (pathlib.Path(__file__).resolve().parents[1]
          / "platform/range/declaration.yaml").read_text()
     )
-    meant = {s["id"] for s in declared["segments"]}
+    fixed = {s["id"] for s in declared["segments"] if not s.get("origins")}
+    origins = {o["id"] for s in declared["segments"] for o in s.get("origins") or []}
 
     shape = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
     ).json()
     standing = {s["id"] for s in shape["segments"]}
 
-    assert standing == meant, (
+    assert fixed <= standing and standing - fixed <= origins, (
         f"the range standing up is not the one that was declared. "
-        f"Only running: {sorted(standing - meant)}. "
-        f"Only declared: {sorted(meant - standing)}"
+        f"Only running: {sorted(standing - fixed - origins)}. "
+        f"Declared and missing: {sorted(fixed - standing)}"
+    )
+    assert declared["default_origin"] in standing, (
+        f"no origin network carries the default origin "
+        f"{declared['default_origin']!r}; standing: {sorted(standing)}"
     )
