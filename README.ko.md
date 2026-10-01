@@ -6,7 +6,7 @@
 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있습니다.
 
 - `CLAUDE.md`: 저장소의 목적, 점수 방식, 작업 규칙
-- `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향
+- `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향 (한국어판 `docs/ARCHITECTURE.ko.md`)
 - `docs/THREAT-MODEL.md`: 레인지가 모사하는 것과 빼 둔 것
 - `docs/STATE.md`: 작업이 어디까지 왔는지
 - `README.md`: 이 README의 영어 원문
