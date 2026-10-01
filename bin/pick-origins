@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import csv
+import io
+import ipaddress
+import json
+import math
+import sys
+import urllib.request
+
+RANKING = "Cloudflare Radar, HTTP requests by location, all traffic, 2025-09-29/2026-09-28"
+SHARES = [
+    ("US", "United States", 29.47646),
+    ("IN", "India", 5.425324),
+    ("BR", "Brazil", 4.673827),
+    ("DE", "Germany", 4.073486),
+    ("JP", "Japan", 3.968407),
+    ("GB", "United Kingdom", 3.490965),
+    ("FR", "France", 2.991618),
+    ("NL", "Netherlands", 2.342137),
+    ("ID", "Indonesia", 2.196873),
+    ("CN", "China", 2.146852),
+    ("CA", "Canada", 2.06012),
+    ("SG", "Singapore", 1.768625),
+    ("MX", "Mexico", 1.563691),
+    ("PH", "Philippines", 1.523833),
+    ("TR", "Turkey", 1.52203),
+    ("VN", "Vietnam", 1.491161),
+    ("KR", "South Korea", 1.473231),
+    ("ES", "Spain", 1.43599),
+    ("AU", "Australia", 1.249301),
+    ("TH", "Thailand", 1.183342),
+    ("IT", "Italy", 1.162007),
+    ("PL", "Poland", 1.059468),
+    ("RU", "Russia", 0.925973),
+    ("SA", "Saudi Arabia", 0.836102),
+    ("HK", "Hong Kong", 0.832424),
+    ("IE", "Ireland", 0.722468),
+    ("AR", "Argentina", 0.689725),
+    ("TW", "Taiwan", 0.686247),
+    ("IR", "Iran", 0.655282),
+    ("ZA", "South Africa", 0.642336),
+]
+ADDRESSES = 100
+KEPT = {
+    "RU": "5.188.10.0/24",
+    "BR": "177.54.144.0/24",
+    "HK": "103.152.220.0/24",
+}
+RIPESTAT = "https://stat.ripe.net/data/{call}/data.json?resource={resource}&sourceapp=fsl-range"
+IANA = "https://www.iana.org/assignments/ipv4-address-space/ipv4-address-space.csv"
+TRIES = 8
+
+def fetch(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        return response.read()
+
+def ripestat(call: str, resource: str) -> dict:
+    return json.loads(fetch(RIPESTAT.format(call=call, resource=resource)))["data"]
+
+def allocate(shares: list[float], total: int) -> list[int]:
+    whole = sum(shares)
+    quotas = [total * share / whole for share in shares]
+    given = [max(1, math.floor(quota)) for quota in quotas]
+    order = sorted(
+        (i for i, quota in enumerate(quotas) if quota >= 1),
+        key=lambda i: (quotas[i] - math.floor(quotas[i]), quotas[i]),
+        reverse=True,
+    )
+    for i in order[: total - sum(given)]:
+        given[i] += 1
+    return given
+
+def allocated_slash_eights() -> set[int]:
+    rows = csv.DictReader(io.StringIO(fetch(IANA).decode()))
+    return {
+        int(row["Prefix"].split("/")[0])
+        for row in rows
+        if row["Status [1]"].strip() == "ALLOCATED"
+    }
+
+def placed_in(country: str, subnet: str) -> bool:
+    located = ripestat("maxmind-geo-lite", subnet)["located_resources"]
+    if len(located) != 1:
+        return False
+    places = located[0]["locations"]
+    return (
+        len(places) == 1
+        and places[0]["country"] == country
+        and float(places[0]["covered_percentage"]) == 100
+    )
+
+def pick(country: str, open_eights: set[int]) -> str:
+    prefixes = [
+        ipaddress.ip_network(prefix)
+        for prefix in ripestat("country-resource-list", country)["resources"]["ipv4"]
+        if "-" not in prefix
+    ]
+    candidates = sorted(
+        (net for net in prefixes if int(net.network_address) >> 24 in open_eights),
+        key=lambda net: (net.prefixlen, int(net.network_address)),
+    )
+    for block in candidates[:TRIES]:
+        subnet = str(next(block.subnets(new_prefix=24)) if block.prefixlen < 24 else block)
+        if placed_in(country, subnet):
+            return subnet
+    raise SystemExit(f"pick-origins: no /24 in {country}'s largest blocks is placed there")
+
+def main() -> int:
+    open_eights = allocated_slash_eights()
+    counts = allocate([share for _, _, share in SHARES], ADDRESSES)
+    print(f"    ranking: {RANKING}")
+    print("    origins:")
+    for (country, label, share), addresses in zip(SHARES, counts):
+        subnet = KEPT.get(country) or pick(country, open_eights)
+        print(
+            f"      - {{id: {country.lower()}, label: {label}, country: {country}, "
+            f"subnet: {subnet}, share: {share}, addresses: {addresses}}}"
+        )
+        sys.stdout.flush()
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -16,9 +16,11 @@ def built(compose):
     for key, network in (compose.get("networks") or {}).items():
         labels = ((network or {}).get("labels") or {})
         if labels.get(MARK):
+            pools = ((network or {}).get("ipam") or {}).get("config") or [{}]
             realised[labels[MARK]] = {
                 "name": labels.get("fsl.segment", ""),
                 "origin": labels.get("fsl.origin", ""),
+                "subnet": pools[0].get("subnet", ""),
                 "key": key,
             }
     return realised
@@ -38,13 +40,20 @@ def unmarked(compose):
     )
 
 def meant(declaration):
-    return {
-        entry["id"]: {
-            "name": entry.get("name") or entry["id"],
-            "origin": entry.get("origin") or "",
-        }
-        for entry in declaration.get("segments") or []
-    }
+    found = {}
+    for entry in declaration.get("segments") or []:
+        name = entry.get("name") or entry["id"]
+        for origin in entry.get("origins") or []:
+            found[origin["id"]] = {
+                "name": name, "origin": origin["label"],
+                "subnet": origin["subnet"], "optional": True,
+            }
+        if not entry.get("origins"):
+            found[entry["id"]] = {
+                "name": name, "origin": entry.get("origin") or "",
+                "subnet": "", "optional": False,
+            }
+    return found
 
 def containers(compose):
     return {
@@ -76,6 +85,8 @@ def drift(compose, declaration):
             f"no name and no origin"
         )
     for segment_id in sorted(set(declared) - set(realised)):
+        if declared[segment_id]["optional"] and segment_id != declaration.get("default_origin"):
+            continue
         complaints.append(
             f"the declaration names the segment {segment_id!r} and compose "
             f"builds no such network, so nothing will ever stand on it"
@@ -88,6 +99,13 @@ def drift(compose, declaration):
                     f"{realised[segment_id][field]!r} and the declaration says "
                     f"{declared[segment_id][field]!r}"
                 )
+        placed = declared[segment_id]["subnet"]
+        if placed and realised[segment_id]["subnet"] != placed:
+            complaints.append(
+                f"origin {segment_id!r}: compose builds it on "
+                f"{realised[segment_id]['subnet'] or 'no subnet'} and the "
+                f"declaration places it on {placed}, where GeoIP put its country"
+            )
 
     services = compose.get("services") or {}
     roles = declaration.get("roles") or {}
@@ -167,11 +185,11 @@ def test_the_same_segment_named_two_things_is_caught():
 
 def test_an_origin_changed_on_one_side_only_is_caught():
     compose, declaration = documents()
-    compose["networks"]["edge-kp"]["labels"]["fsl.origin"] = "Pyongyang"
+    compose["networks"]["edge-us"]["labels"]["fsl.origin"] = "Seattle"
 
     assert drift(compose, declaration) == [
-        "segment 'edge-kp': compose says the origin is 'Pyongyang' and the "
-        "declaration says 'North Korea'"
+        "segment 'us': compose says the origin is 'Seattle' and the "
+        "declaration says 'United States'"
     ]
 
 def test_an_origin_taken_off_one_side_only_is_caught():
@@ -179,8 +197,8 @@ def test_an_origin_taken_off_one_side_only_is_caught():
     del compose["networks"]["edge-hk"]["labels"]["fsl.origin"]
 
     assert drift(compose, declaration) == [
-        "segment 'edge-hk': compose says the origin is '' and the declaration "
-        "says 'Kwai Chung, Hong Kong'"
+        "segment 'hk': compose says the origin is '' and the declaration "
+        "says 'Hong Kong'"
     ]
 
 def test_a_role_no_container_fills_is_caught():
@@ -227,8 +245,16 @@ def test_the_loader_reads_back_exactly_what_the_file_says():
     loaded = declared.read()
 
     assert [(s.id, s.name, s.origin) for s in loaded.segments] == [
-        (entry["id"], entry.get("name") or entry["id"], entry.get("origin") or "")
+        row
         for entry in document["segments"]
+        for row in (
+            [(origin["id"], entry["name"], origin["label"]) for origin in entry["origins"]]
+            if entry.get("origins")
+            else [(entry["id"], entry.get("name") or entry["id"], entry.get("origin") or "")]
+        )
+    ]
+    assert [o.id for o in loaded.origins] == [
+        origin["id"] for entry in document["segments"] for origin in entry.get("origins") or []
     ]
     assert loaded.roles == document["roles"]
 
@@ -371,3 +397,73 @@ def test_a_declaration_without_a_defended_site_still_loads(tmp_path):
     written.write_text("segments:\n  - id: edge\n    origin: Moscow, Russia\n")
 
     assert declared.read(written).defended_site is None
+
+def origins():
+    _, declaration = documents()
+    return [o for entry in declaration["segments"] for o in entry.get("origins") or []]
+
+def hamilton(shares, total):
+    quotas = [total * share / sum(shares) for share in shares]
+    given = [max(1, int(quota)) for quota in quotas]
+    order = sorted(
+        (i for i, quota in enumerate(quotas) if quota >= 1),
+        key=lambda i: (quotas[i] - int(quotas[i]), quotas[i]),
+        reverse=True,
+    )
+    for i in order[: total - sum(given)]:
+        given[i] += 1
+    return given
+
+def test_thirty_countries_are_declared_in_the_order_of_their_traffic():
+    found = origins()
+    shares = [o["share"] for o in found]
+
+    assert len(found) == 30
+    assert shares == sorted(shares, reverse=True)
+    assert [o["id"] for o in found] == [o["country"].lower() for o in found]
+    assert len({o["id"] for o in found}) == 30
+
+def test_a_hundred_addresses_go_to_the_countries_by_their_share():
+    found = origins()
+
+    assert [o["addresses"] for o in found] == hamilton([o["share"] for o in found], 100), (
+        "the addresses are not the largest-remainder split of 100 by the "
+        "frozen shares, at least one each"
+    )
+
+def test_each_origin_is_its_own_slash_24_away_from_every_network_the_platform_needs():
+    import ipaddress
+
+    nets = [ipaddress.ip_network(o["subnet"]) for o in origins()]
+    inside = [ipaddress.ip_network(n) for n in ("172.30.0.0/24", "172.31.0.0/24", "10.20.0.0/24")]
+
+    assert all(net.prefixlen == 24 for net in nets)
+    assert not [
+        (str(a), str(b)) for i, a in enumerate(nets) for b in nets[i + 1:] + inside if a.overlaps(b)
+    ]
+
+def test_an_origin_states_only_what_places_it():
+    stated = {key for o in origins() for key in o}
+
+    assert stated == {"id", "label", "country", "subnet", "share", "addresses"}, stated
+
+def test_an_origin_compose_builds_on_another_subnet_is_caught():
+    compose, declaration = documents()
+    compose["networks"]["edge-br"]["ipam"]["config"][0]["subnet"] = "177.54.145.0/24"
+
+    assert drift(compose, declaration) == [
+        "origin 'br': compose builds it on 177.54.145.0/24 and the declaration "
+        "places it on 177.54.144.0/24, where GeoIP put its country"
+    ]
+
+def test_compose_may_build_some_origins_but_always_the_default_one():
+    compose, declaration = documents()
+    del compose["networks"]["edge-hk"]
+    without_hk = drift(compose, declaration)
+    del compose["networks"]["edge"]
+
+    assert without_hk == []
+    assert drift(compose, declaration) == [
+        "the declaration names the segment 'ru' and compose builds no such "
+        "network, so nothing will ever stand on it"
+    ]

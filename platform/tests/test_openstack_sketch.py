@@ -21,10 +21,7 @@ CLOUD = openstack.Cloud(
 )
 
 ALLOCATED = {
-    "edge": "5.188.10.0/24",
-    "edge-br": "177.54.144.0/24",
-    "edge-hk": "103.152.220.0/24",
-    "edge-kp": "175.45.176.0/24",
+    **{origin.id: origin.subnet for origin in declared.read().origins},
     "estate": "172.30.0.0/24",
     "mgmt": "172.31.0.0/24",
 }
@@ -52,13 +49,13 @@ SERVERS = {
         {
             "name": "fsl-kali",
             "addresses": {
-                "range1-edge-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
+                "range1-ru-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
             },
         },
         {
             "name": "fsl-waf",
             "addresses": {
-                "range1-edge-v4": [
+                "range1-ru-v4": [
                     {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"},
                     {"addr": "192.0.2.9", "OS-EXT-IPS:type": "floating"},
                 ],
@@ -128,18 +125,18 @@ def test_nothing_at_runtime_imports_the_openstack_adapter():
 
 def test_the_declaration_alone_gives_every_segment_its_identity():
     shape = sketch().describe()
-    edge = next(segment for segment in shape.segments if segment.id == "edge")
+    edge = next(segment for segment in shape.segments if segment.id == "ru")
     estate = next(segment for segment in shape.segments if segment.id == "estate")
 
-    assert (edge.name, edge.origin, edge.outside) == ("Internet", "Moscow, Russia", True)
+    assert (edge.name, edge.origin, edge.outside) == ("Internet", "Russia", True)
     assert (estate.name, estate.origin, estate.outside) == ("Application estate", "", False)
 
 
 def test_the_cloud_supplies_only_what_it_allocated():
-    edge = next(s for s in sketch().describe().segments if s.id == "edge")
+    edge = next(s for s in sketch().describe().segments if s.id == "ru")
 
     assert (edge.subnet, edge.gateway, edge.network) == (
-        "5.188.10.0/24", "5.188.10.1", "net-edge",
+        "5.188.10.0/24", "5.188.10.1", "net-ru",
     )
     assert [(node.name, node.address) for node in edge.nodes] == [
         ("fsl-kali", "5.188.10.7"), ("fsl-waf", "5.188.10.9"),
@@ -156,9 +153,9 @@ def test_a_network_the_range_does_not_tag_is_dropped_not_drawn():
 
 
 def test_a_segment_is_bound_by_its_tag_and_not_by_what_it_is_called():
-    edge = next(s for s in sketch().describe().segments if s.id == "edge")
+    edge = next(s for s in sketch().describe().segments if s.id == "ru")
 
-    assert edge.network == "net-edge", (
+    assert edge.network == "net-ru", (
         "the segment was found by a network whose name happened to equal the "
         "declared id. Neutron names are neither unique nor the operator's to "
         "keep, and Heat appends its own stack suffix to every one of them"
@@ -175,14 +172,14 @@ def test_the_cloud_is_asked_only_for_the_networks_the_range_marked():
         "every network in the project came back and the adapter sorted them "
         "out afterwards; a shared project hands back other people's networks"
     )
-    assert tagged("edge") in listing
+    assert tagged("ru") in listing
 
 
 def edge_allocated(subnets):
     reader = cloud_reader()
 
     def get(call):
-        if "/v2.0/subnets" in call and call.endswith("=net-edge"):
+        if "/v2.0/subnets" in call and call.endswith("=net-ru"):
             return {"subnets": subnets}
         return reader(call)
 
@@ -194,7 +191,7 @@ def test_a_dual_stack_segment_is_bound_to_its_ipv4_subnet():
         {"cidr": "fd00:5:188:10::/64", "gateway_ip": "fd00:5:188:10::1",
          "ip_version": 6},
         {"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1", "ip_version": 4},
-    ]).describe().segments if s.id == "edge")
+    ]).describe().segments if s.id == "ru")
 
     assert (edge.subnet, edge.gateway) == ("5.188.10.0/24", "5.188.10.1"), (
         "the segment took whichever subnet Neutron listed first, so a "
@@ -210,7 +207,7 @@ def test_a_segment_with_two_ipv4_subnets_is_refused_and_named():
             {"cidr": "5.188.11.0/24", "gateway_ip": "5.188.11.1", "ip_version": 4},
         ]).describe()
 
-    assert "'edge'" in str(raised.value), raised.value
+    assert "'ru'" in str(raised.value), raised.value
     assert "5.188.11.0/24" in str(raised.value), (
         "alerts are binned by exactly one subnet, and which of two it is was "
         "decided by the order Neutron listed them in"
@@ -219,13 +216,13 @@ def test_a_segment_with_two_ipv4_subnets_is_refused_and_named():
 
 def test_two_networks_claiming_the_same_segment_are_refused_not_guessed():
     doubled = {"networks": NETWORKS["networks"] + [
-        {"id": "net-edge-2", "name": "range1-edge-legacy", "tags": [tagged("edge")]}
+        {"id": "net-ru-2", "name": "range1-ru-legacy", "tags": [tagged("ru")]}
     ]}
 
     with pytest.raises(RangeUnavailable) as raised:
         sketch(doubled).describe()
 
-    assert "both carry" in str(raised.value) and "'edge'" in str(raised.value)
+    assert "both carry" in str(raised.value) and "'ru'" in str(raised.value)
 
 
 def test_a_segment_the_cloud_does_not_have_is_named_rather_than_skipped():
@@ -270,7 +267,7 @@ def test_the_only_unimplemented_part_is_the_cloud_call_itself():
 
 def test_starting_a_tool_is_a_cloud_call_the_sketch_does_not_make():
     with pytest.raises(NotImplementedError) as raised:
-        openstack.OpenStack(declared.read(), CLOUD).launcher("edge")(
+        openstack.OpenStack(declared.read(), CLOUD).launcher("ru")(
             "fsl-kali", ["sqlmap"]
         )
 
@@ -312,7 +309,7 @@ def test_an_ipv6_address_is_not_taken_for_the_address_of_a_node():
     dual = {
         "servers": [{
             "name": "fsl-waf",
-            "addresses": {"range1-edge-v4": [
+            "addresses": {"range1-ru-v4": [
                 {"addr": "fd00:5:188:10::9", "OS-EXT-IPS:type": "fixed", "version": 6},
                 {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4},
             ]},
@@ -327,7 +324,7 @@ def test_an_ipv6_address_is_not_taken_for_the_address_of_a_node():
         return dual
 
     shape = openstack.OpenStack(declared.read(), CLOUD, get=reader).describe()
-    edge = next(s for s in shape.segments if s.id == "edge")
+    edge = next(s for s in shape.segments if s.id == "ru")
 
     assert [n.address for n in edge.nodes] == ["5.188.10.9"], (
         "Nova reports every fixed address a port has, and an instance with a "
@@ -401,7 +398,7 @@ def test_a_list_that_arrives_in_pages_is_read_to_the_end():
     first = {
         "networks": everything[:2],
         "networks_links": [
-            {"href": "http://neutron:9696/v2.0/networks?marker=net-edge-br",
+            {"href": "http://neutron:9696/v2.0/networks?marker=net-br",
              "rel": "next"},
             {"href": "http://neutron:9696/v2.0/networks", "rel": "previous"},
         ],
@@ -421,7 +418,7 @@ def test_a_list_that_arrives_in_pages_is_read_to_the_end():
 
 def test_following_a_page_asks_for_exactly_the_href_the_cloud_gave():
     everything = NETWORKS["networks"]
-    href = "http://neutron:9696/v2.0/networks?limit=2&marker=net-edge-br"
+    href = "http://neutron:9696/v2.0/networks?limit=2&marker=net-br"
     get = paged([
         {"networks": everything[:2],
          "networks_links": [{"href": href, "rel": "next"}]},
@@ -509,7 +506,7 @@ def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():
         ran.return_value.returncode = 0
         ran.return_value.stdout = "sqlmap 1.10"
         ran.return_value.stderr = f"{ports.EXIT_MARK}0\n"
-        answered = adapter.launcher("edge")("fsl-kali", ["sqlmap", "--version"])
+        answered = adapter.launcher("ru")("fsl-kali", ["sqlmap", "--version"])
 
     argv = ran.call_args.args[0]
     assert argv[0] == "ssh", argv
@@ -526,9 +523,9 @@ def test_a_tool_on_a_segment_the_attacker_does_not_stand_on_is_refused():
     adapter = sketch()
 
     with pytest.raises(RangeUnavailable) as raised:
-        adapter.launcher("edge-kp")("fsl-kali", ["sqlmap"])
+        adapter.launcher("us")("fsl-kali", ["sqlmap"])
 
-    assert "edge-kp" in str(raised.value) and "fsl-kali" in str(raised.value), (
+    assert "us" in str(raised.value) and "fsl-kali" in str(raised.value), (
         "Nova has no docker run --rm: there is no way to boot a host, capture "
         "its stdout and delete it in one call. A tool runs on an attacker that "
         "already stands on that segment, so the range must provide one per "
@@ -539,7 +536,7 @@ def test_the_image_is_not_silently_ignored():
     adapter = sketch()
 
     with pytest.raises(RangeUnavailable, match="image"):
-        adapter.launcher("edge")("some-other-image", ["sqlmap"])
+        adapter.launcher("ru")("some-other-image", ["sqlmap"])
 
 def test_reaching_a_host_does_not_read_the_whole_cloud_every_command():
     from unittest.mock import patch

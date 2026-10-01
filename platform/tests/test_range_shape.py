@@ -9,7 +9,7 @@ from range.ports import RangeUnavailable, Segment
 
 DECLARED = Declaration(
     segments=(
-        Segment(id="edge", name="Internet", origin="Moscow, Russia"),
+        Segment(id="ru", name="Internet", origin="Russia"),
         Segment(id="estate", name="Application estate"),
         Segment(id="mgmt", name="Management"),
     ),
@@ -19,7 +19,7 @@ DECLARED = Declaration(
 
 NETWORKS = [
     {"Name": "fsl_edge",
-     "Labels": {"fsl.segment.id": "edge",
+     "Labels": {"fsl.segment.id": "ru",
                 "fsl.origin": "Nowhere at all", "fsl.segment": "Whatever"},
      "IPAM": {"Config": [{"Subnet": "5.188.10.0/24", "Gateway": "5.188.10.1"}]},
      "Containers": {
@@ -83,31 +83,31 @@ def segment(shape, segment_id):
     return next(s for s in shape.segments if s.id == segment_id)
 
 def test_every_network_of_the_project_is_a_segment():
-    assert {s.id for s in describe().segments} == {"edge", "estate", "mgmt"}
+    assert {s.id for s in describe().segments} == {"ru", "estate", "mgmt"}
 
 def test_a_segment_carries_the_name_the_substrate_knows_it_by():
-    assert segment(describe(), "edge").network == "fsl_edge"
+    assert segment(describe(), "ru").network == "fsl_edge"
 
 def test_a_segment_is_called_what_the_declaration_calls_it():
     assert segment(describe(), "estate").name == "Application estate"
 
 def test_a_segment_nobody_declared_stops_the_picture():
-    thin = Declaration(segments=(Segment(id="edge", name="Internet"),))
+    thin = Declaration(segments=(Segment(id="ru", name="Internet"),))
 
     with pytest.raises(RangeUnavailable, match="estate"):
         with patch("range.docker.subprocess.run", _Run()):
             Docker(thin).describe()
 
 def test_the_declaration_says_what_a_segment_means_and_the_substrate_does_not():
-    edge = segment(describe(), "edge")
+    edge = segment(describe(), "ru")
 
-    assert (edge.name, edge.origin) == ("Internet", "Moscow, Russia"), (
+    assert (edge.name, edge.origin) == ("Internet", "Russia"), (
         "the meaning came off a label the substrate was carrying; Neutron has "
         "no such label to carry"
     )
 
 def test_a_segment_the_declaration_gives_an_origin_is_outside():
-    assert segment(describe(), "edge").outside is True
+    assert segment(describe(), "ru").outside is True
     assert segment(describe(), "estate").outside is False
 
 def test_a_segment_carries_the_addresses_that_are_actually_on_it():
@@ -152,7 +152,7 @@ def test_a_sensor_standing_on_a_segment_is_not_one_of_its_participants():
     shape = Shape(
         segments=(
             Segment(
-                id="edge", name="Internet", origin="Moscow, Russia",
+                id="ru", name="Internet", origin="Russia",
                 nodes=(Node(name="fsl-kali", address="5.188.10.2"),
                        Node(name="fsl-suricata", address="5.188.10.9")),
             ),
@@ -199,9 +199,9 @@ def test_a_declared_segment_still_comes_back():
     from range.declared import Declaration
     from range.ports import Segment
 
-    found = Declaration(segments=(Segment(id="edge", name="Internet"),))
+    found = Declaration(segments=(Segment(id="ru", name="Internet"),))
 
-    assert found.segment("edge").name == "Internet"
+    assert found.segment("ru").name == "Internet"
 
 def test_the_adapter_says_which_network_it_could_not_place():
     from range.declared import Declaration
@@ -209,7 +209,7 @@ def test_the_adapter_says_which_network_it_could_not_place():
 
     adapter = Docker(Declaration(segments=(), roles={}))
 
-    with pytest.raises(RangeUnavailable, match="edge"):
+    with pytest.raises(RangeUnavailable, match="'ru'"):
         with patch("range.docker.subprocess.run", _Run()):
             adapter.describe()
 
@@ -224,7 +224,7 @@ def test_a_network_carrying_two_subnets_is_not_quietly_halved():
             Docker(DECLARED).describe()
 
 def test_a_network_with_one_subnet_is_unaffected():
-    assert segment(describe(), "edge").subnet == "5.188.10.0/24"
+    assert segment(describe(), "ru").subnet == "5.188.10.0/24"
 
 def test_a_segment_is_bound_by_the_mark_it_carries_not_by_its_name():
     renamed = [NETWORKS[0], dict(NETWORKS[1], Name="corp-estate"), NETWORKS[2]]
@@ -244,7 +244,7 @@ def test_a_network_the_range_does_not_mark_is_not_part_of_it():
     with patch("range.docker.subprocess.run", _Run(networks=extra)):
         shape = Docker(DECLARED).describe()
 
-    assert {s.id for s in shape.segments} == {"edge", "estate", "mgmt"}, (
+    assert {s.id for s in shape.segments} == {"ru", "estate", "mgmt"}, (
         "a substrate holds networks that are not the range - on Neutron every "
         "tenant network comes back - and an unmarked one was drawn as a segment"
     )
@@ -263,7 +263,7 @@ def test_what_the_project_is_called_no_longer_decides_any_segment_id():
     with patch("range.docker.subprocess.run", _Run(networks=lab)):
         shape = Docker(DECLARED, project="fsl_lab").describe()
 
-    assert {s.id for s in shape.segments} == {"edge", "estate", "mgmt"}, (
+    assert {s.id for s in shape.segments} == {"ru", "estate", "mgmt"}, (
         "the id was cut off the front of the name by splitting on the first "
         "underscore, so a project called fsl_lab swallowed part of itself and "
         "every segment came back wrong"

@@ -156,19 +156,19 @@ def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach
 
 REAL_SHAPES = {
     "networks": [
-        {"id": "net-edge", "name": "range1-edge-v4", "tags": ["fsl.segment.id=edge"],
+        {"id": "net-ru", "name": "range1-ru-v4", "tags": ["fsl.segment.id=ru"],
          "admin_state_up": True, "status": "ACTIVE", "shared": False,
-         "project_id": "fsl", "subnets": ["sub-edge"]},
+         "project_id": "fsl", "subnets": ["sub-ru"]},
     ],
     "subnets": [{"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1",
-                 "id": "sub-edge", "network_id": "net-edge", "ip_version": 4}],
+                 "id": "sub-ru", "network_id": "net-ru", "ip_version": 4}],
     "servers": [
         {"name": "fsl-waf", "id": "srv-waf", "status": "ACTIVE",
-         "addresses": {"range1-edge-v4": [
+         "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.4", "OS-EXT-IPS-MAC:mac_addr": "00:0c:29:0d:11:74",
               "OS-EXT-IPS:type": "fixed", "version": 4}]}},
         {"name": "fsl-suricata", "id": "srv-ids", "status": "ACTIVE",
-         "addresses": {"range1-edge-v4": [
+         "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
     ],
 }
@@ -194,7 +194,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     try:
         one = declared.read()
         only_edge = type(one)(
-            segments=tuple(s for s in one.segments if s.id == "edge"),
+            segments=tuple(s for s in one.segments if s.id == "ru"),
             roles=one.roles, watches=one.watches, default_origin=one.default_origin,
         )
         cloudspec = openstack.Cloud(keystone=base, neutron=base, nova=base,
@@ -206,7 +206,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
         server.shutdown()
 
     edge = shape.segments[0]
-    assert (edge.id, edge.subnet, edge.gateway) == ("edge", "5.188.10.0/24", "5.188.10.1")
+    assert (edge.id, edge.subnet, edge.gateway) == ("ru", "5.188.10.0/24", "5.188.10.1")
     assert [(n.name, n.address) for n in edge.nodes] == [
         ("fsl-suricata", "5.188.10.9"), ("fsl-waf", "5.188.10.4"),
     ]

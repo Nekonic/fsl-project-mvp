@@ -12,7 +12,7 @@ def fired(stack_is_up):
     ).json()["id"]
     sent = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": CASE, "origin": "edge-hk"}, timeout=900,
+        json={"case": CASE, "origin": "hk"}, timeout=900,
     )
     assert sent.status_code == 201, sent.text
     return sent.json()
@@ -24,7 +24,7 @@ def test_a_case_that_runs_a_tool_gets_the_tool_run(fired):
     )
 
 def test_the_tool_leaves_by_the_origin_it_was_told_to(fired):
-    assert fired["meta"]["origin"] == "edge-hk"
+    assert fired["meta"]["origin"] == "hk"
 
 def test_an_origin_the_range_does_not_have_is_refused(stack_is_up):
     session_id = requests.post(

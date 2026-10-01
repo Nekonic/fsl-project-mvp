@@ -1,4 +1,4 @@
-default_origin: edge
+default_origin: ru
 
 defended_site:
   label: Seoul, Korea
@@ -6,18 +6,40 @@ defended_site:
   lon: 126.9780
 
 segments:
-  - id: edge
+  - id: internet
     name: Internet
-    origin: Moscow, Russia
-  - id: edge-br
-    name: Internet
-    origin: Sao Paulo, Brazil
-  - id: edge-hk
-    name: Internet
-    origin: Kwai Chung, Hong Kong
-  - id: edge-kp
-    name: Internet
-    origin: North Korea
+    ranking: Cloudflare Radar, HTTP requests by location, all traffic, 2025-09-29/2026-09-28
+    origins:
+      - {id: us, label: United States, country: US, subnet: 73.0.0.0/24, share: 29.47646, addresses: 35}
+      - {id: in, label: India, country: IN, subnet: 117.192.0.0/24, share: 5.425324, addresses: 6}
+      - {id: br, label: Brazil, country: BR, subnet: 177.54.144.0/24, share: 4.673827, addresses: 5}
+      - {id: de, label: Germany, country: DE, subnet: 79.192.0.0/24, share: 4.073486, addresses: 5}
+      - {id: jp, label: Japan, country: JP, subnet: 106.128.0.0/24, share: 3.968407, addresses: 5}
+      - {id: gb, label: United Kingdom, country: GB, subnet: 81.128.0.0/24, share: 3.490965, addresses: 4}
+      - {id: fr, label: France, country: FR, subnet: 90.0.0.0/24, share: 2.991618, addresses: 4}
+      - {id: nl, label: Netherlands, country: NL, subnet: 77.160.0.0/24, share: 2.342137, addresses: 3}
+      - {id: id, label: Indonesia, country: ID, subnet: 39.192.0.0/24, share: 2.196873, addresses: 3}
+      - {id: cn, label: China, country: CN, subnet: 36.128.0.0/24, share: 2.146852, addresses: 2}
+      - {id: ca, label: Canada, country: CA, subnet: 99.224.0.0/24, share: 2.06012, addresses: 2}
+      - {id: sg, label: Singapore, country: SG, subnet: 178.100.0.0/24, share: 1.768625, addresses: 2}
+      - {id: mx, label: Mexico, country: MX, subnet: 187.192.0.0/24, share: 1.563691, addresses: 2}
+      - {id: ph, label: Philippines, country: PH, subnet: 49.144.0.0/24, share: 1.523833, addresses: 2}
+      - {id: tr, label: Turkey, country: TR, subnet: 78.160.0.0/24, share: 1.52203, addresses: 2}
+      - {id: vn, label: Vietnam, country: VN, subnet: 14.160.0.0/24, share: 1.491161, addresses: 2}
+      - {id: kr, label: South Korea, country: KR, subnet: 175.192.0.0/24, share: 1.473231, addresses: 2}
+      - {id: es, label: Spain, country: ES, subnet: 88.0.0.0/24, share: 1.43599, addresses: 2}
+      - {id: au, label: Australia, country: AU, subnet: 1.128.0.0/24, share: 1.249301, addresses: 1}
+      - {id: th, label: Thailand, country: TH, subnet: 49.228.0.0/24, share: 1.183342, addresses: 1}
+      - {id: it, label: Italy, country: IT, subnet: 79.0.0.0/24, share: 1.162007, addresses: 1}
+      - {id: pl, label: Poland, country: PL, subnet: 83.0.0.0/24, share: 1.059468, addresses: 1}
+      - {id: ru, label: Russia, country: RU, subnet: 5.188.10.0/24, share: 0.925973, addresses: 1}
+      - {id: sa, label: Saudi Arabia, country: SA, subnet: 2.88.0.0/24, share: 0.836102, addresses: 1}
+      - {id: hk, label: Hong Kong, country: HK, subnet: 103.152.220.0/24, share: 0.832424, addresses: 1}
+      - {id: ie, label: Ireland, country: IE, subnet: 87.32.0.0/24, share: 0.722468, addresses: 1}
+      - {id: ar, label: Argentina, country: AR, subnet: 181.8.0.0/24, share: 0.689725, addresses: 1}
+      - {id: tw, label: Taiwan, country: TW, subnet: 120.96.0.0/24, share: 0.686247, addresses: 1}
+      - {id: ir, label: Iran, country: IR, subnet: 2.176.0.0/24, share: 0.655282, addresses: 1}
+      - {id: za, label: South Africa, country: ZA, subnet: 41.0.0.0/24, share: 0.642336, addresses: 1}
   - id: estate
     name: Application estate
   - id: mgmt

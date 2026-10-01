@@ -3,39 +3,39 @@ name: fsl
 networks:
   edge:
     labels:
-      fsl.segment.id: "edge"
+      fsl.segment.id: "ru"
       fsl.segment: "Internet"
-      fsl.origin: "Moscow, Russia"
+      fsl.origin: "Russia"
     ipam:
       config:
         - subnet: 5.188.10.0/24
 
   edge-br:
     labels:
-      fsl.segment.id: "edge-br"
+      fsl.segment.id: "br"
       fsl.segment: "Internet"
-      fsl.origin: "Sao Paulo, Brazil"
+      fsl.origin: "Brazil"
     ipam:
       config:
         - subnet: 177.54.144.0/24
 
   edge-hk:
     labels:
-      fsl.segment.id: "edge-hk"
+      fsl.segment.id: "hk"
       fsl.segment: "Internet"
-      fsl.origin: "Kwai Chung, Hong Kong"
+      fsl.origin: "Hong Kong"
     ipam:
       config:
         - subnet: 103.152.220.0/24
 
-  edge-kp:
+  edge-us:
     labels:
-      fsl.segment.id: "edge-kp"
+      fsl.segment.id: "us"
       fsl.segment: "Internet"
-      fsl.origin: "North Korea"
+      fsl.origin: "United States"
     ipam:
       config:
-        - subnet: 175.45.176.0/24
+        - subnet: 73.0.0.0/24
 
   estate:
     labels:
@@ -80,7 +80,7 @@ services:
       edge-hk:
         priority: 90
         aliases: [board.com]
-      edge-kp:
+      edge-us:
         priority: 90
         aliases: [board.com]
       estate:
@@ -174,7 +174,7 @@ services:
     platform: linux/amd64
     build: ./deploy/proxy
     container_name: fsl-proxy
-    networks: [edge, edge-br, edge-hk, edge-kp]
+    networks: [edge, edge-br, edge-hk, edge-us]
     volumes:
       - ./data/label:/label
 
@@ -184,7 +184,7 @@ services:
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
-    networks: [edge, edge-br, edge-hk, edge-kp, estate, mgmt]
+    networks: [edge, edge-br, edge-hk, edge-us, estate, mgmt]
     ports:
       - "127.0.0.1:8000:8000"
     environment:
