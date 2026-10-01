@@ -11,7 +11,7 @@ from urllib.parse import quote
 import requests
 from dataclasses import dataclass, replace
 
-from range import fabric, images
+from range import fabric, images, slot
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -56,7 +56,7 @@ CALLS = (
 )
 DELETES = {
     "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
-    "group": DELETE_GROUP, "port": DELETE_PORT,
+    "group": DELETE_GROUP, "port": DELETE_PORT, "server": DELETE_SERVER,
 }
 
 FIXED = "OS-EXT-IPS:type"
@@ -777,6 +777,12 @@ class OpenStack:
                 f"{len(bases)} active images by that name; set "
                 f"{SETTINGS['base_image']} to one it has exactly once"
             )
+        return {
+            "imageRef": bases[0]["id"], "flavorRef": self._flavor(),
+            "networks": [{"uuid": self.build.network}], "config_drive": True,
+        }
+
+    def _flavor(self) -> str:
         flavor = next((
             entry["id"] for entry in self.get(self._call(FLAVORS)).get("flavors") or []
             if entry.get("name") == self.build.flavor
@@ -786,10 +792,89 @@ class OpenStack:
                 f"the cloud has no flavor {self.build.flavor!r}; set "
                 f"{SETTINGS['flavor']} to one it lists"
             )
-        return {
-            "imageRef": bases[0]["id"], "flavorRef": flavor,
-            "networks": [{"uuid": self.build.network}], "config_drive": True,
+        return flavor
+
+    def plan_slot(self) -> slot.Plan:
+        return self._slot()[0]
+
+    def ensure_slot(self) -> slot.Plan:
+        plan, bound, subnets, ports, groups, ready = self._slot()
+        if plan.blocked:
+            raise Drifted("; ".join(plan.blocked))
+        if not plan.boot:
+            return plan
+        group = next((g["id"] for g in groups if g["name"] == fabric.RANGE_GROUP), None)
+        if group is None:
+            raise Drifted(f"the fabric has no security group {fabric.RANGE_GROUP}; build the fabric first")
+        for port in plan.ports:
+            body = {"network_id": bound[port.segment]["id"], "name": port.name,
+                    "security_groups": [group]}
+            if port.fixed_ips:
+                body["fixed_ips"] = [
+                    {"subnet_id": subnet, "ip_address": address} for subnet, address in port.fixed_ips
+                ]
+            ports.append(self.get(self._call(CREATE_PORT), {"port": body})["port"])
+        named = {port["name"]: port for port in ports if port.get("name")}
+        names = {
+            named[slot.port_name(host, slot.NAMED_ON)]["fixed_ips"][0]["ip_address"]: list(entry.names)
+            for host, entry in self.declared.hosts.items()
+            if entry.names and slot.port_name(host, slot.NAMED_ON) in named
         }
+        prefixes = {subnet["id"]: subnet["cidr"].split("/")[1] for subnet in subnets}
+        outside = {origin.segment for origin in self.declared.origins}
+        flavor = self._flavor()
+        for host in plan.boot:
+            entry = self.declared.hosts[host]
+            facing = [named[slot.port_name(host, s)] for s in entry.segments if s in outside]
+            self.get(self._call(BOOT), {"server": {
+                "name": host, "imageRef": ready[host], "flavorRef": flavor,
+                "networks": [{"port": named[slot.port_name(host, s)]["id"]} for s in entry.segments],
+                "config_drive": True, "key_name": fabric.KEYPAIR,
+                "user_data": slot.user_data(
+                    names,
+                    mac=facing[0]["mac_address"] if facing else "",
+                    addresses=tuple(
+                        f"{fixed['ip_address']}/{prefixes[fixed['subnet_id']]}"
+                        for port in facing for fixed in port["fixed_ips"]
+                    ),
+                ),
+                "metadata": {slot.HOST: host},
+            }})
+        self._shape = None
+        return self._slot()[0]
+
+    def teardown_slot(self) -> list[tuple[str, str]]:
+        hosts = self.declared.hosts
+        bound = fabric.bound(self.declared, self._all(PROJECT_NETWORKS, "networks"))
+        made = {slot.port_name(host, s) for host, entry in hosts.items() for s in entry.segments}
+        steps = [
+            ("server", server["id"]) for server in self._all(SERVERS, "servers")
+            if (server.get("metadata") or {}).get(slot.HOST) in hosts
+        ] + [
+            ("port", port["id"])
+            for network in bound.values()
+            for port in self._all(PORTS, "ports", network=network["id"])
+            if port.get("name") in made
+        ]
+        for kind, ident in steps:
+            self.get(self._call(DELETES[kind], **{kind: ident}))
+        self._shape = None
+        return steps
+
+    def _slot(self):
+        networks, subnets, _, groups = self._fabric_standing()
+        bound = fabric.bound(self.declared, networks)
+        ports = [
+            port for network in bound.values()
+            for port in self._all(PORTS, "ports", network=network["id"])
+        ]
+        ready = {
+            found.host: found.image for found in self.plan_images().images
+            if found.state == "ready"
+        }
+        plan = slot.plan(self.declared, networks, subnets, ports,
+                         self._all(SERVERS, "servers"), ready)
+        return plan, bound, subnets, ports, groups, ready
 
     def _call(self, call: str, **binding) -> str:
         return call.format(**vars(self.cloud), **binding)

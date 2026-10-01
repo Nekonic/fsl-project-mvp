@@ -29,6 +29,8 @@ class Origin:
 class Host:
     setup: str
     files: tuple[str, ...] = ()
+    segments: tuple[str, ...] = ()
+    names: tuple[str, ...] = ()
 
 @dataclass(frozen=True)
 class Declaration:
@@ -116,7 +118,12 @@ def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
 
 def _hosts(entries) -> dict[str, Host]:
     return {
-        name: Host(setup=entry["setup"], files=tuple(entry.get("files") or ()))
+        name: Host(
+            setup=entry["setup"],
+            files=tuple(entry.get("files") or ()),
+            segments=tuple(entry.get("segments") or ()),
+            names=tuple(entry.get("names") or ()),
+        )
         for name, entry in (entries or {}).items()
     }
 

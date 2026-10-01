@@ -505,6 +505,35 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      got `ens7` at `10.31.0.18/24` with its default route unchanged, the
      platform container connected to `10.31.0.1:53` through Docker's NAT,
      and a second POST read `clean`.
+   - **Done (2026-10-01): the slot.** Each host in `hosts:` also declares
+     its `segments` (every one includes `mgmt`) and its `names` on the
+     estate. `range/slot.py` plans a port `<host>.<segment>` per segment in
+     `fsl-range` (Neutron picks the address where DHCP is on) and, for the
+     host filling `gateway`, one Internet port holding every origin's
+     gateway `.1`; it refuses a slot whose image is not ready, whose fabric
+     lacks a segment, or whose non-gateway host stands on the Internet.
+     The platform boots each host from its image with a config drive, the
+     keypair `fsl-platform` and metadata `fsl_host`, and user data that
+     appends every host's estate names to `/etc/hosts` and, on the gateway,
+     a `bootcmd` adding all thirty addresses to the NIC with that port's MAC
+     every boot. `GET/POST/DELETE /api/range/slot/`; `DELETE` removes the
+     servers and the ports named for them.
+   - **Checked on the cloud (2026-10-01):** one POST booted `fsl-waf`,
+     `fsl-juice-shop`, `fsl-wiki` and `fsl-board`, all ACTIVE. Inside the
+     platform container `describe()` returned `fsl-waf` on all thirty
+     origins at each `.1`, the four hosts on estate, the five (the platform
+     too) on mgmt, and no sensor. `runner()` over ssh to each mgmt address:
+     Juice Shop answered 200, the wiki served its page, MySQL and the board
+     were active and answered 200, and the WAF held 33 IPv4 addresses and
+     proxied `shop.com` and `board.com` (200 each) through the names in
+     `/etc/hosts`. A request with a scanner's User-Agent was logged by
+     ModSecurity 3.0.16 / CRS 4.25.1 (913100, 949110), the same producer
+     line as the Docker WAF's, and Juice Shop reached `wiki.internal`.
+   - **cloud-init applies only the first address of a port** that holds
+     several (one per subnet), and adds a default route through each
+     subnet's gateway, here the WAF's own address; hence the `bootcmd`.
+     Without a config drive a guest gets no metadata at all: only its first
+     NIC asks DHCP, and on the gateway that is the Internet, DHCP off.
    - **`README.ko.md` and `ARCHITECTURE.ko.md` do not describe step 3**:
      writing them means writing Korean, which CLAUDE.md keeps out of files.
    - **Nova here answers 404 for the console of a guest that is off**
@@ -538,6 +567,9 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
   acceptance failures (one case of ten detected) that passed when rerun.
 
 - `test_declaration.py` compares two files, never the running range.
+- A slot host booted again on its own (its server deleted, then POST)
+  takes a new estate address the others' `/etc/hosts` does not have; take
+  the whole slot down and up instead.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
 - The Kali terminal at `/terminal/` is an unauthenticated root shell to
