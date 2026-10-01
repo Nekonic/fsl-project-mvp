@@ -9,6 +9,7 @@ throwaway prototype; the production project lives elsewhere.
 - `docs/ARCHITECTURE.md`: how the range is put together, and where it is going
 - `docs/THREAT-MODEL.md`: what the range emulates and what it leaves out
 - `docs/STATE.md`: where the work stands
+- `README.ko.md`: this README in Korean
 
 ## How it fits together
 
