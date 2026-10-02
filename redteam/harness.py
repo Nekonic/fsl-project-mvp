@@ -23,7 +23,7 @@ from redteam.tools import (
 REQUEST_TIMEOUT = 15.0
 TOOL_TIMEOUT = 600.0
 
-DEFAULT_TOOL_TARGET = "http://waf:8080"
+DEFAULT_TOOL_TARGET = "http://shop.com"
 
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
 

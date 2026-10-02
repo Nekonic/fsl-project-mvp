@@ -24,7 +24,7 @@ DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 def main() -> int:
     parser = argparse.ArgumentParser(description="FSL red team harness")
     parser.add_argument("--platform", default="http://localhost:8000")
-    parser.add_argument("--target", default="http://localhost:8080")
+    parser.add_argument("--target", default="http://shop.com")
     parser.add_argument("--cases", default=str(DEFAULT_CASES))
     parser.add_argument(
         "--tool-target",
