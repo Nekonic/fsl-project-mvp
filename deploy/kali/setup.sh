@@ -25,6 +25,19 @@ install -m 0644 motd /etc/motd
 install -m 0644 operator-log.sh /etc/fsl/operator-log.sh
 install -m 0644 ../proxy/stamp.py /opt/fsl/stamp.py
 
+cat > /usr/local/sbin/fsl-origin <<'ORIGIN'
+#!/bin/sh
+set -eu
+source=${1-}
+dev=$(ip route show default | awk '{print $5; exit}')
+iptables -t nat -N FSL-ORIGIN 2>/dev/null || iptables -t nat -F FSL-ORIGIN
+iptables -t nat -C POSTROUTING -o "$dev" -j FSL-ORIGIN 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -o "$dev" -j FSL-ORIGIN
+[ -n "$source" ] && iptables -t nat -A FSL-ORIGIN -j SNAT --to-source "$source"
+exit 0
+ORIGIN
+chmod 0755 /usr/local/sbin/fsl-origin
+
 install -d -m 0777 /label
 : > /label/active
 : > /label/origin

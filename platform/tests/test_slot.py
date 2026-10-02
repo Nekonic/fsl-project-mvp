@@ -56,11 +56,45 @@ def test_the_edge_holds_the_estate_gateway_so_the_estate_routes_through_it():
         "answer at the estate's gateway address"
     )
 
-def test_only_the_edge_uses_fixed_addresses_every_other_host_takes_what_neutron_gives():
+def test_only_the_edge_and_the_attacker_use_fixed_addresses_others_take_what_neutron_gives():
     edge = DECLARED.roles["edge"]
+    attacker = DECLARED.roles["attacker"]
 
-    assert all(not p.fixed_ips for p in planned().ports if p.host != edge)
+    assert all(not p.fixed_ips for p in planned().ports if p.host not in (edge, attacker))
     assert all(not p.fixed_ips for p in planned().ports if p.segment == fabric.MANAGEMENT)
+
+def test_the_attacker_holds_the_declared_per_country_addresses_on_the_internet():
+    attacker = DECLARED.roles["attacker"]
+
+    [port] = [p for p in planned().ports if p.host == attacker and p.segment == "internet"]
+
+    held = sorted(address for _, address in port.fixed_ips)
+    assert len(held) == sum(o.addresses for o in DECLARED.origins), (
+        "the attacker can only wear a source address its port already owns, or "
+        "Neutron anti-spoofing drops the packet"
+    )
+    for origin in DECLARED.origins:
+        wanted = slot.origin_addresses(origin.subnet, origin.addresses)
+        assert set(wanted) <= set(held), origin.id
+        assert all(a not in wanted for a in (origin.subnet.replace("0/24", "1"),)), (
+            "the gateway .1 is the edge's; the attacker must not claim it"
+        )
+
+def test_the_attacker_addresses_are_within_each_origin_subnet_and_stable():
+    first = slot.origin_addresses("73.0.0.0/24", 3)
+    assert first == ["73.0.0.10", "73.0.0.11", "73.0.0.12"]
+    assert slot.origin_addresses("73.0.0.0/24", 3) == first
+
+def test_the_attacker_addresses_sit_on_the_right_subnet_ids():
+    attacker = DECLARED.roles["attacker"]
+
+    [port] = [p for p in planned().ports if p.host == attacker and p.segment == "internet"]
+    by_subnet = {}
+    for subnet, address in port.fixed_ips:
+        by_subnet.setdefault(subnet, []).append(address)
+
+    for origin in DECLARED.origins:
+        assert len(by_subnet[f"sub-fsl-{origin.id}"]) == origin.addresses
 
 def test_a_host_standing_is_not_booted_again_and_its_ports_stay():
     servers = [{"id": "srv-1", "name": "fsl-wiki", "status": "ACTIVE",
