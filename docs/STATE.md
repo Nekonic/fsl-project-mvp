@@ -55,12 +55,19 @@ finished: the pfSense edge is blocked on how its image is configured (below).
 - The range flavor is **m1.linux** (30 GB) now, because Kali's image is
   min_disk 25; set as `FSL_OPENSTACK_FLAVOR` in the VM's `openstack.env`.
 
-**State of the cloud right now:** the step-3 slot still stands (fsl-waf as the
-Internet gateway holding the 30 `.1`s; juice-shop, wiki, board on the estate).
-The new slot is **not** built: pfSense's Internet port would want the same 30
-`.1`s the standing WAF holds, so the slot must be **torn down and rebuilt** to
-move to the pfSense topology. The platform VM runs this branch's code (rsynced
-to `/opt/fsl`, not pushed to `dev`).
+**State of the cloud right now (2026-10-02): the pfSense-topology slot stands.**
+The step-3 slot was torn down and rebuilt through `/api/range/slot/`
+(a stale `fsl-waf.internet` port that teardown left - the new declaration has
+no WAF on the Internet - was deleted by hand first). Standing now: **fsl-pfsense**
+holding all 30 origin `.1`s on fsl-internet, the estate `.1` (10.30.0.1) and a
+mgmt address (OPT1=vtnet2, DHCP, 10.31.0.63); **fsl-kali** on an origin address
+and mgmt; **fsl-waf / juice-shop / wiki / board** on estate+mgmt only.
+`describe()` returns pfSense as the sensor on every origin and Kali, as the goal
+asks. **The platform runs shell commands on pfSense as root over mgmt ssh** (the
+runner, `admin@10.31.0.63`). NIC order held: internet=vtnet0, estate=vtnet1,
+mgmt=vtnet2. The platform VM runs this branch's code (rsynced to `/opt/fsl`, no
+`--delete`; not pushed to `dev`). pfSense's WAN/LAN are still the image's DHCP
+defaults (no range addresses yet), so nothing routes until the config is pushed.
 
 **Cloud-verified (2026-10-02): the pfSense edge image is built.** Glance holds
 `fsl-pfsense-edge` (snapshot of `fsl-pfsense` + Suricata 8.0.5 package, sshd on
