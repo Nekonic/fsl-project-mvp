@@ -146,3 +146,8 @@ foreach (range(1, 30) as $second) {
 }
 sleep(5);
 printf("fsl-edge sensor %s %s\n", $sensing, suricata_is_running($sensors[$at]['uuid'], $sensing) ? 'running' : 'stopped');
+
+filter_configure_sync();
+$loaded = [];
+exec("/sbin/pfctl -sr", $loaded);
+printf("fsl-edge wanrule %d\n", count(preg_grep('/fsl range crosses the edge/', $loaded)));

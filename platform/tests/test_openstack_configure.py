@@ -26,10 +26,11 @@ def _shape():
     return Shape(segments=origins + (mgmt,), sensors=())
 
 class Edge:
-    def __init__(self, holds=None, exit_code=0, sensor="running", logs="10.31.0.195:5140"):
+    def __init__(self, holds=None, exit_code=0, sensor="running", logs="10.31.0.195:5140", wanrule=1):
         self.calls = []
         self.sensor = sensor
         self.logs = logs
+        self.wanrule = wanrule
         self.holds = holds
         self.exit_code = exit_code
 
@@ -43,7 +44,8 @@ class Edge:
                 return Ran(self.exit_code, "")
             return Ran(self.exit_code, "fsl-edge wan " + " ".join(holds) + "\n"
                        + f"fsl-edge sensor vtnet0 {self.sensor}\n"
-                       + f"fsl-edge logs {self.logs}\n")
+                       + f"fsl-edge logs {self.logs}\n"
+                       + f"fsl-edge wanrule {self.wanrule}\n")
         return run
 
 class Groups:
@@ -133,3 +135,7 @@ def test_a_waf_whose_forwarding_did_not_apply_is_drift():
 def test_an_edge_whose_sensor_is_not_running_afterwards_is_drift():
     with pytest.raises(Drifted, match="sensor"):
         _adapter(Edge(sensor="stopped")).configure_edge()
+
+def test_an_edge_whose_wan_pass_rule_did_not_load_into_pf_is_drift():
+    with pytest.raises(Drifted, match="wan rule|pf"):
+        _adapter(Edge(wanrule=0)).configure_edge()
