@@ -90,16 +90,39 @@ done, and the findings that matter:
 - **The 3rd NIC hot-plugs** (vtnet2 appeared with no reboot), so OPT1 was
   assignable live.
 
-**Left:** how the platform pushes the **deploy-specific** pfSense config over
-mgmt ssh — WAN static + the 30 origin `.1` aliases, LAN = estate `.1`
-(10.30.0.1), firewall pass of WAF:80 with no outbound NAT, Suricata on the WAN
-interface with `pfsense.home_net()` and EVE→syslog, and remote syslog to the
-platform; a per-host **ssh user** (`admin` for pfSense) in the runner; the log
-pipeline (pfSense syslog + the WAF VM's ModSecurity into Elasticsearch); the
-attacker rework (one Kali, per-country source by SNAT, default route and
-`shop.com` through pfSense to the WAF's estate address); the slot rebuild
-(tear the step-3 slot down first — the WAF holds the `.1`s pfSense now wants);
-and the cloud end-to-end scored run.
+**Cloud-verified (2026-10-02): un-NAT routing through pfSense works, source
+preserved.** With pfSense's WAN given 120.96.0.1/24 (one origin), outbound NAT
+disabled, and a pass-all WAN rule — pushed over mgmt ssh by a pfSense **playback
+script** (`/etc/phpshellsessions/*`, the pfSense 2.9 `config_set_path` /
+`add_filter_rules` API; `$config[...]` edits and `php -f` do **not** persist) —
+the attacker reached the target end to end: Kali at 120.96.0.208 (Taiwan
+origin) → pfSense (120.96.0.1) → WAF (10.30.0.217) → Juice Shop, `curl
+http://shop.com/` = 200 "OWASP Juice Shop", a SQLi probe = 500. The WAF's nginx
+log shows the client as **120.96.0.208**, not pfSense: **no NAT, source IP
+preserved**, so GeoIP places it right. Kali needs no manual routing: config-drive
+metadata already gave eth0 the origin address, a default route via `.1`, and
+`/etc/hosts` has `shop.com`/`board.com` → the WAF's estate IP. Neutron L2 across
+the 30 origin subnets of the one `fsl-internet` network is fine (ARP resolved
+once the WAN IP was up).
+
+Gotchas found: (a) `base64 -d` of a single line needs `-A` or it writes an empty
+file (silent); (b) **pfSense's `interface_configure('wan')` did not bring the
+WAN IPv4 up** on `vtnet0` though config.xml held it — `ifconfig vtnet0 inet
+120.96.0.1/24 alias` did, and then routing worked; the playback must force the
+interface up (and set `ipaddrv6`=none to stop the dhcp6 client). NIC order held
+(internet=vtnet0, estate=vtnet1, mgmt=vtnet2), but the spec's warning stands —
+confirm it each boot.
+
+**Left:** make the WAN config stick (all 30 origin `.1`s as VIP aliases, the IP
+actually up); Suricata on pfSense (WAN interface, `pfsense.home_net()`, EVE),
+and the log pipeline (pfSense Suricata EVE + filterlog + the WAF VM's
+ModSecurity into Elasticsearch); **codify** the pfSense config-push into the
+platform (a slot "configure" step over mgmt ssh, idempotent); the attacker
+rework (the ~100 per-country addresses on Kali's one port + the source rewrite,
+so any origin can fire, not just the Neutron-chosen one); and the cloud
+end-to-end scored run (fire a case from the red console, see the detection and
+the TP/FP/FN/TN + objective score). The slot stands configured by hand for the
+one origin right now; a reboot or rebuild loses the by-hand WAN IP.
 
 ## Measured mechanics a change can break
 
