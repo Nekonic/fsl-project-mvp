@@ -10,6 +10,7 @@ from range.ports import RangeUnavailable, Segment
 TEMPLATE = "deploy/pfsense/configure.php"
 RULES = "deploy/suricata/rules/local.rules"
 SESSION = "fsl-edge"
+REPORTS = "fsl-edge "
 HOLDS = "fsl-edge wan "
 SENSING = "fsl-edge sensor "
 
@@ -20,7 +21,8 @@ def home(declaration: Declaration) -> list[str]:
 def home_net(declaration: Declaration) -> str:
     return "[" + ",".join(home(declaration)) + "]"
 
-def settings(segments: tuple[Segment, ...], declaration: Declaration, rules: str) -> dict:
+def settings(segments: tuple[Segment, ...], declaration: Declaration, rules: str,
+             collector: str) -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -32,7 +34,7 @@ def settings(segments: tuple[Segment, ...], declaration: Declaration, rules: str
         for segment in origins
     ]
     return {"wan": gateways[0], "aliases": gateways[1:], "home": home(declaration),
-            "rules": rules}
+            "rules": rules, "collector": collector}
 
 def playback(wanted: dict, template: str) -> str:
     blob = base64.b64encode(json.dumps(wanted).encode()).decode()
@@ -53,4 +55,9 @@ def sensing(output: str) -> bool:
     return any(
         line.startswith(SENSING) and line.split()[-1] == "running"
         for line in output.splitlines()
+    )
+
+def reported(output: str) -> tuple[str, ...]:
+    return tuple(
+        line[len(REPORTS):] for line in output.splitlines() if line.startswith(REPORTS)
     )

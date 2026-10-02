@@ -149,6 +149,8 @@ services:
     depends_on:
       elasticsearch: {condition: service_healthy}
     networks: [mgmt]
+    ports:
+      - "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro

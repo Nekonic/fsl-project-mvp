@@ -116,11 +116,32 @@ which the platform requires. Cloud: a SQLi probe from Kali (120.96.0.208)
 raised `FSL SQLi attempt - URI` in pfSense's alert log.
 
 **Left, in order:**
-3. **Log pipeline** - pfSense Suricata EVE + `filterlog` by syslog to the
-   platform's Filebeat (a new UDP syslog input), and the WAF VM's ModSecurity
-   audit log into Elasticsearch.
-4. **Codify** 3 into the same configure step, idempotent.
-5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
+**Done (2026-10-02): Left 3 and 4, the log pipeline, codified.**
+`configure_slot()` now runs three idempotent steps over mgmt ssh and reports
+what each host said:
+- **The edge** also turns on remote syslog (`system_syslogd_start`,
+  `remoteserver` = the scorer's mgmt address `:5140`, `logall`, RFC 5424) in
+  the same playback, and the platform refuses unless it prints `logs <addr>`.
+- **The WAF** (`range/waf.py`) gets an rsyslog drop-in that `imfile`-tails
+  ModSecurity's own audit log (`SecAuditLog`, read from
+  `deploy/waf/modsecurity.conf`) and `omfwd`s it UDP to the collector, tagged
+  `modsecurity`, `maxMessageSize 64k`; written, `rsyslogd -N1`-checked and
+  `systemctl restart`ed with sudo. Drift if it does not apply.
+- **The collector** opens `fsl-reach` to exactly the edge and WAF on UDP 5140
+  (`fabric.hearing`: one rule per sender, stale ones removed), and compose
+  publishes Filebeat's new UDP syslog input on `${FSL_SYSLOG_PUBLISH:-127.0.0.1}`
+  (the platform VM's `.env` sets `0.0.0.0`; the stack's group keeps 5140 shut
+  on the floating IP, fsl-reach opens it per sender). Filebeat's `syslog`
+  processor parses every line to `fsl_source: syslog`; a Suricata or
+  ModSecurity line whose body is JSON is decoded and re-tagged so ingest
+  normalizes it as before.
+- Cloud: `POST /api/range/configure/` reported all three; a SQLi probe from
+  Kali (120.96.0.208, carrying `X-FSL-Case`) produced in Elasticsearch a
+  Suricata `alert` and its marked `http` event (both `pfSense.home.arpa`), a
+  ModSecurity record (`fsl-waf`), and seven `filterlog` lines arrived whole.
+
+**Left, in order:**
+5. **Attacker addresses**5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
    Internet port + the source rewrite (SNAT), so any origin fires, not just the
    Neutron-chosen one.
 6. **End-to-end** - fire a case from the red console (`/terminal/`) →
