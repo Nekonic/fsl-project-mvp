@@ -1110,7 +1110,9 @@ def range_configure(request):
     adapter = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
     with RULE_CHANGES:
         done = adapter.configure_slot()
-    return _reply({"configured": [{"host": host, "holds": list(holds)} for host, holds in done]})
+    return _reply({"configured": [
+        {"host": host, "reported": list(reported)} for host, reported in done
+    ]})
 
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):

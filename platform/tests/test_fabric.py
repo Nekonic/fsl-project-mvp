@@ -171,3 +171,28 @@ def test_the_planner_touches_no_cloud_and_no_disk():
     source = pathlib.Path(fabric.__file__).read_text()
 
     assert not [word for word in ("requests", "urllib", "subprocess", "open(") if word in source]
+
+
+def _rule(prefix, ident, port=fabric.COLLECTOR_PORT):
+    return {"id": ident, "direction": "ingress", "ethertype": "IPv4", "protocol": "udp",
+            "port_range_min": port, "port_range_max": port, "remote_ip_prefix": prefix}
+
+def test_the_collector_hears_each_sender_and_nothing_else():
+    group = {"id": "sg-reach", "security_group_rules": [
+        _rule("10.31.0.63/32", "r-edge"), _rule("10.31.0.201/32", "r-stale"),
+        _rule("10.31.0.9/32", "r-other", port=22),
+    ]}
+
+    create, delete = fabric.hearing(group, ["10.31.0.63", "10.31.0.198"])
+
+    assert create == [{"security_group_id": "sg-reach", "direction": "ingress",
+                       "ethertype": "IPv4", "protocol": "udp",
+                       "port_range_min": fabric.COLLECTOR_PORT,
+                       "port_range_max": fabric.COLLECTOR_PORT,
+                       "remote_ip_prefix": "10.31.0.198/32"}]
+    assert delete == ["r-stale"], "a rule for another port is not the collector's to remove"
+
+def test_a_collector_already_hearing_its_senders_changes_nothing():
+    group = {"id": "sg-reach", "security_group_rules": [_rule("10.31.0.63/32", "r-edge")]}
+
+    assert fabric.hearing(group, ["10.31.0.63"]) == ([], [])

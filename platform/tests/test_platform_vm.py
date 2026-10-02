@@ -115,7 +115,11 @@ def test_the_vm_publishes_the_platform_on_its_own_address():
     [compose_env] = [e for e in cloud_config()["write_files"] if e["path"].endswith("/compose.env")]
     moved = [" ".join(c) for c in cloud_config()["runcmd"]]
 
-    assert compose_env["content"].splitlines() == [f"FSL_PUBLISH={fixed}"]
+    assert compose_env["content"].splitlines() == [f"FSL_PUBLISH={fixed}", "FSL_SYSLOG_PUBLISH=0.0.0.0"], (
+        "the range's VMs reach the collector on the platform's management "
+        "address, which the fabric attaches after boot; the stack's group "
+        "keeps 5140 shut on the floating IP and fsl-reach opens it per sender"
+    )
     assert f"mv {compose_env['path']} /opt/fsl/.env" in moved, moved
 
 def test_django_answers_to_the_floating_ip():

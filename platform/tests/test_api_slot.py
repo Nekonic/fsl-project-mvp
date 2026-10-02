@@ -74,16 +74,16 @@ class Configured:
 
     def configure_slot(self):
         self.configured += 1
-        return [("fsl-pfsense", ("73.0.0.1", "120.96.0.1"))]
+        return [("fsl-pfsense", ("wan 73.0.0.1 120.96.0.1", "logs 10.31.0.195:5140"))]
 
-def test_configuring_the_slot_is_a_post_that_says_what_each_host_now_holds(client):
+def test_configuring_the_slot_is_a_post_that_says_what_each_host_reported(client):
     found = Configured()
     with patch("api.views.substrate", lambda: found):
         response = client.post_json("/api/range/configure/")
 
     assert response.status_code == 200 and found.configured == 1
     assert response.json() == {"configured": [
-        {"host": "fsl-pfsense", "holds": ["73.0.0.1", "120.96.0.1"]}
+        {"host": "fsl-pfsense", "reported": ["wan 73.0.0.1 120.96.0.1", "logs 10.31.0.195:5140"]}
     ]}
 
 def test_the_docker_range_has_nothing_to_configure(client):

@@ -29,6 +29,50 @@ filebeat.inputs:
     fields:
       fsl_source: modsecurity
 
+  - type: udp
+    id: range-syslog
+    host: "0.0.0.0:5140"
+    max_message_size: 64KiB
+    processors:
+      - syslog:
+          field: message
+      - add_fields:
+          target: ""
+          fields:
+            fsl_source: syslog
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: suricata
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - add_fields:
+              target: ""
+              fields:
+                fsl_source: suricata
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: modsecurity
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - add_fields:
+              target: ""
+              fields:
+                fsl_source: modsecurity
+
 setup.template.name: fsl-logs
 setup.template.pattern: fsl-logs-*
 setup.ilm.enabled: false

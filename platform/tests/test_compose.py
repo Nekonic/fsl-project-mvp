@@ -102,7 +102,7 @@ def test_no_image_downloads_a_binary_built_for_another_architecture():
 def host_ip(entry):
     if isinstance(entry, dict):
         return entry.get("host_ip")
-    address = re.sub(r"\$\{FSL_PUBLISH:-([^}]*)\}", r"\1", str(entry).split("/")[0])
+    address = re.sub(r"\$\{[A-Z_]+:-([^}]*)\}", r"\1", str(entry).split("/")[0])
     if address.startswith("["):
         return address[1:address.index("]")]
     return ":".join(address.split(":")[:-2]) or None
@@ -256,7 +256,7 @@ def test_every_wargame_is_one_folder_the_stack_includes():
         "the console offers a wargame with no folder, or a folder with no wargame"
     )
 
-def test_only_the_platform_may_be_published_on_another_address_and_only_by_choice():
+def test_only_the_platform_and_the_log_collector_may_be_published_elsewhere_and_only_by_choice():
     chosen = {
         name: entry
         for name, service in composed.services().items()
@@ -264,7 +264,10 @@ def test_only_the_platform_may_be_published_on_another_address_and_only_by_choic
         if "${" in str(entry)
     }
 
-    assert chosen == {"platform": "${FSL_PUBLISH:-127.0.0.1}:8000:8000"}, chosen
+    assert chosen == {
+        "platform": "${FSL_PUBLISH:-127.0.0.1}:8000:8000",
+        "filebeat": "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp",
+    }, chosen
 
 def test_the_address_a_vm_publishes_on_stays_out_of_git():
     import subprocess

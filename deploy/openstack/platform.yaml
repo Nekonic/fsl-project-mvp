@@ -141,6 +141,7 @@ resources:
               - path: /root/compose.env
                 content: |
                   FSL_PUBLISH=%fixed_ip%
+                  FSL_SYSLOG_PUBLISH=0.0.0.0
               - path: /etc/systemd/system/fsl-platform.service
                 content: |
                   [Unit]

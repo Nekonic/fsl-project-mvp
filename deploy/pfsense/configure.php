@@ -63,6 +63,17 @@ $held = [];
 exec("/sbin/ifconfig " . escapeshellarg($wan) . " inet", $held);
 printf("fsl-edge wan %s\n", implode(' ', array_map(fn($line) => explode(' ', trim($line))[1], preg_grep('/^\s*inet /', $held))));
 
+require_once("syslog.inc");
+config_read_file(true);
+config_set_path('syslog/enable', true);
+config_set_path('syslog/remoteserver', $fsl['collector']);
+config_set_path('syslog/ipproto', 'ipv4');
+config_set_path('syslog/logall', true);
+config_set_path('syslog/format', 'rfc5424');
+write_config('fsl: the edge logs to the platform');
+system_syslogd_start();
+printf("fsl-edge logs %s\n", config_get_path('syslog/remoteserver'));
+
 require_once("/usr/local/pkg/suricata/suricata.inc");
 config_read_file(true);
 

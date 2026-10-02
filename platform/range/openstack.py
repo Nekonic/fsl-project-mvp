@@ -11,7 +11,7 @@ from urllib.parse import quote
 import requests
 from dataclasses import dataclass, replace
 
-from range import fabric, images, pfsense, slot
+from range import fabric, images, pfsense, slot, waf
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -43,6 +43,7 @@ SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
 CREATE_GROUP = "POST {neutron}/v2.0/security-groups"
 CREATE_RULE = "POST {neutron}/v2.0/security-group-rules"
 DELETE_GROUP = "DELETE {neutron}/v2.0/security-groups/{group}"
+DELETE_RULE = "DELETE {neutron}/v2.0/security-group-rules/{rule}"
 CREATE_PORT = "POST {neutron}/v2.0/ports"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
 ATTACH = "POST {nova}/servers/{server}/os-interface"
@@ -52,7 +53,7 @@ CALLS = (
     PORTS, CREATE_NETWORK, TAG_NETWORK, CREATE_SUBNETS, DELETE_SUBNET,
     DELETE_NETWORK, KEYPAIRS, IMPORT_KEYPAIR, DELETE_KEYPAIR, IMAGES,
     DELETE_IMAGE, FLAVORS, ACTION, DELETE_SERVER, SECURITY_GROUPS, CREATE_GROUP,
-    CREATE_RULE, DELETE_GROUP, CREATE_PORT, DELETE_PORT, ATTACH,
+    CREATE_RULE, DELETE_GROUP, CREATE_PORT, DELETE_PORT, ATTACH, DELETE_RULE,
 )
 DELETES = {
     "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
@@ -72,6 +73,8 @@ NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
+SCORER_ROLE = "scorer"
+GATEWAY_ROLE = "gateway"
 
 SETTINGS = {
     "keystone": "FSL_OPENSTACK_KEYSTONE",
@@ -884,27 +887,64 @@ class OpenStack:
         return steps
 
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
-        return [self.configure_edge()]
+        return [self.configure_edge(), self.configure_waf(), self.open_collector()]
+
+    def _collector(self) -> str:
+        scorer = self.declared.host(SCORER_ROLE)
+        return self._address(SCORER_ROLE, scorer, fabric.MANAGEMENT)
 
     def configure_edge(self) -> tuple[str, tuple[str, ...]]:
         source = Path(self.build.source)
+        collector = f"{self._collector()}:{fabric.COLLECTOR_PORT}"
         wanted = pfsense.settings(self.describe().segments, self.declared,
-                                  (source / pfsense.RULES).read_text())
+                                  (source / pfsense.RULES).read_text(), collector)
         template = (source / pfsense.TEMPLATE).read_text()
         ran = self.runner(slot.EDGE_ROLE)(
             pfsense.command(), stdin=pfsense.playback(wanted, template), timeout=300,
         )
         expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
         missing = [address for address in expected if address not in pfsense.held(ran.output)]
-        edge = slot.edge_of(self.declared)
+        reported = pfsense.reported(ran.output)
         sensing = pfsense.sensing(ran.output)
-        if not ran.ok or missing or not sensing:
+        logging = f"logs {collector}" in reported
+        edge = slot.edge_of(self.declared)
+        if not ran.ok or missing or not sensing or not logging:
             raise Drifted(
                 f"{edge} playback exited {ran.exit_code}, does not hold "
-                f"{', '.join(missing) or 'nothing missing'}, and its sensor is "
-                f"{'running' if sensing else 'not running'}: {ran.output[-1000:]}"
+                f"{', '.join(missing) or 'nothing missing'}, its sensor is "
+                f"{'running' if sensing else 'not running'} and it "
+                f"{'logs' if logging else 'does not log'} to {collector}: "
+                f"{ran.output[-1000:]}"
             )
-        return edge, tuple(expected)
+        return edge, reported
+
+    def configure_waf(self) -> tuple[str, tuple[str, ...]]:
+        host = self.declared.host(GATEWAY_ROLE)
+        audit = waf.audit_log((Path(self.build.source) / waf.MODSECURITY).read_text())
+        collector = self._collector()
+        ran = self.runner(GATEWAY_ROLE)(
+            waf.command(), stdin=waf.forwarding(audit, collector, fabric.COLLECTOR_PORT),
+            timeout=120,
+        )
+        if not ran.ok:
+            raise Drifted(f"{host} did not take its log forwarding: {ran.output[-1000:]}")
+        return host, (f"logs {audit} to {collector}:{fabric.COLLECTOR_PORT}",)
+
+    def open_collector(self) -> tuple[str, tuple[str, ...]]:
+        senders = [
+            self._address(role, self.declared.host(role), fabric.MANAGEMENT)
+            for role in (slot.EDGE_ROLE, GATEWAY_ROLE)
+        ]
+        group = next(
+            group for group in self._all(SECURITY_GROUPS, "security_groups")
+            if group["name"] == fabric.REACH_GROUP
+        )
+        create, delete = fabric.hearing(group, senders)
+        for rule in delete:
+            self.get(self._call(DELETE_RULE, rule=rule))
+        for rule in create:
+            self.get(self._call(CREATE_RULE), {"security_group_rule": rule})
+        return self.declared.host(SCORER_ROLE), tuple(f"hears {sender}" for sender in senders)
 
     def _slot(self):
         networks, subnets, _, groups = self._fabric_standing()

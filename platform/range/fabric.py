@@ -13,6 +13,7 @@ NO_DEFAULT_ROUTE = {MANAGEMENT}
 RANGE_GROUP = "fsl-range"
 REACH_GROUP = "fsl-reach"
 GROUPS = (RANGE_GROUP, REACH_GROUP)
+COLLECTOR_PORT = 5140
 
 @dataclass(frozen=True)
 class Subnet:
@@ -161,3 +162,21 @@ def teardown(declaration: Declaration, networks: list, subnets: list,
         + [("keypair", k["name"]) for k in keypairs if k["name"] == KEYPAIR]
         + [("group", g["id"]) for name in GROUPS for g in groups if g["name"] == name]
     )
+
+def _collector_rule(rule: dict) -> bool:
+    return (rule.get("direction") == "ingress" and rule.get("protocol") == "udp"
+            and rule.get("port_range_min") == COLLECTOR_PORT)
+
+def hearing(group: dict, senders: list[str]) -> tuple[list[dict], list[str]]:
+    wanted = [f"{sender}/32" for sender in senders]
+    heard = {
+        rule.get("remote_ip_prefix"): rule["id"]
+        for rule in group.get("security_group_rules") or [] if _collector_rule(rule)
+    }
+    create = [
+        {"security_group_id": group["id"], "direction": "ingress", "ethertype": "IPv4",
+         "protocol": "udp", "port_range_min": COLLECTOR_PORT,
+         "port_range_max": COLLECTOR_PORT, "remote_ip_prefix": prefix}
+        for prefix in wanted if prefix not in heard
+    ]
+    return create, [rule for prefix, rule in heard.items() if prefix not in wanted]

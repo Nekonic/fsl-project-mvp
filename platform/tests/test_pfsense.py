@@ -2,6 +2,7 @@ from range import declared, fabric, pfsense
 
 OS = declared.read(flavor="openstack")
 RULES = "alert http any any -> any any (sid:9000001;)\n"
+COLLECTOR = "10.31.0.195:5140"
 
 def test_home_net_holds_every_origin_subnet_and_the_inside_networks():
     home = pfsense.home_net(OS)
@@ -36,7 +37,7 @@ def _origin_segments():
     ) + (Segment(id="estate", name="Estate", subnet="10.30.0.0/24", gateway="10.30.0.1"),)
 
 def test_the_wan_holds_the_first_origin_gateway_and_aliases_the_other_twenty_nine():
-    wanted = pfsense.settings(_origin_segments(), OS, RULES)
+    wanted = pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)
 
     first = OS.origins[0]
     assert wanted["wan"] == {"id": first.id, "address": first.subnet.replace("0/24", "1"), "bits": "24"}
@@ -57,14 +58,14 @@ def test_an_origin_with_no_gateway_cannot_be_held_by_the_edge():
     segments[3] = replace(segments[3], gateway="")
 
     with pytest.raises(RangeUnavailable, match=segments[3].id):
-        pfsense.settings(tuple(segments), OS, RULES)
+        pfsense.settings(tuple(segments), OS, RULES, COLLECTOR)
 
 def test_the_playback_carries_its_settings_as_data_ahead_of_the_static_script():
     import base64
     import json
     import re
 
-    wanted = pfsense.settings(_origin_segments(), OS, RULES)
+    wanted = pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)
     script = pfsense.playback(wanted, "config_read_file(true);\n")
 
     first, rest = script.split("\n", 1)
@@ -95,12 +96,12 @@ def test_the_static_script_exists_where_the_platform_reads_it():
     assert "<?php" not in text, "pfSsh.php plays back bare statements"
 
 def test_the_sensor_is_told_its_home_is_every_origin_the_estate_and_management():
-    wanted = pfsense.settings(_origin_segments(), OS, RULES)
+    wanted = pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)
 
     assert wanted["home"] == pfsense.home_net(OS)[1:-1].split(",")
 
 def test_the_sensor_starts_from_the_shipped_rules():
-    assert pfsense.settings(_origin_segments(), OS, RULES)["rules"] == RULES
+    assert pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)["rules"] == RULES
 
 def test_the_static_script_names_the_sensor_settings_it_reads():
     from pathlib import Path
@@ -112,3 +113,17 @@ def test_a_running_sensor_is_read_back_from_what_the_playback_printed():
     assert pfsense.sensing("x\nfsl-edge sensor vtnet0 running\n")
     assert not pfsense.sensing("fsl-edge sensor vtnet0 stopped\n")
     assert not pfsense.sensing("PHP ERROR\n")
+
+def test_the_edge_is_told_where_to_send_its_logs():
+    assert pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)["collector"] == COLLECTOR
+
+def test_the_static_script_points_remote_syslog_at_the_collector():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / pfsense.TEMPLATE).read_text()
+    assert "$fsl['collector']" in text and "'syslog/remoteserver'" in text
+
+def test_the_lines_the_playback_printed_are_read_back_by_what_they_report():
+    printed = "x\nfsl-edge wan 73.0.0.1\nfsl-edge logs 10.31.0.195:5140\n"
+
+    assert pfsense.reported(printed) == ("wan 73.0.0.1", "logs 10.31.0.195:5140")
