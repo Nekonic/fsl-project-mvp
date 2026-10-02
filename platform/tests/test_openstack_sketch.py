@@ -550,8 +550,8 @@ def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():
 
     argv = ran.call_args.args[0]
     assert argv[0] == "ssh", argv
-    assert shlex.split(argv[-1])[:4] == [
-        "sh", "-c", "--", f"sqlmap --version; {ports.EXIT_REPORT}",
+    assert shlex.split(argv[-1]) == [
+        "sh", "-c", f'"$@"; {ports.EXIT_REPORT}', "sh", "sqlmap", "--version",
     ], argv
     assert "5.188.10.7@".split("@")[0] in " ".join(argv), (
         f"the tool did not run on the attacker's address on the edge segment: "

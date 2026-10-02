@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import shlex
 import subprocess
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -80,7 +79,7 @@ class Substrate(Protocol):
         ...
 
 def reporting(argv: list[str]) -> list[str]:
-    return ["sh", "-c", "--", f"{shlex.join(argv)}; {EXIT_REPORT}"]
+    return ["sh", "-c", f'"$@"; {EXIT_REPORT}', "sh", *argv]
 
 def reported(done: subprocess.CompletedProcess) -> Ran | None:
     found = _REPORTED.match(done.stderr or "")
