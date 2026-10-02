@@ -33,10 +33,12 @@ platform's Elasticsearch geolocated, and the platform scores it.
 
 **Backlog 2 step 6's in-scope part is done (2026-10-02):** the target port is
 no longer published and the acceptance suite and command-line cases reach the
-target from inside the range. What is left of backlog 2 is step 7, plus the
-two blue-screen panes the user held out of this backlog (Kibana and the
-pfSense GUI pane) and the board's user-database objective. On `dev`;
-`bin/verify` green.
+target from inside the range. **Step 7's first part (evidence by event time)
+is done too (2026-10-02).** What is left of backlog 2 is the rest of step 7
+(GeoIP's durable home, which waits on the user's MaxMind licence call, and the
+slot's Stop-rebuild lifecycle, which is cloud work), plus the two blue-screen
+panes the user held out of this backlog (Kibana and the pfSense GUI pane) and
+the board's user-database objective. On `dev`; `bin/verify` green.
 
 **Committed this session (step 6, the acceptance/CLI move):**
 - `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
@@ -52,6 +54,22 @@ pfSense GUI pane) and the board's user-database objective. On `dev`;
   run scored TP 8 / FP 0 / FN 2 / TN 6, both engines.
 - `test_judge_isolation` drops 8080 from its published-port set; `README.md`
   and CLAUDE.md's "Running it" show the in-range invocation.
+
+**Committed this session (step 7, evidence by event time):** the `fsl-geoip`
+ingest pipeline now sets `@timestamp` from the event's own clock - Suricata's
+`timestamp`, ModSecurity's `transaction.time_stamp` - with two date processors
+ahead of the geoip ones, so the ingest fetch window selects evidence by when it
+happened, not when Filebeat read it (read time ran 0.8-8.6 s late here). Core
+is untouched: `platform/ingest/elastic.py` already timestamped detections by
+event time and already re-checked the window by event time (`stale`); only the
+fetch query disagreed. `test/test_event_time.py` holds `@timestamp` to the
+event time for both engines. Not done this session, and why:
+- **GeoIP's durable home** waits on the MaxMind GeoLite licence call the user
+  holds (see "Decisions left for a person"): a durable bind mount means
+  sourcing the `.mmdb` files and carrying MaxMind's attribution, a licence
+  decision, not a loop's.
+- **The slot's Stop-rebuild lifecycle** is OpenStack-cloud work (a Nova rebuild
+  of every VM either side can change), not reachable from `bin/verify`'s Docker.
 
 **Committed this session (`4ec543b..HEAD`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -353,10 +371,11 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   off on 2026-09-30 deleted the downloaded databases, as documented. The same
   GeoLite2 files were fetched from `geoip.elastic.co` (md5 checked) and copied
   in; they vanish when the container is recreated.
-- **Evidence is selected by event time**: `@timestamp` set from Suricata's
-  `timestamp` and ModSecurity's own time, as ECS defines it and Elastic's own
-  pipelines do, with every range VM's clock kept by chrony. Today it is
-  Filebeat's read time, 5 s late median and 17 s worst.
+- **Evidence is selected by event time (done 2026-10-02)**: the `fsl-geoip`
+  pipeline sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
+  `transaction.time_stamp`, as ECS defines it and Elastic's own pipelines do,
+  with every range VM's clock kept by chrony. It was Filebeat's read time, 5 s
+  late median and 17 s worst.
 - **The console shows Korean time** (UTC on hover), and an undefined
   precision or recall shows `-`.
 - **ModSecurity severities stay** until the tutorial work tunes them to
@@ -746,6 +765,14 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    blue-screen panes are not to be built in this backlog.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
+   - **Done (2026-10-02): evidence by event time.** The `fsl-geoip` pipeline
+     sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
+     `transaction.time_stamp` (two date processors ahead of the geoip ones),
+     so the ingest fetch window selects by event time, not Filebeat's read
+     time. Core untouched; `test/test_event_time.py` is the guard.
+   - **Left: GeoIP's durable home** - waits on the user's MaxMind GeoLite
+     licence decision (attribution + the 30-day-old-database rule).
+   - **Left: the slot's Stop-rebuild lifecycle** - OpenStack-cloud work.
 
 ## Known gaps
 
