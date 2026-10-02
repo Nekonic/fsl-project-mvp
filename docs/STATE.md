@@ -62,25 +62,37 @@ The new slot is **not** built: pfSense's Internet port would want the same 30
 move to the pfSense topology. The platform VM runs this branch's code (rsynced
 to `/opt/fsl`, not pushed to `dev`).
 
-**Blocker — configuring the pfSense image.** The goal is pfSense built from
-`fsl-pfsense` with Suricata + sshd + the 3-NIC/firewall/syslog config, which
-needs an interactive step. Driving pfSense's Nova **noVNC console is
-unreliable** for anything past single keys: `computer type` sends nothing, and
-`key` drops `-`/mangles URLs (a `fetch http://ip:port/x` line parses as three
-broken commands). Menu entry of digits/dots/`y`/`n` is reliable (ssh was
-enabled that way, option 14). pfSense ssh gives the **console menu, not a
-shell**, so the platform cannot just `ssh pf "cmd"`. A reliable path not yet
-taken: set the LAN to a reachable mgmt IP by the numeric menu, then from the
-platform VM push a `config.xml` through the GUI's Backup/Restore (or run
-commands via Diagnostics > Command Prompt). The build VM used for the ssh test
-was deleted; the base `fsl-pfsense` image is untouched.
+**Cloud-verified (2026-10-02): the pfSense edge image is built.** Glance holds
+`fsl-pfsense-edge` (snapshot of `fsl-pfsense` + Suricata 8.0.5 package, sshd on
+with the `fsl-platform` key on `admin`, WAN MTU 1450, and OPT1=vtnet2 as MGMT by
+DHCP with a pass rule). The declaration's pfSense host now names it. How it was
+done, and the findings that matter:
+- **The pfSense web GUI is driven through an ssh tunnel**, not noVNC. noVNC key
+  entry is unreliable (it mangles `:`/`/`-heavy strings and drops `-`); the
+  console is good only for the numeric interface menu. So: set LAN to fsl-mgmt
+  DHCP + HTTP by the console menu (reliable digits/`y`/`n`), then from the Mac
+  `ssh -L 127.0.0.1:PORT:<pf-lan-ip>:80 ubuntu@192.168.0.210` and open the GUI
+  at `localhost:PORT`. pfSense LAN's anti-lockout lets the platform VM reach it.
+- **`ssh admin@pfSense "cmd"` runs the command as a root shell**, not the
+  console menu (`id` → uid=0). So the platform CAN push config over mgmt as
+  shell commands (pfSsh.php, config.xml edits, suricatasc, easyrule). The
+  runner needs the edge's ssh user set to `admin`, not `ubuntu` (not wired yet).
+- **WAN needs MTU 1450** (the tenant-network MTU, same cause as the Docker/Kali
+  hangs): at 1500 the Netgate package list never loaded; at 1450 it did and
+  Suricata installed.
+- **The 3rd NIC hot-plugs** (vtnet2 appeared with no reboot), so OPT1 was
+  assignable live.
 
-**Left:** the pfSense edge image and how the platform configures it over mgmt
-(interfaces, the origin `.1` WAN aliases, no-NAT pass of WAF:80, Suricata +
-HOME_NET, remote syslog), the log pipeline (pfSense syslog + the WAF VM's
-ModSecurity into Elasticsearch), the attacker rework (one Kali, per-country
-source by SNAT, default route and `shop.com` through pfSense to the WAF's estate
-address), the slot rebuild, and the cloud end-to-end scored run.
+**Left:** how the platform pushes the **deploy-specific** pfSense config over
+mgmt ssh — WAN static + the 30 origin `.1` aliases, LAN = estate `.1`
+(10.30.0.1), firewall pass of WAF:80 with no outbound NAT, Suricata on the WAN
+interface with `pfsense.home_net()` and EVE→syslog, and remote syslog to the
+platform; a per-host **ssh user** (`admin` for pfSense) in the runner; the log
+pipeline (pfSense syslog + the WAF VM's ModSecurity into Elasticsearch); the
+attacker rework (one Kali, per-country source by SNAT, default route and
+`shop.com` through pfSense to the WAF's estate address); the slot rebuild
+(tear the step-3 slot down first — the WAF holds the `.1`s pfSense now wants);
+and the cloud end-to-end scored run.
 
 ## Measured mechanics a change can break
 
