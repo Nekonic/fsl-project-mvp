@@ -161,6 +161,22 @@ def attacker(host):
     return adapter(host).runner("attacker")
 
 
+def test_the_runner_reaches_a_host_as_its_own_ssh_user_when_it_declares_one():
+    from range.declared import Declaration, Host
+
+    decl = Declaration(
+        roles={"edge": "fsl-pf", "attacker": "fsl-kali"},
+        hosts={"fsl-pf": Host(image="img", ssh_user="admin", segments=("mgmt",)),
+               "fsl-kali": Host(setup="s.sh", segments=("mgmt",))},
+    )
+    cloud = openstack.Cloud(keystone="k", neutron="n", nova="v", project="p",
+                            user="u", ssh_user="ubuntu", ssh_key="/k")
+    adp = openstack.OpenStack(decl, cloud)
+
+    assert adp._ssh_user("fsl-pf") == "admin", "pfSense ssh is admin, a root shell"
+    assert adp._ssh_user("fsl-kali") == "ubuntu", "the default cloud user otherwise"
+
+
 def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
     ran = attacker(host)(["printf", "%s\\n", "a b", "c;d", "$HOME"])
 

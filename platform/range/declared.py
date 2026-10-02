@@ -30,6 +30,7 @@ class Host:
     setup: str = ""
     image: str = ""
     base: str = ""
+    ssh_user: str = ""
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
@@ -133,6 +134,7 @@ def _hosts(entries) -> dict[str, Host]:
             setup=entry.get("setup") or "",
             image=entry.get("image") or "",
             base=entry.get("base") or "",
+            ssh_user=entry.get("ssh_user") or "",
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),

@@ -435,7 +435,8 @@ class OpenStack:
             with tempfile.TemporaryDirectory() as scratch:
                 said = Path(scratch) / "ssh.log"
                 config = self._config(Path(scratch) / "ssh_config", address)
-                command = self._ssh(address, stdin is not None, said, config)
+                command = self._ssh(address, stdin is not None, said, config,
+                                    self._ssh_user(host))
                 command.append(shlex.join(reporting(argv)))
                 done = execute(host, command, stdin, timeout)
                 logged = said.read_text() if said.exists() else ""
@@ -455,7 +456,12 @@ class OpenStack:
 
         return run
 
-    def _ssh(self, address: str, reads_input: bool, log: Path, config: Path) -> list[str]:
+    def _ssh_user(self, host: str) -> str:
+        entry = self.declared.hosts.get(host)
+        return entry.ssh_user if entry and entry.ssh_user else self.cloud.ssh_user
+
+    def _ssh(self, address: str, reads_input: bool, log: Path, config: Path,
+             ssh_user: str) -> list[str]:
         command = ["ssh", "-F", str(config)]
         if not reads_input:
             command.append("-n")
@@ -465,7 +471,7 @@ class OpenStack:
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
             "-o", "LogLevel=ERROR",
-            f"{self.cloud.ssh_user}@{address}",
+            f"{ssh_user}@{address}",
         ]
 
     def _config(self, written: Path, address: str) -> Path:
