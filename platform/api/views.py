@@ -1105,6 +1105,13 @@ def range_slot(request):
         removed = adapter.teardown_slot()
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
+@require_http_methods(["POST"])
+def range_configure(request):
+    adapter = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
+    with RULE_CHANGES:
+        done = adapter.configure_slot()
+    return _reply({"configured": [{"host": host, "holds": list(holds)} for host, holds in done]})
+
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):
     adapter = _built_by_the_cloud(substrate(), "plan_fabric", "fabric is")

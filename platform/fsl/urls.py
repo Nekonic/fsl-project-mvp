@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/range/fabric/", views.range_fabric),
     path("api/range/images/", views.range_images),
     path("api/range/slot/", views.range_slot),
+    path("api/range/configure/", views.range_configure),
     path("api/rules/", views.current_rules),
     path("api/rules/validate/", views.validate_rules),
     path("api/rules/apply/", views.apply_rules),
