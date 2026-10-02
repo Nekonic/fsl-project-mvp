@@ -48,9 +48,15 @@ source-greps). Three were not taken:
 - **B11 skipped:** collapsing `confirmedOrigin`/`describedOrigin` into one
   `ready` flag would wrongly disable the terminal toggle after a reverted POST
   failure; the two encode a real partial-failure state.
-- **B7 held for the user:** board MySQL -> sqlite changes the board wargame's
-  database across Docker and the OpenStack declaration/golden image (the cloud
-  side unverifiable here) - a product change, not a mechanical cleanup.
+- **B7 resolved by changing what `services` means, not the board.** The board's
+  MySQL is the board wargame's own service, not over-reach; the audit only read
+  it as removable because the gated `services` metric lumped platform and
+  wargame services together. `bin/measure` now splits them (2026-10-02): the
+  gated `services` counts the platform's own compose services (7); a wargame's
+  own services under `wargames/<id>/` - its app, db, and future per-scenario
+  components (a scenario's own kali, say) - are `wargame_services` (4), reported
+  not gated. A wargame owning its database or attacker is the wargame, and
+  adding a scenario is not a gated regression. board-db stays, on MySQL.
 
 Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are
 **done end to end** (2026-10-02). The whole chain is proven on the cloud:

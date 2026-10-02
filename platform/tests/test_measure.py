@@ -202,10 +202,13 @@ def test_services_are_counted_as_yaml_reads_them(measure, tmp_path, text):
     )
 
 
-def test_this_repo_s_services_are_counted_as_compose_reads_them(measure, monkeypatch):
+def test_this_repo_s_services_split_platform_from_wargame(measure, monkeypatch):
     monkeypatch.setattr(measure, "ROOT", ROOT)
 
-    assert measure.services() == len(composed.services())
+    assert measure.services() + measure.wargame_services() == len(composed.services())
+    assert measure.wargame_services() > 0, (
+        "the wargames bring their own services; they are reported, not gated"
+    )
 
 
 def test_services_are_read_from_the_file_compose_would_pick(measure, tmp_path):
@@ -231,7 +234,7 @@ def test_an_override_file_is_refused_by_name(measure, tmp_path, name):
         measure.services()
 
 
-def test_services_in_included_files_are_counted(measure, tmp_path):
+def test_included_services_are_the_wargame_surface_not_the_gate(measure, tmp_path):
     (tmp_path / "compose.yaml").write_text(
         "include:\n  - wargames/a/compose.yaml\n  - 'wargames/b/compose.yaml'\n"
         "services:\n  web:\n    image: a:1\n"
@@ -244,9 +247,11 @@ def test_services_in_included_files_are_counted(measure, tmp_path):
             )
         )
 
-    assert measure.services() == 4, (
-        "a service in an included file is a service the gate lets in for free"
+    assert measure.services() == 1, (
+        "the gate counts only the platform's own services; a wargame owns its "
+        "own, counted as the wargame surface, so adding a scenario is not a gated regression"
     )
+    assert measure.wargame_services() == 3
 
 
 INCLUDES_MEASURE_CANNOT_FOLLOW = {

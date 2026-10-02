@@ -40,7 +40,7 @@ YAML_KEY = re.compile(r"""(["']?)([A-Za-z0-9._-]+)\1[ \t]*:(?:[ \t]|$)""")
 INCLUDED = re.compile(r"""-[ \t]+(["']?)([^\s"'#:]+)\1[ \t]*(?:#.*)?""")
 BLOCK_VALUE = re.compile(r"[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?")
 
-METRICS = ("core_loc", "product_loc", "dependencies", "services", "tests")
+METRICS = ("core_loc", "product_loc", "dependencies", "services", "wargame_services", "tests")
 GATED = ("core_loc", "dependencies", "services")
 FLOOR = ("tests",)
 
@@ -105,7 +105,7 @@ def tests() -> int:
         total += len(names)
     return total
 
-def services() -> int:
+def _compose_file() -> Path | None:
     for name in COMPOSE_OVERRIDES:
         if (ROOT / name).exists():
             raise SystemExit(
@@ -114,10 +114,23 @@ def services() -> int:
             )
     for name in COMPOSE_FILES:
         if (ROOT / name).exists():
-            return len(service_names(ROOT / name))
-    return 0
+            return ROOT / name
+    return None
 
-def service_names(compose: Path, within: tuple[Path, ...] = ()) -> set[str]:
+def services() -> int:
+    compose = _compose_file()
+    if compose is None:
+        return 0
+    service_names(compose)
+    return len(service_names(compose, follow=False))
+
+def wargame_services() -> int:
+    compose = _compose_file()
+    if compose is None:
+        return 0
+    return len(service_names(compose)) - len(service_names(compose, follow=False))
+
+def service_names(compose: Path, within: tuple[Path, ...] = (), follow: bool = True) -> set[str]:
     def refuse(number: int, what: str) -> None:
         raise SystemExit(
             f"measure: {compose.name} line {number}: {what}; measure counts the "
@@ -177,7 +190,8 @@ def service_names(compose: Path, within: tuple[Path, ...] = ()) -> set[str]:
         more = service_names(target, within + (compose.resolve(),))
         if names & more:
             refuse(number, f"{path} defines {', '.join(sorted(names & more))} again")
-        names |= more
+        if follow:
+            names |= more
     return names
 
 def measure() -> dict[str, int]:
@@ -187,6 +201,7 @@ def measure() -> dict[str, int]:
         "product_loc": product,
         "dependencies": dependencies(),
         "services": services(),
+        "wargame_services": wargame_services(),
         "tests": tests(),
     }
 
