@@ -80,6 +80,11 @@ class Cloud:
             server = dict(body["server"], id=f"srv-{next(self.ids)}", status="BUILD", addresses={})
             self.servers.append(server)
             return {"server": {"id": server["id"]}}
+        if verb == "POST" and path.endswith("/action"):
+            server = next(s for s in self.servers if s["id"] == path.rsplit("/", 2)[-2])
+            if "rebuild" in (body or {}):
+                server["imageRef"] = body["rebuild"]["imageRef"]
+            return {}
         if verb == "DELETE":
             kind, ident = path.rsplit("/", 2)[-2:]
             pool = {"servers": self.servers, "ports": self.ports}[kind]
@@ -234,6 +239,46 @@ def test_a_slot_whose_images_are_not_ready_is_refused_before_anything_is_written
         adapter(cloud).ensure_slot()
     assert [c for c in cloud.calls if c[0] != "GET"] == []
 
+def test_rebuilding_the_slot_resets_every_vm_to_its_golden_image(cloud):
+    adapter(cloud).ensure_slot()
+    for server in cloud.servers:
+        server["imageRef"] = "img-stale"
+
+    rebuilt = adapter(cloud).rebuild_slot()
+
+    assert {host for host, _ in rebuilt} == set(DECLARED.hosts)
+    for host in DECLARED.hosts:
+        assert cloud.booted(host)["imageRef"] == f"img-{host}", (
+            "Stop resets the slot: Nova rebuild reinstalls each VM from its "
+            "golden image, so the next session inherits no solved flags, no "
+            "edited rules and no planted data"
+        )
+    actions = [body for verb, path, body in cloud.calls
+               if verb == "POST" and path.endswith("/action")]
+    assert len(actions) == len(DECLARED.hosts)
+    assert all("rebuild" in a and a["rebuild"]["imageRef"] for a in actions)
+
+def test_a_slot_not_fully_standing_is_not_rebuilt(cloud):
+    adapter(cloud).ensure_slot()
+    cloud.servers.pop()
+
+    with pytest.raises(Drifted):
+        adapter(cloud).rebuild_slot()
+
+    assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == []
+
+def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(cloud):
+    adapter(cloud).ensure_slot()
+    cloud.images = [i for i in cloud.images if i["name"] != "fsl-board"]
+
+    with pytest.raises(Drifted, match="fsl-board"):
+        adapter(cloud).rebuild_slot()
+
+    assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == [], (
+        "a rebuild that found one image missing only after wiping the others "
+        "would leave a half-reset slot; refuse before issuing any rebuild"
+    )
+
 def test_taking_the_slot_down_removes_its_servers_and_the_ports_it_made(cloud):
     adapter(cloud).ensure_slot()
     cloud.ports.append({"id": "port-platform", "name": "fsl-platform.mgmt",
@@ -252,11 +297,13 @@ def test_every_slot_call_is_one_the_api_reference_names():
         openstack.ATTACH: "https://docs.openstack.org/api-ref/compute/#create-interface",
         openstack.SECURITY_GROUPS: "https://docs.openstack.org/api-ref/network/v2/#list-security-groups",
         openstack.CREATE_RULE: "https://docs.openstack.org/api-ref/network/v2/#create-security-group-rule",
+        openstack.ACTION: "https://docs.openstack.org/api-ref/compute/#rebuild-server-rebuild-action",
     }
     source = pathlib.Path(openstack.__file__).read_text()
 
     for call in reference:
         assert call in openstack.CALLS, reference[call]
     for field in ('"fixed_ips"', '"mac_address"', '"security_groups"', '"key_name"',
-                  '"interfaceAttachment"', '"port_id"', '"device_id"', '"direction"'):
+                  '"interfaceAttachment"', '"port_id"', '"device_id"', '"direction"',
+                  '"rebuild"', '"imageRef"'):
         assert field in source, f"{field} is read or sent and checked against {reference}"

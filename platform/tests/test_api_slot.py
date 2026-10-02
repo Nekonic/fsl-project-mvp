@@ -68,6 +68,34 @@ def test_taking_it_down_is_a_delete_and_says_what_went(client, built):
     assert response.json()["removed"] == [{"kind": "server", "id": "srv-1"},
                                           {"kind": "port", "id": "port-1"}]
 
+class Rebuilt:
+    def __init__(self):
+        self.rebuilt = 0
+
+    def rebuild_slot(self):
+        self.rebuilt += 1
+        return [("fsl-waf", "srv-1"), ("fsl-juice-shop", "srv-2")]
+
+def test_rebuilding_the_slot_is_a_post_that_says_what_reset(client):
+    found = Rebuilt()
+    with patch("api.views.substrate", lambda: found):
+        response = client.post_json("/api/range/slot/rebuild/")
+
+    assert response.status_code == 200 and found.rebuilt == 1
+    assert response.json() == {"rebuilt": [
+        {"host": "fsl-waf", "server": "srv-1"},
+        {"host": "fsl-juice-shop", "server": "srv-2"},
+    ]}
+
+def test_the_docker_range_has_no_slot_to_rebuild(client):
+    response = client.post_json("/api/range/slot/rebuild/")
+
+    assert response.status_code == 409 and "compose" in response.json()["detail"]
+
+def test_rebuilding_is_only_a_post(client):
+    with patch("api.views.substrate", lambda: Rebuilt()):
+        assert client.get("/api/range/slot/rebuild/").status_code == 405
+
 class Configured:
     def __init__(self):
         self.configured = 0
