@@ -56,9 +56,10 @@ green.
   (`range/waf.py`, sudo, `rsyslogd -N1`-checked); opens `fsl-reach` to exactly
   the edge and WAF on UDP 5140 (`fabric.hearing`); and Filebeat gains a UDP
   syslog input that parses every line and decodes Suricata/ModSecurity JSON so
-  ingest normalizes them as before. GeoIP moved to the `fsl-logs` template's
-  `index.default_pipeline` (filebeat's per-request output pipeline did not reach
-  the data stream on the cloud).
+  ingest normalizes them as before. GeoIP rides filebeat's per-request
+  `output.pipeline: fsl-geoip` (works on Docker) and, as reinforcement, the
+  `fsl-logs` template's `index.default_pipeline: fsl-geoip` (filebeat writes
+  that into the template when it first creates it, proven by `filebeat setup`).
 - **Left 5 - one attacker wears any origin.** The slot gives the attacker's one
   Internet port the ~100 per-country addresses (`slot.origin_addresses`), which
   the existing gateway `bootcmd` spreads onto the NIC; the proxy/terminal run on
@@ -77,23 +78,46 @@ was detected but did not actually beat the target - the objective ground truth
 is orthogonal to the detector, as designed), and `game.balance` revealed on
 close.
 
+**Re-verified 2026-10-02 (adversarial workflow + direct measurement).** Left 1,
+2, 3/4 and 6 each survived an independent read-only refutation attempt against
+the live cloud + committed code (CONFIRMED). Left 5 is PARTIAL — see the cloud
+caveat. Two earlier claims were wrong and are corrected here.
+
 **Findings to carry:**
-- **Remote syslog is UDP and lossy.** pfSense's FreeBSD syslogd forwards only
-  over UDP; one Suricata EVE alert was dropped in transit on a single firing
-  (its http event and a later alert arrived). Scoring already re-ingests, and a
-  case fires several packets across two engines, so a single drop rarely loses
-  a case - fire an attack more than once, or re-ingest, to beat it. A reliable
-  edge would need a non-UDP transport the edge does not offer.
+- **Syslog loss is a pfSense send-side burst problem, not the network, and
+  paced traffic loses nothing** (measured, not asserted). Fire the SQLi 30x at
+  0.5-1s spacing: pfSense detects 30, Elasticsearch indexes 30 - 0 loss, both
+  engines. Fire 50 concurrently: pfSense detects 50, ES indexes 44 then 13 on a
+  repeat (12-74%, variable). A dual tcpdump showed the dropped datagrams never
+  reach the platform NIC and NIC-arrivals == ES-indexed, so the loss is at
+  pfSense's FreeBSD syslogd under a burst, not the virtual network and not the
+  receive buffer (raising `rmem_max` 80x to 16 MB changed nothing). Re-ingest
+  does **not** recover a dropped datagram (it is gone, not late) - it only
+  recovers a late one. Impact: the console fires cases one at a time (paced) ->
+  0 loss; a bursty tool (sqlmap, 94 requests) loses a fraction of its many
+  alerts but the case still scores TP (>=1 survivor across two engines). Only
+  per-alert fidelity of bursty tools degrades. Session 3's FN earlier was this
+  (one firing, one dropped alert). pfSense offers no non-UDP remote-syslog
+  transport, so this is accepted, not fixed.
 - The config-push is idempotent and keyed on the WAN Suricata instance / the
   VIP descr `fsl origin <id>` / the WAN pass rule descr / the `fsl_home` and
   `fsl_anywhere` pass lists, so a second `configure` changes nothing.
 
-**Cloud state caveat:** the standing slot was built before Left 5, so its Kali
-port, NIC addresses and `fsl-origin` script were applied by hand this session
-to match the shipped code (Neutron accepted all 100 fixed IPs on the one port).
-A slot teardown+rebuild (and a Kali image rebuild, since `setup.sh` now ships
-`fsl-origin`) bakes them in; `POST /api/range/images/` then `/slot/` then
-`/configure/` is the clean path.
+**Cloud state caveat (the Left 5 gap):** the standing slot was booted
+**before** Left 5 (its config-drive `bootcmd` applied one address,
+120.96.0.208), so its Kali port's 100 fixed IPs, the ~100 NIC aliases and
+`/usr/local/sbin/fsl-origin` were all applied **by hand this session** to match
+the shipped code - Neutron accepted all 100 fixed IPs on the one port, and the
+origin API genuinely SNATs the box to a per-country source that shows up
+geolocated in Elasticsearch. The code paths are verified (slot `addresses` sum
+= 100, `_attacker_addresses`, `user_data` bootcmd, `fsl-origin` in the Kali
+image), but a **clean slot rebuild reproducing this from boot is not yet
+proven**. The clean path, still to run: `DELETE` then rebuild the Kali image
+(its `setup.sh` now ships `fsl-origin`) via `POST /api/range/images/`, then
+`/slot/`, then `/configure/`. Likewise the live WAN/sensor/syslog config was
+pushed by the same `pfsense.command()` playback mechanism the platform uses,
+but by a hand-run of the committed script, and reboot-survival is proven from
+`config.xml`, not an actual reboot.
 
 ## Measured mechanics a change can break
 
@@ -133,11 +157,17 @@ A slot teardown+rebuild (and a Kali image rebuild, since `setup.sh` now ships
   does not migrate the registry, so changing identity again re-ships once.
   Ingest drops an alert whose event time is outside the window, as `stale`.
 - **The ingest pipeline is installed by hand** (CLAUDE.md, Running it) and
-  geolocates `src_ip` and ModSecurity's `transaction.client_ip`; it is also the
-  `fsl-logs` template's `index.default_pipeline`, since filebeat's per-request
-  output pipeline did not reach the data stream on the cloud. Acceptance
-  fails if the live pipeline or the sensor's `local.rules` differ from the
-  committed ones.
+  geolocates `src_ip` and ModSecurity's `transaction.client_ip`. Two ways carry
+  it to a doc: filebeat's `output.pipeline: fsl-geoip` per request (the Docker
+  path), and the `fsl-logs` index template's `index.default_pipeline`, which
+  filebeat writes in only when it *first creates* the template - a long-running
+  ES whose template predates the setting keeps a template without it, so set
+  `index.default_pipeline` on the live data stream's write index there (the
+  cloud needed this; a fresh VM does not). **Do not add
+  `setup.template.overwrite: true` to force it - filebeat 8.15 then fails every
+  write with "no matching index template found for data stream [fsl-logs]".**
+  Acceptance fails if the live pipeline or the sensor's `local.rules` differ
+  from the committed ones.
 - **The WAF's health check asks `/healthz`**, which the WAF answers itself;
   sent through to Juice Shop it alerted every ten seconds and used up a
   session's 5,000-document read in about 14 hours. The wiki's check asks
