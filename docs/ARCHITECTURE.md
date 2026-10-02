@@ -190,14 +190,16 @@ command, with the current `/label/active` marker, to
 
 A console HTTP case carries the `Host` of the session's wargame, `shop.com` or
 `board.com`, whether or not an origin was chosen. Choosing an origin points
-traffic at the WAF's address on that segment. `board.com` resolves on all four
-edge networks; `shop.com` on `edge` only. `rotate` is a per-session round
-robin, not a random pick.
+traffic at the WAF's address on that origin's segment, by IP; both names
+resolve on the `edge` network, which the platform uses when no origin is set.
+`rotate` is a per-session round robin, not a random pick.
 
 A console tool case is pointed at the origin's target URL, or, with no origin
 chosen, at `TARGET_URL` (`http://shop.com`) from the declared default origin.
-The CLI's `--tool-target` defaults to `http://waf:8080`, but inside the range
-the WAF listens on 80 (and 8443); 8080 is only the host-side publish.
+The target is not host-published, so the command-line harness reaches it from
+inside the range too: `redteam/run.py` runs on the platform (the way the
+acceptance suite drives it) and `--target`/`--tool-target` default to
+`http://shop.com`, which resolves to the WAF on port 80.
 
 The WAF runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly`, and
 every Suricata rule is `alert`. Nothing in the range blocks a request.
@@ -229,11 +231,13 @@ Each ingest call:
 
 - first restores rule suppressions that have expired;
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
-  to its end (or now) plus a minute. `@timestamp` is Filebeat's read time:
-  neither `filebeat.yml` nor the pipeline sets it from the event;
+  to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
+  from the event's own clock (Suricata's `timestamp`, ModSecurity's
+  `transaction.time_stamp`), so the window selects evidence by when it happened,
+  not when Filebeat read it;
 - reads at most 5000 hits, oldest first. Beyond that the reply carries
-  `truncated`, and the session stays flagged, which adds
-  `score.warning.truncated`;
+  `truncated` and the session records `read_of`, which adds
+  `score.warning.truncated` to the score;
 - keeps Suricata's `alert` events, and turns ModSecurity's record into one
   Detection per matched rule message, with id `<Elasticsearch _id>:<n>`;
 - drops alerts whose own event time falls outside the window, counted as
@@ -392,8 +396,12 @@ The score endpoint is read-only and keeps no history.
 ## OpenStack
 
 The build follows the OpenStack item of the backlog in `docs/STATE.md`, in its
-order; only its first step, the platform VM, exists. The reasoning behind
-every choice below is in `docs/STATE.md` ("Decided on 2026-09-30"),
+order; steps 1 through 7 are largely built (the platform VM, the fabric, the
+golden images, the slot, the pfSense edge, the Kali attacker, evidence by
+event time, GeoIP's durable home, and the slot's Stop rebuild), proven on the
+cloud and against fakes. What is left is narrow and listed at the end of this
+section. The reasoning behind every choice below is in `docs/STATE.md`
+("Decided on 2026-09-30"),
 `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
 `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`; this section
 records only the shape.
@@ -473,10 +481,35 @@ Every host's user data appends the estate names (`juice-shop`,
 `wiki.internal`, `board`) to `/etc/hosts`, which is how the WAF finds its
 upstreams and Juice Shop the wiki.
 
+The pfSense CE edge (golden image `fsl-pfsense-edge`: base + Suricata 8.0.5 +
+sshd + an OPT1 management NIC) boots in the slot. `POST /api/range/configure/`
+plays `deploy/pfsense/configure.php` back over the management ssh so pfSense
+holds the 30 origin gateway addresses (one static, the rest as IP-alias VIPs),
+runs Suricata on the WAN with the range as `HOME_NET` and EVE going to syslog,
+keeps one WAN pass rule that survives the Suricata package's filter reload,
+and ships its syslog and the WAF's ModSecurity audit log to the platform's
+Elasticsearch, geolocated. One Kali image wears any origin: its single
+Internet port holds the ~100 per-country addresses (the slot's `bootcmd`
+spreads them onto the NIC) and `/usr/local/sbin/fsl-origin` SNATs the box's
+outgoing source per country, so every tool leaves as the chosen country. The
+stamping proxy and the ttyd terminal run on the Kali box.
 
-### Decided, not built: the range on OpenStack
+Evidence is selected by event time: the `fsl-geoip` ingest pipeline sets
+`@timestamp` from Suricata's `timestamp` and ModSecurity's `transaction.time_stamp`
+(not Filebeat's read time). GeoIP has a durable home: the managed downloader
+is off and Elasticsearch reads `GeoLite2-City.mmdb` from a bind-mounted
+`config/ingest-geoip` that `bin/fetch-geoip` fills, so it survives a container
+recreate. `rebuild_slot()` (`POST /api/range/slot/rebuild/`) is the slot's
+Stop reset: Nova rebuilds every standing slot VM from its golden image, keeping
+each server's id, flavour, ports and fixed IPs, so a session leaves the next
+one no solved flag, edited rule or planted datum. A rebuild wipes the disk, so
+`POST /api/range/configure/` must follow once the VMs are ACTIVE.
 
-Decided by the user on 2026-09-30.
+
+### The range on OpenStack: the target shape
+
+Decided by the user on 2026-09-30; the shape below is the whole picture, most
+of it now built (see above).
 
 ```
  OpenStack project fsl-range.
@@ -517,35 +550,34 @@ Decided by the user on 2026-09-30.
    Elasticsearch --read-only role--> Kibana --> blue team
 ```
 
-What the diagram does not show:
+Built, not shown in the diagram's lines:
 
-- **Origins**: 30 countries from a public, token-free ranking of Internet
-  traffic, placed by GeoIP, about 100 addresses weighted by traffic, at least
-  one each. The declaration gains one segment with many origin subnets; today
-  the adapter refuses a segment with more than one IPv4 subnet.
-- **The attacker**: the stamping proxy moves onto the Kali VM; the Nova
-  console is the terminal's fallback.
-- **Blocking works as in practice**: the blue team switches the WAF's mode and
-  Suricata's drop rules itself. Whether a case was blocked is read from the
-  target side into `meta["blocked"]`, which the response pillar needs.
-- **Objectives** move toward the board: its `auth_user` table becomes
-  something the red team can take, judged from the board's own side.
-- **Evidence by event time**: `@timestamp` from Suricata's `timestamp` and
-  ModSecurity's own time, every range VM's clock kept by chrony. GeoIP is
-  loaded once into a durable bind mount for `config/ingest-geoip`, with the
-  downloader off.
-- **Kibana** comes back to compose with Elasticsearch security on and a
-  read-only blue role. The blue dashboard mostly goes; the live dashboard and
-  the rules editor go.
-- **Images**: a setup script kept in the repo builds each VM once, and a
-  snapshot of it is the image.
-- **Lifecycle** (a first try): the fabric (networks, security group, keypair,
-  images) is created and destroyed only by an operator action, REST first.
-  Each slot is one Heat stack; roles are found through its resource list.
-  Provision builds and test-runs a slot. Start takes a ready slot and creates
-  nothing. Stop rebuilds every VM either side can change, at once. A slot is
-  ready only once the range answers for itself: nothing solved, rules and WAF
-  mode at baseline, clocks in sync, a canary alert in Elasticsearch.
+- **Origins**: 30 countries from a public, token-free ranking (Cloudflare
+  Radar's HTTP share), placed by GeoIP, ~100 addresses weighted by traffic, at
+  least one each. The `internet` segment flattens into one subnet per origin.
+- **The attacker**: the stamping proxy and the terminal run on the Kali VM;
+  its source is SNAT'd to the chosen country.
+- **Images**: a setup script in the repo builds each VM once; its snapshot,
+  tagged with the bundle digest, is the image.
+- **Evidence by event time** and **GeoIP's durable home**: done (see the Built
+  section above).
+- **The slot's Stop rebuild**: done as an operator action; wiring it into
+  session Stop plus the readiness gate is still to come (below).
+
+Left to build:
+
+- **The two blue-screen panes** the user held out of this backlog: Kibana
+  (framed, on a read-only Elasticsearch role) and the pfSense GUI (the noVNC
+  console of a kiosk browser VM). The terminal pane is done.
+- **The session lifecycle wiring**: Start takes a READY slot and creates
+  nothing; Stop fires the rebuild, waits for ACTIVE, re-configures the edge and
+  WAF, and checks the slot answers for itself (nothing solved, rules and WAF
+  mode at baseline, clocks in sync, a canary alert). The rebuild mechanism
+  exists; the trigger and the READY gate are the deferred session design.
+- **Blocking and the board objective**: the blue team switches the WAF's mode
+  and Suricata's drop rules itself, and whether a case was blocked is read from
+  the target side into `meta["blocked"]`; the board's `auth_user` becomes an
+  objective judged from the board's own side. Both are decided, not built.
 
 Decisions still open for a person are in `docs/STATE.md` ("Decisions left for
 a person").
