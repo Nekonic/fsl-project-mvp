@@ -130,9 +130,11 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      ingest.geoip.downloader.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
       - esdata:/usr/share/elasticsearch/data
+      - ./config/ingest-geoip:/usr/share/elasticsearch/config/ingest-geoip:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 10s

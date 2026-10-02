@@ -11,3 +11,4 @@ wargames/juice-shop/wiki/logs/*
 /backups/
 /openstack.env
 /.env
+config/ingest-geoip/*.mmdb
