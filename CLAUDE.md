@@ -33,19 +33,20 @@ two browser windows, no accounts. See
 
 ## Working language
 
-Everything in this repo is written in English: code, commit messages,
-documents. The user is Korean and talks to you in Korean; reply in Korean, but
-never write Korean into a file. Korean costs roughly twice the tokens per line,
-and every session pays to re-read it.
+Default to English in the repo — code, commit messages, documents — to save
+tokens: Korean costs roughly twice the tokens per line, and every session pays
+to re-read it. Write Korean into a file only when the content genuinely calls
+for it, such as a Korean-facing document or artifact the user asks for; English
+is the default everywhere else. The user is Korean and talks to you in Korean;
+reply in Korean. Code still carries no comments or docstrings, in any language
+(see "No comments in code").
 
-Two files are exempt, and the rule about cost is why the exemption is shaped
-this way: the Korean is quarantined so that no session pays for it unless that
-session is the one editing it.
+Two files hold Korean that nothing else in the codebase needs, so the cost rule
+says leave them unread unless you are the one editing them:
 
 - `platform/console/templates/console/strings.html` is the console's `en`/`ko`
   string table. It is the only template allowed to contain Korean and a test
-  enforces that. **Do not read it** unless you are changing a visible string;
-  nothing else in the codebase needs it.
+  enforces that. **Do not read it** unless you are changing a visible string.
 - `docs/vocabulary.md` records what each term is called in both languages and
   the source it came from. Reference only. **Do not read it** unless you are
   naming something new.
