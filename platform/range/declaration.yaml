@@ -89,7 +89,7 @@ openstack:
   hosts:
     fsl-pfsense:
       segments: [internet, estate, mgmt]
-      image: fsl-pfsense
+      image: fsl-pfsense-edge
     fsl-kali:
       segments: [internet, mgmt]
       setup: deploy/kali/setup.sh

@@ -37,7 +37,10 @@ def test_the_openstack_flavor_adds_pfsense_and_kali_and_takes_the_waf_off_the_in
     d = openstack()
 
     assert d.hosts["fsl-pfsense"].segments == ("internet", "estate", "mgmt")
-    assert d.hosts["fsl-pfsense"].image == "fsl-pfsense"
+    assert d.hosts["fsl-pfsense"].image == "fsl-pfsense-edge", (
+        "the slot boots the configured edge image (Suricata + sshd + the "
+        "platform key + MTU 1450 + OPT1 mgmt), not the bare CE install"
+    )
     assert d.hosts["fsl-pfsense"].setup == ""
     assert d.hosts["fsl-kali"].segments == ("internet", "mgmt")
     assert d.hosts["fsl-kali"].setup == "deploy/kali/setup.sh"
