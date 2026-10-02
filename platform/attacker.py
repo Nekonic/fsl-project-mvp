@@ -17,10 +17,15 @@ def _target_url(address: str) -> str:
     port = f":{parts.port}" if parts.port else ""
     return f"{parts.scheme}://{address}{port}"
 
+def _way_in() -> str:
+    roles = settings.RANGE.roles
+    return roles.get("edge") or roles["gateway"]
+
 def origins(described) -> list[dict]:
     box = settings.ATTACKER_SOURCE_CONTAINER
     terminal = settings.ATTACKER_CONTAINER
-    way_in = settings.RANGE.roles["gateway"]
+    way_in = _way_in()
+    by_name = "edge" in settings.RANGE.roles
 
     standing = [
         (segment, {node.name: node.address for node in segment.nodes})
@@ -38,12 +43,14 @@ def origins(described) -> list[dict]:
             "subnet": segment.subnet,
             "source_ip": addresses[box],
             "direct_ip": addresses.get(terminal, ""),
-            "address": addresses[way_in],
-            "target_url": _target_url(addresses[way_in]),
+            "address": addresses.get(way_in) or segment.gateway,
+            "target_url": settings.ATTACKER_TARGET_URL if by_name
+            else _target_url(addresses[way_in]),
             "default": segment.id == settings.RANGE.default_origin,
         }
         for segment, addresses in standing
-        if segment.origin and addresses[box] and addresses.get(way_in)
+        if segment.origin and addresses.get(box)
+        and (by_name or addresses.get(way_in))
     ]
     return sorted(found, key=lambda origin: origin["id"])
 
@@ -63,6 +70,16 @@ def find(described, origin_id: str | None) -> dict:
 
 def set_origin(address: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_ORIGIN_FILE, address)
+
+def wear_origin(chosen: dict, box) -> None:
+    if settings.ATTACKER_ORIGIN_MODE == "snat":
+        ran = box(["sudo", "/usr/local/sbin/fsl-origin", chosen["source_ip"]])
+        if not ran.ok:
+            raise AttackerUnavailable(
+                f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
+            )
+        return
+    set_origin(chosen["address"], box)
 
 def set_label(case_id: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)

@@ -70,3 +70,13 @@ def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_re
         "ingest normalizes a document by fsl_source; a line from another "
         "program is kept as fsl_source syslog and scored as nothing"
     )
+
+
+def test_the_template_geolocates_every_document_by_default_not_only_when_filebeat_asks():
+    config = yaml.safe_load(FILEBEAT.read_text())
+
+    assert config["setup.template.settings"]["index.default_pipeline"] == "fsl-geoip", (
+        "a per-request output pipeline was observed to not reach the data "
+        "stream on one deployment; the template's default pipeline geolocates "
+        "every write regardless, which is where src_ip -> country has to happen"
+    )

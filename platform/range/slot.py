@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import itertools
 import shlex
 from dataclasses import dataclass
 
@@ -43,6 +45,19 @@ def _gateways(network: dict, subnets: list) -> tuple[tuple[str, str], ...]:
         if subnet["network_id"] == network["id"] and subnet.get("gateway_ip")
     )
 
+def origin_addresses(cidr: str, count: int) -> list[str]:
+    hosts = ipaddress.ip_network(cidr).hosts()
+    return [str(address) for address in itertools.islice(hosts, 9, 9 + count)]
+
+def _attacker_addresses(network: dict, subnets: list, origins) -> tuple[tuple[str, str], ...]:
+    by_cidr = {origin.subnet: origin for origin in origins}
+    return tuple(
+        (subnet["id"], address)
+        for subnet in subnets
+        if subnet["network_id"] == network["id"] and subnet["cidr"] in by_cidr
+        for address in origin_addresses(subnet["cidr"], by_cidr[subnet["cidr"]].addresses)
+    )
+
 def edge_of(declaration: Declaration) -> str:
     return declaration.roles.get(EDGE_ROLE) or declaration.roles.get(GATEWAY_ROLE, "")
 
@@ -51,6 +66,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
     bound = fabric.bound(declaration, networks)
     outside = {origin.segment for origin in declaration.origins}
     edge = edge_of(declaration)
+    attacker = declaration.roles.get(ATTACKER_ROLE, "")
     may_stand_outside = {host for host in (edge, declaration.roles.get(ATTACKER_ROLE, "")) if host}
     named = {(port.get("network_id"), port.get("name")) for port in ports}
     boot, create, standing, blocked = [], [], [], []
@@ -82,7 +98,12 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
             name = port_name(host, segment)
             if (bound[segment]["id"], name) in named:
                 continue
-            fixed = _gateways(bound[segment], subnets) if host == edge else ()
+            if host == edge:
+                fixed = _gateways(bound[segment], subnets)
+            elif host == attacker and segment in outside:
+                fixed = _attacker_addresses(bound[segment], subnets, declaration.origins)
+            else:
+                fixed = ()
             create.append(Port(host=host, segment=segment, name=name, fixed_ips=fixed))
     return Plan(boot=tuple(boot), ports=tuple(create), standing=tuple(standing),
                 blocked=tuple(blocked))

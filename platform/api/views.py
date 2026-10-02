@@ -322,7 +322,7 @@ def session_commands(request, session_id):
 @require_http_methods(["POST"])
 def attacker_origin(request):
     chosen = attacker.find(_standing(), _payload(request).get("origin"))
-    attacker.set_origin(chosen["address"], substrate().runner("proxy"))
+    attacker.wear_origin(chosen, substrate().runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
 @require_http_methods(["POST"])

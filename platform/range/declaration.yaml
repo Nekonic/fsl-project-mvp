@@ -84,6 +84,7 @@ openstack:
   roles:
     edge: fsl-pfsense
     sensor: fsl-pfsense
+    proxy: fsl-kali
   watches:
     sensor: edge
   hosts:

@@ -141,10 +141,36 @@ what each host said:
   ModSecurity record (`fsl-waf`), and seven `filterlog` lines arrived whole.
 
 **Left, in order:**
-5. **Attacker addresses**5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
-   Internet port + the source rewrite (SNAT), so any origin fires, not just the
-   Neutron-chosen one.
-6. **End-to-end** - fire a case from the red console (`/terminal/`) →
+**Done (2026-10-02): Left 5, one attacker that wears any origin.**
+- The slot gives the attacker's single Internet port the ~100 per-country
+  addresses (`slot.origin_addresses`: `.10` upward per /24, `addresses` of
+  them per origin; the edge keeps the `.1`s), so the port owns every source
+  Neutron anti-spoofing will let it send as. The existing gateway `bootcmd`
+  spreads them onto the NIC at boot.
+- The stamping proxy and the terminal both run on the Kali box, so the
+  OpenStack overlay sets `proxy: fsl-kali`; `attacker.origins()` reads the
+  edge (pfSense) as the way in (it stands on every origin, the WAF does not)
+  and the target by name (`ATTACKER_TARGET_URL`, shop.com) instead of a
+  per-origin WAF address.
+- Choosing an origin rewrites the box's outgoing source
+  (`ATTACKER_ORIGIN_MODE=snat`): `attacker.wear_origin` runs
+  `/usr/local/sbin/fsl-origin <source_ip>` (shipped in the Kali image), an
+  idempotent iptables SNAT chain on the default-route NIC, so every tool
+  leaves as that country whether or not it has a source option. Docker keeps
+  the host-rewrite file.
+- **GeoIP now rides the template, not the request.** The syslog-path docs on
+  the cloud were not being geolocated: filebeat's `output...pipeline` reached
+  the data stream on Docker but not there. `filebeat.yml` now sets the
+  `fsl-logs` template's `index.default_pipeline: fsl-geoip`, so every write is
+  geolocated regardless.
+- Cloud: Neutron took all 100 fixed IPs on the one port; with the addresses on
+  the NIC and `fsl-origin` applied, a SQLi probe from Kali left as `73.0.0.10`
+  and reached Elasticsearch placed in the **US** on the Suricata alert, its
+  http event and the ModSecurity record; `POST /api/attacker/origin/ {ru}`
+  rewrote the source to `5.188.10.10` and `/api/attacker/` reports the box,
+  a name target and the per-origin source.
+
+6. **End-to-end**6. **End-to-end** - fire a case from the red console (`/terminal/`) →
    pfSense→WAF→target → blue console detection → TP/FP/FN/TN + objective score.
 
 Each piece: test-first, `bin/verify`, commit, update STATE.
@@ -190,7 +216,9 @@ re-run `POST /api/range/configure/` after rebuilding the slot.
   does not migrate the registry, so changing identity again re-ships once.
   Ingest drops an alert whose event time is outside the window, as `stale`.
 - **The ingest pipeline is installed by hand** (CLAUDE.md, Running it) and
-  geolocates `src_ip` and ModSecurity's `transaction.client_ip`. Acceptance
+  geolocates `src_ip` and ModSecurity's `transaction.client_ip`; it is also the
+  `fsl-logs` template's `index.default_pipeline`, since filebeat's per-request
+  output pipeline did not reach the data stream on the cloud. Acceptance
   fails if the live pipeline or the sensor's `local.rules` differ from the
   committed ones.
 - **The WAF's health check asks `/healthz`**, which the WAF answers itself;

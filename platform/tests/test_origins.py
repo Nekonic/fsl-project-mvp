@@ -369,3 +369,52 @@ def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
         "the red console could not list where to attack from, or reach its own "
         "terminal, while the sensor was down - neither needs the sensor"
     )
+
+
+def _openstack_range():
+    from range import declared
+    return declared.read(flavor="openstack")
+
+PF = "fsl-pfsense"
+
+def _openstack_shape():
+    us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
+                 network="fsl-internet", gateway="73.0.0.1",
+                 nodes=(Node(PF, "73.0.0.1"), Node(KALI, "73.0.0.10")))
+    tw = Segment(id="tw", name="Internet", origin="Taiwan", subnet="120.96.0.0/24",
+                 network="fsl-internet", gateway="120.96.0.1",
+                 nodes=(Node(PF, "120.96.0.1"), Node(KALI, "120.96.0.10")))
+    estate = Segment(id="estate", name="Estate", origin="", subnet="10.30.0.0/24",
+                     network="fsl-estate", nodes=(Node("fsl-waf", "10.30.0.217"),))
+    return Shape(segments=(us, tw, estate), sensors=())
+
+def test_on_openstack_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
+    settings.RANGE = _openstack_range()
+    settings.ATTACKER_SOURCE_CONTAINER = KALI
+    settings.ATTACKER_CONTAINER = KALI
+    settings.ATTACKER_TARGET_URL = "http://shop.com"
+
+    found = {o["id"]: o for o in attacker.origins(_openstack_shape())}
+
+    assert set(found) == {"us", "tw"}, "the estate is not an origin"
+    assert found["us"]["source_ip"] == "73.0.0.10", "the attack comes from the Kali box"
+    assert found["us"]["target_url"] == "http://shop.com", (
+        "on OpenStack the target is reached by name through pfSense, not by a "
+        "per-origin WAF address the way Docker hands one out"
+    )
+    assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"
+
+def test_on_openstack_an_origin_the_attacker_has_no_address_on_is_not_offered(settings):
+    from dataclasses import replace
+    settings.RANGE = _openstack_range()
+    settings.ATTACKER_SOURCE_CONTAINER = KALI
+    settings.ATTACKER_CONTAINER = KALI
+
+    shape = _openstack_shape()
+    no_kali = tuple(
+        replace(s, nodes=tuple(n for n in s.nodes if n.name != KALI)) if s.id == "tw" else s
+        for s in shape.segments
+    )
+
+    listed = [o["id"] for o in attacker.origins(Shape(segments=no_kali, sensors=()))]
+    assert listed == ["us"]
