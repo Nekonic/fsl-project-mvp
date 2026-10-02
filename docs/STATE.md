@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 ## Where things stand
 
@@ -25,104 +25,86 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
-Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). Not
-finished: the pfSense edge is blocked on how its image is configured (below).
+Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). The
+images, the standing topology and the un-NAT routing are proven on the cloud;
+what remains is the detection pipeline, the config-push code, the per-country
+attacker and the scored end-to-end run. On `dev` (pushed 2026-10-02);
+`bin/verify` green.
 
-**Committed and green** (`bin/verify` full, Docker base unchanged):
-- An OpenStack declaration **flavor**. `declaration.yaml` gains an `openstack:`
-  overlay that `declared.read(flavor="openstack")` merges over the base;
-  `declared.flavor_for()` picks it from `FSL_SUBSTRATE`, and `settings.RANGE`
-  (and the console's topology view) use it. In the flavor `edge`=fsl-pfsense is
-  the sensor (`watches: {sensor: edge}`), the WAF drops to estate+mgmt and
-  carries the names `shop.com`/`board.com`, and `fsl-pfsense` (prebuilt image
-  `fsl-pfsense`) and `fsl-kali` are hosts. A host declares a `setup:` script
-  **or** a prebuilt `image:`, never both, and may name its own `base:` image.
-- The slot boots pfSense from its prebuilt image with no cloud-init (it is
-  FreeBSD); the **edge** holds every origin's `.1` on the Internet and the
-  estate's `.1`, and its forwarding ports carry `allowed_address_pairs
-  0.0.0.0/0` so it routes un-NATted; the attacker may also stand on the
-  Internet.
-- `fsl-kali` builds on its own `kali-rolling` base (per-host base image).
-- `pfsense.home_net()` builds the Suricata HOME_NET (30 origin subnets + estate
-  + mgmt) from the declaration.
+**Committed (10 commits, `d240daf..92cd4d1`):**
+- An OpenStack declaration **flavor**: `declaration.yaml` gains an `openstack:`
+  overlay that `declared.read(flavor=...)` merges over the Docker base;
+  `flavor_for()` picks it from `FSL_SUBSTRATE`, and `settings.RANGE` and the
+  console's topology use it. In it `edge`=fsl-pfsense is the sensor
+  (`watches: {sensor: edge}`), the WAF is estate+mgmt only and carries
+  `shop.com`/`board.com`, and `fsl-pfsense` (prebuilt `image:`) and `fsl-kali`
+  are hosts. A host declares a `setup:` script **or** a prebuilt `image:`, and
+  may set its own `base:` image and `ssh_user:`.
+- The slot boots pfSense from its image with no cloud-init (FreeBSD); the edge
+  holds every origin `.1` + the estate `.1`, its forwarding ports carry
+  `allowed_address_pairs 0.0.0.0/0` (un-NAT routing), and the attacker stands on
+  the Internet too. `fsl-kali` builds on its own `kali-rolling` base.
+- `pfsense.home_net()` builds the Suricata HOME_NET (30 origins + estate + mgmt).
+- The runner reaches pfSense as `admin` (per-host ssh user), and its exit-report
+  wrapper runs on FreeBSD's `/bin/sh` too (`sh -c '"$@"; ...' sh <argv>`, no
+  `--`, which FreeBSD reads as the command).
 
 **Cloud-verified (2026-10-02):**
-- `kali-rolling` (Kali GenericCloud 2026.2, qcow2, min_disk 25) is in Glance,
-  uploaded as `fsl-range`. The platform (running this branch) built **`fsl-kali`**
-  end to end from `deploy/kali/setup.sh` on that base: console `READY`, stop,
-  snapshot, builder deleted. Prebuilt `fsl-pfsense` reads as ready; the slot
-  plan wants to boot `fsl-pfsense` and `fsl-kali`, nothing blocked.
-- The range flavor is **m1.linux** (30 GB) now, because Kali's image is
-  min_disk 25; set as `FSL_OPENSTACK_FLAVOR` in the VM's `openstack.env`.
+- `kali-rolling` (Kali GenericCloud 2026.2, qcow2, min_disk 25) uploaded to
+  Glance; the platform built **`fsl-kali`** end to end from
+  `deploy/kali/setup.sh`.
+- **`fsl-pfsense-edge`** built from the base `fsl-pfsense` through the web GUI
+  (over an ssh tunnel): + the Suricata 8.0.5 package, sshd with the
+  `fsl-platform` key on `admin`, WAN MTU 1450, and OPT1=vtnet2 as MGMT (DHCP,
+  pass rule). The declaration's pfSense host names it.
+- The slot stands in the pfSense topology: **fsl-pfsense** holds all 30 origin
+  `.1`s + the estate `.1` (10.30.0.1) + a mgmt address; `fsl-kali` on an origin
+  + mgmt; WAF and the targets on estate+mgmt. `describe()` shows pfSense as the
+  sensor on every origin and Kali. NIC order held (internet=vtnet0,
+  estate=vtnet1, mgmt=vtnet2); the platform reaches pfSense as root over mgmt
+  ssh.
+- **un-NAT routing works, source preserved**: with pfSense WAN set to one origin
+  `.1`, outbound NAT off and a pass-all WAN rule (pushed by a pfSense 2.9
+  `config_set_path` **playback** over mgmt ssh), Kali (120.96.0.208, Taiwan) →
+  pfSense (120.96.0.1) → WAF (10.30.0.217) → Juice Shop: `curl http://shop.com/`
+  = 200 "OWASP Juice Shop", a SQLi probe = 500. The WAF logs the client as
+  120.96.0.208 (no NAT), so GeoIP places it right. Kali needs no manual routing
+  (config-drive gave eth0 its origin address, a default route via `.1`, and
+  `shop.com`/`board.com` → the WAF's estate IP in `/etc/hosts`).
 
-**State of the cloud right now (2026-10-02): the pfSense-topology slot stands.**
-The step-3 slot was torn down and rebuilt through `/api/range/slot/`
-(a stale `fsl-waf.internet` port that teardown left - the new declaration has
-no WAF on the Internet - was deleted by hand first). Standing now: **fsl-pfsense**
-holding all 30 origin `.1`s on fsl-internet, the estate `.1` (10.30.0.1) and a
-mgmt address (OPT1=vtnet2, DHCP, 10.31.0.63); **fsl-kali** on an origin address
-and mgmt; **fsl-waf / juice-shop / wiki / board** on estate+mgmt only.
-`describe()` returns pfSense as the sensor on every origin and Kali, as the goal
-asks. **The platform runs shell commands on pfSense as root over mgmt ssh** (the
-runner, `admin@10.31.0.63`). NIC order held: internet=vtnet0, estate=vtnet1,
-mgmt=vtnet2. The platform VM runs this branch's code (rsynced to `/opt/fsl`, no
-`--delete`; not pushed to `dev`). pfSense's WAN/LAN are still the image's DHCP
-defaults (no range addresses yet), so nothing routes until the config is pushed.
+**Findings to carry** (also memory `pfsense-cloud-config`):
+- Configure pfSense from the **web GUI over an ssh tunnel**, not noVNC (noVNC
+  key entry mangles `:`/`/`-heavy strings and drops `-`); the console is good
+  only for the numeric interface menu (set LAN to fsl-mgmt DHCP+HTTP, then
+  `ssh -L` through the platform VM).
+- Push config as pfSense 2.9 **playback** scripts (`config_set_path`,
+  `add_filter_rules`); `$config[...]` edits and `php -f` do **not** persist.
+- `base64 -d` of a single line needs **`-A`** (else a silent empty file).
+- `interface_configure('wan')` did **not** bring the WAN IPv4 up; `ifconfig
+  vtnet0 inet <ip>/24 alias` did - the playback must force the interface up and
+  set `ipaddrv6`=none.
+- WAN MTU must be 1450; confirm NIC order each boot.
 
-**Cloud-verified (2026-10-02): the pfSense edge image is built.** Glance holds
-`fsl-pfsense-edge` (snapshot of `fsl-pfsense` + Suricata 8.0.5 package, sshd on
-with the `fsl-platform` key on `admin`, WAN MTU 1450, and OPT1=vtnet2 as MGMT by
-DHCP with a pass rule). The declaration's pfSense host now names it. How it was
-done, and the findings that matter:
-- **The pfSense web GUI is driven through an ssh tunnel**, not noVNC. noVNC key
-  entry is unreliable (it mangles `:`/`/`-heavy strings and drops `-`); the
-  console is good only for the numeric interface menu. So: set LAN to fsl-mgmt
-  DHCP + HTTP by the console menu (reliable digits/`y`/`n`), then from the Mac
-  `ssh -L 127.0.0.1:PORT:<pf-lan-ip>:80 ubuntu@192.168.0.210` and open the GUI
-  at `localhost:PORT`. pfSense LAN's anti-lockout lets the platform VM reach it.
-- **`ssh admin@pfSense "cmd"` runs the command as a root shell**, not the
-  console menu (`id` → uid=0). So the platform CAN push config over mgmt as
-  shell commands (pfSsh.php, config.xml edits, suricatasc, easyrule). The
-  runner needs the edge's ssh user set to `admin`, not `ubuntu` (not wired yet).
-- **WAN needs MTU 1450** (the tenant-network MTU, same cause as the Docker/Kali
-  hangs): at 1500 the Netgate package list never loaded; at 1450 it did and
-  Suricata installed.
-- **The 3rd NIC hot-plugs** (vtnet2 appeared with no reboot), so OPT1 was
-  assignable live.
+**Left, in order:**
+1. **pfSense WAN sticks** - all 30 origin `.1`s (primary + 29 VIP IP-aliases),
+   the IP actually up (force the interface, `ipaddrv6`=none).
+2. **Suricata on pfSense** - enabled on the WAN interface, HOME_NET from
+   `pfsense.home_net()`, EVE JSON on (pfSense package config, via playback).
+3. **Log pipeline** - pfSense Suricata EVE + `filterlog` by syslog to the
+   platform's Filebeat (a new UDP syslog input), and the WAF VM's ModSecurity
+   audit log into Elasticsearch.
+4. **Codify** 1-3 as a platform slot "configure" step over mgmt ssh, idempotent.
+5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
+   Internet port + the source rewrite (SNAT), so any origin fires, not just the
+   Neutron-chosen one.
+6. **End-to-end** - fire a case from the red console (`/terminal/`) →
+   pfSense→WAF→target → blue console detection → TP/FP/FN/TN + objective score.
 
-**Cloud-verified (2026-10-02): un-NAT routing through pfSense works, source
-preserved.** With pfSense's WAN given 120.96.0.1/24 (one origin), outbound NAT
-disabled, and a pass-all WAN rule — pushed over mgmt ssh by a pfSense **playback
-script** (`/etc/phpshellsessions/*`, the pfSense 2.9 `config_set_path` /
-`add_filter_rules` API; `$config[...]` edits and `php -f` do **not** persist) —
-the attacker reached the target end to end: Kali at 120.96.0.208 (Taiwan
-origin) → pfSense (120.96.0.1) → WAF (10.30.0.217) → Juice Shop, `curl
-http://shop.com/` = 200 "OWASP Juice Shop", a SQLi probe = 500. The WAF's nginx
-log shows the client as **120.96.0.208**, not pfSense: **no NAT, source IP
-preserved**, so GeoIP places it right. Kali needs no manual routing: config-drive
-metadata already gave eth0 the origin address, a default route via `.1`, and
-`/etc/hosts` has `shop.com`/`board.com` → the WAF's estate IP. Neutron L2 across
-the 30 origin subnets of the one `fsl-internet` network is fine (ARP resolved
-once the WAN IP was up).
+Each piece: test-first, `bin/verify`, commit, update STATE.
 
-Gotchas found: (a) `base64 -d` of a single line needs `-A` or it writes an empty
-file (silent); (b) **pfSense's `interface_configure('wan')` did not bring the
-WAN IPv4 up** on `vtnet0` though config.xml held it — `ifconfig vtnet0 inet
-120.96.0.1/24 alias` did, and then routing worked; the playback must force the
-interface up (and set `ipaddrv6`=none to stop the dhcp6 client). NIC order held
-(internet=vtnet0, estate=vtnet1, mgmt=vtnet2), but the spec's warning stands —
-confirm it each boot.
-
-**Left:** make the WAN config stick (all 30 origin `.1`s as VIP aliases, the IP
-actually up); Suricata on pfSense (WAN interface, `pfsense.home_net()`, EVE),
-and the log pipeline (pfSense Suricata EVE + filterlog + the WAF VM's
-ModSecurity into Elasticsearch); **codify** the pfSense config-push into the
-platform (a slot "configure" step over mgmt ssh, idempotent); the attacker
-rework (the ~100 per-country addresses on Kali's one port + the source rewrite,
-so any origin can fire, not just the Neutron-chosen one); and the cloud
-end-to-end scored run (fire a case from the red console, see the detection and
-the TP/FP/FN/TN + objective score). The slot stands configured by hand for the
-one origin right now; a reboot or rebuild loses the by-hand WAN IP.
+**Cloud-state caveat:** the slot stands configured **by hand for one origin**
+(WAN alias, NAT off, pass-all WAN rule) - a reboot or rebuild loses it. Start
+from Left #1.
 
 ## Measured mechanics a change can break
 
@@ -681,13 +663,21 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      and snapshotted. Installing CE asked for no account, only Internet
      (the `fsl-platform` network). A second server booted from the image
      came up to the console menu with its own device id.
-   - **Driving noVNC from the browser pane**: keys go through only as key
-     presses (`key`), not as typed text; click the canvas first.
-   - Left: pfSense in the range (WAN holding the origins' gateways, LAN
-     toward the WAF, without NAT), Suricata as its package with a custom
-     `HOME_NET`, logs by syslog to Elasticsearch, and the GUI pane.
+   - **In progress (2026-10-02, see "In progress" above for detail).** The
+     edge image `fsl-pfsense-edge` (base + Suricata 8.0.5 + sshd + MTU 1450 +
+     OPT1 mgmt) is built; the slot stands with pfSense holding the 30 origin
+     `.1`s and the estate `.1`; un-NAT routing Kali→pfSense→WAF→target is
+     proven on the cloud with the source preserved. Left: the WAN config
+     sticking (30 VIP aliases, the IP up), Suricata on the WAN interface with
+     `HOME_NET`, the syslog→Elasticsearch pipeline, and codifying the
+     config-push. The GUI pane is step 6.
 5. **Kali VM** holding the country addresses, with the source rewritten as
    packets leave.
+   - **In progress (2026-10-02).** The `fsl-kali` image is built from
+     `deploy/kali/setup.sh` on a `kali-rolling` base and boots in the slot on
+     an origin + mgmt (the terminal/proxy/tooling baked in). Left: the ~100
+     per-country addresses on its one Internet port and the source rewrite, so
+     any origin fires (see "In progress").
 6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
    read-only blue role), the pfSense pane through a kiosk browser VM's noVNC
    console, and ttyd, all behind the platform's one published port, with no
