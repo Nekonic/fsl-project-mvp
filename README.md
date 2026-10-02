@@ -123,16 +123,18 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, and the attacker's terminal at `/terminal/` | a person's browser |
-| 8080 | the target, through the WAF | the command-line cases and the acceptance tests |
 | 9200 | Elasticsearch | the acceptance tests |
 
 A person needs only 8000: nginx inside the platform's image takes it and
 hands `/terminal/` to Kali's ttyd, which publishes no port of its own. On
 the Mac every port is published on `127.0.0.1` only; on the platform VM 8000
-is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). Inside the range both targets sit
-behind the WAF on port 80: Juice Shop as `http://shop.com` (on the `edge`
-network only) and the board as `http://board.com` (on every edge network). A
-session is on Juice Shop unless it is created with `{"scenario": "board"}`.
+is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
+target is not published: the command-line cases and the acceptance tests reach
+it from inside the range, the way the console does. Inside the range both
+targets sit behind the WAF on port 80: Juice Shop as `http://shop.com` (on the
+`edge` network only) and the board as `http://board.com` (on every edge
+network). A session is on Juice Shop unless it is created with
+`{"scenario": "board"}`.
 
 ### On OpenStack
 
@@ -268,10 +270,12 @@ Korean.
   It ingests on a timer. Any alert opens the Elasticsearch record behind it.
 
 The scripted Juice Shop cases can also be fired from the command line, as the
-acceptance tests do:
+acceptance tests do. The target is not published, so the harness runs inside
+the range, from the platform, the way the console fires:
 
 ```bash
-.venv/bin/python redteam/run.py
+docker compose exec platform \
+  python redteam/run.py --target http://shop.com --tool-target http://shop.com
 ```
 
 ## Checking it

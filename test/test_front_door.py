@@ -6,7 +6,7 @@ import pytest
 import requests
 
 from conftest import (
-    PLATFORM_URL, TARGET_URL, credited_to, score_when_ready, seen_by_both_engines,
+    PLATFORM_URL, credited_to, from_attacker, score_when_ready, seen_by_both_engines,
 )
 from range import SENSOR, run
 
@@ -36,10 +36,7 @@ def _outside(alerts):
 @pytest.fixture
 def probe(stack_is_up):
     token = f"zz{uuid.uuid4().hex[:10]}"
-    requests.get(
-        f"{TARGET_URL}/rest/products/search?q=%27%20OR%201%3D1--%20{token}",
-        timeout=30,
-    )
+    from_attacker(f"/rest/products/search?q=%27%20OR%201%3D1--%20{token}")
     import time; time.sleep(4)
     alerts = _alerts_mentioning(token)
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"

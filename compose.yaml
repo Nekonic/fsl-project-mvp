@@ -87,8 +87,6 @@ services:
         priority: 10
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
-    ports:
-      - "127.0.0.1:8080:80"
     environment:
       BACKEND: "http://juice-shop:3000"
       PORT: "80"

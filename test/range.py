@@ -18,6 +18,7 @@ TARGET = "target"
 SENSOR = "sensor"
 WIKI = "wiki"
 GATEWAY = "gateway"
+SCORER = "scorer"
 
 ROLES = (ATTACKER, TARGET, SENSOR, WIKI, GATEWAY)
 WIKI_READ_LOG = "/var/log/nginx/read.log"

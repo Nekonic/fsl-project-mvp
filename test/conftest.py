@@ -1,7 +1,5 @@
 import os
 import re
-import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -9,12 +7,13 @@ import pytest
 import requests
 
 from range import (
-    ATTACKER, GATEWAY, SENSOR, TARGET, forget_wiki_reads, recreate, run, start_hint,
+    ATTACKER, GATEWAY, RangeUnavailable, SCORER, SENSOR, TARGET,
+    forget_wiki_reads, recreate, run, start_hint,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = "http://localhost:8000"
-TARGET_URL = "http://localhost:8080"
+TARGET_PUBLIC = "http://shop.com"
 
 SESSION_LINE = re.compile(r"^session (\d+) done$")
 
@@ -27,12 +26,30 @@ def _reachable(url: str) -> bool:
     except requests.RequestException:
         return False
 
+def target_code(path: str = "/") -> int:
+    probe = run(
+        ATTACKER,
+        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
+         f"{TARGET_PUBLIC}{path}"],
+    )
+    code = probe.stdout.strip()
+    return int(code) if code.isdigit() else 0
+
+def target_answers() -> bool:
+    try:
+        return 0 < target_code() < 500
+    except RangeUnavailable:
+        return False
+
 @pytest.fixture(scope="session", autouse=True)
 def stack_is_up():
-    for url in (PLATFORM_URL, TARGET_URL):
-        assert _reachable(url), (
-            f"could not reach {url}. Run `{start_hint()}` first."
-        )
+    assert _reachable(PLATFORM_URL), (
+        f"could not reach {PLATFORM_URL}. Run `{start_hint()}` first."
+    )
+    assert target_answers(), (
+        f"the target does not answer through the WAF from inside the range. "
+        f"Run `{start_hint()}` first."
+    )
 
 MADE_BY_THIS_RUN: set[int] = set()
 
@@ -109,36 +126,32 @@ def reset_target() -> None:
 
     deadline = time.time() + 180
     while time.time() < deadline:
-        try:
-            if requests.get(TARGET_URL, timeout=5).ok:
-                return
-        except requests.RequestException:
-            pass
+        if target_answers():
+            return
         time.sleep(3)
 
     raise AssertionError(
-        f"the target was reset but {TARGET_URL} does not answer through the "
-        "WAF. nginx caches its upstream address at start, so recreate it too:\n"
-        f"  {start_hint(GATEWAY, SENSOR, fresh=True)}"
+        f"the target was reset but it does not answer through the WAF from "
+        f"inside the range. nginx caches its upstream address at start, so "
+        f"recreate it too:\n  {start_hint(GATEWAY, SENSOR, fresh=True)}"
     )
 
 def run_redteam() -> int:
-    result = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "redteam" / "run.py")],
-        capture_output=True,
-        text=True,
+    result = run(
+        SCORER,
+        ["python", "redteam/run.py",
+         "--platform", "http://localhost:8000",
+         "--target", TARGET_PUBLIC,
+         "--tool-target", TARGET_PUBLIC],
         timeout=300,
-        cwd=REPO_ROOT,
     )
-    assert result.returncode == 0, (
-        f"red team run failed:\n{result.stdout}\n{result.stderr}"
-    )
+    assert result.ok, f"red team run failed:\n{result.output}"
 
     for line in result.stdout.splitlines():
         found = SESSION_LINE.match(line.strip())
         if found:
             return made_by_this_run(int(found.group(1)))
-    raise AssertionError(f"no session number in output:\n{result.stdout}")
+    raise AssertionError(f"no session number in output:\n{result.output}")
 
 def from_attacker(path: str) -> None:
     result = run(
