@@ -100,13 +100,26 @@ rule; after a reboot pfSense came up holding all 30 with no dhclient, and Kali
 reached `shop.com` (200). The stray dhclient started at the DHCP-WAN boot was
 what wiped the hand-set address before.
 
+**Done (2026-10-02): Left 2, Suricata on the WAN.** The same playback
+configures the pfSense package (so the GUI shows it): pass lists `fsl_home`
+(`pfsense.home()`: 30 origins + estate + mgmt) as HOME_NET and `fsl_anywhere`
+(0.0.0.0/0) as EXTERNAL_NET (the default `!$HOME_NET` would exclude the
+attackers), legacy mode, no blocking, EVE to syslog (local1.info) with only
+`alert` and `http`, and a passthrough of dotted keys - Suricata's YAML loader
+merges `detect.guess-applayer-tx: yes` and
+`outputs.N.eve-log.types.M.http.dump-all-headers: request`, N and M read back
+from `suricata --dump-config` of the generated file (two passes). The sensor
+starts from `deploy/suricata/rules/local.rules` as its custom rules and no ET
+set, **only when it is first created**: afterwards the rules are the blue
+team's. The playback restarts it and prints `fsl-edge sensor vtnet0 running`,
+which the platform requires. Cloud: a SQLi probe from Kali (120.96.0.208)
+raised `FSL SQLi attempt - URI` in pfSense's alert log.
+
 **Left, in order:**
-2. **Suricata on pfSense** - enabled on the WAN interface, HOME_NET from
-   `pfsense.home_net()`, EVE JSON on (pfSense package config, via playback).
 3. **Log pipeline** - pfSense Suricata EVE + `filterlog` by syslog to the
    platform's Filebeat (a new UDP syslog input), and the WAF VM's ModSecurity
    audit log into Elasticsearch.
-4. **Codify** 2-3 into the same configure step, idempotent.
+4. **Codify** 3 into the same configure step, idempotent.
 5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
    Internet port + the source rewrite (SNAT), so any origin fires, not just the
    Neutron-chosen one.
