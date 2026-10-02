@@ -78,10 +78,12 @@ was detected but did not actually beat the target - the objective ground truth
 is orthogonal to the detector, as designed), and `game.balance` revealed on
 close.
 
-**Re-verified 2026-10-02 (adversarial workflow + direct measurement).** Left 1,
-2, 3/4 and 6 each survived an independent read-only refutation attempt against
-the live cloud + committed code (CONFIRMED). Left 5 is PARTIAL — see the cloud
-caveat. Two earlier claims were wrong and are corrected here.
+**Re-verified 2026-10-02 (adversarial workflow + direct measurement + a clean
+rebuild).** Left 1, 2, 3/4 and 6 each survived an independent read-only
+refutation attempt against the live cloud + committed code (CONFIRMED). Left 5
+was then proven from a bare slot+image rebuild (see below), which also exposed
+and fixed the WAN-pass-rule bug. Two earlier claims were wrong and are
+corrected here.
 
 **Findings to carry:**
 - **Syslog loss is a pfSense send-side burst problem, not the network, and
@@ -103,21 +105,26 @@ caveat. Two earlier claims were wrong and are corrected here.
   VIP descr `fsl origin <id>` / the WAN pass rule descr / the `fsl_home` and
   `fsl_anywhere` pass lists, so a second `configure` changes nothing.
 
-**Cloud state caveat (the Left 5 gap):** the standing slot was booted
-**before** Left 5 (its config-drive `bootcmd` applied one address,
-120.96.0.208), so its Kali port's 100 fixed IPs, the ~100 NIC aliases and
-`/usr/local/sbin/fsl-origin` were all applied **by hand this session** to match
-the shipped code - Neutron accepted all 100 fixed IPs on the one port, and the
-origin API genuinely SNATs the box to a per-country source that shows up
-geolocated in Elasticsearch. The code paths are verified (slot `addresses` sum
-= 100, `_attacker_addresses`, `user_data` bootcmd, `fsl-origin` in the Kali
-image), but a **clean slot rebuild reproducing this from boot is not yet
-proven**. The clean path, still to run: `DELETE` then rebuild the Kali image
-(its `setup.sh` now ships `fsl-origin`) via `POST /api/range/images/`, then
-`/slot/`, then `/configure/`. Likewise the live WAN/sensor/syslog config was
-pushed by the same `pfsense.command()` playback mechanism the platform uses,
-but by a hand-run of the committed script, and reboot-survival is proven from
-`config.xml`, not an actual reboot.
+**Left 5/6 reproduced from a clean boot (2026-10-02), and it exposed a real
+bug.** The whole slot was torn down, the Kali image rebuilt (its `setup.sh`
+ships `/usr/local/sbin/fsl-origin`), and the slot re-booted and re-configured
+through the API alone (`DELETE /slot/`, `DELETE`+`POST /images/` until clean,
+`POST /slot/`, `POST /configure/`). The fresh Kali came up with **100 eth0
+addresses from the slot `bootcmd`** and `fsl-origin` **from the image** - no
+hand steps - and `POST /api/attacker/origin/` SNATs it per country. A fresh
+scored session then read **TP 1, FP 0, FN 0, TN 1**, the SQLi corroborated
+across both engines (ModSecurity 16 + Suricata 4 detections), src 120.96.0.10
+geolocated TW.
+- **The bug the rebuild found:** on a fresh pfSense, `configure.php` added the
+  WAN pass rule and reloaded pf, but the **Suricata package sync that runs
+  afterwards reloaded the filter and dropped it**, so the edge denied all range
+  traffic (Kali could not reach the WAF; every case was an FN). The earlier
+  slot only worked because a hand-run playback had loaded a pass rule. Fixed:
+  `configure.php` runs a final `filter_configure_sync()` after the sensor is up
+  and prints `wanrule <count>`; `configure_edge()` refuses unless the rule is
+  in pf (`pfsense.wan_rule_loaded`). Re-verified from the bare rebuild above.
+- Still proven from `config.xml`, not an actual reboot: that the 30 WAN
+  addresses + VIPs survive a pfSense reboot (a reboot was not performed).
 
 ## Measured mechanics a change can break
 
@@ -684,21 +691,23 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      and snapshotted. Installing CE asked for no account, only Internet
      (the `fsl-platform` network). A second server booted from the image
      came up to the console menu with its own device id.
-   - **In progress (2026-10-02, see "In progress" above for detail).** The
-     edge image `fsl-pfsense-edge` (base + Suricata 8.0.5 + sshd + MTU 1450 +
-     OPT1 mgmt) is built; the slot stands with pfSense holding the 30 origin
-     `.1`s and the estate `.1`; un-NAT routing Kali→pfSense→WAF→target is
-     proven on the cloud with the source preserved. Left: the WAN config
-     sticking (30 VIP aliases, the IP up), Suricata on the WAN interface with
-     `HOME_NET`, the syslog→Elasticsearch pipeline, and codifying the
-     config-push. The GUI pane is step 6.
+   - **Done (2026-10-02, see "In progress" above for detail).** The edge
+     image `fsl-pfsense-edge` (base + Suricata 8.0.5 + sshd + MTU 1450 + OPT1
+     mgmt) boots in the slot; `POST /api/range/configure/` plays
+     `deploy/pfsense/configure.php` back over mgmt ssh and pfSense holds the 30
+     origin `.1`s (static + 29 VIP aliases, IP up, IPv6/NAT off), runs Suricata
+     on the WAN with the range as `HOME_NET` and EVE to syslog, and ships its
+     syslog + the WAF's ModSecurity audit log to the platform's Elasticsearch,
+     geolocated. The config-push is idempotent and the WAN pass rule survives
+     the Suricata filter reload. The GUI pane is step 6.
 5. **Kali VM** holding the country addresses, with the source rewritten as
    packets leave.
-   - **In progress (2026-10-02).** The `fsl-kali` image is built from
+   - **Done (2026-10-02).** The `fsl-kali` image is built from
      `deploy/kali/setup.sh` on a `kali-rolling` base and boots in the slot on
-     an origin + mgmt (the terminal/proxy/tooling baked in). Left: the ~100
-     per-country addresses on its one Internet port and the source rewrite, so
-     any origin fires (see "In progress").
+     an origin + mgmt (the terminal/proxy/tooling baked in). Its one Internet
+     port holds the ~100 per-country addresses (the slot `bootcmd` spreads them
+     onto the NIC) and `/usr/local/sbin/fsl-origin` SNATs the box's source per
+     country, so any origin fires. Proven from a clean image+slot rebuild.
 6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
    read-only blue role), the pfSense pane through a kiosk browser VM's noVNC
    console, and ttyd, all behind the platform's one published port, with no
@@ -708,8 +717,11 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    7681 is no longer published. waitress trusts only `127.0.0.1` for
    `X-Forwarded-For`, so the refusal of range addresses reads the real client
    as before; `/terminal/` asks `/api/attacker/` first (`auth_request`), and
-   acceptance checks that a range host gets 403 there. Left: Kibana, the
-   pfSense pane, and acceptance and the command-line cases off 8080.
+   acceptance checks that a range host gets 403 there. Left **and in scope**:
+   the acceptance suite and the command-line cases run against the OpenStack
+   range (pfSense -> WAF -> target), not Docker's `:8080`. **Out of scope (the
+   user): Kibana and the pfSense GUI pane** - the two blue-screen panes are not
+   to be built in this backlog.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
 
