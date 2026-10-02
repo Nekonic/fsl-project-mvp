@@ -33,12 +33,12 @@ platform's Elasticsearch geolocated, and the platform scores it.
 
 **Backlog 2 step 6's in-scope part is done (2026-10-02):** the target port is
 no longer published and the acceptance suite and command-line cases reach the
-target from inside the range. **Step 7's first part (evidence by event time)
-is done too (2026-10-02).** What is left of backlog 2 is the rest of step 7
-(GeoIP's durable home, which waits on the user's MaxMind licence call, and the
-slot's Stop-rebuild lifecycle, which is cloud work), plus the two blue-screen
-panes the user held out of this backlog (Kibana and the pfSense GUI pane) and
-the board's user-database objective. On `dev`; `bin/verify` green.
+target from inside the range. **Step 7's first two parts are done too
+(2026-10-02): evidence by event time, and GeoIP's durable home.** What is left
+of backlog 2 is step 7's last part - the slot's Stop-rebuild lifecycle, which
+the user is directing later (cloud work) - plus the two blue-screen panes the
+user held out of this backlog (Kibana and the pfSense GUI pane) and the
+board's user-database objective. On `dev`; `bin/verify` green.
 
 **Committed this session (step 6, the acceptance/CLI move):**
 - `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
@@ -63,13 +63,22 @@ happened, not when Filebeat read it (read time ran 0.8-8.6 s late here). Core
 is untouched: `platform/ingest/elastic.py` already timestamped detections by
 event time and already re-checked the window by event time (`stale`); only the
 fetch query disagreed. `test/test_event_time.py` holds `@timestamp` to the
-event time for both engines. Not done this session, and why:
-- **GeoIP's durable home** waits on the MaxMind GeoLite licence call the user
-  holds (see "Decisions left for a person"): a durable bind mount means
-  sourcing the `.mmdb` files and carrying MaxMind's attribution, a licence
-  decision, not a loop's.
-- **The slot's Stop-rebuild lifecycle** is OpenStack-cloud work (a Nova rebuild
-  of every VM either side can change), not reachable from `bin/verify`'s Docker.
+event time for both engines.
+
+**Committed this session (step 7, GeoIP's durable home):** on the user's
+go-ahead to take the lightest path, the managed GeoIP downloader is off
+(`ingest.geoip.downloader.enabled: false`) and Elasticsearch reads
+`GeoLite2-City.mmdb` from a bind-mounted `config/ingest-geoip`, so a container
+recreate - or the cloud's blocked CDN - no longer loses it. The `.mmdb` is not
+committed (63 MB, git-ignored); `bin/fetch-geoip` fetches it from
+`geoip.elastic.co` (MD5-checked) and `config/ingest-geoip/README.md` carries
+the MaxMind attribution. `test/test_geoip_durable.py` holds the downloader off
+and the pipeline still placing a source. The MaxMind licence review for the
+production repo still stands (see "Decisions left for a person").
+
+Left of backlog 2 after this session: **the slot's Stop-rebuild lifecycle**,
+which the user is directing later - it is OpenStack-cloud work (a Nova rebuild
+of every VM either side can change), not reachable from `bin/verify`'s Docker.
 
 **Committed this session (`4ec543b..HEAD`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -362,15 +371,17 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   team can take. How the board judges from its own side that it was taken is
   still to design; the platform must not decide it. Juice Shop's
   continue-code restore is not pursued.
-- **GeoIP is loaded once**, not refreshed: country ranges rarely move. It
-  still needs a durable home, a bind mount for `config/ingest-geoip` with the
-  downloader off. Today the files sit inside the container: the downloader
-  failed at every Elasticsearch start (it runs before `.geoip_databases` has
-  an active primary, then waits three days), one of its two download
-  addresses (`172.64.66.1`) does not connect through the VPN, and turning it
-  off on 2026-09-30 deleted the downloaded databases, as documented. The same
-  GeoLite2 files were fetched from `geoip.elastic.co` (md5 checked) and copied
-  in; they vanish when the container is recreated.
+- **GeoIP is loaded once**, not refreshed: country ranges rarely move. **Its
+  durable home is done (2026-10-02):** a bind mount of `config/ingest-geoip`
+  with `ingest.geoip.downloader.enabled: false`, so the files survive a
+  container recreate instead of vanishing with it. `bin/fetch-geoip` fills the
+  bind mount with `GeoLite2-City.mmdb` from `geoip.elastic.co` (md5 checked);
+  it is git-ignored (63 MB), so a fresh host runs that once before
+  `docker compose up`. Before this, the files sat inside the container: the
+  downloader failed at every Elasticsearch start (it runs before
+  `.geoip_databases` has an active primary, then waits three days), one of its
+  two download addresses (`172.64.66.1`) does not connect through the VPN, and
+  turning it off on 2026-09-30 deleted the downloaded databases.
 - **Evidence is selected by event time (done 2026-10-02)**: the `fsl-geoip`
   pipeline sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
   `transaction.time_stamp`, as ECS defines it and Elastic's own pipelines do,
@@ -443,9 +454,13 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 - **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind", which
-  sits against "GeoIP is loaded once" (step 7 of backlog 2). Cloudflare
-  Radar's shares are CC BY-NC 4.0, fine here, to be looked at before they
-  move to the production repo.
+  sits against "GeoIP is loaded once" (step 7 of backlog 2). For the MVP the
+  user took the lightest path (2026-10-02): the `.mmdb` is not committed,
+  `bin/fetch-geoip` pulls it and `config/ingest-geoip/README.md` carries the
+  attribution. Whether to carry the database and that obligation into the
+  production repo, and the 30-day refresh, is the part still left for a
+  person. Cloudflare Radar's shares are CC BY-NC 4.0, fine here, to be looked
+  at before they move to the production repo.
 - The reasoning behind the placement and the WAF console is in
   `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
   `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`.
@@ -770,9 +785,14 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `transaction.time_stamp` (two date processors ahead of the geoip ones),
      so the ingest fetch window selects by event time, not Filebeat's read
      time. Core untouched; `test/test_event_time.py` is the guard.
-   - **Left: GeoIP's durable home** - waits on the user's MaxMind GeoLite
-     licence decision (attribution + the 30-day-old-database rule).
-   - **Left: the slot's Stop-rebuild lifecycle** - OpenStack-cloud work.
+   - **Done (2026-10-02): GeoIP's durable home.** The managed downloader is off
+     and Elasticsearch reads `GeoLite2-City.mmdb` from a bind-mounted
+     `config/ingest-geoip`; `bin/fetch-geoip` fills it (git-ignored, 63 MB),
+     `config/ingest-geoip/README.md` carries the MaxMind attribution, and
+     `test/test_geoip_durable.py` is the guard. Licence review for production
+     still stands.
+   - **Left: the slot's Stop-rebuild lifecycle** - OpenStack-cloud work, the
+     user is directing it later.
 
 ## Known gaps
 

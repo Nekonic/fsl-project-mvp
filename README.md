@@ -105,15 +105,21 @@ the attacker's command log. The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
-On a host with Docker, clone the repo and bring the stack up:
+On a host with Docker, clone the repo, fetch the GeoIP database once, and
+bring the stack up:
 
 ```bash
+bin/fetch-geoip
 docker compose up -d --build
 ```
 
-The platform sorts out the docker socket group and registers the Elasticsearch
-ingest pipeline (which geolocates source addresses) on start, so there is
-nothing else to run. Firing the scripted cases from the command line and
+Elasticsearch's managed GeoIP downloader is off; it reads `GeoLite2-City.mmdb`
+from `config/ingest-geoip` (a durable bind mount) instead. `bin/fetch-geoip`
+puts it there once — the file is not committed, and it survives a container
+recreate rather than being re-downloaded (the cloud's Elasticsearch cannot
+reach the download CDN). The platform sorts out the docker socket group and
+registers the Elasticsearch ingest pipeline (which sets evidence's event time
+and geolocates source addresses) on start, so there is nothing else to run. Firing the scripted cases from the command line and
 `bin/verify`, `--fast` included, need a virtualenv:
 
 ```bash
