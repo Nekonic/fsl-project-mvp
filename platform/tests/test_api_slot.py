@@ -67,3 +67,30 @@ def test_taking_it_down_is_a_delete_and_says_what_went(client, built):
     assert response.status_code == 200 and built.torn == 1
     assert response.json()["removed"] == [{"kind": "server", "id": "srv-1"},
                                           {"kind": "port", "id": "port-1"}]
+
+class Configured:
+    def __init__(self):
+        self.configured = 0
+
+    def configure_slot(self):
+        self.configured += 1
+        return [("fsl-pfsense", ("73.0.0.1", "120.96.0.1"))]
+
+def test_configuring_the_slot_is_a_post_that_says_what_each_host_now_holds(client):
+    found = Configured()
+    with patch("api.views.substrate", lambda: found):
+        response = client.post_json("/api/range/configure/")
+
+    assert response.status_code == 200 and found.configured == 1
+    assert response.json() == {"configured": [
+        {"host": "fsl-pfsense", "holds": ["73.0.0.1", "120.96.0.1"]}
+    ]}
+
+def test_the_docker_range_has_nothing_to_configure(client):
+    response = client.post_json("/api/range/configure/")
+
+    assert response.status_code == 409 and "compose" in response.json()["detail"]
+
+def test_configuring_is_only_a_post(client):
+    with patch("api.views.substrate", lambda: Configured()):
+        assert client.get("/api/range/configure/").status_code == 405

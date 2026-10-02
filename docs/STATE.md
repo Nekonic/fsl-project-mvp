@@ -85,15 +85,28 @@ attacker and the scored end-to-end run. On `dev` (pushed 2026-10-02);
   set `ipaddrv6`=none.
 - WAN MTU must be 1450; confirm NIC order each boot.
 
+**Done (2026-10-02): Left 1, the WAN sticks.** `POST /api/range/configure/`
+(`configure_slot()` -> `configure_edge()`) plays `deploy/pfsense/configure.php`
+back on pfSense over mgmt ssh (`pfSsh.php playback fsl-edge`, settings as a
+base64 JSON line ahead of the static script, sent on stdin). It sets the WAN
+static at the first origin's `.1`, drops IPv6/`dhcphostname`/block-private,
+holds the other 29 `.1`s as `ipalias` VIPs (uniqid `fsl<id>`, descr `fsl
+origin <id>`, replaced each run), turns outbound NAT off, adds one WAN pass
+rule `fsl range crosses the edge` if absent, kills the WAN's dhclient/dhcp6c,
+configures the interface and VIPs, forces it up and `ifconfig ... alias`es any
+address still missing, then prints `fsl-edge wan <addresses>`; the platform
+refuses (409) unless all 30 are held. Cloud: two runs left 29 VIPs and one
+rule; after a reboot pfSense came up holding all 30 with no dhclient, and Kali
+reached `shop.com` (200). The stray dhclient started at the DHCP-WAN boot was
+what wiped the hand-set address before.
+
 **Left, in order:**
-1. **pfSense WAN sticks** - all 30 origin `.1`s (primary + 29 VIP IP-aliases),
-   the IP actually up (force the interface, `ipaddrv6`=none).
 2. **Suricata on pfSense** - enabled on the WAN interface, HOME_NET from
    `pfsense.home_net()`, EVE JSON on (pfSense package config, via playback).
 3. **Log pipeline** - pfSense Suricata EVE + `filterlog` by syslog to the
    platform's Filebeat (a new UDP syslog input), and the WAF VM's ModSecurity
    audit log into Elasticsearch.
-4. **Codify** 1-3 as a platform slot "configure" step over mgmt ssh, idempotent.
+4. **Codify** 2-3 into the same configure step, idempotent.
 5. **Attacker addresses** - the ~100 per-country addresses on Kali's one
    Internet port + the source rewrite (SNAT), so any origin fires, not just the
    Neutron-chosen one.
@@ -102,9 +115,8 @@ attacker and the scored end-to-end run. On `dev` (pushed 2026-10-02);
 
 Each piece: test-first, `bin/verify`, commit, update STATE.
 
-**Cloud-state caveat:** the slot stands configured **by hand for one origin**
-(WAN alias, NAT off, pass-all WAN rule) - a reboot or rebuild loses it. Start
-from Left #1.
+**Cloud state:** the slot's pfSense is configured by the platform (Left 1);
+re-run `POST /api/range/configure/` after rebuilding the slot.
 
 ## Measured mechanics a change can break
 

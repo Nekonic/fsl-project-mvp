@@ -11,7 +11,7 @@ from urllib.parse import quote
 import requests
 from dataclasses import dataclass, replace
 
-from range import fabric, images, slot
+from range import fabric, images, pfsense, slot
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -882,6 +882,25 @@ class OpenStack:
             self.get(self._call(DELETES[kind], **{kind: ident}))
         self._shape = None
         return steps
+
+    def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
+        return [self.configure_edge()]
+
+    def configure_edge(self) -> tuple[str, tuple[str, ...]]:
+        wanted = pfsense.settings(self.describe().segments)
+        template = (Path(self.build.source) / pfsense.TEMPLATE).read_text()
+        ran = self.runner(slot.EDGE_ROLE)(
+            pfsense.command(), stdin=pfsense.playback(wanted, template), timeout=300,
+        )
+        expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
+        missing = [address for address in expected if address not in pfsense.held(ran.output)]
+        edge = slot.edge_of(self.declared)
+        if not ran.ok or missing:
+            raise Drifted(
+                f"{edge} playback exited {ran.exit_code} and does not hold "
+                f"{', '.join(missing) or 'nothing missing'}: {ran.output[-1000:]}"
+            )
+        return edge, tuple(expected)
 
     def _slot(self):
         networks, subnets, _, groups = self._fabric_standing()
