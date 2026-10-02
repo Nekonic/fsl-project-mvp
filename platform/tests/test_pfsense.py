@@ -127,3 +127,8 @@ def test_the_lines_the_playback_printed_are_read_back_by_what_they_report():
     printed = "x\nfsl-edge wan 73.0.0.1\nfsl-edge logs 10.31.0.195:5140\n"
 
     assert pfsense.reported(printed) == ("wan 73.0.0.1", "logs 10.31.0.195:5140")
+
+def test_the_wan_pass_rule_is_read_back_from_the_loaded_ruleset():
+    assert pfsense.wan_rule_loaded("x\nfsl-edge wanrule 1\n")
+    assert not pfsense.wan_rule_loaded("fsl-edge wanrule 0\n")
+    assert not pfsense.wan_rule_loaded("no line at all\n")

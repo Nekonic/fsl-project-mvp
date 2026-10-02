@@ -61,3 +61,6 @@ def reported(output: str) -> tuple[str, ...]:
     return tuple(
         line[len(REPORTS):] for line in output.splitlines() if line.startswith(REPORTS)
     )
+
+def wan_rule_loaded(output: str) -> bool:
+    return "wanrule 1" in reported(output)

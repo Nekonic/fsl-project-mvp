@@ -907,13 +907,15 @@ class OpenStack:
         reported = pfsense.reported(ran.output)
         sensing = pfsense.sensing(ran.output)
         logging = f"logs {collector}" in reported
+        wan_rule = pfsense.wan_rule_loaded(ran.output)
         edge = slot.edge_of(self.declared)
-        if not ran.ok or missing or not sensing or not logging:
+        if not ran.ok or missing or not sensing or not logging or not wan_rule:
             raise Drifted(
                 f"{edge} playback exited {ran.exit_code}, does not hold "
                 f"{', '.join(missing) or 'nothing missing'}, its sensor is "
-                f"{'running' if sensing else 'not running'} and it "
-                f"{'logs' if logging else 'does not log'} to {collector}: "
+                f"{'running' if sensing else 'not running'}, it "
+                f"{'logs' if logging else 'does not log'} to {collector}, and "
+                f"its wan pass rule is {'in pf' if wan_rule else 'not loaded into pf'}: "
                 f"{ran.output[-1000:]}"
             )
         return edge, reported
