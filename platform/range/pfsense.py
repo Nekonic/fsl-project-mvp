@@ -8,15 +8,19 @@ from range.declared import Declaration
 from range.ports import RangeUnavailable, Segment
 
 TEMPLATE = "deploy/pfsense/configure.php"
+RULES = "deploy/suricata/rules/local.rules"
 SESSION = "fsl-edge"
 HOLDS = "fsl-edge wan "
+SENSING = "fsl-edge sensor "
+
+def home(declaration: Declaration) -> list[str]:
+    origins = [origin.subnet for origin in declaration.origins]
+    return origins + [fabric.INSIDE["estate"], fabric.INSIDE[fabric.MANAGEMENT]]
 
 def home_net(declaration: Declaration) -> str:
-    origins = [origin.subnet for origin in declaration.origins]
-    inside = [fabric.INSIDE["estate"], fabric.INSIDE[fabric.MANAGEMENT]]
-    return "[" + ",".join(origins + inside) + "]"
+    return "[" + ",".join(home(declaration)) + "]"
 
-def settings(segments: tuple[Segment, ...]) -> dict:
+def settings(segments: tuple[Segment, ...], declaration: Declaration, rules: str) -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -27,7 +31,8 @@ def settings(segments: tuple[Segment, ...]) -> dict:
         {"id": segment.id, "address": segment.gateway, "bits": segment.subnet.split("/")[1]}
         for segment in origins
     ]
-    return {"wan": gateways[0], "aliases": gateways[1:]}
+    return {"wan": gateways[0], "aliases": gateways[1:], "home": home(declaration),
+            "rules": rules}
 
 def playback(wanted: dict, template: str) -> str:
     blob = base64.b64encode(json.dumps(wanted).encode()).decode()
@@ -43,3 +48,9 @@ def held(output: str) -> set[str]:
         for line in output.splitlines() if line.startswith(HOLDS)
         for address in line[len(HOLDS):].split()
     }
+
+def sensing(output: str) -> bool:
+    return any(
+        line.startswith(SENSING) and line.split()[-1] == "running"
+        for line in output.splitlines()
+    )

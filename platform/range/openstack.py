@@ -887,18 +887,22 @@ class OpenStack:
         return [self.configure_edge()]
 
     def configure_edge(self) -> tuple[str, tuple[str, ...]]:
-        wanted = pfsense.settings(self.describe().segments)
-        template = (Path(self.build.source) / pfsense.TEMPLATE).read_text()
+        source = Path(self.build.source)
+        wanted = pfsense.settings(self.describe().segments, self.declared,
+                                  (source / pfsense.RULES).read_text())
+        template = (source / pfsense.TEMPLATE).read_text()
         ran = self.runner(slot.EDGE_ROLE)(
             pfsense.command(), stdin=pfsense.playback(wanted, template), timeout=300,
         )
         expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
         missing = [address for address in expected if address not in pfsense.held(ran.output)]
         edge = slot.edge_of(self.declared)
-        if not ran.ok or missing:
+        sensing = pfsense.sensing(ran.output)
+        if not ran.ok or missing or not sensing:
             raise Drifted(
-                f"{edge} playback exited {ran.exit_code} and does not hold "
-                f"{', '.join(missing) or 'nothing missing'}: {ran.output[-1000:]}"
+                f"{edge} playback exited {ran.exit_code}, does not hold "
+                f"{', '.join(missing) or 'nothing missing'}, and its sensor is "
+                f"{'running' if sensing else 'not running'}: {ran.output[-1000:]}"
             )
         return edge, tuple(expected)
 

@@ -25,8 +25,9 @@ def _shape():
     return Shape(segments=origins + (mgmt,), sensors=())
 
 class Edge:
-    def __init__(self, holds=None, exit_code=0):
+    def __init__(self, holds=None, exit_code=0, sensor="running"):
         self.calls = []
+        self.sensor = sensor
         self.holds = holds
         self.exit_code = exit_code
 
@@ -36,7 +37,8 @@ class Edge:
             holds = self.holds if self.holds is not None else [
                 o.subnet.replace("0/24", "1") for o in OS.origins
             ]
-            return Ran(self.exit_code, "fsl-edge wan " + " ".join(holds) + "\n")
+            return Ran(self.exit_code, "fsl-edge wan " + " ".join(holds) + "\n"
+                       + f"fsl-edge sensor vtnet0 {self.sensor}\n")
         return run
 
 def _adapter(edge):
@@ -53,7 +55,8 @@ def test_configuring_the_edge_plays_the_static_script_back_on_it_over_management
     (role, argv, stdin), = edge.calls
     assert role == "edge" and argv == pfsense.command()
     template = (ROOT / pfsense.TEMPLATE).read_text()
-    assert stdin == pfsense.playback(pfsense.settings(_shape().segments), template)
+    rules = (ROOT / pfsense.RULES).read_text()
+    assert stdin == pfsense.playback(pfsense.settings(_shape().segments, OS, rules), template)
     assert done == ("fsl-pfsense", tuple(o.subnet.replace("0/24", "1") for o in OS.origins))
 
 def test_an_edge_that_does_not_hold_every_origin_gateway_afterwards_is_drift():
@@ -72,3 +75,7 @@ def test_configuring_the_slot_reports_each_host_it_configured():
     done = _adapter(edge).configure_slot()
 
     assert done[0][0] == "fsl-pfsense"
+
+def test_an_edge_whose_sensor_is_not_running_afterwards_is_drift():
+    with pytest.raises(Drifted, match="sensor"):
+        _adapter(Edge(sensor="stopped")).configure_edge()
