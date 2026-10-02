@@ -25,18 +25,62 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
-Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). Landed so
-far, green and committed: an OpenStack declaration **flavor**. `declaration.yaml`
-gains an `openstack:` overlay that `declared.read(flavor="openstack")` merges
-over the base; `declared.flavor_for()` picks it from `FSL_SUBSTRATE`, and
-`settings.RANGE` (and the console's topology view) use it. The Docker base is
-unchanged, so `bin/verify` stays green. In the OpenStack flavor `edge`=fsl-pfsense
-is the sensor (`watches: {sensor: edge}`), the WAF drops to estate+mgmt, and
-`fsl-pfsense` (prebuilt image `fsl-pfsense`) and `fsl-kali` are hosts. A host now
-declares a `setup:` script **or** a prebuilt `image:`, never both. Left in these
-steps: the slot booting pfSense/Kali, pfSense config over mgmt (interfaces, the
-origin .1 aliases, no-NAT pass of WAF:80, Suricata HOME_NET), the pfSense and
-Kali images, the log pipeline, and the cloud end-to-end run.
+Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). Not
+finished: the pfSense edge is blocked on how its image is configured (below).
+
+**Committed and green** (`bin/verify` full, Docker base unchanged):
+- An OpenStack declaration **flavor**. `declaration.yaml` gains an `openstack:`
+  overlay that `declared.read(flavor="openstack")` merges over the base;
+  `declared.flavor_for()` picks it from `FSL_SUBSTRATE`, and `settings.RANGE`
+  (and the console's topology view) use it. In the flavor `edge`=fsl-pfsense is
+  the sensor (`watches: {sensor: edge}`), the WAF drops to estate+mgmt and
+  carries the names `shop.com`/`board.com`, and `fsl-pfsense` (prebuilt image
+  `fsl-pfsense`) and `fsl-kali` are hosts. A host declares a `setup:` script
+  **or** a prebuilt `image:`, never both, and may name its own `base:` image.
+- The slot boots pfSense from its prebuilt image with no cloud-init (it is
+  FreeBSD); the **edge** holds every origin's `.1` on the Internet and the
+  estate's `.1`, and its forwarding ports carry `allowed_address_pairs
+  0.0.0.0/0` so it routes un-NATted; the attacker may also stand on the
+  Internet.
+- `fsl-kali` builds on its own `kali-rolling` base (per-host base image).
+- `pfsense.home_net()` builds the Suricata HOME_NET (30 origin subnets + estate
+  + mgmt) from the declaration.
+
+**Cloud-verified (2026-10-02):**
+- `kali-rolling` (Kali GenericCloud 2026.2, qcow2, min_disk 25) is in Glance,
+  uploaded as `fsl-range`. The platform (running this branch) built **`fsl-kali`**
+  end to end from `deploy/kali/setup.sh` on that base: console `READY`, stop,
+  snapshot, builder deleted. Prebuilt `fsl-pfsense` reads as ready; the slot
+  plan wants to boot `fsl-pfsense` and `fsl-kali`, nothing blocked.
+- The range flavor is **m1.linux** (30 GB) now, because Kali's image is
+  min_disk 25; set as `FSL_OPENSTACK_FLAVOR` in the VM's `openstack.env`.
+
+**State of the cloud right now:** the step-3 slot still stands (fsl-waf as the
+Internet gateway holding the 30 `.1`s; juice-shop, wiki, board on the estate).
+The new slot is **not** built: pfSense's Internet port would want the same 30
+`.1`s the standing WAF holds, so the slot must be **torn down and rebuilt** to
+move to the pfSense topology. The platform VM runs this branch's code (rsynced
+to `/opt/fsl`, not pushed to `dev`).
+
+**Blocker — configuring the pfSense image.** The goal is pfSense built from
+`fsl-pfsense` with Suricata + sshd + the 3-NIC/firewall/syslog config, which
+needs an interactive step. Driving pfSense's Nova **noVNC console is
+unreliable** for anything past single keys: `computer type` sends nothing, and
+`key` drops `-`/mangles URLs (a `fetch http://ip:port/x` line parses as three
+broken commands). Menu entry of digits/dots/`y`/`n` is reliable (ssh was
+enabled that way, option 14). pfSense ssh gives the **console menu, not a
+shell**, so the platform cannot just `ssh pf "cmd"`. A reliable path not yet
+taken: set the LAN to a reachable mgmt IP by the numeric menu, then from the
+platform VM push a `config.xml` through the GUI's Backup/Restore (or run
+commands via Diagnostics > Command Prompt). The build VM used for the ssh test
+was deleted; the base `fsl-pfsense` image is untouched.
+
+**Left:** the pfSense edge image and how the platform configures it over mgmt
+(interfaces, the origin `.1` WAN aliases, no-NAT pass of WAF:80, Suricata +
+HOME_NET, remote syslog), the log pipeline (pfSense syslog + the WAF VM's
+ModSecurity into Elasticsearch), the attacker rework (one Kali, per-country
+source by SNAT, default route and `shop.com` through pfSense to the WAF's estate
+address), the slot rebuild, and the cloud end-to-end scored run.
 
 ## Measured mechanics a change can break
 
