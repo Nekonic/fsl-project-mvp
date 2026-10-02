@@ -25,158 +25,75 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
-Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack). The
-images, the standing topology and the un-NAT routing are proven on the cloud;
-what remains is the detection pipeline, the config-push code, the per-country
-attacker and the scored end-to-end run. On `dev` (pushed 2026-10-02);
-`bin/verify` green.
+Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are
+**done end to end** (2026-10-02). The whole chain is proven on the cloud:
+a case fired from the Kali box leaves as a chosen country, crosses
+pfSense -> WAF -> Juice Shop, both sensors detect it, the logs reach the
+platform's Elasticsearch geolocated, and the platform scores it. What is left
+of backlog 2 is step 6 (the sidebar: Kibana and the pfSense GUI pane) and the
+board's user-database objective (held out by the user). On `dev`; `bin/verify`
+green.
 
-**Committed (10 commits, `d240daf..92cd4d1`):**
-- An OpenStack declaration **flavor**: `declaration.yaml` gains an `openstack:`
-  overlay that `declared.read(flavor=...)` merges over the Docker base;
-  `flavor_for()` picks it from `FSL_SUBSTRATE`, and `settings.RANGE` and the
-  console's topology use it. In it `edge`=fsl-pfsense is the sensor
-  (`watches: {sensor: edge}`), the WAF is estate+mgmt only and carries
-  `shop.com`/`board.com`, and `fsl-pfsense` (prebuilt `image:`) and `fsl-kali`
-  are hosts. A host declares a `setup:` script **or** a prebuilt `image:`, and
-  may set its own `base:` image and `ssh_user:`.
-- The slot boots pfSense from its image with no cloud-init (FreeBSD); the edge
-  holds every origin `.1` + the estate `.1`, its forwarding ports carry
-  `allowed_address_pairs 0.0.0.0/0` (un-NAT routing), and the attacker stands on
-  the Internet too. `fsl-kali` builds on its own `kali-rolling` base.
-- `pfsense.home_net()` builds the Suricata HOME_NET (30 origins + estate + mgmt).
-- The runner reaches pfSense as `admin` (per-host ssh user), and its exit-report
-  wrapper runs on FreeBSD's `/bin/sh` too (`sh -c '"$@"; ...' sh <argv>`, no
-  `--`, which FreeBSD reads as the command).
+**Committed this session (`4ec543b..HEAD`):**
+- **Left 1 - the WAN sticks.** `POST /api/range/configure/`
+  (`configure_slot` -> `configure_edge`) plays `deploy/pfsense/configure.php`
+  back on pfSense over mgmt ssh (settings as a base64 JSON line ahead of the
+  static script, on stdin). WAN static at the first origin `.1`, the other 29
+  as `ipalias` VIPs, IPv6/dhcp dropped, outbound NAT off, one WAN pass rule,
+  the WAN's dhclient killed; it refuses unless pfSense then holds all 30.
+  Survives a reboot (the stray DHCP dhclient was what wiped the hand-set
+  address before).
+- **Left 2 - Suricata on the WAN.** The same playback configures the pfSense
+  package (visible in its GUI): `fsl_home` (`pfsense.home()`) as HOME_NET,
+  `fsl_anywhere` (0.0.0.0/0) as EXTERNAL_NET, legacy mode, no blocking, EVE to
+  syslog, `guess-applayer-tx` and `dump-all-headers: request` merged as dotted
+  passthrough keys (the `types.N` index read back from `suricata
+  --dump-config`), the shipped `local.rules` as a new sensor's custom rules.
+  Refuses unless the sensor is running after.
+- **Left 3 and 4 - the log pipeline, codified.** `configure_slot` also: starts
+  the edge's remote syslog to the scorer (`:5140`, RFC 5424, logall); gives the
+  WAF an rsyslog `imfile`->`omfwd` drop-in for its ModSecurity audit log
+  (`range/waf.py`, sudo, `rsyslogd -N1`-checked); opens `fsl-reach` to exactly
+  the edge and WAF on UDP 5140 (`fabric.hearing`); and Filebeat gains a UDP
+  syslog input that parses every line and decodes Suricata/ModSecurity JSON so
+  ingest normalizes them as before. GeoIP moved to the `fsl-logs` template's
+  `index.default_pipeline` (filebeat's per-request output pipeline did not reach
+  the data stream on the cloud).
+- **Left 5 - one attacker wears any origin.** The slot gives the attacker's one
+  Internet port the ~100 per-country addresses (`slot.origin_addresses`), which
+  the existing gateway `bootcmd` spreads onto the NIC; the proxy/terminal run on
+  the Kali box (`proxy: fsl-kali`); `attacker.origins()` reads the edge as the
+  way in and the target by name; choosing an origin runs
+  `/usr/local/sbin/fsl-origin` to SNAT the box's outgoing source
+  (`ATTACKER_ORIGIN_MODE=snat`), so every tool leaves as that country.
 
-**Cloud-verified (2026-10-02):**
-- `kali-rolling` (Kali GenericCloud 2026.2, qcow2, min_disk 25) uploaded to
-  Glance; the platform built **`fsl-kali`** end to end from
-  `deploy/kali/setup.sh`.
-- **`fsl-pfsense-edge`** built from the base `fsl-pfsense` through the web GUI
-  (over an ssh tunnel): + the Suricata 8.0.5 package, sshd with the
-  `fsl-platform` key on `admin`, WAN MTU 1450, and OPT1=vtnet2 as MGMT (DHCP,
-  pass rule). The declaration's pfSense host names it.
-- The slot stands in the pfSense topology: **fsl-pfsense** holds all 30 origin
-  `.1`s + the estate `.1` (10.30.0.1) + a mgmt address; `fsl-kali` on an origin
-  + mgmt; WAF and the targets on estate+mgmt. `describe()` shows pfSense as the
-  sensor on every origin and Kali. NIC order held (internet=vtnet0,
-  estate=vtnet1, mgmt=vtnet2); the platform reaches pfSense as root over mgmt
-  ssh.
-- **un-NAT routing works, source preserved**: with pfSense WAN set to one origin
-  `.1`, outbound NAT off and a pass-all WAN rule (pushed by a pfSense 2.9
-  `config_set_path` **playback** over mgmt ssh), Kali (120.96.0.208, Taiwan) →
-  pfSense (120.96.0.1) → WAF (10.30.0.217) → Juice Shop: `curl http://shop.com/`
-  = 200 "OWASP Juice Shop", a SQLi probe = 500. The WAF logs the client as
-  120.96.0.208 (no NAT), so GeoIP places it right. Kali needs no manual routing
-  (config-drive gave eth0 its origin address, a default route via `.1`, and
-  `shop.com`/`board.com` → the WAF's estate IP in `/etc/hosts`).
+**Left 6 - the scored end-to-end run (cloud-verified 2026-10-02).** From a
+fresh session, origin `tw` (SNAT source 120.96.0.10), a benign request and the
+canonical SQLi fired from Kali through pfSense to Juice Shop: the platform
+scored **TP 1, FP 0, FN 0, TN 1**, the attack **corroborated** and credited to
+**both engines** (pfSense Suricata `FSL SQLi attempt - URI` + ModSecurity CRS),
+the benign a TN. The `objectives` dimension read 0 from Juice Shop (the probe
+was detected but did not actually beat the target - the objective ground truth
+is orthogonal to the detector, as designed), and `game.balance` revealed on
+close.
 
-**Findings to carry** (also memory `pfsense-cloud-config`):
-- Configure pfSense from the **web GUI over an ssh tunnel**, not noVNC (noVNC
-  key entry mangles `:`/`/`-heavy strings and drops `-`); the console is good
-  only for the numeric interface menu (set LAN to fsl-mgmt DHCP+HTTP, then
-  `ssh -L` through the platform VM).
-- Push config as pfSense 2.9 **playback** scripts (`config_set_path`,
-  `add_filter_rules`); `$config[...]` edits and `php -f` do **not** persist.
-- `base64 -d` of a single line needs **`-A`** (else a silent empty file).
-- `interface_configure('wan')` did **not** bring the WAN IPv4 up; `ifconfig
-  vtnet0 inet <ip>/24 alias` did - the playback must force the interface up and
-  set `ipaddrv6`=none.
-- WAN MTU must be 1450; confirm NIC order each boot.
+**Findings to carry:**
+- **Remote syslog is UDP and lossy.** pfSense's FreeBSD syslogd forwards only
+  over UDP; one Suricata EVE alert was dropped in transit on a single firing
+  (its http event and a later alert arrived). Scoring already re-ingests, and a
+  case fires several packets across two engines, so a single drop rarely loses
+  a case - fire an attack more than once, or re-ingest, to beat it. A reliable
+  edge would need a non-UDP transport the edge does not offer.
+- The config-push is idempotent and keyed on the WAN Suricata instance / the
+  VIP descr `fsl origin <id>` / the WAN pass rule descr / the `fsl_home` and
+  `fsl_anywhere` pass lists, so a second `configure` changes nothing.
 
-**Done (2026-10-02): Left 1, the WAN sticks.** `POST /api/range/configure/`
-(`configure_slot()` -> `configure_edge()`) plays `deploy/pfsense/configure.php`
-back on pfSense over mgmt ssh (`pfSsh.php playback fsl-edge`, settings as a
-base64 JSON line ahead of the static script, sent on stdin). It sets the WAN
-static at the first origin's `.1`, drops IPv6/`dhcphostname`/block-private,
-holds the other 29 `.1`s as `ipalias` VIPs (uniqid `fsl<id>`, descr `fsl
-origin <id>`, replaced each run), turns outbound NAT off, adds one WAN pass
-rule `fsl range crosses the edge` if absent, kills the WAN's dhclient/dhcp6c,
-configures the interface and VIPs, forces it up and `ifconfig ... alias`es any
-address still missing, then prints `fsl-edge wan <addresses>`; the platform
-refuses (409) unless all 30 are held. Cloud: two runs left 29 VIPs and one
-rule; after a reboot pfSense came up holding all 30 with no dhclient, and Kali
-reached `shop.com` (200). The stray dhclient started at the DHCP-WAN boot was
-what wiped the hand-set address before.
-
-**Done (2026-10-02): Left 2, Suricata on the WAN.** The same playback
-configures the pfSense package (so the GUI shows it): pass lists `fsl_home`
-(`pfsense.home()`: 30 origins + estate + mgmt) as HOME_NET and `fsl_anywhere`
-(0.0.0.0/0) as EXTERNAL_NET (the default `!$HOME_NET` would exclude the
-attackers), legacy mode, no blocking, EVE to syslog (local1.info) with only
-`alert` and `http`, and a passthrough of dotted keys - Suricata's YAML loader
-merges `detect.guess-applayer-tx: yes` and
-`outputs.N.eve-log.types.M.http.dump-all-headers: request`, N and M read back
-from `suricata --dump-config` of the generated file (two passes). The sensor
-starts from `deploy/suricata/rules/local.rules` as its custom rules and no ET
-set, **only when it is first created**: afterwards the rules are the blue
-team's. The playback restarts it and prints `fsl-edge sensor vtnet0 running`,
-which the platform requires. Cloud: a SQLi probe from Kali (120.96.0.208)
-raised `FSL SQLi attempt - URI` in pfSense's alert log.
-
-**Left, in order:**
-**Done (2026-10-02): Left 3 and 4, the log pipeline, codified.**
-`configure_slot()` now runs three idempotent steps over mgmt ssh and reports
-what each host said:
-- **The edge** also turns on remote syslog (`system_syslogd_start`,
-  `remoteserver` = the scorer's mgmt address `:5140`, `logall`, RFC 5424) in
-  the same playback, and the platform refuses unless it prints `logs <addr>`.
-- **The WAF** (`range/waf.py`) gets an rsyslog drop-in that `imfile`-tails
-  ModSecurity's own audit log (`SecAuditLog`, read from
-  `deploy/waf/modsecurity.conf`) and `omfwd`s it UDP to the collector, tagged
-  `modsecurity`, `maxMessageSize 64k`; written, `rsyslogd -N1`-checked and
-  `systemctl restart`ed with sudo. Drift if it does not apply.
-- **The collector** opens `fsl-reach` to exactly the edge and WAF on UDP 5140
-  (`fabric.hearing`: one rule per sender, stale ones removed), and compose
-  publishes Filebeat's new UDP syslog input on `${FSL_SYSLOG_PUBLISH:-127.0.0.1}`
-  (the platform VM's `.env` sets `0.0.0.0`; the stack's group keeps 5140 shut
-  on the floating IP, fsl-reach opens it per sender). Filebeat's `syslog`
-  processor parses every line to `fsl_source: syslog`; a Suricata or
-  ModSecurity line whose body is JSON is decoded and re-tagged so ingest
-  normalizes it as before.
-- Cloud: `POST /api/range/configure/` reported all three; a SQLi probe from
-  Kali (120.96.0.208, carrying `X-FSL-Case`) produced in Elasticsearch a
-  Suricata `alert` and its marked `http` event (both `pfSense.home.arpa`), a
-  ModSecurity record (`fsl-waf`), and seven `filterlog` lines arrived whole.
-
-**Left, in order:**
-**Done (2026-10-02): Left 5, one attacker that wears any origin.**
-- The slot gives the attacker's single Internet port the ~100 per-country
-  addresses (`slot.origin_addresses`: `.10` upward per /24, `addresses` of
-  them per origin; the edge keeps the `.1`s), so the port owns every source
-  Neutron anti-spoofing will let it send as. The existing gateway `bootcmd`
-  spreads them onto the NIC at boot.
-- The stamping proxy and the terminal both run on the Kali box, so the
-  OpenStack overlay sets `proxy: fsl-kali`; `attacker.origins()` reads the
-  edge (pfSense) as the way in (it stands on every origin, the WAF does not)
-  and the target by name (`ATTACKER_TARGET_URL`, shop.com) instead of a
-  per-origin WAF address.
-- Choosing an origin rewrites the box's outgoing source
-  (`ATTACKER_ORIGIN_MODE=snat`): `attacker.wear_origin` runs
-  `/usr/local/sbin/fsl-origin <source_ip>` (shipped in the Kali image), an
-  idempotent iptables SNAT chain on the default-route NIC, so every tool
-  leaves as that country whether or not it has a source option. Docker keeps
-  the host-rewrite file.
-- **GeoIP now rides the template, not the request.** The syslog-path docs on
-  the cloud were not being geolocated: filebeat's `output...pipeline` reached
-  the data stream on Docker but not there. `filebeat.yml` now sets the
-  `fsl-logs` template's `index.default_pipeline: fsl-geoip`, so every write is
-  geolocated regardless.
-- Cloud: Neutron took all 100 fixed IPs on the one port; with the addresses on
-  the NIC and `fsl-origin` applied, a SQLi probe from Kali left as `73.0.0.10`
-  and reached Elasticsearch placed in the **US** on the Suricata alert, its
-  http event and the ModSecurity record; `POST /api/attacker/origin/ {ru}`
-  rewrote the source to `5.188.10.10` and `/api/attacker/` reports the box,
-  a name target and the per-origin source.
-
-6. **End-to-end**6. **End-to-end** - fire a case from the red console (`/terminal/`) →
-   pfSense→WAF→target → blue console detection → TP/FP/FN/TN + objective score.
-
-Each piece: test-first, `bin/verify`, commit, update STATE.
-
-**Cloud state:** the slot's pfSense is configured by the platform (Left 1);
-re-run `POST /api/range/configure/` after rebuilding the slot.
+**Cloud state caveat:** the standing slot was built before Left 5, so its Kali
+port, NIC addresses and `fsl-origin` script were applied by hand this session
+to match the shipped code (Neutron accepted all 100 fixed IPs on the one port).
+A slot teardown+rebuild (and a Kali image rebuild, since `setup.sh` now ships
+`fsl-origin`) bakes them in; `POST /api/range/images/` then `/slot/` then
+`/configure/` is the clean path.
 
 ## Measured mechanics a change can break
 
