@@ -779,8 +779,9 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      volume), so a replaced platform VM makes a new one and the fabric
      reports `fsl-platform` as drift; take the slot and the fabric down
      first (README).
-   - **`README.ko.md` and `ARCHITECTURE.ko.md` do not describe step 3**:
-     writing them means writing Korean, which CLAUDE.md keeps out of files.
+   - **`README.ko.md` and `ARCHITECTURE.ko.md` mirror the English through
+     step 7** (2026-10-03); the working-language rule now allows Korean in
+     these two docs.
    - **Nova here answers 404 for the console of a guest that is off**
      ("Guest does not have a console available"), so a builder that powered
      itself off could never say how its setup went.
