@@ -1,25 +1,18 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련 레인지입니다. 레드팀은 OWASP Juice Shop이나 MySQL 위에서
-도는 Django 게시판을 공격하고, 블루팀은 Suricata와 ModSecurity로 이를 방어하며,
-플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매깁니다. 이 저장소는 버릴
-프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있습니다.
+사이버 공격·방어 훈련 레인지다. 레드팀은 OWASP Juice Shop이나 MySQL 위에서 도는 Django 게시판을 공격하고, 블루팀은 Suricata와 ModSecurity로 이를 방어하며, 플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매긴다. 이 저장소는 버리는 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있다.
 
 - `CLAUDE.md`: 저장소의 목적, 점수 방식, 작업 규칙
-- `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향 (한국어판 `docs/ARCHITECTURE.ko.md`)
+- `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향
 - `docs/THREAT-MODEL.md`: 레인지가 모사하는 것과 빼 둔 것
 - `docs/STATE.md`: 작업이 어디까지 왔는지
-- `README.md`: 이 README의 영어 원문
+- `README.ko.md`, `docs/ARCHITECTURE.ko.md`: 이 README와 아키텍처의 한국어판
 
 ## 전체 구성
 
 ### 실행 환경
 
-OpenStack 클라우드에서는 스택 전체가 VM 하나 안에서 돌고, 그 VM은 Heat 스택
-하나(`deploy/openstack/platform.yaml`)가 만듭니다. 플랫폼은 member 역할 사용자
-`fsl-range`로 OpenStack API를 통해 레인지를 읽습니다. 다만 점수를 매기는 레인지는
-아직 VM 안의 Docker 레인지입니다(`docs/STATE.md`의 백로그 2번이 이를 OpenStack으로
-옮깁니다).
+OpenStack 클라우드에서는 스택 전체가 VM 하나 안에서 돌고, 그 VM은 Heat 스택 하나(`deploy/openstack/platform.yaml`)가 만든다. 플랫폼은 member 역할 사용자 `fsl-range`로 OpenStack API를 통해 레인지를 읽는다. 점수를 매기는 레인지는 아직 VM 안의 Docker 레인지다(`docs/STATE.md`의 백로그 2번이 이를 OpenStack으로 옮긴다).
 
 ```mermaid
 flowchart TB
@@ -28,7 +21,7 @@ flowchart TB
   subgraph cloud["OpenStack 프로젝트 fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
     subgraph heat["Heat 스택 fsl-platform"]
-      fip["floating IP<br/>8000, ssh, ping"]
+      fip["floating IP<br/>8000, ssh와 ping"]
       subgraph vm["플랫폼 VM, Ubuntu 24.04"]
         unit["fsl-platform.service<br/>docker compose up -d --build"]
         stack["compose 스택<br/>(다음 그래프)"]
@@ -50,11 +43,7 @@ flowchart TB
 
 ### 스택 내부
 
-레드팀은 블루팀의 방어를 거쳐 워게임을 공격합니다. 블루팀의 센서는
-Elasticsearch에 기록을 남깁니다. 플랫폼은 심판으로서 그 경보와 대상 시스템 자신의
-판정으로 점수를 매깁니다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에
-있습니다. 워게임은 각각 `wargames/` 아래의 폴더 하나이고 최상위 `compose.yaml`이
-이를 포함합니다. 그래서 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 됩니다.
+레드팀은 블루팀의 방어를 거쳐 워게임을 공격한다. 블루팀의 센서는 Elasticsearch에 기록을 남긴다. 플랫폼은 심판으로서 그 경보와 대상 시스템 자신의 판정으로 점수를 매긴다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에 있다. 각 워게임은 최상위 `compose.yaml`이 include하는 `wargames/` 아래 폴더 하나이므로, 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 된다.
 
 ```mermaid
 flowchart LR
@@ -67,7 +56,7 @@ flowchart LR
 
   subgraph blue["블루팀"]
     waf["waf<br/>nginx + ModSecurity CRS"]
-    suricata["suricata<br/>웹방화벽 트래픽을 보는 IDS"]
+    suricata["suricata<br/>WAF 트래픽을 보는 IDS"]
     filebeat["filebeat"]
     es[("elasticsearch")]
   end
@@ -97,25 +86,18 @@ flowchart LR
   console --> scoring
 ```
 
-선이 복잡해지지 않도록 그래프에서 뺀 것이 있습니다. Kali의 raw TCP는 프록시를
-거치지 않고 웹방화벽으로 바로 갑니다. 플랫폼은 스크립트 시나리오(공격과 정상
-트래픽)를 웹방화벽에 직접 보냅니다. 또 플랫폼은 기반 계층(여기서는 `docker exec`,
-OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고, wiki의
-읽기 로그와 공격자의 명령 로그를 읽습니다. 네트워크 구성은 `docs/ARCHITECTURE.md`에
-있습니다.
+선이 읽기 쉽도록 그래프에서 뺀 것이 있다. Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 간다. 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 또 플랫폼은 기반 계층(여기서는 `docker exec`, OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고 wiki의 읽기 로그와 공격자의 명령 로그를 읽는다. 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
 
 ## 스택 띄우기
 
-Docker가 있는 호스트에서 저장소를 clone하고 스택을 띄웁니다.
+Docker가 있는 호스트에서 저장소를 clone하고, GeoIP 데이터베이스를 한 번 받고, 스택을 띄운다.
 
 ```bash
+bin/fetch-geoip
 docker compose up -d --build
 ```
 
-플랫폼이 시작할 때 docker 소켓 그룹을 맞추고 Elasticsearch ingest pipeline(출발지
-주소의 지리적 위치를 추정합니다)을 등록하므로, 따로 실행할 것은 없습니다.
-명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast`
-포함) virtualenv가 필요합니다.
+Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며, 컨테이너를 다시 만들어도 다시 받지 않고 그대로 살아남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞추고 Elasticsearch ingest pipeline(증거의 이벤트 시각을 정하고 출발지 주소의 지리적 위치를 추정한다)을 등록하므로, 따로 실행할 것은 없다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
@@ -124,34 +106,19 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 포트 | | 사용처 |
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/`의 공격자 터미널 | 사람의 브라우저 |
-| 8080 | 웹방화벽을 거친 대상 시스템 | 명령줄 시나리오와 인수 테스트 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-사람에게 필요한 포트는 8000 하나입니다. 플랫폼 이미지 안의 nginx가 이 포트를 받아
-`/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않습니다.
-Mac에서는 모든 포트를 `127.0.0.1`에만 공개합니다. 플랫폼 VM에서는 8000을 VM 자기
-주소에 공개합니다(`.env`의 `FSL_PUBLISH`). 레인지 안에서는 두 대상 시스템 모두
-웹방화벽 뒤 80번 포트에 있습니다. Juice Shop은 `http://shop.com`(`edge`
-네트워크에서만), 게시판은 `http://board.com`(모든 edge 네트워크에서)입니다. 세션은
-`{"scenario": "board"}`로 만들지 않으면 Juice Shop을 대상으로 합니다.
+사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서는 두 대상 시스템 모두 WAF 뒤 80번 포트에 있다. Juice Shop은 `http://shop.com`(`edge` 네트워크에서만), 게시판은 `http://board.com`(모든 edge 네트워크에서)이다. 세션은 `{"scenario": "board"}`로 만들지 않으면 Juice Shop을 대상으로 한다.
 
 ### OpenStack에서
 
-`deploy/openstack/platform.yaml`은 플랫폼 VM용 Heat 템플릿입니다. 이 템플릿이
-무엇을 만들고 첫 부팅 때 무엇을 하는지는 `docs/ARCHITECTURE.md`("Built: the
-platform VM")에 있습니다. 프로젝트 멤버로서, 프로젝트의 openrc를 source하고
-`python-heatclient`를 설치한 상태에서 실행합니다.
+`deploy/openstack/platform.yaml`은 플랫폼 VM용 Heat 템플릿이다. 이 템플릿이 무엇을 만들고 첫 부팅 때 무엇을 하는지는 `docs/ARCHITECTURE.md`("Built: the platform VM")에 있다. 프로젝트 멤버로서, 프로젝트의 openrc를 source하고 `python-heatclient`를 설치한 상태에서 실행한다.
 
 ```bash
 openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=http://KEYSTONE:5000 fsl-platform
 ```
 
-`keystone`은 `/v3`를 뺀 Keystone 기본 URL입니다. `/v3`는 플랫폼이 붙입니다.
-사용자는 `default` 도메인에서 찾고, 프로젝트는 스택이 속한 프로젝트를 씁니다.
-비밀번호는 절대 스택에 넣지 않습니다. Nova는 인스턴스의 user data를 보관하고,
-메타데이터 서비스는 이를 VM에서 도는 모든 것에 내줍니다. 레인지의 컨테이너도
-예외가 아닙니다. 스택의 `address`가 ssh에 응답하면, 비밀번호가 명령줄에 한 번도
-나타나지 않도록 파일에서 읽어 추가하고 플랫폼을 다시 만듭니다.
+`keystone`은 `/v3`를 뺀 Keystone 기본 URL이고, `/v3`는 플랫폼이 붙인다. 사용자는 `default` 도메인에서 찾고, 프로젝트는 스택이 속한 프로젝트를 쓴다. 비밀번호는 절대 스택에 넣지 않는다. Nova는 인스턴스의 user data를 보관하고, 그 메타데이터 서비스는 VM에서 도는 모든 것에, 레인지의 컨테이너까지 포함해 이를 내준다. 스택의 `address`가 ssh에 응답하면, 비밀번호가 명령줄에 한 번도 나타나지 않도록 파일에서 읽어 추가하고 플랫폼을 다시 만든다.
 
 ```bash
 { printf 'FSL_OPENSTACK_PASSWORD='; cat PASSWORD_FILE; echo; } | ssh ubuntu@ADDRESS 'cloud-init status --wait >/dev/null && cat >> /opt/fsl/openstack.env && sudo docker compose -f /opt/fsl/compose.yaml up -d platform'
@@ -161,58 +128,84 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 |---|---|---|
 | `ref` | `dev` | clone할 브랜치나 태그 |
 | `repository` | GitHub의 이 저장소 | |
-| `user` | `fsl-range` | 플랫폼이 로그인할 Keystone 사용자 |
+| `user` | `fsl-range` | 플랫폼이 로그인하는 Keystone 사용자 |
 | `key_name` | `fsl-claude` | `ssh ubuntu@ADDRESS`에 필요한 개인 키가 속한 키페어 |
 | `image` | `ubuntu-24.04` | |
 | `flavor` | `m1.windows` | |
 | `external_network` | `provider` | |
-| `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 됨 |
+| `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 된다 |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-스택의 `address` 출력값이 floating IP이고, 콘솔은 `http://ADDRESS:8000/`에서 바로
-열립니다. 아직 로그인은 없습니다. 나머지 포트는 VM의 loopback에만 있습니다.
+스택의 `address` 출력값이 floating IP이고, 콘솔은 `http://ADDRESS:8000/`에 있으며, 아직 로그인은 없다. 나머지 포트는 VM의 loopback에 있다.
 
-VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`입니다. compose,
-`bin/backup`, 아래의 복원 절차는 거기서 실행합니다. 마지막 부팅 때 스택이 어떻게
-올라왔는지는 `systemctl status fsl-platform`으로 봅니다.
+VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`다. compose, `bin/backup`, 아래의 복원 절차는 거기서 실행한다. 마지막 부팅 때 스택이 어떻게 올라왔는지는 `systemctl status fsl-platform`으로 본다.
 
-비밀번호를 넣고 나면 플랫폼이 레인지의 네트워크를 만듭니다. 플랫폼 자신의 API를
-호출합니다.
+비밀번호를 넣고 나면 플랫폼이 자기 API를 통해 레인지의 네트워크를 만든다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
 ```
 
-같은 경로에 `GET`을 보내면 없는 것, 있는 것, 설정이 어긋난 것, 선언에 없는데 남아 있는 것을
-보여 줍니다. `DELETE`는 네트워크를 내리지만, 그 위에 서버가 있는 동안에는
-거부됩니다.
+같은 경로에 `GET`을 보내면 없는 것, 있는 것, 어긋난 것, 남아 있는 것을 보여 주고, `DELETE`는 네트워크를 내리지만 그 위에 서버가 서 있는 동안에는 거부된다.
 
-`openstack stack delete fsl-platform`은 이 모두를 지웁니다.
+레인지의 VM들은 플랫폼이 설정 스크립트로 만든 골든 이미지에서 부팅한다. 그 스크립트는 `declaration.yaml`이 `hosts:` 아래에 지정한다. POST 하나가 모든 빌드를 한 단계씩 진행하므로(빌더를 부팅하고, 설정이 보고하면 멈추고, 스냅샷을 찍고, 삭제한다), 답이 `"clean": true`라고 할 때까지 반복한다. 약 7분 걸린다.
 
-스택은 `key_name`이 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저
-있어야 합니다.
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
+```
+
+빌드가 실패하면 `detail`에 그 콘솔의 끝부분을 보여 준다. 같은 경로에 `DELETE`를 보내면 실패한 빌더와 오래된 스크립트로 만든 이미지를 지운다.
+
+이미지가 준비되면 POST 하나가 WAF, Juice Shop, wiki, 게시판을 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
+```
+
+그런 다음 edge와 WAF가 ssh로 설정을 받는다. pfSense의 WAN 주소, pass 룰, Suricata와 syslog, WAF의 ModSecurity 로그 전달이며, `POST /api/range/configure/`로 한다. 세션 사이에 slot을 초기화하려면 `POST /api/range/slot/rebuild/`가 모든 VM을 그 골든 이미지에서 Nova-rebuild하므로(포트와 주소는 유지), 풀린 flag나 수정된 룰이 넘어오지 않는다. rebuild는 ssh로 밀어 넣은 설정을 지우므로, VM이 다시 올라오면 `configure/`를 다시 실행한다(대상 시스템은 이미지에 구워져 있어 rebuild만으로 충분하다).
+
+레인지는 스택 바깥에 산다. `openstack stack delete fsl-platform`이나 서버를 교체하는 스택 업데이트 전에, 순서대로 `/api/range/slot/`에 `DELETE`를 보내고 그다음 `/api/range/fabric/`에 보내 레인지를 내린다. 플랫폼의 ssh 키는 VM에 있어서 새 VM은 새 키를 만들고, fabric은 이전 키페어를 drift로 보고한다. 이미지는 남는다. 이미지가 느린 부분이다.
+
+스택은 `key_name`이 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저 있어야 한다.
 
 ```bash
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
-## 라운드 진행
+### pfSense 이미지
 
-http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히
-엽니다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환합니다.
-
-- **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있습니다. 실행한
-  시나리오에는 나가는 길에 라벨이 붙습니다. 또는 시나리오 이름을 정하고
-  시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있습니다. 그 사이에 보낸 모든
-  것이 그 이름의 시나리오로 묶입니다.
-- **블루**에는 대시보드, 실시간 경보, 점수판, Suricata 룰이 있습니다. 경보는 일정
-  간격으로 수집합니다. 경보를 누르면 그 경보의 Elasticsearch 원본 로그가 열립니다.
-
-Juice Shop용 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수
-있습니다.
+pfSense CE는 클라우드 이미지도, 스크립트 설치도 없다. 설치 수단은 Netgate의 온라인 설치 프로그램 하나뿐이고(`netgate-installer-v1.2-RELEASE-amd64.iso`, $0 Netgate Store 결제로 받는다), 이것으로 CE를 설치하는 데는 계정이 필요 없다. 클라우드에 volume 서비스가 없어서, 설치는 Nova의 stable rescue를 통해 서버 자신의 root 디스크로 들어간다. stable rescue는 ISO를 CD-ROM으로 부팅하고 서버의 디스크를 붙인 채로 둔다. `fsl-range`로서 실행한다.
 
 ```bash
-.venv/bin/python redteam/run.py
+openstack image create netgate-installer --file netgate-installer.iso --disk-format iso --container-format bare --private --property hw_rescue_device=cdrom --property hw_rescue_bus=scsi --property hw_scsi_model=virtio-scsi
+openstack network create fsl-pfsense-build-lan
+openstack subnet create --network fsl-pfsense-build-lan --subnet-range 192.168.1.0/24 --no-dhcp --gateway none fsl-pfsense-build-lan
+openstack server create --image cirros-0.6.3 --flavor m1.small --network fsl-platform --network fsl-pfsense-build-lan --wait fsl-pfsense-build
+openstack server rescue --image netgate-installer fsl-pfsense-build
+openstack console url show --novnc fsl-pfsense-build
+```
+
+그 콘솔에서: 안내를 수락하고, Install, WAN은 `vtnet0`(인터넷에 닿는 `fsl-platform` 포트)을 DHCP로, LAN은 `vtnet1`을 기본값으로, Install CE, `vtbd0`에 ZFS와 GPT, 현재 stable 버전, 그다음 Halt를 고른다. Reboot를 고르면 설치 프로그램이 다시 시작된다. 그다음 `openstack server unrescue fsl-pfsense-build`를 실행하고, pfSense가 메뉴까지 부팅하는지 확인하고, 옵션 6으로 멈춘 뒤 다음을 실행한다.
+
+```bash
+openstack server image create --name fsl-pfsense --wait fsl-pfsense-build
+openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio --property os_distro=freebsd fsl-pfsense
+```
+
+그 뒤 `fsl-pfsense-build`와 build LAN을 지운다. pfSense는 비디오 콘솔에 쓰므로 `openstack console log show`는 비어 있다. noVNC를 쓴다.
+
+## 라운드 진행
+
+http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
+
+- **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
+- **블루**에는 대시보드, 실시간 경보, 점수판, Suricata 룰이 있다. 경보는 일정 간격으로 수집한다. 경보를 누르면 그 경보의 Elasticsearch 원본 로그가 열린다.
+
+Juice Shop용 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로, 하니스는 콘솔이 실행하는 방식 그대로 레인지 안에서, 플랫폼에서 실행한다.
+
+```bash
+docker compose exec platform \
+  python redteam/run.py --target http://shop.com --tool-target http://shop.com
 ```
 
 ## 검증
@@ -222,39 +215,26 @@ bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
 
-전체 실행은 플랫폼을 재시작하고 대상 시스템, 룰, 공격자의 출발지를 초기화합니다.
-그러니 누가 쓰고 있는 스택에는 돌리지 마세요. 세션은 그 실행이 직접 만든 것만
-지웁니다. `bin/prune`은 세션을 수동으로 지우며, `--apply` 없이 실행하면 dry
-run입니다.
+전체 실행은 플랫폼을 재시작하고 대상 시스템, 룰, 공격자의 출발지를 초기화하므로, 누군가 쓰고 있는 스택에는 돌려서는 안 된다. 세션은 그 실행이 직접 만든 것만 지운다. `bin/prune`은 세션을 수동으로 지우고, `--apply` 없이 실행하면 dry run이다.
 
 ```bash
 bin/prune --keep 20 --apply      # keep the newest 20
 bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 ```
 
-템플릿에 Tailwind 클래스를 추가했으면 `bin/build-css`를 실행합니다. 콘솔이 인터넷
-없이도 렌더링되도록 스타일시트는 생성해서 커밋해 둡니다. 스타일시트가 최신이
-아니면 테스트가 실패합니다.
+템플릿에 Tailwind 클래스를 추가한 뒤에는 `bin/build-css`를 실행한다. 콘솔이 인터넷 없이도 렌더링되도록 스타일시트는 생성해서 커밋해 두며, 스타일시트가 최신이 아니면 테스트가 실패한다.
 
 ## 백업과 복원
 
-플랫폼의 데이터(세션, 시나리오, 탐지, 목표, 탐지정책, 억제)는 SQLite 파일
-하나로, `fsl_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 그 밖에는 아무것도
-백업하지 않습니다. Elasticsearch의 `fsl_esdata` 볼륨, `fsl_filebeatdata`에 있는
-Filebeat의 registry, `fsl_waflogs`에 있는 ModSecurity의 감사 로그,
-`deploy/suricata/logs`에 있는 일반 파일인 Suricata의 `eve.json` 모두 백업 대상이
-아닙니다. `docker compose down -v`는 볼륨 네 개를 지우고 그 파일은 남깁니다.
+플랫폼의 데이터(세션, 시나리오, 탐지, 목표, 탐지정책, 억제)는 SQLite 파일 하나로, `fsl_platformdata` 볼륨의 `/data/db.sqlite3`다. 그 밖에는 아무것도 백업하지 않는다. Elasticsearch의 `fsl_esdata` 볼륨, `fsl_filebeatdata`에 있는 Filebeat의 registry, `fsl_waflogs`에 있는 ModSecurity의 감사 로그, `deploy/suricata/logs`에 있는 일반 파일인 Suricata의 `eve.json` 모두 백업 대상이 아니다. `docker compose down -v`는 볼륨 네 개를 지우고 그 파일은 남긴다.
 
 ```bash
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-SQLite의 온라인 백업 API를 쓰고, 복사본을 `PRAGMA integrity_check`로 검사하며,
-어느 단계든 실패하면 아무것도 남기지 않습니다. Docker 밖에 있는 플랫폼에
-접근하려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을
-`FSL_PLATFORM_EXEC`에 지정합니다.
+SQLite의 온라인 백업 API를 쓰고, 복사본을 `PRAGMA integrity_check`로 검사하며, 어느 단계든 실패하면 아무것도 남기지 않는다. Docker 안에 있지 않은 플랫폼에 닿으려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을 `FSL_PLATFORM_EXEC`에 지정한다.
 
-복원은 플랫폼을 멈춘 상태에서 수동으로 합니다.
+복원은 플랫폼을 멈춘 상태에서 수동으로 한다.
 
 ```bash
 docker compose stop platform
@@ -264,22 +244,10 @@ docker run --rm --network none --entrypoint sh --user fsl \
 docker compose start platform
 ```
 
-이미지의 entrypoint는 인자를 무시하고 서버를 시작하므로 `--entrypoint sh`로
-바꿉니다. 이미지 자체는 root로 돕니다. `--user fsl`을 주면 복사본의 소유자가
-플랫폼 사용자가 됩니다. `docker cp`를 쓰면 root 소유로 남아 쓸 수 없게 됩니다.
-이전 `-journal` 파일은 지워야 합니다. 남아 있으면 SQLite가 복원한 파일 위에 이를
-재생합니다. 플랫폼은 시작할 때 백업 이후에 생긴 마이그레이션을 적용합니다. 복사
-단계는 임시 볼륨에서 확인했습니다(`fsl` 소유로 들어갑니다). 절차 전체를 실행 중인
-스택에서 돌려 보지는 않았습니다.
+이미지의 entrypoint는 인자를 무시하고 서버를 시작하므로 `--entrypoint sh`가 이를 대신한다. 이미지 자체는 root로 돈다. `--user fsl`은 복사본을 플랫폼 사용자 소유로 만든다. `docker cp`를 쓰면 복사본이 root 소유로 남아 쓸 수 없다. 이전 `-journal`은 지워야 한다. 남아 있으면 SQLite가 복원한 파일 위에 이를 재생한다. 플랫폼은 시작할 때 백업 이후에 생긴 마이그레이션을 모두 적용한다. 복사 단계는 임시 볼륨에서 확인했고(`fsl` 소유로 들어간다), 절차 전체를 실행 중인 스택에서 돌려 보지는 않았다.
 
 ## 로컬 실습 전용
 
-Elasticsearch는 보안 기능 없이, Django는 `DEBUG=1`로 돕니다. Django는
-`DJANGO_ALLOWED_HOSTS`에 더 지정하지 않는 한 `localhost`, `127.0.0.1`, `[::1]`에만
-응답합니다. 플랫폼 VM은 여기에 자기 floating IP를 더합니다. 플랫폼에는 Docker
-소켓이 마운트되어 있고, `/terminal/`의 Kali 셸은 인증 없는 root 셸입니다. 둘 다
-컨테이너 탈출 경로입니다.
+Elasticsearch는 보안 기능 없이, Django는 `DEBUG=1`로 돈다. Django는 `DJANGO_ALLOWED_HOSTS`가 더 지정하지 않는 한 `localhost`, `127.0.0.1`, `[::1]`에만 응답하고, 플랫폼 VM은 여기에 자기 floating IP를 더한다. 플랫폼에는 Docker 소켓이 마운트되어 있고, `/terminal/`의 Kali 셸은 인증 없는 root 셸이다. 둘 다 컨테이너 탈출 경로다.
 
-플랫폼 VM에서도 마찬가지입니다. 게다가 VM에서는 프로젝트 비밀번호가
-`/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에 평문으로 들어 있습니다.
-VM의 ssh와 8000은 모든 주소에 열려 있고, 8000은 로그인을 묻지 않습니다.
+플랫폼 VM에서도 마찬가지다. 게다가 거기서는 프로젝트의 비밀번호가 `/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에도 평문으로 들어 있다. VM의 ssh와 8000은 모든 주소에 열려 있고, 8000은 로그인을 묻지 않는다.
