@@ -76,9 +76,33 @@ the MaxMind attribution. `test/test_geoip_durable.py` holds the downloader off
 and the pipeline still placing a source. The MaxMind licence review for the
 production repo still stands (see "Decisions left for a person").
 
-Left of backlog 2 after this session: **the slot's Stop-rebuild lifecycle**,
-which the user is directing later - it is OpenStack-cloud work (a Nova rebuild
-of every VM either side can change), not reachable from `bin/verify`'s Docker.
+**Committed this session (step 7, the slot's Stop rebuild):** `rebuild_slot()`
+on the OpenStack adapter Nova-rebuilds every standing slot VM from its golden
+image (`POST {nova}/servers/{id}/action {"rebuild": {"imageRef": ...}}`, the
+microversion already on every Nova call), which keeps each server's id,
+flavour, ports and fixed IPs, so a session leaves no solved flag, edited rule
+or planted datum for the next. It refuses before touching anything if the slot
+is not fully standing or any standing host's image is not ready (the
+refuse-before-write invariant `ensure_slot` holds). Exposed as
+`POST /api/range/slot/rebuild/` (Docker 409s); unit-tested against the Nova
+fakes (`test_openstack_slot.py`, `test_api_slot.py`). An adversarial 5-way
+review (Nova API, lifecycle, fakes, edge cases, completeness) found and fixed
+the readiness-inside-the-loop bug and surfaced two deliberate scope edges:
+
+- **Re-configure must follow a rebuild.** A rebuild wipes the disk, so pfSense
+  and the WAF lose the ssh-pushed config (`configure_slot`): WAN addresses, the
+  WAN pass rule, Suricata, and the ModSecurity log forwarding; the targets are
+  baked, so only the edge and WAF need it. Run `POST /api/range/configure/`
+  once the VMs are ACTIVE again; until then the slot is not READY and the edge
+  denies range traffic. Not auto-chained, because configure needs the VMs up -
+  the ACTIVE wait is the READY gate below.
+- **The trigger and the READY gate are the deferred session lifecycle.** "Stop
+  rebuilds" is here as an operator action; firing it from session close,
+  waiting for ACTIVE, re-configuring, and checking the slot answers for itself
+  (nothing solved, rules at baseline, a canary alert) is the session
+  Start/Stop design the user is directing. Live-cloud verification of the
+  rebuild is also still the user's to run (the Nova rebuild is proven against
+  fakes only).
 
 **Committed this session (`4ec543b..HEAD`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -791,8 +815,17 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `config/ingest-geoip/README.md` carries the MaxMind attribution, and
      `test/test_geoip_durable.py` is the guard. Licence review for production
      still stands.
-   - **Left: the slot's Stop-rebuild lifecycle** - OpenStack-cloud work, the
-     user is directing it later.
+   - **Done (2026-10-02): the slot's Stop rebuild.** `rebuild_slot()` on the
+     OpenStack adapter Nova-rebuilds every standing slot VM from its golden
+     image (keeping id/flavour/ports/IPs), refusing before any write if the
+     slot is not fully standing or an image is not ready; `POST
+     /api/range/slot/rebuild/` (Docker 409s), unit-tested against the Nova
+     fakes. **A rebuild must be followed by `POST /api/range/configure/`** once
+     the VMs are ACTIVE (pfSense/WAF config is ssh-pushed, not baked).
+   - **Left of step 7: wire the rebuild to session Stop, and the READY gate**
+     (wait for ACTIVE, re-configure, check nothing solved / rules at baseline /
+     a canary alert) - the session Start/Stop design the user is directing.
+     Live-cloud verification of the rebuild is the user's to run.
 
 ## Known gaps
 

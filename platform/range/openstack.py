@@ -886,6 +886,28 @@ class OpenStack:
         self._shape = None
         return steps
 
+    def rebuild_slot(self) -> list[tuple[str, str]]:
+        plan, _bound, _subnets, _ports, _groups, ready = self._slot()
+        if plan.blocked:
+            raise Drifted("; ".join(plan.blocked))
+        if plan.boot:
+            raise Drifted(
+                f"the slot is not fully standing, so there is nothing to reset "
+                f"for {', '.join(plan.boot)}; provision it first"
+            )
+        missing = [host for host, _server, _status in plan.standing if host not in ready]
+        if missing:
+            raise Drifted(
+                f"image {', '.join(missing)} is not ready, so rebuilding would "
+                f"wipe some VMs and leave others; make the images ready first"
+            )
+        rebuilt = []
+        for host, server, _status in plan.standing:
+            self.get(self._call(ACTION, server=server), {"rebuild": {"imageRef": ready[host]}})
+            rebuilt.append((host, server))
+        self._shape = None
+        return rebuilt
+
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
         return [self.configure_edge(), self.configure_waf(), self.open_collector()]
 

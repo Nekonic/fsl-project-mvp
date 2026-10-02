@@ -215,6 +215,15 @@ board, each from its image, and the platform reaches them over ssh on
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
+The edge and the WAF then take their config over ssh — pfSense's WAN
+addresses, pass rule, Suricata and syslog, and the WAF's ModSecurity log
+forwarding — with `POST /api/range/configure/`. To reset the slot between
+sessions, `POST /api/range/slot/rebuild/` Nova-rebuilds every VM from its
+golden image (keeping its ports and addresses), so no solved flag or edited
+rule carries over; run `configure/` again once the VMs are back up, since the
+rebuild wipes the ssh-pushed config (the targets are baked and need only the
+rebuild).
+
 The range lives outside the stack. Take it down in order, `DELETE` on
 `/api/range/slot/` and then on `/api/range/fabric/`, before
 `openstack stack delete fsl-platform` or a stack update that replaces the

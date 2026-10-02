@@ -1106,6 +1106,13 @@ def range_slot(request):
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 @require_http_methods(["POST"])
+def range_rebuild(request):
+    adapter = _built_by_the_cloud(substrate(), "rebuild_slot", "slot is")
+    with RULE_CHANGES:
+        rebuilt = adapter.rebuild_slot()
+    return _reply({"rebuilt": [{"host": host, "server": server} for host, server in rebuilt]})
+
+@require_http_methods(["POST"])
 def range_configure(request):
     adapter = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
     with RULE_CHANGES:
