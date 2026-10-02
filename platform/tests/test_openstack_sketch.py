@@ -295,51 +295,7 @@ def test_a_role_no_server_fills_is_refused():
     assert "wiki" in str(raised.value) and "fsl-wiki" in str(raised.value)
 
 
-def test_the_only_unimplemented_part_is_the_cloud_call_itself():
-    bare = openstack.OpenStack(declared.read(), CLOUD)
-
-    with pytest.raises(NotImplementedError) as raised:
-        bare.describe()
-
-    assert "/v2.0/networks" in str(raised.value)
-    assert all(call in str(raised.value) for call in openstack.CALLS)
-
-
-def test_starting_a_tool_is_a_cloud_call_the_sketch_does_not_make():
-    with pytest.raises(NotImplementedError) as raised:
-        openstack.OpenStack(declared.read(), CLOUD).launcher("ru")(
-            "fsl-kali", ["sqlmap"]
-        )
-
-    assert openstack.BOOT in str(raised.value), (
-        "docker run --rm is seconds and cleans up after itself. Nova has no "
-        "such verb: a tool is a server booted from a Glance image with a "
-        "flavour and a key pair, and something has to delete it afterwards"
-    )
-
-
-REFERENCE = {
-    "networks[].id, .name, .tags": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
-    "?tags-any=": "https://docs.openstack.org/api-ref/network/v2/#list-networks",
-    "subnets[].cidr, .gateway_ip, .ip_version":
-        "https://docs.openstack.org/api-ref/network/v2/#list-subnets",
-    "servers[].addresses[label][].addr, .OS-EXT-IPS:type, .version":
-        "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
-    "servers[].id, .OS-SRV-USG:launched_at":
-        "https://docs.openstack.org/api-ref/compute/#list-servers-detailed",
-}
-
-def test_every_field_the_sketch_reads_is_one_the_api_reference_names():
-    source = pathlib.Path(openstack.__file__).read_text()
-
-    for field in ("\"id\"", "\"name\"", "\"tags\"", "\"cidr\"", "\"gateway_ip\"",
-                  "\"addr\"", "\"servers\"", "\"networks\"", "\"subnets\"",
-                  "\"ip_version\""):
-        assert field in source, (
-            f"{field} is how the sketch reads the cloud and nothing in it "
-            f"matches the published response any more. Checked against "
-            f"{REFERENCE}"
-        )
+def test_the_cloud_field_constants_match_the_api_reference():
     assert openstack.FIXED == "OS-EXT-IPS:type"
     assert openstack.LAUNCHED == "OS-SRV-USG:launched_at"
     assert "tags-any" in openstack.NETWORKS
@@ -381,9 +337,9 @@ def test_who_may_call_the_scoreboard_is_decided_on_the_port_not_on_docker():
     shape = sketch().describe()
 
     with patch("api.reachability.substrate", lambda: sketch()):
-        reachability.forget()
+        reachability._cached = (0.0, frozenset())
         standing = reachability.scored_hosts()
-        reachability.forget()
+        reachability._cached = (0.0, frozenset())
 
     addresses = {
         node.address for segment in shape.segments for node in segment.nodes

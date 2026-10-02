@@ -9,6 +9,8 @@ import requests
 MARKER_HEADER = "X-FSL-Case"
 _MARKER_KEY = MARKER_HEADER.lower()
 
+FETCH_TIMEOUT = 10.0
+
 class ElasticUnavailable(RuntimeError):
     pass
 
@@ -18,7 +20,6 @@ def fetch(
     start: datetime,
     end: datetime,
     size: int = 5000,
-    timeout: float = 10.0,
 ) -> tuple[list[tuple[str, dict[str, Any]]], tuple[int, int] | None]:
     query = {
         "size": size,
@@ -38,7 +39,7 @@ def fetch(
         response = requests.post(
             f"{url.rstrip('/')}/{index}/_search?allow_partial_search_results=false",
             json=query,
-            timeout=timeout,
+            timeout=FETCH_TIMEOUT,
         )
     except requests.RequestException as exc:
         raise ElasticUnavailable(f"could not reach Elasticsearch: {exc}") from exc
@@ -132,10 +133,7 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
     detections = []
     for position, message in enumerate(messages):
         details = message.get("details") or {}
-        signature = message.get("message") or ""
-        if not signature:
-            rule_id = details.get("ruleId")
-            signature = f"ruleId {rule_id}" if rule_id else "unnamed ModSecurity rule"
+        signature = message.get("message") or f"ruleId {details.get('ruleId')}"
 
         detections.append(
             {
@@ -168,21 +166,14 @@ def _parse_time(value: Any) -> datetime | None:
     if not value:
         return None
     text = str(value)
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    elif len(text) >= 5 and text[-5] in "+-" and ":" not in text[-5:]:
-        text = text[:-2] + ":" + text[-2:]
     try:
         return datetime.fromisoformat(text)
     except ValueError:
         pass
-
-    for fmt in ("%a %b %d %H:%M:%S %Y", "%a %b %d %H:%M:%S.%f %Y"):
-        try:
-            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+    try:
+        return datetime.strptime(text, "%a %b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 def _as_int(value: Any) -> int | None:
     try:

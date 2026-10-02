@@ -125,8 +125,8 @@ def edge_declaration():
             Segment(id="estate", name="Estate"),
             Segment(id="mgmt", name="Management"),
         ),
-        origins=(Origin(id="ru", label="Russia", country="RU",
-                        subnet="5.188.10.0/24", share=1.0, addresses=1, segment="ru"),),
+        origins=(Origin(id="ru", label="Russia",
+                        subnet="5.188.10.0/24", addresses=1, segment="ru"),),
         roles={"edge": "fsl-pf", "gateway": "fsl-waf", "attacker": "fsl-kali",
                "sensor": "fsl-pf", "scorer": "fsl-platform", "target": "fsl-shop"},
         watches={"sensor": "edge"},
@@ -302,7 +302,7 @@ def test_every_slot_call_is_one_the_api_reference_names():
     source = pathlib.Path(openstack.__file__).read_text()
 
     for call in reference:
-        assert call in openstack.CALLS, reference[call]
+        assert call in source, reference[call]
     for field in ('"fixed_ips"', '"mac_address"', '"security_groups"', '"key_name"',
                   '"interfaceAttachment"', '"port_id"', '"device_id"', '"direction"',
                   '"rebuild"', '"imageRef"'):

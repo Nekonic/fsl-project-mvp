@@ -54,10 +54,11 @@ def test_the_board_and_its_database_stand_inside_the_estate_only():
 
 def test_the_board_is_reached_by_name_through_the_waf():
     waf = composed.services()["waf"]
-    outside = [n for n in waf["networks"] if n.startswith("edge")]
 
-    missing = [n for n in outside if "board.com" not in (waf["networks"][n] or {}).get("aliases", [])]
-    assert not missing, f"an attacker on {missing} cannot resolve board.com"
+    assert "board.com" in (waf["networks"]["edge"] or {}).get("aliases", []), (
+        "the WAF does not answer to board.com on the estate's edge, so the "
+        "board wargame cannot be reached by name"
+    )
 
 def test_the_database_is_pinned_by_digest():
     database = [i for i in images() if i.startswith("mysql")]
@@ -77,11 +78,11 @@ def test_the_platform_needs_no_build_argument_to_come_up():
 
 def test_the_platform_registers_the_ingest_pipeline_itself():
     platform = composed.services()["platform"]
-    mounted = [v for v in platform["volumes"] if "deploy/elastic" in v]
+    mounted = [v for v in platform["volumes"] if v.startswith("./deploy")]
 
     assert mounted, (
-        "bring-up would still need a manual pipeline PUT; mount deploy/elastic "
-        "so the platform can register fsl-geoip on start"
+        "bring-up would still need a manual pipeline PUT; mount deploy so the "
+        "platform can register fsl-geoip from FSL_SOURCE on start"
     )
 
 def test_no_image_downloads_a_binary_built_for_another_architecture():

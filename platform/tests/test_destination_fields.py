@@ -55,7 +55,7 @@ def scored(client, hits):
 
     from api import reachability
 
-    reachability.forget()
+    reachability._cached = (0.0, frozenset())
     session = Session.objects.create()
     started = timezone.now()
     alerts = [

@@ -22,8 +22,6 @@ class CaseRecord:
 class DetectionRecord:
 
     detection_id: str
-    source: str
-    signature: str
     timestamp: datetime
     src_ip: str | None
     marker: str | None

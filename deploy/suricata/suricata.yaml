@@ -45,20 +45,9 @@ af-packet:
     cluster-type: cluster_flow
     defrag: yes
 
-app-layer:
-  protocols:
-    http:
-      enabled: yes
-
 default-rule-path: /var/lib/suricata/rules
 rule-files:
   - local.rules
-
-logging:
-  default-log-level: notice
-  outputs:
-    - console:
-        enabled: yes
 
 detect:
   guess-applayer-tx: yes

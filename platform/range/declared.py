@@ -19,9 +19,7 @@ class Site:
 class Origin:
     id: str
     label: str
-    country: str
     subnet: str
-    share: float
     addresses: int
     segment: str
 
@@ -113,9 +111,7 @@ def _origins(entry) -> tuple[Origin, ...]:
         Origin(
             id=origin["id"],
             label=origin["label"],
-            country=origin["country"],
             subnet=origin["subnet"],
-            share=float(origin["share"]),
             addresses=int(origin["addresses"]),
             segment=entry["id"],
         )

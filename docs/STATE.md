@@ -25,6 +25,33 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
+**Audit cleanup committed this session (2026-10-02).** A 10-slice over-reach
+audit (a workflow, each finding adversarially re-verified) flagged 26 items;
+the user asked for all. 23 were removed, test-first, `bin/verify` green:
+`core_loc` 472 -> 461, `product_loc` 8235 -> 8142, the `tests` floor 1201 ->
+1183 (`metrics.json` records the authorised test removals). Gone: the
+sketch-era `unimplemented`/`CALLS`; the per-command `ssh -G` key-pinning probe
+and `PINNING`; proactive token renewal (the 401 retry stays); the unused
+`FSL_OPENSTACK_SSH_CONFIG` knob and the env-overridable attacker paths;
+`DetectionRecord.source/signature`; `Session.truncated` (migration 0012);
+`reachability.forget`; the single-tool `SUPPORTED_TOOLS` registry; `run.py
+--origin`; `Origin.share/country`; `pfsense.home_net`; `_parse_time`'s dead
+ctime-fraction and Z/offset paths (Py3.13 `fromisoformat` covers them);
+`fetch`'s unused `timeout`; the `board.com` aliases on the non-default edges;
+the duplicate `deploy/elastic` mount (`register_pipeline` reads `FSL_SOURCE`);
+two `suricata.yaml` blocks that restated defaults; and tests that pinned
+implementation letter (JS source-greps, a re-coded Hamilton, `CALLS`/field
+source-greps). Three were not taken:
+- **O1 only in part:** the clear over-reach is gone, but the deployment ssh
+  config Include stays - the ssh test harness uses it to point ssh at the test
+  sshd's port, so a full removal needs a harness redesign.
+- **B11 skipped:** collapsing `confirmedOrigin`/`describedOrigin` into one
+  `ready` flag would wrongly disable the terminal toggle after a reverted POST
+  failure; the two encode a real partial-failure state.
+- **B7 held for the user:** board MySQL -> sqlite changes the board wargame's
+  database across Docker and the OpenStack declaration/golden image (the cloud
+  side unverifiable here) - a product change, not a mechanical cleanup.
+
 Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are
 **done end to end** (2026-10-02). The whole chain is proven on the cloud:
 a case fired from the Kali box leaves as a chosen country, crosses

@@ -18,9 +18,6 @@ def home(declaration: Declaration) -> list[str]:
     origins = [origin.subnet for origin in declaration.origins]
     return origins + [fabric.INSIDE["estate"], fabric.INSIDE[fabric.MANAGEMENT]]
 
-def home_net(declaration: Declaration) -> str:
-    return "[" + ",".join(home(declaration)) + "]"
-
 def settings(segments: tuple[Segment, ...], declaration: Declaration, rules: str,
              collector: str) -> dict:
     origins = [segment for segment in segments if segment.outside]

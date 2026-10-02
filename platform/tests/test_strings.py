@@ -141,7 +141,7 @@ def test_nothing_the_platform_sends_to_the_page_is_prose():
         CaseRecord("a1", "sqli", True, "marker", None, at, at),
         CaseRecord("a2", "scan", True, "window", None, at, at),
     ]
-    detections = [DetectionRecord("d1", "suricata", "x", at, "5.188.10.2", None)]
+    detections = [DetectionRecord("d1", at, "5.188.10.2", None)]
 
     keys = [warning[0] for warning in score(correlate(cases, detections)).warnings]
     english = tables()["en"]

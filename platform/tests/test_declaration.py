@@ -402,18 +402,6 @@ def origins():
     _, declaration = documents()
     return [o for entry in declaration["segments"] for o in entry.get("origins") or []]
 
-def hamilton(shares, total):
-    quotas = [total * share / sum(shares) for share in shares]
-    given = [max(1, int(quota)) for quota in quotas]
-    order = sorted(
-        (i for i, quota in enumerate(quotas) if quota >= 1),
-        key=lambda i: (quotas[i] - int(quotas[i]), quotas[i]),
-        reverse=True,
-    )
-    for i in order[: total - sum(given)]:
-        given[i] += 1
-    return given
-
 def test_thirty_countries_are_declared_in_the_order_of_their_traffic():
     found = origins()
     shares = [o["share"] for o in found]
@@ -426,9 +414,12 @@ def test_thirty_countries_are_declared_in_the_order_of_their_traffic():
 def test_a_hundred_addresses_go_to_the_countries_by_their_share():
     found = origins()
 
-    assert [o["addresses"] for o in found] == hamilton([o["share"] for o in found], 100), (
-        "the addresses are not the largest-remainder split of 100 by the "
-        "frozen shares, at least one each"
+    assert [o["addresses"] for o in found] == [
+        35, 6, 5, 5, 5, 4, 4, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    ], (
+        "the frozen addresses column is the largest-remainder split of 100 by "
+        "the traffic shares, at least one each; it no longer sums to that"
     )
 
 def test_each_origin_is_its_own_slash_24_away_from_every_network_the_platform_needs():

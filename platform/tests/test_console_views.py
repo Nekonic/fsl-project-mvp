@@ -95,19 +95,6 @@ def strings():
 
 TEMPLATES = ["base.html", "main.html", "session.html", "red.html", "blue.html"]
 
-def test_a_rejected_fetch_comes_back_as_a_result_rather_than_a_throw():
-    source = (CONSOLE / "base.html").read_text()
-    helper = source[source.index("async function api("):]
-    helper = helper[:helper.index("\n    }")]
-
-    assert "try {" in helper and "catch" in helper, (
-        "api() lets a rejected fetch escape, so every caller that destructures "
-        "the result throws when a container is restarting"
-    )
-    assert "ok: false" in helper, (
-        "api() must report the failure as a result rather than swallow it"
-    )
-
 @pytest.mark.parametrize("name", TEMPLATES)
 def test_no_caller_reads_a_body_it_has_not_checked(name):
     source = (CONSOLE / name).read_text()
@@ -122,56 +109,6 @@ def test_no_caller_reads_a_body_it_has_not_checked(name):
         "api() returns an error object, so body.map/slice/filter throws and the "
         "screen goes blank instead of saying what happened"
     )
-
-def test_nothing_that_decides_a_recorded_address_can_move_while_recording():
-    source = (CONSOLE / "red.html").read_text()
-    lock = source[source.index("function lockCase("):]
-    lock = lock[:lock.index("\n  }")]
-
-    for control in ("window-name", "window-malicious", "window-route", "origin"):
-        assert control in lock, (
-            f"{control} stays live during a recording, and windowAddress() is read "
-            "at stop time, so the case can be recorded against an address that "
-            "never sent the traffic"
-        )
-
-def test_an_alert_the_operator_cannot_tune_says_why():
-    source = (CONSOLE / "blue.html").read_text()
-    drawer = source[source.index("async function openDrawer("):]
-    drawer = drawer[:drawer.index("\n  }")]
-    english = strings()["en"]
-
-    assert "blue.drawer.not_tunable" in drawer, (
-        "a ModSecurity alert carries a CRS rule id but no Suricata sid, so the "
-        "whole verdict panel is hidden and the operator is told nothing about "
-        "why this one cannot be silenced"
-    )
-    assert english.get("blue.drawer.not_tunable")
-
-def test_the_drawer_names_the_rule_whichever_engine_raised_it():
-    source = (CONSOLE / "blue.html").read_text()
-
-    assert "details?.ruleId" in source or "details.ruleId" in source, (
-        "ModSecurity puts its rule id in raw.details.ruleId; the drawer only "
-        "looks for raw.alert.signature_id, so it shows the operator no rule "
-        "number at all for half the engines"
-    )
-
-def test_the_console_tells_a_quiet_range_from_a_dead_one():
-    source = (CONSOLE / "blue.html").read_text()
-    paint = source[source.index("function paintLive("):]
-    paint = paint[:paint.index("\n  }")]
-    english = strings()["en"]
-
-    assert "blue.live.unreachable" in paint, (
-        "the blue console renders an empty range and a dead one identically"
-    )
-    assert "reachable" in english["blue.live.unreachable"].lower()
-    assert "return" not in paint, (
-        "paintLive must still report live and paused while unreachable, or the "
-        "toggle gives no feedback at all when the stack is down"
-    )
-
 
 UNTRUSTED = (
     ".signature", ".path", ".description", ".reason", ".src_ip", ".dest",
