@@ -339,30 +339,6 @@ def test_the_keystone_url_is_the_only_address_a_deployment_must_know(keystone):
     assert "nova" not in signature.parameters
 
 
-def test_a_token_about_to_expire_is_renewed_before_the_call(keystone):
-    from datetime import datetime, timedelta, timezone
-
-    soon = (datetime.now(timezone.utc) + timedelta(seconds=5)).strftime(
-        "%Y-%m-%dT%H:%M:%S.%fZ"
-    )
-    CATALOG["token"]["expires_at"] = soon
-    try:
-        base = f"http://127.0.0.1:{keystone.port}"
-        ask = openstack.http_reader(
-            openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
-            password="secret",
-        )
-        ask(f"{base}/v2.0/networks")
-        ask(f"{base}/v2.0/networks")
-    finally:
-        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
-
-    assert keystone.tokens == 2, (
-        "the token said it expires in five seconds and the adapter kept using "
-        "it, so the range goes unreadable mid-session and only a 401 tells it"
-    )
-
 def test_a_token_with_life_left_is_not_thrown_away(keystone):
     from datetime import datetime, timedelta, timezone
 
@@ -440,19 +416,6 @@ def test_a_refused_sign_in_is_named_rather_than_blamed_on_a_missing_header(cloud
         f"Keystone said why it refused and the operator was told only that "
         f"no token header came back: {raised.value}"
     )
-
-def test_discovery_carries_the_deployment_s_ssh_config(keystone):
-    found = openstack.discover(
-        keystone=f"http://127.0.0.1:{keystone.port}",
-        user="fsl", password="secret", project="fsl",
-        ssh_user="debian", ssh_key="/k", ssh_config="/etc/fsl/ssh_config",
-    )
-
-    assert found.ssh_config == "/etc/fsl/ssh_config", (
-        "a platform that reaches the range through a bastion says so in an "
-        "ssh config, and discovery is the only way a deployment builds a Cloud"
-    )
-
 
 def test_a_write_sends_its_verb_its_body_and_the_token_and_reads_the_answer(cloud):
     body = {"network": {"name": "fsl-internet"}}

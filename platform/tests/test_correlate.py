@@ -26,11 +26,9 @@ def case(
         ended_at=T0 + timedelta(seconds=end),
     )
 
-def det(detection_id="d1", marker=None, src_ip=None, at=1, source="suricata"):
+def det(detection_id="d1", marker=None, src_ip=None, at=1):
     return DetectionRecord(
         detection_id=detection_id,
-        source=source,
-        signature="sig",
         timestamp=T0 + timedelta(seconds=at),
         src_ip=src_ip,
         marker=marker,

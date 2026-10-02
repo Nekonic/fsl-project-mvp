@@ -48,13 +48,6 @@ CREATE_PORT = "POST {neutron}/v2.0/ports"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
 ATTACH = "POST {nova}/servers/{server}/os-interface"
 
-CALLS = (
-    TOKEN, NETWORKS, SUBNETS, SERVERS, BOOT, PROJECT_NETWORKS, PROJECT_SUBNETS,
-    PORTS, CREATE_NETWORK, TAG_NETWORK, CREATE_SUBNETS, DELETE_SUBNET,
-    DELETE_NETWORK, KEYPAIRS, IMPORT_KEYPAIR, DELETE_KEYPAIR, IMAGES,
-    DELETE_IMAGE, FLAVORS, ACTION, DELETE_SERVER, SECURITY_GROUPS, CREATE_GROUP,
-    CREATE_RULE, DELETE_GROUP, CREATE_PORT, DELETE_PORT, ATTACH, DELETE_RULE,
-)
 DELETES = {
     "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
     "group": DELETE_GROUP, "port": DELETE_PORT, "server": DELETE_SERVER,
@@ -64,11 +57,9 @@ FIXED = "OS-EXT-IPS:type"
 LAUNCHED = "OS-SRV-USG:launched_at"
 PAGE_LIMIT = 50
 
-RENEW_BEFORE = timedelta(seconds=30)
 CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
-PINNING = {"stricthostkeychecking true", "stricthostkeychecking ask"}
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = "fsl.segment.id"
@@ -83,7 +74,6 @@ SETTINGS = {
     "project": "FSL_OPENSTACK_PROJECT",
     "ssh_user": "FSL_OPENSTACK_SSH_USER",
     "ssh_key": "FSL_OPENSTACK_SSH_KEY",
-    "ssh_config": "FSL_OPENSTACK_SSH_CONFIG",
     "region": "FSL_OPENSTACK_REGION",
     "interface": "FSL_OPENSTACK_INTERFACE",
     "source": "FSL_SOURCE",
@@ -106,7 +96,6 @@ def connect(
     project: str = "",
     ssh_user: str = "",
     ssh_key: str = "",
-    ssh_config: str = "",
     region: str = "RegionOne",
     interface: str = "public",
     source: str = "",
@@ -125,20 +114,13 @@ def connect(
             f"the OpenStack substrate reaches no cloud without "
             f"{', '.join(missing)}"
         )
-    if ssh_config and not Path(ssh_config).expanduser().is_file():
-        raise RangeUnavailable(
-            f"{SETTINGS['ssh_config']} names {ssh_config} and there is no such "
-            f"file. ssh includes a file that is not there without a word and "
-            f"connects as if the deployment had configured nothing"
-        )
-
     known = (keystone, user, password, project, ssh_user, ssh_key,
-             ssh_config, region, interface)
+             region, interface)
 
     def rediscover() -> tuple[Cloud, object]:
         cloud = discover(
             keystone, user, password, project, ssh_user, ssh_key,
-            region=region, interface=interface, ssh_config=ssh_config,
+            region=region, interface=interface,
         )
         _connected[known] = (cloud, http_reader(cloud, password))
         return _connected[known]
@@ -160,7 +142,6 @@ def discover(
     ssh_key: str,
     region: str = "RegionOne",
     interface: str = "public",
-    ssh_config: str = "",
     timeout: float = 30.0,
 ) -> "Cloud":
     answered = _signed_in(keystone, user, password, project, timeout)
@@ -175,7 +156,6 @@ def discover(
         user=user,
         ssh_user=ssh_user,
         ssh_key=ssh_key,
-        ssh_config=ssh_config,
     )
 
 def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float):
@@ -217,14 +197,13 @@ def _endpoint(catalog, service: str, region: str, interface: str) -> str:
     )
 
 def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
-    held: dict = {"token": "", "expires": None}
+    held: dict = {"token": ""}
 
     def authenticate() -> str:
         answered = _signed_in(
             cloud.keystone, cloud.user, password, cloud.project, timeout
         )
         held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
-        held["expires"] = _expiry(answered)
         if not held["token"]:
             raise RangeUnavailable(
                 f"{cloud.keystone} issued no {SUBJECT_TOKEN}, so nothing can "
@@ -235,7 +214,7 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
     def send(call: str, body=None) -> dict:
         verb, _, url = call.partition(" ") if " " in call else ("GET", "", call)
         token = held["token"]
-        if not token or _spent(held["expires"]):
+        if not token:
             token = authenticate()
         answered = _send(verb.lower(), url, token, body, timeout)
         if answered.status_code == 401:
@@ -249,20 +228,6 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
         return answered.json() if answered.content else {}
 
     return send
-
-def _expiry(answered) -> datetime | None:
-    stamp = ((answered.json().get("token") or {}) if answered.content else {}).get(
-        "expires_at"
-    )
-    if not stamp:
-        return None
-    try:
-        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-def _spent(expires: datetime | None) -> bool:
-    return expires is not None and datetime.now(timezone.utc) + RENEW_BEFORE >= expires
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
     headers = {"X-OpenStack-Nova-API-Version": NOVA_MICROVERSION}
@@ -330,13 +295,6 @@ def _generations(servers: list[dict]) -> dict[str, str]:
                     found[entry["addr"]] = generation
     return found
 
-def unimplemented(call: str) -> dict:
-    raise NotImplementedError(
-        f"the sketch issues no cloud call; a real adapter would send {call}, "
-        f"authenticated by the first of {CALLS}"
-    )
-
-
 @dataclass(frozen=True)
 class Cloud:
     keystone: str
@@ -361,7 +319,7 @@ class Build:
 
 class OpenStack:
     def __init__(
-        self, declared: Declaration, cloud: Cloud, get=unimplemented, rediscover=None,
+        self, declared: Declaration, cloud: Cloud, get, rediscover=None,
         build: Build = Build(),
     ):
         self.declared = declared
@@ -492,27 +450,10 @@ class OpenStack:
             f"  ServerAliveInterval {SERVER_ALIVE_INTERVAL}",
             f"  ServerAliveCountMax {SERVER_ALIVE_COUNT_MAX}",
         ]
-        written.write_text("\n".join(included + defaults) + "\n")
         generation = self._generations.get(address)
-        if generation and not self._deployment_checks_keys(written, address):
-            aliased = [f"Host {address}", f"  HostKeyAlias {generation}"]
-            written.write_text("\n".join(included + aliased + defaults) + "\n")
+        aliased = [f"Host {address}", f"  HostKeyAlias {generation}"] if generation else []
+        written.write_text("\n".join(included + aliased + defaults) + "\n")
         return written
-
-    def _deployment_checks_keys(self, config: Path, address: str) -> bool:
-        try:
-            resolved = subprocess.run(
-                ["ssh", "-G", "-F", str(config), f"{self.cloud.ssh_user}@{address}"],
-                capture_output=True, text=True, errors="replace",
-                timeout=CONNECT_TIMEOUT,
-            ).stdout.splitlines()
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise RangeUnavailable(
-                f"could not read how ssh would reach {address}: {exc}"
-            ) from exc
-        return bool(PINNING & set(resolved)) or any(
-            line.startswith("hostkeyalias ") for line in resolved
-        )
 
     def launcher(self, segment_id: str):
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")

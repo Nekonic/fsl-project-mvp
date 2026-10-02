@@ -3,7 +3,7 @@ import time
 import urllib.error
 import urllib.request
 
-PIPELINE = "/app/deploy/elastic/ingest-pipeline.json"
+PIPELINE = f"{os.environ.get('FSL_SOURCE', '/app')}/deploy/elastic/ingest-pipeline.json"
 
 
 def endpoint(base: str) -> str:

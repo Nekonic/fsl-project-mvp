@@ -8,7 +8,6 @@ class Session(models.Model):
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     baseline = models.JSONField(null=True, blank=True, default=None)
-    truncated = models.BooleanField(default=False)
     read_of = models.JSONField(null=True, blank=True, default=None)
     rotation = models.PositiveIntegerField(default=0)
 
@@ -69,8 +68,6 @@ class Detection(models.Model):
     def to_record(self) -> DetectionRecord:
         return DetectionRecord(
             detection_id=self.detection_id,
-            source=self.source,
-            signature=self.signature,
             timestamp=self.timestamp,
             src_ip=self.src_ip,
             marker=self.marker,

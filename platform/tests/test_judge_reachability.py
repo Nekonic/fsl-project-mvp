@@ -60,14 +60,14 @@ def ranged(stub=None):
 def fresh_cache():
     from api import reachability
 
-    reachability.forget()
+    reachability._cached = (0.0, frozenset())
     yield
-    reachability.forget()
+    reachability._cached = (0.0, frozenset())
 
 def get(client, path, addr):
     from api import reachability
 
-    reachability.forget()
+    reachability._cached = (0.0, frozenset())
     return client.get(path, REMOTE_ADDR=addr)
 
 def test_the_attacker_box_cannot_read_the_rules_the_defence_is_scored_on(client):
@@ -149,7 +149,7 @@ def test_deciding_who_may_call_does_not_read_the_range_on_every_request(client):
             Counting.calls += 1
             return SHAPE
 
-    reachability.forget()
+    reachability._cached = (0.0, frozenset())
     with ranged(Counting):
         for _ in range(8):
             client.get("/api/rules/", REMOTE_ADDR="5.188.10.1")

@@ -58,9 +58,9 @@ RANGE = declared.read(flavor=declared.flavor_for(FSL_SUBSTRATE))
 
 ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
-ATTACKER_LABEL_FILE = os.environ.get("ATTACKER_LABEL_FILE", "/label/active")
-ATTACKER_ORIGIN_FILE = os.environ.get("ATTACKER_ORIGIN_FILE", "/label/origin")
-ATTACKER_TERMINAL_URL = os.environ.get("ATTACKER_TERMINAL_URL", "/terminal/")
+ATTACKER_LABEL_FILE = "/label/active"
+ATTACKER_ORIGIN_FILE = "/label/origin"
+ATTACKER_TERMINAL_URL = "/terminal/"
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )
@@ -94,7 +94,6 @@ FSL_SUBSTRATE_OPTIONS = dict(
             "project": os.environ.get("FSL_OPENSTACK_PROJECT", ""),
             "ssh_user": os.environ.get("FSL_OPENSTACK_SSH_USER", ""),
             "ssh_key": os.environ.get("FSL_OPENSTACK_SSH_KEY", ""),
-            "ssh_config": os.environ.get("FSL_OPENSTACK_SSH_CONFIG", ""),
             "region": os.environ.get("FSL_OPENSTACK_REGION", "RegionOne"),
             "interface": os.environ.get("FSL_OPENSTACK_INTERFACE", "public"),
             "source": os.environ.get("FSL_SOURCE", str(BASE_DIR.parent)),

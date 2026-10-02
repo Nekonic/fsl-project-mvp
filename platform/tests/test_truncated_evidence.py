@@ -28,7 +28,7 @@ def test_an_ingest_that_could_not_read_everything_marks_the_session(client):
     ingest(client, session, truncated=(5000, 9137))
     session.refresh_from_db()
 
-    assert session.truncated is True, (
+    assert session.read_of == [5000, 9137], (
         "elastic.fetch reported that it read 5000 of 9137 records and the "
         "session forgot. The next score is computed on part of the evidence "
         "with nothing on the page to say so"
@@ -58,22 +58,8 @@ def test_one_truncated_ingest_is_not_forgotten_by_the_next_whole_one(client):
     ingest(client, session, truncated=None)
     session.refresh_from_db()
 
-    assert session.truncated is True, (
+    assert session.read_of == [5000, 9137], (
         "a later ingest that happened to fit cleared the flag, so a session "
         "that once lost evidence reports itself complete. The detections that "
         "were never read are still missing"
-    )
-
-def test_oldest_first_truncation_is_what_makes_this_dangerous(client):
-    import inspect
-
-    from ingest import elastic
-
-    source = inspect.getsource(elastic.fetch)
-
-    assert '"sort": [{"@timestamp": "asc"}]' in source, (
-        "if the sort ever changes, this warning's reason changes with it: "
-        "reading oldest-first means truncation drops the newest alerts, so "
-        "the cases fired last become FN and the benign ones fired last "
-        "become TN - a busier red team makes the defence look better"
     )

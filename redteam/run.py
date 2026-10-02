@@ -31,12 +31,9 @@ def main() -> int:
         default=harness.DEFAULT_TOOL_TARGET,
         help="address the tool containers use for the target inside the stack",
     )
-    parser.add_argument("--origin", default="")
     args = parser.parse_args()
 
-    launch = substrate().launcher(
-        args.origin or settings.RANGE.default_origin
-    )
+    launch = substrate().launcher(settings.RANGE.default_origin)
 
     cases = harness.load_cases(args.cases)
     attacks = sum(1 for c in cases if c["malicious"])

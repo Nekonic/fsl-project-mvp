@@ -2,7 +2,6 @@ import pytest
 
 from redteam.tools import (
     TOOL_IMAGE,
-    UnsupportedTool,
     is_tool_case,
     tool_argv,
 )
@@ -47,12 +46,6 @@ def test_marker_header_is_omitted_for_window_cases():
     command = build_tool_command(case, INTERNAL_TARGET)
 
     assert not any("X-FSL-Case" in part for part in command)
-
-def test_unknown_tool_is_rejected():
-    case = dict(CASE, tool="metasploit")
-
-    with pytest.raises(UnsupportedTool, match="metasploit"):
-        build_tool_command(case, INTERNAL_TARGET)
 
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path

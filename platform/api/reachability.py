@@ -34,11 +34,6 @@ def scored_hosts() -> frozenset[str]:
     _cached = (time.monotonic(), known)
     return known
 
-def forget() -> None:
-    global _cached
-
-    _cached = (0.0, frozenset())
-
 def not_from_inside_the_range(get_response):
     def middleware(request):
         address = request.META.get("REMOTE_ADDR") or ""
