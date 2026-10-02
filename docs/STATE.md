@@ -29,10 +29,29 @@ Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are
 **done end to end** (2026-10-02). The whole chain is proven on the cloud:
 a case fired from the Kali box leaves as a chosen country, crosses
 pfSense -> WAF -> Juice Shop, both sensors detect it, the logs reach the
-platform's Elasticsearch geolocated, and the platform scores it. What is left
-of backlog 2 is step 6 (the sidebar: Kibana and the pfSense GUI pane) and the
-board's user-database objective (held out by the user). On `dev`; `bin/verify`
-green.
+platform's Elasticsearch geolocated, and the platform scores it.
+
+**Backlog 2 step 6's in-scope part is done (2026-10-02):** the target port is
+no longer published and the acceptance suite and command-line cases reach the
+target from inside the range. What is left of backlog 2 is step 7, plus the
+two blue-screen panes the user held out of this backlog (Kibana and the
+pfSense GUI pane) and the board's user-database objective. On `dev`;
+`bin/verify` green.
+
+**Committed this session (step 6, the acceptance/CLI move):**
+- `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
+  reached only from inside the range now.
+- The acceptance suite reaches the target through `test/range.py`'s runner:
+  `conftest.target_code()`/`target_answers()` curl `http://shop.com` from the
+  attacker box (so `stack_is_up`, `reset_target` and `test_criterion_1` no
+  longer need a host port), and `test_front_door`'s probe fires through
+  `from_attacker`.
+- The command-line harness runs inside the range: `run_redteam()` execs
+  `redteam/run.py` on the `scorer` host (the platform container) with
+  `--target/--tool-target http://shop.com`, the way the console fires. A fresh
+  run scored TP 8 / FP 0 / FN 2 / TN 6, both engines.
+- `test_judge_isolation` drops 8080 from its published-port set; `README.md`
+  and CLAUDE.md's "Running it" show the in-range invocation.
 
 **Committed this session (`4ec543b..HEAD`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -374,9 +393,9 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   the platform's port is the only one published. The terminal, and Kibana
   when it comes, are reached through it by path. 9200 stays published for
   the acceptance suite, which is all that uses it (the user, 2026-10-01).
-  8080 is used only by the command-line cases and the acceptance suite; it
-  stops being published and those reach the target from inside the range,
-  through `test/range.py`'s runner.
+  8080 is no longer published (2026-10-02): the command-line cases and the
+  acceptance suite reach the target from inside the range, through
+  `test/range.py`'s runner.
 - **Session start/stop and the scoreboard stay on the landing page `/`**,
   outside the sidebar; the sidebar is only the work screen.
 - **Tap-as-a-Service is dropped from the design**: it was there for a sensor
@@ -717,11 +736,14 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    7681 is no longer published. waitress trusts only `127.0.0.1` for
    `X-Forwarded-For`, so the refusal of range addresses reads the real client
    as before; `/terminal/` asks `/api/attacker/` first (`auth_request`), and
-   acceptance checks that a range host gets 403 there. Left **and in scope**:
-   the acceptance suite and the command-line cases run against the OpenStack
-   range (pfSense -> WAF -> target), not Docker's `:8080`. **Out of scope (the
-   user): Kibana and the pfSense GUI pane** - the two blue-screen panes are not
-   to be built in this backlog.
+   acceptance checks that a range host gets 403 there. **Done (2026-10-02):**
+   the WAF's `:8080` publish is gone, and the acceptance suite and the
+   command-line cases reach the target from inside the range through
+   `test/range.py`'s runner (the attacker box for probes, the `scorer` host
+   for `redteam/run.py`), not a host port. The same suite runs unchanged
+   against the OpenStack range once `test/range.py` has its OpenStack adapter.
+   **Out of scope (the user): Kibana and the pfSense GUI pane** - the two
+   blue-screen panes are not to be built in this backlog.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
 

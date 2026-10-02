@@ -181,8 +181,12 @@ directory. Same for `test/`.
 
 ```bash
 docker compose up -d --build          # includes kali, the attacker's terminal
-.venv/bin/python redteam/run.py       # or drive it from the console at /
+docker compose exec platform \        # fire the scripted cases, or drive it
+  python redteam/run.py --target http://shop.com --tool-target http://shop.com
 ```
+
+The target is not published; the harness fires from inside the range (the
+platform), the way the console at `/` does.
 
 The platform sets up the docker socket group and registers the Elasticsearch
 ingest pipeline on start, so `docker compose up` is the whole bring-up.

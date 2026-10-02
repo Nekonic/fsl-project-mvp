@@ -1,6 +1,6 @@
 import requests
 
-from conftest import PLATFORM_URL, TARGET_URL, run_redteam, score_when_ready
+from conftest import PLATFORM_URL, run_redteam, score_when_ready, target_code
 
 NOISY_RULE = (
     '\nalert http any any -> any any (msg:"FSL deliberate false positive"; '
@@ -9,7 +9,7 @@ NOISY_RULE = (
 
 def test_criterion_1_services_answer():
     assert requests.get(f"{PLATFORM_URL}/api/rules/", timeout=5).ok
-    assert requests.get(TARGET_URL, timeout=5).status_code < 500
+    assert 0 < target_code() < 500
     assert requests.get("http://localhost:9200/_cluster/health", timeout=5).ok
 
 def test_criterion_2_redteam_run_produces_a_closed_session(session_id):
