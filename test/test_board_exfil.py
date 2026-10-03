@@ -21,21 +21,6 @@ def test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by(stack_
     )
 
 
-def test_members_endpoint_leaks_real_password_hashes(stack_is_up):
-    from range import ATTACKER, run
-
-    body = run(ATTACKER, ["curl", "-s", "--max-time", "20",
-                          f"{BOARD}/members.json"]).stdout
-    import json
-
-    users = json.loads(body)["users"]
-    names = {u["username"] for u in users}
-    assert {"admin", "jiwoo", "minseo"} <= names
-    assert all(u["password"].startswith("pbkdf2_sha256$") for u in users), (
-        "the endpoint did not return the stored hash column"
-    )
-
-
 def test_the_internal_ground_truth_is_blocked_through_the_waf(stack_is_up):
     assert _from_range("/internal/auth-users") == "404", (
         "the attacker-facing WAF served the internal ground-truth path; it must "

@@ -7,10 +7,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from .models import Post
 
 
-def members(request):
-    return JsonResponse({"users": list(User.objects.values())})
-
-
 def auth_users(request):
     return JsonResponse({u.username: u.password for u in User.objects.all()})
 
