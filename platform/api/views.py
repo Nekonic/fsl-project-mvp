@@ -8,6 +8,7 @@ import time
 import uuid
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
@@ -41,7 +42,7 @@ from ingest import elastic
 from redteam import harness
 import operator_log
 from range import substrate
-from range.ports import RangeUnavailable, Shape
+from range.ports import Drifted, RangeUnavailable, Shape
 from rules import suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
@@ -168,10 +169,19 @@ def sessions(request):
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
+    adapter = substrate()
+    if hasattr(adapter, "plan_slot"):
+        if Session.objects.filter(ended_at=None).exists():
+            raise Conflict("a session is already open on the range; close it first")
+        verdict = _range_ready(adapter)
+        if not verdict["ready"]:
+            raise Conflict(
+                "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
+            )
     baseline = []
     if wargames.judged(scenario):
         try:
-            baseline = sorted(objectives.solved_keys(substrate().runner("wiki")))
+            baseline = sorted(objectives.solved_keys(adapter.runner("wiki")))
         except objectives.ObjectivesUnavailable:
             baseline = None
     session = Session.objects.create(scenario=scenario, baseline=baseline)
@@ -518,6 +528,17 @@ def close_session(request, session_id):
     reply = _shape(session, SESSION_FIELDS)
     if unobserved:
         reply["unobserved"] = unobserved
+
+    adapter = substrate()
+    if hasattr(adapter, "rebuild_slot"):
+        try:
+            with RULE_CHANGES:
+                rebuilt = adapter.rebuild_slot()
+            reply["rebuilding"] = [
+                {"host": host, "server": server} for host, server in rebuilt
+            ]
+        except (Drifted, RangeUnavailable) as exc:
+            reply["rebuild"] = str(exc)
     return _reply(reply)
 
 @require_http_methods(["GET", "POST"])
@@ -1119,6 +1140,149 @@ def range_configure(request):
     return _reply({"configured": [
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
+
+def _nothing_solved(adapter) -> bool:
+    try:
+        return not objectives.solved_keys(adapter.runner("wiki"))
+    except (objectives.ObjectivesUnavailable, RangeUnavailable):
+        return False
+
+def _baseline_rules() -> str:
+    return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules/local.rules").read_text()
+
+def _rules_at_baseline(adapter) -> bool:
+    try:
+        live = suricata.current(adapter.runner("sensor"))
+    except (suricata.RulesUnreadable, RangeUnavailable):
+        return False
+    if live != _baseline_rules():
+        return False
+    now = timezone.now()
+    return not Suppression.objects.filter(
+        restored_at__isnull=True, expires_at__gt=now
+    ).exists()
+
+def _range_ready(adapter) -> dict:
+    plan = adapter.plan_slot()
+    checks = {
+        "active": plan.active,
+        "nothing_solved": _nothing_solved(adapter),
+        "rules_baseline": _rules_at_baseline(adapter),
+    }
+    blocked = []
+    if plan.boot or plan.blocked:
+        phase = "NOT_STANDING"
+        blocked += list(plan.blocked) or [f"{host} is not standing" for host in plan.boot]
+    elif not plan.active:
+        phase = "REBUILDING"
+        blocked += [f"{host} is {status}" for host, _, status in plan.standing
+                    if status != "ACTIVE"]
+    elif not (checks["nothing_solved"] and checks["rules_baseline"]):
+        phase = "CHECKING"
+    else:
+        phase = "READY"
+    if not checks["nothing_solved"]:
+        blocked.append("the target is not clean: an objective is already solved")
+    if not checks["rules_baseline"]:
+        blocked.append("the sensor rules are off baseline or a suppression is in force")
+    return {
+        "ready": all(checks.values()),
+        "substrate": "openstack",
+        "slot": {
+            "phase": phase,
+            "standing": [{"host": host, "server": server, "status": status}
+                         for host, server, status in plan.standing],
+            "checks": checks,
+            "blocked": blocked,
+        },
+    }
+
+@require_http_methods(["GET"])
+def range_ready(request):
+    adapter = substrate()
+    if not hasattr(adapter, "plan_slot"):
+        return _reply({"ready": True, "substrate": "compose", "slot": None})
+    return _reply(_range_ready(adapter))
+
+CANARY_CASE = {
+    "name": "range-canary",
+    "malicious": True,
+    "correlation": "marker",
+    "request": {
+        "method": "GET",
+        "path": "/rest/products/search",
+        "params": {"q": "' OR 1=1--"},
+    },
+}
+
+def _canary_blocked(reason: str) -> dict:
+    return {"corroborated": False, "suricata": False, "modsecurity": False,
+            "skew_seconds": None, "blocked": [reason]}
+
+def _range_canary(adapter) -> dict:
+    token = "canary-" + uuid.uuid4().hex
+    try:
+        origin = attacker.find(_standing(), None)
+    except (attacker.UnknownOrigin, RangeUnavailable) as exc:
+        return _canary_blocked(f"no origin to fire the canary from: {exc}")
+    try:
+        attacker.wear_origin(origin, adapter.runner("proxy"))
+    except RangeUnavailable as exc:
+        return _canary_blocked(f"could not set the canary origin: {exc}")
+
+    case = dict(CANARY_CASE, case_id=token)
+    fired_at = timezone.now()
+    try:
+        harness.fire(requests.Session(), case, origin["target_url"],
+                     adapter.launcher(origin["id"]), origin["target_url"])
+    except harness.ToolUnavailable as exc:
+        return _canary_blocked(f"the canary did not fire: {exc}")
+
+    suricata_at = modsec_at = None
+    reach = []
+    for _ in range(max(1, int(settings.CANARY_WAIT / settings.CANARY_POLL))):
+        time.sleep(settings.CANARY_POLL)
+        try:
+            documents, _ = elastic.fetch(
+                settings.ELASTIC_URL, settings.ELASTIC_INDEX,
+                fired_at - timedelta(minutes=1), timezone.now() + timedelta(minutes=1),
+            )
+        except elastic.ElasticUnavailable as exc:
+            reach = [f"could not read Elasticsearch: {exc}"]
+            continue
+        reach = []
+        marked = [d for d in elastic.normalize_all(documents)
+                  if d["marker"] == token and d["timestamp"]]
+        suricata_at = min((d["timestamp"] for d in marked if d["source"] == "suricata"),
+                          default=None)
+        modsec_at = min((d["timestamp"] for d in marked if d["source"] == "modsecurity"),
+                        default=None)
+        if suricata_at and modsec_at:
+            break
+
+    skew = (abs((suricata_at - modsec_at).total_seconds())
+            if suricata_at and modsec_at else None)
+    blocked = list(reach)
+    if suricata_at is None:
+        blocked.append("Suricata did not alert on the canary")
+    if modsec_at is None:
+        blocked.append("ModSecurity did not alert on the canary")
+    if skew is not None and skew > settings.READY_SKEW:
+        blocked.append(
+            f"the engine clocks differ by {skew:.1f}s, over the {settings.READY_SKEW:g}s bound"
+        )
+    return {
+        "corroborated": (suricata_at is not None and modsec_at is not None
+                         and skew is not None and skew <= settings.READY_SKEW),
+        "suricata": suricata_at is not None,
+        "modsecurity": modsec_at is not None,
+        "skew_seconds": skew,
+        "blocked": blocked,
+    }
+
+@require_http_methods(["POST"])
+def range_canary(request):
+    return _reply(_range_canary(substrate()))
 
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):

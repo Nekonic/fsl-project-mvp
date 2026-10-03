@@ -186,3 +186,29 @@ def test_the_gateway_puts_every_address_of_its_internet_port_on_that_nic_each_bo
     assert "fa:16:3e:00:00:01" in script
     assert "ip addr replace" in script
     assert "73.0.0.1/24" in script and "117.192.0.1/24" in script
+
+def test_a_fully_standing_active_slot_is_active():
+    plan = slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"),
+                               ("fsl-juice-shop", "s2", "ACTIVE")))
+    assert plan.active is True
+
+def test_a_slot_with_a_rebuilding_vm_is_not_active():
+    plan = slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"),
+                               ("fsl-juice-shop", "s2", "REBUILD")))
+    assert plan.active is False
+
+def test_a_slot_with_a_booting_vm_is_not_active():
+    plan = slot.Plan(standing=(("fsl-waf", "s1", "BUILD"),))
+    assert plan.active is False
+
+def test_a_slot_with_a_host_still_to_boot_is_not_active():
+    plan = slot.Plan(boot=("fsl-wiki",), standing=(("fsl-waf", "s1", "ACTIVE"),))
+    assert plan.active is False
+
+def test_a_blocked_slot_is_not_active():
+    plan = slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"),),
+                     blocked=("image fsl-board is not ready",))
+    assert plan.active is False
+
+def test_an_empty_slot_is_not_active():
+    assert slot.Plan().active is False

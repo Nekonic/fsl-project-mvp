@@ -80,9 +80,14 @@ WARGAME_CASES_DIR = os.environ.get(
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
+
+READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
+CANARY_WAIT = float(os.environ.get("FSL_CANARY_WAIT", "45"))
+CANARY_POLL = float(os.environ.get("FSL_CANARY_POLL", "3"))
 FSL_SENSOR_RELOAD = tuple(
     os.environ.get("FSL_SENSOR_RELOAD", "suricatasc -c reload-rules").split()
 )
+FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
 
 FSL_SUBSTRATE_OPTIONS = dict(
     {
@@ -96,7 +101,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
             "ssh_key": os.environ.get("FSL_OPENSTACK_SSH_KEY", ""),
             "region": os.environ.get("FSL_OPENSTACK_REGION", "RegionOne"),
             "interface": os.environ.get("FSL_OPENSTACK_INTERFACE", "public"),
-            "source": os.environ.get("FSL_SOURCE", str(BASE_DIR.parent)),
+            "source": FSL_SOURCE,
             "base_image": os.environ.get("FSL_OPENSTACK_BASE_IMAGE", "ubuntu-24.04"),
             "flavor": os.environ.get("FSL_OPENSTACK_FLAVOR", "m1.small"),
             "build_network": os.environ.get("FSL_OPENSTACK_BUILD_NETWORK", ""),

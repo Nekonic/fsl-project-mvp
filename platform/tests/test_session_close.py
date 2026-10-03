@@ -221,3 +221,78 @@ def test_a_target_that_cannot_be_read_after_the_attack_does_not_lose_the_attack(
 
     assert response.status_code == 201, response.content
     assert Session.objects.get(pk=session_id).cases.count() == 1
+
+
+class Rebuilds:
+    def __init__(self, fail=None):
+        self.rebuilt = 0
+        self.fail = fail
+
+    def rebuild_slot(self):
+        self.rebuilt += 1
+        if self.fail is not None:
+            raise self.fail
+        return [("fsl-waf", "srv-1"), ("fsl-juice-shop", "srv-2")]
+
+
+def test_closing_on_the_compose_range_does_not_rebuild(client, session_id):
+    with patch("objectives._fetch", return_value=JUICE):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert response.json()["ended_at"] is not None
+    assert "rebuilding" not in response.json() and "rebuild" not in response.json()
+
+
+def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
+    found = Rebuilds()
+    with patch("api.views.substrate", lambda: found), patch(
+        "api.views._observe_objectives", return_value={}
+    ):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert Session.objects.get(pk=session_id).ended_at is not None
+    assert found.rebuilt == 1
+    assert response.json()["rebuilding"] == [
+        {"host": "fsl-waf", "server": "srv-1"},
+        {"host": "fsl-juice-shop", "server": "srv-2"},
+    ]
+
+
+def test_closing_observes_the_target_before_it_rebuilds(client, session_id):
+    order = []
+
+    class Recorder:
+        def rebuild_slot(self):
+            order.append("rebuild")
+            return []
+
+    def observed(session):
+        order.append("observe")
+        return {}
+
+    with patch("api.views.substrate", lambda: Recorder()), patch(
+        "api.views._observe_objectives", side_effect=observed
+    ):
+        client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert order == ["observe", "rebuild"], (
+        "the target's solved flags must be read off the live VMs before the "
+        "rebuild wipes them"
+    )
+
+
+def test_a_failed_rebuild_leaves_the_session_closed(client, session_id):
+    from range.ports import Drifted
+
+    found = Rebuilds(fail=Drifted("fsl-waf is not standing"))
+    with patch("api.views.substrate", lambda: found), patch(
+        "api.views._observe_objectives", return_value={}
+    ):
+        response = client.post_json(f"/api/sessions/{session_id}/close/")
+
+    assert response.status_code == 200, response.content
+    assert Session.objects.get(pk=session_id).ended_at is not None
+    assert "fsl-waf" in response.json()["rebuild"]
+    assert "rebuilding" not in response.json()

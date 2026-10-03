@@ -35,6 +35,14 @@ class Plan:
     def clean(self) -> bool:
         return not (self.boot or self.ports or self.blocked)
 
+    @property
+    def active(self) -> bool:
+        return (
+            self.clean
+            and bool(self.standing)
+            and all(status == "ACTIVE" for _, _, status in self.standing)
+        )
+
 def port_name(host: str, segment: str) -> str:
     return f"{host}.{segment}"
 

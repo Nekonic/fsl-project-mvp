@@ -66,12 +66,14 @@ platform's Elasticsearch geolocated, and the platform scores it.
 
 **Backlog 2 step 6's in-scope part is done (2026-10-02):** the target port is
 no longer published and the acceptance suite and command-line cases reach the
-target from inside the range. **Step 7's first two parts are done too
-(2026-10-02): evidence by event time, and GeoIP's durable home.** What is left
-of backlog 2 is step 7's last part - the slot's Stop-rebuild lifecycle, which
-the user is directing later (cloud work) - plus the two blue-screen panes the
-user held out of this backlog (Kibana and the pfSense GUI pane) and the
-board's user-database objective. On `dev`; `bin/verify` green.
+target from inside the range. **Step 7 is done (2026-10-03):** evidence by
+event time, GeoIP's durable home, and now the session Start/Stop lifecycle -
+Start takes a READY slot, Stop kicks off the rebuild, and READY is the full
+four-signal gate (VMs ACTIVE, nothing solved, rules at baseline, and a canary
+alert corroborated by both engines with their clocks in sync). What is left of
+backlog 2 is only what the user held out of it: the two blue-screen panes
+(Kibana and the pfSense GUI) and the board's user-database objective. On `dev`;
+`bin/verify` green.
 
 **Committed this session (step 6, the acceptance/CLI move):**
 - `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
@@ -109,33 +111,29 @@ the MaxMind attribution. `test/test_geoip_durable.py` holds the downloader off
 and the pipeline still placing a source. The MaxMind licence review for the
 production repo still stands (see "Decisions left for a person").
 
-**Committed this session (step 7, the slot's Stop rebuild):** `rebuild_slot()`
-on the OpenStack adapter Nova-rebuilds every standing slot VM from its golden
-image (`POST {nova}/servers/{id}/action {"rebuild": {"imageRef": ...}}`, the
-microversion already on every Nova call), which keeps each server's id,
-flavour, ports and fixed IPs, so a session leaves no solved flag, edited rule
-or planted datum for the next. It refuses before touching anything if the slot
-is not fully standing or any standing host's image is not ready (the
-refuse-before-write invariant `ensure_slot` holds). Exposed as
-`POST /api/range/slot/rebuild/` (Docker 409s); unit-tested against the Nova
-fakes (`test_openstack_slot.py`, `test_api_slot.py`). An adversarial 5-way
-review (Nova API, lifecycle, fakes, edge cases, completeness) found and fixed
-the readiness-inside-the-loop bug and surfaced two deliberate scope edges:
+**Committed this session (step 7, the session Start/Stop lifecycle and READY
+gate):** Session Start takes a READY slot and Session Stop kicks off the
+rebuild, closing the loop on `rebuild_slot()` (committed last session; it
+Nova-rebuilds every standing slot VM from its golden image, keeping each
+server's id, flavour, ports and fixed IPs). READY is the full four-signal gate
+the user directed - VMs ACTIVE, nothing solved on the target, Suricata rules at
+baseline with no suppression in force, and a canary alert corroborated by both
+engines with their event clocks in sync. See the backlog step 7 entry below for
+the endpoints, the console wiring, and what is deliberately not wired (Start
+does not fire the canary; the wait-ACTIVE -> `configure_slot` -> re-check after
+a Stop is sequenced by the console, not inside `close`). `bin/verify` green;
+core_loc unchanged (461); tests floor 1183 -> 1213. Live-cloud verification of
+the slot `active` check, the rebuild and the canary firing through pfSense is
+the user's to run - the canary is proven end to end on compose
+(`test/test_ready.py`), the rest against the Nova/ES fakes.
 
 - **Re-configure must follow a rebuild.** A rebuild wipes the disk, so pfSense
   and the WAF lose the ssh-pushed config (`configure_slot`): WAN addresses, the
   WAN pass rule, Suricata, and the ModSecurity log forwarding; the targets are
-  baked, so only the edge and WAF need it. Run `POST /api/range/configure/`
-  once the VMs are ACTIVE again; until then the slot is not READY and the edge
-  denies range traffic. Not auto-chained, because configure needs the VMs up -
-  the ACTIVE wait is the READY gate below.
-- **The trigger and the READY gate are the deferred session lifecycle.** "Stop
-  rebuilds" is here as an operator action; firing it from session close,
-  waiting for ACTIVE, re-configuring, and checking the slot answers for itself
-  (nothing solved, rules at baseline, a canary alert) is the session
-  Start/Stop design the user is directing. Live-cloud verification of the
-  rebuild is also still the user's to run (the Nova rebuild is proven against
-  fakes only).
+  baked, so only the edge and WAF need it. The console drives `POST
+  /api/range/configure/` once the VMs are ACTIVE again; until then the slot
+  reads not READY (phase REBUILDING, then CHECKING) and the edge denies range
+  traffic. Not auto-chained inside `close`, because configure needs the VMs up.
 
 **Committed this session (`4ec543b..HEAD`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -856,10 +854,37 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      /api/range/slot/rebuild/` (Docker 409s), unit-tested against the Nova
      fakes. **A rebuild must be followed by `POST /api/range/configure/`** once
      the VMs are ACTIVE (pfSense/WAF config is ssh-pushed, not baked).
-   - **Left of step 7: wire the rebuild to session Stop, and the READY gate**
-     (wait for ACTIVE, re-configure, check nothing solved / rules at baseline /
-     a canary alert) - the session Start/Stop design the user is directing.
-     Live-cloud verification of the rebuild is the user's to run.
+   - **Done (2026-10-03): the session Start/Stop lifecycle and the READY gate.**
+     `slot.Plan.active` (pure: clean + standing + every VM ACTIVE). `GET
+     /api/range/ready/` is substrate-aware: compose answers `ready:true`,
+     OpenStack answers the three read-only checks (active, nothing solved on the
+     target, Suricata rules at baseline with no suppression in force) with a
+     derived phase (NOT_STANDING / REBUILDING / CHECKING / READY). `POST
+     /api/range/canary/` fires one known SQLi probe from the default origin
+     (wear_origin + `harness.fire`), then
+     reads Elasticsearch until both Suricata and ModSecurity alert on its marker
+     and confirms the two engines' event clocks agree within `READY_SKEW` (5 s);
+     it works on either substrate, so `test/test_ready.py` proves it end to end
+     on compose. Session **Start** (`POST /api/sessions/`) refuses on a
+     slot-bearing substrate if another session is open or the slot is not
+     `_range_ready`; compose is unchanged (no slot), so the many-session tests
+     stand. Session **Stop** (`close_session`) keeps observe -> stamp ended_at,
+     then kicks off `rebuild_slot` (no ACTIVE wait); a failed rebuild leaves the
+     session closed and says so. The console landing page polls `/ready/`,
+     disables Start and shows the blocked reasons when not ready, and offers a
+     canary button on the cloud; the close panel says the range rebuilds. No
+     core line, no new Session field or migration, no new dependency or service.
+   - **Not wired, by design:** Start does not itself fire the canary (that would
+     leave an unattributed alert inside every session's ingest window); the
+     canary is the between-sessions check the console runs after a rebuild, and
+     Start's server-authoritative gate is the three read-only checks plus
+     one-open-session. The minutes-long wait-ACTIVE -> `configure_slot` ->
+     re-check after a Stop is sequenced by the console poll over the existing
+     `/configure/` and `/slot/` endpoints, not inside `close`.
+   - **Live-cloud verification is the user's to run** (the slot `active` check,
+     the rebuild, and the canary firing through pfSense are proven against the
+     Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
+     has no OpenStack adapter, as for the rest of this backlog).
 
 ## Known gaps
 
