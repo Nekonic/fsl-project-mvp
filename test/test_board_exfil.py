@@ -1,7 +1,3 @@
-import requests
-
-from conftest import PLATFORM_URL
-
 BOARD = "http://board.com"
 
 
