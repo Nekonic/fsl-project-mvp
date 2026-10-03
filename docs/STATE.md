@@ -58,7 +58,14 @@ the clean loot path for the objective (Phase 3) is (b) **`/members.json`**, a
 the hash - a quiet, undetected GET. Salts rotate per rebuild because `board-db`
 keeps no persistent volume (`test_board_db_ephemeral.py` guards this). Full
 automated extraction via the order_by sink and live-cloud rebuild stay manual
-checks. Phases 2-4 and the PHP company site (target #2, its own spec) are next.
+checks. **Phase 2 is done too** (`objective_model` enum is now the source of
+truth and the three objective gates dispatch on it; `judged` is derived so the
+`/api/wargames/` catalogue is unchanged; no behavior change, `bin/verify` green,
+tests 1217 -> 1220). `loot_verified` is a reserved enum value with no behavior
+yet. Phase 3 (the `loot_verified` adapter + `POST /api/sessions/<id>/loot/` +
+verifier + board `objectives.yaml` + internal ground-truth endpoint; it must
+also make the Phase-2 gates handle the new value) and Phase 4 (remove Juice
+Shop) and the PHP company site (target #2, its own spec) are next.
 
 **Audit cleanup committed this session (2026-10-02).** A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
