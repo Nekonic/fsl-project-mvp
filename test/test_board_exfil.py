@@ -23,3 +23,18 @@ def test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by(stack_
         "an unknown sort field did not error, so the ?sort value is ignored and "
         "never reaches order_by; the injection sink is not wired"
     )
+
+
+def test_members_endpoint_leaks_real_password_hashes(stack_is_up):
+    from range import ATTACKER, run
+
+    body = run(ATTACKER, ["curl", "-s", "--max-time", "20",
+                          f"{BOARD}/members.json"]).stdout
+    import json
+
+    users = json.loads(body)["users"]
+    names = {u["username"] for u in users}
+    assert {"admin", "jiwoo", "minseo"} <= names
+    assert all(u["password"].startswith("pbkdf2_sha256$") for u in users), (
+        "the endpoint did not return the stored hash column"
+    )

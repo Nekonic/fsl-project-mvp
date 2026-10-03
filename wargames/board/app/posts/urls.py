@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("members.json", views.members, name="members"),
     path("", views.post_list, name="post_list"),
     path("search/", views.search, name="search"),
     path("posts/new/", views.post_new, name="post_new"),
