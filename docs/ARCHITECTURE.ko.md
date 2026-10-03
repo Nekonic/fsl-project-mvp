@@ -14,19 +14,18 @@ Suricata와 ModSecurity 경보를 그 라벨에 자동으로 맞출 수 있어�
 
 ## 레인지
 
-여섯 개의 Docker 네트워크 위에 열한 개의 compose 서비스. 대상 시스템은
-wargame별로 묶이며, `wargames/` 아래에 폴더 하나씩이고, 그 `compose.yaml`을 최상위
-`compose.yaml`이 include 한다: `juice-shop`(Juice Shop과 그 SSRF가 닿는 wiki)과
-`board`(board와 그 MySQL). 새 wargame은 새 폴더 하나와 `include:` 줄 하나다.
-measure는 그것이 추가하는 서비스를 센다.
+여섯 개의 Docker 네트워크 위에 아홉 개의 compose 서비스. 대상 시스템은 wargame으로
+묶이며, `wargames/` 아래 폴더이고, 그 `compose.yaml`을 최상위 `compose.yaml`이 include
+한다: `board`(board와 그 MySQL). 대상은 예전에는 둘이었고 지금은 하나, 곧 Django
+board이며 유일한 `loot_verified` 대상이다. 두 번째로는 PHP 회사 사이트를 계획하고
+있다. 새 wargame은 새 폴더 하나와 `include:` 줄 하나다. measure는 그것이 추가하는
+서비스를 센다.
 
 | 서비스 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|
-| `fsl-juice-shop` | `bkimminich/juice-shop` | estate | |
 | `fsl-board` | `wargames/board/app` (gunicorn 아래 Django, 포트 8000) | estate | |
 | `fsl-board-db` | `mysql` | estate | |
-| `fsl-wiki` | `nginx`, 별칭 `wiki.internal` | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `shop.com`, 네 개 edge 네트워크 모두에서 `board.com` | edge, edge-br, edge-hk, edge-us, estate | 8080 |
+| `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | WAF의 네임스페이스 | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
@@ -51,8 +50,8 @@ measure는 그것이 추가하는 서비스를 센다.
 재현하고, 수용 테스트가 scoring이 읽는 파이프라인에 대해 모든 서브넷을 검사한다.
 
 망 분리는 Docker 네트워크 소속만으로 이루어진다: 방화벽도, iptables도, ACL도 없다.
-`test/test_segmentation.py`가 이것을 라이브 스택에 대해 단언한다(Kali는 `shop.com`에는
-닿지만 `juice-shop:3000`에는 닿지 못한다). 고정된 것은 서브넷뿐이다. 컨테이너 주소는
+`test/test_segmentation.py`가 이것을 라이브 스택에 대해 단언한다(Kali는 `board.com`에는
+닿지만 `board:8000`에는 닿지 못한다). 고정된 것은 서브넷뿐이다. 컨테이너 주소는
 Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어댑터를 만들어 그것을 읽는다.
 레인지 호스트에서 온 요청을 거부하는 규칙은 그 주소를 30초 동안 캐시하고, substrate에
 닿을 수 없으면 레인지를 비어 있는 것으로 취급해 요청을 통과시킨다
@@ -66,16 +65,15 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어�
            kali --raw TCP (nmap, nc), no proxy--------+
            platform --console-fired case--------------+
  edge-br                                              |
- edge-hk   proxy, platform (no kali, no shop.com)     |
+ edge-hk   proxy, platform (no kali, no board.com)    |
  edge-us                                              v
          fsl-waf: nginx + ModSecurity CRS, DetectionOnly, port 80
          fsl-suricata in the same network namespace, af-packet on all five
          interfaces, so it sees client->WAF and WAF->target
                                                       |
- estate    juice-shop:3000 <--any other Host----------+
-           board:8000 <--Host: board.com--------------+
-           juice-shop --SSRF--> wiki.internal
+ estate    board:8000 <--any Host, /internal/ 404-----+
            board --> board-db (MySQL)
+           platform --GET /internal/auth-users--> board:8000, past the WAF
  mgmt      filebeat --> elasticsearch <-- platform
 
  Not network traffic:
@@ -83,8 +81,8 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어�
    ModSecurity audit.log --volume waflogs--> filebeat
    ./data/label --bind mount--> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
-   platform --docker exec--> wiki (read log), proxy (/label files),
-                             suricata (rules), kali (command log)
+   platform --docker exec--> proxy (/label files), suricata (rules),
+                             kali (command log)
    platform --docker run--> throwaway fsl-kali for tool cases
    platform --> volume platformdata --> /data/db.sqlite3
 ```
@@ -93,20 +91,22 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어�
 `compose.yaml`에 설정된 우선순위대로 WAF의 네트워크를 붙여 준다는 데 의존한다. 그
 매핑을 검사하는 것은 아무것도 없다.
 
-WAF는 `Host: board.com`을 `board:8000`으로 보내고(`deploy/nginx/board.conf`), 나머지
-전부를 자신의 `BACKEND`인 `juice-shop:3000`으로 보낸다. board는 두 번째 wargame이다:
-gunicorn 아래 Django 3.2.4(알려진 `order_by` SQL 인젝션 결함 CVE-2021-35042이 있는
-미패치 버전)이며, 시작 시 스스로 마이그레이션하고 시드를 넣고, digest로 고정된 MySQL
-위에서 돈다. 둘 다 publish되지 않는다. board는 채점되지 않는다: 목표가
-없고, 세션은 채점되는 wargame에 대해서만 기준선을 스냅샷하므로, board 세션은 방어만
-채점한다.
+WAF는 모든 요청을 `board:8000`으로 보내고 `/internal/`에는 스스로 404로 답한다
+(`deploy/nginx/board.conf`). board는 유일한 wargame이다: gunicorn 아래 Django
+3.2.4(알려진 `order_by` SQL 인젝션 결함 CVE-2021-35042이 있는 미패치 버전)이며, 시작 시
+스스로 마이그레이션하고 시드를 넣고, digest로 고정된 MySQL 위에서 돈다. 둘 다
+publish되지 않는다. board는 loot로 채점된다: 세션이 시작될 때 플랫폼은 board의
+`auth_user` 사용자 이름과 비밀번호 해시를 `/internal/auth-users`에서 읽어 세션의
+스냅샷으로 보관한다. 플랫폼은 이 경로에 estate 네트워크로 직접 닿으며 WAF는 이를
+결코 전달하지 않는다. 이 경로는 WAF 밖에 있으므로 탐지기는 ground truth를 읽는 것을
+결코 보지 못한다.
 
 ## 선언과 substrate 이음매
 
 Docker는 MVP의 substrate이고, OpenStack은 목표다. 플랫폼은 레인지가 무엇을 뜻하는지
 Docker에 결코 묻지 않는다. 그것은 `platform/range/declaration.yaml`이 알려 준다:
 구간마다 id, 표시 이름, 공격 출발지 하나씩; 역할 표(attacker, scorer, gateway, proxy,
-sensor, target, wiki, board, board-db); 어느 호스트를 sensor가 지켜보는지; 기본 출발지;
+sensor, board, board-db); 어느 호스트를 sensor가 지켜보는지; 기본 출발지;
 그리고 지도가 선을 긋는 방어 대상 사이트(서울). 구간은 출발지를 선언할 때만, 그리고
 오직 그때만 외부다.
 
@@ -130,7 +130,7 @@ sensor, target, wiki, board, board-db); 어느 호스트를 sensor가 지켜보�
 
 - `describe()`는 형태를 반환한다: 구간, 그 노드와 주소, sensor;
 - `segments()`는 sensor에 대해 묻지 않고 누가 어디에 서 있는지를 반환한다;
-- `runner(role, segment)`는 상주 호스트(sensor, wiki, proxy, 그리고 플랫폼이 명령
+- `runner(role, segment)`는 상주 호스트(sensor, proxy, 그리고 플랫폼이 명령
   로그를 읽는 attacker)에서 명령을 실행한다;
 - `launcher(segment)`는 한 구간에서 일회성 도구를 실행하고 그 출력을 반환한다.
 
@@ -179,23 +179,20 @@ pfSense 패키지로 도는 sensor를 읽기, 여러 출발지 서브넷과 그 
 `/label/active` marker와 함께 `/var/log/fsl/commands.log`에 덧붙인다. 플랫폼은
 `runner("attacker")`를 통해 그것을 읽어 `GET /api/sessions/<id>/commands/`에서 제공한다.
 
-콘솔 HTTP 케이스는 출발지가 선택되었든 아니든 세션 wargame의 `Host`, 즉 `shop.com`
-또는 `board.com`을 싣는다. 출발지를 선택하면 트래픽을 그 출발지 구간에 있는 WAF의
-주소로, IP로 겨냥한다. 두 이름 모두 `edge` 네트워크에서 해석되며, 플랫폼은 출발지가
+콘솔 HTTP 케이스는 출발지가 선택되었든 아니든 세션 wargame의 `Host`, 즉 `board.com`을
+싣는다. 출발지를 선택하면 트래픽을 그 출발지 구간에 있는 WAF의
+주소로, IP로 겨냥한다. 그 이름은 `edge` 네트워크에서 해석되며, 플랫폼은 출발지가
 설정되지 않았을 때 그 네트워크를 쓴다. `rotate`는 무작위 선택이 아니라 세션별 라운드
 로빈이다.
 
 콘솔 도구 케이스는 출발지의 대상 URL로 겨냥되거나, 출발지가 선택되지 않았으면 선언된
-기본 출발지의 `TARGET_URL`(`http://shop.com`)로 겨냥된다. 대상 시스템은 호스트로
+기본 출발지의 `TARGET_URL`(`http://board.com`)로 겨냥된다. 대상 시스템은 호스트로
 공개되지 않으므로, 명령줄 harness도 레인지 내부에서 그것에 닿는다: `redteam/run.py`는
 플랫폼에서 실행되며(수용 스위트가 그것을 구동하는 방식), `--target`/`--tool-target`은
-기본값이 `http://shop.com`으로, 포트 80의 WAF로 해석된다.
+기본값이 `http://board.com`으로, 포트 80의 WAF로 해석된다.
 
 WAF는 CRS를 paranoia 1, anomaly threshold 5, `DetectionOnly`로 돌리고, 모든 Suricata
 룰은 `alert`다. 레인지의 그 무엇도 요청을 차단하지 않는다.
-
-wiki는 오직 애플리케이션을 통해, SSRF로만 닿는다: Juice Shop이 `/profile/image/url`로
-POST된 `imageUrl`을 가져온다. 스크립트로 된 케이스 중 이것을 하는 것은 없다.
 
 ## 경보가 어디로 가는가
 
@@ -247,32 +244,28 @@ Elasticsearch는 저장과 색인 시점의 geoip에 쓰이며, 그래서 Logsta
 
 ## 점수는 어떻게 계산되는가
 
-**목표.** 플랫폼은 대상 시스템의 `/api/Challenges/`를 읽어 각 `solved` 플래그를 있는
-그대로 받아들인다. 시각은 Juice Shop의 `updatedAt`이며, 세션 시작 5초 전부터 관측
-시점 사이에서만 신뢰된다; 그 밖에는 목표를 관측된 시점으로 날짜 매긴다. 신뢰되는
-스탬프는 Objective 행에 저장되는 창이 된다: 그 100ms 전부터 그 분해능(소수가 있으면
-1ms, 없으면 1s)에 100ms 후를 더한 지점까지. Juice Shop이 나중 요청에서만 검사하는
-13개 문제(`stamped_late`)에 대해서는, 창이 100ms가 아니라 2분을 거슬러 올라간다.
+**목표.** board는 `loot_verified` 대상이다. `wargames/board/objectives.yaml`이
+비밀(`auth_user`의 사용자 이름과 비밀번호 컬럼, `/internal/auth-users`에서 읽는다)과,
+공격자가 그것을 얼마나 쥐었는지에 따른 세 개의 단계를 정한다: 해시 하나(난이도 2),
+`admin` 계정의 해시(4), 모든 계정의 해시(5). 공격자는 해시를 탈취해
+`POST /api/sessions/<id>/loot/`로 제출한다. 플랫폼은 제출된 `(username, hash)` 쌍이
+세션 시작 시점의 스냅샷과 정확히 일치할 때만, 그리고 세션이 악성 케이스를 한 번이라도
+발사한 뒤에만 단계를 인정한다. 공격이 무엇을 이뤘다는 플랫폼 자신의 믿음으로는 결코
+목표를 인정하지 않는다: 대상 시스템에 저장된 데이터가 ground truth이며, 탐지기와
+직교한다.
 
-플랫폼이 스스로 판정하는 유일한 목표는 `internalRunbookRead`다: wiki 자체의 access
-로그에서 비밀 wiki 페이지를 성공적으로 읽은 것. 그 난이도 6에는 기록된 이유가 없다.
-수용 테스트 외에는 wiki 로그를 비우는 것이 없으므로, 한 번 SSRF가 성공한 뒤에는 이후
-세션이 runbook을 이미 읽은 상태로 시작한다.
+인정된 단계는 제출 시각으로 날짜 매겨진 Objective 행이 된다. 제출이 악성 케이스
+(`case_id`)를 지목하면 창은 그 케이스가 시작되기 100ms 전부터 끝난 100ms 후까지이고,
+아니면 제출 2분 전부터 100ms 후까지다.
 
-세션은 시작할 때 이미 풀려 있는 목표를 스냅샷하고 그것들을 결코 인정하지 않는다.
-그때 대상 시스템이나 wiki를 읽을 수 없으면, 세션은 기준선 없이 그래도 생성되고,
-스냅샷은 첫 성공적 관측에서 찍힌다: 그 사이에 풀린 것은 무엇이든 결코 인정되지 않는다.
-채점되는 wargame만이 스냅샷과 목표를 가진다; board를 관측하면 0 중 0을 반환한다.
-
-닿을 수 없는 대상 시스템은 두 개의 목표 엔드포인트,
-`GET /api/wargames/<id>/objectives/`와 `POST /api/sessions/<id>/objectives/`에서만
-503이다. 세션 생성, 케이스 발사 또는 기록(`POST .../cases/`는 `objectives: null`로
-응답), 세션 종료(응답이 `unobserved`를 싣는다)는 그것을 흡수한다. 기준선이 일단
-존재하면 읽을 수 없는 wiki 로그도 503이 아니다: 관측이 `unreadable`을 싣고, 목표
-목록은 runbook을 `solved: null`로 보여 준다.
+스냅샷은 세션이 시작될 때 한 번만 찍는다. 그때 board를 읽을 수 없으면 세션은 스냅샷
+없이 그래도 생성되고, 그 세션에 대해 `POST /api/sessions/<id>/loot/`는 409로 답한다.
+그 뒤에는 아무것도 대상 시스템을 읽지 않는다: `GET /api/wargames/<id>/objectives/`는
+`objectives.yaml`에서 단계를 나열하고 `POST /api/sessions/<id>/objectives/`는 저장된
+행을 보고하며, 둘 다 board에 닿지 않는다.
 
 탈취된 목표는 그 실행이 목표의 창과 겹치는 악성 케이스로 귀속된다; 여럿이면 가장 늦게
-시작한 것으로. 신뢰되는 스탬프가 없으면 창은 관측 2분 전부터 100ms 후까지다. 목표는
+시작한 것으로. 목표는
 그 케이스가 탐지된 경우에만 탐지된 것으로 세며, 어떤 케이스와도 겹치지 않는 목표는
 미탐지로 센다. 귀속은 오직 시간으로만 이루어진다: 케이스의 `takes:` 필드는 레드
 콘솔에 표시되지만 scoring이 읽지는 않는다.
@@ -319,7 +312,7 @@ corroborated되지 않은 케이스는 `score.warning.wrong_reason`을 추가한
 
 `attacker`는 탈취된 목표의 난이도이며, 탐지되면 절반으로 줄인다: `damage`와 같은
 합이다. `defender`는 기둥들의 가중 평균에 탈취된 난이도를 곱하고, FP마다 1을 뺀 값이다.
-`balance`는 `defender - attacker`다. board에서는 아무것도 탈취되지 않으므로, 균형은
+`balance`는 `defender - attacker`다. 아무것도 탈취되지 않으면 균형은
 마이너스 FP다. 가중치와 체류 시간은 v1 기본값이다
 (`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
 
@@ -327,12 +320,12 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 
 ## 결정
 
-- **wargame마다 케이스 파일 하나, 공격과 정상 트래픽을 함께**: Juice Shop용
-  `redteam/cases/default.yaml`(공격 10개, 정상 6개)과 board용 `board.yaml`(6개와 3개).
-  파일을 분리하면 정상 쪽 절반을 잊기 쉽다. CLI는 `--cases`가 다른 파일을 지정하지
-  않는 한 `default.yaml`을 읽고, 항상 Juice Shop 세션을 연다.
+- **wargame마다 케이스 파일 하나, 공격과 정상 트래픽을 함께**: board용
+  `redteam/cases/board.yaml`(공격 7개, 정상 3개). 파일을 분리하면 정상 쪽 절반을 잊기
+  쉽다. CLI는 `--cases`가 다른 파일을 지정하지 않는 한 `board.yaml`을 읽고, 항상 board
+  세션을 연다.
 - **harness는 재작성된 경로를 보내기를 거부한다.** `requests`는
-  `/ftp/../../etc/passwd`를 `/etc/passwd`로 바꾼다; 그것을 보내면 결코 나가지 않은
+  `/static/../../etc/passwd`를 `/etc/passwd`로 바꾼다; 그것을 보내면 결코 나가지 않은
   공격을 기록하고 harness의 실패를 방어의 실패로 채점하게 된다. 퍼센트 인코딩 차이는
   허용된다.
 - **시작하지 못하는 도구는 예외를 던지고; 0이 아닌 값으로 종료하는 도구는 센다.**
@@ -346,9 +339,10 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - **Elasticsearch는 512MB 힙을 가진 단일 노드다** 그래서 전체 스택이 기본 Docker
   메모리 허용치에 들어맞는다.
 - **없는 데이터는 0이 아니라 오류다**, 명시된 예외와 함께. 닿을 수 없는 Elasticsearch나
-  substrate, 읽을 수 없는 룰 파일, 그리고 위의 목표 엔드포인트는 503으로 답한다. 세션
-  생성, 케이스 발사 또는 기록, 종료는 닿을 수 없는 대상 시스템이나 wiki 로그를
-  흡수한다(발사는 출발지나 도구를 위해 substrate가 필요하면 여전히 503으로 답한다).
+  substrate, 읽을 수 없는 룰 파일은 503으로 답한다. 세션 생성은 닿을 수 없는 board를
+  흡수한다(세션은 스냅샷 없이 시작하고 loot를 받을 수 없다). 케이스 발사 또는 기록,
+  종료는 대상 시스템을 읽지 않는다(발사는 출발지나 도구를 위해 substrate가 필요하면
+  여전히 503으로 답한다).
   ingest 내부의 억제 복원과 경보를 구간 및 호스트에 배치하는 것(이는 비어서 돌아온다)은
   닿을 수 없는 substrate를 흡수하므로, 라운드는 그래도 시작하고 멈출 수 있다. 분모가
   0인 비율은 null이 아니라 0.0이다: 정밀도, 재현율, F1, FPR, 그리고 게임의 speed,
@@ -396,7 +390,7 @@ Docker의 MTU를 기본 브리지에 대해(`mtu`) 그리고 모든 새 브리�
 systemd 유닛 `fsl-platform.service`가 매 부팅마다
 `docker compose -f /opt/fsl/compose.yaml up -d --build`를 실행한다.
 
-그래서 오늘 위의 compose 레인지 전체, 열한 개 서비스 전부가 하나의 Nova VM 안에서
+그래서 오늘 위의 compose 레인지 전체, 아홉 개 서비스 전부가 하나의 Nova VM 안에서
 돈다. 8000은 VM 자신의 주소에 publish되고 그 보안 그룹에서 열리므로, 브라우저가
 floating IP에서 콘솔에 닿는다; 다른 포트는 VM의 loopback에 머문다.
 
@@ -437,9 +431,9 @@ slot은 호스트 그 자체이며, `/api/range/slot/`를 통하고 `range/slot.
 호스트는 선언된 구간마다 포트 하나를 가지며, `<host>.<segment>`로 이름 붙고, 모두
 `fsl-range`에 있다. `gateway`를 채우는 호스트는 모든 출발지의 게이트웨이 주소를 하나의
 인터넷 포트에 지니며, cloud-init은 첫 번째만 구성하므로 그 user data가 매 부팅마다
-나머지를 추가한다. 모든 호스트의 user data는 estate 이름(`juice-shop`, `wiki.internal`,
-`board`)을 `/etc/hosts`에 덧붙이며, 이것이 WAF가 업스트림을, Juice Shop이 wiki를 찾는
-방식이다.
+나머지를 추가한다. 모든 호스트의 user data는 estate 이름(`board`,
+`board-db`)을 `/etc/hosts`에 덧붙이며, 이것이 WAF가 board를, board가 자신의 데이터베이스를
+찾는 방식이다.
 
 pfSense CE 엣지(골든 이미지 `fsl-pfsense-edge`: 베이스 + Suricata 8.0.5 + sshd + OPT1
 관리 NIC)가 slot에서 부팅한다. `POST /api/range/configure/`는 관리 ssh로
@@ -459,7 +453,7 @@ Elasticsearch는 `bin/fetch-geoip`가 채우는 bind-mount된 `config/ingest-geo
 `GeoLite2-City.mmdb`를 읽으므로, 컨테이너 재생성에서 살아남는다.
 `rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 slot의 Stop 리셋이다: Nova가 상주
 slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, flavour, 포트, 고정 IP를
-유지하므로, 한 세션은 다음 세션에 풀린 플래그도, 편집된 룰도, 심어진 데이터도 남기지
+유지하므로, 한 세션은 다음 세션에 편집된 룰도, 심어진 데이터도 남기지
 않는다. 재구축은 디스크를 지우므로, VM이 ACTIVE가 되면 `POST /api/range/configure/`가
 뒤따라야 한다.
 
@@ -497,8 +491,7 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
      |
      v
  estate network
-   Juice Shop VM     board VM (Django on MySQL)     wiki VM
-   Juice Shop --SSRF--> wiki, inside the estate, past no gateway
+   board VM (Django on MySQL)
 
  Evidence:
    pfSense: Suricata EVE, filterlog --syslog, UDP--> Filebeat --+
@@ -528,18 +521,16 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
   콘솔). 터미널 창은 완료되었다.
 - **세션 수명 주기 배선**: Start는 READY slot을 취하고 아무것도 만들지 않는다; Stop은
   재구축을 발사하고, ACTIVE를 기다리고, 엣지와 WAF를 재구성하고, slot이 스스로
-  응답하는지 확인한다(풀린 것 없음, 룰과 WAF 모드가 기준선, 시계가 동기화, 카나리아
+  응답하는지 확인한다(ground truth를 읽을 수 있음, 룰과 WAF 모드가 기준선, 시계가 동기화, 카나리아
   경보 하나). 재구축 메커니즘은 존재한다; 트리거와 READY 게이트는 미뤄진 세션 설계다.
-- **차단과 board 목표**: 블루팀이 WAF의 모드와 Suricata의 drop 룰을 스스로 전환하고,
-  케이스가 차단되었는지는 대상 시스템 쪽에서 `meta["blocked"]`로 읽힌다; board의
-  `auth_user`는 board 자신의 쪽에서 판정되는 목표가 된다. 둘 다 결정되었으나, 구축되지는
-  않았다.
+- **차단**: 블루팀이 WAF의 모드와 Suricata의 drop 룰을 스스로 전환하고,
+  케이스가 차단되었는지는 대상 시스템 쪽에서 `meta["blocked"]`로 읽힌다. 결정되었으나,
+  구축되지는 않았다.
 
 사람이 결정해야 할 것으로 아직 열려 있는 결정은 `docs/STATE.md`("Decisions left for
 a person")에 있다.
 
-아직 어떤 출처로도 확정되지 않은 것: board가 자신의 쪽에서 `auth_user`가 탈취되었는지를
-어떻게 판정하는지; WAF VM의 audit 로그가 어떻게 Elasticsearch에 닿는지; 블루팀이 어느
+아직 어떤 출처로도 확정되지 않은 것: WAF VM의 audit 로그가 어떻게 Elasticsearch에 닿는지; 블루팀이 어느
 인터페이스에서 WAF의 모드를 전환하는지; pfSense에서 Suricata의 inline 모드인지 legacy
 모드인지; 어느 토큰 없는 랭킹이 국가를 공급하는지. 구축 전에 이 클라우드에서 테스트해야
 할 것은 placement 스펙의 "To test on this cloud before building"에 있다.

@@ -7,33 +7,35 @@ cannot show.
 
 | | |
 |---|---|
-| **Threat emulated** | An unauthenticated attacker on the public internet, against a shop exposed to it. Opportunistic rather than targeted: no phishing, no insider, no stolen credentials. |
+| **Threat emulated** | An unauthenticated attacker on the public internet, against a community board exposed to it. Opportunistic rather than targeted: no phishing, no insider, no stolen credentials. |
 | **Attacker's position** | Outside, from one of the Internet origins the range builds (four on Docker, thirty declared), each with its own address range and a declared country that GeoIP agrees with. No account on the target, no code on it, no presence inside the estate. |
 | **Command and control** | None. Attacks are requests sent from Kali or from the platform; nothing left on the target calls home. |
-| **What the attacker is after** | Juice Shop's challenges, which it marks `solved` itself, plus reading the internal wiki, judged from the wiki's access log. |
+| **What the attacker is after** | The board's `auth_user` password hashes. It exfiltrates them and proves possession by submitting them; the platform credits only loot that matches the target's own start-of-session snapshot. |
 | **What the defence has** | Suricata on the WAF's traffic and ModSecurity in front of the application, both reporting into one index. The defender writes and silences rules, nothing else. |
 
 ## The stages it reaches
 
-The stages are those of Mandiant's targeted attack life cycle. Three of its
+The stages are those of Mandiant's targeted attack life cycle. Two of its
 eight happen here.
 
 | Stage | Cases | ATT&CK | Mechanism (CAPEC) |
 |---|---|---|---|
-| Initial reconnaissance | `sqlmap-boolean-blind`, `metrics-endpoint-scrape` | [T1595.002 Vulnerability Scanning](https://attack.mitre.org/techniques/T1595/002/) | [66 SQL Injection](https://capec.mitre.org/data/definitions/66.html), [116 Excavation](https://capec.mitre.org/data/definitions/116.html) |
-| Initial compromise | the three `sqli-*` cases, both `xss-*` cases | [T1190 Exploit Public-Facing Application](https://attack.mitre.org/techniques/T1190/) | [66 SQL Injection](https://capec.mitre.org/data/definitions/66.html), [63 Cross-Site Scripting (XSS)](https://capec.mitre.org/data/definitions/63.html) |
-| Complete mission | `path-traversal-ftp`, `confidential-document-access`, `backup-file-null-byte` | [T1190 Exploit Public-Facing Application](https://attack.mitre.org/techniques/T1190/) | [126 Path Traversal](https://capec.mitre.org/data/definitions/126.html), [1 Accessing Functionality Not Properly Constrained by ACLs](https://capec.mitre.org/data/definitions/1.html), [52 Embedding NULL Bytes](https://capec.mitre.org/data/definitions/52.html) |
+| Initial compromise | the four `board-sqli-*` cases, both `board-xss-*` cases | [T1190 Exploit Public-Facing Application](https://attack.mitre.org/techniques/T1190/) | [66 SQL Injection](https://capec.mitre.org/data/definitions/66.html), [63 Cross-Site Scripting (XSS)](https://capec.mitre.org/data/definitions/63.html) |
+| Complete mission | `board-path-traversal-static` | [T1190 Exploit Public-Facing Application](https://attack.mitre.org/techniques/T1190/) | [126 Path Traversal](https://capec.mitre.org/data/definitions/126.html) |
 
 Benign cases carry no stage. A stage on them would make every false positive
 read as part of an attack.
 
 ## What it cannot show
 
-**Five of the eight stages never happen.** Establish foothold, escalate
-privileges, internal reconnaissance, move laterally and maintain presence are
-all absent because nothing executes code on the target. The estate is reached
-through the application, so there is no foothold to escalate from. Whether the
-range should grow one is an open scope decision (`docs/STATE.md`, backlog). The
+**Six of the eight stages never happen.** No case scans, so initial
+reconnaissance is absent. Establish foothold, escalate privileges, internal
+reconnaissance, move laterally and maintain presence are all absent because
+nothing executes code on the target. The estate is reached through the
+application, so there is no foothold to escalate from. Whether the range should
+grow one is an open scope decision (`docs/STATE.md`, backlog). Moving
+laterally is shelved until the second target, a PHP company site
+(sub-project B), gives it somewhere to go. The
 console computes which stages the cases reach from the case file, so that list
 cannot drift.
 
@@ -42,8 +44,8 @@ Enterprise technique for exploiting a public-facing application; ATT&CK does
 not distinguish SQL injection from path traversal. The CAPEC id in each case's
 `pattern` field does.
 
-**The target only judges its own challenges.** An attack that achieves
-something Juice Shop has no challenge for scores as achieving nothing.
+**The target only judges its own loot.** An attack that achieves something
+other than taking the board's `auth_user` hashes scores as achieving nothing.
 
 **Benign traffic is a handful of cases, not a population.** Two of them look
 like attacks (an apostrophe in a search, the word `select`). They catch a rule

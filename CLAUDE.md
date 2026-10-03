@@ -16,11 +16,13 @@ built in full, measured and discarded in a day.
 
 Two separate numbers, and the first one is the point.
 
-**What the red team took.** Juice Shop ships challenges and flips its own
-`solved` flag when one falls. That is the score: which objectives were lost,
-and whether the blue team saw each one go. A lost objective nobody detected
-counts double. The platform never decides whether an attack achieved
-something - only the target does.
+**What the red team took.** The board's `auth_user` table holds the password
+hashes; the platform snapshots them from the target when a session starts. The
+attacker exfiltrates them and proves possession by submitting them, and only
+loot that exactly matches the snapshot is credited. That is the score: which
+objectives were lost, and whether the blue team saw each one go. A lost
+objective nobody detected counts double. The platform never decides whether an
+attack achieved something - only the target's own stored data does.
 
 **What the defence got wrong.** TP, FP, FN and TN per attack case, from
 matching alerts to the cases that caused them. Reported beside the first
@@ -140,7 +142,7 @@ a gated number or shrinks the floor. If it is genuinely unavoidable, edit
   the platform's own belief about what an attack did. The whole value of the
   objective layer is that its ground truth is orthogonal to the detector.
 - **These stay, by the user's decision:** OpenStack, Docker, Suricata, nginx,
-  Elasticsearch. Everything else — Django, Filebeat, ModSecurity, Juice Shop,
+  Elasticsearch. Everything else — Django, Filebeat, ModSecurity,
   the API shape, the scoring design — may be replaced if it makes the project
   smaller without breaking the above.
 - **Every UI action exists as a REST API first.** Console templates fetch
@@ -166,7 +168,8 @@ how suppression works.
 | `platform/api/`, `platform/console/` | REST surface and the console |
 | `platform/console/templates/console/strings.html` | every visible string, `en` and `ko` |
 | `platform/wargames.py` | the case catalogue the console fires from |
-| `platform/objectives.py` | the only file that knows the target's challenge API |
+| `platform/api/loot.py` | the loot verifier: reads the target's ground truth, matches submitted loot against it |
+| `wargames/<id>/objectives.yaml` | a wargame's secret and objective tiers |
 | `platform/scoreboard.py` | what each side achieved: pure, no I/O |
 | `platform/attacker.py` | the only file that knows the attacker box and its marker |
 | `redteam/` | attack execution and ground truth |
@@ -183,7 +186,7 @@ directory. Same for `test/`.
 ```bash
 docker compose up -d --build          # includes kali, the attacker's terminal
 docker compose exec platform \        # fire the scripted cases, or drive it
-  python redteam/run.py --target http://shop.com --tool-target http://shop.com
+  python redteam/run.py --target http://board.com --tool-target http://board.com
 ```
 
 The target is not published; the harness fires from inside the range (the
