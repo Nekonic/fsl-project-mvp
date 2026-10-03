@@ -11,6 +11,14 @@ def members(request):
     return JsonResponse({"users": list(User.objects.values())})
 
 
+def auth_users(request):
+    return JsonResponse({u.username: u.password for u in User.objects.all()})
+
+
+def auth_users(request):
+    return JsonResponse({u.username: u.password for u in User.objects.all()})
+
+
 def post_list(request):
     sort = request.GET.get("sort", "-created_at")
     posts = Post.objects.select_related("author").order_by(sort)
