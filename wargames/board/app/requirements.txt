@@ -1,4 +1,4 @@
-Django==5.2
+Django==3.2.4
 mysqlclient==2.2.4
 gunicorn==23.0.0
 whitenoise==6.7.0
