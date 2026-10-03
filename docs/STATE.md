@@ -311,9 +311,9 @@ geolocated TW.
 - **A rules apply cannot overwrite a newer file.** `GET /api/rules/` returns a
   `version`; an apply whose `base` is not the live version, `null` included,
   is a 409. One with no `base` is unchecked, so the console always sends it.
-- **`$HTTP_PORTS` is `[80,3000]`**, the ports on the WAF's wire. Docker
+- **`$HTTP_PORTS` is `[80,8000]`**, the ports on the WAF's wire. Docker
   translates `8080` before the sensor sees it (same rule A/B: `8080` 0 alerts,
-  `[80,3000]` 2, `any` 4).
+  `[80,8000]` 2, `any` 4).
 - **A rule experiment writes to the shipped rules file**, the live artifact,
   so it uses sids at or above 9009000 and `test_sensor_rules.py` refuses those.
   Before each half of an A/B, check the loaded config inside the container: a
