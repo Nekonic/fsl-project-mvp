@@ -3,9 +3,7 @@ import json
 import requests
 
 from conftest import PLATFORM_URL
-from range import ATTACKER, run
-
-BOARD = "http://board.com"
+from range import SCORER, run
 
 
 def _board_session():
@@ -16,10 +14,14 @@ def _board_session():
     return created.json()["id"]
 
 
-def _members_from_the_attacker():
-    body = run(ATTACKER, ["curl", "-s", "--max-time", "20",
-                          f"{BOARD}/members.json"]).stdout
-    return {u["username"]: u["password"] for u in json.loads(body)["users"]}
+def _auth_users_over_estate():
+    body = run(SCORER, [
+        "python3", "-c",
+        "import urllib.request,sys; "
+        "sys.stdout.write(urllib.request.urlopen("
+        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
+    ]).stdout
+    return json.loads(body)
 
 
 def test_submitting_the_exfiltrated_hashes_credits_the_full_ladder(stack_is_up):
@@ -31,8 +33,8 @@ def test_submitting_the_exfiltrated_hashes_credits_the_full_ladder(stack_is_up):
     )
     assert fired.status_code == 201, fired.text
 
-    loot = _members_from_the_attacker()
-    rows = [{"username": name, "hash": digest} for name, digest in loot.items()]
+    truth = _auth_users_over_estate()
+    rows = [{"username": name, "hash": digest} for name, digest in truth.items()]
     submitted = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/loot/",
         json={"loot": rows}, timeout=120,

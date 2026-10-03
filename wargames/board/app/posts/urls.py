@@ -3,7 +3,6 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path("members.json", views.members, name="members"),
     path("internal/auth-users", views.auth_users, name="auth_users"),
     path("", views.post_list, name="post_list"),
     path("search/", views.search, name="search"),
