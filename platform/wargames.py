@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import yaml
 from django.conf import settings
 
 import lifecycle
@@ -36,6 +37,31 @@ def objective_model(wargame_id: str) -> str:
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
+
+def objectives(wargame_id: str) -> dict[str, Any]:
+    if wargame_id not in WARGAMES:
+        raise UnknownWargame(wargame_id)
+    path = Path(settings.FSL_SOURCE) / "wargames" / wargame_id / "objectives.yaml"
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return checked_objectives(loaded, path)
+
+def checked_objectives(loaded: Any, source) -> dict[str, Any]:
+    if not isinstance(loaded, dict):
+        raise InvalidCatalogue(f"{source}: an objective spec is a mapping")
+    secret = loaded.get("secret")
+    if not isinstance(secret, dict) or not secret.get("read_path"):
+        raise InvalidCatalogue(f"{source}: secret.read_path is required")
+    tiers = loaded.get("tiers")
+    if not isinstance(tiers, list) or not tiers:
+        raise InvalidCatalogue(f"{source}: tiers must be a non-empty list")
+    for tier in tiers:
+        if not isinstance(tier, dict) or not isinstance(tier.get("key"), str) \
+                or not isinstance(tier.get("difficulty"), int) \
+                or not isinstance(tier.get("name"), str):
+            raise InvalidCatalogue(
+                f"{source}: each tier needs a key, a name, and an integer difficulty"
+            )
+    return loaded
 
 def host(wargame_id: str) -> str:
     return urlsplit(WARGAMES[wargame_id]["public_url"]).netloc
