@@ -443,6 +443,81 @@ def _observe_objectives(session) -> dict:
     return observed
 
 @require_http_methods(["POST"])
+def session_loot(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    if wargames.objective_model(session.scenario) != "loot_verified":
+        raise BadRequest(
+            f"{session.scenario!r} does not take loot; its objective model is "
+            f"{wargames.objective_model(session.scenario)!r}"
+        )
+    truth = session.baseline
+    if not isinstance(truth, dict):
+        raise Conflict(
+            f"session {session.pk} captured no ground-truth snapshot at start, "
+            f"so submitted loot cannot be verified"
+        )
+    body = _payload(request)
+    spec = wargames.objectives(session.scenario)
+    matched_users = loot.matched(body.get("loot"), truth)
+    fired, coverage = loot.tiers_fired(spec, matched_users, truth)
+
+    attempted = session.cases.filter(malicious=True).exists()
+    credited = fired if attempted else []
+
+    at, earliest, latest = _loot_window(session, body.get("case_id"), timezone.now())
+    attributed = scoreboard.attribute(at, _malicious_attempts(session), earliest, latest)
+
+    before = session.objectives.count()
+    Objective.objects.bulk_create(
+        [
+            Objective(
+                session=session, key=tier["key"], name=tier["name"],
+                category=tier.get("category") or "", difficulty=int(tier["difficulty"]),
+                achieved_at=at, earliest=earliest, latest=latest,
+            )
+            for tier in credited
+        ],
+        ignore_conflicts=True,
+    )
+    return _reply({
+        "matched": sorted(matched_users),
+        "coverage": coverage,
+        "credited": [tier["key"] for tier in credited],
+        "objectives": session.objectives.count() - before,
+        "attempted": attempted,
+        "unattributed": [] if attributed else [tier["key"] for tier in credited],
+    })
+
+def _loot_window(session, case_id, submitted_at):
+    if case_id:
+        case = session.cases.filter(case_id=case_id, malicious=True).first()
+        if case is not None:
+            return (
+                case.ended_at,
+                case.started_at - scoreboard.CLOCK_SKEW,
+                case.ended_at + scoreboard.CLOCK_SKEW,
+            )
+    return (
+        submitted_at,
+        submitted_at - scoreboard.ATTRIBUTION_WINDOW,
+        submitted_at + scoreboard.CLOCK_SKEW,
+    )
+
+def _malicious_attempts(session):
+    return [
+        scoreboard.Attempt(
+            case_id=case.case_id,
+            started_at=case.started_at,
+            ended_at=case.ended_at,
+            malicious=True,
+            detected=False,
+            detection_ids=(),
+        )
+        for case in session.cases.filter(malicious=True)
+    ]
+
+@require_http_methods(["POST"])
 def fire_attack(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)

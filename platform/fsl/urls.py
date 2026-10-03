@@ -17,6 +17,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/cases/", views.session_cases),
     path("api/sessions/<int:session_id>/attacks/", views.fire_attack),
     path("api/sessions/<int:session_id>/objectives/", views.session_objectives),
+    path("api/sessions/<int:session_id>/loot/", views.session_loot),
     path("api/sessions/<int:session_id>/ingest/", views.ingest_detections),
     path("api/sessions/<int:session_id>/detections/", views.session_detections),
     path("api/sessions/<int:session_id>/commands/", views.session_commands),
