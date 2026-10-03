@@ -63,7 +63,7 @@ truth and the three objective gates dispatch on it; `judged` is derived so the
 `/api/wargames/` catalogue is unchanged; no behavior change, `bin/verify` green,
 tests 1217 -> 1220). `loot_verified` is a reserved enum value with no behavior
 yet. **Phase 3 is done too (committed this session, `bin/verify` green:
-core_loc held at 461, product_loc 8381 -> 8579, tests 1220 -> 1252).** The
+core_loc held at 461, product_loc 8381 -> 8580, tests 1220 -> 1252).** The
 board is `loot_verified`. The internal `/internal/auth-users` endpoint returns
 the `auth_user` username/hash map over `estate` and 404s through the WAF - an
 off-path ground truth the detector never sees. `wargames/board/objectives.yaml`

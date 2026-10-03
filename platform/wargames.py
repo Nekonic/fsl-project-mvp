@@ -24,7 +24,8 @@ WARGAMES = {
         "name": "Community board",
         "description": (
             "An ordinary Django board on MySQL, behind the WAF and the IDS. "
-            "It keeps no score of its own, so only the defence is scored."
+            "The attacker scores by exfiltrating its auth-user password hashes "
+            "and proving possession against the platform's snapshot."
         ),
         "case_file": "board.yaml",
         "public_url": settings.BOARD_PUBLIC_URL,
