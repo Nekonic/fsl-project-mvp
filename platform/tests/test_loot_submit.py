@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
+import wargames
 from api.models import Objective, Session
 
 pytestmark = pytest.mark.django_db
@@ -125,10 +126,17 @@ def test_a_closed_session_refuses_loot(client):
 
 
 def test_a_non_loot_wargame_refuses_loot(client):
-    with patch("api.views.objectives.solved_keys", return_value=set()):
-        session_id = client.post_json("/api/sessions/", {}).json()["id"]
-
-    response = submit(client, session_id, rows_for("admin"))
+    detect = {
+        "id": "detect",
+        "name": "Detection only",
+        "description": "A wargame that keeps no objectives.",
+        "case_file": "board.yaml",
+        "public_url": "http://board.com",
+        "objective_model": "none",
+    }
+    with patch.dict(wargames.WARGAMES, {"detect": detect}):
+        session_id = client.post_json("/api/sessions/", {"scenario": "detect"}).json()["id"]
+        response = submit(client, session_id, rows_for("admin"))
 
     assert response.status_code == 400
 

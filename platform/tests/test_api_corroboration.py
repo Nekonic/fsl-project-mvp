@@ -11,7 +11,7 @@ from tests.sessions import open_session
 pytestmark = pytest.mark.django_db
 
 T0 = datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
-CASE = "path-traversal-ftp"
+CASE = "board-path-traversal-static"
 
 @pytest.fixture
 def session_id(client):
@@ -106,17 +106,17 @@ CASES_DIR = Path(__file__).resolve().parents[2] / "redteam/cases"
 MATCHING = "FSL path traversal attempt"
 
 def edited_catalogue(directory):
-    edited = load_cases(CASES_DIR / "default.yaml")
+    edited = load_cases(CASES_DIR / "board.yaml")
     for case in edited:
         if case["name"] == CASE:
             case["expect"] = "SQL"
     directory.mkdir()
-    (directory / "default.yaml").write_text(yaml.safe_dump(edited))
+    (directory / "board.yaml").write_text(yaml.safe_dump(edited))
     return str(directory)
 
 def unparseable_catalogue(directory):
     directory.mkdir()
-    (directory / "default.yaml").write_text("- name: [unclosed\n  malicious: true\n")
+    (directory / "board.yaml").write_text("- name: [unclosed\n  malicious: true\n")
     return str(directory)
 
 def judged(response):

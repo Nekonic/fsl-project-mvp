@@ -165,7 +165,7 @@ def sessions(request):
 
     scenario = _payload(request).get("scenario")
     if scenario is None:
-        scenario = "juice-shop"
+        scenario = "board"
     if not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"

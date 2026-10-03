@@ -72,7 +72,7 @@ def test_firing_from_an_origin_asks_the_range_once(client, session_id):
             patch("api.views.harness.fire"):
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/",
-            {"case": "sqli-login-bypass", "origin": "rotate"},
+            {"case": "board-sqli-login-bypass", "origin": "rotate"},
         )
 
     assert response.status_code == 201
@@ -84,7 +84,7 @@ def test_firing_by_the_front_door_does_not_ask_the_range_at_all(client, session_
             patch("api.views._observe_objectives"), \
             patch("api.views.harness.fire"):
         response = client.post_json(
-            f"/api/sessions/{session_id}/attacks/", {"case": "sqli-login-bypass"},
+            f"/api/sessions/{session_id}/attacks/", {"case": "board-sqli-login-bypass"},
         )
 
     assert response.status_code == 201

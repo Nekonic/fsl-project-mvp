@@ -23,7 +23,7 @@ from redteam.tools import (
 REQUEST_TIMEOUT = 15.0
 TOOL_TIMEOUT = 600.0
 
-DEFAULT_TOOL_TARGET = "http://shop.com"
+DEFAULT_TOOL_TARGET = "http://board.com"
 
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
 
@@ -76,7 +76,7 @@ def run(
     platform_url = platform_url.rstrip("/")
     opened = http.post(
         f"{platform_url}/api/sessions/",
-        json={"scenario": "juice-shop"},
+        json={"scenario": "board"},
         timeout=REQUEST_TIMEOUT,
     )
     opened.raise_for_status()

@@ -10,7 +10,7 @@ def session_id(client):
 
 @pytest.fixture
 def a_case(client):
-    return client.get("/api/wargames/juice-shop/cases/").json()[0]
+    return client.get("/api/wargames/board/cases/").json()[0]
 
 def test_wargames_lists_every_target(client):
     response = client.get("/api/wargames/")

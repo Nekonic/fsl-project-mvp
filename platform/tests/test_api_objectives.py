@@ -27,7 +27,7 @@ def solved(*keys, solved_at=None):
 @pytest.fixture
 def session_id(client):
     with patch("api.views.objectives.solved_keys", return_value={"errorHandlingChallenge"}):
-        return client.post_json("/api/sessions/", {}).json()["id"]
+        return client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
 
 def poll(client, session_id, catalogue):
     with patch("api.views.objectives.observe", return_value=(catalogue, "")):
@@ -77,7 +77,7 @@ def test_a_session_opened_blind_credits_nobody_for_what_came_before(client):
         "api.views.objectives.solved_keys",
         side_effect=ObjectivesUnavailable("down"),
     ):
-        session_id = client.post_json("/api/sessions/", {}).json()["id"]
+        session_id = client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
 
     first = poll(client, session_id, solved("errorHandlingChallenge"))
 

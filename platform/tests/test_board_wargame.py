@@ -20,7 +20,6 @@ def test_the_board_is_a_second_wargame_on_its_own_host(client):
     wargames = listed(client)
 
     assert wargames["board"]["public_url"] == "http://board.com"
-    assert wargames["juice-shop"]["public_url"] == "http://shop.com"
 
 def test_both_wargames_are_judged_but_by_different_models(client):
     wargames = listed(client)
@@ -67,14 +66,14 @@ def test_a_board_case_is_addressed_to_the_board(client):
 
     assert fired.call_args.args[1]["request"]["headers"]["Host"] == "board.com"
 
-def test_a_juice_shop_case_is_still_addressed_to_the_shop(client):
+def test_a_session_with_no_scenario_fires_cases_at_the_board(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     name = next(
-        c["name"] for c in client.get("/api/wargames/juice-shop/cases/").json()
+        c["name"] for c in client.get("/api/wargames/board/cases/").json()
         if c["summary"].split()[0] in {"GET", "POST"}
     )
 
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": name})
 
-    assert fired.call_args.args[1]["request"]["headers"]["Host"] == "shop.com"
+    assert fired.call_args.args[1]["request"]["headers"]["Host"] == "board.com"
