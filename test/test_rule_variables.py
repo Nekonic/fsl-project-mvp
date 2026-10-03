@@ -17,7 +17,7 @@ def fired_with_a_ported_rule(stack_is_up, baseline_rules):
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
     try:
-        for name in ("sqli-login-bypass", "sqli-union-user-table"):
+        for name in ("board-sqli-search", "board-sqli-union-search"):
             sent = requests.post(
                 f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
                 json={"case": name}, timeout=300,

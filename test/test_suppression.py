@@ -4,8 +4,8 @@ import requests
 from conftest import PLATFORM_URL, score_when_ready, seen_by_both_engines
 
 SID = 9000004
-SILENCED_CASE = "path-traversal-ftp"
-CONTROL_CASE = "sqli-login-bypass"
+SILENCED_CASE = "board-path-traversal-static"
+CONTROL_CASE = "board-sqli-search"
 
 def _run(cases):
     session_id = requests.post(

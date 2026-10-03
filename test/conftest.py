@@ -13,7 +13,7 @@ from range import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = "http://localhost:8000"
-TARGET_PUBLIC = "http://shop.com"
+TARGET_PUBLIC = "http://board.com"
 
 SESSION_LINE = re.compile(r"^session (\d+) done$")
 
@@ -157,7 +157,7 @@ def from_attacker(path: str) -> None:
     result = run(
         ATTACKER,
         ["curl", "-s", "-o", "/dev/null", "--max-time", "20",
-         f"http://shop.com{path}"],
+         f"http://board.com{path}"],
     )
     assert result.ok, (
         f"could not reach the target from the attacker box: {result.stderr}"

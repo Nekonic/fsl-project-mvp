@@ -3,7 +3,7 @@ import requests
 
 from conftest import PLATFORM_URL
 
-CASE = "sqlmap-boolean-blind"
+CASE = "board-sqli-orderby-sqlmap"
 
 @pytest.fixture(scope="module")
 def fired(stack_is_up):

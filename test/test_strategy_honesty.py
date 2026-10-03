@@ -8,7 +8,7 @@ def marker_only_session(stack_is_up):
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
-    for name in ("sqli-login-bypass", "normal-product-search"):
+    for name in ("board-sqli-search", "board-normal-search"):
         sent = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
             json={"case": name}, timeout=300,
@@ -36,7 +36,7 @@ def test_a_strategy_that_cannot_place_a_case_says_which_ones(marker_only_session
         "address gives every one of them a miss, and the score said nothing. "
         "An operator reads that as a defence that failed"
     )
-    assert "sqli-login-bypass" in named[0][1], named
+    assert "board-sqli-search" in named[0][1], named
 
 def test_the_console_is_given_the_reason_and_not_only_the_number():
     import pathlib

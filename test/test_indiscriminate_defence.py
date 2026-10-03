@@ -8,8 +8,8 @@ CATCH_ALL = (
     'flow:established,to_server; http.uri; content:"/"; sid:9009997; rev:1;)\n'
 )
 CASES = [
-    "sqli-login-bypass", "xss-img-onerror", "path-traversal-ftp",
-    "normal-product-search", "normal-login-attempt",
+    "board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static",
+    "board-normal-search", "board-normal-search-with-apostrophe",
 ]
 
 def rules():

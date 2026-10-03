@@ -7,7 +7,7 @@ BUFFERLESS = (
     'alert http any any -> any any (msg:"FSL UNION without a buffer"; '
     'flow:established,to_server; content:"UNION"; nocase; sid:9009996; rev:1;)\n'
 )
-CASE = "sqli-union-user-table"
+CASE = "board-sqli-union-search"
 
 
 def signatures(session_id):

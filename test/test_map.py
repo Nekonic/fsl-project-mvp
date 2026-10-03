@@ -5,7 +5,7 @@ from conftest import (
     PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines,
 )
 
-CASE = "sqli-login-bypass"
+CASE = "board-sqli-search"
 EDGE_COUNTRY = "Russia"
 
 @pytest.fixture(scope="module")

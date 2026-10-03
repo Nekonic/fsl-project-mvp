@@ -12,8 +12,8 @@ from range import ATTACKER, start_hint
 
 GAP_SECONDS = 6
 
-ATTACK_PATH = "/rest/products/search?q=%27%20OR%201%3D1--"
-BENIGN_PATH = "/rest/products/search?q=apple"
+ATTACK_PATH = "/search/?q=%27%20OR%201%3D1--"
+BENIGN_PATH = "/search/?q=release"
 
 def _now():
     return datetime.now(timezone.utc)

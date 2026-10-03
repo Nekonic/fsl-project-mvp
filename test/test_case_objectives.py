@@ -1,23 +1,40 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL
+from conftest import PLATFORM_URL, score_when_ready
+
+SCENARIO = {"scenario": "juice-shop"}
 
 @pytest.fixture(scope="module")
-def claims(stack_is_up):
-    catalogue = requests.get(
+def catalogue(stack_is_up):
+    return requests.get(
         f"{PLATFORM_URL}/api/wargames/juice-shop/cases/", timeout=60
     ).json()
+
+@pytest.fixture(scope="module")
+def claims(catalogue):
     return {case["takes"]: case["name"] for case in catalogue if case.get("takes")}
 
 @pytest.fixture(scope="module")
-def must_take(stack_is_up):
-    catalogue = requests.get(
-        f"{PLATFORM_URL}/api/wargames/juice-shop/cases/", timeout=60
-    ).json()
+def must_take(catalogue):
     claimed = {case["takes"] for case in catalogue if case.get("takes")}
     assert claimed, "no case in redteam/cases/ claims to take an objective"
     return claimed
+
+@pytest.fixture(scope="module")
+def session_id(catalogue):
+    takers = [case["name"] for case in catalogue if case.get("takes")]
+    session_id = requests.post(
+        f"{PLATFORM_URL}/api/sessions/", json=SCENARIO, timeout=120
+    ).json()["id"]
+    for name in takers:
+        sent = requests.post(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
+            json={"case": name}, timeout=300,
+        )
+        assert sent.status_code == 201, sent.text
+    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=120)
+    return session_id
 
 @pytest.fixture(scope="module")
 def taken(session_id):
@@ -25,6 +42,20 @@ def taken(session_id):
     return requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60
     ).json()
+
+@pytest.fixture(scope="module")
+def score(session_id, claims):
+    owners = set(claims.values())
+
+    def ready(totals):
+        if totals["tp"] <= 0:
+            return False
+        return any(
+            case["name"] in owners and case["detected"] and case["detection_ids"]
+            for case in totals["per_case"]
+        )
+
+    return score_when_ready(session_id, until=ready)
 
 def test_the_red_team_takes_objectives_at_all(taken):
     assert taken, (
