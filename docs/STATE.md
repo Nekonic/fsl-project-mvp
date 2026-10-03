@@ -25,6 +25,41 @@ opens its whole Elasticsearch record.
 
 ## In progress
 
+**The objective model is being redesigned (2026-10-03, user-directed).** The
+objective layer was overfit to Juice Shop (`objectives.py` reads Juice Shop's
+self-flipped `solved` flag for every judged scenario). The decided replacement
+is one target-agnostic model where **the attacker proves possession**: the
+attacker exfiltrates a real secret and submits it, and the platform credits the
+objective only after matching the proof against the target's real value (ground
+truth from the target side, orthogonal to the detector). Juice Shop is to be
+removed once the board carries this model — nothing may stay Juice-Shop-only.
+Design: `docs/superpowers/specs/2026-10-03-attacker-proven-objective-model-design.md`.
+Four phases (plan: `docs/superpowers/plans/2026-10-03-attacker-proven-objective-phase-1.md`):
+(1) board exfil paths + salt rotation; (2) `objective_model` dispatcher refactor;
+(3) `loot_verified` adapter + `POST /api/sessions/<id>/loot/` + verifier + board
+`objectives.yaml` + internal ground-truth endpoint; (4) retarget the Juice-Shop
+tests and remove Juice Shop.
+
+**Phase 1 committed this session (`c21725f..HEAD`), `bin/verify` green
+(core_loc 461 unchanged, tests 1213 -> 1217).** The board wargame now leaks its
+real `auth_user` password hashes two ways. (a) It is pinned to **Django 3.2.4**
+(an unpatched version, CVE-2021-35042) on `python:3.9-slim`, and `post_list`
+takes a `?sort=` parameter passed straight to `order_by()`. That order_by sink
+**is a genuine SQL injection** - verified live: a `.`-containing value (e.g.
+`posts_post.id,...`) bypasses Django's field validation and reaches the raw
+`ORDER BY` clause, and error-based extraction leaked live DB data
+(`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`). The board runs
+`DEBUG=True`, so MySQL errors surface. **sqlmap's off-the-shelf payloads do not
+auto-complete the dump through this ORM/ORDER-BY injection** (they are not
+shaped for the required dotted-column prefix); `board-sqli-orderby-sqlmap`
+(`redteam/cases/board.yaml`) is therefore a **loud, detected** SQLi probe, and
+the clean loot path for the objective (Phase 3) is (b) **`/members.json`**, a
+`User.objects.values()` endpoint that returns every `auth_user` row including
+the hash - a quiet, undetected GET. Salts rotate per rebuild because `board-db`
+keeps no persistent volume (`test_board_db_ephemeral.py` guards this). Full
+automated extraction via the order_by sink and live-cloud rebuild stay manual
+checks. Phases 2-4 and the PHP company site (target #2, its own spec) are next.
+
 **Audit cleanup committed this session (2026-10-02).** A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
 the user asked for all. 23 were removed, test-first, `bin/verify` green:

@@ -99,8 +99,9 @@ Docker attaching the WAF's networks in the priority order set in
 
 The WAF sends `Host: board.com` to `board:8000` (`deploy/nginx/board.conf`)
 and everything else to its `BACKEND`, `juice-shop:3000`. The board is the
-second wargame: Django 5.2 under gunicorn, which migrates and seeds itself on
-start, on MySQL pinned by digest. Neither is published. The board is not
+second wargame: Django 3.2.4 (an unpatched version with a known `order_by`
+SQL-injection flaw, CVE-2021-35042) under gunicorn, which migrates and seeds
+itself on start, on MySQL pinned by digest. Neither is published. The board is not
 judged: it has no objectives, and a session snapshots a baseline only for a
 judged wargame, so a board session scores the defence alone.
 

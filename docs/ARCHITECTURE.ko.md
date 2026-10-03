@@ -95,8 +95,9 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어�
 
 WAF는 `Host: board.com`을 `board:8000`으로 보내고(`deploy/nginx/board.conf`), 나머지
 전부를 자신의 `BACKEND`인 `juice-shop:3000`으로 보낸다. board는 두 번째 wargame이다:
-gunicorn 아래 Django 5.2이며, 시작 시 스스로 마이그레이션하고 시드를 넣고, digest로
-고정된 MySQL 위에서 돈다. 둘 다 publish되지 않는다. board는 채점되지 않는다: 목표가
+gunicorn 아래 Django 3.2.4(알려진 `order_by` SQL 인젝션 결함 CVE-2021-35042이 있는
+미패치 버전)이며, 시작 시 스스로 마이그레이션하고 시드를 넣고, digest로 고정된 MySQL
+위에서 돈다. 둘 다 publish되지 않는다. board는 채점되지 않는다: 목표가
 없고, 세션은 채점되는 wargame에 대해서만 기준선을 스냅샷하므로, board 세션은 방어만
 채점한다.
 
