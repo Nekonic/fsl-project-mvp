@@ -33,7 +33,7 @@
   request:
     method: POST
     path: /accounts/login/
-    data:
+    json:
       username: "' OR 1=1--"
       password: "anything"
 
@@ -85,7 +85,7 @@
   request:
     method: POST
     path: /posts/1/comments/
-    data:
+    json:
       body: "<img src=x onerror=alert(1)>"
 
 - name: board-path-traversal-static
