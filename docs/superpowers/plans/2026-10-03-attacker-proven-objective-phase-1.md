@@ -102,23 +102,31 @@ def _from_range(path):
     return out.stdout.strip()
 
 
-def test_the_sort_parameter_is_accepted_and_orders_the_list(stack_is_up):
+def test_sorting_by_a_real_column_works(stack_is_up):
     assert _from_range("/?sort=title") == "200"
     assert _from_range("/?sort=-created_at") == "200"
 
 
-def test_an_injected_sort_reaches_the_query_on_the_pinned_version(stack_is_up):
-    probe = "/?sort=id)%20--%20"
-    assert _from_range(probe) in {"200", "500"}, (
-        "the sort value is parameterized away, so the board is not injectable; "
-        "the version pin or the order_by sink is missing"
+def test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by(stack_is_up):
+    assert _from_range("/?sort=nope__nope") == "500", (
+        "an unknown sort field did not error, so the ?sort value is ignored and "
+        "never reaches order_by; the injection sink is not wired"
     )
 ```
 
-- [ ] **Step 2: Run it to verify the injection test fails.**
+Note on the test design: an unknown query parameter is silently ignored by the
+current view, so a crafted `?sort=` returns 200 whether or not the sink exists —
+a status probe cannot prove injectability by itself. The reliable black-box
+signal that user input *reaches* `order_by()` is that an invalid field name
+raises `FieldError` (HTTP 500 under the board's `DEBUG=True`). That is the
+fail-first assertion here; the CVE-2021-35042 injectability on the pinned
+version is proven by the sqlmap dump in Task 4 (manual live-stack check), not by
+a status code.
+
+- [ ] **Step 2: Run it to verify the sink test fails.**
 
 Run: `cd test && ../.venv/bin/python -m pytest test_board_exfil.py -q`
-Expected: `test_the_sort_parameter_is_accepted_and_orders_the_list` FAILS (the view ignores `sort` today, so `?sort=title` still works but `-created_at` is the only order) — more importantly the sink does not exist yet.
+Expected: `test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by` FAILS (today the view ignores `sort`, so `/?sort=nope__nope` returns 200, not 500).
 
 - [ ] **Step 3: Add the sink.** In `wargames/board/app/posts/views.py`, change `post_list`:
 
@@ -133,7 +141,7 @@ def post_list(request):
 
 Run: `docker compose up -d --build board`
 Run: `cd test && ../.venv/bin/python -m pytest test_board_exfil.py -q`
-Expected: both `test_the_sort_parameter_is_accepted_and_orders_the_list` and `test_an_injected_sort_reaches_the_query_on_the_pinned_version` PASS (the crafted `sort` does not 400/validate away on 3.2.4).
+Expected: both `test_sorting_by_a_real_column_works` and `test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by` PASS (the invalid field now reaches `order_by()` and raises `FieldError` → 500).
 
 - [ ] **Step 5: Commit.**
 
