@@ -97,22 +97,22 @@ def test_the_attacker_addresses_sit_on_the_right_subnet_ids():
         assert len(by_subnet[f"sub-fsl-{origin.id}"]) == origin.addresses
 
 def test_a_host_standing_is_not_booted_again_and_its_ports_stay():
-    servers = [{"id": "srv-1", "name": "fsl-wiki", "status": "ACTIVE",
-                "metadata": {slot.HOST: "fsl-wiki"}}]
+    servers = [{"id": "srv-1", "name": "fsl-board", "status": "ACTIVE",
+                "metadata": {slot.HOST: "fsl-board"}}]
 
     plan = planned(servers=servers)
 
-    assert "fsl-wiki" not in plan.boot
-    assert ("fsl-wiki", "srv-1", "ACTIVE") in plan.standing
-    assert not [p for p in plan.ports if p.host == "fsl-wiki"]
+    assert "fsl-board" not in plan.boot
+    assert ("fsl-board", "srv-1", "ACTIVE") in plan.standing
+    assert not [p for p in plan.ports if p.host == "fsl-board"]
 
 def test_a_port_left_from_an_earlier_try_is_used_not_made_again():
-    left = [{"id": "port-9", "name": "fsl-wiki.estate", "network_id": "net-estate"}]
+    left = [{"id": "port-9", "name": "fsl-board.estate", "network_id": "net-estate"}]
 
     plan = planned(ports=left)
 
-    assert "fsl-wiki.estate" not in {p.name for p in plan.ports}
-    assert "fsl-wiki" in plan.boot
+    assert "fsl-board.estate" not in {p.name for p in plan.ports}
+    assert "fsl-board" in plan.boot
 
 def test_a_host_whose_image_is_not_ready_blocks_the_slot_by_name():
     plan = planned(ready={h: i for h, i in READY.items() if h != "fsl-board"})
@@ -142,14 +142,14 @@ def test_the_waf_no_longer_stands_on_the_internet():
 
 def test_a_host_that_is_neither_edge_nor_attacker_may_not_stand_on_the_internet(tmp_path):
     document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
-    document["openstack"]["hosts"]["fsl-wiki"] = {"segments": ["estate", "mgmt", "internet"]}
+    document["openstack"]["hosts"]["fsl-board"] = {"segments": ["estate", "mgmt", "internet"]}
     path = tmp_path / "declaration.yaml"
     path.write_text(yaml.safe_dump(document))
     networks, subnets = fabric_standing()
 
     plan = slot.plan(declared.read(path, flavor="openstack"), networks, subnets, [], [], READY)
 
-    assert any("fsl-wiki" in reason and "internet" in reason for reason in plan.blocked)
+    assert any("fsl-board" in reason and "internet" in reason for reason in plan.blocked)
 
 def test_every_host_stands_on_management_where_the_platform_reaches_it():
     for host, entry in DECLARED.hosts.items():

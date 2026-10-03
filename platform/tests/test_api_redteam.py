@@ -16,11 +16,11 @@ def test_wargames_lists_every_target(client):
     response = client.get("/api/wargames/")
 
     assert response.status_code == 200
-    assert [w["id"] for w in response.json()] == ["juice-shop", "board"]
+    assert [w["id"] for w in response.json()] == ["board"]
     assert all(w["cases"] > 0 for w in response.json())
 
 def test_case_catalogue_describes_what_each_button_fires(client):
-    cases = client.get("/api/wargames/juice-shop/cases/").json()
+    cases = client.get("/api/wargames/board/cases/").json()
 
     assert len(cases) > 1
     assert any(case["malicious"] for case in cases)

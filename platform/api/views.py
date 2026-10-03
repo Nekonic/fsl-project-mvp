@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -24,7 +24,6 @@ import requests
 
 import attacker
 import game
-import objectives
 import scoreboard
 import suppress
 import topology
@@ -77,8 +76,6 @@ def _in_turn(change):
     return one_at_a_time
 SUPPRESSION_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
-
-CLOCK_SLACK = timedelta(seconds=5)
 
 def _shape(obj, fields):
     return {name: getattr(obj, name) for name in fields}
@@ -180,13 +177,7 @@ def sessions(request):
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
     baseline = []
-    model = wargames.objective_model(scenario)
-    if model == "self_judged":
-        try:
-            baseline = sorted(objectives.solved_keys(adapter.runner("wiki")))
-        except objectives.ObjectivesUnavailable:
-            baseline = None
-    elif model == "loot_verified":
+    if wargames.objective_model(scenario) == "loot_verified":
         try:
             baseline = loot.ground_truth(scenario)
         except loot.GroundTruthUnavailable:
@@ -373,9 +364,7 @@ def wargame_objectives(request, wargame_id):
     model = wargames.objective_model(wargame_id)
     if model == "none":
         return _reply([])
-    if model == "loot_verified":
-        return _reply(_loot_catalogue(wargames.objectives(wargame_id)))
-    return _reply(objectives.catalogue(substrate().runner("wiki")))
+    return _reply(_loot_catalogue(wargames.objectives(wargame_id)))
 
 def _loot_catalogue(spec):
     return [
@@ -402,45 +391,7 @@ def session_objectives(request, session_id):
     return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
-    if wargames.objective_model(session.scenario) != "self_judged":
-        return {"achieved": 0, "total": session.objectives.count()}
-    found, unreadable = objectives.observe(substrate().runner("wiki"))
-    solved = {o["key"]: o for o in found if o["solved"]}
-
-    if session.baseline is None:
-        if unreadable:
-            raise objectives.ObjectivesUnavailable(unreadable)
-        session.baseline = sorted(solved)
-        session.save(update_fields=["baseline"])
-        return {"achieved": 0, "baseline": len(session.baseline)}
-
-    ignore = set(session.baseline) | set(
-        session.objectives.values_list("key", flat=True)
-    )
-    observed_at = timezone.now()
-    fresh = [
-        Objective(
-            session=session,
-            key=key,
-            name=objective["name"],
-            category=objective["category"],
-            difficulty=objective["difficulty"],
-            achieved_at=at,
-            earliest=earliest,
-            latest=latest,
-        )
-        for key, objective in solved.items()
-        if key not in ignore
-        for at, earliest, latest in [_achieved(objective, session, observed_at)]
-    ]
-    before = session.objectives.count()
-    Objective.objects.bulk_create(fresh, ignore_conflicts=True)
-
-    total = session.objectives.count()
-    observed = {"achieved": total - before, "total": total}
-    if unreadable:
-        observed["unreadable"] = unreadable
-    return observed
+    return {"achieved": 0, "total": session.objectives.count()}
 
 @require_http_methods(["POST"])
 def session_loot(request, session_id):
@@ -579,11 +530,7 @@ def _record_case(session, case, started_at, ended_at, meta):
     )
 
 def _settle_and_observe(session):
-    time.sleep(settings.TARGET_SETTLE)
-    try:
-        return _observe_objectives(session)["achieved"]
-    except (objectives.ObjectivesUnavailable, RangeUnavailable):
-        return None
+    return _observe_objectives(session)["achieved"]
 
 ROTATE = "rotate"
 
@@ -614,10 +561,6 @@ def session_detail(request, session_id):
 def close_session(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
-    try:
-        unobserved = _observe_objectives(session).get("unreadable")
-    except (objectives.ObjectivesUnavailable, RangeUnavailable) as exc:
-        unobserved = str(exc)
 
     closed_at = timezone.now()
     if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
@@ -625,8 +568,6 @@ def close_session(request, session_id):
         _refuse_closed(session)
     session.ended_at = closed_at
     reply = _shape(session, SESSION_FIELDS)
-    if unobserved:
-        reply["unobserved"] = unobserved
 
     adapter = substrate()
     if hasattr(adapter, "rebuild_slot"):
@@ -944,24 +885,6 @@ def _breaches(session, cases, result):
         )
     return breaches
 
-def _achieved(objective, session, observed_at):
-    stamp = objective.get("solved_at")
-    try:
-        solved_at = datetime.fromisoformat(stamp) if stamp else None
-    except ValueError:
-        solved_at = None
-    if solved_at is None or not session.started_at - CLOCK_SLACK <= solved_at <= observed_at:
-        return observed_at, None, None
-    resolution = timedelta(milliseconds=1) if "." in stamp else timedelta(seconds=1)
-    lookback = (
-        scoreboard.ATTRIBUTION_WINDOW if objective.get("stamped_late") else scoreboard.CLOCK_SKEW
-    )
-    return (
-        solved_at,
-        solved_at - lookback,
-        solved_at + resolution + scoreboard.CLOCK_SKEW,
-    )
-
 def _expected(scenario, cases):
     catalogue = {}
     if any(case.expect is None for case in cases):
@@ -1240,10 +1163,11 @@ def range_configure(request):
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
 
-def _nothing_solved(adapter) -> bool:
+def _ground_truth_readable(adapter) -> bool:
     try:
-        return not objectives.solved_keys(adapter.runner("wiki"))
-    except (objectives.ObjectivesUnavailable, RangeUnavailable):
+        loot.ground_truth("board")
+        return True
+    except loot.GroundTruthUnavailable:
         return False
 
 def _baseline_rules() -> str:
@@ -1265,7 +1189,7 @@ def _range_ready(adapter) -> dict:
     plan = adapter.plan_slot()
     checks = {
         "active": plan.active,
-        "nothing_solved": _nothing_solved(adapter),
+        "ground_truth": _ground_truth_readable(adapter),
         "rules_baseline": _rules_at_baseline(adapter),
     }
     blocked = []
@@ -1276,12 +1200,12 @@ def _range_ready(adapter) -> dict:
         phase = "REBUILDING"
         blocked += [f"{host} is {status}" for host, _, status in plan.standing
                     if status != "ACTIVE"]
-    elif not (checks["nothing_solved"] and checks["rules_baseline"]):
+    elif not (checks["ground_truth"] and checks["rules_baseline"]):
         phase = "CHECKING"
     else:
         phase = "READY"
-    if not checks["nothing_solved"]:
-        blocked.append("the target is not clean: an objective is already solved")
+    if not checks["ground_truth"]:
+        blocked.append("the target's ground truth could not be read")
     if not checks["rules_baseline"]:
         blocked.append("the sensor rules are off baseline or a suppression is in force")
     return {
@@ -1309,7 +1233,7 @@ CANARY_CASE = {
     "correlation": "marker",
     "request": {
         "method": "GET",
-        "path": "/rest/products/search",
+        "path": "/search/",
         "params": {"q": "' OR 1=1--"},
     },
 }

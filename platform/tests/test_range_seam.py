@@ -147,7 +147,7 @@ def test_a_daemon_that_cannot_be_reached_is_not_a_failed_command(dispatch):
     substrate = seam.Docker()
 
     with pytest.raises(seam.RangeUnavailable) as raised:
-        substrate.run(seam.ATTACKER, ["curl", "http://juice-shop:3000/"])
+        substrate.run(seam.ATTACKER, ["curl", "http://board.com/"])
 
     assert seam.ATTACKER in str(raised.value), raised.value
     assert "Cannot connect" in str(raised.value), (
@@ -164,39 +164,23 @@ def test_the_exit_status_is_the_one_the_host_reported(dispatch):
 
     assert (ran.exit_code, ran.stderr) == (127, "sh: 1: nmap: not found\n")
 
-def test_the_target_has_no_shell_and_reports_through_its_node(dispatch):
-    fake = dispatch(stdout="200\n", stderr=finished(0))
-    substrate = seam.Docker()
-
-    ran = substrate.run(seam.TARGET, ["/nodejs/bin/node", "-e", "1"])
-
-    assert fake.commands[0][:4] == ["docker", "exec", "fsl-juice-shop", "/nodejs/bin/node"], (
-        "the target is a distroless image: a command wrapped in sh would fail "
-        "there before it ran"
-    )
-    assert (ran.exit_code, ran.stdout) == (0, "200\n")
-
 def run_here(wrapped, interpreter):
     done = subprocess.run(
         [interpreter, *wrapped[1:]], capture_output=True, text=True, timeout=30,
     )
     return done.stdout, seam.reported(done.stderr)
 
-@pytest.mark.parametrize("through, interpreter", [
-    ("through_shell", "/bin/sh"), ("through_node", None),
-])
-def test_the_report_survives_a_real_interpreter(through, interpreter):
-    wrap = getattr(seam, through)
-    interpreter = interpreter or node()
-
+def test_the_report_survives_a_real_interpreter():
     said, status = run_here(
-        wrap([node(), "-e", "console.log('200'); console.error('warn'); process.exit(4)"]),
-        interpreter,
+        seam.through_shell(
+            [node(), "-e", "console.log('200'); console.error('warn'); process.exit(4)"]
+        ),
+        "/bin/sh",
     )
     assert said == "200\n"
     assert status == (4, "warn\n")
 
-    _, missing = run_here(wrap(["/nonexistent/fsl-tool", "--flag"]), interpreter)
+    _, missing = run_here(seam.through_shell(["/nonexistent/fsl-tool", "--flag"]), "/bin/sh")
     assert missing is not None and missing[0] == 127, missing
 
 def test_the_segments_a_role_sits_on_come_back_as_names(dispatch):
@@ -210,34 +194,34 @@ def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
     substrate = seam.Docker()
     attacker = substrate.segments(seam.ATTACKER)
     dispatch(stdout=json.dumps({"fsl_estate": {}}))
-    target = substrate.segments(seam.TARGET)
+    target = substrate.segments(seam.BOARD)
 
     assert (attacker, target) == (frozenset({"fsl_edge"}), frozenset({"fsl_estate"}))
     assert not attacker & target
 
 def test_segments_of_a_host_that_is_not_there_is_an_outage(dispatch):
-    dispatch(returncode=1, stderr="Error: No such object: fsl-juice-shop")
+    dispatch(returncode=1, stderr="Error: No such object: fsl-board")
     substrate = seam.Docker()
 
     with pytest.raises(seam.RangeUnavailable):
-        substrate.segments(seam.TARGET)
+        substrate.segments(seam.BOARD)
 
 def test_a_segment_list_that_is_not_a_list_is_an_outage(dispatch):
     dispatch(returncode=0, stdout="<null>")
     substrate = seam.Docker()
 
     with pytest.raises(seam.RangeUnavailable):
-        substrate.segments(seam.TARGET)
+        substrate.segments(seam.BOARD)
 
 def test_recreating_a_role_takes_the_host_away_and_brings_it_back(dispatch):
     fake = dispatch()
     substrate = seam.Docker()
 
-    substrate.recreate(seam.TARGET)
+    substrate.recreate(seam.BOARD)
 
     assert fake.commands == [
-        ["docker", "compose", "rm", "-sf", "juice-shop"],
-        ["docker", "compose", "up", "-d", "juice-shop"],
+        ["docker", "compose", "rm", "-sf", "board"],
+        ["docker", "compose", "up", "-d", "board"],
     ]
 
 def test_a_recreate_that_did_not_take_the_host_away_does_not_bring_it_back(dispatch):
@@ -245,7 +229,7 @@ def test_a_recreate_that_did_not_take_the_host_away_does_not_bring_it_back(dispa
     substrate = seam.Docker()
 
     with pytest.raises(seam.RangeUnavailable):
-        substrate.recreate(seam.TARGET)
+        substrate.recreate(seam.BOARD)
 
     assert len(fake.commands) == 1, (
         "the host was never removed and the seam reported it recreated anyway"

@@ -6,10 +6,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from range import (
-    ATTACKER, GATEWAY, RangeUnavailable, SCORER, SENSOR, TARGET,
-    forget_wiki_reads, recreate, run, start_hint,
-)
+from range import ATTACKER, RangeUnavailable, SCORER, run, start_hint
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = "http://localhost:8000"
@@ -119,23 +116,6 @@ def defence_is_on(stack_is_up):
         f"POST /api/rules/suppressions/<id>/restore/"
     )
 
-def reset_target() -> None:
-    forget_wiki_reads()
-
-    recreate(TARGET)
-
-    deadline = time.time() + 180
-    while time.time() < deadline:
-        if target_answers():
-            return
-        time.sleep(3)
-
-    raise AssertionError(
-        f"the target was reset but it does not answer through the WAF from "
-        f"inside the range. nginx caches its upstream address at start, so "
-        f"recreate it too:\n  {start_hint(GATEWAY, SENSOR, fresh=True)}"
-    )
-
 def run_redteam() -> int:
     result = run(
         SCORER,
@@ -206,7 +186,6 @@ def seen_by_both_engines(session_id: int, totals: dict, **case) -> bool:
 
 @pytest.fixture(scope="session")
 def session_id(stack_is_up):
-    reset_target()
     return run_redteam()
 
 @pytest.fixture(scope="session")

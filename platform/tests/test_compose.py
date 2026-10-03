@@ -24,7 +24,7 @@ def test_every_image_is_pinned_to_something_that_cannot_move():
 
 def test_the_sensor_and_the_target_are_pinned_by_digest():
     sensor = [i for i in images() if "suricata" in i]
-    target = [i for i in images() if "juice-shop" in i]
+    target = [i for i in images() if "mysql" in i]
 
     assert sensor and all("@sha256:" in i for i in sensor), sensor
     assert target and all("@sha256:" in i for i in target), target
@@ -189,7 +189,7 @@ def test_the_waf_s_health_check_never_reaches_the_sensor():
     assert asked and asked.group(1) == "/healthz", (
         f"the WAF's health check asks {asked and asked.group(1)!r}. The image's "
         f"nginx answers /healthz itself and proxies every other path to "
-        f"juice-shop over the estate leg, where Suricata writes an http event "
+        f"the board over the estate leg, where Suricata writes an http event "
         f"for it: 360 an hour for as long as the stack runs. Ingest reads at "
         f"most 5000 documents of a session's window, oldest first, so a "
         f"session open 14 hours reads health checks and never the alerts after "

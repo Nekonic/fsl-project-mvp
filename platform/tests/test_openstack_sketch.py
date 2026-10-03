@@ -290,9 +290,9 @@ def test_what_the_sensor_watches_comes_from_the_roles_and_not_the_cloud():
 
 def test_a_role_no_server_fills_is_refused():
     with pytest.raises(RangeUnavailable) as raised:
-        sketch().runner("wiki")(["true"])
+        sketch().runner("board")(["true"])
 
-    assert "wiki" in str(raised.value) and "fsl-wiki" in str(raised.value)
+    assert "board" in str(raised.value) and "fsl-board" in str(raised.value)
 
 
 def test_the_cloud_field_constants_match_the_api_reference():

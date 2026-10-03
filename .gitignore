@@ -6,8 +6,6 @@ db.sqlite3
 /data/
 deploy/suricata/logs/
 deploy/nginx/logs/
-wargames/juice-shop/wiki/logs/*
-!wargames/juice-shop/wiki/logs/.gitkeep
 /backups/
 /openstack.env
 /.env

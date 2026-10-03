@@ -1,138 +1,63 @@
-import uuid
-from datetime import datetime, timezone
+import json
 
-import pytest
 import requests
 
-from conftest import PLATFORM_URL, reset_target, score_when_ready
-from range import ATTACKER, run
+from conftest import PLATFORM_URL, score_when_ready
+from range import SCORER, run
 
-SCENARIO = {"scenario": "juice-shop"}
+EXFIL_CASE = "board-sqli-search"
 
-REACHABLE = [
-    ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
-]
 
-TRIPS_A_RULE = "/rest/products/search?q=%3Cscript%3Ealert%281%29%3C%2Fscript%3E"
+def _auth_users_over_estate():
+    body = run(SCORER, [
+        "python3", "-c",
+        "import urllib.request,sys; "
+        "sys.stdout.write(urllib.request.urlopen("
+        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
+    ]).stdout
+    return json.loads(body)
 
-def _now():
-    return datetime.now(timezone.utc)
 
-def from_attacker(path):
-    result = run(
-        ATTACKER,
-        ["curl", "-s", "-o", "/dev/null", "--max-time", "20",
-         f"http://shop.com{path}"],
-    )
-    assert result.ok, (
-        f"could not reach Juice Shop from the attacker box: {result.stderr}"
-    )
-
-@pytest.fixture(scope="module")
-def unsolved(stack_is_up):
-    catalogue = requests.get(
-        f"{PLATFORM_URL}/api/wargames/juice-shop/objectives/", timeout=60
-    ).json()
-    solved = {o["key"] for o in catalogue if o["solved"]}
-
-    for key, path in REACHABLE:
-        if key not in solved:
-            return key, path
-
-    reset_target()
-
-    catalogue = requests.get(
-        f"{PLATFORM_URL}/api/wargames/juice-shop/objectives/", timeout=60
-    ).json()
-    solved = {o["key"] for o in catalogue if o["solved"]}
-    for key, path in REACHABLE:
-        if key not in solved:
-            return key, path
-
-    raise AssertionError(
-        "the target was reset and still reports these objectives as solved: "
-        f"{sorted(solved)}"
-    )
-
-@pytest.fixture(scope="module")
-def breach_session(unsolved):
-    key, path = unsolved
-    source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
+def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json=SCENARIO, timeout=60
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=120
     ).json()["id"]
 
-    case_id = str(uuid.uuid4())
-    requests.post(f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": case_id}, timeout=30)
-    try:
-        started = _now()
-        from_attacker(path)
-        from_attacker(TRIPS_A_RULE)
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60)
-    finally:
-        requests.post(f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": None}, timeout=30)
-
-    requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",
-        json={
-            "case_id": case_id, "name": "terminal-objective", "malicious": True,
-            "correlation": "window", "source_ip": source_ip,
-            "started_at": started.isoformat(), "ended_at": _now().isoformat(),
-        },
-        timeout=30,
+    fired = requests.post(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
+        json={"case": EXFIL_CASE}, timeout=300,
     )
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)
-    return session_id, key, case_id
+    assert fired.status_code == 201, fired.text
+    case_id = fired.json()["case_id"]
 
-def test_the_target_decides_an_objective_was_taken(breach_session):
-    session_id, key, _ = breach_session
+    truth = _auth_users_over_estate()
+    rows = [{"username": name, "hash": digest} for name, digest in truth.items()]
+    submitted = requests.post(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/loot/",
+        json={"loot": rows, "case_id": case_id}, timeout=120,
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["credited"], "the exfiltrated hashes credited no tier"
 
-    taken = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=30
-    ).json()
+    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-    keys = [o["key"] for o in taken]
-    assert key in keys, keys
-    assert all(o["difficulty"] >= 1 for o in taken)
-
-def test_objectives_solved_before_the_session_are_not_counted(breach_session):
-    session_id, _, _ = breach_session
-    fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json=SCENARIO, timeout=60).json()["id"]
-
-    requests.post(f"{PLATFORM_URL}/api/sessions/{fresh}/objectives/", timeout=60)
-
-    assert requests.get(
-        f"{PLATFORM_URL}/api/sessions/{fresh}/objectives/", timeout=30
-    ).json() == []
-
-def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(breach_session):
-    session_id, key, case_id = breach_session
-
-    def fired(totals):
-        return next(
-            (c for c in totals["per_case"] if c["case_id"] == case_id), {}
-        )
+    def fired_case(totals):
+        return next((c for c in totals["per_case"] if c["case_id"] == case_id), {})
 
     scored = score_when_ready(
-        session_id, until=lambda totals: bool(fired(totals).get("detection_ids"))
+        session_id, until=lambda t: bool(fired_case(t).get("detection_ids"))
     )
-    own = fired(scored)
+    own = fired_case(scored)
 
-    assert scored["objectives"]["objectives"] >= 1
-    breach = next(b for b in scored["breaches"] if b["key"] == key)
-    assert breach["difficulty"] >= 1
     assert own.get("detection_ids"), (
-        f"the attack that took {key} (case {case_id}) drew no detection, and a "
-        f"breach credited to it then reads exactly like one credited to "
-        f"nothing, so this proves nothing about attribution"
+        f"the attack that took the loot (case {case_id}) drew no detection, so a "
+        f"breach credited to it reads exactly like one credited to nothing"
     )
-    assert (breach["detected"], sorted(breach["detection_ids"])) == (
-        own["detected"], sorted(own["detection_ids"])
-    ), (
-        f"{key} was taken by case {case_id}, and the breach does not carry that "
-        f"case's detections - it was credited to another attack or to none"
-    )
-
-    seen = [b["detected"] for b in scored["breaches"]]
-    if all(seen) or not any(seen):
-        assert scored["objectives"]["coverage"] == (1.0 if seen[0] else 0.0)
+    assert scored["breaches"], "nothing was taken, so attribution proves nothing"
+    for breach in scored["breaches"]:
+        assert (breach["detected"], sorted(breach["detection_ids"])) == (
+            own["detected"], sorted(own["detection_ids"])
+        ), (
+            f"the loot was windowed to case {case_id}, so each breach must carry "
+            f"that case's detections; {breach['key']} carried something else"
+        )

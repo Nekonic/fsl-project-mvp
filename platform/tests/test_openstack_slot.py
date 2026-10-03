@@ -206,12 +206,10 @@ def test_every_range_port_is_in_the_range_group(cloud):
 def test_every_host_is_told_where_the_others_are_on_the_estate(cloud):
     adapter(cloud).ensure_slot()
 
-    shop = cloud.port("fsl-juice-shop.estate")["fixed_ips"][0]["ip_address"]
-    wiki = cloud.port("fsl-wiki.estate")["fixed_ips"][0]["ip_address"]
+    board = cloud.port("fsl-board.estate")["fixed_ips"][0]["ip_address"]
     for host in DECLARED.hosts:
         [written] = [f for f in cloud.config(host)["write_files"] if f["path"] == "/etc/hosts"]
-        assert f"{shop} juice-shop\n" in written["content"]
-        assert f"{wiki} wiki wiki.internal\n" in written["content"]
+        assert f"{board} board board-db\n" in written["content"]
 
 def test_the_gateway_adds_every_origin_gateway_to_its_internet_nic(cloud):
     adapter(cloud).ensure_slot()

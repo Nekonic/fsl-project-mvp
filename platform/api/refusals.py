@@ -2,7 +2,6 @@ from django.core.exceptions import BadRequest
 from django.http import Http404, JsonResponse
 
 import attacker
-import objectives
 import operator_log
 from ingest.elastic import ElasticUnavailable
 from range.ports import Drifted, RangeUnavailable
@@ -11,7 +10,6 @@ from rules.suricata import RuleApplyError, RulesUnreadable
 UNAVAILABLE = (
     RangeUnavailable,
     RulesUnreadable,
-    objectives.ObjectivesUnavailable,
     operator_log.OperatorLogUnavailable,
     ElasticUnavailable,
 )

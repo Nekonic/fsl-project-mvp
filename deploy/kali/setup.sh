@@ -46,8 +46,8 @@ chmod 0666 /label/active /label/origin
 cat > /etc/profile.d/fsl.sh <<'EOF'
 export http_proxy="http://127.0.0.1:8081"
 export HTTP_PROXY="http://127.0.0.1:8081"
-export FSL_TARGET="http://shop.com"
-export FSL_TARGET_HOST="shop.com"
+export FSL_TARGET="http://board.com"
+export FSL_TARGET_HOST="board.com"
 EOF
 
 cat >> /root/.bashrc <<'EOF'

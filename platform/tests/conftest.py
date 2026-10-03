@@ -22,10 +22,6 @@ def client():
     return ApiClient()
 
 @pytest.fixture(autouse=True)
-def no_settle(settings):
-    settings.TARGET_SETTLE = 0
-
-@pytest.fixture(autouse=True)
 def no_real_substrate(request):
     import subprocess
 

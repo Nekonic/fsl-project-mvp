@@ -14,26 +14,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
 
 ATTACKER = "attacker"
-TARGET = "target"
+BOARD = "board"
+BOARD_DB = "board-db"
 SENSOR = "sensor"
-WIKI = "wiki"
 GATEWAY = "gateway"
 SCORER = "scorer"
 
-ROLES = (ATTACKER, TARGET, SENSOR, WIKI, GATEWAY)
-WIKI_READ_LOG = "/var/log/nginx/read.log"
+ROLES = (ATTACKER, BOARD, BOARD_DB, SENSOR, GATEWAY)
 
 EXIT_MARK = "fsl.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
-
-TARGET_NODE = "/nodejs/bin/node"
-NODE_REPORT = (
-    "const ran = require('child_process').spawnSync("
-    "process.argv[1], process.argv.slice(2), {stdio: 'inherit'});"
-    "if (ran.error) process.stderr.write(ran.error.message + '\\n');"
-    f"process.stderr.write('{EXIT_MARK}' + (ran.error ? 127 : ran.status ?? "
-    "128 + require('os').constants.signals[ran.signal]) + '\\n');"
-)
 
 class RangeUnavailable(RuntimeError):
     pass
@@ -58,9 +48,6 @@ def through_shell(argv: list[str]) -> list[str]:
         f'{shlex.join(argv)}; printf "{EXIT_MARK}%d\\n" "$?" >&2',
     ]
 
-def through_node(argv: list[str]) -> list[str]:
-    return [TARGET_NODE, "-e", NODE_REPORT, "--", *argv]
-
 def reported(stderr: str) -> tuple[int, str] | None:
     found = _REPORTED.match(stderr)
     if found is None:
@@ -77,13 +64,8 @@ def declared_roles() -> dict[str, str]:
     document = yaml.safe_load(DECLARATION.read_text()) or {}
     return dict(document.get("roles") or {})
 
-WITHOUT_A_SHELL = {TARGET: through_node}
-
 DOCKER_HOSTS = {
-    role: Host(
-        node=node, unit=node.removeprefix("fsl-"),
-        reporting=WITHOUT_A_SHELL.get(role, through_shell),
-    )
+    role: Host(node=node, unit=node.removeprefix("fsl-"))
     for role, node in declared_roles().items()
 }
 
@@ -177,11 +159,6 @@ def segments(role: str, timeout: float = 60.0) -> frozenset[str]:
 
 def recreate(role: str, timeout: float = 300.0) -> None:
     RANGE.recreate(role, timeout=timeout)
-
-def forget_wiki_reads() -> None:
-    cleared = run(WIKI, ["truncate", "-s", "0", WIKI_READ_LOG])
-    if not cleared.ok:
-        raise RangeUnavailable(f"the wiki kept its read log: {cleared.output[-300:]}")
 
 def start_hint(*roles: str, fresh: bool = False) -> str:
     return RANGE.start_hint(*roles, fresh=fresh)

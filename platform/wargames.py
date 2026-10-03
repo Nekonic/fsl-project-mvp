@@ -11,14 +11,6 @@ import lifecycle
 from redteam.harness import is_tool_case, load_cases
 
 WARGAMES = {
-    "juice-shop": {
-        "id": "juice-shop",
-        "name": "OWASP Juice Shop",
-        "description": "A deliberately insecure shop, behind the WAF and the IDS.",
-        "case_file": "default.yaml",
-        "public_url": settings.PUBLIC_TARGET_URL,
-        "objective_model": "self_judged",
-    },
     "board": {
         "id": "board",
         "name": "Community board",
@@ -28,7 +20,7 @@ WARGAMES = {
             "and proving possession against the platform's snapshot."
         ),
         "case_file": "board.yaml",
-        "public_url": settings.BOARD_PUBLIC_URL,
+        "public_url": settings.PUBLIC_TARGET_URL,
         "objective_model": "loot_verified",
     },
 }

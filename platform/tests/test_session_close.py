@@ -4,39 +4,45 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from api.models import Session
-from objectives import ObjectivesUnavailable
+from api.models import Objective, Session
 
 pytestmark = pytest.mark.django_db
 
-JUICE = [{
-    "key": "loginAdminChallenge", "name": "Login Admin", "category": "Injection",
-    "difficulty": 2, "description": "", "solved": False,
-}]
+TRUTH = {
+    "admin": "pbkdf2_sha256$600000$aaa$AAAADMIN=",
+    "jiwoo": "pbkdf2_sha256$600000$bbb$BBBJIWOO=",
+    "minseo": "pbkdf2_sha256$600000$ccc$CCCMINSEO=",
+}
 
-
-def solved(at=None):
-    return [dict(JUICE[0], solved=True, updatedAt=at)]
+EXFIL_CASE = "22222222-2222-4222-8222-222222222222"
 
 
 @pytest.fixture
 def session_id(client):
-    with patch("objectives._fetch", return_value=JUICE), patch(
-        "objectives._internal", return_value={"key": "internalRunbookRead", "name": "x",
-                                              "category": "", "difficulty": 1,
-                                              "description": "", "solved": False,
-                                              "solved_at": None},
-    ):
-        return client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
+    with patch("api.views.loot.ground_truth", return_value=dict(TRUTH)):
+        return client.post_json("/api/sessions/", {"scenario": "board"}).json()["id"]
+
+
+def _fire_exfil(client, session_id):
+    now = timezone.now()
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": EXFIL_CASE, "name": "board-sqli-search", "malicious": True,
+        "correlation": "marker", "started_at": now.isoformat(),
+        "ended_at": (now + timedelta(seconds=2)).isoformat(),
+    })
+
+
+def _submit(client, session_id, names):
+    return client.post_json(f"/api/sessions/{session_id}/loot/", {
+        "loot": [{"username": n, "hash": TRUTH[n]} for n in names],
+    })
 
 
 def test_a_closed_session_cannot_be_closed_again(client, session_id):
-    with patch("objectives._fetch", return_value=JUICE):
-        first = client.post_json(f"/api/sessions/{session_id}/close/")
+    first = client.post_json(f"/api/sessions/{session_id}/close/")
     closed_at = Session.objects.get(pk=session_id).ended_at
-    with patch("objectives._fetch", return_value=solved()), patch(
-        "django.utils.timezone.now", return_value=timezone.now() + timedelta(days=1)
-    ):
+
+    with patch("django.utils.timezone.now", return_value=timezone.now() + timedelta(days=1)):
         again = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert first.status_code == 200
@@ -46,81 +52,41 @@ def test_a_closed_session_cannot_be_closed_again(client, session_id):
         f"sessions' traffic"
     )
     assert Session.objects.get(pk=session_id).ended_at == closed_at
-    assert client.get(f"/api/sessions/{session_id}/objectives/").json() == [], (
-        "a breach from the day after was recorded into a session already closed"
+    assert client.get(f"/api/sessions/{session_id}/objectives/").json() == []
+
+
+def test_closing_credits_nothing_new_and_keeps_what_was_submitted(client, session_id):
+    _fire_exfil(client, session_id)
+    assert _submit(client, session_id, ["admin"]).status_code == 200
+    before = {o["key"] for o in client.get(f"/api/sessions/{session_id}/objectives/").json()}
+
+    client.post_json(f"/api/sessions/{session_id}/close/")
+
+    after = {o["key"] for o in client.get(f"/api/sessions/{session_id}/objectives/").json()}
+    assert "board-auth-user-admin" in after, "close threw away loot submitted before it"
+    assert after == before, (
+        "loot is taken only through POST /loot/; a close that credited anything "
+        "on its own would score the red team for what it never proved it took"
     )
 
 
-def test_what_the_target_lost_since_the_last_poll_is_recorded_at_close(client, session_id):
-    with patch("objectives._fetch", return_value=solved()):
-        client.post_json(f"/api/sessions/{session_id}/close/")
+def test_a_close_reply_has_nothing_to_confess(client, session_id):
+    closed = client.post_json(f"/api/sessions/{session_id}/close/")
 
-    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
-
-    assert [o["key"] for o in taken] == ["loginAdminChallenge"], (
-        "the board polls every ten seconds and nothing polled at close, so a "
-        "breach in the last few seconds was never recorded and the session "
-        "read as untouched"
-    )
-
-
-WIKI_READ = {"key": "internalRunbookRead", "name": "x", "category": "", "difficulty": 1,
-             "description": "", "solved": False, "solved_at": None}
-
-
-def test_a_close_that_could_not_read_the_target_says_so(client, session_id):
-    with patch("objectives._fetch", side_effect=ObjectivesUnavailable("juice-shop timed out")):
-        response = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert response.status_code == 200, response.content
-    assert response.json()["ended_at"] is not None
-    assert "juice-shop timed out" in response.json().get("unobserved", ""), (
-        "the close's last look at the target failed and the session was closed "
-        "anyway, answering exactly as a close that looked: whatever was taken "
-        "since the last poll is lost and nothing said so"
-    )
-
-
-def test_a_close_that_could_not_read_the_wiki_says_so(client, session_id):
-    with patch("objectives._fetch", return_value=JUICE):
-        response = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert response.status_code == 200, response.content
-    assert "wiki" in response.json().get("unobserved", "")
-
-
-def test_a_close_that_read_everything_has_nothing_to_confess(client, session_id):
-    with patch("objectives._fetch", return_value=JUICE), patch(
-        "objectives._internal", return_value=WIKI_READ
-    ):
-        response = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert response.status_code == 200, response.content
-    assert "unobserved" not in response.json()
-
-
-def test_a_wiki_that_cannot_be_read_does_not_throw_away_what_the_target_said(client, session_id):
-    with patch("objectives._fetch", return_value=solved()):
-        response = client.post_json(f"/api/sessions/{session_id}/objectives/")
-
-    assert response.status_code == 200, (
-        f"the wiki was unreadable and Juice Shop answered, and all of Juice "
-        f"Shop's verdicts were discarded with a {response.status_code}"
-    )
-    assert response.json()["achieved"] == 1
-    assert "wiki" in response.json()["unreadable"]
+    assert closed.status_code == 200, closed.content
+    assert closed.json()["ended_at"] is not None
+    assert "unobserved" not in closed.json()
 
 
 def test_an_attack_that_was_running_when_the_session_closed_is_still_in_its_window(client, session_id):
-    a_case = client.get("/api/wargames/juice-shop/cases/").json()[0]["name"]
+    a_case = client.get("/api/wargames/board/cases/").json()[0]["name"]
 
     def closes_meanwhile(*args, **kwargs):
-        with patch("objectives._fetch", return_value=JUICE):
-            client.post_json(f"/api/sessions/{session_id}/close/")
+        client.post_json(f"/api/sessions/{session_id}/close/")
 
     with patch("api.views.harness.fire", side_effect=closes_meanwhile), patch(
-        "api.views._observe_objectives", return_value={"achieved": 0}
-    ), patch("api.views._origin_for", return_value=None):
+        "api.views._origin_for", return_value=None
+    ):
         response = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case})
 
     assert response.status_code == 201, response.content
@@ -133,94 +99,29 @@ def test_an_attack_that_was_running_when_the_session_closed_is_still_in_its_wind
     )
 
 
-def test_two_observations_at_once_record_an_objective_once(client, session_id):
+def test_two_loots_at_once_record_an_objective_once(client, session_id):
     from api import views
-    from api.models import Objective
 
-    real = views._achieved
+    _fire_exfil(client, session_id)
+    real = views.loot.tiers_fired
     underway = []
 
-    def overtaken(objective, session, observed_at):
+    def overtaken(spec, matched_users, truth):
         if not underway:
             underway.append(True)
-            with patch("objectives._fetch", return_value=solved()):
-                client.post_json(f"/api/sessions/{session_id}/objectives/")
-        return real(objective, session, observed_at)
+            _submit(client, session_id, ["admin"])
+        return real(spec, matched_users, truth)
 
-    with patch("objectives._fetch", return_value=solved()), patch(
-        "api.views._achieved", side_effect=overtaken
-    ):
-        response = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    with patch("api.views.loot.tiers_fired", side_effect=overtaken):
+        response = _submit(client, session_id, ["admin"])
 
     assert response.status_code == 200, (
-        f"a console poll and a close observed the target at once, both saw "
-        f"the objective as new, and the second died on the unique constraint: "
-        f"{response.status_code}"
+        f"two loot submissions credited the same tier at once, both saw it as "
+        f"new, and the second died on the unique constraint: {response.status_code}"
     )
-    assert Objective.objects.filter(session_id=session_id).count() == 1
-
-
-def fire_closing_meanwhile(client, session_id, target, breach_during_fire):
-    a_case = client.get("/api/wargames/juice-shop/cases/").json()[0]["name"]
-
-    def closes_then_breaches(*args, **kwargs):
-        client.post_json(f"/api/sessions/{session_id}/close/")
-        if breach_during_fire:
-            target["challenges"] = solved(timezone.now().isoformat())
-
-    with patch("objectives._fetch", side_effect=lambda: target["challenges"]), patch(
-        "api.views.harness.fire", side_effect=closes_then_breaches
-    ), patch("api.views._origin_for", return_value=None):
-        return client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case})
-
-
-def test_what_an_attack_still_running_at_close_took_is_on_the_board(client, session_id):
-    response = fire_closing_meanwhile(client, session_id, {"challenges": JUICE}, True)
-
-    assert response.status_code == 201, response.content
-    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
-    assert [o["key"] for o in taken] == ["loginAdminChallenge"], (
-        "the close read the target before the attack still running took the "
-        "objective, every later observation was refused as closed, and the "
-        "breach inside the stretched window reached no board"
-    )
-    score = client.get(f"/api/sessions/{session_id}/score/").json()
-    assert score["objectives"]["objectives"] == 1
-
-
-def test_a_solve_the_target_records_a_moment_after_the_attack_is_still_seen(
-    client, session_id, settings
-):
-    settings.TARGET_SETTLE = 0.25
-    target = {"challenges": JUICE}
-
-    def target_catches_up(seconds):
-        if seconds == settings.TARGET_SETTLE:
-            target["challenges"] = solved(timezone.now().isoformat())
-
-    with patch("api.views.time.sleep", side_effect=target_catches_up):
-        response = fire_closing_meanwhile(client, session_id, target, False)
-
-    assert response.status_code == 201, response.content
-    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
-    assert [o["key"] for o in taken] == ["loginAdminChallenge"], (
-        "the target records a solve a moment after answering the request that "
-        "earned it, and the fire read the target before that moment"
-    )
-
-
-def test_a_target_that_cannot_be_read_after_the_attack_does_not_lose_the_attack(
-    client, session_id
-):
-    a_case = client.get("/api/wargames/juice-shop/cases/").json()[0]["name"]
-
-    with patch("objectives._fetch", side_effect=ObjectivesUnavailable("timed out")), patch(
-        "api.views.harness.fire"
-    ), patch("api.views._origin_for", return_value=None):
-        response = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case})
-
-    assert response.status_code == 201, response.content
-    assert Session.objects.get(pk=session_id).cases.count() == 1
+    assert Objective.objects.filter(
+        session_id=session_id, key="board-auth-user-admin"
+    ).count() == 1
 
 
 class Rebuilds:
@@ -232,12 +133,11 @@ class Rebuilds:
         self.rebuilt += 1
         if self.fail is not None:
             raise self.fail
-        return [("fsl-waf", "srv-1"), ("fsl-juice-shop", "srv-2")]
+        return [("fsl-waf", "srv-1"), ("fsl-board", "srv-2")]
 
 
 def test_closing_on_the_compose_range_does_not_rebuild(client, session_id):
-    with patch("objectives._fetch", return_value=JUICE):
-        response = client.post_json(f"/api/sessions/{session_id}/close/")
+    response = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert response.status_code == 200, response.content
     assert response.json()["ended_at"] is not None
@@ -246,9 +146,7 @@ def test_closing_on_the_compose_range_does_not_rebuild(client, session_id):
 
 def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
     found = Rebuilds()
-    with patch("api.views.substrate", lambda: found), patch(
-        "api.views._observe_objectives", return_value={}
-    ):
+    with patch("api.views.substrate", lambda: found):
         response = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert response.status_code == 200, response.content
@@ -256,30 +154,25 @@ def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
     assert found.rebuilt == 1
     assert response.json()["rebuilding"] == [
         {"host": "fsl-waf", "server": "srv-1"},
-        {"host": "fsl-juice-shop", "server": "srv-2"},
+        {"host": "fsl-board", "server": "srv-2"},
     ]
 
 
-def test_closing_observes_the_target_before_it_rebuilds(client, session_id):
+def test_closing_stamps_ended_at_before_it_rebuilds(client, session_id):
     order = []
 
     class Recorder:
         def rebuild_slot(self):
-            order.append("rebuild")
+            order.append(Session.objects.get(pk=session_id).ended_at is not None)
             return []
 
-    def observed(session):
-        order.append("observe")
-        return {}
-
-    with patch("api.views.substrate", lambda: Recorder()), patch(
-        "api.views._observe_objectives", side_effect=observed
-    ):
+    with patch("api.views.substrate", lambda: Recorder()):
         client.post_json(f"/api/sessions/{session_id}/close/")
 
-    assert order == ["observe", "rebuild"], (
-        "the target's solved flags must be read off the live VMs before the "
-        "rebuild wipes them"
+    assert order == [True], (
+        "the session's ended_at must be stamped before the slot rebuilds, so a "
+        "rebuild that wipes the VMs cannot reopen the scoring window onto the "
+        "next session's traffic"
     )
 
 
@@ -287,9 +180,7 @@ def test_a_failed_rebuild_leaves_the_session_closed(client, session_id):
     from range.ports import Drifted
 
     found = Rebuilds(fail=Drifted("fsl-waf is not standing"))
-    with patch("api.views.substrate", lambda: found), patch(
-        "api.views._observe_objectives", return_value={}
-    ):
+    with patch("api.views.substrate", lambda: found):
         response = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert response.status_code == 200, response.content

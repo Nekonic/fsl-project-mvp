@@ -34,7 +34,7 @@ def test_starting_on_the_compose_range_ignores_the_slot(client):
 def test_starting_a_session_takes_a_ready_slot(client):
     with patch("api.views.substrate", lambda: Cloud()), patch(
         "api.views._range_ready", return_value=_verdict(True)
-    ), patch("api.views.objectives.solved_keys", return_value=set()):
+    ), patch("api.views.loot.ground_truth", return_value={}):
         response = client.post_json("/api/sessions/", {})
 
     assert response.status_code == 201
@@ -51,7 +51,7 @@ def test_starting_refuses_a_slot_that_is_not_ready(client):
     assert Session.objects.count() == 0, "a not-ready start must create no row"
 
 def test_starting_refuses_a_second_open_session_on_the_cloud(client):
-    Session.objects.create(scenario="juice-shop", baseline=[])
+    Session.objects.create(scenario="board", baseline=[])
     with patch("api.views.substrate", lambda: Cloud()), patch(
         "api.views._range_ready", return_value=_verdict(True)
     ):

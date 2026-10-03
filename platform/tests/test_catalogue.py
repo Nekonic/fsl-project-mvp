@@ -48,8 +48,8 @@ def test_an_entry_that_is_not_a_case_is_refused():
         wargames.checked(["probe"], "cases.yaml")
 
 def test_the_console_catalogue_is_checked_before_it_is_used(settings, tmp_path):
-    (tmp_path / "default.yaml").write_text(yaml.safe_dump([a_case(malicious="false")]))
+    (tmp_path / "board.yaml").write_text(yaml.safe_dump([a_case(malicious="false")]))
     settings.WARGAME_CASES_DIR = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match="probe"):
-        wargames.cases("juice-shop")
+        wargames.cases("board")

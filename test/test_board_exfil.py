@@ -28,6 +28,19 @@ def test_the_internal_ground_truth_is_blocked_through_the_waf(stack_is_up):
     )
 
 
+def test_the_internal_ground_truth_is_blocked_by_any_host(stack_is_up):
+    from range import ATTACKER, run
+
+    waf = run(ATTACKER, ["getent", "hosts", "board.com"]).stdout.split()[0]
+    code = run(ATTACKER, ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                          "--max-time", "20", "-H", "Host: not-board",
+                          f"http://{waf}/internal/auth-users"]).stdout.strip()
+    assert code == "404", (
+        "the WAF default vhost served /internal to a non-board.com Host; the "
+        "ground truth must be reachable only platform->board over estate"
+    )
+
+
 def test_the_platform_reads_the_auth_user_hashes_over_estate(stack_is_up):
     from range import SCORER, run
 

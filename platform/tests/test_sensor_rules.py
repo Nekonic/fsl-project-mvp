@@ -44,7 +44,7 @@ def test_the_port_variable_names_ports_the_sensor_can_observe():
         "$HOME_NET $HTTP_PORTS matched nothing: measured 0 alerts against 4 "
         "from the identical rule using any"
     )
-    assert "80" in ports and "3000" in ports, ports
+    assert "80" in ports and "8000" in ports, ports
 
 
 def test_the_sensor_ties_an_alert_to_its_transaction_when_it_can():
