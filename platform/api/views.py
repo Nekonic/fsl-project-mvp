@@ -29,6 +29,7 @@ import scoreboard
 import suppress
 import topology
 import wargames
+from api import loot
 from api.refusals import Conflict
 from api.models import (
     Case,
@@ -179,10 +180,16 @@ def sessions(request):
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
     baseline = []
-    if wargames.objective_model(scenario) == "self_judged":
+    model = wargames.objective_model(scenario)
+    if model == "self_judged":
         try:
             baseline = sorted(objectives.solved_keys(adapter.runner("wiki")))
         except objectives.ObjectivesUnavailable:
+            baseline = None
+    elif model == "loot_verified":
+        try:
+            baseline = loot.ground_truth(scenario)
+        except loot.GroundTruthUnavailable:
             baseline = None
     session = Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
@@ -363,9 +370,26 @@ def wargame_cases(request, wargame_id):
 def wargame_objectives(request, wargame_id):
     if wargame_id not in wargames.WARGAMES:
         raise Http404(wargame_id)
-    if wargames.objective_model(wargame_id) == "none":
+    model = wargames.objective_model(wargame_id)
+    if model == "none":
         return _reply([])
+    if model == "loot_verified":
+        return _reply(_loot_catalogue(wargames.objectives(wargame_id)))
     return _reply(objectives.catalogue(substrate().runner("wiki")))
+
+def _loot_catalogue(spec):
+    return [
+        {
+            "key": tier["key"],
+            "name": tier["name"],
+            "category": tier.get("category") or "",
+            "difficulty": int(tier["difficulty"]),
+            "description": tier.get("description") or "",
+            "solved": False,
+            "solved_at": None,
+        }
+        for tier in spec["tiers"]
+    ]
 
 @require_http_methods(["GET", "POST"])
 def session_objectives(request, session_id):
@@ -378,8 +402,8 @@ def session_objectives(request, session_id):
     return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
-    if wargames.objective_model(session.scenario) == "none":
-        return {"achieved": 0, "total": 0}
+    if wargames.objective_model(session.scenario) != "self_judged":
+        return {"achieved": 0, "total": session.objectives.count()}
     found, unreadable = objectives.observe(substrate().runner("wiki"))
     solved = {o["key"]: o for o in found if o["solved"]}
 

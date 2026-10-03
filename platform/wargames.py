@@ -28,7 +28,7 @@ WARGAMES = {
         ),
         "case_file": "board.yaml",
         "public_url": settings.BOARD_PUBLIC_URL,
-        "objective_model": "none",
+        "objective_model": "loot_verified",
     },
 }
 

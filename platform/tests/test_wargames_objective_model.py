@@ -6,12 +6,12 @@ def test_juice_shop_is_self_judged_and_counts_as_judged():
     assert wargames.judged("juice-shop") is True
 
 
-def test_board_has_no_objective_model_and_is_not_judged():
-    assert wargames.objective_model("board") == "none"
-    assert wargames.judged("board") is False
+def test_board_is_loot_verified_and_counts_as_judged():
+    assert wargames.objective_model("board") == "loot_verified"
+    assert wargames.judged("board") is True
 
 
 def test_the_catalogue_still_exposes_the_derived_judged_boolean():
     by_id = {w["id"]: w for w in wargames.catalogue()}
     assert by_id["juice-shop"]["judged"] is True
-    assert by_id["board"]["judged"] is False
+    assert by_id["board"]["judged"] is True
