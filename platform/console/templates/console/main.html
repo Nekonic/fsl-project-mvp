@@ -6,6 +6,18 @@
 
 <p id="sessions-error" class="text-danger text-sm mb-10 hidden"></p>
 
+<section id="range-state"
+  class="mb-6 hidden border border-warning-soft bg-warning-soft rounded p-5">
+  <h2 data-t="range.not_ready" class="text-sm uppercase tracking-wide text-warning mb-2"></h2>
+  <ul id="range-blocked" class="text-body text-sm list-disc pl-5 space-y-1"></ul>
+</section>
+
+<section id="range-pipeline" class="mb-10 hidden">
+  <button id="canary" data-t="range.canary"
+    class="px-3 py-1.5 rounded border border-line text-sm text-body hover:border-primary"></button>
+  <span id="canary-out" class="text-sm ml-2"></span>
+</section>
+
 <section id="running-panel" class="mb-10 hidden">
   <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-success mb-3"></h2>
   <div id="running" class="space-y-2"></div>
@@ -102,6 +114,49 @@
       rows.map((s) => sessionRow(s, false)).join("");
   }
 
+  let canaryWired = false;
+
+  function wireCanary() {
+    if (canaryWired) return;
+    canaryWired = true;
+    document.getElementById("canary").addEventListener("click", async () => {
+      const button = document.getElementById("canary");
+      const out = document.getElementById("canary-out");
+      button.disabled = true;
+      out.className = "text-sm ml-2 text-muted";
+      out.textContent = "…";
+      const result = await post("/api/range/canary/");
+      button.disabled = false;
+      if (result.ok && result.body.corroborated) {
+        out.className = "text-sm ml-2 text-success";
+        out.textContent = t("range.canary_ok", esc(result.body.skew_seconds));
+      } else {
+        const why = (result.body && result.body.blocked) || [detail(result)];
+        out.className = "text-sm ml-2 text-danger";
+        out.textContent = t("range.canary_failed", esc(why.join("; ")));
+      }
+    });
+  }
+
+  async function renderReady() {
+    const result = await api("/api/range/ready/");
+    const slot = result.ok && result.body ? result.body.slot : null;
+    const ready = !result.ok || result.body.ready !== false;
+
+    document.querySelectorAll(".start").forEach((button) => {
+      button.disabled = !ready;
+    });
+
+    showPanel("range-state", !ready);
+    if (!ready && slot) {
+      document.getElementById("range-blocked").innerHTML =
+        (slot.blocked || []).map((reason) => `<li>${esc(reason)}</li>`).join("");
+    }
+
+    showPanel("range-pipeline", Boolean(slot));
+    if (slot) wireCanary();
+  }
+
   const SESSIONS_EVERY = 10000;
   let refreshTimer = null;
   let refreshing = false;
@@ -113,6 +168,7 @@
     clearTimeout(refreshTimer);
     try {
       await renderSessions();
+      await renderReady();
     } finally {
       refreshing = false;
       refreshedAt = Date.now();
