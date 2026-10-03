@@ -46,8 +46,12 @@ def test_the_internal_ground_truth_is_blocked_through_the_waf(stack_is_up):
 def test_the_platform_reads_the_auth_user_hashes_over_estate(stack_is_up):
     from range import SCORER, run
 
-    body = run(SCORER, ["curl", "-s", "--max-time", "20",
-                        "http://board:8000/internal/auth-users"]).stdout
+    body = run(SCORER, [
+        "python3", "-c",
+        "import urllib.request,sys; "
+        "sys.stdout.write(urllib.request.urlopen("
+        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
+    ]).stdout
     import json
 
     truth = json.loads(body)
