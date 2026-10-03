@@ -50,6 +50,18 @@
     params:
       q: "x' UNION SELECT username,password,3 FROM auth_user--"
 
+- name: board-sqli-orderby-sqlmap
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=created_at", "-p", "sort",
+         "--technique=BT", "--dbms=mysql", "--level=3",
+         "--dump", "-T", "auth_user", "-C", "username,password", "--batch"]
+
 - name: board-xss-script-tag-in-search
   malicious: true
   stage: initial-compromise
