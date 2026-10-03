@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, from_attacker, reset_target, score_when_ready
+from conftest import PLATFORM_URL, reset_target, score_when_ready
+from range import ATTACKER, run
+
+SCENARIO = {"scenario": "juice-shop"}
 
 REACHABLE = [
     ("forgottenBackupChallenge", "/ftp/coupons_2013.md.bak%2500.md"),
@@ -14,6 +17,16 @@ TRIPS_A_RULE = "/rest/products/search?q=%3Cscript%3Ealert%281%29%3C%2Fscript%3E"
 
 def _now():
     return datetime.now(timezone.utc)
+
+def from_attacker(path):
+    result = run(
+        ATTACKER,
+        ["curl", "-s", "-o", "/dev/null", "--max-time", "20",
+         f"http://shop.com{path}"],
+    )
+    assert result.ok, (
+        f"could not reach Juice Shop from the attacker box: {result.stderr}"
+    )
 
 @pytest.fixture(scope="module")
 def unsolved(stack_is_up):
@@ -46,7 +59,7 @@ def breach_session(unsolved):
     key, path = unsolved
     source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=60
+        f"{PLATFORM_URL}/api/sessions/", json=SCENARIO, timeout=60
     ).json()["id"]
 
     case_id = str(uuid.uuid4())
@@ -84,7 +97,7 @@ def test_the_target_decides_an_objective_was_taken(breach_session):
 
 def test_objectives_solved_before_the_session_are_not_counted(breach_session):
     session_id, _, _ = breach_session
-    fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=60).json()["id"]
+    fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json=SCENARIO, timeout=60).json()["id"]
 
     requests.post(f"{PLATFORM_URL}/api/sessions/{fresh}/objectives/", timeout=60)
 

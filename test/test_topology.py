@@ -5,7 +5,7 @@ import requests
 
 from conftest import PLATFORM_URL, score_when_ready
 
-CASE = "sqli-login-bypass"
+CASE = "board-sqli-search"
 
 @pytest.fixture(scope="module")
 def drawn(stack_is_up):
@@ -62,7 +62,7 @@ def test_the_waf_has_a_foot_on_each_side(drawn):
 
 def test_the_target_is_only_ever_on_the_inside(drawn):
     on = {s["id"] for s in drawn["segments"]
-          if any(n["name"] == "fsl-juice-shop" for n in s["nodes"])}
+          if any(n["name"] == "fsl-board" for n in s["nodes"])}
 
     assert on == {"estate"}, (
         f"the target is reachable from {sorted(on)}; an attacker on any "

@@ -36,7 +36,7 @@ def _outside(alerts):
 @pytest.fixture
 def probe(stack_is_up):
     token = f"zz{uuid.uuid4().hex[:10]}"
-    from_attacker(f"/rest/products/search?q=%27%20OR%201%3D1--%20{token}")
+    from_attacker(f"/search/?q=%27%20OR%201%3D1--%20{token}")
     import time; time.sleep(4)
     alerts = _alerts_mentioning(token)
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"
@@ -62,7 +62,7 @@ def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
     session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
     fired = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": "sqli-login-bypass"}, timeout=300,
+        json={"case": "board-sqli-search"}, timeout=300,
     )
     assert fired.status_code == 201, fired.text
     case_id = fired.json()["case_id"]

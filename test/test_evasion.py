@@ -3,15 +3,15 @@ import requests
 
 from conftest import PLATFORM_URL, score_when_ready
 
-PLUS = "sqli-or-1-1-plus-encoded"
-PERCENT = "sqli-login-bypass"
+CONTROL = "board-sqli-search"
+SECOND_SHAPE = "board-sqli-union-search"
 
 @pytest.fixture(scope="module")
 def fired(stack_is_up):
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
-    for case in (PERCENT, PLUS):
+    for case in (CONTROL, SECOND_SHAPE):
         sent = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
             json={"case": case}, timeout=300,
@@ -21,7 +21,7 @@ def fired(stack_is_up):
 
     def control_seen_by_both(totals):
         control = next(
-            (c for c in totals["per_case"] if c["name"] == PERCENT), None
+            (c for c in totals["per_case"] if c["name"] == CONTROL), None
         )
         if not control or not control["detected"]:
             return False
@@ -52,15 +52,15 @@ def _engines(fired, name):
     }
 
 def test_both_encodings_are_detected_by_the_stack(fired):
-    assert _case(fired, PERCENT)["verdict"] == "TP"
-    assert _case(fired, PLUS)["verdict"] == "TP"
+    assert _case(fired, CONTROL)["verdict"] == "TP"
+    assert _case(fired, SECOND_SHAPE)["verdict"] == "TP"
 
 def test_the_control_is_caught_by_both_engines(fired):
-    assert {"suricata", "modsecurity"} <= _engines(fired, PERCENT)
+    assert {"suricata", "modsecurity"} <= _engines(fired, CONTROL)
 
 def test_the_ids_catches_the_plus_encoding_too(fired):
-    assert "suricata" in _engines(fired, PLUS), (
-        f"only {sorted(_engines(fired, PLUS))} caught the plus-encoded "
-        f"injection - the IDS rules match an encoding rather than an attack, "
+    assert "suricata" in _engines(fired, SECOND_SHAPE), (
+        f"only {sorted(_engines(fired, SECOND_SHAPE))} caught the union-select "
+        f"injection - the IDS rules match one SQLi shape rather than the attack, "
         f"and the WAF is covering for them"
     )

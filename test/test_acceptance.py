@@ -1,10 +1,10 @@
 import requests
 
-from conftest import PLATFORM_URL, run_redteam, score_when_ready, target_code
+from conftest import PLATFORM_URL, score_when_ready, target_code
 
 NOISY_RULE = (
     '\nalert http any any -> any any (msg:"FSL deliberate false positive"; '
-    'http.uri; content:"apple"; nocase; sid:9009999; rev:1;)\n'
+    'http.uri; content:"release"; nocase; sid:9009999; rev:1;)\n'
 )
 
 def test_criterion_1_services_answer():
@@ -80,9 +80,19 @@ def test_criterion_4_adding_a_rule_moves_the_score():
         )
         assert applied.ok, applied.text
 
-        after = score_when_ready(run_redteam(), until=lambda s: s["fp"] > 0)
+        session_id = requests.post(
+            f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        ).json()["id"]
+        fired = requests.post(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
+            json={"case": "board-normal-search"}, timeout=300,
+        )
+        assert fired.status_code == 201, fired.text
+        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
+
+        after = score_when_ready(session_id, until=lambda s: s["fp"] > 0)
         assert after["fp"] > 0, (
-            f"a rule hitting 'apple' was added but no false positive was "
+            f"a rule hitting 'release' was added but no false positive was "
             f"scored. Score: {after}"
         )
     finally:

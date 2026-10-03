@@ -6,7 +6,7 @@ import requests
 
 from conftest import PLATFORM_URL, from_attacker, score_when_ready
 
-ATTACK_PATH = "/rest/products/search?q=%27%20OR%201%3D1--"
+ATTACK_PATH = "/search/?q=%27%20OR%201%3D1--"
 
 def _now():
     return datetime.now(timezone.utc)
