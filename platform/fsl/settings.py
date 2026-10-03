@@ -64,10 +64,10 @@ ATTACKER_TERMINAL_URL = "/terminal/"
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )
-ATTACKER_TARGET_URL = os.environ.get("ATTACKER_TARGET_URL", os.environ.get("PUBLIC_TARGET_URL", "http://shop.com"))
+ATTACKER_TARGET_URL = os.environ.get("ATTACKER_TARGET_URL", os.environ.get("PUBLIC_TARGET_URL", "http://board.com"))
 
-TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8080")
-PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://shop.com")
+TARGET_URL = os.environ.get("TARGET_URL", "http://board.com")
+PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://board.com")
 BOARD_PUBLIC_URL = os.environ.get("BOARD_PUBLIC_URL", "http://board.com")
 
 WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")

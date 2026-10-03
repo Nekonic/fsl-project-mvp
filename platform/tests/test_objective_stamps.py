@@ -39,7 +39,7 @@ def test_the_interval_a_stamp_allows_is_kept_with_the_objective(client):
     from api.models import Objective
 
     with patch("api.views.objectives.solved_keys", return_value=set()):
-        session_id = client.post_json("/api/sessions/", {}).json()["id"]
+        session_id = client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
     stamp = timezone.now().isoformat(timespec="milliseconds")
     taken = [{"key": "loginAdminChallenge", "name": "Login Admin", "category": "Injection",
               "difficulty": 2, "solved": True, "solved_at": stamp}]
@@ -70,7 +70,7 @@ def _stamped_after_a_detected_window(client, challenge, after):
     target = []
     with patch("objectives._fetch", side_effect=lambda: target):
         with patch("api.views.objectives.solved_keys", return_value=set()):
-            session_id = client.post_json("/api/sessions/", {}).json()["id"]
+            session_id = client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
         Session.objects.filter(pk=session_id).update(started_at=T0 - timedelta(minutes=1))
         client.post_json(f"/api/sessions/{session_id}/cases/", {
             "case_id": WINDOW, "name": "manual-window", "malicious": True,

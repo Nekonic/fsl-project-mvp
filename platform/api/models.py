@@ -4,7 +4,7 @@ from scoring.types import CaseRecord, DetectionRecord
 
 class Session(models.Model):
 
-    scenario = models.CharField(max_length=128, default="juice-shop")
+    scenario = models.CharField(max_length=128, default="board")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     baseline = models.JSONField(null=True, blank=True, default=None)

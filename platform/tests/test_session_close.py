@@ -27,7 +27,7 @@ def session_id(client):
                                               "description": "", "solved": False,
                                               "solved_at": None},
     ):
-        return client.post_json("/api/sessions/", {}).json()["id"]
+        return client.post_json("/api/sessions/", {"scenario": "juice-shop"}).json()["id"]
 
 
 def test_a_closed_session_cannot_be_closed_again(client, session_id):

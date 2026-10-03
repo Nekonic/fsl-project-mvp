@@ -62,6 +62,7 @@ def test_a_whole_table_fires_all_three_tiers():
     assert coverage == 1.0
 
 
+@pytest.mark.reads_ground_truth
 def test_ground_truth_reads_the_declared_read_path():
     class Fake:
         def __enter__(self):
@@ -80,6 +81,7 @@ def test_ground_truth_reads_the_declared_read_path():
     assert opened.call_args.args[0].endswith("/internal/auth-users")
 
 
+@pytest.mark.reads_ground_truth
 def test_ground_truth_raises_when_the_channel_is_unreadable():
     import urllib.error
 

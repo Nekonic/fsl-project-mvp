@@ -97,7 +97,7 @@ def test_an_origin_carries_the_address_the_attack_will_come_from():
 def test_an_attack_leaves_for_an_address_the_range_gave():
     hk = next(o for o in origins() if o["id"] == "hk")
 
-    assert hk["target_url"] == "http://103.152.220.9:8080", (
+    assert hk["target_url"] == "http://103.152.220.9", (
         "the address was a name assembled out of the origin id - 'waf-' plus "
         "'hk' - which only resolves because compose was asked to put that "
         "alias on that network. Neutron hands out no aliases"
@@ -222,7 +222,7 @@ def test_origins_that_cannot_be_discovered_are_503_not_an_empty_list(client):
 def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session_id):
     from django.conf import settings
 
-    response, fired = _fire(client, session_id, {"case": "sqli-login-bypass"})
+    response, fired = _fire(client, session_id, {"case": "board-sqli-login-bypass"})
 
     assert response.status_code == 201
     assert fired.call_args.args[2] == settings.TARGET_URL
@@ -230,7 +230,7 @@ def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session
 
 def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
     response, fired = _fire(
-        client, session_id, {"case": "sqli-login-bypass", "origin": "hk"}
+        client, session_id, {"case": "board-sqli-login-bypass", "origin": "hk"}
     )
 
     assert response.status_code == 201
@@ -238,7 +238,7 @@ def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
 
 def test_the_origin_is_recorded_but_not_an_address(client, session_id):
     response, _ = _fire(
-        client, session_id, {"case": "sqli-login-bypass", "origin": "hk"}
+        client, session_id, {"case": "board-sqli-login-bypass", "origin": "hk"}
     )
     meta = response.json()["meta"]
 
@@ -250,7 +250,7 @@ def test_rotation_moves_on_with_every_attack(client, session_id):
     seen = []
     for _ in range(4):
         _, fired = _fire(
-            client, session_id, {"case": "sqli-login-bypass", "origin": "rotate"}
+            client, session_id, {"case": "board-sqli-login-bypass", "origin": "rotate"}
         )
         seen.append(fired.call_args.args[2])
 
@@ -261,7 +261,7 @@ def test_rotation_moves_on_with_every_attack(client, session_id):
         "http://5.188.10.9:8080",
     ], "rotation stalled: every attack would land on the same pin"
 
-ROTATE = {"case": "sqli-login-bypass", "origin": "rotate"}
+ROTATE = {"case": "board-sqli-login-bypass", "origin": "rotate"}
 
 def test_two_rotated_attacks_in_flight_at_once_leave_from_different_places(client, session_id):
     left_from = []
@@ -321,7 +321,7 @@ def test_attacks_pinned_to_a_place_or_recorded_by_hand_do_not_move_the_rotation(
                 })
             assert recorded.status_code == 201, recorded.content
             continue
-        _, fired = _fire(client, session_id, {"case": "sqli-login-bypass", "origin": step})
+        _, fired = _fire(client, session_id, {"case": "board-sqli-login-bypass", "origin": step})
         if step == "rotate":
             rotated.append(fired.call_args.args[2])
 
@@ -336,7 +336,7 @@ def test_attacks_pinned_to_a_place_or_recorded_by_hand_do_not_move_the_rotation(
 
 def test_an_origin_that_does_not_exist_is_refused(client, session_id):
     response, fired = _fire(
-        client, session_id, {"case": "sqli-login-bypass", "origin": "edge-mars"}
+        client, session_id, {"case": "board-sqli-login-bypass", "origin": "edge-mars"}
     )
 
     assert response.status_code == 404
