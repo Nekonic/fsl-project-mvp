@@ -4,7 +4,7 @@ The handover between sessions. Keep it true; it is all the next session gets.
 Finished work is one line each; the detail is in `git log`, `README.md` and
 `docs/ARCHITECTURE.md`.
 
-Updated: 2026-10-02
+Updated: 2026-10-04
 
 ## Where things stand
 
@@ -12,6 +12,10 @@ The repo moved from "prove the hypothesis" to "build the smallest product that
 demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md`; all four of its
 phases are done.
+
+The range has **one target, the Django board** (`board.com`, MySQL behind the
+WAF). Juice Shop, the internal wiki and the `self_judged` objective model were
+removed on 2026-10-04 (objective-model Phase 4).
 
 `bin/verify` is green and prints the scores. Neither they nor the baseline are
 copied here; read `metrics.json`. Copies in prose went stale twice.
@@ -23,62 +27,62 @@ console's Kali terminal between start and stop is scored by time and source
 and by the proxy's marker. The blue console ingests on a timer, and any alert
 opens its whole Elasticsearch record.
 
-## In progress
+## The objective model (done 2026-10-04)
 
-**The objective model is being redesigned (2026-10-03, user-directed).** The
-objective layer was overfit to Juice Shop (`objectives.py` reads Juice Shop's
-self-flipped `solved` flag for every judged scenario). The decided replacement
-is one target-agnostic model where **the attacker proves possession**: the
-attacker exfiltrates a real secret and submits it, and the platform credits the
-objective only after matching the proof against the target's real value (ground
-truth from the target side, orthogonal to the detector). Juice Shop is to be
-removed once the board carries this model — nothing may stay Juice-Shop-only.
-Design: `docs/superpowers/specs/2026-10-03-attacker-proven-objective-model-design.md`.
-Four phases (plan: `docs/superpowers/plans/2026-10-03-attacker-proven-objective-phase-1.md`):
-(1) board exfil paths + salt rotation; (2) `objective_model` dispatcher refactor;
-(3) `loot_verified` adapter + `POST /api/sessions/<id>/loot/` + verifier + board
-`objectives.yaml` + internal ground-truth endpoint; (4) retarget the Juice-Shop
-tests and remove Juice Shop.
+The attacker proves possession. The objective layer used to read Juice Shop's
+self-flipped `solved` flag; it is now one target-agnostic model, carried by the
+board, and Juice Shop is gone. Design:
+`docs/superpowers/specs/2026-10-03-attacker-proven-objective-model-design.md`.
+All four phases are committed and `bin/verify` is green.
 
-**Phase 1 committed this session (`c21725f..HEAD`), `bin/verify` green
-(core_loc 461 unchanged, tests 1213 -> 1217).** The board wargame now leaks its
-real `auth_user` password hashes two ways. (a) It is pinned to **Django 3.2.4**
-(an unpatched version, CVE-2021-35042) on `python:3.9-slim`, and `post_list`
-takes a `?sort=` parameter passed straight to `order_by()`. That order_by sink
-**is a genuine SQL injection** - verified live: a `.`-containing value (e.g.
-`posts_post.id,...`) bypasses Django's field validation and reaches the raw
-`ORDER BY` clause, and error-based extraction leaked live DB data
-(`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`). The board runs
-`DEBUG=True`, so MySQL errors surface. **sqlmap's off-the-shelf payloads do not
-auto-complete the dump through this ORM/ORDER-BY injection** (they are not
-shaped for the required dotted-column prefix); `board-sqli-orderby-sqlmap`
-(`redteam/cases/board.yaml`) is therefore a **loud, detected** SQLi probe, and
-the clean loot path for the objective (Phase 3) is (b) **`/members.json`**, a
-`User.objects.values()` endpoint that returns every `auth_user` row including
-the hash - a quiet, undetected GET. Salts rotate per rebuild because `board-db`
-keeps no persistent volume (`test_board_db_ephemeral.py` guards this). Full
-automated extraction via the order_by sink and live-cloud rebuild stay manual
-checks. **Phase 2 is done too** (`objective_model` enum is now the source of
-truth and the three objective gates dispatch on it; `judged` is derived so the
-`/api/wargames/` catalogue is unchanged; no behavior change, `bin/verify` green,
-tests 1217 -> 1220). `loot_verified` is a reserved enum value with no behavior
-yet. **Phase 3 is done too (committed this session, `bin/verify` green:
-core_loc held at 461, product_loc 8381 -> 8580, tests 1220 -> 1252).** The
-board is `loot_verified`. The internal `/internal/auth-users` endpoint returns
-the `auth_user` username/hash map over `estate` and 404s through the WAF - an
-off-path ground truth the detector never sees. `wargames/board/objectives.yaml`
-declares the partial/admin/full ladder (`board-auth-user-partial/admin/full`).
-`POST /api/sessions/<id>/loot/` (`platform/api/loot.py`) snapshots the ground
-truth onto `Session.baseline` at session start, verifies submitted rows against
-that snapshot by exact hash match only (never re-reading the target live), and
-credits tiers that flow into the zero-sum game through the exfil case.
-Proven against the live stack (`test/test_board_loot.py`): exfiltrating
-`/members.json` and submitting its hashes credits all three tiers at coverage
-1.0; fabricated loot is refused. Left: Phase 4 (retarget the Juice-Shop tests
-and remove Juice Shop and the `self_judged` value) and sub-project B (the PHP
-company site, target #2, its own spec).
+- **The loot ladder.** `objective_model` is `loot_verified` or `none`;
+  `judged` is derived (`!= none`). The board is `loot_verified`.
+  `wargames/board/objectives.yaml` declares `board-auth-user-partial`,
+  `-admin` and `-full`. `POST /api/sessions/<id>/loot/` (`platform/api/loot.py`)
+  snapshots the ground truth onto `Session.baseline` at session start and
+  verifies submitted rows against that snapshot by exact hash match only,
+  never re-reading the target live. Credited tiers flow into the zero-sum game
+  through the exfil case. `none` is reachable only by patching in tests.
+- **The ground truth.** `/internal/auth-users` on the board returns the
+  `auth_user` username/hash map over `estate` and answers 404 through the WAF
+  (the Docker default vhost 404s `/internal` for any Host; the cloud's
+  `range.conf` does too). It is estate-only and off the detector's path: the
+  platform reads it, the red team never can. It stays.
+- **READY** reads "ground truth readable" where it used to read "nothing
+  solved on the target" (`_ground_truth_readable` in `platform/api/views.py`).
+- **The realistic exfil is the `?sort=` order_by SQLi.** The board is pinned to
+  Django 3.2.4 (CVE-2021-35042) on `python:3.9-slim`; `post_list` passes
+  `?sort=` straight to `order_by()`. A `.`-containing value bypasses field
+  validation and reaches the raw `ORDER BY`; the board runs `DEBUG=True`, so
+  MySQL errors surface, and error-based extraction leaked live data
+  (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`). sqlmap's
+  off-the-shelf payloads do not auto-complete the dump through this ORM
+  injection (they are not shaped for the dotted-column prefix), so
+  `board-sqli-orderby-sqlmap` (`redteam/cases/board.yaml`) is a loud, detected
+  probe. The planted `/members.json` `values()` leak is **gone**: it was
+  over-exposure no real app would ship. Salts rotate per rebuild because
+  `board-db` keeps no persistent volume (`test_board_db_ephemeral.py` guards
+  it). Full automated extraction through the order_by sink and a live-cloud
+  rebuild stay manual checks.
+- **Proven on the live stack** (`test/test_board_loot.py`): the ground truth
+  read over the internal channel and submitted credits all three tiers at
+  coverage 1.0; fabricated loot is refused.
+- **Removed:** Juice Shop, the internal wiki and its lateral-movement
+  objective, `platform/objectives.py`, the `self_judged` value and its three
+  view branches, `members.json`, `wargames/juice-shop/`. Sessions stored with
+  `scenario: juice-shop` keep their rows (migration 0013 only moves the
+  default to `board`).
+- **The `tests` floor was lowered 1252 -> 1196 by the user's Phase 4
+  authorisation** (the one sanctioned reduction; the itemised justification is
+  in the commit message): about 64 Juice/wiki-only tests were deleted, one more
+  with `members.json`, 15 were repurposed onto board loot behaviour
+  (count-neutral), and removal/prerequisite guards were added. `core_loc` held
+  at 461, `services` 7, `wargame_services` 4 -> 2, `product_loc` 8580 -> 8040,
+  `dependencies` 6.
 
-**Audit cleanup committed this session (2026-10-02).** A 10-slice over-reach
+Left: sub-project B, the PHP company site (target #2), its own spec.
+
+**Audit cleanup committed (2026-10-02).** A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
 the user asked for all. 23 were removed, test-first, `bin/verify` green:
 `core_loc` 472 -> 461, `product_loc` 8235 -> 8142, the `tests` floor 1201 ->
@@ -107,14 +111,15 @@ source-greps). Three were not taken:
   wargame services together. `bin/measure` now splits them (2026-10-02): the
   gated `services` counts the platform's own compose services (7); a wargame's
   own services under `wargames/<id>/` - its app, db, and future per-scenario
-  components (a scenario's own kali, say) - are `wargame_services` (4), reported
-  not gated. A wargame owning its database or attacker is the wargame, and
-  adding a scenario is not a gated regression. board-db stays, on MySQL.
+  components (a scenario's own kali, say) - are `wargame_services` (2 since
+  Phase 4 removed Juice Shop and the wiki; 4 before), reported not gated. A
+  wargame owning its database or attacker is the wargame, and adding a
+  scenario is not a gated regression. board-db stays, on MySQL.
 
 Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are
 **done end to end** (2026-10-02). The whole chain is proven on the cloud:
 a case fired from the Kali box leaves as a chosen country, crosses
-pfSense -> WAF -> Juice Shop, both sensors detect it, the logs reach the
+pfSense -> WAF -> the target, both sensors detect it, the logs reach the
 platform's Elasticsearch geolocated, and the platform scores it.
 
 **Backlog 2 step 6's in-scope part is done (2026-10-02):** the target port is
@@ -122,28 +127,28 @@ no longer published and the acceptance suite and command-line cases reach the
 target from inside the range. **Step 7 is done (2026-10-03):** evidence by
 event time, GeoIP's durable home, and now the session Start/Stop lifecycle -
 Start takes a READY slot, Stop kicks off the rebuild, and READY is the full
-four-signal gate (VMs ACTIVE, nothing solved, rules at baseline, and a canary
-alert corroborated by both engines with their clocks in sync). What is left of
-backlog 2 is only what the user held out of it: the two blue-screen panes
-(Kibana and the pfSense GUI) and the board's user-database objective. On `dev`;
-`bin/verify` green.
+four-signal gate (VMs ACTIVE, the target's ground truth readable, rules at
+baseline, and a canary alert corroborated by both engines with their clocks in
+sync). What is left of backlog 2 is only what the user held out of it: the two
+blue-screen panes (Kibana and the pfSense GUI). The board's user-database
+objective is done (see "The objective model"). `bin/verify` green.
 
-**Committed this session (step 6, the acceptance/CLI move):**
+**Committed (step 6, the acceptance/CLI move; the figures predate Phase 4):**
 - `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
   reached only from inside the range now.
 - The acceptance suite reaches the target through `test/range.py`'s runner:
-  `conftest.target_code()`/`target_answers()` curl `http://shop.com` from the
+  `conftest.target_code()`/`target_answers()` curl `http://board.com` from the
   attacker box (so `stack_is_up`, `reset_target` and `test_criterion_1` no
   longer need a host port), and `test_front_door`'s probe fires through
   `from_attacker`.
 - The command-line harness runs inside the range: `run_redteam()` execs
   `redteam/run.py` on the `scorer` host (the platform container) with
-  `--target/--tool-target http://shop.com`, the way the console fires. A fresh
+  `--target/--tool-target http://board.com`, the way the console fires. A fresh
   run scored TP 8 / FP 0 / FN 2 / TN 6, both engines.
 - `test_judge_isolation` drops 8080 from its published-port set; `README.md`
   and CLAUDE.md's "Running it" show the in-range invocation.
 
-**Committed this session (step 7, evidence by event time):** the `fsl-geoip`
+**Committed (step 7, evidence by event time):** the `fsl-geoip`
 ingest pipeline now sets `@timestamp` from the event's own clock - Suricata's
 `timestamp`, ModSecurity's `transaction.time_stamp` - with two date processors
 ahead of the geoip ones, so the ingest fetch window selects evidence by when it
@@ -153,7 +158,7 @@ event time and already re-checked the window by event time (`stale`); only the
 fetch query disagreed. `test/test_event_time.py` holds `@timestamp` to the
 event time for both engines.
 
-**Committed this session (step 7, GeoIP's durable home):** on the user's
+**Committed (step 7, GeoIP's durable home):** on the user's
 go-ahead to take the lightest path, the managed GeoIP downloader is off
 (`ingest.geoip.downloader.enabled: false`) and Elasticsearch reads
 `GeoLite2-City.mmdb` from a bind-mounted `config/ingest-geoip`, so a container
@@ -164,12 +169,12 @@ the MaxMind attribution. `test/test_geoip_durable.py` holds the downloader off
 and the pipeline still placing a source. The MaxMind licence review for the
 production repo still stands (see "Decisions left for a person").
 
-**Committed this session (step 7, the session Start/Stop lifecycle and READY
-gate):** Session Start takes a READY slot and Session Stop kicks off the
+**Committed (step 7, the session Start/Stop lifecycle and READY gate):** Session Start takes a READY slot and Session Stop kicks off the
 rebuild, closing the loop on `rebuild_slot()` (committed last session; it
 Nova-rebuilds every standing slot VM from its golden image, keeping each
 server's id, flavour, ports and fixed IPs). READY is the full four-signal gate
-the user directed - VMs ACTIVE, nothing solved on the target, Suricata rules at
+the user directed - VMs ACTIVE, the target's ground truth readable (this read
+"nothing solved" while Juice Shop was the target), Suricata rules at
 baseline with no suppression in force, and a canary alert corroborated by both
 engines with their event clocks in sync. See the backlog step 7 entry below for
 the endpoints, the console wiring, and what is deliberately not wired (Start
@@ -188,7 +193,7 @@ the user's to run - the canary is proven end to end on compose
   reads not READY (phase REBUILDING, then CHECKING) and the edge denies range
   traffic. Not auto-chained inside `close`, because configure needs the VMs up.
 
-**Committed this session (`4ec543b..HEAD`):**
+**Committed (`4ec543b..`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
   (`configure_slot` -> `configure_edge`) plays `deploy/pfsense/configure.php`
   back on pfSense over mgmt ssh (settings as a base64 JSON line ahead of the
@@ -224,10 +229,10 @@ the user's to run - the canary is proven end to end on compose
 
 **Left 6 - the scored end-to-end run (cloud-verified 2026-10-02).** From a
 fresh session, origin `tw` (SNAT source 120.96.0.10), a benign request and the
-canonical SQLi fired from Kali through pfSense to Juice Shop: the platform
+canonical SQLi fired from Kali through pfSense to the target: the platform
 scored **TP 1, FP 0, FN 0, TN 1**, the attack **corroborated** and credited to
 **both engines** (pfSense Suricata `FSL SQLi attempt - URI` + ModSecurity CRS),
-the benign a TN. The `objectives` dimension read 0 from Juice Shop (the probe
+the benign a TN. The `objectives` dimension read 0 (the probe
 was detected but did not actually beat the target - the objective ground truth
 is orthogonal to the detector, as designed), and `game.balance` revealed on
 close.
@@ -330,9 +335,8 @@ geolocated TW.
   Acceptance fails if the live pipeline or the sensor's `local.rules` differ
   from the committed ones.
 - **The WAF's health check asks `/healthz`**, which the WAF answers itself;
-  sent through to Juice Shop it alerted every ten seconds and used up a
-  session's 5,000-document read in about 14 hours. The wiki's check asks
-  `127.0.0.1`: its conf is read-only, so nginx adds no IPv6 listener.
+  sent through to the target it alerted every ten seconds and used up a
+  session's 5,000-document read in about 14 hours.
 - **Bring-up is a single `docker compose up -d --build`.** The platform's
   entrypoint reads the docker socket's group from the socket at start, adds
   `fsl` to it, drops root with `gosu`, and registers the `fsl-geoip` ingest
@@ -381,7 +385,7 @@ port: `describe() -> Shape`, `segments()` (who stands where, without the
 sensor), `runner(role, segment)` and `launcher(segment)`. `range.substrate()`
 is the one place a name becomes an adapter (`FSL_SUBSTRATE`, options keyed by
 substrate; a test refuses a second `import_string`), and `redteam/run.py` uses
-it too. Core, `topology.py`, `attacker.py` and `objectives.py` never call
+it too. Core, `topology.py` and `attacker.py` never call
 Docker. `test/range.py` is the acceptance suite's side of the port.
 
 `platform/range/declaration.yaml` declares per segment an id, a name and an
@@ -427,11 +431,11 @@ it. A stand-in, `bin/openstack-range`, was the first range here, removed
 on 2026-10-01 once the platform built its own (backlog 2, step 2); it made
 keypair `fsl-claude` (which the platform stack still boots with), `fsl-sg`
 (22/80/3000/icmp), six networks `fsl-<id>` tagged `fsl.segment.id=<id>` with
-compose's subnets, and `fsl-juice-shop` (ubuntu-24.04, m1.small, config drive)
+compose's subnets, and one target VM (ubuntu-24.04, m1.small, config drive)
 on `fsl-estate`. Re-running `up` creates nothing. Through
 `FSL_SUBSTRATE=range.openstack.connect` from the Mac, `describe()` returned
 all six segments with their declared names and origins, the subnets, `.1`
-gateways and network ids Neutron lists, `fsl-juice-shop` at its fixed address
+gateways and network ids Neutron lists, the target VM at its fixed address
 on `estate`, and no sensors (no gateway or sensor server stands);
 `segments()` returned the same. That stand-in is gone; since step 3 of
 backlog 2 the platform VM reaches the range's hosts over `mgmt` and
@@ -439,10 +443,10 @@ backlog 2 the platform VM reaches the range's hosts over `mgmt` and
 
 Left for OpenStack, in order:
 
-1. **Name resolution.** Compose gives away `shop.com`, `wiki.internal`,
-   `juice-shop:3000` and `proxy:8081`; Neutron does not. Inside the estate
-   it is done: the slot's user data appends every host's declared names to
-   `/etc/hosts`. Left: `shop.com` and `board.com` for the attacker (step 5).
+1. **Name resolution.** Compose gives away `board.com` and `proxy:8081`;
+   Neutron does not. Inside the estate it is done: the slot's user data
+   appends every host's declared names to `/etc/hosts`. Left: `board.com` for
+   the attacker (step 5).
 2. **Where the sensor sits.** Docker shares the WAF's namespace and the adapter
    confirms `watches`; on Nova nothing confirms it. Either Suricata rides the
    WAF instance or Tap-as-a-Service mirrors its ports.
@@ -474,11 +478,11 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   mode and the IPS's drop rules on and off itself.
 - **An IPS outage is an infrastructure fault**, not part of the exercise; it
   is neither planned for nor scored.
-- **Objectives do not centre on Juice Shop.** The board's user database
-  (Django `auth_user`: accounts and password hashes) becomes something the red
-  team can take. How the board judges from its own side that it was taken is
-  still to design; the platform must not decide it. Juice Shop's
-  continue-code restore is not pursued.
+- **Objectives do not centre on one target.** The board's user database
+  (Django `auth_user`: accounts and password hashes) is something the red team
+  takes, and the attacker proves it by submitting the loot; the platform checks
+  it against the target's own ground truth, never by its belief about what an
+  attack did (done 2026-10-04, see "The objective model").
 - **GeoIP is loaded once**, not refreshed: country ranges rarely move. **Its
   durable home is done (2026-10-02):** a bind mount of `config/ingest-geoip`
   with `ingest.geoip.downloader.enabled: false`, so the files survive a
@@ -554,11 +558,6 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 ## Decisions left for a person
 
 - **The tutorial**, to be designed later (the user).
-- **How the board judges that its user database was taken** (held out of
-  backlog 2 step 3 by the user, 2026-10-01). The board's `auth_user`
-  (accounts and password hashes) on the board VM's MySQL is to be an
-  objective, decided from the board's side like Juice Shop's `solved`, never
-  by the platform. The board VM stands on the cloud; nothing judges yet.
 - **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind", which
@@ -579,18 +578,19 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
 - **Range**: an Internet segment with thirty declared origin countries (Docker
   builds four: Russia, the default, Brazil, Hong Kong, United States), the
-  estate and management, crossed only at the WAF; target `http://shop.com`; an internal wiki reachable only by SSRF
-  that judges its own reads.
+  estate and management, crossed only at the WAF; the one target is
+  `http://board.com`.
 - **Red team**: one Kali image; cases fired from the console or a labelled
   shell; each case carries a Mandiant stage, ATT&CK/CAPEC ids, and what it takes.
-- **Two targets**: Juice Shop (judged — it flips its own `solved`) and a
-  detection-only Django board on MySQL behind the WAF as `board.com`.
-  `objectives.py` reads per scenario; a board session lists no objectives.
-  Each wargame is one folder, `wargames/<id>/`, whose `compose.yaml` the top
-  one includes: `juice-shop` holds Juice Shop and the wiki its SSRF reaches,
-  `board` the board and its MySQL. A test holds the folders, the includes and
-  the console's catalogue to each other.
-- **Score**: objectives (target-decided) beside detection TP/FP/FN/TN with the
+- **One target**: a Django board on MySQL behind the WAF as `board.com`
+  (Django 3.2.4, the `?sort=` order_by SQLi). Its objectives are
+  `loot_verified`: the attacker submits exfiltrated `auth_user` hashes and the
+  platform checks them against the snapshotted ground truth. Each wargame is
+  one folder, `wargames/<id>/`, whose `compose.yaml` the top one includes;
+  `board` holds the board and its MySQL. A test holds the folders, the
+  includes and the console's catalogue to each other.
+- **Score**: objectives (loot verified against the target's ground truth)
+  beside detection TP/FP/FN/TN with the
   `corroborated` gate; the zero-sum game score is being layered on (backlog 1).
 - **Console**: one blue console (Dashboard, Live, Scoreboard, Rules), light
   theme, world map, every value escaped.
@@ -600,7 +600,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
 - **The range on OpenStack**: the platform builds the networks, the golden
-  images and the slot (WAF, Juice Shop, wiki, board as VMs) through
+  images and the slot (WAF and board as VMs) through
   `/api/range/fabric/`, `/images/` and `/slot/`, and reaches every host over
   ssh on `mgmt` (backlog 2, steps 2 and 3). No attacker, pfSense or sensor
   VM yet.
@@ -660,7 +660,7 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    (`README.md`). Checked on the cloud: a fresh stack
    went from create to all 11 services up in 3 min 20 s, and inside the
    platform container `FSL_SUBSTRATE=range.openstack.connect` returned the six
-   `fsl-*` segments and `fsl-juice-shop` from `describe()` and `segments()`.
+   `fsl-*` segments and the target VM from `describe()` and `segments()`.
    The platform itself stays on the Docker substrate until step 2. `bin/verify`
    on the VM: acceptance 126 of 126; the unit run fails only the 102 tests that
    need node, which the VM does not have.
@@ -678,10 +678,6 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      as a hidden Heat parameter into cloud-init; Nova's metadata service
      answered from inside the Kali container (`meta_data.json`, 200), and the
      user data it serves would have carried the password.
-   - **Acceptance cleared the wiki's read log by writing the host file**, which
-     works on colima's mounts but not on a Linux Docker host, where the wiki
-     writes it as root: 21 errors on the VM. `test/range.py`'s
-     `forget_wiki_reads()` truncates it inside the wiki instead.
    - **ModSecurity logged nothing on a Linux Docker host.** Its audit log was a
      bind mount of `deploy/nginx/logs`, which dockerd creates as root, and the
      WAF runs as nginx; colima's mounts hid it. It now sits on the named volume
@@ -734,15 +730,13 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `fsl-claude`; a POST rebuilt it clean. `bin/openstack-range` is gone.
      On the VM 8000 is bound to the VM's address, not loopback, so the
      acceptance suite's `localhost:8000` no longer reaches it there.
-3. **Done (2026-10-01): targets and the WAF as VMs**: Juice Shop, the board
-   on MySQL, the wiki, and the WAF VM (nginx + ModSecurity + CRS). Golden
-   images come from setup scripts in the repo, then snapshots. Left out of
-   this step (the user, 2026-10-01): making the board's user database an
-   objective, judged from the board's side; it is still to design (see
-   "Decisions left for a person").
+3. **Done (2026-10-01): targets and the WAF as VMs**: the board on MySQL and
+   the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
+   scripts in the repo, then snapshots. This step also built Juice Shop and
+   the wiki as VMs; Phase 4 (2026-10-04) removed both from the declaration
+   (see "The objective model").
    - **Done (2026-10-01): the images.** `declaration.yaml`'s `hosts:` names,
      per VM, a setup script and the files it needs (`deploy/waf/`,
-     `wargames/juice-shop/shop/`, the wiki's conf and site,
      `wargames/board/image/` and the board's app). `range/images.py` packs
      each into a tar.gz whose digest is over paths, modes and contents; the
      platform boots a builder `fsl-build-<host>` from `ubuntu-24.04` on
@@ -755,16 +749,15 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      active. Every state comes from the cloud, so `POST
      /api/range/images/` is repeated until `clean`; `GET` reads, `DELETE`
      removes failed builders and images of another bundle. Versions match
-     the Docker range: Juice Shop 20.2.0 on node 24.19.0, CRS 4.25.1,
+     the Docker range: CRS 4.25.1,
      ModSecurity 3.0.16 compiled with connector 1.0.4 against Ubuntu's nginx
      1.24.0, each download pinned by sha256; the board runs Ubuntu's MySQL
      8.0 on the same VM.
    - **Checked on the cloud (2026-10-01):** the platform VM, given this tree
-     and `FSL_OPENSTACK_BUILD_NETWORK`, built `fsl-waf` (4.8 GB),
-     `fsl-juice-shop`, `fsl-wiki` and `fsl-board` (2.3 to 3.2 GB, min disk
-     20) by repeated POSTs, each carrying the digest the Mac computes, with no
-     builder left. Setup takes about two minutes for Juice Shop and the
-     wiki, four for the board and seven for the WAF. The first WAF builds
+     and `FSL_OPENSTACK_BUILD_NETWORK`, built `fsl-waf` (4.8 GB)
+     and the target images (2.3 to 3.2 GB, min disk 20) by repeated POSTs,
+     each carrying the digest the Mac computes, with no builder left. Setup
+     takes about four minutes for the board and seven for the WAF. The first WAF builds
      failed and said why on the console (CRS on 3.0.12, then a missing
      modules directory); `DELETE` cleared each and the next POST rebuilt.
    - **Ubuntu 24.04's libmodsecurity is 3.0.12**, which cannot parse CRS
@@ -797,17 +790,16 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      a `bootcmd` adding all thirty addresses to the NIC with that port's MAC
      every boot. `GET/POST/DELETE /api/range/slot/`; `DELETE` removes the
      servers and the ports named for them.
-   - **Checked on the cloud (2026-10-01):** one POST booted `fsl-waf`,
-     `fsl-juice-shop`, `fsl-wiki` and `fsl-board`, all ACTIVE. Inside the
+   - **Checked on the cloud (2026-10-01, when the slot held four hosts):** one
+     POST booted all four, all ACTIVE. Inside the
      platform container `describe()` returned `fsl-waf` on all thirty
      origins at each `.1`, the four hosts on estate, the five (the platform
      too) on mgmt, and no sensor. `runner()` over ssh to each mgmt address:
-     Juice Shop answered 200, the wiki served its page, MySQL and the board
-     were active and answered 200, and the WAF held 33 IPv4 addresses and
-     proxied `shop.com` and `board.com` (200 each) through the names in
+     MySQL and the board were active and answered 200, and the WAF held 33
+     IPv4 addresses and proxied `board.com` (200) through the names in
      `/etc/hosts`. A request with a scanner's User-Agent was logged by
      ModSecurity 3.0.16 / CRS 4.25.1 (913100, 949110), the same producer
-     line as the Docker WAF's, and Juice Shop reached `wiki.internal`.
+     line as the Docker WAF's.
    - **cloud-init applies only the first address of a port** that holds
      several (one per subnet), and adds a default route through each
      subnet's gateway, here the WAF's own address; hence the `bootcmd`.
@@ -910,8 +902,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    - **Done (2026-10-03): the session Start/Stop lifecycle and the READY gate.**
      `slot.Plan.active` (pure: clean + standing + every VM ACTIVE). `GET
      /api/range/ready/` is substrate-aware: compose answers `ready:true`,
-     OpenStack answers the three read-only checks (active, nothing solved on the
-     target, Suricata rules at baseline with no suppression in force) with a
+     OpenStack answers the three read-only checks (active, ground truth readable,
+     Suricata rules at baseline with no suppression in force) with a
      derived phase (NOT_STANDING / REBUILDING / CHECKING / READY). `POST
      /api/range/canary/` fires one known SQLi probe from the default origin
      (wear_origin + `harness.fire`), then
@@ -939,8 +931,21 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
      has no OpenStack adapter, as for the rest of this backlog).
 
+### 3. Sub-project B: the PHP company site (next)
+
+The range's second target, after the board; the objective-model refactor was
+its prerequisite and is done. It needs its own spec first (which vulnerabilities,
+what its loot is, how its ground truth is read from the target side, where it
+sits behind the WAF), then an `objective_model: loot_verified` wargame folder
+under `wargames/<id>/` like the board's. Nothing here is designed yet; do not
+start it without that spec.
+
 ## Known gaps
 
+- The cloud was not touched by Phase 4. Juice Shop and wiki images or servers
+  built there before 2026-10-04 are leftovers the declaration no longer names,
+  and the live-cloud slot has not been re-checked as a two-host (WAF, board)
+  slot.
 - The first full `bin/verify` right after `docker compose up -d --build`
   (2026-09-30) failed 56 tests in `test_console_behaviour.py` that passed in
   `--fast` before it, alone, as a file, and in the next full run. The cause
