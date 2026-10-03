@@ -39,24 +39,23 @@ def test_a_board_session_opens_blind_when_the_channel_is_down(client):
     assert Session.objects.get(pk=session_id).baseline is None
 
 
-def test_the_board_lists_its_tier_ladder_and_never_asks_juice_shop(client):
-    with patch("objectives._fetch") as fetched:
-        response = client.get("/api/wargames/board/objectives/")
+def test_the_board_lists_its_tier_ladder_with_every_field_unsolved(client):
+    response = client.get("/api/wargames/board/objectives/")
 
-    assert {o["key"] for o in response.json()} == {
+    tiers = {o["key"]: o for o in response.json()}
+    assert set(tiers) == {
         "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
     }
-    fetched.assert_not_called()
+    for tier in tiers.values():
+        assert tier["name"] and tier["category"]
+        assert isinstance(tier["difficulty"], int)
+        assert tier["solved"] is False
+        assert tier["solved_at"] is None
 
 
-def test_observing_a_board_session_does_not_self_judge(client):
+def test_observing_a_board_session_records_nothing(client):
     session_id = _start_board(client)
 
-    with patch("objectives._fetch") as fetched, patch(
-        "api.views.objectives.observe"
-    ) as observed:
-        response = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    response = client.post_json(f"/api/sessions/{session_id}/objectives/")
 
     assert response.json() == {"achieved": 0, "total": 0}
-    fetched.assert_not_called()
-    observed.assert_not_called()

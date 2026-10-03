@@ -52,7 +52,7 @@ def test_tool_case_in_the_default_file_declares_args():
 
     from redteam.harness import load_cases
 
-    cases = load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/default.yaml")
+    cases = load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml")
     tool_cases = [c for c in cases if is_tool_case(c)]
 
     assert tool_cases, "no tool: cases at all"

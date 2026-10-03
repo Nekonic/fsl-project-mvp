@@ -72,11 +72,11 @@ import json, subprocess, sys, time
 DEADLINE = time.time() + 120
 while time.time() < DEADLINE:
     done = subprocess.run(
-        ["docker", "inspect", "fsl-juice-shop", "--format", "{{json .State.Health}}"],
+        ["docker", "inspect", "fsl-board", "--format", "{{json .State.Health}}"],
         capture_output=True, text=True,
     )
     if done.returncode != 0:
-        print("fsl-juice-shop is not there", file=sys.stderr)
+        print("fsl-board is not there", file=sys.stderr)
         sys.exit(1)
     health = json.loads(done.stdout or "null") or {}
     if health.get("Status") == "healthy":

@@ -21,10 +21,10 @@ def test_the_board_is_a_second_wargame_on_its_own_host(client):
 
     assert wargames["board"]["public_url"] == "http://board.com"
 
-def test_both_wargames_are_judged_but_by_different_models(client):
+def test_the_catalogue_lists_only_the_board_and_it_is_judged(client):
     wargames = listed(client)
 
-    assert wargames["juice-shop"]["judged"] is True
+    assert set(wargames) == {"board"}
     assert wargames["board"]["judged"] is True
 
 def test_the_board_ships_attacks_and_benign_traffic(client):
@@ -33,24 +33,20 @@ def test_the_board_ships_attacks_and_benign_traffic(client):
     assert any(case["malicious"] for case in cases)
     assert any(not case["malicious"] for case in cases)
 
-def test_the_board_lists_its_loot_tiers_and_never_asks_juice_shop(client):
-    with patch("objectives._fetch") as fetched:
-        response = client.get("/api/wargames/board/objectives/")
+def test_the_board_lists_its_loot_tiers(client):
+    response = client.get("/api/wargames/board/objectives/")
 
     assert {o["key"] for o in response.json()} == {
         "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
     }
-    fetched.assert_not_called()
 
-def test_a_board_session_never_asks_juice_shop_what_fell(client):
-    with patch("objectives._fetch") as fetched:
-        session_id = board_session(client)
-        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
-        closed = client.post_json(f"/api/sessions/{session_id}/close/")
+def test_a_board_session_observes_nothing_and_close_confesses_nothing(client):
+    session_id = board_session(client)
+    observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    closed = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert observed.json() == {"achieved": 0, "total": 0}
     assert "unobserved" not in closed.json()
-    fetched.assert_not_called()
 
 def test_a_board_session_opens_with_the_ground_truth_snapshot(client):
     session_id = board_session(client)

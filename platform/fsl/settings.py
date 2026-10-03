@@ -68,13 +68,8 @@ ATTACKER_TARGET_URL = os.environ.get("ATTACKER_TARGET_URL", os.environ.get("PUBL
 
 TARGET_URL = os.environ.get("TARGET_URL", "http://board.com")
 PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://board.com")
-BOARD_PUBLIC_URL = os.environ.get("BOARD_PUBLIC_URL", "http://board.com")
 
-WIKI_READ_LOG = os.environ.get("WIKI_READ_LOG", "/var/log/nginx/read.log")
-WIKI_SECRET_PATH = os.environ.get("WIKI_SECRET_PATH", "/runbooks/deploy.html")
-WARGAME_API_URL = os.environ.get("WARGAME_API_URL", "http://juice-shop:3000")
 BOARD_API_URL = os.environ.get("BOARD_API_URL", "http://board:8000")
-TARGET_SETTLE = float(os.environ.get("TARGET_SETTLE", "0.25"))
 WARGAME_CASES_DIR = os.environ.get(
     "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
 )

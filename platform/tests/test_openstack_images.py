@@ -176,7 +176,7 @@ def test_cleaning_removes_failed_builders_and_stale_images_but_not_ready_ones(cl
     adapter(cloud).ensure_images()
     adapter(cloud).ensure_images()
     next(i for i in cloud.images if i["name"] == "fsl-waf")["status"] = "active"
-    cloud.images.append({"id": "img-old", "name": "fsl-wiki", "status": "active",
+    cloud.images.append({"id": "img-old", "name": "fsl-board", "status": "active",
                          images.BUNDLE: "0000000000000000"})
 
     removed = adapter(cloud).clean_images()

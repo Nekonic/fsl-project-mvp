@@ -12,7 +12,7 @@
     discovery    ffuf -u $FSL_TARGET/FUZZ -w /usr/share/wordlists/dirb/common.txt
                  gobuster dir -u $FSL_TARGET -w /usr/share/wordlists/dirb/common.txt
     scanning     nikto -h $FSL_TARGET
-    exploitation sqlmap -u "$FSL_TARGET/rest/products/search?q=1" --batch
+    exploitation sqlmap -u "$FSL_TARGET/search/?q=1" --batch
 
   Name a window in the red console before you start, and stop it when you are
   done: everything sent in between is attributed to that name and scored.

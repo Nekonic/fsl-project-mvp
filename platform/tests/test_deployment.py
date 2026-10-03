@@ -184,17 +184,6 @@ def test_no_setting_is_read_by_nothing():
         f"reads as configuration somebody could change to an effect"
     )
 
-def test_the_wiki_is_checked_on_an_address_it_actually_listens_on():
-    compose = composed.document()
-    check = " ".join(compose["services"]["wiki"]["healthcheck"]["test"])
-
-    assert "localhost" not in check, (
-        "busybox wget resolves localhost to ::1 first. The nginx entrypoint "
-        "adds an IPv6 listener by rewriting its own conf and this conf is "
-        "mounted read-only, so the check failed forever while the wiki served "
-        "every request it was given"
-    )
-
 def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
     import re
 
@@ -212,7 +201,7 @@ def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()
 
-    assert "fsl-juice-shop" in verify and "Health" in verify, (
+    assert "fsl-board" in verify and "Health" in verify, (
         "attacks fired at a target that is still starting hit nothing, and the "
         "run reports TP 0 - which the session protocol answers with git reset "
         "--hard. A flaky red is worse than a slow verify"

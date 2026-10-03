@@ -3,7 +3,7 @@ import struct
 
 import pytest
 
-from range import ATTACKER, WIKI, run
+from range import ATTACKER, BOARD, run
 
 PUBLISHED = {8000: "the scoring API", 9200: "Elasticsearch"}
 
@@ -19,14 +19,13 @@ def gateway_of(role: str) -> str:
 
 def reached(role: str, url: str) -> bool:
     answer = run(role, [
-        "sh", "-c",
-        f"env -u http_proxy -u HTTP_PROXY -u https_proxy -u HTTPS_PROXY "
-        f"wget -q -O /dev/null -T 4 {url} && echo reached || echo refused",
+        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        "--max-time", "4", "--noproxy", "*", url,
     ])
-    return answer.stdout.strip().endswith("reached")
+    return answer.stdout.strip() not in ("", "000")
 
 
-@pytest.mark.parametrize("role", [ATTACKER, WIKI])
+@pytest.mark.parametrize("role", [ATTACKER, BOARD])
 @pytest.mark.parametrize("port", sorted(PUBLISHED))
 def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(stack_is_up, role, port):
     gateway = gateway_of(role)

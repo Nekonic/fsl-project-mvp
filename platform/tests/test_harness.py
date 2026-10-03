@@ -6,7 +6,7 @@ import yaml
 from redteam.harness import build_request, load_cases
 
 BASE = "http://localhost:8080"
-DEFAULT_CASES = Path(__file__).resolve().parents[2] / "redteam/cases/default.yaml"
+DEFAULT_CASES = Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml"
 
 def test_load_cases_reads_yaml(tmp_path):
     path = tmp_path / "cases.yaml"

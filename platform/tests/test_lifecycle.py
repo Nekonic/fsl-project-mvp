@@ -5,7 +5,7 @@ import yaml
 
 import lifecycle
 
-CASES = pathlib.Path(__file__).resolve().parents[2] / "redteam/cases/default.yaml"
+CASES = pathlib.Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml"
 
 def cases():
     return yaml.safe_load(CASES.read_text())
@@ -87,10 +87,10 @@ def test_every_id_any_case_uses_resolves_to_a_catalogue():
 pytestmark = pytest.mark.django_db
 
 def test_the_catalogue_hands_the_console_the_labels_and_where_to_check_them(client):
-    listed = client.get("/api/wargames/juice-shop/cases/")
+    listed = client.get("/api/wargames/board/cases/")
 
     assert listed.status_code == 200
-    sqli = next(c for c in listed.json() if c["name"] == "sqli-login-bypass")
+    sqli = next(c for c in listed.json() if c["name"] == "board-sqli-login-bypass")
     assert sqli["stage"] == "initial-compromise"
     assert sqli["technique"] == "T1190"
     assert sqli["pattern"] == "CAPEC-66"
@@ -100,7 +100,7 @@ def test_the_catalogue_hands_the_console_the_labels_and_where_to_check_them(clie
     }
 
 def test_benign_traffic_comes_back_with_no_labels_at_all(client):
-    listed = client.get("/api/wargames/juice-shop/cases/")
+    listed = client.get("/api/wargames/board/cases/")
 
     benign = next(c for c in listed.json() if not c["malicious"])
     assert (benign["stage"], benign["technique"], benign["pattern"]) == ("", "", "")
@@ -127,14 +127,14 @@ def test_a_fired_case_keeps_the_label_it_was_fired_with(client):
 
 def test_the_catalogue_says_what_the_range_does_not_reach(client):
     listed = client.get("/api/wargames/").json()
-    juice = next(w for w in listed if w["id"] == "juice-shop")
+    board = next(w for w in listed if w["id"] == "board")
 
-    assert juice["covers"] == [
-        "initial-reconnaissance", "initial-compromise", "complete-mission",
+    assert board["covers"] == [
+        "initial-compromise", "complete-mission",
     ], "the stages it covers are not in life cycle order"
-    assert juice["uncovered"] == [
-        "establish-foothold", "escalate-privileges", "internal-reconnaissance",
-        "move-laterally", "maintain-presence",
+    assert board["uncovered"] == [
+        "initial-reconnaissance", "establish-foothold", "escalate-privileges",
+        "internal-reconnaissance", "move-laterally", "maintain-presence",
     ], (
         "a range that says nothing about what it cannot show reads as a range "
         "that covers everything. There is no code execution on the target, so "

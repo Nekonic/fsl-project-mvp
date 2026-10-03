@@ -63,7 +63,7 @@ install -d -o www-data -m 700 /var/cache/modsecurity
 rm -rf "$BUILD"
 
 cp /etc/hosts /tmp/hosts
-echo "127.0.0.1 juice-shop board" >> /etc/hosts
+echo "127.0.0.1 board" >> /etc/hosts
 nginx -t
 cp /tmp/hosts /etc/hosts
 systemctl enable nginx

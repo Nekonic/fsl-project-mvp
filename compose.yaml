@@ -54,7 +54,6 @@ networks:
         - subnet: 172.31.0.0/24
 
 include:
-  - wargames/juice-shop/compose.yaml
   - wargames/board/compose.yaml
 
 volumes:
@@ -69,11 +68,11 @@ services:
     image: owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05
     container_name: fsl-waf
     depends_on:
-      juice-shop: {condition: service_healthy}
+      board: {condition: service_healthy}
     networks:
       edge:
         priority: 100
-        aliases: [shop.com, board.com]
+        aliases: [board.com]
       edge-br:
         priority: 90
       edge-hk:
@@ -85,7 +84,7 @@ services:
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     environment:
-      BACKEND: "http://juice-shop:3000"
+      BACKEND: "http://board:8000"
       PORT: "80"
       MODSEC_RULE_ENGINE: "DetectionOnly"
       MODSEC_AUDIT_ENGINE: "RelevantOnly"
@@ -98,7 +97,7 @@ services:
     volumes:
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - waflogs:/var/log/modsecurity/audit
-      - ./deploy/nginx/board.conf:/etc/nginx/conf.d/board.conf:ro
+      - ./deploy/nginx/board.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
       interval: 10s
@@ -166,8 +165,8 @@ services:
     environment:
       http_proxy: "http://proxy:8081"
       HTTP_PROXY: "http://proxy:8081"
-      FSL_TARGET: "http://shop.com"
-      FSL_TARGET_HOST: "shop.com"
+      FSL_TARGET: "http://board.com"
+      FSL_TARGET_HOST: "board.com"
 
   proxy:
     platform: linux/amd64
@@ -191,8 +190,8 @@ services:
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "fsl-logs-*"
       DJANGO_DB_PATH: "/data/db.sqlite3"
-      TARGET_URL: "http://shop.com"
-      PUBLIC_TARGET_URL: "http://shop.com"
+      TARGET_URL: "http://board.com"
+      PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       FSL_SOURCE: "/src"
     env_file:

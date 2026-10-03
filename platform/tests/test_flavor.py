@@ -53,9 +53,9 @@ def test_the_openstack_flavor_adds_pfsense_and_kali_and_takes_the_waf_off_the_in
     assert d.hosts["fsl-waf"].segments == ("estate", "mgmt"), (
         "the WAF stands behind pfSense now, on the estate only"
     )
-    assert set(d.hosts["fsl-waf"].names) == {"shop.com", "board.com"}, (
-        "the attacker reaches the targets by name through the WAF, so the WAF "
-        "carries their names on the estate"
+    assert set(d.hosts["fsl-waf"].names) == {"board.com"}, (
+        "the attacker reaches the target by name through the WAF, so the WAF "
+        "carries its name on the estate"
     )
 
 def test_an_unknown_flavor_is_just_the_base():

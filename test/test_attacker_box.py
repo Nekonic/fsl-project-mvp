@@ -68,7 +68,7 @@ def test_the_proxied_address_is_not_the_box(box):
     assert box["source_ip"] not in mine
 
 
-PUBLIC_HOST = "shop.com"
+PUBLIC_HOST = "board.com"
 
 def test_the_shell_is_pointed_at_a_site_not_at_the_defence(stack_is_up):
     target = in_box("sh", "-c", "echo $FSL_TARGET").stdout.strip()
@@ -95,7 +95,7 @@ def _alerts_mentioning(token, lines=300):
     return found
 
 def _attack_from_the_shell(token):
-    payload = f"/rest/products/search?q=%27%20OR%201%3D1--%20{token}"
+    payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
     in_box("sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"')
     time.sleep(5)
     alerts = _alerts_mentioning(token)

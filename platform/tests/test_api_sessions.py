@@ -115,7 +115,7 @@ def test_a_session_for_a_wargame_that_does_not_exist_is_refused(client, scenario
     assert not Session.objects.exists()
 
 def test_create_session_returns_id_and_start_time(client):
-    response = client.post_json("/api/sessions/", {"scenario": "juice-shop"})
+    response = client.post_json("/api/sessions/", {"scenario": "board"})
 
     assert response.status_code == 201
     assert response.json()["id"]

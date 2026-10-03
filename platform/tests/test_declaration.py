@@ -212,10 +212,10 @@ def test_a_role_no_container_fills_is_caught():
 
 def test_a_role_whose_container_compose_renamed_is_caught():
     compose, declaration = documents()
-    compose["services"]["wiki"]["container_name"] = "fsl-intranet"
+    compose["services"]["board-db"]["container_name"] = "fsl-intranet"
 
     assert drift(compose, declaration) == [
-        "the role 'wiki' is declared to be filled by 'fsl-wiki' and compose "
+        "the role 'board-db' is declared to be filled by 'fsl-board-db' and compose "
         "defines no such container"
     ]
 
