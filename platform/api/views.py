@@ -179,7 +179,7 @@ def sessions(request):
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
     baseline = []
-    if wargames.judged(scenario):
+    if wargames.objective_model(scenario) == "self_judged":
         try:
             baseline = sorted(objectives.solved_keys(adapter.runner("wiki")))
         except objectives.ObjectivesUnavailable:
@@ -363,7 +363,7 @@ def wargame_cases(request, wargame_id):
 def wargame_objectives(request, wargame_id):
     if wargame_id not in wargames.WARGAMES:
         raise Http404(wargame_id)
-    if not wargames.judged(wargame_id):
+    if wargames.objective_model(wargame_id) == "none":
         return _reply([])
     return _reply(objectives.catalogue(substrate().runner("wiki")))
 
@@ -378,7 +378,7 @@ def session_objectives(request, session_id):
     return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
-    if not wargames.judged(session.scenario):
+    if wargames.objective_model(session.scenario) == "none":
         return {"achieved": 0, "total": 0}
     found, unreadable = objectives.observe(substrate().runner("wiki"))
     solved = {o["key"]: o for o in found if o["solved"]}
