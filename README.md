@@ -1,8 +1,8 @@
 # fsl-project-mvp
 
-A cyber attack/defence training range. A red team attacks OWASP Juice Shop or
-a Django board on MySQL, a blue team defends them with Suricata and
-ModSecurity, and the platform scores what each side achieved. This repo is the
+A cyber attack/defence training range. A red team attacks a Django board on
+MySQL, a blue team defends it with Suricata and ModSecurity, and the platform
+scores what each side achieved. This repo is the
 throwaway prototype; the production project lives elsewhere.
 
 - `CLAUDE.md`: what the repo is for, how the score works, the working rules
@@ -51,10 +51,12 @@ flowchart TB
 
 The red team attacks through the blue team's defences into a wargame; the
 blue team's sensors log into Elasticsearch; the platform referees, scoring
-from those alerts and from the target's own verdict. The platform, red and
-blue teams are in the top `compose.yaml`; each wargame is a folder under
-`wargames/` that it includes, so a new wargame is a new folder and one more
-`include:` line.
+from those alerts and from the loot the attacker proves against the target's
+own data. The platform, red and blue teams are in the top `compose.yaml`; each
+wargame is a folder under `wargames/` that it includes, so a new wargame is a
+new folder and one more `include:` line. There is one wargame today, the
+board, the single `loot_verified` target; a PHP company site is planned as the
+second.
 
 ```mermaid
 flowchart LR
@@ -73,7 +75,6 @@ flowchart LR
   end
 
   subgraph wargames["Wargames, wargames/*"]
-    juice["juice-shop<br/>and the wiki behind it"]
     board["board<br/>and its MySQL"]
   end
 
@@ -86,22 +87,22 @@ flowchart LR
   console -->|"/terminal/"| kali
   kali --> proxy
   proxy --> waf
-  waf --> juice
   waf --> board
   suricata -.->|watches| waf
   waf -.->|audit log| filebeat
   suricata -.->|alerts| filebeat
   filebeat --> es
   es -->|alerts| scoring
-  juice -.->|own verdict| scoring
+  board -.->|ground truth| scoring
   console --> scoring
 ```
 
 Left out to keep the lines readable: Kali's raw TCP goes straight to the WAF
 without the proxy; the platform fires scripted cases at the WAF itself; and
 through the substrate (`docker exec` here, ssh on OpenStack) it writes the
-sensor's rules and the proxy's case label and reads the wiki's read log and
-the attacker's command log. The networks are in `docs/ARCHITECTURE.md`.
+sensor's rules and the proxy's case label and reads the attacker's command
+log, and it reads the board's ground truth directly over the estate network,
+past the WAF. The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -136,11 +137,9 @@ hands `/terminal/` to Kali's ttyd, which publishes no port of its own. On
 the Mac every port is published on `127.0.0.1` only; on the platform VM 8000
 is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
 target is not published: the command-line cases and the acceptance tests reach
-it from inside the range, the way the console does. Inside the range both
-targets sit behind the WAF on port 80: Juice Shop as `http://shop.com` (on the
-`edge` network only) and the board as `http://board.com` (on every edge
-network). A session is on Juice Shop unless it is created with
-`{"scenario": "board"}`.
+it from inside the range, the way the console does. Inside the range the
+target sits behind the WAF on port 80, as `http://board.com` (on the `edge`
+network).
 
 ### On OpenStack
 
@@ -207,9 +206,8 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 A failed build shows the end of its console under `detail`; `DELETE` on the
 same path removes failed builders and images built from older scripts.
 
-With the images ready, one POST boots the WAF, Juice Shop, the wiki and the
-board, each from its image, and the platform reaches them over ssh on
-`mgmt`:
+With the images ready, one POST boots the WAF and the board, each from its
+image, and the platform reaches them over ssh on `mgmt`:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
@@ -219,9 +217,9 @@ The edge and the WAF then take their config over ssh — pfSense's WAN
 addresses, pass rule, Suricata and syslog, and the WAF's ModSecurity log
 forwarding — with `POST /api/range/configure/`. To reset the slot between
 sessions, `POST /api/range/slot/rebuild/` Nova-rebuilds every VM from its
-golden image (keeping its ports and addresses), so no solved flag or edited
+golden image (keeping its ports and addresses), so no edited data or
 rule carries over; run `configure/` again once the VMs are back up, since the
-rebuild wipes the ssh-pushed config (the targets are baked and need only the
+rebuild wipes the ssh-pushed config (the board is baked and needs only the
 rebuild).
 
 The range lives outside the stack. Take it down in order, `DELETE` on
@@ -284,13 +282,13 @@ Korean.
 - **Blue** has a dashboard, live alerts, the scoreboard and the Suricata rules.
   It ingests on a timer. Any alert opens the Elasticsearch record behind it.
 
-The scripted Juice Shop cases can also be fired from the command line, as the
+The scripted board cases can also be fired from the command line, as the
 acceptance tests do. The target is not published, so the harness runs inside
 the range, from the platform, the way the console fires:
 
 ```bash
 docker compose exec platform \
-  python redteam/run.py --target http://shop.com --tool-target http://shop.com
+  python redteam/run.py --target http://board.com --tool-target http://board.com
 ```
 
 ## Checking it

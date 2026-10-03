@@ -1,6 +1,6 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련 레인지다. 레드팀은 OWASP Juice Shop이나 MySQL 위에서 도는 Django 게시판을 공격하고, 블루팀은 Suricata와 ModSecurity로 이를 방어하며, 플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매긴다. 이 저장소는 버리는 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있다.
+사이버 공격·방어 훈련 레인지다. 레드팀은 MySQL 위에서 도는 Django 게시판을 공격하고, 블루팀은 Suricata와 ModSecurity로 이를 방어하며, 플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매긴다. 이 저장소는 버리는 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있다.
 
 - `CLAUDE.md`: 저장소의 목적, 점수 방식, 작업 규칙
 - `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향
@@ -43,7 +43,7 @@ flowchart TB
 
 ### 스택 내부
 
-레드팀은 블루팀의 방어를 거쳐 워게임을 공격한다. 블루팀의 센서는 Elasticsearch에 기록을 남긴다. 플랫폼은 심판으로서 그 경보와 대상 시스템 자신의 판정으로 점수를 매긴다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에 있다. 각 워게임은 최상위 `compose.yaml`이 include하는 `wargames/` 아래 폴더 하나이므로, 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 된다.
+레드팀은 블루팀의 방어를 거쳐 워게임을 공격한다. 블루팀의 센서는 Elasticsearch에 기록을 남긴다. 플랫폼은 심판으로서 그 경보와, 공격자가 대상 시스템 자신의 데이터에 맞춰 증명한 loot로 점수를 매긴다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에 있다. 각 워게임은 최상위 `compose.yaml`이 include하는 `wargames/` 아래 폴더 하나이므로, 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 된다. 지금 워게임은 게시판 하나이며, 유일한 `loot_verified` 대상이다. 두 번째로는 PHP 회사 사이트를 계획하고 있다.
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,6 @@ flowchart LR
   end
 
   subgraph wargames["워게임, wargames/*"]
-    juice["juice-shop<br/>및 그 뒤의 wiki"]
     board["board<br/>및 board의 MySQL"]
   end
 
@@ -75,18 +74,17 @@ flowchart LR
   console -->|"/terminal/"| kali
   kali --> proxy
   proxy --> waf
-  waf --> juice
   waf --> board
   suricata -.->|감시| waf
   waf -.->|감사 로그| filebeat
   suricata -.->|경보| filebeat
   filebeat --> es
   es -->|경보| scoring
-  juice -.->|자체 판정| scoring
+  board -.->|ground truth| scoring
   console --> scoring
 ```
 
-선이 읽기 쉽도록 그래프에서 뺀 것이 있다. Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 간다. 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 또 플랫폼은 기반 계층(여기서는 `docker exec`, OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고 wiki의 읽기 로그와 공격자의 명령 로그를 읽는다. 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
+선이 읽기 쉽도록 그래프에서 뺀 것이 있다. Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 간다. 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 또 플랫폼은 기반 계층(여기서는 `docker exec`, OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고 공격자의 명령 로그를 읽으며, 게시판의 ground truth는 estate 네트워크로 WAF를 거치지 않고 직접 읽는다. 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
 
 ## 스택 띄우기
 
@@ -108,7 +106,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 8000 | 콘솔, `/api/`, `/terminal/`의 공격자 터미널 | 사람의 브라우저 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서는 두 대상 시스템 모두 WAF 뒤 80번 포트에 있다. Juice Shop은 `http://shop.com`(`edge` 네트워크에서만), 게시판은 `http://board.com`(모든 edge 네트워크에서)이다. 세션은 `{"scenario": "board"}`로 만들지 않으면 Juice Shop을 대상으로 한다.
+사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 `http://board.com`(`edge` 네트워크에서)으로 있다.
 
 ### OpenStack에서
 
@@ -156,13 +154,13 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 
 빌드가 실패하면 `detail`에 그 콘솔의 끝부분을 보여 준다. 같은 경로에 `DELETE`를 보내면 실패한 빌더와 오래된 스크립트로 만든 이미지를 지운다.
 
-이미지가 준비되면 POST 하나가 WAF, Juice Shop, wiki, 게시판을 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
+이미지가 준비되면 POST 하나가 WAF와 게시판을 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-그런 다음 edge와 WAF가 ssh로 설정을 받는다. pfSense의 WAN 주소, pass 룰, Suricata와 syslog, WAF의 ModSecurity 로그 전달이며, `POST /api/range/configure/`로 한다. 세션 사이에 slot을 초기화하려면 `POST /api/range/slot/rebuild/`가 모든 VM을 그 골든 이미지에서 Nova-rebuild하므로(포트와 주소는 유지), 풀린 flag나 수정된 룰이 넘어오지 않는다. rebuild는 ssh로 밀어 넣은 설정을 지우므로, VM이 다시 올라오면 `configure/`를 다시 실행한다(대상 시스템은 이미지에 구워져 있어 rebuild만으로 충분하다).
+그런 다음 edge와 WAF가 ssh로 설정을 받는다. pfSense의 WAN 주소, pass 룰, Suricata와 syslog, WAF의 ModSecurity 로그 전달이며, `POST /api/range/configure/`로 한다. 세션 사이에 slot을 초기화하려면 `POST /api/range/slot/rebuild/`가 모든 VM을 그 골든 이미지에서 Nova-rebuild하므로(포트와 주소는 유지), 수정된 데이터나 룰이 넘어오지 않는다. rebuild는 ssh로 밀어 넣은 설정을 지우므로, VM이 다시 올라오면 `configure/`를 다시 실행한다(게시판은 이미지에 구워져 있어 rebuild만으로 충분하다).
 
 레인지는 스택 바깥에 산다. `openstack stack delete fsl-platform`이나 서버를 교체하는 스택 업데이트 전에, 순서대로 `/api/range/slot/`에 `DELETE`를 보내고 그다음 `/api/range/fabric/`에 보내 레인지를 내린다. 플랫폼의 ssh 키는 VM에 있어서 새 VM은 새 키를 만들고, fabric은 이전 키페어를 drift로 보고한다. 이미지는 남는다. 이미지가 느린 부분이다.
 
@@ -201,11 +199,11 @@ http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블�
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
 - **블루**에는 대시보드, 실시간 경보, 점수판, Suricata 룰이 있다. 경보는 일정 간격으로 수집한다. 경보를 누르면 그 경보의 Elasticsearch 원본 로그가 열린다.
 
-Juice Shop용 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로, 하니스는 콘솔이 실행하는 방식 그대로 레인지 안에서, 플랫폼에서 실행한다.
+게시판용 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로, 하니스는 콘솔이 실행하는 방식 그대로 레인지 안에서, 플랫폼에서 실행한다.
 
 ```bash
 docker compose exec platform \
-  python redteam/run.py --target http://shop.com --tool-target http://shop.com
+  python redteam/run.py --target http://board.com --tool-target http://board.com
 ```
 
 ## 검증
