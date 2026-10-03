@@ -44,11 +44,17 @@ def test_an_attack_on_the_board_is_detected_and_a_benign_request_passes(stack_is
     assert score["tp"] > 0 and score["tn"] > 0, score
 
 
-def test_a_board_session_is_scored_on_defence_alone_with_no_objectives(stack_is_up):
+def test_a_board_session_lists_its_loot_tiers_and_starts_with_none_taken(stack_is_up):
+    tiers = requests.get(
+        f"{PLATFORM_URL}/api/wargames/board/objectives/", timeout=60
+    ).json()
+    assert {t["key"] for t in tiers} == {
+        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
+    }
+
     session_id = _board_session()
     observed = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60
     )
-
     assert observed.status_code == 200, observed.text
     assert observed.json() == {"achieved": 0, "total": 0}, observed.json()

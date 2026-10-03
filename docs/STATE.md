@@ -62,10 +62,21 @@ checks. **Phase 2 is done too** (`objective_model` enum is now the source of
 truth and the three objective gates dispatch on it; `judged` is derived so the
 `/api/wargames/` catalogue is unchanged; no behavior change, `bin/verify` green,
 tests 1217 -> 1220). `loot_verified` is a reserved enum value with no behavior
-yet. Phase 3 (the `loot_verified` adapter + `POST /api/sessions/<id>/loot/` +
-verifier + board `objectives.yaml` + internal ground-truth endpoint; it must
-also make the Phase-2 gates handle the new value) and Phase 4 (remove Juice
-Shop) and the PHP company site (target #2, its own spec) are next.
+yet. **Phase 3 is done too (committed this session, `bin/verify` green:
+core_loc held at 461, product_loc 8381 -> 8579, tests 1220 -> 1252).** The
+board is `loot_verified`. The internal `/internal/auth-users` endpoint returns
+the `auth_user` username/hash map over `estate` and 404s through the WAF - an
+off-path ground truth the detector never sees. `wargames/board/objectives.yaml`
+declares the partial/admin/full ladder (`board-auth-user-partial/admin/full`).
+`POST /api/sessions/<id>/loot/` (`platform/api/loot.py`) snapshots the ground
+truth onto `Session.baseline` at session start, verifies submitted rows against
+that snapshot by exact hash match only (never re-reading the target live), and
+credits tiers that flow into the zero-sum game through the exfil case.
+Proven against the live stack (`test/test_board_loot.py`): exfiltrating
+`/members.json` and submitting its hashes credits all three tiers at coverage
+1.0; fabricated loot is refused. Left: Phase 4 (retarget the Juice-Shop tests
+and remove Juice Shop and the `self_judged` value) and sub-project B (the PHP
+company site, target #2, its own spec).
 
 **Audit cleanup committed this session (2026-10-02).** A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
