@@ -16,7 +16,7 @@ WARGAMES = {
         "description": "A deliberately insecure shop, behind the WAF and the IDS.",
         "case_file": "default.yaml",
         "public_url": settings.PUBLIC_TARGET_URL,
-        "judged": True,
+        "objective_model": "self_judged",
     },
     "board": {
         "id": "board",
@@ -27,12 +27,15 @@ WARGAMES = {
         ),
         "case_file": "board.yaml",
         "public_url": settings.BOARD_PUBLIC_URL,
-        "judged": False,
+        "objective_model": "none",
     },
 }
 
+def objective_model(wargame_id: str) -> str:
+    return WARGAMES[wargame_id]["objective_model"]
+
 def judged(wargame_id: str) -> bool:
-    return WARGAMES[wargame_id]["judged"]
+    return objective_model(wargame_id) != "none"
 
 def host(wargame_id: str) -> str:
     return urlsplit(WARGAMES[wargame_id]["public_url"]).netloc
@@ -114,7 +117,7 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "name": wargame["name"],
         "description": wargame["description"],
         "public_url": wargame["public_url"],
-        "judged": wargame["judged"],
+        "judged": wargame["objective_model"] != "none",
         "cases": len(loaded),
         "covers": [stage for stage in lifecycle.STAGES if stage in reached],
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],
