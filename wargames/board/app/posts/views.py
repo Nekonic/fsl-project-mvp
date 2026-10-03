@@ -6,7 +6,8 @@ from .models import Post
 
 
 def post_list(request):
-    posts = Post.objects.select_related("author").all()
+    sort = request.GET.get("sort", "-created_at")
+    posts = Post.objects.select_related("author").order_by(sort)
     return render(request, "posts/post_list.html", {"posts": posts})
 
 
