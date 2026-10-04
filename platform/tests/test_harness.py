@@ -70,6 +70,24 @@ def test_build_request_carries_json_body_and_params():
     assert prepared.headers["Content-Type"] == "application/json"
     assert prepared.url.endswith("?q=apple")
 
+
+def test_build_request_carries_a_form_body():
+    case = {
+        "case_id": "abc",
+        "correlation": "marker",
+        "request": {
+            "method": "POST",
+            "path": "/register/",
+            "data": {"user_login": "x", "wp_capabilities[administrator]": "1"},
+        },
+    }
+
+    prepared = build_request(case, BASE)
+
+    assert prepared.headers["Content-Type"] == "application/x-www-form-urlencoded"
+    assert "wp_capabilities%5Badministrator%5D=1" in prepared.body
+    assert "user_login=x" in prepared.body
+
 def test_default_cases_file_has_both_labels():
     cases = load_cases(DEFAULT_CASES)
 
