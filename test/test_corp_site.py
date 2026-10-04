@@ -1,12 +1,38 @@
+import re
+
 from range import ATTACKER, run
 
 
-def test_the_corp_site_serves_through_the_waf():
-    probe = run(ATTACKER, [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
-        "-H", "Host: corp.com", "http://board.com/",
+def corp_page(path):
+    fetched = run(ATTACKER, [
+        "curl", "-s", "--max-time", "20", "-w", "\n%{http_code}",
+        "-H", "Host: corp.com", f"http://board.com{path}",
     ])
-    assert probe.stdout.strip() == "200", probe.output
+    body, _, code = fetched.stdout.rpartition("\n")
+    return code.strip(), body
+
+
+def test_the_corp_site_serves_through_the_waf():
+    code, body = corp_page("/")
+    assert code == "200", body[:300]
+    assert "Northwind Community" in body, body[:300]
+    assert "wp-content" in body, body[:300]
+
+
+def test_an_unrouted_host_is_the_board_not_the_corp_site():
+    probe = run(ATTACKER, [
+        "curl", "-s", "--max-time", "20", "-H", "Host: board.com", "http://board.com/",
+    ])
+    assert "Northwind Community" not in probe.stdout
+    assert "wp-content" not in probe.stdout
+
+
+def test_the_corp_registration_form_the_attack_targets_exists():
+    code, body = corp_page("/register/")
+    assert code == "200", body[:300]
+    assert "um-form" in body, body[:300]
+    assert re.search(r'name="user_login-\d+"', body), body[:300]
+    assert 'name="um_request"' in body, body[:300]
 
 
 def test_the_baseline_state_reads_over_the_corp_db_container():
