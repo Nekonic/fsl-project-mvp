@@ -16,6 +16,7 @@ RUN set -eux; \
     done
 
 COPY entrypoint.sh /usr/local/bin/fsl-entrypoint.sh
+COPY rbsm-form.php /usr/local/bin/fsl-rbsm-form.php
 RUN chmod +x /usr/local/bin/fsl-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/fsl-entrypoint.sh"]
