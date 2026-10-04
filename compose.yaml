@@ -55,6 +55,7 @@ networks:
 
 include:
   - wargames/board/compose.yaml
+  - wargames/corp/compose.yaml
 
 volumes:
   esdata:
@@ -69,6 +70,7 @@ services:
     container_name: fsl-waf
     depends_on:
       board: {condition: service_healthy}
+      corp-wp: {condition: service_healthy}
     networks:
       edge:
         priority: 100

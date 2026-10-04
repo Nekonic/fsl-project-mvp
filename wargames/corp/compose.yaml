@@ -1,0 +1,38 @@
+services:
+  corp-wp:
+    platform: linux/amd64
+    build: ./app
+    container_name: fsl-corp-wp
+    depends_on:
+      corp-db: {condition: service_healthy}
+    networks: [estate]
+    environment:
+      WORDPRESS_DB_HOST: "corp-db"
+      WORDPRESS_DB_NAME: "wordpress"
+      WORDPRESS_DB_USER: "wordpress"
+      WORDPRESS_DB_PASSWORD: "wordpress"
+      FSL_WP_URL: "http://corp.com"
+    healthcheck:
+      test: ["CMD", "wp", "core", "is-installed", "--allow-root", "--path=/var/www/html"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  corp-db:
+    platform: linux/amd64
+    image: mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    container_name: fsl-corp-db
+    networks: [estate]
+    command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1"]
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "wordpress"
+      MYSQL_USER: "wordpress"
+      MYSQL_PASSWORD: "wordpress"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uwordpress", "-pwordpress"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

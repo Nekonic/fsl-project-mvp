@@ -23,6 +23,16 @@ WARGAMES = {
         "public_url": settings.PUBLIC_TARGET_URL,
         "objective_model": "loot_verified",
     },
+    "corp": {
+        "id": "corp",
+        "name": "Corporate site",
+        "description": (
+            "A realistic WordPress company site, behind the WAF and the IDS."
+        ),
+        "case_file": "corp.yaml",
+        "public_url": "http://corp.com",
+        "objective_model": "none",
+    },
 }
 
 def objective_model(wargame_id: str) -> str:

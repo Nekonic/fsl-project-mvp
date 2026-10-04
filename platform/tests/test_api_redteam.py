@@ -16,7 +16,7 @@ def test_wargames_lists_every_target(client):
     response = client.get("/api/wargames/")
 
     assert response.status_code == 200
-    assert [w["id"] for w in response.json()] == ["board"]
+    assert [w["id"] for w in response.json()] == ["board", "corp"]
     assert all(w["cases"] > 0 for w in response.json())
 
 def test_case_catalogue_describes_what_each_button_fires(client):

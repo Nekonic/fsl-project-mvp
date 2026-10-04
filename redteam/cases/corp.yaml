@@ -1,0 +1,24 @@
+- name: corp-normal-home
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /
+
+- name: corp-normal-registration-page
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /wp-login.php
+    params:
+      action: register
+
+- name: corp-normal-search
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /
+    params:
+      s: "quarterly report"
