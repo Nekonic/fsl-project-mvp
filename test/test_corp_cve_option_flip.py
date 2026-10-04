@@ -40,12 +40,19 @@ def _flip(security, option, value):
     ]).stdout.strip()
 
 
-def test_the_unauthenticated_option_flip_turns_self_registration_on(stack_is_up):
+def test_the_unauthenticated_option_flip_lets_anyone_self_register_as_administrator(stack_is_up):
     try:
         nonce = _ajax_nonce()
+
         code = _flip(nonce, "users_can_register", "1")
-        assert code == "200", f"the unauthenticated option flip did not complete, got {code!r}"
+        assert code == "200", f"the users_can_register flip did not complete, got {code!r}"
         assert _option("users_can_register") == "1"
+
+        code = _flip(nonce, "default_role", "administrator")
+        assert code == "200", f"the default_role flip did not complete, got {code!r}"
+        assert _option("default_role") == "administrator"
     finally:
         _set_option("users_can_register", "0")
+        _set_option("default_role", "subscriber")
         assert _option("users_can_register") == "0"
+        assert _option("default_role") == "subscriber"
