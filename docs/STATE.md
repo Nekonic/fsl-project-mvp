@@ -13,9 +13,11 @@ demonstrates it" on 2026-09-20. The design is in
 `docs/superpowers/specs/2026-09-20-product-flow-design.md`; all four of its
 phases are done.
 
-The range has **one target, the Django board** (`board.com`, MySQL behind the
-WAF). Juice Shop, the internal wiki and the `self_judged` objective model were
-removed on 2026-10-04 (objective-model Phase 4).
+The range has **two targets**: the Django board (`board.com`, MySQL behind the
+WAF, `loot_verified`) and, since sub-project B (done 2026-10-04), the WordPress
+site `corp` (`corp.com`, `effect_observed`). Juice Shop, the internal wiki and
+the `self_judged` objective model were removed on 2026-10-04 (objective-model
+Phase 4).
 
 `bin/verify` is green and prints the scores. Neither they nor the baseline are
 copied here; read `metrics.json`. Copies in prose went stale twice.
@@ -80,7 +82,46 @@ All four phases are committed and `bin/verify` is green.
   at 461, `services` 7, `wargame_services` 4 -> 2, `product_loc` 8580 -> 8040,
   `dependencies` 6.
 
-Left: sub-project B, the PHP company site (target #2), its own spec.
+## Sub-project B: the WordPress authz target `corp` (done 2026-10-04)
+
+The range's second target. Design in
+`docs/superpowers/specs/2026-10-04-wordpress-authz-objective-design.md`
+(task brief/report trail under
+`.superpowers/sdd/2026-10-04-wordpress-authz-objective/`). `corp`
+(`wargames/corp/`) is `effect_observed`, not `loot_verified`: nothing is
+instrumented on the WordPress app itself (the user's explicit choice). Both
+the session-start baseline snapshot and the ongoing observe read `corp-db`
+only, over the estate, through a substrate runner (`mysql`/`mysqlbinlog`
+commands), by reading its own MySQL **binary log** (`binlog_format=ROW`,
+`corp-db`'s build layer adds `mysqlbinlog` on top of the stock MySQL 8.4
+image). A committed ROW-event insert/update is ground truth; the target's own
+data still decides what was taken, exactly as the board's loot verifier does.
+
+Three real, unauthenticated CVEs, each invisible to the default OWASP CRS
+(the point of `corp` next to the board: the blue team has to write its own
+detection for these), each pinned to a vulnerable plugin version:
+- `CVE-2023-3460` - Ultimate Member 2.6.6, the accent-bypass `wp_capabilities`
+  key -> `corp-rogue-admin` (`rogue_admin`).
+- `CVE-2018-19207` - WP GDPR Compliance 1.4.2, an option flip to admin
+  self-registration -> `corp-self-registration` (`option_flip`).
+- `CVE-2026-4431` - Easy Post Submission 2.3.0, an unauthenticated `postId`
+  overwrite of an existing post -> `corp-content-overwrite` (`content_write`).
+
+The scripted cases in `redteam/cases/corp.yaml` are detection probes only
+(each real exploit needs a per-page nonce the harness cannot bake statically,
+so they cannot be scripted into a repeatable crediting case); the real
+objective credit is proven by the live two-step acceptance tests
+(`test/test_corp_authz.py`, `test_corp_observe_live.py`,
+`test_corp_cve_content_write.py`): fetch a fresh nonce, then exploit, inside a
+recorded session window, then `POST /objectives/` reads the credit from the
+committed binlog rows.
+
+`redteam/harness.py` gained form-body (`data=`) support alongside
+params/json, by the user's explicit authorisation during B, so `$_POST`
+attacks (the GDPR option flip, the postId overwrite) are scriptable as cases
+too. That is the one sanctioned `core_loc` move of sub-project B: 461 -> 462.
+`wargame_services` grew 2 -> 4 (`corp-wp` + `corp-db` beside the board's own
+two).
 
 **Audit cleanup committed (2026-10-02).** A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
@@ -578,17 +619,19 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
 - **Range**: an Internet segment with thirty declared origin countries (Docker
   builds four: Russia, the default, Brazil, Hong Kong, United States), the
-  estate and management, crossed only at the WAF; the one target is
-  `http://board.com`.
+  estate and management, crossed only at the WAF; two targets stand there,
+  `http://board.com` and `http://corp.com`.
 - **Red team**: one Kali image; cases fired from the console or a labelled
   shell; each case carries a Mandiant stage, ATT&CK/CAPEC ids, and what it takes.
-- **One target**: a Django board on MySQL behind the WAF as `board.com`
-  (Django 3.2.4, the `?sort=` order_by SQLi). Its objectives are
-  `loot_verified`: the attacker submits exfiltrated `auth_user` hashes and the
-  platform checks them against the snapshotted ground truth. Each wargame is
-  one folder, `wargames/<id>/`, whose `compose.yaml` the top one includes;
-  `board` holds the board and its MySQL. A test holds the folders, the
-  includes and the console's catalogue to each other.
+- **Two targets.** A Django board on MySQL behind the WAF as `board.com`
+  (Django 3.2.4, the `?sort=` order_by SQLi): `loot_verified`, the attacker
+  submits exfiltrated `auth_user` hashes and the platform checks them against
+  the snapshotted ground truth. A WordPress site behind the WAF as `corp.com`
+  (three pinned-version CVEs, see "Sub-project B"): `effect_observed`, scored
+  from `corp-db`'s own MySQL binary log. Each wargame is one folder,
+  `wargames/<id>/`, whose `compose.yaml` the top one includes; `board` holds
+  the board and its MySQL, `corp` the WordPress site and its MySQL. A test
+  holds the folders, the includes and the console's catalogue to each other.
 - **Score**: objectives (loot verified against the target's ground truth)
   beside detection TP/FP/FN/TN with the
   `corroborated` gate; the zero-sum game score is being layered on (backlog 1).
@@ -931,14 +974,12 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
      has no OpenStack adapter, as for the rest of this backlog).
 
-### 3. Sub-project B: the PHP company site (next)
+### 3. Sub-project B: the WordPress authz target `corp` - done 2026-10-04
 
-The range's second target, after the board; the objective-model refactor was
-its prerequisite and is done. It needs its own spec first (which vulnerabilities,
-what its loot is, how its ground truth is read from the target side, where it
-sits behind the WAF), then an `objective_model: loot_verified` wargame folder
-under `wargames/<id>/` like the board's. Nothing here is designed yet; do not
-start it without that spec.
+The range's second target, after the board. See "Sub-project B" above for what
+was built: three real, unauthenticated, pinned-version CVEs on `corp`
+(`wargames/corp/`), scored `effect_observed` from the target's own MySQL
+binary log via a substrate runner, proven end to end against the live stack.
 
 ## Known gaps
 
