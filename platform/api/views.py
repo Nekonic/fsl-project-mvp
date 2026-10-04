@@ -185,10 +185,10 @@ def sessions(request):
             baseline = None
     elif model == "effect_observed":
         try:
-            baseline = effect.snapshot(substrate().runner("corp-db"))
+            baseline = effect.snapshot(adapter.runner("corp-db"))
         except (effect.StateUnavailable, RangeUnavailable):
             baseline = None
-    session =Session.objects.create(scenario=scenario, baseline=baseline)
+    session = Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
 @require_http_methods(["GET"])

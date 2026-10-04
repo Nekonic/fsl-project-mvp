@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-MYSQL = ["mysql", "-N", "-uwordpress", "-pwordpress", "wordpress", "-e"]
+MYSQL = ["env", "MYSQL_PWD=wordpress", "mysql", "-N", "-uwordpress", "wordpress", "-e"]
+CLIENT_WARNING = "mysql: [Warning]"
 
 ADMIN_IDS = (
     "SELECT user_id FROM wp_usermeta WHERE meta_key='wp_capabilities' "
@@ -26,13 +27,17 @@ def _rows(runner, sql: str) -> list[list[str]]:
         raise StateUnavailable(f"could not read corp-db: {exc}") from exc
     if not ran.ok:
         raise StateUnavailable(f"corp-db refused the query: {ran.output.strip()[:200]}")
-    return [line.split("\t") for line in ran.output.splitlines() if line.strip()]
+    return [
+        line.split("\t")
+        for line in ran.output.splitlines()
+        if line.strip() and not line.startswith(CLIENT_WARNING)
+    ]
 
 
 def snapshot(runner) -> dict:
     try:
         admins = [int(row[0]) for row in _rows(runner, ADMIN_IDS)]
-        options = {row[0]: row[1] for row in _rows(runner, WATCHED_OPTIONS) if len(row) >= 2}
+        options = {row[0]: row[1] for row in _rows(runner, WATCHED_OPTIONS)}
         posts = [int(row[0]) for row in _rows(runner, PUBLISHED_POSTS)]
     except (ValueError, IndexError) as exc:
         raise StateUnavailable(f"corp-db returned an unreadable row: {exc}") from exc
