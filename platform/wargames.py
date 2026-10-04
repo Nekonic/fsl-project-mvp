@@ -27,11 +27,14 @@ WARGAMES = {
         "id": "corp",
         "name": "Corporate site",
         "description": (
-            "A realistic WordPress company site, behind the WAF and the IDS."
+            "A WordPress company site on MySQL, behind the WAF and the IDS. "
+            "Three unpatched plugins carry unauthenticated broken-access-control "
+            "CVEs the default rules cannot see; the platform scores by watching "
+            "the target's own committed database changes."
         ),
         "case_file": "corp.yaml",
         "public_url": "http://corp.com",
-        "objective_model": "none",
+        "objective_model": "effect_observed",
     },
 }
 
