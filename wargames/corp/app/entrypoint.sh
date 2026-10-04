@@ -15,12 +15,12 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-wp plugin activate ultimate-member --allow-root
-wp plugin activate wp-gdpr-compliance --allow-root
-wp plugin activate easy-post-submission --allow-root
+wp --allow-root --user=admin plugin activate ultimate-member
+wp --allow-root --user=admin plugin activate wp-gdpr-compliance
+wp --allow-root --user=admin plugin activate easy-post-submission
 wp option update users_can_register 0 --allow-root
 wp option update default_role subscriber --allow-root
 wp option patch update um_options account_tab_password 1 --allow-root >/dev/null 2>&1 || true
-wp eval 'UM()->options()->update("registration_status","approved");' --allow-root >/dev/null 2>&1 || true
+wp --allow-root --user=admin eval 'UM()->setup()->install_default_forms(); UM()->setup()->install_default_pages();'
 
 wait "$APACHE_PID"

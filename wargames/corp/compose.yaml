@@ -13,7 +13,7 @@ services:
       WORDPRESS_DB_PASSWORD: "wordpress"
       FSL_WP_URL: "http://corp.com"
     healthcheck:
-      test: ["CMD", "wp", "core", "is-installed", "--allow-root", "--path=/var/www/html"]
+      test: ["CMD", "sh", "-c", "wp core is-installed --allow-root --path=/var/www/html && wp plugin is-active ultimate-member --allow-root --path=/var/www/html"]
       interval: 10s
       timeout: 5s
       retries: 30
