@@ -44,6 +44,7 @@ def build_request(case: dict[str, Any], base_url: str) -> requests.PreparedReque
         url=f"{base_url.rstrip('/')}{spec['path']}",
         headers=headers,
         json=spec.get("json"),
+        data=spec.get("data"),
         params=spec.get("params"),
     ).prepare()
 
