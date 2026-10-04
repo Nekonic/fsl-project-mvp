@@ -1,0 +1,6 @@
+{
+  "wp_users": {"ID": 1, "user_login": 2},
+  "wp_usermeta": {"user_id": 2, "meta_key": 3, "meta_value": 4},
+  "wp_options": {"option_name": 2, "option_value": 3},
+  "wp_posts": {"ID": 1, "post_status": 8, "post_content": 5, "post_title": 6}
+}
