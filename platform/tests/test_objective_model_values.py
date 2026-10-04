@@ -10,9 +10,9 @@ pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_every_wargame_model_is_loot_verified_or_none():
+def test_every_wargame_model_is_a_known_value():
     for entry in wargames.WARGAMES.values():
-        assert entry["objective_model"] in {"loot_verified", "none"}, entry
+        assert entry["objective_model"] in {"loot_verified", "effect_observed", "none"}, entry
 
 
 def test_the_stack_no_longer_names_juice_shop_or_the_wiki():
