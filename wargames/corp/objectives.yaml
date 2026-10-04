@@ -1,0 +1,20 @@
+secret:
+  scope: wp_state
+  role: corp-db
+  read_path: estate://corp-db
+tiers:
+  - key: corp-rogue-admin
+    name: Rogue administrator created
+    category: Privilege Escalation
+    difficulty: 5
+    effect: rogue_admin
+  - key: corp-self-registration
+    name: Site opened to admin self-registration
+    category: Defense Evasion
+    difficulty: 4
+    effect: option_flip
+  - key: corp-content-overwrite
+    name: Unauthorized content created or overwritten
+    category: Impact
+    difficulty: 3
+    effect: content_write
