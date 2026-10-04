@@ -15,18 +15,20 @@ mechanically. The objective score was added on top once that held.
 
 ## The range
 
-Nine compose services on six Docker networks. The target is grouped as a
-wargame, a folder under `wargames/` whose `compose.yaml` the top
-`compose.yaml` includes: `board` (the board and its MySQL). There used to be
-two targets; there is now one, the Django board, the single `loot_verified`
-target, and a PHP company site is planned as the second. A new wargame is a
-new folder and one more `include:` line; the measure counts the services it
-adds.
+Eleven compose services on six Docker networks: seven the platform's own and
+four from the wargames. A target is grouped as a wargame, a folder under
+`wargames/` whose `compose.yaml` the top `compose.yaml` includes: `board` (the
+Django board and its MySQL) and `corp` (a WordPress site and its MySQL). There
+are two targets — the board, a `loot_verified` target, and corp, an
+`effect_observed` target. A new wargame is a new folder and one more `include:`
+line; the measure counts the services it adds.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
 | `fsl-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
 | `fsl-board-db` | `mysql` | estate | |
+| `fsl-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
+| `fsl-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
@@ -96,8 +98,9 @@ segment, which is why the API guards itself (`docs/THREAT-MODEL.md`).
 Docker attaching the WAF's networks in the priority order set in
 `compose.yaml`. Nothing checks that mapping.
 
-The WAF sends every request to `board:8000` and answers `/internal/` itself
-with a 404 (`deploy/nginx/board.conf`). The board is the only wargame: Django
+The WAF routes `board.com` to `board:8000` and answers `/internal/` itself
+with a 404 (`deploy/nginx/board.conf`); `corp.com` is a second vhost to
+`corp-wp:80` (`deploy/nginx/corp.conf`). The board is the first wargame: Django
 3.2.4 (an unpatched version with a known `order_by` SQL-injection flaw,
 CVE-2021-35042) under gunicorn, which migrates and seeds itself on start, on
 MySQL pinned by digest. Neither is published. It is judged by loot: when a

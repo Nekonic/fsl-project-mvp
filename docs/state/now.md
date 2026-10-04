@@ -31,6 +31,20 @@ Rebuilding the harness for single-session agent orchestration — branch
 - P2: run one real backlog item through the new loop end to end and compare its
   token cost and output against the old protocol.
 
+## Follow-ups found in P2 (not done — larger than a factual-drift fix)
+
+The P2 drift fix corrected the plainly-false claims (two wargames, not one; the
+service count; corp routing) across the four docs and their `.ko.md` pairs. Left
+for a later, scoped doc pass:
+
+- `docs/ARCHITECTURE.md` / `.ko.md`: corp has no architecture paragraph of its
+  own (WordPress 6.6.2, three pinned vulnerable plugins, three CVEs, corp-db on
+  binlog ROW) and the "How the scores are computed" section still describes only
+  the board's `loot_verified` model, not corp's `effect_observed` one.
+- `README.md` / `.ko.md`: the "Inside the stack" and CLI sections describe only
+  the board's ground-truth read and `board.com`; corp's binlog-based observation
+  and `corp.com`/`corp.yaml` are not mentioned.
+
 ## Decisions pending a person
 
 None open.

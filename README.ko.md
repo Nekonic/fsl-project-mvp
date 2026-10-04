@@ -1,6 +1,6 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련 레인지다. 레드팀은 MySQL 위에서 도는 Django 게시판을 공격하고, 블루팀은 Suricata와 ModSecurity로 이를 방어하며, 플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매긴다. 이 저장소는 버리는 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있다.
+사이버 공격·방어 훈련 레인지다. 레드팀은 WAF 뒤 MySQL 위에서 도는 두 대상 — Django 게시판과 WordPress 회사 사이트 — 을 공격하고, 블루팀은 Suricata와 ModSecurity로 방어하며, 플랫폼은 양쪽이 각각 무엇을 이뤘는지 점수를 매긴다. 이 저장소는 버리는 프로토타입이고, 실제 제품 프로젝트는 다른 곳에 있다.
 
 - `CLAUDE.md`: 저장소의 목적, 점수 방식, 작업 규칙
 - `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향
@@ -43,7 +43,7 @@ flowchart TB
 
 ### 스택 내부
 
-레드팀은 블루팀의 방어를 거쳐 워게임을 공격한다. 블루팀의 센서는 Elasticsearch에 기록을 남긴다. 플랫폼은 심판으로서 그 경보와, 공격자가 대상 시스템 자신의 데이터에 맞춰 증명한 loot로 점수를 매긴다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에 있다. 각 워게임은 최상위 `compose.yaml`이 include하는 `wargames/` 아래 폴더 하나이므로, 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 된다. 지금 워게임은 게시판 하나이며, 유일한 `loot_verified` 대상이다. 두 번째로는 PHP 회사 사이트를 계획하고 있다.
+레드팀은 블루팀의 방어를 거쳐 워게임을 공격한다. 블루팀의 센서는 Elasticsearch에 기록을 남긴다. 플랫폼은 심판으로서 그 경보와, 공격자가 대상 시스템 자신의 데이터에 맞춰 증명한 loot로 점수를 매긴다. 플랫폼, 레드팀, 블루팀은 최상위 `compose.yaml`에 있다. 각 워게임은 최상위 `compose.yaml`이 include하는 `wargames/` 아래 폴더 하나이므로, 새 워게임은 새 폴더 하나와 `include:` 한 줄이면 된다. 워게임은 둘이다: `loot_verified` 대상인 게시판과, `effect_observed` 대상인 WordPress 사이트 corp.
 
 ```mermaid
 flowchart LR
@@ -63,6 +63,7 @@ flowchart LR
 
   subgraph wargames["워게임, wargames/*"]
     board["board<br/>및 board의 MySQL"]
+    corp["corp<br/>WordPress 및 그 MySQL"]
   end
 
   subgraph platform["플랫폼, 심판"]
@@ -106,7 +107,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 8000 | 콘솔, `/api/`, `/terminal/`의 공격자 터미널 | 사람의 브라우저 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 `http://board.com`(`edge` 네트워크에서)으로 있다.
+사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost).
 
 ### OpenStack에서
 
