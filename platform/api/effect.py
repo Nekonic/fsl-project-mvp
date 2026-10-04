@@ -118,6 +118,9 @@ def _option_flip(change: Change) -> bool:
     )
 
 
+CONTENT_STATUSES = frozenset({"publish", "draft", "pending", "private", "future"})
+
+
 def _content_write(change: Change, baseline_posts: set) -> bool:
     cols = COLUMNS["wp_posts"]
     if change.table != "wp_posts":
@@ -126,13 +129,16 @@ def _content_write(change: Change, baseline_posts: set) -> bool:
         post_id = int(change.columns.get(cols["ID"]))
     except (TypeError, ValueError):
         return False
+    if change.columns.get(cols["post_status"]) not in CONTENT_STATUSES:
+        return False
     if change.kind == "insert":
         return True
     return post_id in baseline_posts
 
 
 def credited(spec: dict, baseline: dict, changes: list[Change]):
-    baseline = baseline or {}
+    if not baseline:
+        return []
     admins = set(baseline.get("admins") or [])
     options = baseline.get("options") or {}
     posts = set(baseline.get("posts") or [])
