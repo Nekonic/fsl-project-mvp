@@ -24,6 +24,8 @@ change was meant to carry out, and the scope to review. Check, with evidence:
   code proves nothing; a deleted or loosened test is a finding, not a pass.
 - **Docs match the code.** List each place the change makes `README.md`,
   `docs/ARCHITECTURE.md`, `CLAUDE.md` or a `docs/` file wrong, with the line.
+  Where a touched document has a `.ko.md` pair, flag any English/`.ko.md`
+  divergence too.
 
 Report only defects you can show, each with a `file:line` and the concrete
 failure — the input or state, and the wrong result or broken invariant. Do not

@@ -71,7 +71,17 @@ claim re-fetched and quote-verified before use.
   against the invariants — the target decides objectives, the isolation seams —
   requires knowing them.
 
-- **Pruned:** clangd and rust-analyzer LSP plugins disabled (this is a
-  Python/HTML/compose repo). gitkraken-hooks flagged — it runs an external
-  binary on all 22 lifecycle events including every tool call; a decision on it
-  is open.
+- **Pruned:** clangd, rust-analyzer and gitkraken-hooks plugins disabled for
+  the project. The LSPs do not fit a Python/HTML/compose repo; gitkraken-hooks
+  runs an external binary on every lifecycle event, including every tool call,
+  which is per-call latency on a dispatch-heavy session (user: disable,
+  2026-10-05).
+
+- **Working language tightened** (user, 2026-10-05). English in every repo file
+  — code, commit messages, PR descriptions, documents, the state and decision
+  files. Korean lives in exactly three places: `*.ko.md` documents for Korean
+  readers (the English file is canonical; a `.ko.md` is added only on request),
+  `strings.html`, and `docs/vocabulary.md`. When a change touches a document
+  that has a `.ko.md` pair, both are updated together in the doc-code sync step.
+  Reverts dev's looser "write Korean when the content genuinely calls for it",
+  which was ambiguous.

@@ -33,16 +33,23 @@ primary source rather than your own sense of the vocabulary.
 
 ## Working language
 
-Reply to the user in Korean. Write English in the repo — code, commits,
-documents — because Korean costs about twice the tokens per line and every
-session re-reads them; write Korean in a file only when it is a Korean-facing
-document the user asked for. Code carries no comments in any language.
+Reply to the user in Korean; write English in every repo file — code, commit
+messages, PR descriptions, documents, the state and decision files — because
+Korean costs about twice the tokens per line and every session re-reads them.
+Code carries no comments in any language.
 
-Two files hold Korean nothing else needs; leave them unread unless you are
-editing them: `platform/console/templates/console/strings.html` (the `en`/`ko`
-string table, the only template allowed Korean, enforced by a test) and
-`docs/vocabulary.md` (term translations and their sources). `docs/superpowers/
-plans/` is archived — do not read it.
+Korean belongs in exactly three places, nowhere else:
+
+- `*.ko.md` — a document for Korean readers. The English file is canonical; add
+  a `.ko.md` beside it only when the user asks (as with `README.ko.md` and
+  `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
+  `.ko.md`, update both together so the pair never drifts.
+- `platform/console/templates/console/strings.html` — the console's `en`/`ko`
+  string table, the only template allowed Korean, enforced by a test.
+- `docs/vocabulary.md` — term translations and their sources.
+
+Leave the last two unread unless you are editing them, and do not read the
+archived `docs/superpowers/plans/`.
 
 ## How the score works
 

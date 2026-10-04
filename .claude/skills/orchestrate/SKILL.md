@@ -104,11 +104,13 @@ two facts are what make a green run mean something. Protect them:
 When a change makes a document wrong, the document is part of the change. After
 the code settles and before gate 2, check the docs the change touched —
 `README.md`, `docs/ARCHITECTURE.md`, `CLAUDE.md`, the relevant `docs/` files —
-against what the code now does, and fix the drift. On anything larger than a
-one-file change, dispatch a fresh-context reviewer whose only job is to list
-doc-versus-code contradictions in the touched area; apply what it finds. Prose
-copies of numbers go stale — point at the source (`metrics.json`,
-`bin/measure`) instead of restating it.
+against what the code now does, and fix the drift. When a touched document has
+a `.ko.md` pair, update the English file and its `.ko.md` together, so the two
+never diverge. On anything larger than a one-file change, dispatch a
+fresh-context reviewer whose only job is to list doc-versus-code
+contradictions in the touched area; apply what it finds. Prose copies of
+numbers go stale — point at the source (`metrics.json`, `bin/measure`) instead
+of restating it.
 
 ## The visual review (gate 2)
 
