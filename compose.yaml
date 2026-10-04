@@ -100,6 +100,7 @@ services:
       - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
       - waflogs:/var/log/modsecurity/audit
       - ./deploy/nginx/board.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ./deploy/nginx/corp.conf:/etc/nginx/templates/conf.d/corp.conf.template:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
       interval: 10s
