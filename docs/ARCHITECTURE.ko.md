@@ -14,17 +14,19 @@ Suricata와 ModSecurity 경보를 그 라벨에 자동으로 맞출 수 있어�
 
 ## 레인지
 
-여섯 개의 Docker 네트워크 위에 아홉 개의 compose 서비스. 대상 시스템은 wargame으로
-묶이며, `wargames/` 아래 폴더이고, 그 `compose.yaml`을 최상위 `compose.yaml`이 include
-한다: `board`(board와 그 MySQL). 대상은 예전에는 둘이었고 지금은 하나, 곧 Django
-board이며 유일한 `loot_verified` 대상이다. 두 번째로는 PHP 회사 사이트를 계획하고
-있다. 새 wargame은 새 폴더 하나와 `include:` 줄 하나다. measure는 그것이 추가하는
-서비스를 센다.
+여섯 개의 Docker 네트워크 위에 열한 개의 compose 서비스 — 플랫폼 자신의 일곱 개와
+wargame의 네 개. 대상 시스템은 wargame으로 묶이며, `wargames/` 아래 폴더이고, 그
+`compose.yaml`을 최상위 `compose.yaml`이 include 한다: `board`(Django board와 그
+MySQL)와 `corp`(WordPress 사이트와 그 MySQL). 대상은 둘이다 — `loot_verified` 대상인
+board와 `effect_observed` 대상인 corp. 새 wargame은 새 폴더 하나와 `include:` 줄
+하나다. measure는 그것이 추가하는 서비스를 센다.
 
 | 서비스 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|
 | `fsl-board` | `wargames/board/app` (gunicorn 아래 Django, 포트 8000) | estate | |
 | `fsl-board-db` | `mysql` | estate | |
+| `fsl-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
+| `fsl-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | WAF의 네임스페이스 | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
@@ -91,8 +93,9 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 매 요청마다 새 어�
 `compose.yaml`에 설정된 우선순위대로 WAF의 네트워크를 붙여 준다는 데 의존한다. 그
 매핑을 검사하는 것은 아무것도 없다.
 
-WAF는 모든 요청을 `board:8000`으로 보내고 `/internal/`에는 스스로 404로 답한다
-(`deploy/nginx/board.conf`). board는 유일한 wargame이다: gunicorn 아래 Django
+WAF는 `board.com`을 `board:8000`으로 보내고 `/internal/`에는 스스로 404로 답한다
+(`deploy/nginx/board.conf`); `corp.com`은 `corp-wp:80`으로 가는 두 번째 vhost다
+(`deploy/nginx/corp.conf`). board는 첫 번째 wargame이다: gunicorn 아래 Django
 3.2.4(알려진 `order_by` SQL 인젝션 결함 CVE-2021-35042이 있는 미패치 버전)이며, 시작 시
 스스로 마이그레이션하고 시드를 넣고, digest로 고정된 MySQL 위에서 돈다. 둘 다
 publish되지 않는다. board는 loot로 채점된다: 세션이 시작될 때 플랫폼은 board의

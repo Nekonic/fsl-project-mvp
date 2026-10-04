@@ -1,8 +1,9 @@
 # fsl-project-mvp
 
-A cyber attack/defence training range. A red team attacks a Django board on
-MySQL, a blue team defends it with Suricata and ModSecurity, and the platform
-scores what each side achieved. This repo is the
+A cyber attack/defence training range. A red team attacks two targets — a
+Django board and a WordPress corporate site, both on MySQL behind the WAF — a
+blue team defends with Suricata and ModSecurity, and the platform scores what
+each side achieved. This repo is the
 throwaway prototype; the production project lives elsewhere.
 
 - `CLAUDE.md`: what the repo is for, how the score works, the working rules
@@ -54,9 +55,9 @@ blue team's sensors log into Elasticsearch; the platform referees, scoring
 from those alerts and from the loot the attacker proves against the target's
 own data. The platform, red and blue teams are in the top `compose.yaml`; each
 wargame is a folder under `wargames/` that it includes, so a new wargame is a
-new folder and one more `include:` line. There is one wargame today, the
-board, the single `loot_verified` target; a PHP company site is planned as the
-second.
+new folder and one more `include:` line. There are two wargames: the board, a
+`loot_verified` target, and corp, a WordPress site that is an `effect_observed`
+target.
 
 ```mermaid
 flowchart LR
@@ -76,6 +77,7 @@ flowchart LR
 
   subgraph wargames["Wargames, wargames/*"]
     board["board<br/>and its MySQL"]
+    corp["corp<br/>WordPress and its MySQL"]
   end
 
   subgraph platform["Platform, the referee"]
@@ -138,8 +140,8 @@ the Mac every port is published on `127.0.0.1` only; on the platform VM 8000
 is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
 target is not published: the command-line cases and the acceptance tests reach
 it from inside the range, the way the console does. Inside the range the
-target sits behind the WAF on port 80, as `http://board.com` (on the `edge`
-network).
+targets sit behind the WAF on port 80: `http://board.com` (aliased on the
+`edge` network) and `http://corp.com` (a vhost reached by the `Host` header).
 
 ### On OpenStack
 
