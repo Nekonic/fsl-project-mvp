@@ -1,6 +1,8 @@
 import pathlib
 import re
 
+import yaml
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 APP = ROOT / "wargames/corp/app"
 
@@ -35,3 +37,26 @@ def test_nothing_is_added_to_the_wordpress_app_for_reads():
         "the platform reads state from the corp-db container, not from a WP "
         "endpoint; nothing is instrumented on the app"
     )
+
+
+DB = ROOT / "wargames/corp/db"
+
+
+def test_the_corp_db_base_is_the_boards_database_digest():
+    base = re.search(r"^FROM (\S+)$", (DB / "Dockerfile").read_text(), re.M).group(1)
+    board = re.search(r"image:\s*(mysql@sha256:\S+)", (ROOT / "wargames/board/compose.yaml").read_text())
+    assert "@sha256:" in base, base
+    assert board and base == board.group(1), (base, board and board.group(1))
+
+
+def test_the_corp_db_image_carries_mysqlbinlog_for_the_live_scorer():
+    dockerfile = (DB / "Dockerfile").read_text()
+    assert "mysql-community-client-8.4" in dockerfile
+    assert "/usr/bin/mysqlbinlog" in dockerfile
+    assert "rpm -K" in dockerfile, "the downloaded rpm must be signature-checked"
+
+
+def test_the_corp_db_service_builds_that_image():
+    corp_db = yaml.safe_load((ROOT / "wargames/corp/compose.yaml").read_text())["services"]["corp-db"]
+    assert corp_db["build"] == "./db"
+    assert "image" not in corp_db
