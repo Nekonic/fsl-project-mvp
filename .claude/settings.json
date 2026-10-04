@@ -4,7 +4,8 @@
   "enabledPlugins": {
     "clangd-lsp@claude-plugins-official": false,
     "rust-analyzer-lsp@claude-plugins-official": false,
-    "superpowers@superpowers-marketplace": false
+    "superpowers@superpowers-marketplace": false,
+    "gitkraken-hooks@gitkraken": false
   },
   "hooks": {
     "SessionStart": [
