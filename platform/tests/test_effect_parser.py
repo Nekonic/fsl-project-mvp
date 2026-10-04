@@ -5,9 +5,45 @@ from api import effect
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
+SPEC = {
+    "tiers": [
+        {"key": "corp-rogue-admin", "name": "r", "difficulty": 5, "effect": "rogue_admin"},
+        {"key": "corp-self-registration", "name": "s", "difficulty": 4, "effect": "option_flip"},
+        {"key": "corp-content-overwrite", "name": "c", "difficulty": 3, "effect": "content_write"},
+    ]
+}
+
 
 def _parse(name, **kwargs):
     return effect.parse_binlog((FIXTURES / name).read_text(), **kwargs)
+
+
+def _credited(name, baseline):
+    return {tier["key"] for tier, _ in effect.credited(SPEC, baseline, _parse(name))}
+
+
+def test_credited_fires_rogue_admin_for_a_grant_to_a_non_baseline_user():
+    baseline = {"admins": [1], "options": {}, "posts": [1]}
+    assert "corp-rogue-admin" in _credited("corp-rogue-admin.binlog", baseline)
+
+
+def test_credited_fires_option_flip_against_the_baseline_options():
+    baseline = {"admins": [1], "options": {"users_can_register": "0"}, "posts": [1]}
+    assert "corp-self-registration" in _credited("corp-option-flip.binlog", baseline)
+
+
+def test_credited_fires_content_write_for_an_overwrite_of_a_baseline_post():
+    baseline = {"admins": [1], "options": {}, "posts": [1]}
+    assert "corp-content-overwrite" in _credited("corp-content-write.binlog", baseline)
+
+
+def test_credited_stays_silent_when_the_change_matches_the_baseline():
+    baseline = {
+        "admins": [1],
+        "options": {"users_can_register": "1", "default_role": "administrator"},
+        "posts": [1],
+    }
+    assert "corp-self-registration" not in _credited("corp-option-flip.binlog", baseline)
 
 
 def test_the_rogue_admin_binlog_shows_a_usermeta_admin_grant():

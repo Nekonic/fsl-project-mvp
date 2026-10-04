@@ -77,5 +77,12 @@ def no_real_effect_read(request):
             "reads_target_state"
         )
 
-    with patch("api.views.effect.snapshot", refuse_snapshot):
+    def refuse_changes(*args, **kwargs):
+        raise effect.StateUnavailable(
+            "this unit test supplied no database; effect.read_changes was "
+            "refused. A test that needs it must patch api.views.effect.read_changes"
+        )
+
+    with patch("api.views.effect.snapshot", refuse_snapshot), \
+            patch("api.views.effect.read_changes", refuse_changes):
         yield

@@ -397,7 +397,43 @@ def session_objectives(request, session_id):
     return _reply(_observe_objectives(session))
 
 def _observe_objectives(session) -> dict:
-    return {"achieved": 0, "total": session.objectives.count()}
+    model = wargames.objective_model(session.scenario)
+    if model != "effect_observed":
+        return {"achieved": 0, "total": session.objectives.count()}
+
+    spec = wargames.objectives(session.scenario)
+    total = len(spec["tiers"])
+    try:
+        changes = effect.read_changes(
+            substrate().runner("corp-db"), session.started_at
+        )
+    except (effect.StateUnavailable, RangeUnavailable):
+        return {"achieved": session.objectives.count(), "total": total}
+
+    windows = list(session.cases.filter(malicious=True))
+    rows = []
+    for tier, at in effect.credited(spec, session.baseline, changes):
+        case = _effect_window(windows, at)
+        if case is None:
+            continue
+        rows.append(Objective(
+            session=session, key=tier["key"], name=tier["name"],
+            category=tier.get("category") or "", difficulty=int(tier["difficulty"]),
+            achieved_at=at,
+            earliest=case.started_at - scoreboard.CLOCK_SKEW,
+            latest=case.ended_at + scoreboard.CLOCK_SKEW,
+        ))
+    before = session.objectives.count()
+    Objective.objects.bulk_create(rows, ignore_conflicts=True)
+    return {"achieved": session.objectives.count() - before, "total": total}
+
+
+def _effect_window(cases, at):
+    inside = [
+        case for case in cases
+        if case.started_at - scoreboard.CLOCK_SKEW <= at <= case.ended_at + scoreboard.CLOCK_SKEW
+    ]
+    return max(inside, key=lambda case: case.started_at, default=None)
 
 @require_http_methods(["POST"])
 def session_loot(request, session_id):

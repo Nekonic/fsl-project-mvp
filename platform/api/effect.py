@@ -80,6 +80,81 @@ def _value(raw: str) -> str:
     return raw
 
 
+BINLOG_CMD = (
+    "mysqlbinlog --base64-output=DECODE-ROWS --verbose /var/lib/mysql/binlog.* 2>/dev/null"
+)
+
+
+def read_changes(runner, since: datetime) -> list[Change]:
+    try:
+        ran = runner(["sh", "-c", BINLOG_CMD], timeout=60.0)
+    except Exception as exc:
+        raise StateUnavailable(f"could not read the binary log: {exc}") from exc
+    return parse_binlog(getattr(ran, "output", None) or str(ran), since)
+
+
+def _admin_grant(change: Change):
+    cols = COLUMNS["wp_usermeta"]
+    if change.table != "wp_usermeta":
+        return None
+    if change.columns.get(cols["meta_key"]) != "wp_capabilities":
+        return None
+    if "administrator" not in (change.columns.get(cols["meta_value"]) or ""):
+        return None
+    try:
+        return int(change.columns.get(cols["user_id"]))
+    except (TypeError, ValueError):
+        return None
+
+
+def _option_flip(change: Change) -> bool:
+    cols = COLUMNS["wp_options"]
+    if change.table != "wp_options":
+        return False
+    name = change.columns.get(cols["option_name"])
+    value = change.columns.get(cols["option_value"])
+    return (name == "users_can_register" and value == "1") or (
+        name == "default_role" and value == "administrator"
+    )
+
+
+def _content_write(change: Change, baseline_posts: set) -> bool:
+    cols = COLUMNS["wp_posts"]
+    if change.table != "wp_posts":
+        return False
+    try:
+        post_id = int(change.columns.get(cols["ID"]))
+    except (TypeError, ValueError):
+        return False
+    if change.kind == "insert":
+        return True
+    return post_id in baseline_posts
+
+
+def credited(spec: dict, baseline: dict, changes: list[Change]):
+    baseline = baseline or {}
+    admins = set(baseline.get("admins") or [])
+    options = baseline.get("options") or {}
+    posts = set(baseline.get("posts") or [])
+    tiers = {tier["effect"]: tier for tier in spec["tiers"]}
+    out = []
+    for change in sorted(changes, key=lambda c: c.at):
+        granted = _admin_grant(change)
+        if granted is not None and granted not in admins and "rogue_admin" in tiers:
+            out.append((tiers["rogue_admin"], change.at))
+            continue
+        if _option_flip(change) and "option_flip" in tiers:
+            cols = COLUMNS["wp_options"]
+            name = change.columns.get(cols["option_name"])
+            value = change.columns.get(cols["option_value"])
+            if options.get(name) != value:
+                out.append((tiers["option_flip"], change.at))
+                continue
+        if _content_write(change, posts) and "content_write" in tiers:
+            out.append((tiers["content_write"], change.at))
+    return out
+
+
 def parse_binlog(text: str, since: datetime | None = None) -> list[Change]:
     changes: list[Change] = []
     clock: datetime | None = None
