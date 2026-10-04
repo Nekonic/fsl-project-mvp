@@ -62,3 +62,20 @@ def no_real_board_read(request):
 
     with patch("api.views.loot.ground_truth", refuse):
         yield
+
+@pytest.fixture(autouse=True)
+def no_real_effect_read(request):
+    if request.node.get_closest_marker("reads_target_state"):
+        yield
+        return
+    from api import effect
+
+    def refuse_snapshot(*args, **kwargs):
+        raise effect.StateUnavailable(
+            "this unit test supplied no target; effect.snapshot was refused. A "
+            "test that needs it must patch api.views.effect.snapshot or mark "
+            "reads_target_state"
+        )
+
+    with patch("api.views.effect.snapshot", refuse_snapshot):
+        yield
