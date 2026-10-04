@@ -61,3 +61,19 @@
       "user_password-5": "Str0ng-Pass-9271"
       "confirm_user_password-5": "Str0ng-Pass-9271"
       "wp_càpabilities[administrator]": "1"
+
+- name: corp-option-flip
+  malicious: true
+  stage: escalate-privileges
+  technique: T1190
+  pattern: CAPEC-1
+  expect: "users_can_register"
+  correlation: marker
+  request:
+    method: POST
+    path: /wp-admin/admin-ajax.php
+    params:
+      action: "wpgdprc_process_action"
+      security: ""
+    data:
+      data: '{"type":"save_setting","append":false,"option":"users_can_register","value":"1"}'
