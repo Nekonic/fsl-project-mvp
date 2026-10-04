@@ -7,53 +7,77 @@ DELIMITER /*!*/;
 #261004 19:49:42 server id 1  end_log_pos 127 CRC32 0x4c3ff7cc 	Start: binlog v 4, server v 8.4.11 created 261004 19:49:42 at startup
 # Warning: this binlog is either in use or was not closed properly.
 ROLLBACK/*!*/;
-# [fixture trimmed to the content-write admin-ajax request]
-# at 703485
-#261004 19:50:26 server id 1  end_log_pos 703564 CRC32 0xf1cf4f53 	Anonymous_GTID	last_committed=289	sequence_number=339	rbr_only=yes	original_committed_timestamp=1791111026462005	immediate_commit_timestamp=1791111026462005	transaction_length=603
+# [fixture trimmed to the content-write admin-ajax postId overwrite]
+# at 804582
+#261004 20:09:19 server id 1  end_log_pos 804661 CRC32 0xde30f1f7 	Anonymous_GTID	last_committed=289	sequence_number=457	rbr_only=yes	original_committed_timestamp=1791112159654792	immediate_commit_timestamp=1791112159654792	transaction_length=934
 /*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
-# original_commit_timestamp=1791111026462005 (2026-10-04 19:50:26.462005 KST)
-# immediate_commit_timestamp=1791111026462005 (2026-10-04 19:50:26.462005 KST)
-/*!80001 SET @@session.original_commit_timestamp=1791111026462005*//*!*/;
+# original_commit_timestamp=1791112159654792 (2026-10-04 20:09:19.654792 KST)
+# immediate_commit_timestamp=1791112159654792 (2026-10-04 20:09:19.654792 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791112159654792*//*!*/;
 /*!80014 SET @@session.original_server_version=80411*//*!*/;
 /*!80014 SET @@session.immediate_server_version=80411*//*!*/;
 SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
-# at 703564
-#261004 19:50:26 server id 1  end_log_pos 703652 CRC32 0xef0df58e 	Query	thread_id=38	exec_time=0	error_code=0
-SET TIMESTAMP=1791111026/*!*/;
+# at 804661
+#261004 20:09:19 server id 1  end_log_pos 804758 CRC32 0xbcb96b27 	Query	thread_id=412	exec_time=0	error_code=0
+SET TIMESTAMP=1791112159/*!*/;
 BEGIN
 /*!*/;
-# at 703652
-#261004 19:50:26 server id 1  end_log_pos 703764 CRC32 0x4893e048 	Table_map: `wordpress`.`wp_posts` mapped to number 211
+# at 804758
+#261004 20:09:19 server id 1  end_log_pos 804870 CRC32 0xb38a6d2c 	Table_map: `wordpress`.`wp_posts` mapped to number 211
 # has_generated_invisible_primary_key=0
-# at 703764
-#261004 19:50:26 server id 1  end_log_pos 704057 CRC32 0x25c641f2 	Write_rows: table id 211 flags: STMT_END_F
-### INSERT INTO `wordpress`.`wp_posts`
-### SET
-###   @1=17
+# at 804870
+#261004 20:09:19 server id 1  end_log_pos 805485 CRC32 0xaf6bcb99 	Update_rows: table id 211 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_posts`
+### WHERE
+###   @1=1
 ###   @2=1
-###   @3='2026-10-04 10:50:26'
-###   @4='2026-10-04 10:50:26'
-###   @5='<p>written without an account via rbsm_submit_post</p>'
-###   @6='Unauthorized Post From B2.3 Fixture'
-###   @7='written without an account'
+###   @3='2026-10-04 10:49:47'
+###   @4='2026-10-04 10:49:47'
+###   @5='<!-- wp:paragraph -->\n<p>Welcome to WordPress. This is your first post. Edit or delete it, then start writing!</p>\n<!-- /wp:paragraph -->'
+###   @6='Hello world!'
+###   @7=''
 ###   @8='publish'
 ###   @9='open'
 ###   @10='open'
 ###   @11=''
-###   @12='unauthorized-post-from-b2-3-fixture'
+###   @12='hello-world'
 ###   @13=''
 ###   @14=''
-###   @15='2026-10-04 10:50:26'
-###   @16='2026-10-04 10:50:26'
+###   @15='2026-10-04 10:49:47'
+###   @16='2026-10-04 10:49:47'
 ###   @17=''
 ###   @18=0
-###   @19=''
+###   @19='http://corp.com/?p=1'
 ###   @20=0
 ###   @21='post'
 ###   @22=''
-###   @23=0
-# at 704057
-#261004 19:50:26 server id 1  end_log_pos 704088 CRC32 0x56604e6b 	Xid = 2107
+###   @23=1
+### SET
+###   @1=1
+###   @2=1
+###   @3='2026-10-04 10:49:47'
+###   @4='2026-10-04 10:49:47'
+###   @5='<p>overwritten without owning this post via rbsm_submit_post postId overwrite</p>'
+###   @6='Defaced by an unauthenticated guest'
+###   @7='overwritten without owning this post'
+###   @8='publish'
+###   @9='open'
+###   @10='open'
+###   @11=''
+###   @12='hello-world'
+###   @13=''
+###   @14=''
+###   @15='2026-10-04 11:09:19'
+###   @16='2026-10-04 11:09:19'
+###   @17=''
+###   @18=0
+###   @19='http://corp.com/?p=1'
+###   @20=0
+###   @21='post'
+###   @22=''
+###   @23=1
+# at 805485
+#261004 20:09:19 server id 1  end_log_pos 805516 CRC32 0x90e72d94 	Xid = 15439
 COMMIT/*!*/;
 SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
 DELIMITER ;
