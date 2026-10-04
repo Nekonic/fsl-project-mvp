@@ -1,8 +1,10 @@
 # State
 
-The handover between sessions. Keep it true; it is all the next session gets.
-Finished work is one line each; the detail is in `git log`, `README.md` and
-`docs/ARCHITECTURE.md`.
+The product record: the backlog (what the user wants built, in priority order)
+and the finished work, one line each, with the detail in `git log`, `README.md`
+and `docs/ARCHITECTURE.md`. The live state of work in flight is in
+`docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
+skill reads those, not this file. Keep the backlog here true.
 
 Updated: 2026-10-04
 

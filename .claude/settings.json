@@ -1,15 +1,40 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "outputStyle": "fsl-orchestrator",
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": false,
+    "rust-analyzer-lsp@claude-plugins-official": false,
+    "superpowers@superpowers-marketplace": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"${CLAUDE_PROJECT_DIR:-.}/docs/state/now.md\" 2>/dev/null"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Read",
+      "Agent",
+      "Workflow",
+      "Skill",
+      "WebSearch",
+      "WebFetch",
       "Edit(bin/**)",
       "Edit(deploy/**)",
       "Edit(docs/**)",
       "Edit(platform/**)",
       "Edit(redteam/**)",
       "Edit(test/**)",
-      "Edit(wargame/**)",
+      "Edit(wargames/**)",
+      "Edit(.claude/**)",
       "Edit(CLAUDE.md)",
       "Edit(README.md)",
       "Edit(compose.yaml)",

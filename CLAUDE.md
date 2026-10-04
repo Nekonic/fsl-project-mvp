@@ -1,204 +1,113 @@
 # fsl-project-mvp
 
-A cyber attack/defence training range. A red team attacks a web app; a blue
-team defends with Suricata and ModSecurity; the platform scores the defence.
+A cyber attack/defence training range: a red team attacks a web app, a blue
+team defends with Suricata and ModSecurity, the platform scores the defence.
+This repo builds that product cheaply enough to throw away — the real one lives
+in another repo — to find out which screens, scoring and stack it should have.
+Build it, measure it, keep what survives, write down what did not. A Django
+replacement was built in full, measured and discarded in a day.
 
-**This repo is where the product gets built cheaply enough to throw away.** The
-real one lives in a separate repo. Everything here exists to find out, before
-that repo pays for it, what the thing should actually be - which screens, which
-scoring, which stack. Build it, run it, measure it, keep what survives and
-write down what did not.
+## How work runs here
 
-Things get built, measured and thrown away here. A Django replacement was
-built in full, measured and discarded in a day.
+This session is the orchestrator. You state a goal in plain language; the
+session scopes it, runs the stages (workflows, subagents), keeps docs matching
+the code, and reports. The procedure is the `orchestrate` skill; invoke it when
+work starts.
 
-## How the score works
+Two review gates, and only these two stop the run:
 
-Two separate numbers, and the first one is the point.
+1. Before building — present a short plan or spec and wait for approval.
+2. Before anything irreversible or outward (push, merge) — present what
+   changed, visually (diagram, table, not walls of prose), and wait for
+   approval.
 
-**What the red team took.** The board's `auth_user` table holds the password
-hashes; the platform snapshots them from the target when a session starts. The
-attacker exfiltrates them and proves possession by submitting them, and only
-loot that exactly matches the snapshot is credited. That is the score: which
-objectives were lost, and whether the blue team saw each one go. A lost
-objective nobody detected counts double. The platform never decides whether an
-attack achieved something - only the target's own stored data does.
+Between the gates the session works on its own: report progress, do not ask
+"continue?". Stop early only for a real blocker or a decision that changes what
+the product does. Commit is local and needs no gate; push and merge are the
+human's, and a push goes to `dev` as a fast-forward.
 
-**What the defence got wrong.** TP, FP, FN and TN per attack case, from
-matching alerts to the cases that caused them. Reported beside the first
-number, never folded into it: a defence that blocks everything scores
-perfectly here and loses every objective.
-
-What the product currently is: a shell one person can run attack and defence in,
-two browser windows, no accounts. See
-`docs/superpowers/specs/2026-09-20-product-flow-design.md`.
+Replies are short — the result and the reason, no restatement, no analogy;
+detail goes in the commit and `docs/DECISIONS.md`. Use the words practitioners
+use and do not invent terms; when the field already names a thing, quote a
+primary source rather than your own sense of the vocabulary.
 
 ## Working language
 
-Default to English in the repo — code, commit messages, documents — to save
-tokens: Korean costs roughly twice the tokens per line, and every session pays
-to re-read it. Write Korean into a file only when the content genuinely calls
-for it, such as a Korean-facing document or artifact the user asks for; English
-is the default everywhere else. The user is Korean and talks to you in Korean;
-reply in Korean. Code still carries no comments or docstrings, in any language
-(see "No comments in code").
+Reply to the user in Korean. Write English in the repo — code, commits,
+documents — because Korean costs about twice the tokens per line and every
+session re-reads them; write Korean in a file only when it is a Korean-facing
+document the user asked for. Code carries no comments in any language.
 
-Two files hold Korean that nothing else in the codebase needs, so the cost rule
-says leave them unread unless you are the one editing them:
+Two files hold Korean nothing else needs; leave them unread unless you are
+editing them: `platform/console/templates/console/strings.html` (the `en`/`ko`
+string table, the only template allowed Korean, enforced by a test) and
+`docs/vocabulary.md` (term translations and their sources). `docs/superpowers/
+plans/` is archived — do not read it.
 
-- `platform/console/templates/console/strings.html` is the console's `en`/`ko`
-  string table. It is the only template allowed to contain Korean and a test
-  enforces that. **Do not read it** unless you are changing a visible string.
-- `docs/vocabulary.md` records what each term is called in both languages and
-  the source it came from. Reference only. **Do not read it** unless you are
-  naming something new.
+## How the score works
 
-`docs/superpowers/plans/` is archived and should not be read either. Do not
-spend tokens translating any of these.
+Two separate numbers; the first is the point.
 
-## Session protocol
+What the red team took: the target flips its own ground truth when an objective
+falls — for the board, loot that exactly matches the session-start snapshot of
+its secret. That is the score: which objectives were lost, and whether the blue
+team saw each one go; one lost and undetected counts double. The platform never
+decides whether an attack succeeded — the target's own stored data does.
 
-Follow this whether a human started you or `/loop` did. To run it unattended:
+What the defence got wrong: TP, FP, FN, TN per attack case, from matching
+alerts to the cases that caused them. Reported beside the first number, never
+folded in — a defence that blocks everything scores perfectly here and loses
+every objective.
 
-```
-/loop Follow the session protocol in CLAUDE.md. Do exactly one backlog item.
-```
-
-1. Read this file and `docs/STATE.md`. That is the whole briefing.
-2. `bin/verify --fast` — prove the baseline is green before touching anything.
-   If the stack is down, bring it back before step 5: `colima start --profile
-   fsl`, `docker compose up -d`. If it will not come up, say so and stop —
-   never commit on the strength of `--fast` alone.
-3. Take **the top item** of the backlog in `docs/STATE.md`. One item, not two.
-   **If the backlog is empty, stop and say so.** Do not invent an item. Every
-   item on that list so far came from a human deciding what this should be,
-   not from reading the code — a loop that writes its own backlog is choosing
-   the project's direction, which is not its to choose.
-4. Implement it test-first.
-5. `bin/verify` — full run: unit, acceptance against the live stack, ratchet.
-6. If it is red, or any metric grew: `git reset --hard` and stop. Say what you
-   learned; a failed attempt that is reported is worth more than a
-   half-finished one that is not.
-7. If it is green: `bin/measure --save`, update `docs/STATE.md`, commit.
-
-**Commit, never push.** Pushing and merging are the human's, whether or not a
-loop is driving. A session that cannot ask is a session that must stop at the
-commit.
-
-Leave `docs/STATE.md` true. It is the entire handover to the next session.
-
-## What a score counts
-
-One red team case is one decision: TP, FP, FN or TN, however many alerts it
-drew. `sqlmap-boolean-blind` produces 94 alerts and counts once. State this
-whenever the numbers are reported - per-alert counting would measure
-`threshold.config` rather than the defence, and McHugh's complaint about the
-DARPA evaluations ("It is up to them to specify 0.1% of what") is the reason
-it has to be said out loud.
-
-A true positive also has to survive `expect`: each attack case declares a
-substring of the signature that should be able to find it, and an alert that
-does not mention the attack's own mechanism is reported as
-`corroborated: false`. A rule set that catches everything for unrelated
-reasons would otherwise score exactly as well as one that works.
-
-## The measure of progress
-
-`bin/measure` prints four numbers. Three of them may only go down.
-
-| | gated | |
-|---|---|---|
-| `core_loc` | yes | the hypothesis: `scoring/`, `ingest/`, `rules/`, `redteam/harness.py` |
-| `product_loc` | no | the shell: UI, API surface, compose, deploy |
-| `dependencies` | yes | direct pip packages |
-| `services` | yes | compose services |
-
-One number could not serve both jobs, and the split follows what this repo is
-for. `core_loc` is the part that has survived and would be worth carrying to
-the production repo, so it stays small and keeps getting smaller.
-`product_loc` is the disposable surface where things are tried, so it grows -
-that is what building one looks like - and is reported rather than blocked.
-Anything that stops being disposable should be earning its way into `core_loc`
-or out of the repo.
-
-`tests` runs the other way: it counts `def test_` definitions and may only go
-**up**. Deleting a test is the cheapest way to make any change here pass, and
-without a floor nothing else in a verify run would notice.
-
-Docs and `bin/` are not counted, and tests are not counted as production code:
-growing the suite must never look like a regression.
-
-`metrics.json` holds the record and `bin/verify` refuses any change that grows
-a gated number or shrinks the floor. If it is genuinely unavoidable, edit
-`metrics.json` by hand — but treat that as a last resort, not an escape hatch.
+One case is one decision however many alerts it drew (`sqlmap-boolean-blind`
+draws 94, counts once); say so when reporting, because per-alert counting
+measures the alert threshold, not the defence. A true positive must also
+survive `expect`: the case names a substring its signature should match, and an
+alert that does not mention the attack's mechanism is reported
+`corroborated: false`.
 
 ## What must not break
 
-- **The acceptance criteria.** `test/` must stay green. In particular TP > 0 and
-  TN > 0: attacks are detected, benign traffic passes. That is the hypothesis.
-- **Benign cases in `redteam/cases/`.** Deleting them is the easiest way to make
-  the score look good and the platform pointless.
-- **The target decides whether it was beaten.** Never mark an objective from
-  the platform's own belief about what an attack did. The whole value of the
-  objective layer is that its ground truth is orthogonal to the detector.
-- **These stay, by the user's decision:** OpenStack, Docker, Suricata, nginx,
-  Elasticsearch. Everything else — Django, Filebeat, ModSecurity,
-  the API shape, the scoring design — may be replaced if it makes the project
-  smaller without breaking the above.
-- **Every UI action exists as a REST API first.** Console templates fetch
-  `/api/`; they never receive server-rendered data. This is what lets an agent
-  take a human's place later.
+- `test/` stays green, in particular TP > 0 and TN > 0 — attacks detected,
+  benign traffic passes. That is the hypothesis.
+- The benign cases in `redteam/cases/` stay; deleting them makes the score look
+  good and the platform pointless.
+- The target decides whether it was beaten; never mark an objective from the
+  platform's own belief about an attack. The objective layer's value is that
+  its ground truth is orthogonal to the detector.
+- The isolation seams hold: `ingest/elastic.py` is the only file that knows
+  Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
+  process, `attacker.py` the only one that knows the attacker box, and the loot
+  path the only one that reads the target's ground truth. Keep them the only
+  ones.
+- Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
+  Everything else may be replaced if it shrinks the project without breaking
+  the above.
+- Every UI action is a REST API first; console templates fetch `/api/`, never
+  server-rendered data — this is what lets an agent take the human's place.
 
-## No comments in code
+## The ratchet
 
-Do not write comments or docstrings. Name things so the code says what it
-does; if a line needs explaining, the line is wrong. Python, JavaScript, HTML
-templates, Dockerfiles and `compose.yaml` alike.
+`bin/verify` refuses a change that grows a gated number or shrinks the floor.
+`core_loc` (`scoring/`, `ingest/`, `rules/`, `redteam/harness.py`),
+`dependencies` and `services` may only fall. `product_loc` and
+`wargame_services` are reported, not gated. `tests` (count of `def test_`) may
+only rise — deleting a test is the cheapest way to pass. `bin/measure` prints
+them all; `reference.md` beside the `orchestrate` skill has the full table.
+`metrics.json` holds the record; editing it by hand is a last resort, not an
+escape hatch. A small, obviously-correct change that justifies a gated +1 may
+just be made and recorded, not staged as a decision.
 
-The one exception is `deploy/suricata/rules/`, where commenting a rule out is
-how suppression works.
+## Gotchas
 
-## Layout
-
-| | |
-|---|---|
-| `platform/scoring/` | the hypothesis itself: pure functions, no I/O, no Django |
-| `platform/ingest/elastic.py` | the only file that knows Elasticsearch |
-| `platform/rules/suricata.py` | the only file that knows the Suricata process |
-| `platform/api/`, `platform/console/` | REST surface and the console |
-| `platform/console/templates/console/strings.html` | every visible string, `en` and `ko` |
-| `platform/wargames.py` | the case catalogue the console fires from |
-| `platform/api/loot.py` | the loot verifier: reads the target's ground truth, matches submitted loot against it |
-| `wargames/<id>/objectives.yaml` | a wargame's secret and objective tiers |
-| `platform/scoreboard.py` | what each side achieved: pure, no I/O |
-| `platform/attacker.py` | the only file that knows the attacker box and its marker |
-| `redteam/` | attack execution and ground truth |
-| `deploy/`, `compose.yaml` | the stack |
-| `wargames/<id>/` | one wargame each: its services (`compose.yaml`, included by the top one) and their files |
-| `test/` | acceptance criteria, over HTTP only |
-
-`platform/` is **not** a Python package — `platform` is a stdlib module name.
-Never add `platform/__init__.py`. Run Python with `platform/` as the working
-directory. Same for `test/`.
-
-## Running it
-
-```bash
-docker compose up -d --build          # includes kali, the attacker's terminal
-docker compose exec platform \        # fire the scripted cases, or drive it
-  python redteam/run.py --target http://board.com --tool-target http://board.com
-```
-
-The target is not published; the harness fires from inside the range (the
-platform), the way the console at `/` does.
-
-The platform sets up the docker socket group and registers the Elasticsearch
-ingest pipeline on start, so `docker compose up` is the whole bring-up.
-
-The console is the point now: open `/`, start a session, and open the red and
-blue windows side by side. The terminal in the red window is ttyd at `/terminal/` on the platform's port. HTTP
-from it goes out through the stamping proxy, so alerts carry the proxy's
-address; raw TCP ignores the proxy and carries Kali's own.
-
-See `README.md` for what each port is. `docs/superpowers/specs/` holds the
-design; the plan beside it is a finished historical record, not a to-do list.
+- `platform/` is not a package — `platform` is a stdlib name; never add
+  `platform/__init__.py`. Run Python with `platform/` as the working directory
+  (same for `test/`).
+- No comments or docstrings anywhere; name things so the code says what it
+  does. The one exception is `deploy/suricata/rules/`, where a commented-out
+  rule is how suppression works.
+- The target is not published; the harness fires from inside the range.
+  Bring-up is one command, `docker compose up -d --build` (it sets up the
+  docker socket group and registers the Elasticsearch ingest pipeline).
+  `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and seams,
+  `docs/superpowers/specs/` the design.
