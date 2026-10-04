@@ -28,7 +28,7 @@ import scoreboard
 import suppress
 import topology
 import wargames
-from api import loot
+from api import effect, loot
 from api.refusals import Conflict
 from api.models import (
     Case,
@@ -177,12 +177,18 @@ def sessions(request):
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
     baseline = []
-    if wargames.objective_model(scenario) == "loot_verified":
+    model = wargames.objective_model(scenario)
+    if model == "loot_verified":
         try:
             baseline = loot.ground_truth(scenario)
         except loot.GroundTruthUnavailable:
             baseline = None
-    session = Session.objects.create(scenario=scenario, baseline=baseline)
+    elif model == "effect_observed":
+        try:
+            baseline = effect.snapshot(substrate().runner("corp-db"))
+        except (effect.StateUnavailable, RangeUnavailable):
+            baseline = None
+    session =Session.objects.create(scenario=scenario, baseline=baseline)
     return _reply(_shape(session, SESSION_FIELDS), status=201)
 
 @require_http_methods(["GET"])
