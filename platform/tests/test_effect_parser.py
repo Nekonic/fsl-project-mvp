@@ -105,3 +105,43 @@ def test_each_change_carries_the_timestamp_of_its_own_transaction():
     assert flip.at.timestamp() == 1791109664
     assert changes[-1].at.timestamp() == 1791109674
     assert sorted({c.at.timestamp() for c in changes}) == [1791109664, 1791109666, 1791109674]
+
+
+def _post_row(post_id, kind, status, post_type):
+    verb = {"insert": "INSERT INTO", "update": "UPDATE"}[kind]
+    image = {1: post_id, 8: f"'{status}'", 21: f"'{post_type}'", 6: "'t'", 5: "'x'"}
+    cells = "\n".join(f"###   @{n}={image.get(n, 0)}" for n in range(1, 24))
+    section = "SET" if kind == "insert" else "WHERE\n" + cells + "\n### SET"
+    return (
+        "SET TIMESTAMP=1791112159/*!*/;\n"
+        f"### {verb} `wordpress`.`wp_posts`\n### {section}\n{cells}\n"
+    )
+
+
+def _credited_posts(text, posts=(1,)):
+    baseline = {"admins": [1], "options": {}, "posts": list(posts)}
+    return {tier["key"] for tier, _ in effect.credited(SPEC, baseline, effect.parse_binlog(text))}
+
+
+def test_credited_takes_nothing_without_a_snapshot():
+    for blind in (None, {}, []):
+        for name in ("corp-rogue-admin.binlog", "corp-option-flip.binlog", "corp-content-write.binlog"):
+            assert _credited(name, blind) == set()
+
+
+def test_a_revision_insert_is_not_a_content_write():
+    assert _credited_posts(_post_row(40, "insert", "inherit", "revision")) == set()
+
+
+def test_an_auto_draft_insert_is_not_a_content_write():
+    assert _credited_posts(_post_row(41, "insert", "auto-draft", "post")) == set()
+
+
+def test_a_revision_update_of_a_baseline_id_is_not_a_content_write():
+    assert _credited_posts(_post_row(1, "update", "inherit", "revision")) == set()
+
+
+def test_a_published_or_draft_post_is_a_content_write():
+    assert _credited_posts(_post_row(42, "insert", "publish", "post")) == {"corp-content-overwrite"}
+    assert _credited_posts(_post_row(43, "insert", "draft", "post")) == {"corp-content-overwrite"}
+    assert _credited_posts(_post_row(1, "update", "publish", "post")) == {"corp-content-overwrite"}

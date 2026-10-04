@@ -98,3 +98,21 @@ def test_observing_twice_credits_each_objective_once(client):
         client.post_json(f"/api/sessions/{session_id}/objectives/")
         client.post_json(f"/api/sessions/{session_id}/objectives/")
     assert Objective.objects.filter(session_id=session_id, key="corp-rogue-admin").count() == 1
+
+
+def test_a_session_that_opened_blind_credits_nothing_for_any_change(client):
+    with patch("api.views.effect.snapshot", side_effect=effect.StateUnavailable("corp down")):
+        session_id = client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
+    assert Session.objects.get(pk=session_id).baseline is None
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    changes = [
+        _rogue_admin_change(at),
+        effect.Change(table="wp_options", kind="update", at=at,
+                      columns={2: "users_can_register", 3: "1"}),
+        effect.Change(table="wp_posts", kind="insert", at=at,
+                      columns={1: "99", 8: "publish", 5: "x", 6: "t"}),
+    ]
+    with patch("api.views.effect.read_changes", return_value=changes):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0
+    assert not Objective.objects.filter(session_id=session_id).exists()
