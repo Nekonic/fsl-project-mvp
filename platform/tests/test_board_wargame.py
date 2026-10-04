@@ -21,11 +21,12 @@ def test_the_board_is_a_second_wargame_on_its_own_host(client):
 
     assert wargames["board"]["public_url"] == "http://board.com"
 
-def test_the_catalogue_lists_only_the_board_and_it_is_judged(client):
+def test_the_catalogue_lists_the_board_judged_and_the_corp_site_not_yet_judged(client):
     wargames = listed(client)
 
-    assert set(wargames) == {"board"}
+    assert set(wargames) == {"board", "corp"}
     assert wargames["board"]["judged"] is True
+    assert wargames["corp"]["judged"] is False
 
 def test_the_board_ships_attacks_and_benign_traffic(client):
     cases = client.get("/api/wargames/board/cases/").json()

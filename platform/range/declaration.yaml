@@ -53,6 +53,8 @@ roles:
   sensor: fsl-suricata
   board: fsl-board
   board-db: fsl-board-db
+  corp: fsl-corp-wp
+  corp-db: fsl-corp-db
 
 watches:
   sensor: gateway
