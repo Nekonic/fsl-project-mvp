@@ -60,7 +60,7 @@ ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = "/label/active"
 ATTACKER_ORIGIN_FILE = "/label/origin"
-ATTACKER_TERMINAL_URL = "/terminal/"
+ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )

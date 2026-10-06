@@ -4,7 +4,7 @@ import re
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
 STYLESHEET = CONSOLE / "tailwind.css"
 
-HOOKS = {"alert-row", "chip", "fire", "lift", "start", "tab"}
+HOOKS = {"alert-row", "chip", "fire", "lift", "pane-tab", "start", "tab"}
 BLOCKS = {"body_class", "main_class", "nav_class", "endblock"}
 
 def templates():

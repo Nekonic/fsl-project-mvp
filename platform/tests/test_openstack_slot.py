@@ -206,7 +206,7 @@ def test_every_range_port_is_in_the_range_group(cloud):
 def test_every_host_is_told_where_the_others_are_on_the_estate(cloud):
     adapter(cloud).ensure_slot()
 
-    board = cloud.port("fsl-board.estate")["fixed_ips"][0]["ip_address"]
+    board = cloud.port("fsl-wg-board.estate")["fixed_ips"][0]["ip_address"]
     for host in DECLARED.hosts:
         [written] = [f for f in cloud.config(host)["write_files"] if f["path"] == "/etc/hosts"]
         assert f"{board} board board-db\n" in written["content"]
@@ -231,9 +231,9 @@ def test_a_slot_standing_writes_nothing_the_second_time(cloud):
     assert plan.clean and len(plan.standing) == len(DECLARED.hosts)
 
 def test_a_slot_whose_images_are_not_ready_is_refused_before_anything_is_written(cloud):
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-board"]
+    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wg-board"]
 
-    with pytest.raises(Drifted, match="fsl-board"):
+    with pytest.raises(Drifted, match="fsl-wg-board"):
         adapter(cloud).ensure_slot()
     assert [c for c in cloud.calls if c[0] != "GET"] == []
 
@@ -267,9 +267,9 @@ def test_a_slot_not_fully_standing_is_not_rebuilt(cloud):
 
 def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(cloud):
     adapter(cloud).ensure_slot()
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-board"]
+    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wg-board"]
 
-    with pytest.raises(Drifted, match="fsl-board"):
+    with pytest.raises(Drifted, match="fsl-wg-board"):
         adapter(cloud).rebuild_slot()
 
     assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == [], (

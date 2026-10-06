@@ -215,7 +215,7 @@ def test_a_role_whose_container_compose_renamed_is_caught():
     compose["services"]["board-db"]["container_name"] = "fsl-intranet"
 
     assert drift(compose, declaration) == [
-        "the role 'board-db' is declared to be filled by 'fsl-board-db' and compose "
+        "the role 'board-db' is declared to be filled by 'fsl-wg-board-db' and compose "
         "defines no such container"
     ]
 
@@ -224,19 +224,20 @@ def test_every_container_is_named_after_the_service_that_builds_it():
     odd = {
         name: service.get("container_name")
         for name, service in compose["services"].items()
-        if service.get("container_name") != f"fsl-{name}"
+        if service.get("container_name") not in (f"fsl-{name}", f"fsl-wg-{name}")
     }
 
     assert odd == {}, (
-        f"the acceptance suite recreates a host by stripping 'fsl-' off the "
+        f"the acceptance suite recovers a service name by stripping 'fsl-' and "
+        f"then an optional 'wg-' (the wargame-target prefix) off the container "
         f"name the declaration gives it, which stops working here: {odd}"
     )
 
 def test_the_board_and_its_database_are_declared_so_openstack_can_find_them():
     _, declaration = documents()
 
-    assert declaration["roles"].get("board") == "fsl-board"
-    assert declaration["roles"].get("board-db") == "fsl-board-db"
+    assert declaration["roles"].get("board") == "fsl-wg-board"
+    assert declaration["roles"].get("board-db") == "fsl-wg-board-db"
 
 def test_the_loader_reads_back_exactly_what_the_file_says():
     from range import declared

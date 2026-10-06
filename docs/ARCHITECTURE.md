@@ -25,10 +25,10 @@ line; the measure counts the services it adds.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
-| `fsl-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
-| `fsl-board-db` | `mysql` | estate | |
-| `fsl-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
-| `fsl-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-wg-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
+| `fsl-wg-board-db` | `mysql` | estate | |
+| `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
+| `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
@@ -362,9 +362,10 @@ The score endpoint is read-only and keeps no history.
 - **Suricata shares the WAF's network namespace** rather than using host
   networking, whose meaning varies with the Docker host. The WAF's interfaces
   carry both legs of every request.
-- **No Kibana in the compose range yet.** The blue console lists detections
-  and Elasticsearch still answers ad-hoc queries. Kibana is to return,
-  read-only, for the blue team (see "OpenStack").
+- **Kibana is in compose**, the real ELK (not a read-only role), reading the
+  same Elasticsearch the platform ingests from. It is reached through the
+  platform's one published port at `/kibana/` and is published on no port of
+  its own. The blue console frames it (see "OpenStack").
 - **Elasticsearch is a single node with a 512 MB heap** so the whole stack fits
   in a default Docker memory allowance.
 - **Missing data is an error, not a zero**, with stated exceptions. An
@@ -512,8 +513,8 @@ of it now built (see above).
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
    sidebar, three panes inside the page:
-     pfSense   noVNC console of a kiosk browser VM showing pfSense's GUI
-     Kibana    framed directly, on a read-only Elasticsearch role
+     pfSense   real web GUI, reverse-proxied on :8080, auto-logged-in
+     Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd on the Kali VM, reverse-proxied by the platform
      |
      +--OpenStack API, as member fsl-range--> networks, VMs, consoles
@@ -540,7 +541,7 @@ of it now built (see above).
    WAF VM: ModSecurity audit log --------------------------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
-   Elasticsearch --read-only role--> Kibana --> blue team
+   Elasticsearch ----------------> Kibana --> blue team
 ```
 
 Built, not shown in the diagram's lines:
@@ -557,11 +558,12 @@ Built, not shown in the diagram's lines:
 - **The slot's Stop rebuild**: done as an operator action; wiring it into
   session Stop plus the readiness gate is still to come (below).
 
+The two blue-screen panes are now done: Kibana (framed, reading the same
+Elasticsearch, full) and the pfSense GUI (the real web GUI, reverse-proxied on
+`:8080`, auto-logged-in), alongside the terminal pane.
+
 Left to build:
 
-- **The two blue-screen panes** the user held out of this backlog: Kibana
-  (framed, on a read-only Elasticsearch role) and the pfSense GUI (the noVNC
-  console of a kiosk browser VM). The terminal pane is done.
 - **The session lifecycle wiring**: Start takes a READY slot and creates
   nothing; Stop fires the rebuild, waits for ACTIVE, re-configures the edge and
   WAF, and checks the slot answers for itself (ground truth readable, rules and WAF

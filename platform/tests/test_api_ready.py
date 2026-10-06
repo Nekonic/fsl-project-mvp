@@ -52,11 +52,11 @@ def test_a_slot_with_a_rebuilding_vm_is_not_ready(client):
     assert any("fsl-waf" in reason for reason in body["slot"]["blocked"])
 
 def test_a_slot_still_to_boot_is_not_ready(client):
-    body = _get(client, Cloud(boot=("fsl-board",), blocked=("image fsl-board is not ready",))).json()
+    body = _get(client, Cloud(boot=("fsl-wg-board",), blocked=("image fsl-wg-board is not ready",))).json()
 
     assert body["ready"] is False
     assert body["slot"]["phase"] == "NOT_STANDING"
-    assert "image fsl-board is not ready" in body["slot"]["blocked"]
+    assert "image fsl-wg-board is not ready" in body["slot"]["blocked"]
 
 def test_an_unreadable_ground_truth_leaves_the_range_not_ready(client):
     body = _get(client, Cloud(), ground_truth=False).json()

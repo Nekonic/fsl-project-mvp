@@ -19,7 +19,7 @@ def test_the_terminal_has_no_port_of_its_own():
     )
 
 def test_the_console_frames_the_terminal_from_its_own_origin():
-    assert setting("ATTACKER_TERMINAL_URL", ATTACKER_TERMINAL_URL=None) == "/terminal/"
+    assert setting("ATTACKER_TERMINAL_URL", ATTACKER_TERMINAL_URL=None) == "/vm-terminal/fsl-kali/"
 
 def test_the_terminal_is_handed_over_only_after_the_platform_agrees():
     terminal = location("/terminal/")

@@ -259,15 +259,16 @@ def test_every_wargame_is_one_folder_the_stack_includes():
 
 def test_only_the_platform_and_the_log_collector_may_be_published_elsewhere_and_only_by_choice():
     chosen = {
-        name: entry
+        (name, entry)
         for name, service in composed.services().items()
         for entry in service.get("ports") or []
         if "${" in str(entry)
     }
 
     assert chosen == {
-        "platform": "${FSL_PUBLISH:-127.0.0.1}:8000:8000",
-        "filebeat": "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp",
+        ("platform", "${FSL_PUBLISH:-127.0.0.1}:8000:8000"),
+        ("platform", "${FSL_PUBLISH:-127.0.0.1}:8080:8080"),
+        ("filebeat", "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
     }, chosen
 
 def test_the_address_a_vm_publishes_on_stays_out_of_git():

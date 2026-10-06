@@ -47,7 +47,7 @@ def test_snapshot_refuses_when_the_container_exits_nonzero():
 
 def test_snapshot_refuses_when_the_range_is_down():
     def run(argv, stdin=None, timeout=60.0):
-        raise RangeUnavailable("fsl-corp-db never reported")
+        raise RangeUnavailable("fsl-wg-corp-db never reported")
 
     with pytest.raises(effect.StateUnavailable):
         effect.snapshot(run)

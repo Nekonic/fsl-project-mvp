@@ -23,10 +23,10 @@ board와 `effect_observed` 대상인 corp. 새 wargame은 새 폴더 하나와 `
 
 | 서비스 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|
-| `fsl-board` | `wargames/board/app` (gunicorn 아래 Django, 포트 8000) | estate | |
-| `fsl-board-db` | `mysql` | estate | |
-| `fsl-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
-| `fsl-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-wg-board` | `wargames/board/app` (gunicorn 아래 Django, 포트 8000) | estate | |
+| `fsl-wg-board-db` | `mysql` | estate | |
+| `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
+| `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | 8080 |
 | `fsl-suricata` | `jasonish/suricata` | WAF의 네임스페이스 | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
@@ -336,9 +336,9 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - **Suricata는 WAF의 네트워크 네임스페이스를 공유한다**, Docker 호스트에 따라 의미가
   달라지는 호스트 네트워킹을 쓰는 대신. WAF의 인터페이스가 모든 요청의 양쪽 구간을
   실어 나른다.
-- **아직 compose 레인지에 Kibana는 없다.** 블루 콘솔이 탐지를 나열하고 Elasticsearch가
-  여전히 임시(ad-hoc) 쿼리에 답한다. Kibana는 블루팀을 위해 읽기 전용으로 돌아올
-  예정이다("OpenStack" 참고).
+- **Kibana가 compose에 있다.** 읽기 전용 역할이 아니라 실제 ELK로, 플랫폼이 적재하는
+  바로 그 Elasticsearch를 읽는다. 플랫폼의 단일 공개 포트에서 `/kibana/`로 닿으며 자기
+  포트는 열지 않는다. 블루 콘솔이 이를 프레임한다("OpenStack" 참고).
 - **Elasticsearch는 512MB 힙을 가진 단일 노드다** 그래서 전체 스택이 기본 Docker
   메모리 허용치에 들어맞는다.
 - **없는 데이터는 0이 아니라 오류다**, 명시된 예외와 함께. 닿을 수 없는 Elasticsearch나
@@ -473,7 +473,7 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
    sidebar, three panes inside the page:
-     pfSense   noVNC console of a kiosk browser VM showing pfSense's GUI
+     pfSense   real web GUI, reverse-proxied on :8080, auto-logged-in
      Kibana    framed directly, on a read-only Elasticsearch role
      terminal  ttyd on the Kali VM, reverse-proxied by the platform
      |
@@ -501,7 +501,7 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
    WAF VM: ModSecurity audit log --------------------------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
-   Elasticsearch --read-only role--> Kibana --> blue team
+   Elasticsearch ----------------> Kibana --> blue team
 ```
 
 구축되었으나, 다이어그램의 선에는 나타나지 않는 것:
@@ -517,11 +517,12 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
 - **slot의 Stop 재구축**: operator 동작으로서는 완료; 그것을 세션 Stop에 배선하는 것과
   준비 상태 게이트는 아직 남아 있다(아래).
 
+두 개의 블루 화면 창(pane)은 이제 완료되었다: Kibana(프레임에 담긴, 같은
+Elasticsearch를 읽음, full)와 pfSense GUI(실제 웹 GUI를 플랫폼 자신의 `:8080`에
+리버스프록시, 자동 로그인), 그리고 터미널 창.
+
 구축할 것으로 남은 것:
 
-- **두 개의 블루 화면 창(pane)**, 사용자가 이 백로그에서 빼 둔 것: Kibana(프레임에
-  담긴, 읽기 전용 Elasticsearch 역할로)와 pfSense GUI(키오스크 브라우저 VM의 noVNC
-  콘솔). 터미널 창은 완료되었다.
 - **세션 수명 주기 배선**: Start는 READY slot을 취하고 아무것도 만들지 않는다; Stop은
   재구축을 발사하고, ACTIVE를 기다리고, 엣지와 WAF를 재구성하고, slot이 스스로
   응답하는지 확인한다(ground truth를 읽을 수 있음, 룰과 WAF 모드가 기준선, 시계가 동기화, 카나리아

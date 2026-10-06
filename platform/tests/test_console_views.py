@@ -36,36 +36,15 @@ def test_pages_do_not_query_the_database(client):
     assert len(queries) == 0
 
 
-OVERVIEW = ['id="kpi-total"', 'id="map-points"', 'id="sources"',
-            'id="destinations"', 'id="signatures"', 'id="paths"']
-THE_LIST = ['id="rows"', 'id="search"', 'id="only-orphans"', 'id="source-filter"']
-
 def body(client, path):
     return client.get(path).content.decode()
 
-def test_the_blue_console_carries_both_views(client):
+def test_the_blue_console_frames_the_real_tools(client):
     page = body(client, "/blue/1/")
 
-    for marker in OVERVIEW + THE_LIST:
+    for marker in ('data-pane="pfsense"', 'data-pane="elk"', 'data-pane="waf"',
+                   'id="pane-frame"'):
         assert marker in page, marker
-
-def test_the_two_views_are_tabs_rather_than_one_screenful(client):
-    page = body(client, "/blue/1/")
-
-    for tab in ("dashboard", "alerts", "score", "rules"):
-        assert f'data-tab="{tab}"' in page, tab
-        assert f'data-panel="{tab}"' in page, tab
-
-def test_the_overview_reports_each_dimension_as_a_table(client):
-    page = body(client, "/blue/1/")
-    english = strings()["en"]
-
-    for key in ("blue.col.src_ip", "blue.col.zone", "blue.col.country",
-                "blue.col.alerts", "blue.col.dest", "blue.col.signature",
-                "blue.col.engine", "blue.col.method", "blue.col.path"):
-        assert f'data-t="{key}"' in page, key
-        assert english.get(key), key
-
 
 def test_the_overview_says_nothing_about_how_the_range_is_built(client):
     page = body(client, "/blue/1/")

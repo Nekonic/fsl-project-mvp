@@ -69,7 +69,7 @@ def test_no_string_in_the_table_is_left_untranslated():
         key for key, text in table["en"].items()
         if table["ko"].get(key) == text and not re.fullmatch(r"[\W\d]+|[A-Z]{2,4}", text)
     )
-    allowed = {"common.brand"}
+    allowed = {"common.brand", "blue.pane.pfsense"}
 
     assert not set(same) - allowed, (
         f"these are identical in both tables, which means the Korean was never written: "

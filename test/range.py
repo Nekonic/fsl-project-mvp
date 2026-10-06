@@ -65,7 +65,7 @@ def declared_roles() -> dict[str, str]:
     return dict(document.get("roles") or {})
 
 DOCKER_HOSTS = {
-    role: Host(node=node, unit=node.removeprefix("fsl-"))
+    role: Host(node=node, unit=node.removeprefix("fsl-").removeprefix("wg-"))
     for role, node in declared_roles().items()
 }
 

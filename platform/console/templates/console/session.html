@@ -16,7 +16,7 @@
 </div>
 
 <button id="close" data-t="session.close.button"
-        class="text-muted hover:text-primary text-sm underline"></button>
+        class="text-muted hover:text-primary text-sm underline hidden"></button>
 
 <div id="confirm" class="hidden bg-panel border border-line rounded p-4 max-w-xl">
   <p data-t="session.close.consequence" class="text-body text-sm mb-3"></p>
@@ -30,6 +30,8 @@
 </div>
 
 <p id="closed" class="text-muted text-sm mt-3 hidden"></p>
+
+<section id="scoreboard" class="hidden mt-8"></section>
 {% endblock %}
 {% block script %}
 <script>
@@ -39,6 +41,57 @@
 
   const show = (id, visible) =>
     document.getElementById(id).classList.toggle("hidden", !visible);
+
+  const PILLARS = ["speed", "accuracy", "coverage", "response"];
+
+  function pillarTile(game, key) {
+    const value = game[key];
+    const shown = value === null || value === undefined
+      ? "—" : `${Math.round(value * 100)}%`;
+    return `
+      <div class="bg-panel border border-line rounded p-3">
+        <div class="text-muted text-xs uppercase tracking-wide">${
+          esc(t(`session.score.pillar.${key}`))}</div>
+        <div class="text-2xl font-semibold text-heading tabular-nums">${esc(shown)}</div>
+        <div class="text-muted text-xs mt-0.5">${
+          esc(t("session.score.weight", game.weights[key]))}</div>
+      </div>`;
+  }
+
+  function renderScoreboard(game) {
+    const balance = game.balance;
+    const headline = balance > 0
+      ? t("session.score.defence_ahead", balance.toFixed(1))
+      : balance < 0
+        ? t("session.score.attack_ahead", Math.abs(balance).toFixed(1))
+        : t("session.score.even");
+    const tone = balance > 0 ? "text-success" : balance < 0 ? "text-danger" : "text-muted";
+
+    document.getElementById("scoreboard").innerHTML = `
+      <h2 class="text-sm uppercase tracking-wide text-muted mb-3">${
+        esc(t("session.score.heading"))}</h2>
+      <div class="bg-panel border border-line rounded p-6 mb-4">
+        <div class="text-muted text-xs uppercase tracking-wide">${
+          esc(t("session.score.balance"))}</div>
+        <div class="text-4xl font-semibold tabular-nums ${tone}">${esc(headline)}</div>
+        <div class="text-muted text-sm mt-2 tabular-nums">${
+          esc(t("session.score.attacker", game.attacker.toFixed(1)))} ·
+          ${esc(t("session.score.defender", game.defender.toFixed(1)))}</div>
+      </div>
+      <div class="grid grid-cols-4 gap-3">
+        ${PILLARS.map((key) => pillarTile(game, key)).join("")}
+      </div>`;
+    show("scoreboard", true);
+  }
+
+  async function renderScore() {
+    const score = await api(`/api/sessions/${sessionId()}/score/`);
+    if (score.ok && score.body.game && score.body.game.revealed) {
+      renderScoreboard(score.body.game);
+      return true;
+    }
+    return false;
+  }
 
   document.getElementById("close").addEventListener("click", () => {
     show("close", false);
@@ -59,7 +112,13 @@
     note.classList.toggle("text-danger", !result.ok);
     note.classList.toggle("text-muted", result.ok);
     show("closed", true);
-    if (!result.ok) show("close", true);
+    if (result.ok) renderScore();
+    else show("close", true);
   });
+
+  (async () => {
+    const revealed = await renderScore();
+    show("close", !revealed);
+  })();
 </script>
 {% endblock %}

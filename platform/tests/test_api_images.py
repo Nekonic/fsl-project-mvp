@@ -15,7 +15,7 @@ class Built:
         return images.Plan(
             images=(
                 images.Image("fsl-waf", "d1", "ready", image="img-1"),
-                images.Image("fsl-board", "b1", "failed", builder="srv-2", detail="E: no mysql"),
+                images.Image("fsl-wg-board", "b1", "failed", builder="srv-2", detail="E: no mysql"),
             ),
             leftovers=(("image", "img-old", "image fsl-wiki was built from bundle d0"),),
         )
