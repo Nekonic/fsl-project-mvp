@@ -47,11 +47,16 @@
       showError(t("main.unavailable", t("main.the_scenarios"), detail(result)));
       return;
     }
+    const localized = (id, field, fallback) => {
+      const key = `wargame.${id}.${field}`;
+      const value = t(key);
+      return value === key ? fallback : value;
+    };
     document.getElementById("wargames").innerHTML = result.body.map((wargame) => `
       <div class="bg-panel border border-line rounded p-5 flex items-center gap-6">
         <div class="flex-1">
-          <div class="text-heading font-medium">${esc(wargame.name)}</div>
-          <div class="text-body text-sm mt-1">${esc(wargame.description)}</div>
+          <div class="text-heading font-medium">${esc(localized(wargame.id, "name", wargame.name))}</div>
+          <div class="text-body text-sm mt-1">${esc(localized(wargame.id, "description", wargame.description))}</div>
           <div class="text-muted text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
         </div>
         <button data-wargame="${esc(wargame.id)}"
