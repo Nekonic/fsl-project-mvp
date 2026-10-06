@@ -104,6 +104,14 @@ publish되지 않는다. board는 loot로 채점된다: 세션이 시작될 때 
 결코 전달하지 않는다. 이 경로는 WAF 밖에 있으므로 탐지기는 ground truth를 읽는 것을
 결코 보지 못한다.
 
+corp는 두 번째 wargame이다: WordPress 6.6.2(`fsl-wg-corp-wp`)에 세 개의 플러그인을
+미패치 버전으로 고정했다 — Ultimate Member 2.6.6(CVE-2023-3460, `wp_capabilities`를
+밀어넣어 administrator를 부여하는 가입 결함), WP GDPR Compliance 1.4.2(CVE-2018-19207,
+관리자 자가가입을 여는 무인증 옵션 플립), Easy Post Submission 2.3.0(CVE-2026-4431,
+무인증 글 덮어쓰기). 어느 것도 기본 OWASP CRS에 걸리지 않는다. 저장소
+`fsl-wg-corp-db`는 `--binlog-format=ROW`로 도는 MySQL 8.4이며, WordPress 자체에는
+아무 계측도 하지 않는다. corp는 loot가 아니라 effect로 채점된다(아래).
+
 ## 선언과 substrate 이음매
 
 Docker는 MVP의 substrate이고, OpenStack은 목표다. 플랫폼은 레인지가 무엇을 뜻하는지
@@ -266,6 +274,18 @@ Elasticsearch는 저장과 색인 시점의 geoip에 쓰이며, 그래서 Logsta
 그 뒤에는 아무것도 대상 시스템을 읽지 않는다: `GET /api/wargames/<id>/objectives/`는
 `objectives.yaml`에서 단계를 나열하고 `POST /api/sessions/<id>/objectives/`는 저장된
 행을 보고하며, 둘 다 board에 닿지 않는다.
+
+corp는 `effect_observed` 대상이다: 공격자가 제출한 loot가 아니라 대상 시스템이 스스로
+커밋한 DB 행을 지켜봐서 채점한다. `wargames/corp/objectives.yaml`이 읽기 경로
+(`estate://corp-db`, scope `wp_state`)와 세 단계를 정한다 — rogue administrator
+(`rogue_admin`, 난이도 5), 자가가입이 열린 사이트(`option_flip`, 4), 무단으로 작성된
+콘텐츠(`content_write`, 3). 세션 시작 시 플랫폼은 corp-db에 읽기 전용 `mysql` SELECT로
+기존 관리자, 감시 대상 `wp_options`, 공개된 글을 스냅샷한다(`platform/api/effect.py`).
+관찰 때는 corp-db의 바이너리 로그를 `mysqlbinlog`로 읽어, 커밋된 변경 하나하나를
+단계로 인정한다 — 비기준 사용자에게 준 `wp_usermeta` 관리자 권한, `users_can_register`/
+`default_role`의 `wp_options` 플립, 새로 쓰거나 덮어쓴 `wp_posts` 행 — 그 변경의
+시각이 악성 케이스의 창 안에 들 때만. 이 binlog 읽기도 WAF 밖이라, board와 마찬가지로
+탐지기는 ground truth 읽기를 보지 못한다.
 
 탈취된 목표는 그 실행이 목표의 창과 겹치는 악성 케이스로 귀속된다; 여럿이면 가장 늦게
 시작한 것으로. 목표는

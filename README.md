@@ -103,8 +103,10 @@ Left out to keep the lines readable: Kali's raw TCP goes straight to the WAF
 without the proxy; the platform fires scripted cases at the WAF itself; and
 through the substrate (`docker exec` here, ssh on OpenStack) it writes the
 sensor's rules and the proxy's case label and reads the attacker's command
-log, and it reads the board's ground truth directly over the estate network,
-past the WAF. The networks are in `docs/ARCHITECTURE.md`.
+log, and it reads each target's ground truth directly over the estate network,
+past the WAF — the board's `auth_user` table, and corp-db's MySQL binary log
+(`mysqlbinlog`), which is how corp is scored by effect instead of submitted
+loot. The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -281,16 +283,21 @@ Korean.
   case is labelled on the way out. Alternatively name a case, press start,
   work in the shell and press stop: everything sent in between is attributed
   to that name.
-- **Blue** has a dashboard, live alerts, the scoreboard and the Suricata rules.
-  It ingests on a timer. Any alert opens the Elasticsearch record behind it.
+- **Blue** is a sidebar that frames the real tools — the pfSense GUI (the edge
+  firewall and its Suricata rules), Kibana (the full ELK), and a WAF terminal;
+  the zero-sum scoreboard reveals on the session page when it closes.
 
-The scripted board cases can also be fired from the command line, as the
-acceptance tests do. The target is not published, so the harness runs inside
-the range, from the platform, the way the console fires:
+The scripted cases can also be fired from the command line, as the acceptance
+tests do. The target is not published, so the harness runs inside the range,
+from the platform, the way the console fires — the board by default, corp with
+its own vhost and case file:
 
 ```bash
 docker compose exec platform \
   python redteam/run.py --target http://board.com --tool-target http://board.com
+docker compose exec platform \
+  python redteam/run.py --target http://corp.com --tool-target http://corp.com \
+    --cases redteam/cases/corp.yaml
 ```
 
 ## Checking it
