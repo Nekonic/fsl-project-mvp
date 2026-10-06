@@ -110,6 +110,15 @@ network directly and the WAF never forwards, and keeps them as the session's
 snapshot. That channel is off the WAF, so the detector never sees the
 ground-truth read.
 
+The corp wargame is the second: WordPress 6.6.2 (`fsl-wg-corp-wp`) with three
+plugins pinned to unpatched versions — Ultimate Member 2.6.6 (CVE-2023-3460, a
+registration flaw that smuggles `wp_capabilities` to grant administrator), WP
+GDPR Compliance 1.4.2 (CVE-2018-19207, an unauthenticated option flip that opens
+admin self-registration), and Easy Post Submission 2.3.0 (CVE-2026-4431, an
+unauthenticated post overwrite). None trips the default OWASP CRS. Its store,
+`fsl-wg-corp-db`, is MySQL 8.4 run with `--binlog-format=ROW`; nothing is
+instrumented on WordPress itself. corp is judged by effect, not loot (below).
+
 ## The declaration and the substrate seam
 
 Docker is the MVP's substrate; OpenStack is the target. The platform never
@@ -287,6 +296,21 @@ read then, the session is still created, with no snapshot, and
 afterwards: `GET /api/wargames/<id>/objectives/` lists the tiers from
 `objectives.yaml` and `POST /api/sessions/<id>/objectives/` reports the stored
 rows, neither of which touches the board.
+
+The corp wargame is an `effect_observed` target: it is judged by watching the
+target's own committed database rows, not loot the attacker submits. Its
+`wargames/corp/objectives.yaml` declares the read channel (`estate://corp-db`,
+scope `wp_state`) and three tiers — a rogue administrator (`rogue_admin`,
+difficulty 5), the site opened to self-registration (`option_flip`, 4) and
+unauthorized content written (`content_write`, 3). At session start the platform
+snapshots the existing admins, the watched `wp_options` and the published posts
+with read-only `mysql` SELECTs against corp-db (`platform/api/effect.py`). To
+observe, it reads corp-db's binary log with `mysqlbinlog` and credits a tier for
+each committed change — a `wp_usermeta` admin grant to a non-baseline user, a
+`wp_options` flip of `users_can_register`/`default_role`, a new or overwritten
+`wp_posts` row — whose timestamp falls inside a malicious case's window. The
+binlog read is off the WAF too, so, as with the board, the detector never sees
+the ground-truth read.
 
 A taken objective goes to a malicious case whose run overlaps the objective's
 window; among several, the one that started latest. The objective counts as

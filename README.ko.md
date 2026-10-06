@@ -85,7 +85,7 @@ flowchart LR
   console --> scoring
 ```
 
-선이 읽기 쉽도록 그래프에서 뺀 것이 있다. Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 간다. 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 또 플랫폼은 기반 계층(여기서는 `docker exec`, OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고 공격자의 명령 로그를 읽으며, 게시판의 ground truth는 estate 네트워크로 WAF를 거치지 않고 직접 읽는다. 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
+선이 읽기 쉽도록 그래프에서 뺀 것이 있다. Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 간다. 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 또 플랫폼은 기반 계층(여기서는 `docker exec`, OpenStack에서는 ssh)을 통해 센서의 룰과 프록시의 시나리오 라벨을 쓰고 공격자의 명령 로그를 읽으며, 각 타깃의 ground truth는 estate 네트워크로 WAF를 거치지 않고 직접 읽는다 — 게시판의 `auth_user` 테이블, 그리고 corp-db의 MySQL 바이너리 로그(`mysqlbinlog`). corp가 제출된 loot가 아니라 effect로 채점되는 방식이다. 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
 
 ## 스택 띄우기
 
@@ -198,13 +198,16 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
 
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
-- **블루**에는 대시보드, 실시간 경보, 점수판, Suricata 룰이 있다. 경보는 일정 간격으로 수집한다. 경보를 누르면 그 경보의 Elasticsearch 원본 로그가 열린다.
+- **블루**는 실제 도구를 프레임하는 사이드바다 — pfSense GUI(엣지 방화벽과 그 Suricata 룰), Kibana(풀 ELK), WAF 터미널. 제로섬 점수판은 세션이 닫힐 때 세션 페이지에 공개된다.
 
-게시판용 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로, 하니스는 콘솔이 실행하는 방식 그대로 레인지 안에서, 플랫폼에서 실행한다.
+스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로, 하니스는 콘솔이 실행하는 방식 그대로 레인지 안에서, 플랫폼에서 실행한다 — 기본은 게시판, corp는 자신의 vhost와 케이스 파일로.
 
 ```bash
 docker compose exec platform \
   python redteam/run.py --target http://board.com --tool-target http://board.com
+docker compose exec platform \
+  python redteam/run.py --target http://corp.com --tool-target http://corp.com \
+    --cases redteam/cases/corp.yaml
 ```
 
 ## 검증
