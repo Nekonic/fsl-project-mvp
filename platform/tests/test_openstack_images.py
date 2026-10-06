@@ -160,30 +160,30 @@ def test_the_builder_goes_once_its_image_is_active(cloud):
 
 def test_a_builder_whose_setup_failed_is_neither_stopped_nor_snapshotted(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-board", worked=False)
+    cloud.finish("fsl-wg-board", worked=False)
 
     plan = adapter(cloud).ensure_images()
 
-    assert not [i for i in cloud.images if i["name"] == "fsl-board"]
-    assert cloud.builder("fsl-board")["status"] == "ACTIVE"
-    board = next(i for i in plan.images if i.host == "fsl-board")
+    assert not [i for i in cloud.images if i["name"] == "fsl-wg-board"]
+    assert cloud.builder("fsl-wg-board")["status"] == "ACTIVE"
+    board = next(i for i in plan.images if i.host == "fsl-wg-board")
     assert board.state == "failed" and "Unable to locate package" in board.detail
 
 def test_cleaning_removes_failed_builders_and_stale_images_but_not_ready_ones(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-board", worked=False)
+    cloud.finish("fsl-wg-board", worked=False)
     cloud.finish("fsl-waf")
     adapter(cloud).ensure_images()
     adapter(cloud).ensure_images()
     next(i for i in cloud.images if i["name"] == "fsl-waf")["status"] = "active"
-    cloud.images.append({"id": "img-old", "name": "fsl-board", "status": "active",
+    cloud.images.append({"id": "img-old", "name": "fsl-wg-board", "status": "active",
                          images.BUNDLE: "0000000000000000"})
 
     removed = adapter(cloud).clean_images()
 
     assert ("image", "img-old") in removed
     assert ("server", cloud_id_of(removed, "server")) in removed
-    assert "fsl-board" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
+    assert "fsl-wg-board" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
     assert [i["id"] for i in cloud.images if i["name"] == "fsl-waf"]
 
 def cloud_id_of(removed, kind):

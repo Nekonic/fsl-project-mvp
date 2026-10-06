@@ -24,7 +24,7 @@ class Built:
 
     def ensure_slot(self):
         if self.blocked:
-            raise Drifted("image fsl-board is not ready")
+            raise Drifted("image fsl-wg-board is not ready")
         self.ensured += 1
         return self.plan_slot()
 
@@ -59,7 +59,7 @@ def test_a_slot_that_cannot_boot_is_a_conflict_that_says_why(client):
     with patch("api.views.substrate", lambda: Built(blocked=True)):
         response = client.post_json(URL)
 
-    assert response.status_code == 409 and "fsl-board" in response.json()["detail"]
+    assert response.status_code == 409 and "fsl-wg-board" in response.json()["detail"]
 
 def test_taking_it_down_is_a_delete_and_says_what_went(client, built):
     response = client.delete(URL)

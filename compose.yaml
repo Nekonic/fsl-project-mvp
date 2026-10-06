@@ -157,6 +157,26 @@ services:
       - waflogs:/logs/modsecurity:ro
       - filebeatdata:/usr/share/filebeat/data
 
+  kibana:
+    platform: linux/amd64
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: fsl-kibana
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks: [mgmt]
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      SERVER_BASEPATH: "/kibana"
+      SERVER_REWRITEBASEPATH: "true"
+      SERVER_PUBLICBASEURL: "http://localhost:8000/kibana"
+      TELEMETRY_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5601/kibana/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
   kali:
     platform: linux/amd64
     build: ./deploy/kali
@@ -188,6 +208,7 @@ services:
     networks: [edge, edge-br, edge-hk, edge-us, estate, mgmt]
     ports:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
+      - "${FSL_PUBLISH:-127.0.0.1}:8080:8080"
     environment:
       DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"

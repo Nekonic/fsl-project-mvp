@@ -563,17 +563,18 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   nginx + ModSecurity v3 + CRS (all Apache-2.0).
 - **pfSense goes in** as the edge firewall, and Suricata runs as its package,
   managed in the pfSense GUI (placement spec, "pfSense").
-- **The blue team reads alerts in Kibana**, read-only, and the blue dashboard
-  mostly goes. Kibana returns to compose (a gated `services` step the user's
-  call justifies), with Elasticsearch security on for a read-only role.
+- **The blue team reads alerts in Kibana** — the real ELK, not a read-only
+  role — and the custom dashboard goes. Kibana is in compose (a gated
+  `services` 7 -> 8 the user's call justifies), reading the same Elasticsearch
+  the platform ingests from, reached at `/kibana/` through the one port.
 - **The platform UI is a left sidebar with three panes shown inside the
   page**: pfSense, Kibana, a terminal. No new-tab buttons. Kibana is framed
-  directly. pfSense refuses framing and has no setting for it, so its pane is
-  the Nova noVNC console of a small VM whose kiosk browser has the pfSense GUI
-  open; the platform asks `POST /servers/{id}/remote-consoles` (member role,
-  microversion 2.6+) for a fresh URL each time the pane opens (tokens last
-  600 s; an open session outlives them). The terminal pane is ttyd, as Kali's
-  already is. Horizon is never shown to users.
+  directly. pfSense sets `X-Frame-Options` and has no base-path setting, so its
+  pane is the real GUI framed over a reverse-proxy on the platform's own
+  `:8080` (a distinct origin, so pfSense's root-absolute URLs resolve); nginx
+  strips the framing header, spoofs `Host` past the anti-DNS-rebind check, and
+  injects a server-primed admin session so the pane opens auto-logged-in. The
+  terminal pane is ttyd, as Kali's already is. Horizon is never shown to users.
 - **One published port (2026-10-01)**: everything happens on the website, so
   the platform's port is the only one published. The terminal, and Kibana
   when it comes, are reached through it by path. 9200 stays published for
@@ -907,9 +908,9 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      port holds the ~100 per-country addresses (the slot `bootcmd` spreads them
      onto the NIC) and `/usr/local/sbin/fsl-origin` SNATs the box's source per
      country, so any origin fires. Proven from a clean image+slot rebuild.
-6. **The sidebar and one port**: Kibana (Elasticsearch security on, a
-   read-only blue role), the pfSense pane through a kiosk browser VM's noVNC
-   console, and ttyd, all behind the platform's one published port, with no
+6. **The sidebar and one port**: Kibana (the real ELK, reading the same
+   Elasticsearch), the pfSense pane through a reverse-proxy on the platform's
+   own `:8080`, and ttyd, all served by the platform image with no
    service or package added. **The terminal is done (2026-10-01):** nginx
    (from apt) runs inside the platform's image on 8000, `/` to waitress on
    `127.0.0.1:8001`, `/terminal/` to `kali:7681` (ttyd `-b /terminal`), and
@@ -922,8 +923,10 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    `test/range.py`'s runner (the attacker box for probes, the `scorer` host
    for `redteam/run.py`), not a host port. The same suite runs unchanged
    against the OpenStack range once `test/range.py` has its OpenStack adapter.
-   **Out of scope (the user): Kibana and the pfSense GUI pane** - the two
-   blue-screen panes are not to be built in this backlog.
+   **Done (the blue-console UI change, 2026-10-05/06):** the two
+   blue-screen panes the earlier backlog held out — Kibana (in compose) and the
+   pfSense GUI pane (a reverse-proxy on `:8080`, auto-logged-in) — plus removing
+   the custom console UI for the sidebar shell. See `docs/DECISIONS.md`.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
    - **Done (2026-10-02): evidence by event time.** The `fsl-geoip` pipeline

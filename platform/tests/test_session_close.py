@@ -133,7 +133,7 @@ class Rebuilds:
         self.rebuilt += 1
         if self.fail is not None:
             raise self.fail
-        return [("fsl-waf", "srv-1"), ("fsl-board", "srv-2")]
+        return [("fsl-waf", "srv-1"), ("fsl-wg-board", "srv-2")]
 
 
 def test_closing_on_the_compose_range_does_not_rebuild(client, session_id):
@@ -154,7 +154,7 @@ def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
     assert found.rebuilt == 1
     assert response.json()["rebuilding"] == [
         {"host": "fsl-waf", "server": "srv-1"},
-        {"host": "fsl-board", "server": "srv-2"},
+        {"host": "fsl-wg-board", "server": "srv-2"},
     ]
 
 

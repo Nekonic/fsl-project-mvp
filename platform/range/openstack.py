@@ -758,6 +758,25 @@ class OpenStack:
     def plan_slot(self) -> slot.Plan:
         return self._slot()[0]
 
+    def console(self, host: str) -> str:
+        server = next(
+            (s for s in self._all(SERVERS, "servers")
+             if (s.get("metadata") or {}).get(slot.HOST) == host),
+            None,
+        )
+        if server is None:
+            raise RangeUnavailable(
+                f"no server fills {host!r}, so it has no console to open"
+            )
+        said = self.get(
+            self._call(ACTION, server=server["id"]),
+            {"os-getVNCConsole": {"type": "novnc"}},
+        )
+        url = (said.get("console") or {}).get("url") or ""
+        if not url:
+            raise RangeUnavailable(f"{host} returned no console url")
+        return url
+
     def ensure_slot(self) -> slot.Plan:
         plan, bound, subnets, ports, groups, ready = self._slot()
         if plan.blocked:

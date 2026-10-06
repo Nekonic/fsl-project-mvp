@@ -200,7 +200,7 @@ def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
     assert not attacker & target
 
 def test_segments_of_a_host_that_is_not_there_is_an_outage(dispatch):
-    dispatch(returncode=1, stderr="Error: No such object: fsl-board")
+    dispatch(returncode=1, stderr="Error: No such object: fsl-wg-board")
     substrate = seam.Docker()
 
     with pytest.raises(seam.RangeUnavailable):

@@ -201,7 +201,7 @@ def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()
 
-    assert "fsl-board" in verify and "Health" in verify, (
+    assert "fsl-wg-board" in verify and "Health" in verify, (
         "attacks fired at a target that is still starting hit nothing, and the "
         "run reports TP 0 - which the session protocol answers with git reset "
         "--hard. A flaky red is worse than a slow verify"

@@ -85,3 +85,130 @@ claim re-fetched and quote-verified before use.
   that has a `.ko.md` pair, both are updated together in the doc-code sync step.
   Reverts dev's looser "write Korean when the content genuinely calls for it",
   which was ambiguous.
+
+## 2026-10-05 — Blue console: a sidebar that frames the real tools
+
+The platform stops shipping its own alert views, rule editor and dashboard.
+The blue console becomes a left sidebar whose work screen holds the real tools,
+framed or consoled in; session start/stop and the end-of-session scoreboard
+stay on the landing page `/`, outside the sidebar. This is the design already
+in `docs/STATE.md` and `docs/ARCHITECTURE.md` (2026-09-30); the two panes it
+held "out of scope in this backlog" are now the work.
+
+- **Panes.** pfSense (edge firewall + the Suricata IPS package, its own GUI);
+  ELK/Kibana (detections and logs); the WAF. pfSense refuses framing
+  (`X-Frame-Options`/`frame-ancestors`), so its pane is the Nova noVNC console
+  of a kiosk-browser VM; Kibana frames directly. The current custom
+  dashboard/map, alerts table, rule editor and score tabs are removed.
+
+- **ELK is the real stack, not a read-only role** (user, 2026-10-05). Earlier
+  docs locked Kibana to a read-only Elasticsearch role so the blue team could
+  not alter evidence. That restriction is dropped: the "blue team might tamper
+  with evidence" assumption was already abandoned when Tap-as-a-Service and the
+  organiser sensor were dropped (placement spec), so the read-only role has no
+  remaining justification. The blue team gets the real ELK.
+
+- **The WAF pane follows its interface** (user, 2026-10-05). The blue console's
+  terminal pane is for the WAF, not the attacker — the Kali terminal is the red
+  console's. nginx + ModSecurity has no GUI, so the WAF is managed through a
+  shell pane; if a GUI'd WAF is adopted later, its GUI is framed as a pane the
+  same way, "as-is".
+
+- **Kibana returns to compose as a gated `services` +1** (7 -> 8), the step
+  `docs/STATE.md` anticipated. It reads the same Elasticsearch the platform
+  ingests from, is reached through the platform's one published port at
+  `/kibana/`, and is published on no port of its own.
+
+- **Live runtime.** This is cloud-native work: Kibana in compose, pfSense
+  reachable (up on the cloud), and a kiosk-browser VM for the pfSense noVNC
+  pane. docker-compose is how the platform is brought up (the platform VM boots
+  by running it), not a local-only convenience; the gate for a change is the
+  unit/console tests, not a locally-run Docker acceptance pass.
+
+## 2026-10-05 — Blue console becomes the sidebar; the tests floor is lowered
+
+Stage ③ of the console rebuild replaced the custom blue console (the dashboard
+with its world map and KPI tiles, the alerts table, the score tab, the rule
+editor, the suppression list) with a left sidebar whose panes frame the real
+tools over a noVNC console URL (`GET /api/range/console/<host>/`). The custom
+UI is gone from `blue.html`.
+
+- **The `tests` floor is lowered 1270 → 1192** (the user, 2026-10-05). The
+  deleted tests covered the removed UI — `test_world_map.py`, most of
+  `test_console_behaviour.py`, and three `test_console_views.py` cases for the
+  two-view/tabs/overview layout. Deleting a test is normally refused (the floor
+  is the defence against faking a pass), so this was taken as an explicit
+  decision, not a silent step: the tests exercised behaviour that no longer
+  exists, and new sidebar tests were added in their place. `core_loc` is
+  unchanged; `product_loc` fell ~900 lines with the removed UI.
+
+- **Left behind, not folded in:** `bin/worldmap`, `world.svg` and the
+  `/api/sessions/<id>/map/` endpoint are now unused by any screen. Removing
+  them is a separate cleanup (the acceptance `test/test_map.py` still exercises
+  the endpoint). Reported here so it is not forgotten.
+
+## 2026-10-06 — Tested: can pfSense be framed like Kibana? Only via its own origin
+
+Tested whether pfSense can drop the kiosk VM and be framed directly like ELK.
+The platform reaches pfSense's web GUI at `http://10.31.0.158:80` (its mgmt
+interface; `:443` is filtered, the LAN GUI at `10.30.0.1` is refused — the
+platform is not on estate). An nginx reverse-proxy to it returned the login
+page (HTTP 200, `<title>pfSense - Login</title>`) with `X-Frame-Options` and
+`Content-Security-Policy` stripped so it frames same-origin, and with `Host`
+set to `10.31.0.158` so pfSense's anti-DNS-rebind check passes.
+
+- **A `/kibana/`-style same-origin subpath does not work.** pfSense emits
+  root-absolute URLs (`/css/login.css`, `/js/pfSense.js`, `/vendor/…`,
+  `/csrf/csrf-magic.js`) and its login success redirects to `Location: /`, and
+  it has no base-path setting (Kibana's `SERVER_BASEPATH=/kibana` has no pfSense
+  equivalent). Under `/pfsense/` the login page loads but every asset and the
+  post-login redirect resolve to the platform root, not pfSense — navigation
+  breaks. sub_filter rewriting would still miss JS- and XHR-built paths.
+- **A dedicated origin works** (pfSense at the root of its own port or
+  subdomain, framed cross-origin with `X-Frame-Options`/CSP stripped): the
+  root-absolute URLs then resolve correctly. Cost: a second port exposed on the
+  platform VM (an OpenStack security-group rule), and auto-login re-solved — the
+  kiosk's Chrome content-script extension cannot run inside an iframe.
+- **Kept the kiosk VM for now.** It is built, committed and deployed, and the
+  reverse-proxy's win (retiring one VM's quota + the extension) trades against
+  the port + auto-login work. The test location was reverted; nothing shipped.
+
+## 2026-10-06 — pfSense pane switched to a dedicated-port reverse-proxy; kiosk retired
+
+Chosen after the test above (the user's call): drop the kiosk VM and frame the
+real pfSense GUI through a reverse-proxy on the platform's own port, auto-logged
+in. The same-origin subpath was ruled out (pfSense's root-absolute URLs); a
+distinct origin was needed.
+
+- **Origin: a dedicated port `:8080`, not a `pf.<ip>.nip.io` virtual host.** The
+  nip.io host worked at the proxy but `*.nip.io` is on common ad-block lists
+  (uBlock), and the in-app browser blocked its subresources (`ERR_BLOCKED_BY_CLIENT`)
+  while leaving the console's own origin alone — a real risk of an unstyled pane
+  for any blue-teamer running a blocker. A plain `IP:8080` origin has no domain
+  reputation. `blue.html` builds the pane src as `//<console-host>:8080/`.
+- **Auto-login by server-side session injection.** pfSense auth is a per-browser
+  `PHPSESSID` cookie (`SameSite=Strict`, so it would not ride in a cross-origin
+  iframe), not image state — "a pre-logged-in image" is not a thing. Instead
+  `entrypoint.sh` logs in once (`pf_prime.py`), writes the session into an nginx
+  include, and the `:8080` vhost injects it on every upstream request, so any
+  browser sees the dashboard with no login page. A 15-min re-prime reuses a
+  still-valid session (only re-logs-in when it has actually expired, so an open
+  form's session-bound `__csrf_magic` is not rotated out from under it). nginx
+  also strips `X-Frame-Options`/CSP and `Set-Cookie` so it frames, blanks the
+  `Referer` past pfSense's HTTP_REFERER enforcement (the proxy origin would
+  otherwise mismatch), spoofs `Host` to pfSense's own IP past its anti-DNS-rebind
+  check, and `sub_filter`s out pfSense's inline frame-buster
+  (`if (top != self) top.location = self.location`, which header-stripping alone
+  cannot stop) so the GUI stays in the pane. Verified live: dashboard and deep
+  pages 200-authenticated, assets served, forms reachable across a re-prime, no
+  frame-bust.
+- **The platform VM's `fsl-platform` security group gained a `tcp/8080` ingress
+  rule** (IPv4 any, matching its `:8000` rule), added via the fsl-range Neutron
+  creds. pfSense on `:8080` is auto-logged-in and unauthenticated to the LAN —
+  the same trust posture as the no-auth console already on `:8000`, not a new
+  regression. A rebuilt platform VM needs the same rule.
+- **The noVNC console path is kept but unused.** `GET /api/range/console/<host>/`
+  and `OpenStack.console()` (with their unit tests) stay as a generic "open a
+  host's console" capability; no pane calls them now. The `tests` floor rose
+  1196→1198: three tests for removed behaviour (the kiosk declaration, the two
+  console-unavailable UI states) dropped, five added (`pf_prime`, the proxy pane).

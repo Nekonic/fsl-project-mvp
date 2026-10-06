@@ -2,7 +2,7 @@ services:
   corp-wp:
     platform: linux/amd64
     build: ./app
-    container_name: fsl-corp-wp
+    container_name: fsl-wg-corp-wp
     depends_on:
       corp-db: {condition: service_healthy}
     networks: [estate]
@@ -22,7 +22,7 @@ services:
   corp-db:
     platform: linux/amd64
     build: ./db
-    container_name: fsl-corp-db
+    container_name: fsl-wg-corp-db
     networks: [estate]
     command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1"]
     environment:

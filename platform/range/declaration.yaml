@@ -51,10 +51,10 @@ roles:
   gateway: fsl-waf
   proxy: fsl-proxy
   sensor: fsl-suricata
-  board: fsl-board
-  board-db: fsl-board-db
-  corp: fsl-corp-wp
-  corp-db: fsl-corp-db
+  board: fsl-wg-board
+  board-db: fsl-wg-board-db
+  corp: fsl-wg-corp-wp
+  corp-db: fsl-wg-corp-db
 
 watches:
   sensor: gateway
@@ -64,7 +64,7 @@ hosts:
     segments: [internet, estate, mgmt]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
-  fsl-board:
+  fsl-wg-board:
     segments: [estate, mgmt]
     names: [board, board-db]
     setup: wargames/board/image/setup.sh

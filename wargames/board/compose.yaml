@@ -2,7 +2,7 @@ services:
   board:
     platform: linux/amd64
     build: ./app
-    container_name: fsl-board
+    container_name: fsl-wg-board
     depends_on:
       board-db: {condition: service_healthy}
     networks: [estate]
@@ -21,7 +21,7 @@ services:
   board-db:
     platform: linux/amd64
     image: mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
-    container_name: fsl-board-db
+    container_name: fsl-wg-board-db
     networks: [estate]
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"

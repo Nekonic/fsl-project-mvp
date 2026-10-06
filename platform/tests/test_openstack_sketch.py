@@ -292,7 +292,7 @@ def test_a_role_no_server_fills_is_refused():
     with pytest.raises(RangeUnavailable) as raised:
         sketch().runner("board")(["true"])
 
-    assert "board" in str(raised.value) and "fsl-board" in str(raised.value)
+    assert "board" in str(raised.value) and "fsl-wg-board" in str(raised.value)
 
 
 def test_the_cloud_field_constants_match_the_api_reference():

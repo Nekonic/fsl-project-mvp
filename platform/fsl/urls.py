@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/range/slot/", views.range_slot),
     path("api/range/slot/rebuild/", views.range_rebuild),
     path("api/range/configure/", views.range_configure),
+    path("api/range/console/<str:host>/", views.range_console),
     path("api/range/ready/", views.range_ready),
     path("api/range/canary/", views.range_canary),
     path("api/rules/", views.current_rules),
