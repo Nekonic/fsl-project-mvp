@@ -10,33 +10,44 @@ from django.conf import settings
 import lifecycle
 from redteam.harness import is_tool_case, load_cases
 
-WARGAMES = {
-    "board": {
-        "id": "board",
-        "name": "Community board",
-        "description": (
-            "An ordinary Django board on MySQL, behind the WAF and the IDS. "
-            "The attacker scores by exfiltrating its auth-user password hashes "
-            "and proving possession against the platform's snapshot."
-        ),
-        "case_file": "board.yaml",
-        "public_url": settings.PUBLIC_TARGET_URL,
-        "objective_model": "loot_verified",
-    },
-    "corp": {
-        "id": "corp",
-        "name": "Corporate site",
-        "description": (
-            "A WordPress company site on MySQL, behind the WAF and the IDS. "
-            "Three unpatched plugins carry unauthenticated broken-access-control "
-            "CVEs the default rules cannot see; the platform scores by watching "
-            "the target's own committed database changes."
-        ),
-        "case_file": "corp.yaml",
-        "public_url": "http://corp.com",
-        "objective_model": "effect_observed",
-    },
-}
+class UnknownWargame(KeyError):
+    pass
+
+class InvalidCatalogue(ValueError):
+    pass
+
+SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_model", "case_file")
+OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
+
+def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
+    if not isinstance(loaded, dict):
+        raise InvalidCatalogue(f"{source}: a scenario is a mapping")
+    missing = [
+        field for field in SCENARIO_FIELDS
+        if not isinstance(loaded.get(field), str) or not loaded[field].strip()
+    ]
+    if missing:
+        raise InvalidCatalogue(
+            f"{source}: a scenario needs a non-empty {', '.join(SCENARIO_FIELDS)}; "
+            f"{', '.join(missing)} is missing or blank"
+        )
+    if loaded["objective_model"] not in OBJECTIVE_MODELS:
+        raise InvalidCatalogue(
+            f"{source}: objective_model {loaded['objective_model']!r} is not one of "
+            f"{', '.join(sorted(OBJECTIVE_MODELS))}"
+        )
+    return {"id": wargame_id, **{field: loaded[field] for field in SCENARIO_FIELDS}}
+
+def _discover() -> dict[str, dict[str, Any]]:
+    root = Path(settings.FSL_SOURCE) / "wargames"
+    found = {}
+    for path in sorted(root.glob("*/scenario.yaml")):
+        wargame_id = path.parent.name
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        found[wargame_id] = checked_scenario(loaded, wargame_id, path)
+    return found
+
+WARGAMES = _discover()
 
 def objective_model(wargame_id: str) -> str:
     return WARGAMES[wargame_id]["objective_model"]
@@ -71,12 +82,6 @@ def checked_objectives(loaded: Any, source) -> dict[str, Any]:
 
 def host(wargame_id: str) -> str:
     return urlsplit(WARGAMES[wargame_id]["public_url"]).netloc
-
-class UnknownWargame(KeyError):
-    pass
-
-class InvalidCatalogue(ValueError):
-    pass
 
 def catalogue() -> list[dict[str, Any]]:
     return [_summarise(wargame) for wargame in WARGAMES.values()]
