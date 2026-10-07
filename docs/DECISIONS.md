@@ -236,3 +236,53 @@ distinct origin was needed.
   as the nine-test removal above, then to five more flagged tests (three
   strengthened, two removed, floor 1205 -> 1203); the per-test proof is in the
   commits. The floor is lowered by hand only for removals made under this ruling.
+- **Reframe: learning-first, one session + two dials (2026-10-08, the user).**
+  Learning and the scored wargame are not separate products — the same session
+  with guidance on/off and baseline rules minimal vs full CRS+custom. The wedge:
+  the learner tunes CRS / writes a Suricata rule that really BLOCKS a real attack,
+  verified from the TARGET's own state (not a flag/quiz), gated on
+  all-variants-blocked AND benign-passes. Spec:
+  docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md.
+- **Scope: WAF + IPS, firewall out (2026-10-08, the user).** Teach the
+  network/web perimeter first — Suricata IDS (detect, from-scratch signatures) +
+  ModSecurity CRS (block, learned by TUNING not from-scratch SecRules). The
+  firewall is dropped as a lesson (an L3/L4 filter cannot defend a web attack;
+  teaching otherwise is a misconception); pfSense stays as OpenStack edge+sensor
+  infrastructure. Only the firewall lesson and the pfSense console pane / :8080
+  proxy are not built. Roadmap: host/SIEM+Sigma, UTM, AD DS, then others.
+- **The MVP lesson teaches CRS TUNING, not from-scratch SecRules (2026-10-08).**
+  A "how others teach rule-writing" survey (workflow, five categories +
+  synthesis) found from-scratch authoring is standard ONLY for IDS
+  (Suricata/Sigma); for the WAF the field teaches enabling and tuning CRS and
+  deprecates from-scratch SecRules for production. MVP = tune CRS so the ?sort=
+  SQLi (CVE-2021-35042, the only board attack that moves ground truth) is blocked
+  while the benign O'Brien search passes. The ' OR 1=1-- vs /search/ candidate
+  was rejected: the ORM parameterises it, so it cannot exfiltrate and the
+  ground-truth signal is flat.
+- **Completion gate and the "blocked" witness (2026-10-08, the user).** A lesson
+  completes only when ALL malicious variants are blocked AND ALL benign cases
+  pass (the existing TP/FP/FN/TN scoreboard), not when the one shown payload is
+  blocked. The "blocked" witness: TARGET STATE is primary (the attack never
+  reached/affected the target), the WAF 403 line is corroboration only. No
+  industry norm exists for this low-level witness; it is the user's call.
+- **Session isolation and composability are MVP requirements (2026-10-08, the
+  user).** Two+ sessions must run isolated, scenarios composed from reusable
+  elements, one built image backing many scenarios — in the MVP, not later. A
+  code audit found the leaves reusable (cases/objectives/topology YAML) but the
+  assembly hardcoded (scenario dict, 1:1 image<->scenario, welded ground-truth
+  readers). Design (adversarial review): a shared control plane + a per-session
+  data-plane stack (compose project per session; OpenStack per-session
+  network+VMs later), target image built-once-and-tagged, scenarios as discovered
+  scenario.yaml descriptors. Non-interference is a live-gate acceptance property,
+  not a fast-gate one.
+- **Learner-facing decisions, checked against majority practice (2026-10-08, the
+  user).** A "resolve open items by majority" workflow surveyed comparable
+  platforms; the user chose per item: curriculum = one linear path, ~6-10 modules
+  for the MVP, hands-on auto-verified completion (follows the majority, machine-
+  checked and stricter); difficulty rises one axis at a time (never three at
+  once); scoring shown as PASS/FAIL + plain-language diagnostics, no raw
+  TP/FP/FN/TN and no gamification; log-analysis guidance = pursue a game-style
+  clickable highlight on real Kibana (build-time feasibility spike), fall back to
+  a side panel; perimeter-first branded as a detection-engineering track (a
+  deliberate divergence from the SIEM-first majority, which presupposes a pipeline
+  fsl lacks at MVP).
