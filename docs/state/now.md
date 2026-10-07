@@ -9,6 +9,14 @@ Updated: 2026-10-08
 
 ## In flight: building the composable, session-isolated learning MVP
 
+READ FIRST — the source of truth, before planning or building: the canonical
+spec `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`
+AND the `[확정]` living-doc artifact 37HeLkkLEFQgVWbwLuXH7S. Read them directly;
+do not plan from this file's reconstruction or from memory, and never overturn a
+`[확정]` decision without quoting it and showing where it fails (e.g. the edge
+origin subnets are PRESERVED/shared and only estate/mgmt float per session — so
+there is no per-session edge and no subnet collision; that is already decided).
+
 Direction is firm and approved to build. Canonical spec:
 `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`.
 Rationale: `docs/DECISIONS.md` (2026-10-08 entries). User-facing Korean version:
