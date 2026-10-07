@@ -53,6 +53,24 @@ if [ "$(cd "$owner" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
   echo '     docker compose up -d --build from here.'
   exit 1
 fi
+open_sessions="$("$PY" - <<'OPENCHECK' 2>/dev/null
+import json, sys, urllib.request
+try:
+    with urllib.request.urlopen(
+        "http://localhost:8000/api/sessions/?state=open", timeout=5
+    ) as answer:
+        rows = json.load(answer)
+except Exception:
+    sys.exit(0)
+print(" ".join(str(row.get("id")) for row in rows if isinstance(row, dict)))
+OPENCHECK
+)"
+if [ -n "$open_sessions" ]; then
+  fail "a session is open (ids: $open_sessions)"
+  echo "     bin/verify restarts the platform and prunes sessions, which would"
+  echo "     disrupt an open one. Close it first, or wait for it to finish."
+  exit 1
+fi
 if ! docker compose restart platform >/dev/null 2>&1; then
   stack_down 'platform could not be restarted — docker compose up -d --build'
 fi
