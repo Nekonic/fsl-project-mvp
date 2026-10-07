@@ -106,7 +106,12 @@ def test_a_browser_reaches_the_platform_at_the_floating_ip():
         if rule.get("direction", "ingress") == "ingress"
     }
 
-    assert opened == {("tcp", 22, 22), ("tcp", 8000, 8000), ("icmp", None, None)}, opened
+    assert opened == {
+        ("tcp", 22, 22),
+        ("tcp", 8000, 8000),
+        ("tcp", 8080, 8080),
+        ("icmp", None, None),
+    }, opened
 
 def test_the_vm_publishes_the_platform_on_its_own_address():
     [server] = resources_of("OS::Nova::Server")

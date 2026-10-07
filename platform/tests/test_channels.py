@@ -23,10 +23,9 @@ class Host:
     def written(self):
         return [(argv[-1], stdin) for argv, stdin in self.calls if stdin is not None]
 
-def test_neither_channel_names_the_substrate():
-    for module in (attacker,):
-        source = re.sub(r"\w+Challenge\b", "", pathlib.Path(module.__file__).read_text())
-        assert "docker" not in source.lower(), module.__name__
+def test_the_attacker_channel_does_not_name_the_substrate():
+    source = re.sub(r"\w+Challenge\b", "", pathlib.Path(attacker.__file__).read_text())
+    assert "docker" not in source.lower()
 
 def test_telling_the_proxy_which_case_is_live_goes_through_the_port():
     proxy = Host()

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 import game
 
 T0 = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
@@ -133,7 +135,38 @@ def test_the_pillars_are_reported_beside_the_balance():
         tp=1, fp=0, fn=0, tn=1,
     )
 
-    assert 0.0 <= settled.speed <= 1.0
-    assert 0.0 <= settled.coverage <= 1.0
-    assert 0.0 <= settled.accuracy <= 1.0
+    assert (settled.speed, settled.accuracy, settled.coverage) == (1.0, 1.0, 1.0)
     assert settled.response is None
+    assert settled.weights == game.WEIGHTS
+    assert settled.attacker == 4 * game.DETECTED_TAKE
+    assert settled.balance == settled.defender - settled.attacker
+
+
+def test_an_absent_response_pillar_redistributes_its_weight_not_scores_it_zero():
+    settled = game.settle(
+        [attempt("a", True, "initial-compromise", 5)],
+        [game.Taken(key="x", difficulty=4, detected=True)],
+        tp=1, fp=0, fn=0, tn=1,
+    )
+
+    assert settled.response is None
+    assert settled.defender == pytest.approx(4.0), (
+        "the three present pillars are perfect, so renormalising over 0.75 gives "
+        "quality 1.0 and defender 4.0; scoring the absent response as 0.0 would "
+        "give quality 0.75 and defender 3.0"
+    )
+
+
+def test_accuracy_is_floored_at_zero_when_noise_outweighs_recall():
+    assert game.accuracy(tp=1, fp=3, fn=1, tn=1) == 0.0
+
+
+def test_a_stage_attacked_twice_is_covered_when_either_attempt_is_seen():
+    attempts = [
+        attempt("a", True, "initial-compromise", None),
+        attempt("b", True, "initial-compromise", 5),
+    ]
+    assert game.coverage(attempts) == 1.0, (
+        "coverage dedups by stage: one detected attempt covers the stage even "
+        "when another attempt at the same stage went unseen"
+    )

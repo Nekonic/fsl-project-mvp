@@ -139,3 +139,19 @@ def test_the_waf_pane_frames_the_web_ssh_terminal(client):
         "the WAF pane is a web SSH terminal, framed directly, not a noVNC console: "
         f"{state['src']}"
     )
+
+
+def test_the_red_console_clears_a_stale_attacker_label_on_load(client):
+    seen = open_page(client, "/red/1/", scenario="""
+      return {
+        clears: browser.requests.filter(
+          (r) => r.route === '/api/attacker/label/' && r.method === 'POST'
+        ).map((r) => r.body),
+      };
+    """)
+
+    assert {"case_id": None} in seen["result"]["clears"], (
+        "the red console must POST a null attacker label on load so a window left "
+        "open by a crashed or reloaded page does not mis-attribute later traffic: "
+        f"{seen['result']['clears']}"
+    )

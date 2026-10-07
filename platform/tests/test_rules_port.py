@@ -12,12 +12,13 @@ RELOADED = '{"message":"done","return":"OK"}\n'
 RULE = 'alert http any any -> any any (msg:"x"; sid:9000900; rev:1;)\n'
 
 class Sensor:
-    def __init__(self, *, fails_on="", unreachable_on="", reload=RELOAD):
+    def __init__(self, *, fails_on="", unreachable_on="", reload=RELOAD, write_fails=False):
         self.calls = []
         self.files = {}
         self.fails_on = fails_on
         self.unreachable_on = unreachable_on
         self.reload = reload
+        self.write_fails = write_fails
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         self.calls.append((argv, stdin))
@@ -25,6 +26,9 @@ class Sensor:
         if self.unreachable_on and self.unreachable_on in joined:
             raise RangeUnavailable("the sensor is not there")
         if argv[0] == "sh" and stdin is not None:
+            if self.write_fails:
+                return Ran(1, "sh: can't create " + argv[-1].split(">")[-1].strip()
+                           + ": No space left on device")
             self.files[argv[-1].split(">")[-1].strip()] = stdin
             return Ran(0, "")
         if argv[0] == "cat":
@@ -136,3 +140,8 @@ def test_a_rule_file_that_cannot_be_read_is_not_served_as_the_rules():
 
     with pytest.raises(suricata.RulesUnreadable, match="Permission denied"):
         suricata.current(Unreadable())
+
+
+def test_a_write_that_fails_is_reported_as_a_rule_apply_error():
+    with pytest.raises(suricata.RuleApplyError, match="could not write"):
+        suricata.apply(RULE, Sensor(write_fails=True), RELOAD)

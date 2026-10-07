@@ -162,9 +162,12 @@ def test_normalize_all_keeps_a_marker_the_document_already_carries():
     own["flow_id"] = 42
     other = "99999999-9999-4999-8999-999999999999"
 
-    [det] = normalize_all([("a1", own), suricata_http_event(marker=other)])
+    [det] = normalize_all([suricata_http_event(marker=other), ("a1", own)])
 
-    assert det["marker"] == MARKER
+    assert det["marker"] == MARKER, (
+        "a different marker is recorded first for this flow, so only the "
+        "preservation guard keeps the alert's own marker from being overwritten"
+    )
 
 def test_normalize_all_returns_detections_from_every_document():
     from ingest.elastic import normalize_all
@@ -325,4 +328,32 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
         posted.return_value.status_code = 503
         posted.return_value.text = '{"error":{"type":"search_phase_execution_exception"}}'
         with pytest.raises(elastic.ElasticUnavailable, match="503"):
+            elastic.fetch("http://es:9200", "fsl-logs-*", *window)
+
+
+def test_a_missing_index_is_reported_as_unavailable():
+    from unittest.mock import patch
+
+    from ingest import elastic
+
+    window = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
+
+    with patch("ingest.elastic.requests.post") as posted:
+        posted.return_value.status_code = 404
+        with pytest.raises(elastic.ElasticUnavailable, match="does not exist"):
+            elastic.fetch("http://es:9200", "fsl-logs-*", *window)
+
+
+def test_a_connection_failure_is_reported_as_unavailable():
+    from unittest.mock import patch
+
+    import requests
+
+    from ingest import elastic
+
+    window = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
+
+    with patch("ingest.elastic.requests.post",
+               side_effect=requests.RequestException("connection refused")):
+        with pytest.raises(elastic.ElasticUnavailable, match="could not reach"):
             elastic.fetch("http://es:9200", "fsl-logs-*", *window)

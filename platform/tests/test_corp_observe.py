@@ -100,6 +100,23 @@ def test_observing_twice_credits_each_objective_once(client):
     assert Objective.objects.filter(session_id=session_id, key="corp-rogue-admin").count() == 1
 
 
+def test_an_unreadable_binlog_reports_nothing_newly_achieved(client):
+    session_id = _start(client)
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    with patch("api.views.effect.read_changes", return_value=[_rogue_admin_change(at)]):
+        client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert Objective.objects.filter(session_id=session_id).count() == 1
+
+    with patch("api.views.effect.read_changes",
+               side_effect=effect.StateUnavailable("corp-db down")):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0, (
+        "a failed binlog read credits nothing new, so it must report 0 achieved, "
+        "not the count of objectives taken in earlier observes"
+    )
+    assert Objective.objects.filter(session_id=session_id).count() == 1
+
+
 def test_a_session_that_opened_blind_credits_nothing_for_any_change(client):
     with patch("api.views.effect.snapshot", side_effect=effect.StateUnavailable("corp down")):
         session_id = client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
