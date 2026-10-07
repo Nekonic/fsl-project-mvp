@@ -408,7 +408,7 @@ def _observe_objectives(session) -> dict:
             substrate().runner("corp-db"), session.started_at
         )
     except (effect.StateUnavailable, RangeUnavailable):
-        return {"achieved": session.objectives.count(), "total": total}
+        return {"achieved": 0, "total": total}
 
     windows = list(session.cases.filter(malicious=True))
     rows = []
@@ -1210,7 +1210,7 @@ def range_console(request, host):
     adapter = _built_by_the_cloud(substrate(), "console", "a console is")
     return _reply({"url": adapter.console(host)})
 
-def _ground_truth_readable(adapter) -> bool:
+def _ground_truth_readable() -> bool:
     try:
         loot.ground_truth("board")
         return True
@@ -1236,7 +1236,7 @@ def _range_ready(adapter) -> dict:
     plan = adapter.plan_slot()
     checks = {
         "active": plan.active,
-        "ground_truth": _ground_truth_readable(adapter),
+        "ground_truth": _ground_truth_readable(),
         "rules_baseline": _rules_at_baseline(adapter),
     }
     blocked = []

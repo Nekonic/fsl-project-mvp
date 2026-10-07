@@ -75,7 +75,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
     outside = {origin.segment for origin in declaration.origins}
     edge = edge_of(declaration)
     attacker = declaration.roles.get(ATTACKER_ROLE, "")
-    may_stand_outside = {host for host in (edge, declaration.roles.get(ATTACKER_ROLE, "")) if host}
+    may_stand_outside = {host for host in (edge, attacker) if host}
     named = {(port.get("network_id"), port.get("name")) for port in ports}
     boot, create, standing, blocked = [], [], [], []
     for host, entry in declaration.hosts.items():

@@ -328,6 +328,7 @@
     if (closed) return;
     closed = true;
     clearTimeout(timer);
+    clearLabel();
     note(t("red.log.session_closed"), "text-muted");
   }
 
@@ -528,6 +529,11 @@
   document.getElementById("run-attacks")
     .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
 
+  function clearLabel() {
+    post("/api/attacker/label/", { case_id: null });
+  }
+
+  clearLabel();
   render();
   loadOrigins().then(loadTerminal);
   refreshTaken();

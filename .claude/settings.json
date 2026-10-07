@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat \"${CLAUDE_PROJECT_DIR:-.}/docs/state/now.md\" 2>/dev/null"
+            "command": "d=$(jq -r '.cwd // empty' 2>/dev/null); cat \"${d:-${CLAUDE_PROJECT_DIR:-.}}/docs/state/now.md\" 2>/dev/null"
           }
         ]
       }

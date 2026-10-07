@@ -4,7 +4,6 @@ import ipaddress
 import shlex
 import subprocess
 import tempfile
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -651,15 +650,14 @@ class OpenStack:
         made = {bundle.host: bundle for bundle in bundles}
         missing = [found for found in plan.images
                    if found.state == "missing" and found.host in made]
-        if missing:
-            for found in missing:
-                base = self._builder_base(self.declared.hosts[found.host].base or self.build.base_image)
-                self.get(self._call(BOOT), {"server": {
-                    **base,
-                    "name": images.BUILDER + found.host,
-                    "user_data": images.user_data(made[found.host]),
-                    "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
-                }})
+        for found in missing:
+            base = self._builder_base(self.declared.hosts[found.host].base or self.build.base_image)
+            self.get(self._call(BOOT), {"server": {
+                **base,
+                "name": images.BUILDER + found.host,
+                "user_data": images.user_data(made[found.host]),
+                "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
+            }})
         for found in plan.images:
             if found.state == "built":
                 self.get(self._call(ACTION, server=found.builder), {"os-stop": None})
