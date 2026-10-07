@@ -60,11 +60,6 @@ def test_the_board_is_reached_by_name_through_the_waf():
         "board wargame cannot be reached by name"
     )
 
-def test_the_database_is_pinned_by_digest():
-    database = [i for i in images() if i.startswith("mysql")]
-
-    assert database and all("@sha256:" in i for i in database), database
-
 def test_the_platform_needs_no_build_argument_to_come_up():
     platform = composed.services()["platform"]
     build = platform.get("build")

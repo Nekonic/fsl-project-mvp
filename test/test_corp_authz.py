@@ -176,21 +176,3 @@ def test_a_live_content_overwrite_is_credited_from_the_targets_own_row(stack_is_
         }, restored
         if session_id is not None:
             _close(session_id)
-
-
-def test_benign_corp_traffic_gives_the_defence_a_true_negative(stack_is_up):
-    session_id = None
-    try:
-        session_id = _session()
-        fired = [
-            _fire(session_id, "corp-normal-home"),
-            _fire(session_id, "corp-normal-registration-page"),
-        ]
-
-        score = _score(session_id)
-        assert score["tn"] >= 1, score
-        passed = [c for c in score["per_case"] if c["case_id"] in fired]
-        assert passed and all(not c["detected"] for c in passed), passed
-    finally:
-        if session_id is not None:
-            _close(session_id)

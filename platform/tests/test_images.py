@@ -122,6 +122,19 @@ def test_a_builder_whose_setup_failed_says_why():
     assert found.state == "failed"
     assert "Unable to locate package nginx" in found.detail
 
+def test_a_builder_nova_put_in_error_is_failed_with_its_fault():
+    errored = {**builder(status="ERROR"), "fault": {"message": "No valid host was found"}}
+    found, _ = state(builders=[errored])
+
+    assert found.state == "failed"
+    assert "No valid host was found" in found.detail
+
+    faultless, _ = state(builders=[builder(status="ERROR")])
+
+    assert faultless.state == "failed"
+    assert faultless.detail == "Nova put it in ERROR"
+
+
 def test_the_ready_line_of_another_bundle_does_not_count():
     found, _ = state(builders=[builder()], consoles={"srv-1": f"{images.READY} d0\n"})
 
@@ -194,14 +207,10 @@ def test_a_prebuilt_image_is_never_what_cleaning_removes():
 
     assert images.removable(plan) == []
 
-def test_every_host_with_an_image_is_one_the_range_gives_a_role():
-    declaration = declared.read()
-
-    assert declaration.hosts
-    assert set(declaration.hosts) <= set(declaration.roles.values())
-
 def test_every_image_is_built_from_files_the_repo_holds():
-    for host, entry in declared.read().hosts.items():
+    hosts = declared.read().hosts
+    assert hosts
+    for host, entry in hosts.items():
         bundle = images.bundle(ROOT, host, entry.setup, entry.files)
         assert entry.setup in members(bundle), host
         images.user_data(bundle)

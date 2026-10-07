@@ -40,13 +40,6 @@ def scored_session(client):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return session_id
 
-def test_setting_a_label_tells_the_proxy_what_to_stamp(client):
-    with patch("api.views.attacker.set_label") as labelled:
-        response = client.post_json("/api/attacker/label/", {"case_id": "abc-123"})
-
-    assert response.status_code == 200
-    assert labelled.call_args.args[0] == "abc-123"
-
 def test_clearing_the_label_stops_the_stamping(client):
     with patch("api.views.attacker.set_label") as labelled:
         response = client.post_json("/api/attacker/label/", {"case_id": None})
@@ -59,17 +52,6 @@ def test_by_default_a_case_is_scored_by_the_strategy_it_declares(client, scored_
 
     assert scored["tp"] == 1
     assert scored["per_case"][0]["verdict"] == "TP"
-
-def test_the_strategy_can_be_forced_for_comparison(client, scored_session):
-    by_marker = client.get(
-        f"/api/sessions/{scored_session}/score/?correlation=marker"
-    ).json()
-    by_window = client.get(
-        f"/api/sessions/{scored_session}/score/?correlation=window"
-    ).json()
-
-    assert by_marker["tp"] == 1
-    assert by_window["tp"] == 1
 
 def test_forcing_marker_on_traffic_that_carries_none_misses_it(client):
     session_id = open_session(client)

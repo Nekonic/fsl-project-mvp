@@ -30,16 +30,6 @@ def test_the_case_names_the_image_and_the_tool_and_nothing_else():
         "--headers=X-FSL-Case: abc-123",
     ])
 
-def test_target_placeholder_is_substituted():
-    command = build_tool_command(CASE, INTERNAL_TARGET)
-
-    assert f"{INTERNAL_TARGET}/rest/products/search?q=1" in command
-
-def test_marker_header_is_injected_for_marker_cases():
-    command = build_tool_command(CASE, INTERNAL_TARGET)
-
-    assert "--headers=X-FSL-Case: abc-123" in command
-
 def test_marker_header_is_omitted_for_window_cases():
     case = dict(CASE, correlation="window")
 

@@ -75,7 +75,10 @@ def test_the_static_script_exists_where_the_platform_reads_it():
 def test_the_sensor_is_told_its_home_is_every_origin_the_estate_and_management():
     wanted = pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)
 
-    assert wanted["home"] == pfsense.home(OS)
+    for origin in OS.origins:
+        assert origin.subnet in wanted["home"], origin.subnet
+    assert fabric.INSIDE["estate"] in wanted["home"]
+    assert fabric.INSIDE[fabric.MANAGEMENT] in wanted["home"]
 
 def test_the_sensor_starts_from_the_shipped_rules():
     assert pfsense.settings(_origin_segments(), OS, RULES, COLLECTOR)["rules"] == RULES

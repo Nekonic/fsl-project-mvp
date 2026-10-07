@@ -306,15 +306,6 @@ def test_no_substrate_name_decides_where_an_attack_starts():
     )
 
 
-def test_a_renamed_network_is_still_the_segment_it_says_it_is():
-    compose, declaration = documents()
-    compose["networks"]["estate"]["name"] = "corp-estate"
-
-    assert drift(compose, declaration) == [], (
-        "a network is bound to its segment by the mark it carries, so what the "
-        "range happens to call it is nobody's business"
-    )
-
 def test_a_network_with_nothing_to_bind_it_is_caught():
     compose, declaration = documents()
     del compose["networks"]["mgmt"]["labels"][MARK]

@@ -91,3 +91,22 @@ def test_ground_truth_raises_when_the_channel_is_unreadable():
     ):
         with pytest.raises(loot.GroundTruthUnavailable):
             loot.ground_truth("board")
+
+
+@pytest.mark.reads_ground_truth
+def test_ground_truth_rejects_a_body_that_is_not_a_username_map():
+    class Fake:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'[{"username": "admin"}]'
+
+    with patch("api.loot.wargames.objectives", return_value=SPEC), patch(
+        "api.loot.urllib.request.urlopen", return_value=Fake()
+    ):
+        with pytest.raises(loot.GroundTruthUnavailable):
+            loot.ground_truth("board")

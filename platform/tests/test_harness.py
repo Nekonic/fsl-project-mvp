@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
+from redteam import harness
 from redteam.harness import build_request, load_cases
 
 BASE = "http://localhost:8080"
@@ -191,3 +193,61 @@ def test_case_meta_describes_a_tool_case_without_a_request():
     case = {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}
 
     assert case_meta(case) == {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}
+
+
+def test_fire_refuses_to_send_a_case_whose_path_was_altered(monkeypatch):
+    sent = []
+
+    class Http:
+        def send(self, prepared, timeout=None):
+            sent.append(prepared.url)
+
+    class Prepared:
+        url = "http://board.com/y"
+
+    monkeypatch.setattr(harness, "build_request", lambda case, base: Prepared())
+    case = {
+        "case_id": "c", "name": "n", "correlation": "marker",
+        "request": {"method": "GET", "path": "/x/../y"},
+    }
+
+    with pytest.raises(harness.CaseRequestAltered):
+        harness.fire(Http(), case, "http://board.com", lambda *a, **k: None)
+    assert sent == [], "a case whose path changed must never reach the target"
+
+
+def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
+    posts = []
+
+    class Resp:
+        def __init__(self, body=None):
+            self._body = body or {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._body
+
+    class Http:
+        def post(self, url, json=None, timeout=None):
+            posts.append(url)
+            return Resp({"id": 7} if url.endswith("/api/sessions/") else {})
+
+    fired, recorded = [], []
+    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
+    monkeypatch.setattr(harness, "fire", lambda http, case, *a, **k: fired.append(case["name"]))
+    monkeypatch.setattr(
+        harness, "_record",
+        lambda http, url, sid, case, *a, **k: recorded.append((sid, case["name"])),
+    )
+
+    cases = [{"name": "a", "request": {"path": "/"}},
+             {"name": "b", "request": {"path": "/"}}]
+    session_id = harness.run(cases, "http://p", "http://board.com", lambda *a, **k: None)
+
+    assert session_id == 7
+    assert fired == ["a", "b"]
+    assert recorded == [(7, "a"), (7, "b")]
+    assert posts[0].endswith("/api/sessions/")
+    assert posts[-1].endswith("/api/sessions/7/close/")

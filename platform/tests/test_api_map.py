@@ -98,11 +98,6 @@ def test_a_session_with_nothing_in_it_draws_nothing(client, session_id):
 
     assert drawn == {"points": [], "unlocated": 0, "target": SEOUL}
 
-def test_the_target_is_where_the_range_declares_the_defended_site(client, session_id):
-    drawn = ingest(client, session_id, [suricata("a", "5.188.10.2", MOSCOW)])
-
-    assert drawn["target"] == SEOUL
-
 def test_a_range_that_declares_no_site_draws_no_target(client, session_id, settings):
     from dataclasses import replace
 

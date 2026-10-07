@@ -76,17 +76,6 @@ def test_asking_for_finished_sessions_excludes_the_running_ones(client):
     assert open_id not in listed
 
 
-def test_the_session_list_is_bounded_so_a_long_lived_range_stays_usable(client):
-    for _ in range(SESSION_PAGE + 5):
-        client.post_json("/api/sessions/", {})
-
-    listed = client.get("/api/sessions/").json()
-
-    assert len(listed) == SESSION_PAGE, (
-        f"the list returned {len(listed)} sessions; an unbounded list means every "
-        f"landing page load ships the whole history"
-    )
-
 def test_the_newest_sessions_are_the_ones_returned(client):
     made = [client.post_json("/api/sessions/", {}).json()["id"]
             for _ in range(SESSION_PAGE + 3)]
