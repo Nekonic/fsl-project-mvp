@@ -5,85 +5,85 @@ its own context, so this is the handover across compaction, not a full history.
 The product backlog and the finished record stay in `docs/STATE.md`; rulings
 are in `docs/DECISIONS.md`; detail is in `git log`.
 
-Updated: 2026-10-07
+Updated: 2026-10-08
 
-## In flight this session (branch `claude/agent-orchestration-harness-e4de7c`)
+## In flight: building the composable, session-isolated learning MVP
 
-An overnight hygiene + doc-reconciliation sweep. **Committed locally, not yet
-pushed** (`git log dev..HEAD`); the push is the human's, to `dev` as a
-fast-forward. The fast gate is green (`bin/verify --fast`: 1208 unit/API/console
-tests, `core_loc` 462 unchanged, `tests` floor raised 1198 -> 1214). Full
-acceptance was not run here: the only local stack is the main checkout's, which
-`bin/verify` refuses to drive from a worktree — run it from a stack on this
-branch before the push.
+Direction is firm and approved to build. Canonical spec:
+`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`.
+Rationale: `docs/DECISIONS.md` (2026-10-08 entries). User-facing Korean version:
+Claude Docs artifact 37HeLkkLEFQgVWbwLuXH7S. Produced by four interview rounds +
+three workflows (direction critique, how-others-teach-rules,
+resolve-open-items-by-majority).
 
-What landed:
+What the MVP is: a LEARNING-FIRST platform — one session with dials (guidance
+on/off; baseline rules minimal vs full CRS). The wedge: the learner tunes CRS /
+writes a Suricata rule that really BLOCKS a real attack, verified from the
+TARGET's own state (not a flag/quiz), gated on all-variants-blocked AND
+benign-passes. Scope: WAF (ModSec/CRS, tuning) + IPS (Suricata, detect);
+firewall out. Sessions are isolated instances composed from reusable elements;
+one built image backs many scenarios.
 
-- **Doc reconciliation** (two review workflows, each finding adversarially
-  re-verified). README/ARCHITECTURE (en+ko), CLAUDE.md and THREAT-MODEL.md were
-  wrong wherever the pfSense `:8080` pane, the Kibana service, the removed
-  `FSL_OPENSTACK_SSH_CONFIG` knob, and corp's `escalate-privileges` stage had
-  moved past them. Eleven confirmed drifts fixed.
-- **A real defect:** `_observe_objectives` reported the full count of
-  previously-credited objectives as `achieved` when the corp-db binlog read
-  failed, so the red console re-announced every prior objective as freshly
-  taken. Now returns 0 newly-credited (fix + test).
-- **Coverage:** sixteen tests added for untested branches — the game pillars
-  (weight renormalisation, accuracy clamp, coverage dedup), ingest fetch
-  failures, the loot ground-truth guard, the suricata write failure, harness
-  `fire`/`run`, the images Nova-ERROR branch, and pf_prime login/session parsing.
-- **Small cleanups:** a dead `datetime` import and a redundant `if missing:`
-  guard in `range/openstack.py`, a re-read role in `range/slot.py`, an unused
-  `adapter` parameter on `_ground_truth_readable`, a vestigial single-element
-  loop in `test_channels.py`.
-- **Backlog items done** (from STATE's "Left to engineering"): the red console
-  clears the attacker label on load and at stop (stale-attribution guard, with a
-  console test); `bin/verify` refuses to run while a session is open; the
-  `now.md` SessionStart hook now reads the session cwd, not the main checkout.
-- The `test_platform_vm` ingress-set test was fixed to expect the `tcp/8080`
-  that `ae1809e` opened (it had been left red on the branch).
+## Build order (compose substrate first; OpenStack deferred)
 
-## Live range note (192.168.0.210)
+1. Split compose into a SHARED control plane (platform + ES + Kibana, single) and
+   a PER-SESSION data-plane stack (session.yaml: target + db + waf + suricata +
+   filebeat) launched `docker compose -p fsl-<session>`. Do NOT replicate the
+   control plane (running the whole current compose.yaml per session would spin a
+   2nd orchestrator/ES/Kibana — the review's high-severity finding).
+2. Build each target image ONCE and TAG it (fsl/board:mvp); reference by
+   `image:`, never `build:` per session (wargames/board/compose.yaml:4 rebuilds
+   today — the "one image, many scenarios" blocker).
+3. Move the WARGAMES dict (platform/wargames.py:13-39) to discovered
+   `wargames/<id>/scenario.yaml` (image + cases + objectives + defense), loaded
+   by the existing generic validator pattern; prove one-image-many-scenarios with
+   board-easy/board-hard on the one tagged board image (differ only in
+   objectives + Suricata ruleset).
+4. declaration.yaml roles -> compose SERVICE names; runner resolves
+   service->container per project (pattern exists: platform/range/docker.py:169-173
+   label lookup). Delete container_name pins and `name: fsl`; float only internal
+   estate/mgmt subnets (PRESERVE edge origin subnets — attacker geo-attribution);
+   ephemeral host ports.
+5. loot.ground_truth + the effect runner read the session's own target ADDRESS
+   (docker.py Node.address inspection — NOT cross-project DNS, which does not
+   resolve), baseline on Session.baseline, captured after the target is healthy.
+6. Per-session ES index fsl-logs-<session>-* into elastic.fetch
+   (platform/ingest/elastic.py:17-23 untouched; `index` is already a param).
+7. The lesson: board ?sort= SQLi (CVE-2021-35042), WAF SecRuleEngine On with CRS;
+   tune CRS to block it while the benign O'Brien search passes; Suricata inline on
+   the WAF netns (network_mode: service:waf), one sensor per session.
+8. Acceptance (LIVE gate, bin/verify): two concurrent sessions, each scores only
+   its own loot/effect and its own alerts. The fast unit+console gate only covers
+   the scenario loader and address wiring, not actual isolation.
 
-The OpenStack range was made session-ready earlier today by a **live patch**, not
-a deploy: the platform VM runs a stale local Docker stack (container `fsl-board`,
-no corp, old names), and the readiness `ground_truth` check reads that container,
-not the OpenStack board VM. The board container's image lacked
-`/internal/auth-users`, so the route was `docker cp`'d in and gunicorn
-SIGHUP-reloaded; the suricata baseline was written to the pfSense VM. **Both
-revert on a container/VM restart.** The OpenStack `fsl-waf` VM is a bare
-host-nginx+ModSecurity box (config under `/etc/nginx/modsecurity/`), not the
-Docker CRS image. This hybrid — attacks hit the OpenStack VMs, ground truth reads
-the local Docker board — is the unfinished OpenStack cutover (P2).
+## Build-time spikes
+- Log-highlight feasibility on real Kibana (stable data-test-subj selectors);
+  fall back to a side task panel beside the Kibana iframe if it does not hold.
+- CRS start posture: does default-PL CRS block this SQLi / FP on O'Brien? sets
+  the lesson's starting state (tune down an over-blocker vs up a permissive one).
 
-## Backlog remaining (priority in `docs/STATE.md`)
+## What must not break
+- Seams stay single-owner (loot/effect, elastic, suricata, attacker) — add a
+  session address, not new knowledge. The target decides whether it was beaten.
+- Ratchet: the scenario loader + resolvers are new core Python that can push
+  core_loc UP — keep minimal, lean on the existing generic validators
+  (wargames.py:54-70,117-142), run bin/measure before committing; tests floor
+  up-only.
+- Real work this touches (not free deletions): the ~dozen tests pinning literal
+  container names (test_declaration.py:239-240 and others); the ttyd vm-terminal
+  proxy hard-wiring fsl-kali/fsl-waf (nginx.conf:63,73, entrypoint.sh:43-44); the
+  benign TN cases re-baselined against CRS-On; per-session Suricata ruleset / WAF
+  vhost is a parameterised mount, not just a YAML key.
 
-- **P1 — turn blocking on (response pillar).** Still needs the person's decision
-  on what counts as "blocked" read from the target side. Awaiting the person.
-- **P2 — OpenStack cutover / retire the dev Docker stack.** Large and
-  destructive (delete leftover `fsl-juice-shop`/`fsl-wiki`/`fsl-kiosk` cloud VMs;
-  the live-range hybrid above is the symptom). Confirm before deleting.
-- **Deferred engineering** (see the artifact): `no_marker` per engine and
-  `fsl-logs-*` 30-day expiry (need live-stack verification), a tool killed on
-  the attacker at timeout (touches the attacker seam), and the ratchet
-  "statements" change + `scoreboard.py` into core (would raise gated core_loc).
-  The "rule editor refuses an over-indented rule" item is **obsolete** — the
-  console rebuild removed the rule editor; rules are edited in pfSense.
+## Deferred (OpenStack debt, not MVP)
+Per-session CIDR allocation (fabric.py:11); single-session lock
+(views.py:171-173, OpenStack-only — a no-op on docker) + bin/verify open-session
+guard removal; pfSense edge+sensor split (declaration.yaml:75-76); per-session ES
+containers (vs shared ES + per-session index). The firewall console pane + :8080
+pfSense proxy removal is also pending (firewall dropped from scope) — pfSense
+itself STAYS as the OpenStack edge + Suricata host.
 
-## Decisions pending a person (collected in tonight's artifact)
-
-- **P1's "blocked" signal** and **P2's cloud-VM deletion** (as before).
-- **The blue console no longer fetches `/api/`** — it frames pfSense/Kibana/ttyd
-  directly. The only thing keeping `test_page_fetches_its_data_from_the_api[/blue/]`
-  green and the dead `/api/range/console/` noVNC endpoint alive is an unreachable
-  fallback branch in `blue.html`. Removing the dead branch and the dead endpoint
-  (which lowers the tests floor) needs a ruling on whether `/blue/` is an
-  accepted exception to the "console templates fetch /api/" invariant.
-- Two near-duplicate/weak tests flagged (`test_pf_prime` mgmt-interface,
-  a strategy-honesty acceptance test that greps the rebuilt `blue.html`) —
-  changing them touches the tests floor, so they are the person's call.
-
-## On merge to dev
-
-- Fast-forward the main checkout's `dev` after the push (the Desktop reads
-  project config from it; a stale checkout means the harness does not load).
+## Also still open from before
+- Three tidied commits (f981e9b/562486d/10aa601) on this branch are UNPUSHED to
+  dev; push is the human's, fast-forward. Full acceptance must run on this
+  branch's stack before the push (cannot drive the live gate from a worktree).
