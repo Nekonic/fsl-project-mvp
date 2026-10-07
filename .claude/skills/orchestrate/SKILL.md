@@ -15,8 +15,14 @@ session, and you do not make the user say "continue".
 1. **Scope.** Turn the goal into a short plan: what changes, which files, how
    you will prove it, what you will not touch, open questions. Read
    `docs/state/now.md` for where things stand and `docs/DECISIONS.md` for what
-   was already ruled out. Scout before you plan — list the files, read the
-   seam, scope the diff — so the plan is real, not a guess.
+   was already ruled out — and open the canonical direction source they point to
+   (the spec and the `[확정]` living-doc artifact), not just `now.md`'s
+   reconstruction or your memory. Scout before you plan — list the files, read
+   the seam, scope the diff — so the plan is real, not a guess. Never overturn a
+   recorded or `[확정]` decision from memory or a re-derivation: quote the exact
+   statement you would overturn and show where it fails; if a problem you hit is
+   already resolved in the written design, apply that resolution instead of
+   raising it as a new decision.
 
 2. **Gate 1 — plan approval.** Present that plan and wait. This gate has the
    most leverage: a wrong line of plan becomes hundreds of wrong lines of code.
