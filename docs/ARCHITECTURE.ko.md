@@ -14,7 +14,7 @@ Suricata와 ModSecurity 경보를 그 라벨에 자동으로 맞출 수 있어�
 
 ## 레인지
 
-여섯 개의 Docker 네트워크 위에 열한 개의 compose 서비스 — 플랫폼 자신의 일곱 개와
+여섯 개의 Docker 네트워크 위에 열두 개의 compose 서비스 — 플랫폼 자신의 여덟 개와
 wargame의 네 개. 대상 시스템은 wargame으로 묶이며, `wargames/` 아래 폴더이고, 그
 `compose.yaml`을 최상위 `compose.yaml`이 include 한다: `board`(Django board와 그
 MySQL)와 `corp`(WordPress 사이트와 그 MySQL). 대상은 둘이다 — `loot_verified` 대상인
@@ -27,13 +27,14 @@ board와 `effect_observed` 대상인 corp. 새 wargame은 새 폴더 하나와 `
 | `fsl-wg-board-db` | `mysql` | estate | |
 | `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
 | `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | 8080 |
+| `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | `jasonish/suricata` | WAF의 네임스페이스 | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
+| `fsl-kibana` | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
 | `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | 네 개 edge 네트워크 | |
-| `fsl-platform` | `platform/` (waitress 아래 Django, nginx 뒤에 있으며, nginx는 `/terminal/`에서 Kali의 터미널도 제공한다) | 여섯 개 모두 | 8000 |
+| `fsl-platform` | `platform/` (waitress 아래 Django, nginx 뒤에 있으며, nginx는 `/terminal/`에서 Kali의 터미널, `/kibana/`에서 Kibana, `:8080`에서 pfSense GUI 프록시도 제공한다) | 여섯 개 모두 | 8000, 8080 |
 
 | 네트워크 | 구간 | 서브넷 | 이름 | 출발지 |
 |---|---|---|---|---|
@@ -149,8 +150,7 @@ sensor, board, board-db); 어느 호스트를 sensor가 지켜보는지; 기본 
 `FSL_SUBSTRATE_OPTIONS`가 그 이름 아래 보관하는 옵션에 `declared=RANGE`를 더해 만든다.
 Docker는 `FSL_PROJECT`(기본값 `fsl`)를 받는다. OpenStack은 `FSL_OPENSTACK_KEYSTONE`,
 `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`를 받으며, 각각 없으면 이름을
-들어 거부한다. `_SSH_CONFIG`는 선택이며 주어지면 반드시 존재해야 한다. `_REGION`은
-기본값이 `RegionOne`, `_INTERFACE`는 `public`이다. `redteam/harness.py`에는 launcher가,
+들어 거부한다. `_REGION`은 기본값이 `RegionOne`, `_INTERFACE`는 `public`이다. `redteam/harness.py`에는 launcher가,
 `platform/rules/suricata.py`에는 runner가 건네지므로, 둘 다 `subprocess`를 import하지도
 substrate를 지목하지도 않는다.
 
@@ -178,7 +178,7 @@ pfSense 패키지로 도는 sensor를 읽기, 여러 출발지 서브넷과 그 
 | 터미널, raw TCP | Kali 직접 | Kali, `edge`에서만 | 없음 |
 | 콘솔 케이스, HTTP | 플랫폼 | 플랫폼, 선택된 출발지에서 | harness가 추가 |
 | 콘솔 케이스, 도구 | 일회용 `fsl-kali` 컨테이너 | 그 컨테이너, 선택된 출발지에서 | sqlmap `--headers=` |
-| CLI 실행 또는 브라우저, HTTP | 호스트, 포트 8080을 거쳐 | `edge` 브리지 게이트웨이 | harness가 추가; 브라우저에서는 없음 |
+| CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, 선택한 출발지로 | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(--origin 또는 선언된 기본값)`에서 | 그 컨테이너 | sqlmap `--headers=` |
 
 프록시는 `mitmdump` 스크립트다. `/label/active`에서 `X-FSL-Case`를 설정하고,
@@ -413,7 +413,7 @@ Docker의 MTU를 기본 브리지에 대해(`mtu`) 그리고 모든 새 브리�
 systemd 유닛 `fsl-platform.service`가 매 부팅마다
 `docker compose -f /opt/fsl/compose.yaml up -d --build`를 실행한다.
 
-그래서 오늘 위의 compose 레인지 전체, 아홉 개 서비스 전부가 하나의 Nova VM 안에서
+그래서 오늘 위의 compose 레인지 전체, 열두 개 서비스 전부가 하나의 Nova VM 안에서
 돈다. 8000은 VM 자신의 주소에 publish되고 그 보안 그룹에서 열리므로, 브라우저가
 floating IP에서 콘솔에 닿는다; 다른 포트는 VM의 loopback에 머문다.
 
@@ -494,7 +494,7 @@ slot VM을 각각 그 골든 이미지에서 재구축하며, 각 서버의 id, 
    landing page /: start and stop a session, the scoreboard after close
    sidebar, three panes inside the page:
      pfSense   real web GUI, reverse-proxied on :8080, auto-logged-in
-     Kibana    framed directly, on a read-only Elasticsearch role
+     Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd on the Kali VM, reverse-proxied by the platform
      |
      +--OpenStack API, as member fsl-range--> networks, VMs, consoles

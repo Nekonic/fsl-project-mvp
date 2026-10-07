@@ -15,7 +15,7 @@ mechanically. The objective score was added on top once that held.
 
 ## The range
 
-Eleven compose services on six Docker networks: seven the platform's own and
+Twelve compose services on six Docker networks: eight the platform's own and
 four from the wargames. A target is grouped as a wargame, a folder under
 `wargames/` whose `compose.yaml` the top `compose.yaml` includes: `board` (the
 Django board and its MySQL) and `corp` (a WordPress site and its MySQL). There
@@ -29,13 +29,14 @@ line; the measure counts the services it adds.
 | `fsl-wg-board-db` | `mysql` | estate | |
 | `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
 | `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | 8080 |
+| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
+| `fsl-kibana` | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
-| `fsl-platform` | `platform/` (Django under waitress, behind nginx, which also serves Kali's terminal at `/terminal/`) | all six | 8000 |
+| `fsl-platform` | `platform/` (Django under waitress, behind nginx, which also serves Kali's terminal at `/terminal/`, Kibana at `/kibana/`, and the pfSense GUI proxy on `:8080`) | all six | 8000, 8080 |
 
 | Network | Segment | Subnet | Name | Origin |
 |---|---|---|---|---|
@@ -158,9 +159,8 @@ only its four verbs:
 `range.docker.Docker`), with the options `FSL_SUBSTRATE_OPTIONS` keeps under
 that name plus `declared=RANGE`. Docker takes `FSL_PROJECT` (default `fsl`).
 OpenStack takes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`,
-`_SSH_USER` and `_SSH_KEY`, each refused by name when missing; `_SSH_CONFIG`
-is optional and must exist if given; `_REGION` defaults to `RegionOne` and
-`_INTERFACE` to `public`. `redteam/harness.py` is handed a launcher and
+`_SSH_USER` and `_SSH_KEY`, each refused by name when missing; `_REGION`
+defaults to `RegionOne` and `_INTERFACE` to `public`. `redteam/harness.py` is handed a launcher and
 `platform/rules/suricata.py` a runner, so neither imports `subprocess` or
 names a substrate.
 
@@ -189,7 +189,7 @@ listed in `docs/STATE.md` under "The substrate seam".
 | Terminal, raw TCP | Kali directly | Kali, on `edge` only | none |
 | Console case, HTTP | the platform | the platform, on the chosen origin | added by the harness |
 | Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
-| CLI run or browser, HTTP | the host, through port 8080 | the `edge` bridge gateway | added by the harness; none from a browser |
+| CLI run, HTTP | the platform, `redteam/run.py` | the platform, on the chosen origin | added by the harness |
 | CLI run, tool | a throwaway `fsl-kali` container, from `launcher(--origin or the declared default)` | that container | sqlmap `--headers=` |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
@@ -448,7 +448,7 @@ swap, sets Docker's MTU to the Neutron network's for the default bridge
 adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
 runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
 
-So today the whole compose range above, all nine services, runs inside one
+So today the whole compose range above, all twelve services, runs inside one
 Nova VM. 8000 is published on the VM's own address and opened in its
 security group, so a browser reaches the console at the floating IP; the
 other ports stay on the VM's loopback.

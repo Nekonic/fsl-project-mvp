@@ -590,14 +590,25 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
 
 ## Left to engineering (no decision needed)
 
-- `no_marker` per engine, without warning on raw-TCP-only sessions.
-- `bin/verify` refuses to run while a person's session is open.
+Done 2026-10-07: `bin/verify` refuses to run while a session is open; the red
+console clears the attacker label on page load and at Stop (stale-attribution
+guard).
+
+Remaining:
+- `no_marker` per engine, without warning on raw-TCP-only sessions. Needs an
+  engine field on `DetectionRecord` and app-layer presence carried through the
+  ingest seam, which raises gated `core_loc`, and wants live-stack
+  verification — so not the quick change the heading implies.
+- A tool killed on the attacker when its timeout passes (touches the attacker
+  seam).
+- `fsl-logs-*` expire after 30 days, with a disk warning (an ES ILM policy;
+  verify against the live stack).
 - The ratchet counts statements with the baseline from `HEAD`, and
-  `scoreboard.py` moves into core.
-- The terminal's label cleared on page load and at Stop; a tool killed on the
-  attacker when its timeout passes; the rule editor refuses a rule indented so
-  far that Suricata skips it; `fsl-logs-*` expire after 30 days, with a disk
-  warning.
+  `scoreboard.py` moves into core. This redefines the gate and raises
+  `core_loc`, so it is a decision, not pure engineering.
+
+Dropped: the rule editor's over-indent guard — the console rebuild removed the
+rule editor; rules are edited in the pfSense GUI now.
 
 ## Decisions left for a person
 

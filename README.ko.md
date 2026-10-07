@@ -105,9 +105,10 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 포트 | | 사용처 |
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/`의 공격자 터미널 | 사람의 브라우저 |
+| 8080 | 블루 콘솔 창에 띄우는 pfSense GUI 리버스 프록시 | 사람의 브라우저 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-사람에게 필요한 포트는 8000 하나다. 플랫폼 이미지 안의 nginx가 이 포트를 받아 `/terminal/`을 Kali의 ttyd로 넘기고, ttyd는 자기 포트를 따로 공개하지 않는다. Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost).
+사람에게 필요한 포트는 8000과 8080 둘이다. 플랫폼 이미지 안의 nginx가 8000을 받아 `/terminal/`을 Kali의 ttyd로 넘기고(ttyd는 자기 포트를 따로 공개하지 않는다), 블루 콘솔의 pfSense 창은 8080에서 리버스 프록시로 내보낸다(pfSense의 루트 절대 URL이 풀리도록 별개 오리진). Mac에서는 모든 포트를 `127.0.0.1`에만 공개한다. 플랫폼 VM에서는 8000과 8080을 VM 자기 주소에 공개한다(`.env`의 `FSL_PUBLISH`). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost).
 
 ### OpenStack에서
 
@@ -135,7 +136,7 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 | `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 된다 |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-스택의 `address` 출력값이 floating IP이고, 콘솔은 `http://ADDRESS:8000/`에 있으며, 아직 로그인은 없다. 나머지 포트는 VM의 loopback에 있다.
+스택의 `address` 출력값이 floating IP이고, 콘솔은 `http://ADDRESS:8000/`, 블루 콘솔의 pfSense 창은 `http://ADDRESS:8080/`에 있으며, 둘 다 아직 로그인은 없다. 9200과 5140은 VM의 loopback에 있다.
 
 VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`다. compose, `bin/backup`, 아래의 복원 절차는 거기서 실행한다. 마지막 부팅 때 스택이 어떻게 올라왔는지는 `systemctl status fsl-platform`으로 본다.
 

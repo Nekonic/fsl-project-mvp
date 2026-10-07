@@ -134,12 +134,15 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, and the attacker's terminal at `/terminal/` | a person's browser |
+| 8080 | the pfSense GUI, reverse-proxied for the blue console's pane | a person's browser |
 | 9200 | Elasticsearch | the acceptance tests |
 
-A person needs only 8000: nginx inside the platform's image takes it and
-hands `/terminal/` to Kali's ttyd, which publishes no port of its own. On
-the Mac every port is published on `127.0.0.1` only; on the platform VM 8000
-is published on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
+A person needs 8000 and 8080: nginx inside the platform's image takes 8000 and
+hands `/terminal/` to Kali's ttyd, which publishes no port of its own, and
+serves the blue console's pfSense pane from 8080, a reverse-proxy on a distinct
+origin so pfSense's root-absolute URLs resolve. On the Mac every port is
+published on `127.0.0.1` only; on the platform VM 8000 and 8080 are published
+on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
 target is not published: the command-line cases and the acceptance tests reach
 it from inside the range, the way the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the
@@ -179,8 +182,9 @@ from a file, so it never reaches a command line, and recreate the platform:
 | `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-The stack's `address` output is the floating IP, and the console is at
-`http://ADDRESS:8000/`, with no login yet. The other ports stay on the VM's
+The stack's `address` output is the floating IP; the console is at
+`http://ADDRESS:8000/` and the blue console's pfSense pane at
+`http://ADDRESS:8080/`, both with no login yet. 9200 and 5140 stay on the VM's
 loopback.
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,

@@ -66,7 +66,7 @@ alerts to the cases that caused them. Reported beside the first number, never
 folded in — a defence that blocks everything scores perfectly here and loses
 every objective.
 
-One case is one decision however many alerts it drew (`sqlmap-boolean-blind`
+One case is one decision however many alerts it drew (`board-sqli-orderby-sqlmap`
 draws 94, counts once); say so when reporting, because per-alert counting
 measures the alert threshold, not the defence. A true positive must also
 survive `expect`: the case names a substring its signature should match, and an
@@ -85,8 +85,8 @@ alert that does not mention the attack's mechanism is reported
 - The isolation seams hold: `ingest/elastic.py` is the only file that knows
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
   process, `attacker.py` the only one that knows the attacker box, and the loot
-  path the only one that reads the target's ground truth. Keep them the only
-  ones.
+  path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
+  the only ones that read the target's ground truth. Keep them the only ones.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.
