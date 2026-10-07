@@ -212,3 +212,27 @@ distinct origin was needed.
   host's console" capability; no pane calls them now. The `tests` floor rose
   1196→1198: three tests for removed behaviour (the kiosk declaration, the two
   console-unavailable UI states) dropped, five added (`pf_prime`, the proxy pane).
+- **Nine vacuous/duplicate tests removed (2026-10-07, the user's authorisation).**
+  A whole-suite fake-test audit (a workflow, each flag adversarially re-verified
+  against the production code it claims to pin) found nine tests that assert
+  nothing the code must satisfy — each would still pass with the targeted code
+  broken, or is a strict subset of a stronger sibling. Removed, and the `tests`
+  floor lowered 1214 -> 1205 by hand (the sanctioned path for an authorised
+  reduction). The itemised list and the proof for each is in the commit message.
+  Gone: `test_api_compare` forced-strategy + label-stamp, `test_api_map`
+  target==SEOUL, `test_api_sessions` bounded-list, `test_declaration`
+  renamed-network, `test_tools` placeholder + marker-injected, `test_pf_prime`
+  mgmt-not-estate, `test_compose` database-pinned-by-digest. The audit also
+  flagged seven weak-but-real tests to *strengthen* (not delete); those keep the
+  floor and are tracked separately.
+- **What a test is for, and when to remove one (2026-10-07, the user).** A test
+  exists to fail when the thing it guards breaks — it is the alarm that a green
+  `bin/verify` means the point still holds (attacks detected, benign passes, the
+  target decides, the seams stay isolated). The ruling: **a test that cannot
+  fail when its target breaks does not serve that purpose and is removed** —
+  unless it is the only guard of a must-not-break, in which case it is
+  strengthened until it can fail. Deleting a test to pass remains forbidden; this
+  is the opposite — removing tests that were never really testing. Applied once
+  as the nine-test removal above, then to five more flagged tests (three
+  strengthened, two removed, floor 1205 -> 1203); the per-test proof is in the
+  commits. The floor is lowered by hand only for removals made under this ruling.

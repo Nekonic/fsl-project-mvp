@@ -28,16 +28,17 @@ read as part of an attack.
 
 ## What it cannot show
 
-**Six of the eight stages never happen.** No case scans, so initial
-reconnaissance is absent. Establish foothold, escalate privileges, internal
-reconnaissance, move laterally and maintain presence are all absent because
-nothing executes code on the target. The estate is reached through the
-application, so there is no foothold to escalate from. Whether the range should
-grow one is an open scope decision (`docs/STATE.md`, backlog). Moving
-laterally is shelved until the second target, a PHP company site
-(sub-project B), gives it somewhere to go. The
-console computes which stages the cases reach from the case file, so that list
-cannot drift.
+**Five of the eight stages never happen.** No case scans, so initial
+reconnaissance is absent. Establish foothold, internal reconnaissance, move
+laterally and maintain presence are all absent because nothing executes code on
+the target: the estate is reached through the application, so there is no OS
+foothold. Escalate privileges does happen now — corp's Ultimate Member CVE
+turns an unprivileged account into a WordPress admin (`corp-rogue-admin`), an
+in-application privilege escalation — alongside initial compromise and complete
+mission. Whether the range should grow an OS foothold is an open scope decision
+(`docs/STATE.md`, backlog); moving laterally stays shelved until a target gives
+it somewhere to go. The console computes which stages the cases reach from the
+case file, so that list cannot drift.
 
 **The ATT&CK mapping is coarse.** Every exploitation case is T1190, the only
 Enterprise technique for exploiting a public-facing application; ATT&CK does
