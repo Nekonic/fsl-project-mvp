@@ -20,8 +20,12 @@ four from the wargames. A target is grouped as a wargame, a folder under
 `wargames/` whose `compose.yaml` the top `compose.yaml` includes: `board` (the
 Django board and its MySQL) and `corp` (a WordPress site and its MySQL). There
 are two targets — the board, a `loot_verified` target, and corp, an
-`effect_observed` target. A new wargame is a new folder and one more `include:`
-line; the measure counts the services it adds.
+`effect_observed` target. The platform discovers each wargame from a
+`scenario.yaml` in its folder — the descriptor (`name`, `description`, `image`,
+`public_url`, `objective_model`, `case_file`) that used to be an in-code
+registry; the registry is data now. A new wargame is a new folder with a
+`scenario.yaml` and one more `include:` line; the measure counts the services it
+adds.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|

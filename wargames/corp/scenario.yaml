@@ -1,0 +1,10 @@
+name: Corporate site
+description: >-
+  A WordPress company site on MySQL, behind the WAF and the IDS. Three unpatched
+  plugins carry unauthenticated broken-access-control CVEs the default rules
+  cannot see; the platform scores by watching the target's own committed
+  database changes.
+image: fsl/corp:mvp
+public_url: http://corp.com
+objective_model: effect_observed
+case_file: corp.yaml

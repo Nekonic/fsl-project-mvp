@@ -18,8 +18,11 @@ Suricata와 ModSecurity 경보를 그 라벨에 자동으로 맞출 수 있어�
 wargame의 네 개. 대상 시스템은 wargame으로 묶이며, `wargames/` 아래 폴더이고, 그
 `compose.yaml`을 최상위 `compose.yaml`이 include 한다: `board`(Django board와 그
 MySQL)와 `corp`(WordPress 사이트와 그 MySQL). 대상은 둘이다 — `loot_verified` 대상인
-board와 `effect_observed` 대상인 corp. 새 wargame은 새 폴더 하나와 `include:` 줄
-하나다. measure는 그것이 추가하는 서비스를 센다.
+board와 `effect_observed` 대상인 corp. 플랫폼은 각 wargame을 그 폴더의
+`scenario.yaml`에서 찾는다 — 전에는 코드 안의 레지스트리였던 디스크립터(`name`,
+`description`, `image`, `public_url`, `objective_model`, `case_file`)이며, 이제
+레지스트리는 데이터다. 새 wargame은 `scenario.yaml`을 둔 새 폴더 하나와 `include:`
+줄 하나다. measure는 그것이 추가하는 서비스를 센다.
 
 | 서비스 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|

@@ -26,6 +26,48 @@ one built image backs many scenarios.
 
 ## Build order (compose substrate first; OpenStack deferred)
 
+Landed 2026-10-08 (fast gate only — unit+console; the live 2-project acceptance
+has NOT run): **step 3 DONE** (commit d436839). The WARGAMES dict is now
+discovered from `wargames/<id>/scenario.yaml` (name, description, image,
+public_url, objective_model, case_file), validated at import; WARGAMES stays a
+real dict so no call site changed (views.py:166,368 membership; three tests
+patch.dict it; two do dict(WARGAMES["board"], ...); test_compose set(WARGAMES)).
+board public_url is now literal http://board.com. The `image` field
+(fsl/board:mvp, fsl/corp:mvp) is declared but not consumed yet — it is the anchor
+for steps 2 and 1. core_loc flat 462, tests 1203->1209. board-easy/board-hard was
+NOT added: test_compose:238 ties set(WARGAMES) to the set of wargames/<id>/
+compose.yaml folders, so a new scenario id needs its own compose folder, which is
+exactly what the step-1 compose split reworks — do them together, live.
+
+Steps 1, 2, 4-8 remain and are LIVE-STACK work (they can only be proven by
+`docker compose up` + the acceptance suite, which a worktree cannot drive). Do
+NOT land them blind against the fast gate. AGREED 2026-10-08 (the user): the live
+build runs on the OpenStack deployment (192.168.0.100), driven together — start
+each step at gate 1 (present the plan, wait), execute live, run the acceptance
+there; push is held until that acceptance passes on this branch. Precise
+constraints found 2026-10-08:
+- Step 5 seam: loot.ground_truth (loot.py:20-21) builds the URL from
+  settings.BOARD_API_URL; views.py:1215 hardcodes loot.ground_truth("board") for
+  the readiness probe; effect uses a role runner already (effect.snapshot via
+  adapter.runner("corp-db"), views.py:188). The address resolver can reuse
+  docker.py:127-145 _segment (Containers[].IPv4Address -> Node.address).
+- Step 4: docker.py.runner (docker.py:56-74) execs declared.host(role) = a fixed
+  container name from declaration.yaml roles (declaration.yaml:48-57). The per-
+  project resolution pattern already exists at docker.py:169-185 (_modes filters
+  by label com.docker.compose.project). Tests pinning literal names:
+  test_declaration.py:239, test_openstack_sketch.py:293,295, test_range_seam.py:
+  223-224. ttyd proxy hard-wires fsl-kali/fsl-waf (nginx.conf:63,73;
+  entrypoint.sh:43-44).
+- Step 6: elastic.fetch (elastic.py:17-23) already takes `index`; views.py:702,1317
+  pass settings.ELASTIC_INDEX. Thread a per-session fsl-logs-<session>-* instead.
+- Step 2: today both wargame app services are `build:` with no tag
+  (board/compose.yaml:3, corp/compose.yaml:3). Add `image: fsl/board:mvp` /
+  `fsl/corp:mvp` alongside build (build-and-tag) so the shared up still builds and
+  session.yaml can reference by image: only. `services` is gated down-only (8) —
+  moving waf/suricata/filebeat into session.yaml drops it; keep bin/measure honest
+  (session.yaml is not on the include chain, so it vanishes from the count — record
+  the reason or teach measure to count it).
+
 1. Split compose into a SHARED control plane (platform + ES + Kibana, single) and
    a PER-SESSION data-plane stack (session.yaml: target + db + waf + suricata +
    filebeat) launched `docker compose -p fsl-<session>`. Do NOT replicate the
@@ -34,11 +76,11 @@ one built image backs many scenarios.
 2. Build each target image ONCE and TAG it (fsl/board:mvp); reference by
    `image:`, never `build:` per session (wargames/board/compose.yaml:4 rebuilds
    today — the "one image, many scenarios" blocker).
-3. Move the WARGAMES dict (platform/wargames.py:13-39) to discovered
-   `wargames/<id>/scenario.yaml` (image + cases + objectives + defense), loaded
-   by the existing generic validator pattern; prove one-image-many-scenarios with
-   board-easy/board-hard on the one tagged board image (differ only in
-   objectives + Suricata ruleset).
+3. DONE (d436839) — WARGAMES is discovered from `wargames/<id>/scenario.yaml`.
+   Still open under this step: prove one-image-many-scenarios with
+   board-easy/board-hard (needs their own compose folders per test_compose:238,
+   so it rides step 1), and fold the Suricata ruleset / WAF vhost ("defense")
+   into the descriptor once step 7 gives it a consumer.
 4. declaration.yaml roles -> compose SERVICE names; runner resolves
    service->container per project (pattern exists: platform/range/docker.py:169-173
    label lookup). Delete container_name pins and `name: fsl`; float only internal
@@ -84,6 +126,8 @@ pfSense proxy removal is also pending (firewall dropped from scope) — pfSense
 itself STAYS as the OpenStack edge + Suricata host.
 
 ## Also still open from before
-- Three tidied commits (f981e9b/562486d/10aa601) on this branch are UNPUSHED to
-  dev; push is the human's, fast-forward. Full acceptance must run on this
-  branch's stack before the push (cannot drive the live gate from a worktree).
+- This branch is UNPUSHED and ahead of dev by five commits: the earlier tidy
+  (three), the direction docs, and step 3 (scenario.yaml discovery + its docs, one
+  commit). Push is the human's, fast-forward to dev. Full acceptance (live stack)
+  must run on this branch before the push — a worktree cannot drive the live gate,
+  so the fast gate is all that has run.

@@ -286,3 +286,17 @@ distinct origin was needed.
   a side panel; perimeter-first branded as a detection-engineering track (a
   deliberate divergence from the SIEM-first majority, which presupposes a pipeline
   fsl lacks at MVP).
+- **scenario.yaml is the discovered wargame registry (2026-10-08, build).** Build
+  step 3 landed: the in-code `WARGAMES` dict became `wargames/<id>/scenario.yaml`,
+  discovered at import. `WARGAMES` stays a real dict — three tests `patch.dict` it,
+  two build a variant with `dict(WARGAMES["board"], ...)`, one does `set(WARGAMES)`
+  — so no call site changed; the registry is data, not code. The descriptor carries
+  `name`, `description`, `image`, `public_url`, `objective_model`, `case_file`,
+  validated at discovery. board's `public_url` is now the literal `http://board.com`
+  (was `settings.PUBLIC_TARGET_URL`, whose default is the same string): a scenario
+  owns its public identity in the composable model, and the env var still feeds
+  settings and attacker_box. The `image` field (`fsl/board:mvp`, `fsl/corp:mvp`) is
+  declared but not yet consumed — it is the anchor for step 2 (build-once-and-tag)
+  and step 1 (the per-session stack references it by `image:`), both of which need
+  the live stack and were not done tonight. Verified by the fast gate only; core_loc
+  flat (wargames.py is product_loc), tests floor 1203 -> 1209.
