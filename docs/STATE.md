@@ -699,8 +699,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       the single-slot range answers 409; `/api/rules/apply/` runs the compose
       reload (`suricatasc`) against the pfSense sensor because
       `FSL_SENSOR_RELOAD` is unset on the VM; the VM has no GeoLite2 database
-      (`bin/fetch-geoip` never ran); `test_strategy_honesty` still greps
-      `blue.html` for `renderComparison`, removed with the old blue console.
+      (`bin/fetch-geoip` never ran). The stale `blue.html` comparison test
+      was removed 2026-10-09.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
