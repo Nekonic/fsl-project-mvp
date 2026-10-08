@@ -177,8 +177,8 @@ names a substrate.
 | shape | `docker network ls/inspect`, label filter | Keystone v3, Neutron with `tags-any`, Nova |
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
 | runner | `docker exec` | `ssh` to the instance |
-| launcher | `docker run --rm --network <segment>` | `runner("attacker")`: runs the tool over ssh on the declared attacker; any other image is refused, because Nova cannot boot a host, return its output and delete it |
-| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` has not run on a cloud |
+| launcher | `docker run --rm --network <segment>` | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `fsl-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
+| tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` fired sqlmap from the `ru` and `tw` origins on 2026-10-08 |
 
 Compose mounts the Docker socket into the platform whatever the substrate, and
 the entrypoint adds the platform user to its group. It is a container escape

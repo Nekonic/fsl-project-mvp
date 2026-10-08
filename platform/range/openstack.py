@@ -465,7 +465,8 @@ class OpenStack:
                     f"deletes it, so a tool runs on the attacker this range "
                     f"already has - {attacker!r} - and no other image"
                 )
-            return self.runner(ATTACKER_ROLE, segment_id)(argv, timeout=timeout)
+            self._address(ATTACKER_ROLE, attacker, segment_id)
+            return self.runner(ATTACKER_ROLE)(argv, timeout=timeout)
 
         return launch
 
