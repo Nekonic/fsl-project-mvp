@@ -7,6 +7,8 @@ cd "$ROOT"
 
 PY="$ROOT/.venv/bin/python"
 FAST=0
+PLATFORM="${FSL_PLATFORM_URL:-http://localhost:8000}"
+export FSL_PLATFORM_URL="$PLATFORM"
 FAILED=0
 
 [ "${1:-}" = "--fast" ] && FAST=1
@@ -54,10 +56,10 @@ if [ "$(cd "$owner" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
   exit 1
 fi
 open_sessions="$("$PY" - <<'OPENCHECK' 2>/dev/null
-import json, sys, urllib.request
+import json, os, sys, urllib.request
 try:
     with urllib.request.urlopen(
-        "http://localhost:8000/api/sessions/?state=open", timeout=5
+        os.environ["FSL_PLATFORM_URL"] + "/api/sessions/?state=open", timeout=5
     ) as answer:
         rows = json.load(answer)
 except Exception:
@@ -75,10 +77,10 @@ if ! docker compose restart platform >/dev/null 2>&1; then
   stack_down 'platform could not be restarted — docker compose up -d --build'
 fi
 for _ in $(seq 60); do
-  curl -fsS -o /dev/null --max-time 5 http://localhost:8000/api/rules/ && break
+  curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/rules/" && break
   sleep 1
 done
-if curl -fsS -o /dev/null --max-time 5 http://localhost:8000/api/rules/; then
+if curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/rules/"; then
   ok "platform restarted on the tree being verified"
 else
   stack_down "platform not responding after a restart — docker compose logs platform"
@@ -119,13 +121,13 @@ else
 fi
 
 if "$PY" - <<'RULECHECK'
-import json, pathlib, sys, urllib.request
+import json, os, pathlib, sys, urllib.request
 
 body = json.dumps(
     {"content": pathlib.Path("deploy/suricata/rules/local.rules").read_text()}
 ).encode()
 request = urllib.request.Request(
-    "http://localhost:8000/api/rules/validate/", body,
+    os.environ["FSL_PLATFORM_URL"] + "/api/rules/validate/", body,
     {"Content-Type": "application/json"},
 )
 try:

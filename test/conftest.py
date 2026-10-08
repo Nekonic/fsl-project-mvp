@@ -9,12 +9,43 @@ import requests
 from range import ATTACKER, RangeUnavailable, SCORER, run, start_hint
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLATFORM_URL = "http://localhost:8000"
+PLATFORM_URL = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+PLATFORM_FROM_SCORER = "http://localhost:8000"
 TARGET_PUBLIC = "http://board.com"
 
 SESSION_LINE = re.compile(r"^session (\d+) done$")
 
 ENGINES = {"suricata", "modsecurity"}
+
+COMPOSE_RANGE_ONLY = {
+    "test_attacker_box", "test_board_exfil", "test_corp_cve_content_write",
+    "test_corp_cve_option_flip", "test_corp_cve_rogue_admin",
+    "test_corp_observe_live", "test_corp_site", "test_event_time",
+    "test_fabric", "test_front_door", "test_judge_isolation",
+    "test_operator_log", "test_ready", "test_segmentation",
+    "test_strategy_comparison", "test_terminal", "test_topology",
+    "test_window_correlation",
+}
+
+def range_readiness() -> dict:
+    try:
+        return requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=30).json()
+    except (requests.RequestException, ValueError):
+        return {}
+
+def range_substrate() -> str:
+    return range_readiness().get("substrate") or "compose"
+
+def pytest_collection_modifyitems(config, items):
+    substrate = range_substrate()
+    if substrate == "compose":
+        return
+    skip = pytest.mark.skip(
+        reason=f"exercises the compose range; the scored range here is {substrate}"
+    )
+    for item in items:
+        if item.module.__name__ in COMPOSE_RANGE_ONLY:
+            item.add_marker(skip)
 
 def _reachable(url: str) -> bool:
     try:
@@ -43,6 +74,10 @@ def stack_is_up():
     assert _reachable(PLATFORM_URL), (
         f"could not reach {PLATFORM_URL}. Run `{start_hint()}` first."
     )
+    readiness = range_readiness()
+    if (readiness.get("substrate") or "compose") != "compose":
+        assert readiness.get("ready"), f"the range is not ready: {readiness}"
+        return
     assert target_answers(), (
         f"the target does not answer through the WAF from inside the range. "
         f"Run `{start_hint()}` first."
@@ -120,7 +155,7 @@ def run_redteam() -> int:
     result = run(
         SCORER,
         ["python", "redteam/run.py",
-         "--platform", "http://localhost:8000",
+         "--platform", PLATFORM_FROM_SCORER,
          "--target", TARGET_PUBLIC,
          "--tool-target", TARGET_PUBLIC],
         timeout=300,

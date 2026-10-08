@@ -318,6 +318,10 @@ bin/verify            # also the acceptance tests in test/, against the live sta
 The full run restarts the platform and resets the target, the rules and the
 attacker's origin, so do not run it against a stack someone is using. It
 deletes only the sessions it created.
+On a platform that does not listen on localhost (the OpenStack platform VM),
+run it on that host with `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`;
+tests that exercise the compose range are skipped when the platform reports
+another substrate.
 `bin/prune` deletes sessions by hand and is a dry run without `--apply`:
 
 ```bash
