@@ -165,8 +165,8 @@ Docker는 `FSL_PROJECT`(기본값 `fsl`)를 받는다. OpenStack은 `FSL_OPENSTA
 | 구조 | `docker network ls/inspect`, 라벨 필터 | Keystone v3, `tags-any`를 쓰는 Neutron, Nova |
 | sensor | 선언된 각 sensor가 선언된 gateway의 네트워크 네임스페이스를 공유하지 않으면 레인지 기술(describe)을 거부한다 (`docker ps`, `.HostConfig.NetworkMode`) | 이름이 지정된 두 서버가 모두 존재하면 sensor를 보고한다; 그것이 gateway의 트래픽을 보는지 확인하는 것은 없다 |
 | runner | `docker exec` | 인스턴스로 `ssh` |
-| launcher | `docker run --rm --network <segment>` | `runner("attacker")`: 선언된 attacker에서 ssh로 도구를 실행한다; 다른 이미지는 거부되는데, Nova는 호스트를 부팅해 출력을 반환하고 삭제할 수 없기 때문이다 |
-| 테스트 대상 | 라이브 스택 | 공개된 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트; `fsl-range` 클라우드에서는 플랫폼 VM이 `/api/range/`를 통해 fabric, 이미지, slot을 구축했고, `describe()`가 서른 개 출발지 위의 WAF와 estate 및 mgmt 위의 네 호스트를 되읽었으며, `runner()`가 각 호스트에서 mgmt 주소로 ssh를 통해 실행됐다; `launcher()`는 클라우드에서 아직 실행된 적이 없다 |
+| launcher | `docker run --rm --network <segment>` | `runner("attacker")`: 선언된 attacker의 mgmt 주소로 ssh해 도구를 실행한다(origin은 attacker가 그 구간에 있는지만 확인하고, 출발 국가는 `fsl-origin` SNAT가 정한다); 다른 이미지는 거부되는데, Nova는 호스트를 부팅해 출력을 반환하고 삭제할 수 없기 때문이다 |
+| 테스트 대상 | 라이브 스택 | 공개된 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트; `fsl-range` 클라우드에서는 플랫폼 VM이 `/api/range/`를 통해 fabric, 이미지, slot을 구축했고, `describe()`가 서른 개 출발지 위의 WAF와 estate 및 mgmt 위의 네 호스트를 되읽었으며, `runner()`가 각 호스트에서 mgmt 주소로 ssh를 통해 실행됐다; `launcher()`는 2026-10-08 `ru`와 `tw` 출발지에서 sqlmap을 실행했다 |
 
 compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하고, entrypoint는 플랫폼
 사용자를 그 그룹에 추가한다. 이는 컨테이너 탈출 경로다. OpenStack 어댑터를 쓰면

@@ -684,6 +684,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `compose.yaml:211`, the security group's 8080); dropped from scope
       2026-10-08 and removed the same day. pfSense itself stays as the OpenStack
       edge and sensor host.
+- [x] Tool cases on OpenStack: the launcher ssh'd to Kali on the origin
+      segment address, which collides with the platform's docker edge bridges
+      (ru, br, hk, us) or times out (tw). It now ssh's over mgmt; sqlmap from
+      ru and tw scored TP, alerts carry 5.188.10.10 and 120.96.0.10 (done
+      2026-10-08).
+- [ ] `POST /attacks/` does not wear the origin; the source country is the one
+      last set by `/api/attacker/origin/` (the red console sets it when the
+      origin is picked). An API caller that fires with another origin records
+      an origin the traffic did not carry.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal

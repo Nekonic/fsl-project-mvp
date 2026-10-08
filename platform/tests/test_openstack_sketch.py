@@ -510,10 +510,42 @@ def test_a_tool_runs_on_the_attacker_that_stands_on_that_segment():
         "sh", "-c", f'"$@"; {ports.EXIT_REPORT}', "sh", "sqlmap", "--version",
     ], argv
     assert "5.188.10.7@".split("@")[0] in " ".join(argv), (
-        f"the tool did not run on the attacker's address on the edge segment: "
+        f"this attacker has only its internet NIC, so the launcher reaches it "
+        f"at that sole address; when it also stands on management the launcher "
+        f"prefers that (test_a_tool_reaches_the_attacker_over_management): "
         f"{argv}"
     )
     assert answered.output == "sqlmap 1.10"
+
+def test_a_tool_reaches_the_attacker_over_management():
+    from unittest.mock import patch
+
+    servers = {"servers": [{
+        "name": "fsl-kali",
+        "addresses": {
+            "range1-mgmt-v4": [{"addr": "172.31.0.7", "OS-EXT-IPS:type": "fixed"}],
+            "range1-internet-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}],
+        },
+    }]}
+
+    def get(call):
+        return servers if "/servers/detail" in call else cloud_reader()(call)
+
+    adapter = openstack.OpenStack(declared.read(), CLOUD, get=get)
+    with patch("range.openstack.subprocess.run") as ran:
+        ran.return_value.returncode = 0
+        ran.return_value.stdout = "sqlmap 1.10"
+        ran.return_value.stderr = f"{ports.EXIT_MARK}0\n"
+        adapter.launcher("ru")("fsl-kali", ["sqlmap", "--version"])
+
+    target = ran.call_args.args[0][-2]
+    assert target.endswith("@172.31.0.7"), (
+        f"the tool ssh'd to the attacker's internet (origin) address, which the "
+        f"platform has no route to; the management address is the only one it "
+        f"reaches, and the origin is carried by the SNAT the proxy wears there, "
+        f"not by which address ssh connects to: {target}"
+    )
+    assert "5.188.10.7" not in target, target
 
 def test_a_tool_on_a_segment_the_attacker_does_not_stand_on_is_refused():
     adapter = sketch()
