@@ -2,6 +2,7 @@ services:
   board:
     platform: linux/amd64
     build: ./app
+    image: fsl/board:mvp
     container_name: fsl-wg-board
     depends_on:
       board-db: {condition: service_healthy}

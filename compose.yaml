@@ -180,6 +180,7 @@ services:
   kali:
     platform: linux/amd64
     build: ./deploy/kali
+    image: fsl/kali:mvp
     container_name: fsl-kali
     networks: [edge]
     volumes:
@@ -194,6 +195,7 @@ services:
   proxy:
     platform: linux/amd64
     build: ./deploy/proxy
+    image: fsl/proxy:mvp
     container_name: fsl-proxy
     networks: [edge, edge-br, edge-hk, edge-us]
     volumes:
