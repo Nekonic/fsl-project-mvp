@@ -666,6 +666,33 @@ scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
 only its own target and alerts (live gate, not yet run).
 
+To do, found by the 2026-10-08 doc review (open until checked off):
+
+- [ ] Build steps 1, 2, 4-8 on the OpenStack deployment; run the live
+      acceptance there before the push (agreed 2026-10-08).
+- [ ] The lesson's attack has to change the target's records: sqlmap's stock
+      payloads do not finish the `?sort=` dump (only manual error-based
+      extraction does). Settle the extraction before step 7 reads completion
+      from the target.
+- [ ] Ingest from the console: no page calls `/ingest/`, so a round played in
+      the browser scores with no detections. Needed by the lesson.
+- [ ] CLI harness opens a board session for every case file
+      (`redteam/harness.py:80`); a corp run is scored as board and its effect
+      objectives are never credited.
+- [ ] Remove the pfSense pane and the `:8080` proxy (`blue.html`,
+      `nginx.conf:24-41`, `entrypoint.sh:16-40`, `pf_prime.py`,
+      `compose.yaml:211`, the security group's 8080); dropped from scope
+      2026-10-08. pfSense itself stays as the OpenStack edge and sensor host.
+- [ ] Seam exceptions: move the code or keep them recorded
+      (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
+      `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
+      wiring for the attacker box).
+- [ ] The red terminal and the blue WAF terminal (`/vm-terminal/`) do not
+      connect on compose: Kali and the WAF have no `mgmt` address there.
+- [ ] Spikes: Kibana highlight on stable `data-test-subj` selectors, and the
+      CRS starting configuration (does default-PL CRS block the SQLi, does it
+      false-positive on O'Brien).
+
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
 Design in `docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`. One
