@@ -53,7 +53,7 @@ archived `docs/superpowers/plans/`.
 
 ## How the score works
 
-Two separate numbers; the first is the point.
+Two separate numbers; the first is the primary score.
 
 What the red team took: the target flips its own ground truth when an objective
 falls — for the board, loot that exactly matches the session-start snapshot of
@@ -67,8 +67,9 @@ folded in — a defence that blocks everything scores perfectly here and loses
 every objective.
 
 One case is one decision however many alerts it drew (`board-sqli-orderby-sqlmap`
-draws 94, counts once); say so when reporting, because per-alert counting
-measures the alert threshold, not the defence. A true positive must also
+sends about 94 requests and draws many alerts, and counts once); say so when
+reporting, because per-alert counting measures the alert threshold, not the
+defence. A true positive must also
 survive `expect`: the case names a substring its signature should match, and an
 alert that does not mention the attack's mechanism is reported
 `corroborated: false`.
@@ -87,6 +88,12 @@ alert that does not mention the attack's mechanism is reported
   process, `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
+  Known exceptions in code today; do not add more, and whether to move them is
+  open (`docs/state/now.md`):
+  `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
+  `range/pfsense.py` stops and starts Suricata on pfSense (OpenStack);
+  `operator_log.py` reads the attacker's command log, and the terminal wiring
+  names `fsl-kali`. `docs/ARCHITECTURE.md` keeps the table.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.
@@ -98,8 +105,8 @@ alert that does not mention the attack's mechanism is reported
 `bin/verify` refuses a change that grows a gated number or shrinks the floor.
 `core_loc` (`scoring/`, `ingest/`, `rules/`, `redteam/harness.py`),
 `dependencies` and `services` may only fall. `product_loc` and
-`wargame_services` are reported, not gated. `tests` (count of `def test_`) may
-only rise — deleting a test is the cheapest way to pass. `bin/measure` prints
+`wargame_services` are reported, not gated. `tests` (module-level `test_*` functions in
+`test_*.py`, as `bin/measure` counts them) may only rise — deleting a test is the cheapest way to pass. `bin/measure` prints
 them all; `reference.md` beside the `orchestrate` skill has the full table.
 `metrics.json` holds the record; editing it by hand is a last resort, not an
 escape hatch. A small, obviously-correct change that justifies a gated +1 may
@@ -110,11 +117,11 @@ just be made and recorded, not staged as a decision.
 - `platform/` is not a package — `platform` is a stdlib name; never add
   `platform/__init__.py`. Run Python with `platform/` as the working directory
   (same for `test/`).
-- No comments or docstrings anywhere; name things so the code says what it
-  does. The one exception is `deploy/suricata/rules/`, where a commented-out
-  rule is how suppression works.
+- No comments or docstrings in code; name things so the code says what it
+  does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
+  suppression works, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
   Bring-up is one command, `docker compose up -d --build` (it sets up the
   docker socket group and registers the Elasticsearch ingest pipeline).
-  `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and seams,
+  `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
   `docs/superpowers/specs/` the design.

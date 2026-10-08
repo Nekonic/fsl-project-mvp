@@ -1,9 +1,10 @@
 # The community board is an ordinary Django site on MySQL. It ships no
-# challenges and keeps no score, so nothing here `takes:` an objective; these
-# cases exist to be caught, or not, by the WAF and the IDS. The board's own
-# defence is Django's: the ORM parameterises queries and the templates escape
-# output, so the app resists these on its own. What is measured is whether the
-# defence in front of it saw the attempt.
+# challenges and keeps no score, and no case here carries `takes:`. Most of
+# these attacks fail against the app itself: the ORM parameterises queries and
+# the templates escape output. The exception is the `?sort=` order_by injection
+# (CVE-2021-35042), which reaches the raw ORDER BY. board-sqli-orderby-sqlmap
+# fires sqlmap at it as a detected probe; sqlmap's stock payloads do not finish
+# the dump there, so extraction and submission to /loot/ are manual.
 #
 # Benign cases matter as much as the attacks. Without them a rule that blocks
 # everything scores perfectly. `normal-search-with-apostrophe` is the one that

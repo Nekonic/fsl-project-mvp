@@ -1,12 +1,14 @@
 # fsl-project-mvp
 
-A cyber attack/defence training range. A red team attacks two targets — a
-Django board and a WordPress corporate site, both on MySQL behind the WAF — a
-blue team defends with Suricata and ModSecurity, and the platform scores what
-each side achieved. This repo is the
-throwaway prototype; the production project lives elsewhere.
+A cyber attack/defence training range. A red team attacks two targets behind
+the WAF, a Django board and a WordPress corporate site, each with its own
+MySQL. A blue team defends with Suricata and ModSecurity, and the platform
+scores both sides. This repo is a throwaway prototype; the production project
+lives elsewhere.
 
 - `CLAUDE.md`: what the repo is for, how the score works, the working rules
+- `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`:
+  the approved direction (2026-10-08); parts of it are not built yet
 - `docs/ARCHITECTURE.md`: how the range is put together, and where it is going
 - `docs/THREAT-MODEL.md`: what the range emulates and what it leaves out
 - `docs/STATE.md`: where the work stands
@@ -17,9 +19,11 @@ throwaway prototype; the production project lives elsewhere.
 ### Where it runs
 
 On the OpenStack cloud the whole stack runs inside one VM, which one Heat
-stack (`deploy/openstack/platform.yaml`) creates. The platform reads the range through the OpenStack API as the
-member-role user `fsl-range`; the range it scores is still the Docker one
-inside the VM (backlog 2 in `docs/STATE.md` moves it onto OpenStack).
+stack (`deploy/openstack/platform.yaml`) creates. The platform drives the
+range through the OpenStack API as the member-role user `fsl-range`. On the VM
+`FSL_SUBSTRATE=range.openstack.connect`, so the scored range is the OpenStack
+slot, and a session cannot start until `/api/range/ready/` reports that slot
+ready.
 
 ```mermaid
 flowchart TB
@@ -50,14 +54,16 @@ flowchart TB
 
 ### Inside the stack
 
-The red team attacks through the blue team's defences into a wargame; the
-blue team's sensors log into Elasticsearch; the platform referees, scoring
-from those alerts and from the loot the attacker proves against the target's
-own data. The platform, red and blue teams are in the top `compose.yaml`; each
-wargame is a folder under `wargames/` that it includes, so a new wargame is a
-new folder and one more `include:` line. There are two wargames: the board, a
-`loot_verified` target, and corp, a WordPress site that is an `effect_observed`
-target.
+The red team attacks a wargame through the blue team's WAF and IDS. The
+sensors' alerts go to Elasticsearch. The platform scores from those alerts and
+from the target's own records (ground truth): exfiltrated data the attacker
+submits is checked against the target's data. The platform, red and blue
+teams are in the top `compose.yaml`, which includes one folder per wargame
+under `wargames/`. A new wargame needs that folder with its `compose.yaml`,
+`scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
+one more `include:` line; `platform/wargames.py` discovers it from
+`scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
+a WordPress site (`effect_observed`).
 
 ```mermaid
 flowchart LR
@@ -86,7 +92,7 @@ flowchart LR
   end
 
   person -->|":8000"| console
-  console -->|"/terminal/"| kali
+  console -->|"/vm-terminal/fsl-kali/, ssh on mgmt"| kali
   kali --> proxy
   proxy --> waf
   waf --> board
@@ -99,14 +105,16 @@ flowchart LR
   console --> scoring
 ```
 
-Left out to keep the lines readable: Kali's raw TCP goes straight to the WAF
-without the proxy; the platform fires scripted cases at the WAF itself; and
-through the substrate (`docker exec` here, ssh on OpenStack) it writes the
-sensor's rules and the proxy's case label and reads the attacker's command
-log, and it reads each target's ground truth directly over the estate network,
-past the WAF — the board's `auth_user` table, and corp-db's MySQL binary log
-(`mysqlbinlog`), which is how corp is scored by effect instead of submitted
-loot. The networks are in `docs/ARCHITECTURE.md`.
+Not drawn: Kali's raw TCP goes straight to the WAF without the proxy, and the
+platform fires scripted cases at the WAF itself. Through the substrate runner
+(`docker exec` on compose, ssh on OpenStack) the platform writes the sensor's
+rules and the proxy's case label, reads the attacker's command log, and reads
+corp-db's MySQL binary log (`mysqlbinlog`); corp is scored by observed effect,
+not by submitted data. The board's ground truth (its `auth_user` table) is read
+over HTTP from the board itself (`BOARD_API_URL`), bypassing the WAF. The red
+terminal is a ttyd inside the platform that ssh's to Kali's `mgmt` address; on
+compose Kali has no `mgmt` address, so the pane does not connect there. The
+networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -120,12 +128,12 @@ docker compose up -d --build
 
 Elasticsearch's managed GeoIP downloader is off; it reads `GeoLite2-City.mmdb`
 from `config/ingest-geoip` (a durable bind mount) instead. `bin/fetch-geoip`
-puts it there once — the file is not committed, and it survives a container
-recreate rather than being re-downloaded (the cloud's Elasticsearch cannot
-reach the download CDN). The platform sorts out the docker socket group and
-registers the Elasticsearch ingest pipeline (which sets evidence's event time
-and geolocates source addresses) on start, so there is nothing else to run. Firing the scripted cases from the command line and
-`bin/verify`, `--fast` included, need a virtualenv:
+puts it there once. The file is not committed and survives a container
+recreate (the cloud's Elasticsearch cannot reach the download CDN). On start
+the platform sets the docker socket group and registers the Elasticsearch
+ingest pipeline, which sets each event's time and geolocates source addresses.
+Firing the scripted cases from the command line and `bin/verify`, `--fast`
+included, need a virtualenv:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
@@ -133,18 +141,21 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, `/api/`, and the attacker's terminal at `/terminal/` | a person's browser |
-| 8080 | the pfSense GUI, reverse-proxied for the blue console's pane | a person's browser |
+| 8000 | the console, `/api/`, Kali's own ttyd at `/terminal/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8080 | the pfSense GUI, reverse-proxied for the blue console's pane (removal pending) | a person's browser |
+| 5140/udp | Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
-A person needs 8000 and 8080: nginx inside the platform's image takes 8000 and
-hands `/terminal/` to Kali's ttyd, which publishes no port of its own, and
-serves the blue console's pfSense pane from 8080, a reverse-proxy on a distinct
-origin so pfSense's root-absolute URLs resolve. On the Mac every port is
-published on `127.0.0.1` only; on the platform VM 8000 and 8080 are published
-on the VM's own address instead (`FSL_PUBLISH` in `.env`). The
-target is not published: the command-line cases and the acceptance tests reach
-it from inside the range, the way the console does. Inside the range the
+nginx inside the platform image serves 8000. It passes `/terminal/` to the ttyd
+on the Kali container (compose) and `/vm-terminal/` to ttyd processes inside the
+platform, which ssh to the host's `mgmt` address.
+8080 is a reverse proxy on a separate origin so pfSense's root-absolute URLs
+resolve; the 2026-10-08 ruling drops the pfSense pane and 8080 from scope, and
+their removal is pending. By default every port is published on `127.0.0.1`.
+On the platform VM, 8000 and 8080 are published on the VM's own address
+(`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The target is
+not published: the command-line cases and the acceptance tests reach it from
+inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the
 `edge` network) and `http://corp.com` (a vhost reached by the `Host` header).
 
@@ -161,10 +172,9 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 
 `keystone` is Keystone's base URL without `/v3`; the platform adds it. The
 user is looked up in domain `default`, and the project is the stack's own.
-The password never goes into the stack: Nova keeps an instance's user data,
-and its metadata service serves it to whatever runs on the VM, the range's
-containers included. Once the stack's `address` answers ssh, add the password
-from a file, so it never reaches a command line, and recreate the platform:
+The password stays out of the stack, because Nova's metadata service serves
+user data to every process on the VM, containers included. Once the stack's
+`address` answers ssh, add the password from a file and recreate the platform:
 
 ```bash
 { printf 'FSL_OPENSTACK_PASSWORD='; cat PASSWORD_FILE; echo; } | ssh ubuntu@ADDRESS 'cloud-init status --wait >/dev/null && cat >> /opt/fsl/openstack.env && sudo docker compose -f /opt/fsl/compose.yaml up -d platform'
@@ -182,10 +192,10 @@ from a file, so it never reaches a command line, and recreate the platform:
 | `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-The stack's `address` output is the floating IP; the console is at
+The stack's `address` output is the floating IP. The console is at
 `http://ADDRESS:8000/` and the blue console's pfSense pane at
-`http://ADDRESS:8080/`, both with no login yet. 9200 and 5140 stay on the VM's
-loopback.
+`http://ADDRESS:8080/` (removal pending); neither asks for a login. 9200 stays
+on the VM's loopback; 5140/udp listens on all of the VM's addresses.
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
 `bin/backup` and the restore below there. `systemctl status fsl-platform`
@@ -198,8 +208,8 @@ own API:
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
 ```
 
-`GET` on the same path shows what is missing, present, drifted or left
-over, and `DELETE` takes it down, refused while a server stands on it.
+`GET` shows what is missing, present, drifted or left over; `DELETE` takes it
+down, and is refused while a server is attached.
 
 The range's VMs boot from golden images the platform builds from the setup
 scripts `declaration.yaml` names under `hosts:`. Each POST moves every build
@@ -214,28 +224,26 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 A failed build shows the end of its console under `detail`; `DELETE` on the
 same path removes failed builders and images built from older scripts.
 
-With the images ready, one POST boots the WAF and the board, each from its
-image, and the platform reaches them over ssh on `mgmt`:
+With the images ready, one POST boots `fsl-pfsense`, `fsl-kali`, `fsl-waf`
+and `fsl-wg-board`, each from its image, and the platform reaches them over ssh
+on `mgmt`:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-The edge and the WAF then take their config over ssh — pfSense's WAN
+`POST /api/range/configure/` then pushes config over ssh: pfSense's WAN
 addresses, pass rule, Suricata and syslog, and the WAF's ModSecurity log
-forwarding — with `POST /api/range/configure/`. To reset the slot between
-sessions, `POST /api/range/slot/rebuild/` Nova-rebuilds every VM from its
-golden image (keeping its ports and addresses), so no edited data or
-rule carries over; run `configure/` again once the VMs are back up, since the
-rebuild wipes the ssh-pushed config (the board is baked and needs only the
-rebuild).
+forwarding. `POST /api/range/slot/rebuild/` Nova-rebuilds every VM from its
+golden image, keeping its ports and addresses, so no edited data or rule
+carries over; closing a session calls it. The rebuild wipes the pushed config,
+so run `configure/` again once the VMs are up (the board is baked into its
+image and needs only the rebuild).
 
-The range lives outside the stack. Take it down in order, `DELETE` on
-`/api/range/slot/` and then on `/api/range/fabric/`, before
-`openstack stack delete fsl-platform` or a stack update that replaces the
-server: the platform's ssh key lives on the VM, so a new VM makes a new key,
-and the fabric reports the old keypair as drift. The images stay; they are
-the slow part.
+The range lives outside the stack. Before `openstack stack delete
+fsl-platform` or a stack update that replaces the server, `DELETE`
+`/api/range/slot/` and then `/api/range/fabric/`: a new VM makes a new ssh
+key, and the fabric reports the old keypair as drift. The images stay.
 
 The stack boots with the keypair `key_name` names, which has to be in the
 project first:
@@ -246,12 +254,12 @@ openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 
 ### The pfSense image
 
-pfSense CE has no cloud image and no scripted install: its only installer is
+pfSense CE has no cloud image and no scripted install. Its only installer is
 Netgate's online one (`netgate-installer-v1.2-RELEASE-amd64.iso`, from a $0
-Netgate Store checkout), and installing CE with it needs no account. The
-cloud has no volume service, so the install goes onto a server's own root
-disk through Nova's stable rescue, which boots the ISO as a CD-ROM and keeps
-the server's disk attached. As `fsl-range`:
+Netgate Store checkout), which installs CE without an account. The cloud has
+no volume service, so the install goes onto a server's root disk through
+Nova's stable rescue, which boots the ISO as a CD-ROM with the disk attached.
+As `fsl-range`:
 
 ```bash
 openstack image create netgate-installer --file netgate-installer.iso --disk-format iso --container-format bare --private --property hw_rescue_device=cdrom --property hw_rescue_bus=scsi --property hw_scsi_model=virtio-scsi
@@ -287,22 +295,23 @@ Korean.
   case is labelled on the way out. Alternatively name a case, press start,
   work in the shell and press stop: everything sent in between is attributed
   to that name.
-- **Blue** is a sidebar that frames the real tools — the pfSense GUI (the edge
-  firewall and its Suricata rules), Kibana (the full ELK), and a WAF terminal;
-  the zero-sum scoreboard reveals on the session page when it closes.
+- **Blue** is a sidebar of framed tools: the pfSense GUI (the edge firewall
+  and its Suricata rules; removal pending), Kibana, and a WAF terminal. The
+  scoreboard appears on the session page when the session closes.
 
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,
-from the platform, the way the console fires — the board by default, corp with
-its own vhost and case file:
+from the platform:
 
 ```bash
 docker compose exec platform \
   python redteam/run.py --target http://board.com --tool-target http://board.com
-docker compose exec platform \
-  python redteam/run.py --target http://corp.com --tool-target http://corp.com \
-    --cases redteam/cases/corp.yaml
 ```
+
+The harness always opens a board session (`redteam/harness.py`). Pointing it
+at `http://corp.com` with `--cases redteam/cases/corp.yaml` fires the corp
+cases, but they are scored as a board session and corp's `effect_observed`
+objectives are never credited.
 
 ## Checking it
 
@@ -312,7 +321,8 @@ bin/verify            # also the acceptance tests in test/, against the live sta
 ```
 
 The full run restarts the platform and resets the target, the rules and the
-attacker's origin, so do not run it against a stack someone is using. It deletes only the sessions its own run created.
+attacker's origin, so do not run it against a stack someone is using. It
+deletes only the sessions it created.
 `bin/prune` deletes sessions by hand and is a dry run without `--apply`:
 
 ```bash
@@ -320,9 +330,8 @@ bin/prune --keep 20 --apply      # keep the newest 20
 bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 ```
 
-After adding a Tailwind class to a template, run `bin/build-css`. The
-stylesheet is generated and committed so the console renders without internet
-access, and a test fails when it is out of date.
+After adding a Tailwind class to a template, run `bin/build-css`; the
+generated stylesheet is committed, and a test fails when it is stale.
 
 ## Backup and restore
 
@@ -353,22 +362,23 @@ docker run --rm --network none --entrypoint sh --user fsl \
 docker compose start platform
 ```
 
-The image's entrypoint ignores its arguments and starts the server, so
-`--entrypoint sh` replaces it. The image itself runs as root; `--user fsl`
-makes the copy the platform's user's, where `docker cp` would leave it owned
-by root and unwritable. The old `-journal` has to go, or SQLite would replay
-it onto the restored file. On start the platform applies any migration the
-backup predates. The copy has been checked on a scratch volume (it lands
-owned by `fsl`); the whole procedure has not been run against a live stack.
+`--entrypoint sh` replaces the image's entrypoint, which ignores its
+arguments. `--user fsl` leaves the copy owned by the platform's user;
+`docker cp` would leave it owned by root and unwritable. The old `-journal`
+must go, or SQLite replays it onto the restored file. On start the platform
+applies any newer migrations. The copy step was checked on a scratch volume;
+the whole procedure has not been run against a live stack.
 
 ## Local lab only
 
 Elasticsearch runs without security and Django with `DEBUG=1`. Django answers
 only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
-names more; the platform VM adds its floating IP. The Docker
-socket is mounted into the platform, and the Kali shell at `/terminal/` is an
-unauthenticated root shell. Both are container escape paths.
+names more; the platform VM adds its floating IP. The Docker socket is
+mounted into the platform, a container escape path. `/terminal/` is an
+unauthenticated root shell on Kali, and the terminals under `/vm-terminal/` need
+no login of their own and give a shell on Kali and the WAF.
 
 The same holds on the platform VM. There the project's password is also plain
 text in `/opt/fsl/openstack.env` and in the platform container's environment.
-The VM's ssh and 8000 are open to any address, and 8000 asks for no login.
+The VM's ssh, 8000 and 8080 are open to any address. 8000 asks for no login,
+and 8080 serves the pfSense GUI already logged in.

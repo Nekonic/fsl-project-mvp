@@ -13,7 +13,7 @@ refuses a change that grows a gated number or shrinks the floor.
 | `core_loc` | down only | the surviving hypothesis: `platform/scoring/`, `platform/ingest/`, `platform/rules/`, `redteam/harness.py` |
 | `dependencies` | down only | direct pip packages |
 | `services` | down only | the platform's own compose services |
-| `tests` | up only | `def test_` definitions |
+| `tests` | up only | module-level `test_*` functions in `test_*.py` |
 | `product_loc` | reported | the disposable shell: UI, API surface, compose, deploy |
 | `wargame_services` | reported | a wargame's own compose services |
 
@@ -43,12 +43,16 @@ what lets a piece be swapped without touching the rest.
 - `platform/rules/suricata.py` — the Suricata process (a runner; it does not
   import `subprocess`).
 - `platform/attacker.py` — the attacker box and its marker.
-- `platform/api/loot.py` — the loot path: reads the target's own ground truth
-  and matches submitted loot against it.
+- `platform/api/loot.py` — the board: reads the target's own records and
+  matches submitted stolen data against them.
+- `platform/api/effect.py` — corp: reads corp-db's own records (snapshot and
+  binary log) through the substrate runner.
 - `platform/scoring/`, `platform/scoreboard.py` — pure functions, no I/O, no
   Django.
 
-`docs/ARCHITECTURE.md` carries the full map and the declaration/substrate seam.
+Known exceptions in code today are listed in `CLAUDE.md` and in the isolation
+seams table of `docs/ARCHITECTURE.md`, which also has the declaration/substrate
+seam.
 Why one case is one decision, and the `expect`/`corroborated` rule, are in
 `CLAUDE.md` ("How the score works"); they are not copied here, so they cannot
 drift.

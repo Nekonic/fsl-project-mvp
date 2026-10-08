@@ -1,144 +1,166 @@
 # Now
 
-The live state of the work in flight. Small on purpose: the orchestrator keeps
-its own context, so this is the handover across compaction, not a full history.
-The product backlog and the finished record stay in `docs/STATE.md`; rulings
-are in `docs/DECISIONS.md`; detail is in `git log`.
+The state of the work in flight, kept short: it is the handover across
+compaction, not a history. The product backlog and the finished record are in
+`docs/STATE.md`; rulings in `docs/DECISIONS.md`; detail in `git log`.
 
 Updated: 2026-10-08
 
 ## In flight: building the composable, session-isolated learning MVP
 
-READ FIRST — the source of truth, before planning or building: the canonical
-spec `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`
-AND the `[확정]` living-doc artifact 37HeLkkLEFQgVWbwLuXH7S. Read them directly;
-do not plan from this file's reconstruction or from memory, and never overturn a
-`[확정]` decision without quoting it and showing where it fails (e.g. the edge
-origin subnets are PRESERVED/shared and only estate/mgmt float per session — so
-there is no per-session edge and no subnet collision; that is already decided).
+Read first, before planning or building: the canonical spec
+`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`
+and the living-doc artifact 37HeLkkLEFQgVWbwLuXH7S, whose items marked as
+confirmed are final. Read them directly, not this file's summary or memory. Do not overturn a
+confirmed item without quoting it and showing where it fails. Example: the edge
+origin subnets stay fixed and shared and only `estate`/`mgmt` float per session,
+so there is no per-session edge and no subnet collision.
 
-Direction is firm and approved to build. Canonical spec:
-`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`.
-Rationale: `docs/DECISIONS.md` (2026-10-08 entries). User-facing Korean version:
-Claude Docs artifact 37HeLkkLEFQgVWbwLuXH7S. Produced by four interview rounds +
-three workflows (direction critique, how-others-teach-rules,
-resolve-open-items-by-majority).
+The direction is approved to build. Rationale: `docs/DECISIONS.md` (2026-10-08
+entries).
 
-What the MVP is: a LEARNING-FIRST platform — one session with dials (guidance
-on/off; baseline rules minimal vs full CRS). The wedge: the learner tunes CRS /
-writes a Suricata rule that really BLOCKS a real attack, verified from the
-TARGET's own state (not a flag/quiz), gated on all-variants-blocked AND
-benign-passes. Scope: WAF (ModSec/CRS, tuning) + IPS (Suricata, detect);
-firewall out. Sessions are isolated instances composed from reusable elements;
-one built image backs many scenarios.
+What the MVP is: a learning-first platform, one session with two settings
+(guidance on/off; baseline rules minimal or full CRS). The differentiator: the
+learner tunes CRS or writes a Suricata rule that blocks a real attack, checked
+against the target's own records rather than a flag or quiz, and passes only
+when every malicious variant is blocked and every benign case passes. Scope: WAF
+(ModSecurity/CRS, tuning) and IDS/IPS (Suricata, detection); firewall out.
+Sessions are isolated instances composed from reusable elements; one built image
+backs many scenarios.
 
-## Build order (compose substrate first; OpenStack deferred)
+## Build order (compose first; OpenStack deferred)
 
-Landed 2026-10-08 (fast gate only — unit+console; the live 2-project acceptance
-has NOT run): **step 3 DONE** (commit d436839). The WARGAMES dict is now
-discovered from `wargames/<id>/scenario.yaml` (name, description, image,
-public_url, objective_model, case_file), validated at import; WARGAMES stays a
-real dict so no call site changed (views.py:166,368 membership; three tests
-patch.dict it; two do dict(WARGAMES["board"], ...); test_compose set(WARGAMES)).
-board public_url is now literal http://board.com. The `image` field
-(fsl/board:mvp, fsl/corp:mvp) is declared but not consumed yet — it is the anchor
-for steps 2 and 1. core_loc flat 462, tests 1203->1209. board-easy/board-hard was
-NOT added: test_compose:238 ties set(WARGAMES) to the set of wargames/<id>/
-compose.yaml folders, so a new scenario id needs its own compose folder, which is
-exactly what the step-1 compose split reworks — do them together, live.
+The steps below are numbered 1-8. Spec MVP item 1 is steps 1+2 here; spec items
+2-7 are steps 3-8.
 
-Steps 1, 2, 4-8 remain and are LIVE-STACK work (they can only be proven by
-`docker compose up` + the acceptance suite, which a worktree cannot drive). Do
-NOT land them blind against the fast gate. AGREED 2026-10-08 (the user): the live
-build runs on the OpenStack deployment (192.168.0.100), driven together — start
-each step at gate 1 (present the plan, wait), execute live, run the acceptance
-there; push is held until that acceptance passes on this branch. Precise
-constraints found 2026-10-08:
-- Step 5 seam: loot.ground_truth (loot.py:20-21) builds the URL from
-  settings.BOARD_API_URL; views.py:1215 hardcodes loot.ground_truth("board") for
-  the readiness probe; effect uses a role runner already (effect.snapshot via
-  adapter.runner("corp-db"), views.py:188). The address resolver can reuse
-  docker.py:127-145 _segment (Containers[].IPv4Address -> Node.address).
-- Step 4: docker.py.runner (docker.py:56-74) execs declared.host(role) = a fixed
-  container name from declaration.yaml roles (declaration.yaml:48-57). The per-
-  project resolution pattern already exists at docker.py:169-185 (_modes filters
-  by label com.docker.compose.project). Tests pinning literal names:
-  test_declaration.py:239, test_openstack_sketch.py:293,295, test_range_seam.py:
-  223-224. ttyd proxy hard-wires fsl-kali/fsl-waf (nginx.conf:63,73;
-  entrypoint.sh:43-44).
-- Step 6: elastic.fetch (elastic.py:17-23) already takes `index`; views.py:702,1317
-  pass settings.ELASTIC_INDEX. Thread a per-session fsl-logs-<session>-* instead.
-- Step 2: today both wargame app services are `build:` with no tag
-  (board/compose.yaml:3, corp/compose.yaml:3). Add `image: fsl/board:mvp` /
-  `fsl/corp:mvp` alongside build (build-and-tag) so the shared up still builds and
-  session.yaml can reference by image: only. `services` is gated down-only (8) —
-  moving waf/suricata/filebeat into session.yaml drops it; keep bin/measure honest
-  (session.yaml is not on the include chain, so it vanishes from the count — record
-  the reason or teach measure to count it).
+Landed 2026-10-08 (fast gate only, unit and console; the live two-project
+acceptance has not run): step 3, commit 81fb283. WARGAMES is discovered from
+`wargames/<id>/scenario.yaml` (name, description, image, public_url,
+objective_model, case_file) and validated at import (platform/wargames.py:41-50).
+WARGAMES stays a dict, so no call site changed (views.py:166,368 membership;
+three tests patch.dict it; two do dict(WARGAMES["board"], ...); test_compose
+set(WARGAMES)). board public_url is the literal http://board.com. The `image`
+field (fsl/board:mvp, fsl/corp:mvp) is declared and read by nothing yet; steps 1
+and 2 consume it. Metrics: `bin/measure`, `metrics.json`. board-easy/board-hard
+was not added: platform/tests/test_compose.py:251 ties set(WARGAMES) to the set
+of wargames/<id>/compose.yaml folders, so a new scenario id needs its own compose
+folder, which the step-1 compose split reworks; do them together, live.
 
-1. Split compose into a SHARED control plane (platform + ES + Kibana, single) and
-   a PER-SESSION data-plane stack (session.yaml: target + db + waf + suricata +
-   filebeat) launched `docker compose -p fsl-<session>`. Do NOT replicate the
-   control plane (running the whole current compose.yaml per session would spin a
-   2nd orchestrator/ES/Kibana — the review's high-severity finding).
-2. Build each target image ONCE and TAG it (fsl/board:mvp); reference by
-   `image:`, never `build:` per session (wargames/board/compose.yaml:4 rebuilds
-   today — the "one image, many scenarios" blocker).
-3. DONE (d436839) — WARGAMES is discovered from `wargames/<id>/scenario.yaml`.
-   Still open under this step: prove one-image-many-scenarios with
-   board-easy/board-hard (needs their own compose folders per test_compose:238,
-   so it rides step 1), and fold the Suricata ruleset / WAF vhost ("defense")
-   into the descriptor once step 7 gives it a consumer.
-4. declaration.yaml roles -> compose SERVICE names; runner resolves
-   service->container per project (pattern exists: platform/range/docker.py:169-173
-   label lookup). Delete container_name pins and `name: fsl`; float only internal
-   estate/mgmt subnets (PRESERVE edge origin subnets — attacker geo-attribution);
-   ephemeral host ports.
-5. loot.ground_truth + the effect runner read the session's own target ADDRESS
-   (docker.py Node.address inspection — NOT cross-project DNS, which does not
-   resolve), baseline on Session.baseline, captured after the target is healthy.
+Steps 1, 2 and 4-8 need the live stack (`docker compose up` plus the acceptance
+suite), which a worktree cannot drive. Do not land them against the fast gate
+alone. Agreed with the user 2026-10-08: the live build runs on the OpenStack
+deployment (192.168.0.100), driven together. Each step starts at gate 1 (present
+the plan, wait), runs live, and runs the acceptance there; push waits until that
+acceptance passes on this branch. Constraints found 2026-10-08:
+
+- Step 5: loot.ground_truth (loot.py:20-21) builds the URL from
+  settings.BOARD_API_URL; it is called for the session baseline at views.py:183
+  and for the readiness probe at views.py:1215 (`loot.ground_truth("board")`).
+  The effect reader uses a role runner with a fixed role: `runner("corp-db")` at
+  views.py:188 (baseline) and views.py:408 (observe). The address resolver can
+  reuse docker.py:127-145 `_segment` (Containers[].IPv4Address -> Node.address).
+- Step 4: docker.py `runner` (docker.py:56-74) execs `declared.host(role)`, a
+  fixed container name from declaration.yaml roles (declaration.yaml:48-57). The
+  per-project lookup pattern exists at docker.py:169-185 (`_modes` filters by
+  label com.docker.compose.project). Literal container names in tests: about 194
+  occurrences in 36 test files, some of them OpenStack VM names that do not
+  change. Examples: test_declaration.py:239; test_openstack_sketch.py:295
+  (`:293` is a role name); platform/tests/test_range_seam.py:116,203 (container
+  names) and :223-224 (compose service names, run without `-p`). The ttyd proxy
+  is hardwired to fsl-kali/fsl-waf (nginx.conf:63,73; entrypoint.sh:43-44).
+- Step 6: elastic.fetch (elastic.py:17-23) already takes `index`; views.py:702
+  and :1317 pass settings.ELASTIC_INDEX. Pass a per-session
+  fsl-logs-<session>-* instead.
+- Step 2: both wargame app services are `build: ./app` with no tag
+  (wargames/board/compose.yaml:4, wargames/corp/compose.yaml:4). Add
+  `image: fsl/board:mvp` / `fsl/corp:mvp` beside `build` (build and tag), so the
+  shared `up` still builds and session.yaml can reference the image only.
+  `services` is gated down-only; moving waf/suricata/filebeat into session.yaml
+  lowers it because session.yaml is not on the include chain. Record the reason
+  or make bin/measure count it.
+
+1. Split compose into a shared control plane (platform, ES, Kibana, single) and
+   a per-session data-plane stack (session.yaml: target, db, waf, suricata,
+   filebeat) started with `docker compose -p fsl-<session>`. Do not replicate the
+   control plane: running the whole current compose.yaml per session would start
+   a second orchestrator, ES and Kibana (the review's high-severity finding).
+2. Build each target image once and tag it (fsl/board:mvp); reference it by
+   `image:`, never a per-session `build:`. Today wargames/board/compose.yaml:4
+   builds it, which blocks one image serving many scenarios.
+3. Done (81fb283): WARGAMES is discovered from `wargames/<id>/scenario.yaml`.
+   Still open: prove one image, many scenarios with board-easy/board-hard (needs
+   their own compose folders per test_compose.py:251, so it goes with step 1),
+   and add the planned `defense` field (Suricata ruleset, WAF vhost) once step 7
+   gives it a consumer.
+4. declaration.yaml roles -> compose service names; the runner resolves
+   service to container per project (pattern: platform/range/docker.py:169-173
+   label lookup). Delete the container_name pins and `name: fsl`; float only the
+   internal `estate`/`mgmt` subnets (keep the edge origin subnets fixed; they
+   carry attacker origin for GeoIP attribution); ephemeral host ports.
+5. loot.ground_truth and the effect runner read the session's own target
+   address (docker.py Node.address inspection; cross-project DNS does not
+   resolve), with the baseline on Session.baseline, captured after the target is
+   healthy.
 6. Per-session ES index fsl-logs-<session>-* into elastic.fetch
-   (platform/ingest/elastic.py:17-23 untouched; `index` is already a param).
-7. The lesson: board ?sort= SQLi (CVE-2021-35042), WAF SecRuleEngine On with CRS;
-   tune CRS to block it while the benign O'Brien search passes; Suricata inline on
-   the WAF netns (network_mode: service:waf), one sensor per session.
-8. Acceptance (LIVE gate, bin/verify): two concurrent sessions, each scores only
-   its own loot/effect and its own alerts. The fast unit+console gate only covers
-   the scenario loader and address wiring, not actual isolation.
+   (platform/ingest/elastic.py:17-23 unchanged; `index` is already a parameter).
+7. The lesson: board ?sort= SQLi (CVE-2021-35042). The WAF runs
+   `SecRuleEngine DetectionOnly` today (deploy/waf/modsecurity.conf:1); switch it
+   to `On` with CRS and tune CRS to block the attack while the benign O'Brien
+   search passes. Suricata already shares the WAF network namespace
+   (compose.yaml:114, `network_mode: "service:waf"`); per session, one sensor.
+8. Acceptance (live gate, bin/verify): two concurrent sessions, each scoring only
+   its own target's data/effect and its own alerts. The fast unit and console
+   gate covers the scenario loader and address wiring, not isolation.
 
 ## Build-time spikes
-- Log-highlight feasibility on real Kibana (stable data-test-subj selectors);
-  fall back to a side task panel beside the Kibana iframe if it does not hold.
-- CRS start posture: does default-PL CRS block this SQLi / FP on O'Brien? sets
-  the lesson's starting state (tune down an over-blocker vs up a permissive one).
+- Log highlight on the real Kibana (stable data-test-subj selectors); fall back
+  to a task panel beside the Kibana iframe if it does not hold.
+- CRS starting configuration: does CRS at the default paranoia level block this
+  SQLi, or raise a false positive on O'Brien? The answer sets the lesson's
+  starting state (tune down an over-blocking CRS, or tune up a permissive one).
 
 ## What must not break
-- Seams stay single-owner (loot/effect, elastic, suricata, attacker) — add a
-  session address, not new knowledge. The target decides whether it was beaten.
-- Ratchet: the scenario loader + resolvers are new core Python that can push
-  core_loc UP — keep minimal, lean on the existing generic validators
-  (wargames.py:54-70,117-142), run bin/measure before committing; tests floor
-  up-only.
-- Real work this touches (not free deletions): the ~dozen tests pinning literal
-  container names (test_declaration.py:239-240 and others); the ttyd vm-terminal
-  proxy hard-wiring fsl-kali/fsl-waf (nginx.conf:63,73, entrypoint.sh:43-44); the
-  benign TN cases re-baselined against CRS-On; per-session Suricata ruleset / WAF
-  vhost is a parameterised mount, not just a YAML key.
+- Each isolation seam keeps a single owner (loot/effect, elastic, suricata,
+  attacker); add a session address, not new knowledge. The target decides
+  whether it was beaten.
+- Ratchet: the resolvers are new core Python that can raise core_loc; keep them
+  minimal, reuse the existing validators (wargames.py:22-39, :65-81, :128-147),
+  and run bin/measure before committing; the tests floor only rises.
+- Work this touches that is more than a deletion: the container-name pins in
+  tests (step 4 above); the ttyd vm-terminal proxy hardwired to fsl-kali/fsl-waf;
+  the benign true-negative cases re-baselined with the WAF in blocking mode; a
+  per-session Suricata ruleset / WAF vhost is a parameterised mount, not only a
+  YAML key.
 
-## Deferred (OpenStack debt, not MVP)
-Per-session CIDR allocation (fabric.py:11); single-session lock
-(views.py:171-173, OpenStack-only — a no-op on docker) + bin/verify open-session
-guard removal; pfSense edge+sensor split (declaration.yaml:75-76); per-session ES
-containers (vs shared ES + per-session index). The firewall console pane + :8080
-pfSense proxy removal is also pending (firewall dropped from scope) — pfSense
-itself STAYS as the OpenStack edge + Suricata host.
+## Deferred (OpenStack work, not MVP)
+Per-session CIDR allocation (fabric.py:11); removal of the single-session lock
+(views.py:171-173, OpenStack only, a no-op on docker) and of the bin/verify
+open-session guard (bin/verify:56-73); splitting pfSense's edge and sensor roles
+(declaration.yaml:75-76); per-session ES containers (instead of shared ES with a
+per-session index). Removal of the pfSense console pane and the :8080 proxy is
+pending (firewall dropped from scope); pfSense stays as the OpenStack edge and
+Suricata host.
 
 ## Also still open from before
-- Pushed to dev at ab9f207 (2026-10-08, fast-forward): the earlier tidy (three),
-  the direction docs, step 3 (scenario.yaml), and the prevention-measures commit.
-  Only the fast gate (unit+console) has run; the LIVE acceptance (test/,
-  concurrent-session non-interference) has NOT — a worktree cannot drive it, so
-  run it in the OpenStack build session. 562486d (platform code, prior session) is
-  the one change in that still-unverified-on-live range.
-- The main checkout's local dev may need a fast-forward so the Desktop/harness
-  loads current project config (do it in the main checkout, not here).
+- dev is at a6fb72b (fast-forward, 2026-10-08): the earlier tidy-up, the
+  direction docs, step 3 (scenario.yaml) and the prevention-measures commit. Only
+  the fast gate (unit and console) has run; the live acceptance (test/,
+  concurrent-session non-interference) has not. A worktree cannot drive it; run
+  it in the OpenStack build session. 562486d (platform code, prior session) is
+  the one change in that range not yet verified live.
+- The main checkout's local dev may need a fast-forward so the desktop app and
+  harness load the current project config (do it in the main checkout).
+
+## Found by the 2026-10-08 doc review (code, not fixed yet)
+- No console page calls `/ingest/` (only test/conftest.py and redteam/run.py's
+  printout), so a round played in the browser scores with no detections. The
+  lesson (step 7) needs it.
+- The CLI harness always opens a board session (redteam/harness.py:80); a corp
+  case file is scored as board and its effect objectives are never credited.
+- Seam exceptions to decide (move the code, or keep as recorded exceptions):
+  register_pipeline.py (Elasticsearch), range/pfsense.py + configure.php
+  (Suricata on pfSense), operator_log.py + the fsl-kali terminal wiring
+  (attacker). See CLAUDE.md and the ARCHITECTURE seams table.
+- The pfSense pane and :8080 proxy are still built (blue.html, nginx.conf:24-41,
+  entrypoint.sh:16-40, pf_prime.py, compose.yaml:211); removal is pending.
+- A stale `/terminal/` location to kali:7681 remains at platform/nginx.conf:83.
