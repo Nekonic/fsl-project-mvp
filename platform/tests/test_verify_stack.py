@@ -163,8 +163,7 @@ def test_a_rule_file_the_sensor_refuses_is_reported_with_the_sensors_reason(
         '[ "$1" = - ] || exit 0\n'
         'script="$(cat)"\n'
         'case "$script" in *api/rules/validate*) ;; *) exit 0 ;; esac\n'
-        f'printf "%s\\n" "$script" | sed "s#localhost:8000#127.0.0.1:{port}#" '
-        f'| exec {shlex.quote(sys.executable)} -\n',
+        f'printf "%s\\n" "$script" | exec {shlex.quote(sys.executable)} -\n',
     )
     executable(tmp_path / "tools/curl", "exit 0\n")
     executable(
@@ -180,6 +179,7 @@ def test_a_rule_file_the_sensor_refuses_is_reported_with_the_sensors_reason(
             **unproxied,
             "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin",
             "TMPDIR": str(tmp_path),
+            "FSL_PLATFORM_URL": f"http://127.0.0.1:{port}",
         },
     )
 

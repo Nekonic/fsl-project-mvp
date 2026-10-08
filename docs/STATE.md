@@ -693,6 +693,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       last set by `/api/attacker/origin/` (the red console sets it when the
       origin is picked). An API caller that fires with another origin records
       an origin the traffic did not carry.
+- [ ] Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
+      bin/verify`, 2026-10-09: 23 passed, 78 skipped, 17 failed, 21 errors):
+      session fixtures hold a session open while others POST a new one, and
+      the single-slot range answers 409; `/api/rules/apply/` runs the compose
+      reload (`suricatasc`) against the pfSense sensor because
+      `FSL_SENSOR_RELOAD` is unset on the VM; the VM has no GeoLite2 database
+      (`bin/fetch-geoip` never ran); `test_strategy_honesty` still greps
+      `blue.html` for `renderComparison`, removed with the old blue console.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
