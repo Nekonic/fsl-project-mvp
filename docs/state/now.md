@@ -151,16 +151,7 @@ Suricata host.
 - The main checkout's local dev may need a fast-forward so the desktop app and
   harness load the current project config (do it in the main checkout).
 
-## Found by the 2026-10-08 doc review (code, not fixed yet)
-- No console page calls `/ingest/` (only test/conftest.py and redteam/run.py's
-  printout), so a round played in the browser scores with no detections. The
-  lesson (step 7) needs it.
-- The CLI harness always opens a board session (redteam/harness.py:80); a corp
-  case file is scored as board and its effect objectives are never credited.
-- Seam exceptions to decide (move the code, or keep as recorded exceptions):
-  register_pipeline.py (Elasticsearch), range/pfsense.py + configure.php
-  (Suricata on pfSense), operator_log.py + the fsl-kali terminal wiring
-  (attacker). See CLAUDE.md and the ARCHITECTURE seams table.
-- The pfSense pane and :8080 proxy are still built (blue.html, nginx.conf:24-41,
-  entrypoint.sh:16-40, pf_prime.py, compose.yaml:211); removal is pending.
-- A stale `/terminal/` location to kali:7681 remains at platform/nginx.conf:83.
+## To do
+The open items found by the 2026-10-08 doc review (console ingest, CLI scenario,
+pfSense pane removal, seam exceptions, `/vm-terminal/` on compose, the `?sort=`
+extraction) are a checklist under backlog 0 in `docs/STATE.md`.
