@@ -142,17 +142,14 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, Kali's own ttyd at `/terminal/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
-| 8080 | the pfSense GUI, reverse-proxied for the blue console's pane (removal pending) | a person's browser |
 | 5140/udp | Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000. It passes `/terminal/` to the ttyd
 on the Kali container (compose) and `/vm-terminal/` to ttyd processes inside the
 platform, which ssh to the host's `mgmt` address.
-8080 is a reverse proxy on a separate origin so pfSense's root-absolute URLs
-resolve; the 2026-10-08 ruling drops the pfSense pane and 8080 from scope, and
-their removal is pending. By default every port is published on `127.0.0.1`.
-On the platform VM, 8000 and 8080 are published on the VM's own address
+By default every port is published on `127.0.0.1`.
+On the platform VM, 8000 is published on the VM's own address
 (`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The target is
 not published: the command-line cases and the acceptance tests reach it from
 inside the range, as the console does. Inside the range the
@@ -193,8 +190,7 @@ user data to every process on the VM, containers included. Once the stack's
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
 The stack's `address` output is the floating IP. The console is at
-`http://ADDRESS:8000/` and the blue console's pfSense pane at
-`http://ADDRESS:8080/` (removal pending); neither asks for a login. 9200 stays
+`http://ADDRESS:8000/` and does not ask for a login. 9200 stays
 on the VM's loopback; 5140/udp listens on all of the VM's addresses.
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
@@ -295,8 +291,7 @@ Korean.
   case is labelled on the way out. Alternatively name a case, press start,
   work in the shell and press stop: everything sent in between is attributed
   to that name.
-- **Blue** is a sidebar of framed tools: the pfSense GUI (the edge firewall
-  and its Suricata rules; removal pending), Kibana, and a WAF terminal. The
+- **Blue** is a sidebar of framed tools: Kibana and a WAF terminal. The
   scoreboard appears on the session page when the session closes.
 
 The scripted cases can also be fired from the command line, as the acceptance
@@ -308,10 +303,10 @@ docker compose exec platform \
   python redteam/run.py --target http://board.com --tool-target http://board.com
 ```
 
-The harness always opens a board session (`redteam/harness.py`). Pointing it
-at `http://corp.com` with `--cases redteam/cases/corp.yaml` fires the corp
-cases, but they are scored as a board session and corp's `effect_observed`
-objectives are never credited.
+The harness opens the session of the scenario whose `case_file` matches the
+`--cases` basename (`board.yaml` opens board, `corp.yaml` opens corp, anything
+else opens board), and `--target` defaults to that scenario's `public_url`.
+For corp: `--cases redteam/cases/corp.yaml`.
 
 ## Checking it
 
@@ -380,5 +375,4 @@ no login of their own and give a shell on Kali and the WAF.
 
 The same holds on the platform VM. There the project's password is also plain
 text in `/opt/fsl/openstack.env` and in the platform container's environment.
-The VM's ssh, 8000 and 8080 are open to any address. 8000 asks for no login,
-and 8080 serves the pfSense GUI already logged in.
+The VM's ssh and 8000 are open to any address, and 8000 asks for no login.

@@ -208,7 +208,6 @@ services:
     networks: [edge, edge-br, edge-hk, edge-us, estate, mgmt]
     ports:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
-      - "${FSL_PUBLISH:-127.0.0.1}:8080:8080"
     environment:
       DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"

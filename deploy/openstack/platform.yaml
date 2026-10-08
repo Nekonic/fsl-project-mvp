@@ -69,7 +69,6 @@ resources:
       rules:
         - {protocol: tcp, port_range_min: 22, port_range_max: 22}
         - {protocol: tcp, port_range_min: 8000, port_range_max: 8000}
-        - {protocol: tcp, port_range_min: 8080, port_range_max: 8080}
         - {protocol: icmp}
 
   port:

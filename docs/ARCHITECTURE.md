@@ -38,9 +38,9 @@ folder, a case file under `redteam/cases/`, and an `include:` line.
 | `fsl-kibana` | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
-| `fsl-platform` | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`, and the pfSense GUI proxy on `:8080`, which the 2026-10-08 spec drops from scope; removal is pending) | all six | 8000, 8080 |
+| `fsl-platform` | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`) | all six | 8000 |
 
-8000 and 8080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
+8000 binds to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
 
 | Network | Segment | Subnet | Name | Origin |
@@ -233,9 +233,9 @@ A console tool case is pointed at the origin's target URL, or, with no origin
 chosen, at `TARGET_URL` (`http://board.com`) from the declared default origin.
 The target is not host-published, so the command-line harness reaches it from
 inside the range too: `redteam/run.py` runs on the platform (the way the
-acceptance suite drives it), has no origin option, and its `--target` and
-`--tool-target` default to `http://board.com`, which resolves to the WAF on
-port 80.
+acceptance suite drives it), has no origin option, and its `--target` defaults to the `public_url` of the
+scenario its `--cases` file belongs to (`http://board.com` for board), which
+resolves to the WAF on port 80. `--tool-target` defaults to `http://board.com`.
 
 The WAF runs CRS at paranoia level 1, anomaly threshold 5, in `DetectionOnly`
 (`deploy/waf/modsecurity.conf`), and every Suricata rule is `alert`. Nothing
@@ -248,14 +248,15 @@ WAF (ModSecurity) -> audit.log --+
 Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<day>
                                      (fsl_source)   pipeline fsl-geoip
                                                           |
-             POST /api/sessions/<id>/ingest/ (called by tests; no console page)
+             POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
              parse per fsl_source, copy the marker onto alerts, store
              as Detection rows in SQLite
 ```
 
-Only `test/conftest.py` calls `ingest/`; `redteam/run.py` prints the curl. A
-round run only from the browser gets no detections ingested.
+`test/conftest.py` and the session page's confirm-close call `ingest/`;
+`redteam/run.py` prints the curl. A browser round ingests its detections once,
+at close; alerts that arrive after the click are not ingested.
 
 ModSecurity's audit log carries the request headers, so its alerts carry the
 marker directly. Suricata's alert events carry no request headers; only its
@@ -402,8 +403,9 @@ The score endpoint is read-only and keeps no history.
 - One case file per wargame, attacks and benign traffic together:
   `redteam/cases/board.yaml` for the board, `redteam/cases/corp.yaml` for corp.
   Separate files make it easy to forget the benign cases. The CLI reads
-  `board.yaml` unless `--cases` names another file, and always opens a board
-  session.
+  `board.yaml` unless `--cases` names another file, and opens the session of the
+  scenario whose `case_file` matches that file's basename (board for an unknown
+  one).
 - The harness refuses to send a rewritten path. `requests` turns
   `/static/../../etc/passwd` into `/etc/passwd`; sending that would record an
   attack that never left and score the harness's failure as the defence's.
@@ -460,7 +462,7 @@ by the member-role user `fsl-range`. Horizon is never shown to users.
 
 - network and subnet `fsl-platform`;
 - a router to the external network, and a floating IP;
-- a security group opening tcp/22, tcp/8000, tcp/8080 and ICMP to any address;
+- a security group opening tcp/22, tcp/8000 and ICMP to any address;
 - the Nova server `fsl-platform`, with a config drive.
 
 Its parameters and their defaults are in `README.md`.
@@ -473,7 +475,7 @@ adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
 runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
 
 So the whole compose stack above runs inside one Nova VM. cloud-init sets
-`FSL_PUBLISH` to the VM's fixed address, so 8000 and 8080 are published there
+`FSL_PUBLISH` to the VM's fixed address, so 8000 is published there
 and opened in the security group, and a browser reaches the console at the
 floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
 for pfSense's syslog; 9200 stays on loopback.
@@ -566,9 +568,8 @@ of it is built (see above).
  platform VM: Ubuntu 24.04, floating IP, docker compose up
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
-   sidebar, three panes inside the page:
-     pfSense   web GUI, reverse-proxied on :8080, auto-logged-in
-               (built; dropped from scope 2026-10-08, removal pending)
+   sidebar, panes inside the page:
+     pfSense   web GUI pane (built; dropped from scope and removed 2026-10-08)
      Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |

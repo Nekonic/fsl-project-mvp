@@ -47,30 +47,11 @@ def test_the_blue_console_opens_the_first_pane_on_load(client):
     seen = open_page(client, "/blue/1/", setup=CONSOLES, scenario=READ)
     state = _state(seen["result"])
 
-    assert state["selected"] == ["pfsense"], "the first pane is not selected on load"
-    assert state["src"] == "http://console.test:8080/", state["src"]
+    assert state["selected"] == ["elk"], "the first pane is not selected on load"
+    assert state["src"] == "/kibana/", state["src"]
     assert state["consoles"] == [], (
-        "no pane frames a noVNC console any more; pfSense is a reverse-proxy "
-        f"origin, framed directly like ELK and the WAF: {state['consoles']}"
+        f"no pane frames a noVNC console; every pane is framed directly: {state['consoles']}"
     )
-
-def test_the_pfsense_pane_frames_a_reverse_proxy_on_its_own_origin(client):
-    seen = open_page(client, "/blue/1/", setup=CONSOLES, scenario="""
-      await browser.click('[data-pane="pfsense"]');
-    """ + READ)
-    state = _state(seen["result"])
-
-    assert state["selected"] == ["pfsense"]
-    assert state["src"] == "http://console.test:8080/", (
-        "pfSense is framed through the platform's own reverse-proxy on a "
-        f"dedicated port, a distinct origin from the console: {state['src']}"
-    )
-    proxy_origin = "/".join((state["src"] or "").split("/", 3)[:3])
-    assert proxy_origin != "http://console.test", (
-        "the proxy origin must differ from the console origin (by port) so the "
-        "browser frames pfSense cross-origin, not under the console origin"
-    )
-    assert proxy_origin.endswith(":8080"), proxy_origin
 
 def test_the_elk_pane_frames_kibana_on_the_platforms_own_origin(client):
     seen = open_page(client, "/blue/1/", setup=CONSOLES, scenario="""
@@ -155,3 +136,37 @@ def test_the_red_console_clears_a_stale_attacker_label_on_load(client):
         "open by a crashed or reloaded page does not mis-attribute later traffic: "
         f"{seen['result']['clears']}"
     )
+
+OPEN_SESSION = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/ingest/") return {status: INGEST_STATUS, body: {}};
+  if (request.route === "/api/sessions/1/close/") return {body: {}};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+CLOSE_SCENARIO = """
+      await browser.click('close');
+      await browser.click('confirm-close');
+      return browser.requests.map((r) => r.method + " " + r.route);
+"""
+
+def test_closing_a_session_ingests_before_it_closes(client):
+    seen = open_page(
+        client, "/session/1/",
+        setup=OPEN_SESSION.replace("INGEST_STATUS", "200"), scenario=CLOSE_SCENARIO,
+    )
+    routes = seen["result"]
+
+    assert "POST /api/sessions/1/ingest/" in routes, routes
+    assert "POST /api/sessions/1/close/" in routes, routes
+    assert routes.index("POST /api/sessions/1/ingest/") < routes.index("POST /api/sessions/1/close/")
+
+def test_a_failed_ingest_still_closes_the_session(client):
+    seen = open_page(
+        client, "/session/1/",
+        setup=OPEN_SESSION.replace("INGEST_STATUS", "500"), scenario=CLOSE_SCENARIO,
+    )
+
+    assert "POST /api/sessions/1/ingest/" in seen["result"], seen["result"]
+    assert "POST /api/sessions/1/close/" in seen["result"], seen["result"]

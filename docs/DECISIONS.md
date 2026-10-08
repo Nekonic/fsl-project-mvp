@@ -337,3 +337,29 @@ dates.
   records that sqlmap's stock payloads do not finish the dump there (error-based
   extraction by hand does). Step 7 has to settle how the lesson's attack moves
   the target's records before completion can be read from them.
+
+## 2026-10-08 — Console ingest, CLI scenario, pfSense pane removed
+
+- **A browser round ingests at close (2026-10-08, the user approved the plan).**
+  The session page POSTs `/ingest/` before `/close/`; ingest is incremental, so
+  one call at close is enough and no timer is needed. Alerts that land after the
+  click are not ingested. A failed ingest does not block the close.
+- **The CLI opens the case file's scenario.** `redteam/run.py` finds the
+  scenario whose `case_file` matches `--cases` and defaults `--target` to its
+  `public_url`; `harness.run` takes `scenario`. `core_loc` +1 (462 -> 463) for
+  the parameter, accepted as a small, obviously-correct gated +1 rather than
+  joining lines to hide it.
+- **The pfSense GUI pane and the :8080 proxy are removed** (ruled out of scope
+  earlier today). Gone: `pf_prime.py`, the pfSense code in `entrypoint.sh`, the
+  nginx 8080 server, the pane and the now-unreachable noVNC branch in
+  `blue.html`, its strings, the 8080 publish and the security-group rule.
+  pfSense stays as the OpenStack edge and Suricata host; the
+  `/api/range/console/<host>/` endpoint stays, unused.
+- **The tests floor is lowered 1209 -> 1203 (the user, option A).** Eight tests
+  whose subject was deleted went with it (`test_pf_prime.py` x7 and the pfSense
+  pane console test); two console tests were added. No replacement tests were
+  written to hold the number, since tests that only assert an absence would be
+  padding. `test_page_fetches_its_data_from_the_api` now skips `/blue/1/`, which
+  has no data to fetch; the page is still covered by the render tests.
+- **Not verified live.** The compose, nginx and security-group changes and the
+  corp CLI run need the OpenStack deployment; push waits for that check.

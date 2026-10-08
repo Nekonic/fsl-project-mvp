@@ -71,8 +71,7 @@ host. Limits:
   the guard lets everything through;
 - nothing stops a host in the range from sending with another host's address.
 
-The target is not published; port 8080 is the reverse proxy for the pfSense
-pane and port 8000 is the console. The XSS cases make the target run script in
+The target is not published; port 8000 is the console. The XSS cases make the target run script in
 any browser that loads its pages, so the API also refuses cross-origin writes
 and any write whose body is not `application/json`.
 

@@ -21,8 +21,8 @@ tenant:                           # fsl-range — VMs on `master`, reached via t
     fsl-mgmt:     10.31.0.0/24    # out-of-band management (no gateway, fabric.py NO_DEFAULT_ROUTE)
   hosts:
     fsl-platform:                 # scorer, multi-homed
-      ens3: 10.20.0.138           # fsl-platform -> FIP 192.168.0.210 (operator console :8000, pfSense proxy :8080)
-      ens7: 10.31.0.195           # fsl-mgmt -> ssh to range hosts, pfSense GUI 10.31.0.158, syslog :5140 collector
+      ens3: 10.20.0.138           # fsl-platform -> FIP 192.168.0.210 (operator console :8000)
+      ens7: 10.31.0.195           # fsl-mgmt -> ssh to range hosts, syslog :5140 collector
     fsl-pfsense:                  # edge firewall + Suricata (IDS/IPS)
       wan:  "fsl-internet — holds the .1 gateway of each of the 30 origin /24s"
       opt1: "fsl-estate"
@@ -32,8 +32,8 @@ tenant:                           # fsl-range — VMs on `master`, reached via t
     fsl-wg-board: { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }
     fsl-wg-corp:  { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }
   paths:
-    external: "operator 192.168.0.x -> FIP 192.168.0.210 -> platform (console :8000 / pfSense GUI :8080)"
+    external: "operator 192.168.0.x -> FIP 192.168.0.210 -> platform (console :8000)"
     attack:   "fsl-kali -> fsl-internet (spoofed origin) -> pfSense WAN -> fsl-estate -> WAF -> board/corp"
-    mgmt:     "platform ens7 10.31.0.195 -> fsl-mgmt -> ssh / pfSense GUI / syslog to every host (out-of-band)"
+    mgmt:     "platform ens7 10.31.0.195 -> fsl-mgmt -> ssh / syslog to every host (out-of-band)"
   collector_port: 5140            # syslog UDP: pfSense + WAF -> platform Filebeat -> Elasticsearch -> Kibana
   security_groups: [fsl-range, fsl-reach, fsl-platform]

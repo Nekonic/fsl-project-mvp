@@ -137,9 +137,9 @@ Per-session CIDR allocation (fabric.py:11); removal of the single-session lock
 (views.py:171-173, OpenStack only, a no-op on docker) and of the bin/verify
 open-session guard (bin/verify:56-73); splitting pfSense's edge and sensor roles
 (declaration.yaml:75-76); per-session ES containers (instead of shared ES with a
-per-session index). Removal of the pfSense console pane and the :8080 proxy is
-pending (firewall dropped from scope); pfSense stays as the OpenStack edge and
-Suricata host.
+per-session index). The pfSense console pane and the :8080 proxy were removed
+on 2026-10-08 (firewall dropped from scope); pfSense stays as the OpenStack edge
+and Suricata host.
 
 ## Also still open from before
 - dev is at a6fb72b (fast-forward, 2026-10-08): the earlier tidy-up, the
@@ -152,6 +152,5 @@ Suricata host.
   harness load the current project config (do it in the main checkout).
 
 ## To do
-The open items found by the 2026-10-08 doc review (console ingest, CLI scenario,
-pfSense pane removal, seam exceptions, `/vm-terminal/` on compose, the `?sort=`
+The open items found by the 2026-10-08 doc review (seam exceptions, `/vm-terminal/` on compose, the `?sort=`
 extraction) are a checklist under backlog 0 in `docs/STATE.md`.

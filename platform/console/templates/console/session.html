@@ -104,6 +104,7 @@
   });
 
   document.getElementById("confirm-close").addEventListener("click", async () => {
+    await post(`/api/sessions/${sessionId()}/ingest/`);
     const result = await post(`/api/sessions/${sessionId()}/close/`);
     show("confirm", false);
     const note = document.getElementById("closed");

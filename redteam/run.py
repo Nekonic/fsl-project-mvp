@@ -17,6 +17,7 @@ django.setup()
 from django.conf import settings
 
 from range import substrate
+from wargames import WARGAMES
 from redteam import harness
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "board.yaml"
@@ -24,7 +25,7 @@ DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "board.yaml"
 def main() -> int:
     parser = argparse.ArgumentParser(description="FSL red team harness")
     parser.add_argument("--platform", default="http://localhost:8000")
-    parser.add_argument("--target", default="http://board.com")
+    parser.add_argument("--target", default=None)
     parser.add_argument("--cases", default=str(DEFAULT_CASES))
     parser.add_argument(
         "--tool-target",
@@ -35,6 +36,13 @@ def main() -> int:
 
     launch = substrate().launcher(settings.RANGE.default_origin)
 
+    case_file = Path(args.cases).name
+    scenario = next(
+        (key for key, wargame in WARGAMES.items() if wargame["case_file"] == case_file),
+        "board",
+    )
+    target = args.target or WARGAMES[scenario]["public_url"]
+
     cases = harness.load_cases(args.cases)
     attacks = sum(1 for c in cases if c["malicious"])
     print(f"{len(cases)} cases ({attacks} attack, {len(cases) - attacks} benign)")
@@ -43,7 +51,7 @@ def main() -> int:
         print("warning: no benign cases, false positives cannot be scored", file=sys.stderr)
 
     session_id = harness.run(
-        cases, args.platform, args.target, launch, args.tool_target
+        cases, args.platform, target, launch, args.tool_target, scenario
     )
 
     print(f"session {session_id} done")

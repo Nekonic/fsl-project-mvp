@@ -7,7 +7,6 @@
 {% block content %}
 <div class="flex-1 min-h-0 flex gap-3">
   <nav id="rail" class="shrink-0 w-44 flex flex-col gap-1">
-    <button class="pane-tab" data-pane="pfsense" data-pfsense data-t="blue.pane.pfsense"></button>
     <button class="pane-tab" data-pane="elk" data-src="/kibana/" data-t="blue.pane.elk"></button>
     <button class="pane-tab" data-pane="waf" data-src="/vm-terminal/fsl-waf/" data-t="blue.pane.waf"></button>
     <a id="to-red" target="_blank"
@@ -37,62 +36,18 @@
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
 
   const frame = document.getElementById("pane-frame");
-  const status = document.getElementById("pane-status");
-  const statusTitle = document.getElementById("pane-status-title");
-  const statusNote = document.getElementById("pane-status-note");
   const tabs = Array.from(document.querySelectorAll(".pane-tab"));
 
-  const pfsenseTab = document.querySelector("[data-pfsense]");
-  if (pfsenseTab) {
-    const here = new URL(location.href);
-    pfsenseTab.dataset.src = `${here.protocol}//${here.hostname}:8080/`;
-  }
-
-  let shown = null;
-
-  function label(pane) {
-    return t(`blue.pane.${pane}`);
-  }
-
-  function showStatus(title, note) {
-    frame.style.display = "none";
-    frame.removeAttribute("src");
-    statusTitle.textContent = title;
-    statusNote.textContent = note || "";
-    status.style.display = "flex";
-  }
-
   function showFrame(url) {
-    status.style.display = "none";
+    document.getElementById("pane-status").style.display = "none";
     frame.src = url;
     frame.style.display = "block";
   }
 
-  async function openPane(tab) {
-    const pane = tab.dataset.pane;
-    shown = pane;
+  function openPane(tab) {
     tabs.forEach((other) =>
       other.setAttribute("aria-selected", String(other === tab)));
-    showStatus(t("blue.console.opening", label(pane)), "");
-
-    if (tab.dataset.src) {
-      showFrame(tab.dataset.src);
-      return;
-    }
-
-    const answer = await api(`/api/range/console/${encodeURIComponent(tab.dataset.host)}/`);
-    if (shown !== pane) return;
-
-    if (answer.ok && answer.body.url) {
-      showFrame(answer.body.url);
-      return;
-    }
-    if (answer.status === 409) {
-      showStatus(t("blue.console.unavailable", label(pane)), t("blue.console.composed"));
-      return;
-    }
-    showStatus(t("blue.console.unavailable", label(pane)),
-               t("blue.console.failed", detail(answer)));
+    showFrame(tab.dataset.src);
   }
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
