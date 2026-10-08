@@ -11,15 +11,35 @@ COMPOSE = composed.COMPOSE
 def images():
     return re.findall(r"^\s+image:\s*(\S+)", composed.text(), re.M)
 
+def pulled_images():
+    return [
+        service["image"] for service in composed.services().values()
+        if "image" in service and "build" not in service
+    ]
+
 def test_every_image_is_pinned_to_something_that_cannot_move():
     floating = [
-        image for image in images()
+        image for image in pulled_images()
         if "@sha256:" not in image and not re.search(r":\d", image)
     ]
 
     assert not floating, (
         f"these tags can move under the range without anyone touching the repo, "
         f"so the same commit scores differently on different days: {floating}"
+    )
+
+def test_every_built_image_is_tagged_once_for_every_session_to_reuse():
+    untagged = {
+        name: service.get("image")
+        for name, service in composed.services().items()
+        if "build" in service and name != "platform"
+        and not re.fullmatch(r"fsl/[a-z0-9-]+:mvp", service.get("image") or "")
+    }
+
+    assert not untagged, (
+        f"these are built without an fsl/...:mvp tag, so compose names them "
+        f"after the project and a second session's stack would build them "
+        f"again: {untagged}"
     )
 
 def test_the_sensor_and_the_target_are_pinned_by_digest():

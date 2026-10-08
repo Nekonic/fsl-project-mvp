@@ -114,10 +114,10 @@ else
   exit 1
 fi
 
-if docker image inspect fsl-kali >/dev/null 2>&1; then
+if docker image inspect fsl/kali:mvp >/dev/null 2>&1; then
   ok "attacker image present"
 else
-  fail "fsl-kali missing — docker compose build kali"
+  fail "fsl/kali:mvp missing — docker compose build kali"
 fi
 
 if "$PY" - <<'RULECHECK'

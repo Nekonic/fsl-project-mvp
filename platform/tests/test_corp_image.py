@@ -59,4 +59,4 @@ def test_the_corp_db_image_carries_mysqlbinlog_for_the_live_scorer():
 def test_the_corp_db_service_builds_that_image():
     corp_db = yaml.safe_load((ROOT / "wargames/corp/compose.yaml").read_text())["services"]["corp-db"]
     assert corp_db["build"] == "./db"
-    assert "image" not in corp_db
+    assert corp_db["image"] == "fsl/corp-db:mvp"

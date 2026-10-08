@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 MARKER_HEADER = "X-FSL-Case"
 
-TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
+TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl/kali:mvp")
 
 class ToolUnavailable(RuntimeError):
     pass
