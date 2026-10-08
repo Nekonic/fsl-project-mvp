@@ -38,23 +38,6 @@ def test_a_strategy_that_cannot_place_a_case_says_which_ones(marker_only_session
     )
     assert "board-sqli-search" in named[0][1], named
 
-def test_the_console_is_given_the_reason_and_not_only_the_number():
-    import pathlib
-
-    console = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "platform/console/templates/console/blue.html"
-    ).read_text()
-    panel = console[console.index("async function renderComparison"):]
-    panel = panel[:panel.index("\n  }")]
-
-    assert "warnings" in panel, (
-        "the comparison panel renders tp/fn/fp/tn for both strategies and "
-        "throws the warnings away, so a zero that means 'this cannot be "
-        "measured' is drawn identically to a zero that means 'nothing was "
-        "detected'"
-    )
-
 def test_the_two_strategies_still_disagree_for_a_real_reason(marker_only_session):
     marker = scored(marker_only_session, "marker")
     window = scored(marker_only_session, "window")

@@ -363,3 +363,18 @@ dates.
   has no data to fetch; the page is still covered by the render tests.
 - **Not verified live.** The compose, nginx and security-group changes and the
   corp CLI run need the OpenStack deployment; push waits for that check.
+
+## 2026-10-09 — Acceptance against a remote platform; images tagged
+
+- **The acceptance suite takes `FSL_PLATFORM_URL`** and skips modules that
+  docker-exec into compose containers when the platform reports another
+  substrate. First runs on the platform VM: substrate openstack 23 passed,
+  78 skipped, 17 failed, 21 errors (causes in STATE backlog 0); substrate
+  docker (switched for the run, then restored) 129 passed, 10 failed, nine of
+  them the missing GeoLite2 database on the VM.
+- **Step 2 landed:** every locally built image except the platform carries
+  `fsl/<name>:mvp`.
+- **The tests floor drops 1205 -> 1204.**
+  `test_the_console_is_given_the_reason_and_not_only_the_number` read the
+  strategy-comparison panel in `blue.html`, removed with the old blue console
+  (7e71435); its subject is gone. The two API-level tests in the same file stay.
