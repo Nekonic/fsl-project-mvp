@@ -134,8 +134,11 @@ pfSense proxy removal is also pending (firewall dropped from scope) — pfSense
 itself STAYS as the OpenStack edge + Suricata host.
 
 ## Also still open from before
-- This branch is UNPUSHED and ahead of dev by five commits: the earlier tidy
-  (three), the direction docs, and step 3 (scenario.yaml discovery + its docs, one
-  commit). Push is the human's, fast-forward to dev. Full acceptance (live stack)
-  must run on this branch before the push — a worktree cannot drive the live gate,
-  so the fast gate is all that has run.
+- Pushed to dev at ab9f207 (2026-10-08, fast-forward): the earlier tidy (three),
+  the direction docs, step 3 (scenario.yaml), and the prevention-measures commit.
+  Only the fast gate (unit+console) has run; the LIVE acceptance (test/,
+  concurrent-session non-interference) has NOT — a worktree cannot drive it, so
+  run it in the OpenStack build session. 562486d (platform code, prior session) is
+  the one change in that still-unverified-on-live range.
+- The main checkout's local dev may need a fast-forward so the Desktop/harness
+  loads current project config (do it in the main checkout, not here).
