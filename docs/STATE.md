@@ -29,9 +29,10 @@ The loop runs in a browser. Open `/`, start a session, and open the red and
 blue consoles side by side. The red console fires cases and holds the Kali
 terminal; an attack typed there between Start and Stop is attributed by time,
 source address and the proxy's marker. The blue console is a sidebar that
-frames the real tools (Kibana, the pfSense GUI, a WAF terminal) and calls no
-`/api/`. The UI has no rule editor and never calls `/ingest/`; the acceptance
-suite and `redteam/run.py` call it, and the session page reads `/score/`.
+frames the real tools (Kibana and a WAF terminal) and calls no
+`/api/`. The UI has no rule editor; the session page's confirm-close calls
+`/ingest/` once before closing, and also reads `/score/`. The acceptance suite
+calls `/ingest/` too, and `redteam/run.py` prints the curl.
 
 ## The objective model (done 2026-10-04)
 
@@ -176,13 +177,13 @@ gate (VMs ACTIVE, the target's ground truth readable, rules at baseline); the
 canary (an alert corroborated by both engines with their clocks in sync) is a
 separate check the landing page offers. The two blue-screen panes held out of backlog 2 (Kibana and the pfSense
 GUI) were built on 2026-10-05/06; the 2026-10-08 ruling drops the pfSense pane
-again (removal pending). The board's user-database objective is done (see "The
+again, and it was removed the same day. The board's user-database objective is done (see "The
 objective model").
 
 **Committed (step 6, the acceptance/CLI move; the figures predate Phase 4):**
 - `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
   reached only from inside the range. (Host port 8080 was reused on 2026-10-05
-  for the platform's pfSense proxy, `compose.yaml:211`.)
+  for the platform's pfSense proxy; that publish was removed on 2026-10-08.)
 - The acceptance suite reaches the target through `test/range.py`'s runner:
   `conftest.target_code()`/`target_answers()` curl `http://board.com` from the
   attacker box (so `stack_is_up`, `reset_target` and `test_criterion_1` no
@@ -352,9 +353,9 @@ geolocated TW.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live; restore (README) has never been run.
-- **Published ports.** By default 8000 and 8080 (platform), 9200
+- **Published ports.** By default 8000 (platform), 9200
   (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
-  cloud-init sets `FSL_PUBLISH` to the VM's address, so 8000 and 8080 open to
+  cloud-init sets `FSL_PUBLISH` to the VM's address, so 8000 opens to
   any address with no login (the user, 2026-10-01), and `FSL_SYSLOG_PUBLISH` to
   `0.0.0.0` for 5140/udp (`platform.yaml:145`); 9200 stays on loopback. Django
   answers to the floating IP. Before, each segment's gateway
@@ -376,7 +377,7 @@ geolocated TW.
   `segments()`, which needs no sensor. If that raises `RangeUnavailable` it
   fails open for the 30 s the empty answer is cached; any other error is a 500.
 - **Same-site writes are refused too**: `:8080` and `:8000` are one site.
-  `:8080` served the target until 2026-10-02 and serves the pfSense proxy now;
+  `:8080` served the target until 2026-10-02 and the pfSense proxy until 2026-10-08;
   a page there must not be able to write to the API. A write with a body must
   be `application/json`.
 - **`bin/verify`** restarts the platform first (waitress never reloads), waits
@@ -535,16 +536,16 @@ sensor is a participant, subnets per segment, binding, and who starts a tool.
   injects a server-primed admin session so the pane opens auto-logged-in. The
   terminal pane is ttyd, as Kali's already is. Horizon is never shown to users.
   Superseded on 2026-10-08: the pfSense pane and the `:8080` proxy are dropped
-  from scope; both are still in the code (`blue.html`, `nginx.conf:24-41`,
-  `entrypoint.sh:16-40`, `pf_prime.py`) and their removal is pending.
+  from scope and were removed the same day (`blue.html`, `nginx.conf`,
+  `entrypoint.sh`, `pf_prime.py`, the 8080 publish and security-group rule).
 - **One published port (2026-10-01)**: everything happens on the website, so
   the platform's port 8000 is the user-facing one. The terminal and Kibana are
   reached through it by path. 9200 stays published on loopback for the
   acceptance suite, which is all that uses it (the user, 2026-10-01). The WAF's
   8080 publish was removed on 2026-10-02: the command-line cases and the
   acceptance suite reach the target from inside the range, through
-  `test/range.py`'s runner. Host port 8080 now serves the pfSense proxy
-  (`compose.yaml:211`, removal pending) and 5140/udp takes the edge's syslog.
+  `test/range.py`'s runner. Host port 8080 served the pfSense proxy
+  from 2026-10-05 until its removal on 2026-10-08, and 5140/udp takes the edge's syslog.
 - **Session start/stop and the scoreboard stay on the landing page `/`**,
   outside the sidebar; the sidebar is only the work screen.
 - **Tap-as-a-Service is dropped from the design**: it was there for a sensor
@@ -617,10 +618,10 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   `corroborated` gate; `platform/game.py` also computes a zero-sum balance,
   withheld until close (backlog 1, partly superseded).
 - **Console**: the landing page `/` (sessions), a red console (cases, Kali
-  terminal) and a blue console that is a sidebar framing Kibana, the pfSense
-  GUI (removal pending) and a WAF terminal; light theme, every value escaped.
-  The blue dashboard, Live view, scoreboard tab, rule editor and world map were
-  removed on 2026-10-05.
+  terminal) and a blue console that is a sidebar framing Kibana and a WAF
+  terminal; light theme, every value escaped. The blue dashboard, Live view,
+  scoreboard tab, rule editor and world map were removed on 2026-10-05, and the
+  pfSense GUI pane on 2026-10-08.
 - **Stack**: every service `linux/amd64`; `docker compose up` is the whole
   bring-up (the platform entrypoint sets the socket group and registers the
   ingest pipeline).
@@ -674,15 +675,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       payloads do not finish the `?sort=` dump (only manual error-based
       extraction does). Settle the extraction before step 7 reads completion
       from the target.
-- [ ] Ingest from the console: no page calls `/ingest/`, so a round played in
-      the browser scores with no detections. Needed by the lesson.
-- [ ] CLI harness opens a board session for every case file
-      (`redteam/harness.py:80`); a corp run is scored as board and its effect
-      objectives are never credited.
-- [ ] Remove the pfSense pane and the `:8080` proxy (`blue.html`,
+- [x] Ingest from the console: the session page's confirm-close posts
+      `/ingest/` before closing; done 2026-10-08.
+- [x] CLI harness opens the session of the scenario matching the `--cases`
+      basename; done 2026-10-08.
+- [x] Remove the pfSense pane and the `:8080` proxy (`blue.html`,
       `nginx.conf:24-41`, `entrypoint.sh:16-40`, `pf_prime.py`,
       `compose.yaml:211`, the security group's 8080); dropped from scope
-      2026-10-08. pfSense itself stays as the OpenStack edge and sensor host.
+      2026-10-08 and removed the same day. pfSense itself stays as the OpenStack
+      edge and sensor host.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
@@ -715,7 +716,8 @@ is actually blocked. A case carries its blocked disposition in `meta["blocked"]`
 Left:
 - **Turn blocking on.** Nothing sets `meta["blocked"]` yet because nothing
   blocks. Decided: as in practice, the blue team turns on blocking itself, in
-  the pfSense GUI (Suricata drop rules) and the WAF's mode. Left: record which
+  the pfSense GUI (Suricata drop rules) and the WAF's mode (the pfSense GUI
+  part is superseded: the pane was removed on 2026-10-08). Left: record which
   cases were blocked, read from the target side. Lands with item 2.
 - **The scoreboard after close** on the landing page: the four pillars and the
   balance, with the declared weights visible. Superseded for the learner view
@@ -952,8 +954,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    `X-Forwarded-For`, so the refusal of range addresses reads the real client
    as before; `/terminal/` asks `/api/attacker/` first (`auth_request`), and
    acceptance checks that a range host gets 403 there. **Done (2026-10-02):**
-   the WAF's `:8080` publish is gone (host port 8080 now serves the pfSense
-   proxy), and the acceptance suite and the
+   the WAF's `:8080` publish is gone (host port 8080 then served the pfSense
+   proxy, removed on 2026-10-08), and the acceptance suite and the
    command-line cases reach the target from inside the range through
    `test/range.py`'s runner (the attacker box for probes, the `scorer` host
    for `redteam/run.py`), not a host port. The same suite runs unchanged
@@ -962,8 +964,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    blue-screen panes the earlier backlog held out, Kibana (in compose) and the
    pfSense GUI pane (a reverse-proxy on `:8080`, auto-logged-in), plus removing
    the custom console UI for the sidebar shell. See `docs/DECISIONS.md`. The
-   2026-10-08 ruling drops the pfSense pane and the `:8080` proxy; removal is
-   pending.
+   2026-10-08 ruling drops the pfSense pane and the `:8080` proxy; both were
+   removed the same day.
 7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
    lifecycle (Stop rebuilds).
    - **Done (2026-10-02): evidence by event time.** The `fsl-geoip` pipeline

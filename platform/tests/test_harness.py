@@ -218,6 +218,7 @@ def test_fire_refuses_to_send_a_case_whose_path_was_altered(monkeypatch):
 
 def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
     posts = []
+    bodies = []
 
     class Resp:
         def __init__(self, body=None):
@@ -232,6 +233,7 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
     class Http:
         def post(self, url, json=None, timeout=None):
             posts.append(url)
+            bodies.append(json)
             return Resp({"id": 7} if url.endswith("/api/sessions/") else {})
 
     fired, recorded = [], []
@@ -251,3 +253,8 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
     assert recorded == [(7, "a"), (7, "b")]
     assert posts[0].endswith("/api/sessions/")
     assert posts[-1].endswith("/api/sessions/7/close/")
+    assert bodies[0] == {"scenario": "board"}
+
+    bodies.clear()
+    harness.run(cases, "http://p", "http://corp.com", lambda *a, **k: None, scenario="corp")
+    assert bodies[0] == {"scenario": "corp"}

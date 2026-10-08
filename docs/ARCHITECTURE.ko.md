@@ -37,9 +37,9 @@ compose 서비스와 네트워크는 아래 표에 있고, `bin/measure`가 그 
 | `fsl-kibana` | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
 | `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | 네 개 edge 네트워크 | |
-| `fsl-platform` | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/`의 Kali 자체 ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널, 그리고 `:8080`의 pfSense GUI 프록시도 제공한다. pfSense 프록시는 2026-10-08 스펙에서 범위 밖이 되었고 제거가 남아 있다) | 여섯 개 모두 | 8000, 8080 |
+| `fsl-platform` | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/`의 Kali 자체 ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다) | 여섯 개 모두 | 8000 |
 
-8000과 8080은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
+8000은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
 
 | 네트워크 | 구간 | 서브넷 | 이름 | 출발지 |
@@ -215,8 +215,9 @@ mgmt 주소로 ssh 접속한다. compose에서는 Kali와 WAF에 mgmt 주소가 
 콘솔 도구 케이스는 출발지의 대상 URL로, 출발지가 없으면 선언된 기본 출발지에서
 `TARGET_URL`(`http://board.com`)로 향한다. 대상 시스템은 호스트에 publish되지 않으므로
 명령줄 harness도 레인지 내부에서 접근한다: `redteam/run.py`는 플랫폼에서 실행되고(수용
-테스트가 구동하는 방식), 출발지 옵션이 없으며, `--target`과 `--tool-target`의
-기본값은 포트 80의 WAF로 해석되는 `http://board.com`이다.
+테스트가 구동하는 방식), 출발지 옵션이 없으며, `--target`의 기본값은 `--cases` 파일이 속한
+시나리오의 `public_url`(board는 `http://board.com`)로, 포트 80의 WAF로 해석된다.
+`--tool-target`의 기본값은 `http://board.com`이다.
 
 WAF는 CRS를 paranoia level 1, anomaly threshold 5, `DetectionOnly`로 돌리고
 (`deploy/waf/modsecurity.conf`), 모든 Suricata 룰은 `alert`다. 레인지의 어떤 구성
@@ -229,14 +230,15 @@ WAF (ModSecurity) -> audit.log --+
 Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<day>
                                      (fsl_source)   pipeline fsl-geoip
                                                           |
-             POST /api/sessions/<id>/ingest/ (called by tests; no console page)
+             POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
              parse per fsl_source, copy the marker onto alerts, store
              as Detection rows in SQLite
 ```
 
-`ingest/`를 호출하는 것은 `test/conftest.py`뿐이고, `redteam/run.py`는 curl 명령을
-출력만 한다. 브라우저만으로 진행한 라운드는 탐지 결과가 적재되지 않는다.
+`ingest/`는 `test/conftest.py`와 세션 페이지의 종료 확인이 호출하고, `redteam/run.py`는
+curl 명령을 출력만 한다. 브라우저로 진행한 라운드는 종료 시점에 탐지 결과를 한 번
+적재하며, 클릭 이후에 도착한 경보는 적재되지 않는다.
 
 ModSecurity의 audit 로그는 요청 헤더를 담으므로 그 경보에는 marker가 바로 있다.
 Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만 있다
@@ -364,7 +366,7 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - wargame마다 케이스 파일 하나에 공격과 정상 트래픽을 함께 둔다: board는
   `redteam/cases/board.yaml`, corp는 `redteam/cases/corp.yaml`. 파일을 나누면 정상
   케이스를 빠뜨리기 쉽다. CLI는 `--cases`가 다른 파일을 지정하지 않으면 `board.yaml`을
-  읽고, 항상 board 세션을 연다.
+  읽고, 그 파일명과 `case_file`이 일치하는 시나리오의 세션을 연다(알 수 없는 파일이면 board).
 - harness는 재작성된 경로를 보내지 않는다. `requests`는 `/static/../../etc/passwd`를
   `/etc/passwd`로 바꾼다. 그대로 보내면 실제로 나가지 않은 공격을 기록하고 harness의
   실패를 방어의 실패로 채점하게 된다. 퍼센트 인코딩 차이는 허용한다.
@@ -415,7 +417,7 @@ vCPU, 64 GB)다. 레인지는 프로젝트 `fsl-range`에 있고, member 역할 
 
 - 네트워크와 서브넷 `fsl-platform`;
 - 외부 네트워크로 가는 라우터와 floating IP;
-- 모든 주소에 tcp/22, tcp/8000, tcp/8080, ICMP를 여는 보안 그룹;
+- 모든 주소에 tcp/22, tcp/8000, ICMP를 여는 보안 그룹;
 - config drive를 가진 Nova 서버 `fsl-platform`.
 
 파라미터와 기본값은 `README.md`에 있다.
@@ -428,7 +430,7 @@ Docker의 MTU를 기본 브리지(`mtu`)와 compose 것을 포함한 모든 새 
 실행한다.
 
 따라서 위의 compose 스택 전체가 Nova VM 하나 안에서 돈다. cloud-init이 `FSL_PUBLISH`를
-VM의 고정 주소로 설정하므로 8000과 8080이 그 주소에 publish되고 보안 그룹에서도
+VM의 고정 주소로 설정하므로 8000이 그 주소에 publish되고 보안 그룹에서도
 열려, 브라우저가 floating IP로 콘솔에 접근한다. `FSL_SYSLOG_PUBLISH=0.0.0.0`은
 pfSense의 syslog를 받기 위해 5140/udp를 모든 주소에 publish한다. 9200은 loopback에
 남는다.
@@ -510,9 +512,8 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
  platform VM: Ubuntu 24.04, floating IP, docker compose up
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
-   sidebar, three panes inside the page:
-     pfSense   web GUI, reverse-proxied on :8080, auto-logged-in
-               (built; dropped from scope 2026-10-08, removal pending)
+   sidebar, panes inside the page:
+     pfSense   web GUI pane (built; dropped from scope and removed 2026-10-08)
      Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |

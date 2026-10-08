@@ -106,11 +106,10 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 포트 | | 사용처 |
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/`의 Kali 자체 ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 터미널 | 사람의 브라우저 |
-| 8080 | 블루 콘솔 창에 띄우는 pfSense GUI 리버스 프록시(제거 예정) | 사람의 브라우저 |
 | 5140/udp | Filebeat의 syslog 입력 | OpenStack의 pfSense와 WAF |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-플랫폼 이미지 안의 nginx가 8000을 받아 `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다. 8080은 pfSense의 루트 절대 URL이 풀리도록 별개 오리진에 둔 리버스 프록시다. 2026-10-08 결정으로 pfSense 창과 8080은 범위에서 빠졌고, 제거는 아직 하지 않았다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000과 8080을 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost).
+플랫폼 이미지 안의 nginx가 8000을 받아 `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000을 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost).
 
 ### OpenStack에서
 
@@ -138,7 +137,7 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 | `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 된다 |
 | `dns` | `8.8.8.8,8.8.4.4` | |
 
-스택의 `address` 출력값이 floating IP다. 콘솔은 `http://ADDRESS:8000/`, 블루 콘솔의 pfSense 창은 `http://ADDRESS:8080/`(제거 예정)에 있으며, 둘 다 로그인을 묻지 않는다. 9200은 VM의 loopback에만 있고, 5140/udp는 VM의 모든 주소에서 받는다.
+스택의 `address` 출력값이 floating IP다. 콘솔은 `http://ADDRESS:8000/`에 있으며 로그인을 묻지 않는다. 9200은 VM의 loopback에만 있고, 5140/udp는 VM의 모든 주소에서 받는다.
 
 VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`다. compose, `bin/backup`, 아래의 복원 절차는 거기서 실행한다. 마지막 부팅 때 스택이 어떻게 올라왔는지는 `systemctl status fsl-platform`으로 본다.
 
@@ -201,7 +200,7 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
 
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
-- **블루**는 도구를 프레임으로 띄운 사이드바다: pfSense GUI(엣지 방화벽과 Suricata 룰, 제거 예정), Kibana, WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
+- **블루**는 도구를 프레임으로 띄운 사이드바다: Kibana와 WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
 
 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로 하니스는 레인지 안, 플랫폼에서 실행한다.
 
@@ -210,7 +209,7 @@ docker compose exec platform \
   python redteam/run.py --target http://board.com --tool-target http://board.com
 ```
 
-하니스는 항상 게시판 세션을 연다(`redteam/harness.py`). `http://corp.com`과 `--cases redteam/cases/corp.yaml`을 주면 corp 시나리오를 쏘기는 하지만 게시판 세션으로 채점되고, corp의 `effect_observed` 목표는 인정되지 않는다.
+하니스는 `--cases`의 파일명과 `case_file`이 일치하는 시나리오의 세션을 연다(`board.yaml`은 board, `corp.yaml`은 corp, 그 외는 board). `--target`의 기본값은 그 시나리오의 `public_url`이다. corp는 `--cases redteam/cases/corp.yaml`로 실행한다.
 
 ## 검증
 
@@ -254,4 +253,4 @@ docker compose start platform
 
 Elasticsearch는 보안 기능 없이, Django는 `DEBUG=1`로 돈다. Django는 `DJANGO_ALLOWED_HOSTS`가 더 지정하지 않는 한 `localhost`, `127.0.0.1`, `[::1]`에만 응답하고, 플랫폼 VM은 여기에 자기 floating IP를 더한다. 플랫폼에는 Docker 소켓이 마운트되어 있어 컨테이너 탈출 경로가 된다. `/terminal/`은 인증 없는 Kali root 셸이고, `/vm-terminal/` 아래 터미널은 별도 로그인 없이 Kali와 WAF의 셸을 준다.
 
-플랫폼 VM에서도 마찬가지다. 게다가 거기서는 프로젝트의 비밀번호가 `/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에도 평문으로 들어 있다. VM의 ssh, 8000, 8080은 모든 주소에 열려 있다. 8000은 로그인을 묻지 않고, 8080은 이미 로그인된 pfSense GUI를 내준다.
+플랫폼 VM에서도 마찬가지다. 게다가 거기서는 프로젝트의 비밀번호가 `/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에도 평문으로 들어 있다. VM의 ssh와 8000은 모든 주소에 열려 있고, 8000은 로그인을 묻지 않는다.

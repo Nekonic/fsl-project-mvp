@@ -7,6 +7,7 @@ from django.test import Client
 pytestmark = pytest.mark.django_db
 
 PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
+PAGES_WITH_DATA = ["/", "/session/1/", "/red/1/"]
 
 @pytest.fixture
 def client():
@@ -18,7 +19,7 @@ def test_page_renders(client, path):
 
     assert response.status_code == 200
 
-@pytest.mark.parametrize("path", PAGES)
+@pytest.mark.parametrize("path", PAGES_WITH_DATA)
 def test_page_fetches_its_data_from_the_api(client, path):
     body = client.get(path).content.decode()
 
@@ -42,7 +43,7 @@ def body(client, path):
 def test_the_blue_console_frames_the_real_tools(client):
     page = body(client, "/blue/1/")
 
-    for marker in ('data-pane="pfsense"', 'data-pane="elk"', 'data-pane="waf"',
+    for marker in ('data-pane="elk"', 'data-pane="waf"',
                    'id="pane-frame"'):
         assert marker in page, marker
 

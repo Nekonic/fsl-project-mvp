@@ -72,12 +72,13 @@ def run(
     target_url: str,
     launch,
     tool_target_url: str = DEFAULT_TOOL_TARGET,
+    scenario: str = "board",
 ) -> int:
     http = requests.Session()
     platform_url = platform_url.rstrip("/")
     opened = http.post(
         f"{platform_url}/api/sessions/",
-        json={"scenario": "board"},
+        json={"scenario": scenario},
         timeout=REQUEST_TIMEOUT,
     )
     opened.raise_for_status()
