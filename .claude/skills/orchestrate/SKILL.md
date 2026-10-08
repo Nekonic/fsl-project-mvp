@@ -16,10 +16,10 @@ session, and you do not make the user say "continue".
    you will prove it, what you will not touch, open questions. Read
    `docs/state/now.md` for where things stand and `docs/DECISIONS.md` for what
    was already ruled out — and open the canonical direction source they point to
-   (the spec and the `[확정]` living-doc artifact), not just `now.md`'s
+   (the spec and the decided items of the living-doc artifact), not just `now.md`'s
    reconstruction or your memory. Scout before you plan — list the files, read
    the seam, scope the diff — so the plan is real, not a guess. Never overturn a
-   recorded or `[확정]` decision from memory or a re-derivation: quote the exact
+   recorded or decided item from memory or a re-derivation: quote the exact
    statement you would overturn and show where it fails; if a problem you hit is
    already resolved in the written design, apply that resolution instead of
    raising it as a new decision.
@@ -39,9 +39,13 @@ session, and you do not make the user say "continue".
    with what you changed (see "Docs match the code"). This is part of the work,
    not a later chore.
 
-5. **Verify with evidence.** Run `bin/verify` (full: unit, acceptance against
-   the live stack, ratchet). Show the command and its output, not a claim that
-   it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
+5. **Verify with evidence.** The gate for every change is the unit and API
+   tests (`bin/verify --fast`, per `DECISIONS.md` 2026-10-05); `--fast` prints
+   the metrics without gating them, so compare `bin/measure` against
+   `metrics.json` by hand. A change to the live stack (compose, the range,
+   session isolation) is also run against the acceptance suite on the OpenStack
+   deployment before it is pushed. Show the command and its output, not a claim
+   that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
    and say what you learned — a reported failure beats a half-finished success.
 
 6. **Gate 2 — visual review before anything outward.** Before a push or a

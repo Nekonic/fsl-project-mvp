@@ -5,27 +5,25 @@ design decisions behind it. How the score is defined is in `CLAUDE.md`; open
 problems and measured quirks are in `docs/STATE.md`.
 
 Everything up to "Decisions" describes what runs today: a Docker compose
-range. The product is moving onto OpenStack. What exists of that and what has
-been decided are kept apart in the last section, "OpenStack".
+range. The last section, "OpenStack", separates what is built there from what
+is planned (`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
 The hypothesis the repo started from: red team attacks can be labelled with
 ground truth, and Suricata and ModSecurity alerts can be matched to those
 labels automatically, so false positives and negatives can be scored
-mechanically. The objective score was added on top once that held.
+mechanically. The objective score was added once that held.
 
 ## The range
 
-Twelve compose services on six Docker networks: eight the platform's own and
-four from the wargames. A target is grouped as a wargame, a folder under
-`wargames/` whose `compose.yaml` the top `compose.yaml` includes: `board` (the
-Django board and its MySQL) and `corp` (a WordPress site and its MySQL). There
-are two targets — the board, a `loot_verified` target, and corp, an
-`effect_observed` target. The platform discovers each wargame from a
-`scenario.yaml` in its folder — the descriptor (`name`, `description`, `image`,
-`public_url`, `objective_model`, `case_file`) that used to be an in-code
-registry; the registry is data now. A new wargame is a new folder with a
-`scenario.yaml` and one more `include:` line; the measure counts the services it
-adds.
+The compose services and networks are listed below; `bin/measure` counts them.
+Each target is a wargame, a folder under `wargames/` whose `compose.yaml` the
+top `compose.yaml` includes: `board` (Django and MySQL, `loot_verified`) and
+`corp` (WordPress and MySQL, `effect_observed`). The platform discovers each
+from `wargames/<id>/scenario.yaml` (`platform/wargames.py`; fields `name`,
+`description`, `image`, `public_url`, `objective_model`, `case_file`). Nothing
+reads `image` yet; compose still builds each app untagged (`build: ./app`). A
+new wargame needs `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its
+folder, a case file under `redteam/cases/`, and an `include:` line.
 
 | Service | Image | Networks | Host port |
 |---|---|---|---|
@@ -36,11 +34,14 @@ adds.
 | `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | |
+| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | 5140/udp |
 | `fsl-kibana` | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-kali` | `deploy/kali` | edge | |
 | `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
-| `fsl-platform` | `platform/` (Django under waitress, behind nginx, which also serves Kali's terminal at `/terminal/`, Kibana at `/kibana/`, and the pfSense GUI proxy on `:8080`) | all six | 8000, 8080 |
+| `fsl-platform` | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`, and the pfSense GUI proxy on `:8080`, which the 2026-10-08 spec drops from scope; removal is pending) | all six | 8000, 8080 |
+
+8000 and 8080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
+both defaulting to 127.0.0.1; 9200 binds to loopback only.
 
 | Network | Segment | Subnet | Name | Origin |
 |---|---|---|---|---|
@@ -69,8 +70,9 @@ reach the substrate it treats the range as empty and lets the request through
 (`docs/THREAT-MODEL.md`).
 
 The platform, the WAF and the proxy are multi-homed. The attacker's traffic
-crosses into the estate only at the WAF, but the platform stands on every
-segment, which is why the API guards itself (`docs/THREAT-MODEL.md`).
+enters the internal network (`estate`) only through the WAF, but the platform
+is attached to every segment, so the API checks the caller itself
+(`docs/THREAT-MODEL.md`).
 
 ```
  edge      kali --HTTP via http_proxy--> proxy:8081 --+
@@ -94,7 +96,7 @@ segment, which is why the API guards itself (`docs/THREAT-MODEL.md`).
    ./data/label --bind mount--> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
    platform --docker exec--> proxy (/label files), suricata (rules),
-                             kali (command log)
+                             kali (command log), corp-db (mysql, mysqlbinlog)
    platform --docker run--> throwaway fsl-kali for tool cases
    platform --> volume platformdata --> /data/db.sqlite3
 ```
@@ -108,55 +110,57 @@ with a 404 (`deploy/nginx/board.conf`); `corp.com` is a second vhost to
 `corp-wp:80` (`deploy/nginx/corp.conf`). The board is the first wargame: Django
 3.2.4 (an unpatched version with a known `order_by` SQL-injection flaw,
 CVE-2021-35042) under gunicorn, which migrates and seeds itself on start, on
-MySQL pinned by digest. Neither is published. It is judged by loot: when a
-session starts the platform reads the board's `auth_user` usernames and
-password hashes from `/internal/auth-users`, which it reaches on the estate
-network directly and the WAF never forwards, and keeps them as the session's
-snapshot. That channel is off the WAF, so the detector never sees the
-ground-truth read.
+MySQL pinned by digest. Neither is published. It is scored by exfiltrated
+credentials: when a session starts the platform reads the board's `auth_user`
+usernames and password hashes from `/internal/auth-users`, which it reaches on
+the `estate` network directly and the WAF never forwards, and keeps them as
+the session's snapshot. That read does not pass through the WAF, so neither
+the IDS nor the WAF sees it.
 
 The corp wargame is the second: WordPress 6.6.2 (`fsl-wg-corp-wp`) with three
-plugins pinned to unpatched versions — Ultimate Member 2.6.6 (CVE-2023-3460, a
-registration flaw that smuggles `wp_capabilities` to grant administrator), WP
-GDPR Compliance 1.4.2 (CVE-2018-19207, an unauthenticated option flip that opens
-admin self-registration), and Easy Post Submission 2.3.0 (CVE-2026-4431, an
-unauthenticated post overwrite). None trips the default OWASP CRS. Its store,
-`fsl-wg-corp-db`, is MySQL 8.4 run with `--binlog-format=ROW`; nothing is
-instrumented on WordPress itself. corp is judged by effect, not loot (below).
+plugins pinned to unpatched versions: Ultimate Member 2.6.6 (CVE-2023-3460, a
+registration flaw that injects `wp_capabilities` to grant administrator), WP
+GDPR Compliance 1.4.2 (CVE-2018-19207, an unauthenticated option change that
+opens admin self-registration), and Easy Post Submission 2.3.0 (CVE-2026-4431,
+an unauthenticated post overwrite). None triggers the default OWASP CRS. Its
+database, `fsl-wg-corp-db`, is MySQL 8.4 run with `--binlog-format=ROW`;
+WordPress itself is not instrumented. corp is scored by the changes an attack
+commits to its database (below).
 
 ## The declaration and the substrate seam
 
-Docker is the MVP's substrate; OpenStack is the target. The platform never
-asks Docker what the range means. It is told, by
+Docker is the MVP's substrate; OpenStack is the target. The platform does not
+ask Docker what the range means. It reads that from
 `platform/range/declaration.yaml`: per segment an id, a display name and an
 attack origin; a role table (attacker, scorer, gateway, proxy, sensor, board,
-board-db); which host the sensor watches; the default origin; and
-the defended site the map draws lines to (Seoul). A segment is outside if and
-only if it declares an origin.
+board-db, corp, corp-db, and under `openstack:` the edge, sensor and proxy
+roles that differ there); which host the sensor watches; the default origin;
+and the defended site (Seoul). A segment is outside if and only if it declares
+an origin.
 
-**Identity is declared, allocation is reported.** The declaration holds no
-subnet, gateway or address. Those come from the substrate, because Docker and
-Neutron both hand them out, and a declared subnet that disagreed with the real
-one would bin alerts by a subnet nothing lives on. `compose.yaml` repeats the
-identity in network labels; `platform/tests/test_declaration.py` holds the two
-files to each other, but never checks the running range.
+The declaration holds no subnet, gateway or address. Those come from the
+substrate, because Docker and Neutron both assign them, and a declared subnet
+that disagreed with the real one would bin alerts by a subnet nothing lives
+on. `compose.yaml` repeats the segment identity in network labels;
+`platform/tests/test_declaration.py` checks the two files against each other,
+but never checks the running range.
 
-**Segments are bound by a mark; hosts are still bound by name.** Each segment
+Segments are found by a label; hosts are still found by name. Each segment
 carries `fsl.segment.id` as a Docker label or a Neutron tag, and the adapters
-fetch only marked networks. Name rules broke on compose prefixes and
+fetch only labelled networks. Matching by name broke on compose prefixes and
 overrides, Heat stack suffixes and non-unique Neutron names. A role is the
 container or server name the declaration gives: Docker runs `docker exec
 <name>`, and OpenStack lists every server in the project and matches
 `server["name"]`, which Nova does not keep unique. That is still open in
 `docs/STATE.md`.
 
-`platform/range/ports.py` is the port. Core code and most of the platform see
-only its four verbs:
+`platform/range/ports.py` defines the interface. Core code and most of the
+platform use only its four methods:
 
 - `describe()` returns the shape: segments, their nodes and addresses, sensors;
-- `segments()` returns who stands where, without asking about the sensor;
+- `segments()` returns which host is on which segment, without the sensor check;
 - `runner(role, segment)` runs a command on a standing host (the sensor, the
-  proxy, and the attacker, whose command log the platform reads);
+  proxy, the attacker whose command log the platform reads, and corp-db);
 - `launcher(segment)` runs a one-shot tool on a segment and returns its output.
 
 `range.substrate()` builds the adapter named by `FSL_SUBSTRATE` (default
@@ -179,11 +183,19 @@ names a substrate.
 Compose mounts the Docker socket into the platform whatever the substrate, and
 the entrypoint adds the platform user to its group. It is a container escape
 path. The OpenStack adapter would make it removable; nothing removes it yet.
-What is left before the adapter can drive a range (name resolution, reading a
-sensor that runs as the pfSense package instead of confirming `watches`, one
-Internet segment with many origin subnets and the one Kali VM on it, roles by
-server name, how the operator's address appears through a router, SNAT) is
-listed in `docs/STATE.md` under "The substrate seam".
+What is left before the adapter can drive a range is listed in
+`docs/STATE.md` under "The substrate seam".
+
+## Isolation seams
+
+Each concern has one owning file. The exceptions below exist in code today.
+
+| Concern | Owning file | Known exceptions |
+|---|---|---|
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
+| The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
+| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` |
+| The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
 
 ## Where requests come from
 
@@ -193,19 +205,23 @@ listed in `docs/STATE.md` under "The substrate seam".
 | Terminal, raw TCP | Kali directly | Kali, on `edge` only | none |
 | Console case, HTTP | the platform | the platform, on the chosen origin | added by the harness |
 | Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
-| CLI run, HTTP | the platform, `redteam/run.py` | the platform, on the chosen origin | added by the harness |
-| CLI run, tool | a throwaway `fsl-kali` container, from `launcher(--origin or the declared default)` | that container | sqlmap `--headers=` |
+| CLI run, HTTP | the platform, `redteam/run.py` | the platform, on `edge` (where `board.com` resolves) | added by the harness |
+| CLI run, tool | a throwaway `fsl-kali` container, from `launcher(<declared default origin>)` | that container | sqlmap `--headers=` |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
 and, when `/label/origin` names an address, forwards the request there with the
 original `Host`. The platform writes both files with `docker exec`. There is no
-TLS interception, so the proxy is an environment variable, not an enforcement
-point: `curl --noproxy '*'` skips it.
+TLS interception, so the proxy is an environment variable and does not enforce
+anything: `curl --noproxy '*'` skips it.
 
 The terminal also records what the operator types. Kali's shell appends each
 command, with the current `/label/active` marker, to
 `/var/log/fsl/commands.log`. The platform reads it through
 `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
+The red console frames `/vm-terminal/fsl-kali/`, a ttyd inside the platform
+that connects over ssh to the host's mgmt address; on compose, Kali and the
+WAF have no mgmt address, so the red console's terminal and the blue console's
+WAF terminal do not connect there.
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
@@ -217,11 +233,13 @@ A console tool case is pointed at the origin's target URL, or, with no origin
 chosen, at `TARGET_URL` (`http://board.com`) from the declared default origin.
 The target is not host-published, so the command-line harness reaches it from
 inside the range too: `redteam/run.py` runs on the platform (the way the
-acceptance suite drives it) and `--target`/`--tool-target` default to
-`http://board.com`, which resolves to the WAF on port 80.
+acceptance suite drives it), has no origin option, and its `--target` and
+`--tool-target` default to `http://board.com`, which resolves to the WAF on
+port 80.
 
-The WAF runs CRS at paranoia 1, anomaly threshold 5, in `DetectionOnly`, and
-every Suricata rule is `alert`. Nothing in the range blocks a request.
+The WAF runs CRS at paranoia level 1, anomaly threshold 5, in `DetectionOnly`
+(`deploy/waf/modsecurity.conf`), and every Suricata rule is `alert`. Nothing
+in the range blocks a request.
 
 ## Where alerts go
 
@@ -230,11 +248,14 @@ WAF (ModSecurity) -> audit.log --+
 Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<day>
                                      (fsl_source)   pipeline fsl-geoip
                                                           |
-             blue console timer -> POST /api/sessions/<id>/ingest/
+             POST /api/sessions/<id>/ingest/ (called by tests; no console page)
                                                           |
-             parse per fsl_source, lift the marker onto alerts, store
+             parse per fsl_source, copy the marker onto alerts, store
              as Detection rows in SQLite
 ```
+
+Only `test/conftest.py` calls `ingest/`; `redteam/run.py` prints the curl. A
+round run only from the browser gets no detections ingested.
 
 ModSecurity's audit log carries the request headers, so its alerts carry the
 marker directly. Suricata's alert events carry no request headers; only its
@@ -249,8 +270,8 @@ Each ingest call:
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
   to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
-  `transaction.time_stamp`), so the window selects evidence by when it happened,
-  not when Filebeat read it;
+  `transaction.time_stamp`), so the window selects events by when they
+  happened, not when Filebeat read them;
 - reads at most 5000 hits, oldest first. Beyond that the reply carries
   `truncated` and the session records `read_of`, which adds
   `score.warning.truncated` to the score;
@@ -262,23 +283,22 @@ Each ingest call:
 - fills `src_host` and `dest_host` from the substrate's segments, empty if the
   substrate cannot be reached.
 
-Elasticsearch is used for storage and for geoip at index time, which is why
-there is no Logstash. Nothing uses its query engine beyond a time-range
-search: the map and top-N tables are computed in Python over the SQLite copy,
-and `src_geo.location` is mapped as two floats, not a `geo_point`. The world map
-is an Equal Earth projection cut at 60 degrees south, generated by
-`bin/worldmap`.
+Elasticsearch is used for storage and for GeoIP enrichment at index time,
+which is why there is no Logstash. Nothing uses its query engine beyond a
+time-range search: `GET /api/sessions/<id>/map/` and `/top/` compute in Python
+over the SQLite copy, and `src_geo.location` is mapped as two floats, not a
+`geo_point`. `bin/worldmap` generates an Equal Earth map cut at 60 degrees
+south; no console page draws it since the blue dashboard was removed.
 
-The pipeline has two geoip processors, `src_ip` (Suricata) and
-`transaction.client_ip` (ModSecurity), both writing `src_geo`. The repo does
-not provision the GeoLite2 databases: compose mounts nothing at
-`config/ingest-geoip` and sets no downloader option. On the live node the
-downloader has never succeeded; the databases were copied in by hand and are
-lost when the container is recreated.
+Two geoip processors, on `src_ip` (Suricata) and `transaction.client_ip`
+(ModSecurity), write `src_geo`. Compose turns the managed downloader off and
+bind-mounts `./config/ingest-geoip`, which `bin/fetch-geoip` fills, so
+`GeoLite2-City.mmdb` survives a container recreate. The entrypoint registers
+the pipeline at bring-up (`platform/register_pipeline.py`).
 
 ## How the scores are computed
 
-**Objectives.** The board is a `loot_verified` target. Its
+Objectives. The board is a `loot_verified` target. Its
 `wargames/board/objectives.yaml` names the secret (the `auth_user` username and
 password columns, read from `/internal/auth-users`) and three tiers by how much
 of it the attacker holds: any one hash (difficulty 2), the `admin` account's
@@ -286,8 +306,8 @@ of it the attacker holds: any one hash (difficulty 2), the `admin` account's
 `POST /api/sessions/<id>/loot/`. The platform credits a tier only for submitted
 `(username, hash)` pairs that match the session's start-of-session snapshot
 exactly, and only once the session has fired a malicious case. It never credits
-an objective from its own belief about what an attack did: the target's stored
-data is the ground truth, and it is orthogonal to the detector.
+an objective from its own belief about what an attack did. The ground truth is
+the target's own records, which the detectors do not see.
 
 A credited tier becomes an Objective row dated by the submission. If the
 submission names a malicious case (`case_id`), its window runs from 100 ms
@@ -296,25 +316,27 @@ minutes before the submission to 100 ms after.
 
 The snapshot is taken once, when the session starts. If the board cannot be
 read then, the session is still created, with no snapshot, and
-`POST /api/sessions/<id>/loot/` answers 409 for it. Nothing reads the target
+`POST /api/sessions/<id>/loot/` answers 409 for it. Nothing reads the board
 afterwards: `GET /api/wargames/<id>/objectives/` lists the tiers from
-`objectives.yaml` and `POST /api/sessions/<id>/objectives/` reports the stored
-rows, neither of which touches the board.
+`objectives.yaml` and `GET /api/sessions/<id>/objectives/` reports the stored
+rows. `POST /api/sessions/<id>/objectives/` observes, and does nothing for a
+`loot_verified` wargame.
 
-The corp wargame is an `effect_observed` target: it is judged by watching the
-target's own committed database rows, not loot the attacker submits. Its
-`wargames/corp/objectives.yaml` declares the read channel (`estate://corp-db`,
-scope `wp_state`) and three tiers — a rogue administrator (`rogue_admin`,
-difficulty 5), the site opened to self-registration (`option_flip`, 4) and
-unauthorized content written (`content_write`, 3). At session start the platform
-snapshots the existing admins, the watched `wp_options` and the published posts
-with read-only `mysql` SELECTs against corp-db (`platform/api/effect.py`). To
-observe, it reads corp-db's binary log with `mysqlbinlog` and credits a tier for
-each committed change — a `wp_usermeta` admin grant to a non-baseline user, a
-`wp_options` flip of `users_can_register`/`default_role`, a new or overwritten
-`wp_posts` row — whose timestamp falls inside a malicious case's window. The
-binlog read is off the WAF too, so, as with the board, the detector never sees
-the ground-truth read.
+The corp wargame is an `effect_observed` target: it is scored from the rows
+the target commits to its own database, with nothing submitted by the
+attacker. Its `wargames/corp/objectives.yaml` declares the read channel
+(`estate://corp-db`, scope `wp_state`) and three tiers: a rogue administrator
+(`rogue_admin`, difficulty 5), the site opened to self-registration
+(`option_flip`, 4) and unauthorized content written (`content_write`, 3). At
+session start the platform snapshots the existing admins, the watched
+`wp_options` and the published posts with read-only `mysql` SELECTs against
+corp-db (`platform/api/effect.py`), run through `runner("corp-db")`, not over
+the network. On `POST /api/sessions/<id>/objectives/` it reads corp-db's
+binary log with `mysqlbinlog` and credits a tier for each committed change (a
+`wp_usermeta` admin grant to a user not in the snapshot, a `wp_options` change
+of `users_can_register`/`default_role`, a new or overwritten `wp_posts` row)
+whose timestamp falls inside a malicious case's window. As with the board,
+the detectors do not see this read.
 
 A taken objective goes to a malicious case whose run overlaps the objective's
 window; among several, the one that started latest. The objective counts as
@@ -324,10 +346,10 @@ as undetected. Attribution is by time only: a case's
 
 In the score's `objectives` block, `coverage` is detected difficulty over total
 difficulty, `null` when nothing was taken, and `false_positives` is FP.
-`damage` is undetected difficulty plus half of detected difficulty; that ratio
-is where "an undetected loss counts double" lives.
+`damage` is undetected difficulty plus half of detected difficulty, which is
+how an undetected loss counts double.
 
-**Detection.** A case is matched to alerts by one of two strategies, declared
+Detection. A case is matched to alerts by one of two strategies, declared
 per case:
 
 - `marker`: the alert carries the case's `X-FSL-Case` value;
@@ -337,9 +359,10 @@ per case:
 There is no fallback from one to the other. A marker case whose marker was
 lost should show up as a miss, not be covered for by the window. Terminal cases
 carry both. `?correlation=marker` or `?correlation=window` on the score
-endpoint forces a strategy; any other value is a 400. The blue console compares
-the two by asking once per strategy. A disagreement is a finding about the
-scoring method, not the defence.
+endpoint forces a strategy; any other value is a 400. No console page passes
+it (`session.html` requests `/score/` without it); comparing the two is done
+by calling the endpoint once per strategy. A disagreement says something about
+the scoring method, not the defence.
 
 Each `per_case` entry carries `expect` and `corroborated`. `corroborated` is
 true when `expect` appears, ignoring case, in the signature of some matched
@@ -353,8 +376,8 @@ case file does not re-judge a finished session. Rows recorded before migration
 0009 have no stored `expect` and are still judged against the current case
 file. Alert severity and rule type are not used.
 
-**The game.** The score's `game` block is `{"revealed": false}` until the
-session closes. Then it carries four pillars, their weights and a balance:
+The game. The score's `game` block is `{"revealed": false}` until the
+session closes. Then it carries four components, their weights and a balance:
 
 - speed (0.25): per malicious case, 1 if its first matched alert came within
   10 s of its start, 0 at 120 s or later, linear in between; averaged;
@@ -367,68 +390,65 @@ session closes. Then it carries four pillars, their weights and a balance:
   until some case has `meta["blocked"]`. Nothing sets that yet.
 
 `attacker` is the difficulty of the taken objectives, halved when detected:
-the same sum as `damage`. `defender` is the weighted mean of the pillars times
-the difficulty taken, minus 1 per FP. `balance` is `defender - attacker`. When
-nothing is taken the balance is minus FP. The weights and
-dwell times are v1 defaults
-(`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
+the same sum as `damage`. `defender` is the weighted mean of the components
+times the difficulty taken, minus 1 per FP. `balance` is `defender - attacker`.
+When nothing is taken the balance is minus FP. The weights and dwell times are
+v1 defaults (`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
 
 The score endpoint is read-only and keeps no history.
 
 ## Decisions
 
-- **One case file per wargame, attacks and benign traffic together**:
-  `redteam/cases/board.yaml` for the board (7 attacks, 3 benign). Separate
-  files make it easy to forget the benign half. The CLI reads `board.yaml`
-  unless `--cases` names another file, and always opens a board session.
-- **The harness refuses to send a rewritten path.** `requests` turns
+- One case file per wargame, attacks and benign traffic together:
+  `redteam/cases/board.yaml` for the board, `redteam/cases/corp.yaml` for corp.
+  Separate files make it easy to forget the benign cases. The CLI reads
+  `board.yaml` unless `--cases` names another file, and always opens a board
+  session.
+- The harness refuses to send a rewritten path. `requests` turns
   `/static/../../etc/passwd` into `/etc/passwd`; sending that would record an
   attack that never left and score the harness's failure as the defence's.
   Percent-encoding differences are allowed.
-- **A tool that cannot start raises; a tool that exits non-zero counts.**
+- A tool that cannot start raises; a tool that exits non-zero counts.
   sqlmap exits non-zero when it finds nothing, but its traffic went out.
-- **Suricata shares the WAF's network namespace** rather than using host
-  networking, whose meaning varies with the Docker host. The WAF's interfaces
-  carry both legs of every request.
-- **Kibana is in compose**, the real ELK (not a read-only role), reading the
+- Suricata shares the WAF's network namespace (`network_mode: service:waf`)
+  instead of using host networking, whose meaning varies with the Docker host.
+  The WAF's interfaces carry both legs of every request.
+- Kibana is in compose, with full access (not a read-only role), reading the
   same Elasticsearch the platform ingests from. It is reached through the
-  platform's one published port at `/kibana/` and is published on no port of
-  its own. The blue console frames it (see "OpenStack").
-- **Elasticsearch is a single node with a 512 MB heap** so the whole stack fits
+  platform's port 8000 at `/kibana/` and publishes no port of its own. The
+  blue console frames it.
+- Elasticsearch is a single node with a 512 MB heap so the whole stack fits
   in a default Docker memory allowance.
-- **Missing data is an error, not a zero**, with stated exceptions. An
+- Missing data is an error, not a zero, with stated exceptions. An
   unreachable Elasticsearch or substrate and an unreadable rule file answer
-  503. Session create absorbs an unreachable board (the session starts with no
-  snapshot and cannot take loot); firing or recording a case and close read no
-  target (firing still answers 503 when it needs the substrate for an origin
-  or a tool). The
-  suppression restore inside ingest and placing alerts on segments and hosts
-  (which comes back empty) absorb an unreachable substrate, so a round can
-  still start and stop. A ratio with a zero denominator is 0.0, not null:
-  precision, recall, F1 and FPR, and the game's speed, coverage and accuracy. Only the `objectives` block's
-  `coverage` is null.
-- **A score says what it cannot vouch for.** It carries a warning when there
+  503. Session create tolerates an unreachable target (the session starts with
+  no snapshot, and the board's `loot/` answers 409); firing or recording a case and close
+  read no target (firing still answers 503 when it needs the substrate for an
+  origin or a tool). The suppression restore inside ingest and placing alerts
+  on segments and hosts (which comes back empty) tolerate an unreachable
+  substrate, so a round can still start and stop. A ratio with a zero
+  denominator is 0.0, not null: precision, recall, F1 and FPR, and the game's
+  speed, coverage and accuracy. Only the `objectives` block's `coverage` is
+  null.
+- A score lists what it cannot vouch for. It carries a warning when there
   are no benign cases (`no_benign`), marker cases and no marker on any alert
   (`no_marker`), a window case with no source address (`no_source_ip`), a
   detected case that is not corroborated (`wrong_reason`), or more hits in
   Elasticsearch than ingest read (`truncated`).
-- **Console-fired cases send one case per HTTP connection**, while the CLI
-  keeps one connection for a whole run. Measured on the same twelve cases,
-  both gave identical scores and per-case alert counts. The acceptance tests
-  drive the CLI, so the shared-connection case stays tested.
+- Console-fired cases send one case per HTTP connection, while the CLI
+  keeps one connection for a whole run. Measured on the case set of the time
+  (twelve cases), both gave identical scores and per-case alert counts. The
+  acceptance tests drive the CLI, so the shared-connection path stays tested.
 
 ## OpenStack
 
 The build follows the OpenStack item of the backlog in `docs/STATE.md`, in its
-order; steps 1 through 7 are largely built (the platform VM, the fabric, the
-golden images, the slot, the pfSense edge, the Kali attacker, evidence by
-event time, GeoIP's durable home, and the slot's Stop rebuild), proven on the
-cloud and against fakes. What is left is narrow and listed at the end of this
-section. The reasoning behind every choice below is in `docs/STATE.md`
+order. What is built is described below, run on the cloud or against fakes;
+what is left is listed at the end. The reasoning is in `docs/STATE.md`
 ("Decided on 2026-09-30"),
 `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
 `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`; this section
-records only the shape.
+records only the structure.
 
 The cloud is one KVM compute node (8 vCPU, 64 GB) running kolla-ansible
 2026.1 with ML2/Open vSwitch. The range lives in project `fsl-range`, driven
@@ -440,7 +460,7 @@ by the member-role user `fsl-range`. Horizon is never shown to users.
 
 - network and subnet `fsl-platform`;
 - a router to the external network, and a floating IP;
-- a security group opening tcp/22, tcp/8000 and ICMP to any address;
+- a security group opening tcp/22, tcp/8000, tcp/8080 and ICMP to any address;
 - the Nova server `fsl-platform`, with a config drive.
 
 Its parameters and their defaults are in `README.md`.
@@ -452,10 +472,11 @@ swap, sets Docker's MTU to the Neutron network's for the default bridge
 adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
 runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
 
-So today the whole compose range above, all twelve services, runs inside one
-Nova VM. 8000 is published on the VM's own address and opened in its
-security group, so a browser reaches the console at the floating IP; the
-other ports stay on the VM's loopback.
+So the whole compose stack above runs inside one Nova VM. cloud-init sets
+`FSL_PUBLISH` to the VM's fixed address, so 8000 and 8080 are published there
+and opened in the security group, and a browser reaches the console at the
+floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
+for pfSense's syslog; 9200 stays on loopback.
 
 cloud-init writes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PROJECT` (the stack's
 own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519` to
@@ -468,16 +489,16 @@ The platform service reads the file with `env_file` (`required: false`,
 `format: raw`), so compose passes it through without interpolating or
 unquoting.
 
-The platform on the VM uses the OpenStack adapter (`FSL_SUBSTRATE`, written
-by cloud-init) and builds the range's networks itself through
-`/api/range/fabric/`, planned by `range/fabric.py`: one `internet` network
-with a subnet per declared origin (DHCP off), `estate` on 10.30.0.0/24 and
-`mgmt` on 10.31.0.0/24 with no gateway, off every compose and platform-VM
-subnet, and the keypair `fsl-platform` from a key the platform makes at
-`/data/ssh/id_ed25519`. `describe()` binds each origin to its subnet of the
-one Internet network by CIDR. The VM's router attaches only its own subnet,
-so the platform reads the range through the API and reaches no range host
-yet; later steps put hosts there and attach the platform to `mgmt`.
+The platform on the VM uses the OpenStack adapter
+(`FSL_SUBSTRATE=range.openstack.connect`, written by cloud-init) and builds the
+range's networks itself through `/api/range/fabric/`, planned by
+`range/fabric.py`: one `internet` network with a subnet per declared origin
+(DHCP off), `estate` on 10.30.0.0/24 and `mgmt` on 10.31.0.0/24 with no
+gateway, outside every compose and platform-VM subnet, and the keypair
+`fsl-platform` from a key the platform makes at `/data/ssh/id_ed25519`.
+`describe()` binds each origin to its subnet of the one Internet network by
+CIDR. The VM's router attaches only its own subnet; the platform reaches range
+hosts through its `mgmt` port (below).
 
 The hosts boot from golden images, built through `/api/range/images/` and
 planned by `range/images.py`. `declaration.yaml`'s `hosts:` gives each VM a
@@ -496,43 +517,48 @@ by its own server id (`FSL_OPENSTACK_PLATFORM`, written at boot), so it can
 ssh to every host while no host can open a connection to it. The runner
 reaches a host at its `mgmt` address unless the caller names a segment.
 
-The slot is the hosts themselves, through `/api/range/slot/`, planned by
-`range/slot.py`. Each host has a port per declared segment, named
+The slot is the set of range hosts, managed through `/api/range/slot/` and
+planned by `range/slot.py`. Each host has a port per declared segment, named
 `<host>.<segment>`, all in `fsl-range`. The host filling `gateway` holds
 every origin's gateway address on one Internet port, and since cloud-init
 configures only the first, its user data adds the rest at every boot.
-Every host's user data appends the estate names (`board`, `board-db`) to
+Every host's user data appends the `estate` names (`board`, `board-db`) to
 `/etc/hosts`, which is how the WAF finds the board and the board its database.
 
 The pfSense CE edge (golden image `fsl-pfsense-edge`: base + Suricata 8.0.5 +
 sshd + an OPT1 management NIC) boots in the slot. `POST /api/range/configure/`
-plays `deploy/pfsense/configure.php` back over the management ssh so pfSense
+replays `deploy/pfsense/configure.php` over the management ssh so pfSense
 holds the 30 origin gateway addresses (one static, the rest as IP-alias VIPs),
 runs Suricata on the WAN with the range as `HOME_NET` and EVE going to syslog,
 keeps one WAN pass rule that survives the Suricata package's filter reload,
 and ships its syslog and the WAF's ModSecurity audit log to the platform's
-Elasticsearch, geolocated. One Kali image wears any origin: its single
-Internet port holds the ~100 per-country addresses (the slot's `bootcmd`
-spreads them onto the NIC) and `/usr/local/sbin/fsl-origin` SNATs the box's
-outgoing source per country, so every tool leaves as the chosen country. The
-stamping proxy and the ttyd terminal run on the Kali box.
+Elasticsearch, with GeoIP enrichment. One Kali image serves every origin: its
+single Internet port holds the ~100 per-country addresses (the slot's
+`bootcmd` adds them to the NIC) and `/usr/local/sbin/fsl-origin` SNATs the
+box's outgoing source per country, so every tool leaves as the chosen country.
+The marker-adding proxy and the ttyd terminal run on the Kali box.
+`GET /api/range/console/<host>/` returns the Nova console URL of the server
+filling that host.
 
-Evidence is selected by event time: the `fsl-geoip` ingest pipeline sets
-`@timestamp` from Suricata's `timestamp` and ModSecurity's `transaction.time_stamp`
-(not Filebeat's read time). GeoIP has a durable home: the managed downloader
-is off and Elasticsearch reads `GeoLite2-City.mmdb` from a bind-mounted
-`config/ingest-geoip` that `bin/fetch-geoip` fills, so it survives a container
-recreate. `rebuild_slot()` (`POST /api/range/slot/rebuild/`) is the slot's
-Stop reset: Nova rebuilds every standing slot VM from its golden image, keeping
+`rebuild_slot()` (`POST /api/range/slot/rebuild/`) resets
+the slot: Nova rebuilds every standing slot VM from its golden image, keeping
 each server's id, flavour, ports and fixed IPs, so a session leaves the next
-one no edited rule or planted datum. A rebuild wipes the disk, so
-`POST /api/range/configure/` must follow once the VMs are ACTIVE.
+one no edited rule or planted data. `POST /api/sessions/<id>/close/` calls
+it. A rebuild wipes the disk, so `POST /api/range/configure/` must follow once
+the VMs are ACTIVE; nothing calls it automatically.
 
+On OpenStack, session create answers 409 while another session is open or the
+range is not ready. `GET /api/range/ready/` reports the slot's phase
+(`NOT_STANDING`, `REBUILDING`, `CHECKING`, `READY`) and three checks: every VM
+ACTIVE, the board's ground truth readable, and the sensor rules at baseline
+with no suppression in force. `POST /api/range/canary/` fires a marked case
+and reports whether Suricata and ModSecurity both alerted and how far their
+clocks differ; it is not part of the ready check. The landing page calls both.
 
-### The range on OpenStack: the target shape
+### The range on OpenStack: the target structure
 
-Decided by the user on 2026-09-30; the shape below is the whole picture, most
-of it now built (see above).
+Decided by the user on 2026-09-30, with the 2026-10-08 changes marked. Most
+of it is built (see above).
 
 ```
  OpenStack project fsl-range.
@@ -541,9 +567,10 @@ of it now built (see above).
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
    sidebar, three panes inside the page:
-     pfSense   real web GUI, reverse-proxied on :8080, auto-logged-in
+     pfSense   web GUI, reverse-proxied on :8080, auto-logged-in
+               (built; dropped from scope 2026-10-08, removal pending)
      Kibana    framed directly, reading the same Elasticsearch (full)
-     terminal  ttyd on the Kali VM, reverse-proxied by the platform
+     terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |
      +--OpenStack API, as member fsl-range--> networks, VMs, consoles
      +--management network, ssh-------------> Kali VM, target VMs
@@ -553,12 +580,13 @@ of it now built (see above).
             to the chosen country's address as packets leave
      |
      v
- pfSense CE VM: edge firewall; its WAN holds each subnet's gateway address
+ pfSense CE VM: edge router; its WAN holds each subnet's gateway address
                 and routes on without NAT, so country sources survive
-   Suricata package: IDS/IPS, drop rules switched by blue in the pfSense GUI
+   Suricata package: IDS (detects; no firewall lesson, per 2026-10-08)
      |
      v
- WAF VM: nginx + ModSecurity v3 + CRS, blocking mode switched by blue
+ WAF VM: nginx + ModSecurity v3 + CRS
+         (planned: SecRuleEngine On, blue tunes CRS to block)
      |
      v
  estate network
@@ -572,40 +600,22 @@ of it now built (see above).
    Elasticsearch ----------------> Kibana --> blue team
 ```
 
-Built, not shown in the diagram's lines:
-
-- **Origins**: 30 countries from a public, token-free ranking (Cloudflare
-  Radar's HTTP share), placed by GeoIP, ~100 addresses weighted by traffic, at
-  least one each. The `internet` segment flattens into one subnet per origin.
-- **The attacker**: the stamping proxy and the terminal run on the Kali VM;
-  its source is SNAT'd to the chosen country.
-- **Images**: a setup script in the repo builds each VM once; its snapshot,
-  tagged with the bundle digest, is the image.
-- **Evidence by event time** and **GeoIP's durable home**: done (see the Built
-  section above).
-- **The slot's Stop rebuild**: done as an operator action; wiring it into
-  session Stop plus the readiness gate is still to come (below).
-
-The two blue-screen panes are now done: Kibana (framed, reading the same
-Elasticsearch, full) and the pfSense GUI (the real web GUI, reverse-proxied on
-`:8080`, auto-logged-in), alongside the terminal pane.
-
 Left to build:
 
-- **The session lifecycle wiring**: Start takes a READY slot and creates
-  nothing; Stop fires the rebuild, waits for ACTIVE, re-configures the edge and
-  WAF, and checks the slot answers for itself (ground truth readable, rules and WAF
-  mode at baseline, clocks in sync, a canary alert). The rebuild mechanism
-  exists; the trigger and the READY gate are the deferred session design.
-- **Blocking**: the blue team switches the WAF's mode and Suricata's drop
-  rules itself, and whether a case was blocked is read from the target side
-  into `meta["blocked"]`. Decided, not built.
+- Session lifecycle: after the rebuild, re-run `configure`, check WAF mode and
+  clock skew as part of readiness, and start the next session only on READY
+  without manual steps.
+- Blocking (planned, 2026-10-08 spec): the WAF runs `SecRuleEngine On` and the
+  blue team tunes CRS (paranoia level, rule exclusions) so the attack is
+  blocked and benign traffic passes; Suricata detects. Whether a case was
+  blocked is read from the target side into `meta["blocked"]`. The earlier
+  plan, switching Suricata drop rules in the pfSense GUI, is superseded.
 
 Decisions still open for a person are in `docs/STATE.md` ("Decisions left for
 a person").
 
-Not settled by any source yet: how the WAF VM's audit log reaches Elasticsearch;
-which interface the blue team switches the WAF's mode in; Suricata's inline
-or legacy mode on pfSense; which token-free ranking supplies the countries.
-What has to be tested on this cloud before building is in the placement spec,
-"To test on this cloud before building".
+Built: the WAF VM forwards its ModSecurity audit log with rsyslog imfile over
+UDP to 5140 (`platform/range/waf.py`), and Suricata on pfSense runs in legacy
+mode (`deploy/pfsense/configure.php`). What has to be tested on this
+cloud before building is in the placement spec, "To test on this cloud before
+building".

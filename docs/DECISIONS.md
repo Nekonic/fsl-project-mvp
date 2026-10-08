@@ -300,3 +300,40 @@ distinct origin was needed.
   and step 1 (the per-session stack references it by `image:`), both of which need
   the live stack and were not done tonight. Verified by the fast gate only; core_loc
   flat (wargames.py is product_loc), tests floor 1203 -> 1209.
+
+## 2026-10-08 — Docs reconciled with the code
+
+The 2026-10-07 and 2026-10-08 entries above sit under the 2026-10-06 heading;
+this log is append-only, so they stay where they are and are found by their
+dates.
+
+- **Docs follow the code at a6fb72b (2026-10-08, the user).** Three read-only
+  reviewers compared every doc with the code; four writers corrected README,
+  ARCHITECTURE (both with their `.ko.md`), STATE, THREAT-MODEL, the spec and
+  now.md, and removed coined terms and AI-style prose in favour of the field's
+  words (IDS/WAF, true/false positive, rule exclusion, exfiltrated data). The
+  approved design did not change; only its status and its claims about current
+  code did.
+- **The step-3 commit is 81fb283.** now.md cited d436839, a pre-rebase copy that
+  no branch contains.
+- **Isolation seams have three known exceptions in code.** `register_pipeline.py`
+  PUTs the ingest pipeline to Elasticsearch at bring-up; `range/pfsense.py` with
+  `deploy/pfsense/configure.php` stops and starts Suricata on pfSense;
+  `operator_log.py` reads the attacker's command log and the terminal wiring
+  names `fsl-kali`. Recorded in CLAUDE.md and the ARCHITECTURE seams table as
+  exceptions to remove, not patterns to copy. Whether to move the code is open.
+- **The change gate is `bin/verify --fast`.** The orchestrate skill said full
+  `bin/verify`; the 2026-10-05 ruling says unit/console tests. The skill now
+  matches the ruling, and live-stack changes also run the acceptance suite on
+  the OpenStack deployment before push (the 2026-10-08 agreement in now.md).
+- **Product defects found, not fixed here.** No console page calls
+  `/ingest/`, so a round played only in the browser scores with no detections;
+  the CLI harness always opens a board session, so a corp case file is scored as
+  board. Both are carried in now.md for the live build.
+- **The sqlmap case sends about 94 requests.** CLAUDE.md said it "draws 94"
+  alerts; STATE's measurement is 94 requests and many alerts.
+- **The lesson's attack needs a working extraction (open, found 2026-10-08).**
+  The spec and the living doc say sqlmap dumps auth_user through `?sort=`; STATE
+  records that sqlmap's stock payloads do not finish the dump there (error-based
+  extraction by hand does). Step 7 has to settle how the lesson's attack moves
+  the target's records before completion can be read from them.
