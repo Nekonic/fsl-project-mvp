@@ -155,6 +155,7 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "description": wargame["description"],
         "public_url": wargame["public_url"],
         "judged": wargame["objective_model"] != "none",
+        "model": wargame["objective_model"],
         "cases": len(loaded),
         "covers": [stage for stage in lifecycle.STAGES if stage in reached],
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],

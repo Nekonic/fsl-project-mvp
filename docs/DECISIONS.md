@@ -550,3 +550,28 @@ set) to `fetch_argv`, and a test now asserts the GET carries the Host. Also
 check the GET's curl exit code so an unreachable target reports that, not a
 misleading "token not found". Both fixes are in `redteam/tools.py` (product_loc,
 core_loc unchanged at 462).
+
+## 2026-10-09 — Red console submits loot; the objective model stays as two kinds
+
+The board loot objective (`loot_verified`) was scored against a session-start
+snapshot but nothing in the red-team flow submitted the extracted data to
+`/loot/` — only the acceptance test did, by reading ground truth directly. A
+three-lens agent review (MVP, architecture, soundness) converged: the one real,
+AD-independent gap is the missing submission; close it minimally, reuse
+`loot.matched`, add no new schema, and keep `loot_verified` and
+`effect_observed` as separate models (do not force effect objectives into
+submit-and-compare, and never verify against a platform-held/HMAC value — truth
+stays a read-back of the target's own store).
+
+Built: a "submit stolen loot" panel in the red console (`red.html`), shown only
+when the scenario's `objective_model` is `loot_verified` (the catalogue now
+carries `model`). The operator pastes the pairs they exfiltrated as JSON; the
+console POSTs them to the existing `/loot/`, which verifies against the snapshot.
+No planted canary was added: the board hashes are already per-rebuild dynamic
+(salts rotate, ephemeral db), so they are the dynamic secret. The general
+cross-substrate "planted objective secret" primitive (db/file/ad adapters, HMAC
+derivation, a reachability framework) was deliberately NOT built — YAGNI for two
+scenarios, and the hard part for AD is the ground-truth read seam, not planting;
+let a real second/AD scenario pay for any abstraction. core_loc unchanged (462);
+product_loc 8138 -> 8185; tests 1231 -> 1232. Console JS not live-run; unit and
+console tests cover the wiring.

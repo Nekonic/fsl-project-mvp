@@ -73,10 +73,12 @@ All four phases are committed and `bin/verify` is green.
   dumps `auth_user` (verified on a local board build at HEAD: admin, jiwoo,
   minseo). Stock `--technique=BT` at the old `?sort=created_at` without the
   dotted force point did not, which is why the case looked like a mere probe.
-  Keep DEBUG=False. Remaining: the case extracts on the attacker box but does
-  not POST the dump to `/loot/`; crediting the loot objective still needs a
-  submission step (console operator or a later harness feature), which is not a
-  bespoke exploit tool. The planted
+  Keep DEBUG=False. The submission step now exists: the red console has a
+  "submit stolen loot" panel (shown only for `loot_verified` scenarios) that
+  POSTs the operator's extracted pairs to `/loot/`, which verifies them against
+  the session-start snapshot (`loot.matched`). So the loot objective is now
+  creditable through the operator flow; the hashes are already per-rebuild
+  dynamic (salts rotate), so no planted canary was added. The planted
   `/members.json` `values()` leak was removed: no real app would expose it.
   Salts rotate per rebuild because `board-db` keeps no persistent volume
   (`test_board_db_ephemeral.py` guards it).
@@ -707,9 +709,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       time-based blind injection and dumps `auth_user` (verified on a local
       board build: admin, jiwoo, minseo). On the OpenStack slot this needs the
       board rebuilt (the running image is drifted; `?sort=zzz` must 500 for the
-      sink to be live). Remaining: the dump lands on the attacker box, not
-      `/loot/`; crediting the loot objective needs a submission step (console
-      operator or a later harness feature, not a bespoke tool).
+      sink to be live). The submission step now exists: the red console's
+      "submit stolen loot" panel POSTs the operator's extracted pairs to
+      `/loot/` (shown only for `loot_verified`). So the loot objective is
+      creditable through the operator flow; the console JS was not live-run
+      (unit/console tests cover the wiring).
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`

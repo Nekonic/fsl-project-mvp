@@ -28,6 +28,12 @@ def test_the_catalogue_lists_the_board_and_the_corp_site_both_judged(client):
     assert wargames["board"]["judged"] is True
     assert wargames["corp"]["judged"] is True
 
+def test_the_catalogue_names_each_objective_model_so_the_console_shows_loot_only_for_loot(client):
+    wargames = listed(client)
+
+    assert wargames["board"]["model"] == "loot_verified"
+    assert wargames["corp"]["model"] == "effect_observed"
+
 def test_the_board_ships_attacks_and_benign_traffic(client):
     cases = client.get("/api/wargames/board/cases/").json()
 
