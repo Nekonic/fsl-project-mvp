@@ -476,3 +476,30 @@ point) still does not auto-complete; point sqlmap at the CVE (dotted
 `table.column` prefix, `--technique=B`). The sink itself is unchanged and still
 demonstrable (500 FieldError on a bad field). Takes effect on the live board
 only after an image rebuild.
+
+## 2026-10-09 — board order_by SQLi extracts with sqlmap (level 5), no bespoke tool
+
+With DEBUG=False the error-based channel is gone, but the CVE-2021-35042 order_by
+injection is still exploitable by the reusable tool. The old case aimed sqlmap at
+`?sort=created_at` with `--technique=BT --level=3`, which cannot reach the sink:
+Django skips validation only for a dotted value, and the injected term after the
+first dot lands in a RawSQL ORDER BY expression where a constant subquery is
+folded/dropped (manual `(SELECT SLEEP(n))` did not delay). sqlmap's stock
+low-level payloads do not fit that context, so it reported "not injectable".
+
+Fix: aim sqlmap at the dotted injection point `?sort=posts_post.id*` (the `*`
+force point) with `--level=5 --risk=3`. At level 5 sqlmap uses its ORDER BY
+payloads, breaks out with `)`, and finds both boolean-based (`) AND x=(SELECT
+CASE WHEN (..) THEN x ELSE (SELECT a UNION SELECT b) END)-- -`) and time-based
+(`) AND (SELECT .. FROM (SELECT(!SLEEP(n)))x)-- -`) blind injection, then dumps
+`auth_user`. Verified on a local board build at HEAD (fsl/board:mvp): dumped
+usernames admin, jiwoo, minseo. No dedicated exploit tool was added — the user
+ruled that out for lack of reusability; sqlmap with the right flags is the
+reusable element.
+
+Not done here: the dump stays on the attacker box; crediting the board loot
+objective still needs the dump POSTed to `/loot/` (console operator or a later
+harness feature, not a bespoke tool). On the OpenStack slot the board image is
+drifted and does not run the sink (`?sort=zzz` returns 200, not 500) — a slot
+rebuild is needed before this case extracts there. product_loc 8081 -> 8086
+(the case + comment); core_loc, tests, services unchanged.
