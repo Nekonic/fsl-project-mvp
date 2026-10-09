@@ -371,6 +371,7 @@ def test_fire_prefetches_a_nonce_from_the_page_and_injects_it():
         "name": "nonce-case", "case_id": "c1", "correlation": "none", "malicious": True,
         "request": {
             "method": "POST", "path": "/wp-admin/admin-ajax.php",
+            "headers": {"Host": "corp.com"},
             "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'},
             "data": {"_nonce": "{nonce}", "action": "x"},
         },
@@ -384,6 +385,10 @@ def test_fire_prefetches_a_nonce_from_the_page_and_injects_it():
     harness.fire(case, record, BASE)
     fetched, fired = sent[0], sent[-1]
     assert any("/form" in part for part in fetched)
+    assert "Host: corp.com" in fetched, (
+        "the prefetch GET must carry the case's Host header or it hits the wrong "
+        "vhost and finds no nonce"
+    )
     body = fired[fired.index("--data-binary") + 1]
     assert "abc123" in body and "{nonce}" not in body
 

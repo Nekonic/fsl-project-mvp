@@ -772,7 +772,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (wpgdprc nonce, enqueued globally) works. Ship corp with a classic theme
       or fix the block-theme content rendering so the forms render. A classic
       theme was not installable in the dev container (none bundled, WordPress.org
-      unreachable).
+      unreachable). When the form renders, narrow corp-content-write's prefetch
+      pattern from the generic `"nonce":"(...)"` to the rbsm-specific key: the
+      page localizes several `"nonce"` values and `re.search` takes the first,
+      so it could capture another plugin's token. Today this is masked (the form
+      does not render, so the prefetch raises ToolUnavailable rather than
+      grabbing a wrong token).
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded

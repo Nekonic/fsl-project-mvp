@@ -535,3 +535,18 @@ and corp-rogue-admin are not exposed on any public page (only wpgdprc, enqueued
 globally, is). Ship corp with a classic theme (or fix block-theme content
 rendering) so the forms render; a classic theme could not be installed here
 (none bundled, WordPress.org unreachable from the container). tests 1228 -> 1231.
+
+## 2026-10-09 — prefetch review fixes (Host header, GET exit code)
+
+A hard review of the prefetch feature found a high-severity bug: the prefetch
+GET (`fetch_argv`) carried no `Host` header, but the platform routes one nginx
+entrypoint to the board/corp vhosts by the `Host` header that `fire_attack`
+injects on the POST only (`views.py`). So a corp prefetch GET reached the board
+vhost, found no nonce, and every corp case aborted with ToolUnavailable before
+firing — the feature was non-functional in the real multi-vhost deployment (the
+local end-to-end run masked it because its launch stub added the Host itself).
+Fix: `apply_prefetch` forwards the case request's headers (the Host views.py
+set) to `fetch_argv`, and a test now asserts the GET carries the Host. Also
+check the GET's curl exit code so an unreachable target reports that, not a
+misleading "token not found". Both fixes are in `redteam/tools.py` (product_loc,
+core_loc unchanged at 462).
