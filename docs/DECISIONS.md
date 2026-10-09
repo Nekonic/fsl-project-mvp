@@ -503,3 +503,35 @@ harness feature, not a bespoke tool). On the OpenStack slot the board image is
 drifted and does not run the sink (`?sort=zzz` returns 200, not 500) — a slot
 rebuild is needed before this case extracts there. product_loc 8081 -> 8086
 (the case + comment); core_loc, tests, services unchanged.
+
+## 2026-10-09 — corp cases fire real exploits via a reusable nonce prefetch
+
+Live verification (local corp build at HEAD: WordPress 6.6.2 + the three pinned
+plugins) found all three corp CVEs real but every corp case non-functional as
+written: each sent an empty nonce, and corp-rogue-admin used form_id 5 (the
+login form) not 4 (registration). The CVEs are missing-authorization (no
+capability check) but still require a public anti-CSRF nonce that an anonymous
+visitor reads from the page.
+
+Reusable fix (the user ruled out a bespoke per-exploit tool): redteam/tools.py
+gains apply_prefetch/fetch_argv — a request may declare prefetch: {from, pattern};
+the harness GETs that page through the attacker box, captures the token with the
+pattern's first group, and substitutes {nonce} into the request. harness.fire
+calls it once (core_loc 461 -> 462, a recorded gated +1; the fire signature was
+folded to one line to keep the change minimal). Cases fixed: corp-option-flip
+(wpgdprc nonce from /), corp-content-write (easy-post nonce), corp-rogue-admin
+(form_id 4, um_register_form nonce), and benign corp-normal-registration. UM
+registration is independent of users_can_register, so no reordering is needed.
+
+Verified end-to-end through the real harness code: corp-option-flip flips
+users_can_register 0 -> 1. Each raw CVE was confirmed by hand (post 1 defaced;
+a new unauth-registered user became administrator via the homoglyph
+wp_capabilities field).
+
+Open (corp target bug): the block theme twentytwentyfour does not render the
+plugin shortcode forms (UM register, rbsm submit) on the front-end — do_shortcode
+renders them, the page does not — so the per-form nonces for corp-content-write
+and corp-rogue-admin are not exposed on any public page (only wpgdprc, enqueued
+globally, is). Ship corp with a classic theme (or fix block-theme content
+rendering) so the forms render; a classic theme could not be installed here
+(none bundled, WordPress.org unreachable from the container). tests 1228 -> 1231.

@@ -358,3 +358,45 @@ def test_opening_a_session_waits_as_long_as_its_stack_takes_to_come_up(monkeypat
         "to be healthy, about 40 s on the test range; a 15 s request gives up "
         "while the stack is still coming up"
     )
+
+def test_fire_prefetches_a_nonce_from_the_page_and_injects_it():
+    page = 'rbGlobal = {"ajaxURL":"/x","nonce":"abc123"};'
+
+    def launch(image, argv, timeout=None):
+        if "-o" not in argv:
+            return SimpleNamespace(exit_code=0, output=page)
+        return SimpleNamespace(exit_code=0, output="")
+
+    case = {
+        "name": "nonce-case", "case_id": "c1", "correlation": "none", "malicious": True,
+        "request": {
+            "method": "POST", "path": "/wp-admin/admin-ajax.php",
+            "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'},
+            "data": {"_nonce": "{nonce}", "action": "x"},
+        },
+    }
+    sent = []
+
+    def record(image, argv, timeout=None):
+        sent.append(argv)
+        return launch(image, argv, timeout)
+
+    harness.fire(case, record, BASE)
+    fetched, fired = sent[0], sent[-1]
+    assert any("/form" in part for part in fetched)
+    body = fired[fired.index("--data-binary") + 1]
+    assert "abc123" in body and "{nonce}" not in body
+
+def test_fire_raises_when_the_prefetched_token_is_absent():
+    def launch(image, argv, timeout=None):
+        return SimpleNamespace(exit_code=0, output="no token on this page")
+
+    case = {
+        "name": "nonce-case", "case_id": "c2", "correlation": "none", "malicious": True,
+        "request": {
+            "method": "GET", "path": "/a",
+            "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'},
+        },
+    }
+    with pytest.raises(harness.ToolUnavailable):
+        harness.fire(case, launch, BASE)

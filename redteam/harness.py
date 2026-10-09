@@ -15,6 +15,7 @@ from redteam.tools import (
     MARKER_HEADER,
     STARTUP_FAILURE,
     ToolUnavailable,
+    apply_prefetch,
     curl_argv,
     is_tool_case,
     tool_argv,
@@ -98,11 +99,11 @@ def run(
     )
     return session_id
 
-def fire(case: dict[str, Any], launch,
-         tool_target_url: str = DEFAULT_TOOL_TARGET) -> None:
+def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET) -> None:
     if is_tool_case(case):
         fire_tool(case, tool_target_url, launch)
         return
+    case = apply_prefetch(case, tool_target_url, launch, REQUEST_TIMEOUT)
     prepared = build_request(case, tool_target_url)
     check_path_preserved(case["request"]["path"], prepared.url)
     fire_http(case, prepared, launch)
