@@ -466,8 +466,13 @@ would not; set to `False`. Static still serves (whitenoise middleware +
 400ing, and no test asserts DEBUG or the debug error body. Consequence: the
 CVE-2021-35042 `?sort=` order_by injection no longer leaks error-based (MySQL
 1105 was only visible because DEBUG rendered the traceback), leaving blind-only
-extraction, which is impractical for pbkdf2 hashes. The board thus has no
-practical red-team exfil of `auth_user` through `?sort=`; the realistic board
-loot exfil is now open (step 7/8). The sink itself is unchanged and still
-demonstrable (its presence shows as a 500 FieldError on a bad field). Takes
-effect on the live board only after an image rebuild.
+extraction. A follow-up review found blind is still lesson-practical: the
+boolean oracle reads off the rendered post order, ~1,350 requests for all three
+accounts via sqlmap's boolean technique, and the request storm is good detection
+fodder. So `?sort=` blind SQLi stays the board's canonical loot path (keep
+DEBUG=False), with `/internal/auth-users` accidental exposure as an optional
+quieter tier. The current case (`--technique=BT`, no forced dotted injection
+point) still does not auto-complete; point sqlmap at the CVE (dotted
+`table.column` prefix, `--technique=B`). The sink itself is unchanged and still
+demonstrable (500 FieldError on a bad field). Takes effect on the live board
+only after an image rebuild.

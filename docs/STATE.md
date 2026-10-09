@@ -66,12 +66,16 @@ All four phases are committed and `bin/verify` is green.
   data (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`); `DEBUG` was set
   `False` on 2026-10-09 (a production app would not run debug), so that
   error-based channel no longer surfaces and the order_by injection is now
-  blind-only — impractical for dumping pbkdf2 hashes. sqlmap's off-the-shelf
-  payloads never auto-completed the dump either (not shaped for the
-  dotted-column prefix), so `board-sqli-orderby-sqlmap`
-  (`redteam/cases/board.yaml`) is a loud, detected probe. The board therefore
-  has no practical red-team exfil of `auth_user` through `?sort=`; the realistic
-  exfil for the board loot objective is open, to settle in step 7/8. The planted
+  blind-only. Blind (boolean/time) extraction through the ORDER BY sink is still
+  lesson-practical: the boolean oracle reads off the rendered post order,
+  ~450 requests per account / ~1,350 for all three via sqlmap's boolean
+  technique, and that request storm is good detection fodder. It is not
+  error-based and sqlmap's stock `--technique=BT` without a forced dotted
+  injection point does not auto-complete, so `board-sqli-orderby-sqlmap`
+  (`redteam/cases/board.yaml`) stays a detected probe until the tooling targets
+  the CVE (dotted `table.column` prefix + boolean/time). Keep DEBUG=False; the
+  board's canonical loot path is this blind SQLi, with `/internal/auth-users`
+  accidental exposure as an optional quieter second tier. The planted
   `/members.json` `values()` leak was removed: no real app would expose it.
   Salts rotate per rebuild because `board-db` keeps no persistent volume
   (`test_board_db_ephemeral.py` guards it).
@@ -698,8 +702,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       as a qualified column and only 1064s). DEBUG was set False on 2026-10-09,
       so that error-based leak no longer surfaces; after a slot board rebuild
       (step 8) the sink's presence shows via the decisive test (`?sort=zzz` ->
-      500 FieldError) but extraction is blind-only. Settle the realistic board
-      exfil before step 7 reads completion from the target.
+      500 FieldError). Extraction is blind-only but still practical (~1,350
+      requests via sqlmap's boolean technique against a forced dotted injection
+      point); that is the board's canonical loot path. Point sqlmap at the CVE
+      (`-p sort`, dotted `table.column` prefix, `--technique=B`) before step 7
+      reads completion from the target.
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`
@@ -735,6 +742,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       a WAF misconfig) reads every password hash unauthenticated. A vuln scan
       reads it as a planted endpoint; decide whether the no-planted-vulns policy
       needs it reframed (e.g. an accidentally exposed internal debug route).
+- [ ] Suricata XSS coverage is URI-only: `board-xss-img-onerror-in-comment`
+      carries the payload in the JSON body, but sid 9000003 inspects
+      `http.uri` only (SQLi has both a URI rule 9000001 and a body rule
+      9000002; XSS has no body rule). That case is ModSecurity-only. Decide
+      whether to add a `http.request_body` XSS rule for symmetry (changes the
+      detection score) or leave it WAF-only by design (step 7).
+- [ ] `board-sqli-orderby-sqlmap` evades both engines on a clean exploit:
+      boolean/time ORDER BY payloads carry no `--`/`union`/quote grammar, so
+      Suricata sid 9000001 is fragile, and the dotted-column CVE payload has no
+      SQLi meta-characters for CRS. Only sqlmap's noisy stock probes are caught.
+      This is the intended "hard to detect" lesson case; note it when wiring
+      step 7 so it is not mistaken for a coverage bug.
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
