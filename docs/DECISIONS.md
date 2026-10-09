@@ -465,11 +465,11 @@ would not; set to `False`. Static still serves (whitenoise middleware +
 `CompressedStaticFilesStorage`), `ALLOWED_HOSTS=["*"]` keeps host checks from
 400ing, and no test asserts DEBUG or the debug error body. Consequence: the
 CVE-2021-35042 `?sort=` order_by injection no longer leaks error-based (MySQL
-1105 was only visible because DEBUG rendered the traceback), leaving blind-only
-extraction. A follow-up review found blind is still lesson-practical: the
-boolean oracle reads off the rendered post order, ~1,350 requests for all three
-accounts via sqlmap's boolean technique, and the request storm is good detection
-fodder. So `?sort=` blind SQLi stays the board's canonical loot path (keep
+1105 was only visible because DEBUG rendered the traceback), leaving blind
+extraction only. Blind extraction is still practical for a lesson: the boolean
+oracle reads off the rendered post order, about 1,350 requests to pull all three
+accounts with sqlmap's boolean technique, and those requests are easy for the
+IDS to catch. So `?sort=` blind SQLi stays the board's loot path (keep
 DEBUG=False), with `/internal/auth-users` accidental exposure as an optional
 quieter tier. The current case (`--technique=BT`, no forced dotted injection
 point) still does not auto-complete; point sqlmap at the CVE (dotted
@@ -494,8 +494,8 @@ CASE WHEN (..) THEN x ELSE (SELECT a UNION SELECT b) END)-- -`) and time-based
 (`) AND (SELECT .. FROM (SELECT(!SLEEP(n)))x)-- -`) blind injection, then dumps
 `auth_user`. Verified on a local board build at HEAD (fsl/board:mvp): dumped
 usernames admin, jiwoo, minseo. No dedicated exploit tool was added — the user
-ruled that out for lack of reusability; sqlmap with the right flags is the
-reusable element.
+ruled that out for lack of reusability; sqlmap with the right flags does the
+extraction.
 
 Not done here: the dump stays on the attacker box; crediting the board loot
 objective still needs the dump POSTed to `/loot/` (console operator or a later

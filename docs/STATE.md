@@ -72,7 +72,7 @@ All four phases are committed and `bin/verify` is green.
   ORDER BY with `)` and finds both boolean- and time-based blind injection, then
   dumps `auth_user` (verified on a local board build at HEAD: admin, jiwoo,
   minseo). Stock `--technique=BT` at the old `?sort=created_at` without the
-  dotted force point did not, which is why the case looked like a mere probe.
+  dotted force point did not, which is why the case had looked like only a probe.
   Keep DEBUG=False. The submission step now exists: the red console has a
   "submit stolen loot" panel (shown only for `loot_verified` scenarios) that
   POSTs the operator's extracted pairs to `/loot/`, which verifies them against
