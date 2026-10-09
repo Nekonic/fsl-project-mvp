@@ -685,9 +685,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       image bundle hashes to the current source, but the board on the current
       slot did not reflect `?sort=` (no reorder for any value; dotted
       extractvalue/updatexml payloads returned 200 with no error under
-      DEBUG=True), so the manual error-based leak did not reproduce from quick
-      probes. Re-confirm the manual extraction after a live-cloud board rebuild
-      (step 8), then settle it before step 7 reads completion from the target.
+      DEBUG=True), confirming the running board does not execute the sink
+      (image/process drift; source and image-bundle hash are current). The
+      working manual payload is now known from the Django 3.2.4 source: the
+      dotted value must keep a valid `table.column` prefix and add the function
+      as a second ORDER BY term, e.g.
+      `?sort=posts_post.id,extractvalue(1,concat(0x7e,version()))` ->
+      MySQL 1105 XPATH leak under DEBUG (a bare `col.extractvalue(...)` parses
+      as a qualified column and only 1064s). Re-confirm by rebuilding the slot's
+      board from the current image, then firing that payload (step 8), before
+      step 7 reads completion from the target.
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`
@@ -716,6 +723,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `FSL_SENSOR_RELOAD` is unset on the VM; the VM has no GeoLite2 database
       (`bin/fetch-geoip` never ran). The stale `blue.html` comparison test
       was removed 2026-10-09.
+- [ ] `/internal/auth-users` (the board's loot read_path) has no application
+      auth; its only external block is nginx `location /internal/ { return 404; }`
+      in `deploy/waf/range.conf`, independent of SecRuleEngine. Anything that
+      reaches `board:8000` directly (the platform's own ground-truth channel, or
+      a WAF misconfig) reads every password hash unauthenticated. A vuln scan
+      reads it as a planted endpoint; decide whether the no-planted-vulns policy
+      needs it reframed (e.g. an accidentally exposed internal debug route).
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
