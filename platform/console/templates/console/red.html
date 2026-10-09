@@ -109,6 +109,15 @@
   </div>
 </div>
 
+<div id="loot" class="hidden mt-10">
+  <h2 data-t="red.loot.heading" class="text-sm uppercase tracking-wide text-muted mb-2"></h2>
+  <p id="loot-hint" data-t="red.loot.hint" class="text-xs text-muted mb-2"></p>
+  <textarea id="loot-input" rows="4" placeholder='{"admin": "pbkdf2_sha256$..."}'
+    class="w-full bg-panel border border-line rounded px-3 py-2 text-sm font-mono"></textarea>
+  <button id="loot-submit" data-t="red.loot.submit"
+    class="mt-2 px-4 py-2 rounded bg-panel border border-danger-soft hover:border-danger text-danger text-sm"></button>
+</div>
+
 <h2 data-t="red.log.heading" class="text-sm uppercase tracking-wide text-muted mt-10 mb-3"></h2>
 <div id="log" class="space-y-1 text-sm font-mono"></div>
 <p id="log-empty" data-t="red.log.empty" class="text-muted text-sm"></p>
@@ -126,6 +135,8 @@
     if (!listed.ok || !Array.isArray(listed.body)) return;
     const wargame = listed.body.find((w) => w.id === scenario);
     if (!wargame) return;
+
+    document.getElementById("loot").classList.toggle("hidden", wargame.model !== "loot_verified");
 
     const named = (stages) => stages.map((s) => t("stage." + s)).join(", ");
     const lines = [t("red.covers", named(wargame.covers))];
@@ -187,6 +198,31 @@
     log.prepend(line);
     while (log.children.length > LOG_LINES) log.lastElementChild.remove();
   }
+
+  async function submitLoot() {
+    let parsed;
+    try {
+      parsed = JSON.parse(document.getElementById("loot-input").value);
+    } catch (error) {
+      note(t("red.loot.not_json"), "text-warning");
+      return;
+    }
+    const result = await post(`/api/sessions/${sessionId()}/loot/`, { loot: parsed });
+    if (!result.ok) {
+      note(t("red.loot.failed", detail(result)), "text-warning");
+      return;
+    }
+    if (result.body.credited.length) {
+      note(t("red.loot.credited", result.body.matched.length, result.body.credited.length),
+           "text-danger font-semibold");
+      await loadObjectives();
+      await refreshTaken();
+    } else {
+      note(t("red.loot.none", result.body.matched.length), "text-muted");
+    }
+  }
+
+  document.getElementById("loot-submit").addEventListener("click", submitLoot);
 
   async function fire(name) {
     const result = await post(`/api/sessions/${sessionId()}/attacks/`,
