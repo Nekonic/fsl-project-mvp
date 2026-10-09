@@ -23,8 +23,12 @@ def unavailable(case_name: str, detail: str) -> ToolUnavailable:
 def is_tool_case(case: dict[str, Any]) -> bool:
     return bool(case.get("tool"))
 
-def fetch_argv(url: str, timeout: float) -> tuple[str, list[str]]:
-    return TOOL_IMAGE, ["curl", "-sS", "--max-time", str(int(timeout)), url]
+def fetch_argv(url: str, timeout: float, headers: dict | None = None) -> tuple[str, list[str]]:
+    argv = ["curl", "-sS", "--max-time", str(int(timeout))]
+    for name, value in (headers or {}).items():
+        argv += ["-H", f"{name}: {value}"]
+    argv.append(url)
+    return TOOL_IMAGE, argv
 
 def _inject(value: Any, token: str) -> Any:
     if isinstance(value, str):
@@ -39,12 +43,18 @@ def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) 
     spec = (case.get("request") or {}).get("prefetch")
     if not spec:
         return case
-    image, argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout)
+    headers = (case.get("request") or {}).get("headers")
+    image, argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout, headers)
     try:
-        body = launch(image, argv, timeout=timeout).output
+        result = launch(image, argv, timeout=timeout)
     except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
-    found = re.search(spec["pattern"], body or "")
+    if result.exit_code != 0:
+        raise ToolUnavailable(
+            f"{case['name']}: the prefetch GET {spec['from']} never reached the target "
+            f"(curl exit {result.exit_code}): {result.output.strip()[:200]}"
+        )
+    found = re.search(spec["pattern"], result.output or "")
     if not found:
         raise ToolUnavailable(
             f"{case['name']}: the token {spec['pattern']!r} was not on {spec['from']}, "
