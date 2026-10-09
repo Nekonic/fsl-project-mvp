@@ -61,17 +61,20 @@ All four phases are committed and `bin/verify` is green.
 - **The realistic exfil is the `?sort=` order_by SQLi.** The board is pinned to
   Django 3.2.4 (CVE-2021-35042) on `python:3.9-slim`; `post_list` passes
   `?sort=` straight to `order_by()`. A `.`-containing value bypasses field
-  validation and reaches the raw `ORDER BY`; the board runs `DEBUG=True`, so
-  MySQL errors surface, and error-based extraction leaked live data
-  (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`). sqlmap's
-  off-the-shelf payloads do not auto-complete the dump through this ORM
-  injection (they are not shaped for the dotted-column prefix), so
-  `board-sqli-orderby-sqlmap` (`redteam/cases/board.yaml`) is a loud, detected
-  probe. The planted `/members.json` `values()` leak was removed: no real app
-  would expose it. Salts rotate per rebuild because
-  `board-db` keeps no persistent volume (`test_board_db_ephemeral.py` guards
-  it). Full automated extraction through the order_by sink and a live-cloud
-  rebuild stay manual checks.
+  validation and reaches the raw `ORDER BY`. The board previously ran
+  `DEBUG=True`, so MySQL errors surfaced and error-based extraction leaked live
+  data (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`); `DEBUG` was set
+  `False` on 2026-10-09 (a production app would not run debug), so that
+  error-based channel no longer surfaces and the order_by injection is now
+  blind-only — impractical for dumping pbkdf2 hashes. sqlmap's off-the-shelf
+  payloads never auto-completed the dump either (not shaped for the
+  dotted-column prefix), so `board-sqli-orderby-sqlmap`
+  (`redteam/cases/board.yaml`) is a loud, detected probe. The board therefore
+  has no practical red-team exfil of `auth_user` through `?sort=`; the realistic
+  exfil for the board loot objective is open, to settle in step 7/8. The planted
+  `/members.json` `values()` leak was removed: no real app would expose it.
+  Salts rotate per rebuild because `board-db` keeps no persistent volume
+  (`test_board_db_ephemeral.py` guards it).
 - **Proven on the live stack** (`test/test_board_loot.py`): the ground truth
   read over the internal channel and submitted credits all three tiers at
   coverage 1.0; fabricated hashes are refused.
@@ -692,9 +695,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       as a second ORDER BY term, e.g.
       `?sort=posts_post.id,extractvalue(1,concat(0x7e,version()))` ->
       MySQL 1105 XPATH leak under DEBUG (a bare `col.extractvalue(...)` parses
-      as a qualified column and only 1064s). Re-confirm by rebuilding the slot's
-      board from the current image, then firing that payload (step 8), before
-      step 7 reads completion from the target.
+      as a qualified column and only 1064s). DEBUG was set False on 2026-10-09,
+      so that error-based leak no longer surfaces; after a slot board rebuild
+      (step 8) the sink's presence shows via the decisive test (`?sort=zzz` ->
+      500 FieldError) but extraction is blind-only. Settle the realistic board
+      exfil before step 7 reads completion from the target.
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`

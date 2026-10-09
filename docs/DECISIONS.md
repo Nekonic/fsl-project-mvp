@@ -457,3 +457,17 @@ hashes to the current source, yet the board on the current slot did not reflect
 returned 200 with no error under DEBUG=True), so the manual error-based leak
 recorded earlier (`~8.4.11`) did not reproduce from quick probes. Re-confirm the
 manual extraction after a live-cloud board rebuild (step 8).
+
+## 2026-10-09 — Board runs with DEBUG=False
+
+`wargames/board/app/board/settings.py` ran `DEBUG=True`, which a production app
+would not; set to `False`. Static still serves (whitenoise middleware +
+`CompressedStaticFilesStorage`), `ALLOWED_HOSTS=["*"]` keeps host checks from
+400ing, and no test asserts DEBUG or the debug error body. Consequence: the
+CVE-2021-35042 `?sort=` order_by injection no longer leaks error-based (MySQL
+1105 was only visible because DEBUG rendered the traceback), leaving blind-only
+extraction, which is impractical for pbkdf2 hashes. The board thus has no
+practical red-team exfil of `auth_user` through `?sort=`; the realistic board
+loot exfil is now open (step 7/8). The sink itself is unchanged and still
+demonstrable (its presence shows as a 500 FieldError on a bad field). Takes
+effect on the live board only after an image rebuild.
