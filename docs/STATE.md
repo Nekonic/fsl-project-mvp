@@ -66,16 +66,17 @@ All four phases are committed and `bin/verify` is green.
   data (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`); `DEBUG` was set
   `False` on 2026-10-09 (a production app would not run debug), so that
   error-based channel no longer surfaces and the order_by injection is now
-  blind-only. Blind (boolean/time) extraction through the ORDER BY sink is still
-  lesson-practical: the boolean oracle reads off the rendered post order,
-  ~450 requests per account / ~1,350 for all three via sqlmap's boolean
-  technique, and that request storm is good detection fodder. It is not
-  error-based and sqlmap's stock `--technique=BT` without a forced dotted
-  injection point does not auto-complete, so `board-sqli-orderby-sqlmap`
-  (`redteam/cases/board.yaml`) stays a detected probe until the tooling targets
-  the CVE (dotted `table.column` prefix + boolean/time). Keep DEBUG=False; the
-  board's canonical loot path is this blind SQLi, with `/internal/auth-users`
-  accidental exposure as an optional quieter second tier. The planted
+  blind-only. Resolved 2026-10-09 with the reusable tool, not a bespoke one:
+  `board-sqli-orderby-sqlmap` fires sqlmap at the dotted injection point
+  `?sort=posts_post.id*` with `--level=5 --risk=3`, and sqlmap breaks out of the
+  ORDER BY with `)` and finds both boolean- and time-based blind injection, then
+  dumps `auth_user` (verified on a local board build at HEAD: admin, jiwoo,
+  minseo). Stock `--technique=BT` at the old `?sort=created_at` without the
+  dotted force point did not, which is why the case looked like a mere probe.
+  Keep DEBUG=False. Remaining: the case extracts on the attacker box but does
+  not POST the dump to `/loot/`; crediting the loot objective still needs a
+  submission step (console operator or a later harness feature), which is not a
+  bespoke exploit tool. The planted
   `/members.json` `values()` leak was removed: no real app would expose it.
   Salts rotate per rebuild because `board-db` keeps no persistent volume
   (`test_board_db_ephemeral.py` guards it).
@@ -700,13 +701,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `?sort=posts_post.id,extractvalue(1,concat(0x7e,version()))` ->
       MySQL 1105 XPATH leak under DEBUG (a bare `col.extractvalue(...)` parses
       as a qualified column and only 1064s). DEBUG was set False on 2026-10-09,
-      so that error-based leak no longer surfaces; after a slot board rebuild
-      (step 8) the sink's presence shows via the decisive test (`?sort=zzz` ->
-      500 FieldError). Extraction is blind-only but still practical (~1,350
-      requests via sqlmap's boolean technique against a forced dotted injection
-      point); that is the board's canonical loot path. Point sqlmap at the CVE
-      (`-p sort`, dotted `table.column` prefix, `--technique=B`) before step 7
-      reads completion from the target.
+      so that error-based leak no longer surfaces. Extraction is resolved with
+      the reusable tool: the case now fires `sqlmap -u {target}/?sort=posts_post.id*
+      --technique=BT --level=5 --risk=3 ... --dump` and sqlmap finds boolean- and
+      time-based blind injection and dumps `auth_user` (verified on a local
+      board build: admin, jiwoo, minseo). On the OpenStack slot this needs the
+      board rebuilt (the running image is drifted; `?sort=zzz` must 500 for the
+      sink to be live). Remaining: the dump lands on the attacker box, not
+      `/loot/`; crediting the loot objective needs a submission step (console
+      operator or a later harness feature, not a bespoke tool).
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`
