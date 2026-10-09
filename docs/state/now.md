@@ -46,7 +46,7 @@ was not added: platform/tests/test_compose.py:251 ties set(WARGAMES) to the set
 of wargames/<id>/compose.yaml folders, so a new scenario id needs its own compose
 folder, which the step-1 compose split reworks; do them together, live.
 
-Step 1 built 2026-10-09, not committed yet (orchestrator commits). `compose.yaml`
+Step 1 built 2026-10-09, committed and pushed (9e8e963). `compose.yaml`
 is the control plane (platform, ES, Kibana, `collector` = Filebeat syslog input
 on 5140/udp for pfSense, the six networks); `session.yaml` is the data plane
 (waf, suricata, filebeat, kali, proxy, includes the wargames; networks
@@ -66,6 +66,20 @@ readiness and the session baseline read the board VM through the adapter's
 `address("board")` (its management address, put in place of the host in
 `BOARD_API_URL`), so no compose board runs on the VM. Before this the
 OpenStack ground truth came from the compose board on `estate`.
+
+Landed since, local on this branch (unpushed, through 862ea09): `/attacks/`
+wears the requested origin (9abc713); board runs `DEBUG=False` (84c061c); the
+board order_by case actually exploits CVE-2021-35042 via sqlmap
+`--level=5 --risk=3` at `?sort=posts_post.id*` (c0a5f80, verified on a local
+board build); a reusable harness nonce `prefetch` plus the four corp cases fixed
+to fire the real ultimate-member / wp-gdpr / easy-post CVEs (acc6c11, Host/exit
+fix ebf6e8b; option-flip verified end-to-end through the harness, the three CVEs
+by hand); and a red-console loot-submit panel that POSTs extracted pairs to
+`/loot/` (862ea09), closing the board loot-crediting gap. This was verification
+and loot/exploit correctness, not step 4-8 build progress — the 8-step sequence
+is still at step 3. Open items (corp block-theme form-render blocker, the
+deferred general "planted secret" primitive, the board live-rebuild drift,
+Suricata XSS-body coverage) are in `docs/STATE.md`.
 
 Steps 1, 2 and 4-8 need the live stack (`docker compose up` plus the acceptance
 suite), which a worktree cannot drive. Do not land them against the fast gate

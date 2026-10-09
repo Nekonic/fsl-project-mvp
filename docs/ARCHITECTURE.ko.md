@@ -298,7 +298,8 @@ bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLit
 비밀(`auth_user`의 사용자 이름과 비밀번호 컬럼, `/internal/auth-users`에서 읽음)과,
 공격자가 그중 얼마를 가졌는지에 따른 세 단계를 정한다: 해시 하나(난이도 2), `admin`
 계정의 해시(4), 모든 계정의 해시(5). 공격자는 해시를 탈취해
-`POST /api/sessions/<id>/loot/`로 제출한다. 플랫폼은 제출된 `(username, hash)` 쌍이
+`POST /api/sessions/<id>/loot/`로, 레드 콘솔의 loot 제출 패널(`loot_verified`
+시나리오에서만 표시)에서 제출한다. 플랫폼은 제출된 `(username, hash)` 쌍이
 세션 시작 시점 스냅샷과 정확히 일치하고, 세션이 악성 케이스를 하나 이상 발사한 뒤에만
 단계를 인정한다. 공격 결과에 대한 플랫폼 자신의 판단으로 목표를 인정하지 않는다.
 ground truth는 대상 시스템 자체의 기록이며, 탐지 장비는 이를 보지 못한다.

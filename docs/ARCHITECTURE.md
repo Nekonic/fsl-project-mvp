@@ -326,7 +326,8 @@ Objectives. The board is a `loot_verified` target. Its
 password columns, read from `/internal/auth-users`) and three tiers by how much
 of it the attacker holds: any one hash (difficulty 2), the `admin` account's
 (4), every account's (5). The attacker exfiltrates hashes and submits them with
-`POST /api/sessions/<id>/loot/`. The platform credits a tier only for submitted
+`POST /api/sessions/<id>/loot/`, from the red console's loot panel (shown only
+for `loot_verified` scenarios). The platform credits a tier only for submitted
 `(username, hash)` pairs that match the session's start-of-session snapshot
 exactly, and only once the session has fired a malicious case. It never credits
 an objective from its own belief about what an attack did. The ground truth is
