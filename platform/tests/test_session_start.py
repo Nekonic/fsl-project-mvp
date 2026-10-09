@@ -23,13 +23,23 @@ def _verdict(ready, blocked=()):
     }
 
 def test_starting_on_the_compose_range_ignores_the_slot(client):
+    with patch("api.views._range_ready") as ready:
+        first = client.post_json("/api/sessions/", {})
+
+    assert first.status_code == 201
+    assert not ready.called, "compose has no slot to check"
+
+def test_starting_refuses_a_second_open_session_on_compose(client):
     first = client.post_json("/api/sessions/", {})
     second = client.post_json("/api/sessions/", {})
 
     assert first.status_code == 201
-    assert second.status_code == 201, (
-        "compose has no slot, so the many-concurrent-session behaviour must stand"
+    assert second.status_code == 409, (
+        "a second session on compose takes down the open one's stack with -v "
+        "and scores it against a target that is gone"
     )
+    assert "already open" in second.json()["detail"]
+    assert Session.objects.filter(ended_at=None).count() == 1
 
 def test_starting_a_session_takes_a_ready_slot(client):
     with patch("api.views.substrate", lambda: Cloud()), patch(

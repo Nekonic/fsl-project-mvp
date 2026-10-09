@@ -657,3 +657,22 @@ def test_a_host_is_reached_on_management_when_no_segment_is_named(monkeypatch):
 
 def test_a_named_segment_still_picks_the_address_there(monkeypatch):
     assert reached_at(monkeypatch, "estate") == ["fsl@172.30.0.9"]
+
+def test_the_board_is_addressed_on_management_not_on_the_estate():
+    servers = {"servers": [{
+        "name": "fsl-wg-board",
+        "addresses": {
+            "range1-estate-v4": [{"addr": "10.20.0.9", "OS-EXT-IPS:type": "fixed"}],
+            "range1-mgmt-v4": [{"addr": "172.31.0.9", "OS-EXT-IPS:type": "fixed"}],
+        },
+    }]}
+
+    def get(call):
+        return servers if "/servers/detail" in call else cloud_reader()(call)
+
+    found = openstack.OpenStack(declared.read(), CLOUD, get=get).address("board")
+
+    assert found == "172.31.0.9", (
+        "the platform reaches range hosts over management only, and the board "
+        f"VM's address there is handed out by DHCP, so it is read from the cloud: {found}"
+    )

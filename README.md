@@ -57,12 +57,20 @@ flowchart TB
 The red team attacks a wargame through the blue team's WAF and IDS. The
 sensors' alerts go to Elasticsearch. The platform scores from those alerts and
 from the target's own records (ground truth): exfiltrated data the attacker
-submits is checked against the target's data. The platform, red and blue
-teams are in the top `compose.yaml`, which includes one folder per wargame
-under `wargames/`. A new wargame needs that folder with its `compose.yaml`,
+submits is checked against the target's data. Two compose files split the
+stack. `compose.yaml` is the control plane, one long-lived copy: the platform,
+Elasticsearch, Kibana, and `collector`, a Filebeat that only takes syslog from
+the OpenStack range. `session.yaml` is one session's data plane: the WAF,
+Suricata, Filebeat, Kali, the proxy, and one folder per wargame under
+`wargames/` that it includes. Opening a session (`POST /api/sessions/`) starts
+`session.yaml` as its own compose project, `fsl-<session id>`, and waits until
+every service is healthy; the platform then reads the target's baseline. One
+stack runs at a time: opening a session takes down the previous session's
+stack, and closing a session leaves its stack standing until the next one
+opens. A new wargame needs its folder with its `compose.yaml`,
 `scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
-one more `include:` line; `platform/wargames.py` discovers it from
-`scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
+one more `include:` line in `session.yaml`; `platform/wargames.py` discovers it
+from `scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
 a WordPress site (`effect_observed`).
 
 ```mermaid
@@ -118,13 +126,19 @@ networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
-On a host with Docker, clone the repo, fetch the GeoIP database once, and
-bring the stack up:
+On a host with Docker, clone the repo, fetch the GeoIP database once, build
+the session images once, and bring the control plane up:
 
 ```bash
 bin/fetch-geoip
+docker compose -f session.yaml build
 docker compose up -d --build
 ```
+
+Sessions start their stack with `--no-build`, so after changing a wargame, Kali
+or the proxy, run `docker compose -f session.yaml build` again. To start a
+session's stack by hand, as the platform does:
+`docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
 
 Elasticsearch's managed GeoIP downloader is off; it reads `GeoLite2-City.mmdb`
 from `config/ingest-geoip` (a durable bind mount) instead. `bin/fetch-geoip`
@@ -142,7 +156,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, Kali's own ttyd at `/terminal/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
-| 5140/udp | Filebeat's syslog input | pfSense and the WAF on OpenStack |
+| 5140/udp | `collector`, Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000. It passes `/terminal/` to the ttyd
@@ -337,10 +351,11 @@ generated stylesheet is committed, and a test fails when it is stale.
 The platform's store (sessions, cases, detections, objectives, rule sets,
 suppressions) is one SQLite file, `/data/db.sqlite3` on the `fsl_platformdata`
 volume. Nothing else is backed up: not Elasticsearch's `fsl_esdata` volume,
-not Filebeat's registry in `fsl_filebeatdata`, not ModSecurity's audit log in
-`fsl_waflogs`, and not Suricata's `eve.json`, a plain file in
-`deploy/suricata/logs`. `docker compose down -v` deletes the four volumes and
-leaves that file.
+not the collector's registry in `fsl_collectordata`, and not a session's
+volumes (`fsl-<id>_filebeatdata`, `fsl-<id>_waflogs` with ModSecurity's audit
+log, `fsl-<id>_suricatalogs` with Suricata's `eve.json`), which are deleted
+when the next session takes the stack down. `docker compose down -v` deletes
+the control plane's three volumes.
 
 ```bash
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves

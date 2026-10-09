@@ -257,7 +257,7 @@ def test_the_waf_writes_its_audit_log_where_its_own_user_can():
 
 def test_every_wargame_is_one_folder_the_stack_includes():
     included = {
-        str(path.relative_to(composed.ROOT)) for path in composed.files()[1:]
+        str(path.relative_to(composed.ROOT)) for path in composed.included()
     }
     folders = {
         str(path.relative_to(composed.ROOT))
@@ -265,14 +265,14 @@ def test_every_wargame_is_one_folder_the_stack_includes():
     }
 
     assert folders and included == folders, (
-        f"compose.yaml includes {sorted(included)} and the wargames folder holds "
+        f"session.yaml includes {sorted(included)} and the wargames folder holds "
         f"{sorted(folders)}: a wargame is added or removed as one folder"
     )
     assert {path.split("/")[1] for path in folders} == set(WARGAMES), (
         "the console offers a wargame with no folder, or a folder with no wargame"
     )
 
-def test_only_the_platform_and_the_log_collector_may_be_published_elsewhere_and_only_by_choice():
+def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_and_only_by_choice():
     chosen = {
         (name, entry)
         for name, service in composed.services().items()
@@ -282,7 +282,7 @@ def test_only_the_platform_and_the_log_collector_may_be_published_elsewhere_and_
 
     assert chosen == {
         ("platform", "${FSL_PUBLISH:-127.0.0.1}:8000:8000"),
-        ("filebeat", "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
+        ("collector", "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
     }, chosen
 
 def test_the_address_a_vm_publishes_on_stays_out_of_git():

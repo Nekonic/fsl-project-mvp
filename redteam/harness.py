@@ -15,13 +15,14 @@ from redteam.tools import (
     MARKER_HEADER,
     STARTUP_FAILURE,
     ToolUnavailable,
+    curl_argv,
     is_tool_case,
     tool_argv,
     unavailable,
 )
 
 REQUEST_TIMEOUT = 15.0
-TOOL_TIMEOUT = 600.0
+TOOL_TIMEOUT = SESSION_OPEN_TIMEOUT = 600.0
 
 DEFAULT_TOOL_TARGET = "http://board.com"
 
@@ -69,7 +70,6 @@ def case_meta(case: dict[str, Any]) -> dict[str, Any]:
 def run(
     cases: list[dict[str, Any]],
     platform_url: str,
-    target_url: str,
     launch,
     tool_target_url: str = DEFAULT_TOOL_TARGET,
     scenario: str = "board",
@@ -79,7 +79,7 @@ def run(
     opened = http.post(
         f"{platform_url}/api/sessions/",
         json={"scenario": scenario},
-        timeout=REQUEST_TIMEOUT,
+        timeout=SESSION_OPEN_TIMEOUT,
     )
     opened.raise_for_status()
     session_id = opened.json()["id"]
@@ -90,7 +90,7 @@ def run(
         case.setdefault("correlation", "marker")
 
         started_at = datetime.now(timezone.utc)
-        fire(http, case, target_url, launch, tool_target_url)
+        fire(case, launch, tool_target_url)
         _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
 
     http.post(
@@ -98,36 +98,31 @@ def run(
     )
     return session_id
 
-def fire(
-    http: requests.Session,
-    case: dict[str, Any],
-    target_url: str,
-    launch,
-    tool_target_url: str = DEFAULT_TOOL_TARGET,
-) -> None:
+def fire(case: dict[str, Any], launch,
+         tool_target_url: str = DEFAULT_TOOL_TARGET) -> None:
     if is_tool_case(case):
         fire_tool(case, tool_target_url, launch)
         return
-
-    prepared = build_request(case, target_url)
-
+    prepared = build_request(case, tool_target_url)
     check_path_preserved(case["request"]["path"], prepared.url)
+    fire_http(case, prepared, launch)
 
+def _on_attacker(case: dict[str, Any], image: str, argv: list[str], launch):
     try:
-        http.send(prepared, timeout=REQUEST_TIMEOUT)
-    except requests.RequestException as exc:
-        print(f"  ! {case['name']}: request failed - {exc}")
-
-def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
-    image, argv = tool_argv(case, target_url)
-    try:
-        result = launch(image, argv, timeout=TOOL_TIMEOUT)
+        return launch(image, argv, timeout=TOOL_TIMEOUT)
     except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
 
+def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch) -> None:
+    result = _on_attacker(case, *curl_argv(prepared, REQUEST_TIMEOUT), launch)
+    if result.exit_code != 0:
+        raise ToolUnavailable(f"{case['name']}: the request never reached the target "
+            f"from the attacker box (curl exit {result.exit_code}): {result.output.strip()[:200]}")
+
+def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
+    result = _on_attacker(case, *tool_argv(case, target_url), launch)
     if result.exit_code == STARTUP_FAILURE:
         raise unavailable(case["name"], result.output.strip()[:200])
-
     if result.exit_code != 0:
         print(f"  . {case['name']}: tool exited {result.exit_code}")
 

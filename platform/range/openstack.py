@@ -870,9 +870,11 @@ class OpenStack:
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
         return [self.configure_edge(), self.configure_waf(), self.open_collector()]
 
+    def address(self, role: str) -> str:
+        return self._address(role, self.declared.host(role), fabric.MANAGEMENT)
+
     def _collector(self) -> str:
-        scorer = self.declared.host(SCORER_ROLE)
-        return self._address(SCORER_ROLE, scorer, fabric.MANAGEMENT)
+        return self.address(SCORER_ROLE)
 
     def configure_edge(self) -> tuple[str, tuple[str, ...]]:
         source = Path(self.build.source)

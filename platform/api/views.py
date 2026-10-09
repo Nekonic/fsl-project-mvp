@@ -20,8 +20,6 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_http_methods
 
-import requests
-
 import attacker
 import game
 import scoreboard
@@ -167,29 +165,46 @@ def sessions(request):
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
+    if Session.objects.filter(ended_at=None).exists():
+        raise Conflict("a session is already open on the range; close it first")
     adapter = substrate()
     if hasattr(adapter, "plan_slot"):
-        if Session.objects.filter(ended_at=None).exists():
-            raise Conflict("a session is already open on the range; close it first")
         verdict = _range_ready(adapter)
         if not verdict["ready"]:
             raise Conflict(
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
-    baseline = []
+    session = Session.objects.create(scenario=scenario, baseline=[])
+    try:
+        if hasattr(adapter, "open_session"):
+            adapter.open_session(session.pk)
+        session.baseline = _baseline(adapter, scenario)
+        session.save(update_fields=["baseline"])
+    except Exception:
+        Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
+        raise
+    return _reply(_shape(session, SESSION_FIELDS), status=201)
+
+def _baseline(adapter, scenario):
     model = wargames.objective_model(scenario)
     if model == "loot_verified":
         try:
-            baseline = loot.ground_truth(scenario)
+            return _ground_truth(adapter, scenario)
         except loot.GroundTruthUnavailable:
-            baseline = None
-    elif model == "effect_observed":
+            return None
+    if model == "effect_observed":
         try:
-            baseline = effect.snapshot(adapter.runner("corp-db"))
+            return effect.snapshot(adapter.runner("corp-db"))
         except (effect.StateUnavailable, RangeUnavailable):
-            baseline = None
-    session = Session.objects.create(scenario=scenario, baseline=baseline)
-    return _reply(_shape(session, SESSION_FIELDS), status=201)
+            return None
+    return []
+
+def _ground_truth(adapter, wargame_id):
+    try:
+        host = adapter.address("board") if hasattr(adapter, "address") else ""
+    except RangeUnavailable as exc:
+        raise loot.GroundTruthUnavailable(str(exc)) from exc
+    return loot.ground_truth(wargame_id, host)
 
 @require_http_methods(["GET"])
 def attacker_box(request):
@@ -532,7 +547,7 @@ def fire_attack(request, session_id):
     started_at = timezone.now()
     try:
         harness.fire(
-            requests.Session(), case, target_url,
+            case,
             substrate().launcher(
                 origin["id"] if origin else settings.RANGE.default_origin
             ),
@@ -1210,9 +1225,9 @@ def range_console(request, host):
     adapter = _built_by_the_cloud(substrate(), "console", "a console is")
     return _reply({"url": adapter.console(host)})
 
-def _ground_truth_readable() -> bool:
+def _ground_truth_readable(adapter) -> bool:
     try:
-        loot.ground_truth("board")
+        _ground_truth(adapter, "board")
         return True
     except loot.GroundTruthUnavailable:
         return False
@@ -1236,7 +1251,7 @@ def _range_ready(adapter) -> dict:
     plan = adapter.plan_slot()
     checks = {
         "active": plan.active,
-        "ground_truth": _ground_truth_readable(),
+        "ground_truth": _ground_truth_readable(adapter),
         "rules_baseline": _rules_at_baseline(adapter),
     }
     blocked = []
@@ -1303,8 +1318,7 @@ def _range_canary(adapter) -> dict:
     case = dict(CANARY_CASE, case_id=token)
     fired_at = timezone.now()
     try:
-        harness.fire(requests.Session(), case, origin["target_url"],
-                     adapter.launcher(origin["id"]), origin["target_url"])
+        harness.fire(case, adapter.launcher(origin["id"]), origin["target_url"])
     except harness.ToolUnavailable as exc:
         return _canary_blocked(f"the canary did not fire: {exc}")
 

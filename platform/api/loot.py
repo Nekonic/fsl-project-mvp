@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -16,9 +17,9 @@ class GroundTruthUnavailable(RuntimeError):
     pass
 
 
-def ground_truth(wargame_id: str) -> dict[str, str]:
+def ground_truth(wargame_id: str, host: str = "") -> dict[str, str]:
     spec = wargames.objectives(wargame_id)
-    url = settings.BOARD_API_URL.rstrip("/") + spec["secret"]["read_path"]
+    url = _board_url(host).rstrip("/") + spec["secret"]["read_path"]
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
             body = json.load(response)
@@ -27,6 +28,15 @@ def ground_truth(wargame_id: str) -> dict[str, str]:
     if not isinstance(body, dict):
         raise GroundTruthUnavailable(f"{url} did not return a username to hash map")
     return {str(name): str(digest) for name, digest in body.items()}
+
+
+def _board_url(host: str) -> str:
+    declared = urllib.parse.urlsplit(settings.BOARD_API_URL)
+    if not host:
+        return declared.geturl()
+    return declared._replace(
+        netloc=f"{host}:{declared.port}" if declared.port else host
+    ).geturl()
 
 
 def canonicalize(submitted: Any) -> set[tuple[str, str]]:

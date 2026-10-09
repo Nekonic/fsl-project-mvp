@@ -44,7 +44,7 @@ def window_session(stack_is_up):
     source_ip = attacker.json()["source_ip"]
 
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=30
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
 
     started = _now()

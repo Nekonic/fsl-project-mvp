@@ -138,7 +138,7 @@ def test_reading_the_shape_asks_each_question_once():
     with patch("range.docker.subprocess.run", spy):
         Docker(DECLARED).describe()
 
-    assert len(spy.argv) == 4, (
+    assert len(spy.argv) == 3, (
         f"one describe() cost {len(spy.argv)} round trips: "
         f"{[' '.join(a[:3]) for a in spy.argv]}"
     )

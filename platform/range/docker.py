@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import socket
 import subprocess
+import time
 from dataclasses import replace
 
 from range.declared import Declaration
@@ -23,11 +27,16 @@ PROJECT_LABEL = "com.docker.compose.project"
 SEGMENT_LABEL = "fsl.segment.id"
 
 _TIMEOUT = 30
+SESSION_DEADLINE = 540
+SESSION_PREFIX = "fsl-"
+SESSION_PROJECT = re.compile(r"fsl-\d+")
 
 class Docker:
-    def __init__(self, declared: Declaration, project: str = "fsl"):
+    def __init__(self, declared: Declaration, project: str = "fsl",
+                 session_file: str = "session.yaml"):
         self.declared = declared
         self.project = project
+        self.session_file = session_file
 
     def describe(self) -> Shape:
         networks = self._networks()
@@ -153,7 +162,7 @@ class Docker:
             for network in networks
             for container_id, attached in (network.get("Containers") or {}).items()
         }
-        modes = self._modes()
+        modes = self._modes([name for name, _ in self.declared.watching()])
         found = []
         for name, host in self.declared.watching():
             sharing = named.get(modes.get(name, "").partition(":")[2], "")
@@ -166,14 +175,7 @@ class Docker:
             found.append(Sensor(name=name, watches=host))
         return tuple(found)
 
-    def _modes(self) -> dict[str, str]:
-        names = self._lines([
-            "ps", "--filter", f"label={PROJECT_LABEL}={self.project}",
-            "--format", "{{.Names}}",
-        ])
-        if not names:
-            raise RangeUnavailable(f"nothing of project {self.project!r} is running")
-
+    def _modes(self, names: list[str]) -> dict[str, str]:
         modes = {}
         for line in self._read([
             "container", "inspect",
@@ -183,6 +185,57 @@ class Docker:
             if name:
                 modes[name.lstrip("/")] = mode
         return modes
+
+    def open_session(self, session_id: int) -> None:
+        deadline = time.monotonic() + SESSION_DEADLINE
+        host_dir = self._host_dir()
+        for project in self._session_projects():
+            self._compose(["-p", project, "down", "-v"], deadline)
+        self._compose(
+            ["-p", f"{SESSION_PREFIX}{session_id}", "-f", self.session_file,
+             "up", "-d", "--wait", "--no-build"],
+            deadline, {"FSL_HOST_DIR": host_dir},
+        )
+
+    def _session_projects(self) -> list[str]:
+        listed = json.loads(self._read(["compose", "ls", "--all", "--format", "json"]) or "[]")
+        return [
+            entry["Name"] for entry in listed
+            if SESSION_PROJECT.fullmatch(entry.get("Name", ""))
+        ]
+
+    def _host_dir(self) -> str:
+        found = self._read([
+            "inspect", socket.gethostname(), "--format",
+            '{{index .Config.Labels "com.docker.compose.project.working_dir"}}',
+        ]).strip()
+        if not found:
+            raise RangeUnavailable(
+                "the platform container carries no compose working_dir label, "
+                "so the session stack's bind mounts have no host directory"
+            )
+        return found
+
+    def _compose(self, argv: list[str], deadline: float,
+                 env: dict[str, str] | None = None) -> None:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise RangeUnavailable(
+                f"docker compose {' '.join(argv[:3])}: the session open spent its "
+                f"{SESSION_DEADLINE} s before this step"
+            )
+        try:
+            done = subprocess.run(
+                ["docker", "compose", *argv], capture_output=True, text=True,
+                timeout=left, env={**os.environ, **(env or {})},
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RangeUnavailable(f"docker compose {' '.join(argv[:3])}: {exc}") from exc
+        if done.returncode != 0:
+            raise RangeUnavailable(
+                f"docker compose {' '.join(argv[:3])}: "
+                f"{(done.stderr or done.stdout).strip()[-400:]}"
+            )
 
     def _named(self, label: str) -> list[str]:
         return self._lines([

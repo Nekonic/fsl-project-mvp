@@ -1,0 +1,121 @@
+networks:
+  edge:
+    external: true
+    name: fsl_edge
+  edge-br:
+    external: true
+    name: fsl_edge-br
+  edge-hk:
+    external: true
+    name: fsl_edge-hk
+  edge-us:
+    external: true
+    name: fsl_edge-us
+  estate:
+    external: true
+    name: fsl_estate
+  mgmt:
+    external: true
+    name: fsl_mgmt
+
+include:
+  - wargames/board/compose.yaml
+  - wargames/corp/compose.yaml
+
+volumes:
+  filebeatdata:
+  suricatalogs:
+  waflogs:
+
+services:
+  waf:
+    platform: linux/amd64
+    image: owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05
+    container_name: fsl-waf
+    depends_on:
+      board: {condition: service_healthy}
+      corp-wp: {condition: service_healthy}
+    networks:
+      edge:
+        priority: 100
+        aliases: [board.com]
+      edge-br:
+        priority: 90
+      edge-hk:
+        priority: 90
+      edge-us:
+        priority: 90
+      estate:
+        priority: 10
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    environment:
+      BACKEND: "http://board:8000"
+      PORT: "80"
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      MODSEC_AUDIT_ENGINE: "RelevantOnly"
+      MODSEC_AUDIT_LOG_FORMAT: "JSON"
+      MODSEC_AUDIT_LOG_TYPE: "Serial"
+      MODSEC_AUDIT_LOG: "/var/log/modsecurity/audit/audit.log"
+      MODSEC_AUDIT_LOG_PARTS: "ABIJDEFHZ"
+      PARANOIA: "1"
+      ANOMALY_INBOUND: "5"
+    volumes:
+      - ${FSL_HOST_DIR:-.}/deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
+      - waflogs:/var/log/modsecurity/audit
+      - ${FSL_HOST_DIR:-.}/deploy/nginx/board.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ${FSL_HOST_DIR:-.}/deploy/nginx/corp.conf:/etc/nginx/templates/conf.d/corp.conf.template:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  suricata:
+    platform: linux/amd64
+    image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
+    container_name: fsl-suricata
+    network_mode: "service:waf"
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
+    volumes:
+      - ${FSL_HOST_DIR:-.}/deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
+      - ${FSL_HOST_DIR:-.}/deploy/suricata/rules:/var/lib/suricata/rules
+      - suricatalogs:/var/log/suricata
+
+  filebeat:
+    platform: linux/amd64
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: fsl-filebeat
+    user: root
+    networks: [mgmt]
+    command: ["--strict.perms=false", "-e"]
+    volumes:
+      - ${FSL_HOST_DIR:-.}/deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - suricatalogs:/logs/suricata:ro
+      - waflogs:/logs/modsecurity:ro
+      - filebeatdata:/usr/share/filebeat/data
+
+  kali:
+    platform: linux/amd64
+    build: ./deploy/kali
+    image: fsl/kali:mvp
+    container_name: fsl-kali
+    networks: [edge]
+    volumes:
+      - ${FSL_HOST_DIR:-.}/data/label:/label:ro
+    init: true
+    environment:
+      http_proxy: "http://proxy:8081"
+      HTTP_PROXY: "http://proxy:8081"
+      FSL_TARGET: "http://board.com"
+      FSL_TARGET_HOST: "board.com"
+
+  proxy:
+    platform: linux/amd64
+    build: ./deploy/proxy
+    image: fsl/proxy:mvp
+    container_name: fsl-proxy
+    networks: [edge, edge-br, edge-hk, edge-us]
+    volumes:
+      - ${FSL_HOST_DIR:-.}/data/label:/label

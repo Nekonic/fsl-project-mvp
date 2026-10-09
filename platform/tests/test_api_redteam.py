@@ -34,6 +34,7 @@ def test_case_catalogue_for_an_unknown_wargame_is_404(client):
 
 def test_sessions_can_be_listed_newest_first(client):
     first = client.post_json("/api/sessions/", {}).json()["id"]
+    client.post_json(f"/api/sessions/{first}/close/")
     second = client.post_json("/api/sessions/", {}).json()["id"]
 
     listed = client.get("/api/sessions/").json()
@@ -57,7 +58,7 @@ def test_the_marker_fired_is_the_case_id_recorded(client, session_id, a_case):
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]})
 
-    fired_case = fired.call_args.args[1]
+    fired_case = fired.call_args.args[0]
     recorded = client.get(f"/api/sessions/{session_id}/cases/").json()[0]
 
     assert fired_case["case_id"] == recorded["case_id"]

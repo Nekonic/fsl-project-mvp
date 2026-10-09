@@ -14,30 +14,48 @@ ModSecurity 경보를 그 라벨에 자동으로 매칭할 수 있으므로, 오
 
 ## 레인지
 
-compose 서비스와 네트워크는 아래 표에 있고, `bin/measure`가 그 수를 센다. 대상
-시스템 하나가 wargame 하나이고, `wargames/` 아래 폴더 하나다. 최상위
-`compose.yaml`이 그 폴더의 `compose.yaml`을 include 한다: `board`(Django와 MySQL, `loot_verified`)와
+compose 서비스와 네트워크는 아래 표에 있고, `bin/measure`가 그 수를 센다.
+compose 파일 둘이 이들을 나눠 갖는다. `compose.yaml`은 컨트롤 플레인이다(프로젝트
+`fsl`, 하나만 오래 떠 있음): 플랫폼, Elasticsearch, Kibana, `collector`, 그리고 네트워크
+여섯 개. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata, Filebeat, Kali,
+프록시, wargame. 이 파일은 네트워크 여섯 개에 `external`(`fsl_<network>`)로 붙고 자기
+볼륨만 갖는다. 세션을 열면(`POST /api/sessions/`, `platform/range/docker.py`의
+`open_session`) 플랫폼 안에서 `docker compose -p fsl-<세션 id> -f session.yaml up -d
+--wait --no-build`를 실행한다. 이때 `FSL_HOST_DIR`은 compose가 플랫폼을 띄운 호스트
+디렉터리(플랫폼 컨테이너의 `com.docker.compose.project.working_dir` 라벨)로 두어, 스택의
+bind mount가 호스트에서 풀리게 한다. baseline은 `--wait`가 돌아온 뒤 읽는다. 컨테이너
+이름 고정이 없어지기 전(빌드 4단계)까지 스택은 한 번에 하나만 돈다: 세션을 열면 먼저
+다른 `fsl-<n>` 프로젝트를 모두 `down -v`하고, 세션을 닫아도 그 스택은 다음 세션이 열릴
+때까지 남는다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
+세션 스택이 뜨지 않는다. 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`,
+즉 board VM의 관리망 주소로 board VM을 읽는다. `loot.ground_truth`가 `BOARD_API_URL`의
+호스트를 그 주소로 바꾼다.
+
+대상 시스템 하나가 wargame 하나이고, `wargames/` 아래 폴더 하나다. `session.yaml`이 그
+폴더의 `compose.yaml`을 include 한다: `board`(Django와 MySQL, `loot_verified`)와
 `corp`(WordPress와 MySQL, `effect_observed`). 플랫폼은 각 wargame을
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`). `image`는 아직
-아무 코드도 읽지 않으며, compose는 여전히 각 앱을 태그 없이 빌드한다(`build: ./app`).
-새 wargame에는 폴더 안의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`,
-`redteam/cases/` 아래의 케이스 파일, 그리고 `include:` 줄 하나가 필요하다.
+아무 코드도 읽지 않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
+session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 wargame에는 폴더 안의
+`scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일,
+그리고 `session.yaml`의 `include:` 줄 하나가 필요하다.
 
-| 서비스 | 이미지 | 네트워크 | 호스트 포트 |
-|---|---|---|---|
-| `fsl-wg-board` | `wargames/board/app` (gunicorn 아래 Django, 포트 8000) | estate | |
-| `fsl-wg-board-db` | `mysql` | estate | |
-| `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
-| `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | |
-| `fsl-suricata` | `jasonish/suricata` | WAF의 네임스페이스 | |
-| `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | 5140/udp |
-| `fsl-kibana` | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
-| `fsl-kali` | `deploy/kali` | edge | |
-| `fsl-proxy` | `deploy/proxy` (mitmdump) | 네 개 edge 네트워크 | |
-| `fsl-platform` | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/`의 Kali 자체 ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다) | 여섯 개 모두 | 8000 |
+| 서비스 | 파일 | 이미지 | 네트워크 | 호스트 포트 |
+|---|---|---|---|---|
+| `fsl-wg-board` | session | `wargames/board/app`의 `fsl/board:mvp` (gunicorn 아래 Django, 포트 8000) | estate | |
+| `fsl-wg-board-db` | session | `mysql` | estate | |
+| `fsl-wg-corp-wp` | session | `wargames/corp/app`의 `fsl/corp:mvp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
+| `fsl-wg-corp-db` | session | `wargames/corp/db`의 `fsl/corp-db:mvp` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` | edge, edge-br, edge-hk, edge-us, estate | |
+| `fsl-suricata` | session | `jasonish/suricata` | WAF의 네임스페이스 | |
+| `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 감사 로그를 보냄 | mgmt | |
+| `fsl-kali` | session | `deploy/kali`의 `fsl/kali:mvp` | edge | |
+| `fsl-proxy` | session | `deploy/proxy`의 `fsl/proxy:mvp` (mitmdump) | 네 개 edge 네트워크 | |
+| `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
+| `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
+| `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
+| `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/`의 Kali 자체 ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | 여섯 개 모두 | 8000 |
 
 8000은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
@@ -87,7 +105,7 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 요청마다 새 어댑�
  mgmt      filebeat --> elasticsearch <-- platform
 
  Not network traffic:
-   eve.json --bind mount--> filebeat
+   eve.json --volume suricatalogs--> filebeat
    ModSecurity audit.log --volume waflogs--> filebeat
    ./data/label --bind mount--> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
@@ -429,7 +447,7 @@ Docker의 MTU를 기본 브리지(`mtu`)와 compose 것을 포함한 모든 새 
 유닛 `fsl-platform.service`가 부팅마다 `docker compose -f /opt/fsl/compose.yaml up -d --build`를
 실행한다.
 
-따라서 위의 compose 스택 전체가 Nova VM 하나 안에서 돈다. cloud-init이 `FSL_PUBLISH`를
+따라서 compose 컨트롤 플레인만 Nova VM 하나 안에서 돈다. OpenStack substrate에서는 그 안에 세션 스택이 뜨지 않고, board의 ground truth는 board VM의 관리망 주소에서 읽는다. cloud-init이 `FSL_PUBLISH`를
 VM의 고정 주소로 설정하므로 8000이 그 주소에 publish되고 보안 그룹에서도
 열려, 브라우저가 floating IP로 콘솔에 접근한다. `FSL_SYSLOG_PUBLISH=0.0.0.0`은
 pfSense의 syslog를 받기 위해 5140/udp를 모든 주소에 publish한다. 9200은 loopback에

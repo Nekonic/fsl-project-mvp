@@ -104,7 +104,6 @@ def test_a_topology_poll_costs_one_round_trip_per_question(client, session_id):
     assert trips == [
         "docker network ls",
         "docker network inspect",
-        "docker ps --filter",
         "docker container inspect",
     ], f"the shape was read {len(trips)} times over: {trips}"
 

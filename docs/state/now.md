@@ -4,7 +4,7 @@ The state of the work in flight, kept short: it is the handover across
 compaction, not a history. The product backlog and the finished record are in
 `docs/STATE.md`; rulings in `docs/DECISIONS.md`; detail in `git log`.
 
-Updated: 2026-10-08
+Updated: 2026-10-09
 
 ## In flight: building the composable, session-isolated learning MVP
 
@@ -45,6 +45,27 @@ and 2 consume it. Metrics: `bin/measure`, `metrics.json`. board-easy/board-hard
 was not added: platform/tests/test_compose.py:251 ties set(WARGAMES) to the set
 of wargames/<id>/compose.yaml folders, so a new scenario id needs its own compose
 folder, which the step-1 compose split reworks; do them together, live.
+
+Step 1 built 2026-10-09, not committed yet (orchestrator commits). `compose.yaml`
+is the control plane (platform, ES, Kibana, `collector` = Filebeat syslog input
+on 5140/udp for pfSense, the six networks); `session.yaml` is the data plane
+(waf, suricata, filebeat, kali, proxy, includes the wargames; networks
+external `fsl_<net>`; volumes per project incl. `suricatalogs`).
+`POST /api/sessions/` on the Docker substrate runs `down -v` on other
+`fsl-<n>` projects, then `docker compose -p fsl-<id> -f /src/session.yaml up -d
+--wait --no-build` with `FSL_HOST_DIR` = the platform's compose working_dir
+(include paths resolve against `--project-directory`, which the platform
+container does not have, so binds use `${FSL_HOST_DIR:-.}` instead), then reads
+the baseline; on failure the row is closed and the API answers 503. Close does
+not tear the stack down (deviation from the plan): tests and the console use
+the range between sessions; the next open replaces it. Open takes about 40 s,
+so the harness waits up to 600 s (`SESSION_OPEN_TIMEOUT`). Live on
+192.168.0.210, substrate docker: `bin/verify` acceptance 138 passed, 0 failed
+(baseline 129/10). Substrate openstack: syslog reaches ES via `collector`;
+readiness and the session baseline read the board VM through the adapter's
+`address("board")` (its management address, put in place of the host in
+`BOARD_API_URL`), so no compose board runs on the VM. Before this the
+OpenStack ground truth came from the compose board on `estate`.
 
 Steps 1, 2 and 4-8 need the live stack (`docker compose up` plus the acceptance
 suite), which a worktree cannot drive. Do not land them against the fast gate

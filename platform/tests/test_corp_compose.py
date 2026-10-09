@@ -11,8 +11,8 @@ def _corp():
     return yaml.safe_load((ROOT / "wargames/corp/compose.yaml").read_text())["services"]
 
 
-def test_corp_is_one_folder_the_top_compose_includes():
-    included = [str(p.relative_to(composed.ROOT)) for p in composed.files()[1:]]
+def test_corp_is_one_folder_the_session_stack_includes():
+    included = [str(p.relative_to(composed.ROOT)) for p in composed.included()]
     assert "wargames/corp/compose.yaml" in included
 
 

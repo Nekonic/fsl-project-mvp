@@ -82,6 +82,23 @@ def test_ground_truth_reads_the_declared_read_path():
 
 
 @pytest.mark.reads_ground_truth
+@pytest.mark.parametrize("host, read", [
+    ("", "http://board:8000/internal/auth-users"),
+    ("172.31.0.9", "http://172.31.0.9:8000/internal/auth-users"),
+])
+def test_ground_truth_reads_the_board_at_the_host_the_range_gives(settings, host, read):
+    settings.BOARD_API_URL = "http://board:8000"
+
+    with patch("api.loot.wargames.objectives", return_value=SPEC), patch(
+        "api.loot.urllib.request.urlopen", side_effect=OSError("no route")
+    ) as opened:
+        with pytest.raises(loot.GroundTruthUnavailable):
+            loot.ground_truth("board", host)
+
+    assert opened.call_args.args[0] == read
+
+
+@pytest.mark.reads_ground_truth
 def test_ground_truth_raises_when_the_channel_is_unreadable():
     import urllib.error
 

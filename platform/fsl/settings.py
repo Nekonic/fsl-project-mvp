@@ -87,7 +87,10 @@ FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
 
 FSL_SUBSTRATE_OPTIONS = dict(
     {
-        "range.docker.Docker": {"project": os.environ.get("FSL_PROJECT", "fsl")},
+        "range.docker.Docker": {
+            "project": os.environ.get("FSL_PROJECT", "fsl"),
+            "session_file": os.path.join(FSL_SOURCE, "session.yaml"),
+        },
         "range.openstack.connect": {
             "keystone": os.environ.get("FSL_OPENSTACK_KEYSTONE", ""),
             "user": os.environ.get("FSL_OPENSTACK_USER", ""),

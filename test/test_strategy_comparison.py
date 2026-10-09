@@ -25,7 +25,7 @@ def case_id():
 def labelled_session(stack_is_up, case_id):
     source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=30
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
 
     _label(case_id)

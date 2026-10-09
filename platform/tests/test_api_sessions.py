@@ -43,10 +43,13 @@ def test_a_closed_session_can_still_be_read(client, closed):
 
 
 def test_a_running_session_is_never_hidden_by_finished_ones(client):
+    from django.utils import timezone
+
+    from api.models import Session
+
     running = client.post_json("/api/sessions/", {}).json()["id"]
     for _ in range(SESSION_PAGE + 10):
-        later = client.post_json("/api/sessions/", {}).json()["id"]
-        client.post_json(f"/api/sessions/{later}/close/")
+        Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
 
     listed = [s["id"] for s in client.get("/api/sessions/?state=open").json()]
 
@@ -56,9 +59,9 @@ def test_a_running_session_is_never_hidden_by_finished_ones(client):
     )
 
 def test_asking_for_open_sessions_excludes_the_finished_ones(client):
-    open_id = client.post_json("/api/sessions/", {}).json()["id"]
     closed_id = client.post_json("/api/sessions/", {}).json()["id"]
     client.post_json(f"/api/sessions/{closed_id}/close/")
+    open_id = client.post_json("/api/sessions/", {}).json()["id"]
 
     listed = [s["id"] for s in client.get("/api/sessions/?state=open").json()]
 
@@ -66,9 +69,9 @@ def test_asking_for_open_sessions_excludes_the_finished_ones(client):
     assert closed_id not in listed
 
 def test_asking_for_finished_sessions_excludes_the_running_ones(client):
-    open_id = client.post_json("/api/sessions/", {}).json()["id"]
     closed_id = client.post_json("/api/sessions/", {}).json()["id"]
     client.post_json(f"/api/sessions/{closed_id}/close/")
+    open_id = client.post_json("/api/sessions/", {}).json()["id"]
 
     listed = [s["id"] for s in client.get("/api/sessions/?state=closed").json()]
 
@@ -77,8 +80,10 @@ def test_asking_for_finished_sessions_excludes_the_running_ones(client):
 
 
 def test_the_newest_sessions_are_the_ones_returned(client):
-    made = [client.post_json("/api/sessions/", {}).json()["id"]
-            for _ in range(SESSION_PAGE + 3)]
+    made = []
+    for _ in range(SESSION_PAGE + 3):
+        made.append(client.post_json("/api/sessions/", {}).json()["id"])
+        client.post_json(f"/api/sessions/{made[-1]}/close/")
 
     listed = [s["id"] for s in client.get("/api/sessions/").json()]
 
@@ -86,7 +91,8 @@ def test_the_newest_sessions_are_the_ones_returned(client):
 
 def test_asking_for_fewer_sessions_returns_fewer(client):
     for _ in range(4):
-        client.post_json("/api/sessions/", {})
+        opened = client.post_json("/api/sessions/", {}).json()["id"]
+        client.post_json(f"/api/sessions/{opened}/close/")
 
     assert len(client.get("/api/sessions/?limit=2").json()) == 2
 

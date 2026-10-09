@@ -4,6 +4,7 @@ import pytest
 
 import operator_log
 from range.ports import Ran, RangeUnavailable
+from tests import composed
 
 LOG = (
     "2026-09-22T05:00:01Z\tabc-123\tnmap -sS -p 80,443 shop.com\n"
@@ -128,7 +129,7 @@ def test_the_attacker_box_writes_what_it_is_asked_to_read():
 
     root = pathlib.Path(__file__).resolve().parents[2]
     shell = (root / "deploy/kali/operator-log.sh").read_text()
-    compose = (root / "compose.yaml").read_text()
+    compose = composed.text()
 
     assert operator_log.LOG_PATH in shell, (
         f"the platform reads {operator_log.LOG_PATH} and the box writes "

@@ -53,7 +53,7 @@ def no_real_board_read(request):
         return
     from api import loot
 
-    def refuse(wargame_id):
+    def refuse(wargame_id, host=""):
         raise loot.GroundTruthUnavailable(
             f"this unit test supplied no board; ground_truth({wargame_id!r}) was "
             f"refused. A test that needs it must patch api.views.loot.ground_truth "
@@ -85,4 +85,12 @@ def no_real_effect_read(request):
 
     with patch("api.views.effect.snapshot", refuse_snapshot), \
             patch("api.views.effect.read_changes", refuse_changes):
+        yield
+
+@pytest.fixture(autouse=True)
+def no_real_session_stack(request):
+    if request.node.get_closest_marker("opens_session_stack"):
+        yield
+        return
+    with patch("range.docker.Docker.open_session", lambda self, session_id: None):
         yield
