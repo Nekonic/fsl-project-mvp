@@ -757,6 +757,22 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       SQLi meta-characters for CRS. Only sqlmap's noisy stock probes are caught.
       This is the intended "hard to detect" lesson case; note it when wiring
       step 7 so it is not mistaken for a coverage bug.
+- [x] corp cases fire real exploits. All three corp CVEs verified live (local
+      WordPress 6.6.2 build): post 1 defaced, users_can_register flipped, a new
+      unauth user made administrator. The cases were non-functional as written
+      (empty nonces; rogue-admin on form_id 5=login). Fixed with a reusable
+      harness `prefetch: {from, pattern}` (fetch the public nonce, inject
+      `{nonce}`) + form_id 4; done 2026-10-09. option-flip verified end-to-end
+      through the harness; the raw CVEs by hand.
+- [ ] corp block theme (twentytwentyfour) does not render the plugin shortcode
+      forms (UM register at /register/, rbsm submit at /submit-a-story/) on the
+      front-end, though `do_shortcode` renders them. So the per-form nonces for
+      corp-content-write (easy-post) and corp-rogue-admin (um_register_form) are
+      not on any public page, and their prefetch fails; only option-flip
+      (wpgdprc nonce, enqueued globally) works. Ship corp with a classic theme
+      or fix the block-theme content rendering so the forms render. A classic
+      theme was not installable in the dev container (none bundled, WordPress.org
+      unreachable).
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
