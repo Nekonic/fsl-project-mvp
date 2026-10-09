@@ -121,7 +121,10 @@ just be made and recorded, not staged as a decision.
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
   suppression works, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
-  Bring-up is one command, `docker compose up -d --build` (it sets up the
-  docker socket group and registers the Elasticsearch ingest pipeline).
+  Bring-up: build the session images once with
+  `docker compose -f session.yaml build`, then `docker compose up -d --build`
+  starts the shared control plane (it sets up the docker socket group and
+  registers the Elasticsearch ingest pipeline); each session's stack starts
+  when the session opens.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
   `docs/superpowers/specs/` the design.

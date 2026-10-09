@@ -266,7 +266,7 @@ ROTATE = {"case": "board-sqli-login-bypass", "origin": "rotate"}
 def test_two_rotated_attacks_in_flight_at_once_leave_from_different_places(client, session_id):
     left_from = []
 
-    def still_running(http, case, target_url, *rest):
+    def still_running(case, launch, target_url, *rest):
         left_from.append(target_url)
         if len(left_from) == 1:
             client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)

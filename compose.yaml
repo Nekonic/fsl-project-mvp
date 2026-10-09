@@ -53,72 +53,12 @@ networks:
       config:
         - subnet: 172.31.0.0/24
 
-include:
-  - wargames/board/compose.yaml
-  - wargames/corp/compose.yaml
-
 volumes:
   esdata:
-  filebeatdata:
+  collectordata:
   platformdata:
-  waflogs:
 
 services:
-  waf:
-    platform: linux/amd64
-    image: owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05
-    container_name: fsl-waf
-    depends_on:
-      board: {condition: service_healthy}
-      corp-wp: {condition: service_healthy}
-    networks:
-      edge:
-        priority: 100
-        aliases: [board.com]
-      edge-br:
-        priority: 90
-      edge-hk:
-        priority: 90
-      edge-us:
-        priority: 90
-      estate:
-        priority: 10
-    sysctls:
-      net.ipv4.ip_unprivileged_port_start: 0
-    environment:
-      BACKEND: "http://board:8000"
-      PORT: "80"
-      MODSEC_RULE_ENGINE: "DetectionOnly"
-      MODSEC_AUDIT_ENGINE: "RelevantOnly"
-      MODSEC_AUDIT_LOG_FORMAT: "JSON"
-      MODSEC_AUDIT_LOG_TYPE: "Serial"
-      MODSEC_AUDIT_LOG: "/var/log/modsecurity/audit/audit.log"
-      MODSEC_AUDIT_LOG_PARTS: "ABIJDEFHZ"
-      PARANOIA: "1"
-      ANOMALY_INBOUND: "5"
-    volumes:
-      - ./deploy/nginx/allow-low-port.sh:/docker-entrypoint.d/01-check-low-port.sh:ro
-      - waflogs:/var/log/modsecurity/audit
-      - ./deploy/nginx/board.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
-      - ./deploy/nginx/corp.conf:/etc/nginx/templates/conf.d/corp.conf.template:ro
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  suricata:
-    platform: linux/amd64
-    image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
-    container_name: fsl-suricata
-    network_mode: "service:waf"
-    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
-    volumes:
-      - ./deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
-      - ./deploy/suricata/rules:/var/lib/suricata/rules
-      - ./deploy/suricata/logs:/var/log/suricata
-
   elasticsearch:
     platform: linux/amd64
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
@@ -140,10 +80,10 @@ services:
       timeout: 5s
       retries: 30
 
-  filebeat:
+  collector:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
-    container_name: fsl-filebeat
+    container_name: fsl-collector
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -153,9 +93,7 @@ services:
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ./deploy/suricata/logs:/logs/suricata:ro
-      - waflogs:/logs/modsecurity:ro
-      - filebeatdata:/usr/share/filebeat/data
+      - collectordata:/usr/share/filebeat/data
 
   kibana:
     platform: linux/amd64
@@ -176,30 +114,6 @@ services:
       timeout: 5s
       retries: 40
       start_period: 60s
-
-  kali:
-    platform: linux/amd64
-    build: ./deploy/kali
-    image: fsl/kali:mvp
-    container_name: fsl-kali
-    networks: [edge]
-    volumes:
-      - ./data/label:/label:ro
-    init: true
-    environment:
-      http_proxy: "http://proxy:8081"
-      HTTP_PROXY: "http://proxy:8081"
-      FSL_TARGET: "http://board.com"
-      FSL_TARGET_HOST: "board.com"
-
-  proxy:
-    platform: linux/amd64
-    build: ./deploy/proxy
-    image: fsl/proxy:mvp
-    container_name: fsl-proxy
-    networks: [edge, edge-br, edge-hk, edge-us]
-    volumes:
-      - ./data/label:/label
 
   platform:
     platform: linux/amd64
@@ -228,5 +142,6 @@ services:
       - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
+      - ./session.yaml:/src/session.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - platformdata:/data

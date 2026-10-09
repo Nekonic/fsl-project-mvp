@@ -378,3 +378,57 @@ dates.
   `test_the_console_is_given_the_reason_and_not_only_the_number` read the
   strategy-comparison panel in `blue.html`, removed with the old blue console
   (7e71435); its subject is gone. The two API-level tests in the same file stay.
+- **Step 1 landed: compose is split (2026-10-09).** `compose.yaml` is the shared
+  control plane (platform, Elasticsearch, Kibana, collector); `session.yaml` is
+  one session's data plane (WAF, Suricata, Filebeat, Kali, proxy and the
+  wargames), started as `docker compose -p fsl-<id>` when a session opens. Until
+  step 4 removes the container-name pins, opening a session takes down the
+  previous `fsl-<n>` stack; closing a session leaves its stack up, because the
+  acceptance suite and the console use the range between sessions and Filebeat
+  may still be shipping. `services` 8 -> 9 for `collector`, which receives
+  pfSense syslog on the OpenStack VM, where only the control plane runs.
+  Live on the VM, docker substrate: 138 passed, 0 failed (before: 129/10, the
+  10 being the missing GeoLite2 database and a stale test). A session open takes
+  about 40 s, so a full `bin/verify` now takes about 38 min.
+- **OpenStack readiness reads the compose board (found 2026-10-09).**
+  `BOARD_API_URL` (`http://board:8000`) resolves to a compose board on `estate`,
+  not the OpenStack board VM; it only passed because a compose board ran on the
+  VM. Step 5 (the session's own target address) is the fix; until then a
+  session stack is left running on the VM.
+- **OpenStack readiness reads the board VM (resolved 2026-10-09).** The
+  OpenStack adapter gains `address(role)`, the role's management address, and
+  `loot.ground_truth(wargame_id, host)` puts it in place of the host in
+  `BOARD_API_URL`; the readiness probe and the session baseline both go through
+  it on any substrate that has `address`, so the docker path is unchanged.
+  Before this fix the OpenStack ground truth had been read from the compose
+  board on the platform VM, not the board VM the red team attacks: a baseline
+  and readiness verdict taken from a target nobody was attacking. No compose
+  board runs on the VM now. Also: a second open session gets 409 on every
+  substrate, any exception after the session row is created closes it, the
+  docker open reads the host directory before taking down the old stack, and
+  each compose step gets only what is left of a 540 s server-side deadline
+  (the client waits 600 s).
+- **All attack cases now leave from the attacker box (2026-10-09).** HTTP cases
+  used to be sent by the platform's own `requests` session straight to
+  `board.com`; after the compose split that name resolved to the public
+  internet, so the attack missed the range (FN) and hit a real site. `fire`
+  now runs every case, HTTP included, through the Kali launcher as a `curl`
+  argv (`--path-as-is` keeps `%2e%2e` traversal), so the traffic crosses
+  pfSense/Suricata and carries the origin country from `fsl-origin` SNAT. A
+  request that does not reach the target raises instead of recording a miss.
+  The dead `http`/`target_url` plumbing through `fire`/`run`/`views`/`run.py`
+  and the `--target` flag went with it; `core_loc` fell 463 -> 461. This was a
+  pre-existing flaw (a single-network docker artifact), not caused by the
+  split. Live on OpenStack: board-sqli-search from origin tw scored TP with
+  alerts at src_ip 120.96.0.10; the benign case scored TN.
+- **The tests floor is set to the post-trim count (2026-10-09).** The hard
+  review cut over-built step-1 tests (deadline arithmetic, duplicate curl-argv
+  shape, YAML-structure assertions already guarded elsewhere); net seven fewer
+  test functions. The behaviour each removed test covered is still pinned by a
+  kept test or by test_compose/test_corp_compose.
+- **FSL_TOOL_IMAGE must be set on the OpenStack VM (found 2026-10-09).** The
+  OpenStack launcher requires the launched image to equal the attacker role
+  name `fsl-kali`; the var was unset on the VM and defaulted to `fsl/kali:mvp`,
+  which broke tool cases there too. Set in the VM's openstack.env. Whether the
+  attacker image should resolve from the substrate in code rather than from an
+  env var is left open (STATE backlog 0).

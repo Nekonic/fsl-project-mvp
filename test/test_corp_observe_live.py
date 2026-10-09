@@ -95,7 +95,7 @@ def test_a_live_rogue_admin_registration_is_scored_from_the_targets_own_binlog(s
     created = session_id = None
     try:
         session_id = requests.post(
-            f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=60
+            f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=120
         ).json()["id"]
 
         time.sleep(2)
@@ -154,7 +154,7 @@ def test_a_live_option_flip_is_scored_from_the_targets_own_binlog(stack_is_up):
     session_id = None
     try:
         session_id = requests.post(
-            f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=60
+            f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=120
         ).json()["id"]
 
         time.sleep(2)

@@ -86,38 +86,57 @@ else
   stack_down "platform not responding after a restart — docker compose logs platform"
 fi
 
-if "$PY" - <<'TARGETCHECK'
-import json, subprocess, sys, time
+FSL_ACCEPTANCE_SESSIONS="$(mktemp)"
+export FSL_ACCEPTANCE_SESSIONS
 
-DEADLINE = time.time() + 120
-while time.time() < DEADLINE:
-    done = subprocess.run(
-        ["docker", "inspect", "fsl-wg-board", "--format", "{{json .State.Health}}"],
-        capture_output=True, text=True,
+opened="$("$PY" - <<'OPENSTACK'
+import json, os, sys, urllib.error, urllib.request
+
+def post(path, body):
+    request = urllib.request.Request(
+        os.environ["FSL_PLATFORM_URL"] + path, json.dumps(body).encode(),
+        {"Content-Type": "application/json"},
     )
-    if done.returncode != 0:
-        print("fsl-wg-board is not there", file=sys.stderr)
-        sys.exit(1)
-    health = json.loads(done.stdout or "null") or {}
-    if health.get("Status") == "healthy":
-        sys.exit(0)
-    time.sleep(3)
+    return json.load(urllib.request.urlopen(request, timeout=900))
 
-print(f"still {health.get('Status')!r} after two minutes", file=sys.stderr)
-sys.exit(1)
-TARGETCHECK
-then
-  ok "target healthy"
+def refused(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return json.load(error).get("detail") or error
+    return error
+
+try:
+    session = post("/api/sessions/", {})
+except OSError as error:
+    print(refused(error), file=sys.stderr)
+    sys.exit(1)
+with open(os.environ["FSL_ACCEPTANCE_SESSIONS"], "a") as ids:
+    ids.write(f"{session['id']}\n")
+print(session["id"])
+try:
+    post(f"/api/sessions/{session['id']}/close/", {})
+except OSError as error:
+    print(refused(error), file=sys.stderr)
+    sys.exit(2)
+OPENSTACK
+)"
+warmed=$?
+if [ "$warmed" -eq 0 ]; then
+  ok "session $opened opened its stack and the target is healthy"
+elif [ "$warmed" -eq 2 ]; then
+  fail "session $opened opened its stack but did not close (reason above);"
+  echo "     the next session would get 409 - close it or check the platform log."
+  exit 1
 else
-  fail "the target is not healthy — attacks would leave and hit nothing, and"
-  echo "     the acceptance run would report TP 0 as if the defence had failed."
+  fail "no session stack came up (reason above) - attacks would leave and hit"
+  echo "     nothing, and the acceptance run would report TP 0 as if the"
+  echo "     defence had failed."
   exit 1
 fi
 
 if docker image inspect fsl/kali:mvp >/dev/null 2>&1; then
   ok "attacker image present"
 else
-  fail "fsl/kali:mvp missing — docker compose build kali"
+  fail "fsl/kali:mvp missing — docker compose -f session.yaml build kali"
 fi
 
 if "$PY" - <<'RULECHECK'
@@ -145,11 +164,9 @@ then
 else
   fail "suricata could not validate deploy/suricata/rules/local.rules (reason above)"
   echo "     if it names a file it cannot open, the bind mounts went stale:"
-  echo "     docker compose up -d --force-recreate waf suricata"
+  echo "     open a new session, or: docker compose -p fsl-<id> -f session.yaml"
+  echo "     up -d --force-recreate waf suricata"
 fi
-
-FSL_ACCEPTANCE_SESSIONS="$(mktemp)"
-export FSL_ACCEPTANCE_SESSIONS
 
 section "acceptance (live stack)"
 if "$PY" -m pytest test/ -q -p no:cacheprovider; then

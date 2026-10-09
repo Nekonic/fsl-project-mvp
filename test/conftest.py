@@ -156,7 +156,6 @@ def run_redteam() -> int:
         SCORER,
         ["python", "redteam/run.py",
          "--platform", PLATFORM_FROM_SCORER,
-         "--target", TARGET_PUBLIC,
          "--tool-target", TARGET_PUBLIC],
         timeout=300,
     )

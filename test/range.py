@@ -12,6 +12,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
+SESSION_STACK = "session.yaml"
 
 ATTACKER = "attacker"
 BOARD = "board"
@@ -113,21 +114,39 @@ class Docker:
         return frozenset(attached)
 
     def recreate(self, role: str, timeout: float = 300.0) -> None:
-        unit = self._host(role).unit
-        for argv in (["rm", "-sf", unit], ["up", "-d", unit]):
-            done = self._dispatch(["docker", "compose", *argv], timeout)
+        host = self._host(role)
+        project = self._project_of(role, host.node, timeout)
+        for argv in (["rm", "-sf", host.unit], ["up", "-d", host.unit]):
+            done = self._dispatch(
+                ["docker", "compose", "-p", project, "-f", SESSION_STACK, *argv],
+                timeout,
+            )
             if done.returncode != 0:
                 raise RangeUnavailable(
-                    f"could not recreate the host filling {role!r} ({unit}): "
+                    f"could not recreate the host filling {role!r} ({host.unit}): "
                     f"{(done.stderr or done.stdout).strip()}"
                 )
 
+    def _project_of(self, role: str, node: str, timeout: float) -> str:
+        done = self._dispatch(
+            ["docker", "inspect", node, "--format",
+             '{{index .Config.Labels "com.docker.compose.project"}}'],
+            timeout,
+        )
+        project = done.stdout.strip()
+        if done.returncode != 0 or not project:
+            raise RangeUnavailable(
+                f"no session stack holds the host filling {role!r} ({node}): "
+                f"{(done.stderr or done.stdout).strip()}"
+            )
+        return project
+
     def start_hint(self, *roles: str, fresh: bool = False) -> str:
         if not roles:
-            return "docker compose up -d --build"
+            return "docker compose up -d --build, then POST /api/sessions/"
         units = " ".join(self._host(role).unit for role in roles)
         flag = " --force-recreate" if fresh else ""
-        return f"docker compose up -d{flag} {units}"
+        return f"docker compose -p fsl-<session> -f {SESSION_STACK} up -d{flag} {units}"
 
     def _host(self, role: str) -> Host:
         host = self.hosts.get(role)

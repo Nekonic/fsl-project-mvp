@@ -1,11 +1,22 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from redteam import harness
 from redteam.harness import build_request, load_cases
+from redteam.tools import TOOL_IMAGE
+
+def _launcher(exit_code=0, output="200"):
+    calls = []
+
+    def launch(image, argv, timeout=None):
+        calls.append((image, argv))
+        return SimpleNamespace(exit_code=exit_code, output=output)
+
+    return launch, calls
 
 BASE = "http://localhost:8080"
 DEFAULT_CASES = Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml"
@@ -196,14 +207,13 @@ def test_case_meta_describes_a_tool_case_without_a_request():
 
 
 def test_fire_refuses_to_send_a_case_whose_path_was_altered(monkeypatch):
-    sent = []
-
-    class Http:
-        def send(self, prepared, timeout=None):
-            sent.append(prepared.url)
+    launch, launched = _launcher()
 
     class Prepared:
         url = "http://board.com/y"
+        method = "GET"
+        headers: dict = {}
+        body = None
 
     monkeypatch.setattr(harness, "build_request", lambda case, base: Prepared())
     case = {
@@ -212,8 +222,72 @@ def test_fire_refuses_to_send_a_case_whose_path_was_altered(monkeypatch):
     }
 
     with pytest.raises(harness.CaseRequestAltered):
-        harness.fire(Http(), case, "http://board.com", lambda *a, **k: None)
-    assert sent == [], "a case whose path changed must never reach the target"
+        harness.fire(case, launch)
+    assert launched == [], "a case whose path changed must never reach the attacker box"
+
+
+def test_fire_launches_an_http_case_as_curl_on_the_attacker_box():
+    launch, launched = _launcher()
+    case = {
+        "case_id": "abc", "name": "board-sqli-search", "correlation": "marker",
+        "request": {"method": "GET", "path": "/search/", "params": {"q": "' OR 1=1--"}},
+    }
+
+    harness.fire(case, launch, "http://10.9.0.5")
+
+    assert len(launched) == 1, "an HTTP case must fire through the attacker-box launcher"
+    image, argv = launched[0]
+    assert image == TOOL_IMAGE, "it runs the same image tool cases use (the Kali box)"
+    assert argv[0] == "curl"
+    assert "--path-as-is" in argv
+    assert "X-FSL-Case: abc" in argv, "the marker the proxy labels the request by must be sent"
+    assert argv[-1].startswith("http://10.9.0.5/search/"), (
+        "the curl must hit the in-range tool target, so the traffic crosses the range"
+    )
+    assert "board.com" not in argv[-1], "it must not leave for the public target_url"
+    assert argv[-1] == build_request(case, "http://10.9.0.5").url, (
+        "curl is sent exactly the prepared path, --path-as-is and unaltered"
+    )
+
+
+def test_fire_raises_when_the_request_never_reaches_the_target():
+    launch, _ = _launcher(exit_code=7, output="curl: (7) Failed to connect")
+    case = {
+        "case_id": "c", "name": "board-sqli-search", "correlation": "marker",
+        "request": {"method": "GET", "path": "/search/"},
+    }
+
+    with pytest.raises(harness.ToolUnavailable):
+        harness.fire(case, launch, "http://10.9.0.5")
+
+
+def test_run_does_not_record_a_case_whose_request_never_landed(monkeypatch):
+    recorded = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 7}
+
+    class Http:
+        def post(self, url, json=None, timeout=None):
+            return Resp()
+
+    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
+    monkeypatch.setattr(
+        harness, "fire",
+        lambda *a, **k: (_ for _ in ()).throw(harness.ToolUnavailable("never landed")),
+    )
+    monkeypatch.setattr(harness, "_record", lambda *a, **k: recorded.append(1))
+
+    with pytest.raises(harness.ToolUnavailable):
+        harness.run(
+            [{"name": "a", "malicious": True, "request": {"path": "/search/"}}],
+            "http://p", lambda *a, **k: None,
+        )
+    assert recorded == [], "a case that never reached the target must not be recorded as fired"
 
 
 def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
@@ -238,7 +312,7 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
 
     fired, recorded = [], []
     monkeypatch.setattr(harness.requests, "Session", lambda: Http())
-    monkeypatch.setattr(harness, "fire", lambda http, case, *a, **k: fired.append(case["name"]))
+    monkeypatch.setattr(harness, "fire", lambda case, *a, **k: fired.append(case["name"]))
     monkeypatch.setattr(
         harness, "_record",
         lambda http, url, sid, case, *a, **k: recorded.append((sid, case["name"])),
@@ -246,7 +320,7 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
 
     cases = [{"name": "a", "request": {"path": "/"}},
              {"name": "b", "request": {"path": "/"}}]
-    session_id = harness.run(cases, "http://p", "http://board.com", lambda *a, **k: None)
+    session_id = harness.run(cases, "http://p", lambda *a, **k: None)
 
     assert session_id == 7
     assert fired == ["a", "b"]
@@ -256,5 +330,31 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
     assert bodies[0] == {"scenario": "board"}
 
     bodies.clear()
-    harness.run(cases, "http://p", "http://corp.com", lambda *a, **k: None, scenario="corp")
+    harness.run(cases, "http://p", lambda *a, **k: None, scenario="corp")
     assert bodies[0] == {"scenario": "corp"}
+
+
+def test_opening_a_session_waits_as_long_as_its_stack_takes_to_come_up(monkeypatch):
+    waited = {}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 7}
+
+    class Http:
+        def post(self, url, json=None, timeout=None):
+            waited.setdefault(url, timeout)
+            return Resp()
+
+    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
+
+    harness.run([], "http://p", lambda *a, **k: None)
+
+    assert waited["http://p/api/sessions/"] >= 300, (
+        "opening a session starts its compose stack and waits for the target "
+        "to be healthy, about 40 s on the test range; a 15 s request gives up "
+        "while the stack is still coming up"
+    )

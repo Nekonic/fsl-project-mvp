@@ -30,6 +30,7 @@ TEST_DIRS = ("platform/tests/", "test/")
 TEST_FILES = "test_*.py"
 
 COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
+SESSION_FILE = "session.yaml"
 COMPOSE_OVERRIDES = (
     "compose.override.yml",
     "compose.override.yaml",
@@ -117,18 +118,30 @@ def _compose_file() -> Path | None:
             return ROOT / name
     return None
 
-def services() -> int:
+def _stacks() -> list[Path]:
     compose = _compose_file()
     if compose is None:
-        return 0
-    service_names(compose)
-    return len(service_names(compose, follow=False))
+        return []
+    session = ROOT / SESSION_FILE
+    if not session.is_file():
+        return [compose]
+    shared = service_names(compose) & service_names(session)
+    if shared:
+        raise SystemExit(
+            f"measure: {compose.name} and {SESSION_FILE} both define "
+            f"{', '.join(sorted(shared))}; a service belongs to the control plane "
+            f"or to the session stack, not both"
+        )
+    return [compose, session]
+
+def services() -> int:
+    return sum(len(service_names(stack, follow=False)) for stack in _stacks())
 
 def wargame_services() -> int:
-    compose = _compose_file()
-    if compose is None:
-        return 0
-    return len(service_names(compose)) - len(service_names(compose, follow=False))
+    return sum(
+        len(service_names(stack)) - len(service_names(stack, follow=False))
+        for stack in _stacks()
+    )
 
 def service_names(compose: Path, within: tuple[Path, ...] = (), follow: bool = True) -> set[str]:
     def refuse(number: int, what: str) -> None:

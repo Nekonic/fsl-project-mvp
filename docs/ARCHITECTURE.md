@@ -16,29 +16,51 @@ mechanically. The objective score was added once that held.
 ## The range
 
 The compose services and networks are listed below; `bin/measure` counts them.
-Each target is a wargame, a folder under `wargames/` whose `compose.yaml` the
-top `compose.yaml` includes: `board` (Django and MySQL, `loot_verified`) and
+Two compose files hold them. `compose.yaml` is the control plane (project
+`fsl`, one long-lived copy): the platform, Elasticsearch, Kibana, the
+`collector`, and the six networks. `session.yaml` is one session's data plane:
+the WAF, Suricata, Filebeat, Kali, the proxy and the wargames. It joins the six
+networks as `external` (`fsl_<network>`) and owns only its volumes. Opening a
+session (`POST /api/sessions/`, `platform/range/docker.py` `open_session`)
+runs `docker compose -p fsl-<session id> -f session.yaml up -d --wait
+--no-build` from inside the platform, with `FSL_HOST_DIR` set to the host
+directory compose started the platform from (its
+`com.docker.compose.project.working_dir` label), so the stack's bind mounts
+resolve on the host. The baseline is read after `--wait` returns. Until the
+container-name pins go (build step 4), one stack runs at a time: opening a
+session first runs `down -v` on every other `fsl-<n>` project, and closing a
+session leaves its stack until the next one opens. The OpenStack substrate has
+no `open_session`: its range is the Nova VMs, so no session stack starts. Its
+readiness probe and session baseline read the board VM through the adapter's
+`address("board")`, the VM's management address, which `loot.ground_truth`
+puts in place of the host in `BOARD_API_URL`.
+
+Each target is a wargame, a folder under `wargames/` whose `compose.yaml`
+`session.yaml` includes: `board` (Django and MySQL, `loot_verified`) and
 `corp` (WordPress and MySQL, `effect_observed`). The platform discovers each
 from `wargames/<id>/scenario.yaml` (`platform/wargames.py`; fields `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`). Nothing
-reads `image` yet; compose still builds each app untagged (`build: ./app`). A
-new wargame needs `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its
-folder, a case file under `redteam/cases/`, and an `include:` line.
+reads `image` yet. Each app image is built once and tagged
+(`docker compose -f session.yaml build`); sessions start from those tags with
+`--no-build`. A new wargame needs `scenario.yaml`, `objectives.yaml` and
+`compose.yaml` in its folder, a case file under `redteam/cases/`, and an
+`include:` line in `session.yaml`.
 
-| Service | Image | Networks | Host port |
-|---|---|---|---|
-| `fsl-wg-board` | `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
-| `fsl-wg-board-db` | `mysql` | estate | |
-| `fsl-wg-corp-wp` | `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
-| `fsl-wg-corp-db` | `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `fsl-waf` | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | |
-| `fsl-suricata` | `jasonish/suricata` | the WAF's namespace | |
-| `fsl-elasticsearch` | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `fsl-filebeat` | `filebeat:8.15.0` | mgmt | 5140/udp |
-| `fsl-kibana` | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
-| `fsl-kali` | `deploy/kali` | edge | |
-| `fsl-proxy` | `deploy/proxy` (mitmdump) | the four edge networks | |
-| `fsl-platform` | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`) | all six | 8000 |
+| Service | File | Image | Networks | Host port |
+|---|---|---|---|---|
+| `fsl-wg-board` | session | `fsl/board:mvp` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
+| `fsl-wg-board-db` | session | `mysql` | estate | |
+| `fsl-wg-corp-wp` | session | `fsl/corp:mvp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
+| `fsl-wg-corp-db` | session | `fsl/corp-db:mvp` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | |
+| `fsl-suricata` | session | `jasonish/suricata` | the WAF's namespace | |
+| `fsl-filebeat` | session | `filebeat:8.15.0`, ships the session's `eve.json` and audit log | mgmt | |
+| `fsl-kali` | session | `fsl/kali:mvp` from `deploy/kali` | edge | |
+| `fsl-proxy` | session | `fsl/proxy:mvp` from `deploy/proxy` (mitmdump) | the four edge networks | |
+| `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
+| `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
+| `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
+| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | all six | 8000 |
 
 8000 binds to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
@@ -91,7 +113,7 @@ is attached to every segment, so the API checks the caller itself
  mgmt      filebeat --> elasticsearch <-- platform
 
  Not network traffic:
-   eve.json --bind mount--> filebeat
+   eve.json --volume suricatalogs--> filebeat
    ModSecurity audit.log --volume waflogs--> filebeat
    ./data/label --bind mount--> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
@@ -474,7 +496,9 @@ swap, sets Docker's MTU to the Neutron network's for the default bridge
 adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
 runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
 
-So the whole compose stack above runs inside one Nova VM. cloud-init sets
+So the compose control plane, and only it, runs inside one Nova VM; on the
+OpenStack substrate no session stack starts there, and the board's ground truth
+is read from the board VM at its management address. cloud-init sets
 `FSL_PUBLISH` to the VM's fixed address, so 8000 is published there
 and opened in the security group, and a browser reaches the console at the
 floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address

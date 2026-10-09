@@ -61,7 +61,7 @@ def test_a_board_case_is_addressed_to_the_board(client):
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": name})
 
-    assert fired.call_args.args[1]["request"]["headers"]["Host"] == "board.com"
+    assert fired.call_args.args[0]["request"]["headers"]["Host"] == "board.com"
 
 def test_a_session_with_no_scenario_fires_cases_at_the_board(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
@@ -73,4 +73,4 @@ def test_a_session_with_no_scenario_fires_cases_at_the_board(client):
     with patch("api.views.harness.fire") as fired:
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": name})
 
-    assert fired.call_args.args[1]["request"]["headers"]["Host"] == "board.com"
+    assert fired.call_args.args[0]["request"]["headers"]["Host"] == "board.com"

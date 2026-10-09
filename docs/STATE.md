@@ -670,7 +670,14 @@ only its own target and alerts (live gate, not yet run).
 To do, found by the 2026-10-08 doc review (open until checked off):
 
 - [ ] Build steps 1, 2, 4-8 on the OpenStack deployment; run the live
-      acceptance there before the push (agreed 2026-10-08).
+      acceptance there before the push (agreed 2026-10-08). Step 1 (control
+      plane `compose.yaml`, per-session `session.yaml` as `fsl-<id>`) built
+      2026-10-09; acceptance on substrate docker 138 passed, 0 failed.
+- [x] On substrate openstack the board's ground truth was read from
+      `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
+      not the OpenStack board VM. Readiness and the session baseline now read
+      the board VM at the adapter's `address("board")` (management address);
+      done 2026-10-09.
 - [ ] The lesson's attack has to change the target's records: sqlmap's stock
       payloads do not finish the `?sort=` dump (only manual error-based
       extraction does). Settle the extraction before step 7 reads completion
@@ -701,6 +708,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `FSL_SENSOR_RELOAD` is unset on the VM; the VM has no GeoLite2 database
       (`bin/fetch-geoip` never ran). The stale `blue.html` comparison test
       was removed 2026-10-09.
+- [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
+      set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal

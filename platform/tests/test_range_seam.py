@@ -214,15 +214,28 @@ def test_a_segment_list_that_is_not_a_list_is_an_outage(dispatch):
         substrate.segments(seam.BOARD)
 
 def test_recreating_a_role_takes_the_host_away_and_brings_it_back(dispatch):
-    fake = dispatch()
+    fake = dispatch(stdout="fsl-7\n")
     substrate = seam.Docker()
 
     substrate.recreate(seam.BOARD)
 
-    assert fake.commands == [
-        ["docker", "compose", "rm", "-sf", "board"],
-        ["docker", "compose", "up", "-d", "board"],
+    assert fake.commands[0][:3] == ["docker", "inspect", "fsl-wg-board"]
+    assert fake.commands[1:] == [
+        ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "rm", "-sf", "board"],
+        ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "up", "-d", "board"],
     ]
+
+def test_a_host_no_session_stack_holds_is_not_recreated_into_a_guessed_one(dispatch):
+    fake = dispatch(stdout="\n")
+    substrate = seam.Docker()
+
+    with pytest.raises(seam.RangeUnavailable, match="no session stack"):
+        substrate.recreate(seam.BOARD)
+
+    assert len(fake.commands) == 1, (
+        "compose ran without the project of the open session, so it would "
+        "start a stack nobody opened"
+    )
 
 def test_a_recreate_that_did_not_take_the_host_away_does_not_bring_it_back(dispatch):
     fake = dispatch(returncode=1, stderr="no configuration file provided")

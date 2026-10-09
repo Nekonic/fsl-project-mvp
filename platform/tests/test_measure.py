@@ -314,3 +314,29 @@ def test_services_measure_cannot_count_are_refused_not_skipped(
 
     with pytest.raises(SystemExit, match=re.escape(named)):
         measure.services()
+
+
+def test_the_session_stack_s_own_services_are_gated_with_the_control_plane(measure, tmp_path):
+    (tmp_path / "compose.yaml").write_text("services:\n  platform:\n    image: a:1\n")
+    (tmp_path / "session.yaml").write_text(
+        "include:\n  - wargames/a/compose.yaml\n"
+        "services:\n  waf:\n    image: a:1\n  sensor:\n    image: b:1\n"
+    )
+    (tmp_path / "wargames" / "a").mkdir(parents=True)
+    (tmp_path / "wargames" / "a" / "compose.yaml").write_text(
+        "services:\n  board:\n    image: c:1\n"
+    )
+
+    assert measure.services() == 3, (
+        "a service moved out of compose.yaml into the session stack still runs "
+        "for every session; leaving it uncounted lets the gate fall for free"
+    )
+    assert measure.wargame_services() == 1
+
+
+def test_a_service_in_both_the_control_plane_and_the_session_stack_is_refused(measure, tmp_path):
+    (tmp_path / "compose.yaml").write_text("services:\n  waf:\n    image: a:1\n")
+    (tmp_path / "session.yaml").write_text("services:\n  waf:\n    image: a:1\n")
+
+    with pytest.raises(SystemExit, match="waf"):
+        measure.services()

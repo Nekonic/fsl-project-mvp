@@ -4,10 +4,14 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
+SESSION = ROOT / "session.yaml"
+
+def included():
+    top = yaml.safe_load(SESSION.read_text())
+    return [SESSION.parent / path for path in top.get("include") or []]
 
 def files():
-    top = yaml.safe_load(COMPOSE.read_text())
-    return [COMPOSE] + [COMPOSE.parent / path for path in top.get("include") or []]
+    return [COMPOSE, SESSION] + included()
 
 def services():
     merged = {}
