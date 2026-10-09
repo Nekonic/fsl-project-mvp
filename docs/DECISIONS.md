@@ -432,3 +432,28 @@ dates.
   which broke tool cases there too. Set in the VM's openstack.env. Whether the
   attacker image should resolve from the substrate in code rather than from an
   env var is left open (STATE backlog 0).
+
+## 2026-10-09 — /attacks/ wears the origin; sqlmap `?sort=` extraction verified negative
+
+`POST /sessions/<id>/attacks/` recorded the requested origin in the case meta
+and picked the launcher segment, but never applied the SNAT. On OpenStack the
+source country is set only by `fsl-origin`, so an API-only caller fired from
+whatever origin `/api/attacker/origin/` had last set — the recorded origin and
+the on-wire source could diverge. `fire_attack` now calls `attacker.wear_origin`
+for the chosen origin before firing (one proxy round trip), the same call the
+red console makes when an origin is picked; front-door attacks (no origin) wear
+nothing. Tests: `test_an_attack_wears_the_origin_before_firing`,
+`test_an_attack_with_no_origin_wears_nothing`, and the cost test now asserts
+firing from an origin reads the range once and wears the origin once. core_loc
+unchanged; tests 1226 -> 1228.
+
+Verified on the live OpenStack range that `board-sqli-orderby-sqlmap` does not
+auto-extract: sqlmap `--technique=BT` judged `sort` not injectable and dumped
+nothing (4 s, exit 0). This matches the standing note that the case is a
+detected probe, not shaped for the dotted-column ORM bypass of CVE-2021-35042.
+The `order_by(sort)` sink is present in the board source and the image bundle
+hashes to the current source, yet the board on the current slot did not reflect
+`?sort=` (no reorder for any value; dotted extractvalue/updatexml payloads
+returned 200 with no error under DEBUG=True), so the manual error-based leak
+recorded earlier (`~8.4.11`) did not reproduce from quick probes. Re-confirm the
+manual extraction after a live-cloud board rebuild (step 8).

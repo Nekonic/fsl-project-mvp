@@ -537,6 +537,8 @@ def fire_attack(request, session_id):
     case = dict(case, case_id=str(uuid.uuid4()))
     case.setdefault("correlation", "marker")
     origin = _origin_for(session, body.get("origin"))
+    if origin:
+        attacker.wear_origin(origin, substrate().runner("proxy"))
 
     target_url = origin["target_url"] if origin else settings.TARGET_URL
     spec = dict(case.get("request") or {})

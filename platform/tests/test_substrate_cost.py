@@ -64,8 +64,18 @@ def test_listing_the_origins_asks_the_range_once(client):
 def test_the_attacker_box_asks_the_range_once(client):
     assert polled(client, "/api/attacker/") == 1
 
-def test_firing_from_an_origin_asks_the_range_once(client, session_id):
-    counter = Counting()
+def test_firing_from_an_origin_reads_the_range_once_and_wears_the_origin(client, session_id):
+    ran_on = []
+
+    class CountingWithProxy(Counting):
+        def runner(self, role, segment_id=""):
+            def ran(argv, timeout=600.0, stdin=""):
+                ran_on.append(role)
+                return type("Ran", (), {"ok": True, "output": ""})()
+
+            return ran
+
+    counter = CountingWithProxy()
     with patch("api.views.substrate", lambda: counter), \
             patch("api.views.attacker.origins", return_value=PLACES), \
             patch("api.views._observe_objectives"), \
@@ -76,7 +86,8 @@ def test_firing_from_an_origin_asks_the_range_once(client, session_id):
         )
 
     assert response.status_code == 201
-    assert counter.calls == 1
+    assert counter.calls == 1, "the range topology is read once, not re-read"
+    assert ran_on == ["proxy"], "firing from an origin wears the origin once, before launching"
 
 def test_firing_by_the_front_door_does_not_ask_the_range_at_all(client, session_id):
     counter = Counting()

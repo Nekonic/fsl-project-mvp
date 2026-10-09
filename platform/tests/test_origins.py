@@ -54,7 +54,10 @@ def stub(described=SHAPE, error=None):
             return launch
 
         def runner(self, role, segment_id=""):
-            raise RangeUnavailable(f"this stub range runs nothing on {role}")
+            def ran(argv, timeout=600.0, stdin=""):
+                return type("Ran", (), {"ok": True, "output": ""})()
+
+            return ran
 
     return patch("api.views.substrate", Stub)
 
@@ -181,18 +184,19 @@ pytestmark = pytest.mark.django_db
 
 PLACES = [
     {"id": "ru", "label": "Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
-     "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
+     "address": "5.188.10.9", "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
      "network": "fsl_edge", "default": True},
     {"id": "br", "label": "Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
-     "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
+     "address": "177.54.144.9", "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
      "network": "fsl_edge-br", "default": False},
     {"id": "hk", "label": "Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
-     "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
+     "address": "103.152.220.9", "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
      "network": "fsl_edge-hk", "default": False},
 ]
 
 def _fire(client, session_id, payload):
     with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.attacker.wear_origin"), \
             patch("api.views.harness.fire") as fired:
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/", payload
@@ -245,6 +249,29 @@ def test_the_origin_is_recorded_but_not_an_address(client, session_id):
     assert meta["origin"] == "hk"
     assert meta["target_url"] == "http://103.152.220.9:8080"
     assert "source_ip" not in meta
+
+def test_an_attack_wears_the_origin_before_firing(client, session_id):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.harness.fire"), \
+            patch("api.views.attacker.wear_origin") as worn:
+        client.post_json(
+            f"/api/sessions/{session_id}/attacks/",
+            {"case": "board-sqli-login-bypass", "origin": "hk"},
+        )
+
+    assert worn.call_count == 1
+    assert worn.call_args.args[0]["id"] == "hk"
+
+def test_an_attack_with_no_origin_wears_nothing(client, session_id):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.harness.fire"), \
+            patch("api.views.attacker.wear_origin") as worn:
+        client.post_json(
+            f"/api/sessions/{session_id}/attacks/",
+            {"case": "board-sqli-login-bypass"},
+        )
+
+    assert worn.call_count == 0
 
 def test_rotation_moves_on_with_every_attack(client, session_id):
     seen = []

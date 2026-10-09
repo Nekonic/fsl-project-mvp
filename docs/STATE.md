@@ -678,10 +678,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       not the OpenStack board VM. Readiness and the session baseline now read
       the board VM at the adapter's `address("board")` (management address);
       done 2026-10-09.
-- [ ] The lesson's attack has to change the target's records: sqlmap's stock
-      payloads do not finish the `?sort=` dump (only manual error-based
-      extraction does). Settle the extraction before step 7 reads completion
-      from the target.
+- [ ] The lesson's attack has to change the target's records. Verified live
+      2026-10-09: `board-sqli-orderby-sqlmap` does not auto-extract (sqlmap
+      `--technique=BT` judged `sort` not injectable, dumped 0 rows), as the note
+      above predicts. The `order_by(sort)` sink is in the board source and the
+      image bundle hashes to the current source, but the board on the current
+      slot did not reflect `?sort=` (no reorder for any value; dotted
+      extractvalue/updatexml payloads returned 200 with no error under
+      DEBUG=True), so the manual error-based leak did not reproduce from quick
+      probes. Re-confirm the manual extraction after a live-cloud board rebuild
+      (step 8), then settle it before step 7 reads completion from the target.
 - [x] Ingest from the console: the session page's confirm-close posts
       `/ingest/` before closing; done 2026-10-08.
 - [x] CLI harness opens the session of the scenario matching the `--cases`
@@ -696,10 +702,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (ru, br, hk, us) or times out (tw). It now ssh's over mgmt; sqlmap from
       ru and tw scored TP, alerts carry 5.188.10.10 and 120.96.0.10 (done
       2026-10-08).
-- [ ] `POST /attacks/` does not wear the origin; the source country is the one
-      last set by `/api/attacker/origin/` (the red console sets it when the
-      origin is picked). An API caller that fires with another origin records
-      an origin the traffic did not carry.
+- [x] `POST /attacks/` wears the origin before firing: `fire_attack` applies
+      the SNAT (`attacker.wear_origin`) for the requested origin, so an API
+      caller's recorded origin matches the traffic; front-door attacks (no
+      origin) wear nothing. One proxy round trip, the same call the red console
+      makes on pick. Done 2026-10-09 (`platform/api/views.py`,
+      `platform/tests/test_origins.py`).
 - [ ] Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
       bin/verify`, 2026-10-09: 23 passed, 78 skipped, 17 failed, 21 errors):
       session fixtures hold a session open while others POST a new one, and
