@@ -491,8 +491,11 @@ In a guided session the lesson note floats over the pane at its top right,
 folded by default to a pill ("Lesson note · step n/N"); open, it is 360 px wide
 and holds five tabs: Steps (the current step, Back/Next, every step to jump
 to), Goal (the summary, the done conditions, the four paragraphs), Theory,
-Hints and Check. Open state and tab are kept per viewer in localStorage
-(`fsl-lesson-note`), and the step reached in `fsl-lesson-step-<id>`, which the
+Hints and Check. It opens when the learner opens it or when a step points at
+one of its own controls (and folds again when the guide moves off such a step);
+while open, its tab follows the step (Check for Replay and Verify, Steps
+otherwise). Every page load starts folded; only the tab is kept per viewer in
+localStorage (`fsl-lesson-note`), and the step reached in `fsl-lesson-step-<id>`, which the
 main and session pages read for "step n/N".
 
 Theory holds five folded cards (`THEORY` in `blue.html`; text under
@@ -518,13 +521,23 @@ file, append the exclusion with a heredoc since the WAF image has no editor,
 which is same-origin and so readable from the console, or one of the
 console's own controls; a step with no target is a terminal step and boxes
 the whole pane. The guide is a popover in the manner of driver.js: a red box
-over the target (with a scrim, none on the terminal) and, anchored to it, a
+over the target (nothing on the page is dimmed) and, anchored to it, a
 card with "n / N", the step's title (`<lesson.text>.label.<step>`), one line
 of instruction (`<lesson.text>.coach.<step>`), progress dots and
-Back/Next/close. Below the target, or above it when there is no room, with
-an arrow; on a terminal step it sits in the pane's bottom right, clear of the
-output, and shows the command in a copyable block with one line on what it
-does (`<lesson.text>.does.<step>`). Box and popover are placed every animation
+Back/Next/close. Below the target, or above, left or right of it when there
+is no room, with an arrow, and never over the open note: for a control inside
+the note it sits to the note's left. On a terminal step it sits in the pane's
+bottom right (left of the note when the note is open), clear of the output,
+and shows the command in a copyable block with one line on what it does
+(`<lesson.text>.does.<step>`). The pane's box is drawn inside the pane's edges
+and under the note (pane < box < note < popover); a box on a note control is
+above the note. Copy uses the Clipboard API where there is one and otherwise a
+selected textarea with `execCommand("copy")`, since the platform is served over
+plain http and an insecure context has no `navigator.clipboard`. "Type into
+terminal" calls `term.paste(command)` on the xterm.js instance ttyd exposes in
+the same-origin WAF frame: one bracketed paste, so a heredoc arrives whole and
+nothing runs until the learner presses Enter. With the WAF pane not open it
+copies instead and says so. Box and popover are placed every animation
 frame, the box with `pointer-events: none` so every click still reaches
 Kibana; the selector is re-queried each frame, so Kibana re-rendering or
 navigating does not strand the box. With no target for about 2 s the popover

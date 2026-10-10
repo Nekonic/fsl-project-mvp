@@ -78,8 +78,8 @@ def test_the_pill_opens_the_note_and_fold_returns_it_to_the_pill_and_both_are_re
       return {opened, folded: state(), label: browser.text('lesson-collapse')};
     """)
 
-    assert seen["result"]["opened"] == {"note": True, "pill": False, "kept": {"open": True, "tab": "steps"}}
-    assert seen["result"]["folded"] == {"note": False, "pill": True, "kept": {"open": False, "tab": "steps"}}
+    assert seen["result"]["opened"] == {"note": True, "pill": False, "kept": {"tab": "steps"}}
+    assert seen["result"]["folded"] == {"note": False, "pill": True, "kept": {"tab": "steps"}}
     assert seen["result"]["label"] == english("lesson.note.collapse")
 
 def test_the_note_has_steps_goal_theory_hints_and_check_tabs_and_shows_one_at_a_time(client):
@@ -99,15 +99,18 @@ def test_the_note_has_steps_goal_theory_hints_and_check_tabs_and_shows_one_at_a_
     assert seen["result"]["hint"] == {"shown": ["hint"], "selected": "true"}
     assert seen["result"]["kept"] == "hint"
 
-def test_a_remembered_open_note_and_tab_are_restored_on_the_next_visit(client):
+def test_the_note_starts_folded_on_every_visit_and_reopens_at_the_remembered_tab(client):
     seen = open_page(client, "/blue/1/", setup=guided(True) + """
       localStorage.setItem('fsl-lesson-note', JSON.stringify({open: true, tab: 'theory'}));
     """, scenario="""
-      return {note: browser.element('lesson').classList.contains('hidden'),
-              theory: document.querySelector('[data-pane-of="theory"]').classList.contains('hidden')};
+      const folded = browser.element('lesson').classList.contains('hidden');
+      await browser.click('note-pill');
+      return {folded, theory: document.querySelector('[data-pane-of="theory"]').classList.contains('hidden')};
     """)
 
-    assert seen["result"] == {"note": False, "theory": False}
+    assert seen["result"] == {"folded": True, "theory": False}, (
+        "an open note from an earlier visit must not take a quarter of the screen on load"
+    )
 
 def test_the_note_floats_over_the_pane_in_the_empty_part_of_kibana_s_header_and_reserves_no_column(client):
     page = client.get("/blue/1/").content.decode()
@@ -241,9 +244,9 @@ def test_the_coach_boxes_a_kibana_element_while_it_is_on_screen_and_hides_when_i
     assert seen["errors"] == []
     assert seen["result"]["before"] is True
     assert seen["result"]["over"] == {
-        "hidden": False, "left": "206px", "top": "66px", "width": "108px", "layer": "40", "scrim": True,
+        "hidden": False, "left": "206px", "top": "66px", "width": "108px", "layer": "30", "scrim": False,
         "events": "none",
-    }, "the box sits over the element, offset by where the Kibana pane is, and never takes a click"
+    }, "the box sits over the element, offset by where the Kibana pane is, under the note, dims nothing and never takes a click"
     assert seen["result"]["after"] is True
 
 def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(client):
@@ -501,8 +504,8 @@ def test_a_terminal_step_boxes_the_pane_and_its_popover_gives_the_exact_command(
     assert edit["code"] == COMMAND["edit"] and "<<'EOF'" in edit["code"]
     assert edit["does"] == english("lesson.board.does.edit") and edit["shown"] and edit["wide"]
     assert (edit["left"], edit["top"], edit["width"], edit["layer"], edit["scrim"]) == (
-        "196px", "46px", "808px", "40", False,
-    ), "a step inside the terminal boxes the whole pane, without dimming it"
+        "200px", "50px", "800px", "30", False,
+    ), "a step inside the terminal boxes the pane inside its own edges, under the note, without dimming it"
     assert (edit["popLeft"], edit["popTop"], edit["arrow"]) == ("644px", "434px", True), (
         "the popover sits in the pane's bottom right corner, clear of the output at the top"
     )
@@ -530,4 +533,149 @@ def test_kibana_s_first_visit_callouts_are_marked_seen_before_the_pane_loads(cli
     assert seen["result"] == ["true", "true", "true"], (
         "Kibana reads these with JSON.parse from the same-origin localStorage and "
         "hides the Discover tour callout and the no-data popover when they are true"
+    )
+
+NOTE_OPEN_AT = """
+browser.element('lesson').getBoundingClientRect =
+  () => ({left: 620, top: 58, right: 980, bottom: 634, width: 360, height: 576});
+"""
+
+def test_nothing_on_the_page_is_dimmed_while_a_step_is_shown(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + """
+      document.querySelector('.pane-tab[data-pane="waf"]').getBoundingClientRect =
+        () => ({left: 8, top: 120, right: 52, bottom: 164, width: 44, height: 44});
+    """, scenario=f"""
+      const dims = [];
+      for (let i = 0; i < {len(STEPS)}; i += 1) {{
+        present.add({KIBANA_TABLE!r});
+        await browser.wait(16);
+        const box = browser.element('coach-box');
+        dims.push(box.classList.contains('scrim') || /9999px/.test(box.style.boxShadow || ''));
+        await browser.click('coach-pop-next');
+      }}
+      return dims;
+    """)
+
+    assert seen["result"] == [False] * len(STEPS), "a step highlights its target; it never greys the page"
+
+def test_a_popover_for_a_note_control_sits_beside_the_note_not_over_it(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + NOTE_OPEN_AT + """
+      browser.element('lesson-replay').getBoundingClientRect =
+        () => ({left: 640, top: 300, right: 720, bottom: 330, width: 80, height: 30});
+    """, scenario=f"""
+      for (let i = 0; i < {at("replay")}; i += 1) await browser.click('coach-pop-next');
+      await browser.wait(16);
+      const pop = browser.element('coach-pop');
+      const arrow = browser.element('coach-pop-arrow');
+      return {{left: parseFloat(pop.style.left), top: parseFloat(pop.style.top),
+              note: !browser.element('lesson').classList.contains('hidden'),
+              arrow: arrow.classList.contains('hidden'), arrowRight: arrow.style.right}};
+    """)
+    result = seen["result"]
+
+    assert result["note"] is True
+    assert result["left"] + 340 <= 620, f"the popover overlaps the note: {{result}}"
+    assert (result["arrow"], result["arrowRight"]) == (False, "-6px"), "the arrow points right, at the note"
+
+def test_a_terminal_popover_moves_left_of_an_open_note(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + NOTE_OPEN_AT, scenario=f"""
+      await browser.click('note-pill');
+      for (let i = 0; i < {at("edit")}; i += 1) await browser.click('coach-pop-next');
+      await browser.wait(16);
+      const pop = browser.element('coach-pop').style;
+      return {{left: parseFloat(pop.left), top: parseFloat(pop.top),
+              box: browser.element('coach-box').style.zIndex}};
+    """)
+    result = seen["result"]
+
+    assert result["left"] + 340 <= 620 - 14, f"the popover overlaps the note: {result}"
+    assert result["left"] >= 200 and result["top"] == 434, "it stays in the pane's bottom row"
+    assert int(result["box"]) < 35, "the pane's box is drawn under the note"
+
+def test_the_note_opens_for_a_step_on_its_own_control_and_folds_again_when_the_step_moves_back(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      const folded = () => browser.element('lesson').classList.contains('hidden');
+      const start = folded();
+      await browser.click('[data-step="{at("replay")}"]');
+      const atReplay = {{folded: folded(), check: document.querySelector('[data-tab="check"]').getAttribute('aria-selected')}};
+      await browser.click('coach-pop-back');
+      return {{start, atReplay, back: folded()}};
+    """)
+
+    assert seen["result"] == {"start": True, "atReplay": {"folded": False, "check": "true"}, "back": True}
+
+def test_an_open_note_s_tab_follows_the_step(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      await browser.click('note-pill');
+      await browser.click('[data-tab="hint"]');
+      await browser.click('[data-step="{at("audit")}"]');
+      const audit = document.querySelector('.tab[aria-selected="true"]').dataset.tab;
+      await browser.click('[data-step="{at("verify")}"]');
+      const verify = document.querySelector('.tab[aria-selected="true"]').dataset.tab;
+      await browser.click('coach-pop-back');
+      await browser.click('coach-pop-back');
+      return {{audit, verify, apply: document.querySelector('.tab[aria-selected="true"]').dataset.tab,
+              open: !browser.element('lesson').classList.contains('hidden')}};
+    """)
+
+    assert seen["result"] == {"audit": "steps", "verify": "check", "apply": "steps", "open": True}, (
+        "a note the learner opened stays open, and its tab follows the step"
+    )
+
+INSECURE = """
+const selected = [];
+Object.getPrototypeOf(document.body).select = function () { selected.push(this.value); };
+document.execCommand = (command) => command === 'copy' && selected.length > 0;
+"""
+
+def test_copy_falls_back_to_a_selection_when_the_page_is_not_a_secure_context(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + INSECURE, scenario=f"""
+      for (let i = 0; i < {at("apply")}; i += 1) await browser.click('coach-pop-next');
+      await browser.click('coach-pop-copy');
+      return {{selected, said: browser.text('coach-pop-copy'),
+              left: document.querySelectorAll('textarea').length}};
+    """)
+
+    assert seen["result"] == {"selected": ["nginx -t && nginx -s reload"], "said": english("lesson.copied"),
+                              "left": 0}, "no clipboard API on plain http, so the command is copied by selection"
+
+def test_copy_says_it_failed_when_neither_way_works(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      for (let i = 0; i < {at("apply")}; i += 1) await browser.click('coach-pop-next');
+      await browser.click('coach-pop-copy');
+      return browser.text('coach-pop-copy');
+    """)
+
+    assert seen["result"] == english("lesson.copy_failed")
+
+WAF_TERMINAL = """
+const pasted = [];
+pane.contentWindow = {term: {paste: (text) => pasted.push(text), focus() {}}};
+"""
+
+def test_type_into_terminal_pastes_the_exact_command_into_the_waf_terminal_without_running_it(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + WAF_TERMINAL, scenario=f"""
+      await browser.click('[data-pane="waf"]');
+      await browser.click('[data-step="{at("edit")}"]');
+      const before = browser.text('coach-pop-typed');
+      await browser.click('coach-pop-type');
+      return {{pasted, before, after: browser.text('coach-pop-typed'), label: browser.text('coach-pop-type')}};
+    """)
+    result = seen["result"]
+
+    assert result["pasted"] == [COMMAND["edit"]], "the heredoc goes in whole, as one bracketed paste"
+    assert not COMMAND["edit"].endswith("\n"), "no trailing newline: the learner presses Enter"
+    assert result["label"] == english("lesson.type")
+    assert (result["before"], result["after"]) == (english("lesson.type.note"), english("lesson.typed"))
+
+def test_type_into_terminal_copies_instead_when_the_waf_terminal_is_not_open(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + WAF_TERMINAL + INSECURE, scenario=f"""
+      await browser.click('[data-step="{at("apply")}"]');
+      await browser.click('coach-pop-type');
+      return {{pasted, selected, said: browser.text('coach-pop-typed')}};
+    """)
+
+    assert seen["result"] == {"pasted": [], "selected": ["nginx -t && nginx -s reload"],
+                              "said": english("lesson.type_missing")}, (
+        "with Kibana in the pane there is no terminal to type into"
     )
