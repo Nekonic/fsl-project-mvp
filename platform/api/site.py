@@ -4,7 +4,7 @@ import time
 from collections import deque
 
 import requests
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -12,12 +12,13 @@ from django.views.decorators.http import require_http_methods
 from api.models import Session
 
 MARKER = "browse"
+MARKER_HEADER = "X-FSL-Case"
 KEPT_PER_SESSION = 200
 BODY_LIMIT = 64 * 1024
-TIMEOUT = 60
+TIMEOUT = (3, 20)
+CHUNK = 8 * 1024
 BLOCKED = 403
-PASSED_ON = ("Accept", "Accept-Language", "Content-Type", "User-Agent", "Referer", "Origin",
-             "X-Forwarded-For")
+PASSED_ON = ("Accept", "Accept-Language", "Content-Type", "User-Agent", "Referer", "Origin")
 NOT_RETURNED = {"connection", "content-encoding", "content-length", "keep-alive", "set-cookie",
                 "transfer-encoding"}
 
@@ -30,9 +31,9 @@ def waf_url(session_id: int) -> str:
     return f"http://fsl-{session_id}-waf-1"
 
 
-def _text(body: bytes) -> dict:
-    return {"text": body[:BODY_LIMIT].decode("utf-8", "replace"), "size": len(body),
-            "truncated": len(body) > BODY_LIMIT}
+def _text(body: bytes, size: int) -> dict:
+    return {"text": body[:BODY_LIMIT].decode("utf-8", "replace"), "size": size,
+            "truncated": size > BODY_LIMIT}
 
 
 def _keep(session_id: int, record: dict) -> None:
@@ -45,35 +46,61 @@ def kept(session_id: int) -> list[dict]:
         return list(_records.get(session_id, ()))
 
 
+def forget(session_id: int) -> None:
+    with _lock:
+        _records.pop(session_id, None)
+
+
+def shown_marker(session: Session, text: str) -> str:
+    return text.replace(session.browse_marker, MARKER) if isinstance(text, str) else text
+
+
 @csrf_exempt
 def proxy(request, session_id, host):
+    session = get_object_or_404(Session, pk=session_id)
+    if session.ended_at is not None:
+        return HttpResponse(f"session {session_id} is closed", status=409, content_type="text/plain")
     target = request.headers.get("X-Site-Uri") or "/"
     if not target.startswith("/"):
         raise Http404("the site path must start with /")
     sent = {name: request.headers[name] for name in PASSED_ON if name in request.headers}
-    sent.update({"Host": host, "X-FSL-Case": MARKER, "Accept-Encoding": "identity"})
+    sent.update({"Host": host, MARKER_HEADER: session.browse_marker, "Accept-Encoding": "identity"})
     body = request.body
     started = time.monotonic()
     try:
         answer = requests.request(request.method, waf_url(session_id) + target, headers=sent, data=body or None,
-                                  allow_redirects=False, timeout=TIMEOUT)
-    except requests.RequestException as exc:
-        return HttpResponse(f"the session's WAF did not answer: {exc}", status=502, content_type="text/plain")
+                                  allow_redirects=False, timeout=TIMEOUT, stream=True)
+    except requests.RequestException:
+        return HttpResponse("the session's WAF did not answer", status=502, content_type="text/plain")
     returned = {name: value for name, value in answer.headers.items() if name.lower() not in NOT_RETURNED}
-    _keep(session_id, {
+    record = {
         "id": next(_numbers),
         "at": time.time(),
         "method": request.method,
         "url": f"http://{host}{target}",
         "status": answer.status_code,
         "blocked": answer.status_code == BLOCKED,
-        "ms": round((time.monotonic() - started) * 1000),
-        "request_headers": sent,
+        "request_headers": dict(sent, **{MARKER_HEADER: MARKER}),
         "response_headers": returned,
-        "request_body": _text(body) if body else None,
-        "response_body": _text(answer.content),
-    })
-    response = HttpResponse(answer.content, status=answer.status_code)
+        "request_body": _text(body, len(body)) if body else None,
+    }
+
+    def passed_on():
+        head, size = bytearray(), 0
+        try:
+            for chunk in answer.iter_content(CHUNK):
+                size += len(chunk)
+                if len(head) < BODY_LIMIT:
+                    head += chunk[:BODY_LIMIT - len(head)]
+                yield chunk
+        except requests.RequestException:
+            return
+        finally:
+            answer.close()
+            record.update(ms=round((time.monotonic() - started) * 1000), response_body=_text(bytes(head), size))
+            _keep(session_id, record)
+
+    response = StreamingHttpResponse(passed_on(), status=answer.status_code)
     for name, value in returned.items():
         response[name] = value
     return response
@@ -84,7 +111,9 @@ SUMMARY = ("id", "at", "method", "url", "status", "blocked", "ms")
 
 @require_http_methods(["GET"])
 def site_requests(request, session_id):
-    get_object_or_404(Session, pk=session_id)
+    session = get_object_or_404(Session, pk=session_id)
+    if session.ended_at is not None:
+        return JsonResponse({"detail": f"session {session_id} is closed"}, status=409)
     try:
         after = int(request.GET.get("after", "0"), 10)
     except ValueError:

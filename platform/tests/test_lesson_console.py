@@ -13,18 +13,22 @@ IDS = [step["id"] for step in STEPS]
 COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
 
 GUIDED = """
-const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: []};
+const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [], ended_at: null};
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
       cases: ["board-sqli-orderby-sqlmap", "board-normal-search-with-apostrophe"],
-      steps: STEPS_JSON,
+      steps: STEPS_JSON, theory: THEORY_JSON, hints: HINTS_JSON,
     } : null}};
   }
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
+  if (request.route === "/api/sessions/1/lesson/hints/") {
+    range.used.push(request.body);
+    return {body: {hints: range.used}};
+  }
   if (request.route === "/api/sessions/1/detections/") {
     return {body: range.detections.filter((row) => row.id > Number(request.query.after || 0))};
   }
@@ -46,7 +50,8 @@ browser.serve((request) => {
   }
   return {status: 404, body: {detail: "not served"}};
 });
-""".replace("STEPS_JSON", json.dumps([
+""".replace("THEORY_JSON", json.dumps(wargames.lesson("board")["theory"])).replace(
+    "HINTS_JSON", json.dumps(wargames.lesson("board")["hints"])).replace("STEPS_JSON", json.dumps([
     dict(step, discover="/kibana/app/discover#/?narrowed=brien") if step.get("query") else step for step in STEPS
 ]))
 
@@ -149,7 +154,7 @@ def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(c
     assert "nginx" not in seen["result"]["hints"], "a hint says why, the steps say what to type"
     assert seen["result"]["folded"] is True and seen["result"]["opened"] is True
     assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in seen["result"]["answer"]
-    assert "nginx -t && nginx -s reload" in seen["result"]["answer"]
+    assert "if nginx -t; then nginx -s reload;" in seen["result"]["answer"]
     assert seen["result"]["form"] == [None, None, None], "the tuning is done in the WAF terminal"
     assert seen["result"]["writes"] == []
 
@@ -850,13 +855,15 @@ def test_do_it_for_me_performs_the_step_and_records_that_help_was_used(client):
       {hints(4)}
       await browser.click('coach-pop-do');
       await browser.wait(1500);
-      return {{title: browser.text('coach-pop-title'), kept: JSON.parse(localStorage.getItem('fsl-lesson-help-1')),
+      return {{title: browser.text('coach-pop-title'), recorded: range.used,
               marked: browser.element('lesson-step-list').querySelector('[data-step="{at("rule")}"]').textContent}};
     """)
     result = seen["result"]
 
     assert result["title"] == english("lesson.board.label.target")
-    assert result["kept"] == ["rule"]
+    assert result["recorded"] == [{"step": "rule", "level": "hint"}, {"step": "rule", "level": "do"}], (
+        "help is recorded on the session through the API, once per step and kind"
+    )
     assert english("lesson.helped") in result["marked"]
 
 def test_do_it_for_me_on_the_terminal_step_runs_the_command_in_the_waf_terminal(client):
@@ -1075,3 +1082,50 @@ def test_the_developer_tools_can_be_dragged_taller(client):
     """)
 
     assert seen["result"] == ["400px", "400px"]
+
+
+def test_help_recorded_on_the_session_is_marked_when_the_page_is_opened_again(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + "range.used.push({step: 'find', level: 'do'});", scenario=f"""
+      return browser.element('lesson-step-list').querySelector('[data-step="{at("find")}"]').textContent;
+    """)
+
+    assert english("lesson.helped") in seen["result"], "the mark comes from the session, not from this browser"
+
+def test_the_note_and_its_pill_start_below_the_site_toolbar_and_the_waf_banner(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
+      const tops = () => [browser.element('note-pill').style.top, browser.element('lesson').style.top];
+      const onKibana = tops();
+      await browser.click('[data-pane="site"]');
+      const onSite = tops();
+      await browser.click('[data-pane="waf"]');
+      return {onKibana, onSite, onWaf: tops()};
+    """)
+
+    assert seen["result"] == {"onKibana": ["8px", "8px"], "onSite": ["48px", "48px"], "onWaf": ["48px", "48px"]}, (
+        "the address bar, the developer tools button and the WAF banner stay uncovered"
+    )
+
+def test_a_closed_session_s_lesson_and_network_panel_stop_polling(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + "range.ended_at = '2026-10-11T00:00:00Z';", scenario=f"""
+      {to("search")}
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      const before = browser.requests.length;
+      for (let second = 0; second < 12; second += 1) await browser.wait(1000);
+      return browser.requests.slice(before).map((r) => r.route);
+    """)
+
+    polled = [route for route in seen["result"] if route.endswith(("/ingest/", "/detections/", "/waf/", "/site/requests/"))]
+    assert polled == [], "nothing keeps asking the platform about a session that has closed"
+
+def test_an_open_session_s_lesson_and_network_panel_keep_polling(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      {to("search")}
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      const before = browser.requests.length;
+      for (let second = 0; second < 12; second += 1) await browser.wait(1000);
+      return browser.requests.slice(before).map((r) => r.route);
+    """)
+
+    assert "/api/sessions/1/ingest/" in seen["result"] and "/api/sessions/1/site/requests/" in seen["result"]

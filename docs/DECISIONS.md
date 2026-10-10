@@ -1263,3 +1263,91 @@ guided and the "Do it yourself" mode and asserts each box is drawn on a
 target the console can reach, never inside the site frame; the live walk
 (session 205, headless Chromium) saw the box on every step and ended in
 VERIFY PASS.
+
+## 2026-10-11 — Review fixes: an unforgeable browse marker, a bounded site proxy, hints on the session, terms with sources
+
+A review of the site browser and the lesson, and a full `bin/verify` on the
+acceptance VM that timed out after `docker compose restart platform` (waitress
+"Task queue depth" growing), produced these fixes.
+
+Score. The browse exclusion keyed on `X-FSL-Case: browse`, which the red team
+could send by hand or set with `POST /api/attacker/label/`, hiding its own
+alerts from `/score/`. Each session now has a secret marker
+(`Session.browse_marker`, `browse-` + 32 hex digits from `secrets`, migration
+0017); `site.py` sends it, `_evidence` leaves out only detections carrying it,
+and the API shows it as `browse` (detections, detection detail with `raw`, the
+Network panel), so a red team reading the platform API does not learn it.
+Kibana shows it; Kibana is the blue team's. The label endpoint refuses labels
+starting `browse`. A literal `browse` is an unknown marker and is scored.
+
+Site proxy. `X-Forwarded-For` is no longer forwarded (the learner's LAN
+address reached the target and its audit log). Unknown session 404, closed
+session 409, before any upstream call. A failed upstream is a 502 naming no
+internal host. The upstream timeout is (3 s connect, 20 s read) instead of
+60 s; the response is streamed and only its first 64 KB kept; a session's
+records are dropped when it closes. The earlier note that the target's
+cookies "never land on the platform" was wrong: nginx drops `Set-Cookie`, but
+a script on the target runs on the platform's host and cookies are not
+isolated by port, so `document.cookie` could set one the console would send.
+The console uses no cookies today; README and ARCHITECTURE now say so.
+
+Thread exhaustion after a restart. Not verified on the VM (no access during
+the live run); the fixes remove every way found for a request to hold a thread
+long. Kibana set-up was already in the background; `register_pipeline.py`
+(up to 30 × 7 s against a slow Elasticsearch) ran in the foreground before
+waitress and now runs in the background too. Polled reads were the likely
+load: every open lesson tab ran ingest + detections (two `docker network`
+calls each, 30 s timeout) and `GET waf/` (`docker exec`, 60 s timeout) every
+5 s, and the Network panel polled every 2 s, all including for closed sessions
+and hidden tabs. Now: `GET waf/` reads with a 10 s timeout; ingest and
+`/detections/` reuse a session's segments for 30 s; the console polls only
+while the tab is visible and the session open (re-reading the session every
+30 s), and `site/requests/` answers 409 for a closed session. waitress goes
+from 8 to 16 threads: the platform serves long requests by design (verify,
+tool cases, session open), and 8 left no room for the console's polls beside
+one of them. Not changed: `effect.read_changes` (corp objectives, 60 s binlog
+read on the red console's 10 s poll); it is serial per tab and bounded.
+
+Lesson. The terminal command appended `id:10001`, the id `crs.rendered` gives
+the first `PUT /waf/` exclusion, so after a tuning `nginx -t` failed on a
+duplicate id and left the file broken. Hand-written rules now take
+10100-10199 (`crs.rendered` uses 10000-10020; ModSecurity's reference manual
+leaves 1-99,999 for local use). The command copies the file to `.bak`, drops an
+earlier `id:10100` line, appends, and reloads only if `nginx -t` passes, else
+copies the `.bak` back; a test runs it in `sh` with a stand-in nginx. Hint and
+do-it-for-me use is recorded through `POST /api/sessions/<id>/lesson/hints/`
+on `Session.hints` instead of localStorage, and shown beside PASS/FAIL. The
+note and its pill start below the site toolbar and the WAF banner. Each step's
+pointer (`point`), the theory cards and the hint cards moved from `blue.html`
+into `scenario.yaml`; `blue.html` (1354 lines) is split into `{% include %}`
+files for the site browser, the Network panel and the lesson. `kibana.py`
+reported an HTTP error as "could not reach Kibana" after 60 retries; it now
+waits on 502/503/504 and reports any other status once with its body.
+
+Removed: the strings `lesson.check.checking` and `lesson.coach.count` (in no
+template); `test_browsing_is_marked_so_the_score_never_takes_it_for_a_case`
+became `test_the_site_route_strips_cookies_both_ways` (it checked only nginx's
+cookie lines; the score check is
+`test_alerts_drawn_by_browsing_are_left_out_of_the_score`).
+
+Terms (strings.html both halves and the Korean docs):
+
+| Was | Now | Source |
+|---|---|---|
+| 949110 "'too many warnings'" | its msg, "Inbound Anomaly Score Exceeded" (English in Korean too) | CRS `rules/REQUEST-949-BLOCKING-EVALUATION.conf`, rule 949110 `msg:'Inbound Anomaly Score Exceeded (Total Score: ...)'` — https://github.com/coreruleset/coreruleset |
+| "Kibana is the WAF's logbook; one row is one request" | "In Discover's document table one row is one document, here one request" | Kibana 8.15 Discover docs — https://www.elastic.co/guide/en/kibana/8.15/discover.html; Kibana's `i18n.locale` offers en, zh-CN, ja-JP, fr-FR only (https://www.elastic.co/guide/en/kibana/8.15/settings.html), so Kibana's labels stay English verbatim |
+| arrow / 화살표 | expand icon / expand 아이콘 | as above |
+| Kibana query / Kibana 검색어 | KQL query / KQL 쿼리 | https://www.elastic.co/guide/en/kibana/8.15/kuery-query.html |
+| false positive (Korean theory) | 오탐(false positive) first, then 오탐; 놓침(미탐), 잘못 막음(오탐) | Cisco Korean documentation's 오탐 for false positive |
+| 룰 | 규칙 | AWS WAF Korean developer guide (규칙, 규칙 그룹) |
+| rule exclusion | rule exclusion(규칙 제외) on first mention | AWS WAF Korean developer guide |
+| objective {1}개 인정 | 목표 {1}개 인정 | the console's own 목표 elsewhere |
+| Open ELK / ELK에서 | Kibana | the pane is Kibana |
+| 주의 요함, 개발자 도구, 소스 보기 | kept | Chromium `components_strings_ko.xtb` |
+| WAF 실습 (ARCHITECTURE.ko) / 라운드 진행 (README.ko) | WAF 레슨 / 세션 진행 (README's "Running a round" → "Running a session") | the console's own words |
+
+Metrics after these commits: core_loc 560 (unchanged), product_loc 11191 (+126,
+not gated), dependencies 6, services 9, tests 1472 (+31). Correction: commit
+ed9f2d9's message says product_loc 10983, but the `metrics.json` it saved holds
+11065, which is what `bin/measure` reports for that tree; 11065 is the right
+figure for that commit. History is not rewritten.

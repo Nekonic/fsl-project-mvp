@@ -1,6 +1,11 @@
+import secrets
+
 from django.db import models
 
 from scoring.types import CaseRecord, DetectionRecord
+
+def fresh_browse_marker() -> str:
+    return "browse-" + secrets.token_hex(16)
 
 class Session(models.Model):
 
@@ -14,6 +19,8 @@ class Session(models.Model):
     defense = models.CharField(max_length=32, default="full")
     waf = models.JSONField(null=True, blank=True, default=None)
     ready_at = models.DateTimeField(null=True, blank=True)
+    browse_marker = models.CharField(max_length=64, default=fresh_browse_marker)
+    hints = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["-started_at"]

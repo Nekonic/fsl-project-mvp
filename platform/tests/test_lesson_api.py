@@ -457,3 +457,76 @@ def test_the_session_names_its_waf_box_and_where_the_crs_rules_live(client):
 
     assert detail["waf_box"] == f"fsl-{session.pk}-waf"
     assert detail["waf_rules"] == "/etc/modsecurity.d/owasp-crs/rules"
+
+def test_hints_and_done_for_me_are_recorded_on_the_session_and_reported_beside_the_verdict(client):
+    session = board(guidance=True)
+    hints = f"/api/sessions/{session.pk}/lesson/hints/"
+
+    client.post_json(hints, {"step": "rule", "level": "hint"})
+    client.post_json(hints, {"step": "rule", "level": "hint"})
+    recorded = client.post_json(hints, {"step": "exclude", "level": "do"}).json()
+    verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    assert recorded["hints"] == [{"step": "rule", "level": "hint"}, {"step": "exclude", "level": "do"}]
+    detail = client.get(f"/api/sessions/{session.pk}/").json()
+    assert detail["hints"] == recorded["hints"]
+    assert detail["result"]["lesson"]["helped"] == ["hint", "do"]
+    assert client.get("/api/sessions/?state=closed").json()[0]["result"]["lesson"]["helped"] == ["hint", "do"]
+
+def test_a_lesson_verified_without_help_reports_none(client):
+    session = board(guidance=True)
+    verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+
+    assert client.get(f"/api/sessions/{session.pk}/").json()["result"]["lesson"]["helped"] == []
+
+@pytest.mark.parametrize("body", [{"step": "nowhere", "level": "hint"}, {"step": "rule", "level": "answer"}, {}])
+def test_a_hint_the_lesson_does_not_have_is_refused(client, body):
+    session = board(guidance=True)
+
+    assert client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", body).status_code == 400
+
+def test_hints_are_refused_for_a_closed_session_or_one_that_is_not_a_lesson(client):
+    closed = board(guidance=True)
+    client.post_json(f"/api/sessions/{closed.pk}/close/")
+    plain = board()
+
+    assert client.post_json(f"/api/sessions/{closed.pk}/lesson/hints/", {"step": "rule", "level": "hint"}).status_code == 409
+    assert client.post_json(f"/api/sessions/{plain.pk}/lesson/hints/", {"step": "rule", "level": "hint"}).status_code == 400
+
+def test_reading_the_waf_for_a_poll_waits_on_the_gateway_only_briefly(client):
+    session = board(waf={"paranoia": 4, "exclusions": []})
+    waited = []
+
+    def runner(adapter, role, segment_id=""):
+        def run(argv, stdin=None, timeout=60.0):
+            waited.append(timeout)
+            return Ran(0, "")
+        return run
+
+    with patch("range.docker.Docker.runner", runner):
+        assert client.get(f"/api/sessions/{session.pk}/waf/").status_code == 200
+
+    assert waited and max(waited) <= 10, "a WAF box that hangs holds a server thread no longer than this"
+
+def test_a_polled_read_of_the_detections_reads_the_stack_s_shape_once_not_on_every_poll(client):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from api.models import Detection
+
+    session = board()
+    Detection.objects.create(session=session, detection_id="d1", source="suricata", signature="x",
+                             timestamp=timezone.now() + timedelta(seconds=1), src_ip="5.188.10.2")
+    read = []
+
+    def segments(adapter):
+        read.append(adapter.session)
+        return ()
+
+    with patch("range.docker.Docker.segments", segments):
+        for _ in range(3):
+            assert client.get(f"/api/sessions/{session.pk}/detections/").status_code == 200
+
+    assert read == [session.pk]

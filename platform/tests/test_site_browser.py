@@ -14,10 +14,6 @@ NGINX = (ROOT / "platform/nginx.conf").read_text()
 
 pytestmark = pytest.mark.django_db
 
-@pytest.fixture(autouse=True)
-def nothing_kept_yet():
-    site._records.clear()
-
 def site_server():
     start = NGINX.index("listen 8002;")
     return NGINX[start:]
@@ -54,12 +50,11 @@ def test_the_site_route_keeps_the_path_and_query_exactly_as_the_browser_sent_the
     assert site_tail("/site/7/board.com") == "/"
     assert site_tail("/site/7/corp.com/wp-json/?a=/b/") == "/wp-json/?a=/b/"
 
-def test_browsing_is_marked_so_the_score_never_takes_it_for_a_case():
+def test_the_site_route_strips_cookies_both_ways():
     block = site_block()
 
-    assert views.SITE_BROWSER_MARKER == site.MARKER
     assert 'proxy_set_header Cookie "";' in block and "proxy_hide_header Set-Cookie;" in block, (
-        "the platform's cookies never reach the target and the target's never land on the platform"
+        "the platform's cookies never reach the target and the target's Set-Cookie headers are dropped"
     )
 
 def test_the_site_stays_inside_its_prefix_and_cannot_script_the_console():
@@ -96,15 +91,52 @@ def test_the_session_names_its_site_by_the_scenario_s_host(client):
 def test_alerts_drawn_by_browsing_are_left_out_of_the_score(client):
     session = Session.objects.create(scenario="board", baseline=[])
     Detection.objects.create(session=session, detection_id="b1", source="modsecurity",
-                             signature="920273", timestamp=timezone.now(), marker=views.SITE_BROWSER_MARKER)
+                             signature="920273", timestamp=timezone.now(), marker=session.browse_marker)
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
 
     assert score["unattributed"] == 0 and score["fp"] == 0
-    assert len(client.get(f"/api/sessions/{session.pk}/detections/").json()) == 1, (
-        "the learner still finds the alert in the session's list and in Kibana"
+    listed = client.get(f"/api/sessions/{session.pk}/detections/").json()
+    assert [row["marker"] for row in listed] == [site.MARKER], (
+        "the learner still finds the alert in the session's list, labelled browse"
     )
+
+def test_a_forged_browse_header_does_not_hide_an_alert_from_the_score(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    other = Session.objects.create(scenario="board", baseline=[])
+    for number, marker in enumerate([site.MARKER, other.browse_marker, "browse-0000"]):
+        Detection.objects.create(session=session, detection_id=f"f{number}", source="modsecurity",
+                                 signature="942100", timestamp=timezone.now(), marker=marker)
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+
+    assert score["unattributed"] == 3, (
+        "only the session's own secret marker, which the platform alone sends, takes an alert out of the score"
+    )
+    assert session.browse_marker != other.browse_marker and len(session.browse_marker) > 30
+
+def test_the_secret_marker_never_leaves_the_api(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    secret = session.browse_marker
+    row = Detection.objects.create(
+        session=session, detection_id="b1", source="modsecurity", signature="920273", timestamp=timezone.now(),
+        marker=secret, raw={"transaction": {"request": {"headers": {"X-FSL-Case": secret}}}})
+
+    listed = client.get(f"/api/sessions/{session.pk}/detections/").content.decode()
+    detail = client.get(f"/api/detections/{row.pk}/").json()
+
+    assert secret not in listed
+    assert detail["marker"] == site.MARKER
+    assert detail["raw"]["transaction"]["request"]["headers"]["X-FSL-Case"] == site.MARKER
+
+@pytest.mark.parametrize("label", ["browse", "browse-1234", "browsewhatever"])
+def test_the_attacker_cannot_label_its_traffic_as_browsing(client, label):
+    response = client.post_json("/api/attacker/label/", {"case_id": label})
+
+    assert response.status_code == 400
+    assert "browse" in response.json()["detail"]
 
 SITE = """
 browser.serve((request) => {
@@ -238,12 +270,22 @@ class Answer:
         self.status_code = status
         self.content = content
         self.headers = headers or {}
+        self.closed = False
+
+    def iter_content(self, size):
+        for start in range(0, len(self.content), size):
+            yield self.content[start:start + size]
+
+    def close(self):
+        self.closed = True
 
 def proxied(client, path, answer, method="get", **extra):
     from unittest.mock import patch
 
     with patch("api.site.requests.request", return_value=answer) as sent:
         response = getattr(client, method)(f"/site-proxy/{path}", HTTP_X_SITE_URI=extra.pop("uri", "/"), **extra)
+        if response.streaming:
+            response.passed = b"".join(response.streaming_content)
     return response, sent
 
 def test_the_proxy_passes_the_page_to_the_session_s_waf_with_the_site_s_host_and_the_marker(client):
@@ -255,10 +297,10 @@ def test_the_proxy_passes_the_page_to_the_session_s_waf_with_the_site_s_host_and
     method, url = sent.call_args.args
     headers = sent.call_args.kwargs["headers"]
     assert (method, url) == ("GET", f"http://fsl-{session.pk}-waf-1/search/?q=O%27Brien")
-    assert headers["Host"] == "board.com" and headers["X-FSL-Case"] == site.MARKER
+    assert headers["Host"] == "board.com" and headers["X-FSL-Case"] == session.browse_marker
     assert "Cookie" not in headers, "the platform's cookies never reach the target"
     assert sent.call_args.kwargs["allow_redirects"] is False
-    assert response.status_code == 403 and response.content == b"<html>403 Forbidden</html>"
+    assert response.status_code == 403 and response.passed == b"<html>403 Forbidden</html>"
     assert "Set-Cookie" not in response and response["Server"] == "nginx"
 
 def test_a_form_posted_on_the_site_is_passed_on_although_the_platform_refuses_foreign_posts(client):
@@ -269,6 +311,61 @@ def test_a_form_posted_on_the_site_is_passed_on_although_the_platform_refuses_fo
 
     assert response.status_code == 302
     assert sent.call_args.kwargs["data"] == b"username=a&password=b"
+
+def test_the_learner_s_own_address_is_not_passed_to_the_target(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    _, sent = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"),
+                      HTTP_X_FORWARDED_FOR="192.168.0.57", HTTP_X_REAL_IP="192.168.0.57")
+
+    assert not {"X-Forwarded-For", "X-Real-Ip"} & set(sent.call_args.kwargs["headers"]), (
+        "the target and its audit log see the platform, never the learner's LAN address"
+    )
+
+def test_the_proxy_answers_only_for_an_open_session(client):
+    closed = Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+
+    missing, sent_missing = proxied(client, "999999/board.com/", Answer(200, b"ok"))
+    refused, sent_closed = proxied(client, f"{closed.pk}/board.com/", Answer(200, b"ok"))
+
+    assert (missing.status_code, refused.status_code) == (404, 409)
+    assert not sent_missing.called and not sent_closed.called
+    assert client.get(f"/api/sessions/{closed.pk}/site/requests/").status_code == 409, (
+        "the Network panel stops polling a closed session"
+    )
+
+def test_a_waf_that_does_not_answer_is_a_502_that_names_no_internal_host(client):
+    from unittest.mock import patch
+
+    import requests
+
+    session = Session.objects.create(scenario="board", baseline=[])
+    failure = requests.ConnectionError(f"HTTPConnectionPool(host='fsl-{session.pk}-waf-1', port=80)")
+    with patch("api.site.requests.request", side_effect=failure) as sent:
+        response = client.get(f"/site-proxy/{session.pk}/board.com/", HTTP_X_SITE_URI="/")
+
+    assert response.status_code == 502
+    assert b"fsl-" not in response.content and b"HTTPConnectionPool" not in response.content
+    connect, read = sent.call_args.kwargs["timeout"]
+    assert connect <= 5 and read <= 30, "a WAF that hangs holds a server thread no longer than this"
+
+def test_closing_a_session_forgets_its_site_requests(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"))
+
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    assert site.kept(session.pk) == [] and session.pk not in site._records
+
+def test_the_page_is_streamed_and_only_its_first_64_kb_are_kept(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    answer = Answer(200, b"b" * (site.BODY_LIMIT * 3))
+    response, sent = proxied(client, f"{session.pk}/board.com/", answer)
+
+    record, = site.kept(session.pk)
+    assert sent.call_args.kwargs["stream"] is True and response.streaming
+    assert len(response.passed) == site.BODY_LIMIT * 3, "the browser still gets the whole page"
+    assert len(record["response_body"]["text"]) == site.BODY_LIMIT and record["response_body"]["size"] == len(response.passed)
+    assert answer.closed
 
 def test_the_site_s_requests_are_listed_per_session_with_what_the_waf_did(client):
     session = Session.objects.create(scenario="board", baseline=[])
@@ -297,6 +394,7 @@ def test_one_request_s_detail_carries_both_sets_of_headers_and_bodies_bounded_to
     detail = client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
 
     assert detail["request_headers"]["Host"] == "board.com"
+    assert detail["request_headers"]["X-FSL-Case"] == site.MARKER, "the secret marker stays on the server"
     assert detail["response_headers"] == {"Content-Type": "text/html"}
     assert detail["request_body"] == {"text": "body=hello", "size": 10, "truncated": False}
     assert detail["response_body"]["size"] == site.BODY_LIMIT + 10

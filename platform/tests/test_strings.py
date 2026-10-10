@@ -8,7 +8,7 @@ from django.test import Client
 pytestmark = pytest.mark.django_db
 
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
-TEMPLATES = ["base.html", "main.html", "session.html", "red.html", "blue.html"]
+TEMPLATES = sorted(path.name for path in CONSOLE.glob("*.html") if path.name != "strings.html")
 PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
 
 def tables():

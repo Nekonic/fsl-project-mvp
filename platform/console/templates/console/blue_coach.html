@@ -1,0 +1,38 @@
+<div id="coach-box" class="hidden fixed rounded-md border-2 border-danger"></div>
+<div id="coach-pop" class="pop hidden">
+  <div id="coach-pop-arrow" class="pop-arrow hidden"></div>
+  <div class="p-4 relative">
+    <div class="flex items-center">
+      <span id="coach-pop-count" class="text-[12px] font-semibold text-primary"></span>
+      <button id="coach-pop-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
+    </div>
+    <div id="coach-pop-title" class="font-bold text-heading mt-1"></div>
+    <p id="coach-pop-said" class="hidden mt-2 text-[12.5px] rounded-md px-2.5 py-1.5"></p>
+    <div id="coach-pop-text" class="text-body mt-1 leading-relaxed"></div>
+    <p id="coach-pop-status" class="hidden mt-1.5 text-[12px] text-muted"></p>
+    <div id="coach-pop-act" class="hidden mt-2 flex flex-col gap-2"></div>
+    <div id="coach-pop-command" class="hidden mt-2">
+      <button id="coach-pop-view" class="text-[12px] text-primary hover:underline"></button>
+      <div id="coach-pop-code-box" class="hidden relative mt-1">
+        <pre id="coach-pop-code" class="code pr-14"></pre>
+        <button id="coach-pop-copy" data-t="lesson.copy" class="absolute top-2 right-2 btn btn-sm btn-code"></button>
+      </div>
+      <div class="flex items-center gap-2 mt-2">
+        <button id="coach-pop-run" data-t="lesson.run" class="btn btn-sm btn-blue shrink-0"></button>
+        <span id="coach-pop-typed" class="text-[12px] text-muted"></span>
+      </div>
+    </div>
+    <p id="coach-pop-does" class="hidden mt-2 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></p>
+    <div id="coach-pop-help" class="hidden mt-2 flex flex-col gap-1 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
+    <div class="flex items-center gap-2 mt-2">
+      <button id="coach-pop-hint" data-t="lesson.hint.more" class="btn btn-sm btn-ghost"></button>
+      <button id="coach-pop-do" data-t="lesson.do" class="btn btn-sm btn-ghost hidden"></button>
+    </div>
+    <p id="coach-pop-missing" data-t="lesson.coach.missing" class="hidden mt-2 text-[12px] text-muted"></p>
+    <div class="flex items-center mt-3 gap-2">
+      <div id="coach-pop-dots" class="flex gap-1 flex-wrap"></div>
+      <button id="coach-pop-back" data-t="lesson.coach.back" class="ml-auto btn btn-sm btn-ghost"></button>
+      <button id="coach-pop-next" data-t="lesson.coach.next" class="btn btn-sm btn-blue"></button>
+    </div>
+  </div>
+</div>

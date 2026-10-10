@@ -41,7 +41,7 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
 콘솔의 시나리오 카드에 쓰는 `category`, `difficulty`(easy, medium, hard), `minutes`, 그리고
-`defense`와 `lesson`이며 뒤의 "WAF 실습"에 설명한다). `image`는 아직 아무 코드도 읽지
+`defense`와 `lesson`이며 뒤의 "WAF 레슨"에 설명한다). `image`는 아직 아무 코드도 읽지
 않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
 session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 wargame에는 폴더 안의
 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일,
@@ -58,9 +58,9 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 가고 열린 세션이 없으면 409를 답하며, 읽기는 가장 최근 세션을 쓴다. 닫힌 세션을 지정한 쓰기는
 거부된다. 억제는 세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
 센서는 실제 `local.rules`를 자기 컨테이너 안에 둔다. docker에서는 모든 세션의 센서를
-열 때 그 defense의 룰 파일로, 시나리오에 `defense`가 없으면(corp)
+열 때 그 defense의 규칙 파일로, 시나리오에 `defense`가 없으면(corp)
 `deploy/suricata/rules/local.rules`로 채운다.
-`deploy/suricata/rules`를 bind mount하는 곳은 없으므로 룰 적용은 그 세션의 센서만
+`deploy/suricata/rules`를 bind mount하는 곳은 없으므로 규칙 적용은 그 세션의 센서만
 바꾼다. docker에서 남은 문제: 레인지 호스트의 요청을 거부하는 미들웨어는 가장 최근
 세션의 `estate`만 다룬다.
 
@@ -166,7 +166,7 @@ corp는 두 번째 wargame이다: WordPress 6.6.2(`fsl-wg-corp-wp`)에 세 플�
 버전으로 고정했다. Ultimate Member 2.6.6(CVE-2023-3460, 가입 요청에 `wp_capabilities`를
 주입해 administrator 권한을 얻는 취약점), WP GDPR Compliance 1.4.2(CVE-2018-19207,
 관리자 자가 가입을 여는 무인증 옵션 변경), Easy Post Submission 2.3.0(CVE-2026-4431,
-무인증 글 덮어쓰기). 어느 것도 기본 OWASP CRS 탐지 룰에 걸리지 않는다. DB인
+무인증 글 덮어쓰기). 어느 것도 기본 OWASP CRS 탐지 규칙에 걸리지 않는다. DB인
 `fsl-wg-corp-db`는 `--binlog-format=ROW`로 도는 MySQL 8.4이며, WordPress 자체에는
 계측을 넣지 않았다. corp는 공격이 DB에 커밋한 변경으로 채점한다(아래).
 
@@ -249,7 +249,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | 콘솔 케이스, 도구 | 일회용 `fsl-kali` 컨테이너 | 그 컨테이너, 선택된 출발지에서 | sqlmap `--headers=` |
 | CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, `edge`에서(`board.com`이 해석되는 곳) | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(<선언된 기본 출발지>)`에서 | 그 컨테이너 | sqlmap `--headers=` |
-| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트를 거쳐 | 플랫폼, `edge`에서 | `X-FSL-Case: browse`, nginx가 설정 |
+| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거쳐 | 플랫폼, `edge`에서 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API는 `browse`로 보여 줌 |
 
 프록시는 `mitmdump` 스크립트다. `/label/active`에서 `X-FSL-Case`를 설정하고,
 `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달한다.
@@ -277,13 +277,20 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 `auth_request /terminal-allowed` 뒤에서 `/site/<세션>/<호스트>/<경로>`를 플랫폼의 기록기
 (`/site-proxy/<세션>/<호스트>/`, `platform/api/site.py`, 정확한 경로와 쿼리는 `X-Site-Uri`)로 넘기고,
 기록기가 그 세션의 WAF(`fsl-<id>-waf-1:80`, 공유 `edge` 네트워크로 닿음)로 `Host: <호스트>`를 붙여,
-리다이렉트를 따라가지 않고 압축 없이 보낸다. 8000의 nginx는 `/site-proxy/`에 404를 주고, 플랫폼의 POST
+리다이렉트를 따라가지 않고 압축 없이 보낸다. 넘기는 헤더는 `Accept`, `Accept-Language`, `Content-Type`,
+`User-Agent`, `Referer`, `Origin`뿐이다. `X-Forwarded-For`는 넘기지 않으므로 대상과 그 audit log에는
+학습자의 LAN 주소가 아니라 플랫폼이 보인다. 없는 세션에는 404, 닫힌 세션에는 409를 WAF를 부르지 않고
+답한다. WAF가 연결 3초, 읽기 20초 안에 답하지 않으면 내부 호스트 이름 없이 평문 한 줄로 502를 답한다.
+페이지는 도착하는 대로 브라우저에 흘려보낸다. 8000의 nginx는 `/site-proxy/`에 404를 주고, 플랫폼의 POST
 같은 출처 검사는 그 경로를 건너뛰므로 대상의 폼도 제출된다. 모든 페이지를 WAF가 판정한다: 차단되면 WAF
 자신의 403 페이지가 보이고 Kibana에 기록이 남는다. 경로와 쿼리는 브라우저가 보낸 그대로 넘어간다(`$request_uri`에 대한 `map`). nginx는 접두사를 벗어날
 것들을 고쳐 쓴다: `Location` 헤더(`proxy_redirect`), HTML의 `href="/`, `src="/`, `action="/`,
 `http://<호스트>/`, `http://<호스트>"`(`sub_filter`, 위쪽에는 압축하지 말라고 요청), WordPress가
 이스케이프한 `http:\/\/corp.com\/`도. `Cookie`와 `Set-Cookie`를 지우므로 플랫폼의 쿠키는 대상에
-가지 않고 대상의 쿠키는 플랫폼에 남지 않는다. 그래서 이 창에서는 대상에 로그인할 수 없다. `</body>`
+가지 않고 대상의 `Set-Cookie` 헤더는 버려진다. 그래서 이 창에서는 대상에 로그인할 수 없다. 다만 대상
+페이지의 스크립트는 막지 못한다: 그 스크립트는 플랫폼 호스트(8002번 포트)에서 돌고, 쿠키는 포트로
+분리되지 않으므로 `document.cookie`로 8000의 콘솔이 보낼 쿠키를 심을 수 있다. 지금 콘솔은 쿠키를 쓰지
+않는다. 나중에 쿠키를 쓰게 되면 이 경로로 닿는다. `</body>`
 앞에 `location.pathname + search`를 부모 창에 postMessage하는 스크립트를 붙여, 페이지 안에서 링크를
 눌러도 주소창과 기록이 따라간다.
 
@@ -296,17 +303,22 @@ WAF가 없는 OpenStack에서는 `None`이다. 세션 API는 `site: {port, path}
 콘솔은 창을 숨긴다. acceptance VM의 security group은 8002를 허용한다.
 
 기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 둔다(재시작하면 사라짐): 메서드,
-`http://<호스트><경로>`, 상태, WAF가 막았는지(403), 걸린 시간, 요청·응답 헤더, 각각 64 KB로 자른 본문.
+`http://<호스트><경로>`, 상태, WAF가 막았는지(403), 걸린 시간, 요청·응답 헤더, 각각 64 KB로 자른 본문
+(응답은 흘려보내며 앞 64 KB만 남김). 세션이 닫히면 그 세션의 요청을 지운다.
 `GET /api/sessions/<id>/site/requests/?after=<id>`가 목록을, `.../site/requests/<id>/`가 하나를 통째로
-준다. 개발자 도구 패널은 페이지 아래에 붙고(위쪽 가장자리를 끌어 높이를 바꿈), 열려 있는 동안 2초마다
+준다. 개발자 도구 패널은 페이지 아래에 붙고(위쪽 가장자리를 끌어 높이를 바꿈), 열려 있고 탭이 보이며 세션이 열려 있는 동안 2초마다(닫힌 세션은 409를 답하고 가져오기가 멈춤)
 목록을 가져와 메서드, URL, 상태(403은 빨간색과 "WAF 차단"), 시간을 보여 준다. 행을 고르면 두 헤더와 요청
 본문, 응답 본문(앞 2000자와 "더 보기")이 나온다. "소스 보기"는 주소창 페이지의 기록된 본문을 보여 준다.
 패널은 쿠키를 보관하지 않는다고 알린다.
 
-브라우징은 `X-FSL-Case: browse`로 표시되고(브라우저가 보낸 값은 기록기가 덮어씀), 요청은 플랫폼의
-`edge` 주소에서 나간다. 그 경보는 다른 경보처럼 수집·목록화되어 학습자가 Kibana와 `/detections/`에서
-찾을 수 있지만, `/score/`는 시드·검증 재실행처럼 `browse` marker를 뺀다: 브라우징은 케이스가 아니므로
-정탐·오탐도, 귀속되지 않은 경보도 아니다. 레드 콘솔에는 사이트 창이 없다.
+브라우징은 세션 자신의 비밀값(`Session.browse_marker`, `browse-`와 무작위 16진수 32자리, 세션을 만들 때
+생성)으로 표시되고(브라우저가 보낸 `X-FSL-Case`는 기록기가 덮어씀), 요청은 플랫폼의 `edge` 주소에서
+나간다. 그 경보는 다른 경보처럼 수집·목록화되어 학습자가 Kibana와 `/detections/`에서 찾을 수 있지만,
+`/score/`는 시드·검증 재실행처럼 그 세션의 비밀값이 붙은 탐지를 뺀다: 브라우징은 케이스가 아니므로
+정탐·오탐도, 귀속되지 않은 경보도 아니다. 손으로 보낸 `X-FSL-Case: browse`는 모르는 marker일 뿐이라
+점수에 들어가고, `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부한다. API는 비밀값을
+보여 주지 않는다: `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크 패널은 그 자리에
+`browse`를 보인다. Kibana에는 보이는데, Kibana는 블루팀의 도구다. 레드 콘솔에는 사이트 창이 없다.
 
 콘솔 HTTP 케이스는 출발지 선택과 무관하게 세션 wargame의 `Host`인 `board.com`을
 싣는다. 출발지를 선택하면 트래픽은 그 출발지 구간에 있는 WAF의 주소로 IP를 지정해
@@ -325,8 +337,9 @@ WAF가 없는 OpenStack에서는 `None`이다. 세션 API는 `site: {port, path}
 
 docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly threshold 5로 돌린다
 (`session.yaml`). Paranoia Level과 rule exclusion은 세션 자신의 것이며(`Session.waf`), 열 때
-시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 실습"). 모든 Suricata
-룰은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM은 아직
+시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 레슨"). `GET`은 10초 timeout으로
+파일을 읽으므로 폴링 하나가 서버 스레드를 그보다 오래 잡지 않는다. 모든 Suricata
+규칙은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM은 아직
 `DetectionOnly`로 돈다(`deploy/waf/modsecurity.conf`).
 
 ## 경보가 어디로 가는가
@@ -354,7 +367,7 @@ Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만
 
 각 ingest 호출은:
 
-- 먼저 만료된 룰 억제(suppression)를 복원한다;
+- 먼저 만료된 규칙 억제(suppression)를 복원한다;
 - docker에서는 `fsl-logs-<session>-*`를 읽고(`ELASTIC_SESSION_INDEX`; 세션마다 자기
   Filebeat가 자기 인덱스에 쓴다), OpenStack에서는 `ELASTIC_INDEX`를 읽는다(공유
   collector가 `fsl-logs-shared-<day>`에 쓴다);
@@ -364,12 +377,13 @@ Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만
   Filebeat가 읽은 시점이 아니라 이벤트가 발생한 시점으로 이벤트를 고른다;
 - 오래된 것부터 최대 5000개의 hit를 읽는다. 이를 넘으면 응답에 `truncated`가 실리고
   세션은 `read_of`를 기록하며, 점수에 `score.warning.truncated`가 추가된다;
-- Suricata의 `alert` 이벤트를 유지하고, ModSecurity 레코드는 매칭된 룰 메시지마다
+- Suricata의 `alert` 이벤트를 유지하고, ModSecurity 레코드는 매칭된 규칙 메시지마다
   Detection 하나(id `<Elasticsearch _id>:<n>`)로 바꾼다;
 - 이벤트 시각이 창 밖인 경보는 버리고 `stale`로 센다;
 - 나중에 발견된 marker를 marker가 없던 저장 행에 기록한다;
 - `src_host`와 `dest_host`를 substrate의 구간 정보로 채우며, substrate에 닿을 수
-  없으면 비워 둔다.
+  없으면 비워 둔다. 수집과 `/detections/`는 레슨 폴링마다 `docker network ls`와 `inspect`를 돌리지
+  않고 세션의 구간 정보를 30초 동안 재사용한다. `/top/`, `/map/`, `/topology/`는 매번 새로 읽는다.
 
 Elasticsearch는 저장과 색인 시점의 GeoIP 보강에 쓰이며, 그래서 Logstash가 없다. 쿼리
 엔진은 시간 범위 검색에만 쓴다: `GET /api/sessions/<id>/map/`과 `/top/`은 SQLite
@@ -381,15 +395,16 @@ geoip 프로세서 둘(`src_ip`는 Suricata, `transaction.client_ip`는 ModSecur
 `src_geo`를 쓴다. compose는 관리형 다운로더를 끄고 `./config/ingest-geoip`를
 bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLite2-City.mmdb`는
 컨테이너를 재생성해도 남는다. entrypoint가 기동 시 파이프라인을 등록한다
-(`platform/register_pipeline.py`).
+(`platform/register_pipeline.py`, `kibana.py`처럼 백그라운드에서 돌므로 Elasticsearch가 뜨는 중에도
+플랫폼은 응답한다). waitress는 스레드 16개로 플랫폼을 서비스한다.
 
-## WAF 실습
+## WAF 레슨
 
 세션은 두 설정으로 연다: `POST /api/sessions/` `{scenario, guidance, defense}`,
 세션에 저장된다(마이그레이션 0015). `defense`는 시나리오의 `defense` 항목 중 하나를
 고르고(기본값 `full`), `guidance`(기본값 꺼짐)는 시나리오에 `lesson`이 있어야 한다.
 board는 `minimal`(CRS paranoia level 4, `local.rules`)과 `full`(paranoia level 1, 같은
-`local.rules`)을 선언한다. docker에서는 스택이 뜬 뒤 여는 경로가 센서에 그 defense의 룰
+`local.rules`)을 선언한다. docker에서는 스택이 뜬 뒤 여는 경로가 센서에 그 defense의 규칙
 파일을, defense가 없으면 `local.rules`를 넣고(`suricata.seed`), defense가 있을 때 CRS
 튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
 lesson의 케이스를 한 번 재생하므로(`meta.seed`), 학습자가 들어왔을 때 ModSecurity와
@@ -398,7 +413,7 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 하지 않는다.
 
 `platform/rules/crs.py`는 튜닝을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로
-렌더한다. 이 파일은 `crs-setup.conf` 다음, 룰보다 먼저 읽히는 CRS 훅이다:
+렌더한다. 이 파일은 `crs-setup.conf` 다음, 규칙보다 먼저 읽히는 CRS 훅이다:
 `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 정하는 `SecAction`
 하나와, 항목마다 런타임 제외 하나(`ctl:ruleRemoveTargetById=<id>;<target>` 또는
 `ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
@@ -407,7 +422,7 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 워커가 뜨면(`/proc`에서 부모 PID로 워커 PID를 읽음) 반환하므로, 새 연결은 새 튜닝을 만난다.
 이전 워커는 느린 요청을 마저 처리할 수 있다. 5초 안에 새 워커가 뜨지 않으면 재적재가 일어나지
 않은 것이므로 이전 파일을 되돌려 재적재하고 거부한다. 쓰기 전에 입력을
-검증한다: paranoia 1-4, 룰 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
+검증한다: paranoia 1-4, 규칙 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
 `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
 경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `PUT /api/sessions/<id>/waf/`가 이를
 바꾸고(에이전트 경로), `GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽는다. `crs.read`는 Paranoia
@@ -463,7 +478,7 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
   정상으로 묶은 케이스와 마지막 실행 결과, 나머지는 Kali 터미널. 좁은 화면에서는 패널이 세로로
   쌓이고, 레드·블루 화면은 옆으로 스크롤되지 않는다.
 
-guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기본은 알약 모양("레슨 노트 · 단계 n/N")으로
+guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고(사이트 툴바나 WAF 배너가 보이면 그 아래, 40 px에 8 px를 더한 위치), 기본은 알약 모양("레슨 노트 · 단계 n/N")으로
 접혀 있다. 펼치면 너비 360px에 탭 다섯 개가 있다: 단계(현재 단계, 이전/다음, 건너뛸 수 있는 전체 단계
 목록), 목표(요약, 완료 조건, 네 문단), 이론, 힌트, 검증. 학습자가 펼치거나 단계가 노트 안 컨트롤을
 가리킬 때만 펼쳐지고(그런 단계를 벗어나면 다시 접힘), 펼쳐져 있는 동안 탭은 단계를 따라간다(재생·검증은
@@ -471,12 +486,12 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기�
 (`fsl-lesson-note`)에, 도달한 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로
 "단계 n/N"을 보여 준다.
 
-이론 탭에는 접힌 카드 다섯 장이 있다(`blue.html`의 `THEORY`, 문구는
+이론 탭에는 접힌 카드 다섯 장이 있다(`scenario.yaml`의 `lesson.theory`, 문구는
 `<lesson.text>.theory.<card>.title|body`): Paranoia Level, Anomaly Scoring(403에 949110과
-920273이 함께 찍히는 이유), false positive를 일으킨 룰 찾기, PL 낮추기와 rule exclusion의 차이,
+920273이 함께 찍히는 이유), 오탐(false positive)을 일으킨 규칙 찾기, PL 낮추기와 rule exclusion의 차이,
 `ctl:ruleRemoveTargetById` 한 줄 읽기. 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를
 그 단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(왜 920273인지, 왜 ARGS:q만인지, 왜 900번
-파일인지, `<lesson.text>.hint.*`). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로 있고 복사 버튼이
+파일인지, `scenario.yaml`의 `lesson.hints`, 문구는 `<lesson.text>.hint.*`). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로 있고 복사 버튼이
 있다. 검증 탭은 케이스 하나를 다시 실행하고 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나
 통과한 케이스는 초록 ✓로, 실패한 진단은 빨간 ✗로 따로 보여 준다. 노트에는 튜닝 입력란이 없다.
 
@@ -496,15 +511,20 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기�
 | retry: O'Brien 다시 검색 | 웹사이트 창 | `served`: 창에 O'Brien 검색이 보이면 같은 케이스를 다시 보내 2xx여야 함 |
 | verify: 공격은 여전히 막히나 | 노트의 검증 탭 | `verify`: 검증 PASS |
 
-확인은 저절로 돈다. 확인 버튼은 없다. `alert`와 `waf`는 그 단계가 보이는 동안 5초마다, `served`는 웹사이트
+확인은 저절로 돈다. 확인 버튼은 없다. `alert`와 `waf`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
+동안 5초마다(세션이 닫혔는지는 페이지가 30초마다 세션을 다시 읽어 안다), `served`는 웹사이트
 창에 그 단계의 경로가 보일 때 확인한다. popover의 상태 줄이 "확인 중…", 그다음 아직 빠진 것("아직 920273
 예외가 파일에 없습니다", "파일에는 있지만 불러오지 않았습니다"), 통과하면 "✓"와 찾은 것
 (`<lesson.text>.ok.<step>`)을 말한다. 1.2초 뒤 다음 단계로 넘어가 그 단계의 한 줄(`<lesson.text>.line.<step>`)을
 보이고, 마지막 단계에서는 "레슨을 마쳤습니다". 틀린 답은 무엇이 틀렸는지 말한다. 최근 수집(`within`)은 창의 가장 새 기록부터 읽고 잘림을 기록하지 않는다.
 검증 한 번만으로도 기록이 5000개를 넘기 때문이다.
 
-터미널 단계의 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다: `grep -q`로 없을
-때만 예외를 덧붙이고, 파일 마지막 줄을 보여 주고, `nginx -t && nginx -s reload`를 실행한다. 명령은
+터미널 단계의 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다. 손으로 쓰는 규칙은
+id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 최대 20개의 예외)을 쓰므로
+둘은 겹치지 않는다. 명령은 파일을 `.bak`으로 복사하고, 앞서 쓴 `"id:10100,` 줄을 빼고, id 10100으로
+예외를 덧붙이고, 파일 마지막 줄을 보여 준 뒤, `nginx -t`가 통과할 때만 `nginx -s reload`를 실행한다.
+통과하지 못하면 `.bak`을 되돌려 놓으므로 WAF가 nginx가 거부한 파일로 남지 않는다. 두 번 실행해도 한 줄만
+남는다. 명령은
 "명령 보기" 아래 접혀 있다. "터미널에서 실행"은 필요하면 WAF 창을 열고 ttyd의 `term`을 기다린 뒤
 `term.paste(command + "\n")`, 이어서 `term.input("\r")`을 부른다. bash는 bracketed paste의 줄바꿈을
 글자로 두기 때문이다.
@@ -513,13 +533,18 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기�
 정답, "대신 해 주기". 힌트 버튼, 그 단계에서 60초, 또는 틀린 답·실패한 확인 두 번에
 한 칸 오른다. "대신 해 주기"는 단계를 직접 수행한다: 단계의 경로로 사이트 열기, 걸러 낸 Kibana를 열고
 첫 행의 펼치기 누르기, 답 입력, WAF 터미널에서 명령 실행(10초 안에 터미널이 열리지 않으면 현재
-Paranoia Level에 예외를 더해 `PUT /waf/`), 케이스 다시 보내기, 검증 실행. 그렇게 한 단계는
-`fsl-lesson-help-<id>`에 남고 단계 목록에 표시된다.
+Paranoia Level에 예외를 더해 `PUT /waf/`), 케이스 다시 보내기, 검증 실행. 단계에서 처음 보인 힌트와
+"대신 해 주기"는 세션에 기록된다: `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"|"do"}`
+(`Session.hints`, migration 0017; 레슨에 없는 단계나 level은 400, 닫힌 세션은 409). 대신 해 준 단계는
+`GET /api/sessions/<id>/`의 `hints`로 단계 목록에 표시되고, `result.lesson.helped`(`["hint", "do"]` 중
+있는 것)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에 "힌트 사용" / "대신 해 주기 사용"이 붙는다.
 
 "직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
 펼쳐 둔다: 학습자가 KQL을 쓰고 규칙을 직접 입력한다. 확인은 같다.
 
-각 단계가 가리키는 곳은 `blue.html`의 `TARGETS`이고, 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는
+각 단계가 가리키는 곳은 `scenario.yaml`에 있는 그 단계의 `point`이고(`panel`, 대체용 `first`가 붙을 수
+있는 `kibana`, 또는 `pane`; `opens`; `tab`), 그래서 콘솔은 board의 단계도 Kibana selector도 이름으로
+알지 않는다. 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는
 필요한 창을 밝힌다(`opens`: 사이트, Kibana, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는
 "왼쪽 웹사이트를 여세요"(또는 Kibana, WAF)만 말한다. 창이 보이면: 사이트 주소창, 같은 출처 Kibana 프레임의
 `data-test-subj`(`docTableExpandToggleColumn`, `field-rule`, `field-transaction.messages.details.data`와
@@ -595,7 +620,7 @@ corroborated되지 않은 케이스는 `score.warning.wrong_reason`을 추가한
 
 케이스의 `expect`는 발사 시 케이스와 함께 저장되므로, 케이스 파일을 수정해도 끝난
 세션을 다시 판정하지 않는다. 마이그레이션 0009 이전에 기록된 행은 저장된 `expect`가
-없어 현재 케이스 파일로 판정된다. 경보 심각도와 룰 유형은 쓰지 않는다.
+없어 현재 케이스 파일로 판정된다. 경보 심각도와 규칙 유형은 쓰지 않는다.
 
 게임. 점수의 `game` 블록은 세션이 종료될 때까지 `{"revealed": false}`다. 종료 후에는
 네 구성 요소와 그 가중치, 그리고 balance를 담는다:
@@ -635,7 +660,8 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - Kibana는 compose에 있으며, 읽기 전용 역할이 아닌 전체 권한으로 플랫폼이 적재하는
   같은 Elasticsearch를 읽는다. 플랫폼의 8000번 포트의 `/kibana/`로 접근하며 자체
   포트는 publish하지 않는다. 블루 콘솔이 이를 프레임에 띄운다. 기동 시
-  `platform/kibana.py`가(백그라운드에서 Kibana가 응답할 때까지 재시도하며)
+  `platform/kibana.py`가(백그라운드에서, Kibana에 닿지 않거나 502/503/504를 답하는 동안 재시도하고
+  다른 HTTP 오류는 상태와 본문을 한 번 알리며)
   `deploy/kibana/objects.ndjson`을 overwrite로 가져온다: `@timestamp` 기준 data view
   `fsl-logs-*`(runtime field로 Suricata/ModSecurity의 같은 의미 필드 쌍을 한 열로 합침:
   `rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색,
@@ -650,7 +676,7 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - Elasticsearch는 512MB 힙의 단일 노드로, 전체 스택이 Docker 기본 메모리 한도에
   들어간다.
 - 없는 데이터는 0이 아니라 오류로 처리하며, 예외를 명시한다. 닿을 수 없는
-  Elasticsearch나 substrate, 읽을 수 없는 룰 파일은 503으로 답한다. OpenStack의 세션 생성은
+  Elasticsearch나 substrate, 읽을 수 없는 규칙 파일은 503으로 답한다. OpenStack의 세션 생성은
   대상 시스템에 닿지 못해도 진행한다(세션은 스냅샷 없이 시작하고 board의 `loot/`는
   409로 답한다. docker의 board 세션은 503으로 거부한다). 케이스 발사나 기록, 종료는 대상 시스템을 읽지 않는다(발사는 출발지나
   도구 때문에 substrate가 필요하면 503으로 답한다). ingest 내부의 억제 복원과 경보의
@@ -748,7 +774,7 @@ pfSense CE 엣지(골든 이미지 `fsl-pfsense-edge`: 베이스 + Suricata 8.0.
 `deploy/pfsense/configure.php`를 재실행해, pfSense가 30개 출발지 게이트웨이 주소를
 갖고(하나는 static, 나머지는 IP-alias VIP), WAN에서 레인지를 `HOME_NET`으로 하여
 Suricata를 돌리며 EVE를 syslog로 보내고, Suricata 패키지의 필터 재로드 후에도 남는 WAN
-pass 룰 하나를 유지하고, syslog와 WAF의 ModSecurity audit 로그를 GeoIP 보강과 함께
+pass 규칙 하나를 유지하고, syslog와 WAF의 ModSecurity audit 로그를 GeoIP 보강과 함께
 플랫폼의 Elasticsearch로 보내게 한다. Kali 이미지 하나가 모든 출발지를 맡는다: 인터넷
 포트 하나가 국가별 약 100개 주소를 갖고(slot의 `bootcmd`가 NIC에 추가)
 `/usr/local/sbin/fsl-origin`이 나가는 출발지 주소를 국가별로 SNAT하므로, 모든 도구가
@@ -757,7 +783,7 @@ pass 룰 하나를 유지하고, syslog와 WAF의 ModSecurity audit 로그를 Ge
 
 `rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 slot을 초기화한다: Nova가 상주
 slot VM을 각자의 골든 이미지로 재구축하되 서버 id, flavour, 포트, 고정 IP는 유지하므로,
-한 세션이 다음 세션에 수정된 룰이나 심어 둔 데이터를 남기지 않는다.
+한 세션이 다음 세션에 수정된 규칙이나 심어 둔 데이터를 남기지 않는다.
 `POST /api/sessions/<id>/close/`가 이를 호출한다. 재구축은 디스크를 지우므로 VM이
 ACTIVE가 된 뒤 `POST /api/range/configure/`를 실행해야 하며, 이를 자동으로 호출하는
 것은 없다.
@@ -765,7 +791,7 @@ ACTIVE가 된 뒤 `POST /api/range/configure/`를 실행해야 하며, 이를 �
 OpenStack에서 세션 생성은 다른 세션이 열려 있거나 레인지가 준비되지 않았으면 409로
 답한다. `GET /api/range/ready/`는 slot의 단계(`NOT_STANDING`, `REBUILDING`,
 `CHECKING`, `READY`)와 세 가지 검사(모든 VM ACTIVE, board의 ground truth 읽기 가능,
-sensor 룰이 기준선이고 적용 중인 억제 없음)를 보고한다. `POST /api/range/canary/`는
+sensor 규칙이 기준선이고 적용 중인 억제 없음)를 보고한다. `POST /api/range/canary/`는
 marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두 경보를 냈는지와 두
 엔진의 시각 차이를 보고하며, ready 검사에는 포함되지 않는다. 랜딩 페이지가 둘 다
 호출한다.
@@ -819,11 +845,11 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
 - 세션 수명 주기: 재구축 후 `configure` 재실행, WAF 모드와 시각 차이를 준비 상태
   검사에 포함, 수작업 없이 READY일 때만 다음 세션 시작.
 - 차단(계획, 2026-10-08 스펙): WAF는 `SecRuleEngine On`으로 돌고, 블루팀은 CRS를
-  튜닝(paranoia level, 룰 예외 처리)해 공격은 차단하고 정상 트래픽은 통과시킨다.
+  튜닝(paranoia level, 규칙 제외)해 공격은 차단하고 정상 트래픽은 통과시킨다.
   Suricata는 탐지를 맡는다. 시작 상태는 2026-10-10에 측정했다(`docs/DECISIONS.md`):
   PL1은 이미 게시판 SQLi를 차단하고 O'Brien을 통과시키므로, 학습은 O'Brien을 과차단하는
-  PL4에서 시작하고 학습자가 튜닝한다(PL 낮추기 또는 룰 예외 처리). 케이스의 차단 여부는 대상 시스템 쪽에서
-  `meta["blocked"]`로 읽는다. pfSense GUI에서 Suricata drop 룰을 전환하던 이전 계획은
+  PL4에서 시작하고 학습자가 튜닝한다(PL 낮추기 또는 규칙 제외). 케이스의 차단 여부는 대상 시스템 쪽에서
+  `meta["blocked"]`로 읽는다. pfSense GUI에서 Suricata drop 규칙을 전환하던 이전 계획은
   대체되었다.
 
 사람이 결정해야 할 열린 사항은 `docs/STATE.md`("Decisions left for a person")에 있다.

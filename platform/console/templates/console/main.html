@@ -234,7 +234,9 @@
   function resultCell(session) {
     const result = session.result || {};
     if (result.lesson) {
-      return result.lesson.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong");
+      const verdict = result.lesson.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong");
+      return verdict + (result.lesson.helped || []).map((kind) =>
+        ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;
     if (!objectives || !objectives.total) return `<span class="text-faint">—</span>`;

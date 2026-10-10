@@ -73,7 +73,7 @@ def strings():
     from tests.test_strings import tables
     return tables()
 
-TEMPLATES = ["base.html", "main.html", "session.html", "red.html", "blue.html"]
+TEMPLATES = sorted(path.name for path in CONSOLE.glob("*.html") if path.name != "strings.html")
 
 @pytest.mark.parametrize("name", TEMPLATES)
 def test_no_caller_reads_a_body_it_has_not_checked(name):
@@ -110,7 +110,7 @@ def interpolations(source):
 
         yield source.count("\n", 0, match.start()), source[match.end():i - 1]
 
-@pytest.mark.parametrize("name", ["blue.html", "red.html", "main.html"])
+@pytest.mark.parametrize("name", [name for name in TEMPLATES if name.startswith(("blue", "red", "main"))])
 def test_no_untrusted_value_is_written_into_markup_unescaped(name):
     source = (CONSOLE / name).read_text()
     offenders = []

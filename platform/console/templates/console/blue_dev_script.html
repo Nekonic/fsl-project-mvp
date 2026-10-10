@@ -1,0 +1,128 @@
+const dev = { open: false, after: 0, rows: [], height: 280, timer: null, picked: null };
+const DEV_POLL_MS = 2000;
+const DEV_SHORT = 2000;
+const DEV_LOWEST = 120;
+const sitePath = (tail) => `/api/sessions/${sessionId()}/site/requests/${tail}`;
+
+function devPlace() {
+  const onSite = document.querySelector('.pane-tab[data-pane="site"]').getAttribute("aria-selected") === "true";
+  const shown = dev.open && onSite;
+  field("site-dev").classList.toggle("hidden", !shown);
+  field("site-dev").classList.toggle("flex", shown);
+  field("site-dev").style.height = `${dev.height}px`;
+  field("site-frame").style.bottom = shown ? `${dev.height}px` : "0px";
+  field("site-dev-toggle").setAttribute("aria-pressed", String(dev.open));
+}
+
+function devRows() {
+  field("site-dev-rows").innerHTML = dev.rows.map((row) => {
+    const tone = row.blocked || row.status >= 400 ? "text-danger" : "text-body";
+    const picked = row.id === dev.picked ? "bg-primary-soft" : "hover:bg-subdued";
+    const blocked = row.blocked ? ` <span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
+    return `<tr data-request="${row.id}" class="cursor-pointer border-t border-line-subdued ${picked}">
+      <td class="px-2 py-1">${esc(row.method)}</td>
+      <td class="px-2 py-1 break-all">${esc(row.url)}</td>
+      <td class="px-2 py-1 ${tone} font-semibold whitespace-nowrap">${esc(row.status)}${blocked}</td>
+      <td class="px-2 py-1 text-muted whitespace-nowrap">${esc(row.ms)} ms</td></tr>`;
+  }).join("");
+  field("site-dev-rows").querySelectorAll("[data-request]").forEach((line) =>
+    line.addEventListener("click", () => devPick(Number(line.dataset.request))));
+}
+
+async function devPoll() {
+  if (sessionClosed()) {
+    clearInterval(dev.timer);
+    return;
+  }
+  if (document.hidden) return;
+  const read = await api(sitePath(`?after=${dev.after}`));
+  if (read.status === 409) {
+    if (session) session.ended_at = session.ended_at || "closed";
+    clearInterval(dev.timer);
+    return;
+  }
+  if (!read.ok || !Array.isArray(read.body) || !read.body.length) return;
+  dev.rows = dev.rows.concat(read.body);
+  dev.after = Math.max(...dev.rows.map((row) => row.id));
+  devRows();
+}
+
+function devHeaders(title, headers) {
+  const lines = Object.entries(headers || {}).map(([name, value]) =>
+    `<div><b class="text-heading">${esc(name)}:</b> <span class="break-all">${esc(value)}</span></div>`).join("");
+  return `<section><h4 class="label mb-1">${esc(title)}</h4><div class="font-mono">${lines || "-"}</div></section>`;
+}
+
+function devBody(title, body, key) {
+  if (!body) return "";
+  const long = body.text.length > DEV_SHORT;
+  const note = body.truncated ? `<p class="text-faint">${esc(t("site.dev.truncated", body.size))}</p>` : "";
+  return `<section><h4 class="label mb-1">${esc(title)}</h4>
+    <pre data-body="${key}" class="code whitespace-pre-wrap break-all max-h-none">${esc(long ? body.text.slice(0, DEV_SHORT) : body.text)}</pre>
+    ${long ? `<button data-more="${key}" class="text-primary hover:underline">${esc(t("site.dev.more"))}</button>` : ""}${note}</section>`;
+}
+
+function devShow(record, heading) {
+  const detail = field("site-dev-detail");
+  const verdict = record.blocked ? `<span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
+  const tone = record.blocked || record.status >= 400 ? "text-danger" : "text-success";
+  detail.innerHTML = `<p class="font-mono break-all"><b>${esc(record.method)}</b> ${esc(record.url)}
+      <span class="${tone} font-semibold">${esc(record.status)}</span> ${verdict}</p>
+    ${heading ? `<p class="text-muted">${esc(heading)}</p>` : devHeaders(t("site.dev.request_headers"), record.request_headers)
+      + devHeaders(t("site.dev.response_headers"), record.response_headers)
+      + devBody(t("site.dev.request_body"), record.request_body, "request")}
+    ${devBody(heading ? t("site.dev.source") : t("site.dev.response_body"), record.response_body, "response")}`;
+  detail.querySelectorAll("[data-more]").forEach((more) => more.addEventListener("click", () => {
+    const body = more.dataset.more === "request" ? record.request_body : record.response_body;
+    detail.querySelector(`[data-body="${more.dataset.more}"]`).textContent = body.text;
+    more.remove();
+  }));
+}
+
+async function devPick(id) {
+  dev.picked = id;
+  devRows();
+  const read = await api(sitePath(`${id}/`));
+  if (read.ok) devShow(read.body);
+}
+
+async function devSource() {
+  await devPoll();
+  const here = readable(site.history[site.at] || "/");
+  const page = dev.rows.filter((row) => readable(row.url) === `http://${site.host}${here}`).pop();
+  if (!page) {
+    field("site-dev-detail").innerHTML = `<p class="text-muted">${esc(t("site.dev.no_source"))}</p>`;
+    return;
+  }
+  const read = await api(sitePath(`${page.id}/`));
+  if (read.ok) devShow(read.body, t("site.dev.source_of", read.body.url));
+}
+
+function devResize(event) {
+  const pane = field("site-frame").parentNode.getBoundingClientRect();
+  const move = (moved) => {
+    dev.height = Math.max(DEV_LOWEST, Math.min(pane.height - DEV_LOWEST, pane.bottom - moved.clientY));
+    devPlace();
+  };
+  const stop = () => {
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", stop);
+  };
+  event.preventDefault();
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", stop);
+}
+
+function devTools() {
+  field("site-dev-toggle").addEventListener("click", () => {
+    dev.open = !dev.open;
+    devPlace();
+    clearInterval(dev.timer);
+    if (dev.open) {
+      devPoll();
+      dev.timer = setInterval(devPoll, DEV_POLL_MS);
+    }
+  });
+  field("site-dev-source").addEventListener("click", devSource);
+  field("site-dev-grip").addEventListener("mousedown", devResize);
+}

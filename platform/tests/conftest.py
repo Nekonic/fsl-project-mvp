@@ -22,6 +22,13 @@ def client():
     return ApiClient()
 
 @pytest.fixture(autouse=True)
+def nothing_remembered_between_tests():
+    from api import site, views
+
+    views._segments_kept.clear()
+    site._records.clear()
+
+@pytest.fixture(autouse=True)
 def no_real_substrate(request):
     import subprocess
 

@@ -144,6 +144,25 @@ def test_a_closed_lesson_shows_its_last_verdict_before_the_score(client):
     assert english("score.lesson.verified", 3) in seen["result"]["text"]
     assert seen["result"]["restart"] == english("session.restart.lesson")
 
+def test_a_closed_lesson_says_beside_its_verdict_which_help_was_used(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
+        "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
+    ).replace("lesson: null}", "lesson: {passed: true, verified: 1, diagnosis: [], helped: [\"hint\", \"do\"]}}"), scenario="""
+      return browser.text('verdict');
+    """)
+
+    assert "PASS" in seen["result"]
+    assert english("result.helped.hint") in seen["result"] and english("result.helped.do") in seen["result"]
+
+def test_the_main_page_says_beside_a_pass_which_help_was_used(client):
+    seen = open_page(client, "/", setup=FULL_RANGE.replace(
+        "lesson: {passed: true, verified: 1}", "lesson: {passed: true, verified: 1, helped: [\"do\"]}"), scenario="""
+      return browser.text('finished');
+    """)
+
+    assert "PASS" in seen["result"] and english("result.helped.do") in seen["result"]
+    assert english("result.helped.hint") not in seen["result"]
+
 def test_an_open_session_shows_no_scoreboard_and_offers_close(client):
     seen = open_page(client, "/session/1/", scenario="""
       return {

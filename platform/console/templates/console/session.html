@@ -210,6 +210,7 @@
     const reasons = (judged.diagnosis || []).map(([key, values]) => t(key, ...values)).join(" ");
     banner.innerHTML = `
       <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
+      ${(judged.helped || []).map((kind) => `<span class="badge badge-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
       <div class="min-w-0 flex-1">
         <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "score.lesson.passed" : "score.lesson.failed", localized(`${lessonText()}.title`, "")))}</div>
         <p class="text-muted mt-0.5">${esc(reasons)}</p>

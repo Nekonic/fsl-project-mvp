@@ -66,6 +66,11 @@ SUPPRESSION_FIELDS = (
 )
 
 SITE_BROWSER_MARKER = site.MARKER
+RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
+HINT_LEVELS = ("hint", "do")
+CHECK_TIMEOUT = 10.0
+SEGMENTS_KEPT_FOR = 30.0
+_segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
 RULE_CHANGES = threading.RLock()
@@ -91,10 +96,11 @@ def _request_of(raw):
     return (request.get("method") or "", request.get("uri") or "",
             raw.get("host_ip") or "", raw.get("host_port"))
 
-def _listed(detection, zones, located):
+def _listed(session, detection, zones, located):
     method, path, dest_ip, dest_port = _request_of(detection.raw or {})
     return dict(
         _shape(detection, DETECTION_FIELDS),
+        marker=site.shown_marker(session, detection.marker),
         dest_ip=dest_ip,
         dest_port=dest_port,
         method=method,
@@ -234,8 +240,33 @@ def _result(session):
             "total": len(wargames.objectives(session.scenario)["tiers"])
             if wargames.judged(session.scenario) else 0,
         },
-        "lesson": _last_verdict(session, runs[-1], len(runs)) if runs else None,
+        "lesson": dict(_last_verdict(session, runs[-1], len(runs)), helped=_helped(session)) if runs else None,
     }
+
+def _helped(session):
+    return [level for level in HINT_LEVELS if any(hint.get("level") == level for hint in session.hints or [])]
+
+@require_http_methods(["POST"])
+def lesson_hints(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    taught = wargames.lesson(session.scenario) if session.guidance else None
+    if not taught:
+        raise BadRequest(f"session {session.pk} is not a lesson")
+    body = _payload(request)
+    steps = [step["id"] for step in taught.get("steps", [])]
+    step, level = body.get("step"), body.get("level")
+    if step not in steps:
+        raise BadRequest(f'"step" must be one of {steps}, got {step!r}')
+    if level not in HINT_LEVELS:
+        raise BadRequest(f'"level" must be one of {list(HINT_LEVELS)}, got {level!r}')
+    used = {"step": step, "level": level}
+    with transaction.atomic():
+        session = Session.objects.select_for_update().get(pk=session.pk)
+        if used not in session.hints:
+            session.hints = [*session.hints, used]
+            session.save(update_fields=["hints"])
+    return _reply({"hints": session.hints})
 
 def _last_verdict(session, run, verified):
     judged = _verified(session, run)
@@ -355,7 +386,11 @@ TOP_N = 25
 def _standing(session=None):
     return Shape(segments=_range(session).segments(), sensors=())
 
-def _segments(session=None):
+def _segments(session=None, recent=False):
+    key = (session.pk, session.started_at) if session and recent else None
+    held = _segments_kept.get(key) if key else None
+    if held and time.monotonic() - held[0] < SEGMENTS_KEPT_FOR:
+        return held[1]
     try:
         standing = _standing(session)
     except RangeUnavailable:
@@ -369,6 +404,8 @@ def _segments(session=None):
         for node in segment["nodes"]
         if node["address"]
     }
+    if key:
+        _segments_kept[key] = (time.monotonic(), (_zones(segments), hosts))
     return _zones(segments), hosts
 
 def _zones(segments):
@@ -488,10 +525,11 @@ def attacker_label(request):
     case_id = _payload(request).get("case_id")
     if case_id not in (None, "") and not (
         isinstance(case_id, str) and case_id.isprintable() and " " not in case_id
+        and not case_id.startswith(RESERVED_MARKERS)
     ):
         raise BadRequest(
-            '"case_id" must be one marker with no spaces or control characters, '
-            f"or null to clear the label, got {case_id!r}"
+            '"case_id" must be one marker with no spaces or control characters, not starting '
+            f"with {SITE_BROWSER_MARKER!r}, or null to clear the label, got {case_id!r}"
         )
     attacker.set_label(case_id or None, _range(_written(request)).runner("proxy"))
     return _reply({"ok": True})
@@ -787,7 +825,7 @@ def _waf_in_force(session):
     if session.ended_at is not None:
         return recorded | {"file": None}
     try:
-        return crs.read(_range(session).runner("gateway"))
+        return crs.read(functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT))
     except RangeUnavailable:
         return recorded | {"file": None}
 
@@ -843,7 +881,7 @@ def session_detail(request, session_id):
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(crs.EXCLUSIONS).parent),
-        "site": _site(session),
+        "site": _site(session), "hints": session.hints,
     })
 
 def _site(session):
@@ -874,6 +912,7 @@ def close_session(request, session_id):
         session.refresh_from_db()
         _refuse_closed(session)
     session.ended_at = closed_at
+    site.forget(session.pk)
     reply = _shape(session, SESSION_FIELDS)
 
     adapter = substrate()
@@ -990,7 +1029,7 @@ def ingest_detections(request, session_id):
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
-    _, hosts = _segments(session)
+    _, hosts = _segments(session, recent=True)
 
     for alert in alerts:
         if alert["detection_id"] in known or alert["timestamp"] is None:
@@ -1033,16 +1072,15 @@ def session_detections(request, session_id):
 
     detections = list(detections)
     addresses = {d.src_ip for d in detections if d.src_ip}
-    zones, _ = _segments(session) if addresses else ([], {})
+    zones, _ = _segments(session, recent=True) if addresses else ([], {})
     located = _located(session.detections.filter(src_ip__in=addresses)) if addresses else {}
-    return _reply([_listed(d, zones, located) for d in detections])
+    return _reply([_listed(session, d, zones, located) for d in detections])
 
 @require_http_methods(["GET"])
 def detection_detail(request, detection_id):
     detection = get_object_or_404(Detection, pk=detection_id)
-    return _reply(
-        _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
-    )
+    shown = _shape(detection, DETECTION_DETAIL_FIELDS) | {"session": detection.session_id}
+    return _reply(json.loads(site.shown_marker(detection.session, json.dumps(shown, default=str))))
 
 @require_http_methods(["GET"])
 def session_map(request, session_id):
@@ -1134,7 +1172,7 @@ def _evidence(session, forced=None):
     }
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
     detections = [
-        d for d in session.detections.all() if d.marker not in replayed and d.marker != SITE_BROWSER_MARKER
+        d for d in session.detections.all() if d.marker not in replayed and d.marker != session.browse_marker
     ]
     records = [c.to_record() for c in cases]
     if forced:

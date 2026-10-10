@@ -122,7 +122,9 @@ def test_the_board_lesson_gives_the_exact_command_for_every_terminal_step():
     commands = {step["id"]: step.get("command", "") for step in wargames.lesson("board")["steps"]}
 
     assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in commands["exclude"]
-    assert commands["exclude"].endswith("nginx -t && nginx -s reload")
+    assert commands["exclude"].splitlines()[-1].startswith("if nginx -t; then nginx -s reload; else cp "), (
+        "the reload runs only on a file nginx accepted, and a refused file is put back"
+    )
     assert commands["search"] == "", "a step in the site or in Kibana is done there, not typed"
 
 def test_the_lesson_s_terminal_commands_name_every_file_by_its_absolute_path():
@@ -130,7 +132,7 @@ def test_the_lesson_s_terminal_commands_name_every_file_by_its_absolute_path():
     for step in wargames.lesson("board")["steps"]:
         command = step.get("command", "")
         assert "cd " not in command, "a reopened WAF terminal starts a fresh shell in /"
-        mentioned = re.findall(r"\S*REQUEST-900\S*", command)
+        mentioned = re.findall(r"/\S*REQUEST-900[^\s\"]*\.conf", command)
         assert all(name == exclusions for name in mentioned), mentioned
 
 def test_every_lesson_step_declares_how_the_platform_checks_it(settings, tmp_path):
@@ -143,3 +145,14 @@ def test_every_lesson_step_declares_how_the_platform_checks_it(settings, tmp_pat
     with pytest.raises(wargames.InvalidCatalogue, match="need a check"):
         wargames._discover()
     assert {step["check"]["kind"] for step in wargames.lesson("board")["steps"]} <= wargames.CHECK_KINDS
+
+def test_every_board_step_says_where_the_coach_points_so_the_console_names_no_step():
+    from pathlib import Path
+
+    console = (Path(__file__).resolve().parent.parent / "console/templates/console/blue_lesson_script.html").read_text()
+    for step in wargames.lesson("board")["steps"]:
+        point = step.get("point")
+        assert isinstance(point, dict) and set(point) <= {"panel", "kibana", "first", "pane", "opens", "tab"}, step["id"]
+        assert {"panel", "kibana", "pane"} & set(point), f"{step['id']} points at nothing"
+        assert step["id"] in wargames.CHECK_KINDS or f'"{step["id"]}"' not in console, f"the console still knows step {step['id']!r} by name"
+    assert "data-test-subj" not in console, "Kibana's selectors are the scenario's data, not the console's"
