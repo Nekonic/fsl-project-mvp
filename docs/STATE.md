@@ -685,13 +685,22 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Build steps 1, 2, 4-8 and run the live acceptance before the push
       (agreed 2026-10-08). Steps 1 and 2 done 2026-10-09; steps 4-8 built
       2026-10-10 and the full `bin/verify` passed on the dedicated acceptance
-      VM 192.168.0.220 (substrate docker, 145 acceptance tests, 0 failed;
+      VM 192.168.0.220 (substrate docker, 146 acceptance tests, 0 failed;
       `docs/DECISIONS.md` 2026-10-10). Done 2026-10-10.
 - [x] Per-session Suricata ruleset: nothing mounts `deploy/suricata/rules`
       any more; each session's sensor is seeded at open with its own rule
       file (step 7). Done 2026-10-10.
 - [ ] The reachability middleware covers only the newest session's `estate`.
 - [ ] Two `POST /api/sessions/` within milliseconds can race (pre-existing).
+- [ ] Test audit (2026-10-10): 223 of 1,379 tests are duplicates (about 105),
+      implementation pins such as Dockerfile/YAML greps and argv shapes
+      (about 42), framework or constant restatements (about 39), guards for
+      removed features (about 7), or live tests whose property a unit test
+      already pins (31). 163 unit tests (about 1,650 lines) and 60 acceptance
+      tests (live run about 49 -> 25-30 min, with module-scoped sessions for
+      topology/map/front-door). The invariant tests (isolation, seams, ratchet,
+      benign cases, TP/TN) stay. Removing them lowers the tests floor on
+      purpose; awaiting the user's ruling.
 - [x] On substrate openstack the board's ground truth was read from
       `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
       not the OpenStack board VM. Readiness and the session baseline now read

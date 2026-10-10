@@ -50,14 +50,22 @@ Spec MVP item 1 is steps 1+2 here; spec items 2-7 are steps 3-8.
    most `FSL_MAX_SESSIONS` sessions (default 2); one more answers 409.
 
 Live acceptance (the push gate), 2026-10-10, on the dedicated 8 GB/2 vCPU VM
-`fsl-acceptance` (192.168.0.220, substrate docker, HEAD 69db444): `bin/verify`
-all green; unit 1351 passed, acceptance 145 passed and 0 failed in 42 min
-31 s, ratchet no regression. Detail in `docs/DECISIONS.md` (2026-10-10, the
-live acceptance). The platform VM 192.168.0.210 is back on origin/dev
+`fsl-acceptance` (192.168.0.220, substrate docker): `bin/verify` all green
+after the pre-push review fixes (af738b2): acceptance 146 passed and 0 failed
+in 48 min 55 s, ratchet no regression; the later test-only commit was checked
+by running its changed test live. Detail in `docs/DECISIONS.md` (2026-10-10,
+the live acceptance and the pre-push review). The platform VM 192.168.0.210 is back on origin/dev
 (870b15f), substrate openstack.
 
 Commits 870b15f..HEAD are local on this branch, not pushed; push waits for the
 user's approval.
+
+Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
+duplicate another test, pin implementation detail, assert framework or YAML
+constants, or guard removed features: 163 unit tests (about 1,650 lines) and
+60 acceptance tests (the live run would drop from about 49 to 25-30 minutes).
+Removing them lowers the tests floor on purpose and needs the user's ruling
+(`docs/STATE.md` backlog 0).
 
 ## Known open on docker
 - The VERIFY diagnosis for a blocked benign case names the status, not the CRS
