@@ -92,5 +92,7 @@ def no_real_session_stack(request):
     if request.node.get_closest_marker("opens_session_stack"):
         yield
         return
-    with patch("range.docker.Docker.open_session", lambda self, session_id: None):
+    with patch("range.docker.Docker.open_session", lambda self, session_id, live=(): None), \
+            patch("range.docker.Docker.address", lambda self, role: ""), \
+            patch("api.views._aim_attacker", lambda adapter: None):
         yield

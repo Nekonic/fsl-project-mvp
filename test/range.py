@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -13,6 +14,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
 SESSION_STACK = "session.yaml"
+SESSION_PROJECT = re.compile(r"fsl-(\d+)")
 
 ATTACKER = "attacker"
 BOARD = "board"
@@ -61,12 +63,15 @@ class Host:
     unit: str
     reporting: Callable[[list[str]], list[str]] = through_shell
 
-def declared_roles() -> dict[str, str]:
+def declared(key: str) -> dict[str, str]:
     document = yaml.safe_load(DECLARATION.read_text()) or {}
-    return dict(document.get("roles") or {})
+    return dict(document.get(key) or {})
+
+def declared_roles() -> dict[str, str]:
+    return declared("roles")
 
 DOCKER_HOSTS = {
-    role: Host(node=node, unit=node.removeprefix("fsl-").removeprefix("wg-"))
+    role: Host(node=node, unit=declared("compose").get(role, ""))
     for role, node in declared_roles().items()
 }
 
@@ -76,10 +81,12 @@ class Docker:
         self.hosts = dict(DOCKER_HOSTS if hosts is None else hosts)
         self.root = Path(root)
 
-    def run(self, role: str, argv, timeout: float = 60.0) -> Ran:
+    def run(self, role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
         host = self._host(role)
         done = self._dispatch(
-            ["docker", "exec", host.node, *host.reporting(list(argv))], timeout
+            ["docker", "exec", self._node(role, session, timeout),
+             *host.reporting(list(argv))],
+            timeout,
         )
         finished = reported(done.stderr or "")
         if finished is None:
@@ -93,7 +100,7 @@ class Docker:
         return Ran(exit_code=code, stdout=done.stdout, stderr=stderr)
 
     def segments(self, role: str, timeout: float = 60.0) -> frozenset[str]:
-        node = self._host(role).node
+        node = self._node(role, None, timeout)
         done = self._dispatch(
             ["docker", "inspect", node, "--format",
              "{{json .NetworkSettings.Networks}}"],
@@ -115,11 +122,12 @@ class Docker:
 
     def recreate(self, role: str, timeout: float = 300.0) -> None:
         host = self._host(role)
-        project = self._project_of(role, host.node, timeout)
+        project = self._project_of(role, self._node(role, None, timeout), timeout)
+        session = project.removeprefix("fsl-")
         for argv in (["rm", "-sf", host.unit], ["up", "-d", host.unit]):
             done = self._dispatch(
                 ["docker", "compose", "-p", project, "-f", SESSION_STACK, *argv],
-                timeout,
+                timeout, {"FSL_SESSION": session},
             )
             if done.returncode != 0:
                 raise RangeUnavailable(
@@ -148,6 +156,27 @@ class Docker:
         flag = " --force-recreate" if fresh else ""
         return f"docker compose -p fsl-<session> -f {SESSION_STACK} up -d{flag} {units}"
 
+    def _node(self, role: str, session: int | None, timeout: float) -> str:
+        host = self._host(role)
+        if not host.unit:
+            return host.node
+        done = self._dispatch(
+            ["docker", "ps", "--filter", f"label=com.docker.compose.service={host.unit}",
+             "--format", '{{.Names}} {{.Label "com.docker.compose.project"}}'],
+            timeout,
+        )
+        running = [line.split() for line in done.stdout.splitlines() if len(line.split()) == 2]
+        numbered = [int(found[1]) for _, project in running
+                    if (found := SESSION_PROJECT.fullmatch(project))]
+        wanted = f"fsl-{session if session is not None else max(numbered, default='')}"
+        found = [name for name, project in running if project == wanted]
+        if done.returncode != 0 or len(found) != 1:
+            raise RangeUnavailable(
+                f"{len(found)} containers fill the role {role!r} ({host.unit}) "
+                f"in {wanted}: {(done.stderr or '').strip()[:200]}"
+            )
+        return found[0]
+
     def _host(self, role: str) -> Host:
         host = self.hosts.get(role)
         if host is None:
@@ -157,11 +186,11 @@ class Docker:
             )
         return host
 
-    def _dispatch(self, command, timeout: float):
+    def _dispatch(self, command, timeout: float, env: dict[str, str] | None = None):
         try:
             return subprocess.run(
                 command, capture_output=True, text=True,
-                timeout=timeout, cwd=self.root,
+                timeout=timeout, cwd=self.root, env={**os.environ, **(env or {})},
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise RangeUnavailable(
@@ -170,8 +199,8 @@ class Docker:
 
 RANGE = Docker()
 
-def run(role: str, argv, timeout: float = 60.0) -> Ran:
-    return RANGE.run(role, argv, timeout=timeout)
+def run(role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
+    return RANGE.run(role, argv, timeout=timeout, session=session)
 
 def segments(role: str, timeout: float = 60.0) -> frozenset[str]:
     return RANGE.segments(role, timeout=timeout)

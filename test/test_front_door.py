@@ -11,7 +11,15 @@ from conftest import (
 from range import SENSOR, run
 
 EDGE = ipaddress.ip_network("5.188.10.0/24")
-ESTATE = ipaddress.ip_network("172.30.0.0/24")
+
+def _estate():
+    newest = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=30).json()[0]
+    shape = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{newest['id']}/topology/", timeout=60
+    ).json()
+    return ipaddress.ip_network(
+        next(s["subnet"] for s in shape["segments"] if s["id"] == "estate")
+    )
 
 def _alerts_mentioning(token, lines=400):
     out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"])
@@ -51,9 +59,10 @@ def test_the_front_door_is_on_the_outside(probe):
     )
 
 def test_the_inside_leg_is_still_the_inside(probe):
+    estate = _estate()
     inside = {
         a["src_ip"] for a in probe
-        if ipaddress.ip_address(a["src_ip"]) in ESTATE
+        if ipaddress.ip_address(a["src_ip"]) in estate
     }
 
     assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe)}"

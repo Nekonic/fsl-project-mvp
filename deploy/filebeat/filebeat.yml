@@ -81,7 +81,7 @@ setup.ilm.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "fsl-logs-%{+yyyy.MM.dd}"
+  index: "fsl-logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
   pipeline: fsl-geoip
 
 logging.level: warning

@@ -12,8 +12,9 @@ networks:
     external: true
     name: fsl_edge-us
   estate:
-    external: true
-    name: fsl_estate
+    labels:
+      fsl.segment.id: "estate"
+      fsl.segment: "Application estate"
   mgmt:
     external: true
     name: fsl_mgmt
@@ -23,6 +24,7 @@ include:
   - wargames/corp/compose.yaml
 
 volumes:
+  label:
   filebeatdata:
   suricatalogs:
   waflogs:
@@ -31,7 +33,6 @@ services:
   waf:
     platform: linux/amd64
     image: owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05
-    container_name: fsl-waf
     depends_on:
       board: {condition: service_healthy}
       corp-wp: {condition: service_healthy}
@@ -74,7 +75,6 @@ services:
   suricata:
     platform: linux/amd64
     image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
-    container_name: fsl-suricata
     network_mode: "service:waf"
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
@@ -86,10 +86,11 @@ services:
   filebeat:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
-    container_name: fsl-filebeat
     user: root
     networks: [mgmt]
     command: ["--strict.perms=false", "-e"]
+    environment:
+      FSL_SESSION: "${FSL_SESSION:-shared}"
     volumes:
       - ${FSL_HOST_DIR:-.}/deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - suricatalogs:/logs/suricata:ro
@@ -100,14 +101,13 @@ services:
     platform: linux/amd64
     build: ./deploy/kali
     image: fsl/kali:mvp
-    container_name: fsl-kali
     networks: [edge]
     volumes:
-      - ${FSL_HOST_DIR:-.}/data/label:/label:ro
+      - label:/label:ro
     init: true
     environment:
-      http_proxy: "http://proxy:8081"
-      HTTP_PROXY: "http://proxy:8081"
+      http_proxy: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
+      HTTP_PROXY: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
       FSL_TARGET: "http://board.com"
       FSL_TARGET_HOST: "board.com"
 
@@ -115,7 +115,6 @@ services:
     platform: linux/amd64
     build: ./deploy/proxy
     image: fsl/proxy:mvp
-    container_name: fsl-proxy
     networks: [edge, edge-br, edge-hk, edge-us]
     volumes:
-      - ${FSL_HOST_DIR:-.}/data/label:/label
+      - label:/label

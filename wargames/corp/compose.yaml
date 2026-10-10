@@ -3,7 +3,6 @@ services:
     platform: linux/amd64
     build: ./app
     image: fsl/corp:mvp
-    container_name: fsl-wg-corp-wp
     depends_on:
       corp-db: {condition: service_healthy}
     networks: [estate]
@@ -24,7 +23,6 @@ services:
     platform: linux/amd64
     build: ./db
     image: fsl/corp-db:mvp
-    container_name: fsl-wg-corp-db
     networks: [estate]
     command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1"]
     environment:

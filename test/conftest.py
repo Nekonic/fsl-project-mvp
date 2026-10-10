@@ -18,7 +18,8 @@ SESSION_LINE = re.compile(r"^session (\d+) done$")
 ENGINES = {"suricata", "modsecurity"}
 
 COMPOSE_RANGE_ONLY = {
-    "test_attacker_box", "test_board_exfil", "test_corp_cve_content_write",
+    "test_attacker_box", "test_board_exfil", "test_concurrent_sessions",
+    "test_corp_cve_content_write",
     "test_corp_cve_option_flip", "test_corp_cve_rogue_admin",
     "test_corp_observe_live", "test_corp_site", "test_event_time",
     "test_fabric", "test_front_door", "test_judge_isolation",

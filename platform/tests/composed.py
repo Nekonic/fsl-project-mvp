@@ -19,8 +19,19 @@ def services():
         merged.update(yaml.safe_load(path.read_text()).get("services") or {})
     return merged
 
+def networks():
+    found = dict(yaml.safe_load(COMPOSE.read_text()).get("networks") or {})
+    for name, entry in (yaml.safe_load(SESSION.read_text()).get("networks") or {}).items():
+        if not (entry or {}).get("external"):
+            found[name] = entry
+    return found
+
 def document():
-    return {**yaml.safe_load(COMPOSE.read_text()), "services": services()}
+    return {
+        **yaml.safe_load(COMPOSE.read_text()),
+        "networks": networks(),
+        "services": services(),
+    }
 
 def text():
     return "\n".join(path.read_text() for path in files())

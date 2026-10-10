@@ -12,13 +12,18 @@ pytestmark = pytest.mark.stands_in_for_docker
 def docker_that(tmp_path, monkeypatch):
     def install(script: str):
         stand_in = tmp_path / "docker"
-        stand_in.write_text("#!/bin/sh\n" + script)
+        stand_in.write_text("#!/bin/sh\n" + FINDS_THE_SESSION + script)
         stand_in.chmod(stand_in.stat().st_mode | stat.S_IEXEC)
         monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
         return docker.Docker(declared=declared.read(), project="fsl")
 
     return install
 
+
+FINDS_THE_SESSION = (
+    '[ "$1" = ps ] && { echo "fsl-1-suricata-1 fsl-1"; exit 0; }\n'
+    '[ "$1" = inspect ] && { echo \'{"fsl_edge": {"IPAddress": "5.188.10.4"}}\'; exit 0; }\n'
+)
 
 RUNS_WHAT_IT_IS_GIVEN = (
     'shift\n[ "$1" = -i ] && shift\nshift\nexec "$@"\n'
@@ -46,7 +51,7 @@ def test_a_command_that_outlives_its_timeout_is_named_as_such(docker_that):
 
 def test_a_tool_that_outlives_its_timeout_is_named_as_such(docker_that):
     substrate = docker_that(
-        'case "$1" in network) echo fsl_edge ;; *) sleep 5 ;; esac\n'
+        'case "$1" in network) echo fsl_edge fsl edge ;; *) sleep 5 ;; esac\n'
     )
 
     with pytest.raises(RangeUnavailable, match="did not finish within 1s"):

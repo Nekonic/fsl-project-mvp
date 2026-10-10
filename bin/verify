@@ -77,10 +77,10 @@ if ! docker compose restart platform >/dev/null 2>&1; then
   stack_down 'platform could not be restarted — docker compose up -d --build'
 fi
 for _ in $(seq 60); do
-  curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/rules/" && break
+  curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/sessions/" && break
   sleep 1
 done
-if curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/rules/"; then
+if curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/sessions/"; then
   ok "platform restarted on the tree being verified"
 else
   stack_down "platform not responding after a restart — docker compose logs platform"

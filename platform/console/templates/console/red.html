@@ -457,14 +457,14 @@
     const select = document.getElementById("origin");
     const wanted = select.value;
     const origin = wanted === "rotate" ? "" : wanted;
-    const moved = await post("/api/attacker/origin/", { origin });
+    const moved = await post("/api/attacker/origin/", { origin, session: sessionId() });
     if (!moved.ok) {
       status(t("red.window.status.origin_failed", detail(moved)), "text-warning");
       if (confirmedOrigin !== null) select.value = confirmedOrigin;
       return;
     }
     confirmedOrigin = wanted;
-    const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}`);
+    const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}&session=${sessionId()}`);
     if (!result.ok) {
       status(t("red.window.status.unavailable", detail(result)), "text-warning");
       return;
@@ -514,7 +514,7 @@
       };
       lockCase(true);
       windowCaseId = crypto.randomUUID();
-      const labelled = await post("/api/attacker/label/", { case_id: windowCaseId });
+      const labelled = await post("/api/attacker/label/", { case_id: windowCaseId, session: sessionId() });
       if (!labelled.ok) {
         lockCase(false);
         status(t("red.window.status.marker_failed", detail(labelled)), "text-warning");
@@ -528,7 +528,7 @@
       return;
     }
 
-    const cleared = await post("/api/attacker/label/", { case_id: null });
+    const cleared = await post("/api/attacker/label/", { case_id: null, session: sessionId() });
     if (!cleared.ok) {
       status(t("red.window.status.clear_failed", detail(cleared)), "text-warning");
       return;
@@ -566,7 +566,7 @@
     .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
 
   function clearLabel() {
-    post("/api/attacker/label/", { case_id: null });
+    post("/api/attacker/label/", { case_id: null, session: sessionId() });
   }
 
   clearLabel();

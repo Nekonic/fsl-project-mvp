@@ -18,13 +18,15 @@ pytestmark = pytest.mark.django_db
 
 
 class Compose:
-    def __init__(self, projects=(), working_dir="/opt/fsl", failing="", clock=None):
+    def __init__(self, projects=(), working_dir="/opt/fsl", failing="", clock=None,
+                 networks=None):
         self.calls = []
         self.timeouts = []
         self.clock = clock
         self.projects = [{"Name": name} for name in projects]
         self.working_dir = working_dir
         self.failing = failing
+        self.networks = networks or {}
 
     def __call__(self, argv, **kwargs):
         self.calls.append((argv, kwargs.get("env") or {}))
@@ -37,6 +39,9 @@ class Compose:
             out = json.dumps(self.projects)
         elif argv[1] == "inspect":
             out = self.working_dir + "\n"
+        elif argv[1:3] == ["network", "ls"]:
+            project = argv[4].rpartition("=")[2]
+            out = "".join(f"{name}\n" for name in self.networks.get(project, ()))
         elif self.failing and self.failing in argv:
             code = 1
         return type("Done", (), {"returncode": code, "stdout": out,
@@ -46,10 +51,12 @@ class Compose:
         return [argv for argv, _ in self.calls]
 
 
-def opened(compose, session_id=7):
+def opened(compose, session_id=7, live=()):
     with patch("range.docker.subprocess.run", compose), \
             patch("range.docker.socket.gethostname", lambda: "c0ffee"):
-        Docker(Declaration(), session_file="/src/session.yaml").open_session(session_id)
+        Docker(Declaration(), session_file="/src/session.yaml").open_session(
+            session_id, live=live
+        )
 
 
 @pytest.mark.opens_session_stack
@@ -57,7 +64,7 @@ def test_a_session_brings_up_its_own_project_and_waits_until_it_is_healthy():
     compose = Compose()
     opened(compose)
 
-    argv, env = compose.calls[-1]
+    argv, env = next(call for call in compose.calls if "up" in call[0])
     assert argv == [
         "docker", "compose", "-p", "fsl-7", "-f", "/src/session.yaml",
         "up", "-d", "--wait", "--no-build",
@@ -67,6 +74,10 @@ def test_a_session_brings_up_its_own_project_and_waits_until_it_is_healthy():
     )
     assert env["FSL_HOST_DIR"] == "/opt/fsl", (
         "the stack's bind mounts resolve on the host, not inside the platform"
+    )
+    assert env["FSL_SESSION"] == "7", (
+        "the session's Filebeat ships to the shared index and its attacker "
+        "box reaches every session's proxy by the shared name"
     )
 
 
@@ -93,6 +104,40 @@ def test_a_new_session_takes_down_the_stack_of_the_one_before():
     assert compose.argvs().index(downs[-1]) < len(compose.argvs()) - 1, (
         "the new stack came up before the old one went, and their pinned "
         "container names clash"
+    )
+
+
+@pytest.mark.opens_session_stack
+def test_a_new_session_keeps_the_stacks_of_sessions_still_open():
+    compose = Compose(projects=["fsl", "fsl-3", "fsl-5", "fsl-30"])
+    opened(compose, live=[3, 30])
+
+    downs = [argv for argv in compose.argvs() if "down" in argv]
+    assert downs == [["docker", "compose", "-p", "fsl-5", "down", "-v"]], (
+        "an open session's stack was taken down under it, or an ended one "
+        "was left running"
+    )
+
+
+@pytest.mark.opens_session_stack
+def test_the_platform_joins_the_new_estate_and_leaves_an_ended_one_first():
+    compose = Compose(
+        projects=["fsl-3"],
+        networks={"fsl-3": ["fsl-3_estate"], "fsl-7": ["fsl-7_estate"]},
+    )
+    opened(compose)
+
+    argvs = compose.argvs()
+    left = argvs.index(["docker", "network", "disconnect", "-f", "fsl-3_estate", "c0ffee"])
+    down = argvs.index(["docker", "compose", "-p", "fsl-3", "down", "-v"])
+    joined = argvs.index(
+        ["docker", "network", "connect", "--alias", "platform", "fsl-7_estate", "c0ffee"]
+    )
+    up = next(i for i, argv in enumerate(argvs) if "up" in argv)
+    assert left < down, "compose cannot remove a network the platform still stands on"
+    assert up < joined, (
+        "the platform reads the target's ground truth on the session's own "
+        "estate, which only exists once the stack is up"
     )
 
 
@@ -124,7 +169,7 @@ def test_the_open_is_bounded_and_a_late_step_is_skipped():
             pytest.raises(RangeUnavailable, match="540 s"):
         opened(compose)
 
-    assert compose.timeouts == [340.0, 240.0, 140.0, 40.0], (
+    assert compose.timeouts == [240.0, 40.0], (
         "a step was given the whole deadline, so the open can outlast the "
         "client waiting for it"
     )
@@ -138,7 +183,7 @@ class Recording:
         self.order = order
         self.fails = fails
 
-    def open_session(self, session_id):
+    def open_session(self, session_id, live=()):
         self.order.append(("open", session_id))
         if self.fails:
             raise RangeUnavailable("fsl-wg-board is unhealthy")
@@ -245,11 +290,18 @@ def test_the_session_stack_has_the_shape_the_platform_opens_it_with():
         f"opens the session, a path the Docker host does not have"
     )
 
-    assert set(stack["networks"]) == set(control["networks"])
+    shared = {name for name, entry in stack["networks"].items() if entry.get("external")}
+    assert shared == set(control["networks"])
     assert all(
-        entry == {"external": True, "name": f"fsl_{name}"}
-        for name, entry in stack["networks"].items()
+        stack["networks"][name] == {"external": True, "name": f"fsl_{name}"}
+        for name in shared
     ), stack["networks"]
+    owned = {name: stack["networks"][name] for name in set(stack["networks"]) - shared}
+    assert set(owned) == {"estate"}, owned
+    assert not [name for name, entry in owned.items() if entry.get("ipam")], (
+        "a session's own network pinned to a subnet clashes with the next "
+        "session's, and Docker refuses the second stack"
+    )
 
     assert set(control["services"]) == {"platform", "elasticsearch", "kibana", "collector"}
 

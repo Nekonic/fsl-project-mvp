@@ -56,12 +56,23 @@ roles:
   corp: fsl-wg-corp-wp
   corp-db: fsl-wg-corp-db
 
+compose:
+  attacker: kali
+  proxy: proxy
+  gateway: waf
+  sensor: suricata
+  board: board
+  board-db: board-db
+  corp: corp-wp
+  corp-db: corp-db
+
 watches:
   sensor: gateway
 
 hosts:
   fsl-waf:
     segments: [internet, estate, mgmt]
+    names: [board.com, corp.com]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
   fsl-wg-board:

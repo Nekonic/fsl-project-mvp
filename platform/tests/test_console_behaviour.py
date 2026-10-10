@@ -131,7 +131,7 @@ def test_the_red_console_clears_a_stale_attacker_label_on_load(client):
       };
     """)
 
-    assert {"case_id": None} in seen["result"]["clears"], (
+    assert {"case_id": None, "session": "1"} in seen["result"]["clears"], (
         "the red console must POST a null attacker label on load so a window left "
         "open by a crashed or reloaded page does not mis-attribute later traffic: "
         f"{seen['result']['clears']}"
