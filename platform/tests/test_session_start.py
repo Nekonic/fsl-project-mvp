@@ -116,3 +116,36 @@ def test_the_readiness_gate_runs_before_the_row_is_created(client):
 
     assert seen["rows"] == 0
     assert Session.objects.count() == 0
+
+def test_docker_refuses_a_session_past_its_cap(client):
+    with patch("range.docker.Docker.open_session", lambda self, session_id, live=(): None):
+        answers = [client.post_json("/api/sessions/", {}) for _ in range(3)]
+
+    assert [a.status_code for a in answers] == [201, 201, 409], (
+        "every open session keeps a whole stack up, and past the cap the host "
+        "runs out of memory and Elasticsearch dies first"
+    )
+    assert answers[2].json()["detail"] == (
+        "2 sessions are already open on the range; close one first"
+    )
+    assert Session.objects.filter(ended_at=None).count() == 2
+
+def test_closing_a_session_frees_a_place_under_the_cap(client):
+    with patch("range.docker.Docker.open_session", lambda self, session_id, live=(): None):
+        first, _ = [client.post_json("/api/sessions/", {}).json()["id"] for _ in range(2)]
+        client.post_json(f"/api/sessions/{first}/close/", {})
+        third = client.post_json("/api/sessions/", {})
+
+    assert third.status_code == 201, third.content
+
+def test_the_cap_is_read_from_the_environment(monkeypatch):
+    import importlib
+
+    from fsl import settings as configured
+
+    monkeypatch.setenv("FSL_MAX_SESSIONS", "3")
+    try:
+        assert importlib.reload(configured).FSL_SUBSTRATE_OPTIONS["max_sessions"] == 3
+    finally:
+        monkeypatch.delenv("FSL_MAX_SESSIONS")
+        importlib.reload(configured)
