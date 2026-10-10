@@ -291,3 +291,16 @@ def test_the_address_a_vm_publishes_on_stays_out_of_git():
     ignored = subprocess.run(["git", "check-ignore", "-q", ".env"], cwd=COMPOSE.parent)
 
     assert ignored.returncode == 0
+
+def test_the_waf_blocks_rather_than_only_logging():
+    assert composed.services()["waf"]["environment"]["MODSEC_RULE_ENGINE"] == "On", (
+        "the lesson is passed only when the attack is blocked; a WAF in "
+        "DetectionOnly lets every variant through and the lesson cannot be passed"
+    )
+
+def test_no_sensor_reads_its_live_rules_from_a_directory_every_session_shares():
+    mounted = composed.services()["suricata"].get("volumes") or []
+
+    assert not [v for v in mounted if "deploy/suricata/rules" in v], (
+        "applying a rule in one session would rewrite every session's rule file"
+    )

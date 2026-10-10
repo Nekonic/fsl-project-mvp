@@ -22,6 +22,45 @@
       <p id="pane-status-note" class="text-muted max-w-md"></p>
     </div>
   </section>
+
+  <aside id="lesson" class="hidden shrink-0 w-96 min-h-0 overflow-y-auto bg-panel border border-line
+         rounded p-4 flex flex-col gap-5 text-sm">
+    <h2 data-t="lesson.heading" class="text-heading font-medium"></h2>
+    <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
+
+    <section class="flex flex-col gap-2">
+      <h3 data-t="lesson.waf.heading" class="text-heading font-medium"></h3>
+      <label for="lesson-paranoia" data-t="lesson.waf.paranoia" class="text-muted"></label>
+      <select id="lesson-paranoia" class="border border-line rounded px-2 py-1 bg-panel">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+      <label for="lesson-exclusions" data-t="lesson.waf.exclusions" class="text-muted"></label>
+      <textarea id="lesson-exclusions" rows="4" data-t-placeholder="lesson.waf.exclusions_hint"
+                class="border border-line rounded px-2 py-1 font-mono text-xs bg-panel"></textarea>
+      <button id="lesson-save" data-t="lesson.waf.save"
+              class="self-start px-3 py-1.5 rounded bg-primary text-inverse"></button>
+      <p id="lesson-waf-status" class="text-muted"></p>
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <h3 data-t="lesson.replay.heading" class="text-heading font-medium"></h3>
+      <select id="lesson-case" class="border border-line rounded px-2 py-1 bg-panel"></select>
+      <button id="lesson-replay" data-t="lesson.replay.button"
+              class="self-start px-3 py-1.5 rounded bg-panel border border-line hover:border-primary text-heading"></button>
+      <p id="lesson-replay-status" class="text-muted"></p>
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <h3 data-t="lesson.verify.heading" class="text-heading font-medium"></h3>
+      <button id="lesson-verify" data-t="lesson.verify.button"
+              class="self-start px-3 py-1.5 rounded bg-primary text-inverse"></button>
+      <p id="lesson-verdict" class="font-medium"></p>
+      <ul id="lesson-diagnosis" class="flex flex-col gap-1 list-disc pl-5 text-body"></ul>
+    </section>
+  </aside>
 </div>
 {% endblock %}
 {% block script %}
@@ -53,5 +92,92 @@
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
 
   openPane(tabs[0]);
+
+  const STEPS = ["read", "write", "replay", "verify"];
+  const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
+  const field = (id) => document.getElementById(id);
+
+  function exclusionsText(exclusions) {
+    return exclusions.map((entry) =>
+      [entry.rule_id, entry.target, entry.path].filter(Boolean).join(" ")).join("\n");
+  }
+
+  function exclusionsFrom(text) {
+    return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+      const [rule, ...rest] = line.split(/\s+/);
+      return {
+        rule_id: Number(rule),
+        target: rest.find((part) => !part.startsWith("/")) || "",
+        path: rest.find((part) => part.startsWith("/")) || "",
+      };
+    });
+  }
+
+  async function loadTuning() {
+    const tuning = await api(lessonPath("waf/"));
+    if (!tuning.ok) {
+      field("lesson-waf-status").textContent = t("lesson.waf.failed", detail(tuning));
+      return;
+    }
+    field("lesson-paranoia").value = String(tuning.body.paranoia || 1);
+    field("lesson-exclusions").value = exclusionsText(tuning.body.exclusions || []);
+  }
+
+  async function saveTuning() {
+    const status = field("lesson-waf-status");
+    status.textContent = t("lesson.waf.saving");
+    const saved = await api(lessonPath("waf/"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paranoia: Number(field("lesson-paranoia").value),
+        exclusions: exclusionsFrom(field("lesson-exclusions").value),
+      }),
+    });
+    status.textContent = saved.ok
+      ? t("lesson.waf.saved", saved.body.paranoia) : t("lesson.waf.failed", detail(saved));
+  }
+
+  async function replay() {
+    const name = field("lesson-case").value;
+    const status = field("lesson-replay-status");
+    status.textContent = t("lesson.replay.running", name);
+    const fired = await post(lessonPath("attacks/"), { case: name }, PATIENCE_FOR_RANGE_WORK);
+    status.textContent = fired.ok
+      ? t("lesson.replay.done", name) : t("lesson.replay.failed", detail(fired));
+  }
+
+  async function verifyLesson() {
+    const verdict = field("lesson-verdict");
+    const diagnosis = field("lesson-diagnosis");
+    verdict.textContent = t("lesson.verify.running");
+    diagnosis.innerHTML = "";
+    const checked = await post(lessonPath("verify/"), {}, PATIENCE_FOR_RANGE_WORK);
+    if (!checked.ok) {
+      verdict.textContent = t("lesson.verify.failed", detail(checked));
+      return;
+    }
+    verdict.textContent = t(checked.body.passed ? "lesson.verify.pass" : "lesson.verify.fail");
+    verdict.classList.toggle("text-success", checked.body.passed);
+    verdict.classList.toggle("text-danger", !checked.body.passed);
+    diagnosis.innerHTML = (checked.body.diagnosis || []).map(([key, values]) =>
+      `<li>${esc(t(key, ...values))}</li>`).join("");
+  }
+
+  field("lesson-save").addEventListener("click", saveTuning);
+  field("lesson-replay").addEventListener("click", replay);
+  field("lesson-verify").addEventListener("click", verifyLesson);
+
+  (async () => {
+    const session = await api(lessonPath(""));
+    if (!session.ok || !session.body.lesson) return;
+    const taught = session.body.lesson;
+    field("lesson-steps").innerHTML = STEPS.map((step) =>
+      `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
+    field("lesson-case").innerHTML = taught.cases.map((name) =>
+      `<option value="${esc(name)}">${esc(name)}</option>`).join("");
+    field("lesson").classList.remove("hidden");
+    loadTuning();
+  })();
 </script>
 {% endblock %}

@@ -53,7 +53,7 @@ services:
     environment:
       BACKEND: "http://board:8000"
       PORT: "80"
-      MODSEC_RULE_ENGINE: "DetectionOnly"
+      MODSEC_RULE_ENGINE: "On"
       MODSEC_AUDIT_ENGINE: "RelevantOnly"
       MODSEC_AUDIT_LOG_FORMAT: "JSON"
       MODSEC_AUDIT_LOG_TYPE: "Serial"
@@ -80,7 +80,6 @@ services:
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
     volumes:
       - ${FSL_HOST_DIR:-.}/deploy/suricata/suricata.yaml:/etc/suricata/suricata.yaml
-      - ${FSL_HOST_DIR:-.}/deploy/suricata/rules:/var/lib/suricata/rules
       - suricatalogs:/var/log/suricata
 
   filebeat:

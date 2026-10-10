@@ -26,14 +26,23 @@ def apply(content: str, sensor, reload_command) -> None:
     _write(sensor, RULE_PATH, content)
 
     ran = sensor(list(reload_command))
-    if not ran.ok or '"return":"OK"' not in ran.output.replace(" ", ""):
+    if not _reloaded(ran):
         _write(sensor, RULE_PATH, previous)
         raise RuleApplyError(
             "reload failed, rolled back to the previous rule set: "
             + ran.output.strip()
         )
 
+def seed(content: str, sensor, reload_command) -> None:
+    _write(sensor, RULE_PATH, content)
+    ran = sensor(list(reload_command))
+    if not _reloaded(ran):
+        raise RuleApplyError("the sensor did not load its starting rule set: " + ran.output.strip())
+
+def _reloaded(ran) -> bool:
+    return ran.ok and '"return":"OK"' in ran.output.replace(" ", "")
+
 def _write(sensor, path: str, content: str) -> None:
-    ran = sensor(["sh", "-c", "cat > " + path], stdin=content)
+    ran = sensor(["sh", "-c", f"mkdir -p {path.rpartition('/')[0]} && cat > {path}"], stdin=content)
     if not ran.ok:
         raise RuleApplyError(f"could not write {path}: {ran.output.strip()}")

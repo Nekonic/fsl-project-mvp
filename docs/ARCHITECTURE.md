@@ -44,7 +44,8 @@ Each target is a wargame, a folder under `wargames/` whose `compose.yaml`
 `session.yaml` includes: `board` (Django and MySQL, `loot_verified`) and
 `corp` (WordPress and MySQL, `effect_observed`). The platform discovers each
 from `wargames/<id>/scenario.yaml` (`platform/wargames.py`; fields `name`,
-`description`, `image`, `public_url`, `objective_model`, `case_file`). Nothing
+`description`, `image`, `public_url`, `objective_model`, `case_file`, and
+optionally `defense` and `lesson`, described under "The WAF lesson"). Nothing
 reads `image` yet. Each app image is built once and tagged
 (`docker compose -f session.yaml build`); sessions start from those tags with
 `--no-build`. A new wargame needs `scenario.yaml`, `objectives.yaml` and
@@ -60,10 +61,10 @@ which `platform/range/docker.py` maps the container back to.
 Every endpoint that acts on the range (rules, validate, suppressions,
 `/api/attacker/`, origin, label) takes `session` from the query or body and
 falls back to the newest open session; suppressions are stored with their
-session (migration 0014). The red console sends its session id. Open on docker:
-`deploy/suricata/rules` is one bind mount shared by every session's sensor, so
-applying a rule writes the shared file and reloads only that session's sensor
-(a per-session ruleset mount is build step 7); the middleware that refuses
+session (migration 0014). The red console sends its session id. Each
+session's sensor keeps its live `local.rules` in its own container, seeded at
+open; nothing bind-mounts `deploy/suricata/rules`, so applying a rule changes
+only that session's sensor. Open on docker: the middleware that refuses
 requests from range hosts covers only the newest session's `estate`.
 
 | Service | File | Image | Networks | Host port |
@@ -132,7 +133,7 @@ is attached to every edge network and each session's `estate`, so the API checks
  edge-br                                              |
  edge-hk   proxy, platform (no kali, no board.com)    |
  edge-us                                              v
-         fsl-waf: nginx + ModSecurity CRS, DetectionOnly, port 80
+         fsl-waf: nginx + ModSecurity CRS, SecRuleEngine On, port 80
          fsl-suricata in the same network namespace, af-packet on all five
          interfaces, so it sees client->WAF and WAF->target
                                                       |
@@ -147,6 +148,7 @@ is attached to every edge network and each session's `estate`, so the API checks
    volume label (per session) --> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
    platform --docker exec--> proxy (/label files), suricata (rules),
+                             waf (CRS tuning, nginx reload),
                              kali (command log), corp-db (mysql, mysqlbinlog)
    platform --docker run--> throwaway fsl-kali for tool cases
    platform --> volume platformdata --> /data/db.sqlite3
@@ -248,6 +250,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Concern | Owning file | Known exceptions |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
+| CRS configuration and the nginx reload | `platform/rules/crs.py` | none |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
@@ -297,9 +300,12 @@ acceptance suite drives it), has no origin option, and its `--target` defaults t
 scenario its `--cases` file belongs to (`http://board.com` for board), which
 resolves to the WAF on port 80. `--tool-target` defaults to `http://board.com`.
 
-The WAF runs CRS at paranoia level 1, anomaly threshold 5, in `DetectionOnly`
-(`deploy/waf/modsecurity.conf`), and every Suricata rule is `alert`. Nothing
-in the range blocks a request.
+On docker the session WAF runs CRS with `SecRuleEngine On` and anomaly
+threshold 5 (`session.yaml`); its paranoia level and rule exclusions are the
+session's own (`Session.waf`), written at open from the scenario's defense and
+changed through `/api/sessions/<id>/waf/` ("The WAF lesson"). Every Suricata
+rule is `alert`, so the WAF is the only part of the range that blocks. The
+OpenStack WAF VM still runs `DetectionOnly` (`deploy/waf/modsecurity.conf`).
 
 ## Where alerts go
 
@@ -359,6 +365,48 @@ Two geoip processors, on `src_ip` (Suricata) and `transaction.client_ip`
 bind-mounts `./config/ingest-geoip`, which `bin/fetch-geoip` fills, so
 `GeoLite2-City.mmdb` survives a container recreate. The entrypoint registers
 the pipeline at bring-up (`platform/register_pipeline.py`).
+
+## The WAF lesson
+
+A session is opened with two settings, `POST /api/sessions/` `{scenario,
+guidance, defense}`, stored on the session (migration 0015). `defense` names one
+of the scenario's `defense` entries (default `full`); `guidance` (default off)
+needs the scenario to declare a `lesson`. The board declares `minimal` (CRS
+paranoia level 4, `local.rules`) and `full` (paranoia level 1, the same
+`local.rules`). On docker, after the stack is up, the open path seeds the
+sensor with the defense's rule file (`suricata.seed`) and writes the CRS tuning
+(`crs.apply`); a guided session then replays the lesson's cases once
+(`meta.seed`), so its ModSecurity and Suricata records are in Kibana when the
+learner arrives. OpenStack sessions apply neither.
+
+`platform/rules/crs.py` renders the tuning into
+`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, the CRS hook that loads after
+`crs-setup.conf` and before the rules: a `SecAction` setting
+`tx.blocking_paranoia_level` and `tx.detection_paranoia_level`, and one runtime
+exclusion per entry (`ctl:ruleRemoveTargetById=<id>;<target>` or
+`ctl:ruleRemoveById=<id>`, scoped by `SecRule REQUEST_FILENAME "@beginsWith
+<path>"` when a path is given). It writes the file into the session's WAF with
+`runner("gateway")`, runs `nginx -t && nginx -s reload`, and restores the
+previous file if nginx refuses. Input is validated before anything is written:
+paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
+`ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional
+`:name`, a path of `[A-Za-z0-9_./-]`, at most 20 entries.
+`GET/PUT /api/sessions/<id>/waf/` reads and changes it.
+
+`POST /api/sessions/<id>/verify/` replays the scenario's `lesson.cases` through
+the same path as `/attacks/`, marked `meta.verify=<run>`, and judges only that
+run. An sqlmap case is held when the rows sqlmap dumped (`redteam/tools.py`
+`dumped`) match no `(username, hash)` of the session's snapshot
+(`loot.matched`); a leak also credits the objectives it proves. The 403 count
+sqlmap reports is kept as `meta.forbidden` and is not judged. A benign case is
+served when curl reports a 2xx `http_code`. PASS needs every attack held and
+every benign case served (`platform/lesson.py`); the reply carries
+`diagnosis` keys that the console renders from `strings.html`, never TP/FP
+labels. The board's lesson replays `board-sqli-orderby-sqlmap`,
+`board-sqli-orderby-sqlmap-tamper` and four benign cases, among them the
+O'Brien search and `board-normal-sort` (`?sort=-created_at`), which catches an
+exclusion that whitelists `sort`. The blue console shows the lesson panel
+beside the Kibana frame only in a guided session.
 
 ## How the scores are computed
 

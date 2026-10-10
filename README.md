@@ -315,6 +315,15 @@ Korean.
 - **Blue** is a sidebar of framed tools: Kibana and a WAF terminal. The
   scoreboard appears on the session page when the session closes.
 
+A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
+lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
+also the benign O'Brien search, and the blue console shows the lesson panel
+beside Kibana. The learner tunes the paranoia level or adds a rule exclusion
+(`PUT /api/sessions/<id>/waf/`) and presses Verify
+(`POST /api/sessions/<id>/verify/`), which passes only when no sqlmap variant
+dumps a hash that matches the board's own accounts and every benign case is
+answered. The default, `{"defense": "full"}`, starts at paranoia level 1.
+
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,
 from the platform:

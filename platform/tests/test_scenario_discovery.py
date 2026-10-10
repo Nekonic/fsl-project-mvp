@@ -48,3 +48,40 @@ def test_a_scenario_with_an_unknown_objective_model_is_refused():
         wargames.checked_scenario(
             {**A_SCENARIO, "objective_model": "guesswork"}, "demo", "scenario.yaml"
         )
+
+def test_the_board_declares_a_lesson_start_at_paranoia_level_4_and_a_full_defense():
+    board = wargames.WARGAMES["board"]
+
+    assert wargames.defense("board", "minimal") == {"waf": {"paranoia": 4}, "suricata": "local.rules"}
+    assert board["defense"]["full"]["waf"] == {"paranoia": 1}
+    assert "board-normal-search-with-apostrophe" in board["lesson"]["cases"]
+
+def test_a_scenario_without_a_defense_takes_the_default_and_nothing_else():
+    assert wargames.defense("corp", wargames.DEFAULT_DEFENSE) is None
+    with pytest.raises(wargames.UnknownWargame):
+        wargames.defense("corp", "minimal")
+
+@pytest.mark.parametrize("defense, reason", [
+    ({"minimal": {"waf": {"paranoia": 7}, "suricata": "local.rules"}}, "paranoia"),
+    ({"minimal": {"waf": {"paranoia": 4}, "suricata": "../../etc/passwd"}}, "suricata"),
+    ({"minimal": {"waf": {"paranoia": 4}, "suricata": "missing.rules"}}, "suricata"),
+    ({"minimal": {"waf": {"paranoia": 4}}}, "suricata"),
+    (["minimal"], "defense"),
+])
+def test_a_defense_that_cannot_be_applied_is_refused_at_discovery(defense, reason):
+    with pytest.raises(wargames.InvalidCatalogue, match=reason):
+        wargames.checked_scenario({**A_SCENARIO, "defense": defense}, "demo", "scenario.yaml")
+
+@pytest.mark.parametrize("taught, reason", [
+    ({"text": "lesson.demo", "cases": ["board-normal-search", "no-such-case"]}, "no-such-case"),
+    ({"text": "lesson.demo", "cases": []}, "cases"),
+    ({"cases": ["board-normal-search"]}, "text"),
+])
+def test_a_lesson_naming_cases_the_case_file_lacks_is_refused_at_discovery(settings, tmp_path, taught, reason):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match=reason):
+        wargames._discover()

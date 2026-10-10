@@ -38,8 +38,9 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 폴더의 `compose.yaml`을 include 한다: `board`(Django와 MySQL, `loot_verified`)와
 `corp`(WordPress와 MySQL, `effect_observed`). 플랫폼은 각 wargame을
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
-`description`, `image`, `public_url`, `objective_model`, `case_file`). `image`는 아직
-아무 코드도 읽지 않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
+`description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
+`defense`와 `lesson`이며 뒤의 "WAF 실습"에 설명한다). `image`는 아직 아무 코드도 읽지
+않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
 session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 wargame에는 폴더 안의
 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일,
 그리고 `session.yaml`의 `include:` 줄 하나가 필요하다.
@@ -52,10 +53,11 @@ session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 war
 
 레인지에 작용하는 엔드포인트(rules, validate, suppressions, `/api/attacker/`, origin,
 label)는 `session`을 쿼리나 본문에서 받고, 없으면 가장 최근에 열린 세션을 쓴다. 억제는
-세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. docker에서
-남은 문제: `deploy/suricata/rules`는 모든 세션의 센서가 공유하는 bind mount 하나라서, 룰을
-적용하면 공유 파일을 쓰고 그 세션의 센서만 재적재한다(세션별 룰셋 마운트는 빌드 7단계).
-레인지 호스트의 요청을 거부하는 미들웨어는 가장 최근 세션의 `estate`만 다룬다.
+세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
+센서는 실제 `local.rules`를 자기 컨테이너 안에 두고, 세션을 열 때 채운다.
+`deploy/suricata/rules`를 bind mount하는 곳은 없으므로 룰 적용은 그 세션의 센서만
+바꾼다. docker에서 남은 문제: 레인지 호스트의 요청을 거부하는 미들웨어는 가장 최근
+세션의 `estate`만 다룬다.
 
 | 서비스 | 파일 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|---|
@@ -119,7 +121,7 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 요청마다 새 어댑�
  edge-br                                              |
  edge-hk   proxy, platform (no kali, no board.com)    |
  edge-us                                              v
-         fsl-waf: nginx + ModSecurity CRS, DetectionOnly, port 80
+         fsl-waf: nginx + ModSecurity CRS, SecRuleEngine On, port 80
          fsl-suricata in the same network namespace, af-packet on all five
          interfaces, so it sees client->WAF and WAF->target
                                                       |
@@ -134,6 +136,7 @@ Docker가 할당하며 재생성 시 바뀐다. 뷰는 요청마다 새 어댑�
    volume label (per session) --> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
    platform --docker exec--> proxy (/label files), suricata (rules),
+                             waf (CRS tuning, nginx reload),
                              kali (command log), corp-db (mysql, mysqlbinlog)
    platform --docker run--> throwaway fsl-kali for tool cases
    platform --> volume platformdata --> /data/db.sqlite3
@@ -225,6 +228,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | 관심사 | 소유 파일 | 알려진 예외 |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
+| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | 없음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/pfsense.py`와 `deploy/pfsense/configure.php`가 pfSense의 Suricata를 정지·시작한다(OpenStack) |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음 |
@@ -268,9 +272,11 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`(블루 콘솔의 WAF 터미�
 시나리오의 `public_url`(board는 `http://board.com`)로, 포트 80의 WAF로 해석된다.
 `--tool-target`의 기본값은 `http://board.com`이다.
 
-WAF는 CRS를 paranoia level 1, anomaly threshold 5, `DetectionOnly`로 돌리고
-(`deploy/waf/modsecurity.conf`), 모든 Suricata 룰은 `alert`다. 레인지의 어떤 구성
-요소도 요청을 차단하지 않는다.
+docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly threshold 5로 돌린다
+(`session.yaml`). paranoia level과 룰 제외는 세션 자신의 것이며(`Session.waf`), 열 때
+시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 실습"). 모든 Suricata
+룰은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM은 아직
+`DetectionOnly`로 돈다(`deploy/waf/modsecurity.conf`).
 
 ## 경보가 어디로 가는가
 
@@ -325,6 +331,42 @@ geoip 프로세서 둘(`src_ip`는 Suricata, `transaction.client_ip`는 ModSecur
 bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLite2-City.mmdb`는
 컨테이너를 재생성해도 남는다. entrypoint가 기동 시 파이프라인을 등록한다
 (`platform/register_pipeline.py`).
+
+## WAF 실습
+
+세션은 두 설정으로 연다: `POST /api/sessions/` `{scenario, guidance, defense}`,
+세션에 저장된다(마이그레이션 0015). `defense`는 시나리오의 `defense` 항목 중 하나를
+고르고(기본값 `full`), `guidance`(기본값 꺼짐)는 시나리오에 `lesson`이 있어야 한다.
+board는 `minimal`(CRS paranoia level 4, `local.rules`)과 `full`(paranoia level 1, 같은
+`local.rules`)을 선언한다. docker에서는 스택이 뜬 뒤 여는 경로가 센서에 그 defense의 룰
+파일을 넣고(`suricata.seed`) CRS 튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
+lesson의 케이스를 한 번 재생하므로(`meta.seed`), 학습자가 들어왔을 때 ModSecurity와
+Suricata 기록이 이미 Kibana에 있다. OpenStack 세션은 둘 다 하지 않는다.
+
+`platform/rules/crs.py`는 튜닝을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로
+렌더한다. 이 파일은 `crs-setup.conf` 다음, 룰보다 먼저 읽히는 CRS 훅이다:
+`tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 정하는 `SecAction`
+하나와, 항목마다 런타임 제외 하나(`ctl:ruleRemoveTargetById=<id>;<target>` 또는
+`ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
+<path>"`로 범위를 좁힘). 파일은 `runner("gateway")`로 그 세션의 WAF에 쓰고, `nginx -t
+&& nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 쓰기 전에 입력을
+검증한다: paranoia 1-4, 룰 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
+`ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
+경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `GET/PUT /api/sessions/<id>/waf/`로 읽고
+바꾼다.
+
+`POST /api/sessions/<id>/verify/`는 시나리오의 `lesson.cases`를 `/attacks/`와 같은
+경로로 재생하고 `meta.verify=<run>`을 붙이며, 그 실행만 판정한다. sqlmap 케이스는
+sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `(username, hash)`와
+하나도 맞지 않으면(`loot.matched`) 막힌 것이다. 유출이면 그것이 증명하는 목표도
+인정한다. sqlmap이 보고한 403 횟수는 `meta.forbidden`에 남기고 판정에는 쓰지 않는다.
+정상 케이스는 curl이 2xx `http_code`를 보고하면 응답받은 것이다. 통과는 모든 공격이
+막히고 모든 정상 케이스가 응답받아야 한다(`platform/lesson.py`). 응답의 `diagnosis`
+키는 콘솔이 `strings.html`로 표시하며, TP/FP 라벨은 보여주지 않는다. board의 lesson은
+`board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
+재생한다. 그중 O'Brien 검색과, `sort`를 통째로 허용하는 제외를 잡아내는
+`board-normal-sort`(`?sort=-created_at`)가 있다. 블루 콘솔은 guidance 세션에서만 Kibana
+프레임 옆에 lesson 패널을 띄운다.
 
 ## 점수는 어떻게 계산되는가
 

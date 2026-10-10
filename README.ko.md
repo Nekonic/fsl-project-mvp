@@ -205,6 +205,8 @@ http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블�
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
 - **블루**는 도구를 프레임으로 띄운 사이드바다: Kibana와 WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
 
+`{"guidance": true, "defense": "minimal"}`로 연 세션이 WAF 실습이다. board의 WAF는 CRS paranoia level 4에서 시작해 sqlmap과 함께 정상 요청인 O'Brien 검색도 차단하고, 블루 콘솔은 Kibana 옆에 lesson 패널을 띄운다. 학습자는 paranoia level을 낮추거나 룰 제외를 추가하고(`PUT /api/sessions/<id>/waf/`) 검증을 누른다(`POST /api/sessions/<id>/verify/`). 어떤 sqlmap 변형도 board 계정과 일치하는 해시를 덤프하지 못하고 모든 정상 케이스가 응답받을 때만 통과한다. 기본값 `{"defense": "full"}`은 paranoia level 1에서 시작한다.
+
 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로 하니스는 레인지 안, 플랫폼에서 실행한다.
 
 ```bash

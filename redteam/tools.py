@@ -6,6 +6,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 MARKER_HEADER = "X-FSL-Case"
+STATUS = re.compile(r"http_code=(\d{3})")
+FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
+TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl/kali:mvp")
 
@@ -65,7 +68,7 @@ def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) 
 
 def curl_argv(prepared: Any, timeout: float) -> tuple[str, list[str]]:
     argv = [
-        "curl", "-sS", "-o", "/dev/null",
+        "curl", "-sS", "-o", "/dev/null", "-w", "http_code=%{http_code}\n",
         "--max-time", str(int(timeout)), "--path-as-is",
         "-X", prepared.method or "GET",
     ]
@@ -89,3 +92,24 @@ def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
         args.append(f"--headers={MARKER_HEADER}: {case['case_id']}")
 
     return TOOL_IMAGE, [case["tool"], *args]
+
+def status(output: str) -> int:
+    found = STATUS.findall(output if isinstance(output, str) else "")
+    return int(found[-1]) if found else 0
+
+def forbidden(output: str) -> int:
+    return sum(int(times) for times in FORBIDDEN.findall(output or ""))
+
+def dumped(output: str) -> list[tuple[str, str]]:
+    rows = [
+        [cell.strip() for cell in found[1].split("|")]
+        for found in map(TABLE_ROW.match, (output or "").splitlines()) if found
+    ]
+    header = next((row for row in rows if "username" in row and "password" in row), None)
+    if header is None:
+        return []
+    name, digest = header.index("username"), header.index("password")
+    return [
+        (row[name], row[digest]) for row in rows
+        if row != header and len(row) == len(header)
+    ]
