@@ -1,115 +1,170 @@
 {% extends "console/base.html" %}
 {% block title %}Blue team{% endblock %}
-{% block nav %}<span data-t="blue.title" class="text-primary font-medium"></span>{% endblock %}
-{% block nav_class %}w-full{% endblock %}
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
-{% block main_class %}flex-1 min-h-0 px-4 py-3 flex flex-col{% endblock %}
+{% block main_class %}flex-1 min-h-0 flex flex-col md:flex-row{% endblock %}
 {% block content %}
-<div class="flex-1 min-h-0 flex gap-3">
-  <nav id="rail" class="shrink-0 w-44 flex flex-col gap-1">
-    <button class="pane-tab" data-pane="elk" data-src="/kibana/" data-t="blue.pane.elk"></button>
-    <button class="pane-tab" data-pane="waf" data-src="/vm-terminal/fsl-waf/" data-t="blue.pane.waf"></button>
-    <a id="to-red" target="_blank"
-       class="mt-auto text-sm text-danger hover:underline px-3 py-2" data-t="blue.nav.to_red"></a>
-  </nav>
+<nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
+  <button class="pane-tab rail-btn" data-pane="elk" data-src="/kibana/">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <span>Kibana</span>
+  </button>
+  <button class="pane-tab rail-btn" data-pane="waf" data-src="/vm-terminal/fsl-waf/">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+    <span data-t="blue.pane.waf"></span>
+  </button>
+  <a id="to-red" target="_blank" class="rail-btn ml-auto md:ml-0 md:mt-auto">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>
+    <span data-t="blue.nav.to_red"></span>
+  </a>
+</nav>
 
-  <section class="flex-1 min-h-0 relative bg-panel border border-line rounded overflow-hidden">
-    <iframe id="pane-frame" class="w-full h-full border-0 bg-panel" hidden
+<section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
+  <div id="waf-banner" class="hidden h-10 term-bar text-[12.5px] items-center px-4 gap-3 shrink-0 min-w-0">
+    <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
+    <span class="text-faint">·</span>
+    <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
+  </div>
+  <div class="flex-1 min-h-0 relative">
+    <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="console" referrerpolicy="no-referrer"></iframe>
-    <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center
-         text-center gap-2 px-6 text-sm">
+    <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
       <p id="pane-status-title" class="text-heading font-medium"></p>
       <p id="pane-status-note" class="text-muted max-w-md"></p>
     </div>
-  </section>
+  </div>
 
-  <aside id="lesson" class="hidden fixed bg-panel border border-line rounded shadow-lg
-         flex flex-col text-sm">
-    <header id="lesson-header" data-t-title="lesson.note.drag"
-            class="flex items-center gap-3 px-4 py-2 border-b border-line cursor-move select-none">
-      <h2 data-t="lesson.heading" class="text-heading font-medium flex-1"></h2>
-      <button id="lesson-dock" data-t="lesson.note.dock"
-              class="hidden text-xs text-muted hover:text-primary"></button>
-      <button id="lesson-collapse" class="text-xs text-muted hover:text-primary"></button>
+  <button id="note-pill" class="hidden absolute top-2 right-28 z-[36] btn btn-ghost note-shadow">
+    <span class="dot dot-blue"></span><span id="note-pill-text"></span><span class="text-faint">▾</span>
+  </button>
+
+  <aside id="lesson" class="hidden absolute top-2 right-4 bottom-4 w-[360px] max-w-[calc(100%-2rem)] z-[35] bg-panel rounded-xl border border-line note-shadow flex-col">
+    <header class="px-4 pt-3 flex items-center gap-2">
+      <h2 data-t="lesson.note.heading" class="font-bold text-heading"></h2>
+      <span id="lesson-subtitle" class="text-[12px] text-muted truncate"></span>
+      <button id="lesson-collapse" class="ml-auto text-faint text-[12px] hover:text-heading shrink-0"></button>
     </header>
-    <div id="lesson-body" class="w-80 min-h-0 overflow-y-auto p-4 flex flex-col gap-5">
-    <section class="flex flex-col gap-2">
-      <h3 data-t="lesson.theory.heading" class="text-heading font-medium"></h3>
-      <ul id="lesson-theory" class="flex flex-col gap-1"></ul>
-    </section>
-
-    <section class="flex flex-col gap-2 border border-danger-soft rounded p-3">
-      <p id="lesson-coach-count" class="text-muted text-xs"></p>
-      <p id="lesson-coach-text" class="text-heading"></p>
-      <p id="lesson-coach-missing" data-t="lesson.coach.missing" class="text-muted hidden"></p>
-      <div class="flex gap-2">
-        <button id="lesson-coach-back" data-t="lesson.coach.back"
-                class="px-3 py-1 rounded bg-panel border border-line hover:border-primary text-heading"></button>
-        <button id="lesson-coach-next" data-t="lesson.coach.next"
-                class="px-3 py-1 rounded bg-panel border border-line hover:border-primary text-heading"></button>
+    <div id="lesson-tabs" class="px-4 mt-1 flex gap-5 border-b border-line overflow-x-auto">
+      <button class="tab" data-tab="steps" data-t="lesson.tab.steps"></button>
+      <button class="tab" data-tab="goal" data-t="lesson.tab.goal"></button>
+      <button class="tab" data-tab="theory" data-t="lesson.tab.theory"></button>
+      <button class="tab" data-tab="hint" data-t="lesson.tab.hint"></button>
+      <button class="tab" data-tab="check" data-t="lesson.tab.check"></button>
+    </div>
+    <div id="lesson-body" class="flex-1 min-h-0 overflow-y-auto p-4 text-[13px] leading-relaxed">
+      <div data-pane-of="steps" class="flex flex-col gap-3">
+        <div class="rounded-lg border border-primary bg-primary-soft p-3 flex flex-col gap-2">
+          <p id="lesson-coach-count" class="text-[12px] font-semibold text-primary"></p>
+          <p id="lesson-coach-text" class="text-heading"></p>
+          <p id="lesson-coach-missing" data-t="lesson.coach.missing" class="text-muted text-[12px] hidden"></p>
+          <div class="flex gap-2">
+            <button id="lesson-coach-back" data-t="lesson.coach.back" class="btn btn-sm btn-ghost"></button>
+            <button id="lesson-coach-next" data-t="lesson.coach.next" class="btn btn-sm btn-blue"></button>
+            <button id="lesson-coach-show" data-t="lesson.coach.show" class="btn btn-sm btn-ghost hidden"></button>
+          </div>
+        </div>
+        <ol id="lesson-step-list" class="flex flex-col gap-1.5"></ol>
       </div>
-    </section>
 
-    <section class="flex flex-col gap-2">
-      <div class="flex items-baseline gap-2">
-        <p id="lesson-goal" class="text-body flex-1"></p>
-        <button id="lesson-goal-toggle" class="text-xs text-muted hover:text-primary shrink-0"></button>
+      <div data-pane-of="goal" class="hidden flex-col gap-3">
+        <p id="lesson-goal" class="text-heading"></p>
+        <div class="rounded-lg bg-subdued p-3">
+          <div data-t="lesson.goal.done" class="label mb-1"></div>
+          <ul class="list-disc pl-4 space-y-0.5">
+            <li data-t="lesson.goal.done.attacks"></li>
+            <li data-t="lesson.goal.done.benign"></li>
+          </ul>
+        </div>
+        <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
       </div>
-      <ol id="lesson-steps" class="hidden flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
-    </section>
 
-    <section class="flex flex-col gap-2">
-      <div class="flex items-baseline gap-2">
-        <h3 data-t="lesson.hint.heading" class="text-heading font-medium flex-1"></h3>
-        <button id="lesson-hint-toggle" class="text-xs text-muted hover:text-primary shrink-0"></button>
+      <div data-pane-of="theory" class="hidden flex-col gap-2">
+        <ul id="lesson-theory" class="flex flex-col gap-2"></ul>
       </div>
-      <pre id="lesson-hint" class="font-mono text-xs border border-line rounded px-2 py-1"></pre>
-    </section>
 
-    <section class="flex flex-col gap-2">
-      <h3 data-t="lesson.replay.heading" class="text-heading font-medium"></h3>
-      <select id="lesson-case" class="border border-line rounded px-2 py-1 bg-panel"></select>
-      <button id="lesson-replay" data-t="lesson.replay.button"
-              class="self-start px-3 py-1.5 rounded bg-panel border border-line hover:border-primary text-heading"></button>
-      <p id="lesson-replay-status" class="text-muted"></p>
-    </section>
+      <div data-pane-of="hint" class="hidden flex-col gap-3">
+        <p data-t="lesson.hint.intro" class="text-[12px] text-muted"></p>
+        <ul id="lesson-hints" class="flex flex-col gap-2"></ul>
+        <div class="rounded-lg border border-primary-soft bg-primary-soft">
+          <div class="px-3 py-2 flex items-center gap-2">
+            <span data-t="lesson.answer.heading" class="badge badge-blue"></span>
+            <span data-t="lesson.answer.note" class="text-[12px] text-muted"></span>
+            <button id="lesson-answer-toggle" class="ml-auto btn btn-sm btn-ghost"></button>
+          </div>
+          <div id="lesson-answer-box" class="hidden px-3 pb-3 relative">
+            <pre id="lesson-answer" class="code pr-14"></pre>
+            <button id="lesson-answer-copy" data-t="lesson.copy" class="absolute top-2 right-5 btn btn-sm btn-code"></button>
+          </div>
+        </div>
+      </div>
 
-    <section class="flex flex-col gap-2">
-      <h3 data-t="lesson.verify.heading" class="text-heading font-medium"></h3>
-      <button id="lesson-verify" data-t="lesson.verify.button"
-              class="self-start px-3 py-1.5 rounded bg-primary text-inverse"></button>
-      <p id="lesson-verdict" class="font-medium"></p>
-      <ul id="lesson-diagnosis" class="flex flex-col gap-1 list-disc pl-5 text-body"></ul>
-    </section>
+      <div data-pane-of="check" class="hidden flex-col gap-4">
+        <section class="flex flex-col gap-2">
+          <h3 data-t="lesson.replay.heading" class="font-semibold text-heading"></h3>
+          <select id="lesson-case" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px] font-mono"></select>
+          <button id="lesson-replay" data-t="lesson.replay.button" class="self-start btn btn-sm btn-ghost"></button>
+          <p id="lesson-replay-status" class="text-muted text-[12px]"></p>
+        </section>
+        <section class="flex flex-col gap-2 border-t border-line-subdued pt-4">
+          <h3 data-t="lesson.verify.heading" class="font-semibold text-heading"></h3>
+          <p data-t="lesson.verify.intro" class="text-muted"></p>
+          <button id="lesson-verify" data-t="lesson.verify.button" class="btn btn-blue w-full"></button>
+          <div id="lesson-result" class="hidden rounded-lg border">
+            <div id="lesson-verdict" class="px-3 py-2.5 rounded-t-lg flex items-center gap-2 font-semibold"></div>
+            <ul id="lesson-passed" class="px-3 pt-3 space-y-2"></ul>
+            <ul id="lesson-diagnosis" class="p-3 space-y-2"></ul>
+          </div>
+        </section>
+      </div>
     </div>
   </aside>
+</section>
+
+<div id="coach-box" class="hidden fixed rounded-md border-2 border-danger"></div>
+<div id="coach-pop" class="pop hidden">
+  <div id="coach-pop-arrow" class="pop-arrow hidden"></div>
+  <div class="p-4 relative">
+    <div class="flex items-center">
+      <span id="coach-pop-count" class="text-[12px] font-semibold text-primary"></span>
+      <button id="coach-pop-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
+    </div>
+    <div id="coach-pop-title" class="font-bold text-heading mt-1"></div>
+    <div id="coach-pop-text" class="text-body mt-1 leading-relaxed"></div>
+    <div id="coach-pop-command" class="hidden relative mt-2">
+      <pre id="coach-pop-code" class="code pr-14"></pre>
+      <button id="coach-pop-copy" data-t="lesson.copy" class="absolute top-2 right-2 btn btn-sm btn-code"></button>
+    </div>
+    <p id="coach-pop-does" class="hidden mt-2 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></p>
+    <p id="coach-pop-missing" data-t="lesson.coach.missing" class="hidden mt-2 text-[12px] text-muted"></p>
+    <div class="flex items-center mt-3 gap-2">
+      <div id="coach-pop-dots" class="flex gap-1 flex-wrap"></div>
+      <button id="coach-pop-back" data-t="lesson.coach.back" class="ml-auto btn btn-sm btn-ghost"></button>
+      <button id="coach-pop-next" data-t="lesson.coach.next" class="btn btn-sm btn-blue"></button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 {% block script %}
-<style>
-  .pane-tab { text-align: left; padding: 0.55rem 0.75rem; border-radius: 7px;
-    font-size: 0.9rem; color: var(--text-muted); border: 1px solid transparent; }
-  .pane-tab:hover { color: var(--heading); background: var(--subdued); }
-  .pane-tab[aria-selected="true"] { color: var(--primary); background: var(--primary-soft);
-    border-color: var(--primary-line); font-weight: 500; }
-  #lesson-coach-text, [data-card-body] { white-space: pre-line; overflow-wrap: anywhere; }
-  #lesson-hint { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
-</style>
 <script>
-  document.getElementById("to-red").href = `/red/${sessionId()}/`;
-
-  const frame = document.getElementById("pane-frame");
+  const field = (id) => document.getElementById(id);
+  const frame = field("pane-frame");
   const tabs = Array.from(document.querySelectorAll(".pane-tab"));
+  let session = null;
+
+  field("to-red").href = `/red/${sessionId()}/`;
+  crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
+          { label: t("blue.title") }]);
 
   function showFrame(url) {
-    document.getElementById("pane-status").style.display = "none";
+    field("pane-status").style.display = "none";
     frame.src = url;
     frame.style.display = "block";
   }
 
   function openPane(tab) {
-    tabs.forEach((other) =>
-      other.setAttribute("aria-selected", String(other === tab)));
+    tabs.forEach((other) => other.setAttribute("aria-selected", String(other === tab)));
+    const waf = tab.dataset.pane === "waf" && session && session.waf_box;
+    field("waf-banner").classList.toggle("hidden", !waf);
+    field("waf-banner").classList.toggle("flex", Boolean(waf));
     showFrame(tab.dataset.src);
   }
 
@@ -131,9 +186,19 @@
 
   quietKibana();
 
-  const STEPS = ["read", "write", "replay", "verify"];
+  const PARAGRAPHS = ["read", "write", "replay", "verify"];
   const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
-  const field = (id) => document.getElementById(id);
+  const caseLabel = (name) => localized(`case.${name}`, name);
+
+  async function copy(text, button) {
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = t("lesson.copied");
+    } catch (error) {
+      button.textContent = t("lesson.copy_failed");
+    }
+    setTimeout(() => { button.textContent = t("lesson.copy"); }, 1500);
+  }
 
   async function replay() {
     const name = field("lesson-case").value;
@@ -145,29 +210,43 @@
   }
 
   async function verifyLesson() {
+    const box = field("lesson-result");
     const verdict = field("lesson-verdict");
-    const diagnosis = field("lesson-diagnosis");
+    box.classList.remove("hidden", "border-danger-soft", "border-success-soft");
+    verdict.className = "px-3 py-2.5 rounded-t-lg flex items-center gap-2 font-semibold bg-subdued text-muted";
     verdict.textContent = t("lesson.verify.running");
-    diagnosis.innerHTML = "";
+    field("lesson-passed").innerHTML = "";
+    field("lesson-diagnosis").innerHTML = "";
     const checked = await post(lessonPath("verify/"), {}, PATIENCE_FOR_RANGE_WORK);
     if (!checked.ok) {
       verdict.textContent = t("lesson.verify.failed", detail(checked));
       return;
     }
-    verdict.textContent = t(checked.body.passed ? "lesson.verify.pass" : "lesson.verify.fail");
-    verdict.classList.toggle("text-success", checked.body.passed);
-    verdict.classList.toggle("text-danger", !checked.body.passed);
-    diagnosis.innerHTML = (checked.body.diagnosis || []).map(([key, values]) =>
-      `<li>${esc(t(key, ...values))}</li>`).join("");
+    const passed = Boolean(checked.body.passed);
+    const failing = (checked.body.diagnosis || []).filter(([key]) => key !== "lesson.diag.blocked_ratio");
+    box.classList.add(passed ? "border-success-soft" : "border-danger-soft");
+    const tone = passed ? "bg-success-soft text-success" : "bg-danger-soft text-danger";
+    verdict.className = `px-3 py-2.5 rounded-t-lg flex flex-wrap items-center gap-2 font-semibold ${tone}`;
+    verdict.innerHTML = `<span class="badge ${passed ? "badge-pass" : "badge-fail"}">${passed ? "PASS" : "FAIL"}</span>
+      <span>${esc(passed ? t("lesson.verify.pass") : t("lesson.verify.failing", Math.max(1, failing.length)))}</span>
+      <span class="ml-auto text-[12px] text-muted font-normal">${esc(clock(new Date()))}</span>`;
+    field("lesson-passed").innerHTML = (checked.body.cases || [])
+      .filter((row) => row.outcome === "held" || row.outcome === "served")
+      .map((row) => `<li class="flex gap-2 text-success"><span class="font-bold">✓</span><span><b>${
+        esc(caseLabel(row.name))}</b> — ${esc(t(row.outcome === "held" ? "lesson.check.held" : "lesson.check.served"))}</span></li>`)
+      .join("");
+    field("lesson-diagnosis").innerHTML = failing.map(([key, values]) =>
+      `<li class="flex gap-2 rounded-md bg-danger-soft text-danger p-2"><span class="font-bold">✗</span><span>${
+        esc(t(key, ...values))}</span></li>`).join("");
   }
 
   const NOTE_KEY = "fsl-lesson-note";
-  const NOTE_HEIGHT = "26rem";
-  let note = { collapsed: false, left: null, top: null };
+  let note = { open: false, tab: "steps" };
 
   function readNote() {
     try {
-      return JSON.parse(localStorage.getItem(NOTE_KEY)) || {};
+      const kept = JSON.parse(localStorage.getItem(NOTE_KEY)) || {};
+      return { open: kept.open === true, ...(typeof kept.tab === "string" ? { tab: kept.tab } : {}) };
     } catch (error) {
       return {};
     }
@@ -182,14 +261,16 @@
   }
 
   function placeNote() {
-    const moved = typeof note.left === "number" && typeof note.top === "number";
-    field("lesson-body").classList.toggle("hidden", Boolean(note.collapsed));
-    field("lesson-collapse").textContent = t(note.collapsed ? "lesson.note.expand" : "lesson.note.collapse");
-    field("lesson-dock").classList.toggle("hidden", !moved);
-    Object.assign(field("lesson").style, { position: "fixed", zIndex: "50" }, moved
-      ? { left: `${note.left}px`, top: `${note.top}px`, right: "", bottom: "",
-          maxHeight: `min(${NOTE_HEIGHT}, calc(100vh - ${note.top}px - 1rem))` }
-      : { left: "", top: "", right: "1.5rem", bottom: "1.5rem", maxHeight: `min(${NOTE_HEIGHT}, 70vh)` });
+    field("lesson").classList.toggle("hidden", !note.open);
+    field("lesson").classList.toggle("flex", note.open);
+    field("note-pill").classList.toggle("hidden", note.open);
+    document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
+      tab.setAttribute("aria-selected", String(tab.dataset.tab === note.tab)));
+    document.querySelectorAll("[data-pane-of]").forEach((pane) => {
+      const shown = pane.dataset.paneOf === note.tab;
+      pane.classList.toggle("hidden", !shown);
+      pane.classList.toggle("flex", shown);
+    });
   }
 
   function setNote(change) {
@@ -198,66 +279,29 @@
     placeNote();
   }
 
-  function dragNote() {
-    const header = field("lesson-header");
-    let grab = null;
-    header.addEventListener("pointerdown", (event) => {
-      if (event.target && event.target.closest && event.target.closest("button")) return;
-      const box = field("lesson").getBoundingClientRect();
-      grab = { dx: event.clientX - box.left, dy: event.clientY - box.top };
-      frame.style.pointerEvents = "none";
-      if (header.setPointerCapture) header.setPointerCapture(event.pointerId);
-    });
-    header.addEventListener("pointermove", (event) => {
-      if (!grab) return;
-      note = { ...note, left: Math.max(0, event.clientX - grab.dx), top: Math.max(0, event.clientY - grab.dy) };
-      placeNote();
-    });
-    const drop = () => {
-      if (!grab) return;
-      grab = null;
-      frame.style.pointerEvents = "";
-      keepNote();
-    };
-    header.addEventListener("pointerup", drop);
-    header.addEventListener("pointercancel", drop);
-  }
-
   function noteControls() {
     note = { ...note, ...readNote() };
-    field("lesson-collapse").addEventListener("click", () => setNote({ collapsed: !note.collapsed }));
-    field("lesson-dock").addEventListener("click", () => setNote({ left: null, top: null }));
-    dragNote();
+    field("lesson-collapse").textContent = t("lesson.note.collapse");
+    field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
+    field("note-pill").addEventListener("click", () => setNote({ open: true }));
+    document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
+      tab.addEventListener("click", () => setNote({ tab: tab.dataset.tab })));
     placeNote();
   }
 
   const DASHBOARDS = '[data-test-subj="collapsibleNavGroup-kibana"] a[href*="/app/dashboards"]';
-  const COACH = [
-    { id: "alerts", kibana: '[data-test-subj="discoverDocTable"]' },
-    { id: "expand", kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
-    { id: "rule", kibana: '[data-test-subj="field-rule"]' },
-    { id: "dashboard", kibana: DASHBOARDS, first: '[data-test-subj="toggleNavButton"]' },
-    { id: "waf", panel: '.pane-tab[data-pane="waf"]' },
-    { id: "audit", pane: true },
-    { id: "view", pane: true },
-    { id: "edit", pane: true },
-    { id: "test", pane: true },
-    { id: "reload", pane: true },
-    { id: "replay", panel: "#lesson-replay" },
-    { id: "verify", panel: "#lesson-verify" },
-  ];
+  const TARGETS = {
+    alerts: { kibana: '[data-test-subj="discoverDocTable"]' },
+    expand: { kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
+    rule: { kibana: '[data-test-subj="field-rule"]' },
+    dashboard: { kibana: DASHBOARDS, first: '[data-test-subj="toggleNavButton"]' },
+    waf: { panel: '.pane-tab[data-pane="waf"]' },
+    replay: { panel: "#lesson-replay", tab: "check" },
+    verify: { panel: "#lesson-verify", tab: "check" },
+  };
   const MISSING_AFTER_FRAMES = 120;
-  const LABEL_HEIGHT = 30;
-
-  function overlayPart(id) {
-    const part = document.createElement("div");
-    part.id = id;
-    Object.assign(part.style, {
-      position: "fixed", pointerEvents: "none", zIndex: "9999", display: "none",
-    });
-    document.body.append(part);
-    return part;
-  }
+  const GAP = 14;
+  const EDGE = 12;
 
   function locate(step) {
     if (step.pane) {
@@ -277,7 +321,7 @@
       const element = doc && selector ? doc.querySelector(selector) : null;
       const rect = element ? element.getBoundingClientRect() : null;
       if (!rect || !rect.width) return null;
-      if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, main: element };
+      if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
       const pane = frame.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= pane.height || rect.right <= 0 || rect.left >= pane.width) return null;
       return { left: pane.left + rect.left, top: pane.top + rect.top, width: rect.width, height: rect.height };
@@ -285,83 +329,130 @@
     return shown(step.panel || step.kibana) || shown(step.first);
   }
 
-  function coach(prefix) {
-    const box = overlayPart("coach-box");
-    const tag = overlayPart("coach-tag");
-    Object.assign(box.style, { border: "3px solid var(--danger)", borderRadius: "6px" });
-    Object.assign(tag.style, {
-      background: "var(--danger)", color: "var(--text-inverse)", padding: "3px 4px 3px 8px",
-      borderRadius: "4px", fontSize: "13px", maxWidth: "26rem", alignItems: "center", gap: "6px",
-      pointerEvents: "auto",
-    });
-    const tagText = document.createElement("span");
-    tagText.id = "coach-tag-text";
-    Object.assign(tagText.style, {
-      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0",
-    });
-    const tagButton = (id, key) => {
-      const button = document.createElement("button");
-      button.id = id;
-      button.textContent = t(key);
-      Object.assign(button.style, {
-        background: "var(--text-inverse)", color: "var(--danger)", borderRadius: "3px",
-        padding: "0 6px", fontSize: "12px", flexShrink: "0",
+  function placePopover(step, rect) {
+    const pop = field("coach-pop");
+    const arrow = field("coach-pop-arrow");
+    const width = pop.offsetWidth || 340;
+    const height = pop.offsetHeight || 200;
+    const viewWidth = window.innerWidth || 1440;
+    const viewHeight = window.innerHeight || 900;
+    let left;
+    let top;
+    arrow.classList.toggle("hidden", Boolean(!rect || step.pane));
+    if (rect && step.pane) {
+      const aside = field("lesson");
+      const noteBox = note.open && aside.getBoundingClientRect ? aside.getBoundingClientRect() : null;
+      const room = noteBox && noteBox.width ? noteBox.width + 16 : 0;
+      left = rect.left + rect.width - width - 16 - room;
+      top = rect.top + rect.height - height - 16;
+    } else if (rect) {
+      const below = rect.top + rect.height + GAP + height <= viewHeight;
+      left = Math.max(EDGE, Math.min(rect.left + rect.width / 2 - width / 2, viewWidth - width - EDGE));
+      top = below ? rect.top + rect.height + GAP : rect.top - GAP - height;
+      Object.assign(arrow.style, {
+        left: `${Math.max(12, Math.min(rect.left + rect.width / 2 - left - 6, width - 24))}px`,
+        top: below ? "-6px" : "", bottom: below ? "" : "-6px",
       });
-      return button;
-    };
-    const tagBack = tagButton("coach-tag-back", "lesson.coach.back");
-    const tagNext = tagButton("coach-tag-next", "lesson.coach.next");
-    tag.append(tagText, tagBack, tagNext);
-    let at = 0;
+    } else {
+      const pane = frame.getBoundingClientRect();
+      left = (pane.left || 0) + Math.max(EDGE, ((pane.width || viewWidth) - width) / 2);
+      top = (pane.top || 0) + 64;
+    }
+    Object.assign(pop.style, { left: `${Math.max(EDGE, left)}px`, top: `${Math.max(EDGE, top)}px` });
+  }
+
+  function coach(prefix, declared) {
+    const steps = declared.map((step) => ({ ...step, ...(TARGETS[step.id] || { pane: true }) }));
+    const box = field("coach-box");
+    const pop = field("coach-pop");
+    Object.assign(box.style, { pointerEvents: "none" });
+    pop.style.zIndex = "10000";
+    let at = Math.min(steps.length, lessonStep(sessionId())) - 1;
     let last = "";
     let lost = 0;
+    let dismissed = false;
+
+    function stepList() {
+      field("lesson-step-list").innerHTML = steps.map((step, index) => {
+        const done = index < at;
+        const current = index === at;
+        const mark = done ? "✓" : String(index + 1);
+        const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : "badge-muted";
+        const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
+        return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
+          <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
+          <span class="${words}">${
+            esc(t(`${prefix}.label.${step.id}`))}</span></button></li>`;
+      }).join("");
+      field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
+        button.addEventListener("click", () => go(Number(button.dataset.step))));
+    }
 
     function show() {
-      const step = COACH[at];
-      if (step.panel && note.collapsed) setNote({ collapsed: false });
-      field("lesson-coach-count").textContent = t("lesson.coach.count", at + 1, COACH.length);
+      const step = steps[at];
+      if (step.tab) setNote({ open: true, tab: step.tab });
+      keepLessonStep(sessionId(), at + 1);
+      const count = t("lesson.coach.count", at + 1, steps.length);
+      field("lesson-coach-count").textContent = count;
       field("lesson-coach-text").textContent = t(`${prefix}.coach.${step.id}`);
-      tag.dataset.label = t(`${prefix}.label.${step.id}`);
-      field("lesson-coach-back").disabled = tagBack.disabled = at === 0;
-      field("lesson-coach-next").disabled = tagNext.disabled = at === COACH.length - 1;
+      field("note-pill-text").textContent = t("lesson.note.pill", at + 1, steps.length);
+      field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
+      field("coach-pop-count").textContent = `${at + 1} / ${steps.length}`;
+      field("coach-pop-title").textContent = t(`${prefix}.label.${step.id}`);
+      field("coach-pop-text").textContent = t(`${prefix}.coach.${step.id}`);
+      field("coach-pop-code").textContent = step.command || "";
+      field("coach-pop-command").classList.toggle("hidden", !step.command);
+      field("coach-pop-does").textContent = step.command ? t(`${prefix}.does.${step.id}`) : "";
+      field("coach-pop-does").classList.toggle("hidden", !step.command);
+      pop.classList.toggle("pop-wide", Boolean(step.command));
+      const reached = (index) => (index <= at ? "dot-blue" : "dot-muted");
+      field("coach-pop-dots").innerHTML = steps.map((_, index) =>
+        `<span class="dot ${reached(index)}"></span>`).join("");
+      field("lesson-coach-back").disabled = field("coach-pop-back").disabled = at === 0;
+      field("lesson-coach-next").disabled = field("coach-pop-next").disabled = at === steps.length - 1;
+      field("lesson-coach-show").classList.toggle("hidden", !dismissed);
+      stepList();
       last = "";
       lost = 0;
     }
 
     function tick() {
       listenToKibana();
-      const step = COACH[at];
-      const rect = locate(step);
-      lost = rect ? 0 : lost + 1;
-      field("lesson-coach-missing").classList.toggle("hidden", lost < MISSING_AFTER_FRAMES);
-      const key = rect ? [rect.left, rect.top, rect.width, rect.height, at].join() : "none";
+      const step = steps[at];
+      const rect = dismissed ? null : locate(step);
+      lost = rect || dismissed ? 0 : lost + 1;
+      const missing = lost >= MISSING_AFTER_FRAMES;
+      field("lesson-coach-missing").classList.toggle("hidden", !missing);
+      field("coach-pop-missing").classList.toggle("hidden", !missing);
+      const key = dismissed ? "dismissed"
+        : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open].join() : `none-${at}-${missing}`;
       if (key !== last) {
         last = key;
-        box.style.display = rect ? "" : "none";
-        tag.style.display = rect ? "flex" : "none";
+        box.classList.toggle("hidden", !rect);
+        pop.classList.toggle("hidden", dismissed);
+        box.classList.toggle("scrim", Boolean(rect && !step.pane));
         box.style.zIndex = step.panel ? "9999" : "40";
-        tag.style.zIndex = "9999";
         if (rect) {
           Object.assign(box.style, {
             left: `${rect.left - 4}px`, top: `${rect.top - 4}px`,
             width: `${rect.width + 8}px`, height: `${rect.height + 8}px`,
           });
-          const above = rect.top >= LABEL_HEIGHT + 8;
-          tagText.textContent = `${above ? "↓" : "↑"} ${tag.dataset.label}`;
-          Object.assign(tag.style, {
-            left: `${rect.left - 4}px`,
-            top: `${above ? rect.top - LABEL_HEIGHT - 8 : rect.top + rect.height + 8}px`,
-          });
         }
+        if (!dismissed) placePopover(step, rect);
       }
       requestAnimationFrame(tick);
     }
 
+    function go(index) {
+      at = Math.max(0, Math.min(steps.length - 1, index));
+      dismissed = false;
+      show();
+    }
+
     function advanceFrom(step) {
       setTimeout(() => {
-        if (COACH[at] !== step || at === COACH.length - 1) return;
-        at += 1;
-        show();
+        if (steps[at] !== step || at === steps.length - 1) return;
+        go(at + 1);
       }, 0);
     }
 
@@ -377,40 +468,32 @@
       if (!doc || doc === heard) return;
       heard = doc;
       doc.addEventListener("click", (event) => {
-        const step = COACH[at];
+        const step = steps[at];
         const target = step.kibana ? doc.querySelector(step.kibana) : null;
         if (target && (target === event.target || target.contains(event.target))) advanceFrom(step);
       }, true);
     }
 
-    COACH.filter((step) => step.panel).forEach((step) => {
+    steps.filter((step) => step.panel).forEach((step) => {
       document.querySelector(step.panel).addEventListener("click", () => {
-        if (COACH[at] === step) advanceFrom(step);
+        if (steps[at] === step) advanceFrom(step);
       });
     });
 
-    const back = () => { at = Math.max(0, at - 1); show(); };
-    const next = () => { at = Math.min(COACH.length - 1, at + 1); show(); };
-    [field("lesson-coach-back"), tagBack].forEach((button) => button.addEventListener("click", back));
-    [field("lesson-coach-next"), tagNext].forEach((button) => button.addEventListener("click", next));
+    [field("lesson-coach-back"), field("coach-pop-back")].forEach((button) =>
+      button.addEventListener("click", () => go(at - 1)));
+    [field("lesson-coach-next"), field("coach-pop-next")].forEach((button) =>
+      button.addEventListener("click", () => go(at + 1)));
+    field("coach-pop-close").addEventListener("click", () => {
+      dismissed = true;
+      show();
+    });
+    field("lesson-coach-show").addEventListener("click", () => go(at));
+    field("coach-pop-copy").addEventListener("click", () =>
+      copy(steps[at].command || "", field("coach-pop-copy")));
     show();
     requestAnimationFrame(tick);
-    return (id) => {
-      at = COACH.findIndex((step) => step.id === id);
-      show();
-    };
-  }
-
-  function hint(prefix) {
-    let shown = true;
-    const toggle = field("lesson-hint-toggle");
-    field("lesson-hint").textContent = t(`${prefix}.hint`);
-    const place = () => {
-      field("lesson-hint").classList.toggle("hidden", !shown);
-      toggle.textContent = t(shown ? "lesson.hint.hide" : "lesson.hint.show");
-    };
-    toggle.addEventListener("click", () => { shown = !shown; place(); });
-    place();
+    return (id) => go(steps.findIndex((step) => step.id === id));
   }
 
   const THEORY = [
@@ -420,55 +503,80 @@
     { id: "fixes" },
     { id: "anatomy", shows: "edit" },
   ];
+  const HINTS = ["why_rule", "why_target", "why_file"];
 
-  function theory(prefix, coachTo) {
-    const list = field("lesson-theory");
-    list.innerHTML = THEORY.map((card) => `
-      <li class="border border-line rounded">
-        <button class="w-full text-left px-2 py-1 text-heading" data-card="${card.id}"
-                aria-expanded="false">${esc(t(`${prefix}.theory.${card.id}.title`))}</button>
-        <div class="hidden px-2 pb-2 flex flex-col gap-2 text-body" data-card-body="${card.id}">
-          <p>${esc(t(`${prefix}.theory.${card.id}.body`))}</p>
-          ${card.shows ? `<button class="self-start text-xs text-primary hover:underline"
-                  data-shows="${card.shows}">${esc(t("lesson.theory.show"))}</button>` : ""}
+  function folded(list, prefix, kind, ids, extra) {
+    list.innerHTML = ids.map((card) => `
+      <li class="rounded-lg border border-line">
+        <button class="w-full text-left px-3 py-2 text-heading font-semibold flex items-center gap-2" data-card="${card.id}"
+                aria-expanded="false"><span class="flex-1">${esc(t(`${prefix}.${kind}.${card.id}.title`))}</span><span class="text-faint text-[12px]">${esc(t("lesson.open"))}</span></button>
+        <div class="hidden px-3 pb-3 flex-col gap-2 text-body" data-card-body="${card.id}">
+          <p class="whitespace-pre-line">${esc(t(`${prefix}.${kind}.${card.id}.body`))}</p>
+          ${extra(card)}
         </div>
       </li>`).join("");
     list.querySelectorAll("[data-card]").forEach((toggle) => toggle.addEventListener("click", () => {
       const body = list.querySelector(`[data-card-body="${toggle.dataset.card}"]`);
       const opened = body.classList.toggle("hidden") === false;
+      body.classList.toggle("flex", opened);
       toggle.setAttribute("aria-expanded", String(opened));
     }));
-    list.querySelectorAll("[data-shows]").forEach((show) =>
+  }
+
+  function theory(prefix, coachTo) {
+    folded(field("lesson-theory"), prefix, "theory", THEORY, (card) => card.shows
+      ? `<button class="self-start text-[12px] text-primary hover:underline" data-shows="${card.shows}">${esc(t("lesson.theory.show"))}</button>` : "");
+    field("lesson-theory").querySelectorAll("[data-shows]").forEach((show) =>
       show.addEventListener("click", () => coachTo(show.dataset.shows)));
+  }
+
+  function hints(prefix, steps) {
+    folded(field("lesson-hints"), prefix, "hint", HINTS.map((id) => ({ id })), () => "");
+    const answer = steps.filter((step) => step.command).map((step) => step.command).join("\n");
+    field("lesson-answer").textContent = answer;
+    let shown = false;
+    const toggle = field("lesson-answer-toggle");
+    const place = () => {
+      field("lesson-answer-box").classList.toggle("hidden", !shown);
+      toggle.textContent = t(shown ? "lesson.hint.hide" : "lesson.hint.show");
+    };
+    toggle.addEventListener("click", () => { shown = !shown; place(); });
+    field("lesson-answer-copy").addEventListener("click", () => copy(answer, field("lesson-answer-copy")));
+    place();
   }
 
   field("lesson-replay").addEventListener("click", replay);
   field("lesson-verify").addEventListener("click", verifyLesson);
 
   (async () => {
-    const session = await api(lessonPath(""));
+    const read = await api(lessonPath(""));
+    session = read.ok ? read.body : null;
     const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
-    if (session.ok && session.body.discover) kibana.dataset.src = session.body.discover;
-    if (session.ok && session.body.waf_terminal) {
-      document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.body.waf_terminal;
+    if (session && session.discover) kibana.dataset.src = session.discover;
+    if (session && session.waf_terminal) {
+      document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.waf_terminal;
+    }
+    if (session && session.waf_box) {
+      field("waf-box").textContent = session.waf_box;
+      field("waf-rules").textContent = `${session.waf_rules}/`;
+    }
+    if (session && session.lesson) {
+      crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
+              { label: t("blue.title"), href: `/blue/${sessionId()}/` }, { label: t("crumb.lesson") }]);
     }
     openPane(kibana);
-    if (!session.ok || !session.body.lesson) return;
-    const taught = session.body.lesson;
+    if (!session || !session.lesson) return;
+    const taught = session.lesson;
+    const declared = Array.isArray(taught.steps) ? taught.steps : [];
     field("lesson-goal").textContent = t(`${taught.text}.summary`);
-    field("lesson-goal-toggle").textContent = t("lesson.goal.more");
-    field("lesson-goal-toggle").addEventListener("click", () => {
-      const opened = field("lesson-steps").classList.toggle("hidden") === false;
-      field("lesson-goal-toggle").textContent = t(opened ? "lesson.goal.less" : "lesson.goal.more");
-    });
-    field("lesson-steps").innerHTML = STEPS.map((step) =>
+    field("lesson-steps").innerHTML = PARAGRAPHS.map((step) =>
       `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
     field("lesson-case").innerHTML = taught.cases.map((name) =>
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
-    field("lesson").classList.remove("hidden");
     noteControls();
-    theory(taught.text, coach(taught.text));
-    hint(taught.text);
+    hints(taught.text, declared);
+    if (declared.length) theory(taught.text, coach(taught.text, declared));
+    else theory(taught.text, () => {});
   })();
 </script>
 {% endblock %}

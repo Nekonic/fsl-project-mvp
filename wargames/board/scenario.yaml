@@ -7,6 +7,9 @@ image: fsl/board:mvp
 public_url: http://board.com
 objective_model: loot_verified
 case_file: board.yaml
+category: sql-injection
+difficulty: medium
+minutes: 40
 defense:
   minimal:
     waf: {paranoia: 4}
@@ -23,3 +26,26 @@ lesson:
     - board-normal-search-with-apostrophe
     - board-normal-post-list
     - board-normal-sort
+  steps:
+    - id: alerts
+    - id: expand
+    - id: rule
+    - id: dashboard
+    - id: waf
+    - id: audit
+      command: >-
+        grep Brien /var/log/modsecurity/audit/audit.log | tail -n 1 |
+        grep -oE '"(ruleId|data|message)":"[^"]*"'
+    - id: view
+      command: |-
+        cd /etc/modsecurity.d/owasp-crs/rules
+        cat REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+    - id: edit
+      command: |-
+        cat >> REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf <<'EOF'
+        SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"
+        EOF
+    - id: apply
+      command: nginx -t && nginx -s reload
+    - id: replay
+    - id: verify

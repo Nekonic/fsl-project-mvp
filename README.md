@@ -319,12 +319,15 @@ Korean.
   to that name.
 - **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
   "FSL alerts" columns and query narrowed to the session, and a WAF terminal. The
-  scoreboard appears on the session page when the session closes.
+  result appears on the session page when the session closes: objectives lost
+  first, then in plain sentences how many attacks were caught and benign
+  requests passed.
 
 A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
 lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
-also the benign O'Brien search, and the blue console shows the lesson as a
-note floating over Kibana, which can be dragged and folded. In the session's
+also the benign O'Brien search, and the blue console guides the lesson with a
+popover on each step (the exact command on a terminal step) and a note folded
+to a pill over Kibana. In the session's
 WAF terminal the learner adds a rule exclusion to
 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf` (or lowers the paranoia level
 there), runs `nginx -t` and `nginx -s reload`, and presses Verify

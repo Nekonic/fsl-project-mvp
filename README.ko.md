@@ -203,9 +203,9 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
 
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
-- **블루**는 도구를 프레임으로 띄운 사이드바다: "FSL alerts"의 열과 쿼리를 세션으로 좁혀 Discover로 열리는 Kibana와 WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
+- **블루**는 도구를 프레임으로 띄운 사이드바다: "FSL alerts"의 열과 쿼리를 세션으로 좁혀 Discover로 열리는 Kibana와 WAF 터미널. 세션이 닫히면 세션 페이지에 결과가 나타난다: 빼앗긴 목표가 먼저, 그다음 공격을 몇 건 잡았고 정상 요청이 몇 건 통과했는지를 평범한 문장으로.
 
-`{"guidance": true, "defense": "minimal"}`로 연 세션이 WAF 실습이다. board의 WAF는 CRS Paranoia Level 4에서 시작해 sqlmap과 함께 정상 요청인 O'Brien 검색도 차단하고, 블루 콘솔은 lesson을 Kibana 위에 떠 있는 메모로 보여 주며, 끌어 옮기거나 접을 수 있다. 학습자는 세션의 WAF 터미널에서 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`에 rule exclusion을 추가하거나(또는 거기서 Paranoia Level을 낮추고) `nginx -t`와 `nginx -s reload`를 실행한 뒤 검증을 누른다(`POST /api/sessions/<id>/verify/`). 어떤 sqlmap 변형도 board 계정과 일치하는 해시를 덤프하지 못하고 모든 정상 케이스가 응답받을 때만 통과한다. 에이전트는 `PUT /api/sessions/<id>/waf/`로 튜닝하고, `GET`은 WAF 파일에 실제로 있는 내용을 알려 준다. 기본값 `{"defense": "full"}`은 Paranoia Level 1에서 시작한다.
+`{"guidance": true, "defense": "minimal"}`로 연 세션이 WAF 실습이다. board의 WAF는 CRS Paranoia Level 4에서 시작해 sqlmap과 함께 정상 요청인 O'Brien 검색도 차단하고, 블루 콘솔은 단계마다 popover로 안내하고(터미널 단계에서는 입력할 명령을 그대로 보여 준다), 레슨 노트는 Kibana 위에 알약 모양으로 접혀 있다. 학습자는 세션의 WAF 터미널에서 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`에 rule exclusion을 추가하거나(또는 거기서 Paranoia Level을 낮추고) `nginx -t`와 `nginx -s reload`를 실행한 뒤 검증을 누른다(`POST /api/sessions/<id>/verify/`). 어떤 sqlmap 변형도 board 계정과 일치하는 해시를 덤프하지 못하고 모든 정상 케이스가 응답받을 때만 통과한다. 에이전트는 `PUT /api/sessions/<id>/waf/`로 튜닝하고, `GET`은 WAF 파일에 실제로 있는 내용을 알려 준다. 기본값 `{"defense": "full"}`은 Paranoia Level 1에서 시작한다.
 
 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로 하니스는 레인지 안, 플랫폼에서 실행한다.
 

@@ -13,6 +13,7 @@ class Session(models.Model):
     guidance = models.BooleanField(default=False)
     defense = models.CharField(max_length=32, default="full")
     waf = models.JSONField(null=True, blank=True, default=None)
+    ready_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-started_at"]

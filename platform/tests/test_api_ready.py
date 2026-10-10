@@ -28,7 +28,7 @@ def test_the_compose_range_is_always_ready(client):
     answer = client.get(URL)
 
     assert answer.status_code == 200
-    assert answer.json() == {"ready": True, "substrate": "compose", "slot": None}
+    assert answer.json() == {"ready": True, "substrate": "compose", "slot": None, "max_sessions": 2}
 
 def test_reading_readiness_is_only_a_get(client):
     assert client.post_json(URL).status_code == 405

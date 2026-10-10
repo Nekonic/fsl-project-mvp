@@ -20,6 +20,7 @@ class InvalidCatalogue(ValueError):
 
 SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_model", "case_file")
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
+DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 
@@ -43,9 +44,21 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
     return {
         "id": wargame_id,
         **{field: loaded[field] for field in SCENARIO_FIELDS},
+        **checked_card(loaded, source),
         **({"lesson": loaded["lesson"]} if "lesson" in loaded else {}),
         **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
     }
+
+def checked_card(loaded: dict, source) -> dict[str, Any]:
+    card = {field: loaded[field] for field in ("category", "difficulty", "minutes") if field in loaded}
+    if "category" in card and not (isinstance(card["category"], str) and card["category"].strip()):
+        raise InvalidCatalogue(f"{source}: category must be a non-empty name")
+    if "difficulty" in card and card["difficulty"] not in DIFFICULTIES:
+        raise InvalidCatalogue(f"{source}: difficulty must be one of {', '.join(DIFFICULTIES)}")
+    minutes = card.get("minutes", 1)
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+        raise InvalidCatalogue(f"{source}: minutes must be a whole number above zero")
+    return card
 
 def checked_defense(declared: Any, source) -> dict[str, Any]:
     if not isinstance(declared, dict):
@@ -76,6 +89,12 @@ def checked_lesson(lesson: Any, known: set[str], source) -> None:
     unknown = sorted(str(name) for name in cases if name not in known)
     if unknown:
         raise InvalidCatalogue(f"{source}: lesson cases {', '.join(unknown)} are not in the case file")
+    steps = lesson.get("steps", [])
+    if not isinstance(steps, list) or not all(
+        isinstance(step, dict) and isinstance(step.get("id"), str)
+        and isinstance(step.get("command", ""), str) for step in steps
+    ):
+        raise InvalidCatalogue(f"{source}: lesson steps are a list of an id and an optional command")
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.FSL_SOURCE) / "wargames"
@@ -204,6 +223,7 @@ def checked(loaded: Any, source) -> list[dict[str, Any]]:
 def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
     loaded = _load(wargame["id"])
     reached = {case.get("stage") for case in loaded}
+    attacks = sum(1 for case in loaded if case["malicious"])
     return {
         "id": wargame["id"],
         "name": wargame["name"],
@@ -213,6 +233,14 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "lesson": bool(wargame.get("lesson")),
         "model": wargame["objective_model"],
         "cases": len(loaded),
+        "attacks": attacks,
+        "benign": len(loaded) - attacks,
+        "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
+        "lesson_steps": len((wargame.get("lesson") or {}).get("steps") or []),
+        "lesson_text": (wargame.get("lesson") or {}).get("text") or "",
+        "category": wargame.get("category") or "",
+        "difficulty": wargame.get("difficulty") or "",
+        "minutes": wargame.get("minutes"),
         "covers": [stage for stage in lifecycle.STAGES if stage in reached],
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],
     }

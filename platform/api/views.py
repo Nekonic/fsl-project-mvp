@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import replace
 from datetime import timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
@@ -159,7 +159,7 @@ def sessions(request):
         elif state == "closed":
             found = found.exclude(ended_at=None)
 
-        return _reply([_shape(s, SESSION_FIELDS) for s in found[:limit]])
+        return _reply([_described(s, judged=s.ended_at is not None) for s in found[:limit]])
 
     body = _payload(request)
     scenario = body.get("scenario")
@@ -203,13 +203,42 @@ def sessions(request):
         session.save(update_fields=["baseline", "waf"])
         if guidance and hasattr(adapter, "for_session"):
             _seed_logs(session)
+        session.ready_at = timezone.now()
+        session.save(update_fields=["ready_at"])
     except (harness.ToolUnavailable, loot.GroundTruthUnavailable) as exc:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         return _reply({"detail": str(exc)}, status=503)
     except Exception:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
-    return _reply(_shape(session, SESSION_FIELDS), status=201)
+    return _reply(_described(session), status=201)
+
+def _described(session, judged=False):
+    return _shape(session, SESSION_FIELDS) | {
+        "kind": "lesson" if session.guidance else "wargame",
+        "ready": session.ready_at is not None,
+        **({"result": _result(session)} if judged else {}),
+    }
+
+def _result(session):
+    cases, _, result, _ = _evidence(session)
+    breaches = _breaches(session, cases, result)
+    runs = list(dict.fromkeys(
+        case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")
+    ))
+    return {
+        "objectives": {
+            "lost": len(breaches),
+            "undetected": sum(1 for breach in breaches if not breach.detected),
+            "total": len(wargames.objectives(session.scenario)["tiers"])
+            if wargames.judged(session.scenario) else 0,
+        },
+        "lesson": _last_verdict(session, runs[-1], len(runs)) if runs else None,
+    }
+
+def _last_verdict(session, run, verified):
+    judged = _verified(session, run)
+    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"]}
 
 def _settings(scenario, body):
     guidance = body.get("guidance", False)
@@ -805,8 +834,9 @@ def _take_turn(session):
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     taught = wargames.lesson(session.scenario) if session.guidance else None
-    return _reply(_shape(session, SESSION_FIELDS) | {
+    return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
+        "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(crs.EXCLUSIONS).parent),
     })
 
 def _waf_terminal_url(session):
@@ -1054,19 +1084,7 @@ def session_score(request, session_id):
             f"{', '.join(CORRELATION_STRATEGIES)}."
         )
 
-    replayed = {
-        case.case_id for case in session.cases.all()
-        if case.meta.get("seed") or case.meta.get("verify")
-    }
-    cases = [case for case in session.cases.all() if case.case_id not in replayed]
-    detections = [d for d in session.detections.all() if d.marker not in replayed]
-    signatures = {d.detection_id: d.signature for d in detections}
-
-    records = [c.to_record() for c in cases]
-    if forced:
-        records = [replace(record, correlation=forced) for record in records]
-
-    result = correlate(records, [d.to_record() for d in detections])
+    cases, detections, result, signatures = _evidence(session, forced)
     totals = compute_score(result)
     per_case = _per_case(result, _expected(session.scenario, cases), signatures)
     breaches = _breaches(session, cases, result)
@@ -1090,6 +1108,19 @@ def session_score(request, session_id):
             "game": _game(session, cases, detections, result, breaches, totals),
         }
     )
+
+def _evidence(session, forced=None):
+    replayed = {
+        case.case_id for case in session.cases.all()
+        if case.meta.get("seed") or case.meta.get("verify")
+    }
+    cases = [case for case in session.cases.all() if case.case_id not in replayed]
+    detections = [d for d in session.detections.all() if d.marker not in replayed]
+    records = [c.to_record() for c in cases]
+    if forced:
+        records = [replace(record, correlation=forced) for record in records]
+    result = correlate(records, [d.to_record() for d in detections])
+    return cases, detections, result, {d.detection_id: d.signature for d in detections}
 
 def _game(session, cases, detections, result, breaches, totals):
     if session.ended_at is None:
@@ -1517,8 +1548,9 @@ def _range_ready(adapter) -> dict:
 def range_ready(request):
     adapter = substrate()
     if not hasattr(adapter, "plan_slot"):
-        return _reply({"ready": True, "substrate": "compose", "slot": None})
-    return _reply(_range_ready(adapter))
+        return _reply({"ready": True, "substrate": "compose", "slot": None,
+                       "max_sessions": getattr(adapter, "max_sessions", 1)})
+    return _reply(_range_ready(adapter) | {"max_sessions": getattr(adapter, "max_sessions", 1)})
 
 CANARY_CASE = {
     "name": "range-canary",

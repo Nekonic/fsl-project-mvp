@@ -40,6 +40,7 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 `corp`(WordPress와 MySQL, `effect_observed`). 플랫폼은 각 wargame을
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
+콘솔의 시나리오 카드에 쓰는 `category`, `difficulty`(easy, medium, hard), `minutes`, 그리고
 `defense`와 `lesson`이며 뒤의 "WAF 실습"에 설명한다). `image`는 아직 아무 코드도 읽지
 않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
 session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 wargame에는 폴더 안의
@@ -398,37 +399,64 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
 남는다. board의 lesson은
 `board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
 재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
-`board-normal-sort`(`?sort=-created_at`)가 있다. guidance 세션에서 블루 콘솔은 lesson을
-전체 폭 창 위에 떠 있는 메모로 보여 준다(fixed, 기본 위치 오른쪽 아래, 너비 20rem, 높이 최대
-26rem이며 안에서 스크롤). 현재 안내 단계를 맨 위에 두고, 목표는 한 줄로 보이며 "자세히"로 네
-문단을 펼친다. 머리글을 끌어 어디로든 옮기고 머리글만 남게 접을 수 있으며 "원래 자리로"가 되돌린다.
-접힘과 위치는 보는 사람마다 localStorage(`fsl-lesson-note`)에 남는다. 열을 따로 잡거나
-레이아웃이 다시 흐르지 않는다. 메모 안 컨트롤을 가리키는 코치 단계는 메모를 펼친다.
+`board-normal-sort`(`?sort=-created_at`)가 있다.
 
-안내 위에는 접힌 이론 카드 다섯 장(`blue.html`의 `THEORY`, 문구는
-`<lesson.text>.theory.<card>.title|body`)이 실습 전에 튜닝을 가르친다: Paranoia Level, Anomaly
-Scoring(403에 949110과 920273이 함께 찍히는 이유), false positive를 일으킨 룰 찾기, PL 낮추기와
-rule exclusion의 차이, `ctl:ruleRemoveTargetById` rule exclusion 한 줄을 읽는 법. 화면의 무언가를
-가리키는 카드에는 "위치 보기"가 있어 안내를 그 단계(403 행, `rule` 필드, 파일을 고치는 단계)로 옮긴다. 출처는
-`docs/DECISIONS.md`(2026-10-10, 이론 카드)에 있다.
+콘솔은 화면 다섯 개이고, 모두 `/api/`에서 데이터를 가져온다(사용자가 승인한 정적 시안에 사용자 결정
+두 가지를 더했다. `docs/DECISIONS.md` 2026-10-11 콘솔 재설계). 색과 컴포넌트 클래스는
+`base.html`과 `platform/console/components.css`에 있고, `bin/build-css`가 `tailwind.css`에
+넣는다. 머리글에는 경로 표시, 레인지 상태, 언어 전환이 있다.
 
-메모에는 튜닝 입력란이 없다. 힌트가 WAF 창에서 쓸 명령 전체(audit log 읽기, 파일 보기, WAF 이미지에
-편집기가 없어 heredoc으로 rule exclusion 덧붙이기, `nginx -t`, `nginx -s reload`)를 먼저 보여 주고,
-토글로 숨길 수 있다.
+- 메인(`/`): 진행 중인 세션과 그 종류(`lesson`/`wargame`), 레슨이 도달한 단계, 열기가 끝났는지
+  (`ready`, `Session.ready_at`에서. 그 전까지 "준비 중 n초 / 약 80초"). 시나리오 카드는
+  `scenario.yaml`의 category, difficulty, minutes와 `GET /api/wargames/`의 공격 케이스·정상
+  케이스·목표·레슨 단계 수를 보여 준다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
+  아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면
+  "열린 세션 닫기"가 열린 세션을 나열해 각각 `ingest/` 뒤 `close/`로 닫는다.
+  `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
+- 세션(`/session/<id>/`): 머리글 수치(레슨 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔 카드,
+  `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 레슨 판정과 마지막 진단, 그다음 주 점수
+  (모든 목표의 빼앗김 여부, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음 방어 판단을 평범한 문장으로
+  보여 준다: "공격 8건 중 7건을 잡았습니다 · 1건을 놓쳤습니다 (이름)", "정상 요청 4건 중 3건은 통과 ·
+  1건을 잘못 막았습니다 (O'Brien 검색)", 그리고 케이스 하나는 경보가 많아도 한 번으로 센다는 것.
+  TP/FP/FN/TN과 게임 balance는 API에 남고, 사람이 읽는 문구에는 나오지 않는다(`test_strings.py`).
+- 블루(`/blue/<id>/`): 레일(Kibana, WAF, 레드팀)과 창. WAF 창의 배너는 상자(`waf_box`,
+  `fsl-<id>-waf`)와 CRS 규칙 폴더(`waf_rules`, `crs.EXCLUSIONS`에서 계산)만 보여 준다.
+- 레드(`/red/<id>/`): 위쪽에 목표(한국어 이름은 `objective.<key>`)와 "탈취한 해시 제출", 공격과
+  정상으로 묶은 케이스와 마지막 실행 결과, 나머지는 Kali 터미널. 좁은 화면에서는 패널이 세로로
+  쌓이고, 레드·블루 화면은 옆으로 스크롤되지 않는다.
 
-패널은 열두 개의 하위 단계를 차례로 안내한다(`blue.html`의 `COACH`, 문구는 `strings.html`의
-`<lesson.text>.coach.*`): 세션 경보 표, 행 하나 펼치기, `rule` 필드, 개요 대시보드(Dashboards
-링크가 생길 때까지는 메뉴 토글), 그다음 WAF 탭, WAF 터미널 안의 다섯 단계(audit log, 파일 보기, 고치기, `nginx -t`, reload), 재생, 검증.
-터미널 단계는 창 전체를 상자로 두르고, 터미널은 클릭을 알려 주지 않으므로 강조 라벨에 붙은 이전/다음
-버튼으로 넘어간다. 모든 단계의 라벨에 이 버튼이 있고, 메모의 버튼은 대상이 화면에 없는 단계를 위해 남는다. 각 단계는 대상을
-가진다: Kibana 프레임 안의 `data-test-subj` 셀렉터(프레임이 같은 출처라 콘솔에서 읽을 수 있음)
-또는 패널 자신의 컨트롤. 빨간 상자와 그 단계의 짧은 라벨(`<lesson.text>.label.<step>`, 대상 위, 자리가 없으면
-아래)을 매 애니메이션 프레임마다 대상 위에 놓으며, `pointer-events: none`이라 모든 클릭은 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시
-찾으므로 Kibana가 다시 그리거나 이동해도 상자가 남지 않고, 대상이 화면에 없으면 숨는다. 약 2초
-동안 대상을 찾지 못하면 패널이 어디를 볼지 알려 준다. 강조된 대상을 클릭하면 클릭이 전달된
-뒤 안내가 다음 단계로 넘어간다: Kibana 문서의 캡처 단계 리스너(프레임이 새 문서를 로드하면
-다시 붙음)와 메모 컨트롤마다의 리스너. 이전/다음 버튼은 그대로 있다. 셀렉터는 고정 버전인 Kibana 8.15.0으로
-확인했다.
+guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기본은 알약 모양("레슨 노트 · 단계 n/N")으로
+접혀 있다. 펼치면 너비 360px에 탭 다섯 개가 있다: 단계(현재 단계, 이전/다음, 건너뛸 수 있는 전체 단계
+목록), 목표(요약, 완료 조건, 네 문단), 이론, 힌트, 검증. 펼침과 탭은 보는 사람마다 localStorage
+(`fsl-lesson-note`)에, 도달한 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로
+"단계 n/N"을 보여 준다.
+
+이론 탭에는 접힌 카드 다섯 장이 있다(`blue.html`의 `THEORY`, 문구는
+`<lesson.text>.theory.<card>.title|body`): Paranoia Level, Anomaly Scoring(403에 949110과
+920273이 함께 찍히는 이유), false positive를 일으킨 룰 찾기, PL 낮추기와 rule exclusion의 차이,
+`ctl:ruleRemoveTargetById` 한 줄 읽기. 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를
+그 단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(왜 920273인지, 왜 ARGS:q만인지, 왜 900번
+파일인지, `<lesson.text>.hint.*`). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로 있고 복사 버튼이
+있다. 검증 탭은 케이스 하나를 다시 실행하고 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나
+통과한 케이스는 초록 ✓로, 실패한 진단은 빨간 ✗로 따로 보여 준다. 노트에는 튜닝 입력란이 없다.
+
+단계는 레슨 정의에 선언한다(`scenario.yaml`의 `lesson.steps`: `id`와, 터미널 단계면 정확한
+`command`). board의 단계는 열한 개다: 세션 경보 표, 행 하나 펼치기, `rule` 필드, 개요 대시보드
+(Dashboards 링크가 생길 때까지는 메뉴 토글), WAF 탭, WAF 터미널 안의 네 단계(audit log, 파일 보기,
+WAF 이미지에 편집기가 없어 heredoc으로 exclusion 덧붙이기, `nginx -t && nginx -s reload`),
+재생, 검증. 각 단계가 가리키는 곳은 `blue.html`의 `TARGETS`다: Kibana 프레임 안의
+`data-test-subj` 셀렉터(같은 출처라 콘솔에서 읽을 수 있음) 또는 콘솔 자신의 컨트롤. 대상이 없는
+단계는 터미널 단계이고 창 전체를 상자로 두른다. 안내는 driver.js 방식의 popover다: 대상 위의 빨간
+상자(주변을 어둡게 하되 터미널에서는 하지 않음)와, 거기에 붙은 카드("n / N", 단계 제목
+`<lesson.text>.label.<step>`, 한 줄 지시 `<lesson.text>.coach.<step>`, 진행 점, 이전/다음/×).
+대상 아래, 자리가 없으면 위에 화살표와 함께 놓이고, 터미널 단계에서는 출력과 겹치지 않게 창 오른쪽
+아래에 놓여 명령을 복사할 수 있는 코드 블록과 그 명령이 하는 일 한 줄(`<lesson.text>.does.<step>`)을
+보여 준다. 상자와 popover는 매 애니메이션 프레임마다 다시 놓이며, 상자는 `pointer-events: none`이라
+모든 클릭이 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시 찾으므로 Kibana가 다시 그리거나 이동해도
+상자가 남지 않는다. 약 2초 동안 대상을 찾지 못하면 popover가 붙을 곳 없이 남아 어디를 볼지 알려
+준다. 강조된 대상을 클릭하면 클릭이 전달된 뒤 다음 단계로 넘어간다: Kibana 문서의 캡처 단계
+리스너(프레임이 새 문서를 로드하면 다시 붙음)와 콘솔 컨트롤마다의 리스너. 노트 안 컨트롤을 가리키는
+단계는 노트를 그 컨트롤이 있는 탭으로 펼친다. 셀렉터는 고정 버전인 Kibana 8.15.0으로 확인했다.
 
 ## 점수는 어떻게 계산되는가
 

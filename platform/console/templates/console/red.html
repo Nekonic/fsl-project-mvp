@@ -1,190 +1,165 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
-{% block nav %}<span data-t="common.red_team" class="text-danger font-medium"></span>{% endblock %}
+{% block body_class %}min-h-screen lg:h-screen lg:overflow-hidden flex flex-col{% endblock %}
+{% block main_class %}flex-1 min-h-0 flex flex-col{% endblock %}
 {% block content %}
-<h1 data-t="red.heading.objectives" class="text-2xl font-semibold text-heading mb-2"></h1>
-
-<div class="grid grid-cols-3 gap-3 mb-5">
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.kpi.taken" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="kpi-taken" class="text-2xl font-semibold text-danger tabular-nums">0</div>
+<div class="relative bg-panel border-b border-line px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+  <div class="flex items-center gap-2 min-w-0">
+    <span data-t="common.red_team" class="text-danger font-bold text-[15px] shrink-0"></span>
+    <span id="red-context" class="text-muted truncate"></span>
   </div>
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.kpi.difficulty_total" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="kpi-stars" class="text-2xl font-semibold text-warning tabular-nums">0</div>
+  <div class="flex flex-wrap items-center gap-2">
+    <span data-t="red.objectives" class="label mr-1"></span>
+    <span id="objectives" class="flex flex-wrap gap-2"></span>
+    <span id="taken" class="text-[13px] ml-2"></span>
   </div>
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.kpi.unsolved" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="kpi-available" class="text-2xl font-semibold text-heading tabular-nums">-</div>
-  </div>
-</div>
-
-<div class="flex flex-wrap gap-2 mb-3 items-center">
-  <input id="objective-search" data-t-placeholder="red.objectives.search"
-    class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm flex-1 min-w-56">
-  <select id="objective-category"
-    class="bg-panel border border-line rounded text-heading placeholder:text-muted px-2 py-2 text-xs">
-    <option value="" data-t="red.objectives.all_categories"></option>
-  </select>
-  <label class="flex items-center gap-2 text-xs text-body px-1">
-    <input id="hide-solved" type="checkbox" checked class="accent-primary">
-    <span data-t="red.objectives.hide_solved"></span>
-  </label>
-</div>
-
-<div id="objectives" class="bg-panel border border-line rounded max-h-80 overflow-y-auto mb-10"></div>
-
-<h1 data-t="red.heading.machine" class="text-2xl font-semibold text-heading mb-2"></h1>
-
-<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.box.target" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="box-target" class="font-mono text-heading mt-1 truncate">-</div>
-    <div data-t="red.box.target.hint" class="text-muted text-xs mt-1"></div>
-  </div>
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.box.proxied" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="box-proxied" class="font-mono text-heading mt-1">-</div>
-    <div data-t="red.box.proxied.tools" class="text-muted text-xs mt-1"></div>
-  </div>
-  <div class="bg-panel border border-line rounded p-3">
-    <div data-t="red.box.direct" class="text-muted text-xs uppercase tracking-wide"></div>
-    <div id="box-direct" class="font-mono text-heading mt-1">-</div>
-    <div data-t="red.box.direct.tools" class="text-muted text-xs mt-1"></div>
+  <button id="loot-open" class="btn btn-red sm:ml-auto hidden">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    <span data-t="red.loot.open"></span>
+  </button>
+  <div id="loot" class="hidden absolute right-4 sm:right-6 top-full mt-2 z-30 w-[min(28rem,calc(100vw-2rem))] card note-shadow p-4">
+    <div class="flex items-center">
+      <h2 data-t="red.loot.heading" class="font-semibold text-heading"></h2>
+      <button id="loot-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none">×</button>
+    </div>
+    <p data-t="red.loot.hint" class="text-[12px] text-muted mt-1"></p>
+    <textarea id="loot-input" rows="5" placeholder='{"admin": "pbkdf2_sha256$..."}'
+      class="mt-2 w-full bg-panel border border-line rounded-md px-3 py-2 text-[12px] font-mono"></textarea>
+    <div class="flex items-center gap-3 mt-2">
+      <button id="loot-submit" data-t="red.loot.submit" class="btn btn-sm btn-red"></button>
+      <p id="loot-said" class="text-[12px] text-muted"></p>
+    </div>
   </div>
 </div>
 
-<div class="bg-panel border border-line rounded p-4 mb-4 flex flex-wrap gap-3 items-end">
-  <label class="text-sm">
-    <span data-t="red.window.name" class="block text-muted text-xs mb-1"></span>
-    <input id="window-name" value="manual-attack"
-           class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm w-56">
-  </label>
-  <label class="text-sm">
-    <span data-t="red.window.route" class="block text-muted text-xs mb-1"></span>
-    <select id="window-route"
-      class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm">
-      <option value="proxy" data-t="red.window.route.proxy"></option>
-      <option value="direct" data-t="red.window.route.direct"></option>
-    </select>
-  </label>
-  <label class="text-sm flex items-center gap-2 pb-2">
-    <input id="window-malicious" type="checkbox" checked class="accent-danger">
-    <span data-t="red.window.malicious" class="text-body"></span>
-  </label>
-  <button id="window-toggle" data-t="red.window.start"
-    class="px-4 py-2 rounded bg-danger hover:bg-danger-strong text-inverse text-sm"></button>
-  <span id="window-status" class="text-muted text-sm pb-2"></span>
+<div class="flex-1 min-h-0 flex flex-col lg:flex-row">
+  <aside class="lg:w-[320px] shrink-0 bg-panel border-b lg:border-b-0 lg:border-r border-line flex flex-col min-h-0">
+    <div class="p-4 border-b border-line-subdued">
+      <div class="flex items-center justify-between gap-2">
+        <div data-t="red.cases" class="font-semibold text-heading"></div>
+        <select id="origin" class="text-[12px] border border-line rounded-md px-2 h-7 bg-panel min-w-0 max-w-[12rem]"></select>
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button id="run-all" data-t="red.baseline.run_all" class="btn btn-sm btn-red flex-1"></button>
+        <button id="run-attacks" data-t="red.baseline.run_attacks" class="btn btn-sm btn-ghost flex-1"></button>
+      </div>
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto text-[13px] max-h-[45vh] lg:max-h-none">
+      <div class="px-4 pt-3 pb-1 label flex justify-between"><span id="attacks-heading"></span><span data-t="red.last_run"></span></div>
+      <div id="attacks"></div>
+      <div class="px-4 pt-4 pb-1 label"><span id="benign-heading"></span></div>
+      <div id="benign"></div>
+      <p id="covers" class="px-4 py-3 text-[11.5px] text-faint"></p>
+    </div>
+  </aside>
+
+  <section class="flex-1 min-w-0 min-h-0 flex flex-col p-4 gap-3">
+    <div class="card px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px]">
+      <div><span data-t="red.box.target" class="label"></span> <span id="box-target" class="font-mono ml-1 text-heading">-</span></div>
+      <div><span data-t="red.box.proxied" class="label"></span> <span id="box-proxied" class="font-mono ml-1 text-heading">-</span>
+        <span data-t="red.box.proxied.tools" class="text-faint"></span></div>
+      <div><span data-t="red.box.direct" class="label"></span> <span id="box-direct" class="font-mono ml-1 text-heading">-</span>
+        <span data-t="red.box.direct.tools" class="text-faint"></span></div>
+      <div class="xl:ml-auto flex flex-wrap items-center gap-2">
+        <span data-t="red.window.name" class="label"></span>
+        <input id="window-name" value="manual-attack"
+               class="border border-line rounded-md h-7 px-2 w-36 font-mono text-[12px] bg-panel">
+        <select id="window-route" class="border border-line rounded-md h-7 px-2 text-[12px] bg-panel">
+          <option value="proxy" data-t="red.window.route.proxy"></option>
+          <option value="direct" data-t="red.window.route.direct"></option>
+        </select>
+        <label class="flex items-center gap-1 text-[12px]">
+          <input id="window-malicious" type="checkbox" checked class="accent-danger">
+          <span data-t="red.window.malicious"></span>
+        </label>
+        <button id="window-toggle" data-t="red.window.start" class="btn btn-sm btn-ghost"></button>
+      </div>
+    </div>
+    <p id="window-status" class="text-[12px] text-muted -mt-1"></p>
+
+    <div class="flex-1 min-h-[24rem] rounded-xl overflow-hidden flex flex-col border border-terminal">
+      <div class="h-9 term-bar text-[12px] flex items-center px-4 gap-3 shrink-0">
+        <span class="font-mono text-inverse">fsl-kali</span><span class="text-faint">·</span><span>root · /root</span>
+        <span id="terminal-state" class="ml-auto hidden items-center gap-1.5 text-success"><span class="dot dot-ok"></span><span data-t="red.terminal.connected"></span></span>
+      </div>
+      <iframe id="terminal" class="flex-1 w-full border-0 bg-terminal" title="Kali"></iframe>
+    </div>
+
+    <div class="card px-4 py-2">
+      <div class="flex items-center gap-2">
+        <span data-t="red.log.heading" class="label"></span>
+        <p id="log-empty" data-t="red.log.empty" class="text-faint text-[12px]"></p>
+      </div>
+      <div id="log" class="max-h-20 overflow-y-auto text-[12px] font-mono space-y-0.5"></div>
+    </div>
+  </section>
 </div>
-
-<iframe id="terminal" class="w-full h-[28rem] border border-line rounded bg-terminal"></iframe>
-
-<h1 data-t="red.baseline.heading" class="text-2xl font-semibold text-heading mt-12 mb-2"></h1>
-
-<div class="flex gap-3 mb-8 items-end flex-wrap">
-  <label class="text-sm">
-    <span data-t="red.baseline.origin" class="block text-muted text-xs mb-1"></span>
-    <select id="origin"
-      class="bg-panel border border-line rounded text-heading placeholder:text-muted px-3 py-2 text-sm">
-    </select>
-  </label>
-  <button id="run-all" data-t="red.baseline.run_all"
-    class="px-4 py-2 rounded bg-danger hover:bg-danger-strong text-inverse text-sm"></button>
-  <button id="run-attacks" data-t="red.baseline.run_attacks"
-    class="px-4 py-2 rounded bg-panel border border-line hover:bg-subdued text-heading text-sm"></button>
-  <a id="to-blue" target="_blank" data-t="red.baseline.open_blue"
-    class="px-4 py-2 rounded bg-panel border border-primary-soft hover:border-primary text-primary text-sm"></a>
-</div>
-
-<p id="covers" class="text-xs text-muted mb-6"></p>
-
-<div class="grid grid-cols-2 gap-8">
-  <div>
-    <h2 data-t="red.cases.attacks" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
-    <div id="attacks" class="space-y-2"></div>
-  </div>
-  <div>
-    <h2 data-t="red.cases.benign" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
-    <div id="benign" class="space-y-2"></div>
-  </div>
-</div>
-
-<div id="loot" class="hidden mt-10">
-  <h2 data-t="red.loot.heading" class="text-sm uppercase tracking-wide text-muted mb-2"></h2>
-  <p id="loot-hint" data-t="red.loot.hint" class="text-xs text-muted mb-2"></p>
-  <textarea id="loot-input" rows="4" placeholder='{"admin": "pbkdf2_sha256$..."}'
-    class="w-full bg-panel border border-line rounded px-3 py-2 text-sm font-mono"></textarea>
-  <button id="loot-submit" data-t="red.loot.submit"
-    class="mt-2 px-4 py-2 rounded bg-panel border border-danger-soft hover:border-danger text-danger text-sm"></button>
-</div>
-
-<h2 data-t="red.log.heading" class="text-sm uppercase tracking-wide text-muted mt-10 mb-3"></h2>
-<div id="log" class="space-y-1 text-sm font-mono"></div>
-<p id="log-empty" data-t="red.log.empty" class="text-muted text-sm"></p>
 {% endblock %}
 {% block script %}
 <script>
-  document.getElementById("to-blue").href = `/blue/${sessionId()}/`;
   document.title = t("common.red_team");
+  crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
+          { label: t("common.red_team") }]);
 
   let catalogue = [];
   let scenario = null;
+  let tiers = [];
+  let lastRun = {};
+  const running = new Set();
 
   async function showCoverage() {
     const listed = await api("/api/wargames/");
     if (!listed.ok || !Array.isArray(listed.body)) return;
     const wargame = listed.body.find((w) => w.id === scenario);
     if (!wargame) return;
-
-    document.getElementById("loot").classList.toggle("hidden", wargame.model !== "loot_verified");
-
+    document.getElementById("red-context").textContent =
+      `${t("common.session", sessionId())} · ${localized(`wargame.${wargame.id}.name`, wargame.name)}`;
+    document.getElementById("loot-open").classList.toggle("hidden", wargame.model !== "loot_verified");
     const named = (stages) => stages.map((s) => t("stage." + s)).join(", ");
     const lines = [t("red.covers", named(wargame.covers))];
-    if (wargame.uncovered.length) {
-      lines.push(t("red.covers.not", named(wargame.uncovered)));
-    }
+    if (wargame.uncovered.length) lines.push(t("red.covers.not", named(wargame.uncovered)));
     document.getElementById("covers").textContent = lines.join(" ");
   }
 
-  function reference(caseDef, field) {
-    const id = caseDef[field];
-    const href = (caseDef.references || {})[field];
-    if (!id) return "";
-    if (!href) return `<span class="text-muted">${esc(id)}</span>`;
-    return `<a href="${esc(href)}" target="_blank" rel="noopener"
-      class="text-primary underline decoration-dotted">${esc(id)}</a>`;
+  function statusOf(caseDef) {
+    if (running.has(caseDef.name)) return { text: t("red.case.running"), tone: "warn" };
+    const recorded = lastRun[caseDef.name];
+    if (!recorded) return { text: t("red.case.not_run"), tone: "muted" };
+    return caseOutcome(caseDef.malicious, recorded.meta);
   }
 
-  function labels(caseDef) {
-    if (!caseDef.stage) return "";
+  function caseRow(caseDef) {
+    const state = statusOf(caseDef);
+    const takes = caseDef.takes ? objectiveLabel(caseDef.takes) : "";
     return `
-      <div class="px-3 pb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        <span class="text-body">${esc(t("stage." + caseDef.stage))}</span>
-        ${reference(caseDef, "technique")}
-        ${reference(caseDef, "pattern")}
+      <div class="px-4 py-2 flex items-center gap-2 hover:bg-subdued">
+        <div class="min-w-0 flex-1" title="${esc(caseDef.summary)}">
+          <div class="font-mono text-[12px] text-heading truncate">${esc(caseDef.name)}</div>
+          <div class="text-[11.5px] text-muted truncate">${esc(caseDef.summary)}</div>
+          ${takes ? `<div class="text-[11.5px] text-danger truncate">${esc(t("red.case.objective", takes))}</div>` : ""}
+        </div>
+        ${badge(state.text, state.tone)}
+        <button data-case="${esc(caseDef.name)}" class="fire btn btn-sm btn-ghost px-2" aria-label="${esc(t("red.case.run"))}">▶</button>
       </div>`;
   }
 
-  function button(caseDef) {
-    return `
-      <div class="bg-panel border border-line hover:border-primary rounded">
-        <button data-case="${esc(caseDef.name)}"
-          class="fire w-full text-left px-3 py-2">
-          <div class="text-heading text-sm font-medium">${esc(caseDef.name)}</div>
-          <div class="text-muted text-xs font-mono mt-1">${esc(caseDef.summary)}</div>
-          ${caseDef.takes
-            ? `<div data-takes="${esc(caseDef.takes)}" class="text-danger text-xs mt-1">${
-              esc(t("red.case.objective", objectiveName(caseDef.takes)))}</div>`
-            : ""}
-        </button>
-        ${labels(caseDef)}
-      </div>`;
-  }
-
-  function nameObjectivesOnCards() {
-    document.querySelectorAll("[data-takes]").forEach((line) => {
-      line.textContent = t("red.case.objective", objectiveName(line.dataset.takes));
+  function renderCases() {
+    const attacks = catalogue.filter((c) => c.malicious);
+    const benign = catalogue.filter((c) => !c.malicious);
+    document.getElementById("attacks-heading").textContent = `${t("red.cases.attacks")} · ${attacks.length}`;
+    document.getElementById("benign-heading").textContent = `${t("red.cases.benign")} · ${benign.length}`;
+    document.getElementById("attacks").innerHTML = attacks.map(caseRow).join("");
+    document.getElementById("benign").innerHTML = benign.map(caseRow).join("");
+    document.querySelectorAll(".fire").forEach((element) => {
+      element.addEventListener("click", () => fire(element.dataset.case));
     });
+  }
+
+  async function readLastRun() {
+    const result = await api(`/api/sessions/${sessionId()}/cases/`);
+    if (!result.ok || !Array.isArray(result.body)) return;
+    lastRun = {};
+    result.body.forEach((recorded) => { lastRun[recorded.name] = recorded; });
   }
 
   const LOG_LINES = 200;
@@ -200,38 +175,46 @@
   }
 
   async function submitLoot() {
+    const said = document.getElementById("loot-said");
     let parsed;
     try {
       parsed = JSON.parse(document.getElementById("loot-input").value);
     } catch (error) {
-      note(t("red.loot.not_json"), "text-warning");
+      said.textContent = t("red.loot.not_json");
       return;
     }
     const result = await post(`/api/sessions/${sessionId()}/loot/`, { loot: parsed });
     if (!result.ok) {
-      note(t("red.loot.failed", detail(result)), "text-warning");
+      said.textContent = t("red.loot.failed", detail(result));
+      note(said.textContent, "text-warning");
       return;
     }
-    if (result.body.credited.length) {
-      note(t("red.loot.credited", result.body.matched.length, result.body.credited.length),
-           "text-danger font-semibold");
-      await loadObjectives();
-      await refreshTaken();
-    } else {
-      note(t("red.loot.none", result.body.matched.length), "text-muted");
-    }
+    said.textContent = result.body.credited.length
+      ? t("red.loot.credited", result.body.matched.length, result.body.credited.length)
+      : t("red.loot.none", result.body.matched.length);
+    note(said.textContent, result.body.credited.length ? "text-danger font-semibold" : "text-muted");
+    await refreshTaken();
   }
 
   document.getElementById("loot-submit").addEventListener("click", submitLoot);
+  document.getElementById("loot-open").addEventListener("click", () =>
+    document.getElementById("loot").classList.toggle("hidden"));
+  document.getElementById("loot-close").addEventListener("click", () =>
+    document.getElementById("loot").classList.add("hidden"));
 
   async function fire(name) {
+    running.add(name);
+    renderCases();
     const result = await post(`/api/sessions/${sessionId()}/attacks/`,
                               { case: name, origin: chosenOrigin() }, PATIENCE_FOR_RANGE_WORK);
+    running.delete(name);
     if (result.ok) {
+      lastRun[name] = result.body;
       note(t("red.log.sent", name), "text-body");
     } else {
       note(t("red.log.fire_failed", name, detail(result)), "text-warning");
     }
+    renderCases();
     await pollObjectives();
     return result.ok;
   }
@@ -249,7 +232,7 @@
     select.innerHTML =
       `<option value="rotate">${esc(t("red.origin.rotate"))}</option>` +
       result.body.origins.map((origin) =>
-        `<option value="${esc(origin.id)}">${esc(origin.label)} (${esc(origin.subnet)})</option>`
+        `<option value="${esc(origin.id)}">${esc(origin.label)} · ${esc(origin.subnet)}</option>`
       ).join("");
     const preferred = result.body.origins.find((origin) => origin.default);
     if (preferred) select.value = preferred.id;
@@ -271,86 +254,56 @@
       const said = session.status === 404
         ? t("red.error.no_session") : t("red.error.session", detail(session));
       document.getElementById("attacks").innerHTML =
-        `<p class="text-warning text-sm">${esc(said)}</p>`;
+        `<p class="text-warning text-[13px] px-4">${esc(said)}</p>`;
       return;
     }
-
     scenario = session.body.scenario;
     await loadObjectives();
-
     const cases = await api(`/api/wargames/${scenario}/cases/`);
     if (!cases.ok || !Array.isArray(cases.body)) {
       document.getElementById("attacks").innerHTML =
-        `<p class="text-warning text-sm">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
+        `<p class="text-warning text-[13px] px-4">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
       return;
     }
     catalogue = cases.body;
     await showCoverage();
-    document.getElementById("attacks").innerHTML =
-      catalogue.filter((c) => c.malicious).map(button).join("");
-    document.getElementById("benign").innerHTML =
-      catalogue.filter((c) => !c.malicious).map(button).join("");
-
-    document.querySelectorAll(".fire").forEach((element) => {
-      element.addEventListener("click", () => fire(element.dataset.case));
-    });
+    await readLastRun();
+    renderCases();
   }
 
-  let objectives = [];
-  const STAR = (n) => "*".repeat(n);
-  const objectiveName = (key) => objectives.find((o) => o.key === key)?.name || key;
+  const objectiveLabel = (key) => {
+    const tier = tiers.find((o) => o.key === key);
+    return localized(`objective.${key}`, tier ? tier.name : key);
+  };
+  let taken = [];
 
   async function loadObjectives() {
     const result = await api(`/api/wargames/${scenario}/objectives/`);
-    if (!result.ok) {
+    if (!result.ok || !Array.isArray(result.body)) {
       document.getElementById("objectives").innerHTML =
-        `<p class="text-warning text-sm p-4">${esc(t("red.error.objectives", detail(result)))}</p>`;
+        `<span class="text-warning text-[12px]">${esc(t("red.error.objectives", detail(result)))}</span>`;
       return;
     }
-    objectives = result.body;
-    nameObjectivesOnCards();
-    document.getElementById("kpi-available").textContent =
-      objectives.filter((o) => !o.solved).length;
-
-    const categories = [...new Set(objectives.map((o) => o.category))].sort();
-    const select = document.getElementById("objective-category");
-    const chosen = select.value;
-    select.innerHTML = `<option value="">${esc(t("red.objectives.all_categories"))}</option>` +
-      categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-    if (categories.includes(chosen)) select.value = chosen;
+    tiers = [...result.body].sort((a, b) => a.difficulty - b.difficulty);
     renderObjectives();
   }
 
   function renderObjectives() {
-    const needle = document.getElementById("objective-search").value.trim().toLowerCase();
-    const category = document.getElementById("objective-category").value;
-    const hideSolved = document.getElementById("hide-solved").checked;
-
-    const shown = objectives.filter((o) => {
-      if (hideSolved && o.solved) return false;
-      if (category && o.category !== category) return false;
-      if (!needle) return true;
-      return (o.name + o.description).toLowerCase().includes(needle);
-    }).sort((a, b) => a.difficulty - b.difficulty);
-
-    document.getElementById("objectives").innerHTML = shown.map((o) => `
-      <div class="border-t border-line-subdued px-3 py-2 flex gap-3 items-baseline">
-        <span class="text-warning font-mono text-xs w-12">${esc(STAR(o.difficulty))}</span>
-        <span class="${o.solved ? "text-muted line-through" : "text-heading"} text-sm w-56">
-          ${esc(o.name)}</span>
-        <span class="text-muted text-xs w-48">${esc(o.category)}</span>
-        <span class="text-body text-xs flex-1 truncate" title="${esc(o.description)}"
-          >${esc(o.description)}</span>
-      </div>`).join("") ||
-      `<p class="text-muted text-sm p-4">${esc(t("red.objectives.none"))}</p>`;
+    const won = new Set(taken.map((o) => o.key));
+    document.getElementById("objectives").innerHTML = tiers.map((tier) => {
+      const label = t("red.objective.chip", objectiveLabel(tier.key), tier.difficulty);
+      return `<span class="badge h-7 px-3 ${won.has(tier.key) ? "badge-red" : "badge-neutral"}">
+        <span class="dot ${won.has(tier.key) ? "dot-red" : "dot-neutral"}"></span>${esc(label)}</span>`;
+    }).join("");
+    document.getElementById("taken").innerHTML = tiers.length
+      ? `${esc(t("red.taken"))} <b class="text-danger">${esc(won.size)}</b>/${esc(tiers.length)}` : "";
   }
 
   async function refreshTaken() {
     const result = await api(`/api/sessions/${sessionId()}/objectives/`);
-    if (!result.ok) return;
-    document.getElementById("kpi-taken").textContent = result.body.length;
-    document.getElementById("kpi-stars").textContent =
-      result.body.reduce((sum, o) => sum + o.difficulty, 0);
+    if (!result.ok || !Array.isArray(result.body)) return;
+    taken = result.body;
+    renderObjectives();
   }
 
   const CHECK_EVERY = 10000;
@@ -376,7 +329,6 @@
     }
     if (result.ok && result.body.achieved) {
       note(t("red.log.taken", result.body.achieved), "text-danger font-semibold");
-      await loadObjectives();
     }
     await refreshTaken();
   }
@@ -409,10 +361,6 @@
     if (!closed && !checking && Date.now() - checkedAt >= CHECK_EVERY) pollObjectives();
   });
 
-  ["objective-search", "objective-category", "hide-solved"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", renderObjectives);
-  });
-
   let attacker = null;
   let openedAt = null;
   let windowCaseId = null;
@@ -421,7 +369,7 @@
   const status = (text, tone) => {
     const element = document.getElementById("window-status");
     element.textContent = text;
-    element.className = `text-sm pb-2 ${tone || "text-muted"}`;
+    element.className = `text-[12px] -mt-1 ${tone || "text-muted"}`;
   };
 
   const windowAddress = () =>
@@ -471,8 +419,11 @@
     }
     attacker = result.body;
     describedOrigin = wanted;
-    if (!document.getElementById("terminal").src) {
-      document.getElementById("terminal").src = attacker.terminal_url;
+    const terminal = document.getElementById("terminal");
+    if (!terminal.src) {
+      terminal.src = attacker.terminal_url;
+      document.getElementById("terminal-state").classList.remove("hidden");
+      document.getElementById("terminal-state").classList.add("flex");
     }
     document.getElementById("box-target").textContent = attacker.public_url;
     document.getElementById("box-proxied").textContent = attacker.source_ip;

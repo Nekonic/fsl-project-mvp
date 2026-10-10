@@ -1,94 +1,162 @@
+import json
 import re
 
 import pytest
 
+import wargames
 from tests.browser import english, open_page
 
 pytestmark = pytest.mark.django_db
 
+STEPS = wargames.lesson("board")["steps"]
+IDS = [step["id"] for step in STEPS]
+COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
+
 GUIDED = """
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, lesson: GUIDANCE ? {
+    return {body: {id: 1, guidance: GUIDANCE, waf_box: "fsl-1-waf",
+                   waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
       cases: ["board-sqli-orderby-sqlmap", "board-normal-search-with-apostrophe"],
+      steps: STEPS_JSON,
     } : null}};
   }
   if (request.route === "/api/sessions/1/waf/" && request.method === "GET") {
     return {body: {paranoia: 4, exclusions: [], version: "v1"}};
   }
-  if (request.route === "/api/sessions/1/waf/" && request.method === "PUT") {
-    return {body: request.body};
-  }
   if (request.route === "/api/sessions/1/verify/") {
-    return {body: {passed: false, run: "r", cases: [], diagnosis: [
-      ["lesson.diag.blocked_ratio", [2, 2]],
+    return {body: {passed: false, run: "r", cases: [
+      {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
+      {name: "board-normal-search-with-apostrophe", malicious: false, outcome: "blocked"},
+    ], diagnosis: [
+      ["lesson.diag.blocked_ratio", [1, 1]],
       ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]],
     ]}};
   }
   return {status: 404, body: {detail: "not served"}};
 });
-"""
+""".replace("STEPS_JSON", json.dumps(STEPS))
 
 def guided(guidance):
     return GUIDED.replace("GUIDANCE", "true" if guidance else "false")
 
-def test_the_lesson_panel_shows_beside_the_tools_only_in_a_guided_session(client):
+def test_a_guided_session_shows_the_note_as_a_pill_and_an_unguided_one_shows_nothing(client):
     shown = open_page(client, "/blue/1/", setup=guided(True), scenario="""
       return {
-        hidden: browser.element('lesson').classList.contains('hidden'),
-        steps: browser.text('lesson-steps'),
-        hint: browser.text('lesson-hint'),
+        note: browser.element('lesson').classList.contains('hidden'),
+        pill: browser.element('note-pill').classList.contains('hidden'),
+        pillText: browser.text('note-pill-text'),
+        paragraphs: browser.text('lesson-steps'),
         frame: browser.element('pane-frame').getAttribute('src'),
       };
     """)
     plain = open_page(client, "/blue/1/", setup=guided(False), scenario="""
-      return {hidden: browser.element('lesson').classList.contains('hidden'),
+      return {note: browser.element('lesson').classList.contains('hidden'),
+              pill: browser.element('note-pill').classList.contains('hidden'),
               routes: browser.requests.map((r) => r.route)};
     """)
 
     assert shown["errors"] == [] and plain["errors"] == []
-    assert shown["result"]["hidden"] is False
-    assert english("lesson.board.read") in shown["result"]["steps"]
-    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in shown["result"]["hint"]
-    assert "nginx -t" in shown["result"]["hint"] and "nginx -s reload" in shown["result"]["hint"]
-    assert shown["result"]["frame"] == "/kibana/", "Kibana stays beside the lesson"
-    assert plain["result"]["hidden"] is True
+    assert (shown["result"]["note"], shown["result"]["pill"]) == (True, False), (
+        "the note starts folded to a pill so the tool keeps the screen"
+    )
+    assert shown["result"]["pillText"] == english("lesson.note.pill", 1, len(STEPS))
+    assert english("lesson.board.read") in shown["result"]["paragraphs"]
+    assert shown["result"]["frame"] == "/kibana/", "Kibana stays the pane under the note"
+    assert (plain["result"]["note"], plain["result"]["pill"]) == (True, True)
     assert "/api/sessions/1/waf/" not in plain["result"]["routes"]
 
-def test_the_note_holds_no_tuning_form_and_shows_the_answer_until_the_learner_hides_it(client):
+def test_the_pill_opens_the_note_and_fold_returns_it_to_the_pill_and_both_are_remembered(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
-      const hidden = () => browser.element('lesson-hint').classList.contains('hidden');
-      const first = {hidden: hidden(), toggle: browser.text('lesson-hint-toggle')};
-      await browser.click('lesson-hint-toggle');
-      const folded = {hidden: hidden(), toggle: browser.text('lesson-hint-toggle')};
-      await browser.click('lesson-hint-toggle');
-      return {first, folded, again: hidden(),
-              form: ['lesson-paranoia', 'lesson-exclusions', 'lesson-save']
-                .map((id) => document.getElementById(id)),
+      const state = () => ({note: !browser.element('lesson').classList.contains('hidden'),
+                            pill: !browser.element('note-pill').classList.contains('hidden'),
+                            kept: JSON.parse(localStorage.getItem('fsl-lesson-note') || 'null')});
+      await browser.click('note-pill');
+      const opened = state();
+      await browser.click('lesson-collapse');
+      return {opened, folded: state(), label: browser.text('lesson-collapse')};
+    """)
+
+    assert seen["result"]["opened"] == {"note": True, "pill": False, "kept": {"open": True, "tab": "steps"}}
+    assert seen["result"]["folded"] == {"note": False, "pill": True, "kept": {"open": False, "tab": "steps"}}
+    assert seen["result"]["label"] == english("lesson.note.collapse")
+
+def test_the_note_has_steps_goal_theory_hints_and_check_tabs_and_shows_one_at_a_time(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+      await browser.click('note-pill');
+      const shown = () => [...document.querySelectorAll('[data-pane-of]')]
+        .filter((pane) => !pane.classList.contains('hidden')).map((pane) => pane.dataset.paneOf);
+      const tabs = [...document.querySelectorAll('#lesson-tabs .tab')].map((tab) => tab.dataset.tab);
+      const first = shown();
+      await browser.click('[data-tab="hint"]');
+      const hint = {shown: shown(), selected: document.querySelector('[data-tab="hint"]').getAttribute('aria-selected')};
+      return {tabs, first, hint, kept: JSON.parse(localStorage.getItem('fsl-lesson-note')).tab};
+    """)
+
+    assert seen["result"]["tabs"] == ["steps", "goal", "theory", "hint", "check"]
+    assert seen["result"]["first"] == ["steps"]
+    assert seen["result"]["hint"] == {"shown": ["hint"], "selected": "true"}
+    assert seen["result"]["kept"] == "hint"
+
+def test_a_remembered_open_note_and_tab_are_restored_on_the_next_visit(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + """
+      localStorage.setItem('fsl-lesson-note', JSON.stringify({open: true, tab: 'theory'}));
+    """, scenario="""
+      return {note: browser.element('lesson').classList.contains('hidden'),
+              theory: document.querySelector('[data-pane-of="theory"]').classList.contains('hidden')};
+    """)
+
+    assert seen["result"] == {"note": False, "theory": False}
+
+def test_the_note_floats_over_the_pane_in_the_empty_part_of_kibana_s_header_and_reserves_no_column(client):
+    page = client.get("/blue/1/").content.decode()
+    note = re.search(r'<aside id="lesson" class="([^"]+)"', page).group(1).split()
+    pill = re.search(r'<button id="note-pill" class="([^"]+)"', page).group(1).split()
+
+    assert {"absolute", "top-2", "right-4", "w-[360px]"} <= set(note), note
+    assert {"absolute", "top-2", "right-28"} <= set(pill), pill
+
+def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+      const hidden = () => browser.element('lesson-answer-box').classList.contains('hidden');
+      const cards = [...browser.element('lesson-hints').querySelectorAll('[data-card]')].map((c) => c.dataset.card);
+      const folded = hidden();
+      await browser.click('lesson-answer-toggle');
+      return {cards, folded, opened: !hidden(), answer: browser.text('lesson-answer'),
+              hints: browser.text('lesson-hints'),
+              form: ['lesson-paranoia', 'lesson-exclusions', 'lesson-save'].map((id) => document.getElementById(id)),
               writes: browser.requests.filter((r) => r.method !== 'GET').map((r) => r.route)};
     """)
 
+    assert seen["result"]["cards"] == ["why_rule", "why_target", "why_file"]
+    assert english("lesson.board.hint.why_rule.title") in seen["result"]["hints"]
+    assert "nginx" not in seen["result"]["hints"], "a hint says why, the steps say what to type"
+    assert seen["result"]["folded"] is True and seen["result"]["opened"] is True
+    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in seen["result"]["answer"]
+    assert "nginx -t && nginx -s reload" in seen["result"]["answer"]
     assert seen["result"]["form"] == [None, None, None], "the tuning is done in the WAF terminal"
-    assert seen["result"]["first"] == {"hidden": False, "toggle": english("lesson.hint.hide")}, (
-        "the complete answer shows first"
-    )
-    assert seen["result"]["folded"] == {"hidden": True, "toggle": english("lesson.hint.show")}
-    assert seen["result"]["again"] is False
     assert seen["result"]["writes"] == []
 
-def test_verify_shows_the_verdict_and_the_reasons_in_plain_words(client):
+def test_verify_shows_pass_or_fail_with_passing_lines_in_green_and_failing_lines_in_red(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
       await browser.click('lesson-verify');
-      return {verdict: browser.text('lesson-verdict'), why: browser.text('lesson-diagnosis'),
+      const passed = browser.element('lesson-passed');
+      const failing = browser.element('lesson-diagnosis');
+      return {verdict: browser.text('lesson-verdict'), passed: passed.textContent, failing: failing.textContent,
+              green: passed.querySelectorAll('.text-success').length,
+              red: failing.querySelectorAll('.text-danger').length,
               asked: browser.requests.filter((r) => r.method === 'POST').map((r) => r.route)};
     """)
+    result = seen["result"]
 
-    assert seen["result"]["asked"] == ["/api/sessions/1/verify/"]
-    assert seen["result"]["verdict"] == english("lesson.verify.fail")
-    assert english("lesson.diag.benign_blocked", "board-normal-search-with-apostrophe", 403) \
-        in seen["result"]["why"]
-    assert not re.search(r"\b(TP|FP|FN|TN)\b", seen["result"]["why"]), (
+    assert result["asked"] == ["/api/sessions/1/verify/"]
+    assert "FAIL" in result["verdict"] and english("lesson.verify.failing", 1) in result["verdict"]
+    assert "✓" in result["passed"] and english("lesson.check.held") in result["passed"]
+    assert result["green"] == 1 and result["red"] == 1
+    assert english("lesson.diag.benign_blocked", "board-normal-search-with-apostrophe", 403) in result["failing"]
+    assert "✗" in result["failing"] and english("lesson.diag.blocked_ratio", 1, 1) not in result["failing"]
+    assert not re.search(r"\b(TP|FP|FN|TN)\b", result["passed"] + result["failing"]), (
         "the learner is told what happened, not the scoreboard's labels"
     )
 
@@ -152,172 +220,109 @@ browser.element('lesson-replay').getBoundingClientRect =
 def coached(guidance):
     return COACHED.replace("GUIDED_FLAG", "true" if guidance else "false")
 
+def at(step):
+    return IDS.index(step)
+
 def test_the_coach_boxes_a_kibana_element_while_it_is_on_screen_and_hides_when_it_is_not(client):
     seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
-      const box = () => browser.element('coach-box').style;
+      const box = () => browser.element('coach-box');
       await browser.wait(16);
-      const before = box().display;
+      const before = box().classList.contains('hidden');
       present.add({KIBANA_TABLE!r});
       await browser.wait(16);
-      const over = {{display: box().display, left: box().left, top: box().top, width: box().width,
-                    layer: box().zIndex}};
+      const over = {{hidden: box().classList.contains('hidden'), left: box().style.left, top: box().style.top,
+                    width: box().style.width, layer: box().style.zIndex, scrim: box().classList.contains('scrim'),
+                    events: box().style.pointerEvents}};
       present.clear();
       await browser.wait(16);
-      return {{before, over, after: box().display}};
+      return {{before, over, after: box().classList.contains('hidden')}};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["before"] == "none"
+    assert seen["result"]["before"] is True
     assert seen["result"]["over"] == {
-        "display": "", "left": "206px", "top": "66px", "width": "108px", "layer": "40",
-    }, (
-        "the box sits over the element, offset by where the Kibana pane is"
-    )
-    assert seen["result"]["after"] == "none"
+        "hidden": False, "left": "206px", "top": "66px", "width": "108px", "layer": "40", "scrim": True,
+        "events": "none",
+    }, "the box sits over the element, offset by where the Kibana pane is, and never takes a click"
+    assert seen["result"]["after"] is True
 
-def test_the_coach_walks_on_to_the_lesson_panel_s_own_controls(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      for (let i = 0; i < 10; i += 1) await browser.click('lesson-coach-next');
+def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      present.add({KIBANA_TABLE!r});
       await browser.wait(16);
-      const box = browser.element('coach-box').style;
-      return {text: browser.text('lesson-coach-text'), display: box.display, left: box.left, layer: box.zIndex,
-              tag: browser.text('coach-tag-text'), events: box.pointerEvents};
+      return {{hidden: browser.element('coach-pop').classList.contains('hidden'),
+              count: browser.text('coach-pop-count'), title: browser.text('coach-pop-title'),
+              text: browser.text('coach-pop-text'),
+              command: browser.element('coach-pop-command').classList.contains('hidden'),
+              dots: browser.element('coach-pop-dots').querySelectorAll('.dot').length,
+              lit: browser.element('coach-pop-dots').querySelectorAll('.dot-blue').length,
+              buttons: [browser.text('coach-pop-back'), browser.text('coach-pop-next')],
+              back: browser.element('coach-pop-back').disabled}};
     """)
 
-    assert seen["result"]["text"] == english("lesson.board.coach.replay")
-    assert seen["result"]["display"] == "" and seen["result"]["left"] == "1096px"
-    assert seen["result"]["tag"] == "↓ " + english("lesson.board.label.replay"), (
-        "the label carries the step's own short instruction, above the control"
+    assert seen["result"] == {
+        "hidden": False, "count": f"1 / {len(STEPS)}", "title": english("lesson.board.label.alerts"),
+        "text": english("lesson.board.coach.alerts"), "command": True, "dots": len(STEPS), "lit": 1,
+        "buttons": [english("lesson.coach.back"), english("lesson.coach.next")], "back": True,
+    }, "a Kibana step is a click, so it carries no command block"
+
+def test_the_popover_sits_below_its_target_or_above_it_when_there_is_no_room(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      present.add({KIBANA_TABLE!r});
+      await browser.wait(16);
+      const pop = browser.element('coach-pop').style;
+      const arrow = browser.element('coach-pop-arrow');
+      const roomy = {{top: pop.top, arrowTop: arrow.style.top, arrow: arrow.classList.contains('hidden')}};
+      pane.getBoundingClientRect = () => ({{left: 200, top: 50, right: 1000, bottom: 900, width: 800, height: 850}});
+      table.getBoundingClientRect = () => ({{left: 10, top: 700, right: 110, bottom: 740, width: 100, height: 40}});
+      await browser.wait(16);
+      return {{roomy, cramped: {{top: pop.top, arrowBottom: arrow.style.bottom}}}};
+    """)
+
+    assert seen["result"]["roomy"] == {"top": "124px", "arrowTop": "-6px", "arrow": False}, (
+        "below the target (bottom at 110px) with a 14px gap, the arrow pointing up at it"
     )
-    assert seen["result"]["events"] == "none", "the overlay must never take a click"
-    assert seen["result"]["layer"] == "9999", "a box on a note control is drawn above the note"
+    assert seen["result"]["cramped"] == {"top": "536px", "arrowBottom": "-6px"}, (
+        "above the target (top at 750px, popover 200px tall, 14px gap) when below would leave the window"
+    )
+
+def test_the_coach_walks_on_to_the_lesson_note_s_own_controls_and_opens_the_check_tab(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      for (let i = 0; i < {at("replay")}; i += 1) await browser.click('coach-pop-next');
+      await browser.wait(16);
+      const box = browser.element('coach-box');
+      return {{text: browser.text('lesson-coach-text'), left: box.style.left, layer: box.style.zIndex,
+              title: browser.text('coach-pop-title'), events: box.style.pointerEvents,
+              note: browser.element('lesson').classList.contains('hidden'),
+              check: document.querySelector('[data-pane-of="check"]').classList.contains('hidden')}};
+    """)
+
+    assert seen["result"] == {
+        "text": english("lesson.board.coach.replay"), "left": "1096px", "layer": "9999",
+        "title": english("lesson.board.label.replay"), "events": "none", "note": False, "check": False,
+    }, "a step on a note control opens the note at the tab that holds it and boxes the control above the note"
 
 def test_the_coach_says_where_to_look_when_the_element_never_appears(client):
     seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      const hidden = () => browser.element('lesson-coach-missing').classList.contains('hidden');
+      const hidden = () => [browser.element('lesson-coach-missing').classList.contains('hidden'),
+                            browser.element('coach-pop-missing').classList.contains('hidden')];
       const early = hidden();
       for (let i = 0; i < 130; i += 1) await browser.wait(16);
-      return {early, late: hidden()};
+      return {early, late: hidden(), pop: browser.element('coach-pop').classList.contains('hidden')};
     """)
 
-    assert seen["result"] == {"early": True, "late": False}
+    assert seen["result"] == {"early": [True, True], "late": [False, False], "pop": False}, (
+        "with no target the popover stays, unanchored, and says so"
+    )
 
 def test_an_unguided_session_draws_no_coach(client):
     seen = open_page(client, "/blue/1/", setup=coached(False), scenario="""
       await browser.wait(16);
-      return document.getElementById('coach-box') === null;
+      return [browser.element('coach-box').classList.contains('hidden'),
+              browser.element('coach-pop').classList.contains('hidden')];
     """)
 
-    assert seen["errors"] == [] and seen["result"] is True
-
-def test_the_label_says_the_step_and_sits_above_the_target_or_below_it_when_there_is_no_room(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
-      present.add({KIBANA_TABLE!r});
-      await browser.wait(16);
-      const tag = browser.element('coach-tag');
-      const text = browser.element('coach-tag-text');
-      const roomy = {{text: text.textContent, top: tag.style.top}};
-      pane.getBoundingClientRect = () => ({{left: 200, top: 0, right: 1000, bottom: 600, width: 800, height: 600}});
-      table.getBoundingClientRect = () => ({{left: 10, top: 4, right: 110, bottom: 44, width: 100, height: 40}});
-      await browser.wait(16);
-      return {{roomy, cramped: {{text: text.textContent, top: tag.style.top}}}};
-    """)
-
-    label = english("lesson.board.label.alerts")
-    assert seen["result"]["roomy"] == {"text": "↓ " + label, "top": "32px"}, (
-        "above the box (target at 70px, label 30px tall, 8px gap), never over the target"
-    )
-    assert seen["result"]["cramped"] == {"text": "↑ " + label, "top": "52px"}
-
-def test_the_lesson_note_minimizes_to_its_header_and_expands_again(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      const body = () => browser.element('lesson-body').classList.contains('hidden');
-      const open = body();
-      await browser.click('lesson-collapse');
-      const folded = {hidden: body(), label: browser.text('lesson-collapse'),
-                      floating: browser.element('lesson').style.position,
-                      kept: JSON.parse(localStorage.getItem('fsl-lesson-note')).collapsed};
-      await browser.click('lesson-collapse');
-      return {open, folded, reopened: body()};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["open"] is False
-    assert seen["result"]["folded"] == {
-        "hidden": True, "label": english("lesson.note.expand"), "floating": "fixed", "kept": True,
-    }, "a folded note is its header only, still floating over the pane"
-    assert seen["result"]["reopened"] is False
-
-def test_dragging_the_note_by_its_header_floats_it_there_and_remembers_the_place(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True) + """
-      browser.element('lesson').getBoundingClientRect =
-        () => ({left: 1000, top: 40, right: 1384, bottom: 840, width: 384, height: 800});
-    """, scenario="""
-      const header = browser.element('lesson-header');
-      header.dispatchEvent({type: 'pointerdown', clientX: 1010, clientY: 50, pointerId: 1});
-      header.dispatchEvent({type: 'pointermove', clientX: 410, clientY: 250, pointerId: 1});
-      header.dispatchEvent({type: 'pointerup', clientX: 410, clientY: 250, pointerId: 1});
-      await browser.settle();
-      const style = browser.element('lesson').style;
-      return {position: style.position, left: style.left, top: style.top, room: style.maxHeight,
-              kept: JSON.parse(localStorage.getItem('fsl-lesson-note')),
-              dock: browser.element('lesson-dock').classList.contains('hidden'),
-              frame: browser.element('pane-frame').style.pointerEvents};
-    """)
-
-    assert seen["result"]["position"] == "fixed"
-    assert (seen["result"]["left"], seen["result"]["top"]) == ("400px", "240px")
-    assert seen["result"]["room"] == "min(26rem, calc(100vh - 240px - 1rem))", (
-        "a moved note keeps its compact height and scrolls inside the window"
-    )
-    assert (seen["result"]["kept"]["left"], seen["result"]["kept"]["top"]) == (400, 240)
-    assert seen["result"]["dock"] is False, "a moved note offers to dock again"
-    assert seen["result"]["frame"] == "", "the Kibana frame takes clicks again after the drag"
-
-def test_a_remembered_place_and_fold_are_restored_on_the_next_visit(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True) + """
-      localStorage.setItem('fsl-lesson-note', JSON.stringify({collapsed: true, left: 120, top: 90}));
-    """, scenario="""
-      const style = browser.element('lesson').style;
-      return {left: style.left, top: style.top,
-              folded: browser.element('lesson-body').classList.contains('hidden')};
-    """)
-
-    assert seen["result"] == {"left": "120px", "top": "90px", "folded": True}
-
-def test_a_coach_step_on_a_panel_control_unfolds_a_minimized_note(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      await browser.click('lesson-collapse');
-      for (let i = 0; i < 10; i += 1) await browser.click('lesson-coach-next');
-      return browser.element('lesson-body').classList.contains('hidden');
-    """)
-
-    assert seen["result"] is False
-
-def test_kibana_s_first_visit_callouts_are_marked_seen_before_the_pane_loads(client):
-    seen = open_page(client, "/blue/1/", setup=coached(False), scenario="""
-      return ['discover:docExplorerUpdateCalloutClosed', 'discover:docExplorerCalloutClosed',
-              'data.noDataPopover'].map((key) => localStorage.getItem(key));
-    """)
-
-    assert seen["result"] == ["true", "true", "true"], (
-        "Kibana reads these with JSON.parse from the same-origin localStorage and "
-        "hides the Discover tour callout and the no-data popover when they are true"
-    )
-
-def test_the_lesson_note_floats_over_the_pane_in_its_corner_and_reserves_no_column(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      const note = browser.element('lesson');
-      const style = note.style;
-      return {position: style.position, right: style.right, bottom: style.bottom, left: style.left,
-              fixed: note.classList.contains('fixed'),
-              dock: browser.element('lesson-dock').classList.contains('hidden')};
-    """)
-
-    assert seen["result"] == {
-        "position": "fixed", "right": "1.5rem", "bottom": "1.5rem", "left": "",
-        "fixed": True, "dock": True,
-    }, "the note is layered above the full-width pane from the start, not a column beside it"
+    assert seen["errors"] == [] and seen["result"] == [True, True]
 
 CLICKABLE_KIBANA = """
 const listeners = [];
@@ -330,14 +335,14 @@ def test_clicking_the_highlighted_kibana_element_moves_the_guide_on(client):
     seen = open_page(client, "/blue/1/", setup=coached(True) + CLICKABLE_KIBANA, scenario=f"""
       present.add({KIBANA_TABLE!r});
       await browser.wait(16);
-      const before = browser.text('lesson-coach-text');
+      const before = browser.text('coach-pop-text');
       const heard = listeners.filter((l) => l.type === 'click' && l.capture === true);
       heard.forEach((l) => l.listener({{target: {{}}}}));
       await browser.wait(1);
-      const missed = browser.text('lesson-coach-text');
+      const missed = browser.text('coach-pop-text');
       heard.forEach((l) => l.listener({{target: table.inner}}));
       await browser.wait(1);
-      return {{before, missed, after: browser.text('lesson-coach-text'), heard: heard.length}};
+      return {{before, missed, after: browser.text('coach-pop-text'), heard: heard.length}};
     """)
 
     assert seen["result"]["heard"] == 1, "the guide listens in the Kibana document in the capture phase"
@@ -346,13 +351,13 @@ def test_clicking_the_highlighted_kibana_element_moves_the_guide_on(client):
     assert seen["result"]["after"] == english("lesson.board.coach.expand")
 
 def test_clicking_the_highlighted_note_control_moves_the_guide_on(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      for (let i = 0; i < 10; i += 1) await browser.click('lesson-coach-next');
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      for (let i = 0; i < {at("replay")}; i += 1) await browser.click('lesson-coach-next');
       const before = browser.text('lesson-coach-text');
       await browser.click('lesson-verify');
       await browser.click('lesson-replay');
       await browser.wait(1);
-      return {before, after: browser.text('lesson-coach-text')};
+      return {{before, after: browser.text('lesson-coach-text')}};
     """)
 
     assert seen["result"]["before"] == english("lesson.board.coach.replay")
@@ -360,22 +365,53 @@ def test_clicking_the_highlighted_note_control_moves_the_guide_on(client):
         "only a click on the highlighted control advances, after the click has gone through"
     )
 
-def test_the_note_leads_with_the_step_and_keeps_the_goal_to_one_line_until_asked(client):
+def test_the_steps_tab_leads_with_the_current_step_and_lists_every_step(client):
     seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      const steps = () => browser.element('lesson-steps').classList.contains('hidden');
-      const folded = steps();
-      await browser.click('lesson-goal-toggle');
-      return {folded, opened: !steps(), goal: browser.text('lesson-goal'),
-              toggle: browser.text('lesson-goal-toggle'),
-              room: browser.element('lesson').style.maxHeight,
-              scrolls: browser.element('lesson-body').classList.contains('overflow-y-auto')};
+      await browser.click('note-pill');
+      await browser.click('lesson-coach-next');
+      const listed = [...browser.element('lesson-step-list').querySelectorAll('[data-step]')];
+      return {count: browser.text('lesson-coach-count'), text: browser.text('lesson-coach-text'),
+              listed: listed.length, done: listed[0].textContent.includes('✓'),
+              goal: browser.text('lesson-goal'), scrolls: browser.element('lesson-body').classList.contains('overflow-y-auto')};
     """)
 
     assert seen["result"] == {
-        "folded": True, "opened": True, "goal": english("lesson.board.summary"),
-        "toggle": english("lesson.goal.less"), "room": "min(26rem, 70vh)", "scrolls": True,
+        "count": english("lesson.coach.count", 2, len(STEPS)), "text": english("lesson.board.coach.expand"),
+        "listed": len(STEPS), "done": True, "goal": english("lesson.board.summary"), "scrolls": True,
     }
 
+def test_a_step_in_the_list_jumps_the_guide_there(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      await browser.click('[data-step="{at("edit")}"]');
+      return browser.text('coach-pop-title');
+    """)
+
+    assert seen["result"] == english("lesson.board.label.edit")
+
+def test_the_step_reached_is_kept_per_session_and_resumed_on_the_next_visit(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + f"""
+      localStorage.setItem('fsl-lesson-step-1', '{at("apply") + 1}');
+    """, scenario="""
+      const resumed = browser.text('coach-pop-title');
+      await browser.click('coach-pop-next');
+      return {resumed, kept: localStorage.getItem('fsl-lesson-step-1')};
+    """)
+
+    assert seen["result"] == {"resumed": english("lesson.board.label.apply"), "kept": str(at("apply") + 2)}
+
+def test_closing_the_popover_hides_the_guide_until_the_steps_tab_brings_it_back(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
+      const hidden = () => [browser.element('coach-pop').classList.contains('hidden'),
+                            browser.element('lesson-coach-show').classList.contains('hidden')];
+      await browser.click('coach-pop-close');
+      await browser.wait(16);
+      const closed = hidden();
+      await browser.click('lesson-coach-show');
+      await browser.wait(16);
+      return {closed, back: hidden()};
+    """)
+
+    assert seen["result"] == {"closed": [True, False], "back": [False, True]}
 
 def test_a_guided_note_teaches_with_folded_theory_cards_that_open_on_a_click(client):
     shown = open_page(client, "/blue/1/", setup=guided(True), scenario="""
@@ -418,46 +454,80 @@ def test_a_theory_card_points_the_coach_at_what_it_talks_about(client):
 def test_the_coach_sends_the_learner_to_the_waf_pane_to_tune(client):
     seen = open_page(client, "/blue/1/", setup=coached(True) + """
       document.querySelector('.pane-tab[data-pane="waf"]').getBoundingClientRect =
-        () => ({left: 16, top: 120, right: 192, bottom: 156, width: 176, height: 36});
-    """, scenario="""
-      for (let i = 0; i < 4; i += 1) await browser.click('lesson-coach-next');
+        () => ({left: 8, top: 120, right: 52, bottom: 164, width: 44, height: 44});
+    """, scenario=f"""
+      for (let i = 0; i < {at("waf")}; i += 1) await browser.click('coach-pop-next');
       await browser.wait(16);
-      const at = {text: browser.text('lesson-coach-text'), left: browser.element('coach-box').style.left};
+      const atWaf = {{text: browser.text('coach-pop-text'), left: browser.element('coach-box').style.left}};
       await browser.click('[data-pane="waf"]');
       await browser.wait(1);
-      return {at, after: browser.text('lesson-coach-text')};
+      return {{atWaf, after: browser.text('coach-pop-text'),
+              banner: browser.element('waf-banner').classList.contains('hidden'),
+              box: browser.text('waf-box'), rules: browser.text('waf-rules')}};
     """)
 
-    assert seen["result"]["at"] == {"text": english("lesson.board.coach.waf"), "left": "12px"}
+    assert seen["result"]["atWaf"] == {"text": english("lesson.board.coach.waf"), "left": "4px"}
     assert seen["result"]["after"] == english("lesson.board.coach.audit"), (
         "opening the WAF pane is the click that moves the guide on"
     )
+    assert seen["result"]["banner"] is False
+    assert (seen["result"]["box"], seen["result"]["rules"]) == ("fsl-1-waf", "/etc/modsecurity.d/owasp-crs/rules/"), (
+        "the WAF banner names only the box and where the CRS setup lives"
+    )
 
-
-def test_the_terminal_steps_box_the_pane_and_move_on_from_the_label_s_own_buttons(client):
-    seen = open_page(client, "/blue/1/", setup=coached(True), scenario="""
-      for (let i = 0; i < 5; i += 1) await browser.click('lesson-coach-next');
+def test_a_terminal_step_boxes_the_pane_and_its_popover_gives_the_exact_command(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True), scenario=f"""
+      for (let i = 0; i < {at("edit")}; i += 1) await browser.click('coach-pop-next');
       await browser.wait(16);
-      const box = browser.element('coach-box').style;
-      const tag = browser.element('coach-tag');
-      const at = {text: browser.text('lesson-coach-text'), left: box.left, top: box.top, width: box.width,
-                  layer: box.zIndex, tagLayer: tag.style.zIndex, tag: browser.text('coach-tag-text'),
-                  display: tag.style.display,
-                  takes: tag.style.pointerEvents};
-      const steps = [];
-      for (const id of ['coach-tag-next', 'coach-tag-next', 'coach-tag-next', 'coach-tag-next', 'coach-tag-back']) {
-        await browser.click(id);
-        steps.push(browser.text('lesson-coach-text'));
-      }
-      return {at, steps, buttons: [browser.text('coach-tag-back'), browser.text('coach-tag-next')]};
+      const box = browser.element('coach-box');
+      const edit = {{title: browser.text('coach-pop-title'), text: browser.text('coach-pop-text'),
+                    code: browser.text('coach-pop-code'), does: browser.text('coach-pop-does'),
+                    shown: !browser.element('coach-pop-command').classList.contains('hidden'),
+                    wide: browser.element('coach-pop').classList.contains('pop-wide'),
+                    left: box.style.left, top: box.style.top, width: box.style.width, layer: box.style.zIndex,
+                    scrim: box.classList.contains('scrim'),
+                    popLeft: browser.element('coach-pop').style.left, popTop: browser.element('coach-pop').style.top,
+                    arrow: browser.element('coach-pop-arrow').classList.contains('hidden')}};
+      await browser.click('coach-pop-next');
+      await browser.wait(16);
+      const apply = {{text: browser.text('coach-pop-text'), code: browser.text('coach-pop-code'),
+                     does: browser.text('coach-pop-does')}};
+      return {{edit, apply}};
     """)
+    edit, apply = seen["result"]["edit"], seen["result"]["apply"]
 
     assert seen["errors"] == []
-    assert seen["result"]["at"] == {
-        "text": english("lesson.board.coach.audit"), "left": "196px", "top": "46px", "width": "808px",
-        "layer": "40", "tagLayer": "9999", "tag": "↓ " + english("lesson.board.label.audit"),
-        "display": "flex", "takes": "auto",
-    }, "a step inside the terminal boxes the whole pane under the note; its label, which takes clicks, sits above"
-    assert seen["result"]["steps"] == [english(f"lesson.board.coach.{step}") for step in
-                                       ("view", "edit", "test", "reload", "test")]
-    assert seen["result"]["buttons"] == [english("lesson.coach.back"), english("lesson.coach.next")]
+    assert (edit["title"], edit["text"]) == (english("lesson.board.label.edit"), english("lesson.board.coach.edit"))
+    assert edit["code"] == COMMAND["edit"] and "<<'EOF'" in edit["code"]
+    assert edit["does"] == english("lesson.board.does.edit") and edit["shown"] and edit["wide"]
+    assert (edit["left"], edit["top"], edit["width"], edit["layer"], edit["scrim"]) == (
+        "196px", "46px", "808px", "40", False,
+    ), "a step inside the terminal boxes the whole pane, without dimming it"
+    assert (edit["popLeft"], edit["popTop"], edit["arrow"]) == ("644px", "434px", True), (
+        "the popover sits in the pane's bottom right corner, clear of the output at the top"
+    )
+    assert apply == {"text": english("lesson.board.coach.apply"), "code": "nginx -t && nginx -s reload",
+                     "does": english("lesson.board.does.apply")}
+
+def test_the_copy_button_puts_the_step_s_command_on_the_clipboard(client):
+    seen = open_page(client, "/blue/1/", setup=coached(True) + """
+      const copied = [];
+      navigator.clipboard = {writeText: async (text) => { copied.push(text); }};
+    """, scenario=f"""
+      for (let i = 0; i < {at("apply")}; i += 1) await browser.click('coach-pop-next');
+      await browser.click('coach-pop-copy');
+      return {{copied, said: browser.text('coach-pop-copy')}};
+    """)
+
+    assert seen["result"] == {"copied": ["nginx -t && nginx -s reload"], "said": english("lesson.copied")}
+
+def test_kibana_s_first_visit_callouts_are_marked_seen_before_the_pane_loads(client):
+    seen = open_page(client, "/blue/1/", setup=coached(False), scenario="""
+      return ['discover:docExplorerUpdateCalloutClosed', 'discover:docExplorerCalloutClosed',
+              'data.noDataPopover'].map((key) => localStorage.getItem(key));
+    """)
+
+    assert seen["result"] == ["true", "true", "true"], (
+        "Kibana reads these with JSON.parse from the same-origin localStorage and "
+        "hides the Discover tour callout and the no-data popover when they are true"
+    )

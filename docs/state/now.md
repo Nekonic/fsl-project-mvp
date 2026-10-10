@@ -5,7 +5,7 @@ compaction, not a history. The product backlog and the finished record are in
 `docs/STATE.md`; rulings in `docs/DECISIONS.md`; detail in `git log`. Numbers
 are in `metrics.json` (`bin/measure`), not here.
 
-Updated: 2026-10-10
+Updated: 2026-10-11
 
 ## In flight: building the composable, session-isolated learning MVP
 
@@ -61,6 +61,12 @@ the live acceptance and the pre-push review). The platform VM 192.168.0.210 is b
 
 Commits 870b15f..HEAD are local on this branch, not pushed; push waits for the
 user's approval.
+
+Console redesign (2026-10-11): the five screens rebuilt to the approved
+mockup with the user's rulings R1 (no TP/FP/FN/TN or zero-sum wording a
+person reads) and R2 (the step popover gives the exact command);
+`docs/DECISIONS.md` 2026-10-11. Live-checked on the acceptance VM in session
+202 (lesson walked to VERIFY PASS, closed). Not pushed.
 
 Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
 duplicate another test, pin implementation detail, assert framework or YAML
