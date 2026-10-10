@@ -167,8 +167,11 @@ def sessions(request):
         )
     adapter = substrate()
     live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
-    if live and not getattr(adapter, "concurrent_sessions", False):
-        raise Conflict("a session is already open on the range; close it first")
+    if len(live) >= getattr(adapter, "max_sessions", 1):
+        raise Conflict(
+            f"{len(live)} {'session is' if len(live) == 1 else 'sessions are'} "
+            f"already open on the range; close one first"
+        )
     if hasattr(adapter, "plan_slot"):
         verdict = _range_ready(adapter)
         if not verdict["ready"]:

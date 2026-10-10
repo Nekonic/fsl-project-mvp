@@ -25,7 +25,9 @@ def two_sessions(stack_is_up):
 
     score_when_ready(first, until=case_detected)
     requests.post(f"{PLATFORM_URL}/api/sessions/{second}/ingest/", timeout=120)
-    return first, second, sent.json()["case_id"]
+    yield first, second, sent.json()["case_id"]
+    for session_id in (first, second):
+        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
 
 def test_both_sessions_stay_open_at_once(two_sessions):

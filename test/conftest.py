@@ -85,9 +85,11 @@ def stack_is_up():
     )
 
 MADE_BY_THIS_RUN: set[int] = set()
+OPENED_IN_ORDER: list[int] = []
 
 def made_by_this_run(session_id: int) -> int:
     MADE_BY_THIS_RUN.add(session_id)
+    OPENED_IN_ORDER.append(session_id)
     listed = os.environ.get("FSL_ACCEPTANCE_SESSIONS")
     if listed:
         with open(listed, "a", encoding="utf-8") as ids:
@@ -111,6 +113,22 @@ def the_run_leaves_no_session_open(stack_is_up):
         requests.post = real_post
         for session_id in sorted(MADE_BY_THIS_RUN):
             real_post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+
+def _close_opened_since(count: int) -> None:
+    for session_id in OPENED_IN_ORDER[count:]:
+        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+
+@pytest.fixture(scope="module", autouse=True)
+def a_module_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
+    count = len(OPENED_IN_ORDER)
+    yield
+    _close_opened_since(count)
+
+@pytest.fixture(autouse=True)
+def a_test_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
+    count = len(OPENED_IN_ORDER)
+    yield
+    _close_opened_since(count)
 
 @pytest.fixture(scope="session", autouse=True)
 def terminal_leaves_by_the_front_door(stack_is_up):

@@ -34,17 +34,18 @@ SESSION_PREFIX = "fsl-"
 SESSION_PROJECT = re.compile(r"fsl-(\d+)")
 
 class Docker:
-    concurrent_sessions = True
-
     def __init__(self, declared: Declaration, project: str = "fsl",
-                 session_file: str = "session.yaml", session: int | None = None):
+                 session_file: str = "session.yaml", session: int | None = None,
+                 max_sessions: int = 2):
         self.declared = declared
         self.project = project
         self.session_file = session_file
         self.session = session
+        self.max_sessions = max_sessions
 
     def for_session(self, session: int | None) -> "Docker":
-        return Docker(self.declared, self.project, self.session_file, session)
+        return Docker(self.declared, self.project, self.session_file, session,
+                      self.max_sessions)
 
     def describe(self) -> Shape:
         networks, session = self._networks()

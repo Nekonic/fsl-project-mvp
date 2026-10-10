@@ -97,6 +97,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
         "range.docker.Docker": {
             "project": os.environ.get("FSL_PROJECT", "fsl"),
             "session_file": os.path.join(FSL_SOURCE, "session.yaml"),
+            "max_sessions": int(os.environ.get("FSL_MAX_SESSIONS") or 2),
         },
         "range.openstack.connect": {
             "keystone": os.environ.get("FSL_OPENSTACK_KEYSTONE", ""),
