@@ -13,6 +13,10 @@ MOST_EXCLUSIONS = 20
 TARGET = re.compile(r"(ARGS|ARGS_GET|ARGS_POST|ARGS_NAMES|REQUEST_COOKIES|REQUEST_HEADERS)(:[\w-]+)?", re.ASCII)
 PATH = re.compile(r"/[\w./-]*", re.ASCII)
 
+LEVEL = re.compile(r"tx\.blocking_paranoia_level=([1-4])\b")
+REMOVED = re.compile(r"ctl:ruleRemove(?:TargetById=(\d+);([\w:-]+)|ById=(\d+))")
+BEGINS = re.compile(r'"@beginsWith (/[\w./-]*)"')
+
 class TuningRefused(ValueError):
     pass
 
@@ -52,9 +56,24 @@ def rendered(tuning: dict) -> str:
                      if entry["path"] else f'SecAction "{actions}"')
     return "\n".join(lines) + "\n"
 
+def read(gateway) -> dict:
+    text = gateway(["sh", "-c", f"cat {EXCLUSIONS} 2>/dev/null || true"]).output
+    return parsed(text) | {"file": text}
+
+def parsed(text: str) -> dict:
+    lines = [line for line in text.replace("\\\n", "").splitlines() if not line.lstrip().startswith("#")]
+    level = LEVEL.search("\n".join(lines))
+    exclusions = []
+    for line in lines:
+        path = BEGINS.search(line)
+        for rule, target, whole in REMOVED.findall(line):
+            exclusions.append({"rule_id": int(rule or whole), "target": target,
+                               "path": path.group(1) if path else ""})
+    return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions}
+
 def apply(tuning, gateway) -> dict:
     tuning = checked(tuning)
-    previous = gateway(["sh", "-c", f"cat {EXCLUSIONS} 2>/dev/null || true"]).output
+    previous = read(gateway)["file"]
     old = _workers(gateway)
     _write(gateway, rendered(tuning))
     ran = gateway(RELOAD)

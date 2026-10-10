@@ -86,7 +86,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
-| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000 |
+| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000 |
 
 8000 binds to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
@@ -256,7 +256,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
-| CRS configuration and the nginx reload | `platform/rules/crs.py` | none |
+| CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person, and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read; the platform reads neither |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
@@ -286,8 +286,17 @@ On compose the red console frames `/terminal/<session id>/`, which nginx
 proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it frames
 `/vm-terminal/fsl-kali/`, a ttyd inside the platform that connects over ssh to
 the host's mgmt address; on compose, Kali and the WAF have no mgmt address, so
-`/vm-terminal/` (the blue console's WAF terminal included) does not connect
-there.
+`/vm-terminal/` does not connect there.
+
+The blue console's WAF pane frames the URL the session API names
+(`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
+`/waf-terminal/<session id>/`: nginx takes the session from the path, drops the
+client's query and proxies to a ttyd inside the platform
+(`ttyd -a -b /waf-terminal -p 7693 /app/waf-terminal.sh`) with `?arg=<session id>`;
+ttyd's `-a` passes that as the script's argument, and the script, after checking
+it is a number, runs `docker exec -it fsl-<id>-waf-1 bash`. The WAF image has
+no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
+OpenStack the pane keeps `/vm-terminal/fsl-waf/`.
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
@@ -404,7 +413,12 @@ previous file, reloads and refuses. Input is validated before anything is writte
 paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 `ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional
 `:name`, a path of `[A-Za-z0-9_./-]`, at most 20 entries.
-`GET/PUT /api/sessions/<id>/waf/` reads and changes it.
+`PUT /api/sessions/<id>/waf/` changes it (the agent path); `GET` reads the
+file in the session's WAF back through `crs.read`, which parses the paranoia
+level and every `ctl:ruleRemove*` line (commented lines skipped, continued
+lines joined), so it reports an edit made in the WAF terminal. A closed
+session reports what was last recorded, with `file: null`. The learner tunes in
+the WAF terminal, not through the API.
 
 `POST /api/sessions/<id>/verify/` replays the scenario's `lesson.cases` through
 the same path as `/attacks/`, marked `meta.verify=<run>`, and judges only that
@@ -437,23 +451,47 @@ The board's lesson replays `board-sqli-orderby-sqlmap`,
 O'Brien search and `board-normal-sort` (`?sort=-created_at`), which fails a
 tuning that over-blocks the `sort` argument. In a guided session the blue
 console shows the lesson as a note floating over the full-width pane (fixed,
-bottom-right by default, 20rem wide, at most 60vh tall). Its header drags it
+bottom-right by default, 20rem wide, at most 26rem tall and scrolling inside).
+It leads with the current guide step; the goal is one line with a Details
+toggle for the four lesson paragraphs. Its header drags it
 anywhere and folds it to the header; "Back to the corner" resets it. Fold and
 place are kept per viewer in localStorage (`fsl-lesson-note`); nothing
 reserves a column or reflows. A coach step on a note control unfolds it.
 
-The panel walks nine sub-steps (`COACH` in `blue.html`; text under
+Above the guide, five folded theory cards (`THEORY` in `blue.html`; text under
+`<lesson.text>.theory.<card>.title|body`) teach the tuning before the practice:
+paranoia levels, anomaly scoring (why a 403 names 949110 and 920273), finding
+a false positive's rule, lowering the level versus a rule exclusion, and how to
+read a `ctl:ruleRemoveTargetById` rule exclusion line.
+A card that names something on screen has "Show me where", which moves the
+guide to that step (the 403 row, the `rule` field, the step that edits the file). Sources
+are in `docs/DECISIONS.md` (2026-10-10, the theory cards).
+
+The note holds no tuning form. Its hint shows the complete commands for the
+WAF pane (read the audit log, show the file, append the exclusion with a
+heredoc since the WAF image has no editor, `nginx -t`, `nginx -s reload`)
+first, with a toggle to hide them.
+
+The panel walks twelve sub-steps (`COACH` in `blue.html`; text under
 `<lesson.text>.coach.*` in `strings.html`): the session's alert table, a row
 expanded, the `rule` field, the overview dashboard (the nav toggle until the
-Dashboards link exists), then the paranoia level, the exclusions, Apply,
-Replay and Verify. Each names a target: a `data-test-subj` selector in the
+Dashboards link exists), then the WAF tab, five steps inside the WAF terminal
+(audit log, show the file, edit it, `nginx -t`, reload), Replay and Verify.
+A terminal step boxes the whole pane; the terminal cannot report a click, so
+those steps advance from the Back/Next buttons on the highlight's label, which
+every step carries (the note keeps its own pair for a step whose target is not
+on screen). Each names a target: a `data-test-subj` selector in the
 Kibana frame, which is same-origin and so readable from the console, or one
-of the panel's own controls. A fixed red box and a "← Here" label are placed
-over the target every animation frame, with `pointer-events: none` so every
+of the panel's own controls. A fixed red box and the step's own short label
+(`<lesson.text>.label.<step>`, above the target or below it when there is no
+room) are placed over the target every animation frame, with `pointer-events: none` so every
 click still reaches Kibana; the selector is re-queried each frame, so Kibana
 re-rendering or navigating does not strand the box, and it hides while the
 target is not on screen. After about 2 s without the target the panel says
-where to look instead. The selectors were checked against Kibana 8.15.0, the
+where to look instead. A click on the highlighted target moves the guide on
+once the click has gone through: a capture-phase listener in the Kibana
+document (re-attached when the frame loads a new document) and one on each
+note control; Back and Next remain. The selectors were checked against Kibana 8.15.0, the
 pinned version.
 
 ## How the scores are computed

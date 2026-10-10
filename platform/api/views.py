@@ -749,8 +749,17 @@ def session_waf(request, session_id):
         with RULE_CHANGES:
             session.waf = crs.apply(tuning, _range(session).runner("gateway"))
             session.save(update_fields=["waf"])
-    tuning = session.waf or {"paranoia": None, "exclusions": []}
+    tuning = _waf_in_force(session)
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
+
+def _waf_in_force(session):
+    recorded = session.waf or {"paranoia": None, "exclusions": []}
+    if session.ended_at is not None:
+        return recorded | {"file": None}
+    try:
+        return crs.read(_range(session).runner("gateway"))
+    except RangeUnavailable:
+        return recorded | {"file": None}
 
 def _record_case(session, case, started_at, ended_at, meta):
     return Case.objects.create(
@@ -796,7 +805,14 @@ def _take_turn(session):
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     taught = wargames.lesson(session.scenario) if session.guidance else None
-    return _reply(_shape(session, SESSION_FIELDS) | {"lesson": taught, "discover": _discover(session)})
+    return _reply(_shape(session, SESSION_FIELDS) | {
+        "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
+    })
+
+def _waf_terminal_url(session):
+    if settings.WAF_SESSION_TERMINAL_URL:
+        return settings.WAF_SESSION_TERMINAL_URL.format(session=session.pk)
+    return settings.WAF_TERMINAL_URL
 
 def _discover(session):
     return kibana.discover_path(

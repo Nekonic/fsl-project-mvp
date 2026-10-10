@@ -354,6 +354,24 @@ def test_the_terminal_is_the_session_s_own_kali():
 
 
 @pytest.mark.django_db
+def test_the_waf_terminal_is_a_shell_in_the_session_s_own_waf(client):
+    session, = opened_sessions(1)
+
+    assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == f"/waf-terminal/{session.pk}/"
+    nginx = (ROOT / "platform/nginx.conf").read_text()
+    start = nginx.index("location ~ ^/waf-terminal/(?<session>\\d+)/")
+    block = nginx[start:nginx.index("}", start)]
+    assert "auth_request /terminal-allowed;" in block
+    assert "proxy_pass http://127.0.0.1:7693/waf-terminal/$rest?arg=$session;" in block, (
+        "the session comes from the path alone; a client's own ?arg= is dropped"
+    )
+    assert "ttyd -W -a -b /waf-terminal -i 127.0.0.1 -p 7693 /app/waf-terminal.sh" in (
+        ROOT / "platform/entrypoint.sh").read_text()
+    shell = (ROOT / "platform/waf-terminal.sh").read_text()
+    assert '*[!0-9]*) echo "no session given"' in shell, "only a session number reaches docker exec"
+    assert 'docker exec -it "fsl-${session}-waf-1"' in shell
+
+@pytest.mark.django_db
 def test_the_attacker_box_asked_for_no_session_is_the_newest_one(client):
     Session.objects.create(scenario="board", baseline=[])
     newest = Session.objects.create(scenario="board", baseline=[], ended_at="2026-10-10T00:00:00Z")

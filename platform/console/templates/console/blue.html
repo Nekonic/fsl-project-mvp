@@ -33,7 +33,10 @@
       <button id="lesson-collapse" class="text-xs text-muted hover:text-primary"></button>
     </header>
     <div id="lesson-body" class="w-80 min-h-0 overflow-y-auto p-4 flex flex-col gap-5">
-    <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
+    <section class="flex flex-col gap-2">
+      <h3 data-t="lesson.theory.heading" class="text-heading font-medium"></h3>
+      <ul id="lesson-theory" class="flex flex-col gap-1"></ul>
+    </section>
 
     <section class="flex flex-col gap-2 border border-danger-soft rounded p-3">
       <p id="lesson-coach-count" class="text-muted text-xs"></p>
@@ -48,20 +51,19 @@
     </section>
 
     <section class="flex flex-col gap-2">
-      <h3 data-t="lesson.waf.heading" class="text-heading font-medium"></h3>
-      <label for="lesson-paranoia" data-t="lesson.waf.paranoia" class="text-muted"></label>
-      <select id="lesson-paranoia" class="border border-line rounded px-2 py-1 bg-panel">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-      </select>
-      <label for="lesson-exclusions" data-t="lesson.waf.exclusions" class="text-muted"></label>
-      <textarea id="lesson-exclusions" rows="4" data-t-placeholder="lesson.waf.exclusions_hint"
-                class="border border-line rounded px-2 py-1 font-mono text-xs bg-panel"></textarea>
-      <button id="lesson-save" data-t="lesson.waf.save"
-              class="self-start px-3 py-1.5 rounded bg-primary text-inverse"></button>
-      <p id="lesson-waf-status" class="text-muted"></p>
+      <div class="flex items-baseline gap-2">
+        <p id="lesson-goal" class="text-body flex-1"></p>
+        <button id="lesson-goal-toggle" class="text-xs text-muted hover:text-primary shrink-0"></button>
+      </div>
+      <ol id="lesson-steps" class="hidden flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <div class="flex items-baseline gap-2">
+        <h3 data-t="lesson.hint.heading" class="text-heading font-medium flex-1"></h3>
+        <button id="lesson-hint-toggle" class="text-xs text-muted hover:text-primary shrink-0"></button>
+      </div>
+      <pre id="lesson-hint" class="font-mono text-xs border border-line rounded px-2 py-1"></pre>
     </section>
 
     <section class="flex flex-col gap-2">
@@ -90,6 +92,8 @@
   .pane-tab:hover { color: var(--heading); background: var(--subdued); }
   .pane-tab[aria-selected="true"] { color: var(--primary); background: var(--primary-soft);
     border-color: var(--primary-line); font-weight: 500; }
+  #lesson-coach-text, [data-card-body] { white-space: pre-line; overflow-wrap: anywhere; }
+  #lesson-hint { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 </style>
 <script>
   document.getElementById("to-red").href = `/red/${sessionId()}/`;
@@ -131,47 +135,6 @@
   const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
   const field = (id) => document.getElementById(id);
 
-  function exclusionsText(exclusions) {
-    return exclusions.map((entry) =>
-      [entry.rule_id, entry.target, entry.path].filter(Boolean).join(" ")).join("\n");
-  }
-
-  function exclusionsFrom(text) {
-    return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
-      const [rule, ...rest] = line.split(/\s+/);
-      return {
-        rule_id: Number(rule),
-        target: rest.find((part) => !part.startsWith("/")) || "",
-        path: rest.find((part) => part.startsWith("/")) || "",
-      };
-    });
-  }
-
-  async function loadTuning() {
-    const tuning = await api(lessonPath("waf/"));
-    if (!tuning.ok) {
-      field("lesson-waf-status").textContent = t("lesson.waf.failed", detail(tuning));
-      return;
-    }
-    field("lesson-paranoia").value = String(tuning.body.paranoia || 1);
-    field("lesson-exclusions").value = exclusionsText(tuning.body.exclusions || []);
-  }
-
-  async function saveTuning() {
-    const status = field("lesson-waf-status");
-    status.textContent = t("lesson.waf.saving");
-    const saved = await api(lessonPath("waf/"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paranoia: Number(field("lesson-paranoia").value),
-        exclusions: exclusionsFrom(field("lesson-exclusions").value),
-      }),
-    });
-    status.textContent = saved.ok
-      ? t("lesson.waf.saved", saved.body.paranoia) : t("lesson.waf.failed", detail(saved));
-  }
-
   async function replay() {
     const name = field("lesson-case").value;
     const status = field("lesson-replay-status");
@@ -199,6 +162,7 @@
   }
 
   const NOTE_KEY = "fsl-lesson-note";
+  const NOTE_HEIGHT = "26rem";
   let note = { collapsed: false, left: null, top: null };
 
   function readNote() {
@@ -224,8 +188,8 @@
     field("lesson-dock").classList.toggle("hidden", !moved);
     Object.assign(field("lesson").style, { position: "fixed", zIndex: "50" }, moved
       ? { left: `${note.left}px`, top: `${note.top}px`, right: "", bottom: "",
-          maxHeight: `calc(100vh - ${note.top}px - 1rem)` }
-      : { left: "", top: "", right: "1.5rem", bottom: "1.5rem", maxHeight: "60vh" });
+          maxHeight: `min(${NOTE_HEIGHT}, calc(100vh - ${note.top}px - 1rem))` }
+      : { left: "", top: "", right: "1.5rem", bottom: "1.5rem", maxHeight: `min(${NOTE_HEIGHT}, 70vh)` });
   }
 
   function setNote(change) {
@@ -273,14 +237,17 @@
     { id: "expand", kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
     { id: "rule", kibana: '[data-test-subj="field-rule"]' },
     { id: "dashboard", kibana: DASHBOARDS, first: '[data-test-subj="toggleNavButton"]' },
-    { id: "paranoia", panel: "#lesson-paranoia" },
-    { id: "exclusions", panel: "#lesson-exclusions" },
-    { id: "apply", panel: "#lesson-save" },
+    { id: "waf", panel: '.pane-tab[data-pane="waf"]' },
+    { id: "audit", pane: true },
+    { id: "view", pane: true },
+    { id: "edit", pane: true },
+    { id: "test", pane: true },
+    { id: "reload", pane: true },
     { id: "replay", panel: "#lesson-replay" },
     { id: "verify", panel: "#lesson-verify" },
   ];
   const MISSING_AFTER_FRAMES = 120;
-  const TAG_ROOM = 90;
+  const LABEL_HEIGHT = 30;
 
   function overlayPart(id) {
     const part = document.createElement("div");
@@ -293,6 +260,10 @@
   }
 
   function locate(step) {
+    if (step.pane) {
+      const pane = frame.getBoundingClientRect();
+      return pane.width ? { left: pane.left, top: pane.top, width: pane.width, height: pane.height } : null;
+    }
     const inPanel = Boolean(step.panel);
     let doc = document;
     if (!inPanel) {
@@ -306,13 +277,10 @@
       const element = doc && selector ? doc.querySelector(selector) : null;
       const rect = element ? element.getBoundingClientRect() : null;
       if (!rect || !rect.width) return null;
-      if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, tagLeft: true };
+      if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, main: element };
       const pane = frame.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= pane.height || rect.right <= 0 || rect.left >= pane.width) return null;
-      return {
-        left: pane.left + rect.left, top: pane.top + rect.top, width: rect.width, height: rect.height,
-        tagLeft: pane.width - rect.right < TAG_ROOM,
-      };
+      return { left: pane.left + rect.left, top: pane.top + rect.top, width: rect.width, height: rect.height };
     };
     return shown(step.panel || step.kibana) || shown(step.first);
   }
@@ -322,9 +290,28 @@
     const tag = overlayPart("coach-tag");
     Object.assign(box.style, { border: "3px solid var(--danger)", borderRadius: "6px" });
     Object.assign(tag.style, {
-      background: "var(--danger)", color: "var(--text-inverse)", padding: "4px 8px", borderRadius: "4px",
-      fontSize: "13px", whiteSpace: "nowrap",
+      background: "var(--danger)", color: "var(--text-inverse)", padding: "3px 4px 3px 8px",
+      borderRadius: "4px", fontSize: "13px", maxWidth: "26rem", alignItems: "center", gap: "6px",
+      pointerEvents: "auto",
     });
+    const tagText = document.createElement("span");
+    tagText.id = "coach-tag-text";
+    Object.assign(tagText.style, {
+      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0",
+    });
+    const tagButton = (id, key) => {
+      const button = document.createElement("button");
+      button.id = id;
+      button.textContent = t(key);
+      Object.assign(button.style, {
+        background: "var(--text-inverse)", color: "var(--danger)", borderRadius: "3px",
+        padding: "0 6px", fontSize: "12px", flexShrink: "0",
+      });
+      return button;
+    };
+    const tagBack = tagButton("coach-tag-back", "lesson.coach.back");
+    const tagNext = tagButton("coach-tag-next", "lesson.coach.next");
+    tag.append(tagText, tagBack, tagNext);
     let at = 0;
     let last = "";
     let lost = 0;
@@ -334,47 +321,127 @@
       if (step.panel && note.collapsed) setNote({ collapsed: false });
       field("lesson-coach-count").textContent = t("lesson.coach.count", at + 1, COACH.length);
       field("lesson-coach-text").textContent = t(`${prefix}.coach.${step.id}`);
-      field("lesson-coach-back").disabled = at === 0;
-      field("lesson-coach-next").disabled = at === COACH.length - 1;
+      tag.dataset.label = t(`${prefix}.label.${step.id}`);
+      field("lesson-coach-back").disabled = tagBack.disabled = at === 0;
+      field("lesson-coach-next").disabled = tagNext.disabled = at === COACH.length - 1;
       last = "";
       lost = 0;
     }
 
     function tick() {
+      listenToKibana();
       const step = COACH[at];
       const rect = locate(step);
       lost = rect ? 0 : lost + 1;
       field("lesson-coach-missing").classList.toggle("hidden", lost < MISSING_AFTER_FRAMES);
-      const key = rect ? [rect.left, rect.top, rect.width, rect.height, rect.tagLeft].join() : "none";
+      const key = rect ? [rect.left, rect.top, rect.width, rect.height, at].join() : "none";
       if (key !== last) {
         last = key;
-        box.style.display = tag.style.display = rect ? "" : "none";
-        box.style.zIndex = tag.style.zIndex = step.panel ? "9999" : "40";
+        box.style.display = rect ? "" : "none";
+        tag.style.display = rect ? "flex" : "none";
+        box.style.zIndex = step.panel ? "9999" : "40";
+        tag.style.zIndex = "9999";
         if (rect) {
           Object.assign(box.style, {
             left: `${rect.left - 4}px`, top: `${rect.top - 4}px`,
             width: `${rect.width + 8}px`, height: `${rect.height + 8}px`,
           });
-          const middle = `${rect.top + rect.height / 2 - 12}px`;
-          tag.textContent = rect.tagLeft ? `${t("lesson.coach.here")} →` : `← ${t("lesson.coach.here")}`;
-          Object.assign(tag.style, rect.tagLeft
-            ? { left: "", right: `${document.documentElement.clientWidth - rect.left + 10}px`, top: middle }
-            : { right: "", left: `${rect.left + rect.width + 10}px`, top: middle });
+          const above = rect.top >= LABEL_HEIGHT + 8;
+          tagText.textContent = `${above ? "↓" : "↑"} ${tag.dataset.label}`;
+          Object.assign(tag.style, {
+            left: `${rect.left - 4}px`,
+            top: `${above ? rect.top - LABEL_HEIGHT - 8 : rect.top + rect.height + 8}px`,
+          });
         }
       }
       requestAnimationFrame(tick);
     }
 
-    field("lesson-coach-back").addEventListener("click", () => { at = Math.max(0, at - 1); show(); });
-    field("lesson-coach-next").addEventListener("click", () => {
-      at = Math.min(COACH.length - 1, at + 1);
-      show();
+    function advanceFrom(step) {
+      setTimeout(() => {
+        if (COACH[at] !== step || at === COACH.length - 1) return;
+        at += 1;
+        show();
+      }, 0);
+    }
+
+    let heard = null;
+
+    function listenToKibana() {
+      let doc = null;
+      try {
+        doc = frame.contentDocument;
+      } catch (error) {
+        return;
+      }
+      if (!doc || doc === heard) return;
+      heard = doc;
+      doc.addEventListener("click", (event) => {
+        const step = COACH[at];
+        const target = step.kibana ? doc.querySelector(step.kibana) : null;
+        if (target && (target === event.target || target.contains(event.target))) advanceFrom(step);
+      }, true);
+    }
+
+    COACH.filter((step) => step.panel).forEach((step) => {
+      document.querySelector(step.panel).addEventListener("click", () => {
+        if (COACH[at] === step) advanceFrom(step);
+      });
     });
+
+    const back = () => { at = Math.max(0, at - 1); show(); };
+    const next = () => { at = Math.min(COACH.length - 1, at + 1); show(); };
+    [field("lesson-coach-back"), tagBack].forEach((button) => button.addEventListener("click", back));
+    [field("lesson-coach-next"), tagNext].forEach((button) => button.addEventListener("click", next));
     show();
     requestAnimationFrame(tick);
+    return (id) => {
+      at = COACH.findIndex((step) => step.id === id);
+      show();
+    };
   }
 
-  field("lesson-save").addEventListener("click", saveTuning);
+  function hint(prefix) {
+    let shown = true;
+    const toggle = field("lesson-hint-toggle");
+    field("lesson-hint").textContent = t(`${prefix}.hint`);
+    const place = () => {
+      field("lesson-hint").classList.toggle("hidden", !shown);
+      toggle.textContent = t(shown ? "lesson.hint.hide" : "lesson.hint.show");
+    };
+    toggle.addEventListener("click", () => { shown = !shown; place(); });
+    place();
+  }
+
+  const THEORY = [
+    { id: "paranoia" },
+    { id: "scoring", shows: "expand" },
+    { id: "culprit", shows: "rule" },
+    { id: "fixes" },
+    { id: "anatomy", shows: "edit" },
+  ];
+
+  function theory(prefix, coachTo) {
+    const list = field("lesson-theory");
+    list.innerHTML = THEORY.map((card) => `
+      <li class="border border-line rounded">
+        <button class="w-full text-left px-2 py-1 text-heading" data-card="${card.id}"
+                aria-expanded="false">${esc(t(`${prefix}.theory.${card.id}.title`))}</button>
+        <div class="hidden px-2 pb-2 flex flex-col gap-2 text-body" data-card-body="${card.id}">
+          <p>${esc(t(`${prefix}.theory.${card.id}.body`))}</p>
+          ${card.shows ? `<button class="self-start text-xs text-primary hover:underline"
+                  data-shows="${card.shows}">${esc(t("lesson.theory.show"))}</button>` : ""}
+        </div>
+      </li>`).join("");
+    list.querySelectorAll("[data-card]").forEach((toggle) => toggle.addEventListener("click", () => {
+      const body = list.querySelector(`[data-card-body="${toggle.dataset.card}"]`);
+      const opened = body.classList.toggle("hidden") === false;
+      toggle.setAttribute("aria-expanded", String(opened));
+    }));
+    list.querySelectorAll("[data-shows]").forEach((show) =>
+      show.addEventListener("click", () => coachTo(show.dataset.shows)));
+  }
+
   field("lesson-replay").addEventListener("click", replay);
   field("lesson-verify").addEventListener("click", verifyLesson);
 
@@ -382,17 +449,26 @@
     const session = await api(lessonPath(""));
     const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
     if (session.ok && session.body.discover) kibana.dataset.src = session.body.discover;
+    if (session.ok && session.body.waf_terminal) {
+      document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.body.waf_terminal;
+    }
     openPane(kibana);
     if (!session.ok || !session.body.lesson) return;
     const taught = session.body.lesson;
+    field("lesson-goal").textContent = t(`${taught.text}.summary`);
+    field("lesson-goal-toggle").textContent = t("lesson.goal.more");
+    field("lesson-goal-toggle").addEventListener("click", () => {
+      const opened = field("lesson-steps").classList.toggle("hidden") === false;
+      field("lesson-goal-toggle").textContent = t(opened ? "lesson.goal.less" : "lesson.goal.more");
+    });
     field("lesson-steps").innerHTML = STEPS.map((step) =>
       `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
     field("lesson-case").innerHTML = taught.cases.map((name) =>
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     field("lesson").classList.remove("hidden");
     noteControls();
-    coach(taught.text);
-    loadTuning();
+    theory(taught.text, coach(taught.text));
+    hint(taught.text);
   })();
 </script>
 {% endblock %}

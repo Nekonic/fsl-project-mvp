@@ -27,15 +27,20 @@ LOST = (FIXTURES / "sqlmap-host-missing.out").read_text()
 class Stand:
     def __init__(self):
         self.calls = []
+        self.files = {}
 
     def runner(self):
-        calls = self.calls
+        calls, files = self.calls, self.files
 
         def runner(adapter, role, segment_id=""):
             def run(argv, stdin=None, timeout=60.0):
                 calls.append((adapter.session, role, " ".join(argv), stdin))
                 if " ".join(argv).endswith(crs.WORKERS):
                     return Ran(0, str(len(calls)))
+                if " ".join(argv).endswith("cat > " + crs.EXCLUSIONS):
+                    files[(adapter.session, role)] = stdin
+                if crs.EXCLUSIONS + " 2>/dev/null" in " ".join(argv):
+                    return Ran(0, files.get((adapter.session, role), ""))
                 if "reload-rules" in argv:
                     return Ran(0, '{"message":"done","return":"OK"}')
                 return Ran(0, "")
@@ -121,11 +126,40 @@ def test_the_waf_tuning_round_trips_through_the_api(client):
     ]}
     with patch("range.docker.Docker.runner", Stand().runner()):
         answer = put(client, session.pk, tuning)
+        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
-    read = client.get(f"/api/sessions/{session.pk}/waf/").json()
     assert answer.status_code == 200, answer.content
     assert {k: read[k] for k in ("paranoia", "exclusions")} == tuning
+    assert read["file"] == crs.rendered(tuning)
     assert read["version"] == answer.json()["version"]
+
+def test_the_waf_api_reports_what_is_in_the_waf_s_file_after_an_edit_in_the_terminal(client):
+    session = board(waf={"paranoia": 4, "exclusions": []})
+    stand = Stand()
+    edited = crs.rendered({"paranoia": 4, "exclusions": []}) + (
+        "# SecRule REQUEST_FILENAME \"@beginsWith /old/\" \"id:10009,ctl:ruleRemoveById=942100\"\n"
+        "SecRule REQUEST_FILENAME \"@beginsWith /search/\" \\\n"
+        "    \"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q\"\n"
+    )
+    stand.files[(session.pk, "gateway")] = edited
+    with patch("range.docker.Docker.runner", stand.runner()):
+        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
+
+    assert read["paranoia"] == 4
+    assert read["exclusions"] == [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}], (
+        "a commented-out line is not in force; a continued line is"
+    )
+    assert read["file"] == edited
+
+def test_a_closed_session_s_waf_is_what_was_recorded(client):
+    session = board(waf={"paranoia": 2, "exclusions": []})
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+    stand = Stand()
+    with patch("range.docker.Docker.runner", stand.runner()):
+        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
+
+    assert (read["paranoia"], read["file"]) == (2, None)
+    assert stand.to("gateway") == []
 
 def test_a_tuning_goes_only_to_the_gateway_of_the_session_asked(client):
     first, second = board(), board()

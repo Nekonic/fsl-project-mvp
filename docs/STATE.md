@@ -807,10 +807,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
       wiring for the attacker box).
-- [ ] The blue WAF terminal (`/vm-terminal/`) does not connect on compose:
-      the WAF has no `mgmt` address there. The red terminal on compose is
-      `/terminal/<session id>/`, proxied to that session's Kali ttyd
-      (2026-10-10).
+- [x] The blue WAF terminal (`/vm-terminal/`) did not connect on compose:
+      the WAF has no `mgmt` address there. Fixed 2026-10-10: the pane frames
+      `/waf-terminal/<session id>/`, a platform ttyd that `docker exec`s into
+      `fsl-<id>-waf-1`; live-verified in session 199.
 - [ ] Spike: Kibana highlight on stable `data-test-subj` selectors.
 - [ ] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
       rule by commenting it out. In Suricata, a suppression keeps the rule
