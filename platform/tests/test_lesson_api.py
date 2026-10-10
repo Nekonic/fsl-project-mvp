@@ -402,3 +402,58 @@ def test_verify_refuses_a_session_with_no_snapshot_of_the_target_s_accounts(clie
     assert answer.status_code == 409
     assert "no snapshot" in answer.json()["detail"]
     assert fired == [], "nothing is replayed when no leak could be told from a block"
+
+def test_a_session_says_whether_it_is_a_lesson_and_that_it_is_ready_only_once_it_has_opened(client):
+    fire, _ = attacker({})
+    with patch("api.views.harness.fire", fire):
+        opened = client.post_json("/api/sessions/", {"guidance": True}).json()
+    opening = Session.objects.create(scenario="board", baseline=[])
+
+    listed = {row["id"]: row for row in client.get("/api/sessions/?state=open").json()}
+
+    assert (opened["kind"], opened["ready"]) == ("lesson", True)
+    assert (listed[opening.pk]["kind"], listed[opening.pk]["ready"]) == ("wargame", False), (
+        "a session whose open has not finished is still being prepared"
+    )
+    assert "result" not in listed[opening.pk], "an open row in the list is not judged"
+
+def test_a_finished_lesson_reports_its_last_verdict_and_how_often_it_was_verified(client):
+    session = board(guidance=True)
+    verify(client, session, {"board-normal-search-with-apostrophe": "http_code=403\n",
+                             "board-sqli-orderby-sqlmap": HELD,
+                             "board-sqli-orderby-sqlmap-tamper": HELD})
+    verify(client, session, {"board-sqli-orderby-sqlmap": HELD,
+                             "board-sqli-orderby-sqlmap-tamper": HELD})
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    row = client.get("/api/sessions/?state=closed").json()[0]
+
+    assert (row["result"]["lesson"]["passed"], row["result"]["lesson"]["verified"]) == (True, 2)
+    assert row["result"]["lesson"]["diagnosis"] == [["lesson.diag.blocked_ratio", [2, 2]]], (
+        "the last run's reasons, in the same keys VERIFY answered with"
+    )
+    assert row["result"]["objectives"] == {"lost": 0, "undetected": 0, "total": 3}
+
+def test_a_finished_session_reports_the_objectives_it_lost_and_how_many_went_unseen(client):
+    session = board()
+    verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    detail = client.get(f"/api/sessions/{session.pk}/").json()
+
+    assert detail["result"]["objectives"] == {"lost": 3, "undetected": 3, "total": 3}
+    assert (detail["result"]["lesson"]["passed"], detail["result"]["lesson"]["verified"]) == (False, 1)
+
+def test_an_unverified_session_has_no_lesson_verdict_to_report(client):
+    session = board()
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    assert client.get(f"/api/sessions/{session.pk}/").json()["result"]["lesson"] is None
+
+def test_the_session_names_its_waf_box_and_where_the_crs_rules_live(client):
+    session = board()
+
+    detail = client.get(f"/api/sessions/{session.pk}/").json()
+
+    assert detail["waf_box"] == f"fsl-{session.pk}-waf"
+    assert detail["waf_rules"] == "/etc/modsecurity.d/owasp-crs/rules"

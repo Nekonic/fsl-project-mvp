@@ -46,7 +46,9 @@ Each target is a wargame, a folder under `wargames/` whose `compose.yaml`
 `corp` (WordPress and MySQL, `effect_observed`). The platform discovers each
 from `wargames/<id>/scenario.yaml` (`platform/wargames.py`; fields `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`, and
-optionally `defense` and `lesson`, described under "The WAF lesson"). Nothing
+optionally `category`, `difficulty` (easy, medium, hard) and `minutes` for the
+console's scenario card, and `defense` and `lesson`, described under "The WAF
+lesson"). Nothing
 reads `image` yet. Each app image is built once and tagged
 (`docker compose -f session.yaml build`); sessions start from those tags with
 `--no-build`. A new wargame needs `scenario.yaml`, `objectives.yaml` and
@@ -449,50 +451,89 @@ alerts they drew, and the game); objectives a replay's leak credited stay.
 The board's lesson replays `board-sqli-orderby-sqlmap`,
 `board-sqli-orderby-sqlmap-tamper` and four benign cases, among them the
 O'Brien search and `board-normal-sort` (`?sort=-created_at`), which fails a
-tuning that over-blocks the `sort` argument. In a guided session the blue
-console shows the lesson as a note floating over the full-width pane (fixed,
-bottom-right by default, 20rem wide, at most 26rem tall and scrolling inside).
-It leads with the current guide step; the goal is one line with a Details
-toggle for the four lesson paragraphs. Its header drags it
-anywhere and folds it to the header; "Back to the corner" resets it. Fold and
-place are kept per viewer in localStorage (`fsl-lesson-note`); nothing
-reserves a column or reflows. A coach step on a note control unfolds it.
+tuning that over-blocks the `sort` argument.
 
-Above the guide, five folded theory cards (`THEORY` in `blue.html`; text under
-`<lesson.text>.theory.<card>.title|body`) teach the tuning before the practice:
-paranoia levels, anomaly scoring (why a 403 names 949110 and 920273), finding
-a false positive's rule, lowering the level versus a rule exclusion, and how to
-read a `ctl:ruleRemoveTargetById` rule exclusion line.
-A card that names something on screen has "Show me where", which moves the
-guide to that step (the 403 row, the `rule` field, the step that edits the file). Sources
-are in `docs/DECISIONS.md` (2026-10-10, the theory cards).
+The console is five screens, every one filled from `/api/` (a static mockup
+the user approved, with two rulings on top; `docs/DECISIONS.md`, 2026-10-11,
+console redesign). The palette and component classes are in `base.html` and
+`platform/console/components.css`, which `bin/build-css` puts into
+`tailwind.css`. The header carries the breadcrumb, the range state and the
+language switch.
 
-The note holds no tuning form. Its hint shows the complete commands for the
-WAF pane (read the audit log, show the file, append the exclusion with a
-heredoc since the WAF image has no editor, `nginx -t`, `nginx -s reload`)
-first, with a toggle to hide them.
+- Main (`/`): running sessions with their kind (`lesson` or `wargame`), the
+  step a lesson reached and whether opening has finished (`ready`, from
+  `Session.ready_at`; "preparing n s / about 80 s" until then); scenario cards
+  with category, difficulty and minutes from `scenario.yaml`, and counts of
+  attack cases, benign cases, objectives and lesson steps from
+  `GET /api/wargames/`; finished sessions with their `result`: PASS/FAIL from
+  the last VERIFY run, or objectives lost of the total and how many went
+  unnoticed. A refused start is said under the button that was pressed; on
+  409 "Close open sessions" lists the open ones, each closed through
+  `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
+- Session (`/session/<id>/`): header figures (lesson step, objectives lost,
+  target), the blue and red console cards, recent cases from
+  `GET /api/sessions/<id>/cases/`. Once closed: the lesson verdict with its
+  last diagnosis, then the primary score (every tier, lost or kept, noticed or
+  not, penalty difficulty x1 or x2), then plain sentences on what the defence
+  judged: "caught 7 of 8 attacks, missed 1 (name)", "3 of 4 benign requests
+  passed, wrongly blocked 1 (O'Brien search)", and that a case counts once
+  however many alerts it drew. TP/FP/FN/TN and the game's balance stay in the
+  API; no string a person reads names them (`test_strings.py`).
+- Blue (`/blue/<id>/`): a rail (Kibana, WAF, Red) and the pane. On the WAF
+  pane a banner names only the box (`waf_box`, `fsl-<id>-waf`) and the CRS
+  rules directory (`waf_rules`, derived from `crs.EXCLUSIONS`).
+- Red (`/red/<id>/`): objectives (Korean names under `objective.<key>`) and
+  "Submit stolen hashes" at the top, cases grouped into attacks and benign
+  with what their last run did, the Kali terminal taking the rest. Narrow
+  widths stack the panels; the red and blue pages do not scroll sideways.
 
-The panel walks twelve sub-steps (`COACH` in `blue.html`; text under
-`<lesson.text>.coach.*` in `strings.html`): the session's alert table, a row
-expanded, the `rule` field, the overview dashboard (the nav toggle until the
-Dashboards link exists), then the WAF tab, five steps inside the WAF terminal
-(audit log, show the file, edit it, `nginx -t`, reload), Replay and Verify.
-A terminal step boxes the whole pane; the terminal cannot report a click, so
-those steps advance from the Back/Next buttons on the highlight's label, which
-every step carries (the note keeps its own pair for a step whose target is not
-on screen). Each names a target: a `data-test-subj` selector in the
-Kibana frame, which is same-origin and so readable from the console, or one
-of the panel's own controls. A fixed red box and the step's own short label
-(`<lesson.text>.label.<step>`, above the target or below it when there is no
-room) are placed over the target every animation frame, with `pointer-events: none` so every
-click still reaches Kibana; the selector is re-queried each frame, so Kibana
-re-rendering or navigating does not strand the box, and it hides while the
-target is not on screen. After about 2 s without the target the panel says
-where to look instead. A click on the highlighted target moves the guide on
-once the click has gone through: a capture-phase listener in the Kibana
-document (re-attached when the frame loads a new document) and one on each
-note control; Back and Next remain. The selectors were checked against Kibana 8.15.0, the
-pinned version.
+In a guided session the lesson note floats over the pane at its top right,
+folded by default to a pill ("Lesson note · step n/N"); open, it is 360 px wide
+and holds five tabs: Steps (the current step, Back/Next, every step to jump
+to), Goal (the summary, the done conditions, the four paragraphs), Theory,
+Hints and Check. Open state and tab are kept per viewer in localStorage
+(`fsl-lesson-note`), and the step reached in `fsl-lesson-step-<id>`, which the
+main and session pages read for "step n/N".
+
+Theory holds five folded cards (`THEORY` in `blue.html`; text under
+`<lesson.text>.theory.<card>.title|body`): paranoia levels, anomaly scoring
+(why a 403 names 949110 and 920273), finding a false positive's rule, lowering
+the level versus a rule exclusion, and reading a `ctl:ruleRemoveTargetById`
+line. A card that names something on screen has "Show me where", which moves
+the guide to that step. Hints holds reasoning only, folded one by one (why
+920273, why only ARGS:q, why the 900 file; `<lesson.text>.hint.*`), then a
+folded Solution: every step's command in order, with a copy button. Check
+replays one case and runs VERIFY; the verdict is PASS or FAIL, the cases that
+held or passed are listed in green with a tick and each failing diagnosis in
+red with a cross. The note holds no tuning form.
+
+The steps are declared in the lesson definition (`lesson.steps` in
+`scenario.yaml`: an `id` and, for a terminal step, the exact `command`); the
+board has eleven: the session's alert table, a row expanded, the `rule`
+field, the overview dashboard (the nav toggle until the Dashboards link
+exists), the WAF tab, then four in the WAF terminal (audit log, show the
+file, append the exclusion with a heredoc since the WAF image has no editor,
+`nginx -t && nginx -s reload`), Replay and Verify. Where each step points is
+`TARGETS` in `blue.html`: a `data-test-subj` selector in the Kibana frame,
+which is same-origin and so readable from the console, or one of the
+console's own controls; a step with no target is a terminal step and boxes
+the whole pane. The guide is a popover in the manner of driver.js: a red box
+over the target (with a scrim, none on the terminal) and, anchored to it, a
+card with "n / N", the step's title (`<lesson.text>.label.<step>`), one line
+of instruction (`<lesson.text>.coach.<step>`), progress dots and
+Back/Next/close. Below the target, or above it when there is no room, with
+an arrow; on a terminal step it sits in the pane's bottom right, clear of the
+output, and shows the command in a copyable block with one line on what it
+does (`<lesson.text>.does.<step>`). Box and popover are placed every animation
+frame, the box with `pointer-events: none` so every click still reaches
+Kibana; the selector is re-queried each frame, so Kibana re-rendering or
+navigating does not strand the box. With no target for about 2 s the popover
+stays, unanchored, and says where to look. A click on the highlighted target
+moves the guide on once the click has gone through: a capture-phase listener
+in the Kibana document (re-attached when the frame loads a new document) and
+one on each console control; a step on a note control opens the note at the
+tab holding it. The selectors were checked against Kibana 8.15.0, the pinned
+version.
 
 ## How the scores are computed
 

@@ -168,3 +168,24 @@ def test_the_benign_warning_names_the_red_console_controls_that_run_benign_cases
         "the warning that no benign case was run sends the operator to the red "
         "console, and does not name the controls there by the labels they carry"
     )
+
+SCOREBOARD_LABELS = re.compile(r"\b(?:TP|FP|FN|TN)\b|(?i:zero-sum|제로섬)")
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_no_text_a_person_reads_names_the_confusion_matrix_or_a_zero_sum_balance(language):
+    offenders = {
+        key: text for key, text in tables()[language].items() if SCOREBOARD_LABELS.search(text)
+    }
+
+    assert offenders == {}, (
+        "the console tells a person what happened in plain words; TP/FP/FN/TN stay in the "
+        f"API for agents: {offenders}"
+    )
+
+def test_the_console_templates_write_no_confusion_matrix_label_either():
+    offenders = [
+        name for name in TEMPLATES
+        if re.search(r"['\"`>](?:TP|FP|FN|TN)['\"`<]", (CONSOLE / name).read_text())
+    ]
+
+    assert offenders == [], offenders

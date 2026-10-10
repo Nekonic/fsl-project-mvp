@@ -1,125 +1,409 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
 {% block content %}
-<h1 data-t="session.heading" class="text-2xl font-semibold text-heading mb-2"></h1>
-<div class="grid grid-cols-2 gap-4 mb-10">
-  <a id="red" href="#" target="_blank"
-     class="bg-panel border border-danger-soft rounded p-6 hover:border-danger block">
-    <div data-t="session.red.title" class="text-danger font-medium mb-1"></div>
-    <div data-t="session.red.blurb" class="text-body text-sm"></div>
-  </a>
-  <a id="blue" href="#" target="_blank"
-     class="bg-panel border border-primary-soft rounded p-6 hover:border-primary block">
-    <div data-t="session.blue.title" class="text-primary font-medium mb-1"></div>
-    <div data-t="session.blue.blurb" class="text-body text-sm"></div>
-  </a>
+<div class="card p-5 flex flex-wrap items-center gap-5 mb-5">
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-2">
+      <h1 id="session-title" class="text-[20px] font-bold text-heading"></h1>
+      <span id="session-badges" class="flex gap-2"></span>
+    </div>
+    <p id="session-line" class="text-muted mt-1"></p>
+  </div>
+  <div id="session-figures" class="sm:ml-auto flex flex-wrap items-center gap-6 text-[13px]"></div>
+  <div class="flex gap-2">
+    <button id="restart" class="btn btn-blue hidden"></button>
+    <button id="close" data-t="session.close.button" class="btn btn-ghost hidden"></button>
+  </div>
 </div>
+<p id="restart-failed" class="text-danger text-[13px] -mt-2 mb-5 hidden"></p>
 
-<button id="close" data-t="session.close.button"
-        class="text-muted hover:text-primary text-sm underline hidden"></button>
-
-<div id="confirm" class="hidden bg-panel border border-line rounded p-4 max-w-xl">
-  <p data-t="session.close.consequence" class="text-body text-sm mb-3"></p>
-  <p data-t="session.close.rebuilds" class="text-muted text-sm mb-3"></p>
+<div id="confirm" class="hidden card p-4 mb-5 max-w-xl">
+  <p data-t="session.close.consequence" class="text-body text-[13px] mb-3"></p>
+  <p data-t="session.close.rebuilds" class="text-muted text-[13px] mb-3"></p>
   <div class="flex gap-3">
-    <button id="confirm-close" data-t="session.close.confirm"
-            class="px-3 py-1.5 rounded bg-danger hover:bg-danger-strong text-inverse text-sm"></button>
-    <button id="confirm-keep" data-t="session.close.keep"
-            class="px-3 py-1.5 rounded bg-panel border border-line hover:border-primary text-heading text-sm"></button>
+    <button id="confirm-close" data-t="session.close.confirm" class="btn btn-sm btn-red"></button>
+    <button id="confirm-keep" data-t="session.close.keep" class="btn btn-sm btn-ghost"></button>
   </div>
 </div>
 
-<p id="closed" class="text-muted text-sm mt-3 hidden"></p>
+<p id="closed" class="text-muted text-[13px] mb-5 hidden"></p>
 
-<section id="scoreboard" class="hidden mt-8"></section>
+<div id="consoles" class="grid md:grid-cols-2 gap-5">
+  <a id="blue" href="#" class="card p-6 border-t-4 border-t-primary lift block">
+    <div class="flex items-center justify-between">
+      <div data-t="session.blue.title" class="text-primary font-bold text-[16px]"></div>
+      <span class="btn btn-sm btn-blue" data-t="session.open_console"></span>
+    </div>
+    <p id="blue-blurb" class="text-body mt-2 leading-relaxed"></p>
+    <div id="blue-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
+    <p id="blue-foot" class="mt-4 text-[12px] text-muted"></p>
+  </a>
+  <a id="red" href="#" class="card p-6 border-t-4 border-t-danger lift block">
+    <div class="flex items-center justify-between">
+      <div data-t="session.red.title" class="text-danger font-bold text-[16px]"></div>
+      <span class="btn btn-sm btn-red" data-t="session.open_console"></span>
+    </div>
+    <p id="red-blurb" class="text-body mt-2 leading-relaxed"></p>
+    <div id="red-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
+    <p id="red-foot" class="mt-4 text-[12px] text-muted"></p>
+  </a>
+</div>
+
+<section id="activity" class="card mt-5 p-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 data-t="session.activity" class="font-semibold text-heading"></h2>
+    <span data-t="session.activity.live" class="label"></span>
+  </div>
+  <ul id="activity-list" class="text-[13px] divide-y divide-line-subdued"></ul>
+  <p id="activity-empty" data-t="session.activity.empty" class="text-muted text-[13px]"></p>
+</section>
+
+<section id="scoreboard" class="hidden">
+  <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
+  <div class="grid lg:grid-cols-[1fr_400px] gap-5">
+    <div class="card">
+      <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
+        <div>
+          <div data-t="score.primary.kicker" class="label"></div>
+          <h2 data-t="score.primary.heading" class="font-bold text-[16px] text-heading mt-0.5"></h2>
+        </div>
+        <div class="text-right">
+          <div data-t="score.primary.lost" class="label"></div>
+          <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-[13px]">
+          <thead class="table-head">
+            <tr>
+              <th data-t="score.col.objective" class="pl-5"></th>
+              <th data-t="score.col.difficulty"></th>
+              <th data-t="score.col.lost"></th>
+              <th data-t="score.col.seen"></th>
+              <th data-t="score.col.result"></th>
+              <th data-t="score.col.penalty" class="pr-5 text-right"></th>
+            </tr>
+          </thead>
+          <tbody id="objective-rows"></tbody>
+        </table>
+      </div>
+      <div class="px-5 py-3 text-[12px] text-muted border-t border-line-subdued">
+        <p data-t="score.primary.how"></p>
+        <div id="legend" class="mt-2 flex flex-wrap gap-4"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="px-5 pt-4 pb-3 border-b border-line-subdued">
+        <div data-t="score.second.kicker" class="label"></div>
+        <h2 data-t="score.second.heading" class="font-bold text-[16px] text-heading mt-0.5"></h2>
+      </div>
+      <div id="judgement" class="p-5 space-y-4 text-[13px]"></div>
+    </div>
+  </div>
+  <div class="card mt-5 overflow-x-auto">
+    <div data-t="score.cases.heading" class="px-5 py-3 font-semibold text-heading border-b border-line-subdued"></div>
+    <table class="w-full text-[13px]">
+      <thead class="table-head">
+        <tr>
+          <th data-t="score.col.case" class="pl-5"></th>
+          <th data-t="score.col.kind"></th>
+          <th data-t="score.col.alerts"></th>
+          <th data-t="score.col.outcome"></th>
+          <th data-t="score.col.mechanism"></th>
+        </tr>
+      </thead>
+      <tbody id="case-rows"></tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}
 {% block script %}
 <script>
-  document.title = t("common.session", sessionId());
-  document.getElementById("red").href = `/red/${sessionId()}/`;
-  document.getElementById("blue").href = `/blue/${sessionId()}/`;
+  const id = sessionId();
+  const field = (name) => document.getElementById(name);
+  const show = (name, visible) => field(name).classList.toggle("hidden", !visible);
+  document.title = t("common.session", id);
+  field("red").href = `/red/${id}/`;
+  field("blue").href = `/blue/${id}/`;
 
-  const show = (id, visible) =>
-    document.getElementById(id).classList.toggle("hidden", !visible);
+  let session = null;
+  let wargame = null;
 
-  const PILLARS = ["speed", "accuracy", "coverage", "response"];
+  const figure = (label, value, tone) => `
+    <div><div class="label">${esc(label)}</div><div class="font-semibold mt-0.5 ${tone || "text-heading"}">${value}</div></div>`;
+  const tile = (label, value) => `
+    <div class="rounded-lg bg-subdued p-3"><div class="label">${esc(label)}</div><div class="font-semibold text-heading mt-1">${esc(value)}</div></div>`;
 
-  function pillarTile(game, key) {
-    const value = game[key];
-    const shown = value === null || value === undefined
-      ? "—" : `${Math.round(value * 100)}%`;
-    return `
-      <div class="bg-panel border border-line rounded p-3">
-        <div class="text-muted text-xs uppercase tracking-wide">${
-          esc(t(`session.score.pillar.${key}`))}</div>
-        <div class="text-2xl font-semibold text-heading tabular-nums">${esc(shown)}</div>
-        <div class="text-muted text-xs mt-0.5">${
-          esc(t("session.score.weight", game.weights[key]))}</div>
-      </div>`;
+  const lessonText = () => (session && session.lesson ? session.lesson.text : "");
+  const lessonSteps = () => (session && session.lesson && session.lesson.steps ? session.lesson.steps.length : 0);
+  const scenarioName = () => localized(`wargame.${session.scenario}.name`, wargame ? wargame.name : session.scenario);
+
+  function header(taken, total) {
+    const closed = Boolean(session.ended_at);
+    field("session-title").textContent = t("common.session", id);
+    const state = closed ? badge(t("state.closed"), "neutral")
+      : session.ready ? badge(t("state.ready"), "ok", true)
+        : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
+    field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
+    const parts = [scenarioName()];
+    if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
+    const began = clock(session.started_at);
+    const ended = clock(session.ended_at);
+    const took = minutesBetween(session.started_at, session.ended_at);
+    parts.push(closed ? t("session.span", began, ended, took) : t("session.since", began, took));
+    field("session-line").textContent = parts.filter(Boolean).join(" · ");
+    const figures = [];
+    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(t("main.step", lessonStep(id), lessonSteps()))));
+    if (total) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
+    if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
+    field("session-figures").innerHTML = figures.join("");
   }
 
-  function renderScoreboard(game) {
-    const balance = game.balance;
-    const headline = balance > 0
-      ? t("session.score.defence_ahead", balance.toFixed(1))
-      : balance < 0
-        ? t("session.score.attack_ahead", Math.abs(balance).toFixed(1))
-        : t("session.score.even");
-    const tone = balance > 0 ? "text-success" : balance < 0 ? "text-danger" : "text-muted";
+  function consoles(paranoia, taken, total) {
+    const lesson = Boolean(lessonText());
+    field("blue-blurb").textContent = lesson ? localized(`${lessonText()}.blurb.blue`, t("session.blue.blurb")) : t("session.blue.blurb");
+    field("red-blurb").textContent = lesson ? localized(`${lessonText()}.blurb.red`, t("session.red.blurb")) : t("session.red.blurb");
+    field("blue-tiles").innerHTML = [
+      tile("Kibana", t("session.tile.logs")),
+      tile(t("session.tile.waf"), t("session.tile.waf_does")),
+      lesson ? tile(t("session.tile.note"), t("main.step", lessonStep(id), lessonSteps()))
+        : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
+    ].join("");
+    field("blue-foot").textContent = Number.isInteger(paranoia) ? t("session.blue.posture", paranoia) : "";
+    field("red-tiles").innerHTML = [
+      tile(t("session.tile.kali"), "sqlmap · curl"),
+      tile(t("session.tile.cases"), wargame ? t("session.tile.case_count", wargame.attacks, wargame.benign) : "—"),
+      tile(t("session.tile.objectives"), total ? t("session.tile.objective_count", total) : "—"),
+    ].join("");
+    field("red-foot").textContent = wargame ? t("session.red.target", wargame.public_url) : "";
+  }
 
-    document.getElementById("scoreboard").innerHTML = `
-      <h2 class="text-sm uppercase tracking-wide text-muted mb-3">${
-        esc(t("session.score.heading"))}</h2>
-      <div class="bg-panel border border-line rounded p-6 mb-4">
-        <div class="text-muted text-xs uppercase tracking-wide">${
-          esc(t("session.score.balance"))}</div>
-        <div class="text-4xl font-semibold tabular-nums ${tone}">${esc(headline)}</div>
-        <div class="text-muted text-sm mt-2 tabular-nums">${
-          esc(t("session.score.attacker", game.attacker.toFixed(1)))} ·
-          ${esc(t("session.score.defender", game.defender.toFixed(1)))}</div>
+  async function activity() {
+    const cases = await api(`/api/sessions/${id}/cases/`);
+    const rows = cases.ok && Array.isArray(cases.body) ? cases.body.slice(-8).reverse() : [];
+    show("activity-empty", rows.length === 0);
+    field("activity-list").innerHTML = rows.map((row) => {
+      const outcome = caseOutcome(row.malicious, row.meta);
+      const why = row.meta && row.meta.seed ? t("session.activity.seed")
+        : row.meta && row.meta.verify ? t("session.activity.verify") : "";
+      return `
+        <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span class="text-faint w-12">${esc(clock(row.started_at))}</span>
+          ${badge(t("session.activity.red"), "red")}
+          <span class="font-mono text-[12px] text-heading">${esc(row.name)}</span>
+          ${badge(outcome.text, outcome.tone)}
+          ${why ? `<span class="text-faint text-[12px]">${esc(why)}</span>` : ""}
+        </li>`;
+    }).join("");
+  }
+
+  const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
+  const caseLabel = (name) => localized(`case.${name}`, name);
+
+  function verdictBanner() {
+    const judged = session.result && session.result.lesson;
+    show("verdict", Boolean(judged));
+    if (!judged) return;
+    const banner = field("verdict");
+    banner.classList.toggle("border-l-success", judged.passed);
+    banner.classList.toggle("border-l-danger", !judged.passed);
+    const reasons = (judged.diagnosis || []).map(([key, values]) => t(key, ...values)).join(" ");
+    banner.innerHTML = `
+      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
+      <div class="min-w-0 flex-1">
+        <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "score.lesson.passed" : "score.lesson.failed", localized(`${lessonText()}.title`, "")))}</div>
+        <p class="text-muted mt-0.5">${esc(reasons)}</p>
       </div>
-      <div class="grid grid-cols-4 gap-3">
-        ${PILLARS.map((key) => pillarTile(game, key)).join("")}
+      <div class="text-right text-[13px]">
+        <div class="label">${esc(t("score.lesson.progress"))}</div>
+        <div class="font-semibold text-heading">${esc(t("score.lesson.verified", judged.verified))}</div>
       </div>`;
-    show("scoreboard", true);
   }
 
-  async function renderScore() {
-    const score = await api(`/api/sessions/${sessionId()}/score/`);
-    if (score.ok && score.body.game && score.body.game.revealed) {
-      renderScoreboard(score.body.game);
-      return true;
+  function objectiveTable(tiers, breaches) {
+    const lost = new Map(breaches.map((breach) => [breach.key, breach]));
+    const taken = tiers.filter((tier) => lost.has(tier.key)).length;
+    field("lost-count").textContent = `${taken} / ${tiers.length}`;
+    field("lost-count").className = `text-[22px] font-bold leading-tight ${taken ? "text-danger" : "text-success"}`;
+    field("objective-rows").innerHTML = tiers.map((tier) => {
+      const breach = lost.get(tier.key);
+      const outcome = !breach ? badge(t("score.kept"), "ok-strong")
+        : breach.detected ? badge(t("score.lost_seen"), "warn") : badge(t("score.lost_unseen"), "red-strong");
+      const penalty = !breach ? 0 : tier.difficulty * (breach.detected ? 1 : 2);
+      return `
+        <tr class="table-row">
+          <td class="pl-5 font-semibold text-heading">${esc(objectiveName(tier))}</td>
+          <td>${esc(tier.difficulty)}</td>
+          <td class="${breach ? "text-danger" : "text-success"}">${esc(t(breach ? "common.yes" : "common.no"))}</td>
+          <td class="${breach ? "" : "text-faint"}">${esc(breach ? t(breach.detected ? "common.yes" : "common.no") : "—")}</td>
+          <td>${outcome}</td>
+          <td class="pr-5 text-right">${esc(penalty)}</td>
+        </tr>`;
+    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="6">${esc(t("score.no_objectives"))}</td></tr>`;
+    field("legend").innerHTML = [
+      [badge(t("score.kept"), "ok-strong"), t("score.legend.kept")],
+      [badge(t("score.lost_seen"), "warn"), t("score.legend.seen")],
+      [badge(t("score.lost_unseen"), "red-strong"), t("score.legend.unseen")],
+    ].map(([mark, words]) => `<span class="flex items-center gap-1.5">${mark}${esc(words)}</span>`).join("");
+  }
+
+  function judgementBlock(count, sentence, wrong, right) {
+    return `
+      <div>
+        <div class="flex flex-wrap items-baseline gap-2">
+          <span class="text-[18px] font-bold text-heading">${esc(count[0])}<span class="text-faint text-[14px] font-semibold"> / ${esc(count[1])}</span></span>
+          <span class="font-semibold text-heading">${esc(sentence)}</span>
+        </div>
+        <ul class="mt-2 space-y-1 text-[12px]">
+          ${wrong.map((line) => `<li class="flex gap-2 text-danger"><span class="font-bold">✗</span><span>${esc(line)}</span></li>`).join("")}
+          ${right ? `<li class="flex gap-2 text-body"><span class="text-success font-bold">✓</span><span>${esc(right)}</span></li>` : ""}
+        </ul>
+      </div>`;
+  }
+
+  function plural(names) {
+    if (!names.length) return "";
+    return names.length === 1 ? caseLabel(names[0]) : t("score.and_more", caseLabel(names[0]), names.length - 1);
+  }
+
+  function judgement(score) {
+    const perCase = score.per_case || [];
+    const attacks = perCase.filter((row) => row.malicious);
+    const benign = perCase.filter((row) => !row.malicious);
+    const missed = attacks.filter((row) => !row.detected);
+    const caught = attacks.filter((row) => row.detected);
+    const blocked = benign.filter((row) => row.detected);
+    const passed = benign.filter((row) => !row.detected);
+    const parts = [];
+    if (attacks.length) {
+      const sentence = t("score.attacks", attacks.length, caught.length) +
+        (missed.length ? ` · ${t("score.attacks_missed", missed.length, missed.map((row) => caseLabel(row.name)).join(", "))}` : "");
+      parts.push(judgementBlock([caught.length, attacks.length], sentence,
+        missed.map((row) => t("score.no_alert", caseLabel(row.name))), plural(caught.map((row) => row.name))));
     }
-    return false;
+    if (benign.length) {
+      const sentence = t("score.benign", benign.length, passed.length) +
+        (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map((row) => caseLabel(row.name)).join(", "))}` : "");
+      parts.push(judgementBlock([passed.length, benign.length], sentence,
+        blocked.map((row) => t("score.drew_alerts", caseLabel(row.name), row.detection_ids.length)), plural(passed.map((row) => row.name))));
+    }
+    if (!parts.length) parts.push(`<p class="text-muted">${esc(t("score.no_cases"))}</p>`);
+    const unproven = caught.filter((row) => row.corroborated === false).length;
+    const notes = [t("score.one_case_once")];
+    if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
+    notes.push(t("score.not_added"));
+    (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...values)));
+    field("judgement").innerHTML = parts.join('<div class="border-t border-line-subdued"></div>') + `
+      <div class="rounded-lg bg-subdued p-3 text-[12px] text-muted leading-relaxed space-y-1">
+        ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
+      </div>`;
+    field("case-rows").innerHTML = perCase.map((row) => {
+      const outcome = row.malicious
+        ? (row.detected ? badge(t("score.caught"), "ok-strong") : badge(t("score.missed"), "red-strong"))
+        : (row.detected ? badge(t("score.wrongly_blocked"), "red-strong") : badge(t("score.passed"), "ok-strong"));
+      const mechanism = !row.malicious || !row.detected || row.corroborated === null
+        ? `<span class="text-faint">—</span>`
+        : `<span class="${row.corroborated ? "text-success" : "text-muted"}">${esc(t(row.corroborated ? "common.yes" : "common.no"))}</span>`;
+      return `
+        <tr class="table-row">
+          <td class="pl-5 font-mono text-[12px] text-heading">${esc(row.name)}</td>
+          <td>${esc(t(row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
+          <td>${esc(row.detection_ids.length)}</td>
+          <td>${outcome}</td>
+          <td>${mechanism}</td>
+        </tr>`;
+    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${esc(t("score.no_cases"))}</td></tr>`;
   }
 
-  document.getElementById("close").addEventListener("click", () => {
+  async function scoreboard() {
+    const [score, tiers] = await Promise.all([
+      api(`/api/sessions/${id}/score/`),
+      api(`/api/wargames/${session.scenario}/objectives/`),
+    ]);
+    show("consoles", false);
+    show("activity", false);
+    show("scoreboard", true);
+    verdictBanner();
+    objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [],
+                   score.ok && Array.isArray(score.body.breaches) ? score.body.breaches : []);
+    if (score.ok) judgement(score.body);
+    else field("judgement").innerHTML = `<p class="text-danger">${esc(t("score.unavailable", detail(score)))}</p>`;
+  }
+
+  async function restart() {
+    const button = field("restart");
+    button.disabled = true;
+    const settings = session.guidance ? { guidance: true, defense: session.defense } : {};
+    const started = await post("/api/sessions/", { scenario: session.scenario, ...settings }, PATIENCE_FOR_RANGE_WORK);
+    if (started.ok && started.body.id) {
+      location.href = `/session/${started.body.id}/`;
+      return;
+    }
+    button.disabled = false;
+    field("restart-failed").textContent = t("main.start_failed", detail(started));
+    show("restart-failed", true);
+  }
+
+  async function render() {
+    const read = await api(`/api/sessions/${id}/`);
+    session = read.ok ? read.body : null;
+    crumbs([{ label: t("common.session", id), href: `/session/${id}/` },
+            ...(session && session.ended_at ? [{ label: t("crumb.result") }] : [])]);
+    if (!session) {
+      show("close", true);
+      activity();
+      return;
+    }
+    const listed = await api("/api/wargames/");
+    wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
+    const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };
+    header(result.lost, result.total);
+    if (session.ended_at) {
+      show("close", false);
+      field("restart").textContent = t(session.guidance ? "session.restart.lesson" : "session.restart");
+      show("restart", true);
+      await scoreboard();
+      return;
+    }
+    show("close", true);
+    const waf = await api(`/api/sessions/${id}/waf/`);
+    consoles(waf.ok ? waf.body.paranoia : null, result.lost, result.total);
+    activity();
+  }
+
+  field("close").addEventListener("click", () => {
     show("close", false);
     show("confirm", true);
   });
 
-  document.getElementById("confirm-keep").addEventListener("click", () => {
+  field("confirm-keep").addEventListener("click", () => {
     show("confirm", false);
     show("close", true);
   });
 
-  document.getElementById("confirm-close").addEventListener("click", async () => {
-    await post(`/api/sessions/${sessionId()}/ingest/`);
-    const result = await post(`/api/sessions/${sessionId()}/close/`);
+  field("confirm-close").addEventListener("click", async () => {
+    await post(`/api/sessions/${id}/ingest/`);
+    const result = await post(`/api/sessions/${id}/close/`);
     show("confirm", false);
-    const note = document.getElementById("closed");
-    note.textContent = result.ok
-      ? t("session.close.done") : t("session.close.failed", detail(result));
+    const note = field("closed");
+    note.textContent = result.ok ? t("session.close.done") : t("session.close.failed", detail(result));
     note.classList.toggle("text-danger", !result.ok);
     note.classList.toggle("text-muted", result.ok);
     show("closed", true);
-    if (result.ok) renderScore();
+    if (result.ok) render();
     else show("close", true);
   });
 
-  (async () => {
-    const revealed = await renderScore();
-    show("close", !revealed);
-  })();
+  field("restart").addEventListener("click", restart);
+
+  const ACTIVITY_EVERY = 10000;
+  setInterval(() => {
+    if (session && !session.ended_at) {
+      activity();
+      if (!session.ready) render();
+    }
+  }, ACTIVITY_EVERY);
+
+  render();
 </script>
 {% endblock %}

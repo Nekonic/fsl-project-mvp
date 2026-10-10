@@ -85,3 +85,40 @@ def test_a_lesson_naming_cases_the_case_file_lacks_is_refused_at_discovery(setti
 
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()
+
+def test_the_catalogue_describes_each_scenario_for_its_card(client):
+    listed = {w["id"]: w for w in client.get("/api/wargames/").json()}
+    board = listed["board"]
+
+    assert (board["category"], board["difficulty"], board["minutes"]) == ("sql-injection", "medium", 40)
+    assert board["attacks"] + board["benign"] == board["cases"] and board["benign"] >= 4
+    assert board["objectives"] == 3
+    assert board["lesson_steps"] == len(wargames.lesson("board")["steps"]) > 0
+    assert (listed["corp"]["difficulty"], listed["corp"]["lesson_steps"]) == ("hard", 0)
+
+@pytest.mark.parametrize("card, reason", [
+    ({"difficulty": "brutal"}, "difficulty"),
+    ({"minutes": 0}, "minutes"),
+    ({"minutes": "forty"}, "minutes"),
+    ({"category": " "}, "category"),
+])
+def test_a_scenario_card_that_cannot_be_shown_is_refused(card, reason):
+    with pytest.raises(wargames.InvalidCatalogue, match=reason):
+        wargames.checked_scenario({**A_SCENARIO, **card}, "demo", "scenario.yaml")
+
+def test_a_lesson_step_needs_an_id_and_its_command_is_text(settings, tmp_path):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "steps": [{"command": 1}]}
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match="steps"):
+        wargames._discover()
+
+def test_the_board_lesson_gives_the_exact_command_for_every_terminal_step():
+    commands = {step["id"]: step.get("command", "") for step in wargames.lesson("board")["steps"]}
+
+    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in commands["edit"]
+    assert commands["apply"] == "nginx -t && nginx -s reload"
+    assert commands["alerts"] == "", "a Kibana step is a click, not a command"

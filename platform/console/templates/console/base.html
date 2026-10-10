@@ -7,53 +7,69 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #ECF1F9;
+      --bg: #F6F7F9;
       --panel: #FFFFFF;
-      --subdued: #F6F9FC;
-      --border: #CAD3E2;
-      --border-subdued: #E3E8F2;
-      --heading: #111C2C;
-      --text: #384861;
-      --text-muted: #516381;
+      --subdued: #F8FAFC;
+      --border: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --border-subdued: #F1F5F9;
+      --heading: #0F172A;
+      --text: #334155;
+      --text-muted: #64748B;
+      --text-faint: #94A3B8;
       --text-inverse: #FFFFFF;
-      --primary: #0B64DD;
-      --primary-text: #1750BA;
-      --primary-soft: #F1F6FF;
-      --primary-line: #BFDBFF;
-      --danger: #C61E25;
-      --danger-text: #A71627;
-      --danger-soft: #FFF3F1;
-      --danger-line: #FFC9C2;
-      --warning: #FACB3D;
-      --warning-text: #825803;
-      --warning-soft: #FFF7E2;
-      --warning-line: #FCD883;
-      --success: #008A5E;
-      --success-text: #09724D;
-      --success-soft: #E9FFF7;
-      --success-line: #AEE8D2;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-text: #1D4ED8;
+      --primary-soft: #EFF6FF;
+      --primary-line: #DBEAFE;
+      --danger: #DC2626;
+      --danger-hover: #B91C1C;
+      --danger-text: #B91C1C;
+      --danger-soft: #FEF2F2;
+      --danger-line: #FEE2E2;
+      --warning: #B45309;
+      --warning-text: #B45309;
+      --warning-soft: #FEF3C7;
+      --warning-line: #FDE68A;
+      --success: #16A34A;
+      --success-text: #15803D;
+      --success-soft: #F0FDF4;
+      --success-line: #DCFCE7;
       --accent: #BC1E70;
       --accent-text: #A11262;
       --accent-soft: #FFF0F8;
       --accent-line: #FFC7DB;
       --teal: #008B87;
-      --terminal: #000000;
-      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      --font-mono: 'Roboto Mono', Menlo, Consolas, Courier, monospace;
+      --terminal: #0B1020;
+      --terminal-bar: #111827;
+      --terminal-line: #1F2937;
+      --terminal-text: #D1D5DB;
+      --code: #0F172A;
+      --code-text: #E2E8F0;
+      --code-button: #1E293B;
+      --shadow-pop: 0 10px 30px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+      --shadow-note: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+      --shadow-lift: 0 4px 12px rgba(15, 23, 42, 0.08);
+      --scrim: 0 0 0 9999px rgba(15, 23, 42, 0.18);
+      --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
   </style>
   <style>{% include "console/tailwind.css" %}</style>
 </head>
-<body class="bg-page text-body font-sans {% block body_class %}{% endblock %}">
-  <header class="bg-panel border-b border-line">
-    <nav class="{% block nav_class %}max-w-5xl mx-auto{% endblock %} px-6 py-3 flex gap-6 text-sm items-center">
-      <a href="/" class="font-semibold text-heading">FSL</a>
-      {% block nav %}{% endblock %}
-      <span id="session-label" class="ml-auto text-muted"></span>
-      <button id="language" class="text-muted hover:text-primary text-xs"></button>
-    </nav>
+<body class="bg-page text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
+  <header class="h-14 shrink-0 bg-panel border-b border-line px-4 sm:px-6 flex items-center gap-4 sm:gap-6">
+    <a href="/" class="flex items-center gap-2 font-bold text-[15px] text-heading shrink-0">
+      <span class="brand-mark">F</span><span data-t="common.brand" class="hidden sm:inline"></span>
+    </a>
+    <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
+    <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
+      <span id="range-health" class="hidden items-center gap-1.5"></span>
+      <button id="language" class="hover:text-heading"></button>
+    </div>
   </header>
-  <main class="{% block main_class %}max-w-5xl mx-auto px-6 py-8{% endblock %}">
+  <main class="{% block main_class %}max-w-[1120px] mx-auto px-4 sm:px-6 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
   {% include "console/strings.html" %}
@@ -62,6 +78,7 @@
 
     const PATIENCE = 90 * 1000;
     const PATIENCE_FOR_RANGE_WORK = 15 * 60 * 1000;
+    const OPENING_TAKES = 80;
 
     async function api(path, options, patience = PATIENCE) {
       const abandon = new AbortController();
@@ -104,13 +121,71 @@
       window.addEventListener("online", back);
     }
 
-    if (sessionId()) {
-      document.getElementById("session-label").textContent = t("common.session", sessionId());
+    const localized = (key, fallback) => {
+      const value = t(key);
+      return value === key ? fallback : value;
+    };
+
+    const clock = (instant) => {
+      const at = instant ? new Date(instant) : null;
+      if (!at || Number.isNaN(at.getTime())) return "";
+      return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    };
+
+    const minutesBetween = (from, to) =>
+      Math.max(0, Math.round((new Date(to || Date.now()) - new Date(from)) / 60000));
+
+    const secondsSince = (instant) =>
+      Math.max(0, Math.round((Date.now() - new Date(instant)) / 1000));
+
+    const LESSON_STEP_KEY = (id) => `fsl-lesson-step-${id}`;
+
+    function lessonStep(id) {
+      try {
+        const kept = Number(localStorage.getItem(LESSON_STEP_KEY(id)));
+        return Number.isInteger(kept) && kept > 0 ? kept : 1;
+      } catch (error) {
+        return 1;
+      }
+    }
+
+    function keepLessonStep(id, step) {
+      try {
+        localStorage.setItem(LESSON_STEP_KEY(id), String(step));
+      } catch (error) {
+        return;
+      }
+    }
+
+    function crumbs(items) {
+      const trail = [{ label: t("crumb.home"), href: "/" }, ...items];
+      document.getElementById("crumbs").innerHTML = trail.map((item, index) =>
+        index === trail.length - 1
+          ? `<span class="text-heading font-semibold truncate">${esc(item.label)}</span>`
+          : `<a href="${esc(item.href)}" class="hover:text-heading shrink-0">${esc(item.label)}</a>`,
+      ).join('<span class="text-faint">/</span>');
+    }
+
+    function badge(text, tone, dot) {
+      return `<span class="badge badge-${tone}">${dot ? `<span class="dot dot-${tone}"></span>` : ""}${esc(text)}</span>`;
+    }
+
+    function caseOutcome(malicious, meta) {
+      const said = meta || {};
+      if (said.outcome === "leaked") return { text: t("outcome.leaked"), tone: "red" };
+      if (said.outcome === "held") return { text: t("outcome.held"), tone: "ok" };
+      if (said.outcome === "inconclusive") return { text: t("outcome.inconclusive"), tone: "warn" };
+      const status = Number(said.status);
+      if (status === 403) return { text: t("outcome.blocked"), tone: malicious ? "ok" : "red" };
+      if (status >= 200 && status < 300) return { text: t("outcome.served"), tone: malicious ? "warn" : "ok" };
+      if (status) return { text: `HTTP ${status}`, tone: "neutral" };
+      return { text: t("outcome.sent"), tone: "neutral" };
     }
 
     document.getElementById("language").textContent = t("common.language");
     document.getElementById("language").addEventListener("click", switchLanguage);
     applyLanguage();
+    if (!sessionId()) crumbs([]);
   </script>
   {% block script %}{% endblock %}
 </body>

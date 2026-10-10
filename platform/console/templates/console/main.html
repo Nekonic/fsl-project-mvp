@@ -1,42 +1,117 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
 {% block content %}
-<h1 data-t="main.title" class="text-2xl font-semibold text-heading mb-2"></h1>
-<p id="sessions-error" class="text-danger text-sm mb-10 hidden"></p>
+<div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+  <div>
+    <h1 data-t="main.title" class="text-[22px] font-bold text-heading"></h1>
+    <p data-t="main.subtitle" class="text-muted mt-1"></p>
+  </div>
+  <div id="capacity" class="label"></div>
+</div>
+<p id="sessions-error" class="text-danger text-[13px] mb-6 hidden"></p>
 
-<section id="range-state"
-  class="mb-6 hidden border border-warning-soft bg-warning-soft rounded p-5">
-  <h2 data-t="range.not_ready" class="text-sm uppercase tracking-wide text-warning mb-2"></h2>
-  <ul id="range-blocked" class="text-body text-sm list-disc pl-5 space-y-1"></ul>
+<section id="range-state" class="mb-6 hidden card border-warning-soft bg-warning-soft p-5">
+  <h2 data-t="range.not_ready" class="font-semibold text-warning mb-2"></h2>
+  <ul id="range-blocked" class="text-body text-[13px] list-disc pl-5 space-y-1"></ul>
 </section>
 
-<section id="range-pipeline" class="mb-10 hidden">
-  <button id="canary" data-t="range.canary"
-    class="px-3 py-1.5 rounded border border-line text-sm text-body hover:border-primary"></button>
-  <span id="canary-out" class="text-sm ml-2"></span>
+<section id="range-pipeline" class="mb-8 hidden">
+  <button id="canary" data-t="range.canary" class="btn btn-sm btn-ghost"></button>
+  <span id="canary-out" class="text-[13px] ml-2"></span>
 </section>
 
-<section id="running-panel" class="mb-10 hidden">
-  <h2 data-t="main.running" class="text-sm uppercase tracking-wide text-success mb-3"></h2>
-  <div id="running" class="space-y-2"></div>
+<section id="running-panel" class="mb-8 hidden">
+  <h2 data-t="main.running" class="font-semibold text-heading mb-3"></h2>
+  <div id="running" class="card divide-y divide-line-subdued"></div>
 </section>
 
-<h2 data-t="main.scenarios" class="text-sm uppercase tracking-wide text-muted mb-3"></h2>
-<div id="wargames" class="grid gap-4 mb-10"></div>
-<p id="start-error" class="text-danger text-sm mb-10 hidden"></p>
+<h2 data-t="main.scenarios" class="font-semibold text-heading mb-3"></h2>
+<div id="wargames" class="grid gap-4 md:grid-cols-2 mb-8"></div>
+<p id="start-error" class="text-danger text-[13px] mb-8 hidden"></p>
 
-<details id="finished-panel" class="mt-4">
-  <summary data-t="main.finished"
-    class="text-sm uppercase tracking-wide text-muted cursor-pointer select-none"></summary>
-  <div id="finished" class="space-y-2 mt-3"></div>
-</details>
+<section id="finished-panel" class="hidden">
+  <h2 data-t="main.finished" class="font-semibold text-heading mb-3"></h2>
+  <div class="card overflow-x-auto">
+    <table class="w-full text-[13px]">
+      <thead class="table-head">
+        <tr>
+          <th data-t="main.col.session" class="pl-5"></th>
+          <th data-t="main.col.kind"></th>
+          <th data-t="main.col.scenario"></th>
+          <th data-t="main.col.result"></th>
+          <th data-t="main.col.took"></th>
+          <th data-t="main.col.ended"></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="finished"></tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}
 {% block script %}
 <script>
+  let catalogue = [];
+  let running = [];
+  let capacity = null;
+  let starting = false;
+  let rangeReady = true;
+
+  const field = (id) => document.getElementById(id);
+
   function showError(text, panelId = "start-error") {
-    const panel = document.getElementById(panelId);
+    const panel = field(panelId);
     panel.classList.remove("hidden");
     panel.textContent = text;
+  }
+
+  const scenarioOf = (id) => catalogue.find((wargame) => wargame.id === id);
+  const scenarioName = (id) => {
+    const wargame = scenarioOf(id);
+    return localized(`wargame.${id}.name`, wargame ? wargame.name : id);
+  };
+  const kindBadge = (kind) => badge(t(`kind.${kind}`), kind === "lesson" ? "blue" : "neutral");
+
+  function scenarioCard(wargame) {
+    const id = esc(wargame.id);
+    const counted = typeof wargame.attacks === "number";
+    const kind = wargame.category ? badge(localized(`category.${wargame.category}`, wargame.category), "neutral") : "";
+    return `
+      <div class="card p-5 flex flex-col" data-scenario="${id}">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          ${kind}
+          ${wargame.difficulty ? badge(t(`difficulty.${wargame.difficulty}`), "neutral") : ""}
+          ${wargame.minutes ? `<span class="text-muted text-[12px] ml-auto">${esc(t("main.minutes", wargame.minutes))}</span>` : ""}
+        </div>
+        <h3 class="text-[16px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
+        <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
+        ${counted ? `<p class="text-[12px] text-muted mt-3">${
+          esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
+        <p class="text-[12px] mt-1 ${wargame.lesson ? "text-muted" : "text-faint"}">${
+          esc(wargame.lesson ? t("main.lesson_steps", wargame.lesson_steps) : t("main.no_lesson"))}</p>
+        <div class="grid grid-cols-2 gap-3 mt-auto pt-4">
+          <div class="pt-4 border-t border-line-subdued">
+            ${wargame.lesson
+              ? `<button data-wargame="${id}" data-lesson="true" class="start btn btn-blue w-full">${esc(t("main.start_lesson"))}</button>`
+              : `<button class="btn btn-ghost w-full" disabled>${esc(t("main.start_lesson"))}</button>`}
+            <p class="text-[12px] mt-1.5 ${wargame.lesson ? "text-muted" : "text-faint"}">${
+              esc(t(wargame.lesson ? "main.start_lesson.note" : "main.no_lesson.note"))}</p>
+          </div>
+          <div class="pt-4 border-t border-line-subdued">
+            <button data-wargame="${id}" class="start btn btn-ghost w-full">${esc(t("main.start"))}</button>
+            <p class="text-[12px] text-muted mt-1.5">${esc(t("main.start.note"))}</p>
+          </div>
+        </div>
+        <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
+             data-failure="${id}">
+          <div class="flex flex-wrap items-start gap-2">
+            <span class="text-danger font-bold">!</span>
+            <p data-failure-text class="flex-1 text-danger min-w-0"></p>
+            <button data-close-open class="btn btn-sm btn-ghost hidden">${esc(t("main.close_open"))}</button>
+          </div>
+          <div data-open-list class="hidden mt-2 space-y-1"></div>
+        </div>
+      </div>`;
   }
 
   async function renderWargames() {
@@ -45,82 +120,167 @@
       showError(t("main.unavailable", t("main.the_scenarios"), detail(result)));
       return;
     }
-    const localized = (id, field, fallback) => {
-      const key = `wargame.${id}.${field}`;
-      const value = t(key);
-      return value === key ? fallback : value;
-    };
-    document.getElementById("wargames").innerHTML = result.body.map((wargame) => `
-      <div class="bg-panel border border-line rounded p-5 flex items-center gap-6">
-        <div class="flex-1">
-          <div class="text-heading font-medium">${esc(localized(wargame.id, "name", wargame.name))}</div>
-          <div class="text-body text-sm mt-1">${esc(localized(wargame.id, "description", wargame.description))}</div>
-          <div class="text-muted text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
-        </div>
-        ${wargame.lesson ? `<button data-wargame="${esc(wargame.id)}" data-lesson="true"
-          class="start px-4 py-2 rounded bg-panel border border-primary text-primary text-sm">
-          ${esc(t("main.start_lesson"))}
-        </button>` : ""}
-        <button data-wargame="${esc(wargame.id)}"
-          class="start px-4 py-2 rounded bg-primary hover:bg-primary-strong text-inverse text-sm">
-          ${esc(t("main.start"))}
-        </button>
-      </div>`).join("");
-
-    document.querySelectorAll(".start").forEach((button) => {
-      button.addEventListener("click", async () => {
-        button.disabled = true;
-        const settings = button.dataset.lesson
-          ? { guidance: true, defense: "minimal" } : {};
-        const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings });
-        if (!started.ok || !started.body.id) {
-          button.disabled = false;
-          showError(t("main.start_failed", detail(started)));
-          return;
-        }
-        location.href = `/session/${started.body.id}/`;
-      });
-    });
+    catalogue = result.body;
+    field("wargames").innerHTML = catalogue.map(scenarioCard).join("");
+    field("wargames").querySelectorAll(".start").forEach((button) =>
+      button.addEventListener("click", () => start(button)));
+    field("wargames").querySelectorAll("[data-close-open]").forEach((button) =>
+      button.addEventListener("click", () => listOpen(button.closest("[data-failure]"))));
+    renderRunning();
+    renderFinished(finishedRows);
   }
 
-  function sessionRow(session, running) {
-    const state = running ? t("main.open") : t("main.closed");
-    const tone = running ? "text-success" : "text-muted";
+  function opening(button) {
+    const began = Date.now();
+    const tick = () => {
+      button.textContent = t("state.opening", Math.round((Date.now() - began) / 1000), OPENING_TAKES);
+    };
+    tick();
+    return setInterval(tick, 1000);
+  }
+
+  async function start(button) {
+    const card = button.closest("[data-scenario]");
+    const failure = card.querySelector("[data-failure]");
+    const label = button.textContent;
+    failure.classList.add("hidden");
+    starting = true;
+    card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
+    const ticking = opening(button);
+    const settings = button.dataset.lesson ? { guidance: true, defense: "minimal" } : {};
+    const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings },
+                               PATIENCE_FOR_RANGE_WORK);
+    clearInterval(ticking);
+    starting = false;
+    if (started.ok && started.body.id) {
+      location.href = `/session/${started.body.id}/`;
+      return;
+    }
+    button.textContent = label;
+    card.querySelectorAll(".start").forEach((each) => { each.disabled = !rangeReady; });
+    const full = started.status === 409 && capacity !== null && running.length >= capacity;
+    failure.querySelector("[data-failure-text]").textContent = full
+      ? t("main.start_failed.full", running.length, capacity)
+      : t("main.start_failed", detail(started));
+    failure.querySelector("[data-close-open]").classList.toggle("hidden", started.status !== 409);
+    failure.querySelector("[data-open-list]").classList.add("hidden");
+    failure.classList.remove("hidden");
+    refreshSessions();
+  }
+
+  function listOpen(failure) {
+    const list = failure.querySelector("[data-open-list]");
+    list.classList.remove("hidden");
+    list.innerHTML = running.length ? running.map((session) => `
+      <div class="flex items-center gap-3 bg-panel rounded-md border border-line px-3 py-2">
+        <span class="font-semibold text-heading">${esc(t("common.session", session.id))}</span>
+        ${kindBadge(session.kind)}
+        <span class="text-body truncate">${esc(scenarioName(session.scenario))}</span>
+        <span class="text-faint text-[12px] ml-auto">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        <button data-close="${esc(session.id)}" class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
+      </div>`).join("") : `<p class="text-muted">${esc(t("main.none_open"))}</p>`;
+    list.querySelectorAll("[data-close]").forEach((button) =>
+      button.addEventListener("click", () => closeOpen(button, failure)));
+  }
+
+  async function closeOpen(button, failure) {
+    button.disabled = true;
+    button.textContent = t("main.closing");
+    const id = button.dataset.close;
+    await post(`/api/sessions/${id}/ingest/`);
+    const closed = await post(`/api/sessions/${id}/close/`);
+    if (!closed.ok) {
+      button.disabled = false;
+      button.textContent = t("main.close_this");
+      failure.querySelector("[data-failure-text]").textContent = t("session.close.failed", detail(closed));
+      return;
+    }
+    await refreshSessions();
+    failure.querySelector("[data-failure-text]").textContent = t("main.closed_now", id);
+    failure.querySelector("[data-close-open]").classList.add("hidden");
+    listOpen(failure);
+  }
+
+  function stateBadge(session) {
+    return session.ready
+      ? badge(t("state.ready"), "ok", true)
+      : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
+  }
+
+  function runningRow(session) {
+    const wargame = scenarioOf(session.scenario);
+    const lessonTitle = session.kind === "lesson" && wargame && wargame.lesson_text
+      ? ` · ${localized(`${wargame.lesson_text}.title`, "")}` : "";
+    const steps = session.kind === "lesson" && wargame && wargame.lesson_steps
+      ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id), wargame.lesson_steps))}</span>` : "";
     return `
-      <a href="/session/${esc(session.id)}/"
-         class="block bg-panel border rounded px-4 py-3 ${running
-           ? "border-success-soft hover:border-success"
-           : "border-line hover:border-primary"}">
-        <span class="text-heading">${esc(t("common.session", session.id))}</span>
-        <span class="text-body text-sm ml-3">${esc(session.scenario)}</span>
-        <span class="text-muted text-xs ml-3">${
-          esc((session.started_at || "").replace("T", " ").slice(0, 19))}</span>
-        <span class="text-xs ml-3 ${tone}">${esc(state)}</span>
+      <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-subdued">
+        <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
+        ${kindBadge(session.kind)}
+        <span class="text-body">${esc(scenarioName(session.scenario) + lessonTitle)}</span>
+        ${steps}
+        <span class="ml-auto">${stateBadge(session)}</span>
+        <span class="text-faint text-[13px] w-24 text-right">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        <span class="text-faint">›</span>
       </a>`;
   }
 
-  function showPanel(id, visible) {
-    document.getElementById(id).classList.toggle("hidden", !visible);
+  function renderRunning() {
+    field("running-panel").classList.toggle("hidden", running.length === 0);
+    field("running").innerHTML = running.map(runningRow).join("");
+    field("capacity").textContent = capacity === null ? "" : t("main.capacity", running.length, capacity);
+  }
+
+  function resultCell(session) {
+    const result = session.result || {};
+    if (result.lesson) {
+      return result.lesson.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong");
+    }
+    const objectives = result.objectives;
+    if (!objectives || !objectives.total) return `<span class="text-faint">—</span>`;
+    if (!objectives.lost) {
+      return `<span class="font-semibold text-success">${esc(t("result.kept_all", objectives.total))}</span>`;
+    }
+    return `<span class="font-semibold text-danger">${esc(t("result.lost", objectives.total, objectives.lost))}</span>${
+      objectives.undetected ? ` <span class="text-muted">· ${esc(t("result.unseen", objectives.undetected))}</span>` : ""}`;
+  }
+
+  function finishedRow(session) {
+    return `
+      <tr class="table-row hover:bg-subdued cursor-pointer" data-href="/session/${esc(session.id)}/">
+        <td class="pl-5 font-semibold text-heading"><a href="/session/${esc(session.id)}/">${esc(t("common.session", session.id))}</a></td>
+        <td>${kindBadge(session.kind)}</td>
+        <td>${esc(scenarioName(session.scenario))}</td>
+        <td>${resultCell(session)}</td>
+        <td>${esc(t("main.minutes_spent", minutesBetween(session.started_at, session.ended_at)))}</td>
+        <td class="text-muted">${esc(clock(session.ended_at))}</td>
+        <td class="text-faint pr-5 text-right">›</td>
+      </tr>`;
+  }
+
+  let finishedRows = [];
+
+  function renderFinished(rows) {
+    finishedRows = rows;
+    field("finished-panel").classList.toggle("hidden", rows.length === 0);
+    field("finished").innerHTML = rows.map(finishedRow).join("");
+    field("finished").querySelectorAll("[data-href]").forEach((row) =>
+      row.addEventListener("click", () => { location.href = row.dataset.href; }));
   }
 
   async function renderSessions() {
-    const running = await api("/api/sessions/?state=open");
-    if (!running.ok || !Array.isArray(running.body)) {
-      showPanel("running-panel", false);
-      showPanel("finished-panel", false);
-      showError(t("main.unavailable", t("main.the_sessions"), detail(running)), "sessions-error");
+    const open = await api("/api/sessions/?state=open");
+    if (!open.ok || !Array.isArray(open.body)) {
+      field("running-panel").classList.add("hidden");
+      field("finished-panel").classList.add("hidden");
+      showError(t("main.unavailable", t("main.the_sessions"), detail(open)), "sessions-error");
       return;
     }
-    showPanel("sessions-error", false);
-    showPanel("running-panel", running.body.length > 0);
-    document.getElementById("running").innerHTML =
-      running.body.map((s) => sessionRow(s, true)).join("");
-
+    field("sessions-error").classList.add("hidden");
+    running = open.body;
+    renderRunning();
     const finished = await api("/api/sessions/?state=closed&limit=10");
-    const rows = finished.ok && Array.isArray(finished.body) ? finished.body : [];
-    showPanel("finished-panel", rows.length > 0);
-    document.getElementById("finished").innerHTML =
-      rows.map((s) => sessionRow(s, false)).join("");
+    renderFinished(finished.ok && Array.isArray(finished.body) ? finished.body : []);
   }
 
   let canaryWired = false;
@@ -128,20 +288,20 @@
   function wireCanary() {
     if (canaryWired) return;
     canaryWired = true;
-    document.getElementById("canary").addEventListener("click", async () => {
-      const button = document.getElementById("canary");
-      const out = document.getElementById("canary-out");
+    field("canary").addEventListener("click", async () => {
+      const button = field("canary");
+      const out = field("canary-out");
       button.disabled = true;
-      out.className = "text-sm ml-2 text-muted";
+      out.className = "text-[13px] ml-2 text-muted";
       out.textContent = "…";
       const result = await post("/api/range/canary/");
       button.disabled = false;
       if (result.ok && result.body.corroborated) {
-        out.className = "text-sm ml-2 text-success";
+        out.className = "text-[13px] ml-2 text-success";
         out.textContent = t("range.canary_ok", esc(result.body.skew_seconds));
       } else {
         const why = (result.body && result.body.blocked) || [detail(result)];
-        out.className = "text-sm ml-2 text-danger";
+        out.className = "text-[13px] ml-2 text-danger";
         out.textContent = t("range.canary_failed", esc(why.join("; ")));
       }
     });
@@ -151,18 +311,24 @@
     const result = await api("/api/range/ready/");
     const slot = result.ok && result.body ? result.body.slot : null;
     const ready = !result.ok || result.body.ready !== false;
+    capacity = result.ok && Number.isInteger(result.body.max_sessions) ? result.body.max_sessions : null;
+    renderRunning();
 
-    document.querySelectorAll(".start").forEach((button) => {
-      button.disabled = !ready;
-    });
+    rangeReady = ready;
+    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !ready; });
 
-    showPanel("range-state", !ready);
+    const health = field("range-health");
+    health.classList.toggle("hidden", !result.ok);
+    health.classList.toggle("flex", result.ok);
+    health.innerHTML = `<span class="dot dot-${ready ? "ok" : "warn"}"></span>${esc(t(ready ? "range.healthy" : "range.not_ready_short"))}`;
+
+    field("range-state").classList.toggle("hidden", ready);
     if (!ready && slot) {
-      document.getElementById("range-blocked").innerHTML =
+      field("range-blocked").innerHTML =
         (slot.blocked || []).map((reason) => `<li>${esc(reason)}</li>`).join("");
     }
 
-    showPanel("range-pipeline", Boolean(slot));
+    field("range-pipeline").classList.toggle("hidden", !slot);
     if (slot) wireCanary();
   }
 
@@ -188,6 +354,10 @@
   onResume(() => {
     if (Date.now() - refreshedAt >= SESSIONS_EVERY) refreshSessions();
   });
+
+  setInterval(() => {
+    if (running.some((session) => !session.ready)) renderRunning();
+  }, 1000);
 
   renderWargames();
   refreshSessions();

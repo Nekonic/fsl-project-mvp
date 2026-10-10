@@ -6,7 +6,9 @@ CONSOLE="$ROOT/platform/console/templates/console"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > "$WORK/in.css"
+{ printf '@tailwind base;\n@tailwind components;\n'
+  cat "$ROOT/platform/console/components.css"
+  printf '@tailwind utilities;\n'; } > "$WORK/in.css"
 
 cat > "$WORK/tailwind.config.js" <<CONFIG
 const tone = (name) => ({
@@ -34,6 +36,7 @@ module.exports = {
         subdued: "var(--subdued)",
         muted: "var(--text-muted)",
         terminal: "var(--terminal)",
+        "terminal-bar": "var(--terminal-bar)",
         teal: "var(--teal)",
         primary: tone("primary"),
         danger: tone("danger"),
@@ -43,7 +46,8 @@ module.exports = {
       },
       borderColor: {
         DEFAULT: "var(--border)",
-        line: { DEFAULT: "var(--border)", subdued: "var(--border-subdued)" },
+        line: { DEFAULT: "var(--border)", subdued: "var(--border-subdued)", strong: "var(--border-strong)" },
+        terminal: "var(--terminal-line)",
         primary: { DEFAULT: "var(--primary)", soft: "var(--primary-line)" },
         danger: { DEFAULT: "var(--danger)", soft: "var(--danger-line)" },
         warning: { DEFAULT: "var(--warning)", soft: "var(--warning-line)" },
@@ -54,6 +58,8 @@ module.exports = {
         heading: "var(--heading)",
         body: "var(--text)",
         muted: "var(--text-muted)",
+        faint: "var(--text-faint)",
+        terminal: "var(--terminal-text)",
         inverse: "var(--text-inverse)",
         primary: "var(--primary-text)",
         danger: "var(--danger-text)",

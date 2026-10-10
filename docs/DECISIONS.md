@@ -1093,3 +1093,63 @@ product terms as CRS and ModSecurity write them instead of translations:
 
 The scoreboard's 정탐/미탐/오탐 tiles stay: they label the platform's own TP/FN/FP
 counts, not a CRS term.
+
+## 2026-10-11 — Console redesign: the approved mockup, plain-language results, the guide says what to type
+
+The five console screens (main, session, blue, red, closed session) were
+rebuilt to a static mockup the user approved, with two rulings the user added
+on top of it. The layout follows patterns from training platforms and
+product-tour libraries, used as references, not copied:
+
+| reference | what it gave |
+|---|---|
+| TryHackMe rooms (https://tryhackme.com/) | the split view: the task beside a live machine, here the note over the tool pane and the red console's large terminal |
+| HTB Academy (https://academy.hackthebox.com/) | hint before solution: the Hints tab holds reasoning, the full answer is folded under Solution |
+| Instruqt (https://docs.instruqt.com/) | a check the learner runs, answering pass or fail with what failed: the Check tab over `POST /verify/` |
+| Dreamhack (https://dreamhack.io/) | progress shown as counts: "step n/N", objectives "lost x/y" |
+| driver.js (https://driverjs.com/), Shepherd (https://shepherdjs.dev/) | the step popover anchored to the highlighted element: "n / N", title, one line, dots, Back/Next/close |
+
+Rulings by the user:
+
+- R1. No TP/FP/FN/TN labels anywhere a person reads, and no "zero-sum
+  balance": PASS/FAIL and a plain-language diagnosis. The closed session leads
+  with the primary score (objectives lost, whether each was noticed, lost and
+  unnoticed counting double), then sentences with counts and case names
+  ("caught 7 of 8 attacks · missed 1 (name)", "3 of 4 benign requests passed ·
+  wrongly blocked 1 (O'Brien search)") and that a case counts once however
+  many alerts it drew. The API keeps `tp`/`fp`/`fn`/`tn` and `game` for agents.
+  `test_strings.py` fails on those tokens in any string-table value; 172 dead
+  keys (the removed blue dashboard and the zero-sum scoreboard) went with them.
+- R2. The guide itself says exactly what to type. A terminal step's popover
+  shows the command in a copyable block and one line on what it does, placed
+  in the pane's bottom right so it does not cover the output. The commands
+  are declared once, in the lesson definition (`lesson.steps[].command` in
+  `scenario.yaml`), not in the string table: a command is the same in both
+  languages. `nginx -t` and `nginx -s reload` became one step
+  (`nginx -t && nginx -s reload`), so the board lesson has eleven steps. The
+  note keeps only reasoning in Hints; the WAF banner names only the box and
+  the CRS directory.
+
+Data added for the screens, kept small: `category`, `difficulty`, `minutes` in
+`scenario.yaml` (validated, optional); counts of attacks, benign cases,
+objectives and lesson steps in the catalogue; `kind` and `ready`
+(`Session.ready_at`, migration 0016, set when opening finishes, existing rows
+backfilled with `started_at`) on every session; `result` (objectives lost,
+unnoticed, total; the last VERIFY verdict, its diagnosis and the number of
+runs) on finished sessions in the list and on every session's detail;
+`waf_box` and `waf_rules` on the detail; `max_sessions` on `range/ready`.
+The lesson step a viewer reached is per-viewer state in localStorage, like
+the note's fold.
+
+Rejected: dragging the note (the mockup anchors it; a fixed place keeps the
+popover's placement predictable); a scrim over the terminal (it would hide
+the output the step asks the learner to read); putting the commands in
+`strings.html` (identical in both languages, which the table's translation
+test refuses, and two copies to keep in step).
+
+Live, on the acceptance VM (session 202): opened from "Start as lesson",
+walked through the eleven steps typing each popover's command into the WAF
+terminal, VERIFY passed (both sqlmap variants leaked nothing, the four benign
+cases passed), closed; the closed page showed PASS, 0/3 objectives lost, and
+no hand-run case to judge. The note pill first sat at 54 px and covered
+Kibana's second toolbar; it moved to the empty part of Kibana's top bar.
