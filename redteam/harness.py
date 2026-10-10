@@ -74,6 +74,7 @@ def run(
     launch,
     tool_target_url: str = DEFAULT_TOOL_TARGET,
     scenario: str = "board",
+    announce=lambda session_id: None,
 ) -> int:
     http = requests.Session()
     platform_url = platform_url.rstrip("/")
@@ -84,19 +85,21 @@ def run(
     )
     opened.raise_for_status()
     session_id = opened.json()["id"]
+    announce(session_id)
 
-    for case in cases:
-        case = dict(case)
-        case.setdefault("case_id", str(uuid.uuid4()))
-        case.setdefault("correlation", "marker")
+    try:
+        for case in cases:
+            case = dict(case)
+            case.setdefault("case_id", str(uuid.uuid4()))
+            case.setdefault("correlation", "marker")
 
-        started_at = datetime.now(timezone.utc)
-        fire(case, launch, tool_target_url)
-        _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
-
-    http.post(
-        f"{platform_url}/api/sessions/{session_id}/close/", timeout=REQUEST_TIMEOUT
-    )
+            started_at = datetime.now(timezone.utc)
+            fire(case, launch, tool_target_url)
+            _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
+    finally:
+        http.post(
+            f"{platform_url}/api/sessions/{session_id}/close/", timeout=REQUEST_TIMEOUT
+        )
     return session_id
 
 def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET):

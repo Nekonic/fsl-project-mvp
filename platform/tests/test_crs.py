@@ -94,13 +94,23 @@ def test_a_refused_tuning_never_reaches_the_gateway():
 
     assert gateway.calls == []
 
-def test_applying_returns_only_once_the_old_nginx_workers_stopped_serving(monkeypatch):
+def test_applying_returns_once_a_new_nginx_worker_serves_without_waiting_for_old_ones_to_drain(monkeypatch):
     monkeypatch.setattr(crs.time, "sleep", lambda seconds: None)
-    settled = Gateway(workers=["11 12", "11 12", "11 21", "21 22"])
-    stuck = Gateway(workers=["11 12"])
+    settled = Gateway(workers=["11 12", "11 12", "11 12 21 22", "12 21 22"])
 
     crs.apply({"paranoia": 2}, settled)
 
-    assert settled.workers == ["21 22"], "it returned while an old worker still served"
-    with pytest.raises(crs.TuningRefused, match="still serve"):
+    assert settled.workers == ["12 21 22"], (
+        "new connections reach a new worker as soon as one is up; an old worker "
+        "draining a slow request must not hold the tuning back"
+    )
+
+def test_a_reload_that_starts_no_new_worker_is_rolled_back_and_refused(monkeypatch):
+    monkeypatch.setattr(crs.time, "sleep", lambda seconds: None)
+    stuck = Gateway(live="the previous file\n", workers=["11 12"])
+
+    with pytest.raises(crs.TuningRefused, match="no worker"):
         crs.apply({"paranoia": 2}, stuck)
+
+    assert stuck.file == "the previous file\n"
+    assert stuck.calls[-1] == crs.RELOAD, "the previous file is reloaded"

@@ -4,7 +4,7 @@ import pytest
 
 from tests.sessions import open_session
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
 
 WINDOW_CASE = {
     "case_id": "55555555-5555-4555-8555-555555555555",

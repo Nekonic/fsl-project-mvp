@@ -53,8 +53,9 @@ session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 war
 이름으로 되돌려 매핑한다.
 
 레인지에 작용하는 엔드포인트(rules, validate, suppressions, `/api/attacker/`, origin,
-label)는 `session`을 쿼리나 본문에서 받고, 없으면 닫혔는지와 상관없이 가장 최근에 열린 세션을 쓴다. 억제는
-세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
+label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰기는 가장 최근의 열린 세션으로
+가고 열린 세션이 없으면 409를 답하며, 읽기는 가장 최근 세션을 쓴다. 닫힌 세션을 지정한 쓰기는
+거부된다. 억제는 세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
 센서는 실제 `local.rules`를 자기 컨테이너 안에 둔다. docker에서는 모든 세션의 센서를
 열 때 그 defense의 룰 파일로, 시나리오에 `defense`가 없으면(corp)
 `deploy/suricata/rules/local.rules`로 채운다.
@@ -355,9 +356,10 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 하나와, 항목마다 런타임 제외 하나(`ctl:ruleRemoveTargetById=<id>;<target>` 또는
 `ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
 <path>"`로 범위를 좁힘). 파일은 `runner("gateway")`로 그 세션의 WAF에 쓰고, `nginx -t
-&& nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 재적재 전에 돌던
-nginx 워커가 하나도 남지 않을 때(`/proc`에서 부모 PID로 읽음)에야 반환하므로, 다음 요청은
-새 튜닝을 만난다. 5초가 지나면 거부한다. 쓰기 전에 입력을
+&& nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 재적재 전에 없던
+워커가 뜨면(`/proc`에서 부모 PID로 워커 PID를 읽음) 반환하므로, 새 연결은 새 튜닝을 만난다.
+이전 워커는 느린 요청을 마저 처리할 수 있다. 5초 안에 새 워커가 뜨지 않으면 재적재가 일어나지
+않은 것이므로 이전 파일을 되돌려 재적재하고 거부한다. 쓰기 전에 입력을
 검증한다: paranoia 1-4, 룰 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
 `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
 경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `GET/PUT /api/sessions/<id>/waf/`로 읽고
@@ -369,7 +371,10 @@ sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `
 맞으면(`loot.matched`) 유출이며, 그것이 증명하는 목표도 인정한다. 막힘은 긍정적 증거가
 있을 때만이다: 맞는 행이 없고, sqlmap이 0으로 끝나 `[*] ending` 줄을 찍었으며 중단(트레이스백,
 사용자 중단, 존재하지 않는 호스트)이 없고, "all tested parameters do not appear to be
-injectable"로 결론 냈거나 아무것과도 맞지 않는 행을 덤프했다(`tools.concluded`). sqlmap이
+injectable"이라는 sqlmap 자신의 결론이 있으며 덤프한 행이 하나도 없다
+(`tools.found_not_injectable`). 스냅샷 계정과 하나도 맞지 않는 덤프는 유출도 막힘도 아닌 판정
+불가다. 스냅샷이 없는 세션의 검증은 409로 답하고, 열 때 계정을 읽지 못한 docker board 세션은
+503으로 거부하고 닫는다. sqlmap이
 회복한 연결 오류는 결론을 무효로 하지 않는다. WAF 뒤에서 그것은 ModSecurity가 board의 500
 응답을 끊은 것이다(nginx "header already sent"). 결론 전에 sqlmap을 멈춘 연결 오류는 결론
 줄을 남기지 않으므로 판정 불가다. 그 밖은 판정 불가이며 검증에
@@ -401,8 +406,8 @@ ground truth는 대상 시스템 자체의 기록이며, 탐지 장비는 이를
 지정하면 창은 그 케이스 시작 100ms 전부터 종료 100ms 후까지이고, 아니면 제출 2분
 전부터 100ms 후까지다.
 
-스냅샷은 세션 시작 시 한 번만 만든다. 그때 board를 읽을 수 없으면 세션은 스냅샷 없이
-생성되고, 그 세션의 `POST /api/sessions/<id>/loot/`는 409로 답한다. 그 뒤로는 board를
+스냅샷은 세션 시작 시 한 번만 만든다. docker에서는 board 계정을 읽지 못하거나 비어 있으면
+세션을 503으로 거부하고 닫는다. OpenStack에서는 세션이 스냅샷 없이 생성되고, 그 세션의 `POST /api/sessions/<id>/loot/`는 409로 답한다. 그 뒤로는 board를
 읽지 않는다: `GET /api/wargames/<id>/objectives/`는 `objectives.yaml`의 단계를
 나열하고, `GET /api/sessions/<id>/objectives/`는 저장된 행을 보고한다.
 `POST /api/sessions/<id>/objectives/`는 관찰을 수행하며, `loot_verified` wargame에서는
@@ -493,9 +498,9 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 - Elasticsearch는 512MB 힙의 단일 노드로, 전체 스택이 Docker 기본 메모리 한도에
   들어간다.
 - 없는 데이터는 0이 아니라 오류로 처리하며, 예외를 명시한다. 닿을 수 없는
-  Elasticsearch나 substrate, 읽을 수 없는 룰 파일은 503으로 답한다. 세션 생성은
+  Elasticsearch나 substrate, 읽을 수 없는 룰 파일은 503으로 답한다. OpenStack의 세션 생성은
   대상 시스템에 닿지 못해도 진행한다(세션은 스냅샷 없이 시작하고 board의 `loot/`는
-  409로 답한다). 케이스 발사나 기록, 종료는 대상 시스템을 읽지 않는다(발사는 출발지나
+  409로 답한다. docker의 board 세션은 503으로 거부한다). 케이스 발사나 기록, 종료는 대상 시스템을 읽지 않는다(발사는 출발지나
   도구 때문에 substrate가 필요하면 503으로 답한다). ingest 내부의 억제 복원과 경보의
   구간·호스트 배치(빈 값으로 돌아옴)는 substrate에 닿지 못해도 진행하므로, 라운드는
   시작하고 멈출 수 있다. 분모가 0인 비율은 null이 아니라 0.0이다: 정밀도, 재현율, F1,

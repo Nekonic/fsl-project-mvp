@@ -6,7 +6,7 @@ from range.declared import Declaration
 from range.ports import EXIT_MARK, Ran, RangeUnavailable, reporting
 from rules.suricata import RuleApplyError
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
 
 RELOAD = ("suricatasc", "-c", "reload-rules")
 GOOD_RULE = 'alert http any any -> any any (msg:"FSL test"; sid:9000001; rev:1;)\n'

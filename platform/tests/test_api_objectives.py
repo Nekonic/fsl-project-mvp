@@ -4,7 +4,6 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from api import loot
 from api.models import Objective, Session
 
 pytestmark = pytest.mark.django_db
@@ -24,9 +23,7 @@ def _start(client, truth=None):
 
 
 def _blind(client):
-    with patch("api.views.loot.ground_truth",
-               side_effect=loot.GroundTruthUnavailable("board down")):
-        return client.post_json("/api/sessions/", {"scenario": "board"}).json()["id"]
+    return Session.objects.create(scenario="board", baseline=None).pk
 
 
 def _fire_exfil(client, session_id, case_id=EXFIL_CASE):

@@ -78,15 +78,15 @@ def test_a_real_sqlmap_dump_of_the_board_matches_the_board_s_own_snapshot():
 
     assert tools.dumped(output) == sorted(truth.items())
     assert loot.matched(tools.dumped(output), truth) == set(truth)
-    assert tools.concluded(0, output)
+    assert not tools.found_not_injectable(0, output), "a run that dumped rows is no evidence of a block"
 
 def test_sqlmap_concluding_not_injectable_is_a_conclusion_and_a_missing_host_is_not():
     held = (FIXTURES / "sqlmap-not-injectable.out").read_text()
     lost = (FIXTURES / "sqlmap-host-missing.out").read_text()
 
-    assert tools.dumped(held) == [] and tools.concluded(0, held)
-    assert not tools.concluded(0, lost)
-    assert not tools.concluded(1, held), "a non-zero exit proves nothing"
+    assert tools.dumped(held) == [] and tools.found_not_injectable(0, held)
+    assert not tools.found_not_injectable(0, lost)
+    assert not tools.found_not_injectable(1, held), "a non-zero exit proves nothing"
 
 @pytest.mark.parametrize("capture", [
     "sqlmap-waf-stock-pl4.out", "sqlmap-waf-tamper-pl4.out",
@@ -96,7 +96,7 @@ def test_sqlmap_turned_away_by_the_waf_is_a_conclusion_not_a_tool_failure(captur
     output = (FIXTURES / capture).read_text()
 
     assert tools.dumped(output) == []
-    assert tools.concluded(0, output), (
+    assert tools.found_not_injectable(0, output), (
         "behind the WAF sqlmap reports the WAF, a run of 403s and, with a random "
         "User-Agent, a few dropped connections where ModSecurity cut the board's "
         "500 responses; it still tested everything and concluded not injectable"
@@ -108,4 +108,4 @@ def test_a_connection_failure_that_stops_sqlmap_before_its_conclusion_proves_not
     cut = output[:output.index("[INFO] testing for SQL injection")] + "[*] ending @ 06:38:44 /2026-10-10/\n"
 
     assert "unable to connect" in cut
-    assert not tools.concluded(0, cut)
+    assert not tools.found_not_injectable(0, cut)

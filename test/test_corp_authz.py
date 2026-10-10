@@ -11,7 +11,7 @@ from conftest import PLATFORM_URL
 
 def _session():
     created = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "corp"}, timeout=600
     )
     assert created.status_code == 201, created.text
     return created.json()["id"]

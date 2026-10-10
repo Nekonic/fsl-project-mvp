@@ -92,6 +92,22 @@ def test_two_sessions_tune_their_own_waf_and_their_own_sensor(minimal):
     )
 
 
+def test_with_blocking_turned_off_verify_sees_the_stock_variant_leak(stack_is_up):
+    session_id = _open(defense="minimal")
+    _tune(session_id, {"paranoia": 4, "exclusions": [{"rule_id": 949110}, {"rule_id": 959100}]})
+    began = time.monotonic()
+    result = _verify(session_id)
+    took = time.monotonic() - began
+
+    outcomes = {case["name"]: case["outcome"] for case in result["cases"]}
+    assert outcomes["board-sqli-orderby-sqlmap"] == "leaked", (
+        f"with the inbound and outbound blocking evaluations removed the WAF blocks "
+        f"nothing, so sqlmap must dump the board's accounts: {result}"
+    )
+    assert result["passed"] is False
+    print(f"leaking VERIFY took {took:.0f} s")
+
+
 def test_a_guided_session_opens_with_the_lesson_s_logs_already_there(stack_is_up):
     began = time.monotonic()
     session_id = _open(defense="minimal", guidance=True)

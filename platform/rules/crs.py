@@ -62,11 +62,12 @@ def apply(tuning, gateway) -> dict:
         _write(gateway, previous)
         raise TuningRefused("nginx refused the tuning, rolled back: " + ran.output.strip())
     for _ in range(SETTLE_POLLS):
-        serving = _workers(gateway)
-        if serving and not serving & old:
+        if _workers(gateway) - old:
             return tuning
         time.sleep(0.1)
-    raise TuningRefused(f"nginx workers {sorted(old)} still serve the previous tuning")
+    _write(gateway, previous)
+    gateway(RELOAD)
+    raise TuningRefused("nginx started no worker on the new tuning, rolled back")
 
 def _workers(gateway) -> set[str]:
     return set(gateway(["sh", "-c", WORKERS]).output.split())

@@ -17,8 +17,8 @@ TOOLS = [
     "curl", "wget", "nc", "dig", "jq",
 ]
 
-def in_box(*argv, timeout=60):
-    return run(ATTACKER, list(argv), timeout=timeout)
+def in_box(*argv, timeout=60, session=None):
+    return run(ATTACKER, list(argv), timeout=timeout, session=session)
 
 @pytest.mark.parametrize("tool", TOOLS)
 def test_the_box_has_the_tool(stack_is_up, tool):
@@ -43,8 +43,17 @@ def test_the_shell_is_told_what_to_attack(stack_is_up):
     assert host and host in target
 
 @pytest.fixture(scope="module")
-def box(stack_is_up):
-    return requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=120).json()
+def own_session(stack_is_up):
+    return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
+
+@pytest.fixture(scope="module")
+def box(own_session):
+    return dict(
+        requests.get(
+            f"{PLATFORM_URL}/api/attacker/", params={"session": own_session}, timeout=120
+        ).json(),
+        session=own_session,
+    )
 
 def test_the_console_reports_both_addresses_the_box_can_leave_by(box):
     assert box["source_ip"], box
@@ -55,7 +64,7 @@ def test_the_console_reports_both_addresses_the_box_can_leave_by(box):
     )
 
 def test_the_direct_address_is_the_box_itself(box):
-    mine = in_box("sh", "-c", "hostname -I").stdout.split()
+    mine = in_box("sh", "-c", "hostname -I", session=box["session"]).stdout.split()
 
     assert box["direct_ip"] in mine, (
         f"the console says raw TCP leaves from {box['direct_ip']}, but the "
@@ -63,7 +72,7 @@ def test_the_direct_address_is_the_box_itself(box):
     )
 
 def test_the_proxied_address_is_not_the_box(box):
-    mine = in_box("sh", "-c", "hostname -I").stdout.split()
+    mine = in_box("sh", "-c", "hostname -I", session=box["session"]).stdout.split()
 
     assert box["source_ip"] not in mine
 
@@ -82,8 +91,8 @@ def test_the_shell_is_pointed_at_a_site_not_at_the_defence(stack_is_up):
 def test_the_console_shows_the_name_a_person_types(box):
     assert PUBLIC_HOST in box["public_url"], box["public_url"]
 
-def _alerts_mentioning(token, lines=300):
-    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"])
+def _alerts_mentioning(token, lines=300, session=None):
+    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"], session=session)
     found = []
     for line in out.stdout.splitlines():
         try:
@@ -94,11 +103,12 @@ def _alerts_mentioning(token, lines=300):
             found.append(event)
     return found
 
-def _attack_from_the_shell(token):
+def _attack_from_the_shell(token, session=None):
     payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
-    in_box("sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"')
+    in_box("sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"',
+           session=session)
     time.sleep(5)
-    alerts = _alerts_mentioning(token)
+    alerts = _alerts_mentioning(token, session=session)
     assert alerts, f"nothing alerted on the probe {token}"
     return alerts
 
@@ -119,11 +129,11 @@ def test_choosing_an_origin_moves_the_source_without_renaming_the_site(stack_is_
 
     try:
         requests.post(f"{PLATFORM_URL}/api/attacker/origin/",
-                      json={"origin": elsewhere["id"]}, timeout=60)
-        alerts = _attack_from_the_shell(f"zz{uuid.uuid4().hex[:8]}")
+                      json={"origin": elsewhere["id"], "session": box["session"]}, timeout=60)
+        alerts = _attack_from_the_shell(f"zz{uuid.uuid4().hex[:8]}", box["session"])
     finally:
         requests.post(f"{PLATFORM_URL}/api/attacker/origin/",
-                      json={"origin": ""}, timeout=60)
+                      json={"origin": "", "session": box["session"]}, timeout=60)
 
     subnet = ipaddress.ip_network(elsewhere["subnet"])
     sources = {a["src_ip"] for a in alerts}

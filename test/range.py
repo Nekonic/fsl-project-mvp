@@ -29,7 +29,14 @@ EXIT_MARK = "fsl.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 
 class RangeUnavailable(RuntimeError):
-    pass
+    def __init__(self, message: str, output: str = ""):
+        super().__init__(message)
+        self.output = output
+
+def _said(stream) -> str:
+    if isinstance(stream, bytes):
+        return stream.decode(errors="replace")
+    return stream or ""
 
 @dataclass(frozen=True)
 class Ran:
@@ -194,7 +201,8 @@ class Docker:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise RangeUnavailable(
-                f"could not reach the range to run {command[0]}: {exc}"
+                f"could not reach the range to run {command[0]}: {exc}",
+                _said(getattr(exc, "stdout", None)),
             ) from exc
 
 RANGE = Docker()

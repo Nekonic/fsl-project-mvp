@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from rules.suricata import RuleApplyError
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
 
 RELOAD = ("kill", "-USR2", "1")
 RULES = (

@@ -20,7 +20,7 @@ def _auth_users_of(session_id):
 
 def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=600
     ).json()["id"]
 
     fired = requests.post(

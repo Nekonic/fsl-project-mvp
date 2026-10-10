@@ -57,6 +57,11 @@ class Docker:
     def segments(self) -> tuple[Segment, ...]:
         return tuple(self._placed(*self._networks()))
 
+    def has_stack(self) -> bool:
+        return bool(self._lines([
+            "ps", "-a", "-q", "--filter", f"label={PROJECT_LABEL}={self._session_of(())}",
+        ]))
+
     def address(self, role: str) -> str:
         return self._address_on(self._container(role), self._network_of(ESTATE))
 

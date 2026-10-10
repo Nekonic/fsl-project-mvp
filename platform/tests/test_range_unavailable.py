@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
 
 
 @pytest.mark.parametrize("method, path, body", [

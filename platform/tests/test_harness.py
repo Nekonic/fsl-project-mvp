@@ -405,3 +405,36 @@ def test_fire_raises_when_the_prefetched_token_is_absent():
     }
     with pytest.raises(harness.ToolUnavailable):
         harness.fire(case, launch, BASE)
+
+
+def test_a_run_that_fails_midway_still_closes_its_session_and_said_which_it_was(monkeypatch):
+    posts, announced = [], []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 9}
+
+    class Http:
+        def post(self, url, json=None, timeout=None):
+            posts.append(url)
+            return Resp()
+
+    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
+    monkeypatch.setattr(
+        harness, "fire",
+        lambda *a, **k: (_ for _ in ()).throw(harness.ToolUnavailable("tool died")),
+    )
+
+    with pytest.raises(harness.ToolUnavailable):
+        harness.run(
+            [{"name": "a", "malicious": True, "request": {"path": "/"}}],
+            "http://p", lambda *a, **k: None, announce=announced.append,
+        )
+
+    assert announced == [9], "the caller could not tell which session the run opened"
+    assert posts[-1].endswith("/api/sessions/9/close/"), (
+        "a run that failed midway left its session open, holding a place under the cap"
+    )

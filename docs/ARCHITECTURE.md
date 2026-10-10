@@ -60,9 +60,11 @@ first table below gives each session service under its declared host name,
 which `platform/range/docker.py` maps the container back to.
 
 Every endpoint that acts on the range (rules, validate, suppressions,
-`/api/attacker/`, origin, label) takes `session` from the query or body and
-falls back to the newest session, open or not; suppressions are stored with their
-session (migration 0014). The red console sends its session id. Each
+`/api/attacker/`, origin, label, canary) takes `session` from the query or
+body. Without one, a write goes to the newest open session and answers 409
+when none is open, and a read uses the newest session; a write naming a closed
+session is refused. Suppressions are stored with their session (migration
+0014). The red console sends its session id. Each
 session's sensor keeps its live `local.rules` in its own container. On docker
 every session's sensor is seeded at open with its defense's rule file, or with
 `deploy/suricata/rules/local.rules` when the scenario declares no `defense`
@@ -393,9 +395,11 @@ exclusion per entry (`ctl:ruleRemoveTargetById=<id>;<target>` or
 `ctl:ruleRemoveById=<id>`, scoped by `SecRule REQUEST_FILENAME "@beginsWith
 <path>"` when a path is given). It writes the file into the session's WAF with
 `runner("gateway")`, runs `nginx -t && nginx -s reload`, and restores the
-previous file if nginx refuses. It returns only once none of the nginx workers
-that ran before the reload is left (read from `/proc` by parent PID), so a
-request sent next meets the new tuning; after 5 s it refuses instead. Input is validated before anything is written:
+previous file if nginx refuses. It returns once a worker that was not there
+before the reload is up (worker PIDs read from `/proc` by parent PID), so new
+connections meet the new tuning; old workers may still drain a slow request.
+If no new worker appears within 5 s the reload did not happen: it restores the
+previous file, reloads and refuses. Input is validated before anything is written:
 paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 `ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional
 `:name`, a path of `[A-Za-z0-9_./-]`, at most 20 entries.
@@ -408,8 +412,12 @@ run. An sqlmap case is leaked when the rows sqlmap dumped (`redteam/tools.py`
 (`loot.matched`); a leak also credits the objectives it proves. It is held
 only on positive evidence: no matching row, sqlmap exited 0, printed its
 `[*] ending` line and no crash (traceback, user abort, a host that does not
-exist), and either concluded "all tested parameters do not appear to be
-injectable" or dumped rows that match nothing (`tools.concluded`). A
+exist), no dumped row at all, and sqlmap's own conclusion "all tested
+parameters do not appear to be injectable" (`tools.found_not_injectable`). A
+dump that matches no snapshot account is neither a leak nor a block: it is
+inconclusive. VERIFY answers 409 for a session with no snapshot, and a docker
+board session whose accounts cannot be read at open is refused with 503 and
+closed. A
 connection error sqlmap recovered from does not void the conclusion: behind
 the WAF they are ModSecurity cutting the board's 500 responses (nginx "header
 already sent"); a connection error that stops sqlmap before it concludes
@@ -448,8 +456,9 @@ submission names a malicious case (`case_id`), its window runs from 100 ms
 before that case started to 100 ms after it ended; otherwise it runs from 2
 minutes before the submission to 100 ms after.
 
-The snapshot is taken once, when the session starts. If the board cannot be
-read then, the session is still created, with no snapshot, and
+The snapshot is taken once, when the session starts. On docker a board
+session whose accounts cannot be read (or read empty) is refused with 503 and
+closed. On OpenStack it is still created, with no snapshot, and
 `POST /api/sessions/<id>/loot/` answers 409 for it. Nothing reads the board
 afterwards: `GET /api/wargames/<id>/objectives/` lists the tiers from
 `objectives.yaml` and `GET /api/sessions/<id>/objectives/` reports the stored
@@ -556,8 +565,9 @@ The score endpoint is read-only and keeps no history.
   in a default Docker memory allowance.
 - Missing data is an error, not a zero, with stated exceptions. An
   unreachable Elasticsearch or substrate and an unreadable rule file answer
-  503. Session create tolerates an unreachable target (the session starts with
-  no snapshot, and the board's `loot/` answers 409); firing or recording a case and close
+  503. Session create on OpenStack tolerates an unreachable target (the session
+  starts with no snapshot, and the board's `loot/` answers 409; on docker a
+  board session is refused with 503); firing or recording a case and close
   read no target (firing still answers 503 when it needs the substrate for an
   origin or a tool). The suppression restore inside ingest and placing alerts
   on segments and hosts (which comes back empty) tolerate an unreachable

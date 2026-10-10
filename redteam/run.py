@@ -49,7 +49,8 @@ def main() -> int:
         print("warning: no benign cases, false positives cannot be scored", file=sys.stderr)
 
     session_id = harness.run(
-        cases, args.platform, launch, args.tool_target, scenario
+        cases, args.platform, launch, args.tool_target, scenario,
+        announce=lambda opened: print(f"session {opened} opened", flush=True),
     )
 
     print(f"session {session_id} done")

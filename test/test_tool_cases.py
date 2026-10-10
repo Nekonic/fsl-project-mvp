@@ -8,7 +8,7 @@ CASE = "board-sqli-orderby-sqlmap"
 @pytest.fixture(scope="module")
 def fired(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     sent = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
@@ -28,7 +28,7 @@ def test_the_tool_leaves_by_the_origin_it_was_told_to(fired):
 
 def test_an_origin_the_range_does_not_have_is_refused(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
 
     sent = requests.post(

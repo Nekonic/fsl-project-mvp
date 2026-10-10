@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from api import loot
 from api.models import Session
 
 pytestmark = pytest.mark.django_db
@@ -27,16 +28,19 @@ def test_a_board_session_snapshots_the_ground_truth_at_start(client):
     )
 
 
-def test_a_board_session_opens_blind_when_the_channel_is_down(client):
-    from api import loot
+@pytest.mark.parametrize("unread", [
+    {"side_effect": loot.GroundTruthUnavailable("board down")},
+    {"return_value": {}},
+])
+def test_a_board_session_whose_accounts_cannot_be_read_is_refused_and_closed(client, unread):
+    with patch("api.views.loot.ground_truth", **unread):
+        answer = client.post_json("/api/sessions/", {"scenario": "board"})
 
-    with patch("api.views.loot.ground_truth",
-               side_effect=loot.GroundTruthUnavailable("board down")):
-        session_id = client.post_json(
-            "/api/sessions/", {"scenario": "board"}
-        ).json()["id"]
-
-    assert Session.objects.get(pk=session_id).baseline is None
+    assert answer.status_code == 503, answer.content
+    assert "accounts could not be read" in answer.json()["detail"]
+    assert Session.objects.get().ended_at is not None, (
+        "a board session with no snapshot cannot tell a leak from a block"
+    )
 
 
 def test_the_board_lists_its_tier_ladder_with_every_field_unsolved(client):
