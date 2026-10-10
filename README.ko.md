@@ -100,7 +100,7 @@ docker compose up -d --build
 
 세션은 스택을 `--no-build`로 띄우므로, 워게임·Kali·프록시를 바꾼 뒤에는 `docker compose -f session.yaml build`를 다시 실행한다. 플랫폼이 하는 것처럼 세션 스택을 손으로 띄우려면 `docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
 
-Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며 컨테이너를 다시 만들어도 남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞추고, 이벤트 시각을 정하고 출발지 주소의 위치를 찾는 Elasticsearch ingest pipeline을 등록한다. 백그라운드에서 Kibana의 data view, "FSL alerts" 검색, "FSL overview" 대시보드를 가져오고 Kibana의 기본 경로를 그 검색으로 정한다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
+Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며 컨테이너를 다시 만들어도 남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞춘다. 그다음 서비스를 시작하는 동안 백그라운드에서 이벤트 시각을 정하고 출발지 주소의 위치를 찾는 Elasticsearch ingest pipeline을 등록하고, Kibana의 data view, "FSL alerts" 검색, "FSL overview" 대시보드를 가져오고 Kibana의 기본 경로를 그 검색으로 정한다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
@@ -113,7 +113,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 pfSense와 WAF |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-플랫폼 이미지 안의 nginx가 8000과 8002를 받는다. 8002는 대상 사이트용 별도 출처라 대상에 심긴 스크립트가 콘솔을 읽거나 조작하지 못한다. 쿠키는 포트가 아니라 호스트 단위라 그런 스크립트도 콘솔이 보낼 쿠키는 심을 수 있지만, 콘솔은 쿠키를 쓰지 않는다. nginx는 8000을 받아 `/terminal/<세션 id>/`를 그 세션의 Kali 컨테이너 `fsl-<id>-kali-1`의 ttyd로(compose), `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다(OpenStack. compose에서는 Kali와 WAF에 `mgmt` 주소가 없어 연결되지 않는다). compose에서 `/waf-terminal/<세션 id>/`는 플랫폼 안의 ttyd로 가고, ttyd가 `fsl-<id>-waf-1`에 `docker exec`한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000을 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost). edge 네트워크는 모든 세션이 함께 쓰므로 이 이름은 모든 세션의 WAF로 풀린다. 그래서 플랫폼은 세션마다 프록시를 그 세션의 WAF로 향하게 하고, 실행하는 도구에는 그 WAF를 가리키는 `--add-host`를 준다.
+플랫폼 이미지 안의 nginx가 8000과 8002를 받는다. 8002는 대상 사이트용 별도 출처라 대상에 심긴 스크립트가 콘솔을 읽거나 조작하지 못한다. 쿠키는 포트가 아니라 호스트 단위라 그런 스크립트도 콘솔이 보낼 쿠키는 심을 수 있지만, 콘솔은 쿠키를 쓰지 않는다. nginx는 8000을 받아 `/terminal/<세션 id>/`를 그 세션의 Kali 컨테이너 `fsl-<id>-kali-1`의 ttyd로(compose), `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다(OpenStack. compose에서는 Kali와 WAF에 `mgmt` 주소가 없어 연결되지 않는다). compose에서 `/waf-terminal/<세션 id>/`는 플랫폼 안의 ttyd로 가고, ttyd가 `fsl-<id>-waf-1`에 `docker exec`한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000과 8002를 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. substrate가 OpenStack이면 `SITE_PORT`가 `None`이라 8002는 쓰이지 않고 보안 그룹 규칙도 필요 없다. 인수 테스트 VM(docker)에서는 보안 그룹이 8002를 연다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost). edge 네트워크는 모든 세션이 함께 쓰므로 이 이름은 모든 세션의 WAF로 풀린다. 그래서 플랫폼은 세션마다 프록시를 그 세션의 WAF로 향하게 하고, 실행하는 도구에는 그 WAF를 가리키는 `--add-host`를 준다.
 
 ### OpenStack에서
 
@@ -204,7 +204,7 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
 
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
-- **블루**는 도구를 프레임으로 띄운 사이드바다: "FSL alerts"의 열과 쿼리를 세션으로 좁혀 Discover로 열리는 Kibana와 WAF 터미널. 세션이 닫히면 세션 페이지에 결과가 나타난다: 빼앗긴 목표가 먼저, 그다음 공격을 몇 건 잡았고 정상 요청이 몇 건 통과했는지를 평범한 문장으로.
+- **블루**는 도구를 프레임으로 띄운 사이드바다: "FSL alerts"의 열과 쿼리를 세션으로 좁혀 Discover로 열리는 Kibana, WAF 터미널, 그리고 웹사이트 창(Network 패널이 있는 사이트 브라우저). 세션, 사이트 요청, 레슨 힌트, 검증, ingest, 탐지를 위해 `/api/`를 호출한다. 세션이 닫히면 세션 페이지에 결과가 나타난다: 빼앗긴 목표가 먼저, 그다음 공격을 몇 건 잡았고 정상 요청이 몇 건 통과했는지를 평범한 문장으로.
 
 `{"guidance": true, "defense": "minimal"}`로 연 세션이 WAF 레슨이다. board의 WAF는 CRS Paranoia Level 4에서 시작해 sqlmap과 함께 정상 요청인 O'Brien 검색도 차단한다. 블루 콘솔은 초보자를 일곱 단계로 안내하고, 각 단계는 플랫폼이 확인한다: 웹사이트 창에서 O'Brien을 검색해 WAF의 403 보기, 준비된 필터로 Kibana에서 그 요청 찾기, 규칙 번호(920273) 입력, 걸린 곳(`ARGS:q`) 고르기, 버튼 하나로 세션의 WAF 터미널에서 명령을 실행해 rule exclusion(규칙 제외) 추가(손으로 쓰는 규칙용 10100~10199 중 id 10100으로 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`에 덧붙이고, `nginx -t`가 통과할 때만 reload하며 통과하지 못하면 이전 파일을 되돌림), 다시 검색, 검증(`POST /api/sessions/<id>/verify/`). 단계마다 힌트가 있고 마지막은 "대신 해 주기"이며, "직접 해보기"는 필터와 버튼을 없앤다. 힌트와 "대신 해 주기"를 쓴 것은 세션에 기록되고(`POST /api/sessions/<id>/lesson/hints/`) PASS·FAIL 옆에 표시된다. 어떤 sqlmap 변형도 board 계정과 일치하는 해시를 덤프하지 못하고 모든 정상 케이스가 응답받을 때만 통과한다. 에이전트는 `PUT /api/sessions/<id>/waf/`로 튜닝하고, `GET`은 WAF 파일에 실제로 있는 내용을 알려 준다. 기본값 `{"defense": "full"}`은 Paranoia Level 1에서 시작한다.
 

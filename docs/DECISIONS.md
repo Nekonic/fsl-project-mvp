@@ -1351,3 +1351,25 @@ not gated), dependencies 6, services 9, tests 1472 (+31). Correction: commit
 ed9f2d9's message says product_loc 10983, but the `metrics.json` it saved holds
 11065, which is what `bin/measure` reports for that tree; 11065 is the right
 figure for that commit. History is not rewritten.
+
+## 2026-10-11 — A closed session's result is stored, not rescored on every list
+
+Measured on the acceptance VM by the coordinator: `GET /api/sessions/` took
+6.4 s for 25 rows and `?state=closed&limit=10` 5.7 s, against 0.01 s for
+`?state=open`. Each closed row ran `_result` → `_evidence`, a full correlation
+over the session's detections (thousands for a lesson, after VERIFY runs).
+`bin/verify` probes readiness with a 5 s curl, so after `docker compose restart
+platform` it never passed, and the main page was as slow.
+
+The result is now stored on the session (`Session.result_cache`, migration
+0018) beside the inputs it was computed from: `ended_at`, the number of hints,
+and per table the last id and row count of detections (plus how many carry a
+marker, since ingest marks old rows), cases and objectives. A list reads those
+aggregates (three queries per session) and rescores only when they differ, so
+evidence ingested after close still reaches the result. Keying on the inputs
+rather than invalidating at each write point (ingest, loot, verify, hints,
+cases) means no write path can be missed. `bin/verify` now probes
+`/api/sessions/?state=open`, which proves the platform answers without
+scoring anything. Open sessions are unchanged: the list gives them no result.
+
+Metrics: core_loc 560, product_loc 11206 (+15, not gated), tests 1475 (+3).

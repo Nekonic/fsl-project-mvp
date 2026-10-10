@@ -148,10 +148,11 @@ Elasticsearch's managed GeoIP downloader is off; it reads `GeoLite2-City.mmdb`
 from `config/ingest-geoip` (a durable bind mount) instead. `bin/fetch-geoip`
 puts it there once. The file is not committed and survives a container
 recreate (the cloud's Elasticsearch cannot reach the download CDN). On start
-the platform sets the docker socket group and registers the Elasticsearch
-ingest pipeline, which sets each event's time and geolocates source addresses;
-in the background it imports Kibana's data view, the "FSL alerts" search and the
-"FSL overview" dashboard, and points Kibana's default route at the search.
+the platform sets the docker socket group; then, in the background while it
+starts serving, it registers the Elasticsearch ingest pipeline, which sets each
+event's time and geolocates source addresses, and imports Kibana's data view,
+the "FSL alerts" search and the "FSL overview" dashboard, and points Kibana's
+default route at the search.
 Firing the scripted cases from the command line and `bin/verify`, `--fast`
 included, need a virtualenv:
 
@@ -176,8 +177,11 @@ to the ttyd on that session's Kali container, `fsl-<id>-kali-1` (compose), and
 so these do not connect). On compose `/waf-terminal/<session id>/` goes to a ttyd
 inside the platform that runs `docker exec` into `fsl-<id>-waf-1`.
 By default every port is published on `127.0.0.1`.
-On the platform VM, 8000 is published on the VM's own address
-(`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The target is
+On the platform VM, 8000 and 8002 are published on the VM's own address
+(`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). On substrate
+OpenStack `SITE_PORT` is `None`, so 8002 is unused there and needs no
+security-group rule; on the acceptance VM (docker) the security group opens
+8002. The target is
 not published: the command-line cases and the acceptance tests reach it from
 inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the
@@ -322,7 +326,9 @@ Korean.
   work in the shell and press stop: everything sent in between is attributed
   to that name.
 - **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
-  "FSL alerts" columns and query narrowed to the session, and a WAF terminal. The
+  "FSL alerts" columns and query narrowed to the session, a WAF terminal, and a
+  Website pane (a site browser with a Network panel). It calls `/api/` for the
+  session, the site's requests, lesson hints, verify, ingest and detections. The
   result appears on the session page when the session closes: objectives lost
   first, then in plain sentences how many attacks were caught and benign
   requests passed.

@@ -1,7 +1,9 @@
 # Composable, session-isolated learning MVP: design
 
 Status: approved to build (2026-10-08); built on docker and live-verified
-2026-10-10 (`docs/state/now.md`, `docs/DECISIONS.md`). Still open:
+2026-10-10 (`docs/state/now.md`, `docs/DECISIONS.md`); on 2026-10-11 the WAF
+lesson was rewritten as seven steps for complete beginners, with a site browser
+in the blue console (`docs/DECISIONS.md`). Still open:
 `board-easy`/`board-hard` and everything on substrate openstack.
 The user-facing version is the Korean living doc (Claude Docs artifact
 37HeLkkLEFQgVWbwLuXH7S); this file is the canonical English spec. Four
@@ -189,7 +191,9 @@ knowledge:
   a task panel beside the Kibana iframe (standard, robust across versions, also
   acceptable to the user). The same-origin XSS concern is an unverified
   hypothesis, accepted for the internal club phase and reviewed before a public
-  launch.
+  launch. Answered 2026-10-10 (`docs/DECISIONS.md`, "Lesson guidance drawn
+  over the real Kibana"): the highlight works, anchored on Kibana's
+  data-test-subj selectors over the same-origin Kibana iframe.
 - CRS starting configuration: check whether CRS at the default paranoia level
   already blocks this SQLi and whether it raises a false positive on the benign
   O'Brien search. The answer sets the lesson's starting state (tune down an

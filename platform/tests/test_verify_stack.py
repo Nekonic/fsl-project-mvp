@@ -215,3 +215,12 @@ def test_a_fast_check_whose_measure_refuses_does_not_pass(checkout):
         f"session's work is thrown away every time:\n{done.stdout}"
     )
     assert "measure" in done.stdout, done.stdout
+
+
+def test_the_readiness_probe_after_a_restart_asks_the_cheap_open_list():
+    script = (ROOT / "bin/verify").read_text()
+    probes = [line for line in script.splitlines() if "curl" in line and "/api/sessions/" in line]
+
+    assert probes and all('/api/sessions/?state=open"' in line for line in probes), (
+        "the full list scores closed sessions; the probe proves only that the platform answers"
+    )

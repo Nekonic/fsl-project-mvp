@@ -78,9 +78,9 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
-| `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000 |
+| `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
 
-8000은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
+8000과 8002는 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
 
 | 네트워크 | 구간 | 서브넷 | 이름 | 출발지 |
@@ -187,7 +187,10 @@ Neutron이 모두 직접 할당하며, 실제와 다른 서브넷을 선언하�
 
 구간은 라벨로 찾는다. docker에서는 호스트도 라벨로 찾는다: `declaration.yaml`의
 `compose:` 절이 각 역할을 compose 서비스에 매핑하고, 어댑터는 세션 프로젝트에서 그
-`com.docker.compose.service` 라벨을 가진 컨테이너를 고른다. 각 구간은 `fsl.segment.id`를
+`com.docker.compose.service` 라벨을 가진 컨테이너를 고른다. 두 곳은 이 조회를 거치지 않고
+세션의 WAF 컨테이너를 compose 이름 규칙으로 직접 지정한다: `platform/api/site.py`
+(`http://fsl-<id>-waf-1`, 사이트 프록시)와 `platform/api/views.py`(`fsl-<id>-waf`, 레슨의
+WAF 박스). 아래 예외 표에 적어 둔다. 각 구간은 `fsl.segment.id`를
 Docker 라벨이나 Neutron 태그로 가지며, 어댑터는 라벨이 붙은 네트워크만 가져온다. 같은
 구간 id라면 세션 소유 네트워크가 컨트롤 플레인 쪽보다 우선한다. 이름 매칭은 compose
 접두사와 오버라이드, Heat 스택 접미사, 유일하지 않은 Neutron 이름에서 깨졌다.
@@ -235,6 +238,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고, 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 플랫폼은 어느 것도 읽지 않는다 |
+| 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/pfsense.py`와 `deploy/pfsense/configure.php`가 pfSense의 Suricata를 정지·시작한다(OpenStack) |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음 |
@@ -463,7 +467,10 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
   (`ready`, `Session.ready_at`에서. 그 전까지 "준비 중 n초 / 약 80초"). 시나리오 카드는
   `scenario.yaml`의 category, difficulty, minutes와 `GET /api/wargames/`의 공격 케이스·정상
   케이스·목표·레슨 단계 수를 보여 준다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
-  아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면
+  아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다
+  (`Session.result_cache`, migration 0018; 입력은 `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가
+  있는 행 수, 케이스와 목표의 마지막 id·행 수). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이
+  바뀐 세션만 다시 채점한다. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면
   "열린 세션 닫기"가 열린 세션을 나열해 각각 `ingest/` 뒤 `close/`로 닫는다.
   `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
 - 세션(`/session/<id>/`): 머리글 수치(레슨 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔 카드,

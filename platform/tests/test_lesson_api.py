@@ -530,3 +530,41 @@ def test_a_polled_read_of_the_detections_reads_the_stack_s_shape_once_not_on_eve
             assert client.get(f"/api/sessions/{session.pk}/detections/").status_code == 200
 
     assert read == [session.pk]
+
+def test_listing_closed_sessions_scores_each_once_then_reads_the_stored_result(client):
+    for guidance in (True, False):
+        session = board(guidance=guidance)
+        verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+        client.post_json(f"/api/sessions/{session.pk}/close/")
+    first = client.get("/api/sessions/?state=closed").json()
+
+    with patch("api.views._evidence", side_effect=AssertionError("scored again")) as scored:
+        again = client.get("/api/sessions/?state=closed").json()
+        listed = client.get("/api/sessions/").json()
+
+    assert not scored.called, "a list of N closed sessions is N stored reads, not N scorings"
+    assert [row["result"] for row in again] == [row["result"] for row in first]
+    assert [row["result"] for row in listed if "result" in row] == [row["result"] for row in first]
+
+def test_evidence_that_arrives_after_close_refreshes_the_stored_result(client):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from api.models import Detection
+
+    now = timezone.now()
+    session = board()
+    Case.objects.create(session=session, case_id="c1", name="board-sqli-orderby-sqlmap", malicious=True,
+                        correlation="marker", started_at=now - timedelta(seconds=30), ended_at=now - timedelta(seconds=5))
+    Objective.objects.create(session=session, key="board-auth-user-admin", name="admin", difficulty=1,
+                             achieved_at=now - timedelta(seconds=10))
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+    before = client.get("/api/sessions/?state=closed").json()[0]["result"]["objectives"]
+
+    Detection.objects.create(session=session, detection_id="late", source="modsecurity", signature="942100",
+                             timestamp=now - timedelta(seconds=20), marker="c1")
+    after = client.get("/api/sessions/?state=closed").json()[0]["result"]["objectives"]
+
+    assert (before["lost"], before["undetected"]) == (1, 1)
+    assert (after["lost"], after["undetected"]) == (1, 0), "an alert ingested after close is in the next list"
