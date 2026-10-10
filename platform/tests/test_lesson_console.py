@@ -93,3 +93,32 @@ def test_replay_fires_the_chosen_lesson_case_through_the_attacks_api(client):
     assert seen["result"] == [[
         "/api/sessions/1/attacks/", {"case": "board-normal-search-with-apostrophe"},
     ]]
+
+CATALOGUE = """
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [
+      {id: "board", name: "Board", description: "", cases: 1, lesson: true},
+      {id: "corp", name: "Corp", description: "", cases: 1, lesson: false},
+    ]};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") return {status: 201, body: {id: 9}};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_guided_minimal_session(client):
+    seen = open_page(client, "/", setup=CATALOGUE, scenario="""
+      const lessons = [...document.querySelectorAll('[data-lesson]')].map((b) => b.dataset.wargame);
+      await browser.click('[data-lesson="true"]');
+      return {lessons, posted: browser.requests.filter((r) => r.method === 'POST').map((r) => r.body)};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["lessons"] == ["board"]
+    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "defense": "minimal"}]
+
+def test_the_catalogue_says_which_scenario_carries_a_lesson(client):
+    listed = {w["id"]: w["lesson"] for w in client.get("/api/wargames/").json()}
+
+    assert listed == {"board": True, "corp": False}

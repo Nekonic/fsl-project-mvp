@@ -149,7 +149,9 @@ from `config/ingest-geoip` (a durable bind mount) instead. `bin/fetch-geoip`
 puts it there once. The file is not committed and survives a container
 recreate (the cloud's Elasticsearch cannot reach the download CDN). On start
 the platform sets the docker socket group and registers the Elasticsearch
-ingest pipeline, which sets each event's time and geolocates source addresses.
+ingest pipeline, which sets each event's time and geolocates source addresses;
+in the background it imports Kibana's data view, the "FSL alerts" search and the
+"FSL overview" dashboard, and points Kibana's default route at the search.
 Firing the scripted cases from the command line and `bin/verify`, `--fast`
 included, need a virtualenv:
 
@@ -314,7 +316,8 @@ Korean.
   case is labelled on the way out. Alternatively name a case, press start,
   work in the shell and press stop: everything sent in between is attributed
   to that name.
-- **Blue** is a sidebar of framed tools: Kibana and a WAF terminal. The
+- **Blue** is a sidebar of framed tools: Kibana, opened on the "FSL alerts"
+  search narrowed to the session, and a WAF terminal. The
   scoreboard appears on the session page when the session closes.
 
 A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF

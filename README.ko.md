@@ -100,7 +100,7 @@ docker compose up -d --build
 
 세션은 스택을 `--no-build`로 띄우므로, 워게임·Kali·프록시를 바꾼 뒤에는 `docker compose -f session.yaml build`를 다시 실행한다. 플랫폼이 하는 것처럼 세션 스택을 손으로 띄우려면 `docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
 
-Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며 컨테이너를 다시 만들어도 남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞추고, 이벤트 시각을 정하고 출발지 주소의 위치를 찾는 Elasticsearch ingest pipeline을 등록한다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
+Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며 컨테이너를 다시 만들어도 남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞추고, 이벤트 시각을 정하고 출발지 주소의 위치를 찾는 Elasticsearch ingest pipeline을 등록한다. 백그라운드에서 Kibana의 data view, "FSL alerts" 검색, "FSL overview" 대시보드를 가져오고 Kibana의 기본 경로를 그 검색으로 정한다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
@@ -203,7 +203,7 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블루 콘솔을 나란히 연다. 헤더의 표시 언어 버튼으로 영어와 한국어를 전환한다.
 
 - **레드**에는 목표, Kali 셸, 스크립트 시나리오가 있다. 실행한 시나리오에는 나가는 길에 라벨이 붙는다. 또는 시나리오 이름을 정하고 시작을 누른 뒤 셸에서 작업하고 중지를 누를 수도 있다. 그 사이에 보낸 모든 것이 그 이름으로 묶인다.
-- **블루**는 도구를 프레임으로 띄운 사이드바다: Kibana와 WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
+- **블루**는 도구를 프레임으로 띄운 사이드바다: 세션으로 좁힌 "FSL alerts" 검색으로 열리는 Kibana와 WAF 터미널. 점수판은 세션이 닫히면 세션 페이지에 나타난다.
 
 `{"guidance": true, "defense": "minimal"}`로 연 세션이 WAF 실습이다. board의 WAF는 CRS paranoia level 4에서 시작해 sqlmap과 함께 정상 요청인 O'Brien 검색도 차단하고, 블루 콘솔은 Kibana 옆에 lesson 패널을 띄운다. 학습자는 paranoia level을 낮추거나 룰 제외를 추가하고(`PUT /api/sessions/<id>/waf/`) 검증을 누른다(`POST /api/sessions/<id>/verify/`). 어떤 sqlmap 변형도 board 계정과 일치하는 해시를 덤프하지 못하고 모든 정상 케이스가 응답받을 때만 통과한다. 기본값 `{"defense": "full"}`은 paranoia level 1에서 시작한다.
 
