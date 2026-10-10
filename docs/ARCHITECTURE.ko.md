@@ -388,8 +388,21 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
 남는다. board의 lesson은
 `board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
 재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
-`board-normal-sort`(`?sort=-created_at`)가 있다. 블루 콘솔은 guidance 세션에서만 Kibana
-프레임 옆에 lesson 패널을 띄운다.
+`board-normal-sort`(`?sort=-created_at`)가 있다. guidance 세션에서 블루 콘솔은 lesson을
+전체 폭 창 위에 떠 있는 메모로 보여 준다(fixed, 기본 위치 오른쪽 아래, 너비 20rem, 높이 최대
+60vh). 머리글을 끌어 어디로든 옮기고 머리글만 남게 접을 수 있으며 "원래 자리로"가 되돌린다.
+접힘과 위치는 보는 사람마다 localStorage(`fsl-lesson-note`)에 남는다. 열을 따로 잡거나
+레이아웃이 다시 흐르지 않는다. 메모 안 컨트롤을 가리키는 코치 단계는 메모를 펼친다.
+
+패널은 아홉 개의 하위 단계를 차례로 안내한다(`blue.html`의 `COACH`, 문구는 `strings.html`의
+`<lesson.text>.coach.*`): 세션 경보 표, 행 하나 펼치기, `rule` 필드, 개요 대시보드(Dashboards
+링크가 생길 때까지는 메뉴 토글), 그다음 편집증 수준, 제외, 적용, 재생, 검증. 각 단계는 대상을
+가진다: Kibana 프레임 안의 `data-test-subj` 셀렉터(프레임이 같은 출처라 콘솔에서 읽을 수 있음)
+또는 패널 자신의 컨트롤. 빨간 상자와 "← 여기" 라벨을 매 애니메이션 프레임마다 대상 위에
+놓으며, `pointer-events: none`이라 모든 클릭은 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시
+찾으므로 Kibana가 다시 그리거나 이동해도 상자가 남지 않고, 대상이 화면에 없으면 숨는다. 약 2초
+동안 대상을 찾지 못하면 패널이 어디를 볼지 알려 준다. 셀렉터는 고정 버전인 Kibana 8.15.0으로
+확인했다.
 
 ## 점수는 어떻게 계산되는가
 
@@ -502,8 +515,12 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
   `rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색,
   "FSL overview" 대시보드. `defaultRoute`를 그 검색으로 정한다. data view가 있으면
   Kibana의 Welcome 화면이 나오지 않는다. `GET /api/sessions/<id>/`는 `discover`를
-  돌려주는데, docker에서는 세션 인덱스(`_index : fsl-logs-<id>-*`)와 세션 구간으로
-  좁힌 그 검색이다. ELK 창이 이를 연다.
+  돌려준다. `fsl-logs` data view 위의 저장되지 않은 Discover 상태로, alert 검색의 열,
+  쿼리, 정렬을 쓰고 docker에서는 세션 인덱스(`_index : fsl-logs-<id>-*`)와 세션 구간으로
+  좁힌다. ELK 창이 이를 연다. 저장된 검색에 쿼리를 덮어쓰면 Kibana가 "Unsaved changes"를
+  붙이므로 그렇게 하지 않는다. 창이 로드되기 전에 블루 콘솔이 같은 출처의 localStorage에
+  Kibana의 첫 방문 안내를 본 것으로 표시한다(`discover:docExplorerUpdateCalloutClosed`,
+  `discover:docExplorerCalloutClosed`, `data.noDataPopover`).
 - Elasticsearch는 512MB 힙의 단일 노드로, 전체 스택이 Docker 기본 메모리 한도에
   들어간다.
 - 없는 데이터는 0이 아니라 오류로 처리하며, 예외를 명시한다. 닿을 수 없는

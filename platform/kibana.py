@@ -69,12 +69,13 @@ def discover_path(index, start, end):
     global_state = f"(time:(from:{rison(start.isoformat())},to:{until}))"
     app_state = (
         f"(columns:!({','.join(ALERT_COLUMNS)}),"
+        f"dataSource:(dataViewId:{DATA_VIEW},type:dataView),"
         f"query:(language:kuery,query:{rison(query)}),"
         "sort:!(!('@timestamp',desc)))"
     )
     safe = "()!:,'*@-._~"
     return (
-        f"{BASE_PATH}/app/discover#/view/{ALERT_SEARCH}"
+        f"{BASE_PATH}/app/discover#/"
         f"?_g={urllib.parse.quote(global_state, safe=safe)}"
         f"&_a={urllib.parse.quote(app_state, safe=safe)}"
     )

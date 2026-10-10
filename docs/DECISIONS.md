@@ -892,3 +892,59 @@ integrations" and had to build a data view before seeing an alert.
 
 `platform/kibana.py` is the one file that knows the Kibana API. core_loc,
 dependencies and services unchanged.
+
+## 2026-10-10 — Lesson guidance drawn over the real Kibana
+
+User request: guidance on top of the real Kibana UI, a red box and a label,
+driven by the lesson step, with the panel text as fallback. This closes the
+Kibana highlight spike.
+
+- Feasibility was checked live on the acceptance VM: the Kibana iframe is
+  same-origin, so the console reads `frame.contentDocument`; a fixed overlay
+  with `pointer-events: none` lets every click reach Kibana. Selectors are
+  Kibana's own `data-test-subj` values, checked in the elastic/kibana v8.15.0
+  source (the pinned image).
+- The overlay re-queries its selector every animation frame and keeps no node
+  references, so Kibana re-rendering or navigating inside the frame does not
+  strand it; it hides when the target is missing or scrolled out of the pane.
+  The label goes on whichever side of the target has room.
+- The sub-steps and selectors are a small list in `blue.html`, not in
+  `scenario.yaml`: they describe Kibana's and the panel's UI, which every
+  scenario shares; only their text is per lesson (`<lesson.text>.coach.*`).
+- Verified live in a guided board session (session 195, opened from "레슨으로
+  시작"): boxes over the alert table, a row's expand toggle and the panel's
+  Apply button. Console code is product code; `core_loc` is unchanged.
+
+## 2026-10-10 — Kibana opens clean; the lesson is a floating note
+
+User feedback on the live lesson.
+
+- The Discover callout "Get the best look at your search results / Take the
+  tour / Dismiss" is `DocumentExplorerUpdateCallout`
+  (elastic/kibana v8.15.0
+  `src/plugins/discover/public/application/main/components/document_explorer_callout/document_explorer_update_callout.tsx:25`
+  `CALLOUT_STATE_KEY = 'discover:docExplorerUpdateCalloutClosed'`, read at :27-30
+  and checked at :48 `if (calloutClosed || !capabilities.advancedSettings.save)`).
+  Kibana's `Storage` wrapper JSON-parses localStorage
+  (`src/plugins/kibana_utils/public/storage/storage.ts:29`). No advanced
+  setting turns it off, so the blue console sets the key, with the legacy
+  table's `discover:docExplorerCalloutClosed` (`document_explorer_callout.tsx:27`)
+  and the no-data popover's `data.noDataPopover`
+  (`src/plugins/unified_search/public/query_string_input/no_data_popover.tsx:15`),
+  in its own localStorage, which the same-origin `/kibana/` frame shares,
+  before the pane loads. Verified live: the callout that showed in session 195
+  was gone in 196 and 197 in the same browser profile.
+- "Unsaved changes" appeared because the pane opened the saved search
+  `#/view/fsl-alerts` with an `_a` query that differs from the saved one. The
+  pane now opens an unsaved Discover state (`#/?_a=(columns,
+  dataSource:(dataViewId:fsl-logs,type:dataView),query,sort)`) with the same
+  columns, query and sort. Verified live: no badge, the query bar reads
+  `(...) and _index : fsl-logs-197-*`.
+- The lesson is a note floating over the console from the start (user
+  correction: never a column). It is fixed bottom-right over the full-width
+  pane, folds to its header, drags by its header with pointer capture (the
+  Kibana frame ignores the pointer during the drag so it cannot swallow the
+  move), and goes back to the corner. Fold and place are per viewer in
+  localStorage (`fsl-lesson-note`, try/catch). A coach box on a Kibana target
+  is drawn under the note, one on a note control above it, and a coach step
+  on a note control unfolds a folded note.

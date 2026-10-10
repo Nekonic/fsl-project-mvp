@@ -82,8 +82,9 @@ Removing them lowers the tests floor on purpose and needs the user's ruling
   locally.
 
 ## Build-time spikes
-- Kibana log highlight on stable `data-test-subj` selectors; fall back to a
-  task panel beside the Kibana iframe if it does not hold. Open.
+- Kibana log highlight: done 2026-10-10 (`docs/DECISIONS.md`). The lesson
+  panel draws a box over Kibana elements by `data-test-subj` and over its own
+  controls, with the panel text as fallback.
 - CRS starting configuration: done 2026-10-10 (`docs/DECISIONS.md`).
 
 ## What must not break

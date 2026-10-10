@@ -122,7 +122,11 @@ def test_the_discover_link_narrows_to_the_session_index_and_window():
     running = unquoted(kibana.discover_path("fsl-logs-15-*", start, None))
     shared = unquoted(kibana.discover_path("", start, None))
 
-    assert closed.startswith("/kibana/app/discover#/view/fsl-alerts?")
+    assert closed.startswith("/kibana/app/discover#/?"), (
+        "a link that overrides the saved search's query marks it 'Unsaved changes'; "
+        "the pane opens an unsaved Discover state on the same data view instead"
+    )
+    assert "dataSource:(dataViewId:fsl-logs,type:dataView)" in closed
     assert f"and _index : fsl-logs-15-*" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running

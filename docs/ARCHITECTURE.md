@@ -435,8 +435,26 @@ alerts they drew, and the game); objectives a replay's leak credited stay.
 The board's lesson replays `board-sqli-orderby-sqlmap`,
 `board-sqli-orderby-sqlmap-tamper` and four benign cases, among them the
 O'Brien search and `board-normal-sort` (`?sort=-created_at`), which fails a
-tuning that over-blocks the `sort` argument. The blue console shows the lesson panel
-beside the Kibana frame only in a guided session.
+tuning that over-blocks the `sort` argument. In a guided session the blue
+console shows the lesson as a note floating over the full-width pane (fixed,
+bottom-right by default, 20rem wide, at most 60vh tall). Its header drags it
+anywhere and folds it to the header; "Back to the corner" resets it. Fold and
+place are kept per viewer in localStorage (`fsl-lesson-note`); nothing
+reserves a column or reflows. A coach step on a note control unfolds it.
+
+The panel walks nine sub-steps (`COACH` in `blue.html`; text under
+`<lesson.text>.coach.*` in `strings.html`): the session's alert table, a row
+expanded, the `rule` field, the overview dashboard (the nav toggle until the
+Dashboards link exists), then the paranoia level, the exclusions, Apply,
+Replay and Verify. Each names a target: a `data-test-subj` selector in the
+Kibana frame, which is same-origin and so readable from the console, or one
+of the panel's own controls. A fixed red box and a "← Here" label are placed
+over the target every animation frame, with `pointer-events: none` so every
+click still reaches Kibana; the selector is re-queried each frame, so Kibana
+re-rendering or navigating does not strand the box, and it hides while the
+target is not on screen. After about 2 s without the target the panel says
+where to look instead. The selectors were checked against Kibana 8.15.0, the
+pinned version.
 
 ## How the scores are computed
 
@@ -568,8 +586,14 @@ The score endpoint is read-only and keeps no history.
   `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the
   "FSL overview" dashboard. It sets `defaultRoute` to that search. A data view
   existing is what keeps Kibana's Welcome screen away. `GET /api/sessions/<id>/`
-  carries `discover`, the search narrowed to the session's index on docker
-  (`_index : fsl-logs-<id>-*`) and to its window; the ELK pane opens it.
+  carries `discover`: an unsaved Discover state on the `fsl-logs` data view
+  with the alert search's columns, query and sort, narrowed to the session's
+  index on docker (`_index : fsl-logs-<id>-*`) and to its window; the ELK pane
+  opens it. It is not the saved search with an overriding query, which Kibana
+  badges "Unsaved changes". Before the pane loads, the blue console marks
+  Kibana's first-visit callouts seen in the shared same-origin localStorage
+  (`discover:docExplorerUpdateCalloutClosed`,
+  `discover:docExplorerCalloutClosed`, `data.noDataPopover`).
 - Elasticsearch is a single node with a 512 MB heap so the whole stack fits
   in a default Docker memory allowance.
 - Missing data is an error, not a zero, with stated exceptions. An
