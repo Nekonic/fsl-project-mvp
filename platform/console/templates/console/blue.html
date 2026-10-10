@@ -91,8 +91,6 @@
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
 
-  openPane(tabs[0]);
-
   const STEPS = ["read", "write", "replay", "verify"];
   const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
   const field = (id) => document.getElementById(id);
@@ -170,6 +168,9 @@
 
   (async () => {
     const session = await api(lessonPath(""));
+    const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
+    if (session.ok && session.body.discover) kibana.dataset.src = session.body.discover;
+    openPane(kibana);
     if (!session.ok || !session.body.lesson) return;
     const taught = session.body.lesson;
     field("lesson-steps").innerHTML = STEPS.map((step) =>

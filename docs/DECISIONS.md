@@ -845,3 +845,50 @@ defects; all are fixed (d18bf97, 60aa192 and their follow-ups).
 core_loc 538 -> 543: +1 for the rollback reload in `rules/crs.py`, +4 in
 `redteam/harness.py` for closing its session when a case fails midway and
 announcing the session id the suite needs for cleanup.
+
+## 2026-10-10 — Kibana opens ready: data view, alert search, dashboard
+
+A learner opening Kibana saw "Welcome to Elastic — Start by adding
+integrations" and had to build a data view before seeing an alert.
+
+- **The Welcome screen is gated by data views, not by an advanced setting.**
+  `home:welcome:show` is a browser localStorage key, not a uiSetting; Kibana
+  8.15's home page shows Welcome only when `isNewKibanaInstance`, i.e. when
+  `hasUserDataView()` is false
+  (https://github.com/elastic/kibana/blob/v8.15.0/src/plugins/home/public/application/components/home.tsx:
+  "export const KEY_ENABLE_WELCOME = 'home:welcome:show';",
+  "this.endLoading({ isNewKibanaInstance: !hasUserIndexPattern });"). Importing
+  the data view removes it; nothing writes that key.
+- **Saved objects import.** `POST /api/saved_objects/_import?overwrite=true`
+  with `kbn-xsrf`, multipart field `file`
+  (https://www.elastic.co/docs/api/doc/kibana/v8/operation/operation-importsavedobjectsdefault:
+  `overwrite` "Overwrites saved objects when they already exist."; `kbn-xsrf`
+  "Cross-site request forgery protection"; `file` "A file exported using the
+  export API."). Overwrite makes every bring-up idempotent. The ndjson in
+  `deploy/kibana/objects.ndjson` is Kibana's own `_export` of the objects,
+  with timestamps and versions stripped, so no migration rewrites it.
+- **Default route.** `defaultRoute` = `/app/discover#/view/fsl-alerts`
+  (https://www.elastic.co/guide/en/kibana/8.15/advanced-options.html: "The
+  default route when opening Kibana."). The 8.15 docs describe only the UI for
+  advanced settings; the write goes to `POST /api/kibana/settings`
+  `{"changes": {...}}`, the route Kibana's own UI uses
+  (https://github.com/elastic/kibana/blob/v8.15.0/packages/core/ui-settings/core-ui-settings-server-internal/src/routes/set_many.ts:
+  "router.post({ path: '/api/kibana/settings', validate }"). Undocumented, so
+  version-bound; Kibana is pinned to 8.15.0.
+- **The session in Discover.** Documents carry no session field; on docker the
+  session is the index. Filebeat writes data streams, so hits live in
+  `.ds-fsl-logs-<id>-...`; `_index : fsl-logs-<id>-*` matches them (checked on
+  the acceptance VM: 10932 hits for session 15, equal to its index), while a
+  leading wildcard on `_index` is refused by Elasticsearch. Discover's URL app
+  state replaces the saved search's query and columns rather than merging, so
+  the link carries the full query, the columns and the sort, and a test holds
+  them equal to the saved search. On OpenStack every session writes
+  `fsl-logs-shared-*`, so the link narrows by time only.
+- **Runtime fields, not ingest changes.** Suricata and ModSecurity name the
+  same facts differently (`alert.signature` / `transaction.messages.message`,
+  `src_ip` / `transaction.client_ip`, ...). The data view folds them into one
+  column each with Painless runtime fields, leaving the ingest pipeline and
+  `ingest/elastic.py` untouched.
+
+`platform/kibana.py` is the one file that knows the Kibana API. core_loc,
+dependencies and services unchanged.

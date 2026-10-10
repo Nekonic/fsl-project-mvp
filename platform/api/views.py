@@ -22,6 +22,7 @@ from django.views.decorators.http import require_http_methods
 
 import attacker
 import game
+import kibana
 import lesson
 import scoreboard
 import suppress
@@ -795,7 +796,14 @@ def _take_turn(session):
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     taught = wargames.lesson(session.scenario) if session.guidance else None
-    return _reply(_shape(session, SESSION_FIELDS) | {"lesson": taught})
+    return _reply(_shape(session, SESSION_FIELDS) | {"lesson": taught, "discover": _discover(session)})
+
+def _discover(session):
+    return kibana.discover_path(
+        settings.ELASTIC_SESSION_INDEX.format(session=session.pk),
+        session.started_at - timedelta(minutes=1),
+        session.ended_at and session.ended_at + timedelta(minutes=1),
+    )
 
 @require_http_methods(["POST"])
 def close_session(request, session_id):

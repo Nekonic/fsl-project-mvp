@@ -232,6 +232,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | 관심사 | 소유 파일 | 알려진 예외 |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | 없음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/pfsense.py`와 `deploy/pfsense/configure.php`가 pfSense의 Suricata를 정지·시작한다(OpenStack) |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
@@ -494,7 +495,15 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
   양쪽 구간을 실어 나른다.
 - Kibana는 compose에 있으며, 읽기 전용 역할이 아닌 전체 권한으로 플랫폼이 적재하는
   같은 Elasticsearch를 읽는다. 플랫폼의 8000번 포트의 `/kibana/`로 접근하며 자체
-  포트는 publish하지 않는다. 블루 콘솔이 이를 프레임에 띄운다.
+  포트는 publish하지 않는다. 블루 콘솔이 이를 프레임에 띄운다. 기동 시
+  `platform/kibana.py`가(백그라운드에서 Kibana가 응답할 때까지 재시도하며)
+  `deploy/kibana/objects.ndjson`을 overwrite로 가져온다: `@timestamp` 기준 data view
+  `fsl-logs-*`(runtime field로 Suricata/ModSecurity의 같은 의미 필드 쌍을 한 열로 합침:
+  `rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색,
+  "FSL overview" 대시보드. `defaultRoute`를 그 검색으로 정한다. data view가 있으면
+  Kibana의 Welcome 화면이 나오지 않는다. `GET /api/sessions/<id>/`는 `discover`를
+  돌려주는데, docker에서는 세션 인덱스(`_index : fsl-logs-<id>-*`)와 세션 구간으로
+  좁힌 그 검색이다. ELK 창이 이를 연다.
 - Elasticsearch는 512MB 힙의 단일 노드로, 전체 스택이 Docker 기본 메모리 한도에
   들어간다.
 - 없는 데이터는 0이 아니라 오류로 처리하며, 예외를 명시한다. 닿을 수 없는

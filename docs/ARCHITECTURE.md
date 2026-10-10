@@ -255,6 +255,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Concern | Owning file | Known exceptions |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
+| The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | none |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
@@ -560,7 +561,15 @@ The score endpoint is read-only and keeps no history.
 - Kibana is in compose, with full access (not a read-only role), reading the
   same Elasticsearch the platform ingests from. It is reached through the
   platform's port 8000 at `/kibana/` and publishes no port of its own. The
-  blue console frames it.
+  blue console frames it. At bring-up `platform/kibana.py` (in the background,
+  retrying until Kibana answers) imports `deploy/kibana/objects.ndjson` with
+  overwrite: the data view `fsl-logs-*` on `@timestamp`, whose runtime fields
+  fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`,
+  `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the
+  "FSL overview" dashboard. It sets `defaultRoute` to that search. A data view
+  existing is what keeps Kibana's Welcome screen away. `GET /api/sessions/<id>/`
+  carries `discover`, the search narrowed to the session's index on docker
+  (`_index : fsl-logs-<id>-*`) and to its window; the ELK pane opens it.
 - Elasticsearch is a single node with a 512 MB heap so the whole stack fits
   in a default Docker memory allowance.
 - Missing data is an error, not a zero, with stated exceptions. An

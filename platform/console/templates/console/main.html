@@ -57,6 +57,10 @@
           <div class="text-body text-sm mt-1">${esc(localized(wargame.id, "description", wargame.description))}</div>
           <div class="text-muted text-xs mt-2">${t("main.case_count", esc(wargame.cases))}</div>
         </div>
+        ${wargame.lesson ? `<button data-wargame="${esc(wargame.id)}" data-lesson="true"
+          class="start px-4 py-2 rounded bg-panel border border-primary text-primary text-sm">
+          ${esc(t("main.start_lesson"))}
+        </button>` : ""}
         <button data-wargame="${esc(wargame.id)}"
           class="start px-4 py-2 rounded bg-primary hover:bg-primary-strong text-inverse text-sm">
           ${esc(t("main.start"))}
@@ -66,7 +70,9 @@
     document.querySelectorAll(".start").forEach((button) => {
       button.addEventListener("click", async () => {
         button.disabled = true;
-        const started = await post("/api/sessions/", { scenario: button.dataset.wargame });
+        const settings = button.dataset.lesson
+          ? { guidance: true, defense: "minimal" } : {};
+        const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings });
         if (!started.ok || !started.body.id) {
           button.disabled = false;
           showError(t("main.start_failed", detail(started)));
