@@ -65,6 +65,7 @@ SUPPRESSION_FIELDS = (
 )
 
 SUPPRESSION_MINUTES = 60
+DEFAULT_RULES = "local.rules"
 RULE_CHANGES = threading.RLock()
 
 def _in_turn(change):
@@ -195,6 +196,9 @@ def sessions(request):
         session.save(update_fields=["baseline", "waf"])
         if guidance and hasattr(adapter, "for_session"):
             _seed_logs(session)
+    except harness.ToolUnavailable as exc:
+        Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
+        return _reply({"detail": str(exc)}, status=503)
     except Exception:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
@@ -216,11 +220,11 @@ def _settings(scenario, body):
         )
 
 def _take_defense(session, adapter, posture):
-    if posture is None:
-        return
-    rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / posture["suricata"]
+    ruleset = (posture or {}).get("suricata", DEFAULT_RULES)
+    rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset
     suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD)
-    session.waf = crs.apply(posture["waf"], adapter.runner("gateway"))
+    if posture is not None:
+        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"))
 
 def _seed_logs(session):
     for name in wargames.lesson(session.scenario)["cases"]:
@@ -671,8 +675,10 @@ def _lesson_fire(session, name, marks):
             status = tools.status(ran.output)
             return dict(marks, status=status, blocked=status == 403)
         leaked = sorted(loot.matched(tools.dumped(ran.output), truth))
+        held = not leaked and tools.concluded(ran.exit_code, ran.output)
         return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output),
-                    blocked=not leaked)
+                    outcome="leaked" if leaked else "held" if held else "inconclusive",
+                    blocked=held)
 
     return _fire(session, name, None, witness)
 
@@ -698,7 +704,8 @@ def _verified(session, run):
     fired = list(session.cases.filter(meta__verify=run))
     rows = [
         {"name": case.name, "malicious": case.malicious, "accounts": accounts,
-         "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0)}
+         "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0),
+         "outcome": case.meta.get("outcome", "inconclusive")}
         for case in fired
     ]
     passed, diagnosis = lesson.verdict(rows)
@@ -706,9 +713,7 @@ def _verified(session, run):
         "passed": passed,
         "run": run,
         "cases": [
-            {"name": row["name"], "malicious": row["malicious"],
-             "outcome": ("leaked" if row["leaked"] else "held") if row["malicious"]
-             else ("served" if lesson.served(row["status"]) else "blocked")}
+            {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.outcome(row)}
             for row in rows
         ],
         "diagnosis": diagnosis,
@@ -722,7 +727,7 @@ def session_waf(request, session_id):
         tuning = crs.checked(_payload(request))
         with RULE_CHANGES:
             session.waf = crs.apply(tuning, _range(session).runner("gateway"))
-        session.save(update_fields=["waf"])
+            session.save(update_fields=["waf"])
     tuning = session.waf or {"paranoia": None, "exclusions": []}
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
 
@@ -1005,8 +1010,12 @@ def session_score(request, session_id):
             f"{', '.join(CORRELATION_STRATEGIES)}."
         )
 
-    cases = list(session.cases.all())
-    detections = list(session.detections.all())
+    replayed = {
+        case.case_id for case in session.cases.all()
+        if case.meta.get("seed") or case.meta.get("verify")
+    }
+    cases = [case for case in session.cases.all() if case.case_id not in replayed]
+    detections = [d for d in session.detections.all() if d.marker not in replayed]
     signatures = {d.detection_id: d.signature for d in detections}
 
     records = [c.to_record() for c in cases]

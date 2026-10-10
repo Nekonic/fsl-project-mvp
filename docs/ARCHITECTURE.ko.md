@@ -54,7 +54,9 @@ session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 war
 레인지에 작용하는 엔드포인트(rules, validate, suppressions, `/api/attacker/`, origin,
 label)는 `session`을 쿼리나 본문에서 받고, 없으면 가장 최근에 열린 세션을 쓴다. 억제는
 세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
-센서는 실제 `local.rules`를 자기 컨테이너 안에 두고, 세션을 열 때 채운다.
+센서는 실제 `local.rules`를 자기 컨테이너 안에 둔다. docker에서는 모든 세션의 센서를
+열 때 그 defense의 룰 파일로, 시나리오에 `defense`가 없으면(corp)
+`deploy/suricata/rules/local.rules`로 채운다.
 `deploy/suricata/rules`를 bind mount하는 곳은 없으므로 룰 적용은 그 세션의 센서만
 바꾼다. docker에서 남은 문제: 레인지 호스트의 요청을 거부하는 미들웨어는 가장 최근
 세션의 `estate`만 다룬다.
@@ -339,9 +341,12 @@ bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLit
 고르고(기본값 `full`), `guidance`(기본값 꺼짐)는 시나리오에 `lesson`이 있어야 한다.
 board는 `minimal`(CRS paranoia level 4, `local.rules`)과 `full`(paranoia level 1, 같은
 `local.rules`)을 선언한다. docker에서는 스택이 뜬 뒤 여는 경로가 센서에 그 defense의 룰
-파일을 넣고(`suricata.seed`) CRS 튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
+파일을, defense가 없으면 `local.rules`를 넣고(`suricata.seed`), defense가 있을 때 CRS
+튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
 lesson의 케이스를 한 번 재생하므로(`meta.seed`), 학습자가 들어왔을 때 ModSecurity와
-Suricata 기록이 이미 Kibana에 있다. OpenStack 세션은 둘 다 하지 않는다.
+Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 못하면 503으로 답하고
+세션을 닫는다. 그 스택은 남겨 두었다가 다음 세션을 열 때 내린다. OpenStack 세션은 둘 다
+하지 않는다.
 
 `platform/rules/crs.py`는 튜닝을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로
 렌더한다. 이 파일은 `crs-setup.conf` 다음, 룰보다 먼저 읽히는 CRS 훅이다:
@@ -358,13 +363,19 @@ Suricata 기록이 이미 Kibana에 있다. OpenStack 세션은 둘 다 하지 �
 `POST /api/sessions/<id>/verify/`는 시나리오의 `lesson.cases`를 `/attacks/`와 같은
 경로로 재생하고 `meta.verify=<run>`을 붙이며, 그 실행만 판정한다. sqlmap 케이스는
 sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `(username, hash)`와
-하나도 맞지 않으면(`loot.matched`) 막힌 것이다. 유출이면 그것이 증명하는 목표도
-인정한다. sqlmap이 보고한 403 횟수는 `meta.forbidden`에 남기고 판정에는 쓰지 않는다.
+맞으면(`loot.matched`) 유출이며, 그것이 증명하는 목표도 인정한다. 막힘은 긍정적 증거가
+있을 때만이다: 맞는 행이 없고, sqlmap이 0으로 끝나 `[*] ending` 줄을 찍었으며 연결·중단
+오류가 없고, "all tested parameters do not appear to be injectable"로 결론 냈거나
+아무것과도 맞지 않는 행을 덤프했다(`tools.concluded`). 그 밖은 판정 불가이며 검증에
+실패한다. sqlmap 케이스는 `--disable-hashing`으로 돌아, `--batch`가 수락하고 끝나지 않는
+pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는다. sqlmap이 보고한 403 횟수는 `meta.forbidden`에 남기고 판정에는 쓰지 않는다.
 정상 케이스는 curl이 2xx `http_code`를 보고하면 응답받은 것이다. 통과는 모든 공격이
 막히고 모든 정상 케이스가 응답받아야 한다(`platform/lesson.py`). 응답의 `diagnosis`
-키는 콘솔이 `strings.html`로 표시하며, TP/FP 라벨은 보여주지 않는다. board의 lesson은
+키는 콘솔이 `strings.html`로 표시하며, TP/FP 라벨은 보여주지 않는다. seed와 검증 재생은
+`/score/`(TP/FP/FN/TN, 그것이 일으킨 경보, 게임)에서 빠진다. 재생의 유출로 인정된 목표는
+남는다. board의 lesson은
 `board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
-재생한다. 그중 O'Brien 검색과, `sort`를 통째로 허용하는 제외를 잡아내는
+재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
 `board-normal-sort`(`?sort=-created_at`)가 있다. 블루 콘솔은 guidance 세션에서만 Kibana
 프레임 옆에 lesson 패널을 띄운다.
 
