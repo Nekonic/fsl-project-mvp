@@ -43,7 +43,9 @@ Spec MVP item 1 is steps 1+2 here; spec items 2-7 are steps 3-8.
 7. Built (4c4c7e8..a2b5eeb): the WAF lesson. Session settings
    `guidance`/`defense`; `rules/crs.py` writes the session's paranoia level and
    exclusions; the sensor's rule file is per session, seeded at open; `/waf/`
-   and `/verify/` APIs; lesson panel in the blue console; seeded logs for a
+   and `/verify/` APIs; lesson note in the blue console (tuning is done in the
+   session's WAF terminal since 2026-10-10; `PUT /waf/` stays for agents and
+   `GET /waf/` reads the WAF's file); seeded logs for a
    guided session. Live-verified (`test/test_lesson.py`). Step text (en/ko,
    `lesson.board.*`) waits for the user's review.
 8. Live-verified (e307cc9, `test/test_concurrent_sessions.py`). Docker opens at
@@ -72,7 +74,8 @@ Removing them lowers the tests floor on purpose and needs the user's ruling
   rule id; reading the rule id needs the audit record.
 - The reachability middleware covers only the newest session's `estate`.
 - `/vm-terminal/` does not connect on compose (Kali and the WAF have no `mgmt`
-  address); the red terminal uses `/terminal/<id>/` instead.
+  address); the red terminal uses `/terminal/<id>/` and the blue WAF pane
+  `/waf-terminal/<id>/` (live-verified in session 199) instead.
 - Two `POST /api/sessions/` within milliseconds can race (pre-existing).
 - Naming: `/api/rules/suppressions/` disables a rule (comments it out), which
   Suricata calls disabling, not suppressing; rename candidate awaiting the

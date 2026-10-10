@@ -161,7 +161,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 5140/udp | `collector`, Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
@@ -169,7 +169,8 @@ nginx inside the platform image serves 8000. It passes `/terminal/<session id>/`
 to the ttyd on that session's Kali container, `fsl-<id>-kali-1` (compose), and
 `/vm-terminal/` to ttyd processes inside the platform, which ssh to the host's
 `mgmt` address (OpenStack; on compose Kali and the WAF have no `mgmt` address,
-so these do not connect).
+so these do not connect). On compose `/waf-terminal/<session id>/` goes to a ttyd
+inside the platform that runs `docker exec` into `fsl-<id>-waf-1`.
 By default every port is published on `127.0.0.1`.
 On the platform VM, 8000 is published on the VM's own address
 (`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The target is
@@ -323,11 +324,15 @@ Korean.
 A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
 lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
 also the benign O'Brien search, and the blue console shows the lesson as a
-note floating over Kibana, which can be dragged and folded. The learner tunes the paranoia level or adds a rule exclusion
-(`PUT /api/sessions/<id>/waf/`) and presses Verify
+note floating over Kibana, which can be dragged and folded. In the session's
+WAF terminal the learner adds a rule exclusion to
+`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf` (or lowers the paranoia level
+there), runs `nginx -t` and `nginx -s reload`, and presses Verify
 (`POST /api/sessions/<id>/verify/`), which passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
-answered. The default, `{"defense": "full"}`, starts at paranoia level 1.
+answered. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
+what is in the WAF's file. The default, `{"defense": "full"}`, starts at
+paranoia level 1.
 
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,
@@ -412,7 +417,8 @@ only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
 names more; the platform VM adds its floating IP. The Docker socket is
 mounted into the platform, a container escape path. `/terminal/` is an
 unauthenticated root shell on Kali (`/terminal/<session id>/` on compose), and the terminals under `/vm-terminal/` need
-no login of their own and give a shell on Kali and the WAF.
+no login of their own and give a shell on Kali and the WAF, as does
+`/waf-terminal/<session id>/` on compose (a shell in that session's WAF).
 
 The same holds on the platform VM. There the project's password is also plain
 text in `/opt/fsl/openstack.env` and in the platform container's environment.

@@ -71,13 +71,13 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 | `fsl-wg-corp-db` | session | `wargames/corp/db`의 `fsl/corp-db:mvp` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com`(공유되므로 플랫폼이 세션마다 프록시와 도구를 그 세션의 WAF로 향하게 함) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | WAF의 네임스페이스 | |
-| `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 감사 로그를 보냄 | mgmt | |
+| `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 audit log를 보냄 | mgmt | |
 | `fsl-kali` | session | `deploy/kali`의 `fsl/kali:mvp`; `http_proxy`는 `http://fsl-<id>-proxy-1:8081` | edge | |
 | `fsl-proxy` | session | `deploy/proxy`의 `fsl/proxy:mvp` (mitmdump); `/label`은 프로젝트의 named volume | 네 개 edge 네트워크 | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
-| `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000 |
+| `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000 |
 
 8000은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
@@ -233,7 +233,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
-| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | 없음 |
+| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고, 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 플랫폼은 어느 것도 읽지 않는다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/pfsense.py`와 `deploy/pfsense/configure.php`가 pfSense의 Suricata를 정지·시작한다(OpenStack) |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음 |
@@ -260,7 +260,14 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 콘솔은 compose에서 `/terminal/<세션 id>/`를 프레임에 띄우고, nginx가 이를
 `fsl-<id>-kali-1:7681`의 Kali 자체 ttyd로 넘긴다. OpenStack에서는 `/vm-terminal/fsl-kali/`를
 띄운다. 이는 플랫폼 안의 ttyd로, 호스트의 mgmt 주소로 ssh 접속한다. compose에서는 Kali와
-WAF에 mgmt 주소가 없으므로 `/vm-terminal/`(블루 콘솔의 WAF 터미널 포함)은 연결되지 않는다.
+WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
+
+블루 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `waf_terminal`)을
+프레임에 띄운다. compose에서는 `/waf-terminal/<세션 id>/`이다. nginx가 경로에서 세션을 꺼내고
+클라이언트의 쿼리는 버린 뒤 플랫폼 안의 ttyd(`ttyd -a -b /waf-terminal -p 7693 /app/waf-terminal.sh`)로
+`?arg=<세션 id>`를 붙여 넘긴다. ttyd의 `-a`가 이를 스크립트 인자로 주고, 스크립트는 숫자인지 확인한 뒤
+`docker exec -it fsl-<id>-waf-1 bash`를 실행한다. WAF 이미지에는 ttyd가 없다. 같은
+`auth_request /terminal-allowed`가 막는다. OpenStack에서는 `/vm-terminal/fsl-waf/`를 그대로 쓴다.
 
 콘솔 HTTP 케이스는 출발지 선택과 무관하게 세션 wargame의 `Host`인 `board.com`을
 싣는다. 출발지를 선택하면 트래픽은 그 출발지 구간에 있는 WAF의 주소로 IP를 지정해
@@ -278,7 +285,7 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`(블루 콘솔의 WAF 터미�
 `--tool-target`의 기본값은 `http://board.com`이다.
 
 docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly threshold 5로 돌린다
-(`session.yaml`). paranoia level과 룰 제외는 세션 자신의 것이며(`Session.waf`), 열 때
+(`session.yaml`). Paranoia Level과 rule exclusion은 세션 자신의 것이며(`Session.waf`), 열 때
 시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 실습"). 모든 Suricata
 룰은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM은 아직
 `DetectionOnly`로 돈다(`deploy/waf/modsecurity.conf`).
@@ -363,8 +370,11 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 않은 것이므로 이전 파일을 되돌려 재적재하고 거부한다. 쓰기 전에 입력을
 검증한다: paranoia 1-4, 룰 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
 `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
-경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `GET/PUT /api/sessions/<id>/waf/`로 읽고
-바꾼다.
+경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `PUT /api/sessions/<id>/waf/`가 이를
+바꾸고(에이전트 경로), `GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽는다. `crs.read`는 Paranoia
+Level과 모든 `ctl:ruleRemove*` 줄을 파싱하므로(주석 줄은 건너뛰고 이어진 줄은 합침) WAF 터미널에서
+고친 내용도 알려 준다. 닫힌 세션은 마지막으로 기록된 값을 `file: null`과 함께 알려 준다. 학습자는 API가
+아니라 WAF 터미널에서 튜닝한다.
 
 `POST /api/sessions/<id>/verify/`는 시나리오의 `lesson.cases`를 `/attacks/`와 같은
 경로로 재생하고 `meta.verify=<run>`을 붙이며, 그 실행만 판정한다. sqlmap 케이스는
@@ -390,18 +400,34 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
 재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
 `board-normal-sort`(`?sort=-created_at`)가 있다. guidance 세션에서 블루 콘솔은 lesson을
 전체 폭 창 위에 떠 있는 메모로 보여 준다(fixed, 기본 위치 오른쪽 아래, 너비 20rem, 높이 최대
-60vh). 머리글을 끌어 어디로든 옮기고 머리글만 남게 접을 수 있으며 "원래 자리로"가 되돌린다.
+26rem이며 안에서 스크롤). 현재 안내 단계를 맨 위에 두고, 목표는 한 줄로 보이며 "자세히"로 네
+문단을 펼친다. 머리글을 끌어 어디로든 옮기고 머리글만 남게 접을 수 있으며 "원래 자리로"가 되돌린다.
 접힘과 위치는 보는 사람마다 localStorage(`fsl-lesson-note`)에 남는다. 열을 따로 잡거나
 레이아웃이 다시 흐르지 않는다. 메모 안 컨트롤을 가리키는 코치 단계는 메모를 펼친다.
 
-패널은 아홉 개의 하위 단계를 차례로 안내한다(`blue.html`의 `COACH`, 문구는 `strings.html`의
+안내 위에는 접힌 이론 카드 다섯 장(`blue.html`의 `THEORY`, 문구는
+`<lesson.text>.theory.<card>.title|body`)이 실습 전에 튜닝을 가르친다: Paranoia Level, Anomaly
+Scoring(403에 949110과 920273이 함께 찍히는 이유), false positive를 일으킨 룰 찾기, PL 낮추기와
+rule exclusion의 차이, `ctl:ruleRemoveTargetById` rule exclusion 한 줄을 읽는 법. 화면의 무언가를
+가리키는 카드에는 "위치 보기"가 있어 안내를 그 단계(403 행, `rule` 필드, 파일을 고치는 단계)로 옮긴다. 출처는
+`docs/DECISIONS.md`(2026-10-10, 이론 카드)에 있다.
+
+메모에는 튜닝 입력란이 없다. 힌트가 WAF 창에서 쓸 명령 전체(audit log 읽기, 파일 보기, WAF 이미지에
+편집기가 없어 heredoc으로 rule exclusion 덧붙이기, `nginx -t`, `nginx -s reload`)를 먼저 보여 주고,
+토글로 숨길 수 있다.
+
+패널은 열두 개의 하위 단계를 차례로 안내한다(`blue.html`의 `COACH`, 문구는 `strings.html`의
 `<lesson.text>.coach.*`): 세션 경보 표, 행 하나 펼치기, `rule` 필드, 개요 대시보드(Dashboards
-링크가 생길 때까지는 메뉴 토글), 그다음 편집증 수준, 제외, 적용, 재생, 검증. 각 단계는 대상을
+링크가 생길 때까지는 메뉴 토글), 그다음 WAF 탭, WAF 터미널 안의 다섯 단계(audit log, 파일 보기, 고치기, `nginx -t`, reload), 재생, 검증.
+터미널 단계는 창 전체를 상자로 두르고, 터미널은 클릭을 알려 주지 않으므로 강조 라벨에 붙은 이전/다음
+버튼으로 넘어간다. 모든 단계의 라벨에 이 버튼이 있고, 메모의 버튼은 대상이 화면에 없는 단계를 위해 남는다. 각 단계는 대상을
 가진다: Kibana 프레임 안의 `data-test-subj` 셀렉터(프레임이 같은 출처라 콘솔에서 읽을 수 있음)
-또는 패널 자신의 컨트롤. 빨간 상자와 "← 여기" 라벨을 매 애니메이션 프레임마다 대상 위에
-놓으며, `pointer-events: none`이라 모든 클릭은 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시
+또는 패널 자신의 컨트롤. 빨간 상자와 그 단계의 짧은 라벨(`<lesson.text>.label.<step>`, 대상 위, 자리가 없으면
+아래)을 매 애니메이션 프레임마다 대상 위에 놓으며, `pointer-events: none`이라 모든 클릭은 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시
 찾으므로 Kibana가 다시 그리거나 이동해도 상자가 남지 않고, 대상이 화면에 없으면 숨는다. 약 2초
-동안 대상을 찾지 못하면 패널이 어디를 볼지 알려 준다. 셀렉터는 고정 버전인 Kibana 8.15.0으로
+동안 대상을 찾지 못하면 패널이 어디를 볼지 알려 준다. 강조된 대상을 클릭하면 클릭이 전달된
+뒤 안내가 다음 단계로 넘어간다: Kibana 문서의 캡처 단계 리스너(프레임이 새 문서를 로드하면
+다시 붙음)와 메모 컨트롤마다의 리스너. 이전/다음 버튼은 그대로 있다. 셀렉터는 고정 버전인 Kibana 8.15.0으로
 확인했다.
 
 ## 점수는 어떻게 계산되는가

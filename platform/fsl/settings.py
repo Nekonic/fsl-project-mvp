@@ -64,6 +64,10 @@ ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
 ATTACKER_SESSION_TERMINAL_URL = (
     "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else ""
 )
+WAF_TERMINAL_URL = "/vm-terminal/fsl-waf/"
+WAF_SESSION_TERMINAL_URL = (
+    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else ""
+)
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )

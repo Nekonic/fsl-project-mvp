@@ -948,3 +948,148 @@ User feedback on the live lesson.
   localStorage (`fsl-lesson-note`, try/catch). A coach box on a Kibana target
   is drawn under the note, one on a note control above it, and a coach step
   on a note control unfolds a folded note.
+
+## 2026-10-10 — A compact note; the guide follows the learner's clicks
+
+User feedback, live on the acceptance VM (session 198).
+
+- The note is at most 26rem tall and scrolls inside; it leads with the
+  current step, and the goal shows as one line with a Details toggle.
+- The guide advances when the learner clicks the highlighted target, the
+  main mechanism: the overlay keeps `pointer-events: none`, so the click
+  reaches Kibana or the control first, and a capture-phase listener in the
+  same-origin Kibana document (or a listener on the note control) moves the
+  guide on in a following task. Back and Next stay as the fallback. Live, a
+  click on the alert table selected a cell in Kibana and moved the guide to
+  "expand a 403 row".
+- The label over a target is the step's own short instruction, one line with
+  an ellipsis, placed above the target or below it, never over it.
+
+## 2026-10-10 — The lesson teaches the tuning; the WAF pane is per session
+
+User feedback (PM): the lesson listed practice steps without teaching how to
+tune a WAF, and the blue console's WAF pane did not work at all.
+
+Theory cards. Five folded cards above the guide, the READ step's "theory"
+part. Every claim is from a primary source, fetched 2026-10-10:
+
+- Paranoia level, https://coreruleset.org/docs/2-how-crs-works/2-2-paranoia_levels/ :
+  "The paranoia level (PL) makes it possible to define how aggressive CRS is";
+  "A higher paranoia level makes it harder for an attacker to go undetected.
+  Yet this comes at the cost of more false positives". Default level 1 and
+  the blocking/detection variables,
+  https://raw.githubusercontent.com/coreruleset/coreruleset/main/crs-setup.conf.example :
+  "A paranoia level of 1 is default"; "only the rules up to
+  tx.blocking_paranoia_level affect the" anomaly score.
+- Anomaly scoring, https://coreruleset.org/docs/2-how-crs-works/2-1-anomaly_scoring/ :
+  "The rules just handle detection, adding to the anomaly score if they
+  match"; a CRITICAL match "would increase the anomaly score by 5"; the
+  default inbound threshold is 5. Rule 949110,
+  https://raw.githubusercontent.com/coreruleset/coreruleset/main/rules/REQUEST-949-BLOCKING-EVALUATION.conf :
+  `TX:BLOCKING_INBOUND_ANOMALY_SCORE "@ge %{tx.inbound_anomaly_score_threshold}"`,
+  msg "Inbound Anomaly Score Exceeded". Live, session 199's audit record of
+  the O'Brien search: 920273 "Invalid character in request (outside of very
+  strict set)", `ARGS:q=O'Brien`, tag `paranoia-level/4`, then 949110 "Total
+  Score: 5".
+- False positives and exclusions,
+  https://coreruleset.org/docs/2-how-crs-works/2-3-false-positives-and-tuning/ :
+  "When a genuine transaction causes a rule from CRS to match in error it is
+  described as a false positive"; the log gives "The rule ID of the matched
+  rule" and the matching data; "False positives are particularly likely to
+  happen when operating at higher paranoia levels"; "removing rule 920230 for
+  that specific location only"; runtime (ctl) exclusions "must be placed
+  before the CRS has been included", which is why the platform writes
+  REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf. Its example 7 is
+  `SecRule REQUEST_URI "@beginsWith /dynamic/new_post" "...,ctl:ruleRemoveTargetById=941150;ARGS:text_input"`.
+- ModSecurity v3 reference,
+  https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x) :
+  `ctl:ruleRemoveTargetById=981260;ARGS:user` "white-list the user parameter
+  for rule #981260"; REQUEST_FILENAME "holds the relative request URL without
+  the query string part".
+
+The page does not itself rank the two fixes; the card calls the narrow
+exclusion the recommended fix on the grounds above (a level change switches
+off every rule above it everywhere; the CRS example removes one rule at one
+location). Paranoia level, anomaly score, rule exclusion and the CRS and
+ModSecurity names stay in English in the Korean text.
+
+WAF terminal. `/vm-terminal/fsl-waf/` ssh'd to the WAF's mgmt address, which
+compose sessions do not have. The per-session route mirrors
+`/terminal/<id>/` with the least change: the WAF image has no ttyd, so a
+fourth ttyd in the platform (`-a`, port 7693, `/waf-terminal`) runs
+`waf-terminal.sh <id>`, which refuses anything but digits and runs
+`docker exec -it fsl-<id>-waf-1 bash` (as the image's `nginx` user, who
+can read the exclusion file and the audit log). nginx sets `?arg=$session`
+from the path and drops the client's query, behind the same
+`auth_request /terminal-allowed`. `GET /api/sessions/<id>/` names the pane's
+URL (`waf_terminal`), so OpenStack keeps `/vm-terminal/fsl-waf/`. The coach
+step after Apply highlights the WAF tab and gives two commands, verified live
+in session 199 after applying `920273 ARGS:q /search/`:
+`cat /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`
+printed the SecAction (level 4) and
+`SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,...,ctl:ruleRemoveTargetById=920273;ARGS:q"`;
+`grep Brien /var/log/modsecurity/audit/audit.log | tail -n 1 | grep -oE '"(ruleId|data|message)":"[^"]*"'`
+printed 920273 with `ARGS:q=O'Brien` and 949110. The shell's hostname was
+fsl-199-waf-1's container id. The step text naming those paths is a
+recorded exception to the `rules/crs.py` seam: a person reads them, the
+platform does not.
+
+
+## 2026-10-10 — The learner tunes CRS in the WAF terminal (overturns a confirmed item)
+
+User ruling (PM). It overturns the confirmed item in the living-doc artifact
+37HeLkkLEFQgVWbwLuXH7S, quoted here in English: "editing happens inside the
+platform (settings/rules API): CRS tuning (PL, exclusions)". Reason given:
+real CRS tuning is editing the exclusion file on the WAF host, `nginx -t`,
+`nginx -s reload`; VERIFY judges from the target's records, so the platform
+need not hold the tuning.
+
+- The note's tuning form (PL select, exclusions box, Apply) is gone. The
+  learner works in the session's WAF terminal (`/waf-terminal/<id>/`). The
+  WAF image (owasp/modsecurity-crs, Debian 13) has `ed` and `sed` but no `vi`
+  or `nano`, checked live; adding one would mean building our own WAF image
+  instead of pulling it by digest, so the lesson teaches a heredoc append
+  (`cat >> REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf <<'EOF'`). No image,
+  service or dependency was added.
+- The note's hint shows the complete commands first, with a toggle to hide
+  them: the first stage of the confirmed hint-fade rule (complete, blank,
+  none), kept to one stage for this one lesson.
+- Coach steps: alerts, expand, rule, dashboard, WAF tab, then five steps in
+  the terminal (audit log, show the file, edit, `nginx -t`, reload), Replay,
+  Verify. A terminal step boxes the pane. A click inside the terminal cannot
+  be seen from the console, so every label carries small Back/Next buttons;
+  the note keeps its pair for a step whose target is not on screen. Polling
+  `GET /waf/` to detect the edit was not added: it is one `docker exec` per
+  poll for a step the learner can move on from.
+- `PUT /api/sessions/<id>/waf/` stays as the agent path and for
+  `test/test_lesson.py`. `GET` now reads the session's file through
+  `rules/crs.py` (`crs.read`, `crs.parsed`): the paranoia level from
+  `tx.blocking_paranoia_level`, every `ctl:ruleRemoveTargetById` /
+  `ctl:ruleRemoveById` with its `@beginsWith` path, commented lines skipped,
+  continued lines joined, plus the raw `file`. A closed session reports its
+  record with `file: null`. `core_loc` 543 -> 559 (+16, `rules/crs.py`): the
+  price of the API telling the truth after a terminal edit.
+- Live, session 200 on the acceptance VM: in the WAF terminal the heredoc
+  appended the exclusion, `nginx -t` said "test is successful",
+  `nginx -s reload` started the signal process, `GET /waf/` reported
+  `{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}`, and Verify
+  passed ("2 of 2 attack variants leaked nothing", every benign case
+  answered).
+
+Korean terms. The ko strings and the touched `*.ko.md` files now use the
+product terms as CRS and ModSecurity write them instead of translations:
+
+| old | new | source |
+|---|---|---|
+| 편집증 수준 | Paranoia Level (PL) | https://coreruleset.org/docs/2-how-crs-works/2-2-paranoia_levels/ ("The paranoia level (PL)") |
+| anomaly scoring (lowercase title) | Anomaly Scoring, inbound anomaly score | https://coreruleset.org/docs/2-how-crs-works/2-1-anomaly_scoring/ |
+| 임계값 | inbound anomaly score threshold | same page ("inbound anomaly score threshold of 5") |
+| 규칙 제외, 제외 | rule exclusion | https://coreruleset.org/docs/2-how-crs-works/2-3-false-positives-and-tuning/ ("rule exclusions") |
+| 오탐 (in the CRS cards) | false positive | same page ("it is described as a false positive") |
+| 감사 로그, audit 기록 | audit log | https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x) (`SecAuditLog`) |
+| 규칙 ID | rule ID | same reference (`id` action) |
+| CRS 규칙 | CRS 룰 (the console's existing loanword for a rule) | — |
+| 참음성(TN) | TN | the en table already says TN; no translated term |
+
+The scoreboard's 정탐/미탐/오탐 tiles stay: they label the platform's own TP/FN/FP
+counts, not a CRS term.

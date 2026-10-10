@@ -170,3 +170,20 @@ def test_a_failed_ingest_still_closes_the_session(client):
 
     assert "POST /api/sessions/1/ingest/" in seen["result"], seen["result"]
     assert "POST /api/sessions/1/close/" in seen["result"], seen["result"]
+
+
+def test_the_waf_pane_frames_the_session_s_own_waf_terminal(client):
+    seen = open_page(client, "/blue/7/", setup="""
+      browser.serve((request) => {
+        if (request.route === "/api/sessions/7/") return {body: {id: 7, waf_terminal: "/waf-terminal/7/"}};
+        return {status: 404, body: {detail: "not served"}};
+      });
+    """, scenario="""
+      await browser.click('[data-pane="waf"]');
+    """ + READ)
+    state = _state(seen["result"])
+
+    assert state["selected"] == ["waf"]
+    assert state["src"] == "/waf-terminal/7/", (
+        f"the WAF pane must open the terminal the session names, not a shared one: {state['src']}"
+    )
