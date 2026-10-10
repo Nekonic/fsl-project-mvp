@@ -302,12 +302,18 @@ no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
 OpenStack the pane keeps `/vm-terminal/fsl-waf/`.
 
 The blue console's Website pane is a browser inside the console: back,
-forward, reload, an address bar that shows `board.com/<path>` and takes a path
-and Enter, and the page in an iframe. The target is not published, so nginx
-proxies `/site/<session>/<host>/<path>` to that session's WAF
-(`fsl-<id>-waf-1:80`, which the platform reaches on the shared `edge`
-network) with `Host: <host>`, behind the same `auth_request /terminal-allowed`
-as the terminals. The WAF judges every page: a block is the WAF's own 403 page
+forward, reload, an address bar that shows the full URL
+(`http://board.com/<path>`) with Chrome's "Not secure" marker for http and
+takes a URL or a path and Enter, the page in an iframe, and a "Developer
+tools" toggle. The target is not published, so nginx on 8002 passes
+`/site/<session>/<host>/<path>`, behind the same `auth_request
+/terminal-allowed` as the terminals, to the platform's recorder
+(`/site-proxy/<session>/<host>/`, `platform/api/site.py`, with the exact path
+and query in `X-Site-Uri`), which sends it on to that session's WAF
+(`fsl-<id>-waf-1:80`, reached on the shared `edge` network) with `Host:
+<host>`, no redirect following and no compression. nginx on 8000 answers 404
+for `/site-proxy/`, and the platform's same-origin check for POSTs skips that
+path, so a form on the target can still be submitted. The WAF judges every page: a block is the WAF's own 403 page
 and lands in Kibana. The path and query go on exactly as the browser sent them
 (a `map` on `$request_uri`). nginx rewrites what would leave the prefix:
 `Location` headers (`proxy_redirect`), and in HTML `href="/`, `src="/`,
@@ -330,8 +336,20 @@ frame (`ERR_BLOCKED_BY_CLIENT` in the Claude desktop browser). `SITE_PORT` is
 the session API gives `site: {port, path}` or `null`, and the console hides
 the pane without it. The acceptance VM's security group allows 8002.
 
-Browsing is marked `X-FSL-Case: browse` (nginx replaces whatever the browser
-sent), and the request comes from the platform's `edge` address. Its alerts are
+The recorder keeps each session's last 200 requests in the platform's memory
+(lost on restart): method, `http://<host><path>`, status, whether the WAF
+blocked it (403), the time taken, the request and response headers and the
+bodies, each cut to 64 KB. `GET /api/sessions/<id>/site/requests/?after=<id>`
+lists them and `.../site/requests/<id>/` gives one in full. The Developer tools
+panel is docked under the page (its top edge drags taller or shorter); while
+open it polls the list every 2 s and shows method, URL, status (403 in red
+with "blocked by the WAF") and time; a selected row shows both header sets,
+the request body and the response body, the first 2000 characters with "Show
+more". "View source" shows the recorded body of the page in the address bar.
+The panel says that no cookies are kept.
+
+Browsing is marked `X-FSL-Case: browse` (the recorder replaces whatever the
+browser sent), and the request comes from the platform's `edge` address. Its alerts are
 ingested and listed like any other, so the learner finds them in Kibana and in
 `/detections/`, but `/score/` leaves the `browse` marker out the way it leaves
 out seed and VERIFY replays: browsing is not a case, so it is neither a true or
@@ -565,11 +583,14 @@ steps, each advanced by its check; Back and Next stay as the way around one:
 | retry: search O'Brien again | Website pane | `served`: when the pane shows the O'Brien search, the same case is replayed and must be 2xx |
 | verify: are attacks still blocked | the note's Check tab | `verify`: VERIFY passes |
 
-`alert` and `waf` are polled every 5 s while their step is shown; a failed
-"Check" press, or a wrong answer, says specifically what is missing ("the
-920273 exception is not in the file yet", "in the file but not loaded").
-Passing a step shows its line (`<lesson.text>.line.<step>`) at the top of the
-next step, and on the last step "Lesson complete". A recent ingest
+Checks run by themselves; there is no Check button. `alert` and `waf` are
+polled every 5 s while their step is shown, `served` runs when the Website
+pane shows the step's path. A status line in the popover says "Checking...",
+then what is still missing ("the 920273 exception is not in the file yet",
+"in the file but not loaded"), and on a pass "✓" and what was found
+(`<lesson.text>.ok.<step>`); 1.2 s later the guide moves on and shows the
+step's line (`<lesson.text>.line.<step>`), and on the last step "Lesson
+complete". A wrong answer says what is wrong. A recent ingest
 (`within`) reads the newest records of the window first and records no
 truncation, because a VERIFY run alone leaves more than 5000.
 
@@ -581,7 +602,7 @@ waits for ttyd's `term`, calls `term.paste(command + "\n")` and then
 `term.input("\r")`, because bash keeps a bracketed paste's newline as text.
 
 Help climbs a ladder per step (`<lesson.text>.nudge|answer.<step>`): a nudge,
-then pointing (the red box is drawn only from this level), then the answer,
+then "look where the red box is", then the answer,
 then "Do it for me". It climbs on the Hint button, after 60 s on the step, or
 after two wrong answers or failed checks. "Do it for me" performs the step:
 opens the site at the step's path, opens the filtered Kibana and clicks the
@@ -594,13 +615,21 @@ done that way are kept in `fsl-lesson-help-<id>` and marked in the step list.
 removes the filter button and the Run button and shows the command: the
 learner writes the KQL and types the rule. The checks are the same.
 
-Where each step points is `TARGETS` in `blue.html`: the Website rail button
-until the site is open, then its address bar; a `data-test-subj` in the
+Where each step points is `TARGETS` in `blue.html`, and the red box is drawn
+from the start of every step. A step names the pane it needs (`opens`: site,
+Kibana or WAF); while that pane is not shown, the box is on its rail button
+and the popover says only "Open Website on the left" (or Kibana, or WAF).
+Once it is shown: the site's address bar, a `data-test-subj` in the
 same-origin Kibana frame (`docTableExpandToggleColumn`, `field-rule`,
-`field-transaction.messages.details.data` with `field-rule` as fallback); the
-note's Verify button; a step with no target boxes the whole pane. The popover
+`field-transaction.messages.details.data` with `field-rule` as fallback), the
+WAF pane as a whole, or the note's Verify button. Nothing is ever looked up
+inside the site frame, which is another origin. The popover is the one place
+for the current step's words and Back/Next; the note's Steps tab lists the
+steps with the current one marked "in progress" and its status, and shows
+"Show the guide" only after the popover is closed. The popover
 is in the manner of driver.js: anchored to the target with an arrow, below,
-above, left or right of it, never over the open note, and on a terminal step
+above, left or right of it (under the right end of a target wider than 480 px,
+such as the address bar), never over the open note, and on a terminal step
 in the pane's bottom right. The box has `pointer-events: none` and is placed
 every animation frame; with no target for about 2 s the popover says where to
 look. Theory (five cards) and Hints (reasoning, then the folded solution) stay

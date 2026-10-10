@@ -39,6 +39,7 @@ class Refusals:
         return None
 
 
+SITE_PROXY = "/site-proxy/"
 UNSAFE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 FETCHED_BY_ITSELF = frozenset({"same-origin", "none"})
 
@@ -48,7 +49,7 @@ class SameOriginOnly:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.method in UNSAFE:
+        if request.method in UNSAFE and not request.path.startswith(SITE_PROXY):
             refused = _from_elsewhere(request)
             if refused:
                 return JsonResponse({"detail": refused}, status=403)

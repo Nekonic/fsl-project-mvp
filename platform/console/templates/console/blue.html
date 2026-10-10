@@ -32,12 +32,41 @@
     <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
     <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
     <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
-    <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
-           class="flex-1 min-w-0 h-7 border border-line rounded-md px-3 bg-panel font-mono text-[12.5px]">
+    <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
+      <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span data-t="site.not_secure"></span>
+      </span>
+      <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
+             class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
+    </div>
+    <button type="button" id="site-dev-toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
   </form>
   <div class="flex-1 min-h-0 relative">
-    <iframe id="site-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
+    <iframe id="site-frame" class="absolute inset-x-0 top-0 bottom-0 w-full border-0 bg-panel" hidden
             title="site" referrerpolicy="no-referrer"></iframe>
+    <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
+      <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
+      <div class="h-8 shrink-0 flex items-center gap-3 px-3 border-b border-line text-[12px] min-w-0">
+        <span data-t="site.dev.network" class="font-semibold text-heading shrink-0"></span>
+        <button type="button" id="site-dev-source" data-t="site.dev.source" class="btn btn-sm btn-ghost shrink-0"></button>
+        <span data-t="site.dev.cookies" class="text-faint truncate"></span>
+      </div>
+      <div class="flex-1 min-h-0 flex">
+        <div class="w-1/2 min-w-0 overflow-auto">
+          <table class="w-full text-[12px] font-mono">
+            <thead><tr class="text-left text-muted bg-subdued">
+              <th data-t="site.dev.method" class="px-2 py-1 font-medium"></th><th data-t="site.dev.url" class="px-2 py-1 font-medium"></th>
+              <th data-t="site.dev.status" class="px-2 py-1 font-medium"></th><th data-t="site.dev.time" class="px-2 py-1 font-medium"></th>
+            </tr></thead>
+            <tbody id="site-dev-rows"></tbody>
+          </table>
+        </div>
+        <div id="site-dev-detail" class="w-1/2 min-w-0 overflow-auto border-l border-line p-3 text-[12px] flex flex-col gap-2">
+          <p data-t="site.dev.pick" class="text-muted"></p>
+        </div>
+      </div>
+    </section>
     <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="console" referrerpolicy="no-referrer"></iframe>
     <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
@@ -65,16 +94,7 @@
     </div>
     <div id="lesson-body" class="flex-1 min-h-0 overflow-y-auto p-4 text-[13px] leading-relaxed">
       <div data-pane-of="steps" class="flex flex-col gap-3">
-        <div class="rounded-lg border border-primary bg-primary-soft p-3 flex flex-col gap-2">
-          <p id="lesson-coach-count" class="text-[12px] font-semibold text-primary"></p>
-          <p id="lesson-coach-text" class="text-heading"></p>
-          <p id="lesson-coach-missing" data-t="lesson.coach.missing" class="text-muted text-[12px] hidden"></p>
-          <div class="flex gap-2">
-            <button id="lesson-coach-back" data-t="lesson.coach.back" class="btn btn-sm btn-ghost"></button>
-            <button id="lesson-coach-next" data-t="lesson.coach.next" class="btn btn-sm btn-blue"></button>
-            <button id="lesson-coach-show" data-t="lesson.coach.show" class="btn btn-sm btn-ghost hidden"></button>
-          </div>
-        </div>
+        <button id="lesson-coach-show" data-t="lesson.coach.show" class="self-start btn btn-sm btn-blue hidden"></button>
         <ol id="lesson-step-list" class="flex flex-col gap-1.5"></ol>
         <label class="flex items-start gap-2 text-[12px] text-muted border-t border-line-subdued pt-3">
           <input id="lesson-stretch" type="checkbox" class="mt-0.5">
@@ -147,6 +167,7 @@
     <div id="coach-pop-title" class="font-bold text-heading mt-1"></div>
     <p id="coach-pop-said" class="hidden mt-2 text-[12.5px] rounded-md px-2.5 py-1.5"></p>
     <div id="coach-pop-text" class="text-body mt-1 leading-relaxed"></div>
+    <p id="coach-pop-status" class="hidden mt-1.5 text-[12px] text-muted"></p>
     <div id="coach-pop-act" class="hidden mt-2 flex flex-col gap-2"></div>
     <div id="coach-pop-command" class="hidden mt-2">
       <button id="coach-pop-view" class="text-[12px] text-primary hover:underline"></button>
@@ -162,7 +183,6 @@
     <p id="coach-pop-does" class="hidden mt-2 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></p>
     <div id="coach-pop-help" class="hidden mt-2 flex flex-col gap-1 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
     <div class="flex items-center gap-2 mt-2">
-      <button id="coach-pop-check" data-t="lesson.check.now" class="btn btn-sm btn-ghost hidden"></button>
       <button id="coach-pop-hint" data-t="lesson.hint.more" class="btn btn-sm btn-ghost"></button>
       <button id="coach-pop-do" data-t="lesson.do" class="btn btn-sm btn-ghost hidden"></button>
     </div>
@@ -201,6 +221,7 @@
     field("site-bar").classList.toggle("hidden", !onSite);
     field("site-bar").classList.toggle("flex", onSite);
     field("site-frame").style.display = onSite ? "block" : "none";
+    devPlace();
     if (!onSite) {
       showFrame(tab.dataset.src);
       return;
@@ -227,7 +248,7 @@
   }
 
   function siteShow() {
-    field("site-address").value = site.host + readable(site.history[site.at] || "/");
+    field("site-address").value = `http://${site.host}${readable(site.history[site.at] || "/")}`;
     field("site-back").disabled = site.at <= 0;
     field("site-forward").disabled = site.at >= site.history.length - 1;
   }
@@ -283,7 +304,128 @@
     field("site-forward").addEventListener("click", () => siteStep(1));
     field("site-reload").addEventListener("click", () => { if (site.history.length) siteLoad(); });
     window.addEventListener("message", siteHeard);
+    devTools();
   }
+
+  const dev = { open: false, after: 0, rows: [], height: 280, timer: null, picked: null };
+  const DEV_POLL_MS = 2000;
+  const DEV_SHORT = 2000;
+  const DEV_LOWEST = 120;
+  const sitePath = (tail) => `/api/sessions/${sessionId()}/site/requests/${tail}`;
+
+  function devPlace() {
+    const onSite = document.querySelector('.pane-tab[data-pane="site"]').getAttribute("aria-selected") === "true";
+    const shown = dev.open && onSite;
+    field("site-dev").classList.toggle("hidden", !shown);
+    field("site-dev").classList.toggle("flex", shown);
+    field("site-dev").style.height = `${dev.height}px`;
+    field("site-frame").style.bottom = shown ? `${dev.height}px` : "0px";
+    field("site-dev-toggle").setAttribute("aria-pressed", String(dev.open));
+  }
+
+  function devRows() {
+    field("site-dev-rows").innerHTML = dev.rows.map((row) => {
+      const tone = row.blocked || row.status >= 400 ? "text-danger" : "text-body";
+      const picked = row.id === dev.picked ? "bg-primary-soft" : "hover:bg-subdued";
+      const blocked = row.blocked ? ` <span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
+      return `<tr data-request="${row.id}" class="cursor-pointer border-t border-line-subdued ${picked}">
+        <td class="px-2 py-1">${esc(row.method)}</td>
+        <td class="px-2 py-1 break-all">${esc(row.url)}</td>
+        <td class="px-2 py-1 ${tone} font-semibold whitespace-nowrap">${esc(row.status)}${blocked}</td>
+        <td class="px-2 py-1 text-muted whitespace-nowrap">${esc(row.ms)} ms</td></tr>`;
+    }).join("");
+    field("site-dev-rows").querySelectorAll("[data-request]").forEach((line) =>
+      line.addEventListener("click", () => devPick(Number(line.dataset.request))));
+  }
+
+  async function devPoll() {
+    const read = await api(sitePath(`?after=${dev.after}`));
+    if (!read.ok || !Array.isArray(read.body) || !read.body.length) return;
+    dev.rows = dev.rows.concat(read.body);
+    dev.after = Math.max(...dev.rows.map((row) => row.id));
+    devRows();
+  }
+
+  function devHeaders(title, headers) {
+    const lines = Object.entries(headers || {}).map(([name, value]) =>
+      `<div><b class="text-heading">${esc(name)}:</b> <span class="break-all">${esc(value)}</span></div>`).join("");
+    return `<section><h4 class="label mb-1">${esc(title)}</h4><div class="font-mono">${lines || "-"}</div></section>`;
+  }
+
+  function devBody(title, body, key) {
+    if (!body) return "";
+    const long = body.text.length > DEV_SHORT;
+    const note = body.truncated ? `<p class="text-faint">${esc(t("site.dev.truncated", body.size))}</p>` : "";
+    return `<section><h4 class="label mb-1">${esc(title)}</h4>
+      <pre data-body="${key}" class="code whitespace-pre-wrap break-all max-h-none">${esc(long ? body.text.slice(0, DEV_SHORT) : body.text)}</pre>
+      ${long ? `<button data-more="${key}" class="text-primary hover:underline">${esc(t("site.dev.more"))}</button>` : ""}${note}</section>`;
+  }
+
+  function devShow(record, heading) {
+    const detail = field("site-dev-detail");
+    const verdict = record.blocked ? `<span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
+    const tone = record.blocked || record.status >= 400 ? "text-danger" : "text-success";
+    detail.innerHTML = `<p class="font-mono break-all"><b>${esc(record.method)}</b> ${esc(record.url)}
+        <span class="${tone} font-semibold">${esc(record.status)}</span> ${verdict}</p>
+      ${heading ? `<p class="text-muted">${esc(heading)}</p>` : devHeaders(t("site.dev.request_headers"), record.request_headers)
+        + devHeaders(t("site.dev.response_headers"), record.response_headers)
+        + devBody(t("site.dev.request_body"), record.request_body, "request")}
+      ${devBody(heading ? t("site.dev.source") : t("site.dev.response_body"), record.response_body, "response")}`;
+    detail.querySelectorAll("[data-more]").forEach((more) => more.addEventListener("click", () => {
+      const body = more.dataset.more === "request" ? record.request_body : record.response_body;
+      detail.querySelector(`[data-body="${more.dataset.more}"]`).textContent = body.text;
+      more.remove();
+    }));
+  }
+
+  async function devPick(id) {
+    dev.picked = id;
+    devRows();
+    const read = await api(sitePath(`${id}/`));
+    if (read.ok) devShow(read.body);
+  }
+
+  async function devSource() {
+    await devPoll();
+    const here = readable(site.history[site.at] || "/");
+    const page = dev.rows.filter((row) => readable(row.url) === `http://${site.host}${here}`).pop();
+    if (!page) {
+      field("site-dev-detail").innerHTML = `<p class="text-muted">${esc(t("site.dev.no_source"))}</p>`;
+      return;
+    }
+    const read = await api(sitePath(`${page.id}/`));
+    if (read.ok) devShow(read.body, t("site.dev.source_of", read.body.url));
+  }
+
+  function devResize(event) {
+    const pane = field("site-frame").parentNode.getBoundingClientRect();
+    const move = (moved) => {
+      dev.height = Math.max(DEV_LOWEST, Math.min(pane.height - DEV_LOWEST, pane.bottom - moved.clientY));
+      devPlace();
+    };
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+    event.preventDefault();
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  }
+
+  function devTools() {
+    field("site-dev-toggle").addEventListener("click", () => {
+      dev.open = !dev.open;
+      devPlace();
+      clearInterval(dev.timer);
+      if (dev.open) {
+        devPoll();
+        dev.timer = setInterval(devPoll, DEV_POLL_MS);
+      }
+    });
+    field("site-dev-source").addEventListener("click", devSource);
+    field("site-dev-grip").addEventListener("mousedown", devResize);
+  }
+
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
 
@@ -472,18 +614,28 @@
     placeNote();
   }
 
-  const SITE_ADDRESS = { panel: "#site-address", first: '.pane-tab[data-pane="site"]' };
+  const SITE_ADDRESS = { panel: "#site-address", opens: "site" };
   const TARGETS = {
     search: SITE_ADDRESS,
-    find: { kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
-    rule: { kibana: '[data-test-subj="field-rule"]' },
-    target: { kibana: '[data-test-subj="field-transaction.messages.details.data"]', first: '[data-test-subj="field-rule"]' },
+    find: { kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: "elk" },
+    rule: { kibana: '[data-test-subj="field-rule"]', opens: "elk" },
+    target: { kibana: '[data-test-subj="field-transaction.messages.details.data"]', first: '[data-test-subj="field-rule"]', opens: "elk" },
+    exclude: { pane: true, opens: "waf" },
     retry: SITE_ADDRESS,
     verify: { panel: "#lesson-verify", tab: "check" },
   };
+  const AUTOMATIC = ["alert", "waf", "served"];
+  const PASS_PAUSE_MS = 1200;
+  const WIDE = 480;
   const HELP_AFTER_SECONDS = 60;
   const WRONGS_PER_LEVEL = 2;
   const POINT = 2;
+  const paneOpen = (name) => {
+    const tab = document.querySelector(`.pane-tab[data-pane="${name}"]`);
+    return Boolean(tab) && tab.getAttribute("aria-selected") === "true";
+  };
+  const whereOf = (step) => (step.opens && !paneOpen(step.opens)
+    ? { panel: `.pane-tab[data-pane="${step.opens}"]`, pending: step.opens } : step);
   const ANSWER = 3;
   const DO_IT = 4;
   const POLL_SECONDS = 5;
@@ -577,7 +729,9 @@
       const middleX = clampX(rect.left + rect.width / 2 - width / 2);
       const middleY = clampY(rect.top + rect.height / 2 - height / 2);
       const inNote = within(rect, aside);
-      spots = [
+      const wide = rect.width > WIDE
+        ? [{ side: "below", left: rect.left + rect.width - width, top: rect.top + rect.height + GAP }] : [];
+      spots = [...wide,
         { side: "below", left: middleX, top: rect.top + rect.height + GAP },
         { side: "above", left: middleX, top: rect.top - GAP - height },
         { side: "left", left: (inNote ? aside.left : rect.left) - GAP - width, top: middleY },
@@ -649,6 +803,9 @@
     let triedVersion = null;
     let seenDetection = 0;
     let counted = false;
+    let statusText = "";
+    let shownPending = "";
+    let passing = false;
     let commandShown = false;
     let finished = false;
     const helped = new Set(kept(HELP_KEY(sessionId()), []));
@@ -674,10 +831,12 @@
         const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : "badge-muted";
         const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
         const help = helped.has(step.id) ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.helped"))}</span>` : "";
+        const state = current && !done ? `<span class="block text-[11.5px] text-primary font-normal">${
+          esc(t("lesson.status.current"))}${statusText ? ` · ${esc(statusText)}` : ""}</span>` : "";
         return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
           <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
           <span class="${words}">${
-            esc(t(`${prefix}.label.${step.id}`))}${help}</span></button></li>`;
+            esc(t(`${prefix}.label.${step.id}`))}${help}${state}</span></button></li>`;
       }).join("");
       field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
         button.addEventListener("click", () => go(Number(button.dataset.step))));
@@ -779,55 +938,70 @@
       const step = steps[at];
       if (follow) followStep(step);
       keepLessonStep(sessionId(), at + 1);
-      const count = t("lesson.coach.count", at + 1, steps.length);
-      field("lesson-coach-count").textContent = count;
-      field("lesson-coach-text").textContent = t(`${prefix}.coach.${step.id}`);
       field("note-pill-text").textContent = t("lesson.note.pill", at + 1, steps.length);
       field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
       field("coach-pop-count").textContent = `${at + 1} / ${steps.length}`;
       field("coach-pop-title").textContent = t(`${prefix}.label.${step.id}`);
-      field("coach-pop-text").textContent = finished ? t("lesson.done") : t(`${prefix}.coach.${step.id}`);
-      field("coach-pop-check").classList.toggle("hidden", !["alert", "waf", "served"].includes(check().kind) || finished);
+      words();
+      status(AUTOMATIC.includes(check().kind) && !finished ? t("lesson.status.auto") : "");
       action();
       command();
       showHelp();
       const reached = (index) => (index <= at ? "dot-blue" : "dot-muted");
       field("coach-pop-dots").innerHTML = steps.map((_, index) =>
         `<span class="dot ${reached(index)}"></span>`).join("");
-      field("lesson-coach-back").disabled = field("coach-pop-back").disabled = at === 0;
-      field("lesson-coach-next").disabled = field("coach-pop-next").disabled = at === steps.length - 1;
+      field("coach-pop-back").disabled = at === 0;
+      field("coach-pop-next").disabled = at === steps.length - 1;
       field("lesson-coach-show").classList.toggle("hidden", !dismissed);
       stepList();
       last = "";
       lost = 0;
     }
 
+    function words() {
+      const step = steps[at];
+      const where = whereOf(step);
+      shownPending = where.pending || "";
+      field("coach-pop-text").textContent = finished ? t("lesson.done")
+        : where.pending ? t(`lesson.open.${where.pending}`) : t(`${prefix}.coach.${step.id}`);
+    }
+
+    function status(text) {
+      statusText = text;
+      field("coach-pop-status").textContent = text;
+      field("coach-pop-status").classList.toggle("hidden", !text);
+    }
+
     function tick() {
       listenToKibana();
       const step = steps[at];
-      const rect = dismissed ? null : locate(step);
+      const where = whereOf(step);
+      if ((where.pending || "") !== shownPending) {
+        words();
+        stepList();
+      }
+      const rect = dismissed ? null : locate(where);
       lost = rect || dismissed ? 0 : lost + 1;
       const missing = lost >= MISSING_AFTER_FRAMES;
-      field("lesson-coach-missing").classList.toggle("hidden", !missing);
       field("coach-pop-missing").classList.toggle("hidden", !missing);
-      const pointed = level >= POINT;
       const key = dismissed ? "dismissed"
-        : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open, pointed].join() : `none-${at}-${missing}`;
+        : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open, shownPending].join() : `none-${at}-${missing}`;
       if (key !== last) {
         last = key;
-        const drawn = !pointed ? null : rect && !step.pane && !step.panel
+        const drawn = rect && !where.pane && !where.panel
           ? clipped({ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 }, boxOf(frame))
-          : rect && step.panel
+          : rect && where.panel
             ? { left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 } : rect;
         box.classList.toggle("hidden", !drawn || !drawn.width);
+        box.dataset.target = rect ? (where.panel || where.kibana || "pane") : "";
         pop.classList.toggle("hidden", dismissed);
-        box.style.zIndex = step.panel ? "9999" : "30";
+        box.style.zIndex = where.panel ? "9999" : "30";
         if (drawn) {
           Object.assign(box.style, {
             left: `${drawn.left}px`, top: `${drawn.top}px`, width: `${drawn.width}px`, height: `${drawn.height}px`,
           });
         }
-        if (!dismissed) placePopover(step, rect);
+        if (!dismissed) placePopover(where, rect);
       }
       requestAnimationFrame(tick);
     }
@@ -851,27 +1025,35 @@
     }
 
     function pass(step) {
-      if (steps[at] !== step) return;
+      if (steps[at] !== step || passing) return;
       const line = t(`${prefix}.line.${step.id}`);
+      status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
       if (at === steps.length - 1) {
         finished = true;
         say(line, "ok");
         show(false);
+        status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
         return;
       }
-      go(at + 1, true, line);
+      passing = true;
+      setTimeout(() => {
+        passing = false;
+        if (steps[at] === step) go(at + 1, true, line);
+      }, PASS_PAUSE_MS);
     }
 
     async function run(step, loud) {
       if (checking || steps[at] !== step || finished) return;
       checking = true;
-      if (loud) say(t("lesson.check.checking"), "info");
+      status(t("lesson.status.checking"));
       try {
         const outcome = await CHECKS[step.check.kind](step, loud);
         if (steps[at] !== step) return;
         if (outcome === true) pass(step);
-        else if (outcome && loud) wrong(outcome);
-        else if (loud) say("", "");
+        else {
+          status(outcome || "");
+          if (outcome && loud) wrong(outcome);
+        }
       } finally {
         checking = false;
       }
@@ -1056,10 +1238,8 @@
       else wrong(t(`${prefix}.fail.verify`));
     });
 
-    [field("lesson-coach-back"), field("coach-pop-back")].forEach((button) =>
-      button.addEventListener("click", () => go(at - 1)));
-    [field("lesson-coach-next"), field("coach-pop-next")].forEach((button) =>
-      button.addEventListener("click", () => go(at + 1)));
+    field("coach-pop-back").addEventListener("click", () => go(at - 1));
+    field("coach-pop-next").addEventListener("click", () => go(at + 1));
     field("coach-pop-close").addEventListener("click", () => {
       dismissed = true;
       show();
@@ -1067,7 +1247,6 @@
     field("lesson-coach-show").addEventListener("click", () => go(at));
     field("coach-pop-hint").addEventListener("click", escalate);
     field("coach-pop-do").addEventListener("click", doIt);
-    field("coach-pop-check").addEventListener("click", () => run(steps[at], true));
     field("coach-pop-view").addEventListener("click", () => {
       commandShown = !commandShown;
       command();

@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from api import views
+from api import site, views
 from api.models import Detection, Session
 from tests.browser import open_page
 
@@ -13,6 +13,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 NGINX = (ROOT / "platform/nginx.conf").read_text()
 
 pytestmark = pytest.mark.django_db
+
+@pytest.fixture(autouse=True)
+def nothing_kept_yet():
+    site._records.clear()
 
 def site_server():
     start = NGINX.index("listen 8002;")
@@ -31,9 +35,18 @@ def test_the_site_route_is_guarded_like_the_terminals_and_goes_to_the_session_s_
     block = site_block()
 
     assert "auth_request /terminal-allowed;" in block
-    assert "set $waf http://fsl-$session-waf-1:80;" in block, "the WAF judges every page the learner opens"
-    assert "proxy_pass $waf$site_uri;" in block
-    assert "proxy_set_header Host $site;" in block, "the WAF picks board.com or corp.com by Host"
+    assert "proxy_pass http://127.0.0.1:8001/site-proxy/$session/$site/;" in block, (
+        "the platform passes every page on to the WAF and keeps a copy for the Network panel"
+    )
+    assert "proxy_set_header X-Site-Uri $site_uri;" in block
+    assert site.waf_url(7) == "http://fsl-7-waf-1", "the WAF judges every page the learner opens"
+
+def test_the_console_s_own_port_does_not_serve_the_proxy():
+    console = NGINX[:NGINX.index("listen 8002;")]
+
+    assert "location /site-proxy/ {\n            return 404;" in console, (
+        "on 8000 the target's pages would run with the console's origin"
+    )
 
 def test_the_site_route_keeps_the_path_and_query_exactly_as_the_browser_sent_them():
     assert site_tail("/site/7/board.com/search/?q=O%27Brien") == "/search/?q=O%27Brien"
@@ -44,9 +57,7 @@ def test_the_site_route_keeps_the_path_and_query_exactly_as_the_browser_sent_the
 def test_browsing_is_marked_so_the_score_never_takes_it_for_a_case():
     block = site_block()
 
-    assert f"proxy_set_header X-FSL-Case {views.SITE_BROWSER_MARKER};" in block, (
-        "a learner's own X-FSL-Case is replaced, never passed on"
-    )
+    assert views.SITE_BROWSER_MARKER == site.MARKER
     assert 'proxy_set_header Cookie "";' in block and "proxy_hide_header Set-Cookie;" in block, (
         "the platform's cookies never reach the target and the target's never land on the platform"
     )
@@ -129,7 +140,7 @@ def test_typing_a_path_in_the_address_bar_opens_it_through_the_site_route(client
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["home"] == {"src": "http://console.test:8002/site/1/board.com/", "address": "board.com/", "bar": False,
+    assert result["home"] == {"src": "http://console.test:8002/site/1/board.com/", "address": "http://board.com/", "bar": False,
                               "sandbox": None}, (
         "the response's CSP sandbox isolates the page; a sandbox attribute without "
         "allow-same-origin makes some browsers refuse the frame outright"
@@ -158,7 +169,7 @@ def test_back_and_forward_walk_the_site_history(client):
     result = seen["result"]
 
     assert result["atSearch"] == [False, True]
-    assert result["back"] == ["http://console.test:8002/site/1/board.com/", "board.com/", True, False]
+    assert result["back"] == ["http://console.test:8002/site/1/board.com/", "http://board.com/", True, False]
     assert result["forward"] == ["http://console.test:8002/site/1/board.com/search/?q=release", False, True]
     assert result["branched"] == [False, True], "a new page after going back drops the forward history"
 
@@ -178,8 +189,8 @@ def test_a_link_followed_inside_the_page_updates_the_address_bar_and_the_history
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["followed"] == {"address": "board.com/search/?q=O'Brien", "back": False}
-    assert (result["address"], result["src"]) == ("board.com/", "http://console.test:8002/site/1/board.com/"), (
+    assert result["followed"] == {"address": "http://board.com/search/?q=O'Brien", "back": False}
+    assert (result["address"], result["src"]) == ("http://board.com/", "http://console.test:8002/site/1/board.com/"), (
         "a message that is not the site's own location changes nothing"
     )
 
@@ -221,3 +232,80 @@ def test_the_lesson_s_alert_check_looks_for_the_site_browser_s_own_marker():
     search = wargames.lesson("board")["steps"][0]
 
     assert search["check"] == {"kind": "alert", "marker": views.SITE_BROWSER_MARKER, "path": "O'Brien"}
+
+class Answer:
+    def __init__(self, status, content=b"", headers=None):
+        self.status_code = status
+        self.content = content
+        self.headers = headers or {}
+
+def proxied(client, path, answer, method="get", **extra):
+    from unittest.mock import patch
+
+    with patch("api.site.requests.request", return_value=answer) as sent:
+        response = getattr(client, method)(f"/site-proxy/{path}", HTTP_X_SITE_URI=extra.pop("uri", "/"), **extra)
+    return response, sent
+
+def test_the_proxy_passes_the_page_to_the_session_s_waf_with_the_site_s_host_and_the_marker(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    response, sent = proxied(client, f"{session.pk}/board.com/", Answer(403, b"<html>403 Forbidden</html>",
+                             {"Content-Type": "text/html", "Set-Cookie": "a=b", "Server": "nginx"}),
+                             uri="/search/?q=O%27Brien", HTTP_COOKIE="sessionid=platform")
+
+    method, url = sent.call_args.args
+    headers = sent.call_args.kwargs["headers"]
+    assert (method, url) == ("GET", f"http://fsl-{session.pk}-waf-1/search/?q=O%27Brien")
+    assert headers["Host"] == "board.com" and headers["X-FSL-Case"] == site.MARKER
+    assert "Cookie" not in headers, "the platform's cookies never reach the target"
+    assert sent.call_args.kwargs["allow_redirects"] is False
+    assert response.status_code == 403 and response.content == b"<html>403 Forbidden</html>"
+    assert "Set-Cookie" not in response and response["Server"] == "nginx"
+
+def test_a_form_posted_on_the_site_is_passed_on_although_the_platform_refuses_foreign_posts(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    response, sent = proxied(client, f"{session.pk}/board.com/", Answer(302, b"", {"Location": "/"}), method="post",
+                             uri="/accounts/login/", data="username=a&password=b",
+                             content_type="application/x-www-form-urlencoded", HTTP_ORIGIN="http://elsewhere:8002")
+
+    assert response.status_code == 302
+    assert sent.call_args.kwargs["data"] == b"username=a&password=b"
+
+def test_the_site_s_requests_are_listed_per_session_with_what_the_waf_did(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    other = Session.objects.create(scenario="board", baseline=[])
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/")
+    proxied(client, f"{session.pk}/board.com/", Answer(403, b"no"), uri="/search/?q=O%27Brien")
+    proxied(client, f"{other.pk}/board.com/", Answer(200, b"elsewhere"), uri="/")
+
+    listed = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
+    newer = client.get(f"/api/sessions/{session.pk}/site/requests/?after={listed[0]['id']}").json()
+
+    assert [(r["method"], r["url"], r["status"], r["blocked"]) for r in listed] == [
+        ("GET", "http://board.com/", 200, False), ("GET", "http://board.com/search/?q=O%27Brien", 403, True),
+    ]
+    assert set(listed[0]) == {"id", "at", "method", "url", "status", "blocked", "ms"}
+    assert [r["status"] for r in newer] == [403]
+    assert client.get(f"/api/sessions/{session.pk}/site/requests/?after=x").status_code == 400
+
+def test_one_request_s_detail_carries_both_sets_of_headers_and_bodies_bounded_to_64_kb(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    big = b"a" * (site.BODY_LIMIT + 10)
+    proxied(client, f"{session.pk}/board.com/", Answer(200, big, {"Content-Type": "text/html"}), method="post",
+            uri="/posts/1/comments/", data="body=hello", content_type="application/x-www-form-urlencoded")
+    row, = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
+
+    detail = client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
+
+    assert detail["request_headers"]["Host"] == "board.com"
+    assert detail["response_headers"] == {"Content-Type": "text/html"}
+    assert detail["request_body"] == {"text": "body=hello", "size": 10, "truncated": False}
+    assert detail["response_body"]["size"] == site.BODY_LIMIT + 10
+    assert len(detail["response_body"]["text"]) == site.BODY_LIMIT and detail["response_body"]["truncated"]
+    assert client.get(f"/api/sessions/{session.pk}/site/requests/999999/").status_code == 404
+
+def test_a_session_keeps_only_its_latest_requests(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    for _ in range(site.KEPT_PER_SESSION + 5):
+        proxied(client, f"{session.pk}/board.com/", Answer(200, b""), uri="/")
+
+    assert len(client.get(f"/api/sessions/{session.pk}/site/requests/").json()) == site.KEPT_PER_SESSION

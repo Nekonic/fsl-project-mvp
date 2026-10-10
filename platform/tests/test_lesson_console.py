@@ -250,26 +250,21 @@ def test_the_lesson_is_seven_steps_each_checked_by_the_platform():
         "alert", "click", "answer", "choice", "waf", "served", "verify",
     ]
 
-def test_the_coach_boxes_its_target_only_once_the_hints_reach_pointing(client):
+def test_the_coach_boxes_its_target_as_soon_as_the_step_shows_it(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       {to("find")}
       present.add({EXPAND!r});
       await browser.wait(16);
       const box = () => browser.element('coach-box');
-      const plain = box().classList.contains('hidden');
-      {hints(1)}
-      await browser.wait(16);
-      const nudged = box().classList.contains('hidden');
-      {hints(1)}
-      await browser.wait(16);
-      return {{plain, nudged, pointed: {{hidden: box().classList.contains('hidden'), left: box().style.left,
+      const shown = {{hidden: box().classList.contains('hidden'), left: box().style.left,
               top: box().style.top, width: box().style.width, layer: box().style.zIndex,
-              events: box().style.pointerEvents}}, help: browser.text('coach-pop-help')}};
+              events: box().style.pointerEvents}};
+      {hints(2)}
+      return {{shown, help: browser.text('coach-pop-help')}};
     """)
 
     assert seen["errors"] == []
-    assert (seen["result"]["plain"], seen["result"]["nudged"]) == (True, True)
-    assert seen["result"]["pointed"] == {
+    assert seen["result"]["shown"] == {
         "hidden": False, "left": "206px", "top": "66px", "width": "108px", "layer": "30", "events": "none",
     }, "the box sits over the element, offset by where the Kibana pane is, and never takes a click"
     assert english("lesson.board.nudge.find") in seen["result"]["help"]
@@ -282,7 +277,7 @@ def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(clien
               count: browser.text('coach-pop-count'), title: browser.text('coach-pop-title'),
               text: browser.text('coach-pop-text'),
               command: browser.element('coach-pop-command').classList.contains('hidden'),
-              check: browser.element('coach-pop-check').classList.contains('hidden'),
+              status: browser.text('coach-pop-status'), checkButton: document.getElementById('coach-pop-check'),
               dots: browser.element('coach-pop-dots').querySelectorAll('.dot').length,
               lit: browser.element('coach-pop-dots').querySelectorAll('.dot-blue').length,
               buttons: [browser.text('coach-pop-back'), browser.text('coach-pop-next')],
@@ -291,9 +286,10 @@ def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(clien
 
     assert seen["result"] == {
         "hidden": False, "count": f"1 / {len(STEPS)}", "title": english("lesson.board.label.search"),
-        "text": english("lesson.board.coach.search"), "command": True, "check": False, "dots": len(STEPS),
-        "lit": 1, "buttons": [english("lesson.coach.back"), english("lesson.coach.next")], "back": True,
-    }, "Back and Next stay as the way around a check"
+        "text": english("lesson.open.site"), "command": True, "status": english("lesson.board.fail.search"),
+        "checkButton": None, "dots": len(STEPS), "lit": 1,
+        "buttons": [english("lesson.coach.back"), english("lesson.coach.next")], "back": True,
+    }, "checks run by themselves: a status line, no Check button"
 
 def test_the_popover_sits_below_its_target_or_above_it_when_there_is_no_room(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -315,10 +311,9 @@ def test_the_popover_sits_below_its_target_or_above_it_when_there_is_no_room(cli
 def test_the_coach_walks_on_to_the_lesson_note_s_own_controls_and_opens_the_check_tab(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       {to("verify")}
-      {hints(2)}
       await browser.wait(16);
       const box = browser.element('coach-box');
-      return {{text: browser.text('lesson-coach-text'), left: box.style.left, layer: box.style.zIndex,
+      return {{text: browser.text('coach-pop-text'), left: box.style.left, layer: box.style.zIndex,
               note: browser.element('lesson').classList.contains('hidden'),
               check: document.querySelector('[data-pane-of="check"]').classList.contains('hidden')}};
     """)
@@ -330,14 +325,13 @@ def test_the_coach_walks_on_to_the_lesson_note_s_own_controls_and_opens_the_chec
 def test_the_coach_says_where_to_look_when_the_element_never_appears(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       {to("find")}
-      const hidden = () => [browser.element('lesson-coach-missing').classList.contains('hidden'),
-                            browser.element('coach-pop-missing').classList.contains('hidden')];
+      const hidden = () => browser.element('coach-pop-missing').classList.contains('hidden');
       const early = hidden();
       for (let i = 0; i < 130; i += 1) await browser.wait(16);
       return {{early, late: hidden(), pop: browser.element('coach-pop').classList.contains('hidden')}};
     """)
 
-    assert seen["result"] == {"early": [True, True], "late": [False, False], "pop": False}
+    assert seen["result"] == {"early": True, "late": False, "pop": False}
 
 def test_an_unguided_session_draws_no_coach(client):
     seen = open_page(client, "/blue/1/", setup=coached(False), scenario="""
@@ -366,13 +360,16 @@ def test_a_click_step_passes_when_the_learner_opens_the_highlighted_row(client):
       const missed = browser.text('coach-pop-title');
       heard.forEach((l) => l.listener({{target: table.inner}}));
       await browser.wait(1);
-      return {{missed, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), heard: heard.length}};
+      const status = browser.text('coach-pop-status');
+      await browser.wait(1500);
+      return {{status, missed, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), heard: heard.length}};
     """)
 
     assert seen["result"]["heard"] == 1, "the guide listens in the Kibana document in the capture phase"
     assert seen["result"]["missed"] == english("lesson.board.label.find"), "a click elsewhere does not advance"
     assert seen["result"]["after"] == english("lesson.board.label.rule")
     assert seen["result"]["said"] == english("lesson.board.line.find"), "the step's line greets the next step"
+    assert seen["result"]["status"] == "✓ " + english("lesson.board.ok.find"), "the pass is said before moving on"
 
 def test_the_find_step_offers_a_ready_made_filter_that_opens_kibana_narrowed_to_the_request(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -389,20 +386,24 @@ def test_the_find_step_offers_a_ready_made_filter_that_opens_kibana_narrowed_to_
     assert seen["result"] == {"label": english("lesson.board.chip.find"),
                               "src": "/kibana/app/discover#/?narrowed=brien", "kibana": "true"}
 
-def test_the_steps_tab_leads_with_the_current_step_and_lists_every_step(client):
+def test_the_steps_tab_lists_the_steps_with_the_current_one_marked_and_leaves_the_words_to_the_popover(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
       await browser.click('note-pill');
-      await browser.click('lesson-coach-next');
+      await browser.click('coach-pop-next');
       const listed = [...browser.element('lesson-step-list').querySelectorAll('[data-step]')];
-      return {count: browser.text('lesson-coach-count'), text: browser.text('lesson-coach-text'),
-              listed: listed.length, done: listed[0].textContent.includes('✓'),
-              goal: browser.text('lesson-goal'), scrolls: browser.element('lesson-body').classList.contains('overflow-y-auto')};
+      const steps = document.querySelector('[data-pane-of="steps"]');
+      return {listed: listed.length, done: listed[0].textContent.includes('✓'),
+              current: listed[1].textContent, buttons: steps.querySelectorAll('button:not([data-step])').length,
+              repeated: steps.textContent.includes(browser.text('coach-pop-text')),
+              shown: browser.element('lesson-coach-show').classList.contains('hidden')};
     """)
+    result = seen["result"]
 
-    assert seen["result"] == {
-        "count": english("lesson.coach.count", 2, len(STEPS)), "text": english("lesson.board.coach.find"),
-        "listed": len(STEPS), "done": True, "goal": english("lesson.board.summary"), "scrolls": True,
-    }
+    assert (result["listed"], result["done"]) == (len(STEPS), True)
+    assert english("lesson.board.label.find") in result["current"]
+    assert english("lesson.status.current") in result["current"]
+    assert result["repeated"] is False, "the instruction is said once, in the popover"
+    assert (result["buttons"], result["shown"]) == (1, True), "no Back or Next of its own; Show the guide only once closed"
 
 def test_a_step_in_the_list_jumps_the_guide_there(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -458,14 +459,14 @@ def test_a_theory_card_points_the_coach_at_what_it_talks_about(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
       await browser.click('[data-card="anatomy"]');
       await browser.click('[data-shows="exclude"]');
-      const anatomy = browser.text('lesson-coach-text');
+      const anatomy = browser.text('coach-pop-title');
       await browser.click('[data-card="culprit"]');
       await browser.click('[data-shows="rule"]');
-      return {anatomy, culprit: browser.text('lesson-coach-text')};
+      return {anatomy, culprit: browser.text('coach-pop-title')};
     """)
 
     assert seen["result"] == {
-        "anatomy": english("lesson.board.coach.exclude"), "culprit": english("lesson.board.coach.rule"),
+        "anatomy": english("lesson.board.label.exclude"), "culprit": english("lesson.board.label.rule"),
     }
 
 def test_the_site_step_points_at_the_website_rail_until_the_site_is_open_then_at_its_address_bar(client):
@@ -489,6 +490,7 @@ def test_the_site_step_points_at_the_website_rail_until_the_site_is_open_then_at
 
 def test_the_terminal_step_folds_its_command_under_show_command_and_runs_it_with_one_button(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      await browser.click('[data-pane="waf"]');
       {to("exclude")}
       await browser.wait(16);
       const folded = {{code: browser.element('coach-pop-code-box').classList.contains('hidden'),
@@ -573,8 +575,8 @@ def test_a_popover_for_a_note_control_sits_beside_the_note_not_over_it(client):
 def test_a_terminal_popover_moves_left_of_an_open_note(client):
     seen = open_page(client, "/blue/1/", setup=coached() + NOTE_OPEN_AT, scenario=f"""
       await browser.click('note-pill');
+      await browser.click('[data-pane="waf"]');
       {to("exclude")}
-      {hints(2)}
       await browser.wait(16);
       const pop = browser.element('coach-pop').style;
       return {{left: parseFloat(pop.left), top: parseFloat(pop.top), box: browser.element('coach-box').style.zIndex}};
@@ -680,6 +682,7 @@ def test_the_alert_check_passes_on_a_new_blocked_o_brien_search_from_the_site_br
       const otherSearch = browser.text('coach-pop-title');
       range.detections.push({id: 6, marker: 'browse', path: "/search/?q=O%27Brien"});
       await poll();
+      await browser.wait(1500);
       return {earlier, fromACase, otherSearch, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
               ingest: browser.requests.filter((r) => r.route === '/api/sessions/1/ingest/').map((r) => r.body)[0]};
     """)
@@ -691,20 +694,24 @@ def test_the_alert_check_passes_on_a_new_blocked_o_brien_search_from_the_site_br
     assert result["said"] == english("lesson.board.line.search")
     assert result["ingest"] == {"within": 600}, "only recent records, so a session with thousands still finds it"
 
-def test_a_failed_check_says_specifically_what_is_missing(client):
+def test_a_check_that_has_not_passed_yet_says_specifically_what_is_missing_in_its_status_line(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      await browser.click('coach-pop-check');
-      const search = browser.text('coach-pop-said');
+      const poll = async () => {{ for (let i = 0; i < 5; i += 1) await browser.wait(1000); }};
+      await poll();
+      const search = browser.text('coach-pop-status');
+      await browser.click('[data-pane="waf"]');
       {to("exclude")}
-      await browser.click('coach-pop-check');
-      const exclude = browser.text('coach-pop-said');
+      const fresh = browser.text('coach-pop-status');
+      await poll();
+      const exclude = browser.text('coach-pop-status');
       range.waf = {{paranoia: 4, version: "v3", exclusions: [{{rule_id: 920273, target: "ARGS:q", path: "/search/"}}]}};
-      await browser.click('coach-pop-check');
-      return {{search, exclude, reload: browser.text('coach-pop-said'), title: browser.text('coach-pop-title')}};
+      await poll();
+      return {{search, fresh, exclude, reload: browser.text('coach-pop-status'), title: browser.text('coach-pop-title')}};
     """)
     result = seen["result"]
 
     assert result["search"] == english("lesson.board.fail.search")
+    assert result["fresh"] == english("lesson.status.auto")
     assert result["exclude"] == english("lesson.board.fail.exclude")
     assert result["reload"] == english("lesson.board.fail.exclude.reload"), "the file has it, the WAF still blocks"
     assert result["title"] == english("lesson.board.label.exclude")
@@ -715,6 +722,7 @@ def test_the_waf_check_passes_once_the_file_holds_the_exclusion_and_the_o_brien_
       range.waf = {{paranoia: 4, version: "v3", exclusions: [{{rule_id: 920273, target: "ARGS:q", path: "/search/"}}]}};
       range.status = 200;
       for (let i = 0; i < 5; i += 1) await browser.wait(1000);
+      await browser.wait(1500);
       return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
               fired: browser.requests.filter((r) => r.route === '/api/sessions/1/attacks/').map((r) => r.body)}};
     """)
@@ -736,6 +744,7 @@ def test_the_answer_check_explains_949110_and_accepts_920273(client):
       const known = await submit('949110');
       const other = await submit('1234');
       await submit(' 920273 ');
+      await browser.wait(1500);
       return {{known, other, title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said')}};
     """)
 
@@ -754,6 +763,7 @@ def test_the_choice_check_offers_the_four_fields_and_takes_only_the_search_field
       const wrong = browser.text('coach-pop-title');
       document.querySelector('#coach-pop-act [data-value="ARGS:q"]').click();
       await browser.settle();
+      await browser.wait(1500);
       return {{labels, wrong, after: browser.text('coach-pop-title')}};
     """)
 
@@ -770,10 +780,11 @@ def test_the_served_check_runs_when_the_site_shows_the_o_brien_search_again(clie
       await browser.click('[data-pane="site"]');
       dispatchEvent({{type: 'message', data: {{fslSite: "/site/1/board.com/search/?q=O%27Brien"}}}});
       await browser.settle();
-      const blocked = [browser.text('coach-pop-title'), browser.text('coach-pop-said')];
+      const blocked = [browser.text('coach-pop-title'), browser.text('coach-pop-status')];
       range.status = 200;
       dispatchEvent({{type: 'message', data: {{fslSite: "/site/1/board.com/search/?q=O%27Brien"}}}});
       await browser.settle();
+      await browser.wait(1500);
       return {{blocked, after: browser.text('coach-pop-title')}};
     """)
 
@@ -838,6 +849,7 @@ def test_do_it_for_me_performs_the_step_and_records_that_help_was_used(client):
       {to("rule")}
       {hints(4)}
       await browser.click('coach-pop-do');
+      await browser.wait(1500);
       return {{title: browser.text('coach-pop-title'), kept: JSON.parse(localStorage.getItem('fsl-lesson-help-1')),
               marked: browser.element('lesson-step-list').querySelector('[data-step="{at("rule")}"]').textContent}};
     """)
@@ -894,3 +906,172 @@ def test_the_do_it_yourself_path_drops_the_ready_made_filter_and_the_run_button(
 
     assert seen["result"] == {"chip": True, "run": True, "code": True,
                               "said": english("lesson.stretch.type"), "kept": "true"}
+
+EVERYWHERE = """
+document.querySelectorAll('.pane-tab').forEach((tab, index) => {
+  tab.getBoundingClientRect = () => ({left: 8, top: 60 + 50 * index, right: 52, bottom: 104 + 50 * index, width: 44, height: 44});
+});
+browser.element('site-address').getBoundingClientRect = () => ({left: 300, top: 60, right: 1300, bottom: 88, width: 1000, height: 28});
+['[data-test-subj="docTableExpandToggleColumn"]', '[data-test-subj="field-rule"]',
+ '[data-test-subj="field-transaction.messages.details.data"]'].forEach((selector) => present.add(selector));
+"""
+
+def test_every_step_draws_its_box_on_something_the_console_can_reach_in_both_modes(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + EVERYWHERE, scenario=f"""
+      const visited = [];
+      for (const stretch of [false, true]) {{
+        browser.element('lesson-stretch').checked = stretch;
+        browser.element('lesson-stretch').dispatchEvent({{type: 'change'}});
+        for (let index = 0; index < {len(STEPS)}; index += 1) {{
+          await browser.click('[data-pane="site"]');
+          await browser.click(`[data-step="${{index}}"]`);
+          await browser.wait(16);
+          const box = browser.element('coach-box');
+          const first = {{drawn: !box.classList.contains('hidden'), target: box.dataset.target}};
+          const opens = {{0: 'site', 1: 'elk', 2: 'elk', 3: 'elk', 4: 'waf', 5: 'site'}}[index];
+          if (opens) await browser.click(`[data-pane="${{opens}}"]`);
+          await browser.wait(16);
+          visited.push({{stretch, index, first, then: {{drawn: !box.classList.contains('hidden'), target: box.dataset.target}}}});
+        }}
+      }}
+      return visited;
+    """)
+    expected = {
+        "search": "#site-address", "find": '[data-test-subj="docTableExpandToggleColumn"]',
+        "rule": '[data-test-subj="field-rule"]', "target": '[data-test-subj="field-transaction.messages.details.data"]',
+        "exclude": "pane", "retry": "#site-address", "verify": "#lesson-verify",
+    }
+
+    assert seen["errors"] == []
+    for visit in seen["result"]:
+        step = IDS[visit["index"]]
+        assert visit["then"] == {"drawn": True, "target": expected[step]}, (step, visit)
+        assert visit["first"]["drawn"] is True, (step, visit)
+        assert "site-frame" not in visit["then"]["target"], "the site page is another origin; nothing inside it is reachable"
+
+def test_the_first_step_says_open_the_website_then_points_at_the_address_bar_with_the_full_url(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + EVERYWHERE, scenario="""
+      await browser.wait(16);
+      const closed = {text: browser.text('coach-pop-text'), target: browser.element('coach-box').dataset.target};
+      await browser.click('[data-pane="site"]');
+      await browser.wait(16);
+      return {closed, open: {text: browser.text('coach-pop-text'), target: browser.element('coach-box').dataset.target},
+              listed: browser.element('lesson-step-list').textContent};
+    """)
+
+    assert seen["result"]["closed"] == {"text": english("lesson.open.site"), "target": '.pane-tab[data-pane="site"]'}
+    assert seen["result"]["open"] == {"text": english("lesson.board.coach.search"), "target": "#site-address"}
+    assert "http://board.com/search/?q=O'Brien" in english("lesson.board.coach.search")
+
+def test_a_popover_for_the_wide_address_bar_sits_just_below_its_right_end(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + EVERYWHERE, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.wait(16);
+      const pop = browser.element('coach-pop').style;
+      return {left: parseFloat(pop.left), top: parseFloat(pop.top), arrow: browser.element('coach-pop-arrow').style.top};
+    """)
+
+    assert seen["result"] == {"left": 1300 - 340, "top": 88 + 14, "arrow": "-6px"}, (
+        "below the bar and right-aligned, not in the middle of the page"
+    )
+
+DEV = """
+const records = {
+  1: {id: 1, at: 1, method: "GET", url: "http://board.com/", status: 200, blocked: false, ms: 12,
+      request_headers: {Host: "board.com", "X-FSL-Case": "browse"}, response_headers: {"Content-Type": "text/html"},
+      request_body: null, response_body: {text: "<html>home</html>", size: 17, truncated: false}},
+  2: {id: 2, at: 2, method: "GET", url: "http://board.com/search/?q=O%27Brien", status: 403, blocked: true, ms: 9,
+      request_headers: {Host: "board.com"}, response_headers: {Server: "nginx"},
+      request_body: null, response_body: {text: "x".repeat(2500), size: 70000, truncated: true}},
+};
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, guidance: false, lesson: null, site: {port: 8002, path: "/site/1/board.com/"}}};
+  }
+  if (request.route === "/api/sessions/1/site/requests/") {
+    return {body: Object.values(records).filter((r) => r.id > Number(request.query.after || 0))
+      .map(({id, at, method, url, status, blocked, ms}) => ({id, at, method, url, status, blocked, ms}))};
+  }
+  const one = /^\\/api\\/sessions\\/1\\/site\\/requests\\/(\\d+)\\/$/.exec(request.route);
+  if (one) return {body: records[one[1]]};
+  return {status: 404, body: {}};
+});
+"""
+
+def test_the_address_bar_shows_the_full_url_and_says_an_http_site_is_not_secure(client):
+    seen = open_page(client, "/blue/1/", setup=DEV, scenario="""
+      await browser.click('[data-pane="site"]');
+      return {address: browser.element('site-address').value, marker: browser.text('site-insecure').trim()};
+    """)
+
+    assert seen["result"] == {"address": "http://board.com/", "marker": english("site.not_secure")}
+
+def test_developer_tools_list_the_pane_s_requests_with_blocked_ones_in_red(client):
+    seen = open_page(client, "/blue/1/", setup=DEV, scenario="""
+      await browser.click('[data-pane="site"]');
+      const closed = browser.element('site-dev').classList.contains('hidden');
+      await browser.click('site-dev-toggle');
+      const rows = [...browser.element('site-dev-rows').querySelectorAll('[data-request]')];
+      await browser.wait(2000);
+      return {closed, open: !browser.element('site-dev').classList.contains('hidden'),
+              rows: rows.map((row) => row.textContent.replace(/\\s+/g, ' ').trim()),
+              red: rows[1].querySelector('.text-danger').textContent,
+              polled: browser.requests.filter((r) => r.route === '/api/sessions/1/site/requests/').map((r) => r.query.after),
+              frameBottom: browser.element('site-frame').style.bottom,
+              cookies: browser.element('site-dev').textContent.includes(STRINGS.en['site.dev.cookies'])};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["closed"], result["open"]) == (True, True)
+    assert result["rows"][0].startswith("GET http://board.com/ 200")
+    assert "http://board.com/search/?q=O%27Brien 403" in result["rows"][1]
+    assert english("site.dev.blocked") in result["red"]
+    assert result["polled"] == ["0", "2"], "the panel asks only for what is new"
+    assert result["frameBottom"] == "280px", "the panel is docked under the page, not over it"
+    assert result["cookies"] is True
+
+def test_a_selected_request_shows_its_headers_and_bodies_and_more_shows_the_rest(client):
+    seen = open_page(client, "/blue/1/", setup=DEV, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      await browser.click('[data-request="2"]');
+      const detail = () => browser.element('site-dev-detail');
+      const before = detail().querySelector('[data-body="response"]').textContent.length;
+      const text = detail().textContent;
+      await browser.click('[data-more="response"]');
+      return {before, after: detail().querySelector('[data-body="response"]').textContent.length, text};
+    """)
+    result = seen["result"]
+
+    assert english("site.dev.request_headers") in result["text"] and "Host: board.com" in result["text"]
+    assert english("site.dev.response_headers") in result["text"] and "Server: nginx" in result["text"]
+    assert english("site.dev.truncated", 70000) in result["text"]
+    assert (result["before"], result["after"]) == (2000, 2500)
+
+def test_view_source_shows_what_the_waf_returned_for_the_current_page(client):
+    seen = open_page(client, "/blue/1/", setup=DEV, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      await browser.click('site-dev-source');
+      return browser.element('site-dev-detail').textContent;
+    """)
+
+    assert "<html>home</html>" in seen["result"]
+    assert english("site.dev.source_of", "http://board.com/") in seen["result"]
+
+def test_the_developer_tools_can_be_dragged_taller(client):
+    seen = open_page(client, "/blue/1/", setup=DEV + """
+      browser.element('site-frame').parentNode.getBoundingClientRect =
+        () => ({left: 60, top: 100, right: 1440, bottom: 900, width: 1380, height: 800});
+    """, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      browser.element('site-dev-grip').dispatchEvent({type: 'mousedown', preventDefault() {}});
+      dispatchEvent({type: 'mousemove', clientY: 500});
+      dispatchEvent({type: 'mouseup'});
+      dispatchEvent({type: 'mousemove', clientY: 300});
+      return [browser.element('site-dev').style.height, browser.element('site-frame').style.bottom];
+    """)
+
+    assert seen["result"] == ["400px", "400px"]
