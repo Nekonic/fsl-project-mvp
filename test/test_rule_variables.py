@@ -9,13 +9,13 @@ PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"FSL p
 def fired_with_a_ported_rule(stack_is_up, baseline_rules):
     from conftest import score_when_ready
 
-    requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": baseline_rules + PORTED_RULE}, timeout=180,
-    ).raise_for_status()
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
+    requests.post(
+        f"{PLATFORM_URL}/api/rules/apply/",
+        json={"content": baseline_rules + PORTED_RULE, "session": session_id}, timeout=180,
+    ).raise_for_status()
     try:
         for name in ("board-sqli-search", "board-sqli-union-search"):
             sent = requests.post(
@@ -31,7 +31,7 @@ def fired_with_a_ported_rule(stack_is_up, baseline_rules):
     finally:
         requests.post(
             f"{PLATFORM_URL}/api/rules/apply/",
-            json={"content": baseline_rules}, timeout=180,
+            json={"content": baseline_rules, "session": session_id}, timeout=180,
         )
 
 def test_a_rule_written_against_http_ports_actually_fires(fired_with_a_ported_rule):

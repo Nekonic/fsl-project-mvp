@@ -3,18 +3,18 @@ import json
 import requests
 
 from conftest import PLATFORM_URL, score_when_ready
-from range import SCORER, run
+from range import BOARD, run
 
 EXFIL_CASE = "board-sqli-search"
 
 
-def _auth_users_over_estate():
-    body = run(SCORER, [
-        "python3", "-c",
+def _auth_users_of(session_id):
+    body = run(BOARD, [
+        "python", "-c",
         "import urllib.request,sys; "
         "sys.stdout.write(urllib.request.urlopen("
-        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
-    ]).stdout
+        "'http://127.0.0.1:8000/internal/auth-users', timeout=20).read().decode())",
+    ], session=session_id).stdout
     return json.loads(body)
 
 
@@ -30,7 +30,7 @@ def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(stack_is_u
     assert fired.status_code == 201, fired.text
     case_id = fired.json()["case_id"]
 
-    truth = _auth_users_over_estate()
+    truth = _auth_users_of(session_id)
     rows = [{"username": name, "hash": digest} for name, digest in truth.items()]
     submitted = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/loot/",

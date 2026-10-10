@@ -7,10 +7,11 @@ SID = 9000004
 SILENCED_CASE = "board-path-traversal-static"
 CONTROL_CASE = "board-sqli-search"
 
-def _run(cases):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
-    ).json()["id"]
+def _open():
+    return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+
+def _run(cases, session_id=None):
+    session_id = session_id or _open()
     for case in cases:
         fired = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
@@ -29,13 +30,14 @@ def _verdict(score, name):
 
 @pytest.fixture
 def silenced(stack_is_up):
+    session_id = _open()
     created = requests.post(
         f"{PLATFORM_URL}/api/rules/suppressions/",
-        json={"sid": SID, "minutes": 10, "reason": "acceptance test"},
+        json={"sid": SID, "minutes": 10, "reason": "acceptance test", "session": session_id},
         timeout=300,
     )
     assert created.status_code == 201, created.text
-    record = created.json()
+    record = dict(created.json(), session=session_id)
     try:
         yield record
     finally:
@@ -52,7 +54,7 @@ def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
     )
 
 def test_silencing_the_rule_turns_the_attack_into_a_miss(silenced):
-    session_id, after = _run([SILENCED_CASE, CONTROL_CASE])
+    session_id, after = _run([SILENCED_CASE, CONTROL_CASE], silenced["session"])
 
     assert seen_by_both_engines(session_id, after, name=CONTROL_CASE), (
         f"{CONTROL_CASE} was fired after {SILENCED_CASE} and never reached the "

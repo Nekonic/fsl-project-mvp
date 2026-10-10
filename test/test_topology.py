@@ -135,7 +135,7 @@ def test_every_top_table_is_ordered_by_count(top):
         counts = [row["alerts"] for row in top[name]]
         assert counts == sorted(counts, reverse=True), name
 
-def test_the_running_range_matches_what_was_declared(session_id):
+def test_the_running_range_matches_what_was_declared(stack_is_up):
     import pathlib
 
     import yaml
@@ -147,8 +147,9 @@ def test_the_running_range_matches_what_was_declared(session_id):
     fixed = {s["id"] for s in declared["segments"] if not s.get("origins")}
     origins = {o["id"] for s in declared["segments"] for o in s.get("origins") or []}
 
+    running = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=60).json()[0]["id"]
     shape = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
+        f"{PLATFORM_URL}/api/sessions/{running}/topology/", timeout=60
     ).json()
     standing = {s["id"] for s in shape["segments"]}
 

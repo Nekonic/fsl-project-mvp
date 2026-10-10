@@ -1,7 +1,8 @@
 # Composable, session-isolated learning MVP: design
 
-Status: approved to build (2026-10-08). MVP item 2 (scenario discovery from
-`wargames/<id>/scenario.yaml`) landed in 81fb283; the other items are not built.
+Status: approved to build (2026-10-08); built on docker and live-verified
+2026-10-10 (`docs/state/now.md`, `docs/DECISIONS.md`). Still open:
+`board-easy`/`board-hard` and everything on substrate openstack.
 The user-facing version is the Korean living doc (Claude Docs artifact
 37HeLkkLEFQgVWbwLuXH7S); this file is the canonical English spec. Four
 interview rounds and three research workflows produced it; the rationale for
@@ -121,8 +122,8 @@ fsl/board:mvp); scenarios reference it with `image:`, never a per-session
 `build:`. The descriptor `wargames/<id>/scenario.yaml` (discovered per
 directory, validated like objectives and cases) composes an image reference,
 cases and objectives. The `image` field is declared but nothing reads it yet. A
-`defense` field (CRS tuning config, Suricata ruleset, WAF vhost) is planned and
-not built; it is added once the lesson step gives it a consumer. Prove the
+`defense` field (CRS tuning and Suricata rule file) and a `lesson` field were
+built with the lesson step (2026-10-10). Prove the
 design with `board-easy`/`board-hard` on the one board image, differing only in
 objectives and ruleset.
 

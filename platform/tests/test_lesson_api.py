@@ -8,6 +8,7 @@ import pytest
 import lesson
 from api.models import Case, Objective, Session
 from range.ports import Ran
+from rules import crs
 
 pytestmark = pytest.mark.django_db
 
@@ -33,6 +34,8 @@ class Stand:
         def runner(adapter, role, segment_id=""):
             def run(argv, stdin=None, timeout=60.0):
                 calls.append((adapter.session, role, " ".join(argv), stdin))
+                if " ".join(argv).endswith(crs.WORKERS):
+                    return Ran(0, str(len(calls)))
                 if "reload-rules" in argv:
                     return Ran(0, '{"message":"done","return":"OK"}')
                 return Ran(0, "")

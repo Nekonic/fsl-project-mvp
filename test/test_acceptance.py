@@ -70,19 +70,21 @@ def test_detections_are_spread_across_cases(session_id, score):
     )
 
 def test_criterion_4_adding_a_rule_moves_the_score():
-    original = requests.get(f"{PLATFORM_URL}/api/rules/").json()["content"]
+    session_id = requests.post(
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+    ).json()["id"]
+    original = requests.get(
+        f"{PLATFORM_URL}/api/rules/", params={"session": session_id}
+    ).json()["content"]
 
     try:
         applied = requests.post(
             f"{PLATFORM_URL}/api/rules/apply/",
-            json={"content": original + NOISY_RULE},
+            json={"content": original + NOISY_RULE, "session": session_id},
             timeout=120,
         )
         assert applied.ok, applied.text
 
-        session_id = requests.post(
-            f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
-        ).json()["id"]
         fired = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
             json={"case": "board-normal-search"}, timeout=300,
@@ -97,7 +99,8 @@ def test_criterion_4_adding_a_rule_moves_the_score():
         )
     finally:
         requests.post(
-            f"{PLATFORM_URL}/api/rules/apply/", json={"content": original}, timeout=120
+            f"{PLATFORM_URL}/api/rules/apply/",
+            json={"content": original, "session": session_id}, timeout=120,
         )
 
 def test_invalid_rule_is_rejected_and_not_applied():

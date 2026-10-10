@@ -7,12 +7,21 @@ from conftest import (
 
 CASE = "board-sqli-search"
 EDGE_COUNTRY = "Russia"
+DETECT_WITHOUT_BLOCKING_SEARCH = {
+    "paranoia": 1,
+    "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
+}
 
 @pytest.fixture(scope="module")
 def drawn(stack_is_up):
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
+    tuned = requests.put(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/waf/",
+        json=DETECT_WITHOUT_BLOCKING_SEARCH, timeout=120,
+    )
+    assert tuned.ok, tuned.text
     sent = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
         json={"case": CASE}, timeout=300,

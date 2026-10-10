@@ -670,26 +670,26 @@ Build order, compose first and OpenStack later: (1) split compose into a shared
 control plane and a per-session data plane (`docker compose -p fsl-<session>`);
 (2) build each target image once, tagged, referenced by `image:`; (3) discover
 scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
-(`board-easy`/`board-hard` and the defence fields wait for steps 1 and 7);
+(`board-easy`/`board-hard` still open; the `defense` and `lesson` fields
+exist in `wargames/board/scenario.yaml` since step 7);
 (4) declaration roles name compose services, resolved per project; (5)
 `loot`/`effect` read the session's own target address; (6) a per-session index
 `fsl-logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
-only its own target and alerts. Status 2026-10-10: steps 1-3 done; 4, 5 and 6
-built (live acceptance pending); 7 next; 8's test written
-(`test/test_concurrent_sessions.py`, live run pending).
+only its own target and alerts. Status 2026-10-10: steps 1-8 built and
+live-verified (`bin/verify` all green on the acceptance VM 192.168.0.220,
+`docs/DECISIONS.md` 2026-10-10); `board-easy`/`board-hard` still open.
 
 To do, found by the 2026-10-08 doc review (open until checked off):
 
-- [ ] Build steps 1, 2, 4-8 on the platform VM; run the live acceptance
-      there before the push (agreed 2026-10-08). Steps 1 and 2 done
-      2026-10-09 (acceptance on substrate docker passed). Steps 4, 5, 6 built
-      2026-10-10 (roles resolve per compose project, session-owned `estate`,
-      per-session index); step 8's test written; their live acceptance is
-      pending. Step 7 (the lesson) is next.
-- [ ] Per-session Suricata ruleset: `deploy/suricata/rules` is one bind mount
-      shared by every session's sensor, so applying a rule in one session
-      writes the shared file and reloads only that session's sensor (step 7).
+- [x] Build steps 1, 2, 4-8 and run the live acceptance before the push
+      (agreed 2026-10-08). Steps 1 and 2 done 2026-10-09; steps 4-8 built
+      2026-10-10 and the full `bin/verify` passed on the dedicated acceptance
+      VM 192.168.0.220 (substrate docker, 145 acceptance tests, 0 failed;
+      `docs/DECISIONS.md` 2026-10-10). Done 2026-10-10.
+- [x] Per-session Suricata ruleset: nothing mounts `deploy/suricata/rules`
+      any more; each session's sensor is seeded at open with its own rule
+      file (step 7). Done 2026-10-10.
 - [ ] The reachability middleware covers only the newest session's `estate`.
 - [ ] Two `POST /api/sessions/` within milliseconds can race (pre-existing).
 - [x] On substrate openstack the board's ground truth was read from
@@ -803,6 +803,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `/terminal/<session id>/`, proxied to that session's Kali ttyd
       (2026-10-10).
 - [ ] Spike: Kibana highlight on stable `data-test-subj` selectors.
+- [ ] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
+      rule by commenting it out. In Suricata, a suppression keeps the rule
+      running and hides only its alerts ("Suppressions can be used to
+      suppress alerts for a rule or a host/network.",
+      https://docs.suricata.io/en/latest/configuration/global-thresholds.html),
+      while taking a rule out is disabling ("to disable rules use",
+      https://docs.suricata.io/en/latest/rule-management/suricata-update.html).
+      Rename candidate; awaits the user.
 - [x] Spike: the CRS starting configuration. PL1 already blocks the board
       SQLi and passes O'Brien; PL4 blocks O'Brien (920273, 949110). The lesson
       starts at PL4 and the learner tunes; done 2026-10-10 (`docs/DECISIONS.md`).

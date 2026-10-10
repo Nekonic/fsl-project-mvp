@@ -15,9 +15,10 @@ CASES = [
 def rules():
     return requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
 
-def apply_rules(content):
+def apply_rules(content, session_id):
     applied = requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/", json={"content": content}, timeout=180
+        f"{PLATFORM_URL}/api/rules/apply/",
+        json={"content": content, "session": session_id}, timeout=180,
     )
     assert applied.ok, applied.text
 
@@ -51,15 +52,15 @@ def indiscriminate(totals, sigs):
 
 @pytest.fixture(scope="module")
 def block_everything(stack_is_up, baseline_rules):
-    apply_rules(CATCH_ALL)
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
     ).json()["id"]
+    apply_rules(CATCH_ALL, session_id)
     try:
         totals = fire_and_score(session_id)
         yield totals, signatures(session_id)
     finally:
-        apply_rules(baseline_rules)
+        apply_rules(baseline_rules, session_id)
 
 def test_the_experiment_is_valid_at_all(block_everything):
     totals, sigs = block_everything

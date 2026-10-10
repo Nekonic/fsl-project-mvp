@@ -601,8 +601,9 @@ compose project `fsl-<id>` and sessions run side by side.
   Elasticsearch, and a per-session `mgmt` would give the adapter two `mgmt`
   segments to choose between. Only `estate` floats.
 - Concurrency: opening a session tears down only the stacks of ended sessions.
-  The 409 single-open-session check stays, on OpenStack only. Close still does
-  not tear down.
+  Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2) and answers
+  409 past that; OpenStack keeps one (see the session cap entry below). Close
+  still does not tear down.
 - Shared edges mean `board.com`/proxy would resolve to every session. At open
   the session's proxy is aimed at its own WAF through `/label/origin`; Kali
   uses `http://fsl-<id>-proxy-1:8081`; launched tools get `--add-host
@@ -618,7 +619,7 @@ compose project `fsl-<id>` and sessions run side by side.
   192.168/16, because a floating `estate` is drawn from Docker's private pools.
 - Rules, validate, suppressions (stored with their session, migration 0014)
   and the attacker box, origin and label endpoints take `session` from the
-  query or body and fall back to the newest open session. The red console
+  query or body and fall back to the newest session, open or not. The red console
   sends its session id. On docker the red terminal is `/terminal/<id>/`,
   proxied to `fsl-<id>-kali-1:7681`; OpenStack keeps `/vm-terminal/fsl-kali/`.
 - `bin/verify` waits for the platform on `/api/sessions/`; `/api/rules/` needs
@@ -626,7 +627,8 @@ compose project `fsl-<id>` and sessions run side by side.
 
 Known open: `deploy/suricata/rules` is one bind mount shared by every session's
 sensor, so applying a rule writes the shared file and reloads only that
-session's sensor (a per-session ruleset mount is step 7). `/vm-terminal/` is
+session's sensor (superseded by the step 7 entry the same day: the mount is
+gone and each sensor is seeded at open). `/vm-terminal/` is
 still broken on compose (pre-existing). The reachability middleware covers
 only the newest session's `estate`. Two POSTs within milliseconds can race
 (pre-existing).
@@ -637,8 +639,9 @@ there; they pass locally.
 
 Metrics: `metrics.json`, `bin/measure`.
 
-Live acceptance (`bin/verify` on 192.168.0.210, substrate docker, including
-`test/test_concurrent_sessions.py`): LIVE-RESULT-PENDING
+Live acceptance (`bin/verify`, substrate docker, including
+`test/test_concurrent_sessions.py`): passed, on the acceptance VM
+192.168.0.220 rather than 192.168.0.210; see the live acceptance entry below.
 
 ## 2026-10-10 — CRS starting configuration (spike closed)
 
@@ -666,7 +669,7 @@ SQLi variant stays blocked. The Kibana highlight spike stays open.
 ## 2026-10-10 — The WAF lesson (build step 7)
 
 Built on docker; OpenStack is untouched. Live acceptance (`test/test_lesson.py`)
-is pending.
+passed (4 passed; see the seeded-logs item and the live acceptance entry below).
 
 - Two settings on `Session`, chosen at open: `guidance` (bool, default off)
   and `defense` (a name, default `full`), plus `Session.waf` holding the
@@ -695,9 +698,18 @@ is pending.
   open question 2). An sqlmap variant leaked when the rows it dumped match a
   `(username, hash)` of the session snapshot, read through `loot.matched`, not
   a new reader. It is held only on positive evidence: no match, exit 0, the
-  `[*] ending` line, no connection/abort error, and either sqlmap's "all
-  tested parameters do not appear to be injectable" or a dump that matches
-  nothing. Otherwise it is inconclusive (`lesson.diag.inconclusive`) and
+  `[*] ending` line, no crash (traceback, user abort, missing host), and
+  either sqlmap's "all tested parameters do not appear to be injectable" or a
+  dump that matches nothing. Live (2026-10-10, acceptance VM, session 79,
+  captures in `platform/tests/fixtures/sqlmap-waf-*.out`): at PL4 with and
+  without the 920273 exclusion, the stock variant drew 2065 403s and the
+  tamper variant 2563 and concluded not injectable in 13-18 s; the tamper run
+  also printed "heuristics detected that the target is protected by some kind
+  of WAF/IPS" and three "unable to connect" lines. The WAF log shows those
+  were the board's 500 answers to `?sort=7306`-style probes cut by
+  ModSecurity after the headers were sent ("header already sent"), so a
+  connection error sqlmap recovered from no longer voids its conclusion; one
+  that stops it before concluding still leaves it inconclusive. Otherwise it is inconclusive (`lesson.diag.inconclusive`) and
   VERIFY does not pass; "no dump" alone is not a block (review finding). The
   403 count is recorded and not judged. A benign case is
   served on a 2xx `http_code`. A leak found by VERIFY also credits the
@@ -705,7 +717,9 @@ is pending.
   cases only, so the wargame's `_game` is unchanged outside the lesson.
 - Seeded logs by replay at open (question 3): a guided session replays the
   lesson's cases once after the posture is applied, marked `meta.seed`; VERIFY
-  judges only its own run. The open-time cost is to be measured live. If a
+  judges only its own run. Measured live 2026-10-10: a guided open took 82 s
+  and one VERIFY about 33 s (`test/test_lesson.py`, 4 passed on the
+  acceptance VM). If a
   replay at open cannot run, the open answers 503 and the session is closed;
   its stack stays until the next open takes closed stacks down.
 - Seed and VERIFY replays are left out of `/score/` TP/FP/FN/TN, the alerts
@@ -731,3 +745,56 @@ is pending.
   `suricata.seed` and the `mkdir -p` on write +7, `harness.fire` returning
   what the attacker box printed +1. The plan estimated +40; validation and
   rollback took the rest. Recorded with `bin/measure --save` (question 5).
+- `crs.apply` waits for the reload to take effect (live finding: `nginx -s
+  reload` returns while the old workers still serve, and a request in the same
+  second met the old tuning). It reads the master's worker PIDs from `/proc`
+  before the reload and polls until none is left, refusing after 5 s;
+  measured on the pinned image, the worker set changed within about 0.3 s.
+  `core_loc` 526 -> 538 (+12).
+
+## 2026-10-10 — Concurrent sessions capped on docker
+
+The first live acceptance on the 8 GB VM ran out of memory: 7-8 session stacks
+had piled up (72 `fsl-<id>` containers), because one host allowed any number
+of open sessions and the suite opened sessions faster than it closed them. One
+session stack takes roughly 1.5 GB; on the 4 GB platform VM, Elasticsearch was
+OOM-killed.
+
+- Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2,
+  `platform/fsl/settings.py`) and answers 409 past that
+  (`platform/api/views.py`, 9c93a87). A substrate that declares no cap,
+  OpenStack, stays at one.
+- The acceptance suite closes every session it opens at the end of each test,
+  module and run.
+
+## 2026-10-10 — Live acceptance of the MVP build (push gate)
+
+Where: a dedicated OpenStack VM `fsl-acceptance` (192.168.0.220, flavor
+`m1.platform8`, 8 GB / 2 vCPU), created 2026-10-10 because the 4 GB platform
+VM 192.168.0.210 cannot hold two session stacks plus Elasticsearch. Substrate
+docker, HEAD 69db444.
+
+Result: `bin/verify` all green. Unit 1351 passed; acceptance 145 passed, 0
+failed, in 42 min 31 s; ratchet no regression (`core_loc` 538, `tests` floor
+1326 on this date; `metrics.json` holds the record). Lowest available memory
+during the run was 2.5 GB, with 23 containers.
+
+Runs on the way:
+
+- Run 3 (before step 7): 111 passed, 12 failed, 18 errors. sqlmap spent 50+
+  minutes cracking the dumped pbkdf2 hashes under `--batch` (fixed with
+  `--disable-hashing`); the API and the adapter disagreed on which session a
+  session-less call meant (fixed); tests read the API or applied rules before
+  opening their own session (fixed); `FSL_PUBLISH=0.0.0.0` on the VM
+  (environment).
+- Run 4 (with step 7): 140 passed, 5 failed. The tamper variant was judged
+  inconclusive behind the WAF (judgement fixed with live captures); tests
+  whose attack the now-blocking WAF stopped before reaching the estate (each
+  test now tunes its own session's WAF through `PUT /waf/`); a suppression
+  silenced the previous session's sensor (fixed by opening first); a
+  suppression on a torn-down session could never be restored (product fix
+  76ec988); `PUT /waf/` returned before the nginx reload took effect (product
+  fix 1f53fb3).
+
+After the OOM, the platform VM 192.168.0.210 was restored to origin/dev
+(870b15f) with substrate openstack.

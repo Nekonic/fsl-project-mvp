@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 
 from redteam import harness, tools
@@ -86,3 +87,25 @@ def test_sqlmap_concluding_not_injectable_is_a_conclusion_and_a_missing_host_is_
     assert tools.dumped(held) == [] and tools.concluded(0, held)
     assert not tools.concluded(0, lost)
     assert not tools.concluded(1, held), "a non-zero exit proves nothing"
+
+@pytest.mark.parametrize("capture", [
+    "sqlmap-waf-stock-pl4.out", "sqlmap-waf-tamper-pl4.out",
+    "sqlmap-waf-stock-pl4-excl.out", "sqlmap-waf-tamper-pl4-excl.out",
+])
+def test_sqlmap_turned_away_by_the_waf_is_a_conclusion_not_a_tool_failure(capture):
+    output = (FIXTURES / capture).read_text()
+
+    assert tools.dumped(output) == []
+    assert tools.concluded(0, output), (
+        "behind the WAF sqlmap reports the WAF, a run of 403s and, with a random "
+        "User-Agent, a few dropped connections where ModSecurity cut the board's "
+        "500 responses; it still tested everything and concluded not injectable"
+    )
+    assert tools.forbidden(output) > 2000
+
+def test_a_connection_failure_that_stops_sqlmap_before_its_conclusion_proves_nothing():
+    output = (FIXTURES / "sqlmap-waf-tamper-pl4.out").read_text()
+    cut = output[:output.index("[INFO] testing for SQL injection")] + "[*] ending @ 06:38:44 /2026-10-10/\n"
+
+    assert "unable to connect" in cut
+    assert not tools.concluded(0, cut)
