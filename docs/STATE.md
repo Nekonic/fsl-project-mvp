@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-08
+Updated: 2026-10-10
 
 ## Where things stand
 
@@ -675,14 +675,23 @@ scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
 `loot`/`effect` read the session's own target address; (6) a per-session index
 `fsl-logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
-only its own target and alerts (live gate, not yet run).
+only its own target and alerts. Status 2026-10-10: steps 1-3 done; 4, 5 and 6
+built (live acceptance pending); 7 next; 8's test written
+(`test/test_concurrent_sessions.py`, live run pending).
 
 To do, found by the 2026-10-08 doc review (open until checked off):
 
-- [ ] Build steps 1, 2, 4-8 on the OpenStack deployment; run the live
-      acceptance there before the push (agreed 2026-10-08). Step 1 (control
-      plane `compose.yaml`, per-session `session.yaml` as `fsl-<id>`) built
-      2026-10-09; acceptance on substrate docker 138 passed, 0 failed.
+- [ ] Build steps 1, 2, 4-8 on the platform VM; run the live acceptance
+      there before the push (agreed 2026-10-08). Steps 1 and 2 done
+      2026-10-09 (acceptance on substrate docker passed). Steps 4, 5, 6 built
+      2026-10-10 (roles resolve per compose project, session-owned `estate`,
+      per-session index); step 8's test written; their live acceptance is
+      pending. Step 7 (the lesson) is next.
+- [ ] Per-session Suricata ruleset: `deploy/suricata/rules` is one bind mount
+      shared by every session's sensor, so applying a rule in one session
+      writes the shared file and reloads only that session's sensor (step 7).
+- [ ] The reachability middleware covers only the newest session's `estate`.
+- [ ] Two `POST /api/sessions/` within milliseconds can race (pre-existing).
 - [x] On substrate openstack the board's ground truth was read from
       `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
       not the OpenStack board VM. Readiness and the session baseline now read
@@ -728,13 +737,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (ru, br, hk, us) or times out (tw). It now ssh's over mgmt; sqlmap from
       ru and tw scored TP, alerts carry 5.188.10.10 and 120.96.0.10 (done
       2026-10-08).
-- [x] `POST /attacks/` wears the origin before firing: `fire_attack` applies
+- [x] `POST /attacks/` SNATs to the origin before firing: `fire_attack` applies
       the SNAT (`attacker.wear_origin`) for the requested origin, so an API
       caller's recorded origin matches the traffic; front-door attacks (no
       origin) wear nothing. One proxy round trip, the same call the red console
       makes on pick. Done 2026-10-09 (`platform/api/views.py`,
       `platform/tests/test_origins.py`).
-- [ ] Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
+- [ ] Deferred (OpenStack is out of the MVP per the 2026-10-08 spec).
+      Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
       bin/verify`, 2026-10-09: 23 passed, 78 skipped, 17 failed, 21 errors):
       session fixtures hold a session open while others POST a new one, and
       the single-slot range answers 409; `/api/rules/apply/` runs the compose
@@ -788,11 +798,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
       wiring for the attacker box).
-- [ ] The red terminal and the blue WAF terminal (`/vm-terminal/`) do not
-      connect on compose: Kali and the WAF have no `mgmt` address there.
-- [ ] Spikes: Kibana highlight on stable `data-test-subj` selectors, and the
-      CRS starting configuration (does default-PL CRS block the SQLi, does it
-      false-positive on O'Brien).
+- [ ] The blue WAF terminal (`/vm-terminal/`) does not connect on compose:
+      the WAF has no `mgmt` address there. The red terminal on compose is
+      `/terminal/<session id>/`, proxied to that session's Kali ttyd
+      (2026-10-10).
+- [ ] Spike: Kibana highlight on stable `data-test-subj` selectors.
+- [x] Spike: the CRS starting configuration. PL1 already blocks the board
+      SQLi and passes O'Brien; PL4 blocks O'Brien (920273, 949110). The lesson
+      starts at PL4 and the learner tunes; done 2026-10-10 (`docs/DECISIONS.md`).
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
@@ -1137,12 +1150,15 @@ binary log via a substrate runner, proven end to end against the live stack.
   was not found; the output was truncated. It recurred on 2026-10-01 as two
   acceptance failures (one case of ten detected) that passed when rerun.
 - `test_declaration.py` compares two files, never the running range.
+- The platform VM (192.168.0.210) has no node, so the 12 console-behaviour
+  tests and `test_the_report_survives_a_real_interpreter` fail there; they
+  pass locally (2026-10-10).
 - A slot host booted again on its own (its server deleted, then POST)
   takes a new `estate` address the others' `/etc/hosts` does not have; take
   the whole slot down and up instead.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
-- The Kali terminal at `/terminal/`, and the ttyd terminals at
+- The Kali terminal at `/terminal/` (`/terminal/<session id>/` per session), and the ttyd terminals at
   `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`, are unauthenticated
   shells for whoever reaches the platform's port: loopback on compose, the VM's
   address (`FSL_PUBLISH`) on the platform VM.

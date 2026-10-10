@@ -64,10 +64,11 @@ the OpenStack range. `session.yaml` is one session's data plane: the WAF,
 Suricata, Filebeat, Kali, the proxy, and one folder per wargame under
 `wargames/` that it includes. Opening a session (`POST /api/sessions/`) starts
 `session.yaml` as its own compose project, `fsl-<session id>`, and waits until
-every service is healthy; the platform then reads the target's baseline. One
-stack runs at a time: opening a session takes down the previous session's
-stack, and closing a session leaves its stack standing until the next one
-opens. A new wargame needs its folder with its `compose.yaml`,
+every service is healthy; the platform then reads the target's baseline from
+that session's own target. Sessions run side by side: each stack has its own
+`estate` network and its own Elasticsearch index (`fsl-logs-<session id>-*`),
+and opening a session takes down only the stacks of sessions already closed.
+Closing a session leaves its stack standing until the next open. A new wargame needs its folder with its `compose.yaml`,
 `scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
 one more `include:` line in `session.yaml`; `platform/wargames.py` discovers it
 from `scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
@@ -100,7 +101,7 @@ flowchart LR
   end
 
   person -->|":8000"| console
-  console -->|"/vm-terminal/fsl-kali/, ssh on mgmt"| kali
+  console -->|"/terminal/<session id>/"| kali
   kali --> proxy
   proxy --> waf
   waf --> board
@@ -119,10 +120,11 @@ platform fires scripted cases at the WAF itself. Through the substrate runner
 rules and the proxy's case label, reads the attacker's command log, and reads
 corp-db's MySQL binary log (`mysqlbinlog`); corp is scored by observed effect,
 not by submitted data. The board's ground truth (its `auth_user` table) is read
-over HTTP from the board itself (`BOARD_API_URL`), bypassing the WAF. The red
-terminal is a ttyd inside the platform that ssh's to Kali's `mgmt` address; on
-compose Kali has no `mgmt` address, so the pane does not connect there. The
-networks are in `docs/ARCHITECTURE.md`.
+over HTTP from the board itself (`BOARD_API_URL`), bypassing the WAF. On
+compose the red terminal is Kali's own ttyd, which the platform's nginx serves
+at `/terminal/<session id>/` from that session's `fsl-<id>-kali-1`; on OpenStack
+it is a ttyd inside the platform that ssh's to Kali's `mgmt` address
+(`/vm-terminal/fsl-kali/`). The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -155,13 +157,15 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, `/api/`, Kali's own ttyd at `/terminal/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 5140/udp | `collector`, Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
-nginx inside the platform image serves 8000. It passes `/terminal/` to the ttyd
-on the Kali container (compose) and `/vm-terminal/` to ttyd processes inside the
-platform, which ssh to the host's `mgmt` address.
+nginx inside the platform image serves 8000. It passes `/terminal/<session id>/`
+to the ttyd on that session's Kali container, `fsl-<id>-kali-1` (compose), and
+`/vm-terminal/` to ttyd processes inside the platform, which ssh to the host's
+`mgmt` address (OpenStack; on compose Kali and the WAF have no `mgmt` address,
+so these do not connect).
 By default every port is published on `127.0.0.1`.
 On the platform VM, 8000 is published on the VM's own address
 (`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The target is
@@ -169,6 +173,9 @@ not published: the command-line cases and the acceptance tests reach it from
 inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the
 `edge` network) and `http://corp.com` (a vhost reached by the `Host` header).
+The edge networks are shared by every session, so the name would resolve to
+every session's WAF; the platform aims each session's proxy at its own WAF and
+gives launched tools `--add-host` entries for that WAF.
 
 ### On OpenStack
 
@@ -353,8 +360,9 @@ suppressions) is one SQLite file, `/data/db.sqlite3` on the `fsl_platformdata`
 volume. Nothing else is backed up: not Elasticsearch's `fsl_esdata` volume,
 not the collector's registry in `fsl_collectordata`, and not a session's
 volumes (`fsl-<id>_filebeatdata`, `fsl-<id>_waflogs` with ModSecurity's audit
-log, `fsl-<id>_suricatalogs` with Suricata's `eve.json`), which are deleted
-when the next session takes the stack down. `docker compose down -v` deletes
+log, `fsl-<id>_suricatalogs` with Suricata's `eve.json`, `fsl-<id>_label`
+with the proxy's case label), which are deleted when a later session opens
+after this one closed. `docker compose down -v` deletes
 the control plane's three volumes.
 
 ```bash
@@ -389,7 +397,7 @@ Elasticsearch runs without security and Django with `DEBUG=1`. Django answers
 only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
 names more; the platform VM adds its floating IP. The Docker socket is
 mounted into the platform, a container escape path. `/terminal/` is an
-unauthenticated root shell on Kali, and the terminals under `/vm-terminal/` need
+unauthenticated root shell on Kali (`/terminal/<session id>/` on compose), and the terminals under `/vm-terminal/` need
 no login of their own and give a shell on Kali and the WAF.
 
 The same holds on the platform VM. There the project's password is also plain

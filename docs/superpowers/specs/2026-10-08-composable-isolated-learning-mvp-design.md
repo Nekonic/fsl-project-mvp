@@ -192,7 +192,9 @@ knowledge:
 - CRS starting configuration: check whether CRS at the default paranoia level
   already blocks this SQLi and whether it raises a false positive on the benign
   O'Brien search. The answer sets the lesson's starting state (tune down an
-  over-blocking CRS, or tune up a permissive one).
+  over-blocking CRS, or tune up a permissive one). Answered 2026-10-10
+  (`docs/DECISIONS.md`): PL1-3 block it and pass O'Brien; PL4 blocks O'Brien
+  (920273), so the lesson starts at PL4 and the learner tunes down.
 
 ## Deferred (OpenStack work, not MVP)
 
