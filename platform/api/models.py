@@ -101,6 +101,10 @@ class RuleSet(models.Model):
 
 class Suppression(models.Model):
 
+    session = models.ForeignKey(
+        Session, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="suppressions",
+    )
     sid = models.IntegerField()
     original = models.TextField()
     reason = models.CharField(max_length=256, blank=True, default="")

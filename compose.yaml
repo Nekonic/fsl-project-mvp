@@ -37,14 +37,6 @@ networks:
       config:
         - subnet: 73.0.0.0/24
 
-  estate:
-    labels:
-      fsl.segment.id: "estate"
-      fsl.segment: "Application estate"
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
-
   mgmt:
     labels:
       fsl.segment.id: "mgmt"
@@ -121,7 +113,7 @@ services:
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
-    networks: [edge, edge-br, edge-hk, edge-us, estate, mgmt]
+    networks: [edge, edge-br, edge-hk, edge-us, mgmt]
     ports:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
     environment:

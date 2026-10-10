@@ -38,6 +38,7 @@ class Declaration:
     segments: tuple[Segment, ...] = ()
     origins: tuple[Origin, ...] = ()
     roles: dict[str, str] = field(default_factory=dict)
+    compose: dict[str, str] = field(default_factory=dict)
     watches: dict[str, str] = field(default_factory=dict)
     hosts: dict[str, Host] = field(default_factory=dict)
     default_origin: str = ""
@@ -57,6 +58,12 @@ class Declaration:
                     f"{sensing!r} is declared to watch {sensed!r} and nothing "
                     f"fills {', '.join(sorted(missing))}"
                 )
+        unfilled = sorted(set(self.compose) - set(self.roles))
+        if unfilled:
+            raise ValueError(
+                f"compose services are mapped to {', '.join(unfilled)}, which "
+                f"no role names"
+            )
         roleless = sorted(set(self.hosts) - set(self.roles.values()))
         if roleless:
             raise ValueError(
@@ -167,6 +174,7 @@ def read(path: Path = DECLARATION, flavor: str = "") -> Declaration:
         ),
         origins=tuple(origin for entry in entries for origin in origins[entry["id"]]),
         roles=dict(document.get("roles") or {}),
+        compose=dict(document.get("compose") or {}),
         watches=dict(document.get("watches") or {}),
         hosts=_hosts(document.get("hosts")),
         default_origin=document.get("default_origin") or "",

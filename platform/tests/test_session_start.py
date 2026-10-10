@@ -29,17 +29,48 @@ def test_starting_on_the_compose_range_ignores_the_slot(client):
     assert first.status_code == 201
     assert not ready.called, "compose has no slot to check"
 
-def test_starting_refuses_a_second_open_session_on_compose(client):
-    first = client.post_json("/api/sessions/", {})
-    second = client.post_json("/api/sessions/", {})
+class Shared:
+    def runner(self, role):
+        return lambda *a, **k: None
+
+def test_starting_refuses_a_second_open_session_on_a_shared_range(client):
+    with patch("api.views.substrate", lambda: Shared()):
+        first = client.post_json("/api/sessions/", {})
+        second = client.post_json("/api/sessions/", {})
 
     assert first.status_code == 201
     assert second.status_code == 409, (
-        "a second session on compose takes down the open one's stack with -v "
-        "and scores it against a target that is gone"
+        "a range with one target for every session would score the second "
+        "session against the first one's traffic"
     )
     assert "already open" in second.json()["detail"]
     assert Session.objects.filter(ended_at=None).count() == 1
+
+def test_the_openstack_slot_still_refuses_a_second_open_session(client):
+    with patch("api.views.substrate", lambda: Cloud()), patch(
+        "api.views._range_ready", return_value=_verdict(True)
+    ), patch("api.views.loot.ground_truth", return_value={}):
+        first = client.post_json("/api/sessions/", {})
+        second = client.post_json("/api/sessions/", {})
+
+    assert (first.status_code, second.status_code) == (201, 409)
+
+def test_docker_opens_a_second_session_beside_the_open_one(client):
+    opened = []
+
+    def open_session(self, session_id, live=()):
+        opened.append((session_id, list(live)))
+
+    with patch("range.docker.Docker.open_session", open_session):
+        first = client.post_json("/api/sessions/", {})
+        second = client.post_json("/api/sessions/", {})
+
+    assert (first.status_code, second.status_code) == (201, 201), second.content
+    assert Session.objects.filter(ended_at=None).count() == 2
+    assert opened == [
+        (first.json()["id"], []),
+        (second.json()["id"], [first.json()["id"]]),
+    ], "the stack of the session still open was not kept"
 
 def test_starting_a_session_takes_a_ready_slot(client):
     with patch("api.views.substrate", lambda: Cloud()), patch(

@@ -109,9 +109,10 @@ def drift(compose, declaration):
 
     services = compose.get("services") or {}
     roles = declaration.get("roles") or {}
+    mapped = declaration.get("compose") or {}
     for sensing, sensed in sorted((declaration.get("watches") or {}).items()):
-        name = (roles.get(sensing) or "").removeprefix("fsl-")
-        watched = (roles.get(sensed) or "").removeprefix("fsl-")
+        name = mapped.get(sensing) or (roles.get(sensing) or "").removeprefix("fsl-")
+        watched = mapped.get(sensed) or (roles.get(sensed) or "").removeprefix("fsl-")
         if name not in services or watched not in services:
             continue
         mode = (services.get(name) or {}).get("network_mode") or ""
@@ -124,7 +125,13 @@ def drift(compose, declaration):
 
     defined = containers(compose)
     for role, host in sorted((declaration.get("roles") or {}).items()):
-        if host not in defined:
+        if role in mapped:
+            if mapped[role] not in services:
+                complaints.append(
+                    f"the role {role!r} is declared to be filled by the compose "
+                    f"service {mapped[role]!r} and compose defines no such service"
+                )
+        elif host not in defined:
             complaints.append(
                 f"the role {role!r} is declared to be filled by {host!r} and "
                 f"compose defines no such container"
@@ -203,34 +210,45 @@ def test_an_origin_taken_off_one_side_only_is_caught():
 
 def test_a_role_no_container_fills_is_caught():
     compose, declaration = documents()
-    declaration["roles"]["sensor"] = "fsl-zeek"
+    declaration["roles"]["scorer"] = "fsl-zeek"
 
     assert drift(compose, declaration) == [
-        "the role 'sensor' is declared to be filled by 'fsl-zeek' and compose "
+        "the role 'scorer' is declared to be filled by 'fsl-zeek' and compose "
         "defines no such container"
+    ]
+
+def test_a_role_no_compose_service_fills_is_caught():
+    compose, declaration = documents()
+    declaration["compose"]["sensor"] = "zeek"
+
+    assert drift(compose, declaration) == [
+        "the role 'sensor' is declared to be filled by the compose service "
+        "'zeek' and compose defines no such service"
     ]
 
 def test_a_role_whose_container_compose_renamed_is_caught():
     compose, declaration = documents()
-    compose["services"]["board-db"]["container_name"] = "fsl-intranet"
+    compose["services"]["intranet"] = compose["services"].pop("board-db")
 
     assert drift(compose, declaration) == [
-        "the role 'board-db' is declared to be filled by 'fsl-wg-board-db' and compose "
-        "defines no such container"
+        "the role 'board-db' is declared to be filled by the compose service "
+        "'board-db' and compose defines no such service"
     ]
 
 def test_every_container_is_named_after_the_service_that_builds_it():
     compose, _ = documents()
-    odd = {
-        name: service.get("container_name")
-        for name, service in compose["services"].items()
-        if service.get("container_name") not in (f"fsl-{name}", f"fsl-wg-{name}")
+    session = set(composed.services()) - set(
+        yaml.safe_load(composed.COMPOSE.read_text())["services"]
+    )
+    pinned = {
+        name: compose["services"][name]["container_name"]
+        for name in session if compose["services"][name].get("container_name")
     }
 
-    assert odd == {}, (
-        f"the acceptance suite recovers a service name by stripping 'fsl-' and "
-        f"then an optional 'wg-' (the wargame-target prefix) off the container "
-        f"name the declaration gives it, which stops working here: {odd}"
+    assert pinned == {}, (
+        f"a session stack runs once per session, and a container name pinned "
+        f"in it clashes with the next session's, so Docker refuses the second "
+        f"stack: {pinned}"
     )
 
 def test_the_board_and_its_database_are_declared_so_openstack_can_find_them():

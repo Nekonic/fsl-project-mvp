@@ -48,11 +48,13 @@ MODES = {
 }
 
 class _Run:
-    def __init__(self, networks=NETWORKS, modes=MODES, code=0, stderr=""):
+    def __init__(self, networks=NETWORKS, modes=MODES, code=0, stderr="",
+                 project="fsl", session="fsl-1"):
         self.argv = []
         self.networks, self.modes, self.code, self.stderr = (
             networks, modes, code, stderr,
         )
+        self.project, self.session = project, session
 
     def __call__(self, argv, **kwargs):
         self.argv.append(argv)
@@ -62,14 +64,23 @@ class _Run:
                 if a.startswith("label=fsl.segment.id=")
             ]
             out = "\n".join(
-                n["Name"] for n in self.networks
+                f"{n['Name']} "
+                f"{(n.get('Labels') or {}).get('com.docker.compose.project', self.project)}"
+                for n in self.networks
                 if not wanted
                 or (n.get("Labels") or {}).get("fsl.segment.id") in wanted
             )
         elif argv[:3] == ["docker", "network", "inspect"]:
             out = "\n".join(json.dumps(n) for n in self.networks)
         elif argv[:2] == ["docker", "ps"]:
-            out = "\n".join(self.modes)
+            service = next(
+                a.split("=", 2)[2] for a in argv
+                if a.startswith("label=com.docker.compose.service=")
+            )
+            out = "\n".join(
+                f"{name} {self.session}" for name in self.modes
+                if name.removeprefix("fsl-").removeprefix("wg-") == service
+            )
         else:
             out = "\n".join(f"{name} {mode}" for name, mode in self.modes.items())
         return type("R", (), {"returncode": self.code, "stdout": out,
@@ -260,7 +271,7 @@ def test_what_the_project_is_called_no_longer_decides_any_segment_id():
     lab = [dict(network, Name="fsl_lab_" + network["Labels"]["fsl.segment.id"])
            for network in NETWORKS]
 
-    with patch("range.docker.subprocess.run", _Run(networks=lab)):
+    with patch("range.docker.subprocess.run", _Run(networks=lab, project="fsl_lab")):
         shape = Docker(DECLARED, project="fsl_lab").describe()
 
     assert {s.id for s in shape.segments} == {"ru", "estate", "mgmt"}, (

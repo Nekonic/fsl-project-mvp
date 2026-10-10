@@ -29,11 +29,19 @@ class Dispatched:
         self.stderr = stderr
         self.raises = raises
         self.commands = []
+        self.looked_up = []
 
     def __call__(self, command, **kwargs):
-        self.commands.append(list(command))
         if self.raises is not None:
             raise self.raises
+        if command[1] == "ps":
+            self.looked_up.append(list(command))
+            service = command[3].rpartition("=")[2]
+            return types.SimpleNamespace(
+                returncode=0, stderr="",
+                stdout=f"fsl-3-{service}-1 fsl-3\nfsl-7-{service}-1 fsl-7\nfsl-{service} fsl\n",
+            )
+        self.commands.append(list(command))
         return types.SimpleNamespace(
             returncode=self.returncode, stdout=self.stdout, stderr=self.stderr
         )
@@ -135,9 +143,25 @@ def test_a_command_is_dispatched_to_the_host_filling_the_role(dispatch):
     substrate.run(seam.SENSOR, ["tail", "-5", "/var/log/suricata/eve.json"])
 
     assert fake.commands == [[
-        "docker", "exec", "fsl-suricata",
+        "docker", "exec", "fsl-7-suricata-1",
         *seam.through_shell(["tail", "-5", "/var/log/suricata/eve.json"]),
-    ]]
+    ]], "without a session named, the newest session's stack answers"
+
+def test_a_command_reaches_the_session_it_names(dispatch):
+    fake = dispatch(stderr=finished(0))
+
+    seam.Docker().run(seam.ATTACKER, ["true"], session=3)
+
+    assert fake.commands[0][:3] == ["docker", "exec", "fsl-3-kali-1"]
+    assert fake.looked_up[0][2:4] == ["--filter", "label=com.docker.compose.service=kali"]
+
+def test_the_scorer_is_reached_by_its_control_plane_name(dispatch):
+    fake = dispatch(stderr=finished(0))
+
+    seam.Docker().run(seam.SCORER, ["true"])
+
+    assert fake.commands[0][:3] == ["docker", "exec", "fsl-platform"]
+    assert not fake.looked_up
 
 def test_a_daemon_that_cannot_be_reached_is_not_a_failed_command(dispatch):
     dispatch(returncode=1, stderr=(
@@ -219,7 +243,7 @@ def test_recreating_a_role_takes_the_host_away_and_brings_it_back(dispatch):
 
     substrate.recreate(seam.BOARD)
 
-    assert fake.commands[0][:3] == ["docker", "inspect", "fsl-wg-board"]
+    assert fake.commands[0][:3] == ["docker", "inspect", "fsl-7-board-1"]
     assert fake.commands[1:] == [
         ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "rm", "-sf", "board"],
         ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "up", "-d", "board"],

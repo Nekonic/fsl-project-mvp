@@ -165,9 +165,10 @@ def sessions(request):
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
-    if Session.objects.filter(ended_at=None).exists():
-        raise Conflict("a session is already open on the range; close it first")
     adapter = substrate()
+    live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
+    if live and not getattr(adapter, "concurrent_sessions", False):
+        raise Conflict("a session is already open on the range; close it first")
     if hasattr(adapter, "plan_slot"):
         verdict = _range_ready(adapter)
         if not verdict["ready"]:
@@ -177,13 +178,22 @@ def sessions(request):
     session = Session.objects.create(scenario=scenario, baseline=[])
     try:
         if hasattr(adapter, "open_session"):
-            adapter.open_session(session.pk)
+            adapter.open_session(session.pk, live=live)
+        adapter = _range(session, adapter)
+        if hasattr(adapter, "for_session"):
+            _aim_attacker(adapter)
         session.baseline = _baseline(adapter, scenario)
         session.save(update_fields=["baseline"])
     except Exception:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
     return _reply(_shape(session, SESSION_FIELDS), status=201)
+
+def _aim_attacker(adapter):
+    attacker.wear_origin(
+        attacker.find(Shape(segments=adapter.segments(), sensors=()), None),
+        adapter.runner("proxy"),
+    )
 
 def _baseline(adapter, scenario):
     model = wargames.objective_model(scenario)
@@ -206,9 +216,40 @@ def _ground_truth(adapter, wargame_id):
         raise loot.GroundTruthUnavailable(str(exc)) from exc
     return loot.ground_truth(wargame_id, host)
 
+def _newest(session=None):
+    return session or (
+        Session.objects.filter(ended_at=None).order_by("-id").first()
+        or Session.objects.order_by("-id").first()
+    )
+
+def _range(session=None, adapter=None):
+    adapter = adapter or substrate()
+    if not hasattr(adapter, "for_session"):
+        return adapter
+    session = _newest(session)
+    return adapter.for_session(session.pk if session else None)
+
+def _asked_session(request):
+    given = request.GET.get("session")
+    if given is None and request.method == "POST":
+        given = _payload(request).get("session")
+    if given in (None, ""):
+        return None
+    try:
+        wanted = int(given)
+    except (TypeError, ValueError, OverflowError):
+        raise BadRequest(f'"session" must be a session id, got {given!r}')
+    return get_object_or_404(Session, pk=wanted)
+
+def _terminal_url(session):
+    if settings.ATTACKER_SESSION_TERMINAL_URL and session:
+        return settings.ATTACKER_SESSION_TERMINAL_URL.format(session=session.pk)
+    return settings.ATTACKER_TERMINAL_URL
+
 @require_http_methods(["GET"])
 def attacker_box(request):
-    origin = attacker.find(_standing(), request.GET.get("origin"))
+    session = _newest(_asked_session(request))
+    origin = attacker.find(_standing(session), request.GET.get("origin"))
     return _reply(
         {
             "container": settings.ATTACKER_CONTAINER,
@@ -218,18 +259,18 @@ def attacker_box(request):
             "origin_label": origin["label"],
             "target_url": origin["target_url"],
             "public_url": settings.PUBLIC_TARGET_URL,
-            "terminal_url": settings.ATTACKER_TERMINAL_URL,
+            "terminal_url": _terminal_url(session),
         }
     )
 
 TOP_N = 25
 
-def _standing():
-    return Shape(segments=substrate().segments(), sensors=())
+def _standing(session=None):
+    return Shape(segments=_range(session).segments(), sensors=())
 
-def _segments():
+def _segments(session=None):
     try:
-        standing = _standing()
+        standing = _standing(session)
     except RangeUnavailable:
         return [], {}
 
@@ -263,7 +304,7 @@ def _zone_of(address, zones):
 def session_top(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     detections = list(session.detections.all())
-    zones, hosts = _segments()
+    zones, hosts = _segments(session)
     located = _located(session.detections)
 
     sources, destinations, signatures, paths = {}, {}, {}, {}
@@ -310,7 +351,7 @@ def session_top(request, session_id):
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    shape = topology.shape(substrate().describe(), settings.RANGE)
+    shape = topology.shape(_range(session).describe(), settings.RANGE)
 
     for segment in shape["segments"]:
         segment["alerts"] = 0
@@ -334,7 +375,7 @@ def origins(request):
 def session_commands(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
 
-    typed = operator_log.commands(substrate().runner("attacker"))
+    typed = operator_log.commands(_range(session).runner("attacker"))
     return _reply({
         "commands": [
             {
@@ -350,8 +391,9 @@ def session_commands(request, session_id):
 
 @require_http_methods(["POST"])
 def attacker_origin(request):
-    chosen = attacker.find(_standing(), _payload(request).get("origin"))
-    attacker.wear_origin(chosen, substrate().runner("proxy"))
+    session = _asked_session(request)
+    chosen = attacker.find(_standing(session), _payload(request).get("origin"))
+    attacker.wear_origin(chosen, _range(session).runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
 
 @require_http_methods(["POST"])
@@ -364,7 +406,7 @@ def attacker_label(request):
             '"case_id" must be one marker with no spaces or control characters, '
             f"or null to clear the label, got {case_id!r}"
         )
-    attacker.set_label(case_id or None, substrate().runner("proxy"))
+    attacker.set_label(case_id or None, _range(_asked_session(request)).runner("proxy"))
     return _reply({"ok": True})
 
 @require_http_methods(["GET"])
@@ -420,7 +462,7 @@ def _observe_objectives(session) -> dict:
     total = len(spec["tiers"])
     try:
         changes = effect.read_changes(
-            substrate().runner("corp-db"), session.started_at
+            _range(session).runner("corp-db"), session.started_at
         )
     except (effect.StateUnavailable, RangeUnavailable):
         return {"achieved": 0, "total": total}
@@ -536,9 +578,10 @@ def fire_attack(request, session_id):
         raise Http404(str(exc))
     case = dict(case, case_id=str(uuid.uuid4()))
     case.setdefault("correlation", "marker")
+    adapter = _range(session)
     origin = _origin_for(session, body.get("origin"))
     if origin:
-        attacker.wear_origin(origin, substrate().runner("proxy"))
+        attacker.wear_origin(origin, adapter.runner("proxy"))
 
     target_url = origin["target_url"] if origin else settings.TARGET_URL
     spec = dict(case.get("request") or {})
@@ -550,7 +593,7 @@ def fire_attack(request, session_id):
     try:
         harness.fire(
             case,
-            substrate().launcher(
+            adapter.launcher(
                 origin["id"] if origin else settings.RANGE.default_origin
             ),
             target_url,
@@ -597,7 +640,7 @@ def _origin_for(session, requested):
     if not requested:
         return None
 
-    described = _standing()
+    described = _standing(session)
     if requested != ROTATE:
         return attacker.find(described, requested)
 
@@ -716,7 +759,9 @@ def ingest_detections(request, session_id):
         restored = []
 
     documents, truncated = elastic.fetch(
-        settings.ELASTIC_URL, settings.ELASTIC_INDEX, start, end
+        settings.ELASTIC_URL,
+        settings.ELASTIC_SESSION_INDEX.format(session=session.pk) or settings.ELASTIC_INDEX,
+        start, end,
     )
 
     held = dict(session.detections.values_list("detection_id", "marker"))
@@ -735,7 +780,7 @@ def ingest_detections(request, session_id):
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
 
-    _, hosts = _segments()
+    _, hosts = _segments(session)
 
     for alert in alerts:
         if alert["detection_id"] in known or alert["timestamp"] is None:
@@ -778,7 +823,7 @@ def session_detections(request, session_id):
 
     detections = list(detections)
     addresses = {d.src_ip for d in detections if d.src_ip}
-    zones, _ = _segments() if addresses else ([], {})
+    zones, _ = _segments(session) if addresses else ([], {})
     located = _located(session.detections.filter(src_ip__in=addresses)) if addresses else {}
     return _reply([_listed(d, zones, located) for d in detections])
 
@@ -993,13 +1038,15 @@ def _verdict(malicious: bool, detected: bool) -> str:
 
 @require_http_methods(["GET"])
 def current_rules(request):
-    content = _live_rules()
+    content = _live_rules(_asked_session(request))
     return _reply({"content": content, "version": _version(content)})
 
 @require_http_methods(["POST"])
 @_in_turn
 def validate_rules(request):
-    outcome = suricata.validate(_rule_file(request), substrate().runner("sensor"))
+    outcome = suricata.validate(
+        _rule_file(request), _range(_asked_session(request)).runner("sensor")
+    )
     payload = {"ok": outcome.ok, "output": outcome.output.strip()}
     return _reply(payload, status=200 if outcome.ok else 400)
 
@@ -1039,7 +1086,8 @@ def suppressions(request):
 
     minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
     expires_at = timezone.now() + timedelta(minutes=minutes)
-    content = _live_rules()
+    session = _newest(_asked_session(request))
+    content = _live_rules(session)
 
     try:
         silenced = suppress.silence(content, sid, expires_at.isoformat())
@@ -1047,9 +1095,10 @@ def suppressions(request):
         raise Http404(f"no active rule carries sid {sid}")
 
     original = suppress.find(content, sid)
-    _apply(silenced)
+    _apply(silenced, session)
 
     record = Suppression.objects.create(
+        session=session,
         sid=sid,
         original=original,
         reason=body.get("reason") or "",
@@ -1067,7 +1116,7 @@ def restore_suppression(request, suppression_id):
     return _reply(_shape(record, SUPPRESSION_FIELDS) | {"detail": detail})
 
 def _restore(record) -> tuple[bool, str | None]:
-    current = _live_rules()
+    current = _live_rules(record.session)
     superseded = suppress.find(current, record.sid) is not None
     lift = suppress.discard if superseded else suppress.restore
     try:
@@ -1076,7 +1125,7 @@ def _restore(record) -> tuple[bool, str | None]:
         content = superseded = None
     if content is not None:
         try:
-            _apply(content)
+            _apply(content, record.session)
         except suricata.RuleApplyError as exc:
             return False, f"could not restore sid {record.sid}: {exc}"
 
@@ -1104,11 +1153,11 @@ def _restore_expired() -> list:
             lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
         return lifted
 
-def _live_rules():
-    return suricata.current(substrate().runner("sensor"))
+def _live_rules(session=None):
+    return suricata.current(_range(session).runner("sensor"))
 
-def _apply(content):
-    suricata.apply(content, substrate().runner("sensor"), settings.FSL_SENSOR_RELOAD)
+def _apply(content, session=None):
+    suricata.apply(content, _range(session).runner("sensor"), settings.FSL_SENSOR_RELOAD)
 
 def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
@@ -1118,15 +1167,16 @@ def _version(content: str) -> str:
 def apply_rules(request):
     content = _rule_file(request)
     body = _payload(request)
+    session = _asked_session(request)
     if "base" in body:
         base = body["base"]
-        live = _version(_live_rules())
+        live = _version(_live_rules(session))
         if base != live:
             raise Conflict(
                 "the sensor's rules changed since this copy was loaded "
                 f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
             )
-    _apply(content)
+    _apply(content, session)
     ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))
 
@@ -1368,7 +1418,7 @@ def _range_canary(adapter) -> dict:
 
 @require_http_methods(["POST"])
 def range_canary(request):
-    return _reply(_range_canary(substrate()))
+    return _reply(_range_canary(_range()))
 
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):

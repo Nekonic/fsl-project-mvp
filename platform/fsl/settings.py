@@ -61,6 +61,9 @@ ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = "/label/active"
 ATTACKER_ORIGIN_FILE = "/label/origin"
 ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
+ATTACKER_SESSION_TERMINAL_URL = (
+    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else ""
+)
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )
@@ -76,6 +79,10 @@ WARGAME_CASES_DIR = os.environ.get(
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
+ELASTIC_SESSION_INDEX = os.environ.get(
+    "ELASTIC_SESSION_INDEX",
+    "fsl-logs-{session}-*" if FSL_SUBSTRATE == "range.docker.Docker" else "",
+)
 
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
 CANARY_WAIT = float(os.environ.get("FSL_CANARY_WAIT", "45"))
