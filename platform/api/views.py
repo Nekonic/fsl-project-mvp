@@ -65,6 +65,7 @@ SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
 
+SITE_BROWSER_MARKER = "browse"
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
 RULE_CHANGES = threading.RLock()
@@ -834,21 +835,33 @@ def _take_turn(session):
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     taught = wargames.lesson(session.scenario) if session.guidance else None
+    if taught:
+        taught = dict(taught, steps=[
+            dict(step, discover=_discover(session, step["query"])) if step.get("query") else step
+            for step in taught.get("steps", [])
+        ])
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(crs.EXCLUSIONS).parent),
+        "site": _site(session),
     })
+
+def _site(session):
+    if not settings.SITE_PORT:
+        return None
+    return {"port": settings.SITE_PORT, "path": f"/site/{session.pk}/{wargames.host(session.scenario)}/"}
 
 def _waf_terminal_url(session):
     if settings.WAF_SESSION_TERMINAL_URL:
         return settings.WAF_SESSION_TERMINAL_URL.format(session=session.pk)
     return settings.WAF_TERMINAL_URL
 
-def _discover(session):
+def _discover(session, narrowed=None):
     return kibana.discover_path(
         settings.ELASTIC_SESSION_INDEX.format(session=session.pk),
         session.started_at - timedelta(minutes=1),
         session.ended_at and session.ended_at + timedelta(minutes=1),
+        narrowed,
     )
 
 @require_http_methods(["POST"])
@@ -945,6 +958,11 @@ def ingest_detections(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
+    within = _payload(request).get("within")
+    if within is not None:
+        if isinstance(within, bool) or not isinstance(within, int) or within < 1:
+            raise BadRequest(f'"within" is a number of seconds above zero, got {within!r}')
+        start = max(start, timezone.now() - timedelta(seconds=within))
     try:
         restored = _restore_expired()
     except (RangeUnavailable, suricata.RulesUnreadable):
@@ -953,7 +971,7 @@ def ingest_detections(request, session_id):
     documents, truncated = elastic.fetch(
         settings.ELASTIC_URL,
         settings.ELASTIC_SESSION_INDEX.format(session=session.pk) or settings.ELASTIC_INDEX,
-        start, end,
+        start, end, newest_first=within is not None,
     )
 
     held = dict(session.detections.values_list("detection_id", "marker"))
@@ -994,7 +1012,7 @@ def ingest_detections(request, session_id):
     ingested = session.detections.count() - before
 
     reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "restored": restored}
-    if truncated:
+    if truncated and within is None:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
         session.read_of = [read, total]
@@ -1115,7 +1133,9 @@ def _evidence(session, forced=None):
         if case.meta.get("seed") or case.meta.get("verify")
     }
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
-    detections = [d for d in session.detections.all() if d.marker not in replayed]
+    detections = [
+        d for d in session.detections.all() if d.marker not in replayed and d.marker != SITE_BROWSER_MARKER
+    ]
     records = [c.to_record() for c in cases]
     if forced:
         records = [replace(record, correlation=forced) for record in records]

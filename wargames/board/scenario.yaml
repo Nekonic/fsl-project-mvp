@@ -27,25 +27,34 @@ lesson:
     - board-normal-post-list
     - board-normal-sort
   steps:
-    - id: alerts
-    - id: expand
+    - id: search
+      site: "/search/?q=O'Brien"
+      check: {kind: alert, marker: browse, path: "O'Brien"}
+    - id: find
+      query: "url : *Brien* and status : 403"
+      check: {kind: click}
     - id: rule
-    - id: dashboard
-    - id: waf
-    - id: audit
-      command: >-
-        grep Brien /var/log/modsecurity/audit/audit.log | tail -n 1 |
-        grep -oE '"(ruleId|data|message)":"[^"]*"'
-    - id: view
+      check: {kind: answer, accept: ["920273"], known: ["949110"]}
+    - id: target
+      check:
+        kind: choice
+        options: ["ARGS:q", "REQUEST_URI", "REQUEST_COOKIES", "REQUEST_HEADERS"]
+        accept: ["ARGS:q"]
+    - id: exclude
       command: |-
-        cd /etc/modsecurity.d/owasp-crs/rules
-        cat REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-    - id: edit
-      command: |-
-        cat >> REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf <<'EOF'
+        grep -q 'ruleRemoveTargetById=920273;ARGS:q' /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf || cat >> /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf <<'EOF'
         SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"
         EOF
-    - id: apply
-      command: nginx -t && nginx -s reload
-    - id: replay
+        tail -n 1 /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+        nginx -t && nginx -s reload
+      check:
+        kind: waf
+        rule_id: 920273
+        target: "ARGS:q"
+        path: /search/
+        case: board-normal-search-with-apostrophe
+    - id: retry
+      site: "/search/?q=O'Brien"
+      check: {kind: served, case: board-normal-search-with-apostrophe, path: "O'Brien"}
     - id: verify
+      check: {kind: verify}

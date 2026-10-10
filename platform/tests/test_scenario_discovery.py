@@ -1,3 +1,5 @@
+import re
+
 import pytest
 import yaml
 
@@ -119,6 +121,25 @@ def test_a_lesson_step_needs_an_id_and_its_command_is_text(settings, tmp_path):
 def test_the_board_lesson_gives_the_exact_command_for_every_terminal_step():
     commands = {step["id"]: step.get("command", "") for step in wargames.lesson("board")["steps"]}
 
-    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in commands["edit"]
-    assert commands["apply"] == "nginx -t && nginx -s reload"
-    assert commands["alerts"] == "", "a Kibana step is a click, not a command"
+    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in commands["exclude"]
+    assert commands["exclude"].endswith("nginx -t && nginx -s reload")
+    assert commands["search"] == "", "a step in the site or in Kibana is done there, not typed"
+
+def test_the_lesson_s_terminal_commands_name_every_file_by_its_absolute_path():
+    exclusions = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+    for step in wargames.lesson("board")["steps"]:
+        command = step.get("command", "")
+        assert "cd " not in command, "a reopened WAF terminal starts a fresh shell in /"
+        mentioned = re.findall(r"\S*REQUEST-900\S*", command)
+        assert all(name == exclusions for name in mentioned), mentioned
+
+def test_every_lesson_step_declares_how_the_platform_checks_it(settings, tmp_path):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "steps": [{"id": "a", "check": {"kind": "guess"}}]}
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match="need a check"):
+        wargames._discover()
+    assert {step["check"]["kind"] for step in wargames.lesson("board")["steps"]} <= wargames.CHECK_KINDS

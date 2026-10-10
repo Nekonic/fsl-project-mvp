@@ -195,7 +195,7 @@ def test_ingest_reads_only_the_session_s_own_index(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     read = []
 
-    def fetch(url, index, start, end):
+    def fetch(url, index, start, end, newest_first=False):
         read.append(index)
         return [], None
 

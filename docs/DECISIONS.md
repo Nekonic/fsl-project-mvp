@@ -1153,3 +1153,73 @@ terminal, VERIFY passed (both sqlmap variants leaked nothing, the four benign
 cases passed), closed; the closed page showed PASS, 0/3 objectives lost, and
 no hand-run case to judge. The note pill first sat at 54 px and covered
 Kibana's second toolbar; it moved to the empty part of Kibana's top bar.
+
+## 2026-10-11 — A site browser in the console; the WAF lesson rewritten for complete beginners
+
+The user asked for the target site inside the console, and approved a
+seven-step script for a learner who has never seen a WAF, with the ruling that
+a beginner runs the exclusion with one button in the terminal and types it only
+on the "Do it yourself" path.
+
+Site browser. The blue console's Website pane frames `/site/<session>/<host>/`,
+which the platform's nginx proxies to that session's WAF with the scenario's
+`Host`, so the WAF judges every page the learner opens and a block is its real
+403 and a record in Kibana. Requests carry the platform's `edge` address and
+`X-FSL-Case: browse` (set by nginx, overriding the browser); `/score/` leaves
+`browse` out as it leaves out seed and VERIFY replays, since browsing is not a
+case. The route is on port 8002, an origin of its own, with a CSP sandbox that
+keeps the origin: the target is where the red team plants script, and on the
+console's origin that script could drive the console. An opaque-origin sandbox
+on 8000 was tried first; the Claude desktop browser refuses such frames
+(`ERR_BLOCKED_BY_CLIENT`), and it also refused the cross-origin frame on 8002,
+so the live walk used headless Chromium. Cookies are stripped both ways, so the
+pane cannot log into the target. Docker only (`SITE_PORT`); the red console
+has no pane. Cost: `core_loc` 559 → 560 (the newest-first read below).
+
+Lesson. Eleven steps became seven, each advanced by a check the platform makes
+and declared in `scenario.yaml` (`check.kind`: `alert`, `click`, `answer`,
+`choice`, `waf`, `served`, `verify`); Back and Next stay. One line of plain
+language comes with each step's pass. Help climbs nudge → pointing (the red
+box) → answer → "Do it for me", on the Hint button, after 60 s, or after two
+wrong answers; doing it for the learner is recorded per session. The audit-log
+grep, showing the whole file, the separate reload and up-front theory left the
+path; theory stays in the note. The terminal command uses absolute paths,
+appends only if the line is missing, and is run with `term.paste(command +
+"\n")` plus `term.input("\r")`; `PUT /waf/` stays for agents and is the
+fallback when no terminal opens. `POST /ingest/` takes `within` (seconds) and
+then reads the newest records first, because one VERIFY run leaves more than
+the 5000 records a read takes and the learner's alert would be the one cut.
+
+Sources:
+- OWASP CRS, "False positives and tuning": tune a false positive away with a
+  rule exclusion as narrow as one rule, one variable, one location —
+  https://coreruleset.org/docs/concepts/false_positives_tuning/
+- OWASP CRS, "Paranoia levels": higher levels trade more false positives for
+  detection — https://coreruleset.org/docs/concepts/paranoia_levels/
+- netnea, "Handling false positives with the OWASP ModSecurity Core Rule Set":
+  find the rule id and the parameter in the log, then write
+  `ctl:ruleRemoveTargetById` —
+  https://www.netnea.com/cms/apache-tutorial-8_handling-false-positives-modsecurity-core-rule-set/
+- Cloudflare WAF, troubleshooting managed rules (false positives): find the
+  blocking rule in the event log, then add an exception —
+  https://developers.cloudflare.com/waf/managed-rules/troubleshooting/
+- AWS WAF, testing and tuning protections —
+  https://docs.aws.amazon.com/waf/latest/developerguide/web-acl-testing.html
+- Elastic, Discover and KQL (the filter the learner clicks, and writes on the
+  stretch path) — https://www.elastic.co/guide/en/kibana/current/discover.html,
+  https://www.elastic.co/guide/en/kibana/current/kuery-query.html
+- Diátaxis, tutorials: a lesson the learner completes by doing, with the
+  explanation kept out of the path — https://diataxis.fr/tutorials/
+- Nielsen Norman Group, onboarding tutorials: short, contextual, skippable —
+  https://www.nngroup.com/articles/onboarding-tutorials/
+- Killercoda's `{{exec}}` action, which runs a command in the learner's
+  terminal on a click — https://github.com/killercoda/scenario-examples
+
+Live, on the acceptance VM (session 204, mine), headless Chromium against
+http://192.168.0.220:8000: board home and a search in the Website pane; the
+O'Brien search showed the WAF's 403 and the step passed on its new alert in
+about 17 s; the filter button narrowed Kibana to the O'Brien 403s; 949110 got
+"that is the score total rule", 920273 passed; `ARGS:q` passed; "Run in
+terminal" appended the line and printed "test is successful"; the O'Brien
+search returned the results page; VERIFY passed. The board holds no post
+matching "release", so that search shows the empty results page (200).
