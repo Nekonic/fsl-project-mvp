@@ -575,3 +575,90 @@ scenarios, and the hard part for AD is the ground-truth read seam, not planting;
 let a real second/AD scenario pay for any abstraction. core_loc unchanged (462);
 product_loc 8138 -> 8185; tests 1231 -> 1232. Console JS not live-run; unit and
 console tests cover the wiring.
+
+## 2026-10-10 — Concurrent docker sessions (build steps 4, 5, 6; step 8's test)
+
+Commits bbde53d..2b7ded3. On the docker substrate each session's stack is the
+compose project `fsl-<id>` and sessions run side by side.
+
+- Roles resolve to compose services by label: `declaration.yaml` gains a
+  `compose:` section (role -> service), and `docker.py` picks the container
+  with that `com.docker.compose.service` label in the session's project.
+  `container_name` pins are gone from `session.yaml` and the wargames; the
+  control plane keeps `fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`,
+  `fsl-collector`. Containers are `fsl-<id>-<service>-1` and map back to the
+  declared host names inside `docker.py`, so nothing outside the adapter
+  learns the new names.
+- Networks. The edges (`edge`, `edge-br`, `edge-hk`, `edge-us`) stay shared in
+  `compose.yaml` with fixed subnets: Docker refuses overlapping subnets, and
+  the subnet carries the origin for GeoIP. `estate` is session-owned, with no
+  fixed subnet. The platform joins each session's `estate` at open
+  (`docker network connect`, alias `platform`) and leaves it at teardown; a
+  leftover control-plane `fsl_estate` is ignored when a session owns `estate`.
+- Deviation from a confirmed item. The spec's confirmed item says only
+  `estate`/`mgmt` float per session. `mgmt` stays shared: Elasticsearch,
+  Kibana and the collector live on it and every session's Filebeat must reach
+  Elasticsearch, and a per-session `mgmt` would give the adapter two `mgmt`
+  segments to choose between. Only `estate` floats.
+- Concurrency: opening a session tears down only the stacks of ended sessions.
+  The 409 single-open-session check stays, on OpenStack only. Close still does
+  not tear down.
+- Shared edges mean `board.com`/proxy would resolve to every session. At open
+  the session's proxy is aimed at its own WAF through `/label/origin`; Kali
+  uses `http://fsl-<id>-proxy-1:8081`; launched tools get `--add-host
+  board.com`/`corp.com` at the session WAF; `/label` is a per-project named
+  volume.
+- `Docker.address(role)` is the role's `estate` IP. Loot ground truth reads
+  the session's own board; the effect runner uses the session's corp-db.
+- Filebeat writes `fsl-logs-${FSL_SESSION}-<day>`; `/ingest/` reads
+  `fsl-logs-<session>-*` (`ELASTIC_SESSION_INDEX`, empty on OpenStack, which
+  keeps `ELASTIC_INDEX` through the shared collector). The canary and
+  `ingest/elastic.py` are unchanged.
+- Suricata `HOME_NET` is the four WAF edge subnets plus 10/8, 172.16/12 and
+  192.168/16, because a floating `estate` is drawn from Docker's private pools.
+- Rules, validate, suppressions (stored with their session, migration 0014)
+  and the attacker box, origin and label endpoints take `session` from the
+  query or body and fall back to the newest open session. The red console
+  sends its session id. On docker the red terminal is `/terminal/<id>/`,
+  proxied to `fsl-<id>-kali-1:7681`; OpenStack keeps `/vm-terminal/fsl-kali/`.
+- `bin/verify` waits for the platform on `/api/sessions/`; `/api/rules/` needs
+  a session stack.
+
+Known open: `deploy/suricata/rules` is one bind mount shared by every session's
+sensor, so applying a rule writes the shared file and reloads only that
+session's sensor (a per-session ruleset mount is step 7). `/vm-terminal/` is
+still broken on compose (pre-existing). The reachability middleware covers
+only the newest session's `estate`. Two POSTs within milliseconds can race
+(pre-existing).
+
+Environment: the platform VM 192.168.0.210 has no node, so the 12
+console-behaviour tests and `test_the_report_survives_a_real_interpreter` fail
+there; they pass locally.
+
+Metrics: `metrics.json`, `bin/measure`.
+
+Live acceptance (`bin/verify` on 192.168.0.210, substrate docker, including
+`test/test_concurrent_sessions.py`): LIVE-RESULT-PENDING
+
+## 2026-10-10 — CRS starting configuration (spike closed)
+
+Measured 2026-10-09/10 on the platform VM with an isolated stack:
+`fsl/board:mvp` behind the pinned `owasp/modsecurity-crs` image,
+`MODSEC_RULE_ENGINE On`. The attack is sqlmap at `?sort=`, with the case's argv
+and again with `--random-agent --tamper=space2comment,between,randomcase`; the
+benign case is the O'Brien search.
+
+| Posture | sqlmap `?sort=` | Benign O'Brien search |
+|---|---|---|
+| No WAF (control) | injection identified in 324 requests (boolean and time blind) | - |
+| PL1-PL3 | not injectable; 403 x2065 (stock), x2508 (tamper) | 200 |
+| PL4 | - | 403 (920273 invalid character, 949110 anomaly) |
+
+`/`, `/?sort=posts_post.id` and `/?sort=-created_at` pass with 200 at PL1-PL4.
+
+Conclusion: the default PL1 already blocks the attack and passes the benign
+search, so there is nothing to tune at the default. Following the confirmed
+lesson item that removing false positives is the core WAF job, the lesson
+starts over-blocking at PL4 and the learner tunes it (a lower PL, or a rule
+exclusion for 920273 on the search argument) until O'Brien passes while every
+SQLi variant stays blocked. The Kibana highlight spike stays open.

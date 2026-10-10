@@ -18,18 +18,23 @@ mechanically. The objective score was added once that held.
 The compose services and networks are listed below; `bin/measure` counts them.
 Two compose files hold them. `compose.yaml` is the control plane (project
 `fsl`, one long-lived copy): the platform, Elasticsearch, Kibana, the
-`collector`, and the six networks. `session.yaml` is one session's data plane:
-the WAF, Suricata, Filebeat, Kali, the proxy and the wargames. It joins the six
-networks as `external` (`fsl_<network>`) and owns only its volumes. Opening a
+`collector`, the four edge networks and `mgmt`. `session.yaml` is one
+session's data plane: the WAF, Suricata, Filebeat, Kali, the proxy and the
+wargames. It joins the edge networks and `mgmt` as `external`
+(`fsl_<network>`) and owns its `estate` network (no fixed subnet; Docker draws
+one from its private pools) and its volumes. Opening a
 session (`POST /api/sessions/`, `platform/range/docker.py` `open_session`)
 runs `docker compose -p fsl-<session id> -f session.yaml up -d --wait
 --no-build` from inside the platform, with `FSL_HOST_DIR` set to the host
 directory compose started the platform from (its
 `com.docker.compose.project.working_dir` label), so the stack's bind mounts
-resolve on the host. The baseline is read after `--wait` returns. Until the
-container-name pins go (build step 4), one stack runs at a time: opening a
-session first runs `down -v` on every other `fsl-<n>` project, and closing a
-session leaves its stack until the next one opens. The OpenStack substrate has
+resolve on the host, and `FSL_SESSION` set to the session id. The platform then
+joins the session's `estate` (`docker network connect`, alias `platform`) and
+aims the session's proxy at the session's own WAF (`/label/origin`); the
+baseline is read after that. Sessions run concurrently: opening a session runs
+`down -v` only on `fsl-<n>` projects whose session has ended (leaving their
+`estate` first), and the single-open-session 409 applies on OpenStack only.
+Closing a session leaves its stack until a later open. The OpenStack substrate has
 no `open_session`: its range is the Nova VMs, so no session stack starts. Its
 readiness probe and session baseline read the board VM through the adapter's
 `address("board")`, the VM's management address, which `loot.ground_truth`
@@ -46,21 +51,36 @@ reads `image` yet. Each app image is built once and tagged
 `compose.yaml` in its folder, a case file under `redteam/cases/`, and an
 `include:` line in `session.yaml`.
 
+Nothing in `session.yaml` or a wargame pins `container_name`; a session's
+containers are `fsl-<id>-<service>-1`. Only the control plane keeps fixed names
+(`fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`). The
+first table below gives each session service under its declared host name,
+which `platform/range/docker.py` maps the container back to.
+
+Every endpoint that acts on the range (rules, validate, suppressions,
+`/api/attacker/`, origin, label) takes `session` from the query or body and
+falls back to the newest open session; suppressions are stored with their
+session (migration 0014). The red console sends its session id. Open on docker:
+`deploy/suricata/rules` is one bind mount shared by every session's sensor, so
+applying a rule writes the shared file and reloads only that session's sensor
+(a per-session ruleset mount is build step 7); the middleware that refuses
+requests from range hosts covers only the newest session's `estate`.
+
 | Service | File | Image | Networks | Host port |
 |---|---|---|---|---|
 | `fsl-wg-board` | session | `fsl/board:mvp` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
 | `fsl-wg-board-db` | session | `mysql` | estate | |
 | `fsl-wg-corp-wp` | session | `fsl/corp:mvp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
 | `fsl-wg-corp-db` | session | `fsl/corp-db:mvp` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge | edge, edge-br, edge-hk, edge-us, estate | |
+| `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge (shared, so the platform aims each session's proxy and tools at its own WAF) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, ships the session's `eve.json` and audit log | mgmt | |
-| `fsl-kali` | session | `fsl/kali:mvp` from `deploy/kali` | edge | |
-| `fsl-proxy` | session | `fsl/proxy:mvp` from `deploy/proxy` (mitmdump) | the four edge networks | |
+| `fsl-kali` | session | `fsl/kali:mvp` from `deploy/kali`; `http_proxy` is `http://fsl-<id>-proxy-1:8081` | edge | |
+| `fsl-proxy` | session | `fsl/proxy:mvp` from `deploy/proxy` (mitmdump); `/label` is the project's named volume | the four edge networks | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
-| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, Kali's own ttyd at `/terminal/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | all six | 8000 |
+| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000 |
 
 8000 binds to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
@@ -71,8 +91,16 @@ both defaulting to 127.0.0.1; 9200 binds to loopback only.
 | `edge-br` | `br` | 177.54.144.0/24 | Internet | Brazil |
 | `edge-hk` | `hk` | 103.152.220.0/24 | Internet | Hong Kong |
 | `edge-us` | `us` | 73.0.0.0/24 | Internet | United States |
-| `estate` | `estate` | 172.30.0.0/24 | Application estate | |
-| `mgmt` | `mgmt` | 172.31.0.0/24 | Management | |
+| `estate` | `estate` | per session, drawn by Docker | Application estate | |
+| `mgmt` | `mgmt` | 172.31.0.0/24, shared | Management | |
+
+The edge networks are shared by every session and keep fixed subnets: Docker
+refuses overlapping subnets, and the subnet carries the origin for GeoIP.
+`mgmt` is shared too, because Elasticsearch, Kibana and the collector live on it
+and every session's Filebeat must reach Elasticsearch (`docs/DECISIONS.md`,
+2026-10-10). Suricata's `HOME_NET` is the four WAF edge subnets plus 10/8,
+172.16/12 and 192.168/16, since a floating `estate` is drawn from Docker's
+private pools.
 
 The declaration lists thirty origins on one Internet segment, the top thirty
 countries by Cloudflare Radar's share of HTTP requests, each with a /24 that
@@ -84,7 +112,8 @@ subnet against the pipeline scoring reads.
 
 Segmentation is Docker network membership only: no firewall, no iptables, no
 ACL. `test/test_segmentation.py` asserts it against the live stack (Kali
-reaches `board.com` but not `board:8000`). Only the subnets are fixed;
+reaches `board.com` but not `board:8000`), and `test/test_concurrent_sessions.py`
+that two concurrent sessions do not see each other. Only the edge subnets are fixed;
 container addresses are assigned by Docker and change on recreate. The views
 build a new adapter and read them on every request. The rule that refuses
 requests from range hosts caches their addresses for 30 s, and when it cannot
@@ -93,7 +122,7 @@ reach the substrate it treats the range as empty and lets the request through
 
 The platform, the WAF and the proxy are multi-homed. The attacker's traffic
 enters the internal network (`estate`) only through the WAF, but the platform
-is attached to every segment, so the API checks the caller itself
+is attached to every edge network and each session's `estate`, so the API checks the caller itself
 (`docs/THREAT-MODEL.md`).
 
 ```
@@ -115,7 +144,7 @@ is attached to every segment, so the API checks the caller itself
  Not network traffic:
    eve.json --volume suricatalogs--> filebeat
    ModSecurity audit.log --volume waflogs--> filebeat
-   ./data/label --bind mount--> proxy (read-write), kali (read-only)
+   volume label (per session) --> proxy (read-write), kali (read-only)
    kali's shell --> /var/log/fsl/commands.log, each command with its marker
    platform --docker exec--> proxy (/label files), suricata (rules),
                              kali (command log), corp-db (mysql, mysqlbinlog)
@@ -167,12 +196,15 @@ on. `compose.yaml` repeats the segment identity in network labels;
 `platform/tests/test_declaration.py` checks the two files against each other,
 but never checks the running range.
 
-Segments are found by a label; hosts are still found by name. Each segment
+Segments are found by a label. On docker hosts are found by label too:
+`declaration.yaml`'s `compose:` section maps each role to a compose service,
+and the adapter picks the container with that `com.docker.compose.service`
+label in the session's project. Each segment
 carries `fsl.segment.id` as a Docker label or a Neutron tag, and the adapters
-fetch only labelled networks. Matching by name broke on compose prefixes and
-overrides, Heat stack suffixes and non-unique Neutron names. A role is the
-container or server name the declaration gives: Docker runs `docker exec
-<name>`, and OpenStack lists every server in the project and matches
+fetch only labelled networks; a session-owned network wins over a control-plane
+one with the same segment id. Matching by name broke on compose prefixes and
+overrides, Heat stack suffixes and non-unique Neutron names. On OpenStack a
+role is still the server name the declaration gives: OpenStack lists every server in the project and matches
 `server["name"]`, which Nova does not keep unique. That is still open in
 `docs/STATE.md`.
 
@@ -198,8 +230,9 @@ names a substrate.
 |---|---|---|
 | shape | `docker network ls/inspect`, label filter | Keystone v3, Neutron with `tags-any`, Nova |
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
-| runner | `docker exec` | `ssh` to the instance |
-| launcher | `docker run --rm --network <segment>` | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `fsl-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
+| runner | `docker exec` into the role's service container in the session's project | `ssh` to the instance |
+| address | the role's `estate` IP in the session's project | the host's `mgmt` address |
+| launcher | `docker run --rm --network <segment>`, with `--add-host` for the session WAF's names | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `fsl-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
 | tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` fired sqlmap from the `ru` and `tw` origins on 2026-10-08 |
 
 Compose mounts the Docker socket into the platform whatever the substrate, and
@@ -216,7 +249,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
-| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` |
+| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
 
 ## Where requests come from
@@ -240,15 +273,20 @@ The terminal also records what the operator types. Kali's shell appends each
 command, with the current `/label/active` marker, to
 `/var/log/fsl/commands.log`. The platform reads it through
 `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
-The red console frames `/vm-terminal/fsl-kali/`, a ttyd inside the platform
-that connects over ssh to the host's mgmt address; on compose, Kali and the
-WAF have no mgmt address, so the red console's terminal and the blue console's
-WAF terminal do not connect there.
+On compose the red console frames `/terminal/<session id>/`, which nginx
+proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it frames
+`/vm-terminal/fsl-kali/`, a ttyd inside the platform that connects over ssh to
+the host's mgmt address; on compose, Kali and the WAF have no mgmt address, so
+`/vm-terminal/` (the blue console's WAF terminal included) does not connect
+there.
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
 WAF's address on that origin's segment, by IP; the name resolves on the `edge`
-network, which the platform uses when no origin is set.
+network, which the platform uses when no origin is set. The edge networks are
+shared, so `board.com` there resolves to every session's WAF; at open the
+platform aims the session's proxy at its own WAF, and launched tools get
+`--add-host board.com` and `corp.com` at that WAF's address.
 `rotate` is a per-session round robin, not a random pick.
 
 A console tool case is pointed at the origin's target URL, or, with no origin
@@ -267,7 +305,7 @@ in the range blocks a request.
 
 ```
 WAF (ModSecurity) -> audit.log --+
-Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<day>
+Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<session>-<day>
                                      (fsl_source)   pipeline fsl-geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
@@ -290,6 +328,9 @@ on a keep-alive connection to its first case.
 Each ingest call:
 
 - first restores rule suppressions that have expired;
+- reads `fsl-logs-<session>-*` on docker (`ELASTIC_SESSION_INDEX`; each
+  session's Filebeat writes its own index) and `ELASTIC_INDEX` on OpenStack,
+  where the shared collector writes `fsl-logs-shared-<day>`;
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
   to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
@@ -633,7 +674,10 @@ Left to build:
   without manual steps.
 - Blocking (planned, 2026-10-08 spec): the WAF runs `SecRuleEngine On` and the
   blue team tunes CRS (paranoia level, rule exclusions) so the attack is
-  blocked and benign traffic passes; Suricata detects. Whether a case was
+  blocked and benign traffic passes; Suricata detects. The starting paranoia level was
+  measured on 2026-10-10 (`docs/DECISIONS.md`): PL1 already blocks the board
+  SQLi and passes O'Brien, so the lesson starts at PL4, which over-blocks
+  O'Brien, and the learner tunes it (a lower PL or a rule exclusion). Whether a case was
   blocked is read from the target side into `meta["blocked"]`. The earlier
   plan, switching Suricata drop rules in the pfSense GUI, is superseded.
 
