@@ -692,23 +692,42 @@ is pending.
   `suricatasc -c reload-rules`, so no entrypoint copy is needed and
   `deploy/suricata/rules` is not mounted at all.
 - VERIFY is counted on blocks with the target as first witness (answer to
-  open question 2). An sqlmap variant is held when the rows it dumped match no
+  open question 2). An sqlmap variant leaked when the rows it dumped match a
   `(username, hash)` of the session snapshot, read through `loot.matched`, not
-  a new reader; the 403 count is recorded and not judged. A benign case is
+  a new reader. It is held only on positive evidence: no match, exit 0, the
+  `[*] ending` line, no connection/abort error, and either sqlmap's "all
+  tested parameters do not appear to be injectable" or a dump that matches
+  nothing. Otherwise it is inconclusive (`lesson.diag.inconclusive`) and
+  VERIFY does not pass; "no dump" alone is not a block (review finding). The
+  403 count is recorded and not judged. A benign case is
   served on a 2xx `http_code`. A leak found by VERIFY also credits the
   objectives it proves (question 4). `meta.blocked` is written for lesson
   cases only, so the wargame's `_game` is unchanged outside the lesson.
 - Seeded logs by replay at open (question 3): a guided session replays the
   lesson's cases once after the posture is applied, marked `meta.seed`; VERIFY
-  judges only its own run. The open-time cost is to be measured live.
+  judges only its own run. The open-time cost is to be measured live. If a
+  replay at open cannot run, the open answers 503 and the session is closed;
+  its stack stays until the next open takes closed stacks down.
+- Seed and VERIFY replays are left out of `/score/` TP/FP/FN/TN, the alerts
+  they drew and the game, because they are the platform's replays, not the
+  red team's attempts. A leak a replay found keeps its objective credit: the
+  target's own records say the data left.
 - The same `local.rules` for both defenses in the MVP (question 1); the
   difference between `minimal` and `full` is the CRS paranoia level (4 and 1).
 - Two cases added, none removed: `board-sqli-orderby-sqlmap-tamper` (random
   User-Agent, tamper scripts; a defence keyed on sqlmap's own User-Agent, CRS
-  913100, lets it through) and `board-normal-sort`, which fails an exclusion
-  that whitelists `sort`.
+  913100, lets it through) and `board-normal-sort`, which fails a tuning that
+  over-blocks the `sort` argument. Both sqlmap cases gained `--disable-hashing`
+  (present in the Kali image's sqlmap 1.10.9): without it `--batch` accepts
+  sqlmap's offer to crack the pbkdf2 hashes and the dump never ends; with it
+  the stock case dumped all three accounts in 166 s against the board with
+  no WAF (2026-10-10, `crsprobe` on the platform VM). That output is the test
+  fixture `platform/tests/fixtures/sqlmap-orderby-dump.out`.
+- A scenario without `defense` still has its sensor seeded with
+  `deploy/suricata/rules/local.rules` at open; dropping the shared mount had
+  left corp's sensor with no rules (review finding).
 - `core_loc` rises 462 -> 526 (+64): `rules/crs.py` 56 lines (validation is
   most of it, because its input is written into ModSecurity configuration),
-  `suricata.seed` and the `mkdir -p` on write +6, `harness.fire` returning
-  what the attacker box printed +2. The plan estimated +40; validation and
+  `suricata.seed` and the `mkdir -p` on write +7, `harness.fire` returning
+  what the attacker box printed +1. The plan estimated +40; validation and
   rollback took the rest. Recorded with `bin/measure --save` (question 5).

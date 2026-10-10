@@ -1,0 +1,7 @@
+[*] starting @ 04:37:56 /2026-10-10/
+
+custom injection marker ('*') found in option '-u'. Do you want to process it? [Y/n/q] Y
+[04:37:56] [CRITICAL] host 'nowhere' does not exist
+
+[*] ending @ 04:37:56 /2026-10-10/
+

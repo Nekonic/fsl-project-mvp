@@ -1,0 +1,19 @@
+[*] starting @ 04:37:54 /2026-10-10/
+
+custom injection marker ('*') found in option '-u'. Do you want to process it? [Y/n/q] Y
+[04:37:54] [INFO] testing connection to the target URL
+[04:37:54] [INFO] checking if the target is protected by some kind of WAF/IPS
+[04:37:54] [INFO] testing if the target URL content is stable
+[04:37:55] [INFO] target URL content is stable
+[04:37:55] [INFO] testing if URI parameter '#1*' is dynamic
+[04:37:55] [WARNING] URI parameter '#1*' does not appear to be dynamic
+[04:37:55] [WARNING] heuristic (basic) test shows that URI parameter '#1*' might not be SQL injectable
+[04:37:55] [INFO] testing for SQL injection on URI parameter '#1*'
+[04:37:55] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'
+[04:37:55] [WARNING] reflective value(s) found and filtering out
+[04:37:55] [INFO] testing 'Boolean-based blind - Parameter replace (original value)'
+[04:37:55] [WARNING] URI parameter '#1*' does not seem to be injectable
+[04:37:55] [CRITICAL] all tested parameters do not appear to be injectable. Try to increase values for '--level'/'--risk' options if you wish to perform more tests. Rerun without providing the option '--technique'. If you suspect that there is some kind of protection mechanism involved (e.g. WAF) maybe you could try to use option '--tamper' (e.g. '--tamper=space2comment') and/or switch '--random-agent'
+
+[*] ending @ 04:37:55 /2026-10-10/
+

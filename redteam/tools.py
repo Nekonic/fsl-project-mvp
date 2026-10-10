@@ -9,6 +9,12 @@ MARKER_HEADER = "X-FSL-Case"
 STATUS = re.compile(r"http_code=(\d{3})")
 FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
 TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
+ENDED = "[*] ending @"
+NOT_INJECTABLE = "all tested parameters do not appear to be injectable"
+ABORTED = re.compile(
+    r"\[CRITICAL\][^\n]*(connect|does not exist|timed out|reset|aborted|unable)|Traceback|user quit",
+    re.IGNORECASE,
+)
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl/kali:mvp")
 
@@ -113,3 +119,10 @@ def dumped(output: str) -> list[tuple[str, str]]:
         (row[name], row[digest]) for row in rows
         if row != header and len(row) == len(header)
     ]
+
+def concluded(exit_code: int, output: str) -> bool:
+    output = output if isinstance(output, str) else ""
+    return (
+        exit_code == 0 and ENDED in output and not ABORTED.search(output)
+        and (NOT_INJECTABLE in output or bool(dumped(output)))
+    )

@@ -63,3 +63,26 @@ def test_firing_a_tool_hands_back_its_output():
     case = {"case_id": "c", "name": "sqlmap", "correlation": "marker", "tool": "sqlmap", "args": []}
 
     assert harness.fire(case, lambda image, argv, timeout=None: printed) is printed
+
+
+FIXTURES = __import__("pathlib").Path(__file__).resolve().parent / "fixtures"
+
+def test_a_real_sqlmap_dump_of_the_board_matches_the_board_s_own_snapshot():
+    import json
+
+    from api import loot
+
+    output = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
+    truth = json.loads((FIXTURES / "board-auth-users.json").read_text())
+
+    assert tools.dumped(output) == sorted(truth.items())
+    assert loot.matched(tools.dumped(output), truth) == set(truth)
+    assert tools.concluded(0, output)
+
+def test_sqlmap_concluding_not_injectable_is_a_conclusion_and_a_missing_host_is_not():
+    held = (FIXTURES / "sqlmap-not-injectable.out").read_text()
+    lost = (FIXTURES / "sqlmap-host-missing.out").read_text()
+
+    assert tools.dumped(held) == [] and tools.concluded(0, held)
+    assert not tools.concluded(0, lost)
+    assert not tools.concluded(1, held), "a non-zero exit proves nothing"

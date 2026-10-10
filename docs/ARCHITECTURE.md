@@ -62,8 +62,10 @@ Every endpoint that acts on the range (rules, validate, suppressions,
 `/api/attacker/`, origin, label) takes `session` from the query or body and
 falls back to the newest open session; suppressions are stored with their
 session (migration 0014). The red console sends its session id. Each
-session's sensor keeps its live `local.rules` in its own container, seeded at
-open; nothing bind-mounts `deploy/suricata/rules`, so applying a rule changes
+session's sensor keeps its live `local.rules` in its own container. On docker
+every session's sensor is seeded at open with its defense's rule file, or with
+`deploy/suricata/rules/local.rules` when the scenario declares no `defense`
+(corp); nothing bind-mounts `deploy/suricata/rules`, so applying a rule changes
 only that session's sensor. Open on docker: the middleware that refuses
 requests from range hosts covers only the newest session's `estate`.
 
@@ -374,10 +376,13 @@ of the scenario's `defense` entries (default `full`); `guidance` (default off)
 needs the scenario to declare a `lesson`. The board declares `minimal` (CRS
 paranoia level 4, `local.rules`) and `full` (paranoia level 1, the same
 `local.rules`). On docker, after the stack is up, the open path seeds the
-sensor with the defense's rule file (`suricata.seed`) and writes the CRS tuning
+sensor with the defense's rule file, or `local.rules` without a defense
+(`suricata.seed`), and writes the CRS tuning when there is a defense
 (`crs.apply`); a guided session then replays the lesson's cases once
 (`meta.seed`), so its ModSecurity and Suricata records are in Kibana when the
-learner arrives. OpenStack sessions apply neither.
+learner arrives. If a replay at open cannot run, the open answers 503 and the
+session is closed; its stack is left standing and taken down by the next
+open. OpenStack sessions apply neither.
 
 `platform/rules/crs.py` renders the tuning into
 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, the CRS hook that loads after
@@ -395,17 +400,26 @@ paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 
 `POST /api/sessions/<id>/verify/` replays the scenario's `lesson.cases` through
 the same path as `/attacks/`, marked `meta.verify=<run>`, and judges only that
-run. An sqlmap case is held when the rows sqlmap dumped (`redteam/tools.py`
-`dumped`) match no `(username, hash)` of the session's snapshot
-(`loot.matched`); a leak also credits the objectives it proves. The 403 count
+run. An sqlmap case is leaked when the rows sqlmap dumped (`redteam/tools.py`
+`dumped`) match a `(username, hash)` of the session's snapshot
+(`loot.matched`); a leak also credits the objectives it proves. It is held
+only on positive evidence: no matching row, sqlmap exited 0, printed its
+`[*] ending` line and no connection or abort error, and either concluded "all
+tested parameters do not appear to be injectable" or dumped rows that match
+nothing (`tools.concluded`). Anything else is inconclusive and fails VERIFY.
+The sqlmap cases run with `--disable-hashing`, so sqlmap does not offer to
+crack the pbkdf2 hashes (which `--batch` accepts and never finishes) and the
+dumped cells are the raw hashes. The 403 count
 sqlmap reports is kept as `meta.forbidden` and is not judged. A benign case is
 served when curl reports a 2xx `http_code`. PASS needs every attack held and
 every benign case served (`platform/lesson.py`); the reply carries
 `diagnosis` keys that the console renders from `strings.html`, never TP/FP
-labels. The board's lesson replays `board-sqli-orderby-sqlmap`,
+labels. Seed and VERIFY replays are left out of `/score/` (TP/FP/FN/TN, the
+alerts they drew, and the game); objectives a replay's leak credited stay.
+The board's lesson replays `board-sqli-orderby-sqlmap`,
 `board-sqli-orderby-sqlmap-tamper` and four benign cases, among them the
-O'Brien search and `board-normal-sort` (`?sort=-created_at`), which catches an
-exclusion that whitelists `sort`. The blue console shows the lesson panel
+O'Brien search and `board-normal-sort` (`?sort=-created_at`), which fails a
+tuning that over-blocks the `sort` argument. The blue console shows the lesson panel
 beside the Kibana frame only in a guided session.
 
 ## How the scores are computed

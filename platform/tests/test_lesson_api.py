@@ -12,14 +12,16 @@ from range.ports import Ran
 pytestmark = pytest.mark.django_db
 
 ROOT = Path(__file__).resolve().parents[2]
-TRUTH = {"admin": "h-admin", "jiwoo": "h-jiwoo", "minseo": "h-minseo"}
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+TRUTH = json.loads((FIXTURES / "board-auth-users.json").read_text())
 LESSON = [
     "board-sqli-orderby-sqlmap", "board-sqli-orderby-sqlmap-tamper",
     "board-normal-search", "board-normal-search-with-apostrophe",
     "board-normal-post-list", "board-normal-sort",
 ]
-DUMPED = "| username | password |\n" + "".join(f"| {u} | {h} |\n" for u, h in TRUTH.items())
-HELD = "403 (Forbidden) - 94 times\n"
+DUMPED = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
+HELD = (FIXTURES / "sqlmap-not-injectable.out").read_text()
+LOST = (FIXTURES / "sqlmap-host-missing.out").read_text()
 
 class Stand:
     def __init__(self):
@@ -95,13 +97,19 @@ def test_the_chosen_defense_is_applied_to_the_session_s_own_stack_after_it_is_up
     assert session.waf == {"paranoia": 4, "exclusions": []}
 
 @pytest.mark.takes_defense
-def test_a_scenario_without_a_defense_opens_with_its_stack_untouched(client):
+def test_a_scenario_without_a_defense_gets_the_default_rules_and_an_untouched_waf(client):
     stand = Stand()
     with patch("range.docker.Docker.runner", stand.runner()):
         answer = client.post_json("/api/sessions/", {"scenario": "corp"})
 
+    rules = (ROOT / "deploy/suricata/rules/local.rules").read_text()
+    seeded = [call for call in stand.to("sensor") if call[3] is not None]
     assert answer.status_code == 201, answer.content
-    assert stand.to("gateway") == stand.to("sensor") == []
+    assert [call[3] for call in seeded] == [rules], (
+        "no session's sensor shares a rules mount any more, so one that is not "
+        "seeded at open runs with no rules and raises no alert"
+    )
+    assert stand.to("gateway") == []
 
 def test_the_waf_tuning_round_trips_through_the_api(client):
     session = board(waf={"paranoia": 4, "exclusions": []})
@@ -192,7 +200,8 @@ def test_a_variant_that_dumped_the_hashes_fails_verify_on_the_target_s_own_recor
 
 def test_a_dump_that_does_not_match_the_snapshot_is_not_a_leak(client):
     session = board()
-    fake = "| username | password |\n| admin | admin1234 |\n"
+    fake = DUMPED.replace(TRUTH["admin"], "admin1234").replace(TRUTH["jiwoo"], "x").replace(
+        TRUTH["minseo"], "y")
     result, _ = verify(client, session, {
         "board-sqli-orderby-sqlmap": fake, "board-sqli-orderby-sqlmap-tamper": HELD,
     })
@@ -256,13 +265,16 @@ def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
     assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"] is None
 
 def test_the_verdict_needs_every_attack_held_and_every_benign_case_served():
-    held = {"name": "a", "malicious": True, "leaked": [], "accounts": 3, "status": 0}
-    leaked = dict(held, leaked=["admin"])
+    held = {"name": "a", "malicious": True, "leaked": [], "accounts": 3, "status": 0,
+            "outcome": "held"}
+    leaked = dict(held, leaked=["admin"], outcome="leaked")
+    unproven = dict(held, outcome="inconclusive")
     served = {"name": "b", "malicious": False, "leaked": [], "accounts": 3, "status": 200}
     blocked = dict(served, status=403)
 
     assert lesson.verdict([held, served])[0] is True
     assert lesson.verdict([leaked, served])[0] is False
+    assert lesson.verdict([unproven, served])[0] is False
     assert lesson.verdict([held, blocked])[0] is False
     assert lesson.verdict([])[0] is False
     assert lesson.verdict([held, leaked, served])[1][0] == ["lesson.diag.blocked_ratio", [1, 2]]
@@ -278,4 +290,64 @@ def test_a_replayed_request_records_the_status_the_target_answered_with(client):
     assert answer.json()["meta"]["status"] == 403
     assert "blocked" not in answer.json()["meta"], (
         "outside the lesson a block is not judged from the target's records, so it is not claimed"
+    )
+
+@pytest.mark.parametrize("output, exit_code", [
+    (LOST, 0),
+    (HELD, 1),
+    ("", 0),
+    (HELD.replace("[*] ending", "[*] still"), 0),
+])
+def test_a_variant_that_ran_to_no_conclusion_proves_nothing_and_fails_verify(client, output, exit_code):
+    session = board()
+
+    def fire(case, launch, target_url):
+        if case["name"] == "board-sqli-orderby-sqlmap-tamper":
+            return SimpleNamespace(exit_code=exit_code, output=output)
+        if case["malicious"]:
+            return SimpleNamespace(exit_code=0, output=HELD)
+        return SimpleNamespace(exit_code=0, output="http_code=200\n")
+
+    with patch("api.views.harness.fire", fire):
+        result = client.post_json(f"/api/sessions/{session.pk}/verify/").json()
+
+    assert result["passed"] is False
+    assert ["lesson.diag.inconclusive", ["board-sqli-orderby-sqlmap-tamper"]] in result["diagnosis"]
+    assert {"name": "board-sqli-orderby-sqlmap-tamper", "malicious": True,
+            "outcome": "inconclusive"} in result["cases"]
+    assert result["diagnosis"][0] == ["lesson.diag.blocked_ratio", [1, 2]]
+
+def test_replays_by_the_lesson_are_left_out_of_the_score_but_their_loot_counts(client):
+    from api.models import Detection
+    from django.utils import timezone
+
+    session = board()
+    verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED,
+                             "board-sqli-orderby-sqlmap-tamper": HELD})
+    marker = Case.objects.get(name="board-normal-search").case_id
+    Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
+                             signature="920273", timestamp=timezone.now(), marker=marker)
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+
+    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
+    assert score["unattributed"] == 0, "an alert drawn by a lesson replay is not an orphan"
+    assert score["objectives"]["objectives"] == 3, (
+        "a real leak matched against the snapshot is still a lost objective"
+    )
+    assert score["objectives"]["undetected"] == 3
+
+def test_a_guided_open_whose_replay_cannot_run_is_refused_as_unavailable(client):
+    from redteam.tools import ToolUnavailable
+
+    def fire(case, launch, target_url):
+        raise ToolUnavailable("sqlmap: the tool did not run")
+
+    with patch("api.views.harness.fire", fire):
+        answer = client.post_json("/api/sessions/", {"guidance": True})
+
+    assert answer.status_code == 503
+    assert Session.objects.get().ended_at is not None, (
+        "the half-open session is closed, so the next open takes its stack down"
     )
