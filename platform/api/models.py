@@ -21,6 +21,7 @@ class Session(models.Model):
     ready_at = models.DateTimeField(null=True, blank=True)
     browse_marker = models.CharField(max_length=64, default=fresh_browse_marker)
     hints = models.JSONField(default=list, blank=True)
+    result_cache = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]

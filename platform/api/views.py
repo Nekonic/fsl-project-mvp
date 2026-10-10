@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import Count, F, Max
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -228,6 +228,22 @@ def _described(session, judged=False):
     }
 
 def _result(session):
+    inputs = _result_inputs(session)
+    held = session.result_cache or {}
+    if held.get("inputs") == inputs:
+        return held["result"]
+    result = _judged(session)
+    Session.objects.filter(pk=session.pk).update(result_cache={"inputs": inputs, "result": result})
+    return result
+
+def _result_inputs(session):
+    detections = session.detections.aggregate(last=Max("id"), rows=Count("id"), marked=Count("marker"))
+    cases = session.cases.aggregate(last=Max("id"), rows=Count("id"))
+    objectives = session.objectives.aggregate(last=Max("id"), rows=Count("id"))
+    return [session.ended_at and session.ended_at.isoformat(), len(session.hints or []),
+            *detections.values(), *cases.values(), *objectives.values()]
+
+def _judged(session):
     cases, _, result, _ = _evidence(session)
     breaches = _breaches(session, cases, result)
     runs = list(dict.fromkeys(

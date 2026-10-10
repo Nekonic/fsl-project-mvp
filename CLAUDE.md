@@ -86,7 +86,8 @@ alert that does not mention the attack's mechanism is reported
 - The isolation seams hold: `ingest/elastic.py` is the only file that knows
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
-  configuration and the nginx reload, `attacker.py` the only one that knows the attacker box, and the loot
+  configuration and the nginx reload, `kibana.py` the only one that knows the
+  Kibana API, `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
@@ -94,7 +95,10 @@ alert that does not mention the attack's mechanism is reported
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
   `range/pfsense.py` stops and starts Suricata on pfSense (OpenStack);
   `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `fsl-kali`. `docs/ARCHITECTURE.md` keeps the table.
+  names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF and
+  the lesson step text names the exclusion file path; `api/site.py` and
+  `api/views.py` name the WAF container by the compose convention instead of
+  the label lookup. `docs/ARCHITECTURE.md` keeps the table.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.

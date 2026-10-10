@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-10
+Updated: 2026-10-11
 
 ## Where things stand
 
@@ -29,8 +29,9 @@ The loop runs in a browser. Open `/`, start a session, and open the red and
 blue consoles side by side. The red console fires cases and holds the Kali
 terminal; an attack typed there between Start and Stop is attributed by time,
 source address and the proxy's marker. The blue console is a sidebar that
-frames the real tools (Kibana and a WAF terminal) and calls no
-`/api/`. The UI has no rule editor; the session page's confirm-close calls
+frames the real tools (Kibana, a WAF terminal, and a Website pane: a site
+browser with a Network panel) and calls `/api/` for the session, the site's
+requests, lesson hints, verify, ingest and detections. The UI has no rule editor; the session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
 calls `/ingest/` too, and `redteam/run.py` prints the curl.
 
@@ -628,8 +629,8 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   `corroborated` gate; `platform/game.py` also computes a zero-sum balance,
   withheld until close (backlog 1, partly superseded).
 - **Console**: the landing page `/` (sessions), a red console (cases, Kali
-  terminal) and a blue console that is a sidebar framing Kibana and a WAF
-  terminal; light theme, every value escaped. The blue dashboard, Live view,
+  terminal) and a blue console that is a sidebar framing Kibana, a WAF
+  terminal and a Website pane (site browser with a Network panel); light theme, every value escaped. The blue dashboard, Live view,
   scoreboard tab, rule editor and world map were removed on 2026-10-05, and the
   pfSense GUI pane on 2026-10-08.
 - **Stack**: every service `linux/amd64`; `docker compose up` is the whole
@@ -807,11 +808,20 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
       `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
       wiring for the attacker box).
+- [ ] Site proxy and WAF terminal name the WAF container by convention instead
+      of the label lookup (`platform/api/site.py` builds
+      `http://fsl-<id>-waf-1`, `platform/api/views.py` builds `fsl-<id>-waf`);
+      route them through `range/docker.py`.
 - [x] The blue WAF terminal (`/vm-terminal/`) did not connect on compose:
       the WAF has no `mgmt` address there. Fixed 2026-10-10: the pane frames
       `/waf-terminal/<session id>/`, a platform ttyd that `docker exec`s into
       `fsl-<id>-waf-1`; live-verified in session 199.
-- [ ] Spike: Kibana highlight on stable `data-test-subj` selectors.
+- [x] Spike: Kibana highlight on stable `data-test-subj` selectors. Closed
+      2026-10-10 (`docs/DECISIONS.md`, "Lesson guidance drawn over the real
+      Kibana").
+- [x] 2026-10-11: console redesign, the site browser with a Network panel,
+      the seven-step beginner lesson, and the review fixes (`docs/DECISIONS.md`,
+      the four 2026-10-11 entries).
 - [ ] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
       rule by commenting it out. In Suricata, a suppression keeps the rule
       running and hides only its alerts ("Suppressions can be used to

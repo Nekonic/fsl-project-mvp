@@ -95,9 +95,10 @@ Removing them lowers the tests floor on purpose and needs the user's ruling
 - Naming: `/api/rules/suppressions/` disables a rule (comments it out), which
   Suricata calls disabling, not suppressing; rename candidate awaiting the
   user (`docs/STATE.md` backlog 0).
-- Environment: the platform VM has no node, so the 12 console-behaviour tests
-  and `test_the_report_survives_a_real_interpreter` fail there; they pass
-  locally.
+- Environment: the console tests that drive the page under node
+  (`test_console_behaviour.py`, `test_lesson_console.py`,
+  `test_site_browser.py`) and `test_the_report_survives_a_real_interpreter`
+  fail on a host without node, such as the platform VM; they pass locally.
 
 ## Build-time spikes
 - Kibana log highlight: done 2026-10-10 (`docs/DECISIONS.md`). The lesson

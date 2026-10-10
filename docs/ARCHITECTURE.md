@@ -88,9 +88,9 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
-| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000 |
+| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
 
-8000 binds to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
+8000 and 8002 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
 
 | Network | Segment | Subnet | Name | Origin |
@@ -205,10 +205,14 @@ on. `compose.yaml` repeats the segment identity in network labels;
 `platform/tests/test_declaration.py` checks the two files against each other,
 but never checks the running range.
 
-Segments are found by a label. On docker hosts are found by label too:
+Segments are found by a label. On docker the adapter finds hosts by label too:
 `declaration.yaml`'s `compose:` section maps each role to a compose service,
 and the adapter picks the container with that `com.docker.compose.service`
-label in the session's project. Each segment
+label in the session's project. Two places bypass that lookup and name the
+session's WAF container by the compose naming convention instead:
+`platform/api/site.py` (`http://fsl-<id>-waf-1`, the site proxy) and
+`platform/api/views.py` (`fsl-<id>-waf`, the lesson's WAF box), recorded in the
+exceptions table below. Each segment
 carries `fsl.segment.id` as a Docker label or a Neutron tag, and the adapters
 fetch only labelled networks; a session-owned network wins over a control-plane
 one with the same segment id. Matching by name broke on compose prefixes and
@@ -259,6 +263,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person, and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read; the platform reads neither |
+| The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
@@ -547,7 +552,12 @@ language switch.
   attack cases, benign cases, objectives and lesson steps from
   `GET /api/wargames/`; finished sessions with their `result`: PASS/FAIL from
   the last VERIFY run, or objectives lost of the total and how many went
-  unnoticed. A refused start is said under the button that was pressed; on
+  unnoticed. The result is scored once and stored (`Session.result_cache`,
+  migration 0018) with the inputs it was scored from: `ended_at`, the hint
+  count, and each of detections (last id, rows, rows with a marker), cases and
+  objectives (last id, rows). A list reads three aggregates per session and
+  scores again only a session whose inputs changed, such as a late ingest. A
+  refused start is said under the button that was pressed; on
   409 "Close open sessions" lists the open ones, each closed through
   `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
 - Session (`/session/<id>/`): header figures (lesson step, objectives lost,
