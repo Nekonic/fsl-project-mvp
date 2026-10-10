@@ -1,5 +1,6 @@
 import ipaddress
 import json
+import time
 import uuid
 
 import pytest
@@ -7,6 +8,7 @@ import requests
 
 from conftest import (
     PLATFORM_URL, credited_to, from_attacker, score_when_ready, seen_by_both_engines,
+    target_code,
 )
 from range import SENSOR, run
 
@@ -41,14 +43,35 @@ def _outside(alerts):
         if ipaddress.ip_address(a["src_ip"]) in EDGE
     }
 
-@pytest.fixture
-def probe(stack_is_up):
+def _probed():
     token = f"zz{uuid.uuid4().hex[:10]}"
     from_attacker(f"/search/?q=%27%20OR%201%3D1--%20{token}")
     import time; time.sleep(4)
     alerts = _alerts_mentioning(token)
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"
     return alerts
+
+@pytest.fixture
+def probe(stack_is_up):
+    return _probed()
+
+LET_THE_PROBE_THROUGH = {
+    "paranoia": 1,
+    "exclusions": [{"rule_id": 942100, "target": "ARGS:q", "path": "/search/"}],
+}
+
+@pytest.fixture
+def probe_past_the_waf(stack_is_up):
+    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+    tuned = requests.put(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/waf/", json=LET_THE_PROBE_THROUGH, timeout=120,
+    )
+    assert tuned.ok, tuned.text
+    for _ in range(30):
+        if target_code(f"/search/?q=%27%20OR%201%3D1--%20reload{uuid.uuid4().hex[:6]}") != 403:
+            break
+        time.sleep(1)
+    return _probed()
 
 def test_the_front_door_is_on_the_outside(probe):
     sources = {a["src_ip"] for a in probe}
@@ -58,14 +81,14 @@ def test_the_front_door_is_on_the_outside(probe):
         f"none of it from {EDGE} - the way in is on the inside of the estate"
     )
 
-def test_the_inside_leg_is_still_the_inside(probe):
+def test_the_inside_leg_is_still_the_inside(probe_past_the_waf):
     estate = _estate()
     inside = {
-        a["src_ip"] for a in probe
+        a["src_ip"] for a in probe_past_the_waf
         if ipaddress.ip_address(a["src_ip"]) in estate
     }
 
-    assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe)}"
+    assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe_past_the_waf)}"
 
 def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
     session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]

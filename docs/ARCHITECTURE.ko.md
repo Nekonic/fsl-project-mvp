@@ -28,7 +28,8 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 세션의 `estate`에 붙고(`docker network connect`, 별칭 `platform`) 세션의 프록시를 그
 세션 자신의 WAF로 향하게 한다(`/label/origin`). baseline은 그 뒤에 읽는다. 세션은 동시에
 돈다: 세션을 열면 이미 끝난 세션의 `fsl-<n>` 프로젝트만 `down -v`하고(먼저 그 `estate`에서
-빠진다), 열린 세션이 하나뿐이어야 한다는 409는 OpenStack에만 적용된다. 세션을 닫아도
+빠진다). docker는 세션을 최대 `FSL_MAX_SESSIONS`개(기본 2, `platform/fsl/settings.py`)까지
+열고 그 이상은 409로 답한다. OpenStack은 하나를 유지한다. 세션을 닫아도
 그 스택은 이후 세션이 열릴 때까지 남는다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
 세션 스택이 뜨지 않는다. 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`,
 즉 board VM의 관리망 주소로 board VM을 읽는다. `loot.ground_truth`가 `BOARD_API_URL`의
@@ -52,7 +53,7 @@ session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 war
 이름으로 되돌려 매핑한다.
 
 레인지에 작용하는 엔드포인트(rules, validate, suppressions, `/api/attacker/`, origin,
-label)는 `session`을 쿼리나 본문에서 받고, 없으면 가장 최근에 열린 세션을 쓴다. 억제는
+label)는 `session`을 쿼리나 본문에서 받고, 없으면 닫혔는지와 상관없이 가장 최근에 열린 세션을 쓴다. 억제는
 세션과 함께 저장된다(마이그레이션 0014). 레드 콘솔은 자기 세션 id를 보낸다. 각 세션의
 센서는 실제 `local.rules`를 자기 컨테이너 안에 둔다. docker에서는 모든 세션의 센서를
 열 때 그 defense의 룰 파일로, 시나리오에 `defense`가 없으면(corp)
@@ -354,7 +355,9 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 하나와, 항목마다 런타임 제외 하나(`ctl:ruleRemoveTargetById=<id>;<target>` 또는
 `ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
 <path>"`로 범위를 좁힘). 파일은 `runner("gateway")`로 그 세션의 WAF에 쓰고, `nginx -t
-&& nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 쓰기 전에 입력을
+&& nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 재적재 전에 돌던
+nginx 워커가 하나도 남지 않을 때(`/proc`에서 부모 PID로 읽음)에야 반환하므로, 다음 요청은
+새 튜닝을 만난다. 5초가 지나면 거부한다. 쓰기 전에 입력을
 검증한다: paranoia 1-4, 룰 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
 `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
 경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `GET/PUT /api/sessions/<id>/waf/`로 읽고
@@ -364,9 +367,12 @@ Suricata 기록이 이미 Kibana에 있다. 열 때의 재생이 실행되지 �
 경로로 재생하고 `meta.verify=<run>`을 붙이며, 그 실행만 판정한다. sqlmap 케이스는
 sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `(username, hash)`와
 맞으면(`loot.matched`) 유출이며, 그것이 증명하는 목표도 인정한다. 막힘은 긍정적 증거가
-있을 때만이다: 맞는 행이 없고, sqlmap이 0으로 끝나 `[*] ending` 줄을 찍었으며 연결·중단
-오류가 없고, "all tested parameters do not appear to be injectable"로 결론 냈거나
-아무것과도 맞지 않는 행을 덤프했다(`tools.concluded`). 그 밖은 판정 불가이며 검증에
+있을 때만이다: 맞는 행이 없고, sqlmap이 0으로 끝나 `[*] ending` 줄을 찍었으며 중단(트레이스백,
+사용자 중단, 존재하지 않는 호스트)이 없고, "all tested parameters do not appear to be
+injectable"로 결론 냈거나 아무것과도 맞지 않는 행을 덤프했다(`tools.concluded`). sqlmap이
+회복한 연결 오류는 결론을 무효로 하지 않는다. WAF 뒤에서 그것은 ModSecurity가 board의 500
+응답을 끊은 것이다(nginx "header already sent"). 결론 전에 sqlmap을 멈춘 연결 오류는 결론
+줄을 남기지 않으므로 판정 불가다. 그 밖은 판정 불가이며 검증에
 실패한다. sqlmap 케이스는 `--disable-hashing`으로 돌아, `--batch`가 수락하고 끝나지 않는
 pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는다. sqlmap이 보고한 403 횟수는 `meta.forbidden`에 남기고 판정에는 쓰지 않는다.
 정상 케이스는 curl이 2xx `http_code`를 보고하면 응답받은 것이다. 통과는 모든 공격이

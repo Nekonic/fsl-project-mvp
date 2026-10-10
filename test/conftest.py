@@ -85,11 +85,9 @@ def stack_is_up():
     )
 
 MADE_BY_THIS_RUN: set[int] = set()
-OPENED_IN_ORDER: list[int] = []
 
 def made_by_this_run(session_id: int) -> int:
     MADE_BY_THIS_RUN.add(session_id)
-    OPENED_IN_ORDER.append(session_id)
     listed = os.environ.get("FSL_ACCEPTANCE_SESSIONS")
     if listed:
         with open(listed, "a", encoding="utf-8") as ids:
@@ -106,29 +104,38 @@ def the_run_leaves_no_session_open(stack_is_up):
             made_by_this_run(answer.json()["id"])
         return answer
 
+    mark = _newest_session()
     requests.post = post
     try:
         yield
     finally:
         requests.post = real_post
+        _close_opened_after(mark)
         for session_id in sorted(MADE_BY_THIS_RUN):
             real_post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
-def _close_opened_since(count: int) -> None:
-    for session_id in OPENED_IN_ORDER[count:]:
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+def _newest_session() -> int:
+    rows = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=60).json()
+    return rows[0]["id"] if rows else 0
+
+def _close_opened_after(mark: int) -> None:
+    listed = requests.get(f"{PLATFORM_URL}/api/sessions/?state=open", timeout=60).json()
+    for row in listed:
+        if row["id"] > mark:
+            made_by_this_run(row["id"])
+            requests.post(f"{PLATFORM_URL}/api/sessions/{row['id']}/close/", json={}, timeout=120)
 
 @pytest.fixture(scope="module", autouse=True)
 def a_module_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
-    count = len(OPENED_IN_ORDER)
+    mark = _newest_session()
     yield
-    _close_opened_since(count)
+    _close_opened_after(mark)
 
 @pytest.fixture(autouse=True)
 def a_test_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
-    count = len(OPENED_IN_ORDER)
+    mark = _newest_session()
     yield
-    _close_opened_since(count)
+    _close_opened_after(mark)
 
 @pytest.fixture(scope="session", autouse=True)
 def terminal_leaves_by_the_front_door(stack_is_up):
@@ -171,13 +178,18 @@ def defence_is_on(stack_is_up):
     )
 
 def run_redteam() -> int:
-    result = run(
-        SCORER,
-        ["python", "redteam/run.py",
-         "--platform", PLATFORM_FROM_SCORER,
-         "--tool-target", TARGET_PUBLIC],
-        timeout=300,
-    )
+    mark = _newest_session()
+    try:
+        result = run(
+            SCORER,
+            ["python", "redteam/run.py",
+             "--platform", PLATFORM_FROM_SCORER,
+             "--tool-target", TARGET_PUBLIC],
+            timeout=300,
+        )
+    except RangeUnavailable:
+        _close_opened_after(mark)
+        raise
     assert result.ok, f"red team run failed:\n{result.output}"
 
     for line in result.stdout.splitlines():

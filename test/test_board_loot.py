@@ -3,7 +3,7 @@ import json
 import requests
 
 from conftest import PLATFORM_URL
-from range import SCORER, run
+from range import BOARD, run
 
 
 def _board_session():
@@ -14,13 +14,13 @@ def _board_session():
     return created.json()["id"]
 
 
-def _auth_users_over_estate():
-    body = run(SCORER, [
-        "python3", "-c",
+def _auth_users_of(session_id):
+    body = run(BOARD, [
+        "python", "-c",
         "import urllib.request,sys; "
         "sys.stdout.write(urllib.request.urlopen("
-        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
-    ]).stdout
+        "'http://127.0.0.1:8000/internal/auth-users', timeout=20).read().decode())",
+    ], session=session_id).stdout
     return json.loads(body)
 
 
@@ -33,7 +33,7 @@ def test_submitting_the_exfiltrated_hashes_credits_the_full_ladder(stack_is_up):
     )
     assert fired.status_code == 201, fired.text
 
-    truth = _auth_users_over_estate()
+    truth = _auth_users_of(session_id)
     rows = [{"username": name, "hash": digest} for name, digest in truth.items()]
     submitted = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/loot/",

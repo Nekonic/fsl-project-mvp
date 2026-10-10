@@ -68,6 +68,8 @@ every service is healthy; the platform then reads the target's baseline from
 that session's own target. Sessions run side by side: each stack has its own
 `estate` network and its own Elasticsearch index (`fsl-logs-<session id>-*`),
 and opening a session takes down only the stacks of sessions already closed.
+At most `FSL_MAX_SESSIONS` sessions (default 2) are open at once; one more
+answers 409, because each stack holds about 1.5 GB.
 Closing a session leaves its stack standing until the next open. A new wargame needs its folder with its `compose.yaml`,
 `scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
 one more `include:` line in `session.yaml`; `platform/wargames.py` discovers it

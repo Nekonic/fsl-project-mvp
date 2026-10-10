@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import re
+import time
 
 EXCLUSIONS = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
 RELOAD = ["sh", "-c", "nginx -t 2>&1 && nginx -s reload 2>&1"]
+WORKERS = ('m=$(cat /tmp/nginx.pid); for d in /proc/[0-9]*; do '
+           '[ "$(cut -d" " -f4 $d/stat 2>/dev/null)" = "$m" ] && echo ${d#/proc/}; done; true')
+SETTLE_POLLS = 50
 FIRST_ID = 10000
 MOST_EXCLUSIONS = 20
 TARGET = re.compile(r"(ARGS|ARGS_GET|ARGS_POST|ARGS_NAMES|REQUEST_COOKIES|REQUEST_HEADERS)(:[\w-]+)?", re.ASCII)
@@ -51,12 +55,21 @@ def rendered(tuning: dict) -> str:
 def apply(tuning, gateway) -> dict:
     tuning = checked(tuning)
     previous = gateway(["sh", "-c", f"cat {EXCLUSIONS} 2>/dev/null || true"]).output
+    old = _workers(gateway)
     _write(gateway, rendered(tuning))
     ran = gateway(RELOAD)
     if not ran.ok:
         _write(gateway, previous)
         raise TuningRefused("nginx refused the tuning, rolled back: " + ran.output.strip())
-    return tuning
+    for _ in range(SETTLE_POLLS):
+        serving = _workers(gateway)
+        if serving and not serving & old:
+            return tuning
+        time.sleep(0.1)
+    raise TuningRefused(f"nginx workers {sorted(old)} still serve the previous tuning")
+
+def _workers(gateway) -> set[str]:
+    return set(gateway(["sh", "-c", WORKERS]).output.split())
 
 def _write(gateway, content: str) -> None:
     ran = gateway(["sh", "-c", "cat > " + EXCLUSIONS], stdin=content)

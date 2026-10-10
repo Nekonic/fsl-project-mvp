@@ -33,7 +33,8 @@ joins the session's `estate` (`docker network connect`, alias `platform`) and
 aims the session's proxy at the session's own WAF (`/label/origin`); the
 baseline is read after that. Sessions run concurrently: opening a session runs
 `down -v` only on `fsl-<n>` projects whose session has ended (leaving their
-`estate` first), and the single-open-session 409 applies on OpenStack only.
+`estate` first). Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2,
+`platform/fsl/settings.py`) and answers 409 past that; OpenStack keeps one.
 Closing a session leaves its stack until a later open. The OpenStack substrate has
 no `open_session`: its range is the Nova VMs, so no session stack starts. Its
 readiness probe and session baseline read the board VM through the adapter's
@@ -60,7 +61,7 @@ which `platform/range/docker.py` maps the container back to.
 
 Every endpoint that acts on the range (rules, validate, suppressions,
 `/api/attacker/`, origin, label) takes `session` from the query or body and
-falls back to the newest open session; suppressions are stored with their
+falls back to the newest session, open or not; suppressions are stored with their
 session (migration 0014). The red console sends its session id. Each
 session's sensor keeps its live `local.rules` in its own container. On docker
 every session's sensor is seeded at open with its defense's rule file, or with
@@ -392,7 +393,9 @@ exclusion per entry (`ctl:ruleRemoveTargetById=<id>;<target>` or
 `ctl:ruleRemoveById=<id>`, scoped by `SecRule REQUEST_FILENAME "@beginsWith
 <path>"` when a path is given). It writes the file into the session's WAF with
 `runner("gateway")`, runs `nginx -t && nginx -s reload`, and restores the
-previous file if nginx refuses. Input is validated before anything is written:
+previous file if nginx refuses. It returns only once none of the nginx workers
+that ran before the reload is left (read from `/proc` by parent PID), so a
+request sent next meets the new tuning; after 5 s it refuses instead. Input is validated before anything is written:
 paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 `ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional
 `:name`, a path of `[A-Za-z0-9_./-]`, at most 20 entries.
@@ -404,9 +407,13 @@ run. An sqlmap case is leaked when the rows sqlmap dumped (`redteam/tools.py`
 `dumped`) match a `(username, hash)` of the session's snapshot
 (`loot.matched`); a leak also credits the objectives it proves. It is held
 only on positive evidence: no matching row, sqlmap exited 0, printed its
-`[*] ending` line and no connection or abort error, and either concluded "all
-tested parameters do not appear to be injectable" or dumped rows that match
-nothing (`tools.concluded`). Anything else is inconclusive and fails VERIFY.
+`[*] ending` line and no crash (traceback, user abort, a host that does not
+exist), and either concluded "all tested parameters do not appear to be
+injectable" or dumped rows that match nothing (`tools.concluded`). A
+connection error sqlmap recovered from does not void the conclusion: behind
+the WAF they are ModSecurity cutting the board's 500 responses (nginx "header
+already sent"); a connection error that stops sqlmap before it concludes
+leaves no conclusion line and is inconclusive. Anything else is inconclusive and fails VERIFY.
 The sqlmap cases run with `--disable-hashing`, so sqlmap does not offer to
 crack the pbkdf2 hashes (which `--batch` accepts and never finishes) and the
 dumped cells are the raw hashes. The 403 count

@@ -258,10 +258,7 @@ def _ground_truth(adapter, wargame_id):
     return loot.ground_truth(wargame_id, host)
 
 def _newest(session=None):
-    return session or (
-        Session.objects.filter(ended_at=None).order_by("-id").first()
-        or Session.objects.order_by("-id").first()
-    )
+    return session or Session.objects.order_by("-id").first()
 
 def _range(session=None, adapter=None):
     adapter = adapter or substrate()
@@ -1238,7 +1235,17 @@ def restore_suppression(request, suppression_id):
     return _reply(_shape(record, SUPPRESSION_FIELDS) | {"detail": detail})
 
 def _restore(record) -> tuple[bool, str | None]:
-    current = _live_rules(record.session)
+    try:
+        current = _live_rules(record.session)
+    except RangeUnavailable:
+        if record.session is None or record.session.ended_at is None:
+            raise
+        record.restored_at = timezone.now()
+        record.save(update_fields=["restored_at"])
+        return True, (
+            f"session {record.session_id} has ended and its sensor is gone, so "
+            f"nothing is left silenced"
+        )
     superseded = suppress.find(current, record.sid) is not None
     lift = suppress.discard if superseded else suppress.restore
     try:

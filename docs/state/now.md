@@ -44,27 +44,31 @@ Spec MVP item 1 is steps 1+2 here; spec items 2-7 are steps 3-8.
    `guidance`/`defense`; `rules/crs.py` writes the session's paranoia level and
    exclusions; the sensor's rule file is per session, seeded at open; `/waf/`
    and `/verify/` APIs; lesson panel in the blue console; seeded logs for a
-   guided session. Unit-tested only; `test/test_lesson.py` waits for the live
-   run. Step text (en/ko, `lesson.board.*`) waits for the user's review.
-8. Test written (e307cc9, `test/test_concurrent_sessions.py`); live run pending.
+   guided session. Live-verified (`test/test_lesson.py`). Step text (en/ko,
+   `lesson.board.*`) waits for the user's review.
+8. Live-verified (e307cc9, `test/test_concurrent_sessions.py`). Docker opens at
+   most `FSL_MAX_SESSIONS` sessions (default 2); one more answers 409.
 
-Live acceptance of steps 4-6 and 8 on 192.168.0.210 (substrate docker):
-LIVE-RESULT-PENDING
+Live acceptance (the push gate), 2026-10-10, on the dedicated 8 GB/2 vCPU VM
+`fsl-acceptance` (192.168.0.220, substrate docker, HEAD 69db444): `bin/verify`
+all green; unit 1351 passed, acceptance 145 passed and 0 failed in 42 min
+31 s, ratchet no regression. Detail in `docs/DECISIONS.md` (2026-10-10, the
+live acceptance). The platform VM 192.168.0.210 is back on origin/dev
+(870b15f), substrate openstack.
 
-Commits 870b15f..2b7ded3 are local on this branch, not pushed; push waits for
-that acceptance.
+Commits 870b15f..HEAD are local on this branch, not pushed; push waits for the
+user's approval.
 
 ## Known open on docker
-- Step 7 live: whether `board-sqli-orderby-sqlmap-tamper` is held at PL4 with
-  the 920273 exclusion, how long VERIFY and a guided open take, and whether
-  `SecRuleEngine On` at PL1 changes any corp acceptance case (WordPress
-  exploits now meet a blocking WAF).
 - The VERIFY diagnosis for a blocked benign case names the status, not the CRS
   rule id; reading the rule id needs the audit record.
 - The reachability middleware covers only the newest session's `estate`.
 - `/vm-terminal/` does not connect on compose (Kali and the WAF have no `mgmt`
   address); the red terminal uses `/terminal/<id>/` instead.
 - Two `POST /api/sessions/` within milliseconds can race (pre-existing).
+- Naming: `/api/rules/suppressions/` disables a rule (comments it out), which
+  Suricata calls disabling, not suppressing; rename candidate awaiting the
+  user (`docs/STATE.md` backlog 0).
 - Environment: the platform VM has no node, so the 12 console-behaviour tests
   and `test_the_report_survives_a_real_interpreter` fail there; they pass
   locally.
@@ -83,8 +87,8 @@ that acceptance.
   (`board-normal-sort`).
 
 ## Deferred (OpenStack work, not MVP)
-Per-session CIDR allocation (fabric.py:11); the single-session 409 (kept on
-OpenStack only) and the bin/verify open-session guard; splitting pfSense's
+Per-session CIDR allocation (fabric.py:11); the single-session 409 (OpenStack
+keeps one; docker allows `FSL_MAX_SESSIONS`) and the bin/verify open-session guard; splitting pfSense's
 edge and sensor roles; acceptance on substrate openstack (`docs/STATE.md`
 backlog 0).
 

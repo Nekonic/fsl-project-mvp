@@ -36,16 +36,18 @@ def _record_window(session_id, name, malicious, source_ip, started_at, ended_at)
 
 @pytest.fixture(scope="module")
 def window_session(stack_is_up):
-    attacker = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60)
+    session_id = requests.post(
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+    ).json()["id"]
+
+    attacker = requests.get(
+        f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=60
+    )
     assert attacker.ok, (
         f"the attacker box is not available: {attacker.text}. "
         f"Run `{start_hint(ATTACKER)}`."
     )
     source_ip = attacker.json()["source_ip"]
-
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
-    ).json()["id"]
 
     started = _now()
     from_attacker(BENIGN_PATH)

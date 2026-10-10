@@ -4,15 +4,18 @@ from range.ports import Ran
 from rules import crs
 
 class Gateway:
-    def __init__(self, live="", reload=Ran(0, "test is successful")):
+    def __init__(self, live="", reload=Ran(0, "test is successful"), workers=None):
         self.file = live
         self.reload = reload
+        self.workers = list(workers or ["11 12", "21 22"])
         self.calls = []
 
     def __call__(self, argv, stdin=None, timeout=60.0):
-        self.calls.append(argv)
         joined = " ".join(argv)
-        if "nginx" in joined:
+        if joined.endswith(crs.WORKERS):
+            return Ran(0, self.workers.pop(0) if len(self.workers) > 1 else self.workers[0])
+        self.calls.append(argv)
+        if "nginx -t" in joined:
             return self.reload
         if "cat >" in joined:
             self.file = stdin
@@ -90,3 +93,14 @@ def test_a_refused_tuning_never_reaches_the_gateway():
         crs.apply({"paranoia": 9}, gateway)
 
     assert gateway.calls == []
+
+def test_applying_returns_only_once_the_old_nginx_workers_stopped_serving(monkeypatch):
+    monkeypatch.setattr(crs.time, "sleep", lambda seconds: None)
+    settled = Gateway(workers=["11 12", "11 12", "11 21", "21 22"])
+    stuck = Gateway(workers=["11 12"])
+
+    crs.apply({"paranoia": 2}, settled)
+
+    assert settled.workers == ["21 22"], "it returned while an old worker still served"
+    with pytest.raises(crs.TuningRefused, match="still serve"):
+        crs.apply({"paranoia": 2}, stuck)

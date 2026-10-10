@@ -15,6 +15,7 @@ from range.ports import RangeUnavailable
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 RUNNING = {
+    "kali": [("fsl-3-kali-1", "fsl-3"), ("fsl-7-kali-1", "fsl-7")],
     "suricata": [("fsl-3-suricata-1", "fsl-3"), ("fsl-7-suricata-1", "fsl-7")],
     "waf": [("fsl-3-waf-1", "fsl-3"), ("fsl-7-waf-1", "fsl-7")],
     "board": [("fsl-3-board-1", "fsl-3"), ("fsl-7-board-1", "fsl-7")],
@@ -243,12 +244,20 @@ def test_aiming_writes_the_session_s_waf_address_for_the_proxy():
 
 
 @pytest.mark.django_db
-def test_range_wide_calls_use_the_newest_open_session():
+def test_range_wide_calls_use_the_newest_session_as_the_range_does():
     Session.objects.create(scenario="board", baseline=[])
-    newest = Session.objects.create(scenario="board", baseline=[])
-    Session.objects.create(scenario="board", baseline=[], ended_at="2026-10-10T00:00:00Z")
+    Session.objects.create(scenario="board", baseline=[])
+    newest = Session.objects.create(
+        scenario="board", baseline=[], ended_at="2026-10-10T00:00:00Z"
+    )
 
-    assert views._range().session == newest.pk
+    assert views._range().session == newest.pk, (
+        "a call with no session named chose an older open session while the "
+        "range, asked the same way, answers from the newest stack: the console "
+        "reported one session's attacker box and the shell ran in another's"
+    )
+    with patch("range.docker.subprocess.run", Range()):
+        assert session_range(None)._container("attacker") == "fsl-7-kali-1"
 
 
 class Sensors:
@@ -342,3 +351,62 @@ def test_the_terminal_is_the_session_s_own_kali():
     assert "fsl-$session-kali-1:7681" in block, (
         "the shared name kali resolves to every session's attacker box"
     )
+
+
+@pytest.mark.django_db
+def test_the_attacker_box_asked_for_no_session_is_the_newest_one(client):
+    Session.objects.create(scenario="board", baseline=[])
+    newest = Session.objects.create(scenario="board", baseline=[], ended_at="2026-10-10T00:00:00Z")
+    asked = []
+
+    def standing(session=None):
+        asked.append(session.pk)
+        raise RangeUnavailable("stand-in")
+
+    with patch("api.views._standing", standing):
+        client.get("/api/attacker/")
+
+    assert asked == [newest.pk], (
+        "the console's box and the shell the acceptance suite drives were two "
+        "different sessions' attacker boxes"
+    )
+
+
+@pytest.mark.django_db
+def test_a_suppression_on_a_torn_down_session_is_lifted_not_stuck(client):
+    from django.utils import timezone
+
+    from api.models import Suppression
+
+    gone = Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+    record = Suppression.objects.create(
+        session=gone, sid=9000004, original="alert x", expires_at=timezone.now(),
+    )
+
+    with patch("api.views.suricata.current", side_effect=RangeUnavailable("no sensor")):
+        restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
+        listed = client.get("/api/rules/suppressions/").json()
+
+    assert restored.status_code == 200, restored.content
+    assert listed["suppressions"] == [], (
+        "a suppression on a session whose stack was taken down could never be "
+        "restored, and every later run refused to start over it"
+    )
+
+
+@pytest.mark.django_db
+def test_a_suppression_on_an_open_session_is_not_dropped_when_its_sensor_is_down(client):
+    from django.utils import timezone
+
+    from api.models import Suppression
+
+    live = Session.objects.create(scenario="board", baseline=[])
+    record = Suppression.objects.create(
+        session=live, sid=9000004, original="alert x", expires_at=timezone.now(),
+    )
+
+    with patch("api.views.suricata.current", side_effect=RangeUnavailable("no sensor")):
+        restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
+
+    assert restored.status_code == 503
+    assert Suppression.objects.get(pk=record.pk).restored_at is None

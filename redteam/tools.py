@@ -11,10 +11,7 @@ FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
 TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
 ENDED = "[*] ending @"
 NOT_INJECTABLE = "all tested parameters do not appear to be injectable"
-ABORTED = re.compile(
-    r"\[CRITICAL\][^\n]*(connect|does not exist|timed out|reset|aborted|unable)|Traceback|user quit",
-    re.IGNORECASE,
-)
+ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
 TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl/kali:mvp")
 
