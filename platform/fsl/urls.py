@@ -1,6 +1,6 @@
 from django.urls import path
 
-from api import views
+from api import site, views
 from console import views as console
 
 urlpatterns = [
@@ -27,6 +27,9 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/score/", views.session_score),
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/verify/", views.session_verify),
+    path("api/sessions/<int:session_id>/site/requests/", site.site_requests),
+    path("api/sessions/<int:session_id>/site/requests/<int:request_id>/", site.site_request),
+    path("site-proxy/<int:session_id>/<str:host>/", site.proxy),
     path("api/detections/<int:detection_id>/", views.detection_detail),
     path("api/range/fabric/", views.range_fabric),
     path("api/range/images/", views.range_images),

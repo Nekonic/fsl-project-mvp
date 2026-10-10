@@ -28,7 +28,7 @@ import scoreboard
 import suppress
 import topology
 import wargames
-from api import effect, loot
+from api import effect, loot, site
 from api.refusals import Conflict
 from api.models import (
     Case,
@@ -65,7 +65,7 @@ SUPPRESSION_FIELDS = (
     "id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
 
-SITE_BROWSER_MARKER = "browse"
+SITE_BROWSER_MARKER = site.MARKER
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
 RULE_CHANGES = threading.RLock()

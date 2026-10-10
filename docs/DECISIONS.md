@@ -1223,3 +1223,43 @@ about 17 s; the filter button narrowed Kibana to the O'Brien 403s; 949110 got
 terminal" appended the line and printed "test is successful"; the O'Brien
 search returned the results page; VERIFY passed. The board holds no post
 matching "release", so that search shows the empty results page (200).
+
+## 2026-10-11 — Developer tools for the site browser; one place for the guide's words
+
+The user (PM) asked for a DevTools-like Network panel on the site browser, the
+full URL with a "Not secure" marker in the address bar, and four fixes to the
+lesson guide seen on step 1.
+
+Recording. nginx cannot hand a response body to anything without a scripting
+module, so the site route now passes through the platform: nginx on 8002 →
+`/site-proxy/<session>/<host>/` (`platform/api/site.py`) → the session's WAF,
+with the exact path and query in `X-Site-Uri`. The view records each request
+in memory, the last 200 per session, bodies cut to 64 KB, and serves them at
+`GET /api/sessions/<id>/site/requests/` (`?after=`) and `.../<id>/`. Memory,
+not a table: the panel is a debugging view of the current session, and a
+restart losing it costs nothing that scoring reads. Two guards come with it:
+8000 answers 404 for `/site-proxy/` (on the console's origin the target's
+pages would run as the console), and the same-origin POST check skips that
+path so the target's own forms still submit. The marker `X-FSL-Case: browse`
+is now set by the recorder. No new dependency (`requests` was there); core_loc
+unchanged.
+
+Guide. The popover is the only place for the step's words and Back/Next; the
+note's Steps tab lists the steps with the current one marked and its status.
+A step names the pane it needs; until that pane is shown the popover says
+"open Website / Kibana / WAF on the left" and the box is on that rail button,
+then it moves to the address bar, the Kibana element, the WAF pane or the
+note's Verify button. A target wider than 480 px gets the popover under its
+right end, not in the middle of the page. Checks are automatic, so the Check
+button went; a status line says "Checking...", what is missing, or "✓" and what
+was found, 1.2 s before the guide moves on.
+
+Why step 1 showed no red box: lesson v2 drew the box only from the second hint
+level (the "pointing" rung of the ladder), so every step started without one.
+It was not the cross-origin frame: no step ever pointed inside the site page.
+The box is now drawn from the start of every step; the hint's second rung says
+"look where the red box is". A console test walks all seven steps in both the
+guided and the "Do it yourself" mode and asserts each box is drawn on a
+target the console can reach, never inside the site frame; the live walk
+(session 205, headless Chromium) saw the box on every step and ended in
+VERIFY PASS.

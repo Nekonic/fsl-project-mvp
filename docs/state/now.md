@@ -72,7 +72,10 @@ pane browses the session's target through its WAF on port 8002; the WAF lesson
 is seven platform-checked steps with a hint ladder and "Do it for me"
 (`docs/DECISIONS.md`, 2026-10-11). Walked live to VERIFY PASS in session 204
 with headless Chromium. Not pushed. The Claude desktop browser does not load
-the 8002 frame; the red console has no site pane.
+the 8002 frame; the red console has no site pane. Then (PM feedback): a
+Network panel recorded by the platform's site proxy, the full URL with "Not
+secure", and the guide's words in one place with a red box on every step
+(walked live in session 205).
 
 Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
 duplicate another test, pin implementation detail, assert framework or YAML
