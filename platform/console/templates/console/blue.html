@@ -132,6 +132,10 @@
     <div id="coach-pop-command" class="hidden relative mt-2">
       <pre id="coach-pop-code" class="code pr-14"></pre>
       <button id="coach-pop-copy" data-t="lesson.copy" class="absolute top-2 right-2 btn btn-sm btn-code"></button>
+      <div class="flex items-center gap-2 mt-2">
+        <button id="coach-pop-type" data-t="lesson.type" class="btn btn-sm btn-blue shrink-0"></button>
+        <span id="coach-pop-typed" class="text-[12px] text-muted"></span>
+      </div>
     </div>
     <p id="coach-pop-does" class="hidden mt-2 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></p>
     <p id="coach-pop-missing" data-t="lesson.coach.missing" class="hidden mt-2 text-[12px] text-muted"></p>
@@ -190,14 +194,59 @@
   const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
   const caseLabel = (name) => localized(`case.${name}`, name);
 
-  async function copy(text, button) {
+  function copyThroughSelection(text) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    Object.assign(area.style, { position: "fixed", top: "0", left: "0", opacity: "0" });
+    document.body.appendChild(area);
     try {
-      await navigator.clipboard.writeText(text);
-      button.textContent = t("lesson.copied");
+      area.select();
+      return document.execCommand("copy") === true;
     } catch (error) {
-      button.textContent = t("lesson.copy_failed");
+      return false;
+    } finally {
+      area.remove();
     }
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {
+        return copyThroughSelection(text);
+      }
+    }
+    return copyThroughSelection(text);
+  }
+
+  async function copy(text, button) {
+    button.textContent = t(await copyText(text) ? "lesson.copied" : "lesson.copy_failed");
     setTimeout(() => { button.textContent = t("lesson.copy"); }, 1500);
+  }
+
+  function wafTerminal() {
+    const waf = document.querySelector('.pane-tab[data-pane="waf"]');
+    if (!waf || waf.getAttribute("aria-selected") !== "true") return null;
+    try {
+      const term = frame.contentWindow && frame.contentWindow.term;
+      return term && typeof term.paste === "function" ? term : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function typeIntoTerminal(text, said) {
+    const term = wafTerminal();
+    if (term) {
+      term.paste(text);
+      if (typeof term.focus === "function") term.focus();
+      said.textContent = t("lesson.typed");
+      return;
+    }
+    said.textContent = t(await copyText(text) ? "lesson.type_missing" : "lesson.type_unreachable");
   }
 
   async function replay() {
@@ -242,11 +291,12 @@
 
   const NOTE_KEY = "fsl-lesson-note";
   let note = { open: false, tab: "steps" };
+  let openedByStep = false;
 
   function readNote() {
     try {
       const kept = JSON.parse(localStorage.getItem(NOTE_KEY)) || {};
-      return { open: kept.open === true, ...(typeof kept.tab === "string" ? { tab: kept.tab } : {}) };
+      return typeof kept.tab === "string" ? { tab: kept.tab } : {};
     } catch (error) {
       return {};
     }
@@ -254,7 +304,7 @@
 
   function keepNote() {
     try {
-      localStorage.setItem(NOTE_KEY, JSON.stringify(note));
+      localStorage.setItem(NOTE_KEY, JSON.stringify({ tab: note.tab }));
     } catch (error) {
       return;
     }
@@ -282,8 +332,14 @@
   function noteControls() {
     note = { ...note, ...readNote() };
     field("lesson-collapse").textContent = t("lesson.note.collapse");
-    field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
-    field("note-pill").addEventListener("click", () => setNote({ open: true }));
+    field("lesson-collapse").addEventListener("click", () => {
+      openedByStep = false;
+      setNote({ open: false });
+    });
+    field("note-pill").addEventListener("click", () => {
+      openedByStep = false;
+      setNote({ open: true });
+    });
     document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
       tab.addEventListener("click", () => setNote({ tab: tab.dataset.tab })));
     placeNote();
@@ -302,6 +358,29 @@
   const MISSING_AFTER_FRAMES = 120;
   const GAP = 14;
   const EDGE = 12;
+
+  const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left < a.left + a.width
+    && a.top < b.top + b.height && b.top < a.top + a.height;
+  const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
+    && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
+
+  function boxOf(element) {
+    const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+    return rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  }
+
+  function noteBox() {
+    return note.open ? boxOf(field("lesson")) : null;
+  }
+
+  function clipped(rect, bounds) {
+    if (!bounds) return rect;
+    const left = Math.max(rect.left, bounds.left);
+    const top = Math.max(rect.top, bounds.top);
+    const right = Math.min(rect.left + rect.width, bounds.left + bounds.width);
+    const bottom = Math.min(rect.top + rect.height, bounds.top + bounds.height);
+    return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+  }
 
   function locate(step) {
     if (step.pane) {
@@ -336,29 +415,67 @@
     const height = pop.offsetHeight || 200;
     const viewWidth = window.innerWidth || 1440;
     const viewHeight = window.innerHeight || 900;
-    let left;
-    let top;
-    arrow.classList.toggle("hidden", Boolean(!rect || step.pane));
+    const aside = noteBox();
+    const pane = boxOf(frame);
+    const clampX = (x) => Math.max(EDGE, Math.min(x, viewWidth - width - EDGE));
+    const clampY = (y) => Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
+    const fits = (spot) => spot.left >= EDGE && spot.top >= EDGE
+      && spot.left + width <= viewWidth - EDGE && spot.top + height <= viewHeight - EDGE;
+    const clear = (spot, avoidTarget) => {
+      const area = { left: spot.left, top: spot.top, width, height };
+      return fits(spot) && !overlaps(area, aside) && !(avoidTarget && overlaps(area, rect));
+    };
+    let spots;
+    let avoidTarget = false;
     if (rect && step.pane) {
-      const aside = field("lesson");
-      const noteBox = note.open && aside.getBoundingClientRect ? aside.getBoundingClientRect() : null;
-      const room = noteBox && noteBox.width ? noteBox.width + 16 : 0;
-      left = rect.left + rect.width - width - 16 - room;
-      top = rect.top + rect.height - height - 16;
+      const inset = 16;
+      const right = rect.left + rect.width - width - inset;
+      const bottom = rect.top + rect.height - height - inset;
+      spots = [
+        { left: right, top: bottom },
+        aside ? { left: aside.left - GAP - width, top: bottom } : null,
+        { left: rect.left + inset, top: bottom },
+        { left: rect.left + inset, top: rect.top + inset },
+      ];
     } else if (rect) {
-      const below = rect.top + rect.height + GAP + height <= viewHeight;
-      left = Math.max(EDGE, Math.min(rect.left + rect.width / 2 - width / 2, viewWidth - width - EDGE));
-      top = below ? rect.top + rect.height + GAP : rect.top - GAP - height;
+      avoidTarget = true;
+      const middleX = clampX(rect.left + rect.width / 2 - width / 2);
+      const middleY = clampY(rect.top + rect.height / 2 - height / 2);
+      const inNote = within(rect, aside);
+      spots = [
+        { side: "below", left: middleX, top: rect.top + rect.height + GAP },
+        { side: "above", left: middleX, top: rect.top - GAP - height },
+        { side: "left", left: (inNote ? aside.left : rect.left) - GAP - width, top: middleY },
+        { side: "right", left: rect.left + rect.width + GAP, top: middleY },
+      ];
+    } else {
+      const area = pane || { left: 0, top: 0, width: viewWidth, height: viewHeight };
+      const centred = area.left + Math.max(EDGE, (area.width - width) / 2);
+      spots = [
+        { left: centred, top: area.top + 64 },
+        aside ? { left: aside.left - GAP - width, top: area.top + 64 } : null,
+        { left: area.left + EDGE, top: area.top + 64 },
+      ];
+    }
+    spots = spots.filter(Boolean);
+    const spot = spots.find((candidate) => clear(candidate, avoidTarget))
+      || spots.find((candidate) => clear(candidate, false)) || spots[0];
+    const left = clampX(spot.left);
+    const top = clampY(spot.top);
+    arrow.classList.toggle("hidden", !spot.side);
+    Object.assign(arrow.style, { left: "", top: "", bottom: "", right: "" });
+    if (spot.side === "below" || spot.side === "above") {
       Object.assign(arrow.style, {
         left: `${Math.max(12, Math.min(rect.left + rect.width / 2 - left - 6, width - 24))}px`,
-        top: below ? "-6px" : "", bottom: below ? "" : "-6px",
+        top: spot.side === "below" ? "-6px" : "", bottom: spot.side === "above" ? "-6px" : "",
       });
-    } else {
-      const pane = frame.getBoundingClientRect();
-      left = (pane.left || 0) + Math.max(EDGE, ((pane.width || viewWidth) - width) / 2);
-      top = (pane.top || 0) + 64;
+    } else if (spot.side) {
+      Object.assign(arrow.style, {
+        top: `${Math.max(12, Math.min(rect.top + rect.height / 2 - top - 6, height - 24))}px`,
+        left: spot.side === "right" ? "-6px" : "", right: spot.side === "left" ? "-6px" : "",
+      });
     }
-    Object.assign(pop.style, { left: `${Math.max(EDGE, left)}px`, top: `${Math.max(EDGE, top)}px` });
+    Object.assign(pop.style, { left: `${left}px`, top: `${top}px` });
   }
 
   function coach(prefix, declared) {
@@ -388,9 +505,22 @@
         button.addEventListener("click", () => go(Number(button.dataset.step))));
     }
 
-    function show() {
+    function followStep(step) {
+      const tab = step.tab || "steps";
+      if (step.tab && !note.open) {
+        openedByStep = true;
+        setNote({ open: true, tab });
+      } else if (!step.tab && openedByStep) {
+        openedByStep = false;
+        setNote({ open: false, tab });
+      } else if (note.open && note.tab !== tab) {
+        setNote({ tab });
+      }
+    }
+
+    function show(follow) {
       const step = steps[at];
-      if (step.tab) setNote({ open: true, tab: step.tab });
+      if (follow) followStep(step);
       keepLessonStep(sessionId(), at + 1);
       const count = t("lesson.coach.count", at + 1, steps.length);
       field("lesson-coach-count").textContent = count;
@@ -404,6 +534,7 @@
       field("coach-pop-command").classList.toggle("hidden", !step.command);
       field("coach-pop-does").textContent = step.command ? t(`${prefix}.does.${step.id}`) : "";
       field("coach-pop-does").classList.toggle("hidden", !step.command);
+      field("coach-pop-typed").textContent = t("lesson.type.note");
       pop.classList.toggle("pop-wide", Boolean(step.command));
       const reached = (index) => (index <= at ? "dot-blue" : "dot-muted");
       field("coach-pop-dots").innerHTML = steps.map((_, index) =>
@@ -428,14 +559,16 @@
         : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open].join() : `none-${at}-${missing}`;
       if (key !== last) {
         last = key;
-        box.classList.toggle("hidden", !rect);
+        const drawn = rect && !step.pane && !step.panel
+          ? clipped({ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 }, boxOf(frame))
+          : rect && step.panel
+            ? { left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 } : rect;
+        box.classList.toggle("hidden", !drawn || !drawn.width);
         pop.classList.toggle("hidden", dismissed);
-        box.classList.toggle("scrim", Boolean(rect && !step.pane));
-        box.style.zIndex = step.panel ? "9999" : "40";
-        if (rect) {
+        box.style.zIndex = step.panel ? "9999" : "30";
+        if (drawn) {
           Object.assign(box.style, {
-            left: `${rect.left - 4}px`, top: `${rect.top - 4}px`,
-            width: `${rect.width + 8}px`, height: `${rect.height + 8}px`,
+            left: `${drawn.left}px`, top: `${drawn.top}px`, width: `${drawn.width}px`, height: `${drawn.height}px`,
           });
         }
         if (!dismissed) placePopover(step, rect);
@@ -443,10 +576,10 @@
       requestAnimationFrame(tick);
     }
 
-    function go(index) {
+    function go(index, follow = true) {
       at = Math.max(0, Math.min(steps.length - 1, index));
       dismissed = false;
-      show();
+      show(follow);
     }
 
     function advanceFrom(step) {
@@ -491,9 +624,11 @@
     field("lesson-coach-show").addEventListener("click", () => go(at));
     field("coach-pop-copy").addEventListener("click", () =>
       copy(steps[at].command || "", field("coach-pop-copy")));
-    show();
+    field("coach-pop-type").addEventListener("click", () =>
+      typeIntoTerminal(steps[at].command || "", field("coach-pop-typed")));
+    show(true);
     requestAnimationFrame(tick);
-    return (id) => go(steps.findIndex((step) => step.id === id));
+    return (id) => go(steps.findIndex((step) => step.id === id), false);
   }
 
   const THEORY = [
