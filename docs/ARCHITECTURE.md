@@ -273,7 +273,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
 | CLI run, HTTP | the platform, `redteam/run.py` | the platform, on `edge` (where `board.com` resolves) | added by the harness |
 | CLI run, tool | a throwaway `fsl-kali` container, from `launcher(<declared default origin>)` | that container | sqlmap `--headers=` |
-| Site browser | the learner's browser, through the platform's nginx on port 8002 | the platform, on `edge` | `X-FSL-Case: browse`, set by nginx |
+| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | the platform, on `edge` | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
 and, when `/label/origin` names an address, forwards the request there with the
@@ -311,7 +311,14 @@ tools" toggle. The target is not published, so nginx on 8002 passes
 (`/site-proxy/<session>/<host>/`, `platform/api/site.py`, with the exact path
 and query in `X-Site-Uri`), which sends it on to that session's WAF
 (`fsl-<id>-waf-1:80`, reached on the shared `edge` network) with `Host:
-<host>`, no redirect following and no compression. nginx on 8000 answers 404
+<host>`, no redirect following and no compression. It passes on only
+`Accept`, `Accept-Language`, `Content-Type`, `User-Agent`, `Referer` and
+`Origin`; `X-Forwarded-For` is not among them, so the target and its audit log
+see the platform, never the learner's LAN address. It answers 404 for a
+session that does not exist and 409 for a closed one, without calling the
+WAF; when the WAF does not answer within 3 s to connect or 20 s to read, it
+answers 502 with a plain sentence that names no internal host. The page is
+streamed to the browser as it arrives. nginx on 8000 answers 404
 for `/site-proxy/`, and the platform's same-origin check for POSTs skips that
 path, so a form on the target can still be submitted. The WAF judges every page: a block is the WAF's own 403 page
 and lands in Kibana. The path and query go on exactly as the browser sent them
@@ -320,8 +327,12 @@ and lands in Kibana. The path and query go on exactly as the browser sent them
 `action="/`, `http://<host>/` and `http://<host>"` (`sub_filter`, with the
 upstream asked for no compression); WordPress's escaped `http:\/\/corp.com\/`
 too. It strips `Cookie` and `Set-Cookie`, so the platform's cookies never reach
-the target and the target's never land on the platform, which means the
-target cannot be logged into from this pane. It appends a script before
+the target and the target's `Set-Cookie` headers are dropped, which means the
+target cannot be logged into from this pane. That does not stop a script on the
+target page: it runs on the platform's host (port 8002), and cookies are not
+isolated by port, so `document.cookie` could set a cookie the console on 8000
+would send. The console uses no cookies today; one added later would be
+reachable this way. It appends a script before
 `</body>` that posts `location.pathname + search` to the parent, which is how
 the address bar and the history follow a link clicked inside the page.
 
@@ -339,21 +350,30 @@ the pane without it. The acceptance VM's security group allows 8002.
 The recorder keeps each session's last 200 requests in the platform's memory
 (lost on restart): method, `http://<host><path>`, status, whether the WAF
 blocked it (403), the time taken, the request and response headers and the
-bodies, each cut to 64 KB. `GET /api/sessions/<id>/site/requests/?after=<id>`
+bodies, each cut to 64 KB (the response is streamed and only its first 64 KB
+kept), and forgets a session's requests when it closes. `GET /api/sessions/<id>/site/requests/?after=<id>`
 lists them and `.../site/requests/<id>/` gives one in full. The Developer tools
 panel is docked under the page (its top edge drags taller or shorter); while
-open it polls the list every 2 s and shows method, URL, status (403 in red
+open, the tab visible and the session open, it polls the list every 2 s (a
+closed session answers 409 and the polling stops) and shows method, URL, status (403 in red
 with "blocked by the WAF") and time; a selected row shows both header sets,
 the request body and the response body, the first 2000 characters with "Show
 more". "View source" shows the recorded body of the page in the address bar.
 The panel says that no cookies are kept.
 
-Browsing is marked `X-FSL-Case: browse` (the recorder replaces whatever the
-browser sent), and the request comes from the platform's `edge` address. Its alerts are
-ingested and listed like any other, so the learner finds them in Kibana and in
-`/detections/`, but `/score/` leaves the `browse` marker out the way it leaves
-out seed and VERIFY replays: browsing is not a case, so it is neither a true or
-false positive nor an unattributed alert. The red console has no site pane.
+Browsing is marked with the session's own secret (`Session.browse_marker`,
+`browse-` and 32 random hex digits, made when the session is created; the
+recorder replaces whatever `X-FSL-Case` the browser sent), and the request
+comes from the platform's `edge` address. Its alerts are ingested and listed
+like any other, so the learner finds them in Kibana and in `/detections/`, but
+`/score/` leaves out detections carrying that session's secret the way it
+leaves out seed and VERIFY replays: browsing is not a case, so it is neither a
+true or false positive nor an unattributed alert. A literal `X-FSL-Case:
+browse` sent by hand is just an unknown marker and is scored, and `POST
+/api/attacker/label/` refuses labels that start with `browse`. The API never
+shows the secret: `/detections/`, `/api/detections/<id>/` (including `raw`)
+and the Network panel show `browse` in its place. Kibana shows it, which is
+the blue team's tool. The red console has no site pane.
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
@@ -375,7 +395,8 @@ resolves to the WAF on port 80. `--tool-target` defaults to `http://board.com`.
 On docker the session WAF runs CRS with `SecRuleEngine On` and anomaly
 threshold 5 (`session.yaml`); its paranoia level and rule exclusions are the
 session's own (`Session.waf`), written at open from the scenario's defense and
-changed through `/api/sessions/<id>/waf/` ("The WAF lesson"). Every Suricata
+changed through `/api/sessions/<id>/waf/` ("The WAF lesson"). `GET` reads the
+file with a 10 s timeout so a poll never holds a server thread longer. Every Suricata
 rule is `alert`, so the WAF is the only part of the range that blocks. The
 OpenStack WAF VM still runs `DetectionOnly` (`deploy/waf/modsecurity.conf`).
 
@@ -423,7 +444,9 @@ Each ingest call:
   `stale`;
 - writes markers found later onto stored rows that had none;
 - fills `src_host` and `dest_host` from the substrate's segments, empty if the
-  substrate cannot be reached.
+  substrate cannot be reached. Ingest and `/detections/` reuse a session's
+  segments for 30 s instead of running `docker network ls` and `inspect` on
+  every lesson poll; `/top/`, `/map/` and `/topology/` read them fresh.
 
 Elasticsearch is used for storage and for GeoIP enrichment at index time,
 which is why there is no Logstash. Nothing uses its query engine beyond a
@@ -436,7 +459,9 @@ Two geoip processors, on `src_ip` (Suricata) and `transaction.client_ip`
 (ModSecurity), write `src_geo`. Compose turns the managed downloader off and
 bind-mounts `./config/ingest-geoip`, which `bin/fetch-geoip` fills, so
 `GeoLite2-City.mmdb` survives a container recreate. The entrypoint registers
-the pipeline at bring-up (`platform/register_pipeline.py`).
+the pipeline at bring-up (`platform/register_pipeline.py`, in the background
+like `kibana.py`, so the platform serves while Elasticsearch is still coming
+up). waitress serves the platform with 16 threads.
 
 ## The WAF lesson
 
@@ -543,6 +568,7 @@ language switch.
   widths stack the panels; the red and blue pages do not scroll sideways.
 
 In a guided session the lesson note floats over the pane at its top right,
+below the site toolbar or the WAF banner when one is shown (40 px plus 8 px),
 folded by default to a pill ("Lesson note · step n/N"); open, it is 360 px wide
 and holds five tabs: Steps (the current step, Back/Next, every step to jump
 to), Goal (the summary, the done conditions, the four paragraphs), Theory,
@@ -553,13 +579,14 @@ otherwise). Every page load starts folded; only the tab is kept per viewer in
 localStorage (`fsl-lesson-note`), and the step reached in `fsl-lesson-step-<id>`, which the
 main and session pages read for "step n/N".
 
-Theory holds five folded cards (`THEORY` in `blue.html`; text under
+Theory holds five folded cards (`lesson.theory` in `scenario.yaml`; text under
 `<lesson.text>.theory.<card>.title|body`): paranoia levels, anomaly scoring
 (why a 403 names 949110 and 920273), finding a false positive's rule, lowering
 the level versus a rule exclusion, and reading a `ctl:ruleRemoveTargetById`
 line. A card that names something on screen has "Show me where", which moves
 the guide to that step. Hints holds reasoning only, folded one by one (why
-920273, why only ARGS:q, why the 900 file; `<lesson.text>.hint.*`), then a
+920273, why only ARGS:q, why the 900 file; `lesson.hints` in `scenario.yaml`,
+text under `<lesson.text>.hint.*`), then a
 folded Solution: every step's command in order, with a copy button. Check
 replays one case and runs VERIFY; the verdict is PASS or FAIL, the cases that
 held or passed are listed in green with a tick and each failing diagnosis in
@@ -584,7 +611,8 @@ steps, each advanced by its check; Back and Next stay as the way around one:
 | verify: are attacks still blocked | the note's Check tab | `verify`: VERIFY passes |
 
 Checks run by themselves; there is no Check button. `alert` and `waf` are
-polled every 5 s while their step is shown, `served` runs when the Website
+polled every 5 s while their step is shown, the tab is visible and the session
+open (the page re-reads the session every 30 s to notice a close), `served` runs when the Website
 pane shows the step's path. A status line in the popover says "Checking...",
 then what is still missing ("the 920273 exception is not in the file yet",
 "in the file but not loaded"), and on a pass "✓" and what was found
@@ -595,8 +623,13 @@ complete". A wrong answer says what is wrong. A recent ingest
 truncation, because a VERIFY run alone leaves more than 5000.
 
 The terminal step's command uses absolute paths only, since a reopened ttyd
-starts a fresh shell: it appends the exclusion unless `grep -q` finds it,
-prints the file's last line, and runs `nginx -t && nginx -s reload`. Its text
+starts a fresh shell. Rules written by hand take ids 10100-10199; `crs.rendered`
+writes 10000 to 10020 (the paranoia `SecAction` and at most 20 exclusions), so
+the two never collide. The command copies the file to `.bak`, drops any earlier
+`"id:10100,` line, appends the exclusion with id 10100, prints the file's last
+line, and runs `nginx -s reload` only if `nginx -t` passes; otherwise it copies
+the `.bak` back, so the WAF is never left on a file nginx refused. Running it
+twice leaves one copy. Its text
 is folded under "Show command"; "Run in terminal" opens the WAF pane if needed,
 waits for ttyd's `term`, calls `term.paste(command + "\n")` and then
 `term.input("\r")`, because bash keeps a bracketed paste's newline as text.
@@ -608,14 +641,22 @@ after two wrong answers or failed checks. "Do it for me" performs the step:
 opens the site at the step's path, opens the filtered Kibana and clicks the
 first row's toggle, enters the answer, runs the command in the WAF terminal
 (or, when no terminal opens within 10 s, `PUT /waf/` with the current paranoia
-level and the exclusion added), replays the case, or runs VERIFY. The steps
-done that way are kept in `fsl-lesson-help-<id>` and marked in the step list.
+level and the exclusion added), replays the case, or runs VERIFY. The first
+hint shown on a step and each "Do it for me" are recorded on the session,
+`POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"|"do"}`
+(`Session.hints`, migration 0017; 400 for a step or level the lesson does not
+have, 409 when closed). The steps done for the learner are marked in the step
+list from `hints` in `GET /api/sessions/<id>/`, and `result.lesson.helped`
+(`["hint", "do"]`, either or neither) puts "hints used" / "Do it for me used"
+beside PASS or FAIL on the main page and the closed session's page.
 
 "Do it yourself" (a checkbox under the step list, `fsl-lesson-stretch`)
 removes the filter button and the Run button and shows the command: the
 learner writes the KQL and types the rule. The checks are the same.
 
-Where each step points is `TARGETS` in `blue.html`, and the red box is drawn
+Where each step points is the step's `point` in `scenario.yaml` (`panel`,
+`kibana` with an optional `first` fallback, or `pane`; `opens`; `tab`), so the
+console names no board step and no Kibana selector, and the red box is drawn
 from the start of every step. A step names the pane it needs (`opens`: site,
 Kibana or WAF); while that pane is not shown, the box is on its rail button
 and the popover says only "Open Website on the left" (or Kibana, or WAF).
@@ -759,7 +800,8 @@ The score endpoint is read-only and keeps no history.
   same Elasticsearch the platform ingests from. It is reached through the
   platform's port 8000 at `/kibana/` and publishes no port of its own. The
   blue console frames it. At bring-up `platform/kibana.py` (in the background,
-  retrying until Kibana answers) imports `deploy/kibana/objects.ndjson` with
+  retrying while Kibana cannot be reached or answers 502/503/504, and reporting
+  any other HTTP error once with its status and body) imports `deploy/kibana/objects.ndjson` with
   overwrite: the data view `fsl-logs-*` on `@timestamp`, whose runtime fields
   fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`,
   `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the

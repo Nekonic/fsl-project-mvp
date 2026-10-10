@@ -1,0 +1,22 @@
+<section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
+  <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
+  <div class="h-8 shrink-0 flex items-center gap-3 px-3 border-b border-line text-[12px] min-w-0">
+    <span data-t="site.dev.network" class="font-semibold text-heading shrink-0"></span>
+    <button type="button" id="site-dev-source" data-t="site.dev.source" class="btn btn-sm btn-ghost shrink-0"></button>
+    <span data-t="site.dev.cookies" class="text-faint truncate"></span>
+  </div>
+  <div class="flex-1 min-h-0 flex">
+    <div class="w-1/2 min-w-0 overflow-auto">
+      <table class="w-full text-[12px] font-mono">
+        <thead><tr class="text-left text-muted bg-subdued">
+          <th data-t="site.dev.method" class="px-2 py-1 font-medium"></th><th data-t="site.dev.url" class="px-2 py-1 font-medium"></th>
+          <th data-t="site.dev.status" class="px-2 py-1 font-medium"></th><th data-t="site.dev.time" class="px-2 py-1 font-medium"></th>
+        </tr></thead>
+        <tbody id="site-dev-rows"></tbody>
+      </table>
+    </div>
+    <div id="site-dev-detail" class="w-1/2 min-w-0 overflow-auto border-l border-line p-3 text-[12px] flex flex-col gap-2">
+      <p data-t="site.dev.pick" class="text-muted"></p>
+    </div>
+  </div>
+</section>

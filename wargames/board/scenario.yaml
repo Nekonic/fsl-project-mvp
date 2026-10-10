@@ -26,27 +26,45 @@ lesson:
     - board-normal-search-with-apostrophe
     - board-normal-post-list
     - board-normal-sort
+  theory:
+    - {id: paranoia}
+    - {id: scoring, shows: find}
+    - {id: culprit, shows: rule}
+    - {id: fixes}
+    - {id: anatomy, shows: exclude}
+  hints: [why_rule, why_target, why_file]
   steps:
     - id: search
       site: "/search/?q=O'Brien"
+      point: {panel: "#site-address", opens: site}
       check: {kind: alert, marker: browse, path: "O'Brien"}
     - id: find
+      point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
       query: "url : *Brien* and status : 403"
       check: {kind: click}
     - id: rule
+      point: {kibana: '[data-test-subj="field-rule"]', opens: elk}
       check: {kind: answer, accept: ["920273"], known: ["949110"]}
     - id: target
+      point:
+        kibana: '[data-test-subj="field-transaction.messages.details.data"]'
+        first: '[data-test-subj="field-rule"]'
+        opens: elk
       check:
         kind: choice
         options: ["ARGS:q", "REQUEST_URI", "REQUEST_COOKIES", "REQUEST_HEADERS"]
         accept: ["ARGS:q"]
     - id: exclude
+      point: {pane: true, opens: waf}
       command: |-
-        grep -q 'ruleRemoveTargetById=920273;ARGS:q' /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf || cat >> /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf <<'EOF'
-        SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"
+        F=/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+        cp "$F" "$F.bak"
+        grep -v '"id:10100,' "$F.bak" > "$F"
+        cat >> "$F" <<'EOF'
+        SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10100,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"
         EOF
-        tail -n 1 /etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-        nginx -t && nginx -s reload
+        tail -n 1 "$F"
+        if nginx -t; then nginx -s reload; else cp "$F.bak" "$F"; echo "nginx refused the rule; the previous file is back"; fi
       check:
         kind: waf
         rule_id: 920273
@@ -55,6 +73,8 @@ lesson:
         case: board-normal-search-with-apostrophe
     - id: retry
       site: "/search/?q=O'Brien"
+      point: {panel: "#site-address", opens: site}
       check: {kind: served, case: board-normal-search-with-apostrophe, path: "O'Brien"}
     - id: verify
+      point: {panel: "#lesson-verify", tab: check}
       check: {kind: verify}

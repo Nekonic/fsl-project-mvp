@@ -21,9 +21,9 @@ gosu fsl ttyd -W -a -b /waf-terminal -i 127.0.0.1 -p 7693 /app/waf-terminal.sh &
 
 exec gosu fsl sh -c '
   python manage.py migrate --noinput
-  python register_pipeline.py
+  python register_pipeline.py &
   python kibana.py &
-  exec waitress-serve --listen=127.0.0.1:8001 --threads=8 \
+  exec waitress-serve --listen=127.0.0.1:8001 --threads=16 \
     --trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for \
     --clear-untrusted-proxy-headers fsl.wsgi:application
 '

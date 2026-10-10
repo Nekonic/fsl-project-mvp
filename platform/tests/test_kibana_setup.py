@@ -160,3 +160,62 @@ def test_the_blue_console_opens_kibana_on_the_session_s_alerts(client):
 
     assert seen["errors"] == []
     assert seen["result"] == "/kibana/app/discover#/view/fsl-alerts?_a=x"
+
+
+def http_error(code, body=b""):
+    import io
+    import urllib.error
+
+    return urllib.error.HTTPError("http://kibana:5601/kibana/api/saved_objects/_import", code, "x", {}, io.BytesIO(body))
+
+
+def test_an_http_error_is_reported_once_with_its_status_and_body_not_retried_as_unreachable():
+    sent, paused = [], []
+
+    def send(request):
+        sent.append(request)
+        raise http_error(400, b'{"message":"bad ndjson"}')
+
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
+
+    assert len(sent) == 1 and paused == []
+    assert "400" in said and "bad ndjson" in said and "could not reach" not in said
+
+
+def test_kibana_starting_up_is_waited_for_and_named_as_not_ready_rather_than_unreachable():
+    paused = []
+
+    def send(request):
+        raise http_error(503, b"Kibana server is not ready yet")
+
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
+
+    assert len(paused) == kibana.ATTEMPTS
+    assert "503" in said and "not ready" in said
+
+
+def test_a_connection_failure_is_retried_then_called_unreachable():
+    import urllib.error
+
+    calls = []
+
+    def send(request):
+        calls.append(request)
+        if len(calls) < 3:
+            raise urllib.error.URLError("refused")
+        return {"success": True, "successCount": 7}
+
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, lambda seconds: None)
+
+    assert said == "kibana: 7 saved objects imported, default route set"
+
+
+def test_nothing_that_waits_on_another_service_runs_before_the_platform_serves():
+    text = ENTRYPOINT.read_text()
+    before_serving = text[text.index("migrate"):text.index("exec waitress-serve")]
+
+    assert "python register_pipeline.py &" in before_serving and "python kibana.py &" in before_serving, (
+        "register_pipeline retries Elasticsearch for minutes; in the foreground the platform answers nothing meanwhile"
+    )
+    threads = int(text.split("--threads=")[1].split()[0])
+    assert threads >= 16, "lesson checks, the Network panel and a long verify must not take every thread"

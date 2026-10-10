@@ -167,8 +167,9 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000 and 8002. 8002 is a separate
-origin for the target site, so a script planted on the target cannot reach the
-console. It passes `/terminal/<session id>/`
+origin for the target site, so a script planted on the target cannot read or
+drive the console. Cookies are scoped by host, not port, so such a script could
+still set a cookie the console would send; the console uses no cookies. It passes `/terminal/<session id>/`
 to the ttyd on that session's Kali container, `fsl-<id>-kali-1` (compose), and
 `/vm-terminal/` to ttyd processes inside the platform, which ssh to the host's
 `mgmt` address (OpenStack; on compose Kali and the WAF have no `mgmt` address,
@@ -310,7 +311,7 @@ openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio
 Delete `fsl-pfsense-build` and the build LAN afterwards. pfSense writes to
 the video console, so `openstack console log show` stays empty; use noVNC.
 
-## Running a round
+## Running a session
 
 Open http://localhost:8000, start a session, and open the red and blue consoles
 side by side. The language button in the header switches between English and
@@ -332,11 +333,14 @@ also the benign O'Brien search. The blue console walks a beginner through seven
 steps, each checked by the platform: search O'Brien in the Website pane and
 see the WAF's 403, find that request in Kibana with a ready-made filter, name
 the rule (920273), say what it caught (`ARGS:q`), add the rule exclusion with
-one button that runs the command in the session's WAF terminal (appending to
-`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, then `nginx -t && nginx -s
-reload`), search again, and press Verify (`POST /api/sessions/<id>/verify/`).
-Each step has hints that end in "Do it for me"; "Do it yourself" removes the
-filter and the button. Verify passes only when no sqlmap variant
+one button that runs the command in the session's WAF terminal (appending a
+rule with id 10100, from the range 10100-10199 kept for hand-written rules, to
+`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, reloading only if `nginx -t`
+passes and putting the previous file back if not), search again, and press
+Verify (`POST /api/sessions/<id>/verify/`). Each step has hints that end in "Do
+it for me"; "Do it yourself" removes the filter and the button. Hint and "Do it
+for me" use is recorded on the session (`POST
+/api/sessions/<id>/lesson/hints/`) and shown beside PASS or FAIL. Verify passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
 answered. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
 what is in the WAF's file. The default, `{"defense": "full"}`, starts at

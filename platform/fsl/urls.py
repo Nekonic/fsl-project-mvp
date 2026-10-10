@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/score/", views.session_score),
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/verify/", views.session_verify),
+    path("api/sessions/<int:session_id>/lesson/hints/", views.lesson_hints),
     path("api/sessions/<int:session_id>/site/requests/", site.site_requests),
     path("api/sessions/<int:session_id>/site/requests/<int:request_id>/", site.site_request),
     path("site-proxy/<int:session_id>/<str:host>/", site.proxy),

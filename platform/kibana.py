@@ -17,6 +17,7 @@ ALERT_COLUMNS = (
 )
 SETTINGS = {"defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}"}
 ATTEMPTS = 60
+NOT_READY = (502, 503, 504)
 PAUSE = 5
 
 
@@ -91,19 +92,25 @@ def main():
         print(f"no saved objects at {OBJECTS}: {exc}", flush=True)
         return
 
+    print(bring_up(base, ndjson, send_json, time.sleep), flush=True)
+
+
+def bring_up(base, ndjson, send, pause):
+    last = "could not reach Kibana"
     for _ in range(ATTEMPTS):
         try:
-            count = settle(base, ndjson, send_json)
-            print(f"kibana: {count} saved objects imported, default route set", flush=True)
-            return
+            count = settle(base, ndjson, send)
+            return f"kibana: {count} saved objects imported, default route set"
         except Refused as exc:
-            print(f"kibana: {exc}", flush=True)
-            return
+            return f"kibana: {exc}"
+        except urllib.error.HTTPError as exc:
+            if exc.code not in NOT_READY:
+                return f"kibana answered {exc.code} to {exc.url}: {exc.read()[:500].decode('utf-8', 'replace')}"
+            last = f"Kibana still answered {exc.code}, not ready"
         except (urllib.error.URLError, OSError, ValueError):
-            pass
-        time.sleep(PAUSE)
-
-    print("could not reach Kibana; the data view, alert search and dashboard are missing", flush=True)
+            last = "could not reach Kibana"
+        pause(PAUSE)
+    return f"{last}; the data view, alert search and dashboard are missing"
 
 
 if __name__ == "__main__":
