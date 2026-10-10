@@ -8,6 +8,10 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <span>Kibana</span>
   </button>
+  <button class="pane-tab rail-btn hidden" data-pane="site">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+    <span data-t="blue.pane.site"></span>
+  </button>
   <button class="pane-tab rail-btn" data-pane="waf" data-src="/vm-terminal/fsl-waf/">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
     <span data-t="blue.pane.waf"></span>
@@ -24,7 +28,16 @@
     <span class="text-faint">·</span>
     <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
   </div>
+  <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
+    <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
+    <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
+    <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
+    <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
+           class="flex-1 min-w-0 h-7 border border-line rounded-md px-3 bg-panel font-mono text-[12.5px]">
+  </form>
   <div class="flex-1 min-h-0 relative">
+    <iframe id="site-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
+            title="site" referrerpolicy="no-referrer"></iframe>
     <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="console" referrerpolicy="no-referrer"></iframe>
     <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
@@ -63,6 +76,10 @@
           </div>
         </div>
         <ol id="lesson-step-list" class="flex flex-col gap-1.5"></ol>
+        <label class="flex items-start gap-2 text-[12px] text-muted border-t border-line-subdued pt-3">
+          <input id="lesson-stretch" type="checkbox" class="mt-0.5">
+          <span><b data-t="lesson.stretch" class="text-heading"></b> · <span data-t="lesson.stretch.note"></span></span>
+        </label>
       </div>
 
       <div data-pane-of="goal" class="hidden flex-col gap-3">
@@ -128,16 +145,27 @@
       <button id="coach-pop-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
     </div>
     <div id="coach-pop-title" class="font-bold text-heading mt-1"></div>
+    <p id="coach-pop-said" class="hidden mt-2 text-[12.5px] rounded-md px-2.5 py-1.5"></p>
     <div id="coach-pop-text" class="text-body mt-1 leading-relaxed"></div>
-    <div id="coach-pop-command" class="hidden relative mt-2">
-      <pre id="coach-pop-code" class="code pr-14"></pre>
-      <button id="coach-pop-copy" data-t="lesson.copy" class="absolute top-2 right-2 btn btn-sm btn-code"></button>
+    <div id="coach-pop-act" class="hidden mt-2 flex flex-col gap-2"></div>
+    <div id="coach-pop-command" class="hidden mt-2">
+      <button id="coach-pop-view" class="text-[12px] text-primary hover:underline"></button>
+      <div id="coach-pop-code-box" class="hidden relative mt-1">
+        <pre id="coach-pop-code" class="code pr-14"></pre>
+        <button id="coach-pop-copy" data-t="lesson.copy" class="absolute top-2 right-2 btn btn-sm btn-code"></button>
+      </div>
       <div class="flex items-center gap-2 mt-2">
-        <button id="coach-pop-type" data-t="lesson.type" class="btn btn-sm btn-blue shrink-0"></button>
+        <button id="coach-pop-run" data-t="lesson.run" class="btn btn-sm btn-blue shrink-0"></button>
         <span id="coach-pop-typed" class="text-[12px] text-muted"></span>
       </div>
     </div>
     <p id="coach-pop-does" class="hidden mt-2 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></p>
+    <div id="coach-pop-help" class="hidden mt-2 flex flex-col gap-1 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
+    <div class="flex items-center gap-2 mt-2">
+      <button id="coach-pop-check" data-t="lesson.check.now" class="btn btn-sm btn-ghost hidden"></button>
+      <button id="coach-pop-hint" data-t="lesson.hint.more" class="btn btn-sm btn-ghost"></button>
+      <button id="coach-pop-do" data-t="lesson.do" class="btn btn-sm btn-ghost hidden"></button>
+    </div>
     <p id="coach-pop-missing" data-t="lesson.coach.missing" class="hidden mt-2 text-[12px] text-muted"></p>
     <div class="flex items-center mt-3 gap-2">
       <div id="coach-pop-dots" class="flex gap-1 flex-wrap"></div>
@@ -167,9 +195,94 @@
   function openPane(tab) {
     tabs.forEach((other) => other.setAttribute("aria-selected", String(other === tab)));
     const waf = tab.dataset.pane === "waf" && session && session.waf_box;
+    const onSite = tab.dataset.pane === "site";
     field("waf-banner").classList.toggle("hidden", !waf);
     field("waf-banner").classList.toggle("flex", Boolean(waf));
-    showFrame(tab.dataset.src);
+    field("site-bar").classList.toggle("hidden", !onSite);
+    field("site-bar").classList.toggle("flex", onSite);
+    field("site-frame").style.display = onSite ? "block" : "none";
+    if (!onSite) {
+      showFrame(tab.dataset.src);
+      return;
+    }
+    field("pane-status").style.display = "none";
+    frame.style.display = "none";
+    if (!site.history.length) siteGo("/");
+  }
+
+  const site = { origin: "", base: "", host: "", history: [], at: -1, expecting: false, heard: [] };
+
+  function readable(path) {
+    try {
+      return decodeURIComponent(path);
+    } catch (error) {
+      return path;
+    }
+  }
+
+  function siteTyped(text) {
+    let path = String(text).trim().replace(/^[a-z]+:\/\//i, "");
+    if (site.host && path.toLowerCase().startsWith(site.host)) path = path.slice(site.host.length);
+    return path.startsWith("/") ? path : `/${path}`;
+  }
+
+  function siteShow() {
+    field("site-address").value = site.host + readable(site.history[site.at] || "/");
+    field("site-back").disabled = site.at <= 0;
+    field("site-forward").disabled = site.at >= site.history.length - 1;
+  }
+
+  function siteLoad() {
+    site.expecting = true;
+    field("site-frame").src = site.origin + site.base + site.history[site.at].slice(1);
+    siteShow();
+  }
+
+  function siteGo(path) {
+    site.history = site.history.slice(0, site.at + 1).concat([path]);
+    site.at = site.history.length - 1;
+    siteLoad();
+  }
+
+  function siteStep(by) {
+    const next = site.at + by;
+    if (next < 0 || next >= site.history.length) return;
+    site.at = next;
+    siteLoad();
+  }
+
+  function siteHeard(event) {
+    const said = event.data && event.data.fslSite;
+    const from = field("site-frame").contentWindow;
+    if (typeof said !== "string" || (from && event.source !== from) || !site.base) return;
+    if (event.origin && event.origin !== site.origin) return;
+    if (!said.startsWith(site.base.slice(0, -1))) return;
+    const path = said.slice(site.base.length - 1) || "/";
+    if (site.expecting) site.history[site.at] = path;
+    else if (path !== site.history[site.at]) {
+      site.history = site.history.slice(0, site.at + 1).concat([path]);
+      site.at = site.history.length - 1;
+    }
+    site.expecting = false;
+    siteShow();
+    site.heard.forEach((listener) => listener(path));
+  }
+
+  function siteBrowser(served) {
+    const origin = new URL(location.href);
+    origin.port = String(served.port);
+    site.origin = origin.origin;
+    site.base = served.path;
+    site.host = served.path.split("/")[3] || "";
+    document.querySelector('.pane-tab[data-pane="site"]').classList.remove("hidden");
+    field("site-bar").addEventListener("submit", (event) => {
+      event.preventDefault();
+      siteGo(siteTyped(field("site-address").value));
+    });
+    field("site-back").addEventListener("click", () => siteStep(-1));
+    field("site-forward").addEventListener("click", () => siteStep(1));
+    field("site-reload").addEventListener("click", () => { if (site.history.length) siteLoad(); });
+    window.addEventListener("message", siteHeard);
   }
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
@@ -238,15 +351,26 @@
     }
   }
 
-  async function typeIntoTerminal(text, said) {
-    const term = wafTerminal();
-    if (term) {
-      term.paste(text);
-      if (typeof term.focus === "function") term.focus();
-      said.textContent = t("lesson.typed");
-      return;
+  const settled = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function terminalWhenOpen() {
+    for (let tries = 0; tries < 20; tries += 1) {
+      const term = wafTerminal();
+      if (term) return term;
+      await settled(500);
     }
-    said.textContent = t(await copyText(text) ? "lesson.type_missing" : "lesson.type_unreachable");
+    return null;
+  }
+
+  async function runInTerminal(text) {
+    const tab = document.querySelector('.pane-tab[data-pane="waf"]');
+    if (tab.getAttribute("aria-selected") !== "true") openPane(tab);
+    const term = await terminalWhenOpen();
+    if (!term) return false;
+    term.paste(`${text}\n`);
+    if (typeof term.input === "function") term.input("\r");
+    if (typeof term.focus === "function") term.focus();
+    return true;
   }
 
   async function replay() {
@@ -257,6 +381,8 @@
     status.textContent = fired.ok
       ? t("lesson.replay.done", name) : t("lesson.replay.failed", detail(fired));
   }
+
+  const verified = [];
 
   async function verifyLesson() {
     const box = field("lesson-result");
@@ -272,6 +398,7 @@
       return;
     }
     const passed = Boolean(checked.body.passed);
+    verified.forEach((heard) => heard(passed));
     const failing = (checked.body.diagnosis || []).filter(([key]) => key !== "lesson.diag.blocked_ratio");
     box.classList.add(passed ? "border-success-soft" : "border-danger-soft");
     const tone = passed ? "bg-success-soft text-success" : "bg-danger-soft text-danger";
@@ -345,16 +472,24 @@
     placeNote();
   }
 
-  const DASHBOARDS = '[data-test-subj="collapsibleNavGroup-kibana"] a[href*="/app/dashboards"]';
+  const SITE_ADDRESS = { panel: "#site-address", first: '.pane-tab[data-pane="site"]' };
   const TARGETS = {
-    alerts: { kibana: '[data-test-subj="discoverDocTable"]' },
-    expand: { kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
+    search: SITE_ADDRESS,
+    find: { kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
     rule: { kibana: '[data-test-subj="field-rule"]' },
-    dashboard: { kibana: DASHBOARDS, first: '[data-test-subj="toggleNavButton"]' },
-    waf: { panel: '.pane-tab[data-pane="waf"]' },
-    replay: { panel: "#lesson-replay", tab: "check" },
+    target: { kibana: '[data-test-subj="field-transaction.messages.details.data"]', first: '[data-test-subj="field-rule"]' },
+    retry: SITE_ADDRESS,
     verify: { panel: "#lesson-verify", tab: "check" },
   };
+  const HELP_AFTER_SECONDS = 60;
+  const WRONGS_PER_LEVEL = 2;
+  const POINT = 2;
+  const ANSWER = 3;
+  const DO_IT = 4;
+  const POLL_SECONDS = 5;
+  const RECENT_SECONDS = 600;
+  const HELP_KEY = (id) => `fsl-lesson-help-${id}`;
+  const STRETCH_KEY = "fsl-lesson-stretch";
   const MISSING_AFTER_FRAMES = 120;
   const GAP = 14;
   const EDGE = 12;
@@ -478,6 +613,25 @@
     Object.assign(pop.style, { left: `${left}px`, top: `${top}px` });
   }
 
+  function kept(key, fallback) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key));
+      return value === null ? fallback : value;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function keep(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      return;
+    }
+  }
+
+  const served = (status) => status >= 200 && status < 300;
+
   function coach(prefix, declared) {
     const steps = declared.map((step) => ({ ...step, ...(TARGETS[step.id] || { pane: true }) }));
     const box = field("coach-box");
@@ -488,18 +642,42 @@
     let last = "";
     let lost = 0;
     let dismissed = false;
+    let level = 0;
+    let seconds = 0;
+    let wrongs = 0;
+    let checking = false;
+    let triedVersion = null;
+    let seenDetection = 0;
+    let counted = false;
+    let commandShown = false;
+    let finished = false;
+    const helped = new Set(kept(HELP_KEY(sessionId()), []));
+    let stretch = kept(STRETCH_KEY, false) === true;
+    const check = () => steps[at].check || {};
+
+    function say(text, tone) {
+      const said = field("coach-pop-said");
+      said.textContent = text || "";
+      said.classList.toggle("hidden", !text);
+      said.classList.toggle("bg-success-soft", tone === "ok");
+      said.classList.toggle("text-success", tone === "ok");
+      said.classList.toggle("bg-danger-soft", tone === "fail");
+      said.classList.toggle("text-danger", tone === "fail");
+      said.classList.toggle("bg-subdued", tone === "info");
+    }
 
     function stepList() {
       field("lesson-step-list").innerHTML = steps.map((step, index) => {
-        const done = index < at;
+        const done = index < at || (finished && index === at);
         const current = index === at;
         const mark = done ? "✓" : String(index + 1);
         const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : "badge-muted";
         const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
+        const help = helped.has(step.id) ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.helped"))}</span>` : "";
         return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
           <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
           <span class="${words}">${
-            esc(t(`${prefix}.label.${step.id}`))}</span></button></li>`;
+            esc(t(`${prefix}.label.${step.id}`))}${help}</span></button></li>`;
       }).join("");
       field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
         button.addEventListener("click", () => go(Number(button.dataset.step))));
@@ -518,6 +696,85 @@
       }
     }
 
+    function helpLines(step) {
+      const lines = [];
+      if (level >= 1) lines.push(t(`${prefix}.nudge.${step.id}`));
+      if (level >= POINT) lines.push(t("lesson.hint.point"));
+      if (level >= ANSWER) lines.push(t(`${prefix}.answer.${step.id}`));
+      return lines;
+    }
+
+    function showHelp() {
+      const step = steps[at];
+      const lines = helpLines(step);
+      field("coach-pop-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
+      field("coach-pop-help").classList.toggle("hidden", !lines.length);
+      field("coach-pop-hint").classList.toggle("hidden", level >= DO_IT || finished);
+      field("coach-pop-do").classList.toggle("hidden", level < DO_IT || finished);
+      last = "";
+    }
+
+    function escalate() {
+      level = Math.min(DO_IT, level + 1);
+      seconds = 0;
+      showHelp();
+    }
+
+    function wrong(text) {
+      say(text, "fail");
+      wrongs += 1;
+      if (wrongs >= WRONGS_PER_LEVEL) {
+        wrongs = 0;
+        escalate();
+      }
+    }
+
+    function action() {
+      const step = steps[at];
+      const kind = check().kind;
+      const act = field("coach-pop-act");
+      let html = "";
+      if (kind === "click" && step.discover && !stretch) {
+        html = `<button data-act="chip" class="self-start btn btn-sm btn-ghost font-mono">${esc(t(`${prefix}.chip.${step.id}`))}</button>`;
+      } else if (kind === "answer") {
+        html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off"
+          class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[12.5px]"
+          placeholder="${esc(t("lesson.answer.placeholder"))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+      } else if (kind === "choice") {
+        html = `<div class="flex flex-col gap-1.5">${check().options.map((option) =>
+          `<button data-act="choose" data-value="${esc(option)}" class="text-left btn btn-sm btn-ghost">${
+            esc(t(`${prefix}.option.${step.id}.${option}`))}</button>`).join("")}</div>`;
+      }
+      act.innerHTML = html;
+      act.classList.toggle("hidden", !html);
+      const chip = act.querySelector('[data-act="chip"]');
+      if (chip) chip.addEventListener("click", () => openKibana(step.discover));
+      const form = act.querySelector('[data-act="answer"]');
+      if (form) {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          answer(act.querySelector('[data-act="value"]').value);
+        });
+      }
+      act.querySelectorAll('[data-act="choose"]').forEach((button) =>
+        button.addEventListener("click", () => answer(button.dataset.value)));
+    }
+
+    function command() {
+      const step = steps[at];
+      const shown = Boolean(step.command);
+      field("coach-pop-command").classList.toggle("hidden", !shown);
+      field("coach-pop-does").textContent = shown ? t(`${prefix}.does.${step.id}`) : "";
+      field("coach-pop-does").classList.toggle("hidden", !shown);
+      field("coach-pop-code").textContent = step.command || "";
+      field("coach-pop-code-box").classList.toggle("hidden", !(commandShown || stretch));
+      field("coach-pop-view").textContent = t(commandShown || stretch ? "lesson.command.hide" : "lesson.command.show");
+      field("coach-pop-view").classList.toggle("hidden", stretch);
+      field("coach-pop-run").classList.toggle("hidden", stretch);
+      field("coach-pop-typed").textContent = stretch ? t("lesson.stretch.type") : t("lesson.run.note");
+      pop.classList.toggle("pop-wide", shown);
+    }
+
     function show(follow) {
       const step = steps[at];
       if (follow) followStep(step);
@@ -529,13 +786,11 @@
       field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
       field("coach-pop-count").textContent = `${at + 1} / ${steps.length}`;
       field("coach-pop-title").textContent = t(`${prefix}.label.${step.id}`);
-      field("coach-pop-text").textContent = t(`${prefix}.coach.${step.id}`);
-      field("coach-pop-code").textContent = step.command || "";
-      field("coach-pop-command").classList.toggle("hidden", !step.command);
-      field("coach-pop-does").textContent = step.command ? t(`${prefix}.does.${step.id}`) : "";
-      field("coach-pop-does").classList.toggle("hidden", !step.command);
-      field("coach-pop-typed").textContent = t("lesson.type.note");
-      pop.classList.toggle("pop-wide", Boolean(step.command));
+      field("coach-pop-text").textContent = finished ? t("lesson.done") : t(`${prefix}.coach.${step.id}`);
+      field("coach-pop-check").classList.toggle("hidden", !["alert", "waf", "served"].includes(check().kind) || finished);
+      action();
+      command();
+      showHelp();
       const reached = (index) => (index <= at ? "dot-blue" : "dot-muted");
       field("coach-pop-dots").innerHTML = steps.map((_, index) =>
         `<span class="dot ${reached(index)}"></span>`).join("");
@@ -555,11 +810,12 @@
       const missing = lost >= MISSING_AFTER_FRAMES;
       field("lesson-coach-missing").classList.toggle("hidden", !missing);
       field("coach-pop-missing").classList.toggle("hidden", !missing);
+      const pointed = level >= POINT;
       const key = dismissed ? "dismissed"
-        : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open].join() : `none-${at}-${missing}`;
+        : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open, pointed].join() : `none-${at}-${missing}`;
       if (key !== last) {
         last = key;
-        const drawn = rect && !step.pane && !step.panel
+        const drawn = !pointed ? null : rect && !step.pane && !step.panel
           ? clipped({ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 }, boxOf(frame))
           : rect && step.panel
             ? { left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 } : rect;
@@ -576,16 +832,181 @@
       requestAnimationFrame(tick);
     }
 
-    function go(index, follow = true) {
+    function go(index, follow = true, line = "") {
       at = Math.max(0, Math.min(steps.length - 1, index));
       dismissed = false;
+      level = 0;
+      seconds = 0;
+      wrongs = 0;
+      commandShown = false;
+      finished = false;
+      counted = false;
+      say(line, line ? "ok" : "");
       show(follow);
+      countAlerts();
+    }
+
+    function countAlerts() {
+      if (check().kind === "alert") run(steps[at], false);
+    }
+
+    function pass(step) {
+      if (steps[at] !== step) return;
+      const line = t(`${prefix}.line.${step.id}`);
+      if (at === steps.length - 1) {
+        finished = true;
+        say(line, "ok");
+        show(false);
+        return;
+      }
+      go(at + 1, true, line);
+    }
+
+    async function run(step, loud) {
+      if (checking || steps[at] !== step || finished) return;
+      checking = true;
+      if (loud) say(t("lesson.check.checking"), "info");
+      try {
+        const outcome = await CHECKS[step.check.kind](step, loud);
+        if (steps[at] !== step) return;
+        if (outcome === true) pass(step);
+        else if (outcome && loud) wrong(outcome);
+        else if (loud) say("", "");
+      } finally {
+        checking = false;
+      }
+    }
+
+    async function replayed(step) {
+      const fired = await post(lessonPath("attacks/"), { case: step.check.case }, PATIENCE_FOR_RANGE_WORK);
+      return fired.ok ? Number((fired.body.meta || {}).status) || 0 : 0;
+    }
+
+    const CHECKS = {
+      async alert(step) {
+        await post(lessonPath("ingest/"), { within: RECENT_SECONDS });
+        const read = await api(lessonPath(`detections/?after=${seenDetection}`));
+        const rows = read.ok && Array.isArray(read.body) ? read.body : [];
+        rows.forEach((row) => { seenDetection = Math.max(seenDetection, Number(row.id) || 0); });
+        const before = counted;
+        counted = true;
+        const found = before && rows.some((row) => row.marker === step.check.marker
+          && readable(row.path || "").includes(step.check.path));
+        return found || t(`${prefix}.fail.${step.id}`);
+      },
+      async waf(step, loud) {
+        const read = await api(lessonPath("waf/"));
+        const tuning = read.ok ? read.body : {};
+        const there = (tuning.exclusions || []).some((entry) => Number(entry.rule_id) === Number(step.check.rule_id)
+          && entry.target === step.check.target && entry.path === step.check.path);
+        if (!there) return t(`${prefix}.fail.${step.id}`);
+        if (!step.check.case) return true;
+        if (!loud && triedVersion === tuning.version) return t(`${prefix}.fail.${step.id}.reload`);
+        triedVersion = tuning.version;
+        return served(await replayed(step)) || t(`${prefix}.fail.${step.id}.reload`);
+      },
+      async served(step) {
+        const status = await replayed(step);
+        return served(status) || t(`${prefix}.fail.${step.id}`, status || "-");
+      },
+      async verify() {
+        return t(`${prefix}.fail.verify`);
+      },
+    };
+
+    function answer(given) {
+      const step = steps[at];
+      const value = String(given || "").trim();
+      if (!value) return;
+      if ((step.check.accept || []).includes(value)) {
+        pass(step);
+        return;
+      }
+      wrong((step.check.known || []).includes(value)
+        ? t(`${prefix}.wrong.${step.id}.${value}`) : t("lesson.check.wrong"));
+    }
+
+    function openSite(path) {
+      const tab = document.querySelector('.pane-tab[data-pane="site"]');
+      if (tab.getAttribute("aria-selected") !== "true") openPane(tab);
+      siteGo(path);
+    }
+
+    function openKibana(url) {
+      const tab = document.querySelector('.pane-tab[data-pane="elk"]');
+      tab.dataset.src = url;
+      openPane(tab);
+    }
+
+    async function clickWhenThere(step) {
+      for (let tries = 0; tries < 30 && steps[at] === step; tries += 1) {
+        let target = null;
+        try {
+          target = frame.contentDocument && frame.contentDocument.querySelector(step.kibana);
+        } catch (error) {
+          target = null;
+        }
+        if (target) {
+          target.click();
+          return;
+        }
+        await settled(500);
+      }
+    }
+
+    async function runCommand(step) {
+      field("coach-pop-typed").textContent = t("lesson.run.opening");
+      if (await runInTerminal(step.command)) {
+        field("coach-pop-typed").textContent = t("lesson.ran");
+        setTimeout(() => run(step, true), 4000);
+        return true;
+      }
+      field("coach-pop-typed").textContent = t("lesson.run.missing");
+      return false;
+    }
+
+    async function putExclusion(step) {
+      const read = await api(lessonPath("waf/"));
+      const tuning = read.ok ? read.body : { paranoia: 4, exclusions: [] };
+      const exclusion = { rule_id: step.check.rule_id, target: step.check.target, path: step.check.path };
+      await api(lessonPath("waf/"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paranoia: tuning.paranoia, exclusions: [...(tuning.exclusions || []), exclusion] }),
+      }, PATIENCE_FOR_RANGE_WORK);
+      await run(step, true);
+    }
+
+    const DO = {
+      alert: (step) => openSite(step.site),
+      click: async (step) => {
+        openKibana(step.discover || session.discover);
+        await clickWhenThere(step);
+      },
+      answer: (step) => answer(step.check.accept[0]),
+      choice: (step) => answer(step.check.accept[0]),
+      waf: async (step) => {
+        if (!(await runCommand(step))) await putExclusion(step);
+      },
+      served: (step) => {
+        openSite(step.site);
+        run(step, true);
+      },
+      verify: () => field("lesson-verify").click(),
+    };
+
+    function doIt() {
+      const step = steps[at];
+      helped.add(step.id);
+      keep(HELP_KEY(sessionId()), [...helped]);
+      stepList();
+      DO[step.check.kind](step);
     }
 
     function advanceFrom(step) {
       setTimeout(() => {
-        if (steps[at] !== step || at === steps.length - 1) return;
-        go(at + 1);
+        if (steps[at] !== step) return;
+        if (step.check.kind === "click") pass(step);
       }, 0);
     }
 
@@ -613,6 +1034,28 @@
       });
     });
 
+    site.heard.push((path) => {
+      const step = steps[at];
+      if (!step.check.path || !readable(path).includes(step.check.path)) return;
+      if (step.check.kind === "served") run(step, true);
+      if (step.check.kind === "alert") setTimeout(() => run(step, false), POLL_SECONDS * 1000);
+    });
+
+    setInterval(() => {
+      if (dismissed || finished) return;
+      seconds += 1;
+      if (seconds >= HELP_AFTER_SECONDS && level < DO_IT) escalate();
+      const kind = check().kind;
+      if ((kind === "alert" || kind === "waf") && seconds % POLL_SECONDS === 0) run(steps[at], false);
+    }, 1000);
+
+    verified.push((passed) => {
+      const step = steps[at];
+      if (step.check.kind !== "verify") return;
+      if (passed) pass(step);
+      else wrong(t(`${prefix}.fail.verify`));
+    });
+
     [field("lesson-coach-back"), field("coach-pop-back")].forEach((button) =>
       button.addEventListener("click", () => go(at - 1)));
     [field("lesson-coach-next"), field("coach-pop-next")].forEach((button) =>
@@ -622,21 +1065,35 @@
       show();
     });
     field("lesson-coach-show").addEventListener("click", () => go(at));
+    field("coach-pop-hint").addEventListener("click", escalate);
+    field("coach-pop-do").addEventListener("click", doIt);
+    field("coach-pop-check").addEventListener("click", () => run(steps[at], true));
+    field("coach-pop-view").addEventListener("click", () => {
+      commandShown = !commandShown;
+      command();
+      last = "";
+    });
     field("coach-pop-copy").addEventListener("click", () =>
       copy(steps[at].command || "", field("coach-pop-copy")));
-    field("coach-pop-type").addEventListener("click", () =>
-      typeIntoTerminal(steps[at].command || "", field("coach-pop-typed")));
+    field("coach-pop-run").addEventListener("click", () => runCommand(steps[at]));
+    field("lesson-stretch").checked = stretch;
+    field("lesson-stretch").addEventListener("change", () => {
+      stretch = field("lesson-stretch").checked;
+      keep(STRETCH_KEY, stretch);
+      show(false);
+    });
     show(true);
+    countAlerts();
     requestAnimationFrame(tick);
     return (id) => go(steps.findIndex((step) => step.id === id), false);
   }
 
   const THEORY = [
     { id: "paranoia" },
-    { id: "scoring", shows: "expand" },
+    { id: "scoring", shows: "find" },
     { id: "culprit", shows: "rule" },
     { id: "fixes" },
-    { id: "anatomy", shows: "edit" },
+    { id: "anatomy", shows: "exclude" },
   ];
   const HINTS = ["why_rule", "why_target", "why_file"];
 
@@ -691,6 +1148,7 @@
     if (session && session.waf_terminal) {
       document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.waf_terminal;
     }
+    if (session && session.site) siteBrowser(session.site);
     if (session && session.waf_box) {
       field("waf-box").textContent = session.waf_box;
       field("waf-rules").textContent = `${session.waf_rules}/`;

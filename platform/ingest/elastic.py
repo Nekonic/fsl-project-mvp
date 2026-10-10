@@ -20,11 +20,12 @@ def fetch(
     start: datetime,
     end: datetime,
     size: int = 5000,
+    newest_first: bool = False,
 ) -> tuple[list[tuple[str, dict[str, Any]]], tuple[int, int] | None]:
     query = {
         "size": size,
         "track_total_hits": True,
-        "sort": [{"@timestamp": "asc"}],
+        "sort": [{"@timestamp": "desc" if newest_first else "asc"}],
         "query": {
             "range": {
                 "@timestamp": {

@@ -22,6 +22,7 @@ SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_mode
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
+CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "verify"}
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 
 def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
@@ -95,6 +96,15 @@ def checked_lesson(lesson: Any, known: set[str], source) -> None:
         and isinstance(step.get("command", ""), str) for step in steps
     ):
         raise InvalidCatalogue(f"{source}: lesson steps are a list of an id and an optional command")
+    unchecked = [
+        step["id"] for step in steps
+        if not isinstance(step.get("check"), dict) or step["check"].get("kind") not in CHECK_KINDS
+    ]
+    if unchecked:
+        raise InvalidCatalogue(
+            f"{source}: lesson steps {', '.join(unchecked)} need a check whose kind is one of "
+            f"{', '.join(sorted(CHECK_KINDS))}"
+        )
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.FSL_SOURCE) / "wargames"

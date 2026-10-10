@@ -357,3 +357,16 @@ def test_a_connection_failure_is_reported_as_unavailable():
                side_effect=requests.RequestException("connection refused")):
         with pytest.raises(elastic.ElasticUnavailable, match="could not reach"):
             elastic.fetch("http://es:9200", "fsl-logs-*", *window)
+
+def test_a_recent_read_asks_for_the_newest_records_first(monkeypatch):
+    from datetime import datetime, timezone
+
+    from ingest import elastic
+
+    asked = []
+    monkeypatch.setattr(elastic.requests, "post", lambda *a, **k: asked.append(k["json"]["sort"]) or _Response(0, 0))
+    when = datetime(2026, 9, 21, tzinfo=timezone.utc)
+    elastic.fetch("http://es", "fsl-logs-*", when, when)
+    elastic.fetch("http://es", "fsl-logs-*", when, when, newest_first=True)
+
+    assert asked == [[{"@timestamp": "asc"}], [{"@timestamp": "desc"}]]

@@ -273,6 +273,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
 | CLI run, HTTP | the platform, `redteam/run.py` | the platform, on `edge` (where `board.com` resolves) | added by the harness |
 | CLI run, tool | a throwaway `fsl-kali` container, from `launcher(<declared default origin>)` | that container | sqlmap `--headers=` |
+| Site browser | the learner's browser, through the platform's nginx on port 8002 | the platform, on `edge` | `X-FSL-Case: browse`, set by nginx |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
 and, when `/label/origin` names an address, forwards the request there with the
@@ -299,6 +300,42 @@ ttyd's `-a` passes that as the script's argument, and the script, after checking
 it is a number, runs `docker exec -it fsl-<id>-waf-1 bash`. The WAF image has
 no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
 OpenStack the pane keeps `/vm-terminal/fsl-waf/`.
+
+The blue console's Website pane is a browser inside the console: back,
+forward, reload, an address bar that shows `board.com/<path>` and takes a path
+and Enter, and the page in an iframe. The target is not published, so nginx
+proxies `/site/<session>/<host>/<path>` to that session's WAF
+(`fsl-<id>-waf-1:80`, which the platform reaches on the shared `edge`
+network) with `Host: <host>`, behind the same `auth_request /terminal-allowed`
+as the terminals. The WAF judges every page: a block is the WAF's own 403 page
+and lands in Kibana. The path and query go on exactly as the browser sent them
+(a `map` on `$request_uri`). nginx rewrites what would leave the prefix:
+`Location` headers (`proxy_redirect`), and in HTML `href="/`, `src="/`,
+`action="/`, `http://<host>/` and `http://<host>"` (`sub_filter`, with the
+upstream asked for no compression); WordPress's escaped `http:\/\/corp.com\/`
+too. It strips `Cookie` and `Set-Cookie`, so the platform's cookies never reach
+the target and the target's never land on the platform, which means the
+target cannot be logged into from this pane. It appends a script before
+`</body>` that posts `location.pathname + search` to the parent, which is how
+the address bar and the history follow a link clicked inside the page.
+
+The route is served on its own port, 8002, a different origin from the
+console's 8000, and every response carries `Content-Security-Policy: sandbox
+allow-forms allow-scripts allow-same-origin`. The target is the red team's to
+plant script in; on the console's origin that script could read and drive the
+console and its APIs. A sandbox without `allow-same-origin` (an opaque origin)
+would do that on 8000 alone, but Chromium-based embedded browsers refuse such a
+frame (`ERR_BLOCKED_BY_CLIENT` in the Claude desktop browser). `SITE_PORT` is
+8002 on docker and `None` on OpenStack, where there is no session WAF to name;
+the session API gives `site: {port, path}` or `null`, and the console hides
+the pane without it. The acceptance VM's security group allows 8002.
+
+Browsing is marked `X-FSL-Case: browse` (nginx replaces whatever the browser
+sent), and the request comes from the platform's `edge` address. Its alerts are
+ingested and listed like any other, so the learner finds them in Kibana and in
+`/detections/`, but `/score/` leaves the `browse` marker out the way it leaves
+out seed and VERIFY replays: browsing is not a case, so it is neither a true or
+false positive nor an unattributed alert. The red console has no site pane.
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
@@ -511,42 +548,63 @@ held or passed are listed in green with a tick and each failing diagnosis in
 red with a cross. The note holds no tuning form.
 
 The steps are declared in the lesson definition (`lesson.steps` in
-`scenario.yaml`: an `id` and, for a terminal step, the exact `command`); the
-board has eleven: the session's alert table, a row expanded, the `rule`
-field, the overview dashboard (the nav toggle until the Dashboards link
-exists), the WAF tab, then four in the WAF terminal (audit log, show the
-file, append the exclusion with a heredoc since the WAF image has no editor,
-`nginx -t && nginx -s reload`), Replay and Verify. Where each step points is
-`TARGETS` in `blue.html`: a `data-test-subj` selector in the Kibana frame,
-which is same-origin and so readable from the console, or one of the
-console's own controls; a step with no target is a terminal step and boxes
-the whole pane. The guide is a popover in the manner of driver.js: a red box
-over the target (nothing on the page is dimmed) and, anchored to it, a
-card with "n / N", the step's title (`<lesson.text>.label.<step>`), one line
-of instruction (`<lesson.text>.coach.<step>`), progress dots and
-Back/Next/close. Below the target, or above, left or right of it when there
-is no room, with an arrow, and never over the open note: for a control inside
-the note it sits to the note's left. On a terminal step it sits in the pane's
-bottom right (left of the note when the note is open), clear of the output,
-and shows the command in a copyable block with one line on what it does
-(`<lesson.text>.does.<step>`). The pane's box is drawn inside the pane's edges
-and under the note (pane < box < note < popover); a box on a note control is
-above the note. Copy uses the Clipboard API where there is one and otherwise a
-selected textarea with `execCommand("copy")`, since the platform is served over
-plain http and an insecure context has no `navigator.clipboard`. "Type into
-terminal" calls `term.paste(command)` on the xterm.js instance ttyd exposes in
-the same-origin WAF frame: one bracketed paste, so a heredoc arrives whole and
-nothing runs until the learner presses Enter. With the WAF pane not open it
-copies instead and says so. Box and popover are placed every animation
-frame, the box with `pointer-events: none` so every click still reaches
-Kibana; the selector is re-queried each frame, so Kibana re-rendering or
-navigating does not strand the box. With no target for about 2 s the popover
-stays, unanchored, and says where to look. A click on the highlighted target
-moves the guide on once the click has gone through: a capture-phase listener
-in the Kibana document (re-attached when the frame loads a new document) and
-one on each console control; a step on a note control opens the note at the
-tab holding it. The selectors were checked against Kibana 8.15.0, the pinned
-version.
+`scenario.yaml`): an `id`, a `check` whose `kind` is one of `alert`, `click`,
+`answer`, `choice`, `waf`, `served` or `verify` (`wargames.CHECK_KINDS`,
+validated at discovery), and as the step needs a `site` path, a Kibana `query`
+or the terminal `command`. The session API adds a `discover` link to a step
+with a `query` (`kibana.discover_path(..., narrowed)`). The board has seven
+steps, each advanced by its check; Back and Next stay as the way around one:
+
+| Step | Where | Check |
+|---|---|---|
+| search: search O'Brien as a customer | Website pane | `alert`: `POST /ingest/ {within: 600}` then `/detections/?after=`; passes on a ModSecurity record marked `browse` whose path holds `O'Brien`, newer than the first read at the step's start |
+| find: that request in Kibana | Kibana, filter button `url : *Brien* and status : 403` | `click`: the row's expand toggle |
+| rule: which rule | answer box | `answer`: `920273`; `949110` gets "that is the score total rule" |
+| target: what it caught | four choices | `choice`: `ARGS:q` (address, cookie and header are the others) |
+| exclude: add the exception | WAF terminal, "Run in terminal" | `waf`: `GET /waf/` holds 920273 `ARGS:q` `/search/`, then the O'Brien case replayed through `/attacks/` is answered 2xx (the reload took effect) |
+| retry: search O'Brien again | Website pane | `served`: when the pane shows the O'Brien search, the same case is replayed and must be 2xx |
+| verify: are attacks still blocked | the note's Check tab | `verify`: VERIFY passes |
+
+`alert` and `waf` are polled every 5 s while their step is shown; a failed
+"Check" press, or a wrong answer, says specifically what is missing ("the
+920273 exception is not in the file yet", "in the file but not loaded").
+Passing a step shows its line (`<lesson.text>.line.<step>`) at the top of the
+next step, and on the last step "Lesson complete". A recent ingest
+(`within`) reads the newest records of the window first and records no
+truncation, because a VERIFY run alone leaves more than 5000.
+
+The terminal step's command uses absolute paths only, since a reopened ttyd
+starts a fresh shell: it appends the exclusion unless `grep -q` finds it,
+prints the file's last line, and runs `nginx -t && nginx -s reload`. Its text
+is folded under "Show command"; "Run in terminal" opens the WAF pane if needed,
+waits for ttyd's `term`, calls `term.paste(command + "\n")` and then
+`term.input("\r")`, because bash keeps a bracketed paste's newline as text.
+
+Help climbs a ladder per step (`<lesson.text>.nudge|answer.<step>`): a nudge,
+then pointing (the red box is drawn only from this level), then the answer,
+then "Do it for me". It climbs on the Hint button, after 60 s on the step, or
+after two wrong answers or failed checks. "Do it for me" performs the step:
+opens the site at the step's path, opens the filtered Kibana and clicks the
+first row's toggle, enters the answer, runs the command in the WAF terminal
+(or, when no terminal opens within 10 s, `PUT /waf/` with the current paranoia
+level and the exclusion added), replays the case, or runs VERIFY. The steps
+done that way are kept in `fsl-lesson-help-<id>` and marked in the step list.
+
+"Do it yourself" (a checkbox under the step list, `fsl-lesson-stretch`)
+removes the filter button and the Run button and shows the command: the
+learner writes the KQL and types the rule. The checks are the same.
+
+Where each step points is `TARGETS` in `blue.html`: the Website rail button
+until the site is open, then its address bar; a `data-test-subj` in the
+same-origin Kibana frame (`docTableExpandToggleColumn`, `field-rule`,
+`field-transaction.messages.details.data` with `field-rule` as fallback); the
+note's Verify button; a step with no target boxes the whole pane. The popover
+is in the manner of driver.js: anchored to the target with an arrow, below,
+above, left or right of it, never over the open note, and on a terminal step
+in the pane's bottom right. The box has `pointer-events: none` and is placed
+every animation frame; with no target for about 2 s the popover says where to
+look. Theory (five cards) and Hints (reasoning, then the folded solution) stay
+in the note, out of the path.
 
 ## How the scores are computed
 

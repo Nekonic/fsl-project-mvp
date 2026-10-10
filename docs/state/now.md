@@ -46,8 +46,7 @@ Spec MVP item 1 is steps 1+2 here; spec items 2-7 are steps 3-8.
    and `/verify/` APIs; lesson note in the blue console (tuning is done in the
    session's WAF terminal since 2026-10-10; `PUT /waf/` stays for agents and
    `GET /waf/` reads the WAF's file); seeded logs for a
-   guided session. Live-verified (`test/test_lesson.py`). Step text (en/ko,
-   `lesson.board.*`) waits for the user's review.
+   guided session. Live-verified (`test/test_lesson.py`).
 8. Live-verified (e307cc9, `test/test_concurrent_sessions.py`). Docker opens at
    most `FSL_MAX_SESSIONS` sessions (default 2); one more answers 409.
 
@@ -67,6 +66,13 @@ mockup with the user's rulings R1 (no TP/FP/FN/TN or zero-sum wording a
 person reads) and R2 (the step popover gives the exact command);
 `docs/DECISIONS.md` 2026-10-11. Live-checked on the acceptance VM in session
 202 (lesson walked to VERIFY PASS, closed). Not pushed.
+
+Site browser and beginner lesson (2026-10-11): the blue console's Website
+pane browses the session's target through its WAF on port 8002; the WAF lesson
+is seven platform-checked steps with a hint ladder and "Do it for me"
+(`docs/DECISIONS.md`, 2026-10-11). Walked live to VERIFY PASS in session 204
+with headless Chromium. Not pushed. The Claude desktop browser does not load
+the 8002 frame; the red console has no site pane.
 
 Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
 duplicate another test, pin implementation detail, assert framework or YAML

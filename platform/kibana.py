@@ -63,8 +63,10 @@ def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 
 
-def discover_path(index, start, end):
+def discover_path(index, start, end, narrowed=None):
     query = ALERTS_QUERY if not index else f"({ALERTS_QUERY}) and _index : {index}"
+    if narrowed:
+        query = f"{query} and ({narrowed})"
     until = rison(end.isoformat()) if end else "now"
     global_state = f"(time:(from:{rison(start.isoformat())},to:{until}))"
     app_state = (

@@ -249,6 +249,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | 콘솔 케이스, 도구 | 일회용 `fsl-kali` 컨테이너 | 그 컨테이너, 선택된 출발지에서 | sqlmap `--headers=` |
 | CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, `edge`에서(`board.com`이 해석되는 곳) | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(<선언된 기본 출발지>)`에서 | 그 컨테이너 | sqlmap `--headers=` |
+| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트를 거쳐 | 플랫폼, `edge`에서 | `X-FSL-Case: browse`, nginx가 설정 |
 
 프록시는 `mitmdump` 스크립트다. `/label/active`에서 `X-FSL-Case`를 설정하고,
 `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달한다.
@@ -269,6 +270,32 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 `?arg=<세션 id>`를 붙여 넘긴다. ttyd의 `-a`가 이를 스크립트 인자로 주고, 스크립트는 숫자인지 확인한 뒤
 `docker exec -it fsl-<id>-waf-1 bash`를 실행한다. WAF 이미지에는 ttyd가 없다. 같은
 `auth_request /terminal-allowed`가 막는다. OpenStack에서는 `/vm-terminal/fsl-waf/`를 그대로 쓴다.
+
+블루 콘솔의 웹사이트 창은 콘솔 안의 브라우저다: 뒤로, 앞으로, 새로고침, `board.com/<경로>`를
+보여 주고 경로와 Enter를 받는 주소창, 그리고 iframe 안의 페이지. 대상 시스템은 공개되지 않으므로
+nginx가 `/site/<세션>/<호스트>/<경로>`를 그 세션의 WAF(`fsl-<id>-waf-1:80`, 플랫폼이 공유 `edge`
+네트워크로 닿음)로 `Host: <호스트>`를 붙여 넘기고, 터미널과 같은 `auth_request /terminal-allowed`가
+지킨다. 모든 페이지를 WAF가 판정한다: 차단되면 WAF 자신의 403 페이지가 보이고 Kibana에 기록이 남는다.
+경로와 쿼리는 브라우저가 보낸 그대로 넘어간다(`$request_uri`에 대한 `map`). nginx는 접두사를 벗어날
+것들을 고쳐 쓴다: `Location` 헤더(`proxy_redirect`), HTML의 `href="/`, `src="/`, `action="/`,
+`http://<호스트>/`, `http://<호스트>"`(`sub_filter`, 위쪽에는 압축하지 말라고 요청), WordPress가
+이스케이프한 `http:\/\/corp.com\/`도. `Cookie`와 `Set-Cookie`를 지우므로 플랫폼의 쿠키는 대상에
+가지 않고 대상의 쿠키는 플랫폼에 남지 않는다. 그래서 이 창에서는 대상에 로그인할 수 없다. `</body>`
+앞에 `location.pathname + search`를 부모 창에 postMessage하는 스크립트를 붙여, 페이지 안에서 링크를
+눌러도 주소창과 기록이 따라간다.
+
+이 경로는 콘솔의 8000과 다른 출처인 별도 포트 8002에서 서비스되고, 모든 응답에 `Content-Security-Policy:
+sandbox allow-forms allow-scripts allow-same-origin`이 붙는다. 대상은 레드팀이 스크립트를 심을 수 있는
+곳이다. 콘솔과 같은 출처라면 그 스크립트가 콘솔과 그 API를 읽고 조작할 수 있다. `allow-same-origin`
+없는 sandbox(불투명 출처)로 8000에서만 막을 수도 있지만, Chromium 기반 내장 브라우저는 그런 프레임을
+거부한다(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 docker에서 8002, 세션
+WAF가 없는 OpenStack에서는 `None`이다. 세션 API는 `site: {port, path}` 또는 `null`을 주고, 없으면
+콘솔은 창을 숨긴다. acceptance VM의 security group은 8002를 허용한다.
+
+브라우징은 `X-FSL-Case: browse`로 표시되고(브라우저가 보낸 값은 nginx가 덮어씀), 요청은 플랫폼의
+`edge` 주소에서 나간다. 그 경보는 다른 경보처럼 수집·목록화되어 학습자가 Kibana와 `/detections/`에서
+찾을 수 있지만, `/score/`는 시드·검증 재실행처럼 `browse` marker를 뺀다: 브라우징은 케이스가 아니므로
+정탐·오탐도, 귀속되지 않은 경보도 아니다. 레드 콘솔에는 사이트 창이 없다.
 
 콘솔 HTTP 케이스는 출발지 선택과 무관하게 세션 wargame의 `Host`인 `board.com`을
 싣는다. 출발지를 선택하면 트래픽은 그 출발지 구간에 있는 WAF의 주소로 IP를 지정해
@@ -442,30 +469,51 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고, 기�
 있다. 검증 탭은 케이스 하나를 다시 실행하고 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나
 통과한 케이스는 초록 ✓로, 실패한 진단은 빨간 ✗로 따로 보여 준다. 노트에는 튜닝 입력란이 없다.
 
-단계는 레슨 정의에 선언한다(`scenario.yaml`의 `lesson.steps`: `id`와, 터미널 단계면 정확한
-`command`). board의 단계는 열한 개다: 세션 경보 표, 행 하나 펼치기, `rule` 필드, 개요 대시보드
-(Dashboards 링크가 생길 때까지는 메뉴 토글), WAF 탭, WAF 터미널 안의 네 단계(audit log, 파일 보기,
-WAF 이미지에 편집기가 없어 heredoc으로 exclusion 덧붙이기, `nginx -t && nginx -s reload`),
-재생, 검증. 각 단계가 가리키는 곳은 `blue.html`의 `TARGETS`다: Kibana 프레임 안의
-`data-test-subj` 셀렉터(같은 출처라 콘솔에서 읽을 수 있음) 또는 콘솔 자신의 컨트롤. 대상이 없는
-단계는 터미널 단계이고 창 전체를 상자로 두른다. 안내는 driver.js 방식의 popover다: 대상 위의 빨간
-상자(화면 어디도 어둡게 하지 않음)와, 거기에 붙은 카드("n / N", 단계 제목
-`<lesson.text>.label.<step>`, 한 줄 지시 `<lesson.text>.coach.<step>`, 진행 점, 이전/다음/×).
-대상 아래, 자리가 없으면 위·왼쪽·오른쪽에 화살표와 함께 놓이고, 펼친 노트와는 겹치지 않는다: 노트 안
-컨트롤이면 노트 왼쪽에 놓인다. 터미널 단계에서는 출력과 겹치지 않게 창 오른쪽 아래(노트가 펼쳐져 있으면
-노트 왼쪽)에 놓여 명령을 복사할 수 있는 코드 블록과 그 명령이 하는 일 한 줄(`<lesson.text>.does.<step>`)을
-보여 준다. 창 전체 상자는 창 안쪽 경계에 그려지고 노트 아래에 있다(창 < 상자 < 노트 < popover). 노트 안
-컨트롤의 상자는 노트 위에 있다. 복사는 Clipboard API가 있으면 그것을, 없으면 선택한 textarea와
-`execCommand("copy")`를 쓴다. 플랫폼이 평문 http로 서비스되어 secure context가 아니면
-`navigator.clipboard`가 없기 때문이다. "터미널에 입력"은 같은 출처 WAF 프레임에서 ttyd가 노출하는
-xterm.js 인스턴스의 `term.paste(command)`를 부른다. bracketed paste 한 번이라 heredoc이 통째로 들어가고,
-학습자가 Enter를 누르기 전에는 아무것도 실행되지 않는다. WAF 창이 열려 있지 않으면 대신 복사하고 그렇게
-알린다. 상자와 popover는 매 애니메이션 프레임마다 다시 놓이며, 상자는 `pointer-events: none`이라
-모든 클릭이 그대로 Kibana에 간다. 셀렉터를 매 프레임 다시 찾으므로 Kibana가 다시 그리거나 이동해도
-상자가 남지 않는다. 약 2초 동안 대상을 찾지 못하면 popover가 붙을 곳 없이 남아 어디를 볼지 알려
-준다. 강조된 대상을 클릭하면 클릭이 전달된 뒤 다음 단계로 넘어간다: Kibana 문서의 캡처 단계
-리스너(프레임이 새 문서를 로드하면 다시 붙음)와 콘솔 컨트롤마다의 리스너. 노트 안 컨트롤을 가리키는
-단계는 노트를 그 컨트롤이 있는 탭으로 펼친다. 셀렉터는 고정 버전인 Kibana 8.15.0으로 확인했다.
+단계는 레슨 정의에 선언한다(`scenario.yaml`의 `lesson.steps`): `id`, `kind`가 `alert`, `click`,
+`answer`, `choice`, `waf`, `served`, `verify` 중 하나인 `check`(`wargames.CHECK_KINDS`, 발견 시 검증),
+그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널 `command`. 세션 API는 `query`가 있는 단계에
+`discover` 링크를 더한다(`kibana.discover_path(..., narrowed)`). board는 일곱 단계이고, 각 단계는
+그 확인으로 넘어간다. 이전/다음은 확인을 건너뛰는 길로 남는다:
+
+| 단계 | 어디서 | 확인 |
+|---|---|---|
+| search: 고객이 되어 O'Brien 검색 | 웹사이트 창 | `alert`: `POST /ingest/ {within: 600}` 후 `/detections/?after=`. 단계 시작 때 처음 읽은 것보다 새로운, `browse` 표시가 있고 경로에 `O'Brien`이 든 ModSecurity 기록이면 통과 |
+| find: Kibana에서 그 요청 찾기 | Kibana, 필터 버튼 `url : *Brien* and status : 403` | `click`: 그 행의 펼치기 버튼 |
+| rule: 막은 규칙 번호 | 답 입력란 | `answer`: `920273`. `949110`이면 "점수 합계 규칙" 안내 |
+| target: 무엇이 걸렸나 | 선택지 넷 | `choice`: `ARGS:q`(나머지는 주소, 쿠키, 헤더) |
+| exclude: 예외 적용 | WAF 터미널, "터미널에서 실행" | `waf`: `GET /waf/`에 920273 `ARGS:q` `/search/`가 있고, `/attacks/`로 다시 보낸 O'Brien 케이스가 2xx(reload가 적용됨) |
+| retry: O'Brien 다시 검색 | 웹사이트 창 | `served`: 창에 O'Brien 검색이 보이면 같은 케이스를 다시 보내 2xx여야 함 |
+| verify: 공격은 여전히 막히나 | 노트의 검증 탭 | `verify`: 검증 PASS |
+
+`alert`와 `waf`는 그 단계가 보이는 동안 5초마다 확인한다. "확인"을 눌러 실패하거나 답이 틀리면 무엇이
+빠졌는지 구체적으로 말한다("아직 920273 예외가 파일에 없습니다", "파일에는 있지만 불러오지 않았습니다").
+단계를 통과하면 그 단계의 한 줄(`<lesson.text>.line.<step>`)이 다음 단계 맨 위에 보이고, 마지막
+단계에서는 "레슨을 마쳤습니다". 최근 수집(`within`)은 창의 가장 새 기록부터 읽고 잘림을 기록하지 않는다.
+검증 한 번만으로도 기록이 5000개를 넘기 때문이다.
+
+터미널 단계의 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다: `grep -q`로 없을
+때만 예외를 덧붙이고, 파일 마지막 줄을 보여 주고, `nginx -t && nginx -s reload`를 실행한다. 명령은
+"명령 보기" 아래 접혀 있다. "터미널에서 실행"은 필요하면 WAF 창을 열고 ttyd의 `term`을 기다린 뒤
+`term.paste(command + "\n")`, 이어서 `term.input("\r")`을 부른다. bash는 bracketed paste의 줄바꿈을
+글자로 두기 때문이다.
+
+도움은 단계마다 사다리를 오른다(`<lesson.text>.nudge|answer.<step>`): 귀띔, 가리키기(빨간 상자는 이
+단계부터 그려짐), 정답, "대신 해 주기". 힌트 버튼, 그 단계에서 60초, 또는 틀린 답·실패한 확인 두 번에
+한 칸 오른다. "대신 해 주기"는 단계를 직접 수행한다: 단계의 경로로 사이트 열기, 걸러 낸 Kibana를 열고
+첫 행의 펼치기 누르기, 답 입력, WAF 터미널에서 명령 실행(10초 안에 터미널이 열리지 않으면 현재
+Paranoia Level에 예외를 더해 `PUT /waf/`), 케이스 다시 보내기, 검증 실행. 그렇게 한 단계는
+`fsl-lesson-help-<id>`에 남고 단계 목록에 표시된다.
+
+"직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
+펼쳐 둔다: 학습자가 KQL을 쓰고 규칙을 직접 입력한다. 확인은 같다.
+
+각 단계가 가리키는 곳은 `blue.html`의 `TARGETS`다: 사이트가 열리기 전에는 웹사이트 레일 버튼, 그다음은
+주소창. 같은 출처 Kibana 프레임의 `data-test-subj`(`docTableExpandToggleColumn`, `field-rule`,
+`field-transaction.messages.details.data`와 대체로 `field-rule`). 노트의 검증 버튼. 대상이 없는 단계는
+창 전체를 두른다. popover는 driver.js 방식이다: 대상에 화살표로 붙어 아래·위·왼쪽·오른쪽에 놓이고, 펼친
+노트와는 겹치지 않으며, 터미널 단계에서는 창 오른쪽 아래에 놓인다. 상자는 `pointer-events: none`이고
+매 애니메이션 프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 준다. 이론
+카드 다섯 장과 힌트(이유, 그다음 접힌 풀이)는 경로 밖, 노트에 남는다.
 
 ## 점수는 어떻게 계산되는가
 

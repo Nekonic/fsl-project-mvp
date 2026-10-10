@@ -162,10 +162,13 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (compose only) | the iframe in a person's browser |
 | 5140/udp | `collector`, Filebeat's syslog input | pfSense and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
-nginx inside the platform image serves 8000. It passes `/terminal/<session id>/`
+nginx inside the platform image serves 8000 and 8002. 8002 is a separate
+origin for the target site, so a script planted on the target cannot reach the
+console. It passes `/terminal/<session id>/`
 to the ttyd on that session's Kali container, `fsl-<id>-kali-1` (compose), and
 `/vm-terminal/` to ttyd processes inside the platform, which ssh to the host's
 `mgmt` address (OpenStack; on compose Kali and the WAF have no `mgmt` address,
@@ -325,13 +328,15 @@ Korean.
 
 A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
 lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
-also the benign O'Brien search, and the blue console guides the lesson with a
-popover on each step (the exact command on a terminal step) and a note folded
-to a pill over Kibana. In the session's
-WAF terminal the learner adds a rule exclusion to
-`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf` (or lowers the paranoia level
-there), runs `nginx -t` and `nginx -s reload`, and presses Verify
-(`POST /api/sessions/<id>/verify/`), which passes only when no sqlmap variant
+also the benign O'Brien search. The blue console walks a beginner through seven
+steps, each checked by the platform: search O'Brien in the Website pane and
+see the WAF's 403, find that request in Kibana with a ready-made filter, name
+the rule (920273), say what it caught (`ARGS:q`), add the rule exclusion with
+one button that runs the command in the session's WAF terminal (appending to
+`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, then `nginx -t && nginx -s
+reload`), search again, and press Verify (`POST /api/sessions/<id>/verify/`).
+Each step has hints that end in "Do it for me"; "Do it yourself" removes the
+filter and the button. Verify passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
 answered. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
 what is in the WAF's file. The default, `{"defense": "full"}`, starts at
