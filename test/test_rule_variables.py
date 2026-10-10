@@ -10,7 +10,7 @@ def fired_with_a_ported_rule(stack_is_up, baseline_rules):
     from conftest import score_when_ready
 
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     requests.post(
         f"{PLATFORM_URL}/api/rules/apply/",

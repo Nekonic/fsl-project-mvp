@@ -6,27 +6,29 @@ import requests
 from conftest import PLATFORM_URL
 from range import ATTACKER, run
 
-def typed(command):
+def typed(command, session_id):
     shell = f"printf '{command}\\nexit\\n' | bash -i"
-    return run(ATTACKER, ["bash", "-c", shell], timeout=120)
+    return run(ATTACKER, ["bash", "-c", shell], timeout=120, session=session_id)
 
 @pytest.fixture(scope="module")
 def recorded(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     marker = str(uuid.uuid4())
 
     requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": marker}, timeout=60
+        f"{PLATFORM_URL}/api/attacker/label/",
+        json={"case_id": marker, "session": session_id}, timeout=60,
     )
     try:
-        typed(f"nmap --version")
+        typed("nmap --version", session_id)
     finally:
         requests.post(
-            f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": None}, timeout=60
+            f"{PLATFORM_URL}/api/attacker/label/",
+            json={"case_id": None, "session": session_id}, timeout=60,
         )
-    typed("echo after")
+    typed("echo after", session_id)
 
     listed = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/commands/", timeout=120

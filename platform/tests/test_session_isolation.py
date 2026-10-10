@@ -383,7 +383,8 @@ def test_a_suppression_on_a_torn_down_session_is_lifted_not_stuck(client):
         session=gone, sid=9000004, original="alert x", expires_at=timezone.now(),
     )
 
-    with patch("api.views.suricata.current", side_effect=RangeUnavailable("no sensor")):
+    with patch("api.views.suricata.current", side_effect=RangeUnavailable("no sensor")), \
+            patch("range.docker.Docker.has_stack", lambda self: False):
         restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
         listed = client.get("/api/rules/suppressions/").json()
 
@@ -410,3 +411,82 @@ def test_a_suppression_on_an_open_session_is_not_dropped_when_its_sensor_is_down
 
     assert restored.status_code == 503
     assert Suppression.objects.get(pk=record.pk).restored_at is None
+
+
+@pytest.mark.django_db
+def test_a_suppression_on_an_ended_session_whose_stack_still_runs_stays_pending(client):
+    from django.utils import timezone
+
+    from api.models import Suppression
+
+    ended = Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+    record = Suppression.objects.create(
+        session=ended, sid=9000004, original="alert x", expires_at=timezone.now(),
+    )
+
+    with patch("api.views.suricata.current", side_effect=RangeUnavailable("docker timed out")), \
+            patch("range.docker.Docker.has_stack", lambda self: True):
+        restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
+
+    assert restored.status_code == 503
+    assert Suppression.objects.get(pk=record.pk).restored_at is None, (
+        "a passing docker error marked the rule restored while the sensor that "
+        "silenced it still runs with it commented out"
+    )
+
+
+def test_a_session_s_stack_is_known_by_its_project_s_containers():
+    seen = []
+
+    def ps(argv, **kwargs):
+        seen.append(argv)
+        out = "abc123\n" if argv[-1].endswith("fsl-7") else ""
+        return type("Done", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+
+    with patch("range.docker.subprocess.run", ps):
+        assert session_range(7).has_stack() is True
+        assert session_range(8).has_stack() is False
+    assert seen[0][:4] == ["docker", "ps", "-a", "-q"]
+
+
+@pytest.mark.django_db
+def test_a_write_naming_no_session_goes_to_the_newest_open_one(client):
+    from django.utils import timezone
+
+    open_one = Session.objects.create(scenario="board", baseline=[])
+    Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+    sensors = Sensors()
+
+    with sensors.install():
+        client.post_json("/api/attacker/label/", {"case_id": "x"})
+
+    assert sensors.ran_in == [("proxy", open_one.pk)], (
+        "a write naming no session went to a closed session's stack"
+    )
+
+
+@pytest.mark.django_db
+def test_a_write_with_no_session_open_is_refused(client):
+    from django.utils import timezone
+
+    Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+
+    answer = client.post_json("/api/rules/apply/", {"content": ""})
+
+    assert answer.status_code == 409
+    assert "no session is open" in answer.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_a_write_to_a_closed_session_is_refused(client):
+    from django.utils import timezone
+
+    closed = Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+
+    for path, body in (("/api/attacker/label/", {"case_id": "x"}),
+                       ("/api/attacker/origin/", {"origin": ""}),
+                       ("/api/rules/suppressions/", {"sid": 9000001}),
+                       ("/api/rules/apply/", {"content": ""}),
+                       ("/api/range/canary/", {})):
+        answer = client.post_json(path, dict(body, session=closed.pk))
+        assert answer.status_code == 409, (path, answer.content)

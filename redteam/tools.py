@@ -117,9 +117,9 @@ def dumped(output: str) -> list[tuple[str, str]]:
         if row != header and len(row) == len(header)
     ]
 
-def concluded(exit_code: int, output: str) -> bool:
+def found_not_injectable(exit_code: int, output: str) -> bool:
     output = output if isinstance(output, str) else ""
     return (
         exit_code == 0 and ENDED in output and not ABORTED.search(output)
-        and (NOT_INJECTABLE in output or bool(dumped(output)))
+        and NOT_INJECTABLE in output and not dumped(output)
     )

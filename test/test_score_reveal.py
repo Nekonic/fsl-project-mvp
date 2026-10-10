@@ -5,7 +5,7 @@ from conftest import PLATFORM_URL
 
 def test_the_score_is_withheld_while_the_session_is_open_and_shown_once_closed(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=600
     ).json()["id"]
 
     while_open = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60)

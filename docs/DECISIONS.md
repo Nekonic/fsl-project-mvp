@@ -751,6 +751,23 @@ passed (4 passed; see the seeded-logs item and the live acceptance entry below).
   before the reload and polls until none is left, refusing after 5 s;
   measured on the pinned image, the worker set changed within about 0.3 s.
   `core_loc` 526 -> 538 (+12).
+- Final review (2026-10-10): the wait ends when a worker that was not there
+  before the reload is up, not when every old worker has exited, because an
+  old worker draining a time-based sqlmap request can outlive 5 s while nginx
+  already serves the new tuning. No new worker in 5 s means the reload did not
+  happen: the previous file is restored and reloaded, and the tuning refused.
+- Final review: VERIFY must not pass without the target's own witness. A
+  docker board session whose accounts cannot be read (or read empty) at open
+  is refused with 503 and closed (OpenStack keeps its readiness refusal and
+  its blind open); `/verify/` answers 409 for a session with no snapshot; and
+  a sqlmap run is held only on its own "not injectable" conclusion with no
+  dumped row. A dump that matches no snapshot account is inconclusive, not
+  held. Unit tests now stand in a one-account snapshot by default instead of
+  refusing the read. Live negative control: with 949110 and 959100 removed at PL4
+  the stock case leaked all accounts and VERIFY failed in 135 s;
+  `test/test_lesson.py` 5 passed on the acceptance VM. `core_loc` 538 -> 539
+  for the rollback reload (the branch total, with the harness change, is 543;
+  see the pre-push review entry).
 
 ## 2026-10-10 — Concurrent sessions capped on docker
 
@@ -798,3 +815,33 @@ Runs on the way:
 
 After the OOM, the platform VM 192.168.0.210 was restored to origin/dev
 (870b15f) with substrate openstack.
+
+## 2026-10-10 — Pre-push adversarial review of the whole branch
+
+A final review of 870b15f..HEAD found one high-severity hole and four smaller
+defects; all are fixed (d18bf97, 60aa192 and their follow-ups).
+
+- **VERIFY could pass with no target records.** A docker board session opened
+  even when its accounts could not be read, and VERIFY then matched every dump
+  against an empty snapshot. A loot_verified session now refuses to open
+  without a readable, non-empty snapshot; `/verify/` answers 409 without one;
+  a dump that matches no snapshot account is inconclusive, and "held" needs
+  sqlmap's own "not injectable" conclusion with nothing dumped. A live negative
+  control (blocking turned off for the session) now shows VERIFY reporting the
+  leak and failing.
+- **A WAF tuning reported as refused while already live.** `crs.apply` now
+  returns once a new nginx worker is up; old workers may keep draining slow
+  requests. No new worker within 5 s restores the previous file and refuses.
+- **Session-less writes reached a closed session's still-running stack.**
+  Writes that name no session go to the newest open session and answer 409
+  when none is open; a write naming a closed session is refused. Reads that
+  name no session still use the newest session.
+- **A suppression on an ended session was marked restored on any range
+  error.** It is now marked restored only when the session's stack is
+  verifiably gone.
+- **The acceptance suite closed sessions it had not opened.** It now closes
+  only the sessions it opened, including the one `redteam/run.py` announces.
+
+core_loc 538 -> 543: +1 for the rollback reload in `rules/crs.py`, +4 in
+`redteam/harness.py` for closing its session when a case fails midway and
+announcing the session id the suite needs for cleanup.

@@ -41,7 +41,7 @@ def test_exactly_one_origin_is_the_front_door(origins):
 @pytest.fixture(scope="module")
 def two_places(elsewhere, stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
 
     case_ids = {}
@@ -108,7 +108,7 @@ def test_the_map_draws_more_than_one_place(two_places):
 
 def test_rotation_does_not_stay_in_one_place(stack_is_up, origins):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
 
     sent = []

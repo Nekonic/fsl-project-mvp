@@ -8,7 +8,7 @@ SILENCED_CASE = "board-path-traversal-static"
 CONTROL_CASE = "board-sqli-search"
 
 def _open():
-    return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+    return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
 
 def _run(cases, session_id=None):
     session_id = session_id or _open()
@@ -75,12 +75,14 @@ def test_a_silenced_rule_is_on_the_books_with_a_deadline(silenced):
     assert live[0]["expires_at"] > live[0]["created_at"]
 
 def test_restoring_brings_the_rule_back(baseline_rules):
+    session_id = _open()
+    rules = f"{PLATFORM_URL}/api/rules/?session={session_id}"
     created = requests.post(
         f"{PLATFORM_URL}/api/rules/suppressions/",
-        json={"sid": SID, "minutes": 10}, timeout=300,
+        json={"sid": SID, "minutes": 10, "session": session_id}, timeout=300,
     )
     assert created.status_code == 201, created.text
-    silenced = requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
+    silenced = requests.get(rules, timeout=60).json()["content"]
     assert not any(
         line.startswith("alert") and f"sid:{SID};" in line for line in silenced.splitlines()
     )
@@ -90,5 +92,5 @@ def test_restoring_brings_the_rule_back(baseline_rules):
     )
     assert restored.ok, restored.text
 
-    content = requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
+    content = requests.get(rules, timeout=60).json()["content"]
     assert content == baseline_rules

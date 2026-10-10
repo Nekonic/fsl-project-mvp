@@ -193,10 +193,16 @@ def sessions(request):
             _aim_attacker(adapter)
             _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)
+        if hasattr(adapter, "for_session") and not session.baseline \
+                and wargames.objective_model(scenario) == "loot_verified":
+            raise loot.GroundTruthUnavailable(
+                f"the {scenario} target's accounts could not be read at open, so "
+                f"nothing it loses could be checked; the session is closed"
+            )
         session.save(update_fields=["baseline", "waf"])
         if guidance and hasattr(adapter, "for_session"):
             _seed_logs(session)
-    except harness.ToolUnavailable as exc:
+    except (harness.ToolUnavailable, loot.GroundTruthUnavailable) as exc:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         return _reply({"detail": str(exc)}, status=503)
     except Exception:
@@ -278,6 +284,18 @@ def _asked_session(request):
     except (TypeError, ValueError, OverflowError):
         raise BadRequest(f'"session" must be a session id, got {given!r}')
     return get_object_or_404(Session, pk=wanted)
+
+def _written(request):
+    asked = _asked_session(request)
+    if asked:
+        _refuse_closed(asked)
+        return asked
+    if not hasattr(substrate(), "for_session"):
+        return None
+    found = Session.objects.filter(ended_at=None).order_by("-id").first()
+    if found is None:
+        raise Conflict("no session is open; open one, or name the session to act on")
+    return found
 
 def _terminal_url(session):
     if settings.ATTACKER_SESSION_TERMINAL_URL and session:
@@ -429,7 +447,7 @@ def session_commands(request, session_id):
 
 @require_http_methods(["POST"])
 def attacker_origin(request):
-    session = _asked_session(request)
+    session = _written(request)
     chosen = attacker.find(_standing(session), _payload(request).get("origin"))
     attacker.wear_origin(chosen, _range(session).runner("proxy"))
     return _reply({"origin": chosen["id"], "source_ip": chosen["source_ip"]})
@@ -444,7 +462,7 @@ def attacker_label(request):
             '"case_id" must be one marker with no spaces or control characters, '
             f"or null to clear the label, got {case_id!r}"
         )
-    attacker.set_label(case_id or None, _range(_asked_session(request)).runner("proxy"))
+    attacker.set_label(case_id or None, _range(_written(request)).runner("proxy"))
     return _reply({"ok": True})
 
 @require_http_methods(["GET"])
@@ -672,7 +690,7 @@ def _lesson_fire(session, name, marks):
             status = tools.status(ran.output)
             return dict(marks, status=status, blocked=status == 403)
         leaked = sorted(loot.matched(tools.dumped(ran.output), truth))
-        held = not leaked and tools.concluded(ran.exit_code, ran.output)
+        held = not leaked and tools.found_not_injectable(ran.exit_code, ran.output)
         return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output),
                     outcome="leaked" if leaked else "held" if held else "inconclusive",
                     blocked=held)
@@ -686,6 +704,11 @@ def session_verify(request, session_id):
     taught = wargames.lesson(session.scenario)
     if not taught:
         raise BadRequest(f"{session.scenario!r} has no lesson to verify")
+    if not (isinstance(session.baseline, dict) and session.baseline):
+        raise Conflict(
+            f"session {session.pk} holds no snapshot of the target's accounts, so a "
+            f"leak could not be told from a block; open a new session"
+        )
     run = str(uuid.uuid4())
     try:
         for name in taught["cases"]:
@@ -1205,7 +1228,7 @@ def suppressions(request):
 
     minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
     expires_at = timezone.now() + timedelta(minutes=minutes)
-    session = _newest(_asked_session(request))
+    session = _written(request)
     content = _live_rules(session)
 
     try:
@@ -1239,6 +1262,9 @@ def _restore(record) -> tuple[bool, str | None]:
         current = _live_rules(record.session)
     except RangeUnavailable:
         if record.session is None or record.session.ended_at is None:
+            raise
+        adapter = _range(record.session)
+        if not hasattr(adapter, "has_stack") or adapter.has_stack():
             raise
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
@@ -1296,7 +1322,7 @@ def _version(content: str) -> str:
 def apply_rules(request):
     content = _rule_file(request)
     body = _payload(request)
-    session = _asked_session(request)
+    session = _written(request)
     if "base" in body:
         base = body["base"]
         live = _version(_live_rules(session))
@@ -1485,10 +1511,10 @@ def _canary_blocked(reason: str) -> dict:
     return {"corroborated": False, "suricata": False, "modsecurity": False,
             "skew_seconds": None, "blocked": [reason]}
 
-def _range_canary(adapter) -> dict:
+def _range_canary(adapter, session=None) -> dict:
     token = "canary-" + uuid.uuid4().hex
     try:
-        origin = attacker.find(_standing(), None)
+        origin = attacker.find(_standing(session), None)
     except (attacker.UnknownOrigin, RangeUnavailable) as exc:
         return _canary_blocked(f"no origin to fire the canary from: {exc}")
     try:
@@ -1547,7 +1573,8 @@ def _range_canary(adapter) -> dict:
 
 @require_http_methods(["POST"])
 def range_canary(request):
-    return _reply(_range_canary(_range()))
+    session = _written(request)
+    return _reply(_range_canary(_range(session), session))
 
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_fabric(request):

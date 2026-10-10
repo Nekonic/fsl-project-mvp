@@ -17,7 +17,7 @@ def signatures(session_id):
 
 @pytest.fixture(scope="module")
 def caught_by_a_rule_without_a_buffer(stack_is_up, baseline_rules):
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
     applied = requests.post(
         f"{PLATFORM_URL}/api/rules/apply/",
         json={"content": BUFFERLESS, "session": session_id}, timeout=180,

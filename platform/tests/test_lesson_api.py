@@ -201,7 +201,7 @@ def test_a_variant_that_dumped_the_hashes_fails_verify_on_the_target_s_own_recor
     tamper = Case.objects.get(name="board-sqli-orderby-sqlmap-tamper")
     assert tamper.meta["blocked"] is False and tamper.meta["leaked"] == sorted(TRUTH)
 
-def test_a_dump_that_does_not_match_the_snapshot_is_not_a_leak(client):
+def test_a_dump_that_matches_no_snapshot_account_is_neither_a_leak_nor_a_block(client):
     session = board()
     fake = DUMPED.replace(TRUTH["admin"], "admin1234").replace(TRUTH["jiwoo"], "x").replace(
         TRUTH["minseo"], "y")
@@ -209,7 +209,10 @@ def test_a_dump_that_does_not_match_the_snapshot_is_not_a_leak(client):
         "board-sqli-orderby-sqlmap": fake, "board-sqli-orderby-sqlmap-tamper": HELD,
     })
 
-    assert result["passed"] is True
+    assert result["passed"] is False, "sqlmap got rows through, so nothing was blocked"
+    assert {"name": "board-sqli-orderby-sqlmap", "malicious": True,
+            "outcome": "inconclusive"} in result["cases"]
+    assert Objective.objects.count() == 0, "rows that match no account take nothing"
 
 def test_blocking_the_o_brien_search_fails_verify_as_a_benign_case_blocked(client):
     session = board()
@@ -354,3 +357,14 @@ def test_a_guided_open_whose_replay_cannot_run_is_refused_as_unavailable(client)
     assert Session.objects.get().ended_at is not None, (
         "the half-open session is closed, so the next open takes its stack down"
     )
+
+@pytest.mark.parametrize("baseline", [None, {}, []])
+def test_verify_refuses_a_session_with_no_snapshot_of_the_target_s_accounts(client, baseline):
+    session = Session.objects.create(scenario="board", baseline=baseline)
+    fire, fired = attacker({})
+    with patch("api.views.harness.fire", fire):
+        answer = client.post_json(f"/api/sessions/{session.pk}/verify/")
+
+    assert answer.status_code == 409
+    assert "no snapshot" in answer.json()["detail"]
+    assert fired == [], "nothing is replayed when no leak could be told from a block"

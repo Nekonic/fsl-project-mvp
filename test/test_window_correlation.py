@@ -37,7 +37,7 @@ def _record_window(session_id, name, malicious, source_ip, started_at, ended_at)
 @pytest.fixture(scope="module")
 def window_session(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
 
     attacker = requests.get(

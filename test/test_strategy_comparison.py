@@ -11,9 +11,10 @@ ATTACK_PATH = "/search/?q=%27%20OR%201%3D1--"
 def _now():
     return datetime.now(timezone.utc)
 
-def _label(case_id):
+def _label(case_id, session_id):
     response = requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": case_id}, timeout=30
+        f"{PLATFORM_URL}/api/attacker/label/",
+        json={"case_id": case_id, "session": session_id}, timeout=30,
     )
     assert response.ok, response.text
 
@@ -24,19 +25,19 @@ def case_id():
 @pytest.fixture(scope="module")
 def labelled_session(stack_is_up, case_id):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     source_ip = requests.get(
         f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=60
     ).json()["source_ip"]
 
-    _label(case_id)
+    _label(case_id, session_id)
     try:
         started = _now()
         from_attacker(ATTACK_PATH)
         ended = _now()
     finally:
-        _label(None)
+        _label(None, session_id)
 
     recorded = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",

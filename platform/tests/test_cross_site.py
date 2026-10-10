@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
 
 RULES = {"content": "alert http any any -> any any (msg:\"x\"; sid:9000901;)\n"}
 

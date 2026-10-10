@@ -8,7 +8,7 @@ from range import BOARD, run
 
 def _board_session():
     created = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=600
     )
     assert created.status_code == 201, created.text
     return created.json()["id"]

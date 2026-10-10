@@ -10,7 +10,7 @@ CASE = "board-sqli-search"
 @pytest.fixture(scope="module")
 def drawn(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     sent = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",

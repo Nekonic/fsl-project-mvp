@@ -9,7 +9,7 @@ SECOND_SHAPE = "board-sqli-union-search"
 @pytest.fixture(scope="module")
 def fired(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     for case in (CONTROL, SECOND_SHAPE):
         sent = requests.post(

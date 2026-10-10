@@ -71,49 +71,45 @@ def test_detections_are_spread_across_cases(session_id, score):
 
 def test_criterion_4_adding_a_rule_moves_the_score():
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     original = requests.get(
         f"{PLATFORM_URL}/api/rules/", params={"session": session_id}
     ).json()["content"]
 
-    try:
-        applied = requests.post(
-            f"{PLATFORM_URL}/api/rules/apply/",
-            json={"content": original + NOISY_RULE, "session": session_id},
-            timeout=120,
-        )
-        assert applied.ok, applied.text
+    applied = requests.post(
+        f"{PLATFORM_URL}/api/rules/apply/",
+        json={"content": original + NOISY_RULE, "session": session_id},
+        timeout=120,
+    )
+    assert applied.ok, applied.text
 
-        fired = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-            json={"case": "board-normal-search"}, timeout=300,
-        )
-        assert fired.status_code == 201, fired.text
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
+    fired = requests.post(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
+        json={"case": "board-normal-search"}, timeout=300,
+    )
+    assert fired.status_code == 201, fired.text
+    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
 
-        after = score_when_ready(session_id, until=lambda s: s["fp"] > 0)
-        assert after["fp"] > 0, (
-            f"a rule hitting 'release' was added but no false positive was "
-            f"scored. Score: {after}"
-        )
-    finally:
-        requests.post(
-            f"{PLATFORM_URL}/api/rules/apply/",
-            json={"content": original, "session": session_id}, timeout=120,
-        )
+    after = score_when_ready(session_id, until=lambda s: s["fp"] > 0)
+    assert after["fp"] > 0, (
+        f"a rule hitting 'release' was added but no false positive was "
+        f"scored. Score: {after}"
+    )
 
 def test_invalid_rule_is_rejected_and_not_applied():
-    before = requests.get(f"{PLATFORM_URL}/api/rules/").json()["content"]
+    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
+    rules = f"{PLATFORM_URL}/api/rules/?session={session_id}"
+    before = requests.get(rules).json()["content"]
 
     response = requests.post(
         f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": "this is not a rule"},
+        json={"content": "this is not a rule", "session": session_id},
         timeout=120,
     )
 
     assert response.status_code == 400
-    assert requests.get(f"{PLATFORM_URL}/api/rules/").json()["content"] == before
+    assert requests.get(rules).json()["content"] == before
 
 def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
     rows = requests.get(

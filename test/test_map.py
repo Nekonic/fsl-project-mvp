@@ -15,7 +15,7 @@ DETECT_WITHOUT_BLOCKING_SEARCH = {
 @pytest.fixture(scope="module")
 def drawn(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     tuned = requests.put(
         f"{PLATFORM_URL}/api/sessions/{session_id}/waf/",

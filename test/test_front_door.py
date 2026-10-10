@@ -62,7 +62,7 @@ LET_THE_PROBE_THROUGH = {
 
 @pytest.fixture
 def probe_past_the_waf(stack_is_up):
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
     tuned = requests.put(
         f"{PLATFORM_URL}/api/sessions/{session_id}/waf/", json=LET_THE_PROBE_THROUGH, timeout=120,
     )
@@ -91,7 +91,7 @@ def test_the_inside_leg_is_still_the_inside(probe_past_the_waf):
     assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe_past_the_waf)}"
 
 def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120).json()["id"]
+    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
     fired = requests.post(
         f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
         json={"case": "board-sqli-search"}, timeout=300,

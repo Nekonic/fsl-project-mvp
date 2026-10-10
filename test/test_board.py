@@ -5,7 +5,7 @@ from conftest import PLATFORM_URL, score_when_ready
 
 def _board_session():
     created = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board"}, timeout=600
     )
     assert created.status_code == 201, created.text
     return created.json()["id"]

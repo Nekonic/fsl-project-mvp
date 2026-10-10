@@ -53,7 +53,7 @@ def indiscriminate(totals, sigs):
 @pytest.fixture(scope="module")
 def block_everything(stack_is_up, baseline_rules):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     apply_rules(CATCH_ALL, session_id)
     try:

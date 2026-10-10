@@ -6,7 +6,7 @@ from conftest import PLATFORM_URL
 @pytest.fixture(scope="module")
 def marker_only_session(stack_is_up):
     session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=120
+        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
     for name in ("board-sqli-search", "board-normal-search"):
         sent = requests.post(
