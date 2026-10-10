@@ -31,18 +31,21 @@ Spec MVP item 1 is steps 1+2 here; spec items 2-7 are steps 3-8.
 1. Done (9e8e963): control plane `compose.yaml`, per-session `session.yaml` as
    `fsl-<id>`.
 2. Done: target images built once and tagged, sessions start `--no-build`.
-3. Done (81fb283): scenarios from `wargames/<id>/scenario.yaml`. Still open:
-   board-easy/board-hard (one image, many scenarios) and the `defense` field,
-   both with step 7.
+3. Done (81fb283): scenarios from `wargames/<id>/scenario.yaml`; the `defense`
+   and `lesson` fields came with step 7. Still open: board-easy/board-hard (one
+   image, many scenarios).
 4. Built (bbde53d, 82d081d): roles resolve to compose services by label;
    container_name pins gone; `estate` session-owned, edges and `mgmt` shared.
 5. Built (bbde53d): `Docker.address(role)` is the role's estate IP; loot and
    effect read the session's own target.
 6. Built (83f92e0): Filebeat writes `fsl-logs-<session>-<day>`; ingest reads
    `fsl-logs-<session>-*`.
-7. Next: the lesson. WAF `SecRuleEngine On`; starting paranoia level from the CRS
-   spike below (start at PL4, which over-blocks O'Brien; the learner tunes).
-   Includes a per-session Suricata ruleset mount.
+7. Built (4c4c7e8..a2b5eeb): the WAF lesson. Session settings
+   `guidance`/`defense`; `rules/crs.py` writes the session's paranoia level and
+   exclusions; the sensor's rule file is per session, seeded at open; `/waf/`
+   and `/verify/` APIs; lesson panel in the blue console; seeded logs for a
+   guided session. Unit-tested only; `test/test_lesson.py` waits for the live
+   run. Step text (en/ko, `lesson.board.*`) waits for the user's review.
 8. Test written (e307cc9, `test/test_concurrent_sessions.py`); live run pending.
 
 Live acceptance of steps 4-6 and 8 on 192.168.0.210 (substrate docker):
@@ -52,9 +55,12 @@ Commits 870b15f..2b7ded3 are local on this branch, not pushed; push waits for
 that acceptance.
 
 ## Known open on docker
-- `deploy/suricata/rules` is one bind mount shared by every session's sensor:
-  applying a rule writes the shared file and reloads only that session's
-  sensor. Fix with step 7.
+- Step 7 live: whether `board-sqli-orderby-sqlmap-tamper` is held at PL4 with
+  the 920273 exclusion, how long VERIFY and a guided open take, and whether
+  `SecRuleEngine On` at PL1 changes any corp acceptance case (WordPress
+  exploits now meet a blocking WAF).
+- The VERIFY diagnosis for a blocked benign case names the status, not the CRS
+  rule id; reading the rule id needs the audit record.
 - The reachability middleware covers only the newest session's `estate`.
 - `/vm-terminal/` does not connect on compose (Kali and the WAF have no `mgmt`
   address); the red terminal uses `/terminal/<id>/` instead.
@@ -73,7 +79,8 @@ that acceptance.
   attacker); add a session address, not new knowledge. The target decides
   whether it was beaten.
 - Ratchet: run `bin/measure` before committing; the tests floor only rises.
-- Step 7 re-baselines the benign true-negative cases with the WAF blocking.
+- Step 7 turned the WAF to blocking; benign cases are kept and one added
+  (`board-normal-sort`).
 
 ## Deferred (OpenStack work, not MVP)
 Per-session CIDR allocation (fabric.py:11); the single-session 409 (kept on

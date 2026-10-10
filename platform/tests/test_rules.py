@@ -133,3 +133,23 @@ def test_rules_endpoint_returns_current_file_content(client):
 
     assert response.status_code == 200
     assert response.json()["content"] == GOOD_RULE
+
+def test_a_session_s_sensor_is_seeded_with_its_rule_set_and_loads_it():
+    from rules import suricata
+
+    sensor = Sensor(replies={"reload-rules": Ran(0, '{"message":"done","return":"OK"}')})
+    suricata.seed(GOOD_RULE, sensor, RELOAD)
+
+    written = [(argv, stdin) for argv, stdin in sensor.calls if argv[:2] == ["sh", "-c"]]
+    assert written == [(["sh", "-c", f"mkdir -p /var/lib/suricata/rules && cat > {suricata.RULE_PATH}"], GOOD_RULE)], (
+        "a fresh sensor has no rules directory; the seed must make it before writing"
+    )
+    assert sensor.calls[-1][0] == list(RELOAD)
+
+def test_a_sensor_that_does_not_load_its_seed_fails_the_open():
+    from rules import suricata
+
+    sensor = Sensor(replies={"reload-rules": Ran(1, "Error: Closed")})
+
+    with pytest.raises(RuleApplyError, match="starting rule set"):
+        suricata.seed(GOOD_RULE, sensor, RELOAD)

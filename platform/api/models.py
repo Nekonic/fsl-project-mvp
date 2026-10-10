@@ -10,6 +10,9 @@ class Session(models.Model):
     baseline = models.JSONField(null=True, blank=True, default=None)
     read_of = models.JSONField(null=True, blank=True, default=None)
     rotation = models.PositiveIntegerField(default=0)
+    guidance = models.BooleanField(default=False)
+    defense = models.CharField(max_length=32, default="full")
+    waf = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]

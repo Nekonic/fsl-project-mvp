@@ -25,6 +25,8 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/top/", views.session_top),
     path("api/sessions/<int:session_id>/topology/", views.session_topology),
     path("api/sessions/<int:session_id>/score/", views.session_score),
+    path("api/sessions/<int:session_id>/waf/", views.session_waf),
+    path("api/sessions/<int:session_id>/verify/", views.session_verify),
     path("api/detections/<int:detection_id>/", views.detection_detail),
     path("api/range/fabric/", views.range_fabric),
     path("api/range/images/", views.range_images),

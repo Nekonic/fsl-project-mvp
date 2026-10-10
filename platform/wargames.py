@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -9,6 +10,7 @@ from django.conf import settings
 
 import lifecycle
 from redteam.harness import is_tool_case, load_cases
+from rules import crs
 
 class UnknownWargame(KeyError):
     pass
@@ -18,6 +20,8 @@ class InvalidCatalogue(ValueError):
 
 SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_model", "case_file")
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
+DEFAULT_DEFENSE = "full"
+RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 
 def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
     if not isinstance(loaded, dict):
@@ -36,7 +40,42 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
             f"{source}: objective_model {loaded['objective_model']!r} is not one of "
             f"{', '.join(sorted(OBJECTIVE_MODELS))}"
         )
-    return {"id": wargame_id, **{field: loaded[field] for field in SCENARIO_FIELDS}}
+    return {
+        "id": wargame_id,
+        **{field: loaded[field] for field in SCENARIO_FIELDS},
+        **({"lesson": loaded["lesson"]} if "lesson" in loaded else {}),
+        **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
+    }
+
+def checked_defense(declared: Any, source) -> dict[str, Any]:
+    if not isinstance(declared, dict):
+        raise InvalidCatalogue(f"{source}: defense maps a name to its waf and suricata")
+    rules = Path(settings.FSL_SOURCE) / "deploy" / "suricata" / "rules"
+    for name, posture in declared.items():
+        posture = posture if isinstance(posture, dict) else {}
+        try:
+            crs.checked(posture.get("waf"))
+        except crs.TuningRefused as exc:
+            raise InvalidCatalogue(f"{source}: defense {name!r} waf: {exc}") from exc
+        ruleset = posture.get("suricata")
+        if not (isinstance(ruleset, str) and RULE_FILE.fullmatch(ruleset)
+                and (rules / ruleset).is_file()):
+            raise InvalidCatalogue(
+                f"{source}: defense {name!r} suricata must name a file in "
+                f"deploy/suricata/rules, got {ruleset!r}"
+            )
+    return declared
+
+def checked_lesson(lesson: Any, known: set[str], source) -> None:
+    if lesson is None:
+        return
+    cases = lesson.get("cases") if isinstance(lesson, dict) else None
+    if not isinstance(lesson, dict) or not isinstance(lesson.get("text"), str) \
+            or not isinstance(cases, list) or not cases:
+        raise InvalidCatalogue(f"{source}: a lesson needs a text key and a non-empty cases list")
+    unknown = sorted(str(name) for name in cases if name not in known)
+    if unknown:
+        raise InvalidCatalogue(f"{source}: lesson cases {', '.join(unknown)} are not in the case file")
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.FSL_SOURCE) / "wargames"
@@ -45,12 +84,28 @@ def _discover() -> dict[str, dict[str, Any]]:
         wargame_id = path.parent.name
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         found[wargame_id] = checked_scenario(loaded, wargame_id, path)
+        known = {
+            case.get("name")
+            for case in load_cases(Path(settings.WARGAME_CASES_DIR) / found[wargame_id]["case_file"])
+        }
+        checked_lesson(found[wargame_id].get("lesson"), known, path)
     return found
 
 WARGAMES = _discover()
 
 def objective_model(wargame_id: str) -> str:
     return WARGAMES[wargame_id]["objective_model"]
+
+def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
+    declared = WARGAMES[wargame_id].get("defense") or {}
+    if not declared and name == DEFAULT_DEFENSE:
+        return None
+    if name not in declared:
+        raise UnknownWargame(name)
+    return declared[name]
+
+def lesson(wargame_id: str) -> dict[str, Any] | None:
+    return WARGAMES[wargame_id].get("lesson")
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"

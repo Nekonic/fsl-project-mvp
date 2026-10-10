@@ -99,14 +99,13 @@ def run(
     )
     return session_id
 
-def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET) -> None:
+def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET):
     if is_tool_case(case):
-        fire_tool(case, tool_target_url, launch)
-        return
+        return fire_tool(case, tool_target_url, launch)
     case = apply_prefetch(case, tool_target_url, launch, REQUEST_TIMEOUT)
     prepared = build_request(case, tool_target_url)
     check_path_preserved(case["request"]["path"], prepared.url)
-    fire_http(case, prepared, launch)
+    return fire_http(case, prepared, launch)
 
 def _on_attacker(case: dict[str, Any], image: str, argv: list[str], launch):
     try:
@@ -114,18 +113,20 @@ def _on_attacker(case: dict[str, Any], image: str, argv: list[str], launch):
     except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
 
-def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch) -> None:
+def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch):
     result = _on_attacker(case, *curl_argv(prepared, REQUEST_TIMEOUT), launch)
     if result.exit_code != 0:
         raise ToolUnavailable(f"{case['name']}: the request never reached the target "
             f"from the attacker box (curl exit {result.exit_code}): {result.output.strip()[:200]}")
+    return result
 
-def fire_tool(case: dict[str, Any], target_url: str, launch) -> None:
+def fire_tool(case: dict[str, Any], target_url: str, launch):
     result = _on_attacker(case, *tool_argv(case, target_url), launch)
     if result.exit_code == STARTUP_FAILURE:
         raise unavailable(case["name"], result.output.strip()[:200])
     if result.exit_code != 0:
         print(f"  . {case['name']}: tool exited {result.exit_code}")
+    return result
 
 def _record(
     http: requests.Session,

@@ -662,3 +662,53 @@ lesson item that removing false positives is the core WAF job, the lesson
 starts over-blocking at PL4 and the learner tunes it (a lower PL, or a rule
 exclusion for 920273 on the search argument) until O'Brien passes while every
 SQLi variant stays blocked. The Kibana highlight spike stays open.
+
+## 2026-10-10 — The WAF lesson (build step 7)
+
+Built on docker; OpenStack is untouched. Live acceptance (`test/test_lesson.py`)
+is pending.
+
+- Two settings on `Session`, chosen at open: `guidance` (bool, default off)
+  and `defense` (a name, default `full`), plus `Session.waf` holding the
+  applied CRS tuning. `baseline` already names the ground-truth snapshot, so
+  the setting is `defense`. Defaults keep every existing caller and the
+  acceptance suite on the old request shape.
+- `defense` and `lesson` live in `wargames/<id>/scenario.yaml`, validated at
+  discovery: each defense is a CRS tuning (checked by `rules/crs.py`) and a
+  rule file that must exist in `deploy/suricata/rules`; a lesson is a string
+  key prefix and cases that must exist in the scenario's case file. A scenario
+  without `defense` (corp) accepts only the default and applies nothing.
+- `rules/crs.py` is a new seam, the only file that knows the CRS exclusion
+  hook path and the nginx reload. Measured on the pinned image (2026-10-10,
+  isolated `crsprobe` stack on the platform VM): the hook
+  `/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`
+  is picked up by `Include .../rules/*.conf` and is writable by the container's
+  `nginx` user; `nginx -t && nginx -s reload` re-reads the ModSecurity files
+  (O'Brien went from 403 at PL4 to passing after writing a PL1 `SecAction`
+  and reloading); a path-scoped `ctl:ruleRemoveTargetById=920273;ARGS:q`
+  passed O'Brien on `/search/` and still blocked it on another path; a broken
+  file fails `nginx -t` with the file and column. A Suricata container with no
+  rules directory starts with "No rule files match" and loads a seeded file on
+  `suricatasc -c reload-rules`, so no entrypoint copy is needed and
+  `deploy/suricata/rules` is not mounted at all.
+- VERIFY is counted on blocks with the target as first witness (answer to
+  open question 2). An sqlmap variant is held when the rows it dumped match no
+  `(username, hash)` of the session snapshot, read through `loot.matched`, not
+  a new reader; the 403 count is recorded and not judged. A benign case is
+  served on a 2xx `http_code`. A leak found by VERIFY also credits the
+  objectives it proves (question 4). `meta.blocked` is written for lesson
+  cases only, so the wargame's `_game` is unchanged outside the lesson.
+- Seeded logs by replay at open (question 3): a guided session replays the
+  lesson's cases once after the posture is applied, marked `meta.seed`; VERIFY
+  judges only its own run. The open-time cost is to be measured live.
+- The same `local.rules` for both defenses in the MVP (question 1); the
+  difference between `minimal` and `full` is the CRS paranoia level (4 and 1).
+- Two cases added, none removed: `board-sqli-orderby-sqlmap-tamper` (random
+  User-Agent, tamper scripts; a defence keyed on sqlmap's own User-Agent, CRS
+  913100, lets it through) and `board-normal-sort`, which fails an exclusion
+  that whitelists `sort`.
+- `core_loc` rises 462 -> 526 (+64): `rules/crs.py` 56 lines (validation is
+  most of it, because its input is written into ModSecurity configuration),
+  `suricata.seed` and the `mkdir -p` on write +6, `harness.fire` returning
+  what the attacker box printed +2. The plan estimated +40; validation and
+  rollback took the rest. Recorded with `bin/measure --save` (question 5).

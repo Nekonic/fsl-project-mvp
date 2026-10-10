@@ -22,6 +22,7 @@ from django.views.decorators.http import require_http_methods
 
 import attacker
 import game
+import lesson
 import scoreboard
 import suppress
 import topology
@@ -37,16 +38,16 @@ from api.models import (
     Suppression,
 )
 from ingest import elastic
-from redteam import harness
+from redteam import harness, tools
 import operator_log
 from range import substrate
 from range.ports import Drifted, RangeUnavailable, Shape
-from rules import suricata
+from rules import crs, suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES
 
-SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at")
+SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
     "expect", "correlation", "source_ip", "started_at", "ended_at", "meta",
@@ -158,13 +159,15 @@ def sessions(request):
 
         return _reply([_shape(s, SESSION_FIELDS) for s in found[:limit]])
 
-    scenario = _payload(request).get("scenario")
+    body = _payload(request)
+    scenario = body.get("scenario")
     if scenario is None:
         scenario = "board"
     if not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
+    guidance, defense, posture = _settings(scenario, body)
     adapter = substrate()
     live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
     if len(live) >= getattr(adapter, "max_sessions", 1):
@@ -178,19 +181,50 @@ def sessions(request):
             raise Conflict(
                 "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
             )
-    session = Session.objects.create(scenario=scenario, baseline=[])
+    session = Session.objects.create(
+        scenario=scenario, baseline=[], guidance=guidance, defense=defense,
+    )
     try:
         if hasattr(adapter, "open_session"):
             adapter.open_session(session.pk, live=live)
         adapter = _range(session, adapter)
         if hasattr(adapter, "for_session"):
             _aim_attacker(adapter)
+            _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)
-        session.save(update_fields=["baseline"])
+        session.save(update_fields=["baseline", "waf"])
+        if guidance and hasattr(adapter, "for_session"):
+            _seed_logs(session)
     except Exception:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
     return _reply(_shape(session, SESSION_FIELDS), status=201)
+
+def _settings(scenario, body):
+    guidance = body.get("guidance", False)
+    if not isinstance(guidance, bool):
+        raise BadRequest(f'"guidance" must be true or false, got {guidance!r}')
+    if guidance and not wargames.lesson(scenario):
+        raise BadRequest(f"{scenario!r} has no lesson to guide")
+    defense = body.get("defense", wargames.DEFAULT_DEFENSE)
+    try:
+        return guidance, defense, wargames.defense(scenario, defense)
+    except (wargames.UnknownWargame, TypeError):
+        raise BadRequest(
+            f"{defense!r} is not a defense of {scenario!r}; expected one of "
+            f"{', '.join(wargames.WARGAMES[scenario].get('defense') or [wargames.DEFAULT_DEFENSE])}"
+        )
+
+def _take_defense(session, adapter, posture):
+    if posture is None:
+        return
+    rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / posture["suricata"]
+    suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD)
+    session.waf = crs.apply(posture["waf"], adapter.runner("gateway"))
+
+def _seed_logs(session):
+    for name in wargames.lesson(session.scenario)["cases"]:
+        _lesson_fire(session, name, {"seed": True})
 
 def _aim_attacker(adapter):
     attacker.wear_origin(
@@ -511,14 +545,18 @@ def session_loot(request, session_id):
             f"so submitted loot cannot be verified"
         )
     body = _payload(request)
+    return _reply(_credit_loot(session, body.get("loot"), body.get("case_id")))
+
+def _credit_loot(session, submitted, case_id):
+    truth = session.baseline
     spec = wargames.objectives(session.scenario)
-    matched_users = loot.matched(body.get("loot"), truth)
+    matched_users = loot.matched(submitted, truth)
     fired, coverage = loot.tiers_fired(spec, matched_users, truth)
 
     attempted = session.cases.filter(malicious=True).exists()
     credited = fired if attempted else []
 
-    at, earliest, latest = _loot_window(session, body.get("case_id"), timezone.now())
+    at, earliest, latest = _loot_window(session, case_id, timezone.now())
     attributed = scoreboard.attribute(at, _malicious_attempts(session), earliest, latest)
 
     before = session.objectives.count()
@@ -533,14 +571,14 @@ def session_loot(request, session_id):
         ],
         ignore_conflicts=True,
     )
-    return _reply({
+    return {
         "matched": sorted(matched_users),
         "coverage": coverage,
         "credited": [tier["key"] for tier in credited],
         "objectives": session.objectives.count() - before,
         "attempted": attempted,
         "unattributed": [] if attributed else [tier["key"] for tier in credited],
-    })
+    }
 
 def _loot_window(session, case_id, submitted_at):
     if case_id:
@@ -576,13 +614,20 @@ def fire_attack(request, session_id):
     _refuse_closed(session)
     body = _payload(request)
     try:
-        case = wargames.find_case(session.scenario, body.get("case"))
+        recorded, _ = _fire(session, body.get("case"), body.get("origin"), _answered)
+    except harness.ToolUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    return _reply(_shape(recorded, CASE_FIELDS), status=201)
+
+def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
+    try:
+        case = wargames.find_case(session.scenario, name)
     except wargames.UnknownWargame as exc:
         raise Http404(str(exc))
     case = dict(case, case_id=str(uuid.uuid4()))
     case.setdefault("correlation", "marker")
     adapter = _range(session)
-    origin = _origin_for(session, body.get("origin"))
+    origin = _origin_for(session, requested_origin)
     if origin:
         attacker.wear_origin(origin, adapter.runner("proxy"))
 
@@ -593,16 +638,11 @@ def fire_attack(request, session_id):
         case["request"] = spec
 
     started_at = timezone.now()
-    try:
-        harness.fire(
-            case,
-            adapter.launcher(
-                origin["id"] if origin else settings.RANGE.default_origin
-            ),
-            target_url,
-        )
-    except harness.ToolUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+    ran = harness.fire(
+        case,
+        adapter.launcher(origin["id"] if origin else settings.RANGE.default_origin),
+        target_url,
+    )
 
     finished_at = timezone.now()
     Session.objects.filter(pk=session.pk, ended_at__lt=finished_at).update(ended_at=finished_at)
@@ -612,10 +652,79 @@ def fire_attack(request, session_id):
             harness.case_meta(case),
             **({"origin": origin["id"], "target_url": origin["target_url"]}
                if origin else {}),
+            **witness(ran),
         ),
     )
     _settle_and_observe(session)
-    return _reply(_shape(recorded, CASE_FIELDS), status=201)
+    return recorded, ran
+
+def _answered(ran):
+    status = tools.status(getattr(ran, "output", ""))
+    return {"status": status} if status else {}
+
+def _lesson_fire(session, name, marks):
+    malicious = wargames.find_case(session.scenario, name)["malicious"]
+    truth = session.baseline if isinstance(session.baseline, dict) else {}
+
+    def witness(ran):
+        if not malicious:
+            status = tools.status(ran.output)
+            return dict(marks, status=status, blocked=status == 403)
+        leaked = sorted(loot.matched(tools.dumped(ran.output), truth))
+        return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output),
+                    blocked=not leaked)
+
+    return _fire(session, name, None, witness)
+
+@require_http_methods(["POST"])
+def session_verify(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    taught = wargames.lesson(session.scenario)
+    if not taught:
+        raise BadRequest(f"{session.scenario!r} has no lesson to verify")
+    run = str(uuid.uuid4())
+    try:
+        for name in taught["cases"]:
+            recorded, ran = _lesson_fire(session, name, {"verify": run})
+            if recorded.meta.get("leaked"):
+                _credit_loot(session, tools.dumped(ran.output), recorded.case_id)
+    except harness.ToolUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    return _reply(_verified(session, run))
+
+def _verified(session, run):
+    accounts = len(session.baseline) if isinstance(session.baseline, dict) else 0
+    fired = list(session.cases.filter(meta__verify=run))
+    rows = [
+        {"name": case.name, "malicious": case.malicious, "accounts": accounts,
+         "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0)}
+        for case in fired
+    ]
+    passed, diagnosis = lesson.verdict(rows)
+    return {
+        "passed": passed,
+        "run": run,
+        "cases": [
+            {"name": row["name"], "malicious": row["malicious"],
+             "outcome": ("leaked" if row["leaked"] else "held") if row["malicious"]
+             else ("served" if lesson.served(row["status"]) else "blocked")}
+            for row in rows
+        ],
+        "diagnosis": diagnosis,
+    }
+
+@require_http_methods(["GET", "PUT"])
+def session_waf(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    if request.method == "PUT":
+        _refuse_closed(session)
+        tuning = crs.checked(_payload(request))
+        with RULE_CHANGES:
+            session.waf = crs.apply(tuning, _range(session).runner("gateway"))
+        session.save(update_fields=["waf"])
+    tuning = session.waf or {"paranoia": None, "exclusions": []}
+    return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
 
 def _record_case(session, case, started_at, ended_at, meta):
     return Case.objects.create(
@@ -660,7 +769,8 @@ def _take_turn(session):
 @require_http_methods(["GET"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    return _reply(_shape(session, SESSION_FIELDS))
+    taught = wargames.lesson(session.scenario) if session.guidance else None
+    return _reply(_shape(session, SESSION_FIELDS) | {"lesson": taught})
 
 @require_http_methods(["POST"])
 def close_session(request, session_id):

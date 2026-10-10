@@ -7,3 +7,19 @@ image: fsl/board:mvp
 public_url: http://board.com
 objective_model: loot_verified
 case_file: board.yaml
+defense:
+  minimal:
+    waf: {paranoia: 4}
+    suricata: local.rules
+  full:
+    waf: {paranoia: 1}
+    suricata: local.rules
+lesson:
+  text: lesson.board
+  cases:
+    - board-sqli-orderby-sqlmap
+    - board-sqli-orderby-sqlmap-tamper
+    - board-normal-search
+    - board-normal-search-with-apostrophe
+    - board-normal-post-list
+    - board-normal-sort

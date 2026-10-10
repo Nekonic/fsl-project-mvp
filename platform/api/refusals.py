@@ -5,6 +5,7 @@ import attacker
 import operator_log
 from ingest.elastic import ElasticUnavailable
 from range.ports import Drifted, RangeUnavailable
+from rules.crs import TuningRefused
 from rules.suricata import RuleApplyError, RulesUnreadable
 
 UNAVAILABLE = (
@@ -31,7 +32,7 @@ class Refusals:
             raise Http404(str(exception)) from exception
         if isinstance(exception, UNAVAILABLE):
             return JsonResponse({"detail": str(exception)}, status=503)
-        if isinstance(exception, (BadRequest, RuleApplyError)):
+        if isinstance(exception, (BadRequest, RuleApplyError, TuningRefused)):
             return JsonResponse({"detail": str(exception)}, status=400)
         if isinstance(exception, (Conflict, Drifted)):
             return JsonResponse({"detail": str(exception)}, status=409)

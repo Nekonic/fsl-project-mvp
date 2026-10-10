@@ -96,3 +96,11 @@ def no_real_session_stack(request):
             patch("range.docker.Docker.address", lambda self, role: ""), \
             patch("api.views._aim_attacker", lambda adapter: None):
         yield
+
+@pytest.fixture(autouse=True)
+def no_real_defense(request):
+    if request.node.get_closest_marker("takes_defense"):
+        yield
+        return
+    with patch("api.views._take_defense", lambda session, adapter, posture: None):
+        yield

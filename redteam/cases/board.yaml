@@ -68,6 +68,23 @@
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch"]
 
+# The same injection with a browser User-Agent and tamper scripts that rewrite
+# spaces, comparison operators and keyword case: a defence that only matches
+# sqlmap's own User-Agent or one spelling of the payload lets this one through.
+- name: board-sqli-orderby-sqlmap-tamper
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=posts_post.id*",
+         "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
+         "--random-agent", "--tamper=space2comment,between,randomcase",
+         "-D", "board", "-T", "auth_user", "-C", "username,password",
+         "--dump", "--batch"]
+
 - name: board-xss-script-tag-in-search
   malicious: true
   stage: initial-compromise
@@ -130,3 +147,12 @@
   request:
     method: GET
     path: /
+
+- name: board-normal-sort
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /
+    params:
+      sort: "-created_at"
