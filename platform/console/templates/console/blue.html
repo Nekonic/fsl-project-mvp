@@ -23,10 +23,29 @@
     </div>
   </section>
 
-  <aside id="lesson" class="hidden shrink-0 w-96 min-h-0 overflow-y-auto bg-panel border border-line
-         rounded p-4 flex flex-col gap-5 text-sm">
-    <h2 data-t="lesson.heading" class="text-heading font-medium"></h2>
+  <aside id="lesson" class="hidden fixed bg-panel border border-line rounded shadow-lg
+         flex flex-col text-sm">
+    <header id="lesson-header" data-t-title="lesson.note.drag"
+            class="flex items-center gap-3 px-4 py-2 border-b border-line cursor-move select-none">
+      <h2 data-t="lesson.heading" class="text-heading font-medium flex-1"></h2>
+      <button id="lesson-dock" data-t="lesson.note.dock"
+              class="hidden text-xs text-muted hover:text-primary"></button>
+      <button id="lesson-collapse" class="text-xs text-muted hover:text-primary"></button>
+    </header>
+    <div id="lesson-body" class="w-80 min-h-0 overflow-y-auto p-4 flex flex-col gap-5">
     <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
+
+    <section class="flex flex-col gap-2 border border-danger-soft rounded p-3">
+      <p id="lesson-coach-count" class="text-muted text-xs"></p>
+      <p id="lesson-coach-text" class="text-heading"></p>
+      <p id="lesson-coach-missing" data-t="lesson.coach.missing" class="text-muted hidden"></p>
+      <div class="flex gap-2">
+        <button id="lesson-coach-back" data-t="lesson.coach.back"
+                class="px-3 py-1 rounded bg-panel border border-line hover:border-primary text-heading"></button>
+        <button id="lesson-coach-next" data-t="lesson.coach.next"
+                class="px-3 py-1 rounded bg-panel border border-line hover:border-primary text-heading"></button>
+      </div>
+    </section>
 
     <section class="flex flex-col gap-2">
       <h3 data-t="lesson.waf.heading" class="text-heading font-medium"></h3>
@@ -60,6 +79,7 @@
       <p id="lesson-verdict" class="font-medium"></p>
       <ul id="lesson-diagnosis" class="flex flex-col gap-1 list-disc pl-5 text-body"></ul>
     </section>
+    </div>
   </aside>
 </div>
 {% endblock %}
@@ -90,6 +110,22 @@
   }
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
+
+  const KIBANA_ALREADY_SEEN = {
+    "discover:docExplorerUpdateCalloutClosed": "true",
+    "discover:docExplorerCalloutClosed": "true",
+    "data.noDataPopover": "true",
+  };
+
+  function quietKibana() {
+    try {
+      Object.entries(KIBANA_ALREADY_SEEN).forEach(([key, value]) => localStorage.setItem(key, value));
+    } catch (error) {
+      return;
+    }
+  }
+
+  quietKibana();
 
   const STEPS = ["read", "write", "replay", "verify"];
   const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
@@ -162,6 +198,182 @@
       `<li>${esc(t(key, ...values))}</li>`).join("");
   }
 
+  const NOTE_KEY = "fsl-lesson-note";
+  let note = { collapsed: false, left: null, top: null };
+
+  function readNote() {
+    try {
+      return JSON.parse(localStorage.getItem(NOTE_KEY)) || {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function keepNote() {
+    try {
+      localStorage.setItem(NOTE_KEY, JSON.stringify(note));
+    } catch (error) {
+      return;
+    }
+  }
+
+  function placeNote() {
+    const moved = typeof note.left === "number" && typeof note.top === "number";
+    field("lesson-body").classList.toggle("hidden", Boolean(note.collapsed));
+    field("lesson-collapse").textContent = t(note.collapsed ? "lesson.note.expand" : "lesson.note.collapse");
+    field("lesson-dock").classList.toggle("hidden", !moved);
+    Object.assign(field("lesson").style, { position: "fixed", zIndex: "50" }, moved
+      ? { left: `${note.left}px`, top: `${note.top}px`, right: "", bottom: "",
+          maxHeight: `calc(100vh - ${note.top}px - 1rem)` }
+      : { left: "", top: "", right: "1.5rem", bottom: "1.5rem", maxHeight: "60vh" });
+  }
+
+  function setNote(change) {
+    note = { ...note, ...change };
+    keepNote();
+    placeNote();
+  }
+
+  function dragNote() {
+    const header = field("lesson-header");
+    let grab = null;
+    header.addEventListener("pointerdown", (event) => {
+      if (event.target && event.target.closest && event.target.closest("button")) return;
+      const box = field("lesson").getBoundingClientRect();
+      grab = { dx: event.clientX - box.left, dy: event.clientY - box.top };
+      frame.style.pointerEvents = "none";
+      if (header.setPointerCapture) header.setPointerCapture(event.pointerId);
+    });
+    header.addEventListener("pointermove", (event) => {
+      if (!grab) return;
+      note = { ...note, left: Math.max(0, event.clientX - grab.dx), top: Math.max(0, event.clientY - grab.dy) };
+      placeNote();
+    });
+    const drop = () => {
+      if (!grab) return;
+      grab = null;
+      frame.style.pointerEvents = "";
+      keepNote();
+    };
+    header.addEventListener("pointerup", drop);
+    header.addEventListener("pointercancel", drop);
+  }
+
+  function noteControls() {
+    note = { ...note, ...readNote() };
+    field("lesson-collapse").addEventListener("click", () => setNote({ collapsed: !note.collapsed }));
+    field("lesson-dock").addEventListener("click", () => setNote({ left: null, top: null }));
+    dragNote();
+    placeNote();
+  }
+
+  const DASHBOARDS = '[data-test-subj="collapsibleNavGroup-kibana"] a[href*="/app/dashboards"]';
+  const COACH = [
+    { id: "alerts", kibana: '[data-test-subj="discoverDocTable"]' },
+    { id: "expand", kibana: '[data-test-subj="docTableExpandToggleColumn"]' },
+    { id: "rule", kibana: '[data-test-subj="field-rule"]' },
+    { id: "dashboard", kibana: DASHBOARDS, first: '[data-test-subj="toggleNavButton"]' },
+    { id: "paranoia", panel: "#lesson-paranoia" },
+    { id: "exclusions", panel: "#lesson-exclusions" },
+    { id: "apply", panel: "#lesson-save" },
+    { id: "replay", panel: "#lesson-replay" },
+    { id: "verify", panel: "#lesson-verify" },
+  ];
+  const MISSING_AFTER_FRAMES = 120;
+  const TAG_ROOM = 90;
+
+  function overlayPart(id) {
+    const part = document.createElement("div");
+    part.id = id;
+    Object.assign(part.style, {
+      position: "fixed", pointerEvents: "none", zIndex: "9999", display: "none",
+    });
+    document.body.append(part);
+    return part;
+  }
+
+  function locate(step) {
+    const inPanel = Boolean(step.panel);
+    let doc = document;
+    if (!inPanel) {
+      try {
+        doc = frame.contentDocument;
+      } catch (error) {
+        doc = null;
+      }
+    }
+    const shown = (selector) => {
+      const element = doc && selector ? doc.querySelector(selector) : null;
+      const rect = element ? element.getBoundingClientRect() : null;
+      if (!rect || !rect.width) return null;
+      if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, tagLeft: true };
+      const pane = frame.getBoundingClientRect();
+      if (rect.bottom <= 0 || rect.top >= pane.height || rect.right <= 0 || rect.left >= pane.width) return null;
+      return {
+        left: pane.left + rect.left, top: pane.top + rect.top, width: rect.width, height: rect.height,
+        tagLeft: pane.width - rect.right < TAG_ROOM,
+      };
+    };
+    return shown(step.panel || step.kibana) || shown(step.first);
+  }
+
+  function coach(prefix) {
+    const box = overlayPart("coach-box");
+    const tag = overlayPart("coach-tag");
+    Object.assign(box.style, { border: "3px solid var(--danger)", borderRadius: "6px" });
+    Object.assign(tag.style, {
+      background: "var(--danger)", color: "var(--text-inverse)", padding: "4px 8px", borderRadius: "4px",
+      fontSize: "13px", whiteSpace: "nowrap",
+    });
+    let at = 0;
+    let last = "";
+    let lost = 0;
+
+    function show() {
+      const step = COACH[at];
+      if (step.panel && note.collapsed) setNote({ collapsed: false });
+      field("lesson-coach-count").textContent = t("lesson.coach.count", at + 1, COACH.length);
+      field("lesson-coach-text").textContent = t(`${prefix}.coach.${step.id}`);
+      field("lesson-coach-back").disabled = at === 0;
+      field("lesson-coach-next").disabled = at === COACH.length - 1;
+      last = "";
+      lost = 0;
+    }
+
+    function tick() {
+      const step = COACH[at];
+      const rect = locate(step);
+      lost = rect ? 0 : lost + 1;
+      field("lesson-coach-missing").classList.toggle("hidden", lost < MISSING_AFTER_FRAMES);
+      const key = rect ? [rect.left, rect.top, rect.width, rect.height, rect.tagLeft].join() : "none";
+      if (key !== last) {
+        last = key;
+        box.style.display = tag.style.display = rect ? "" : "none";
+        box.style.zIndex = tag.style.zIndex = step.panel ? "9999" : "40";
+        if (rect) {
+          Object.assign(box.style, {
+            left: `${rect.left - 4}px`, top: `${rect.top - 4}px`,
+            width: `${rect.width + 8}px`, height: `${rect.height + 8}px`,
+          });
+          const middle = `${rect.top + rect.height / 2 - 12}px`;
+          tag.textContent = rect.tagLeft ? `${t("lesson.coach.here")} →` : `← ${t("lesson.coach.here")}`;
+          Object.assign(tag.style, rect.tagLeft
+            ? { left: "", right: `${document.documentElement.clientWidth - rect.left + 10}px`, top: middle }
+            : { right: "", left: `${rect.left + rect.width + 10}px`, top: middle });
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    field("lesson-coach-back").addEventListener("click", () => { at = Math.max(0, at - 1); show(); });
+    field("lesson-coach-next").addEventListener("click", () => {
+      at = Math.min(COACH.length - 1, at + 1);
+      show();
+    });
+    show();
+    requestAnimationFrame(tick);
+  }
+
   field("lesson-save").addEventListener("click", saveTuning);
   field("lesson-replay").addEventListener("click", replay);
   field("lesson-verify").addEventListener("click", verifyLesson);
@@ -178,6 +390,8 @@
     field("lesson-case").innerHTML = taught.cases.map((name) =>
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     field("lesson").classList.remove("hidden");
+    noteControls();
+    coach(taught.text);
     loadTuning();
   })();
 </script>

@@ -316,14 +316,14 @@ Korean.
   case is labelled on the way out. Alternatively name a case, press start,
   work in the shell and press stop: everything sent in between is attributed
   to that name.
-- **Blue** is a sidebar of framed tools: Kibana, opened on the "FSL alerts"
-  search narrowed to the session, and a WAF terminal. The
+- **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
+  "FSL alerts" columns and query narrowed to the session, and a WAF terminal. The
   scoreboard appears on the session page when the session closes.
 
 A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
 lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
-also the benign O'Brien search, and the blue console shows the lesson panel
-beside Kibana. The learner tunes the paranoia level or adds a rule exclusion
+also the benign O'Brien search, and the blue console shows the lesson as a
+note floating over Kibana, which can be dragged and folded. The learner tunes the paranoia level or adds a rule exclusion
 (`PUT /api/sessions/<id>/waf/`) and presses Verify
 (`POST /api/sessions/<id>/verify/`), which passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
