@@ -1587,3 +1587,74 @@ Correction: the four feature commits' messages give tests 1499, 1506, 1524
 and 1540, because `bin/measure --save` ran before the new test files were
 added to git and it counts tracked files only; measured on each commit's
 tree, the figures are 1515, 1524, 1540 and 1551. History is not rewritten.
+
+## 2026-10-11 — Review fixes to the cloud path: failed stacks, builders, the edge flavor, networks, the disk upload, old releases
+
+An adversarial review of the OPNsense/cloud.yaml/`bin/cloud` commits found
+seven defects; all fixed locally, none run against a cloud.
+
+- **Failed stacks.** A stack in `*_FAILED` has no `address` output and was
+  taken for absent: `up` tried to create a same-named stack, `down` said there
+  was nothing to take down. `bin/platform-rebuild` now reads `stack_status`:
+  `*_IN_PROGRESS` is refused, `*_FAILED` is deleted (`--wait`) and created
+  again by `up` and deleted by `down` without asking a platform.
+- **Builders block the stack delete.** A leftover `fsl-build-*` server keeps a
+  port on the Heat-owned `fsl-platform` network. Every stack delete first
+  deletes servers named `fsl-build-*` that carry the `fsl_image` property
+  (the platform's mark; a server without it is not ours).
+- **The edge flavor.** The OPNsense image sets `min_ram` 3072, so an edge on
+  the `range` flavor fails at boot. `compute.flavors.edge` is required.
+  Checking the flavor's RAM against the image was not built: Nova refuses the
+  boot with its own message, and the key being required is what was missing.
+- **Network overlaps.** `cloud.yaml`'s networks are refused when they overlap
+  Docker's default local address pools (172.17.0.0/16, 172.18.0.0/16,
+  172.19.0.0/16, 172.20.0.0/14, 172.24.0.0/14, 172.28.0.0/14 and
+  192.168.0.0/16 in /20s: `localScopeDefaultNetworks` in moby
+  `daemon/libnetwork/ipamutils/utils.go`; the dockerd reference documents the
+  option, not the defaults), any subnet in `compose.yaml` (mgmt
+  172.31.0.0/24, the four edges) or a declared origin.
+- **No token on the builder.** The builder used to get a project-scoped
+  Keystone token in user data (readable through Nova; an hour's lifetime
+  against a TCG build of unknown length). It now gets no credential: it
+  writes the qcow2 to `/var/lib/fsl-serve`, starts `python3 -m http.server
+  8080` as the transient unit `fsl-serve`, and prints the disk's SHA256 on
+  its ready line. The platform reads the line through Nova (the authenticated
+  channel), pulls the disk over the platform network, refuses it on a SHA256
+  mismatch, then creates the Glance record and PUTs the file with a token
+  taken just before. The earlier entry rejected pulling because the default
+  security group shuts the builder off; the upload builder now joins
+  `fsl-range`, which the fabric already makes and the edge image already
+  requires. A `queued` record left by an interrupted upload is filled on the
+  next call, not duplicated. The disk passes through the platform container's
+  temporary directory (about the qcow2's size) for the duration of one call.
+- **Old releases.** Changing `opnsense.version` left `fsl-opnsense-<old>` in
+  Glance for good; the plan now lists the project's private images and
+  reports any `fsl-opnsense-*` image outside the current names as a leftover,
+  only when it carries `fsl_bundle`.
+
+Still unverified until a cloud run: everything in the entry above, plus that
+`systemd-run` keeps `fsl-serve` running after cloud-init's `runcmd` ends and
+that the platform container reaches a builder's port 8080 on the platform
+network. The build-script tests check strings and their order, not behaviour.
+
+Metrics: core_loc 560 (unchanged; nothing under `scoring/`, `ingest/`,
+`rules/` or the harness changed), dependencies 6, services 9; tests rise
+(see the commit that saves `metrics.json`).
+
+A re-review of these fixes found three more, fixed on top:
+
+- `fsl-range` lets any IPv4 in on any port, and the builder sits on the
+  platform network, so joining it opened every port to anything routing
+  there. Upload builders now join `fsl-build`, made by the images step if
+  absent (so `POST /api/range/images/` before the fabric works): one ingress
+  rule, tcp 8080 from the platform's own address on the build network
+  (`FSL_OPENSTACK_PLATFORM`'s port), replaced when the platform's address
+  changes; Neutron's default egress stays (the builder downloads).
+- `bin/cloud up` deleted leftovers before the slot stood on the new images,
+  so a superseded edge image could go while the edge still booted from it.
+  Leftovers are now removed after the range is ready, and an image any
+  server in the project boots from is never a leftover.
+- Stack deletion removed every `fsl-build-*` server with `fsl_image` in the
+  project. It now lists only those with a port on this stack's `network`
+  resource (`openstack server list --network`); with no such resource it
+  removes none.

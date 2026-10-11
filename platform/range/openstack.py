@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import shlex
 import subprocess
@@ -36,6 +37,7 @@ KEYPAIRS = "GET {nova}/os-keypairs"
 IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
 DELETE_KEYPAIR = "DELETE {nova}/os-keypairs/{keypair}"
 IMAGES = "GET {glance}/v2/images?name={name}"
+OWN_IMAGES = "GET {glance}/v2/images?owner={project}&visibility=private&limit=100"
 CREATE_IMAGE = "POST {glance}/v2/images"
 IMAGE_FILE = "{glance}/v2/images/{image}/file"
 DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
@@ -69,9 +71,13 @@ SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
 GATEWAY_ROLE = "gateway"
+BUILD_GROUP = "fsl-build"
 SENSOR_ROLE = "sensor"
 EDGE_REBOOT = 900
 EDGE_POLL = 15
+DISK_TIMEOUT = 60
+UPLOAD_TIMEOUT = 600
+CHUNK = 1 << 20
 
 SETTINGS = {
     "keystone": "FSL_OPENSTACK_KEYSTONE",
@@ -262,8 +268,46 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
             )
         return answered.json() if answered.content else {}
 
-    send.token = lambda: authenticate()
+    def upload(url: str, disk: Path) -> None:
+        def put(token: str):
+            with open(disk, "rb") as content:
+                return requests.put(url, data=content, timeout=UPLOAD_TIMEOUT, headers={
+                    "X-Auth-Token": token, "Content-Type": "application/octet-stream"})
+        try:
+            answered = put(authenticate())
+            if answered.status_code == 401:
+                answered = put(authenticate())
+        except requests.RequestException as exc:
+            raise RangeUnavailable(f"could not upload {disk.name} to {url}: {exc}") from exc
+        if not answered.ok:
+            raise RangeUnavailable(
+                f"PUT {url} answered {answered.status_code}: {answered.text.strip()[:200]}")
+
+    send.upload = upload
     return send
+
+def pull(url: str, into: Path, timeout: float = DISK_TIMEOUT) -> str:
+    digest = hashlib.sha256()
+    try:
+        with requests.get(url, stream=True, timeout=timeout) as answered:
+            if not answered.ok:
+                raise RangeUnavailable(f"GET {url} answered {answered.status_code}")
+            with open(into, "wb") as disk:
+                for chunk in answered.iter_content(CHUNK):
+                    disk.write(chunk)
+                    digest.update(chunk)
+    except requests.RequestException as exc:
+        raise RangeUnavailable(f"could not pull the disk from {url}: {exc}") from exc
+    return digest.hexdigest()
+
+def _fixed_ipv4(server: dict) -> str:
+    found = next((
+        entry["addr"] for entries in (server.get("addresses") or {}).values() for entry in entries
+        if entry.get(FIXED, "fixed") == "fixed" and entry.get("version", 4) == 4
+    ), "")
+    if not found:
+        raise RangeUnavailable(f"builder {server.get('name', server['id'])} has no fixed IPv4 address to pull its disk from")
+    return found
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
     headers = {"X-OpenStack-Nova-API-Version": NOVA_MICROVERSION}
@@ -699,15 +743,20 @@ class OpenStack:
         missing = [found for found in plan.images
                    if found.state == "missing" and found.host in made]
         for found in missing:
-            base = self._builder_base(self.build.base_image)
-            self.get(self._call(BOOT), {"server": self.build.placed({
-                **base,
+            server = {
+                **self._builder_base(self.build.base_image),
                 "name": images.BUILDER + found.host,
-                "user_data": images.user_data(made[found.host], self._upload(made[found.host])),
+                "user_data": images.user_data(made[found.host]),
                 "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
-            })})
+            }
+            if made[found.host].uploads:
+                self._build_group()
+                server["security_groups"] = [{"name": BUILD_GROUP}]
+            self.get(self._call(BOOT), {"server": self.build.placed(server)})
         for found in plan.images:
-            if found.state == "built":
+            if found.state == "built" and made[found.host].uploads:
+                self._take_disk(made[found.host], found)
+            elif found.state == "built":
                 self.get(self._call(ACTION, server=found.builder), {"os-stop": None})
             elif found.state == "stopped":
                 self.get(self._call(ACTION, server=found.builder), {"createImage": {
@@ -716,6 +765,53 @@ class OpenStack:
             elif found.state == "ready" and found.builder:
                 self.get(self._call(DELETE_SERVER, server=found.builder))
         return self._image_plan(bundles)
+
+    def _build_group(self) -> str:
+        if not self.build.platform:
+            raise RangeUnavailable(
+                f"a builder that serves its disk lets in only the platform, so the platform "
+                f"needs its own server id; set {SETTINGS['platform']}")
+        own = next((port for port in self._all(PORTS, "ports", network=self.build.network)
+                    if port.get("device_id") == self.build.platform and port.get("fixed_ips")), None)
+        if own is None:
+            raise RangeUnavailable(f"the platform has no port on the build network {self.build.network}")
+        wanted = {"direction": "ingress", "ethertype": "IPv4", "protocol": "tcp",
+                  "port_range_min": images.SERVE_PORT, "port_range_max": images.SERVE_PORT,
+                  "remote_ip_prefix": f"{own['fixed_ips'][0]['ip_address']}/32"}
+        group = next((g for g in self._all(SECURITY_GROUPS, "security_groups")
+                      if g["name"] == BUILD_GROUP), None)
+        if group is None:
+            group = self.get(self._call(CREATE_GROUP), {"security_group": {"name": BUILD_GROUP}})["security_group"]
+        ingress = [rule for rule in group.get("security_group_rules") or []
+                   if rule.get("direction") == "ingress"]
+        held = [rule for rule in ingress if all(rule.get(key) == value for key, value in wanted.items())]
+        for rule in ingress:
+            if rule not in held:
+                self.get(self._call(DELETE_RULE, rule=rule["id"]))
+        if not held:
+            self.get(self._call(CREATE_RULE), {"security_group_rule": {
+                **wanted, "security_group_id": group["id"]}})
+        return group["id"]
+
+    def _take_disk(self, bundle: images.Bundle, found: images.Image) -> None:
+        upload = getattr(self.get, "upload", None)
+        if upload is None:
+            raise RangeUnavailable("this connection cannot upload an image to Glance")
+        builder = next(s for s in self._all(SERVERS, "servers") if s["id"] == found.builder)
+        wanted = images.served_sha256(self._console(found.builder), bundle.digest)
+        if not wanted:
+            raise RangeUnavailable(f"{builder['name']} said it finished and named no sha256 of its disk")
+        source = f"http://{_fixed_ipv4(builder)}:{images.SERVE_PORT}/{images.DISK}"
+        with tempfile.TemporaryDirectory() as scratch:
+            disk = Path(scratch) / images.DISK
+            got = pull(source, disk)
+            if got != wanted:
+                raise RangeUnavailable(
+                    f"the disk pulled from {source} has sha256 {got} and {builder['name']} "
+                    f"said {wanted}, so nothing went to Glance")
+            image = found.image or self.get(
+                self._call(CREATE_IMAGE), images.record(bundle, opnsense.IMAGE_PROPERTIES))["id"]
+            upload(self._call(IMAGE_FILE, image=image), disk)
 
     def clean_images(self) -> list[tuple[str, str]]:
         removed = images.removable(self.plan_images())
@@ -750,15 +846,6 @@ class OpenStack:
         return images.bundle(source, host, entry.setup, entry.files, generated=generated,
                              image=self.build.opnsense.image, uploads=True)
 
-    def _upload(self, bundle: images.Bundle) -> dict | None:
-        if not bundle.uploads:
-            return None
-        token = getattr(self.get, "token", None)
-        if token is None:
-            raise RangeUnavailable("this connection cannot hand a builder a token to upload with")
-        made = self.get(self._call(CREATE_IMAGE), images.record(bundle, opnsense.IMAGE_PROPERTIES))
-        return {"url": self._call(IMAGE_FILE, image=made["id"]), "token": token()}
-
     def _prebuilt(self) -> tuple[tuple[str, str], ...]:
         return tuple(
             (host, entry.image)
@@ -773,18 +860,33 @@ class OpenStack:
             image for name in names
             for image in self.get(self._call(IMAGES, name=quote(name))).get("images") or []
         ]
+        if any(bundle.uploads for bundle in bundles):
+            found += [image for image in self._own_images()
+                      if image.get("name") not in names
+                      and str(image.get("name", "")).startswith(configured.OPNSENSE_FAMILY)]
         digests = {bundle.digest for bundle in bundles}
-        builders = [
-            server for server in self._all(SERVERS, "servers")
-            if images.BUILDS in (server.get("metadata") or {})
-        ]
+        servers = self._all(SERVERS, "servers")
+        builders = [server for server in servers if images.BUILDS in (server.get("metadata") or {})]
+        in_use = {(server.get("image") or {}).get("id") for server in servers
+                  if isinstance(server.get("image"), dict)}
         consoles = {
             server["id"]: self._console(server["id"])
             for server in builders
             if server.get("status") == "ACTIVE"
             and server["metadata"].get(images.BUNDLE) in digests
         }
-        return images.plan(bundles, found, builders, consoles, prebuilt=prebuilt)
+        return images.plan(bundles, found, builders, consoles, prebuilt=prebuilt,
+                           families=(configured.OPNSENSE_FAMILY,), in_use=frozenset(in_use))
+
+    def _own_images(self) -> list[dict]:
+        found, marker = [], ""
+        for _ in range(PAGE_LIMIT):
+            page = self.get(self._call(OWN_IMAGES) + (f"&marker={quote(marker)}" if marker else ""))
+            found += page.get("images") or []
+            if not page.get("next") or not page.get("images"):
+                return found
+            marker = page["images"][-1]["id"]
+        raise RangeUnavailable(f"Glance listed more than {PAGE_LIMIT} pages of this project's images")
 
     def _console(self, server: str) -> str:
         try:
