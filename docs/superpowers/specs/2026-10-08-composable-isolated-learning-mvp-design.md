@@ -53,7 +53,10 @@ Firewall is out of scope as a lesson. A firewall filters at L3/L4 (IP and
 port); SQLi uses the same tcp/80 as legitimate traffic, so a firewall lesson on
 SQLi would teach a misconception. pfSense stays as OpenStack infrastructure
 (edge router and the host that runs the Suricata IPS). The firewall lesson, the
-pfSense console pane and the :8080 proxy are out of scope.
+pfSense console pane and the :8080 proxy are out of scope. Status 2026-10-11:
+OPNsense replaced pfSense at the edge, in the same two roles (edge router and
+Suricata host); built, not yet run on a cloud (`docs/DECISIONS.md`, "OPNsense at
+the edge, one base image, cloud.yaml").
 
 Roadmap (later, user-requested, recommended order): host/endpoint and SIEM
 (Wazuh/Elastic Agent) with Sigma; UTM/NGFW; Windows Server AD DS attack and
@@ -203,10 +206,11 @@ knowledge:
 
 ## Deferred (OpenStack work, not MVP)
 
-Per-session CIDR allocation (replacing the fixed blocks at fabric.py:11);
-removal of the single-session lock (views.py:171-173) and the bin/verify
-open-session guard (bin/verify:56-73); splitting pfSense's edge and sensor roles
-(declaration.yaml:75-76) so the sensor is independent; per-session ES containers
+Per-session CIDR allocation (the estate and mgmt blocks now come from
+`cloud.yaml`, one pair for the whole range); removal of the single-session lock
+(`platform/api/views.py`) and the `bin/verify` open-session guard; splitting
+the edge and sensor roles (both `fsl-edge` in `declaration.yaml`'s `openstack:`
+roles) so the sensor is independent; per-session ES containers
 (instead of shared ES with a per-session index).
 
 ## What must not break

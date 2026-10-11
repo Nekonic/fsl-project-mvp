@@ -28,6 +28,8 @@ SSH_WAIT = 900
 API_WAIT = 1200
 REGISTRY = "ghcr.io"
 OWNER = "nekonic"
+BUILDER = "fsl-build-"
+BUILDS = "fsl_image"
 IMAGES = ("platform", "board", "corp", "corp-db", "kali", "proxy")
 MANIFESTS = ", ".join((
     "application/vnd.oci.image.index.v1+json",
@@ -131,11 +133,61 @@ def run(argv: list[str], stdin: bytes | None = None, check: bool = True) -> subp
     return done
 
 
-def address_of(stack: str) -> str | None:
+def address_of(stack: str, run=run) -> str | None:
     done = run(["openstack", "stack", "output", "show", stack, "address",
                 "-f", "value", "-c", "output_value"], check=False)
     found = done.stdout.decode().strip()
     return found if done.returncode == 0 and found else None
+
+
+def stack_status(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "show", stack, "-f", "value", "-c", "stack_status"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def failed(status: str | None) -> bool:
+    return bool(status) and status.endswith("_FAILED")
+
+
+def refuse_if_busy(stack: str, status: str | None) -> None:
+    if status and status.endswith("_IN_PROGRESS"):
+        raise Refused(f"{Path(sys.argv[0]).name}: stack {stack} is {status}; wait for Heat to finish")
+
+
+def working_address(stack: str, run=run) -> str | None:
+    status = stack_status(stack, run)
+    refuse_if_busy(stack, status)
+    return None if status is None or failed(status) else address_of(stack, run)
+
+
+def stack_network(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "resource", "show", stack, "network",
+                "-f", "value", "-c", "physical_resource_id"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def builders(stack: str, run=run) -> list[str]:
+    network = stack_network(stack, run)
+    if network is None:
+        return []
+    done = run(["openstack", "server", "list", "--name", f"^{BUILDER}", "--network", network,
+                "--long", "-f", "json"])
+    return [row["ID"] for row in json.loads(done.stdout or b"[]")
+            if BUILDS in str(row.get("Properties") or "")]
+
+
+def remove_builders(stack: str, run=run) -> list[str]:
+    found = builders(stack, run)
+    if found:
+        run(["openstack", "server", "delete", "--wait", *found])
+    return found
+
+
+def delete_stack(stack: str, run=run) -> None:
+    remove_builders(stack, run)
+    run(["openstack", "stack", "delete", "--yes", "--wait", stack])
 
 
 class Host:
@@ -197,7 +249,7 @@ def stack_arguments(cloud) -> list[str]:
 
 def replace_stack(cloud, existed: bool) -> str:
     if existed:
-        run(["openstack", "stack", "delete", "--yes", "--wait", cloud.stack])
+        delete_stack(cloud.stack)
     run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE),
          *stack_arguments(cloud), cloud.stack])
     address = address_of(cloud.stack)
@@ -251,12 +303,14 @@ def rebuild(cloud, environment: dict[str, str]) -> str:
     identity = Path(cloud.operator_key_file).expanduser()
     with tempfile.TemporaryDirectory() as scratch:
         known_hosts = Path(scratch) / "known_hosts"
-        old_address = address_of(cloud.stack)
+        status = stack_status(cloud.stack)
+        refuse_if_busy(cloud.stack, status)
+        old_address = None if failed(status) else address_of(cloud.stack)
         old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
         keep_range_key(range_key, old)
         store = back_up(old) if old else None
         known_hosts.unlink(missing_ok=True)
-        address = replace_stack(cloud, existed=old is not None)
+        address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)
         new.wait()
         hand_over(new, environment["OS_PASSWORD"], range_key, store)

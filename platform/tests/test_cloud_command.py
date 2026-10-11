@@ -97,15 +97,28 @@ def test_an_image_nothing_can_build_stops_up():
         converge(platform)
 
 
-def test_leftovers_beside_ready_images_are_cleaned_so_up_can_finish():
+def test_leftovers_are_cleaned_only_once_the_range_stands_on_the_new_images():
     platform = Platform(images=[
-        {"images": [image("ready")], "leftovers": [{"kind": "server", "id": "s"}], "clean": False},
+        {"images": [image("ready")], "leftovers": [{"kind": "image", "id": "img-old"}], "clean": False},
+    ])
+
+    converge(platform)
+
+    assert platform.calls.index(("DELETE", "/images/")) > platform.calls.index(("POST", "/configure/"))
+    assert platform.calls[-1] == ("DELETE", "/images/")
+    assert platform.calls.count(("POST", "/images/")) == 1
+
+
+def test_a_ready_image_whose_builder_is_still_there_is_asked_for_again():
+    with_builder = dict(image("ready"), builder="srv-1")
+    platform = Platform(images=[
+        {"images": [with_builder], "leftovers": [], "clean": False},
         {"images": [image("ready")], "leftovers": [], "clean": True},
     ])
 
     converge(platform)
 
-    assert ("DELETE", "/images/") in platform.calls
+    assert platform.calls.count(("POST", "/images/")) == 2
 
 
 def test_a_drifted_fabric_stops_up_before_any_image_is_built():
@@ -132,13 +145,86 @@ def test_a_configuration_the_edge_refused_stops_up():
         converge(platform)
 
 
-def test_down_removes_the_slot_then_the_fabric_then_the_stack():
-    platform, ran = Platform(), []
+class Cli:
+    def __init__(self, servers=b"[]", status=b"CREATE_COMPLETE", address=b"203.0.113.7",
+                 network=b"net-stack"):
+        self.ran = []
+        self.answers = {"list": servers, "show": status, "output": address, "resource": network}
 
-    command().take_down(platform, "fsl-platform", ran.append)
+    def __call__(self, argv, stdin=None, check=True):
+        self.ran.append(argv)
+        said = self.answers.get(argv[2], b"")
+        return subprocess.CompletedProcess(argv, 0 if said is not None else 1, stdout=said or b"")
+
+
+LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"}},'
+                b' {"ID": "srv-2", "Name": "fsl-build-mine", "Properties": {}}]')
+
+
+def test_down_removes_the_slot_then_the_fabric_then_the_stack():
+    platform, cli = Platform(), Cli()
+
+    command().take_down(platform, "fsl-platform", cli)
 
     assert platform.calls == [("DELETE", "/slot/"), ("DELETE", "/fabric/")]
-    assert ran == [["openstack", "stack", "delete", "--yes", "--wait", "fsl-platform"]]
+    assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "fsl-platform"]
+
+
+def test_down_removes_builders_first_because_their_ports_hold_the_platform_network():
+    cli = Cli(servers=LEFT_BUILDER)
+
+    command().take_down(Platform(), "fsl-platform", cli)
+
+    assert cli.ran[-2:] == [["openstack", "server", "delete", "--wait", "srv-1"],
+                            ["openstack", "stack", "delete", "--yes", "--wait", "fsl-platform"]], (
+        "srv-2 is named like a builder but carries no fsl_image property, so it is not ours")
+
+
+def test_only_builders_on_this_stack_s_network_are_removed():
+    cli = Cli(servers=LEFT_BUILDER)
+
+    command().rebuild.remove_builders("fsl-platform", cli)
+
+    [listed] = [argv for argv in cli.ran if argv[1:3] == ["server", "list"]]
+    assert listed[listed.index("--network") + 1] == "net-stack"
+    assert ["openstack", "stack", "resource", "show", "fsl-platform", "network",
+            "-f", "value", "-c", "physical_resource_id"] in cli.ran
+
+
+def test_a_stack_without_its_network_has_no_builders_to_remove():
+    cli = Cli(servers=LEFT_BUILDER, network=None)
+
+    assert command().rebuild.remove_builders("fsl-platform", cli) == []
+    assert not [argv for argv in cli.ran if argv[1:3] in (["server", "list"], ["server", "delete"])]
+
+
+def test_a_failed_stack_has_no_working_platform_so_up_rebuilds_it():
+    cli = Cli(status=b"CREATE_FAILED")
+
+    assert command().rebuild.working_address("fsl-platform", cli) is None
+    assert not [argv for argv in cli.ran if argv[2] == "output"]
+
+
+def test_a_failed_stack_is_taken_down_without_asking_its_platform(capsys):
+    cli = Cli(servers=LEFT_BUILDER, status=b"DELETE_FAILED")
+
+    command().take_down_broken("fsl-platform", "DELETE_FAILED", cli)
+
+    assert ["openstack", "server", "delete", "--wait", "srv-1"] in cli.ran
+    assert cli.ran[-1][:3] == ["openstack", "stack", "delete"]
+    assert "DELETE_FAILED" in capsys.readouterr().out
+
+
+def test_a_stack_heat_is_still_working_on_is_left_alone():
+    with pytest.raises(SystemExit, match="DELETE_IN_PROGRESS"):
+        command().rebuild.working_address("fsl-platform", Cli(status=b"DELETE_IN_PROGRESS"))
+
+
+def test_the_builder_marks_match_the_ones_the_platform_boots_with():
+    from range import images
+
+    module = command().rebuild
+    assert (module.BUILDER, module.BUILDS) == (images.BUILDER, images.BUILDS)
 
 
 def test_down_stops_before_the_stack_if_the_range_will_not_come_down():

@@ -727,7 +727,8 @@ zone, flavor, 키, OPNsense 릴리스, 플랫폼의 스택과 ref. `platform/ran
 openstack CLI와 Heat 파라미터를 움직이며, 스택이 이를 플랫폼의 `openstack.env`에 쓴다.
 `bin/cloud up`은 스택을 만들고 fabric, images, slot, configure를 부른 뒤
 `/api/range/ready/`가 ready가 될 때까지 기다린다. `bin/cloud down`은 키를 보관하고
-저장소를 백업한 뒤 slot, fabric, 스택을 지운다.
+저장소를 백업한 뒤 slot, fabric, 남은 이미지 빌더, 스택을 지운다. `*_FAILED` 스택은
+`up`이 (빌더부터) 지우고 다시 만들며, `down`이 지운다.
 
 ### 구축됨: 플랫폼 VM
 
@@ -738,7 +739,8 @@ openstack CLI와 Heat 파라미터를 움직이며, 스택이 이를 플랫폼�
 - 모든 주소에 tcp/22, tcp/8000, ICMP를 여는 보안 그룹;
 - config drive를 가진 Nova 서버 `fsl-platform`.
 
-파라미터와 기본값은 `README.md`에 있다.
+기본값은 없다. 모든 파라미터는 `deploy/openstack/cloud.yaml`에서 온다(아래, 그리고
+`docs/OPENSTACK.md` §4).
 
 cloud-init은 `docker.io`, `docker-compose-v2`, `git`을 설치하고, 4GB 스왑을 추가하고,
 Docker의 MTU를 기본 브리지(`mtu`)와 compose 것을 포함한 모든 새 브리지
@@ -774,7 +776,9 @@ VM 위의 플랫폼은 OpenStack 어댑터(cloud-init이 쓴
 `FSL_SUBSTRATE=range.openstack.connect`)를 쓰고, `range/fabric.py`가 계획한
 `/api/range/fabric/`로 레인지 네트워크를 직접 만든다: 선언된 출발지마다 서브넷 하나를
 가진 `internet` 네트워크(DHCP 끔), `cloud.yaml`이 정한 CIDR의 `estate`와 게이트웨이
-없는 `mgmt`(서로, 플랫폼 네트워크, docker 기본 브리지와 겹치면 로더가 거부한다), 그리고
+없는 `mgmt`(서로, 플랫폼 네트워크, Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16,
+192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`의 네트워크,
+선언된 출발지와 겹치면 로더가 거부한다), 그리고
 `/data/ssh/id_ed25519`의 키로 만든 키페어 `fsl-platform`. 플랫폼은 첫 fabric POST 때
 그 키가 없을 때만 만든다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새
 플랫폼 VM마다 써 넣으므로, 교체된 VM도 키페어와 레인지 VM들이 신뢰하는 키를 유지한다. `describe()`는 각
@@ -788,13 +792,14 @@ VM 위의 플랫폼은 OpenStack 어댑터(cloud-init이 쓴
 읽은 뒤 빌더를 멈추고 스냅샷한다. 이미지는 번들의 digest를 담으므로, 스크립트를
 수정하면 조용히 낡은 이미지가 아니라 다른 번들의 이미지로 드러난다. 클라우드에 올려 둔
 이미지는 손대지 않은 Ubuntu 24.04 클라우드 이미지 하나(`compute.base_image`)이고,
-모든 빌더가 이것으로 부팅한다. `uploads`가 있는 호스트(엣지)는 다르다. 플랫폼이
-Glance 레코드를 먼저 만들고 업로드 URL과 Keystone 토큰을 user data로 빌더에 넘긴다.
-빌더는 디스크를 만들어 PUT으로 올리고, Glance가 active라고 하면 스냅샷 없이 지워진다.
+모든 빌더가 이것으로 부팅한다. `uploads`가 있는 호스트(엣지)는 다르다. 빌더는
+자격 증명을 받지 않는다. 디스크를 만들어 플랫폼 네트워크에 HTTP로 내놓고, 디스크의
+SHA256을 콘솔에 출력한다. 플랫폼이 디스크를 가져와 SHA256을 확인한 뒤 Glance 레코드를
+만들고 자신의 토큰으로 올린다. Glance가 active라고 하면 빌더는 스냅샷 없이 지워진다.
 엣지 빌더는 OPNsense nano 이미지를 내려받아 그 SHA256과 릴리스 키의 SHA256을
 `cloud.yaml`과 대조하고, 서명을 확인하고, QEMU로 한 번 부팅해 설정 가져오기 프롬프트에
-답해 `deploy/opnsense/config.xml`로 시작하게 한 뒤, `qemu-img`로 바꿔
-`fsl-opnsense-<version>`으로 올린다(`deploy/opnsense/build.sh`, `importer.py`).
+답해 `deploy/opnsense/config.xml`로 시작하게 한 뒤, `qemu-img`로 바꿔 내놓으면
+플랫폼이 `fsl-opnsense-<version>`으로 올린다(`deploy/opnsense/build.sh`, `importer.py`).
 
 fabric은 보안 그룹도 둘 만든다: 모든 레인지 포트가 속하고 모든 IPv4를 허용하는
 `fsl-range`(레인지를 지키는 것은 Neutron이 아니라 WAF다; anti-spoofing은 유지), 그리고

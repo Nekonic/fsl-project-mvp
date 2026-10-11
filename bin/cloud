@@ -103,10 +103,8 @@ def _images(call):
             "cloud: an image cannot be made; DELETE /api/range/images/ clears failed builds:\n  "
             + "\n  ".join(failed + [f"{host}: no script builds it" for host in unbuildable])
         )
-    if plan["clean"]:
+    if all(i["state"] == "ready" and not i["builder"] for i in plan["images"]):
         return plan
-    if all(i["state"] == "ready" for i in plan["images"]) and plan["leftovers"]:
-        _done(call, "DELETE", "/images/")
     print("images: " + ", ".join(f"{i['host']} {i['state']}" for i in plan["images"]), flush=True)
     return None
 
@@ -142,13 +140,15 @@ def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
         raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
     _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
     _configured(call, sleep)
-    return _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
+    ready = _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
+    _done(call, "DELETE", "/images/")
+    return ready
 
 
 def up(args: argparse.Namespace) -> str:
     cloud, environment = rebuild.load(args)
     os.environ.update(environment)
-    address = rebuild.address_of(cloud.stack)
+    address = rebuild.working_address(cloud.stack)
     if address is None or args.replace:
         address = rebuild.rebuild(cloud, environment)
     else:
@@ -160,15 +160,25 @@ def up(args: argparse.Namespace) -> str:
 def take_down(call, stack: str, run) -> None:
     _done(call, "DELETE", "/slot/")
     _done(call, "DELETE", "/fabric/")
-    run(["openstack", "stack", "delete", "--yes", "--wait", stack])
+    rebuild.delete_stack(stack, run)
+
+
+def take_down_broken(stack: str, status: str, run) -> None:
+    print(f"stack {stack} is {status} and has no platform to ask; removing its builders and the stack")
+    rebuild.delete_stack(stack, run)
 
 
 def down(args: argparse.Namespace) -> None:
     cloud, environment = rebuild.load(args)
     os.environ.update(environment)
-    address = rebuild.address_of(cloud.stack)
-    if address is None:
+    status = rebuild.stack_status(cloud.stack)
+    if status is None:
         print(f"no stack {cloud.stack}; nothing to take down")
+        return
+    rebuild.refuse_if_busy(cloud.stack, status)
+    address = None if rebuild.failed(status) else rebuild.address_of(cloud.stack)
+    if address is None:
+        take_down_broken(cloud.stack, status, rebuild.run)
         return
     with tempfile.TemporaryDirectory() as scratch:
         old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",

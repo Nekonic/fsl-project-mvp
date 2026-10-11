@@ -447,3 +447,94 @@ def test_a_refused_write_names_its_address_and_answer(cloud):
 
     with pytest.raises(RangeUnavailable, match="409.*overlaps"):
         reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/subnets", {"subnets": []})
+
+class Upload(BaseHTTPRequestHandler):
+    answers = []
+    received = []
+    tokens = 0
+
+    def log_message(self, *args):
+        pass
+
+    def _empty(self, code, headers=None):
+        self.send_response(code)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        Upload.tokens += 1
+        self._empty(201, {"X-Subject-Token": f"tok{Upload.tokens}"})
+
+    def do_PUT(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        Upload.received.append((self.path, self.headers["X-Auth-Token"],
+                                self.headers["Content-Type"], body))
+        self._empty(Upload.answers.pop(0) if Upload.answers else 204)
+
+
+@pytest.fixture
+def glance():
+    Upload.answers, Upload.received, Upload.tokens = [], [], 0
+    server = HTTPServer(("127.0.0.1", 0), Upload)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def uploader(base):
+    return openstack.http_reader(
+        openstack.Cloud(keystone=base, neutron=base, nova=base, glance=base, project="fsl",
+                        user="fsl", ssh_user="fsl", ssh_key="/keys/fsl"),
+        password="secret",
+    )
+
+
+def test_an_image_file_goes_to_glance_with_a_token_taken_just_before(glance, tmp_path):
+    disk = tmp_path / "disk.qcow2"
+    disk.write_bytes(b"QFI\xfb" + b"\x00" * 4096)
+    send = uploader(glance)
+    send(f"PUT {glance}/v2/images/img-1/tags/x")
+
+    send.upload(f"{glance}/v2/images/img-1/file", disk)
+
+    path, token, kind, body = Upload.received[-1]
+    assert (path, kind, body) == ("/v2/images/img-1/file", "application/octet-stream", disk.read_bytes())
+    assert token == "tok2", "an upload outlasting a held token must not start with an old one"
+
+
+def test_an_upload_refused_for_its_token_is_sent_once_more_then_named(glance, tmp_path):
+    disk = tmp_path / "disk.qcow2"
+    disk.write_bytes(b"x" * 10)
+    Upload.answers = [401, 413]
+
+    with pytest.raises(RangeUnavailable, match="413"):
+        uploader(glance).upload(f"{glance}/v2/images/img-1/file", disk)
+    assert [token for _, token, _, _ in Upload.received] == ["tok1", "tok2"]
+
+
+def test_a_pulled_disk_is_written_whole_and_hashed(tmp_path):
+    import hashlib
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler
+
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+    (tmp_path / "served").mkdir()
+    content = bytes(range(256)) * 9000
+    (tmp_path / "served" / "disk.qcow2").write_bytes(content)
+    server = HTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(tmp_path / "served")))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        got = openstack.pull(f"http://127.0.0.1:{server.server_port}/disk.qcow2", tmp_path / "pulled")
+        with pytest.raises(RangeUnavailable, match="404"):
+            openstack.pull(f"http://127.0.0.1:{server.server_port}/gone.qcow2", tmp_path / "gone")
+    finally:
+        server.shutdown()
+
+    assert got == hashlib.sha256(content).hexdigest()
+    assert (tmp_path / "pulled").read_bytes() == content

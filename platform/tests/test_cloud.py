@@ -81,10 +81,23 @@ def test_a_section_that_is_missing_is_named():
 def test_networks_that_overlap_each_other_or_dockers_bridge_are_refused():
     assert "platform 10.20.0.0/24 overlaps estate 10.20.0.0/24" in refusal(
         changed(network__estate="10.20.0.0/24"))
-    assert "mgmt 172.17.5.0/24 overlaps docker's default bridge" in refusal(
+    assert "mgmt 172.17.5.0/24 overlaps docker's default address pool 172.17.0.0/16" in refusal(
         changed(network__mgmt="172.17.5.0/24"))
     assert "network.estate: must be a private IPv4 network" in refusal(
         changed(network__estate="5.188.10.0/24")), "origins are public, so none can clash"
+
+
+def test_networks_docker_may_hand_a_session_estate_are_refused():
+    assert "estate 172.29.4.0/24 overlaps docker's default address pool 172.28.0.0/14" in refusal(
+        changed(network__estate="172.29.4.0/24"))
+    assert "platform 192.168.50.0/24 overlaps docker's default address pool 192.168.0.0/16" in refusal(
+        changed(network__platform="192.168.50.0/24"))
+
+
+def test_a_network_the_platform_s_own_compose_file_uses_is_refused():
+    assert "mgmt 172.31.0.0/24 overlaps the compose network mgmt 172.31.0.0/24" in refusal(
+        changed(network__mgmt="172.31.0.0/24"))
+    assert any("origin" in name for name in cloud.taken()), "the origins are checked too"
 
 
 def test_an_unquoted_version_is_refused_because_yaml_reads_it_as_a_number():
@@ -103,7 +116,15 @@ def test_the_image_digest_and_key_fingerprint_must_be_sha256():
 
 def test_the_platform_builder_and_range_flavors_are_required():
     assert "compute.flavors: lacks builder" in refusal(
-        changed(compute__flavors={"platform": "m1.large", "range": "m1.small"}))
+        changed(compute__flavors={"platform": "m1.large", "range": "m1.small", "edge": "m1.medium"}))
+
+
+def test_the_edge_flavor_is_required_because_the_opnsense_image_wants_3_gb():
+    from range import opnsense
+
+    assert opnsense.IMAGE_PROPERTIES["min_ram"] == 3072
+    assert "compute.flavors: lacks edge" in refusal(
+        changed(compute__flavors={"platform": "m1.large", "builder": "m1.medium", "range": "m1.small"}))
 
 
 def test_the_password_is_read_from_the_named_variable(tmp_path):

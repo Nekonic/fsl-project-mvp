@@ -204,7 +204,7 @@ A member cannot create flavors. `compute.flavors` in `cloud.yaml` names them:
 | `platform` | platform VM | 8 GB RAM or more; 4 GB OOM-killed Elasticsearch once sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 4 vCPU / 80 GB) |
 | `builder` | image builders | the OPNsense builder holds the 3 GB raw image, its qcow2 and a 2 GB QEMU guest: 4 GB RAM and 20 GB disk or more (`m1.medium`) |
 | `range` | every slot VM no role names | 20 GB disk or more: a golden image's min disk is its builder's disk |
-| `edge` (any role name) | the host filling that role | OPNsense wants 3 GB RAM or more (its image says `min_ram` 3072) |
+| `edge` (required), or any other role name | the host filling that role | the edge is required: OPNsense wants 3 GB RAM or more (its image says `min_ram` 3072), so the `range` flavor would fail at boot |
 
 **(this cloud)** `m1.platform8` (8 GB / 2 vCPU) exists and runs
 `fsl-acceptance`. Check every flavor `cloud.yaml` names exists on the cloud
@@ -281,12 +281,11 @@ dirb's, linked to the old path).
 
 **The OPNsense image [one-click].** `fsl-edge` declares `setup:
 deploy/opnsense/build.sh` and `uploads: opnsense`. On `POST
-/api/range/images/` the platform creates the Glance record
-`fsl-opnsense-<version>` (qcow2, bare, private, `hw_vif_model=virtio`,
-`hw_disk_bus=virtio`, `os_distro=freebsd`, `min_ram` 3072, `fsl_bundle`) and
-boots a builder from the base image with the bundle and, outside it, the
-record's upload URL and a fresh Keystone token (`/var/lib/fsl/upload`, 0600).
-The builder:
+/api/range/images/` the platform boots a builder from the base image with the
+bundle in its user data and no credential, in the security group
+`fsl-build`, which the images step makes if absent: its only ingress rule is
+tcp 8080 from the platform's address on the platform network (replaced when
+that address changes), and it keeps Neutron's default egress. The builder:
 
 1. installs `curl`, `bzip2`, `openssl`, `qemu-utils`, `qemu-system-x86`,
    `dosfstools`, `mtools`, `fdisk`, `python3` (nothing assumed of the image);
@@ -302,8 +301,17 @@ The builder:
    key at the configuration importer's prompt and names the seed disk
    (`vtbd1`) [O4], waits for `login:` and powers it off over the QEMU monitor
    (`deploy/opnsense/importer.py`);
-6. converts it with `qemu-img convert -O qcow2 -c` and `PUT`s it to the
-   record [G3]; Glance marks it active, and the platform deletes the builder.
+6. converts it with `qemu-img convert -O qcow2 -c` to
+   `/var/lib/fsl-serve/disk.qcow2`, starts `python3 -m http.server 8080` on
+   it as the transient unit `fsl-serve`, and prints the ready line with the
+   disk's SHA256 on its console;
+7. the platform reads that line through Nova, pulls the disk over the
+   platform network, refuses it if its SHA256 differs, then creates the
+   Glance record `fsl-opnsense-<version>` (qcow2, bare, private,
+   `hw_vif_model=virtio`, `hw_disk_bus=virtio`, `os_distro=freebsd`,
+   `min_ram` 3072, `fsl_bundle`) and `PUT`s the file with its own fresh token
+   [G3]; once Glance says active, the platform deletes the builder. A record
+   left `queued` by an interrupted upload is filled on the next call.
 
 The nano image is a preinstalled serial-console disk whose `/conf/config.xml`
 is created from the default on first boot. That default assigns only LAN
@@ -315,7 +323,12 @@ public key) gives root no password (`*`) and only the platform's key, sshd
 without password logins, opt1 (mgmt) by DHCP: the stock default password
 `opnsense` never exists on it. The bundle digest covers the release settings,
 the MTU, the platform key and the scripts, so any of them changing builds a
-new image; a new version also gets a new name. Nothing in this path has run
+new image; a new version also gets a new name. An `fsl-opnsense-*` image
+of a release `cloud.yaml` no longer names is listed as a leftover and removed
+by `DELETE /api/range/images/` (and by `bin/cloud up` once the range is
+ready on the new images), but only when it carries `fsl_bundle`, the mark of
+an image this platform made, and no server in the project boots from it; any
+other image of that name is left alone. Nothing in this path has run
 against a cloud yet; the console strings the importer waits for are read from
 the OPNsense source [O4] and the docs [O1], not observed.
 
@@ -347,10 +360,10 @@ unquoted version, overlapping CIDRs, a password written into the file).
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
 | `network.mtu` | `1450` | the edge's interfaces (the tenant networks' MTU; 1450 on VXLAN) |
-| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/24`, `10.31.0.0/24` | private, non-overlapping, not `172.17.0.0/16` |
+| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/24`, `10.31.0.0/24` | private, non-overlapping, outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and every builder |
 | `compute.availability_zone` | `""` | the platform VM, builders and slot VMs; empty lets Nova choose |
-| `compute.flavors` | `platform`, `builder`, `range`, per role | §3.3 |
+| `compute.flavors` | `platform`, `builder`, `range`, `edge` (required, 3 GB RAM or more), per role | §3.3 |
 | `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with and its private half |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (January and July; updates have no images [O1]) |
@@ -394,16 +407,23 @@ From the operator's machine, with `python-openstackclient` and
 .venv/bin/python bin/cloud down
 ```
 
-`up`: refuses without a usable `cloud.yaml`; creates the stack if absent
-(`--replace` replaces it through `bin/platform-rebuild`, below); waits for the
-API; `POST fabric/` (stops on drift); `POST images/` until clean (stops on a
-failed image or one no script builds; clears leftovers beside ready images);
+`up`: refuses without a usable `cloud.yaml`; reads the stack's status and
+refuses while it is `*_IN_PROGRESS`; creates the stack if absent, and if it is
+`*_FAILED` deletes its builders and the stack (`--wait`) and creates it again
+(`--replace` replaces a working one through `bin/platform-rebuild`, below); waits for the
+API; `POST fabric/` (stops on drift); `POST images/` until every image is
+ready with no builder left (stops on a failed image or one no script builds);
 `POST slot/` (stops when blocked); `GET ready/` until the slot leaves
 `NOT_STANDING`/`REBUILDING`; `POST configure/`, retried while it answers 503
-as the VMs' ssh comes up, stopping on 409; `GET ready/` until ready. `down`:
+as the VMs' ssh comes up, stopping on 409; `GET ready/` until ready; then
+`DELETE images/` removes leftovers no server boots from. `down`:
 keeps the range key, backs up the store (`bin/backup`), `DELETE slot/`,
-`DELETE fabric/`, deletes the stack; Glance keeps the images. Not yet run
-against a cloud.
+`DELETE fabric/`, deletes every server whose name starts with `fsl-build-`,
+which carries the `fsl_image` property and which has a port on this stack's
+own network (the stack's `network` resource; such a port would fail the
+stack delete), then deletes the stack; Glance keeps the images. A `*_FAILED` stack has
+no platform to ask: `down` deletes its builders and the stack only. Not yet
+run against a cloud.
 
 ### 5.3 Rebuild and delete — lossless
 
@@ -512,14 +532,13 @@ is to be deleted once no longer needed; it holds cores the quota needs.
   keypair drift (§6.3), full core quota (§3.2).
 - A member cannot create flavors or change quotas; the stack uses no
   admin-only Heat resource.
-- `ref` defaults to `dev`: the VM only sees pushed commits.
+- `platform.ref` is required (example value `dev`; `--ref` overrides it): the
+  VM only sees pushed commits.
 - The project password is plain text in `/opt/fsl/openstack.env` and the
   platform container's environment.
-- The edge's builder receives a project-scoped Keystone token (valid for
-  Keystone's token lifetime, an hour by default) in its user data, readable on
-  the builder and by admins through Nova; it is deleted once the image is
-  active. An application credential restricted to `PUT /v2/images/*/file`
-  would narrow it; not built.
+- The edge's builder serves its disk over plain HTTP on the platform network
+  until it is deleted; integrity rests on the SHA256 it prints on its console,
+  which the platform reads through Nova and checks before the upload.
 - Every edge built from one image shares its sshd host keys (generated on the
   builder's QEMU boot); the platform pins each server's key by its own alias.
 - The nano image keeps `/var/log` and `/tmp` in memory [O1]; nothing is kept

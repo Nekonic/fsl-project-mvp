@@ -879,7 +879,8 @@ drive the openstack CLI and the Heat parameters from it, and the stack writes
 it into the platform's `openstack.env`. `bin/cloud up` creates the stack and
 then calls fabric, images, slot and configure until `/api/range/ready/` is
 ready; `bin/cloud down` keeps the key, backs the store up and removes slot,
-fabric and stack.
+fabric, any image builder and the stack. A `*_FAILED` stack is deleted (builders
+first) and created again by `up`, and deleted by `down`.
 
 ### Built: the platform VM
 
@@ -890,7 +891,8 @@ fabric and stack.
 - a security group opening tcp/22, tcp/8000 and ICMP to any address;
 - the Nova server `fsl-platform`, with a config drive.
 
-Its parameters and their defaults are in `README.md`.
+It has no defaults; every parameter comes from `deploy/openstack/cloud.yaml`
+(below, and `docs/OPENSTACK.md` §4).
 
 cloud-init installs `docker.io`, `docker-compose-v2` and `git`, adds 4 GB of
 swap, sets Docker's MTU to the Neutron network's for the default bridge
@@ -932,8 +934,10 @@ The platform on the VM uses the OpenStack adapter
 range's networks itself through `/api/range/fabric/`, planned by
 `range/fabric.py`: one `internet` network with a subnet per declared origin
 (DHCP off), `estate` and `mgmt` (no gateway) on the CIDRs `cloud.yaml` gives,
-which its loader refuses if they overlap each other, the platform's network or
-docker's default bridge, and the keypair
+which its loader refuses if they overlap each other, the platform's network,
+Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and
+192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), a network
+`compose.yaml` declares or a declared origin, and the keypair
 `fsl-platform` from the key at `/data/ssh/id_ed25519`. The platform makes that
 key only when it is absent at the first fabric POST; `bin/platform-rebuild` keeps a copy
 on the operator's machine and writes it into every new platform VM, so a
@@ -951,14 +955,15 @@ on its own network (the one with a router), reads the builder's console for
 the line the setup prints when it ends, then stops and snapshots it. The image
 carries the bundle's digest, so an edited script shows up as an image of
 another bundle rather than a silently stale one. A host that `uploads` (the
-edge) is different: the platform creates its Glance record first and hands
-the builder the upload URL and a Keystone token in user data; the builder
-makes the disk and PUTs it, and is deleted once Glance says active, never
-snapshotted. The edge's builder downloads the OPNsense nano image, checks its
+edge) is different: its builder gets no credential; it makes the disk, serves
+it over HTTP on the platform network and prints the disk's SHA256 on its
+console. The platform pulls the disk, checks the SHA256, creates the Glance
+record and uploads it with its own token; the builder is deleted once Glance
+says active, never snapshotted. The edge's builder downloads the OPNsense nano image, checks its
 SHA256 and the release key's against `cloud.yaml`, verifies the signature,
 boots it once under QEMU answering its configuration importer so it starts
-from `deploy/opnsense/config.xml`, converts it with `qemu-img` and uploads it
-as `fsl-opnsense-<version>` (`deploy/opnsense/build.sh`, `importer.py`).
+from `deploy/opnsense/config.xml`, converts it with `qemu-img` and serves it
+for the platform to upload as `fsl-opnsense-<version>` (`deploy/opnsense/build.sh`, `importer.py`).
 
 The fabric also makes two security groups: `fsl-range`, which every range
 port joins and which lets any IPv4 in (the WAF defends the range, not

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import re
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,8 +24,10 @@ SKIPPED = {"__pycache__"}
 FAILED_IMAGE = {"killed", "deleted", "pending_delete", "deactivated"}
 TAIL_LINES = 20
 
-UPLOAD = f"{WORKDIR}/upload"
-QUEUED = {"queued", "saving", "importing", "uploading"}
+SERVED = "/var/lib/fsl-serve"
+DISK = "disk.qcow2"
+SERVE_PORT = 8080
+SERVED_SHA = re.compile(r"sha256=([0-9a-f]{64})")
 
 @dataclass(frozen=True)
 class Bundle:
@@ -98,12 +101,22 @@ def bundle(source: Path, host: str, setup: str, files, generated: dict[str, byte
     return Bundle(host=host, setup=setup, digest=digest.hexdigest()[:16], archive=packed.getvalue(),
                   image=image, uploads=uploads)
 
-def user_data(bundle: Bundle, upload: dict | None = None) -> str:
+def _serving(bundle: Bundle) -> str:
+    if not bundle.uploads:
+        return f"said='{READY} {bundle.digest}'"
+    return (
+        f"sha=$(sha256sum {SERVED}/{DISK} | cut -c1-64) && "
+        f"systemd-run --unit=fsl-serve /usr/bin/python3 -m http.server {SERVE_PORT} "
+        f"--directory {SERVED} && said=\"{READY} {bundle.digest} sha256=$sha\""
+    )
+
+
+def user_data(bundle: Bundle) -> str:
     unpacked = f"{WORKDIR}/image"
     script = (
         f"if mkdir -p {unpacked} && tar -xzf {WORKDIR}/image.tar.gz -C {unpacked} "
-        f"&& sh {unpacked}/{bundle.setup}; "
-        f"then said='{READY} {bundle.digest}'; else said='{FAILED} {bundle.digest}'; fi; "
+        f"&& sh {unpacked}/{bundle.setup} && {_serving(bundle)}; "
+        f"then :; else said='{FAILED} {bundle.digest}'; fi; "
         f"rm -rf {WORKDIR}; echo \"$said\" > /dev/console"
     )
     document = {
@@ -114,11 +127,6 @@ def user_data(bundle: Bundle, upload: dict | None = None) -> str:
         }],
         "runcmd": [["sh", "-c", script]],
     }
-    if upload:
-        document["write_files"].append({
-            "path": UPLOAD, "permissions": "0600",
-            "content": f"{upload['url']}\n{upload['token']}\n",
-        })
     encoded = base64.b64encode(
         ("#cloud-config\n" + yaml.safe_dump(document)).encode()
     ).decode()
@@ -136,15 +144,32 @@ def record(bundle: Bundle, properties: dict) -> dict:
     return {"name": bundle.name, "disk_format": "qcow2", "container_format": "bare",
             "visibility": "private", BUNDLE: bundle.digest, **properties}
 
-def _uploading(known: dict, builder: dict | None, said: str, digest: str) -> Image:
+def served_sha256(said: str, digest: str) -> str:
+    line = next((entry for entry in said.splitlines() if f"{READY} {digest}" in entry), "")
+    found = SERVED_SHA.search(line)
+    return found.group(1) if found else ""
+
+def _from_builder(bundle: Bundle, known: dict, builder: dict | None, consoles: dict) -> Image:
     if builder is None:
-        return Image(**known, state="failed", detail="an upload no builder is making")
-    if f"{FAILED} {digest}" in said:
+        if known["image"]:
+            return Image(**known, state="failed", detail="a Glance record no builder fills")
+        return Image(**known, state="missing")
+    status = builder.get("status")
+    if builder.get(TASK):
+        return Image(**known, state="building", detail=f"Nova is {builder[TASK]} it")
+    said = consoles.get(builder["id"], "")
+    if f"{FAILED} {bundle.digest}" in said:
         return Image(**known, state="failed", detail=_tail(said))
-    if builder.get("status") == "ERROR":
+    if status == "SHUTOFF":
+        if bundle.uploads:
+            return Image(**known, state="failed", detail="the builder stopped, so it serves no disk")
+        return Image(**known, state="stopped")
+    if f"{READY} {bundle.digest}" in said:
+        return Image(**known, state="built")
+    if status == "ERROR":
         return Image(**known, state="failed",
                      detail=(builder.get("fault") or {}).get("message", "") or "Nova put it in ERROR")
-    return Image(**known, state="building", detail="the builder makes the disk and uploads it")
+    return Image(**known, state="building", detail=f"since {builder.get('created', '')}")
 
 def _state(bundle: Bundle, current: dict | None, builder: dict | None, consoles: dict) -> Image:
     known = {
@@ -158,27 +183,9 @@ def _state(bundle: Bundle, current: dict | None, builder: dict | None, consoles:
             return Image(**known, state="ready")
         if status in FAILED_IMAGE:
             return Image(**known, state="failed", detail=f"the snapshot is {status}")
-        if bundle.uploads:
-            return _uploading(known, builder, consoles.get(known["builder"], ""), bundle.digest)
-        return Image(**known, state="saving")
-    if bundle.uploads and builder is not None:
-        return Image(**known, state="failed", detail="its builder runs with no image to upload to")
-    if builder is None:
-        return Image(**known, state="missing")
-    status = builder.get("status")
-    if builder.get(TASK):
-        return Image(**known, state="building", detail=f"Nova is {builder[TASK]} it")
-    if status == "SHUTOFF":
-        return Image(**known, state="stopped")
-    said = consoles.get(builder["id"], "")
-    if f"{FAILED} {bundle.digest}" in said:
-        return Image(**known, state="failed", detail=_tail(said))
-    if f"{READY} {bundle.digest}" in said:
-        return Image(**known, state="built")
-    if status == "ERROR":
-        return Image(**known, state="failed",
-                     detail=(builder.get("fault") or {}).get("message", "") or "Nova put it in ERROR")
-    return Image(**known, state="building", detail=f"since {builder.get('created', '')}")
+        if not (bundle.uploads and status == "queued"):
+            return Image(**known, state="saving")
+    return _from_builder(bundle, known, builder, consoles)
 
 def _prebuilt_state(host: str, image_name: str, images: list) -> Image:
     current = next(
@@ -193,8 +200,18 @@ def _prebuilt_state(host: str, image_name: str, images: list) -> Image:
                f"(README) - this platform cannot build it from a script",
     )
 
-def plan(bundles, images: list, builders: list, consoles: dict, prebuilt=()) -> Plan:
-    found, leftovers = [], []
+def _retired(bundles, images: list, families) -> list[tuple[str, str, str]]:
+    current = {made.name for made in bundles}
+    return [
+        ("image", i["id"], f"image {i['name']} is of a release the settings no longer name")
+        for i in images
+        if i.get(BUNDLE) and i.get("name") not in current
+        and any(str(i.get("name", "")).startswith(family) for family in families)
+    ]
+
+def plan(bundles, images: list, builders: list, consoles: dict, prebuilt=(), families=(),
+         in_use=frozenset()) -> Plan:
+    found, leftovers = [], list(_retired(bundles, images, families))
     found += [_prebuilt_state(host, image_name, images) for host, image_name in prebuilt]
     hosts = {b.host for b in bundles}
     for made in bundles:
@@ -221,7 +238,8 @@ def plan(bundles, images: list, builders: list, consoles: dict, prebuilt=()) -> 
         ("server", s["id"], f"builder {s['name']} builds {s['metadata'][BUILDS]}, which nothing declares")
         for s in builders if (s.get("metadata") or {}).get(BUILDS) not in hosts
     ]
-    return Plan(images=tuple(found), leftovers=tuple(leftovers))
+    kept = [entry for entry in leftovers if not (entry[0] == "image" and entry[1] in in_use)]
+    return Plan(images=tuple(found), leftovers=tuple(kept))
 
 def removable(plan: Plan) -> list[tuple[str, str]]:
     failed = [

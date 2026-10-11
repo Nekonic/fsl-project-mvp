@@ -32,9 +32,8 @@ MTOOLS_SKIP_CHECK=1 mcopy -i seed.img@@1048576 -s seed/conf ::/
 
 python3 "$HERE/importer.py" "$NANO" seed.img
 
-qemu-img convert -f raw -O qcow2 -c "$NANO" opnsense.qcow2
-{ read -r URL; read -r TOKEN; } < /var/lib/fsl/upload
-curl -fsS -X PUT -H "X-Auth-Token: $TOKEN" -H "Content-Type: application/octet-stream" \
-  --upload-file opnsense.qcow2 "$URL"
+rm -rf /var/lib/fsl-serve
+mkdir -p /var/lib/fsl-serve
+qemu-img convert -f raw -O qcow2 -c "$NANO" /var/lib/fsl-serve/disk.qcow2
 cd /
 rm -rf "$WORK"

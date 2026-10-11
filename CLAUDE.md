@@ -91,10 +91,12 @@ alert that does not mention the attack's mechanism is reported
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
-  open (`docs/state/now.md`):
+  open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
   `range/opnsense.py` (with `deploy/opnsense/`) configures and restarts
-  Suricata on the OPNsense edge (OpenStack);
+  Suricata on the OPNsense edge (OpenStack), and the sensor host in
+  `declaration.yaml` names the rule file and reload command `rules/suricata.py`
+  is handed;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF and
   the lesson step text names the exclusion file path; `api/site.py` and

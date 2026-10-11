@@ -710,6 +710,22 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       topology/map/front-door). The invariant tests (isolation, seams, ratchet,
       benign cases, TP/TN) stay. Removing them lowers the tests floor on
       purpose; awaiting the user's ruling.
+- [ ] Push the local commits since 870b15f to `dev` (gate 2), then the
+      `images` workflow and the six GHCR packages made public by the user.
+      Ordered steps with commands and checks: `docs/state/now.md`.
+- [ ] First run on the cloud of everything built 2026-10-11 and never run:
+      `cloud.yaml`, `bin/cloud up|down`, `bin/platform-rebuild`, the OPNsense
+      edge and its image builder (the builder serves its disk; the platform
+      checks the SHA256 and uploads it), Kali on Ubuntu. The claims to check
+      live are listed in `docs/state/now.md` step 7 and in the two last
+      2026-10-11 entries of `docs/DECISIONS.md`. Before it: delete the
+      obsolete VMs `fsl-kiosk`, `fsl-wiki`, `fsl-juice-shop` (the core quota
+      is 20/20), with the user's yes; `fsl-acceptance` (.220) and
+      `m1.platform8` go only after the acceptance passes again.
+- [ ] Review of the seven-step lesson text; awaits the user.
+- [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
+      allows "based on OPNsense" and asks project@opnsense.org before a
+      derived name is used. Awaits the user.
 - [x] On substrate openstack the board's ground truth was read from
       `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
       not the OpenStack board VM. Readiness and the session baseline now read
@@ -765,11 +781,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
       bin/verify`, 2026-10-09: 23 passed, 78 skipped, 17 failed, 21 errors):
       session fixtures hold a session open while others POST a new one, and
-      the single-slot range answers 409; `/api/rules/apply/` runs the compose
-      reload (`suricatasc`) against the pfSense sensor because
-      `FSL_SENSOR_RELOAD` is unset on the VM; the VM has no GeoLite2 database
-      (`bin/fetch-geoip` never ran). The stale `blue.html` comparison test
-      was removed 2026-10-09.
+      the single-slot range answers 409 (open). The other two causes are
+      fixed (`docs/OPENSTACK.md` §7): the sensor host in `declaration.yaml`
+      names its rule file and reload command, which `settings.py` turns into
+      `FSL_SENSOR_RULES`/`FSL_SENSOR_RELOAD`, and `bin/fetch-geoip` runs at
+      the VM's first boot. The stale `blue.html` comparison test was removed
+      2026-10-09.
 - [ ] `/internal/auth-users` (the board's loot read_path) has no application
       auth; its only external block is nginx `location /internal/ { return 404; }`
       in `deploy/waf/range.conf`, independent of SecRuleEngine. Anything that
@@ -813,9 +830,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       set on the VM) rather than from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
-      (`register_pipeline.py` for Elasticsearch, `range/pfsense.py` +
-      `configure.php` for Suricata, `operator_log.py` + the `fsl-kali` terminal
-      wiring for the attacker box).
+      (`register_pipeline.py` for Elasticsearch, `range/opnsense.py` +
+      `deploy/opnsense/` and the sensor host's rule path and reload command in
+      `declaration.yaml` for Suricata, `operator_log.py` + the `fsl-kali`
+      terminal wiring for the attacker box).
 - [ ] Site proxy and WAF terminal name the WAF container by convention instead
       of the label lookup (`platform/api/site.py` builds
       `http://fsl-<id>-waf-1`, `platform/api/views.py` builds `fsl-<id>-waf`);

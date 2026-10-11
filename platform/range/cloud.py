@@ -8,12 +8,18 @@ from pathlib import Path
 
 import yaml
 
-FOLDER = Path(__file__).resolve().parents[2] / "deploy/openstack"
+ROOT = Path(__file__).resolve().parents[2]
+FOLDER = ROOT / "deploy/openstack"
 EXAMPLE = FOLDER / "cloud.example.yaml"
 CONFIGURED = FOLDER / "cloud.yaml"
+COMPOSE = ROOT / "compose.yaml"
+DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
+OPNSENSE_FAMILY = "fsl-opnsense-"
 INSIDE = ("estate", "mgmt")
 FIXED_FLAVORS = ("platform", "builder", "range")
-DOCKER_DEFAULT = "172.17.0.0/16"
+REQUIRED_FLAVORS = (*FIXED_FLAVORS, "edge")
+DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
+                        "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 VERSION = re.compile(r"\d+\.\d+(\.\d+)?")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -33,7 +39,7 @@ class OPNsense:
 
     @property
     def image(self) -> str:
-        return f"fsl-opnsense-{self.version}"
+        return f"{OPNSENSE_FAMILY}{self.version}"
 
     @property
     def nano(self) -> str:
@@ -200,8 +206,8 @@ def _version(value) -> str | None:
 
 def _flavors(value) -> str | None:
     if not isinstance(value, dict):
-        return "must map platform, builder, range and optional role names to flavor names"
-    missing = [key for key in FIXED_FLAVORS if key not in value]
+        return "must map platform, builder, range, edge and optional role names to flavor names"
+    missing = [key for key in REQUIRED_FLAVORS if key not in value]
     if missing:
         return f"lacks {', '.join(missing)}"
     wrong = [key for key, name in value.items() if _name(name) or _name(str(key))]
@@ -262,6 +268,38 @@ def _complaints(document) -> list[str]:
     return said + _overlaps(document.get("network"))
 
 
+def _compose_networks(path: Path = COMPOSE) -> dict[str, ipaddress.IPv4Network]:
+    if not path.is_file():
+        return {}
+    networks = (yaml.safe_load(path.read_text()) or {}).get("networks") or {}
+    return {
+        f"the compose network {name}": ipaddress.ip_network(pool["subnet"])
+        for name, entry in networks.items()
+        for pool in ((entry or {}).get("ipam") or {}).get("config") or []
+        if pool.get("subnet")
+    }
+
+
+def _origins(path: Path = DECLARATION) -> dict[str, ipaddress.IPv4Network]:
+    if not path.is_file():
+        return {}
+    declared = yaml.safe_load(path.read_text()) or {}
+    return {
+        f"origin {origin['id']}": ipaddress.ip_network(origin["subnet"])
+        for segment in declared.get("segments") or []
+        for origin in segment.get("origins") or []
+    }
+
+
+def taken() -> dict[str, ipaddress.IPv4Network]:
+    return {
+        **{f"docker's default address pool {pool}": ipaddress.ip_network(pool)
+           for pool in DOCKER_DEFAULT_POOLS},
+        **_compose_networks(),
+        **_origins(),
+    }
+
+
 def _overlaps(network) -> list[str]:
     if not isinstance(network, dict):
         return []
@@ -269,12 +307,16 @@ def _overlaps(network) -> list[str]:
     if any(_cidr(value) for value in named.values()):
         return []
     held = {key: ipaddress.ip_network(value) for key, value in named.items()}
-    held["docker's default bridge"] = ipaddress.ip_network(DOCKER_DEFAULT)
     names = list(held)
-    return [
+    among = [
         f"network: {one} {held[one]} overlaps {other} {held[other]}"
-        for at, one in enumerate(names[:3]) for other in names[at + 1:]
+        for at, one in enumerate(names) for other in names[at + 1:]
         if held[one].overlaps(held[other])
+    ]
+    return among + [
+        f"network: {key} {held[key]} overlaps {name} {used}"
+        for key in names for name, used in taken().items()
+        if held[key].overlaps(used)
     ]
 
 
