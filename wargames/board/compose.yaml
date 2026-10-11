@@ -2,7 +2,7 @@ services:
   board:
     platform: linux/amd64
     build: ./app
-    image: fsl/board:mvp
+    image: ghcr.io/nekonic/fsl-board:${FSL_IMAGE_TAG:-dev}
     depends_on:
       board-db: {condition: service_healthy}
     networks: [estate]

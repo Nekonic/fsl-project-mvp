@@ -3,7 +3,7 @@ description: >-
   An ordinary Django board on MySQL, behind the WAF and the IDS. The attacker
   scores by exfiltrating its auth-user password hashes and proving possession
   against the platform's snapshot.
-image: fsl/board:mvp
+image: ghcr.io/nekonic/fsl-board
 public_url: http://board.com
 objective_model: loot_verified
 case_file: board.yaml

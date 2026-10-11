@@ -2,7 +2,7 @@ services:
   corp-wp:
     platform: linux/amd64
     build: ./app
-    image: fsl/corp:mvp
+    image: ghcr.io/nekonic/fsl-corp:${FSL_IMAGE_TAG:-dev}
     depends_on:
       corp-db: {condition: service_healthy}
     networks: [estate]
@@ -22,7 +22,7 @@ services:
   corp-db:
     platform: linux/amd64
     build: ./db
-    image: fsl/corp-db:mvp
+    image: ghcr.io/nekonic/fsl-corp-db:${FSL_IMAGE_TAG:-dev}
     networks: [estate]
     command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1"]
     environment:

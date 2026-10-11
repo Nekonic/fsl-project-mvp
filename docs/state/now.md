@@ -77,6 +77,15 @@ Network panel recorded by the platform's site proxy, the full URL with "Not
 secure", and the guide's words in one place with a red box on every step
 (walked live in session 205).
 
+Prebuilt images (2026-10-11, local, not pushed): CI publishes our six images
+to ghcr.io; compose and the platform VM pull them; `bin/platform-rebuild`
+replaces the platform stack keeping the store and the range key, not yet run
+(`docs/DECISIONS.md`). Before its first run: push to `dev`, wait for the
+`images` workflow, make the six ghcr.io packages public, create `m1.large` if
+absent. Then, with the user, rebuild 192.168.0.210. Proposed, not built: `bin/cloud
+up|down` for the whole range and golden images from CI; pfSense pending its
+licence research.
+
 Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
 duplicate another test, pin implementation detail, assert framework or YAML
 constants, or guard removed features: 163 unit tests (about 1,650 lines) and

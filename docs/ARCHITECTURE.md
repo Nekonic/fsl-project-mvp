@@ -49,9 +49,12 @@ from `wargames/<id>/scenario.yaml` (`platform/wargames.py`; fields `name`,
 optionally `category`, `difficulty` (easy, medium, hard) and `minutes` for the
 console's scenario card, and `defense` and `lesson`, described under "The WAF
 lesson"). Nothing
-reads `image` yet. Each app image is built once and tagged
-(`docker compose -f session.yaml build`); sessions start from those tags with
-`--no-build`. A new wargame needs `scenario.yaml`, `objectives.yaml` and
+reads `image` yet. Each app image is built by CI
+(`.github/workflows/images.yml`) and pulled as
+`ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`, or built locally under that
+name; sessions start from it with `--no-build`. The platform passes its own
+`FSL_IMAGE_TAG` to the session stacks it starts, and tool cases run
+`ghcr.io/nekonic/fsl-kali` with the same tag (`redteam/tools.py`). A new wargame needs `scenario.yaml`, `objectives.yaml` and
 `compose.yaml` in its folder, a case file under `redteam/cases/`, and an
 `include:` line in `session.yaml`.
 
@@ -76,15 +79,15 @@ requests from range hosts covers only the newest session's `estate`.
 
 | Service | File | Image | Networks | Host port |
 |---|---|---|---|---|
-| `fsl-wg-board` | session | `fsl/board:mvp` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
+| `fsl-wg-board` | session | `ghcr.io/nekonic/fsl-board` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | |
 | `fsl-wg-board-db` | session | `mysql` | estate | |
-| `fsl-wg-corp-wp` | session | `fsl/corp:mvp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
-| `fsl-wg-corp-db` | session | `fsl/corp-db:mvp` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-wg-corp-wp` | session | `ghcr.io/nekonic/fsl-corp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | |
+| `fsl-wg-corp-db` | session | `ghcr.io/nekonic/fsl-corp-db` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge (shared, so the platform aims each session's proxy and tools at its own WAF) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, ships the session's `eve.json` and audit log | mgmt | |
-| `fsl-kali` | session | `fsl/kali:mvp` from `deploy/kali`; `http_proxy` is `http://fsl-<id>-proxy-1:8081` | edge | |
-| `fsl-proxy` | session | `fsl/proxy:mvp` from `deploy/proxy` (mitmdump); `/label` is the project's named volume | the four edge networks | |
+| `fsl-kali` | session | `ghcr.io/nekonic/fsl-kali` from `deploy/kali`; `http_proxy` is `http://fsl-<id>-proxy-1:8081` | edge | |
+| `fsl-proxy` | session | `ghcr.io/nekonic/fsl-proxy` from `deploy/proxy` (mitmdump); `/label` is the project's named volume | the four edge networks | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
@@ -877,9 +880,15 @@ Its parameters and their defaults are in `README.md`.
 cloud-init installs `docker.io`, `docker-compose-v2` and `git`, adds 4 GB of
 swap, sets Docker's MTU to the Neutron network's for the default bridge
 (`mtu`) and for every new bridge network, compose's included
-(`default-network-opts`), clones `repository` at `ref` into `/opt/fsl` and
-adds `ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`,
-runs `docker compose -f /opt/fsl/compose.yaml up -d --build` on every boot.
+(`default-network-opts`), clones `repository` at `ref` into `/opt/fsl`, writes
+`FSL_IMAGE_TAG=<the checkout's commit>` to `/opt/fsl/.env`, fetches the GeoIP
+database (`bin/fetch-geoip`, which needs no credential: Elastic's GeoIP
+endpoint serves GeoLite2 to anyone accepting its terms in the URL) and adds
+`ubuntu` to the `docker` group. A systemd unit, `fsl-platform.service`, pulls
+`compose.yaml`'s and `session.yaml`'s images and runs `docker compose -f
+/opt/fsl/compose.yaml up -d` on every boot; it builds nothing. A failed pull
+does not stop the unit (`ExecStartPre=-`); `up` then builds what is missing
+from the checkout, which `bin/platform-rebuild` avoids by checking ghcr.io first.
 
 So the compose control plane, and only it, runs inside one Nova VM; on the
 OpenStack substrate no session stack starts there, and the board's ground truth
@@ -894,8 +903,9 @@ own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519` to
 `/root/openstack.env` with mode 0600, then moves it to
 `/opt/fsl/openstack.env`, which git ignores. The password is not in the
 template: Nova keeps the user data and its metadata service serves it to
-whatever runs on the VM, the range's containers included. The operator
-appends `FSL_OPENSTACK_PASSWORD` over ssh once the VM is up (`README.md`).
+whatever runs on the VM, the range's containers included. `bin/platform-rebuild` appends
+`FSL_OPENSTACK_PASSWORD` over ssh once the VM is up, and writes the range ssh
+key into the platform's data volume the same way (`README.md`).
 The platform service reads the file with `env_file` (`required: false`,
 `format: raw`), so compose passes it through without interpolating or
 unquoting.
@@ -906,7 +916,10 @@ range's networks itself through `/api/range/fabric/`, planned by
 `range/fabric.py`: one `internet` network with a subnet per declared origin
 (DHCP off), `estate` on 10.30.0.0/24 and `mgmt` on 10.31.0.0/24 with no
 gateway, outside every compose and platform-VM subnet, and the keypair
-`fsl-platform` from a key the platform makes at `/data/ssh/id_ed25519`.
+`fsl-platform` from the key at `/data/ssh/id_ed25519`. The platform makes that
+key only when it is absent at the first fabric POST; `bin/platform-rebuild` keeps a copy
+on the operator's machine and writes it into every new platform VM, so a
+replaced VM keeps the key the keypair and the range's VMs trust.
 `describe()` binds each origin to its subnet of the one Internet network by
 CIDR. The VM's router attaches only its own subnet; the platform reaches range
 hosts through its `mgmt` port (below).

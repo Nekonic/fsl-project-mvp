@@ -7,6 +7,7 @@
 - `docs/ARCHITECTURE.md`: 레인지의 구성 방식과 앞으로의 방향
 - `docs/THREAT-MODEL.md`: 레인지가 모사하는 것과 빼 둔 것
 - `docs/STATE.md`: 작업이 어디까지 왔는지
+- `docs/OPENSTACK.md`: OpenStack(Kolla-Ansible 2026.1 이상)에서 클라우드부터 레인지까지 해야 할 설정
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: 이 README와 아키텍처의 한국어판
 
 ## 전체 구성
@@ -24,7 +25,7 @@ flowchart TB
     subgraph heat["Heat 스택 fsl-platform"]
       fip["floating IP<br/>8000, ssh와 ping"]
       subgraph vm["플랫폼 VM, Ubuntu 24.04"]
-        unit["fsl-platform.service<br/>docker compose up -d --build"]
+        unit["fsl-platform.service<br/>docker compose pull, up -d"]
         stack["compose 스택<br/>(다음 그래프)"]
       end
     end
@@ -90,15 +91,22 @@ flowchart LR
 
 ## 스택 띄우기
 
-Docker가 있는 호스트에서 저장소를 clone하고, GeoIP 데이터베이스를 한 번 받고, 세션 이미지를 한 번 빌드하고, 컨트롤 플레인을 띄운다.
+Docker가 있는 호스트에서 저장소를 clone하고, GeoIP 데이터베이스를 한 번 받고, 이미지를 pull하고, 컨트롤 플레인을 띄운다.
 
 ```bash
 bin/fetch-geoip
+docker compose -f session.yaml pull
+docker compose pull && docker compose up -d
+```
+
+우리 이미지 여섯 개(platform, board, corp, corp-db, kali, proxy)는 `dev`에 push될 때마다 `.github/workflows/images.yml`이 빌드해 `ghcr.io/nekonic/fsl-<name>`으로 올리고, 커밋 SHA와 `dev`로 태그한다. compose는 각 이미지를 `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`로 부른다. `FSL_IMAGE_TAG`를 커밋 SHA로 두면 그 커밋의 이미지를 그대로 쓴다(플랫폼 VM이 그렇게 한다). GitHub가 첫 push로 만든 패키지는 저장소가 public이어도 private이다. 여섯 개 모두 한 번 public으로 바꿔야 인증 없는 pull이 된다: github.com에서 패키지 페이지, **Package settings**, **Change visibility**, **Public**(되돌릴 수 없음). 이런 서비스는 모두 `build:`를 유지하므로, Dockerfile이나 앱을 바꾼 개발자는 pull 대신 로컬에서 빌드한다.
+
+```bash
 docker compose -f session.yaml build
 docker compose up -d --build
 ```
 
-세션은 스택을 `--no-build`로 띄우므로, 워게임·Kali·프록시를 바꾼 뒤에는 `docker compose -f session.yaml build`를 다시 실행한다. 플랫폼이 하는 것처럼 세션 스택을 손으로 띄우려면 `docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
+세션은 스택을 `--no-build`로 띄우며, 호스트가 그 이름으로 가진 이미지(pull했든 빌드했든)를 쓴다. 플랫폼이 하는 것처럼 세션 스택을 손으로 띄우려면 `docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
 
 Elasticsearch의 managed GeoIP 다운로더는 꺼져 있고, 대신 `config/ingest-geoip`(지속되는 bind mount)에서 `GeoLite2-City.mmdb`를 읽는다. `bin/fetch-geoip`가 이 파일을 거기에 한 번 넣어 둔다. 이 파일은 커밋하지 않으며 컨테이너를 다시 만들어도 남는다(클라우드의 Elasticsearch는 다운로드 CDN에 닿지 못한다). 플랫폼은 시작할 때 docker 소켓 그룹을 맞춘다. 그다음 서비스를 시작하는 동안 백그라운드에서 이벤트 시각을 정하고 출발지 주소의 위치를 찾는 Elasticsearch ingest pipeline을 등록하고, Kibana의 data view, "FSL alerts" 검색, "FSL overview" 대시보드를 가져오고 Kibana의 기본 경로를 그 검색으로 정한다. 명령줄에서 스크립트 시나리오를 실행하거나 `bin/verify`를 돌리려면(`--fast` 포함) virtualenv가 필요하다.
 
@@ -117,17 +125,15 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 ### OpenStack에서
 
-`deploy/openstack/platform.yaml`은 플랫폼 VM용 Heat 템플릿이다. 이 템플릿이 무엇을 만들고 첫 부팅 때 무엇을 하는지는 `docs/ARCHITECTURE.md`("Built: the platform VM")에 있다. 프로젝트 멤버로서, 프로젝트의 openrc를 source하고 `python-heatclient`를 설치한 상태에서 실행한다.
+`deploy/openstack/platform.yaml`은 플랫폼 VM용 Heat 템플릿이다. 이 템플릿이 무엇을 만들고 첫 부팅 때 무엇을 하는지는 `docs/ARCHITECTURE.md`("Built: the platform VM")에 있다. `bin/platform-rebuild`는 운영자 컴퓨터에서 스택을 만들거나, 서 있는 스택을 상태를 잃지 않고 교체한다. 프로젝트 멤버로서, 프로젝트의 openrc를 source하고 `python-openstackclient`와 `python-heatclient`를 설치한 상태에서 실행한다.
 
 ```bash
-openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=http://KEYSTONE:5000 fsl-platform
+bin/platform-rebuild --keystone http://KEYSTONE:5000 --password-file PASSWORD_FILE --flavor m1.large
 ```
 
-`keystone`은 `/v3`를 뺀 Keystone 기본 URL이고, `/v3`는 플랫폼이 붙인다. 사용자는 `default` 도메인에서 찾고, 프로젝트는 스택이 속한 프로젝트를 쓴다. 비밀번호는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다. 스택의 `address`가 ssh에 응답하면 비밀번호를 파일에서 읽어 추가하고 플랫폼을 다시 만든다.
+무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `flavor`와 `ref`로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다. 레인지는 건드리지 않는다. 레인지는 아래 API 호출로 만든다.
 
-```bash
-{ printf 'FSL_OPENSTACK_PASSWORD='; cat PASSWORD_FILE; echo; } | ssh ubuntu@ADDRESS 'cloud-init status --wait >/dev/null && cat >> /opt/fsl/openstack.env && sudo docker compose -f /opt/fsl/compose.yaml up -d platform'
-```
+새 VM은 `ref`를 clone하고, 그 체크아웃의 커밋으로 태그된 이미지를 pull해서 시작한다. `keystone`은 `/v3`를 뺀 Keystone 기본 URL이고, `/v3`는 플랫폼이 붙인다. 사용자는 `default` 도메인에서 찾고, 프로젝트는 스택이 속한 프로젝트를 쓴다. 비밀 두 가지는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다: 비밀번호와 플랫폼의 레인지 ssh 키. VM이 ssh에 응답하고 cloud-init이 끝나면 `bin/platform-rebuild`가 `--password-file`의 `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙이고, 레인지 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 쓰고, 백업한 저장소를 복원하고(교체일 때), 플랫폼 컨테이너를 다시 만든다. 레인지 키는 운영자 컴퓨터의 `--range-key`(기본 `~/.ssh/fsl-platform`, 모드 0600)에 있다. 이 파일이 없으면 `bin/platform-rebuild`가 서 있는 플랫폼에서 한 번 복사해 오고, 서 있는 플랫폼도 없으면 거부한다. 키가 유지되므로 레인지 VM들과 키페어 `fsl-platform`은 새 플랫폼을 계속 신뢰하고, 플랫폼을 교체하는 동안 레인지는 그대로 서 있을 수 있다. 이 스크립트는 아직 클라우드에서 실행해 보지 않았다.
 
 | 파라미터 | 기본값 | |
 |---|---|---|
@@ -136,7 +142,7 @@ openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=ht
 | `user` | `fsl-range` | 플랫폼이 로그인하는 Keystone 사용자 |
 | `key_name` | `fsl-claude` | `ssh ubuntu@ADDRESS`에 필요한 개인 키가 속한 키페어 |
 | `image` | `ubuntu-24.04` | |
-| `flavor` | `m1.windows` | |
+| `flavor` | `m1.large` | 8 GB RAM, 4 vCPU, 80 GB 디스크. 클라우드에 없으면 한 번 만든다: `openstack flavor create --ram 8192 --vcpus 4 --disk 80 m1.large`(admin) |
 | `external_network` | `provider` | |
 | `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 된다 |
 | `dns` | `8.8.8.8,8.8.4.4` | |
@@ -169,7 +175,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 
 그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. pfSense의 WAN 주소, pass 규칙, Suricata와 syslog, WAF의 ModSecurity 로그 전달이다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. 세션을 닫으면 이것이 호출된다. rebuild는 넣어 둔 설정을 지우므로 VM이 올라오면 `configure/`를 다시 실행한다(게시판은 이미지에 들어 있어 rebuild만 하면 된다).
 
-레인지는 스택 바깥에 있다. `openstack stack delete fsl-platform`이나 서버를 교체하는 스택 업데이트 전에 `/api/range/slot/`, 그다음 `/api/range/fabric/`에 `DELETE`를 보낸다. 새 VM은 새 ssh 키를 만들고, fabric은 이전 키페어를 drift로 보고한다. 이미지는 남는다.
+레인지는 스택 바깥에 있다. `bin/platform-rebuild`로 교체한 플랫폼은 레인지 키를 유지하므로 slot과 fabric은 교체 중에도 서 있을 수 있다. 새 서버는 다음 `POST /api/range/fabric/`에서 `mgmt`에 다시 붙고, `configure/`가 레인지의 syslog를 새 서버로 돌린다. 키를 보관하지 않고 손으로 스택을 지우면 새 VM은 새 키를 만들고 fabric은 이전 키페어를 drift로 보고한다. 그때는 먼저 `/api/range/slot/`과 `/api/range/fabric/`에 `DELETE`를 보낸다. 이미지는 남는다.
 
 스택은 `key_name`이 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저 있어야 한다.
 

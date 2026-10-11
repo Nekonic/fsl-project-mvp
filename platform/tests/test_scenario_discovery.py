@@ -8,7 +8,7 @@ import wargames
 A_SCENARIO = {
     "name": "Demo",
     "description": "A scenario discovered from disk.",
-    "image": "fsl/demo:mvp",
+    "image": "ghcr.io/nekonic/fsl-demo",
     "public_url": "http://demo.com",
     "objective_model": "none",
     "case_file": "board.yaml",
@@ -18,8 +18,8 @@ def test_the_shipped_scenarios_are_discovered_from_their_descriptor_files():
     assert set(wargames.WARGAMES) == {"board", "corp"}
 
 def test_each_scenario_carries_the_image_it_composes_from():
-    assert wargames.WARGAMES["board"]["image"] == "fsl/board:mvp"
-    assert wargames.WARGAMES["corp"]["image"] == "fsl/corp:mvp"
+    assert wargames.WARGAMES["board"]["image"] == "ghcr.io/nekonic/fsl-board"
+    assert wargames.WARGAMES["corp"]["image"] == "ghcr.io/nekonic/fsl-corp"
 
 def test_a_scenario_is_read_from_disk_not_hardcoded(settings, tmp_path):
     folder = tmp_path / "wargames" / "demo"
