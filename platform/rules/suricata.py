@@ -8,33 +8,33 @@ class RuleApplyError(RuntimeError):
 class RulesUnreadable(RuntimeError):
     pass
 
-def current(sensor) -> str:
-    ran = sensor(["cat", RULE_PATH])
+def current(sensor, path: str = RULE_PATH) -> str:
+    ran = sensor(["cat", path])
     if not ran.ok:
-        raise RulesUnreadable(f"could not read {RULE_PATH}: {ran.output.strip()}")
+        raise RulesUnreadable(f"could not read {path}: {ran.output.strip()}")
     return ran.output
 
 def validate(content: str, sensor):
     return sensor(["suricata", "-T", "-S", "/dev/stdin"], stdin=content)
 
-def apply(content: str, sensor, reload_command) -> None:
+def apply(content: str, sensor, reload_command, path: str = RULE_PATH) -> None:
     outcome = validate(content, sensor)
     if not outcome.ok:
         raise RuleApplyError(outcome.output.strip())
 
-    previous = current(sensor)
-    _write(sensor, RULE_PATH, content)
+    previous = current(sensor, path)
+    _write(sensor, path, content)
 
     ran = sensor(list(reload_command))
     if not _reloaded(ran):
-        _write(sensor, RULE_PATH, previous)
+        _write(sensor, path, previous)
         raise RuleApplyError(
             "reload failed, rolled back to the previous rule set: "
             + ran.output.strip()
         )
 
-def seed(content: str, sensor, reload_command) -> None:
-    _write(sensor, RULE_PATH, content)
+def seed(content: str, sensor, reload_command, path: str = RULE_PATH) -> None:
+    _write(sensor, path, content)
     ran = sensor(list(reload_command))
     if not _reloaded(ran):
         raise RuleApplyError("the sensor did not load its starting rule set: " + ran.output.strip())

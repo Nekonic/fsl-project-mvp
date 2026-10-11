@@ -4,7 +4,9 @@ import pathlib
 import pytest
 import yaml
 
-from range import declared, fabric, slot
+from range import cloud, declared, fabric, slot
+
+INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DECLARED = declared.read(flavor="openstack")
@@ -12,7 +14,7 @@ READY = {host: f"img-{host}" for host in DECLARED.hosts}
 
 def fabric_standing():
     networks, subnets = [], []
-    for want in fabric.wanted(DECLARED):
+    for want in fabric.wanted(DECLARED, INSIDE):
         net_id = f"net-{want.segment}"
         if not any(n["id"] == net_id for n in networks):
             networks.append({"id": net_id, "name": f"fsl-{want.segment}",
@@ -156,7 +158,7 @@ def test_every_host_stands_on_management_where_the_platform_reaches_it():
         assert fabric.MANAGEMENT in entry.segments, host
 
 def test_a_hosts_segments_are_ones_the_fabric_builds():
-    built = {want.segment for want in fabric.wanted(DECLARED)}
+    built = {want.segment for want in fabric.wanted(DECLARED, INSIDE)}
 
     for host, entry in DECLARED.hosts.items():
         assert set(entry.segments) <= built, host

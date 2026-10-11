@@ -181,7 +181,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (compose only) | the iframe in a person's browser |
-| 5140/udp | `collector`, Filebeat's syslog input | pfSense and the WAF on OpenStack |
+| 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge and the WAF on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000 and 8002. 8002 is a separate
@@ -209,51 +209,68 @@ gives launched tools `--add-host` entries for that WAF.
 
 ### On OpenStack
 
-`deploy/openstack/platform.yaml` is a Heat template for the platform VM. What
-it creates and what its first boot does are in `docs/ARCHITECTURE.md`
-("Built: the platform VM"). `bin/platform-rebuild` creates the stack, or
-replaces a standing one without losing its state, from the operator's machine,
-as a project member with the project's openrc sourced and
-`python-openstackclient` and `python-heatclient` installed:
+Everything that differs between clouds is in one file. Copy
+`deploy/openstack/cloud.example.yaml` to `deploy/openstack/cloud.yaml` (git
+ignores it) and fill it in: Keystone URL, region, interface, domain, project
+and member user, where to read the password (`password_file` or
+`password_env`; the password itself never goes in the file), the external
+network, DNS, the tenant MTU, the platform/estate/mgmt CIDRs, the base image
+name, an availability zone, flavors for the platform, the image builders, the
+range and any role (`edge`), the operator's keypair and key file, the range
+key, the OPNsense release to build (version, mirror, the image's SHA256
+and the signing key's SHA256 from the release announcement), and the stack,
+repository and ref. Every script and the Heat stack read it; a value that does
+not parse is refused before anything is touched, with every problem named by
+its key.
+
+The cloud needs exactly one uploaded image: Canonical's stock Ubuntu 24.04
+cloud image, uploaded as is under the name `compute.base_image` gives
+(`docs/OPENSTACK.md` has the download, checksum and `openstack image create`
+commands). Everything else is built from it at boot: the platform VM by
+cloud-init, the range's golden images by builders, and the OPNsense edge image
+by a builder that downloads the official release (below).
+
+With `python-openstackclient` and `python-heatclient` installed, from the
+operator's machine:
 
 ```bash
-bin/platform-rebuild --keystone http://KEYSTONE:5000 --password-file PASSWORD_FILE --flavor m1.large
+.venv/bin/python bin/cloud up        # the platform VM, then the whole range
+.venv/bin/python bin/cloud down      # back up the store, keep the key, remove range and stack
+```
+
+`up` creates the platform's Heat stack (`deploy/openstack/platform.yaml`) if it
+is absent (`--replace` replaces a standing one through `bin/platform-rebuild`),
+waits for the API, then calls the platform's own range API in order: fabric,
+images until clean, slot, configure, and waits until `/api/range/ready/` says
+ready. It stops at the first drift, failed image, blocked slot or refused
+configuration and says why. Neither command has been run against a cloud yet.
+
+`bin/platform-rebuild` alone creates or replaces only the platform VM:
+
+```bash
+.venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
 Before deleting anything it checks that the six images for the ref's commit
 can be pulled anonymously from ghcr.io, keeps the range key (below) and backs
 the store up (`bin/backup` over ssh). It then deletes the stack, creates it
-again with `flavor` and `ref`, and waits until `/api/sessions/` answers. The
-range is not touched; build it with the API calls below.
+again with every parameter from `cloud.yaml`, and waits until `/api/sessions/`
+answers.
 
-The new VM clones `ref`, pulls the images
-tagged with that checkout's commit, and starts. `keystone` is Keystone's base
-URL without `/v3`; the platform adds it. The user is looked up in domain
-`default`, and the project is the stack's own. Two secrets stay out of the
-stack, because Nova's metadata service serves user data to every process on
-the VM, containers included: the password and the platform's range ssh key.
-Once the VM answers ssh and cloud-init is done, `bin/platform-rebuild` appends
-`FSL_OPENSTACK_PASSWORD` from `--password-file` to `/opt/fsl/openstack.env`,
-writes the range key into the platform's data volume at
-`/data/ssh/id_ed25519`, restores the store it backed up (a replace), and
-recreates the platform container. The range key lives on the operator's
-machine at `--range-key` (default `~/.ssh/fsl-platform`, mode 0600); when the
-file is absent, `bin/platform-rebuild` copies it once from the running platform, and
-refuses when there is none. Because the key survives, the range's VMs and the
+The new VM clones `ref`, pulls the images tagged with that checkout's commit,
+and starts; cloud-init writes the cloud's values into
+`/opt/fsl/openstack.env`. Two secrets stay out of the stack, because Nova's
+metadata service serves user data to every process on the VM, containers
+included: the password and the platform's range ssh key. Once the VM answers
+ssh and cloud-init is done, `bin/platform-rebuild` appends
+`FSL_OPENSTACK_PASSWORD` to `/opt/fsl/openstack.env`, writes the range key into
+the platform's data volume at `/data/ssh/id_ed25519`, restores the store it
+backed up (a replace), and recreates the platform container. The range key
+lives on the operator's machine at `keys.range` (mode 0600); when the file is
+absent, it is copied once from the running platform, and the script refuses
+when there is none. Because the key survives, the range's VMs and the
 `fsl-platform` keypair keep trusting the new platform, and the range can stand
-through a platform replace. The script has not yet been run against the cloud.
-
-| Parameter | Default | |
-|---|---|---|
-| `ref` | `dev` | the branch or tag to clone |
-| `repository` | this repo on GitHub | |
-| `user` | `fsl-range` | the Keystone user the platform signs in as |
-| `key_name` | `fsl-claude` | the keypair whose private key `ssh ubuntu@ADDRESS` needs |
-| `image` | `ubuntu-24.04` | |
-| `flavor` | `m1.large` | 8 GB RAM, 4 vCPU, 80 GB disk; create it once if the cloud lacks it: `openstack flavor create --ram 8192 --vcpus 4 --disk 80 m1.large` (admin) |
-| `external_network` | `provider` | |
-| `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
-| `dns` | `8.8.8.8,8.8.4.4` | |
+through a platform replace.
 
 The stack's `address` output is the floating IP. The console is at
 `http://ADDRESS:8000/` and does not ask for a login. 9200 stays
@@ -263,8 +280,8 @@ On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,
 `bin/backup` and the restore below there. `systemctl status fsl-platform`
 shows how the last boot's bring-up went.
 
-With the password in, the platform builds the range's networks through its
-own API:
+The range steps `bin/cloud up` runs can also be called by hand. The fabric
+(networks, keypair, groups):
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
@@ -274,10 +291,11 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 down, and is refused while a server is attached.
 
 The range's VMs boot from golden images the platform builds from the setup
-scripts `declaration.yaml` names under `hosts:`. Each POST moves every build
-one step (boot a builder, stop it once its setup reports, snapshot it, delete
-it), so repeat it until the answer says `"clean": true`; it takes about
-seven minutes:
+scripts `declaration.yaml` names under `hosts:`, each on a builder booted from
+the base image. Each POST moves every build one step (boot a builder, stop it
+once its setup reports, snapshot it, delete it; the edge's builder uploads its
+disk instead of being snapshotted), so repeat it until the answer says
+`"clean": true`:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
@@ -286,7 +304,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 A failed build shows the end of its console under `detail`; `DELETE` on the
 same path removes failed builders and images built from older scripts.
 
-With the images ready, one POST boots `fsl-pfsense`, `fsl-kali`, `fsl-waf`
+With the images ready, one POST boots `fsl-edge`, `fsl-kali`, `fsl-waf`
 and `fsl-wg-board`, each from its image, and the platform reaches them over ssh
 on `mgmt`:
 
@@ -294,13 +312,13 @@ on `mgmt`:
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-`POST /api/range/configure/` then pushes config over ssh: pfSense's WAN
-addresses, pass rule, Suricata and syslog, and the WAF's ModSecurity log
-forwarding. `POST /api/range/slot/rebuild/` Nova-rebuilds every VM from its
-golden image, keeping its ports and addresses, so no edited data or rule
-carries over; closing a session calls it. The rebuild wipes the pushed config,
-so run `configure/` again once the VMs are up (the board is baked into its
-image and needs only the rebuild).
+`POST /api/range/configure/` then pushes config over ssh: the OPNsense edge's
+config.xml (WAN addresses, pass rules, Suricata, syslog) followed by a reboot,
+and the WAF's ModSecurity log forwarding. `POST /api/range/slot/rebuild/`
+Nova-rebuilds every VM from its golden image, keeping its ports and addresses,
+so no edited data or rule carries over; closing a session calls it. The
+rebuild wipes the pushed config, so run `configure/` again once the VMs are up
+(the board is baked into its image and needs only the rebuild).
 
 The range lives outside the stack. A platform replaced with `bin/platform-rebuild`
 keeps the range key, so the slot and the fabric can stand through
@@ -310,45 +328,28 @@ deleted by hand, without the key kept, leaves a new VM that makes a new key,
 and the fabric reports the old keypair as drift: then `DELETE`
 `/api/range/slot/` and `/api/range/fabric/` first. The images stay.
 
-The stack boots with the keypair `key_name` names, which has to be in the
+The stack boots with the keypair `keys.operator` names, which has to be in the
 project first:
 
 ```bash
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
-### The pfSense image
+### The OPNsense image
 
-pfSense CE has no cloud image and no scripted install. Its only installer is
-Netgate's online one (`netgate-installer-v1.2-RELEASE-amd64.iso`, from a $0
-Netgate Store checkout), which installs CE without an account. The cloud has
-no volume service, so the install goes onto a server's root disk through
-Nova's stable rescue, which boots the ISO as a CD-ROM with the disk attached.
-As `fsl-range`:
-
-```bash
-openstack image create netgate-installer --file netgate-installer.iso --disk-format iso --container-format bare --private --property hw_rescue_device=cdrom --property hw_rescue_bus=scsi --property hw_scsi_model=virtio-scsi
-openstack network create fsl-pfsense-build-lan
-openstack subnet create --network fsl-pfsense-build-lan --subnet-range 192.168.1.0/24 --no-dhcp --gateway none fsl-pfsense-build-lan
-openstack server create --image cirros-0.6.3 --flavor m1.small --network fsl-platform --network fsl-pfsense-build-lan --wait fsl-pfsense-build
-openstack server rescue --image netgate-installer fsl-pfsense-build
-openstack console url show --novnc fsl-pfsense-build
-```
-
-On that console: accept the notice, Install, WAN `vtnet0` (the
-`fsl-platform` port, which reaches the Internet) by DHCP, LAN `vtnet1` at
-its defaults, Install CE, ZFS and GPT on `vtbd0`, the current stable
-version, then Halt; Reboot would start the installer again. Then
-`openstack server unrescue fsl-pfsense-build`, check that pfSense boots to
-its menu, halt it with option 6, and:
-
-```bash
-openstack server image create --name fsl-pfsense --wait fsl-pfsense-build
-openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio --property os_distro=freebsd fsl-pfsense
-```
-
-Delete `fsl-pfsense-build` and the build LAN afterwards. pfSense writes to
-the video console, so `openstack console log show` stays empty; use noVNC.
+The edge is OPNsense (BSD 2-clause), built automatically by the images step.
+A builder booted from the stock Ubuntu image installs its tools, downloads
+`OPNsense-<version>-nano-amd64.img.bz2`, its `.sig` and the release key from
+`opnsense.mirror`, checks the archive against `opnsense.image_sha256` and the
+key against `opnsense.pubkey_sha256` (both from the release announcement, not
+from the mirror), unpacks it, verifies the signature, boots it once under QEMU
+answering its configuration importer so it starts from `deploy/opnsense/config.xml`
+(root trusts only the platform key and has no password; the stock image's
+default password never exists), converts it with `qemu-img` to qcow2 and
+uploads it to Glance as `fsl-opnsense-<version>`. A new version, a new MTU or a
+new platform key builds a new image. The image is built from the official
+release on each cloud and never published; OPNsense's trademark policy asks
+for permission before a derivative name is used.
 
 ## Running a session
 

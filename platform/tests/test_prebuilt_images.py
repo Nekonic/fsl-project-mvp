@@ -53,14 +53,17 @@ def rebuild():
     return module
 
 
-def ready_arguments(tmp_path, **changed):
+def written_cloud(tmp_path, **changed):
+    document = yaml.safe_load((ROOT / "deploy/openstack/cloud.example.yaml").read_text())
     password = tmp_path / "password"
     password.write_text("secret\n")
-    return Namespace(**{
-        "keystone": "http://keystone:5000", "password_file": password,
-        "flavor": "m1.large", "ref": "dev", "stack": "fsl-platform",
-        "range_key": tmp_path / "range-key", "ssh_user": "ubuntu", **changed,
-    })
+    document["identity"]["password_file"] = str(password)
+    for dotted, value in changed.items():
+        section, key = dotted.split("__")
+        document[section][key] = value
+    written = tmp_path / "cloud.yaml"
+    written.write_text(yaml.safe_dump(document))
+    return Namespace(cloud=written, ref=None)
 
 
 def test_ci_publishes_exactly_the_images_compose_builds():
@@ -167,10 +170,14 @@ def test_the_platform_vm_fetches_its_geoip_database_before_starting():
     assert fetched < started
 
 
-def test_the_platform_vm_flavor_defaults_to_eight_gigabytes():
+def test_the_platform_vm_flavor_in_the_example_is_eight_gigabytes():
     template, _ = platform_vm_config()
+    [server] = [r["properties"] for r in template["resources"].values()
+                if r["type"] == "OS::Nova::Server"]
+    example = yaml.safe_load((ROOT / "deploy/openstack/cloud.example.yaml").read_text())
 
-    assert template["parameters"]["flavor"]["default"] == rebuild().DEFAULT_FLAVOR == "m1.large"
+    assert server["flavor"] == {"get_param": "flavor"}
+    assert example["compute"]["flavors"]["platform"] == "m1.large"
 
 
 def test_the_range_key_never_enters_the_user_data():
@@ -181,24 +188,37 @@ def test_the_range_key_never_enters_the_user_data():
     assert "PRIVATE KEY" not in yaml.safe_dump(config)
 
 
-def test_the_rebuild_refuses_without_its_required_arguments():
-    done = subprocess.run([sys.executable, str(REBUILD)], capture_output=True, text=True)
+def test_the_rebuild_refuses_without_a_cloud_file(tmp_path):
+    done = subprocess.run([sys.executable, str(REBUILD), "--cloud", str(tmp_path / "absent.yaml")],
+                          capture_output=True, text=True)
 
     assert done.returncode != 0
-    assert "--keystone" in done.stderr and "--password-file" in done.stderr
+    assert "absent.yaml does not exist" in done.stderr and "cloud.example.yaml" in done.stderr
 
 
-@pytest.mark.parametrize("changed, environ, which, said", [
-    ({"password_file": Path("/nonexistent")}, {"OS_AUTH_URL": "x"}, "/bin/openstack", "no password file"),
-    ({"keystone": "http://keystone:5000/v3"}, {"OS_AUTH_URL": "x"}, "/bin/openstack", "without /v3"),
-    ({}, {}, "/bin/openstack", "OS_AUTH_URL"),
-    ({}, {"OS_AUTH_URL": "x"}, None, "openstack CLI"),
+@pytest.mark.parametrize("changed, which, said", [
+    ({"identity__password_file": "/nonexistent"}, "/bin/openstack", "/nonexistent, which does not exist"),
+    ({"identity__keystone": "http://keystone:5000/v3"}, "/bin/openstack", "without /v3"),
+    ({"network__estate": "10.20.0.0/24"}, "/bin/openstack", "overlaps"),
+    ({}, None, "openstack CLI"),
 ])
-def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, changed, environ, which, said):
+def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, changed, which, said):
     module = rebuild()
 
     with pytest.raises(module.Refused, match=said):
-        module.refuse_unless_ready(ready_arguments(tmp_path, **changed), environ, lambda _: which)
+        module.load(written_cloud(tmp_path, **changed), {}, lambda _: which)
+
+
+def test_the_openstack_cli_is_driven_by_cloud_yaml_not_an_openrc(tmp_path):
+    module = rebuild()
+
+    cloud, environment = module.load(written_cloud(tmp_path), {}, lambda _: "/bin/openstack")
+
+    assert environment["OS_AUTH_URL"] == "http://192.168.0.110:5000/v3"
+    assert environment["OS_PASSWORD"] == "secret"
+    assert environment["OS_PROJECT_NAME"] == cloud.project
+    parameters = module.stack_arguments(cloud)
+    assert "flavor=m1.large" in parameters and "image=ubuntu-24.04" in parameters
 
 
 def test_the_rebuild_refuses_while_an_image_cannot_be_pulled():

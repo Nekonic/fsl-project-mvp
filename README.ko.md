@@ -118,40 +118,41 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 터미널 | 사람의 브라우저 |
 | 8002 | 블루 콘솔의 웹사이트 창: `/site/<세션 id>/<호스트>/`, 그 세션의 WAF로 넘김(compose 전용) | 사람의 브라우저 안 iframe |
-| 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 pfSense와 WAF |
+| 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 엣지와 WAF |
 | 9200 | Elasticsearch | 인수 테스트 |
 
 플랫폼 이미지 안의 nginx가 8000과 8002를 받는다. 8002는 대상 사이트용 별도 출처라 대상에 심긴 스크립트가 콘솔을 읽거나 조작하지 못한다. 쿠키는 포트가 아니라 호스트 단위라 그런 스크립트도 콘솔이 보낼 쿠키는 심을 수 있지만, 콘솔은 쿠키를 쓰지 않는다. nginx는 8000을 받아 `/terminal/<세션 id>/`를 그 세션의 Kali 컨테이너 `fsl-<id>-kali-1`의 ttyd로(compose), `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다(OpenStack. compose에서는 Kali와 WAF에 `mgmt` 주소가 없어 연결되지 않는다). compose에서 `/waf-terminal/<세션 id>/`는 플랫폼 안의 ttyd로 가고, ttyd가 `fsl-<id>-waf-1`에 `docker exec`한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000과 8002를 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. substrate가 OpenStack이면 `SITE_PORT`가 `None`이라 8002는 쓰이지 않고 보안 그룹 규칙도 필요 없다. 인수 테스트 VM(docker)에서는 보안 그룹이 8002를 연다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost). edge 네트워크는 모든 세션이 함께 쓰므로 이 이름은 모든 세션의 WAF로 풀린다. 그래서 플랫폼은 세션마다 프록시를 그 세션의 WAF로 향하게 하고, 실행하는 도구에는 그 WAF를 가리키는 `--add-host`를 준다.
 
 ### OpenStack에서
 
-`deploy/openstack/platform.yaml`은 플랫폼 VM용 Heat 템플릿이다. 이 템플릿이 무엇을 만들고 첫 부팅 때 무엇을 하는지는 `docs/ARCHITECTURE.md`("Built: the platform VM")에 있다. `bin/platform-rebuild`는 운영자 컴퓨터에서 스택을 만들거나, 서 있는 스택을 상태를 잃지 않고 교체한다. 프로젝트 멤버로서, 프로젝트의 openrc를 source하고 `python-openstackclient`와 `python-heatclient`를 설치한 상태에서 실행한다.
+클라우드마다 다른 값은 파일 하나에 모은다. `deploy/openstack/cloud.example.yaml`을 `deploy/openstack/cloud.yaml`로 복사하고(git은 이 파일을 무시한다) 채운다. Keystone URL, region, interface, domain, 프로젝트와 멤버 사용자, 비밀번호를 읽을 곳(`password_file` 또는 `password_env`, 비밀번호 자체는 파일에 넣지 않는다), 외부 네트워크, DNS, 테넌트 MTU, platform/estate/mgmt CIDR, 베이스 이미지 이름, availability zone, 플랫폼·이미지 빌더·레인지·역할(`edge`)별 flavor, 운영자 키페어와 키 파일, 레인지 키, 빌드할 OPNsense 릴리스(버전, 미러, 릴리스 공지에 실린 이미지 SHA256과 서명 키 SHA256), 스택·저장소·ref다. 모든 스크립트와 Heat 스택이 이 파일을 읽는다. 해석할 수 없는 값이 있으면 아무것도 건드리기 전에 거부하고, 문제마다 키 이름을 댄다.
+
+클라우드에 올려 둘 이미지는 정확히 하나다. Canonical의 Ubuntu 24.04 클라우드 이미지를 손대지 않고 `compute.base_image`가 가리키는 이름으로 올린다(내려받기, 체크섬 확인, `openstack image create` 명령은 `docs/OPENSTACK.md`에 있다). 나머지는 모두 부팅 때 이 이미지에서 만들어진다. 플랫폼 VM은 cloud-init이, 레인지의 골든 이미지는 빌더가, OPNsense 엣지 이미지는 공식 릴리스를 내려받는 빌더가 만든다(아래).
+
+`python-openstackclient`와 `python-heatclient`를 설치한 운영자 컴퓨터에서:
 
 ```bash
-bin/platform-rebuild --keystone http://KEYSTONE:5000 --password-file PASSWORD_FILE --flavor m1.large
+.venv/bin/python bin/cloud up        # 플랫폼 VM, 그다음 레인지 전체
+.venv/bin/python bin/cloud down      # 저장소 백업, 키 보관, 레인지와 스택 제거
 ```
 
-무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `flavor`와 `ref`로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다. 레인지는 건드리지 않는다. 레인지는 아래 API 호출로 만든다.
+`up`은 플랫폼의 Heat 스택(`deploy/openstack/platform.yaml`)이 없으면 만들고(`--replace`는 서 있는 스택을 `bin/platform-rebuild`로 교체한다), API를 기다린 뒤 플랫폼 자신의 레인지 API를 차례로 부른다: fabric, clean이 될 때까지 images, slot, configure. 그리고 `/api/range/ready/`가 ready라고 할 때까지 기다린다. 처음 만나는 drift, 실패한 이미지, 막힌 slot, 거부된 configure에서 멈추고 이유를 말한다. 두 명령 모두 아직 클라우드에서 실행해 보지 않았다.
 
-새 VM은 `ref`를 clone하고, 그 체크아웃의 커밋으로 태그된 이미지를 pull해서 시작한다. `keystone`은 `/v3`를 뺀 Keystone 기본 URL이고, `/v3`는 플랫폼이 붙인다. 사용자는 `default` 도메인에서 찾고, 프로젝트는 스택이 속한 프로젝트를 쓴다. 비밀 두 가지는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다: 비밀번호와 플랫폼의 레인지 ssh 키. VM이 ssh에 응답하고 cloud-init이 끝나면 `bin/platform-rebuild`가 `--password-file`의 `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙이고, 레인지 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 쓰고, 백업한 저장소를 복원하고(교체일 때), 플랫폼 컨테이너를 다시 만든다. 레인지 키는 운영자 컴퓨터의 `--range-key`(기본 `~/.ssh/fsl-platform`, 모드 0600)에 있다. 이 파일이 없으면 `bin/platform-rebuild`가 서 있는 플랫폼에서 한 번 복사해 오고, 서 있는 플랫폼도 없으면 거부한다. 키가 유지되므로 레인지 VM들과 키페어 `fsl-platform`은 새 플랫폼을 계속 신뢰하고, 플랫폼을 교체하는 동안 레인지는 그대로 서 있을 수 있다. 이 스크립트는 아직 클라우드에서 실행해 보지 않았다.
+`bin/platform-rebuild`만 쓰면 플랫폼 VM만 만들거나 교체한다.
 
-| 파라미터 | 기본값 | |
-|---|---|---|
-| `ref` | `dev` | clone할 브랜치나 태그 |
-| `repository` | GitHub의 이 저장소 | |
-| `user` | `fsl-range` | 플랫폼이 로그인하는 Keystone 사용자 |
-| `key_name` | `fsl-claude` | `ssh ubuntu@ADDRESS`에 필요한 개인 키가 속한 키페어 |
-| `image` | `ubuntu-24.04` | |
-| `flavor` | `m1.large` | 8 GB RAM, 4 vCPU, 80 GB 디스크. 클라우드에 없으면 한 번 만든다: `openstack flavor create --ram 8192 --vcpus 4 --disk 80 m1.large`(admin) |
-| `external_network` | `provider` | |
-| `cidr` | `10.20.0.0/24` | compose 서브넷이나 `172.17.0.0/16`과 겹치면 안 된다 |
-| `dns` | `8.8.8.8,8.8.4.4` | |
+```bash
+.venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
+```
+
+무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `cloud.yaml`의 모든 파라미터로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다.
+
+새 VM은 `ref`를 clone하고, 그 체크아웃의 커밋으로 태그된 이미지를 pull해서 시작한다. cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 쓴다. 비밀 두 가지는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다: 비밀번호와 플랫폼의 레인지 ssh 키. VM이 ssh에 응답하고 cloud-init이 끝나면 `bin/platform-rebuild`가 `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙이고, 레인지 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 쓰고, 백업한 저장소를 복원하고(교체일 때), 플랫폼 컨테이너를 다시 만든다. 레인지 키는 운영자 컴퓨터의 `keys.range`(모드 0600)에 있다. 이 파일이 없으면 서 있는 플랫폼에서 한 번 복사해 오고, 서 있는 플랫폼도 없으면 거부한다. 키가 유지되므로 레인지 VM들과 키페어 `fsl-platform`은 새 플랫폼을 계속 신뢰하고, 플랫폼을 교체하는 동안 레인지는 그대로 서 있을 수 있다.
 
 스택의 `address` 출력값이 floating IP다. 콘솔은 `http://ADDRESS:8000/`에 있으며 로그인을 묻지 않는다. 9200은 VM의 loopback에만 있고, 5140/udp는 VM의 모든 주소에서 받는다.
 
 VM에서 checkout 위치는 `/opt/fsl`이고 소유자는 `ubuntu`다. compose, `bin/backup`, 아래의 복원 절차는 거기서 실행한다. 마지막 부팅 때 스택이 어떻게 올라왔는지는 `systemctl status fsl-platform`으로 본다.
 
-비밀번호를 넣고 나면 플랫폼이 자기 API를 통해 레인지의 네트워크를 만든다.
+`bin/cloud up`이 밟는 레인지 단계는 손으로도 부를 수 있다. fabric(네트워크, 키페어, 그룹):
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/fabric/
@@ -159,7 +160,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 
 `GET`은 없는 것, 있는 것, 어긋난 것, 남은 것을 보여 주고, `DELETE`는 네트워크를 내리되 서버가 붙어 있으면 거부된다.
 
-레인지의 VM들은 플랫폼이 설정 스크립트로 만든 골든 이미지에서 부팅한다. 그 스크립트는 `declaration.yaml`이 `hosts:` 아래에 지정한다. POST 하나가 모든 빌드를 한 단계씩 진행하므로(빌더를 부팅하고, 설정이 보고하면 멈추고, 스냅샷을 찍고, 삭제한다), 답이 `"clean": true`라고 할 때까지 반복한다. 약 7분 걸린다.
+레인지의 VM들은 플랫폼이 설정 스크립트로 만든 골든 이미지에서 부팅한다. 그 스크립트는 `declaration.yaml`이 `hosts:` 아래에 지정하고, 각각 베이스 이미지로 부팅한 빌더에서 돈다. POST 하나가 모든 빌드를 한 단계씩 진행하므로(빌더를 부팅하고, 설정이 보고하면 멈추고, 스냅샷을 찍고, 삭제한다. 엣지의 빌더는 스냅샷 대신 자기가 만든 디스크를 올린다), 답이 `"clean": true`라고 할 때까지 반복한다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
@@ -167,43 +168,25 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 
 빌드가 실패하면 `detail`에 그 콘솔의 끝부분을 보여 준다. 같은 경로에 `DELETE`를 보내면 실패한 빌더와 오래된 스크립트로 만든 이미지를 지운다.
 
-이미지가 준비되면 POST 하나가 `fsl-pfsense`, `fsl-kali`, `fsl-waf`, `fsl-wg-board`를 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
+이미지가 준비되면 POST 하나가 `fsl-edge`, `fsl-kali`, `fsl-waf`, `fsl-wg-board`를 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. pfSense의 WAN 주소, pass 규칙, Suricata와 syslog, WAF의 ModSecurity 로그 전달이다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. 세션을 닫으면 이것이 호출된다. rebuild는 넣어 둔 설정을 지우므로 VM이 올라오면 `configure/`를 다시 실행한다(게시판은 이미지에 들어 있어 rebuild만 하면 된다).
+그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. OPNsense 엣지의 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅하며, WAF의 ModSecurity 로그 전달을 설정한다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. 세션을 닫으면 이것이 호출된다. rebuild는 넣어 둔 설정을 지우므로 VM이 올라오면 `configure/`를 다시 실행한다(게시판은 이미지에 들어 있어 rebuild만 하면 된다).
 
 레인지는 스택 바깥에 있다. `bin/platform-rebuild`로 교체한 플랫폼은 레인지 키를 유지하므로 slot과 fabric은 교체 중에도 서 있을 수 있다. 새 서버는 다음 `POST /api/range/fabric/`에서 `mgmt`에 다시 붙고, `configure/`가 레인지의 syslog를 새 서버로 돌린다. 키를 보관하지 않고 손으로 스택을 지우면 새 VM은 새 키를 만들고 fabric은 이전 키페어를 drift로 보고한다. 그때는 먼저 `/api/range/slot/`과 `/api/range/fabric/`에 `DELETE`를 보낸다. 이미지는 남는다.
 
-스택은 `key_name`이 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저 있어야 한다.
+스택은 `keys.operator`가 가리키는 키페어로 부팅하므로, 그 키페어가 프로젝트에 먼저 있어야 한다.
 
 ```bash
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
-### pfSense 이미지
+### OPNsense 이미지
 
-pfSense CE는 클라우드 이미지도, 스크립트 설치도 없다. 설치 수단은 Netgate의 온라인 설치 프로그램 하나뿐이고(`netgate-installer-v1.2-RELEASE-amd64.iso`, $0 Netgate Store 결제로 받는다), 이것으로 CE를 설치하는 데는 계정이 필요 없다. 클라우드에 volume 서비스가 없어서, 설치는 Nova의 stable rescue를 통해 서버 자신의 root 디스크로 들어간다. stable rescue는 ISO를 CD-ROM으로 부팅하고 서버의 디스크를 붙인 채로 둔다. `fsl-range`로서 실행한다.
-
-```bash
-openstack image create netgate-installer --file netgate-installer.iso --disk-format iso --container-format bare --private --property hw_rescue_device=cdrom --property hw_rescue_bus=scsi --property hw_scsi_model=virtio-scsi
-openstack network create fsl-pfsense-build-lan
-openstack subnet create --network fsl-pfsense-build-lan --subnet-range 192.168.1.0/24 --no-dhcp --gateway none fsl-pfsense-build-lan
-openstack server create --image cirros-0.6.3 --flavor m1.small --network fsl-platform --network fsl-pfsense-build-lan --wait fsl-pfsense-build
-openstack server rescue --image netgate-installer fsl-pfsense-build
-openstack console url show --novnc fsl-pfsense-build
-```
-
-그 콘솔에서: 안내를 수락하고, Install, WAN은 `vtnet0`(인터넷에 닿는 `fsl-platform` 포트)을 DHCP로, LAN은 `vtnet1`을 기본값으로, Install CE, `vtbd0`에 ZFS와 GPT, 현재 stable 버전, 그다음 Halt를 고른다. Reboot를 고르면 설치 프로그램이 다시 시작된다. 그다음 `openstack server unrescue fsl-pfsense-build`를 실행하고, pfSense가 메뉴까지 부팅하는지 확인하고, 옵션 6으로 멈춘 뒤 다음을 실행한다.
-
-```bash
-openstack server image create --name fsl-pfsense --wait fsl-pfsense-build
-openstack image set --property hw_vif_model=virtio --property hw_disk_bus=virtio --property os_distro=freebsd fsl-pfsense
-```
-
-그 뒤 `fsl-pfsense-build`와 build LAN을 지운다. pfSense는 비디오 콘솔에 쓰므로 `openstack console log show`는 비어 있다. noVNC를 쓴다.
+엣지는 OPNsense(BSD 2-clause)이고, images 단계가 자동으로 만든다. 손대지 않은 Ubuntu 이미지로 부팅한 빌더가 도구를 설치하고, `opnsense.mirror`에서 `OPNsense-<version>-nano-amd64.img.bz2`와 그 `.sig`, 릴리스 키를 내려받는다. 압축 파일은 `opnsense.image_sha256`과, 키는 `opnsense.pubkey_sha256`과 대조한다(둘 다 미러가 아니라 릴리스 공지에서 가져온 값이다). 압축을 풀고 서명을 확인한 뒤, QEMU로 한 번 부팅해 설정 가져오기(importer) 프롬프트에 답해서 `deploy/opnsense/config.xml`로 시작하게 한다(root는 플랫폼 키만 신뢰하고 비밀번호가 없다. 기본 이미지의 기본 비밀번호는 한 번도 존재하지 않는다). 그다음 `qemu-img`로 qcow2로 바꿔 Glance에 `fsl-opnsense-<version>`으로 올린다. 버전, MTU, 플랫폼 키가 바뀌면 이미지를 새로 만든다. 이미지는 클라우드마다 공식 릴리스에서 만들 뿐 배포하지 않는다. OPNsense 상표 정책은 파생 이름을 쓰기 전에 허락을 받으라고 한다.
 
 ## 세션 진행
 

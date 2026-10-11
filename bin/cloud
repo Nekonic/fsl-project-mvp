@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+REBUILD = ROOT / "bin/platform-rebuild"
+CALL_TIMEOUT = 1800
+IMAGES_WAIT = 4 * 3600
+SLOT_WAIT = 1800
+READY_WAIT = 1800
+POLL = 30
+CONFIGURE_TRIES = 10
+BOOTING = ("NOT_STANDING", "REBUILDING")
+
+
+def rebuild_module():
+    loader = SourceFileLoader("platform_rebuild", str(REBUILD))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("platform_rebuild", loader))
+    sys.modules["platform_rebuild"] = module
+    loader.exec_module(module)
+    return module
+
+
+rebuild = rebuild_module()
+Refused = rebuild.Refused
+
+
+def arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="cloud",
+        description="Bring the whole OpenStack environment up from cloud.yaml, or take it "
+                    "down: the platform VM's Heat stack, then the range through the "
+                    "platform's own API. Run it with .venv/bin/python; it needs the "
+                    "openstack CLI with python-heatclient.",
+    )
+    parser.add_argument("action", choices=("up", "down"))
+    parser.add_argument("--cloud", type=Path, default=rebuild.CLOUD,
+                        help="the cloud settings file (default deploy/openstack/cloud.yaml)")
+    parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
+    parser.add_argument("--replace", action="store_true",
+                        help="up: replace a standing platform VM, keeping its store and range key")
+    return parser.parse_args(argv)
+
+
+class Platform:
+    def __init__(self, address: str):
+        self.base = f"http://{address}:8000/api/range"
+
+    def __call__(self, verb: str, path: str) -> tuple[int, dict]:
+        request = urllib.request.Request(
+            self.base + path, method=verb, data=b"{}" if verb == "POST" else None,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=CALL_TIMEOUT) as answer:
+                return answer.status, json.load(answer)
+        except urllib.error.HTTPError as refused:
+            said = refused.read().decode(errors="replace")
+            try:
+                return refused.code, json.loads(said)
+            except ValueError:
+                return refused.code, {"detail": said[:500]}
+        except OSError as gone:
+            return 0, {"detail": f"could not reach {self.base}: {gone}"}
+
+
+def _done(call, verb: str, path: str) -> dict:
+    status, body = call(verb, path)
+    if status != 200:
+        raise Refused(f"cloud: {verb} /api/range{path} answered {status}: {body.get('detail', body)}")
+    return body
+
+
+def _until(what: str, wait: float, sleep, clock, step):
+    deadline = clock() + wait
+    while True:
+        found = step()
+        if found is not None:
+            return found
+        if clock() > deadline:
+            raise Refused(f"cloud: {what} did not happen within {wait:.0f}s")
+        sleep(POLL)
+
+
+def _images(call):
+    plan = _done(call, "POST", "/images/")
+    failed = [f"{i['host']}: {i['detail']}" for i in plan["images"] if i["state"] == "failed"]
+    unbuildable = [i["host"] for i in plan["images"] if i["state"] == "missing" and not i["bundle"]]
+    if failed or unbuildable:
+        raise Refused(
+            "cloud: an image cannot be made; DELETE /api/range/images/ clears failed builds:\n  "
+            + "\n  ".join(failed + [f"{host}: no script builds it" for host in unbuildable])
+        )
+    if plan["clean"]:
+        return plan
+    if all(i["state"] == "ready" for i in plan["images"]) and plan["leftovers"]:
+        _done(call, "DELETE", "/images/")
+    print("images: " + ", ".join(f"{i['host']} {i['state']}" for i in plan["images"]), flush=True)
+    return None
+
+
+def _standing(call):
+    slot = _done(call, "GET", "/ready/").get("slot") or {}
+    return slot if slot.get("phase") not in BOOTING else None
+
+
+def _ready(call):
+    ready = _done(call, "GET", "/ready/")
+    return ready if ready["ready"] else None
+
+
+def _configured(call, sleep):
+    for attempt in range(CONFIGURE_TRIES):
+        status, body = call("POST", "/configure/")
+        if status == 200:
+            return body
+        if status != 503 or attempt == CONFIGURE_TRIES - 1:
+            raise Refused(f"cloud: POST /api/range/configure/ answered {status}: {body.get('detail', body)}")
+        print(f"configure: {body.get('detail', '')[:200]}; trying again", flush=True)
+        sleep(POLL)
+
+
+def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
+    fabric = _done(call, "POST", "/fabric/")
+    if fabric["drifted"]:
+        raise Refused("cloud: the fabric drifted:\n  " + "\n  ".join(fabric["drifted"]))
+    _until("the images", IMAGES_WAIT, sleep, clock, lambda: _images(call))
+    slot = _done(call, "POST", "/slot/")
+    if slot["blocked"]:
+        raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
+    _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
+    _configured(call, sleep)
+    return _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
+
+
+def up(args: argparse.Namespace) -> str:
+    cloud, environment = rebuild.load(args)
+    os.environ.update(environment)
+    address = rebuild.address_of(cloud.stack)
+    if address is None or args.replace:
+        address = rebuild.rebuild(cloud, environment)
+    else:
+        rebuild.wait_for_api(address)
+    converge(Platform(address))
+    return address
+
+
+def take_down(call, stack: str, run) -> None:
+    _done(call, "DELETE", "/slot/")
+    _done(call, "DELETE", "/fabric/")
+    run(["openstack", "stack", "delete", "--yes", "--wait", stack])
+
+
+def down(args: argparse.Namespace) -> None:
+    cloud, environment = rebuild.load(args)
+    os.environ.update(environment)
+    address = rebuild.address_of(cloud.stack)
+    if address is None:
+        print(f"no stack {cloud.stack}; nothing to take down")
+        return
+    with tempfile.TemporaryDirectory() as scratch:
+        old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
+                           Path(cloud.operator_key_file).expanduser())
+        rebuild.keep_range_key(Path(cloud.range_key).expanduser(), old)
+        rebuild.back_up(old)
+    take_down(Platform(address), cloud.stack, rebuild.run)
+    print("the platform and the range are gone; Glance keeps the images")
+
+
+def main(argv: list[str]) -> int:
+    args = arguments(argv)
+    if args.action == "up":
+        address = up(args)
+        print(f"the range is ready; the platform is at http://{address}:8000/")
+    else:
+        down(args)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

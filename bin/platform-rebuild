@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import importlib.util
 import json
 import re
 import os
@@ -18,13 +20,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
-DEFAULT_KEY = Path("~/.ssh/fsl-platform").expanduser()
-DEFAULT_FLAVOR = "m1.large"
+CLOUD = ROOT / "deploy/openstack/cloud.yaml"
+LOADER = ROOT / "platform/range/cloud.py"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
 CHECKOUT = "/opt/fsl"
 SSH_WAIT = 900
 API_WAIT = 1200
-REPOSITORY = "https://github.com/Nekonic/fsl-project-mvp.git"
 REGISTRY = "ghcr.io"
 OWNER = "nekonic"
 IMAGES = ("platform", "board", "corp", "corp-db", "kali", "proxy")
@@ -44,44 +45,49 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="platform-rebuild",
         description="Create the platform VM's Heat stack, or replace a standing one "
-                    "and carry its store and its range ssh key across. Needs the "
-                    "project's openrc sourced and the openstack CLI with "
-                    "python-heatclient.",
+                    "and carry its store and its range ssh key across. Every cloud "
+                    "value comes from cloud.yaml; needs the openstack CLI with "
+                    "python-heatclient and PyYAML (run it with .venv/bin/python).",
     )
-    parser.add_argument("--keystone", required=True, help="Keystone's base URL without /v3")
-    parser.add_argument("--password-file", required=True, type=Path,
-                        help="the file holding the Keystone user's password")
-    parser.add_argument("--flavor", default=DEFAULT_FLAVOR)
-    parser.add_argument("--ref", default="dev")
-    parser.add_argument("--stack", default="fsl-platform")
-    parser.add_argument("--range-key", type=Path, default=DEFAULT_KEY,
-                        help="the platform's private key the range's VMs trust; "
-                             "taken once from the running platform when absent")
-    parser.add_argument("--ssh-user", default="ubuntu")
+    parser.add_argument("--cloud", type=Path, default=CLOUD,
+                        help="the cloud settings file (default deploy/openstack/cloud.yaml)")
+    parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
     return parser.parse_args(argv)
 
 
-def refuse_unless_ready(args: argparse.Namespace, environ=os.environ, which=shutil.which) -> None:
-    if not args.password_file.is_file():
-        raise Refused(f"platform-rebuild: no password file at {args.password_file}")
-    if not args.keystone.startswith(("http://", "https://")) or args.keystone.rstrip("/").endswith("/v3"):
-        raise Refused(
-            f"platform-rebuild: --keystone is Keystone's base URL without /v3, "
-            f"got {args.keystone!r}"
-        )
-    if not environ.get("OS_AUTH_URL"):
-        raise Refused("platform-rebuild: OS_AUTH_URL is unset; source the project's openrc first")
+def settings_module():
+    try:
+        import yaml  # noqa: F401
+    except ImportError as missing:
+        raise Refused("platform-rebuild: PyYAML is missing; run it with .venv/bin/python") from missing
+    spec = importlib.util.spec_from_file_location("fsl_cloud", LOADER)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load(args: argparse.Namespace, environ=os.environ, which=shutil.which):
+    module = settings_module()
+    try:
+        cloud = module.read(args.cloud)
+        if args.ref:
+            cloud = dataclasses.replace(cloud, ref=args.ref)
+        environment = cloud.cli_environment(environ)
+    except module.Invalid as invalid:
+        raise Refused(f"{Path(sys.argv[0]).name}: {invalid}") from invalid
     if which("openstack") is None:
-        raise Refused("platform-rebuild: no openstack CLI on PATH (pip install python-openstackclient python-heatclient)")
+        raise Refused(f"{Path(sys.argv[0]).name}: no openstack CLI on PATH (pip install python-openstackclient python-heatclient)")
+    return cloud, environment
 
 
-def commit_of(ref: str) -> str:
+def commit_of(repository: str, ref: str) -> str:
     if re.fullmatch(r"[0-9a-f]{40}", ref):
         return ref
-    done = run(["git", "ls-remote", REPOSITORY, f"refs/heads/{ref}", f"refs/tags/{ref}"])
+    done = run(["git", "ls-remote", repository, f"refs/heads/{ref}", f"refs/tags/{ref}"])
     found = done.stdout.decode().split()
     if not found:
-        raise Refused(f"platform-rebuild: {REPOSITORY} has no branch or tag {ref!r}")
+        raise Refused(f"platform-rebuild: {repository} has no branch or tag {ref!r}")
     return found[0]
 
 
@@ -133,9 +139,10 @@ def address_of(stack: str) -> str | None:
 
 
 class Host:
-    def __init__(self, user: str, address: str, known_hosts: Path):
+    def __init__(self, user: str, address: str, known_hosts: Path, identity: Path):
         self.target = f"{user}@{address}"
-        self.options = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+        self.options = ["-i", str(identity), "-o", "IdentitiesOnly=yes",
+                        "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
                         "-o", "StrictHostKeyChecking=accept-new",
                         "-o", f"UserKnownHostsFile={known_hosts}"]
 
@@ -181,30 +188,33 @@ def back_up(old: Host) -> Path:
     return Path(done.stdout.splitlines()[0])
 
 
-def replace_stack(args: argparse.Namespace, existed: bool) -> str:
+def stack_arguments(cloud) -> list[str]:
+    return [
+        argument for name, value in cloud.heat_parameters().items()
+        for argument in ("--parameter", f"{name}={value}")
+    ]
+
+
+def replace_stack(cloud, existed: bool) -> str:
     if existed:
-        run(["openstack", "stack", "delete", "--yes", "--wait", args.stack])
+        run(["openstack", "stack", "delete", "--yes", "--wait", cloud.stack])
     run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE),
-         "--parameter", f"keystone={args.keystone}",
-         "--parameter", f"flavor={args.flavor}",
-         "--parameter", f"ref={args.ref}",
-         args.stack])
-    address = address_of(args.stack)
+         *stack_arguments(cloud), cloud.stack])
+    address = address_of(cloud.stack)
     if not address:
-        raise Refused(f"platform-rebuild: stack {args.stack} has no address output")
+        raise Refused(f"platform-rebuild: stack {cloud.stack} has no address output")
     return address
 
 
-def hand_over(new: Host, args: argparse.Namespace, store: Path | None) -> None:
+def hand_over(new: Host, password: str, range_key: Path, store: Path | None) -> None:
     compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
     new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform")
-    password = b"FSL_OPENSTACK_PASSWORD=" + args.password_file.read_bytes().strip() + b"\n"
-    new.ssh(f"cat >> {CHECKOUT}/openstack.env", password)
+    new.ssh(f"cat >> {CHECKOUT}/openstack.env", f"FSL_OPENSTACK_PASSWORD={password}\n".encode())
     new.ssh(
         "sudo docker exec -i -u fsl fsl-platform sh -c "
         + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "
                       f"&& ssh-keygen -y -f {PLATFORM_KEY} > {PLATFORM_KEY}.pub"),
-        args.range_key.read_bytes(),
+        range_key.read_bytes(),
     )
     if store is not None:
         new.ssh(f"mkdir -p {CHECKOUT}/backups")
@@ -234,22 +244,29 @@ def wait_for_api(address: str) -> None:
         time.sleep(10)
 
 
-def main(argv: list[str]) -> int:
-    args = arguments(argv)
-    refuse_unless_ready(args)
-    refuse_unless_published(commit_of(args.ref))
+def rebuild(cloud, environment: dict[str, str]) -> str:
+    os.environ.update(environment)
+    refuse_unless_published(commit_of(cloud.repository, cloud.ref))
+    range_key = Path(cloud.range_key).expanduser()
+    identity = Path(cloud.operator_key_file).expanduser()
     with tempfile.TemporaryDirectory() as scratch:
         known_hosts = Path(scratch) / "known_hosts"
-        old_address = address_of(args.stack)
-        old = Host(args.ssh_user, old_address, known_hosts) if old_address else None
-        keep_range_key(args.range_key, old)
+        old_address = address_of(cloud.stack)
+        old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
+        keep_range_key(range_key, old)
         store = back_up(old) if old else None
         known_hosts.unlink(missing_ok=True)
-        address = replace_stack(args, existed=old is not None)
-        new = Host(args.ssh_user, address, known_hosts)
+        address = replace_stack(cloud, existed=old is not None)
+        new = Host("ubuntu", address, known_hosts, identity)
         new.wait()
-        hand_over(new, args, store)
+        hand_over(new, environment["OS_PASSWORD"], range_key, store)
         wait_for_api(address)
+    return address
+
+
+def main(argv: list[str]) -> int:
+    cloud, environment = load(arguments(argv))
+    address = rebuild(cloud, environment)
     print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
     return 0
 

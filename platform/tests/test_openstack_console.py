@@ -26,15 +26,15 @@ def _server(host, status="ACTIVE"):
     return {"id": "srv-1", "status": status, "metadata": {slot.HOST: host}}
 
 def test_the_console_url_is_the_hosts_novnc():
-    cloud = Fake([_server("fsl-pfsense")])
-    assert adapter(cloud).console("fsl-pfsense") == URL
+    cloud = Fake([_server("fsl-edge")])
+    assert adapter(cloud).console("fsl-edge") == URL
     actions = [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")]
     assert actions and actions[0][2] == {"os-getVNCConsole": {"type": "novnc"}}
 
 def test_a_host_that_is_not_booted_has_no_console():
-    with pytest.raises(RangeUnavailable, match="fsl-pfsense"):
-        adapter(Fake([])).console("fsl-pfsense")
+    with pytest.raises(RangeUnavailable, match="fsl-edge"):
+        adapter(Fake([])).console("fsl-edge")
 
 def test_a_console_without_a_url_is_unavailable():
     with pytest.raises(RangeUnavailable, match="console url"):
-        adapter(Fake([_server("fsl-pfsense")], url="")).console("fsl-pfsense")
+        adapter(Fake([_server("fsl-edge")], url="")).console("fsl-edge")

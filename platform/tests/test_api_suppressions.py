@@ -21,10 +21,10 @@ class Suricata:
         self.content = content
         self.applied = []
 
-    def current(self, sensor):
+    def current(self, sensor, path=None):
         return self.content
 
-    def apply(self, content, sensor, reload_command=None):
+    def apply(self, content, sensor, reload_command=None, path=None):
         self.applied.append(content)
         self.content = content
 
@@ -119,11 +119,11 @@ def test_a_suppression_can_be_lifted_by_hand(client, ids):
 REWORDED = 'alert http any any -> any any (msg:"FSL SQLi attempt - URI, reworded"; sid:9000001; rev:1;)\n'
 
 def refuses_a_duplicate_signature(ids):
-    def apply(content, sensor, reload_command=None):
+    def apply(content, sensor, reload_command=None, path=None):
         active = [l for l in content.splitlines() if "sid:9000001" in l and not l.startswith("#")]
         if len(active) > 1:
             raise RuleApplyError(f'Duplicate signature "{active[-1]}"')
-        ids.apply(content, sensor, reload_command)
+        ids.apply(content, sensor, reload_command, path)
 
     return patch("api.views.suricata.apply", apply)
 

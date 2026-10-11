@@ -1,14 +1,15 @@
 import ipaddress
 import pathlib
 
-from range import declared, fabric
+from range import cloud, declared, fabric
 
 DECLARED = declared.read()
+INSIDE = cloud.read(cloud.EXAMPLE).inside
 PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl@platform"
 
 def built():
     networks, subnets = [], []
-    for want in fabric.wanted(DECLARED):
+    for want in fabric.wanted(DECLARED, INSIDE):
         net_id = f"net-{want.segment}"
         if not any(n["id"] == net_id for n in networks):
             networks.append({
@@ -28,7 +29,7 @@ GROUPS = [{"id": "sg-range", "name": fabric.RANGE_GROUP},
 
 def planned(networks=(), subnets=(), keypairs=(), groups=GROUPS, reached=True):
     return fabric.plan(DECLARED, list(networks), list(subnets), list(keypairs),
-                       PUBLIC_KEY, list(groups), reached)
+                       PUBLIC_KEY, list(groups), reached, INSIDE)
 
 def test_an_empty_project_gets_every_network_every_subnet_and_the_key():
     plan = planned()
@@ -38,7 +39,7 @@ def test_an_empty_project_gets_every_network_every_subnet_and_the_key():
     assert plan.keypair and not plan.clean
 
 def test_the_internet_network_holds_one_subnet_per_origin_with_no_dhcp():
-    internet = [s for s in fabric.wanted(DECLARED) if s.segment == "internet"]
+    internet = [s for s in fabric.wanted(DECLARED, INSIDE) if s.segment == "internet"]
 
     assert [(s.name, s.cidr) for s in internet] == [
         (f"fsl-{o.id}", o.subnet) for o in DECLARED.origins
@@ -49,7 +50,7 @@ def test_the_internet_network_holds_one_subnet_per_origin_with_no_dhcp():
     )
 
 def test_management_gives_no_default_route():
-    [mgmt] = [s for s in fabric.wanted(DECLARED) if s.segment == "mgmt"]
+    [mgmt] = [s for s in fabric.wanted(DECLARED, INSIDE) if s.segment == "mgmt"]
 
     assert not mgmt.gateway and mgmt.dhcp, (
         "a default route through management would send every range host's "
@@ -123,7 +124,7 @@ def test_the_inside_networks_overlap_nothing_the_platform_vm_already_routes():
         "172.30.0.0/24", "172.31.0.0/24", "172.17.0.0/16",
         "10.20.0.0/24", "192.168.0.0/24",
     ] + [o.subnet for o in DECLARED.origins]
-    inside = [ipaddress.ip_network(cidr) for cidr in fabric.INSIDE.values()]
+    inside = [ipaddress.ip_network(cidr) for cidr in INSIDE.values()]
 
     assert not [
         (str(net), cidr) for net in inside for cidr in held

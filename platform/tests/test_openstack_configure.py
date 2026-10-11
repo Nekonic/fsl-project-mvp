@@ -2,10 +2,12 @@ import pathlib
 
 import pytest
 
-from range import declared, openstack, pfsense
-from range.ports import Drifted, Node, Ran, Segment, Shape
+from range import cloud, declared, openstack, opnsense
+from range.ports import Drifted, Node, Ran, RangeUnavailable, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+INSIDE = cloud.read(cloud.EXAMPLE).inside
+KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"
 OS = declared.read(flavor="openstack")
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
@@ -17,32 +19,42 @@ def _shape():
     origins = tuple(
         Segment(id=o.id, name=o.label, origin=o.label, subnet=o.subnet,
                 gateway=o.subnet.replace("0/24", "1"),
-                nodes=(Node("fsl-pfsense", o.subnet.replace("0/24", "1")),))
+                nodes=(Node("fsl-edge", o.subnet.replace("0/24", "1")),))
         for o in OS.origins
     )
+    estate = Segment(id="estate", name="Estate", subnet="10.30.0.0/24", gateway="10.30.0.1")
     mgmt = Segment(id="mgmt", name="Management", subnet="10.31.0.0/24",
-                   nodes=(Node("fsl-pfsense", "10.31.0.63"), Node("fsl-platform", "10.31.0.195"),
+                   nodes=(Node("fsl-edge", "10.31.0.63"), Node("fsl-platform", "10.31.0.195"),
                           Node("fsl-waf", "10.31.0.198")))
-    return Shape(segments=origins + (mgmt,), sensors=())
+    return Shape(segments=origins + (estate, mgmt), sensors=())
 
 class Edge:
-    def __init__(self, holds=None, exit_code=0, sensor="running", logs="10.31.0.195:5140", wanrule=1):
+    def __init__(self, holds=None, exit_code=0, sensor="running", logs="10.31.0.195:5140",
+                 wanrule=1, reboots=True, unreachable=0):
         self.calls = []
         self.sensor = sensor
         self.logs = logs
         self.wanrule = wanrule
         self.holds = holds
         self.exit_code = exit_code
+        self.reboots = reboots
+        self.unreachable = unreachable
 
     def __call__(self, role, segment_id=""):
         def run(argv, stdin=None, timeout=60.0):
             self.calls.append((role, argv, stdin))
+            if role != "edge":
+                return Ran(self.exit_code, "")
+            if argv == opnsense.command():
+                return Ran(self.exit_code, "fsl-edge booted 100\nfsl-edge rebooting\n")
+            if self.unreachable:
+                self.unreachable -= 1
+                raise RangeUnavailable("fsl-edge at 10.31.0.63 never reported the command finishing")
             holds = self.holds if self.holds is not None else [
                 o.subnet.replace("0/24", "1") for o in OS.origins
             ]
-            if role != "edge":
-                return Ran(self.exit_code, "")
-            return Ran(self.exit_code, "fsl-edge wan " + " ".join(holds) + "\n"
+            return Ran(self.exit_code, f"fsl-edge booted {200 if self.reboots else 100}\n"
+                       + "fsl-edge wan " + " ".join(holds) + "\n"
                        + f"fsl-edge sensor vtnet0 {self.sensor}\n"
                        + f"fsl-edge logs {self.logs}\n"
                        + f"fsl-edge wanrule {self.wanrule}\n")
@@ -69,34 +81,61 @@ class Groups:
 
 def _adapter(edge, groups=None):
     built = openstack.OpenStack(OS, SPEC, get=groups or Groups(),
-                                build=openstack.Build(source=str(ROOT)))
+                                build=openstack.Build(source=str(ROOT), inside=INSIDE, mtu=1450))
     built._shape = _shape()
     built.runner = edge
+    built._public_key = lambda make=False: KEY
     return built
 
-def test_configuring_the_edge_plays_the_static_script_back_on_it_over_management():
+@pytest.fixture(autouse=True)
+def no_waiting(monkeypatch):
+    monkeypatch.setattr(openstack.time, "sleep", lambda seconds: None)
+
+def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it():
     edge = Edge()
 
     done = _adapter(edge).configure_edge()
 
-    (role, argv, stdin), = edge.calls
-    assert role == "edge" and argv == pfsense.command()
-    template = (ROOT / pfsense.TEMPLATE).read_text()
-    rules = (ROOT / pfsense.RULES).read_text()
-    wanted = pfsense.settings(_shape().segments, OS, rules, "10.31.0.195:5140")
-    assert stdin == pfsense.playback(wanted, template)
+    (role, argv, stdin), *after = edge.calls
+    assert role == "edge" and argv == opnsense.command()
+    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY)
+    assert stdin == opnsense.playback(
+        opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted),
+        (ROOT / opnsense.INCLUDE).read_text(),
+        (ROOT / opnsense.RULES).read_text(),
+        (ROOT / opnsense.SCRIPT).read_text(),
+    )
+    assert [call[1] for call in after] == [opnsense.verify()]
     host, reported = done
-    assert host == "fsl-pfsense" and "logs 10.31.0.195:5140" in reported
+    assert host == "fsl-edge" and "logs 10.31.0.195:5140" in reported
+
+def test_the_edge_is_read_back_only_once_it_has_rebooted():
+    edge = Edge(unreachable=3)
+
+    _adapter(edge).configure_edge()
+
+    assert len([call for call in edge.calls if call[1] == opnsense.verify()]) == 4
+
+def test_an_edge_that_never_reboots_is_drift(monkeypatch):
+    clock = iter(range(0, 100000, 100))
+    monkeypatch.setattr(openstack.time, "monotonic", lambda: next(clock))
+
+    with pytest.raises(Drifted, match="did not come back from its reboot"):
+        _adapter(Edge(reboots=False)).configure_edge()
+
+def test_an_edge_that_refused_its_configuration_is_not_waited_for():
+    edge = Edge(exit_code=1)
+
+    with pytest.raises(Drifted, match="did not take its configuration"):
+        _adapter(edge).configure_edge()
+
+    assert len(edge.calls) == 1
 
 def test_an_edge_that_does_not_hold_every_origin_gateway_afterwards_is_drift():
     edge = Edge(holds=["73.0.0.1"])
 
     with pytest.raises(Drifted, match="120.96.0.1"):
         _adapter(edge).configure_edge()
-
-def test_an_edge_whose_playback_failed_is_drift_even_if_it_printed_addresses():
-    with pytest.raises(Drifted, match="exit"):
-        _adapter(Edge(exit_code=1)).configure_edge()
 
 def test_an_edge_logging_somewhere_else_afterwards_is_drift():
     with pytest.raises(Drifted, match="logs"):
@@ -107,7 +146,7 @@ def test_configuring_the_slot_configures_the_edge_and_the_waf_and_opens_the_coll
 
     done = _adapter(edge, groups).configure_slot()
 
-    assert [host for host, _ in done] == ["fsl-pfsense", "fsl-waf", "fsl-platform"]
+    assert [host for host, _ in done] == ["fsl-edge", "fsl-waf", "fsl-platform"]
     heard = {r["remote_ip_prefix"] for r in groups.group["security_group_rules"]}
     assert heard == {"10.31.0.63/32", "10.31.0.198/32"}
 

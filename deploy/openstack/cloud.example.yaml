@@ -1,0 +1,48 @@
+# Everything that differs between OpenStack clouds, in one file.
+# Copy to cloud.yaml (ignored by git), fill in, then run bin/cloud up.
+# No secret goes here: only where to read the password from.
+
+identity:
+  keystone: http://192.168.0.110:5000   # Keystone's base URL, without /v3
+  region: RegionOne
+  interface: public                     # the catalogue interface the platform calls
+  domain: default                       # the id of the user's and the project's domain
+  project: fsl-range                    # a project this member user belongs to
+  user: fsl-range                       # a member, never admin
+  password_file: ~/.config/fsl/fsl-range.password
+  # password_env: FSL_OPENSTACK_PASSWORD   # instead of password_file
+
+network:
+  external: provider                    # the external network floating IPs come from
+  dns: [8.8.8.8, 8.8.4.4]
+  mtu: 1450                             # the tenant networks' MTU (1450 on VXLAN)
+  platform: 10.20.0.0/24                # the platform VM's network
+  estate: 10.30.0.0/24                  # the targets and the WAF
+  mgmt: 10.31.0.0/24                    # out-of-band: ssh and syslog only
+
+compute:
+  base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is
+  availability_zone: ""                 # empty: Nova chooses
+  flavors:
+    platform: m1.large                  # 8 GB or more
+    builder: m1.medium                  # image builders; the OPNsense builder boots it under QEMU
+    range: m1.small                     # every range VM no role below names; 20 GB disk or more
+    edge: m1.medium                     # OPNsense wants 3 GB of RAM or more
+
+keys:
+  operator: fsl-claude                  # the Nova keypair the platform VM boots with
+  operator_file: ~/.ssh/fsl_claude      # its private half, for ssh to the platform VM
+  range: ~/.ssh/fsl-platform            # the platform's range key, kept across rebuilds
+
+opnsense:
+  version: "26.7"                       # an image release (January and July), not an update
+  mirror: https://pkg.opnsense.org/releases
+  # SHA256 of OPNsense-26.7-nano-amd64.img.bz2 and of the 26.7 signing key (DER),
+  # both from the release announcement, docs.opnsense.org/releases/CE_26.7.html
+  image_sha256: 28d5e2f37e40d87468a924e3006ef10e2ddc6de485b85333d9e3958c84d0cb9d
+  pubkey_sha256: 1c940b2feb8e8c78ba7348a50b11f476929ddca1794ceaa89446be7d515e0d02
+
+platform:
+  stack: fsl-platform
+  repository: https://github.com/Nekonic/fsl-project-mvp.git
+  ref: dev                              # only pushed commits are cloned

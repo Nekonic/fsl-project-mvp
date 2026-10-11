@@ -179,6 +179,14 @@ a case fired from the Kali box leaves as a chosen country, crosses
 pfSense -> WAF -> the target, both sensors detect it, the logs reach the
 platform's Elasticsearch geolocated, and the platform scores it.
 
+On 2026-10-11 OPNsense replaced pfSense at the edge (`docs/DECISIONS.md`):
+what this file records about pfSense below was measured on pfSense and is
+history. The cloud now holds one uploaded image, the stock Ubuntu 24.04 cloud
+image; the images step builds the OPNsense edge image from the official
+release on an Ubuntu builder, `fsl-kali` builds on Ubuntu, every
+cloud-specific value is in `deploy/openstack/cloud.yaml`, and `bin/cloud
+up|down` drives the whole cloud side. None of it has run against a cloud yet.
+
 Backlog 2 step 6's in-scope part is done (2026-10-02): the target port is
 no longer published and the acceptance suite and command-line cases reach the
 target from inside the range. **Step 7 is done (2026-10-03):** evidence by

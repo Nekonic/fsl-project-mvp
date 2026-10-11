@@ -7,8 +7,10 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import yaml
 
-from range import declared, fabric, images, openstack, slot
+from range import cloud, declared, fabric, images, openstack, slot
 from range.ports import Drifted
+
+INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DECLARED = declared.read()
@@ -18,7 +20,7 @@ class Cloud:
         self.decl = decl
         self.ids = itertools.count(1)
         self.networks, self.subnets = [], []
-        for want in fabric.wanted(decl):
+        for want in fabric.wanted(decl, INSIDE):
             net_id = f"net-{want.segment}"
             if not any(n["id"] == net_id for n in self.networks):
                 self.networks.append({"id": net_id, "name": f"fsl-{want.segment}",
@@ -112,7 +114,7 @@ def cloud():
     return Cloud()
 
 def adapter(cloud, decl=DECLARED):
-    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", flavor="m1.small",
+    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", inside=INSIDE, flavor="m1.small",
                             network="net-platform", platform="srv-platform")
     return openstack.OpenStack(decl, SPEC, get=cloud, build=build)
 
@@ -143,7 +145,7 @@ def test_the_prebuilt_edge_boots_from_its_image_with_no_cloud_init(tmp_path):
     (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
     decl = edge_declaration()
     cloud = Cloud(decl, source=tmp_path)
-    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04",
+    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04", inside=INSIDE,
                             flavor="m1.small", network="net-platform", platform="srv-platform")
 
     openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_slot()
@@ -151,7 +153,7 @@ def test_the_prebuilt_edge_boots_from_its_image_with_no_cloud_init(tmp_path):
     pf = cloud.booted("fsl-pf")
     assert pf["imageRef"] == "img-fsl-pf"
     assert "user_data" not in pf or not pf["user_data"], (
-        "pfSense is FreeBSD and runs no cloud-init; a Linux cloud-config would "
+        "OPNsense is FreeBSD and runs no cloud-init; a Linux cloud-config would "
         "be ignored at best and the platform configures it over ssh instead"
     )
     assert cloud.booted("fsl-waf")["user_data"], "the Linux hosts still learn names"
@@ -161,7 +163,7 @@ def test_the_edge_forwarding_ports_may_carry_any_source_so_it_can_route_un_natte
     (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
     decl = edge_declaration()
     cloud = Cloud(decl, source=tmp_path)
-    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04",
+    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04", inside=INSIDE,
                             flavor="m1.small", network="net-platform", platform="srv-platform")
 
     openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_slot()

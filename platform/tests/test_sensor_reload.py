@@ -107,3 +107,37 @@ def test_the_reply_of_the_python_client_suricata_7_ships_is_understood():
     suricata.apply(AFTER, sensor, RELOAD)
 
     assert suricata.current(sensor) == AFTER
+
+def test_the_rules_go_to_the_path_the_sensor_reads_and_roll_back_there():
+    edge_rules = "/usr/local/etc/suricata/rules/fsl.rules"
+    sensor = Sensor(Ran(0, BUSY))
+    sensor.files[edge_rules] = BEFORE
+
+    with pytest.raises(suricata.RuleApplyError):
+        suricata.apply(AFTER, sensor, RELOAD, edge_rules)
+
+    assert sensor.files[edge_rules] == BEFORE
+    assert sensor.files[suricata.RULE_PATH] == BEFORE
+    assert sensor.writes == [AFTER, BEFORE]
+
+def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
+    import os
+    import pathlib
+    import subprocess
+    import sys
+
+    read = subprocess.run(
+        [sys.executable, "-c",
+         "import fsl.settings as s; print(s.FSL_SENSOR_RULES); print(' '.join(s.FSL_SENSOR_RELOAD))"],
+        cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("FSL_SENSOR")},
+             "DJANGO_SETTINGS_MODULE": "fsl.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
+    )
+    assert read.returncode == 0, read.stderr[-300:]
+
+    rules, reload = read.stdout.strip().splitlines()
+    assert rules == "/usr/local/etc/suricata/rules/fsl.rules", (
+        "the editor wrote /var/lib/suricata/rules/local.rules on the edge, a "
+        "file the edge's Suricata never loads"
+    )
+    assert reload == "/usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket"

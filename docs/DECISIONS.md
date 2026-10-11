@@ -1481,3 +1481,109 @@ redistribution of "bit-for-bit identical copies of official pfSense releases";
 an installed disk image is not such a copy, and the policy sends unaddressed
 uses to legal@netgate.com. Automating its install would mean driving the
 online installer's console (no scripted install exists), not done.
+
+## 2026-10-11 — OPNsense at the edge, one base image, cloud.yaml
+
+Asked (PM, approved): replace pfSense with OPNsense; the cloud holds exactly
+one uploaded image, Ubuntu 24.04, and everything else is built from it; every
+value that differs between OpenStack clouds lives in one settings file.
+Clarified by the user: the base image is Canonical's stock
+`noble-server-cloudimg-amd64.img`, uploaded unmodified; nothing is baked in.
+Built in four local commits; nothing ran against a cloud.
+
+**Why OPNsense.** pfSense CE has no cloud image and no scripted install, and a
+built pfSense image may not travel under the name (entry above). OPNsense
+publishes a preinstalled `nano` disk image for each major release (January and
+July; updates have no images) with a SHA256 in the release announcement and an
+OpenSSL signature over the unpacked image (docs.opnsense.org/manual/install.html;
+docs.opnsense.org/releases/CE_26.7.html: 26.7.6 on 2026-10-08, on FreeBSD
+15.1). Licence: BSD 2-clause, Deciso B.V.; trademark policy: the name may be
+used to promote OPNsense-based products, a derivative name needs permission
+from project@opnsense.org (opnsense.org/legal-guidelines/). So the project
+builds the image from the official release on each cloud, never publishes it,
+and keeps its Glance name private; "based on OPNsense" is the public wording.
+
+**The image is configured offline, through the importer.** The nano image
+creates `/conf/config.xml` from the stock default on first boot, which assigns
+only LAN (static 192.168.1.1/24) and WAN; the third NIC, mgmt, would get no
+address, so a platform could not reach a fresh edge, and OPNsense runs no
+cloud-init. Linux cannot write the image's UFS. The boot-time importer
+(`opnsense-importer -b`, read from opnsense/core) offers, for a few seconds,
+to import `conf/config.xml` from another disk. The builder boots the image once
+under QEMU (KVM if nested virtualisation is there, TCG otherwise) with a FAT
+seed disk and answers that prompt over the serial console. The image's
+config gives root no password and only the platform's key, so the published
+default password `opnsense` never exists on it; changing it after boot, as
+first asked, would have left it live until then. Considered: rebuilding the UFS
+with `makefs` from a read-only copy (file flags and boot blocks at risk);
+writing the image over the builder's own disk and snapshotting it (no
+qemu-img, and the running system pages from the disk being overwritten).
+
+**Upload.** The platform creates the Glance record first and hands the
+builder its `PUT /v2/images/{id}/file` URL and a fresh Keystone token in user
+data, outside the bundle; the builder is deleted once the image is active and
+is never snapshotted. Considered: the builder serving the file and Glance
+`web-download` (the controller does not reach tenant networks); the platform
+pulling and re-uploading (the default security group shuts the builder off).
+The token is project-scoped for its lifetime (an hour by default); an
+application credential limited to that PUT would narrow it, not built.
+
+**Configuration after boot.** `configure/` renders the whole config.xml for
+the slot (WAN with the first origin gateway and 29 IP aliases, LAN with the
+estate gateway, opt1 mgmt by DHCP, the tenant MTU, outbound NAT off, block to
+self before pass on WAN and LAN, hardware offloading off, IDS on the WAN in
+pcap mode, one syslog destination), stages it with a Suricata `conf.d`
+include (our rule file, the unix-command socket, an EVE syslog output with
+alerts and HTTP records as `suricata`) and reboots the edge, then checks it
+after a new `kern.boottime`. HOME_NET is the estate and mgmt only: OPNsense's
+suricata.yaml template sets EXTERNAL_NET to `!$HOME_NET`, and the shipped
+rules match `$EXTERNAL_NET -> $HOME_NET`, so pfSense's HOME_NET (every origin
+too) would hide every attack. IDS rather than netmap inline: inline netmap on
+VirtIO is unreliable (opnsense/src#324) and the sensor only detects.
+Considered: the REST API (needs an API key, and the first key can only be made
+from a shell); editing config.xml in place with OPNsense's PHP (internal API,
+unversioned).
+
+**Rule path fix.** On openstack the rules editor wrote and reloaded
+`/var/lib/suricata/rules/local.rules`, a file the edge's Suricata never
+loaded. The sensor host in `declaration.yaml` now names its rule file
+(`/usr/local/etc/suricata/rules/fsl.rules`, the one the include loads) and its
+reload command (`suricatasc -c reload-rules` on the include's socket);
+`settings.py` derives `FSL_SENSOR_RULES` and `FSL_SENSOR_RELOAD` from it, and
+`rules/suricata.py` takes the path as a parameter. `configctl ids reload`
+was not used: it sends USR2 and returns before the rules load, the failure
+mode `test_sensor_reload.py` already records; `suricatasc` answers
+`"return":"OK"` when they have, so the reload check is unchanged.
+
+**One base image.** Every builder boots `compute.base_image`; `Host.base` is
+gone. `fsl-kali` built on a second image, `kali-rolling`: it now builds on
+Ubuntu, enabling `universe` and `multiverse` itself (nikto is in multiverse)
+and linking dirb's word lists where the motd points (`wordlists` is
+Kali-only). Nothing else assumed more than the stock image: the platform VM
+and the builders install what they use (tests check the package lists).
+
+**cloud.yaml.** `deploy/openstack/cloud.example.yaml` (committed) is copied to
+`cloud.yaml` (ignored). `platform/range/cloud.py` validates it and reports
+every problem by dotted key; the password is read from `password_file` or
+`password_env`, never written there. `bin/platform-rebuild` (now `--cloud`,
+`--ref`) and the new `bin/cloud up|down` drive the openstack CLI's `OS_*` and
+the Heat parameters from it; the template has no defaults and writes the
+values to `openstack.env`, where the platform reads them; `settings.py`,
+`fabric.py` and the declaration lose their cloud defaults (RegionOne,
+ubuntu-24.04, m1.small, the inside CIDRs, the pfSense image name). Flavors
+are per role (`builder`, `range`, `edge`); the availability zone applies to
+every server the project boots.
+
+Unverified until a cloud run: the importer's console strings and device name
+(`vtbd1`) under QEMU; that OPNsense 26.7 accepts the minimal config.xml and
+its legacy `filter`, `ssh` and `virtualip` shapes; that `conf.d/*.yaml`
+overrides `rule-files` and `outputs`; the mirror layout
+(`<mirror>/<version>/OPNsense-<version>.pub`); TCG boot time on a builder
+without nested KVM.
+
+Metrics: core_loc 560 (unchanged; `rules/suricata.py` gained a parameter on
+existing lines), dependencies 6, services 9, tests 1494 -> 1551.
+Correction: the four feature commits' messages give tests 1499, 1506, 1524
+and 1540, because `bin/measure --save` ran before the new test files were
+added to git and it counts tracked files only; measured on each commit's
+tree, the figures are 1515, 1524, 1540 and 1551. History is not rewritten.

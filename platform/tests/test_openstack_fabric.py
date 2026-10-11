@@ -3,8 +3,10 @@ import stat
 
 import pytest
 
-from range import declared, fabric, openstack
+from range import cloud, declared, fabric, openstack
 from range.ports import Drifted, RangeUnavailable
+
+INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 class Neutron:
     def __init__(self):
@@ -90,12 +92,13 @@ def spec(tmp_path):
 
 @pytest.fixture
 def adapter(cloud, tmp_path):
-    return openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud)
+    return openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud,
+                               build=openstack.Build(inside=INSIDE))
 
 @pytest.fixture
 def platform(cloud, tmp_path):
     return openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud,
-                               build=openstack.Build(platform="srv-platform"))
+                               build=openstack.Build(platform="srv-platform", inside=INSIDE))
 
 def network_of(cloud, segment):
     return next(n for n in cloud.networks if f"{fabric.TAG}={segment}" in n["tags"])
