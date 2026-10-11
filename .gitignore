@@ -10,3 +10,4 @@ deploy/nginx/logs/
 /openstack.env
 /.env
 config/ingest-geoip/*.mmdb
+/deploy/openstack/cloud.yaml

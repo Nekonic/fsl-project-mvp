@@ -127,6 +127,9 @@ def options(cloud, **overrides):
         "project": "fsl",
         "ssh_user": "debian",
         "ssh_key": "/keys/fsl",
+        "region": "RegionOne",
+        "interface": "public",
+        "domain": "default",
         **overrides,
     }
 
@@ -222,9 +225,10 @@ def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environm
 
     keys, values = read.stdout.strip().splitlines()
     assert keys == str(sorted([
-        "declared", "keystone", "user", "password", "project", "ssh_user",
+        "declared", "keystone", "user", "password", "domain", "project", "ssh_user",
         "ssh_key", "region", "interface", "source", "base_image",
-        "flavor", "build_network", "platform",
+        "flavor", "build_flavor", "role_flavors", "availability_zone", "subnets",
+        "mtu", "opnsense", "build_network", "platform",
     ]))
     assert values == "https://keystone.example:5000"
 

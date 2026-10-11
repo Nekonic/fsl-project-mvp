@@ -402,7 +402,7 @@ def _openstack_range():
     from range import declared
     return declared.read(flavor="openstack")
 
-PF = "fsl-pfsense"
+PF = "fsl-edge"
 
 def _openstack_shape():
     us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
@@ -426,7 +426,7 @@ def test_on_openstack_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
     assert set(found) == {"us", "tw"}, "the estate is not an origin"
     assert found["us"]["source_ip"] == "73.0.0.10", "the attack comes from the Kali box"
     assert found["us"]["target_url"] == "http://shop.com", (
-        "on OpenStack the target is reached by name through pfSense, not by a "
+        "on OpenStack the target is reached by name through the OPNsense edge, not by a "
         "per-origin WAF address the way Docker hands one out"
     )
     assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"

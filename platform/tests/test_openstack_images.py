@@ -83,7 +83,7 @@ def cloud():
 
 def adapter(cloud, network="net-platform"):
     build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04",
-                            flavor="m1.small", network=network)
+                            build_flavor="m1.small", network=network)
     return openstack.OpenStack(declared.read(), SPEC, get=cloud, build=build)
 
 HOSTS = sorted(declared.read().hosts)
@@ -101,23 +101,25 @@ def test_an_empty_project_boots_one_builder_per_declared_image(cloud):
         config = yaml.safe_load(base64.b64decode(server["user_data"]).decode())
         assert server["metadata"][images.BUNDLE] in config["runcmd"][0][-1]
 
-def test_a_host_builds_on_its_own_base_image_when_it_declares_one(cloud):
-    from range.declared import Declaration, Host
-
+def test_every_builder_boots_the_one_base_image_the_cloud_holds(cloud):
     cloud.images.append({"id": "img-kali", "name": "kali-rolling", "status": "active"})
-    decl = Declaration(
-        roles={"attacker": "fsl-kali"},
-        hosts={"fsl-kali": Host(setup="deploy/kali/motd", files=("deploy/kali/motd",),
-                                base="kali-rolling", segments=("internet", "mgmt"))},
-    )
-    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04",
-                            flavor="m1.small", network="net-platform")
 
-    openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_images()
+    adapter(cloud).ensure_images()
 
-    assert cloud.builder("fsl-kali")["imageRef"] == "img-kali", (
-        "a host built on Ubuntu's base could not be Kali; the declared base wins"
+    assert {s["imageRef"] for s in cloud.servers} == {BASE["id"]}, (
+        "the cloud holds one uploaded image, the stock Ubuntu 24.04 cloud "
+        "image; every other image is built from it"
     )
+
+def test_builders_boot_with_the_builder_flavor_and_the_configured_zone(cloud):
+    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", flavor="m1.tiny",
+                            build_flavor="m1.small", network="net-platform",
+                            availability_zone="zone-b")
+
+    openstack.OpenStack(declared.read(), SPEC, get=cloud, build=build).ensure_images()
+
+    assert {s["flavorRef"] for s in cloud.servers} == {"f-2"}
+    assert {s["availability_zone"] for s in cloud.servers} == {"zone-b"}
 
 def test_building_needs_a_network_that_reaches_the_internet_and_names_its_setting(cloud):
     with pytest.raises(RangeUnavailable, match="FSL_OPENSTACK_BUILD_NETWORK"):

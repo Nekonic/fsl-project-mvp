@@ -1,40 +1,56 @@
 heat_template_version: 2021-04-16
 
 description: >
-  The platform VM: Ubuntu 24.04 whose first boot clones the repo and brings the
-  whole platform up with docker compose from images prebuilt on ghcr.io. The
-  API password and the range ssh key are added over ssh (bin/platform-rebuild).
+  The platform VM: the stock Ubuntu 24.04 cloud image whose first boot installs
+  Docker, clones the repo and brings the whole platform up with docker compose
+  from images prebuilt on ghcr.io. Every parameter comes from cloud.yaml
+  (bin/platform-rebuild); the API password and the range ssh key are added
+  over ssh.
 
 parameters:
   keystone:
     type: string
   user:
     type: string
-    default: fsl-range
+  domain:
+    type: string
+  region:
+    type: string
+  interface:
+    type: string
   image:
     type: string
-    default: ubuntu-24.04
   flavor:
     type: string
-    default: m1.large
   key_name:
     type: string
-    default: fsl-claude
   external_network:
     type: string
-    default: provider
+  availability_zone:
+    type: string
   cidr:
     type: string
-    default: 10.20.0.0/24
   dns:
     type: comma_delimited_list
-    default: [8.8.8.8, 8.8.4.4]
   repository:
     type: string
-    default: https://github.com/Nekonic/fsl-project-mvp.git
   ref:
     type: string
-    default: dev
+  range_flavor:
+    type: string
+  build_flavor:
+    type: string
+  role_flavors:
+    type: string
+  subnets:
+    type: string
+  range_mtu:
+    type: string
+  opnsense:
+    type: string
+
+conditions:
+  zoned: {not: {equals: [{get_param: availability_zone}, ""]}}
 
 resources:
   network:
@@ -93,6 +109,7 @@ resources:
       image: {get_param: image}
       flavor: {get_param: flavor}
       key_name: {get_param: key_name}
+      availability_zone: {if: [zoned, {get_param: availability_zone}, null]}
       networks: [{port: {get_resource: port}}]
       config_drive: true
       user_data_format: RAW
@@ -101,6 +118,17 @@ resources:
           params:
             "%keystone%": {get_param: keystone}
             "%user%": {get_param: user}
+            "%domain%": {get_param: domain}
+            "%region%": {get_param: region}
+            "%interface%": {get_param: interface}
+            "%image%": {get_param: image}
+            "%availability_zone%": {get_param: availability_zone}
+            "%range_flavor%": {get_param: range_flavor}
+            "%build_flavor%": {get_param: build_flavor}
+            "%role_flavors%": {get_param: role_flavors}
+            "%subnets%": {get_param: subnets}
+            "%range_mtu%": {get_param: range_mtu}
+            "%opnsense%": {get_param: opnsense}
             "%project%": {get_param: "OS::project_id"}
             "%repository%": {get_param: repository}
             "%ref%": {get_param: ref}
@@ -126,7 +154,18 @@ resources:
                   DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
                   FSL_OPENSTACK_KEYSTONE=%keystone%
                   FSL_OPENSTACK_USER=%user%
+                  FSL_OPENSTACK_DOMAIN=%domain%
                   FSL_OPENSTACK_PROJECT=%project%
+                  FSL_OPENSTACK_REGION=%region%
+                  FSL_OPENSTACK_INTERFACE=%interface%
+                  FSL_OPENSTACK_BASE_IMAGE=%image%
+                  FSL_OPENSTACK_FLAVOR=%range_flavor%
+                  FSL_OPENSTACK_BUILD_FLAVOR=%build_flavor%
+                  FSL_OPENSTACK_ROLE_FLAVORS=%role_flavors%
+                  FSL_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
+                  FSL_OPENSTACK_SUBNETS=%subnets%
+                  FSL_OPENSTACK_MTU=%range_mtu%
+                  FSL_OPNSENSE=%opnsense%
                   FSL_OPENSTACK_SSH_USER=ubuntu
                   FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
                   FSL_OPENSTACK_BUILD_NETWORK=%network%

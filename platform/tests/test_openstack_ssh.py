@@ -166,14 +166,14 @@ def test_the_runner_reaches_a_host_as_its_own_ssh_user_when_it_declares_one():
 
     decl = Declaration(
         roles={"edge": "fsl-pf", "attacker": "fsl-kali"},
-        hosts={"fsl-pf": Host(image="img", ssh_user="admin", segments=("mgmt",)),
+        hosts={"fsl-pf": Host(image="img", ssh_user="root", segments=("mgmt",)),
                "fsl-kali": Host(setup="s.sh", segments=("mgmt",))},
     )
     cloud = openstack.Cloud(keystone="k", neutron="n", nova="v", project="p",
                             user="u", ssh_user="ubuntu", ssh_key="/k")
     adp = openstack.OpenStack(decl, cloud, get=None)
 
-    assert adp._ssh_user("fsl-pf") == "admin", "pfSense ssh is admin, a root shell"
+    assert adp._ssh_user("fsl-pf") == "root", "the OPNsense edge is reached as root, with its shell set to sh"
     assert adp._ssh_user("fsl-kali") == "ubuntu", "the default cloud user otherwise"
 
 

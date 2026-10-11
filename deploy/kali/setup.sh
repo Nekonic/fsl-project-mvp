@@ -6,14 +6,16 @@ TTYD_SHA256=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 APT="apt-get -y -o DPkg::Lock::Timeout=600"
 
 export DEBIAN_FRONTEND=noninteractive
+sed -i 's/^Components:.*/Components: main restricted universe multiverse/' \
+  /etc/apt/sources.list.d/ubuntu.sources
 $APT update
 $APT install \
   ca-certificates curl wget iptables \
   nmap sqlmap nikto whatweb ffuf gobuster hydra \
-  netcat-traditional dnsutils jq wordlists dirb mitmproxy
+  netcat-traditional dnsutils jq dirb mitmproxy
 
-[ -f /usr/share/wordlists/rockyou.txt.gz ] \
-  && gunzip -f /usr/share/wordlists/rockyou.txt.gz || true
+install -d -m 0755 /usr/share/wordlists
+ln -sfn /usr/share/dirb/wordlists /usr/share/wordlists/dirb
 
 curl -fsSL -o /usr/local/bin/ttyd \
   "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64"
@@ -80,16 +82,6 @@ Restart=always
 
 [Install]
 WantedBy=multi-user.target
-EOF
-
-cat > /etc/cloud/cloud.cfg.d/99-fsl-user.cfg <<'EOF'
-system_info:
-  default_user:
-    name: ubuntu
-    gecos: FSL operator
-    groups: [sudo]
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-    shell: /bin/bash
 EOF
 
 systemctl enable fsl-proxy fsl-terminal

@@ -213,8 +213,12 @@ OpenStack에서 역할은 여전히 선언이 지정한 서버 이름이다: Ope
 `range.substrate()`는 `FSL_SUBSTRATE`가 지정하는 어댑터(기본값 `range.docker.Docker`)를,
 `FSL_SUBSTRATE_OPTIONS`가 그 이름 아래 보관하는 옵션에 `declared=RANGE`를 더해 만든다.
 Docker는 `FSL_PROJECT`(기본값 `fsl`)를 받는다. OpenStack은 `FSL_OPENSTACK_KEYSTONE`,
-`_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`를 받으며, 없으면 이름을 들어
-거부한다. `_REGION`은 기본값이 `RegionOne`, `_INTERFACE`는 `public`이다. `redteam/harness.py`에는 launcher가,
+`_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`,
+`_DOMAIN`을 받으며, 없으면 이름을 들어 거부한다. 레인지 모양을 정하는 `_BASE_IMAGE`,
+`_FLAVOR`, `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`,
+`FSL_OPNSENSE`는 쓰이는 곳에서 이름을 들어 거부한다. 코드에는 기본값이 없다. 모두
+Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 온다(`platform/range/cloud.py`가 그
+파일을 읽고 검사한다). `redteam/harness.py`에는 launcher가,
 `platform/rules/suricata.py`에는 runner가 전달되므로, 둘 다 `subprocess`를 import하지
 않고 substrate를 지정하지도 않는다.
 
@@ -242,7 +246,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고, 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 플랫폼은 어느 것도 읽지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
-| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/pfsense.py`와 `deploy/pfsense/configure.php`가 pfSense의 Suricata를 정지·시작한다(OpenStack) |
+| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 센서 호스트가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다 |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음 |
 
@@ -716,6 +720,15 @@ score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 vCPU, 64 GB)다. 레인지는 프로젝트 `fsl-range`에 있고, member 역할 사용자 `fsl-range`가
 구동한다. Horizon은 사용자에게 보이지 않는다.
 
+클라우드마다 다른 값은 `deploy/openstack/cloud.yaml`에 있다(커밋된 `cloud.example.yaml`을
+복사한 것으로, git이 무시하고 비밀은 없다): identity, 네트워크와 MTU, 베이스 이미지,
+zone, flavor, 키, OPNsense 릴리스, 플랫폼의 스택과 ref. `platform/range/cloud.py`가
+검사해 문제마다 키를 들어 보고하고, `bin/platform-rebuild`와 `bin/cloud`가 이 파일로
+openstack CLI와 Heat 파라미터를 움직이며, 스택이 이를 플랫폼의 `openstack.env`에 쓴다.
+`bin/cloud up`은 스택을 만들고 fabric, images, slot, configure를 부른 뒤
+`/api/range/ready/`가 ready가 될 때까지 기다린다. `bin/cloud down`은 키를 보관하고
+저장소를 백업한 뒤 slot, fabric, 스택을 지운다.
+
 ### 구축됨: 플랫폼 VM
 
 `deploy/openstack/platform.yaml`은 Heat 템플릿이며 다음을 만든다:
@@ -742,11 +755,13 @@ GeoIP 엔드포인트는 URL로 약관에 동의하면 누구에게나 GeoLite2�
 따라서 compose 컨트롤 플레인만 Nova VM 하나 안에서 돈다. OpenStack substrate에서는 그 안에 세션 스택이 뜨지 않고, board의 ground truth는 board VM의 관리망 주소에서 읽는다. cloud-init이 `FSL_PUBLISH`를
 VM의 고정 주소로 설정하므로 8000이 그 주소에 publish되고 보안 그룹에서도
 열려, 브라우저가 floating IP로 콘솔에 접근한다. `FSL_SYSLOG_PUBLISH=0.0.0.0`은
-pfSense의 syslog를 받기 위해 5140/udp를 모든 주소에 publish한다. 9200은 loopback에
+엣지의 syslog를 받기 위해 5140/udp를 모든 주소에 publish한다. 9200은 loopback에
 남는다.
 
-cloud-init은 `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PROJECT`(스택 자신의 프로젝트),
-`_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 모드 0600으로
+템플릿의 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 온다(`bin/platform-rebuild`,
+`bin/cloud`). 템플릿에는 기본값이 없다. cloud-init은 그 값들을 `FSL_OPENSTACK_*`와
+`FSL_OPNSENSE`로, 그리고 `_PROJECT`(스택 자신의 프로젝트), `_SSH_USER=ubuntu`,
+`_SSH_KEY=/data/ssh/id_ed25519`를 모드 0600으로
 `/root/openstack.env`에 쓰고, git이 무시하는 `/opt/fsl/openstack.env`로 옮긴다.
 비밀번호는 템플릿에 없다: Nova가 user data를 보관하고 메타데이터 서비스가 레인지
 컨테이너를 포함해 VM에서 도는 모든 것에 이를 제공하기 때문이다. `bin/platform-rebuild`가
@@ -758,8 +773,8 @@ VM이 뜬 뒤 ssh로 `FSL_OPENSTACK_PASSWORD`를 덧붙이고, 레인지 ssh 키
 VM 위의 플랫폼은 OpenStack 어댑터(cloud-init이 쓴
 `FSL_SUBSTRATE=range.openstack.connect`)를 쓰고, `range/fabric.py`가 계획한
 `/api/range/fabric/`로 레인지 네트워크를 직접 만든다: 선언된 출발지마다 서브넷 하나를
-가진 `internet` 네트워크(DHCP 끔), 10.30.0.0/24의 `estate`와 게이트웨이 없는
-10.31.0.0/24의 `mgmt`(모든 compose 및 플랫폼 VM 서브넷과 겹치지 않음), 그리고
+가진 `internet` 네트워크(DHCP 끔), `cloud.yaml`이 정한 CIDR의 `estate`와 게이트웨이
+없는 `mgmt`(서로, 플랫폼 네트워크, docker 기본 브리지와 겹치면 로더가 거부한다), 그리고
 `/data/ssh/id_ed25519`의 키로 만든 키페어 `fsl-platform`. 플랫폼은 첫 fabric POST 때
 그 키가 없을 때만 만든다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새
 플랫폼 VM마다 써 넣으므로, 교체된 VM도 키페어와 레인지 VM들이 신뢰하는 키를 유지한다. `describe()`는 각
@@ -771,7 +786,15 @@ VM 위의 플랫폼은 OpenStack 어댑터(cloud-init이 쓴
 필요한 파일을 정한다. 플랫폼은 이를 빌더의 user data에 담아, 빌더를 자신의
 네트워크(라우터가 있는 쪽)에서 부팅하고, 설정이 끝날 때 출력하는 줄을 빌더 콘솔에서
 읽은 뒤 빌더를 멈추고 스냅샷한다. 이미지는 번들의 digest를 담으므로, 스크립트를
-수정하면 조용히 낡은 이미지가 아니라 다른 번들의 이미지로 드러난다.
+수정하면 조용히 낡은 이미지가 아니라 다른 번들의 이미지로 드러난다. 클라우드에 올려 둔
+이미지는 손대지 않은 Ubuntu 24.04 클라우드 이미지 하나(`compute.base_image`)이고,
+모든 빌더가 이것으로 부팅한다. `uploads`가 있는 호스트(엣지)는 다르다. 플랫폼이
+Glance 레코드를 먼저 만들고 업로드 URL과 Keystone 토큰을 user data로 빌더에 넘긴다.
+빌더는 디스크를 만들어 PUT으로 올리고, Glance가 active라고 하면 스냅샷 없이 지워진다.
+엣지 빌더는 OPNsense nano 이미지를 내려받아 그 SHA256과 릴리스 키의 SHA256을
+`cloud.yaml`과 대조하고, 서명을 확인하고, QEMU로 한 번 부팅해 설정 가져오기 프롬프트에
+답해 `deploy/opnsense/config.xml`로 시작하게 한 뒤, `qemu-img`로 바꿔
+`fsl-opnsense-<version>`으로 올린다(`deploy/opnsense/build.sh`, `importer.py`).
 
 fabric은 보안 그룹도 둘 만든다: 모든 레인지 포트가 속하고 모든 IPv4를 허용하는
 `fsl-range`(레인지를 지키는 것은 Neutron이 아니라 WAF다; anti-spoofing은 유지), 그리고
@@ -787,13 +810,17 @@ slot은 레인지 호스트의 집합으로, `/api/range/slot/`로 관리하고 
 추가한다. 모든 호스트의 user data는 `estate` 이름(`board`, `board-db`)을
 `/etc/hosts`에 덧붙이며, WAF는 이것으로 board를, board는 자신의 DB를 찾는다.
 
-pfSense CE 엣지(골든 이미지 `fsl-pfsense-edge`: 베이스 + Suricata 8.0.5 + sshd + OPT1
-관리 NIC)가 slot에서 부팅한다. `POST /api/range/configure/`는 관리 ssh로
-`deploy/pfsense/configure.php`를 재실행해, pfSense가 30개 출발지 게이트웨이 주소를
-갖고(하나는 static, 나머지는 IP-alias VIP), WAN에서 레인지를 `HOME_NET`으로 하여
-Suricata를 돌리며 EVE를 syslog로 보내고, Suricata 패키지의 필터 재로드 후에도 남는 WAN
-pass 규칙 하나를 유지하고, syslog와 WAF의 ModSecurity audit 로그를 GeoIP 보강과 함께
-플랫폼의 Elasticsearch로 보내게 한다. Kali 이미지 하나가 모든 출발지를 맡는다: 인터넷
+OPNsense 엣지 `fsl-edge`(vtnet0 internet이 WAN, vtnet1 estate가 LAN, vtnet2 mgmt가
+opt1)가 slot에서 부팅한다. `POST /api/range/configure/`는 slot에 맞춰
+`deploy/opnsense/config.xml`을 만들고(`range/opnsense.py`), Suricata include
+`deploy/opnsense/suricata.yaml`과 시작 규칙과 함께 관리 ssh로 root로 올려 설치한 뒤
+엣지를 재부팅한다. 새 부팅 시각이 보일 때까지 기다린 다음, 엣지가 30개 출발지
+게이트웨이 주소를 갖고(하나는 static, 나머지는 IP alias), WAN에서 estate와 mgmt를
+`HOME_NET`으로 하여 IDS 모드로 Suricata를 돌리며 EVE 경보와 HTTP 기록을 syslog로
+보내고, syslog를 수집기로 보내고, pf에 WAN pass 규칙이 있는지 확인한다. 규칙 편집기는
+include가 가리키는 파일에 쓰고, include가 여는 소켓으로 `suricatasc`를 불러 다시
+읽힌다. 엣지의 syslog와 WAF의 ModSecurity audit 로그는 GeoIP 보강과 함께 플랫폼의
+Elasticsearch로 간다. Kali 이미지 하나가 모든 출발지를 맡는다: 인터넷
 포트 하나가 국가별 약 100개 주소를 갖고(slot의 `bootcmd`가 NIC에 추가)
 `/usr/local/sbin/fsl-origin`이 나가는 출발지 주소를 국가별로 SNAT하므로, 모든 도구가
 선택된 국가에서 나간다. marker를 붙이는 프록시와 ttyd 터미널은 Kali 박스에서 돈다.
@@ -827,6 +854,7 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
    landing page /: start and stop a session, the scoreboard after close
    sidebar, panes inside the page:
      pfSense   web GUI pane (built; dropped from scope and removed 2026-10-08)
+               (the edge is OPNsense since 2026-10-11)
      Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |
@@ -838,9 +866,9 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
             to the chosen country's address as packets leave
      |
      v
- pfSense CE VM: edge router; its WAN holds each subnet's gateway address
-                and routes on without NAT, so country sources survive
-   Suricata package: IDS (detects; no firewall lesson, per 2026-10-08)
+ OPNsense VM: edge router; its WAN holds each subnet's gateway address
+              and routes on without NAT, so country sources survive
+   Suricata (OPNsense IDS): detects; no firewall lesson, per 2026-10-08
      |
      v
  WAF VM: nginx + ModSecurity v3 + CRS
@@ -851,7 +879,7 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
    board VM (Django on MySQL)
 
  Evidence:
-   pfSense: Suricata EVE, filterlog --syslog, UDP--> Filebeat --+
+   OPNsense: Suricata EVE, syslog-ng, UDP-------> Filebeat --+
    WAF VM: ModSecurity audit log --------------------------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
@@ -873,6 +901,6 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
 사람이 결정해야 할 열린 사항은 `docs/STATE.md`("Decisions left for a person")에 있다.
 
 구축된 것: WAF VM은 ModSecurity audit 로그를 rsyslog imfile로 UDP 5140에 보내고
-(`platform/range/waf.py`), pfSense의 Suricata는 legacy 모드로 돈다
-(`deploy/pfsense/configure.php`). 구축 전에 이 클라우드에서
+(`platform/range/waf.py`), OPNsense 엣지의 Suricata는 IDS(pcap) 모드로 돈다
+(`deploy/opnsense/`, 아직 클라우드에서 만들어 보지 않았다). 구축 전에 이 클라우드에서
 테스트할 것은 placement 스펙의 "To test on this cloud before building"에 있다.

@@ -27,8 +27,10 @@ class Origin:
 class Host:
     setup: str = ""
     image: str = ""
-    base: str = ""
     ssh_user: str = ""
+    rules: str = ""
+    reload: str = ""
+    uploads: str = ""
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
@@ -78,6 +80,10 @@ class Declaration:
                        if host.setup else "neither a setup script nor a prebuilt image")
                     + "; a host is either built from a script in the repo or "
                     "boots from an image the cloud already holds"
+                )
+            if host.uploads and not host.setup:
+                raise ValueError(
+                    f"host {name!r} uploads {host.uploads!r} and has no setup script to make it"
                 )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
@@ -136,8 +142,10 @@ def _hosts(entries) -> dict[str, Host]:
         name: Host(
             setup=entry.get("setup") or "",
             image=entry.get("image") or "",
-            base=entry.get("base") or "",
             ssh_user=entry.get("ssh_user") or "",
+            rules=entry.get("rules") or "",
+            reload=entry.get("reload") or "",
+            uploads=entry.get("uploads") or "",
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),

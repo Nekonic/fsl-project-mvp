@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from range.ports import RangeUnavailable
 
-URL = "/api/range/console/fsl-pfsense/"
+URL = "/api/range/console/fsl-edge/"
 
 class CloudAdapter:
     def __init__(self, url="http://nova/vnc_lite.html?token=1", fail=None):

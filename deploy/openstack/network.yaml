@@ -1,6 +1,6 @@
 # FSL — network addressing, the real deployment (as drawn in the topology diagram).
-# One place to read/change the network. Range values mirror declaration.yaml,
-# fabric.py and platform.yaml; the provider/host values are the live cloud's.
+# A picture of the network for people. The values that configure it are in
+# cloud.yaml (copied from cloud.example.yaml); the provider/host values are the live cloud's.
 
 provider:                         # the office LAN — physical, where the cloud is reached
   cidr: 192.168.0.0/24
@@ -23,7 +23,7 @@ tenant:                           # fsl-range — VMs on `master`, reached via t
     fsl-platform:                 # scorer, multi-homed
       ens3: 10.20.0.138           # fsl-platform -> FIP 192.168.0.210 (operator console :8000)
       ens7: 10.31.0.195           # fsl-mgmt -> ssh to range hosts, syslog :5140 collector
-    fsl-pfsense:                  # edge firewall + Suricata (IDS/IPS)
+    fsl-edge:                     # OPNsense edge firewall + Suricata (IDS)
       wan:  "fsl-internet — holds the .1 gateway of each of the 30 origin /24s"
       opt1: "fsl-estate"
       mgmt: 10.31.0.158
@@ -33,7 +33,7 @@ tenant:                           # fsl-range — VMs on `master`, reached via t
     fsl-wg-corp:  { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }
   paths:
     external: "operator 192.168.0.x -> FIP 192.168.0.210 -> platform (console :8000)"
-    attack:   "fsl-kali -> fsl-internet (spoofed origin) -> pfSense WAN -> fsl-estate -> WAF -> board/corp"
+    attack:   "fsl-kali -> fsl-internet (spoofed origin) -> OPNsense WAN -> fsl-estate -> WAF -> board/corp"
     mgmt:     "platform ens7 10.31.0.195 -> fsl-mgmt -> ssh / syslog to every host (out-of-band)"
-  collector_port: 5140            # syslog UDP: pfSense + WAF -> platform Filebeat -> Elasticsearch -> Kibana
+  collector_port: 5140            # syslog UDP: OPNsense + WAF -> platform Filebeat -> Elasticsearch -> Kibana
   security_groups: [fsl-range, fsl-reach, fsl-platform]

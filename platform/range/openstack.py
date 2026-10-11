@@ -4,13 +4,15 @@ import ipaddress
 import shlex
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
-from range import fabric, images, pfsense, slot, waf
+from range import cloud as configured
+from range import fabric, images, opnsense, slot, waf
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -34,6 +36,8 @@ KEYPAIRS = "GET {nova}/os-keypairs"
 IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
 DELETE_KEYPAIR = "DELETE {nova}/os-keypairs/{keypair}"
 IMAGES = "GET {glance}/v2/images?name={name}"
+CREATE_IMAGE = "POST {glance}/v2/images"
+IMAGE_FILE = "{glance}/v2/images/{image}/file"
 DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
 FLAVORS = "GET {nova}/flavors"
 ACTION = "POST {nova}/servers/{server}/action"
@@ -65,10 +69,14 @@ SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
 GATEWAY_ROLE = "gateway"
+SENSOR_ROLE = "sensor"
+EDGE_REBOOT = 900
+EDGE_POLL = 15
 
 SETTINGS = {
     "keystone": "FSL_OPENSTACK_KEYSTONE",
     "user": "FSL_OPENSTACK_USER",
+    "domain": "FSL_OPENSTACK_DOMAIN",
     "password": "FSL_OPENSTACK_PASSWORD",
     "project": "FSL_OPENSTACK_PROJECT",
     "ssh_user": "FSL_OPENSTACK_SSH_USER",
@@ -78,6 +86,12 @@ SETTINGS = {
     "source": "FSL_SOURCE",
     "base_image": "FSL_OPENSTACK_BASE_IMAGE",
     "flavor": "FSL_OPENSTACK_FLAVOR",
+    "build_flavor": "FSL_OPENSTACK_BUILD_FLAVOR",
+    "role_flavors": "FSL_OPENSTACK_ROLE_FLAVORS",
+    "availability_zone": "FSL_OPENSTACK_AVAILABILITY_ZONE",
+    "subnets": "FSL_OPENSTACK_SUBNETS",
+    "mtu": "FSL_OPENSTACK_MTU",
+    "opnsense": "FSL_OPNSENSE",
     "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
     "platform": "FSL_OPENSTACK_PLATFORM",
 }
@@ -95,17 +109,25 @@ def connect(
     project: str = "",
     ssh_user: str = "",
     ssh_key: str = "",
-    region: str = "RegionOne",
-    interface: str = "public",
+    region: str = "",
+    interface: str = "",
+    domain: str = "",
     source: str = "",
     base_image: str = "",
     flavor: str = "",
+    build_flavor: str = "",
+    role_flavors: str = "",
+    availability_zone: str = "",
+    subnets: str = "",
+    mtu: str = "",
+    opnsense: str = "",
     build_network: str = "",
     platform: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
         "project": project, "ssh_user": ssh_user, "ssh_key": ssh_key,
+        "region": region, "interface": interface, "domain": domain,
     }
     missing = [SETTINGS[name] for name, value in given.items() if not value]
     if missing:
@@ -114,19 +136,30 @@ def connect(
             f"{', '.join(missing)}"
         )
     known = (keystone, user, password, project, ssh_user, ssh_key,
-             region, interface)
+             region, interface, domain)
 
     def rediscover() -> tuple[Cloud, object]:
         cloud = discover(
             keystone, user, password, project, ssh_user, ssh_key,
-            region=region, interface=interface,
+            region=region, interface=interface, domain=domain,
         )
         _connected[known] = (cloud, http_reader(cloud, password))
         return _connected[known]
 
+    try:
+        build = Build(
+            source=source, base_image=base_image, flavor=flavor,
+            build_flavor=build_flavor, role_flavors=configured.pairs(role_flavors),
+            availability_zone=availability_zone, inside=configured.pairs(subnets),
+            mtu=int(mtu or 0), opnsense=configured.opnsense_from(opnsense),
+            network=build_network, platform=platform,
+        )
+    except ValueError as error:
+        raise RangeUnavailable(
+            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('role_flavors', 'subnets', 'mtu', 'opnsense'))}) "
+            f"do not parse: {error}; they come from cloud.yaml through the Heat stack"
+        ) from error
     cloud, reader = _connected.get(known) or rediscover()
-    build = Build(source=source, base_image=base_image, flavor=flavor,
-                  network=build_network, platform=platform)
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
 
 def forget() -> None:
@@ -142,8 +175,9 @@ def discover(
     region: str = "RegionOne",
     interface: str = "public",
     timeout: float = 30.0,
+    domain: str = "default",
 ) -> "Cloud":
-    answered = _signed_in(keystone, user, password, project, timeout)
+    answered = _signed_in(keystone, user, password, project, timeout, domain)
 
     catalog = (answered.json().get("token") or {}).get("catalog") or []
     return Cloud(
@@ -155,9 +189,11 @@ def discover(
         user=user,
         ssh_user=ssh_user,
         ssh_key=ssh_key,
+        domain=domain,
     )
 
-def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float):
+def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float,
+               domain: str = "default"):
     body = {
         "auth": {
             "identity": {
@@ -165,7 +201,7 @@ def _signed_in(keystone: str, user: str, password: str, project: str, timeout: f
                 "password": {
                     "user": {
                         "name": user,
-                        "domain": {"id": "default"},
+                        "domain": {"id": domain},
                         "password": password,
                     }
                 },
@@ -200,7 +236,7 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
 
     def authenticate() -> str:
         answered = _signed_in(
-            cloud.keystone, cloud.user, password, cloud.project, timeout
+            cloud.keystone, cloud.user, password, cloud.project, timeout, cloud.domain
         )
         held["token"] = answered.headers.get(SUBJECT_TOKEN, "")
         if not held["token"]:
@@ -226,6 +262,7 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
             )
         return answered.json() if answered.content else {}
 
+    send.token = lambda: authenticate()
     return send
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
@@ -305,6 +342,7 @@ class Cloud:
     ssh_key: str
     ssh_config: str = ""
     glance: str = ""
+    domain: str = "default"
 
 
 @dataclass(frozen=True)
@@ -312,8 +350,17 @@ class Build:
     source: str = ""
     base_image: str = ""
     flavor: str = ""
+    build_flavor: str = ""
+    role_flavors: dict = field(default_factory=dict)
+    availability_zone: str = ""
+    inside: dict = field(default_factory=dict)
+    mtu: int = 0
+    opnsense: configured.OPNsense | None = None
     network: str = ""
     platform: str = ""
+
+    def placed(self, server: dict) -> dict:
+        return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
 
 
 class OpenStack:
@@ -522,13 +569,13 @@ class OpenStack:
     def plan_fabric(self) -> fabric.Plan:
         networks, subnets, keypairs, groups = self._fabric_standing()
         return fabric.plan(self.declared, networks, subnets, keypairs, self._public_key(),
-                           groups, self._reached(networks))
+                           groups, self._reached(networks), self.build.inside)
 
     def ensure_fabric(self) -> fabric.Plan:
         public_key = self._public_key(make=True)
         networks, subnets, keypairs, groups = self._fabric_standing()
         plan = fabric.plan(self.declared, networks, subnets, keypairs, public_key,
-                           groups, self._reached(networks))
+                           groups, self._reached(networks), self.build.inside)
         if plan.drifted:
             raise Drifted("; ".join(plan.drifted))
         carriers = {
@@ -652,13 +699,13 @@ class OpenStack:
         missing = [found for found in plan.images
                    if found.state == "missing" and found.host in made]
         for found in missing:
-            base = self._builder_base(self.declared.hosts[found.host].base or self.build.base_image)
-            self.get(self._call(BOOT), {"server": {
+            base = self._builder_base(self.build.base_image)
+            self.get(self._call(BOOT), {"server": self.build.placed({
                 **base,
                 "name": images.BUILDER + found.host,
-                "user_data": images.user_data(made[found.host]),
+                "user_data": images.user_data(made[found.host], self._upload(made[found.host])),
                 "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
-            }})
+            })})
         for found in plan.images:
             if found.state == "built":
                 self.get(self._call(ACTION, server=found.builder), {"os-stop": None})
@@ -679,10 +726,38 @@ class OpenStack:
 
     def _bundles(self) -> tuple[images.Bundle, ...]:
         return tuple(
-            images.bundle(Path(self.build.source), host, entry.setup, entry.files)
+            self._bundle(host, entry)
             for host, entry in self.declared.hosts.items()
             if entry.setup
         )
+
+    def _bundle(self, host: str, entry) -> images.Bundle:
+        source = Path(self.build.source)
+        if not entry.uploads:
+            return images.bundle(source, host, entry.setup, entry.files)
+        if entry.uploads != opnsense.UPLOADS:
+            raise RangeUnavailable(f"{host} uploads {entry.uploads!r}, which no builder makes")
+        if self.build.opnsense is None or not self.build.mtu:
+            raise RangeUnavailable(
+                f"the {host} image is built from the OPNsense release and the tenant MTU; "
+                f"set {SETTINGS['opnsense']} and {SETTINGS['mtu']} (opnsense and network.mtu in cloud.yaml)"
+            )
+        key = self._public_key()
+        if not key:
+            raise RangeUnavailable(f"the {host} image trusts the platform's key, which the fabric makes; build the fabric first")
+        generated = opnsense.image_bundle(
+            (source / opnsense.CONFIG).read_text(), self.build.opnsense, self.build.mtu, key)
+        return images.bundle(source, host, entry.setup, entry.files, generated=generated,
+                             image=self.build.opnsense.image, uploads=True)
+
+    def _upload(self, bundle: images.Bundle) -> dict | None:
+        if not bundle.uploads:
+            return None
+        token = getattr(self.get, "token", None)
+        if token is None:
+            raise RangeUnavailable("this connection cannot hand a builder a token to upload with")
+        made = self.get(self._call(CREATE_IMAGE), images.record(bundle, opnsense.IMAGE_PROPERTIES))
+        return {"url": self._call(IMAGE_FILE, image=made["id"]), "token": token()}
 
     def _prebuilt(self) -> tuple[tuple[str, str], ...]:
         return tuple(
@@ -693,7 +768,7 @@ class OpenStack:
 
     def _image_plan(self, bundles) -> images.Plan:
         prebuilt = self._prebuilt()
-        names = {bundle.host for bundle in bundles} | {image for _, image in prebuilt}
+        names = {bundle.name for bundle in bundles} | {image for _, image in prebuilt}
         found = [
             image for name in names
             for image in self.get(self._call(IMAGES, name=quote(name))).get("images") or []
@@ -735,24 +810,31 @@ class OpenStack:
             raise RangeUnavailable(
                 f"images are built on {base_image!r} and the cloud has "
                 f"{len(bases)} active images by that name; set "
-                f"{SETTINGS['base_image']} (or the host's base) to one it has exactly once"
+                f"{SETTINGS['base_image']} to one it has exactly once"
             )
         return {
-            "imageRef": bases[0]["id"], "flavorRef": self._flavor(),
+            "imageRef": bases[0]["id"],
+            "flavorRef": self._flavor(self.build.build_flavor, "build_flavor"),
             "networks": [{"uuid": self.build.network}], "config_drive": True,
         }
 
-    def _flavor(self) -> str:
+    def _flavor(self, name: str, setting: str) -> str:
         flavor = next((
             entry["id"] for entry in self.get(self._call(FLAVORS)).get("flavors") or []
-            if entry.get("name") == self.build.flavor
+            if name and entry.get("name") == name
         ), None)
         if flavor is None:
             raise RangeUnavailable(
-                f"the cloud has no flavor {self.build.flavor!r}; set "
-                f"{SETTINGS['flavor']} to one it lists"
+                f"the cloud has no flavor {name!r}; set {SETTINGS[setting]} "
+                f"(compute.flavors in cloud.yaml) to one it lists"
             )
         return flavor
+
+    def _host_flavor(self, host: str) -> str:
+        roles = [role for role, filled in self.declared.roles.items() if filled == host]
+        named = next((self.build.role_flavors[role] for role in roles
+                      if role in self.build.role_flavors), "")
+        return self._flavor(named or self.build.flavor, "role_flavors" if named else "flavor")
 
     def plan_slot(self) -> slot.Plan:
         return self._slot()[0]
@@ -804,17 +886,16 @@ class OpenStack:
         }
         prefixes = {subnet["id"]: subnet["cidr"].split("/")[1] for subnet in subnets}
         outside = {origin.segment for origin in self.declared.origins}
-        flavor = self._flavor()
         for host in plan.boot:
             entry = self.declared.hosts[host]
             facing = [named[slot.port_name(host, s)] for s in entry.segments if s in outside]
             server = {
-                "name": host, "imageRef": ready[host], "flavorRef": flavor,
+                "name": host, "imageRef": ready[host], "flavorRef": self._host_flavor(host),
                 "networks": [{"port": named[slot.port_name(host, s)]["id"]} for s in entry.segments],
                 "config_drive": True, "key_name": fabric.KEYPAIR,
                 "metadata": {slot.HOST: host},
             }
-            if not entry.image:
+            if not entry.image and not entry.uploads:
                 server["user_data"] = slot.user_data(
                     names,
                     mac=facing[0]["mac_address"] if facing else "",
@@ -823,7 +904,7 @@ class OpenStack:
                         for port in facing for fixed in port["fixed_ips"]
                     ),
                 )
-            self.get(self._call(BOOT), {"server": server})
+            self.get(self._call(BOOT), {"server": self.build.placed(server)})
         self._shape = None
         return self._slot()[0]
 
@@ -878,30 +959,53 @@ class OpenStack:
 
     def configure_edge(self) -> tuple[str, tuple[str, ...]]:
         source = Path(self.build.source)
-        collector = f"{self._collector()}:{fabric.COLLECTOR_PORT}"
-        wanted = pfsense.settings(self.describe().segments, self.declared,
-                                  (source / pfsense.RULES).read_text(), collector)
-        template = (source / pfsense.TEMPLATE).read_text()
-        ran = self.runner(slot.EDGE_ROLE)(
-            pfsense.command(), stdin=pfsense.playback(wanted, template), timeout=300,
-        )
-        expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
-        missing = [address for address in expected if address not in pfsense.held(ran.output)]
-        reported = pfsense.reported(ran.output)
-        sensing = pfsense.sensing(ran.output)
-        logging = f"logs {collector}" in reported
-        wan_rule = pfsense.wan_rule_loaded(ran.output)
+        collector = (self._collector(), fabric.COLLECTOR_PORT)
+        wanted = opnsense.settings(self.describe().segments, collector, self.build.inside,
+                                   self.build.mtu, self._public_key())
         edge = slot.edge_of(self.declared)
+        staged = opnsense.playback(
+            opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
+            (source / opnsense.INCLUDE).read_text(),
+            (source / opnsense.RULES).read_text(),
+            (source / opnsense.SCRIPT).read_text(),
+        )
+        ran = self.runner(slot.EDGE_ROLE)(opnsense.command(), stdin=staged, timeout=120)
+        before = opnsense.booted(ran.output)
+        if not ran.ok or opnsense.REBOOTING not in ran.output or not before:
+            raise Drifted(f"{edge} did not take its configuration (exit {ran.exit_code}): "
+                          f"{ran.output[-1000:]}")
+        ran = self._rebooted(edge, before)
+        expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
+        missing = [address for address in expected if address not in opnsense.held(ran.output)]
+        reported = opnsense.reported(ran.output)
+        sensing = opnsense.sensing(ran.output)
+        logging = f"logs {collector[0]}:{collector[1]}" in reported
+        wan_rule = opnsense.wan_rule_loaded(ran.output)
         if not ran.ok or missing or not sensing or not logging or not wan_rule:
             raise Drifted(
-                f"{edge} playback exited {ran.exit_code}, does not hold "
+                f"{edge} came back with exit {ran.exit_code}, does not hold "
                 f"{', '.join(missing) or 'nothing missing'}, its sensor is "
                 f"{'running' if sensing else 'not running'}, it "
-                f"{'logs' if logging else 'does not log'} to {collector}, and "
+                f"{'logs' if logging else 'does not log'} to {collector[0]}:{collector[1]}, and "
                 f"its wan pass rule is {'in pf' if wan_rule else 'not loaded into pf'}: "
                 f"{ran.output[-1000:]}"
             )
         return edge, reported
+
+    def _rebooted(self, edge: str, before: str) -> Ran:
+        deadline = time.monotonic() + EDGE_REBOOT
+        said = "it never answered"
+        while time.monotonic() < deadline:
+            time.sleep(EDGE_POLL)
+            try:
+                ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
+            except RangeUnavailable as gone:
+                said = str(gone)
+                continue
+            if opnsense.booted(ran.output) not in ("", before):
+                return ran
+            said = "it had not rebooted yet"
+        raise Drifted(f"{edge} did not come back from its reboot within {EDGE_REBOOT}s: {said}")
 
     def configure_waf(self) -> tuple[str, tuple[str, ...]]:
         host = self.declared.host(GATEWAY_ROLE)

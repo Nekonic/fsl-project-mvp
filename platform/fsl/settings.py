@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from range import declared
+from rules.suricata import RULE_PATH
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -92,9 +93,17 @@ ELASTIC_SESSION_INDEX = os.environ.get(
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
 CANARY_WAIT = float(os.environ.get("FSL_CANARY_WAIT", "45"))
 CANARY_POLL = float(os.environ.get("FSL_CANARY_POLL", "3"))
-FSL_SENSOR_RELOAD = tuple(
-    os.environ.get("FSL_SENSOR_RELOAD", "suricatasc -c reload-rules").split()
+SENSOR_HOST = RANGE.hosts.get(RANGE.roles.get("sensor", ""))
+FSL_SENSOR_RULES = (
+    os.environ.get("FSL_SENSOR_RULES")
+    or (SENSOR_HOST and SENSOR_HOST.rules)
+    or RULE_PATH
 )
+FSL_SENSOR_RELOAD = tuple((
+    os.environ.get("FSL_SENSOR_RELOAD")
+    or (SENSOR_HOST and SENSOR_HOST.reload)
+    or "suricatasc -c reload-rules"
+).split())
 FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
 
 FSL_SUBSTRATE_OPTIONS = dict(
@@ -105,20 +114,29 @@ FSL_SUBSTRATE_OPTIONS = dict(
             "max_sessions": int(os.environ.get("FSL_MAX_SESSIONS") or 2),
         },
         "range.openstack.connect": {
-            "keystone": os.environ.get("FSL_OPENSTACK_KEYSTONE", ""),
-            "user": os.environ.get("FSL_OPENSTACK_USER", ""),
-            "password": os.environ.get("FSL_OPENSTACK_PASSWORD", ""),
-            "project": os.environ.get("FSL_OPENSTACK_PROJECT", ""),
-            "ssh_user": os.environ.get("FSL_OPENSTACK_SSH_USER", ""),
-            "ssh_key": os.environ.get("FSL_OPENSTACK_SSH_KEY", ""),
-            "region": os.environ.get("FSL_OPENSTACK_REGION", "RegionOne"),
-            "interface": os.environ.get("FSL_OPENSTACK_INTERFACE", "public"),
-            "source": FSL_SOURCE,
-            "base_image": os.environ.get("FSL_OPENSTACK_BASE_IMAGE", "ubuntu-24.04"),
-            "flavor": os.environ.get("FSL_OPENSTACK_FLAVOR", "m1.small"),
-            "build_network": os.environ.get("FSL_OPENSTACK_BUILD_NETWORK", ""),
-            "platform": os.environ.get("FSL_OPENSTACK_PLATFORM", ""),
-        },
+            name: os.environ.get(variable, "")
+            for name, variable in {
+                "keystone": "FSL_OPENSTACK_KEYSTONE",
+                "user": "FSL_OPENSTACK_USER",
+                "password": "FSL_OPENSTACK_PASSWORD",
+                "domain": "FSL_OPENSTACK_DOMAIN",
+                "project": "FSL_OPENSTACK_PROJECT",
+                "ssh_user": "FSL_OPENSTACK_SSH_USER",
+                "ssh_key": "FSL_OPENSTACK_SSH_KEY",
+                "region": "FSL_OPENSTACK_REGION",
+                "interface": "FSL_OPENSTACK_INTERFACE",
+                "base_image": "FSL_OPENSTACK_BASE_IMAGE",
+                "flavor": "FSL_OPENSTACK_FLAVOR",
+                "build_flavor": "FSL_OPENSTACK_BUILD_FLAVOR",
+                "role_flavors": "FSL_OPENSTACK_ROLE_FLAVORS",
+                "availability_zone": "FSL_OPENSTACK_AVAILABILITY_ZONE",
+                "subnets": "FSL_OPENSTACK_SUBNETS",
+                "mtu": "FSL_OPENSTACK_MTU",
+                "opnsense": "FSL_OPNSENSE",
+                "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
+                "platform": "FSL_OPENSTACK_PLATFORM",
+            }.items()
+        } | {"source": FSL_SOURCE},
     }.get(FSL_SUBSTRATE, {}),
     declared=RANGE,
 )

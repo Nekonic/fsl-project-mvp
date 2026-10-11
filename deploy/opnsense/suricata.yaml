@@ -1,0 +1,26 @@
+%YAML 1.1
+---
+rule-files:
+  - /usr/local/etc/suricata/rules/fsl.rules
+
+unix-command:
+  enabled: yes
+  filename: /var/run/suricata-command.socket
+
+detect:
+  profile: medium
+  guess-applayer-tx: yes
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: syslog
+      identity: suricata
+      facility: local1
+      level: Info
+      types:
+        - alert:
+            metadata: yes
+        - http:
+            extended: yes
+            dump-all-headers: request

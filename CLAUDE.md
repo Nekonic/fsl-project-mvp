@@ -93,7 +93,8 @@ alert that does not mention the attack's mechanism is reported
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/state/now.md`):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  `range/pfsense.py` stops and starts Suricata on pfSense (OpenStack);
+  `range/opnsense.py` (with `deploy/opnsense/`) configures and restarts
+  Suricata on the OPNsense edge (OpenStack);
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF and
   the lesson step text names the exclusion file path; `api/site.py` and
@@ -133,6 +134,10 @@ just be made and recorded, not staged as a decision.
   registers the Elasticsearch ingest pipeline); each session's stack starts
   when the session opens. `build:` stays for local development only. The
   platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
-  OpenStack procedures are in `docs/OPENSTACK.md`.
+  the whole cloud side comes up with `bin/cloud up` from
+  `deploy/openstack/cloud.yaml`, the one file of cloud-specific values (no
+  secrets; copied from `cloud.example.yaml`); the cloud holds one uploaded
+  image, the stock Ubuntu 24.04 cloud image. OpenStack procedures are in
+  `docs/OPENSTACK.md`.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
   `docs/superpowers/specs/` the design.

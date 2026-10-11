@@ -43,8 +43,25 @@ def written_credentials():
     ]
     return written
 
-def test_the_platform_vm_boots_ubuntu_24_04():
-    assert template()["parameters"]["image"]["default"] == "ubuntu-24.04"
+def example():
+    from range import cloud
+
+    return cloud.read(cloud.EXAMPLE)
+
+def test_the_platform_vm_boots_the_base_image_cloud_yaml_names():
+    [server] = resources_of("OS::Nova::Server")
+
+    assert server["image"] == {"get_param": "image"}
+    assert example().heat_parameters()["image"] == example().base_image == "ubuntu-24.04"
+
+def test_the_template_holds_no_cloud_value_of_its_own():
+    defaulted = [name for name, entry in template()["parameters"].items() if "default" in entry]
+
+    assert not defaulted, (
+        f"{defaulted} carry defaults; every cloud value comes from cloud.yaml, "
+        f"so a second place to set one would drift from it"
+    )
+    assert set(template()["parameters"]) == set(example().heat_parameters())
 
 def test_every_boot_brings_the_whole_platform_up_with_compose():
     config = cloud_config()
@@ -67,8 +84,8 @@ def test_every_boot_brings_the_whole_platform_up_with_compose():
 
 def test_its_network_overlaps_nothing_docker_creates_inside_it():
     [subnet] = resources_of("OS::Neutron::Subnet")
-    platform = ipaddress.ip_network(template()["parameters"][
-        subnet["cidr"]["get_param"]]["default"])
+    assert subnet["cidr"] == {"get_param": "cidr"}
+    platform = ipaddress.ip_network(example().heat_parameters()["cidr"])
     inside = [DOCKER_BRIDGE] + [
         ipaddress.ip_network(pool["subnet"])
         for network in yaml.safe_load(COMPOSE.read_text())["networks"].values()
@@ -151,8 +168,8 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
     names = {line.split("=", 1)[0] for line in content.splitlines() if line}
 
     assert names == {
-        SETTINGS[name] for name in REQUIRED_BY_CONNECT if name != "password"
-    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", SETTINGS["build_network"]}, names
+        variable for name, variable in SETTINGS.items() if name not in ("password", "platform", "source")
+    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS"}, names
 
 def test_images_are_built_on_the_platforms_own_network_which_reaches_the_internet():
     [server] = resources_of("OS::Nova::Server")
@@ -237,3 +254,15 @@ def test_a_network_the_platform_attaches_later_is_configured_by_dhcp():
         "networkd reads a file written after it started only on reload, so "
         "the port attached later would come up with no address"
     )
+
+
+def test_the_platform_vm_installs_everything_it_runs_on_the_stock_image():
+    config = cloud_config()
+    commands = " ".join(" ".join(map(str, step)) for step in config["runcmd"])
+
+    assert {"docker.io", "docker-compose-v2", "git"} <= set(config["packages"]), (
+        "the base image is Canonical's stock noble cloud image, uploaded as is; "
+        "whatever the first boot runs beyond it, cloud-init installs"
+    )
+    assert "git clone" in commands and "docker" in " ".join(
+        entry["content"] for entry in config["write_files"] if entry["path"].endswith(".service"))

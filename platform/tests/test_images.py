@@ -184,26 +184,26 @@ def test_what_cleaning_removes_is_leftovers_and_failures_never_a_ready_image():
     assert images.removable(plan) == [("image", "img-old"), ("server", "srv-wiki")]
 
 def test_a_prebuilt_image_the_cloud_already_holds_is_ready_with_no_builder():
-    glance = [{"id": "img-pf", "name": "fsl-pfsense", "status": "active"}]
+    glance = [{"id": "img-edge", "name": "fsl-edge", "status": "active"}]
 
-    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
     [found] = plan.images
 
-    assert found.host == "fsl-pfsense"
-    assert found.state == "ready" and found.image == "img-pf" and not found.builder
+    assert found.host == "fsl-edge"
+    assert found.state == "ready" and found.image == "img-edge" and not found.builder
     assert plan.clean
 
 def test_a_prebuilt_image_the_cloud_lacks_is_missing_and_names_what_to_build():
-    plan = images.plan((), [], [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+    plan = images.plan((), [], [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
     [found] = plan.images
 
-    assert found.state == "missing" and "fsl-pfsense" in found.detail
+    assert found.state == "missing" and "fsl-edge" in found.detail
     assert not plan.clean
 
 def test_a_prebuilt_image_is_never_what_cleaning_removes():
-    glance = [{"id": "img-pf", "name": "fsl-pfsense", "status": "active"}]
+    glance = [{"id": "img-edge", "name": "fsl-edge", "status": "active"}]
 
-    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-pfsense", "fsl-pfsense")])
+    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
 
     assert images.removable(plan) == []
 

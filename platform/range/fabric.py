@@ -8,7 +8,6 @@ from range.ports import RangeUnavailable
 TAG = "fsl.segment.id"
 KEYPAIR = "fsl-platform"
 MANAGEMENT = "mgmt"
-INSIDE = {"estate": "10.30.0.0/24", MANAGEMENT: "10.31.0.0/24"}
 NO_DEFAULT_ROUTE = {MANAGEMENT}
 RANGE_GROUP = "fsl-range"
 REACH_GROUP = "fsl-reach"
@@ -39,21 +38,24 @@ class Plan:
         return not (self.networks or self.subnets or self.keypair or self.groups
                     or self.reach or self.drifted)
 
-def wanted(declaration: Declaration) -> tuple[Subnet, ...]:
+def _inside(declaration: Declaration) -> list[str]:
     origins = {origin.id for origin in declaration.origins}
-    inside = [segment.id for segment in declaration.segments if segment.id not in origins]
-    unplaced = [segment for segment in inside if segment not in INSIDE]
+    return [segment.id for segment in declaration.segments if segment.id not in origins]
+
+def wanted(declaration: Declaration, inside: dict[str, str]) -> tuple[Subnet, ...]:
+    unplaced = [segment for segment in _inside(declaration) if segment not in inside]
     if unplaced:
         raise RangeUnavailable(
-            f"the declaration names {unplaced} and the fabric has no subnet for them"
+            f"the declaration names {unplaced} and the fabric has no subnet for them; "
+            f"set network.{', network.'.join(unplaced)} in cloud.yaml"
         )
     return tuple(
         Subnet(origin.segment, f"fsl-{origin.id}", origin.subnet, dhcp=False, gateway=True)
         for origin in declaration.origins
     ) + tuple(
-        Subnet(segment, f"fsl-{segment}", INSIDE[segment], dhcp=True,
+        Subnet(segment, f"fsl-{segment}", inside[segment], dhcp=True,
                gateway=segment not in NO_DEFAULT_ROUTE)
-        for segment in inside
+        for segment in _inside(declaration)
     )
 
 def _segment_of(network: dict) -> str | None:
@@ -66,8 +68,9 @@ def _same_key(one: str, other: str) -> bool:
     return one.split()[:2] == other.split()[:2]
 
 def _bound(declaration, networks):
-    want = wanted(declaration)
-    segments = list(dict.fromkeys(subnet.segment for subnet in want))
+    segments = list(dict.fromkeys(
+        [origin.segment for origin in declaration.origins] + _inside(declaration)
+    ))
     bound: dict[str, dict] = {}
     drifted, leftovers = [], []
     for network in networks:
@@ -87,10 +90,10 @@ def _bound(declaration, networks):
             )
         else:
             bound[segment] = network
-    return want, segments, bound, drifted, leftovers
+    return segments, bound, drifted, leftovers
 
 def bound(declaration: Declaration, networks: list) -> dict[str, dict]:
-    return _bound(declaration, networks)[2]
+    return _bound(declaration, networks)[1]
 
 def _differs(found: dict, subnet: Subnet) -> list[str]:
     differences = []
@@ -107,8 +110,10 @@ def _differs(found: dict, subnet: Subnet) -> list[str]:
     return differences
 
 def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list,
-         public_key: str, groups: list = (), reached: bool = True) -> Plan:
-    want, segments, bound, drifted, leftovers = _bound(declaration, networks)
+         public_key: str, groups: list = (), reached: bool = True,
+         inside: dict[str, str] | None = None) -> Plan:
+    want = wanted(declaration, inside or {})
+    segments, bound, drifted, leftovers = _bound(declaration, networks)
     create, present = [], []
     for subnet in want:
         network = bound.get(subnet.segment)
@@ -154,7 +159,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
 
 def teardown(declaration: Declaration, networks: list, subnets: list,
              keypairs: list, groups: list = ()) -> list[tuple[str, str]]:
-    _, _, bound, _, _ = _bound(declaration, networks)
+    _, bound, _, _ = _bound(declaration, networks)
     owned = {network["id"] for network in bound.values()}
     return (
         [("subnet", s["id"]) for s in subnets if s["network_id"] in owned]

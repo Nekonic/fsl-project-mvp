@@ -83,21 +83,24 @@ hosts:
 
 openstack:
   roles:
-    edge: fsl-pfsense
-    sensor: fsl-pfsense
+    edge: fsl-edge
+    sensor: fsl-edge
     proxy: fsl-kali
   watches:
     sensor: edge
   hosts:
-    fsl-pfsense:
+    fsl-edge:
       segments: [internet, estate, mgmt]
-      image: fsl-pfsense-edge
-      ssh_user: admin
+      setup: deploy/opnsense/build.sh
+      files: [deploy/opnsense]
+      uploads: opnsense
+      ssh_user: root
+      rules: /usr/local/etc/suricata/rules/fsl.rules
+      reload: /usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket
     fsl-kali:
       segments: [internet, mgmt]
       setup: deploy/kali/setup.sh
       files: [deploy/kali, deploy/proxy/stamp.py]
-      base: kali-rolling
     fsl-waf:
       segments: [estate, mgmt]
       names: [board.com]

@@ -306,7 +306,8 @@ def _settings(scenario, body):
 def _take_defense(session, adapter, posture):
     ruleset = (posture or {}).get("suricata", DEFAULT_RULES)
     rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset
-    suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD)
+    suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD,
+                  settings.FSL_SENSOR_RULES)
     if posture is not None:
         session.waf = crs.apply(posture["waf"], adapter.runner("gateway"))
 
@@ -1438,10 +1439,11 @@ def _restore_expired() -> list:
         return lifted
 
 def _live_rules(session=None):
-    return suricata.current(_range(session).runner("sensor"))
+    return suricata.current(_range(session).runner("sensor"), settings.FSL_SENSOR_RULES)
 
 def _apply(content, session=None):
-    suricata.apply(content, _range(session).runner("sensor"), settings.FSL_SENSOR_RELOAD)
+    suricata.apply(content, _range(session).runner("sensor"), settings.FSL_SENSOR_RELOAD,
+                   settings.FSL_SENSOR_RULES)
 
 def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
@@ -1573,7 +1575,7 @@ def _baseline_rules() -> str:
 
 def _rules_at_baseline(adapter) -> bool:
     try:
-        live = suricata.current(adapter.runner("sensor"))
+        live = suricata.current(adapter.runner("sensor"), settings.FSL_SENSOR_RULES)
     except (suricata.RulesUnreadable, RangeUnavailable):
         return False
     if live != _baseline_rules():

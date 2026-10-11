@@ -82,9 +82,23 @@ to ghcr.io; compose and the platform VM pull them; `bin/platform-rebuild`
 replaces the platform stack keeping the store and the range key, not yet run
 (`docs/DECISIONS.md`). Before its first run: push to `dev`, wait for the
 `images` workflow, make the six ghcr.io packages public, create `m1.large` if
-absent. Then, with the user, rebuild 192.168.0.210. Proposed, not built: `bin/cloud
-up|down` for the whole range and golden images from CI; pfSense pending its
-licence research.
+absent. Then, with the user, rebuild 192.168.0.210. Golden images from CI:
+proposed, not built.
+
+OPNsense edge, one base image, cloud.yaml (2026-10-11, local, not pushed, not
+run against a cloud; `docs/DECISIONS.md`): OPNsense replaces pfSense
+(`range/opnsense.py`, `deploy/opnsense/`); the cloud holds only the stock
+Ubuntu 24.04 cloud image and the images step builds `fsl-opnsense-<version>`
+from the official nano image on an Ubuntu builder (verified by SHA256 and
+signature, configured through the importer under QEMU, converted with
+qemu-img, uploaded to Glance); `fsl-kali` builds on Ubuntu;
+`deploy/openstack/cloud.yaml` holds every cloud-specific value and drives
+`bin/platform-rebuild`, the Heat parameters and `openstack.env`; `bin/cloud
+up|down` brings the whole cloud side up or down. The rules editor now writes
+the file the edge's Suricata loads. First run: write cloud.yaml, upload the
+stock image (`docs/OPENSTACK.md` §3.6), `bin/cloud up`; the console strings
+the importer waits for and the OPNsense config.xml fields are read from source
+and docs, not observed.
 
 Awaiting the user: a test audit (2026-10-10) found 223 of 1,379 tests that
 duplicate another test, pin implementation detail, assert framework or YAML
@@ -124,8 +138,8 @@ Removing them lowers the tests floor on purpose and needs the user's ruling
   (`board-normal-sort`).
 
 ## Deferred (OpenStack work, not MVP)
-Per-session CIDR allocation (fabric.py:11); the single-session 409 (OpenStack
-keeps one; docker allows `FSL_MAX_SESSIONS`) and the bin/verify open-session guard; splitting pfSense's
+Per-session CIDR allocation (fabric.py); the single-session 409 (OpenStack
+keeps one; docker allows `FSL_MAX_SESSIONS`) and the bin/verify open-session guard; splitting the edge's
 edge and sensor roles; acceptance on substrate openstack (`docs/STATE.md`
 backlog 0).
 

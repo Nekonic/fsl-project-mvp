@@ -237,8 +237,12 @@ platform use only its four methods:
 `range.docker.Docker`), with the options `FSL_SUBSTRATE_OPTIONS` keeps under
 that name plus `declared=RANGE`. Docker takes `FSL_PROJECT` (default `fsl`).
 OpenStack takes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`,
-`_SSH_USER` and `_SSH_KEY`, each refused by name when missing; `_REGION`
-defaults to `RegionOne` and `_INTERFACE` to `public`. `redteam/harness.py` is handed a launcher and
+`_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE` and `_DOMAIN`, each refused by
+name when missing, and the range-shaping values `_BASE_IMAGE`, `_FLAVOR`,
+`_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU` and
+`FSL_OPNSENSE`, refused by name where they are used. None has a default in
+code: all come from `deploy/openstack/cloud.yaml` through the Heat stack
+(`platform/range/cloud.py` reads and validates that file). `redteam/harness.py` is handed a launcher and
 `platform/rules/suricata.py` a runner, so neither imports `subprocess` or
 names a substrate.
 
@@ -267,7 +271,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person, and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read; the platform reads neither |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
-| The Suricata process | `platform/rules/suricata.py` | `platform/range/pfsense.py` and `deploy/pfsense/configure.php` stop and start Suricata on pfSense (OpenStack) |
+| The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); the sensor host in `declaration.yaml` names the rule file and reload command `suricata.py` is handed |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
 
@@ -866,6 +870,17 @@ The cloud is one KVM compute node (8 vCPU, 64 GB) running kolla-ansible
 2026.1 with ML2/Open vSwitch. The range lives in project `fsl-range`, driven
 by the member-role user `fsl-range`. Horizon is never shown to users.
 
+Everything that differs between clouds is in `deploy/openstack/cloud.yaml`
+(copied from the committed `cloud.example.yaml`, ignored by git, no secrets):
+identity, networks and MTU, base image, zone, flavors, keys, the OPNsense
+release and the platform's stack and ref. `platform/range/cloud.py` validates
+it and reports every problem by key; `bin/platform-rebuild` and `bin/cloud`
+drive the openstack CLI and the Heat parameters from it, and the stack writes
+it into the platform's `openstack.env`. `bin/cloud up` creates the stack and
+then calls fabric, images, slot and configure until `/api/range/ready/` is
+ready; `bin/cloud down` keeps the key, backs the store up and removes slot,
+fabric and stack.
+
 ### Built: the platform VM
 
 `deploy/openstack/platform.yaml` is a Heat template. It creates:
@@ -896,11 +911,13 @@ is read from the board VM at its management address. cloud-init sets
 `FSL_PUBLISH` to the VM's fixed address, so 8000 is published there
 and opened in the security group, and a browser reaches the console at the
 floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
-for pfSense's syslog; 9200 stays on loopback.
+for the edge's syslog; 9200 stays on loopback.
 
-cloud-init writes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PROJECT` (the stack's
-own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519` to
-`/root/openstack.env` with mode 0600, then moves it to
+Every parameter of the template comes from `deploy/openstack/cloud.yaml`
+(`bin/platform-rebuild`, `bin/cloud`); the template has no defaults. cloud-init
+writes those values as `FSL_OPENSTACK_*` and `FSL_OPNSENSE`, plus `_PROJECT`
+(the stack's own project), `_SSH_USER=ubuntu` and
+`_SSH_KEY=/data/ssh/id_ed25519`, to `/root/openstack.env` with mode 0600, then moves it to
 `/opt/fsl/openstack.env`, which git ignores. The password is not in the
 template: Nova keeps the user data and its metadata service serves it to
 whatever runs on the VM, the range's containers included. `bin/platform-rebuild` appends
@@ -914,8 +931,9 @@ The platform on the VM uses the OpenStack adapter
 (`FSL_SUBSTRATE=range.openstack.connect`, written by cloud-init) and builds the
 range's networks itself through `/api/range/fabric/`, planned by
 `range/fabric.py`: one `internet` network with a subnet per declared origin
-(DHCP off), `estate` on 10.30.0.0/24 and `mgmt` on 10.31.0.0/24 with no
-gateway, outside every compose and platform-VM subnet, and the keypair
+(DHCP off), `estate` and `mgmt` (no gateway) on the CIDRs `cloud.yaml` gives,
+which its loader refuses if they overlap each other, the platform's network or
+docker's default bridge, and the keypair
 `fsl-platform` from the key at `/data/ssh/id_ed25519`. The platform makes that
 key only when it is absent at the first fabric POST; `bin/platform-rebuild` keeps a copy
 on the operator's machine and writes it into every new platform VM, so a
@@ -925,13 +943,22 @@ CIDR. The VM's router attaches only its own subnet; the platform reaches range
 hosts through its `mgmt` port (below).
 
 The hosts boot from golden images, built through `/api/range/images/` and
-planned by `range/images.py`. `declaration.yaml`'s `hosts:` gives each VM a
-setup script and the files it needs; the platform packs them into its
-builder's user data, boots the builder on its own network (the one with a
-router), reads the builder's console for the line the setup prints when it
-ends, then stops and snapshots it. The image carries the bundle's digest, so
-an edited script shows up as an image of another bundle rather than a
-silently stale one.
+planned by `range/images.py`. The cloud holds one uploaded image, the stock
+Ubuntu 24.04 cloud image (`compute.base_image`); every builder boots it.
+`declaration.yaml`'s `hosts:` gives each VM a setup script and the files it
+needs; the platform packs them into its builder's user data, boots the builder
+on its own network (the one with a router), reads the builder's console for
+the line the setup prints when it ends, then stops and snapshots it. The image
+carries the bundle's digest, so an edited script shows up as an image of
+another bundle rather than a silently stale one. A host that `uploads` (the
+edge) is different: the platform creates its Glance record first and hands
+the builder the upload URL and a Keystone token in user data; the builder
+makes the disk and PUTs it, and is deleted once Glance says active, never
+snapshotted. The edge's builder downloads the OPNsense nano image, checks its
+SHA256 and the release key's against `cloud.yaml`, verifies the signature,
+boots it once under QEMU answering its configuration importer so it starts
+from `deploy/opnsense/config.xml`, converts it with `qemu-img` and uploads it
+as `fsl-opnsense-<version>` (`deploy/opnsense/build.sh`, `importer.py`).
 
 The fabric also makes two security groups: `fsl-range`, which every range
 port joins and which lets any IPv4 in (the WAF defends the range, not
@@ -949,14 +976,19 @@ configures only the first, its user data adds the rest at every boot.
 Every host's user data appends the `estate` names (`board`, `board-db`) to
 `/etc/hosts`, which is how the WAF finds the board and the board its database.
 
-The pfSense CE edge (golden image `fsl-pfsense-edge`: base + Suricata 8.0.5 +
-sshd + an OPT1 management NIC) boots in the slot. `POST /api/range/configure/`
-replays `deploy/pfsense/configure.php` over the management ssh so pfSense
-holds the 30 origin gateway addresses (one static, the rest as IP-alias VIPs),
-runs Suricata on the WAN with the range as `HOME_NET` and EVE going to syslog,
-keeps one WAN pass rule that survives the Suricata package's filter reload,
-and ships its syslog and the WAF's ModSecurity audit log to the platform's
-Elasticsearch, with GeoIP enrichment. One Kali image serves every origin: its
+The OPNsense edge `fsl-edge` (vtnet0 internet as WAN, vtnet1 estate as LAN,
+vtnet2 mgmt as opt1) boots in the slot. `POST /api/range/configure/` renders
+`deploy/opnsense/config.xml` for the slot (`range/opnsense.py`), stages it
+with the Suricata include `deploy/opnsense/suricata.yaml` and the starting
+rules over the management ssh as root, installs them and reboots the edge;
+it then waits for a new boot time and checks that the edge holds the 30
+origin gateway addresses (one static, the rest as IP aliases), runs Suricata
+on the WAN in IDS mode with the estate and mgmt as `HOME_NET` and EVE alerts
+and HTTP records going to syslog, sends syslog to the collector, and has a WAN
+pass rule in pf. The rules editor writes the file the include names and
+reloads with `suricatasc` on the socket it opens. The edge's syslog and the
+WAF's ModSecurity audit log reach the platform's Elasticsearch, with GeoIP
+enrichment. One Kali image serves every origin: its
 single Internet port holds the ~100 per-country addresses (the slot's
 `bootcmd` adds them to the NIC) and `/usr/local/sbin/fsl-origin` SNATs the
 box's outgoing source per country, so every tool leaves as the chosen country.
@@ -992,6 +1024,7 @@ of it is built (see above).
    landing page /: start and stop a session, the scoreboard after close
    sidebar, panes inside the page:
      pfSense   web GUI pane (built; dropped from scope and removed 2026-10-08)
+               (the edge is OPNsense since 2026-10-11)
      Kibana    framed directly, reading the same Elasticsearch (full)
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |
@@ -1003,9 +1036,9 @@ of it is built (see above).
             to the chosen country's address as packets leave
      |
      v
- pfSense CE VM: edge router; its WAN holds each subnet's gateway address
-                and routes on without NAT, so country sources survive
-   Suricata package: IDS (detects; no firewall lesson, per 2026-10-08)
+ OPNsense VM: edge router; its WAN holds each subnet's gateway address
+              and routes on without NAT, so country sources survive
+   Suricata (OPNsense IDS): detects; no firewall lesson, per 2026-10-08
      |
      v
  WAF VM: nginx + ModSecurity v3 + CRS
@@ -1016,7 +1049,7 @@ of it is built (see above).
    board VM (Django on MySQL)
 
  Evidence:
-   pfSense: Suricata EVE, filterlog --syslog, UDP--> Filebeat --+
+   OPNsense: Suricata EVE, syslog-ng, UDP-------> Filebeat --+
    WAF VM: ModSecurity audit log --------------------------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
@@ -1041,7 +1074,7 @@ Decisions still open for a person are in `docs/STATE.md` ("Decisions left for
 a person").
 
 Built: the WAF VM forwards its ModSecurity audit log with rsyslog imfile over
-UDP to 5140 (`platform/range/waf.py`), and Suricata on pfSense runs in legacy
-mode (`deploy/pfsense/configure.php`). What has to be tested on this
+UDP to 5140 (`platform/range/waf.py`), and Suricata on the OPNsense edge runs
+in IDS (pcap) mode (`deploy/opnsense/`), not built against a cloud yet. What has to be tested on this
 cloud before building is in the placement spec, "To test on this cloud before
 building".
