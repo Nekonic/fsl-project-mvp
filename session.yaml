@@ -99,7 +99,7 @@ services:
   kali:
     platform: linux/amd64
     build: ./deploy/kali
-    image: fsl/kali:mvp
+    image: ghcr.io/nekonic/fsl-kali:${FSL_IMAGE_TAG:-dev}
     networks: [edge]
     volumes:
       - label:/label:ro
@@ -113,7 +113,7 @@ services:
   proxy:
     platform: linux/amd64
     build: ./deploy/proxy
-    image: fsl/proxy:mvp
+    image: ghcr.io/nekonic/fsl-proxy:${FSL_IMAGE_TAG:-dev}
     networks: [edge, edge-br, edge-hk, edge-us]
     volumes:
       - label:/label

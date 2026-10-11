@@ -1373,3 +1373,111 @@ cases) means no write path can be missed. `bin/verify` now probes
 scoring anything. Open sessions are unchanged: the list gives them no result.
 
 Metrics: core_loc 560, product_loc 11206 (+15, not gated), tests 1475 (+3).
+
+## 2026-10-11 — Images come prebuilt from ghcr.io; the platform VM pulls, never builds
+
+The platform VM built six images on every first boot (`up -d --build`), so a
+rebuild took as long as the slowest build and depended on every upstream
+download working that day. Docker is here to bring the platform up fast; a VM
+should pull.
+
+- `.github/workflows/images.yml` builds platform, board, corp, corp-db, kali
+  and proxy for `linux/amd64` on every push to `dev` and on manual dispatch,
+  and pushes `ghcr.io/nekonic/fsl-<name>:<commit sha>` and, from `dev` only,
+  `:dev`, with `GITHUB_TOKEN` (`permissions: packages: write`), as GitHub's
+  "Publishing Docker images" guide does. Actions are pinned to commit SHAs
+  (checkout v7.0.1, setup-buildx v4.4.1, login v4.6.0, build-push v7.4.0);
+  layers are cached in the Actions cache (`type=gha`, one scope per image).
+  GHCR rather than Docker Hub: the repository is on GitHub, the token is the
+  workflow's own, and no second account or secret exists.
+- Every compose service with `build:` also names
+  `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}` and keeps `build:`, so
+  `docker compose pull` serves a VM and `--build` a developer. The
+  `fsl/<name>:mvp` tags are gone; the platform passes `FSL_IMAGE_TAG` to the
+  session stacks it starts, and `redteam/tools.py` runs the kali image of the
+  same tag. Third-party images keep their pins.
+- A package GitHub creates is private on first push even in a public
+  repository ("the default visibility is private", GitHub Docs, "Configuring a
+  package's access control and visibility"); each of the six is made public
+  once in its Package settings, or the VM's anonymous pull fails.
+- cloud-init writes `FSL_IMAGE_TAG=<checkout commit>` to `/opt/fsl/.env`, runs
+  `bin/fetch-geoip` (no credential: Elastic's endpoint), and the unit pulls
+  `compose.yaml` and `session.yaml` and runs `up -d`. A failed pull is not
+  fatal (`ExecStartPre=-`), so compose falls back to building; the rebuild
+  script refuses before deleting anything when an image for the commit is not
+  anonymously pullable, which covers both "CI not finished" and "still
+  private".
+- The platform VM's default flavor is `m1.large` (8 GB RAM, 4 vCPU, 80 GB, the
+  classic OpenStack default flavor of that name), created once by an admin if
+  absent.
+
+The range key: the platform made its range ssh key on its own data volume, so
+a new VM made a new key and the fabric reported keypair drift; the range had
+to be torn down with every platform rebuild. Considered: a Heat parameter
+carrying the private key (refused: Nova's metadata service serves user data to
+every process on the VM, containers included, the reason the password is
+already kept out); regenerating the key and rebuilding the range on every
+platform rebuild (works, but loses the range and costs a full image/slot
+cycle). Chosen: the key lives on the operator's machine (`--range-key`,
+default `~/.ssh/fsl-platform`, 0600), copied once from the running platform
+when absent, and `bin/platform-rebuild` writes it into the new VM's data volume
+over ssh, as it appends the password. The keypair and the range's VMs keep
+trusting the platform, so the range can stand through a replace.
+
+`bin/platform-rebuild` (not yet run): checks the six images for the ref's
+commit on ghcr.io, keeps the key, backs the store up with `bin/backup` over
+ssh, deletes and recreates the stack with `flavor` and `ref`, appends the
+password, writes the key, restores the store, recreates the platform and waits
+for `/api/sessions/`. Unverified hypothesis: Nova leaves the `mgmt` port the
+old platform attached behind, detached, and the next `POST /api/range/fabric/`
+attaches the new server; to be checked on the first real run.
+
+Docker was not running on the development machine, so the six images were not
+built locally; the workflow passes actionlint. Metrics: core_loc 560,
+dependencies 6, services 9 (unchanged), tests 1475 -> 1494.
+
+## 2026-10-11 — Proposed, not built: one command for the whole cloud, and golden images from CI
+
+Asked: one click builds everything, platform VM and range, from prebuilt
+images. Plan only; the user asked for the plan before any code.
+
+(a) One command. Extend the rebuild script into `bin/cloud up|down`. `up`
+creates the stack if absent (`--replace` replaces it as above), waits for the
+platform, then calls the platform's own range API in the order the code
+requires: `POST /api/range/fabric/` (stop on `drifted`); `GET` then `POST
+/api/range/images/` until `clean` (stop at once on a `failed` image, and on a
+`missing` image with no bundle, which the platform cannot build: today
+`fsl-pfsense`); `POST /api/range/slot/`; poll `GET /api/range/ready/` until the
+slot phase leaves `NOT_STANDING`/`REBUILDING`; `POST /api/range/configure/`,
+retried while the VMs' ssh comes up; poll `ready` until true. `down`: back up
+the store, keep the key, `DELETE /api/range/slot/`, `DELETE
+/api/range/fabric/`, `openstack stack delete`; golden images stay in Glance.
+
+(b) Golden images from CI. Today the images step boots a builder from
+`ubuntu-24.04` with the host's setup bundle as user data, snapshots it, and
+names the image by the bundle's digest, so it builds only when an image is
+missing or its scripts changed, and the images outlive the platform stack.
+Proposed: a workflow builds each Linux host's qcow2 from the same bundle
+(Ubuntu cloud image, the bundle as a NoCloud seed, QEMU with KVM until the
+`fsl-image-ready <digest>` line on the serial console, then `qemu-img convert
+-c`), and publishes it as a GitHub Release asset named by host and digest.
+GitHub: "Each file included in a release must be under 2 GiB. There is no
+limit on the total size of a release, nor bandwidth usage." KVM: GitHub's
+changelog (2024-04-02) says hardware acceleration is available on hosted
+Linux runners with 2 vCPUs; it does not mention nested virtualisation, so
+whether a full VM boot works there is unverified. The images step would then,
+for a missing image whose digest has a release asset, create the Glance image
+and import it with `POST /v2/images/{id}/import` and `{"method": {"name":
+"web-download", "uri": ...}}` (Glance "Interoperable Image Import";
+`web-download` is in the default `enabled_import_methods`, and `GET
+/v2/info/import` says whether this cloud allows it), falling back to the
+builder. Alternative if CI cannot boot VMs: build once on the cloud as today
+and publish with `openstack image save`, or keep the platform build, which
+already caches by digest.
+
+pfSense: nothing built or published. Unverified hypothesis, pending another
+agent's licence research: the trademark policy permits non-commercial
+redistribution of "bit-for-bit identical copies of official pfSense releases";
+an installed disk image is not such a copy, and the policy sends unaddressed
+uses to legal@netgate.com. Automating its install would mean driving the
+online installer's console (no scripted install exists), not done.

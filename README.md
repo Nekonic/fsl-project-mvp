@@ -12,6 +12,7 @@ lives elsewhere.
 - `docs/ARCHITECTURE.md`: how the range is put together, and where it is going
 - `docs/THREAT-MODEL.md`: what the range emulates and what it leaves out
 - `docs/STATE.md`: where the work stands
+- `docs/OPENSTACK.md`: what to set up on OpenStack (Kolla-Ansible 2026.1+), from the cloud to the range
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: this README and the architecture in Korean
 
 ## How it fits together
@@ -34,7 +35,7 @@ flowchart TB
     subgraph heat["Heat stack fsl-platform"]
       fip["floating IP<br/>8000, ssh and ping"]
       subgraph vm["platform VM, Ubuntu 24.04"]
-        unit["fsl-platform.service<br/>docker compose up -d --build"]
+        unit["fsl-platform.service<br/>docker compose pull, up -d"]
         stack["the compose stack<br/>(next graph)"]
       end
     end
@@ -130,18 +131,34 @@ it is a ttyd inside the platform that ssh's to Kali's `mgmt` address
 
 ## Bringing it up
 
-On a host with Docker, clone the repo, fetch the GeoIP database once, build
-the session images once, and bring the control plane up:
+On a host with Docker, clone the repo, fetch the GeoIP database once, pull
+the images and bring the control plane up:
 
 ```bash
 bin/fetch-geoip
+docker compose -f session.yaml pull
+docker compose pull && docker compose up -d
+```
+
+Our six images (platform, board, corp, corp-db, kali, proxy) are built by
+`.github/workflows/images.yml` on every push to `dev` and published as
+`ghcr.io/nekonic/fsl-<name>`, tagged with the commit SHA and `dev`. Compose
+names each one `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`; set
+`FSL_IMAGE_TAG` to a commit SHA to run exactly that commit's images (the
+platform VM does). A package GitHub creates on first push is private even
+when the repository is public; make each of the six public once, or an
+unauthenticated pull fails: on github.com, the package's page, **Package
+settings**, **Change visibility**, **Public** (irreversible). Every such service keeps its `build:`, so a developer who
+changed a Dockerfile or an app builds locally instead of pulling:
+
+```bash
 docker compose -f session.yaml build
 docker compose up -d --build
 ```
 
-Sessions start their stack with `--no-build`, so after changing a wargame, Kali
-or the proxy, run `docker compose -f session.yaml build` again. To start a
-session's stack by hand, as the platform does:
+Sessions start their stack with `--no-build`, from whatever image the host
+holds under that name, pulled or built. To start a session's stack by hand, as
+the platform does:
 `docker compose -p fsl-<id> -f session.yaml up -d --wait --no-build`.
 
 Elasticsearch's managed GeoIP downloader is off; it reads `GeoLite2-City.mmdb`
@@ -194,22 +211,37 @@ gives launched tools `--add-host` entries for that WAF.
 
 `deploy/openstack/platform.yaml` is a Heat template for the platform VM. What
 it creates and what its first boot does are in `docs/ARCHITECTURE.md`
-("Built: the platform VM"). As a project member, with the project's openrc
-sourced and `python-heatclient` installed:
+("Built: the platform VM"). `bin/platform-rebuild` creates the stack, or
+replaces a standing one without losing its state, from the operator's machine,
+as a project member with the project's openrc sourced and
+`python-openstackclient` and `python-heatclient` installed:
 
 ```bash
-openstack stack create -t deploy/openstack/platform.yaml --parameter keystone=http://KEYSTONE:5000 fsl-platform
+bin/platform-rebuild --keystone http://KEYSTONE:5000 --password-file PASSWORD_FILE --flavor m1.large
 ```
 
-`keystone` is Keystone's base URL without `/v3`; the platform adds it. The
-user is looked up in domain `default`, and the project is the stack's own.
-The password stays out of the stack, because Nova's metadata service serves
-user data to every process on the VM, containers included. Once the stack's
-`address` answers ssh, add the password from a file and recreate the platform:
+Before deleting anything it checks that the six images for the ref's commit
+can be pulled anonymously from ghcr.io, keeps the range key (below) and backs
+the store up (`bin/backup` over ssh). It then deletes the stack, creates it
+again with `flavor` and `ref`, and waits until `/api/sessions/` answers. The
+range is not touched; build it with the API calls below.
 
-```bash
-{ printf 'FSL_OPENSTACK_PASSWORD='; cat PASSWORD_FILE; echo; } | ssh ubuntu@ADDRESS 'cloud-init status --wait >/dev/null && cat >> /opt/fsl/openstack.env && sudo docker compose -f /opt/fsl/compose.yaml up -d platform'
-```
+The new VM clones `ref`, pulls the images
+tagged with that checkout's commit, and starts. `keystone` is Keystone's base
+URL without `/v3`; the platform adds it. The user is looked up in domain
+`default`, and the project is the stack's own. Two secrets stay out of the
+stack, because Nova's metadata service serves user data to every process on
+the VM, containers included: the password and the platform's range ssh key.
+Once the VM answers ssh and cloud-init is done, `bin/platform-rebuild` appends
+`FSL_OPENSTACK_PASSWORD` from `--password-file` to `/opt/fsl/openstack.env`,
+writes the range key into the platform's data volume at
+`/data/ssh/id_ed25519`, restores the store it backed up (a replace), and
+recreates the platform container. The range key lives on the operator's
+machine at `--range-key` (default `~/.ssh/fsl-platform`, mode 0600); when the
+file is absent, `bin/platform-rebuild` copies it once from the running platform, and
+refuses when there is none. Because the key survives, the range's VMs and the
+`fsl-platform` keypair keep trusting the new platform, and the range can stand
+through a platform replace. The script has not yet been run against the cloud.
 
 | Parameter | Default | |
 |---|---|---|
@@ -218,7 +250,7 @@ user data to every process on the VM, containers included. Once the stack's
 | `user` | `fsl-range` | the Keystone user the platform signs in as |
 | `key_name` | `fsl-claude` | the keypair whose private key `ssh ubuntu@ADDRESS` needs |
 | `image` | `ubuntu-24.04` | |
-| `flavor` | `m1.windows` | |
+| `flavor` | `m1.large` | 8 GB RAM, 4 vCPU, 80 GB disk; create it once if the cloud lacks it: `openstack flavor create --ram 8192 --vcpus 4 --disk 80 m1.large` (admin) |
 | `external_network` | `provider` | |
 | `cidr` | `10.20.0.0/24` | must not overlap the compose subnets or `172.17.0.0/16` |
 | `dns` | `8.8.8.8,8.8.4.4` | |
@@ -270,10 +302,13 @@ carries over; closing a session calls it. The rebuild wipes the pushed config,
 so run `configure/` again once the VMs are up (the board is baked into its
 image and needs only the rebuild).
 
-The range lives outside the stack. Before `openstack stack delete
-fsl-platform` or a stack update that replaces the server, `DELETE`
-`/api/range/slot/` and then `/api/range/fabric/`: a new VM makes a new ssh
-key, and the fabric reports the old keypair as drift. The images stay.
+The range lives outside the stack. A platform replaced with `bin/platform-rebuild`
+keeps the range key, so the slot and the fabric can stand through
+it; the new server is attached to `mgmt` again by the next `POST
+/api/range/fabric/`, and `configure/` points the range's syslog at it. A stack
+deleted by hand, without the key kept, leaves a new VM that makes a new key,
+and the fabric reports the old keypair as drift: then `DELETE`
+`/api/range/slot/` and `/api/range/fabric/` first. The images stay.
 
 The stack boots with the keypair `key_name` names, which has to be in the
 project first:

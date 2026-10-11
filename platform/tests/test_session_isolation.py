@@ -160,7 +160,7 @@ def test_the_ground_truth_is_read_on_the_session_s_own_estate():
 def test_a_tool_resolves_the_target_names_to_its_own_session_s_waf():
     spy = Range()
     with patch("range.docker.subprocess.run", spy):
-        session_range(7).launcher("ru")("fsl/kali:mvp", ["sqlmap"])
+        session_range(7).launcher("ru")("ghcr.io/nekonic/fsl-kali:dev", ["sqlmap"])
 
     started = spy.argv[-1]
     assert started[:3] == ["docker", "run", "--rm"]
@@ -169,7 +169,7 @@ def test_a_tool_resolves_the_target_names_to_its_own_session_s_waf():
         "board.com is an alias every session's WAF answers to on the shared "
         "edge, so a tool that resolves it by DNS may attack another session"
     )
-    assert started[-2:] == ["fsl/kali:mvp", "sqlmap"]
+    assert started[-2:] == ["ghcr.io/nekonic/fsl-kali:dev", "sqlmap"]
 
 
 def test_each_session_ships_its_logs_to_its_own_index():

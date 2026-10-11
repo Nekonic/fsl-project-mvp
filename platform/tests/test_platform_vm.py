@@ -63,7 +63,7 @@ def test_every_boot_brings_the_whole_platform_up_with_compose():
     )
     assert "WantedBy=multi-user.target" in lines, "a reboot would leave it down"
     assert any(line.startswith("ExecStart=") and "docker compose" in line
-               and line.endswith("up -d --build") for line in lines), lines
+               and line.endswith("up -d") for line in lines), lines
 
 def test_its_network_overlaps_nothing_docker_creates_inside_it():
     [subnet] = resources_of("OS::Neutron::Subnet")

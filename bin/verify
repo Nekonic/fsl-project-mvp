@@ -133,10 +133,11 @@ else
   exit 1
 fi
 
-if docker image inspect fsl/kali:mvp >/dev/null 2>&1; then
+kali_image="$(docker compose -f session.yaml config --images kali 2>/dev/null)"
+if [ -n "$kali_image" ] && docker image inspect "$kali_image" >/dev/null 2>&1; then
   ok "attacker image present"
 else
-  fail "fsl/kali:mvp missing — docker compose -f session.yaml build kali"
+  fail "${kali_image:-the kali image} missing — docker compose -f session.yaml pull kali"
 fi
 
 if "$PY" - <<'RULECHECK'

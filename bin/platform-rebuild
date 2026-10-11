@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
+DEFAULT_KEY = Path("~/.ssh/fsl-platform").expanduser()
+DEFAULT_FLAVOR = "m1.large"
+PLATFORM_KEY = "/data/ssh/id_ed25519"
+CHECKOUT = "/opt/fsl"
+SSH_WAIT = 900
+API_WAIT = 1200
+REPOSITORY = "https://github.com/Nekonic/fsl-project-mvp.git"
+REGISTRY = "ghcr.io"
+OWNER = "nekonic"
+IMAGES = ("platform", "board", "corp", "corp-db", "kali", "proxy")
+MANIFESTS = ", ".join((
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+))
+
+
+class Refused(SystemExit):
+    pass
+
+
+def arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="platform-rebuild",
+        description="Create the platform VM's Heat stack, or replace a standing one "
+                    "and carry its store and its range ssh key across. Needs the "
+                    "project's openrc sourced and the openstack CLI with "
+                    "python-heatclient.",
+    )
+    parser.add_argument("--keystone", required=True, help="Keystone's base URL without /v3")
+    parser.add_argument("--password-file", required=True, type=Path,
+                        help="the file holding the Keystone user's password")
+    parser.add_argument("--flavor", default=DEFAULT_FLAVOR)
+    parser.add_argument("--ref", default="dev")
+    parser.add_argument("--stack", default="fsl-platform")
+    parser.add_argument("--range-key", type=Path, default=DEFAULT_KEY,
+                        help="the platform's private key the range's VMs trust; "
+                             "taken once from the running platform when absent")
+    parser.add_argument("--ssh-user", default="ubuntu")
+    return parser.parse_args(argv)
+
+
+def refuse_unless_ready(args: argparse.Namespace, environ=os.environ, which=shutil.which) -> None:
+    if not args.password_file.is_file():
+        raise Refused(f"platform-rebuild: no password file at {args.password_file}")
+    if not args.keystone.startswith(("http://", "https://")) or args.keystone.rstrip("/").endswith("/v3"):
+        raise Refused(
+            f"platform-rebuild: --keystone is Keystone's base URL without /v3, "
+            f"got {args.keystone!r}"
+        )
+    if not environ.get("OS_AUTH_URL"):
+        raise Refused("platform-rebuild: OS_AUTH_URL is unset; source the project's openrc first")
+    if which("openstack") is None:
+        raise Refused("platform-rebuild: no openstack CLI on PATH (pip install python-openstackclient python-heatclient)")
+
+
+def commit_of(ref: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return ref
+    done = run(["git", "ls-remote", REPOSITORY, f"refs/heads/{ref}", f"refs/tags/{ref}"])
+    found = done.stdout.decode().split()
+    if not found:
+        raise Refused(f"platform-rebuild: {REPOSITORY} has no branch or tag {ref!r}")
+    return found[0]
+
+
+def published(name: str, tag: str) -> str | None:
+    repository = f"{OWNER}/fsl-{name}"
+    try:
+        with urllib.request.urlopen(
+            f"https://{REGISTRY}/token?scope=repository:{repository}:pull", timeout=30
+        ) as answer:
+            token = json.load(answer)["token"]
+        request = urllib.request.Request(
+            f"https://{REGISTRY}/v2/{repository}/manifests/{tag}", method="HEAD",
+            headers={"Authorization": f"Bearer {token}", "Accept": MANIFESTS},
+        )
+        with urllib.request.urlopen(request, timeout=30):
+            return None
+    except urllib.error.HTTPError as refused:
+        if refused.code in (401, 403):
+            return f"{REGISTRY}/{repository} is not public, or was never pushed"
+        return f"{REGISTRY}/{repository}:{tag} is not published ({refused.code})"
+    except OSError as error:
+        return f"{REGISTRY}/{repository}: {error}"
+
+
+def refuse_unless_published(tag: str, lookup=published) -> None:
+    missing = [said for said in (lookup(name, tag) for name in IMAGES) if said]
+    if missing:
+        raise Refused(
+            "platform-rebuild: the new VM pulls the images built for " + tag
+            + " and some cannot be pulled, so nothing was deleted:\n  "
+            + "\n  ".join(missing)
+        )
+
+
+def run(argv: list[str], stdin: bytes | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    print("+", " ".join(shlex.quote(a) for a in argv), flush=True)
+    done = subprocess.run(argv, input=stdin, capture_output=True)
+    if check and done.returncode != 0:
+        said = done.stderr.decode(errors="replace").strip()
+        raise Refused(f"platform-rebuild: {argv[0]} exited {done.returncode}: {said[-400:]}")
+    return done
+
+
+def address_of(stack: str) -> str | None:
+    done = run(["openstack", "stack", "output", "show", stack, "address",
+                "-f", "value", "-c", "output_value"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+class Host:
+    def __init__(self, user: str, address: str, known_hosts: Path):
+        self.target = f"{user}@{address}"
+        self.options = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                        "-o", "StrictHostKeyChecking=accept-new",
+                        "-o", f"UserKnownHostsFile={known_hosts}"]
+
+    def ssh(self, command: str, stdin: bytes | None = None, check: bool = True):
+        return run(["ssh", *self.options, self.target, command], stdin, check)
+
+    def copy(self, source: Path, destination: str) -> None:
+        run(["scp", *self.options, str(source), f"{self.target}:{destination}"])
+
+    def wait(self) -> None:
+        deadline = time.monotonic() + SSH_WAIT
+        while self.ssh("true", check=False).returncode != 0:
+            if time.monotonic() > deadline:
+                raise Refused(f"platform-rebuild: {self.target} took no ssh within {SSH_WAIT}s")
+            time.sleep(10)
+
+
+def keep_range_key(key: Path, old: Host | None) -> None:
+    if key.is_file():
+        return
+    if old is None:
+        raise Refused(
+            f"platform-rebuild: no range key at {key} and no running platform to take "
+            f"it from. Without it the range's VMs refuse the new platform"
+        )
+    taken = old.ssh(f"sudo docker exec fsl-platform cat {PLATFORM_KEY}").stdout
+    if b"PRIVATE KEY" not in taken:
+        raise Refused(f"platform-rebuild: {PLATFORM_KEY} on the running platform is not a private key")
+    key.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as written:
+        written.write(taken)
+    print(f"kept the platform's range key at {key}")
+
+
+def back_up(old: Host) -> Path:
+    environ = {**os.environ, "FSL_PLATFORM_EXEC": shlex.join(
+        ["ssh", *old.options, old.target, "sudo docker exec -i fsl-platform python -"])}
+    done = subprocess.run([str(ROOT / "bin/backup")], env=environ, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise Refused(f"platform-rebuild: no backup, so nothing was deleted: {done.stderr.strip()}")
+    print(done.stdout, end="")
+    return Path(done.stdout.splitlines()[0])
+
+
+def replace_stack(args: argparse.Namespace, existed: bool) -> str:
+    if existed:
+        run(["openstack", "stack", "delete", "--yes", "--wait", args.stack])
+    run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE),
+         "--parameter", f"keystone={args.keystone}",
+         "--parameter", f"flavor={args.flavor}",
+         "--parameter", f"ref={args.ref}",
+         args.stack])
+    address = address_of(args.stack)
+    if not address:
+        raise Refused(f"platform-rebuild: stack {args.stack} has no address output")
+    return address
+
+
+def hand_over(new: Host, args: argparse.Namespace, store: Path | None) -> None:
+    compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
+    new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform")
+    password = b"FSL_OPENSTACK_PASSWORD=" + args.password_file.read_bytes().strip() + b"\n"
+    new.ssh(f"cat >> {CHECKOUT}/openstack.env", password)
+    new.ssh(
+        "sudo docker exec -i -u fsl fsl-platform sh -c "
+        + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "
+                      f"&& ssh-keygen -y -f {PLATFORM_KEY} > {PLATFORM_KEY}.pub"),
+        args.range_key.read_bytes(),
+    )
+    if store is not None:
+        new.ssh(f"mkdir -p {CHECKOUT}/backups")
+        new.copy(store, f"{CHECKOUT}/backups/{store.name}")
+        new.ssh(
+            f"cd {CHECKOUT} && {compose} stop platform && sudo docker run --rm --network none "
+            f"--entrypoint sh --user fsl -v fsl_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
+            f"$(sudo docker compose -f {CHECKOUT}/compose.yaml config --images platform) -c "
+            + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
+        )
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d platform")
+
+
+def wait_for_api(address: str) -> None:
+    url = f"http://{address}:8000/api/sessions/"
+    deadline = time.monotonic() + API_WAIT
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=10) as answer:
+                if answer.status == 200:
+                    print(f"{url} answers")
+                    return
+        except OSError:
+            pass
+        if time.monotonic() > deadline:
+            raise Refused(f"platform-rebuild: {url} did not answer within {API_WAIT}s")
+        time.sleep(10)
+
+
+def main(argv: list[str]) -> int:
+    args = arguments(argv)
+    refuse_unless_ready(args)
+    refuse_unless_published(commit_of(args.ref))
+    with tempfile.TemporaryDirectory() as scratch:
+        known_hosts = Path(scratch) / "known_hosts"
+        old_address = address_of(args.stack)
+        old = Host(args.ssh_user, old_address, known_hosts) if old_address else None
+        keep_range_key(args.range_key, old)
+        store = back_up(old) if old else None
+        known_hosts.unlink(missing_ok=True)
+        address = replace_stack(args, existed=old is not None)
+        new = Host(args.ssh_user, address, known_hosts)
+        new.wait()
+        hand_over(new, args, store)
+        wait_for_api(address)
+    print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

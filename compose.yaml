@@ -110,6 +110,7 @@ services:
   platform:
     platform: linux/amd64
     build: ./platform
+    image: ghcr.io/nekonic/fsl-platform:${FSL_IMAGE_TAG:-dev}
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -126,6 +127,7 @@ services:
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       FSL_SOURCE: "/src"
+      FSL_IMAGE_TAG: "${FSL_IMAGE_TAG:-dev}"
     env_file:
       - path: ./openstack.env
         required: false

@@ -1,0 +1,242 @@
+import importlib.util
+import re
+import subprocess
+import sys
+from argparse import Namespace
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+import pytest
+import yaml
+
+from tests import composed
+from wargames import WARGAMES
+
+ROOT = composed.ROOT
+WORKFLOW = ROOT / ".github/workflows/images.yml"
+REBUILD = ROOT / "bin/platform-rebuild"
+NAME = re.compile(r"ghcr\.io/nekonic/fsl-([a-z0-9-]+):\$\{FSL_IMAGE_TAG:-dev\}")
+
+
+def workflow():
+    return yaml.safe_load(WORKFLOW.read_text())
+
+
+def matrix():
+    [job] = workflow()["jobs"].values()
+    return job["strategy"]["matrix"]["include"]
+
+
+def steps():
+    [job] = workflow()["jobs"].values()
+    return job["steps"]
+
+
+def built_by_compose():
+    found = set()
+    for path in composed.files():
+        for service in (yaml.safe_load(path.read_text()).get("services") or {}).values():
+            if "build" in service:
+                build = service["build"]
+                context = build if isinstance(build, str) else build["context"]
+                name = NAME.fullmatch(service["image"]).group(1)
+                found.add((name, str((path.parent / context).resolve().relative_to(ROOT))))
+    return found
+
+
+def rebuild():
+    loader = SourceFileLoader("platform_rebuild", str(REBUILD))
+    module = importlib.util.module_from_spec(
+        importlib.util.spec_from_loader("platform_rebuild", loader)
+    )
+    loader.exec_module(module)
+    return module
+
+
+def ready_arguments(tmp_path, **changed):
+    password = tmp_path / "password"
+    password.write_text("secret\n")
+    return Namespace(**{
+        "keystone": "http://keystone:5000", "password_file": password,
+        "flavor": "m1.large", "ref": "dev", "stack": "fsl-platform",
+        "range_key": tmp_path / "range-key", "ssh_user": "ubuntu", **changed,
+    })
+
+
+def test_ci_publishes_exactly_the_images_compose_builds():
+    published = {(entry["name"], entry["context"]) for entry in matrix()}
+
+    assert published == built_by_compose(), (
+        f"the workflow publishes {sorted(published)} and compose builds "
+        f"{sorted(built_by_compose())}: a VM that only pulls would miss one, "
+        f"or CI would publish an image nothing runs"
+    )
+
+
+def test_ci_pushes_x86_64_images_tagged_by_commit_with_the_repository_token():
+    [push] = [step for step in steps() if "build-push-action" in step["uses"]]
+    login = [step for step in steps() if "login-action" in step["uses"]]
+
+    assert workflow()["permissions"] == {"contents": "read", "packages": "write"}
+    assert push["with"]["platforms"] == "linux/amd64"
+    assert push["with"]["push"] is True
+    assert "${{ github.sha }}" in push["with"]["tags"]
+    assert login and login[0]["with"]["password"] == "${{ secrets.GITHUB_TOKEN }}"
+
+
+def test_ci_runs_on_dev_and_by_hand():
+    triggers = workflow()[True]
+
+    assert triggers["push"]["branches"] == ["dev"]
+    assert "workflow_dispatch" in triggers
+
+
+def test_every_action_ci_uses_is_pinned_to_a_commit():
+    floating = [step["uses"] for step in steps()
+                if not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"])]
+
+    assert not floating, f"a tag can be moved to other code under the same name: {floating}"
+
+
+def test_the_rebuild_checks_every_image_ci_publishes():
+    assert set(rebuild().IMAGES) == {entry["name"] for entry in matrix()}
+
+
+def test_each_wargame_names_the_image_its_service_runs():
+    repositories = {
+        NAME.fullmatch(service["image"]).group(1)
+        for service in composed.services().values() if "build" in service
+    }
+
+    for wargame in WARGAMES.values():
+        image = wargame["image"]
+        assert image.startswith("ghcr.io/nekonic/fsl-"), image
+        assert image.removeprefix("ghcr.io/nekonic/fsl-") in repositories, image
+
+
+def test_tool_cases_run_the_kali_image_the_session_pulls():
+    from redteam.tools import TOOL_IMAGE
+
+    kali = composed.services()["kali"]["image"]
+
+    assert TOOL_IMAGE == kali.replace("${FSL_IMAGE_TAG:-dev}", "dev")
+
+
+def test_the_platform_hands_its_image_tag_to_the_sessions_it_starts():
+    environment = composed.services()["platform"]["environment"]
+
+    assert environment["FSL_IMAGE_TAG"] == "${FSL_IMAGE_TAG:-dev}", (
+        "the platform runs session.yaml itself; without the tag it would "
+        "start sessions from :dev whatever the VM pulled"
+    )
+
+
+def platform_vm_config():
+    template = yaml.safe_load((ROOT / "deploy/openstack/platform.yaml").read_text())
+    [server] = [r["properties"] for r in template["resources"].values()
+                if r["type"] == "OS::Nova::Server"]
+    return template, yaml.safe_load(server["user_data"]["str_replace"]["template"])
+
+
+def test_the_platform_vm_pulls_and_never_builds():
+    _, config = platform_vm_config()
+    [unit] = [e for e in config["write_files"] if e["path"].startswith("/etc/systemd/system/")]
+    text = unit["content"] + "\n".join(" ".join(map(str, c)) for c in config["runcmd"])
+
+    assert "build" not in re.sub(r"--no-build", "", text), text
+    assert "compose.yaml pull" in text and "session.yaml pull" in text, text
+
+
+def test_the_platform_vm_runs_the_images_built_from_its_own_checkout():
+    _, config = platform_vm_config()
+    commands = [" ".join(map(str, c)) for c in config["runcmd"]]
+    tagged = next(i for i, c in enumerate(commands) if "FSL_IMAGE_TAG=" in c)
+    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+
+    assert "git -C /opt/fsl rev-parse HEAD" in commands[tagged]
+    assert "/opt/fsl/.env" in commands[tagged]
+    assert tagged < started
+
+
+def test_the_platform_vm_fetches_its_geoip_database_before_starting():
+    _, config = platform_vm_config()
+    commands = [" ".join(map(str, c)) for c in config["runcmd"]]
+
+    fetched = commands.index("python3 /opt/fsl/bin/fetch-geoip")
+    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+    assert fetched < started
+
+
+def test_the_platform_vm_flavor_defaults_to_eight_gigabytes():
+    template, _ = platform_vm_config()
+
+    assert template["parameters"]["flavor"]["default"] == rebuild().DEFAULT_FLAVOR == "m1.large"
+
+
+def test_the_range_key_never_enters_the_user_data():
+    template, config = platform_vm_config()
+
+    assert not [name for name in template["parameters"]
+                if "key" in name and name not in ("key_name", "keystone")]
+    assert "PRIVATE KEY" not in yaml.safe_dump(config)
+
+
+def test_the_rebuild_refuses_without_its_required_arguments():
+    done = subprocess.run([sys.executable, str(REBUILD)], capture_output=True, text=True)
+
+    assert done.returncode != 0
+    assert "--keystone" in done.stderr and "--password-file" in done.stderr
+
+
+@pytest.mark.parametrize("changed, environ, which, said", [
+    ({"password_file": Path("/nonexistent")}, {"OS_AUTH_URL": "x"}, "/bin/openstack", "no password file"),
+    ({"keystone": "http://keystone:5000/v3"}, {"OS_AUTH_URL": "x"}, "/bin/openstack", "without /v3"),
+    ({}, {}, "/bin/openstack", "OS_AUTH_URL"),
+    ({}, {"OS_AUTH_URL": "x"}, None, "openstack CLI"),
+])
+def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, changed, environ, which, said):
+    module = rebuild()
+
+    with pytest.raises(module.Refused, match=said):
+        module.refuse_unless_ready(ready_arguments(tmp_path, **changed), environ, lambda _: which)
+
+
+def test_the_rebuild_refuses_while_an_image_cannot_be_pulled():
+    module = rebuild()
+    missing = {"kali": "ghcr.io/nekonic/fsl-kali is not public, or was never pushed"}
+
+    with pytest.raises(module.Refused, match="fsl-kali is not public"):
+        module.refuse_unless_published("abc", lambda name, tag: missing.get(name))
+    module.refuse_unless_published("abc", lambda name, tag: None)
+
+
+def test_the_rebuild_refuses_to_lose_the_range_key(tmp_path):
+    module = rebuild()
+
+    with pytest.raises(module.Refused, match="range's VMs refuse"):
+        module.keep_range_key(tmp_path / "absent", None)
+
+
+def test_the_rebuild_keeps_a_range_key_it_already_has(tmp_path):
+    module = rebuild()
+    key = tmp_path / "range-key"
+    key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+
+    module.keep_range_key(key, None)
+
+    assert key.read_text().startswith("-----BEGIN OPENSSH PRIVATE KEY-----")
+
+
+def test_the_rebuild_takes_the_range_key_from_the_running_platform_once(tmp_path):
+    module = rebuild()
+
+    class Old:
+        def ssh(self, command):
+            assert "/data/ssh/id_ed25519" in command
+            return subprocess.CompletedProcess([], 0, b"-----BEGIN OPENSSH PRIVATE KEY-----\nx\n")
+
+    key = tmp_path / "ssh" / "range-key"
+    module.keep_range_key(key, Old())
+
+    assert key.read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+    assert key.stat().st_mode & 0o777 == 0o600

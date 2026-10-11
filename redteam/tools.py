@@ -13,7 +13,9 @@ ENDED = "[*] ending @"
 NOT_INJECTABLE = "all tested parameters do not appear to be injectable"
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
-TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl/kali:mvp")
+TOOL_IMAGE = os.environ.get(
+    "FSL_TOOL_IMAGE", f"ghcr.io/nekonic/fsl-kali:{os.environ.get('FSL_IMAGE_TAG', 'dev')}"
+)
 
 class ToolUnavailable(RuntimeError):
     pass
@@ -23,7 +25,7 @@ STARTUP_FAILURE = 125
 def unavailable(case_name: str, detail: str) -> ToolUnavailable:
     return ToolUnavailable(
         f"{case_name}: the tool did not run ({TOOL_IMAGE}). {detail} "
-        f"Build it first: docker compose -f session.yaml build kali"
+        f"Pull it first: docker compose -f session.yaml pull kali"
     )
 
 def is_tool_case(case: dict[str, Any]) -> bool:

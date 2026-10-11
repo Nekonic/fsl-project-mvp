@@ -4,7 +4,7 @@ description: >-
   plugins carry unauthenticated broken-access-control CVEs the default rules
   cannot see; the platform scores by watching the target's own committed
   database changes.
-image: fsl/corp:mvp
+image: ghcr.io/nekonic/fsl-corp
 public_url: http://corp.com
 objective_model: effect_observed
 case_file: corp.yaml

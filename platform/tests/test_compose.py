@@ -28,18 +28,19 @@ def test_every_image_is_pinned_to_something_that_cannot_move():
         f"so the same commit scores differently on different days: {floating}"
     )
 
-def test_every_built_image_is_tagged_once_for_every_session_to_reuse():
-    untagged = {
+def test_every_built_image_is_named_where_ci_publishes_it():
+    unnamed = {
         name: service.get("image")
         for name, service in composed.services().items()
-        if "build" in service and name != "platform"
-        and not re.fullmatch(r"fsl/[a-z0-9-]+:mvp", service.get("image") or "")
+        if "build" in service
+        and not re.fullmatch(r"ghcr\.io/nekonic/fsl-[a-z0-9-]+:\$\{FSL_IMAGE_TAG:-dev\}",
+                             service.get("image") or "")
     }
 
-    assert not untagged, (
-        f"these are built without an fsl/...:mvp tag, so compose names them "
-        f"after the project and a second session's stack would build them "
-        f"again: {untagged}"
+    assert not unnamed, (
+        f"these are built without a ghcr.io/nekonic/fsl-...:${{FSL_IMAGE_TAG:-dev}} "
+        f"name, so a VM cannot pull them and compose names them after the "
+        f"project, and a second session's stack would build them again: {unnamed}"
     )
 
 def test_the_sensor_and_the_target_are_pinned_by_digest():

@@ -126,10 +126,13 @@ just be made and recorded, not staged as a decision.
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
   suppression works, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
-  Bring-up: build the session images once with
-  `docker compose -f session.yaml build`, then `docker compose up -d --build`
+  Bring-up pulls prebuilt images from GHCR (built by
+  `.github/workflows/images.yml` on push to `dev`): `docker compose -f
+  session.yaml pull`, then `docker compose pull && docker compose up -d`
   starts the shared control plane (it sets up the docker socket group and
   registers the Elasticsearch ingest pipeline); each session's stack starts
-  when the session opens.
+  when the session opens. `build:` stays for local development only. The
+  platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
+  OpenStack procedures are in `docs/OPENSTACK.md`.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
   `docs/superpowers/specs/` the design.

@@ -2,7 +2,8 @@ heat_template_version: 2021-04-16
 
 description: >
   The platform VM: Ubuntu 24.04 whose first boot clones the repo and brings the
-  whole platform up with docker compose. The API password is added over ssh.
+  whole platform up with docker compose from images prebuilt on ghcr.io. The
+  API password and the range ssh key are added over ssh (bin/platform-rebuild).
 
 parameters:
   keystone:
@@ -15,7 +16,7 @@ parameters:
     default: ubuntu-24.04
   flavor:
     type: string
-    default: m1.windows
+    default: m1.large
   key_name:
     type: string
     default: fsl-claude
@@ -152,13 +153,17 @@ resources:
                   Type=oneshot
                   RemainAfterExit=yes
                   TimeoutStartSec=0
-                  ExecStart=/usr/bin/docker compose -f /opt/fsl/compose.yaml up -d --build
+                  ExecStartPre=-/usr/bin/docker compose -f /opt/fsl/compose.yaml pull --quiet
+                  ExecStartPre=-/usr/bin/docker compose -f /opt/fsl/session.yaml pull --quiet
+                  ExecStart=/usr/bin/docker compose -f /opt/fsl/compose.yaml up -d
                   [Install]
                   WantedBy=multi-user.target
             runcmd:
               - [git, clone, --branch, "%ref%", "%repository%", /opt/fsl]
               - [mv, /root/openstack.env, /opt/fsl/openstack.env]
               - [mv, /root/compose.env, /opt/fsl/.env]
+              - [sh, -c, "echo FSL_IMAGE_TAG=$(git -C /opt/fsl rev-parse HEAD) >> /opt/fsl/.env"]
+              - [python3, /opt/fsl/bin/fetch-geoip]
               - [sh, -c, "echo FSL_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/fsl/openstack.env"]
               - [networkctl, reload]
               - [chown, -R, "ubuntu:ubuntu", /opt/fsl]

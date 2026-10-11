@@ -42,8 +42,11 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 `description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
 콘솔의 시나리오 카드에 쓰는 `category`, `difficulty`(easy, medium, hard), `minutes`, 그리고
 `defense`와 `lesson`이며 뒤의 "WAF 레슨"에 설명한다). `image`는 아직 아무 코드도 읽지
-않는다. 앱 이미지는 한 번 빌드해 태그를 붙이고(`docker compose -f
-session.yaml build`), 세션은 그 태그로 `--no-build` 기동한다. 새 wargame에는 폴더 안의
+않는다. 앱 이미지는 CI(`.github/workflows/images.yml`)가 빌드하고
+`ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`로 pull하거나, 로컬에서 그 이름으로
+빌드한다. 세션은 그 이미지로 `--no-build` 기동한다. 플랫폼은 자기 `FSL_IMAGE_TAG`를
+자신이 띄우는 세션 스택에 넘기고, 도구 케이스는 같은 태그의 `ghcr.io/nekonic/fsl-kali`를
+실행한다(`redteam/tools.py`). 새 wargame에는 폴더 안의
 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일,
 그리고 `session.yaml`의 `include:` 줄 하나가 필요하다.
 
@@ -66,15 +69,15 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 
 | 서비스 | 파일 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|---|
-| `fsl-wg-board` | session | `wargames/board/app`의 `fsl/board:mvp` (gunicorn 아래 Django, 포트 8000) | estate | |
+| `fsl-wg-board` | session | `wargames/board/app`의 `ghcr.io/nekonic/fsl-board` (gunicorn 아래 Django, 포트 8000) | estate | |
 | `fsl-wg-board-db` | session | `mysql` | estate | |
-| `fsl-wg-corp-wp` | session | `wargames/corp/app`의 `fsl/corp:mvp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
-| `fsl-wg-corp-db` | session | `wargames/corp/db`의 `fsl/corp-db:mvp` (MySQL 8.4, binlog `ROW`) | estate | |
+| `fsl-wg-corp-wp` | session | `wargames/corp/app`의 `ghcr.io/nekonic/fsl-corp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 셋; `Host` 헤더로 `corp.com`) | estate | |
+| `fsl-wg-corp-db` | session | `wargames/corp/db`의 `ghcr.io/nekonic/fsl-corp-db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com`(공유되므로 플랫폼이 세션마다 프록시와 도구를 그 세션의 WAF로 향하게 함) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | WAF의 네임스페이스 | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 audit log를 보냄 | mgmt | |
-| `fsl-kali` | session | `deploy/kali`의 `fsl/kali:mvp`; `http_proxy`는 `http://fsl-<id>-proxy-1:8081` | edge | |
-| `fsl-proxy` | session | `deploy/proxy`의 `fsl/proxy:mvp` (mitmdump); `/label`은 프로젝트의 named volume | 네 개 edge 네트워크 | |
+| `fsl-kali` | session | `deploy/kali`의 `ghcr.io/nekonic/fsl-kali`; `http_proxy`는 `http://fsl-<id>-proxy-1:8081` | edge | |
+| `fsl-proxy` | session | `deploy/proxy`의 `ghcr.io/nekonic/fsl-proxy` (mitmdump); `/label`은 프로젝트의 named volume | 네 개 edge 네트워크 | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
@@ -727,9 +730,14 @@ vCPU, 64 GB)다. 레인지는 프로젝트 `fsl-range`에 있고, member 역할 
 cloud-init은 `docker.io`, `docker-compose-v2`, `git`을 설치하고, 4GB 스왑을 추가하고,
 Docker의 MTU를 기본 브리지(`mtu`)와 compose 것을 포함한 모든 새 브리지
 네트워크(`default-network-opts`)에 대해 Neutron 네트워크 값으로 맞추고, `ref`의
-`repository`를 `/opt/fsl`로 클론하고, `ubuntu`를 `docker` 그룹에 추가한다. systemd
-유닛 `fsl-platform.service`가 부팅마다 `docker compose -f /opt/fsl/compose.yaml up -d --build`를
-실행한다.
+`repository`를 `/opt/fsl`로 클론하고, `/opt/fsl/.env`에 `FSL_IMAGE_TAG=<체크아웃의
+커밋>`을 쓰고, GeoIP 데이터베이스를 받고(`bin/fetch-geoip`, 자격 증명 불필요: Elastic의
+GeoIP 엔드포인트는 URL로 약관에 동의하면 누구에게나 GeoLite2를 준다), `ubuntu`를
+`docker` 그룹에 추가한다. systemd 유닛 `fsl-platform.service`는 부팅마다
+`compose.yaml`과 `session.yaml`의 이미지를 pull하고 `docker compose -f
+/opt/fsl/compose.yaml up -d`를 실행한다. 빌드는 하지 않는다. pull이 실패해도 유닛은
+멈추지 않으며(`ExecStartPre=-`), 그때 `up`이 없는 이미지를 체크아웃에서 빌드한다.
+`bin/platform-rebuild`는 먼저 ghcr.io를 확인해 이를 피한다.
 
 따라서 compose 컨트롤 플레인만 Nova VM 하나 안에서 돈다. OpenStack substrate에서는 그 안에 세션 스택이 뜨지 않고, board의 ground truth는 board VM의 관리망 주소에서 읽는다. cloud-init이 `FSL_PUBLISH`를
 VM의 고정 주소로 설정하므로 8000이 그 주소에 publish되고 보안 그룹에서도
@@ -741,8 +749,9 @@ cloud-init은 `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PROJECT`(스택 자신의 프
 `_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 모드 0600으로
 `/root/openstack.env`에 쓰고, git이 무시하는 `/opt/fsl/openstack.env`로 옮긴다.
 비밀번호는 템플릿에 없다: Nova가 user data를 보관하고 메타데이터 서비스가 레인지
-컨테이너를 포함해 VM에서 도는 모든 것에 이를 제공하기 때문이다. operator는 VM이 뜬
-뒤 ssh로 `FSL_OPENSTACK_PASSWORD`를 덧붙인다(`README.md`). 플랫폼 서비스는 이 파일을
+컨테이너를 포함해 VM에서 도는 모든 것에 이를 제공하기 때문이다. `bin/platform-rebuild`가
+VM이 뜬 뒤 ssh로 `FSL_OPENSTACK_PASSWORD`를 덧붙이고, 레인지 ssh 키도 같은 방식으로
+플랫폼 데이터 볼륨에 쓴다(`README.md`). 플랫폼 서비스는 이 파일을
 `env_file`(`required: false`, `format: raw`)로 읽으므로, compose는 보간이나 따옴표
 제거 없이 그대로 전달한다.
 
@@ -750,8 +759,10 @@ VM 위의 플랫폼은 OpenStack 어댑터(cloud-init이 쓴
 `FSL_SUBSTRATE=range.openstack.connect`)를 쓰고, `range/fabric.py`가 계획한
 `/api/range/fabric/`로 레인지 네트워크를 직접 만든다: 선언된 출발지마다 서브넷 하나를
 가진 `internet` 네트워크(DHCP 끔), 10.30.0.0/24의 `estate`와 게이트웨이 없는
-10.31.0.0/24의 `mgmt`(모든 compose 및 플랫폼 VM 서브넷과 겹치지 않음), 그리고 플랫폼이
-`/data/ssh/id_ed25519`에 만든 키로 만든 키페어 `fsl-platform`. `describe()`는 각
+10.31.0.0/24의 `mgmt`(모든 compose 및 플랫폼 VM 서브넷과 겹치지 않음), 그리고
+`/data/ssh/id_ed25519`의 키로 만든 키페어 `fsl-platform`. 플랫폼은 첫 fabric POST 때
+그 키가 없을 때만 만든다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새
+플랫폼 VM마다 써 넣으므로, 교체된 VM도 키페어와 레인지 VM들이 신뢰하는 키를 유지한다. `describe()`는 각
 출발지를 인터넷 네트워크의 해당 서브넷에 CIDR로 연결한다. VM의 라우터는 자신의
 서브넷만 붙이며, 플랫폼은 `mgmt` 포트(아래)로 레인지 호스트에 접근한다.
 
