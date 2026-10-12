@@ -126,6 +126,7 @@ def test_a_browser_reaches_the_platform_at_the_floating_ip():
     assert opened == {
         ("tcp", 22, 22),
         ("tcp", 8000, 8000),
+        ("tcp", 8002, 8002),
         ("icmp", None, None),
     }, opened
 
