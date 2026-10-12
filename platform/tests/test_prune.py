@@ -91,7 +91,7 @@ def test_verify_prunes_only_the_sessions_its_run_listed():
     verify = (ROOT / "bin/verify").read_text()
 
     listed = verify.find("FSL_ACCEPTANCE_SESSIONS")
-    acceptance = verify.find("pytest test/")
+    acceptance = verify.find("bin/acceptance")
     pruned = verify.find('./bin/prune --ids "$FSL_ACCEPTANCE_SESSIONS" --apply')
 
     assert "--keep" not in verify and "--after" not in verify and -1 < listed < acceptance < pruned, (

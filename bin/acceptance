@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+import xml.etree.ElementTree as ElementTree
+from dataclasses import dataclass, field
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TESTS = ROOT / "test"
+SHARED_FIXTURE_FILES = ("conftest.py", "shared_sessions.py")
+DURATIONS = TESTS / "durations.json"
+UNMEASURED_SECONDS = 10.0
+
+IDLE = (
+    "test_fabric",
+    "test_geoip_durable",
+    "test_origin_placement",
+    "test_waf_geolocation",
+)
+SOLO = (
+    "test_concurrent_sessions",
+    "test_lesson",
+)
+STANDING_STACK = (
+    "test_attacker_reach",
+    "test_board_exfil",
+    "test_corp_cve_content_write",
+    "test_corp_site",
+    "test_event_time",
+    "test_judge_isolation",
+    "test_segmentation",
+    "test_terminal",
+)
+
+
+@dataclass
+class Process:
+    name: str
+    role: str
+    modules: list[str]
+    estimate: float = 0.0
+
+
+@dataclass
+class Totals:
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    skipped: int = 0
+    per_module: dict[str, float] = field(default_factory=dict)
+
+    def add(self, other: "Totals") -> "Totals":
+        merged = dict(self.per_module)
+        for module, seconds in other.per_module.items():
+            merged[module] = merged.get(module, 0.0) + seconds
+        return Totals(
+            self.passed + other.passed, self.failed + other.failed,
+            self.errors + other.errors, self.skipped + other.skipped, merged,
+        )
+
+    def line(self, wall: float, processes: int) -> str:
+        return (
+            f"{self.passed} passed, {self.failed} failed, {self.errors} errors, "
+            f"{self.skipped} skipped in {wall:.0f}s across {processes} "
+            f"{'process' if processes == 1 else 'processes'}"
+        )
+
+
+def modules(tests: Path = TESTS) -> list[str]:
+    return sorted(path.stem for path in tests.glob("test_*.py"))
+
+
+def _decorated_as_fixture(function: ast.FunctionDef) -> ast.expr | None:
+    for decorator in function.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(target, ast.Attribute) and target.attr == "fixture":
+            return decorator
+        if isinstance(target, ast.Name) and target.id == "fixture":
+            return decorator
+    return None
+
+
+def _keyword(decorator: ast.expr, name: str):
+    if not isinstance(decorator, ast.Call):
+        return None
+    for keyword in decorator.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Constant):
+            return keyword.value.value
+    return None
+
+
+def _arguments(function: ast.FunctionDef) -> set[str]:
+    return {argument.arg for argument in function.args.args}
+
+
+def _functions(source: str) -> list[ast.FunctionDef]:
+    return [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.FunctionDef)]
+
+
+def shared_fixtures(tests: Path = TESTS) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    for name in SHARED_FIXTURE_FILES:
+        for function in _functions((tests / name).read_text()):
+            decorator = _decorated_as_fixture(function)
+            if decorator is None:
+                continue
+            if _keyword(decorator, "scope") == "session" and not _keyword(decorator, "autouse"):
+                found[function.name] = _arguments(function)
+    return found
+
+
+def fixtures_asked_for(source: str) -> set[str]:
+    asked: set[str] = set()
+    for function in _functions(source):
+        if function.name.startswith("test_") or _decorated_as_fixture(function) is not None:
+            asked |= _arguments(function)
+    return asked
+
+
+def closure(names: set[str], fixtures: dict[str, set[str]]) -> set[str]:
+    reached: set[str] = set()
+    waiting = [name for name in names if name in fixtures]
+    while waiting:
+        name = waiting.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        waiting += [needed for needed in fixtures[name] if needed in fixtures]
+    return reached
+
+
+def bonded(shared_by_module: dict[str, set[str]]) -> list[list[str]]:
+    parent = {module: module for module in shared_by_module}
+
+    def root(module: str) -> str:
+        while parent[module] != module:
+            parent[module] = parent[parent[module]]
+            module = parent[module]
+        return module
+
+    first_user: dict[str, str] = {}
+    for module in sorted(shared_by_module):
+        for fixture in sorted(shared_by_module[module]):
+            if fixture in first_user:
+                parent[root(module)] = root(first_user[fixture])
+            else:
+                first_user[fixture] = module
+    groups: dict[str, list[str]] = {}
+    for module in sorted(shared_by_module):
+        groups.setdefault(root(module), []).append(module)
+    return sorted(groups.values())
+
+
+def shared_by_module(tests: Path = TESTS) -> dict[str, set[str]]:
+    fixtures = shared_fixtures(tests)
+    return {
+        module: closure(fixtures_asked_for((tests / f"{module}.py").read_text()), fixtures)
+        for module in modules(tests)
+    }
+
+
+def seconds(group: list[str], durations: dict[str, float]) -> float:
+    return sum(durations.get(module, UNMEASURED_SECONDS) for module in group)
+
+
+def balanced(groups: list[list[str]], durations: dict[str, float], workers: int) -> list[Process]:
+    processes = [Process(f"worker {n + 1}", "worker", []) for n in range(workers)]
+    for group in sorted(groups, key=lambda g: (-seconds(g, durations), g)):
+        lightest = min(processes, key=lambda p: (p.estimate, p.name))
+        lightest.modules += group
+        lightest.estimate += seconds(group, durations)
+    for process in processes:
+        process.modules.sort(key=lambda module: (module not in STANDING_STACK, module))
+    return [process for process in processes if process.modules]
+
+
+def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None = None) -> tuple[list[Process], list[Process]]:
+    durations = durations if durations is not None else measured_durations()
+    every = modules(tests)
+    idle = [module for module in every if module in IDLE]
+    alongside = [Process("idle", "idle", idle, seconds(idle, durations))] if idle else []
+    if workers <= 1:
+        rest = [module for module in every if module not in IDLE]
+        return alongside + [Process("worker 1", "worker", rest, seconds(rest, durations))], []
+    solo = [module for module in every if module in SOLO]
+    sharing = {module: shared | ({"a standing stack"} if module in STANDING_STACK else set())
+               for module, shared in shared_by_module(tests).items()
+               if module not in IDLE and module not in SOLO}
+    parallel = balanced(bonded(sharing), durations, workers)
+    after = [Process("solo", "solo", solo, seconds(solo, durations))] if solo else []
+    return alongside + parallel, after
+
+
+def measured_durations(path: Path = DURATIONS) -> dict[str, float]:
+    try:
+        return {str(k): float(v) for k, v in json.loads(path.read_text()).items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def totals_of(report: str) -> Totals:
+    suites = ElementTree.fromstring(report)
+    found = Totals()
+    for suite in ([suites] if suites.tag == "testsuite" else suites.iter("testsuite")):
+        tests = int(suite.get("tests", 0))
+        failed = int(suite.get("failures", 0))
+        errors = int(suite.get("errors", 0))
+        skipped = int(suite.get("skipped", 0))
+        per_module: dict[str, float] = {}
+        for case in suite.iter("testcase"):
+            module = (case.get("classname") or "").split(".")[0]
+            per_module[module] = per_module.get(module, 0.0) + float(case.get("time", 0) or 0)
+        found = found.add(Totals(tests - failed - errors - skipped, failed, errors, skipped,
+                                 per_module))
+    return found
+
+
+def _ask(platform: str, path: str):
+    with urllib.request.urlopen(platform + path, timeout=30) as answer:
+        return json.load(answer)
+
+
+def open_sessions(platform: str) -> list[int]:
+    try:
+        return [row["id"] for row in _ask(platform, "/api/sessions/?state=open")]
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+
+
+def workers_the_range_allows(platform: str) -> int:
+    try:
+        return max(1, int(_ask(platform, "/api/range/ready/").get("max_sessions") or 1))
+    except (OSError, ValueError, AttributeError, TypeError):
+        return 1
+
+
+def _command(process: Process, report: Path, extra: list[str]) -> list[str]:
+    return [
+        sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        f"--junitxml={report}", *extra,
+        *(str(TESTS / f"{module}.py") for module in process.modules),
+    ]
+
+
+def _started(process: Process, workers: int, logs: Path, extra: list[str]):
+    log = (logs / f"{process.name.replace(' ', '-')}.log").open("w")
+    report = logs / f"{process.name.replace(' ', '-')}.xml"
+    print(f"  {process.name}: {len(process.modules)} modules, about "
+          f"{process.estimate:.0f}s - {log.name}", flush=True)
+    running = subprocess.Popen(
+        _command(process, report, extra), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+        env={**os.environ, "FSL_SPLIT": process.role, "FSL_WORKERS": str(workers)},
+    )
+    return process, running, log, report
+
+
+def _finished(process: Process, running, log, report: Path) -> tuple[int, Totals]:
+    code = running.wait()
+    log.close()
+    print(f"\n-- {process.name} exited {code} --", flush=True)
+    sys.stdout.write(Path(log.name).read_text())
+    try:
+        return code, totals_of(report.read_text())
+    except (OSError, ElementTree.ParseError):
+        print(f"{process.name} wrote no report", flush=True)
+        return code or 1, Totals(errors=1)
+
+
+def run_phase(processes: list[Process], workers: int, logs: Path, extra: list[str]) -> tuple[list[int], Totals]:
+    started = [_started(process, workers, logs, extra) for process in processes]
+    codes, merged = [], Totals()
+    for process, running, log, report in started:
+        code, totals = _finished(process, running, log, report)
+        codes.append(code)
+        merged = merged.add(totals)
+    return codes, merged
+
+
+def save_durations(measured: dict[str, float], path: Path = DURATIONS) -> None:
+    kept = measured_durations(path)
+    kept.update({module: round(seconds) for module, seconds in measured.items() if module})
+    path.write_text(json.dumps(dict(sorted(kept.items())), indent=2) + "\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="run test/ in parallel pytest processes")
+    parser.add_argument("--workers", type=int, default=int(os.environ.get("FSL_WORKERS") or 0))
+    parser.add_argument("--plan", action="store_true", help="print the split and run nothing")
+    parser.add_argument("--save-durations", action="store_true")
+    args, extra = parser.parse_known_args(argv)
+    platform = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+    workers = args.workers or workers_the_range_allows(platform)
+    together, after = plan(workers)
+
+    print(f"{workers} {'worker' if workers == 1 else 'workers'} "
+          f"(max_sessions at {platform}/api/range/ready/)")
+    if args.plan:
+        for process in together + after:
+            print(f"{process.name} ({process.estimate:.0f}s): {' '.join(process.modules)}")
+        return 0
+
+    already = open_sessions(platform)
+    if already:
+        print(f"sessions {already} are open and the workers would act on them; close them first")
+        return 1
+    began = time.monotonic()
+    logs = Path(tempfile.mkdtemp(prefix="fsl-acceptance-"))
+    codes, totals = run_phase(together, workers, logs, extra)
+    if after:
+        print("\nthe modules that hold two sessions at once, alone:", flush=True)
+        later, solo = run_phase(after, workers, logs, extra)
+        codes += later
+        totals = totals.add(solo)
+    if args.save_durations:
+        save_durations(totals.per_module)
+    print(f"\n== acceptance: {totals.line(time.monotonic() - began, len(codes))}")
+    return 0 if codes and all(code == 0 for code in codes) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

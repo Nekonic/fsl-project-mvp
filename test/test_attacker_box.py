@@ -1,13 +1,10 @@
 import ipaddress
-import json
-import time
 import uuid
 
 import pytest
-import requests
 
-from conftest import PLATFORM_URL
-from range import ATTACKER, SENSOR, run
+from range import ATTACKER, run
+from shared_sessions import attack_from_the_shell
 
 TOOLS = [
     "nmap", "whatweb",
@@ -43,17 +40,8 @@ def test_the_shell_is_told_what_to_attack(stack_is_up):
     assert host and host in target
 
 @pytest.fixture(scope="module")
-def own_session(stack_is_up):
-    return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
-
-@pytest.fixture(scope="module")
-def box(own_session):
-    return dict(
-        requests.get(
-            f"{PLATFORM_URL}/api/attacker/", params={"session": own_session}, timeout=120
-        ).json(),
-        session=own_session,
-    )
+def box(terminal_session):
+    return dict(terminal_session["box"], addresses=terminal_session["box_addresses"])
 
 def test_the_console_reports_both_addresses_the_box_can_leave_by(box):
     assert box["source_ip"], box
@@ -64,7 +52,7 @@ def test_the_console_reports_both_addresses_the_box_can_leave_by(box):
     )
 
 def test_the_direct_address_is_the_box_itself(box):
-    mine = in_box("sh", "-c", "hostname -I", session=box["session"]).stdout.split()
+    mine = box["addresses"]
 
     assert box["direct_ip"] in mine, (
         f"the console says raw TCP leaves from {box['direct_ip']}, but the "
@@ -72,7 +60,7 @@ def test_the_direct_address_is_the_box_itself(box):
     )
 
 def test_the_proxied_address_is_not_the_box(box):
-    mine = in_box("sh", "-c", "hostname -I", session=box["session"]).stdout.split()
+    mine = box["addresses"]
 
     assert box["source_ip"] not in mine
 
@@ -91,29 +79,13 @@ def test_the_shell_is_pointed_at_a_site_not_at_the_defence(stack_is_up):
 def test_the_console_shows_the_name_a_person_types(box):
     assert PUBLIC_HOST in box["public_url"], box["public_url"]
 
-def _alerts_mentioning(token, lines=300, session=None):
-    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"], session=session)
-    found = []
-    for line in out.stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if event.get("event_type") == "alert" and token in json.dumps(event.get("http", {})):
-            found.append(event)
-    return found
-
-def _attack_from_the_shell(token, session=None):
-    payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
-    in_box("sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"',
-           session=session)
-    time.sleep(5)
-    alerts = _alerts_mentioning(token, session=session)
+def _raised(token, alerts):
     assert alerts, f"nothing alerted on the probe {token}"
     return alerts
 
 def test_what_the_attacker_typed_is_what_the_alert_records(stack_is_up):
-    alerts = _attack_from_the_shell(f"zz{uuid.uuid4().hex[:8]}")
+    token = f"zz{uuid.uuid4().hex[:8]}"
+    alerts = _raised(token, attack_from_the_shell(token))
     hosts = {a["http"].get("hostname") for a in alerts}
 
     assert hosts == {PUBLIC_HOST}, (
@@ -121,19 +93,10 @@ def test_what_the_attacker_typed_is_what_the_alert_records(stack_is_up):
         f"routing host records a name nobody dialled"
     )
 
-def test_choosing_an_origin_moves_the_source_without_renaming_the_site(stack_is_up, box):
-    elsewhere = next(
-        (o for o in requests.get(f"{PLATFORM_URL}/api/origins/", timeout=60).json()["origins"]
-         if not o["default"]), None)
+def test_choosing_an_origin_moves_the_source_without_renaming_the_site(terminal_session):
+    elsewhere = terminal_session["elsewhere"]
     assert elsewhere, "the stack offers only one origin"
-
-    try:
-        requests.post(f"{PLATFORM_URL}/api/attacker/origin/",
-                      json={"origin": elsewhere["id"], "session": box["session"]}, timeout=60)
-        alerts = _attack_from_the_shell(f"zz{uuid.uuid4().hex[:8]}", box["session"])
-    finally:
-        requests.post(f"{PLATFORM_URL}/api/attacker/origin/",
-                      json={"origin": "", "session": box["session"]}, timeout=60)
+    alerts = _raised(*terminal_session["moved"])
 
     subnet = ipaddress.ip_network(elsewhere["subnet"])
     sources = {a["src_ip"] for a in alerts}

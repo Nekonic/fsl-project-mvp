@@ -4,21 +4,8 @@ import requests
 from conftest import PLATFORM_URL
 
 @pytest.fixture(scope="module")
-def marker_only_session(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    for name in ("board-sqli-search", "board-normal-search"):
-        sent = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-            json={"case": name}, timeout=300,
-        )
-        assert sent.status_code == 201, sent.text
-
-    from conftest import score_when_ready
-
-    score_when_ready(session_id, lambda totals: totals["tp"] > 0)
-    return session_id
+def marker_only_session(full_run):
+    return full_run["session_id"]
 
 def scored(session_id, strategy):
     return requests.get(

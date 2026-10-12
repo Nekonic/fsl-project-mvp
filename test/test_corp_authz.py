@@ -6,20 +6,13 @@ import pytest
 import requests
 
 import test_corp_cve_content_write as content
-import test_corp_observe_live as exploits
 from conftest import PLATFORM_URL
-from range import missing, substrate
+from shared_sessions import corp_is_declared
 
 
 @pytest.fixture
 def corp_stands(stack_is_up):
-    absent = missing(exploits.CORP, exploits.CORP_DB)
-    assert not absent, (
-        f"the corp wargame is not on this range (substrate {substrate()}): "
-        f"{', '.join(absent)} {'has' if len(absent) == 1 else 'have'} no host "
-        f"in platform/range/declaration.yaml for it, so nothing builds or boots "
-        f"the target and the live exploit has nothing to change"
-    )
+    corp_is_declared()
 
 
 def _session():
@@ -89,85 +82,55 @@ def test_corp_is_offered_in_the_console_catalogue(stack_is_up):
     assert corp["public_url"] == "http://corp.com", corp
 
 
-def test_a_live_rogue_admin_is_credited_from_the_targets_own_row_with_no_signature(corp_stands):
-    baseline = exploits._admin_ids()
-    created = set()
-    session_id = None
-    try:
-        session_id = _session()
-        time.sleep(2)
-        fired_at = datetime.now(timezone.utc)
-        code = exploits._submit(exploits._register_nonce(), f"rogue_{uuid.uuid4().hex[:8]}")
-        assert code == "302", f"the rogue-admin registration did not complete, got {code!r}"
-        done_at = datetime.now(timezone.utc)
+def test_a_live_rogue_admin_is_credited_from_the_targets_own_row_with_no_signature(
+    corp_stands, rogue_admin_session
+):
+    seen = rogue_admin_session
+    assert seen["admins_left"] == seen["baseline"], (
+        f"left corp-db dirty: admins now {sorted(seen['admins_left'])}, "
+        f"baseline {sorted(seen['baseline'])}"
+    )
+    assert seen["code"] == "302", f"the rogue-admin registration did not complete, got {seen['code']!r}"
+    assert seen["created"] and all(uid > 1 for uid in seen["created"]), (
+        f"no non-baseline administrator was committed; admins {sorted(seen['admins'])}"
+    )
+    assert seen["observed"]["total"] == 3, seen["observed"]
 
-        created = exploits._admin_ids() - baseline
-        assert created and all(uid > 1 for uid in created), (
-            f"no non-baseline administrator was committed; admins {sorted(exploits._admin_ids())}"
-        )
+    assert "corp-rogue-admin" in seen["credited"]
 
-        _record_window(session_id, "corp-rogue-admin", fired_at, done_at)
-        _observe(session_id)
-
-        assert "corp-rogue-admin" in _credited_keys(session_id)
-
-        score = _score(session_id)
-        breach = next((b for b in score["breaches"] if b["key"] == "corp-rogue-admin"), None)
-        assert breach is not None, score["breaches"]
-        assert breach["detected"] is False, breach
-        assert breach["detection_ids"] == [], breach
-        assert score["objectives"]["objectives"] >= 1, score["objectives"]
-    finally:
-        for uid in sorted(created):
-            exploits._delete(uid)
-        assert exploits._admin_ids() == baseline, (
-            f"left corp-db dirty: admins now {sorted(exploits._admin_ids())}, baseline {sorted(baseline)}"
-        )
-        if session_id is not None:
-            _close(session_id)
+    score = seen["score"]
+    breach = next((b for b in score["breaches"] if b["key"] == "corp-rogue-admin"), None)
+    assert breach is not None, score["breaches"]
+    assert breach["detected"] is False, breach
+    assert breach["detection_ids"] == [], breach
+    assert score["objectives"]["objectives"] >= 1, score["objectives"]
 
 
-def test_a_live_option_flip_is_credited_from_the_targets_own_row(corp_stands):
-    session_id = None
-    try:
-        session_id = _session()
-        time.sleep(2)
-        fired_at = datetime.now(timezone.utc)
-        nonce = exploits._ajax_nonce()
-        assert exploits._flip(nonce, "users_can_register", "1") == "200"
-        assert exploits._flip(nonce, "default_role", "administrator") == "200"
-        assert exploits._option("users_can_register") == "1"
-        done_at = datetime.now(timezone.utc)
+def test_a_live_option_flip_is_credited_from_the_targets_own_row(corp_stands, option_flip_session):
+    seen = option_flip_session
+    assert seen["options_left"] == ("0", "subscriber"), seen["options_left"]
+    assert seen["flips"] == ("200", "200"), seen["flips"]
+    assert seen["registration_open"] == "1"
+    assert seen["observed"]["total"] == 3, seen["observed"]
 
-        _record_window(session_id, "corp-self-registration", fired_at, done_at)
-        _observe(session_id)
-
-        assert "corp-self-registration" in _credited_keys(session_id)
-
-        score = _score(session_id)
-        assert "corp-self-registration" in {b["key"] for b in score["breaches"]}, score["breaches"]
-    finally:
-        exploits._set_option("users_can_register", "0")
-        exploits._set_option("default_role", "subscriber")
-        assert exploits._option("users_can_register") == "0"
-        assert exploits._option("default_role") == "subscriber"
-        if session_id is not None:
-            _close(session_id)
+    assert "corp-self-registration" in seen["credited"]
+    assert "corp-self-registration" in {b["key"] for b in seen["score"]["breaches"]}, seen["score"]["breaches"]
 
 
 def test_a_live_content_overwrite_is_credited_from_the_targets_own_row(corp_stands):
-    original = content._target_post()
-    session_id = None
+    session_id = _session()
+    original = content._target_post(session_id)
     title = "Defaced by an unauthenticated guest"
     excerpt = "overwritten without owning this post"
     body = "overwritten without owning this post via rbsm_submit_post postId overwrite"
     try:
-        session_id = _session()
         time.sleep(2)
         fired_at = datetime.now(timezone.utc)
-        response = content._overwrite_post(content._nonce(), original["ID"], title, excerpt, body)
+        response = content._overwrite_post(
+            content._nonce(session_id), original["ID"], title, excerpt, body, session_id
+        )
         assert '"success":true' in response, f"the postId overwrite was refused: {response!r}"
-        after = content._row(original["ID"])
+        after = content._row(original["ID"], session_id)
         assert after["post_title"] == title and after["post_content"] == body, after
         done_at = datetime.now(timezone.utc)
 
@@ -179,13 +142,12 @@ def test_a_live_content_overwrite_is_credited_from_the_targets_own_row(corp_stan
         score = _score(session_id)
         assert "corp-content-overwrite" in {b["key"] for b in score["breaches"]}, score["breaches"]
     finally:
-        content._restore(original)
-        restored = content._row(original["ID"])
+        content._restore(original, session_id)
+        restored = content._row(original["ID"], session_id)
+        _close(session_id)
         assert restored == {
             "post_title": original["post_title"],
             "post_content": original["post_content"],
             "post_excerpt": original["post_excerpt"],
             "post_status": original["post_status"],
         }, restored
-        if session_id is not None:
-            _close(session_id)

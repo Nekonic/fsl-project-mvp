@@ -48,8 +48,10 @@ def test_the_waf_is_the_only_way_across(stack_is_up):
     assert attacker & waf, "the WAF is not reachable from the attacker's segment"
     assert target & waf, "the WAF cannot reach the target's segment"
 
-def test_the_attacker_comes_from_somewhere_the_map_can_place(stack_is_up):
-    source_ip = requests.get(f"{PLATFORM_URL}/api/attacker/", timeout=60).json()["source_ip"]
+def test_the_attacker_comes_from_somewhere_the_map_can_place(standing_stack):
+    source_ip = requests.get(
+        f"{PLATFORM_URL}/api/attacker/", params={"session": standing_stack}, timeout=60
+    ).json()["source_ip"]
 
     located = requests.post(
         "http://localhost:9200/_ingest/pipeline/fsl-geoip/_simulate",

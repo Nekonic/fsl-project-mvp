@@ -1,40 +1,10 @@
-import uuid
-
 import pytest
-import requests
-
-from conftest import PLATFORM_URL
-from range import ATTACKER, run
-
-def typed(command, session_id):
-    shell = f"printf '{command}\\nexit\\n' | bash -i"
-    return run(ATTACKER, ["bash", "-c", shell], timeout=120, session=session_id)
 
 @pytest.fixture(scope="module")
-def recorded(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    marker = str(uuid.uuid4())
-
-    requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/",
-        json={"case_id": marker, "session": session_id}, timeout=60,
-    )
-    try:
-        typed("nmap --version", session_id)
-    finally:
-        requests.post(
-            f"{PLATFORM_URL}/api/attacker/label/",
-            json={"case_id": None, "session": session_id}, timeout=60,
-        )
-    typed("echo after", session_id)
-
-    listed = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/commands/", timeout=120
-    )
+def recorded(terminal_session):
+    listed = terminal_session["commands"]
     assert listed.status_code == 200, listed.text
-    return marker, listed.json()["commands"]
+    return terminal_session["marker"], listed.json()["commands"]
 
 def test_what_was_typed_at_the_terminal_comes_back(recorded):
     _, commands = recorded

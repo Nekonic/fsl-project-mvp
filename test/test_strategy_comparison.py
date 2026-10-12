@@ -34,7 +34,7 @@ def labelled_session(stack_is_up, case_id):
     _label(case_id, session_id)
     try:
         started = _now()
-        from_attacker(ATTACK_PATH)
+        from_attacker(ATTACK_PATH, session=session_id)
         ended = _now()
     finally:
         _label(None, session_id)

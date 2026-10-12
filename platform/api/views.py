@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, Max
+from django.db.models import Count, F, Max, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -62,7 +62,7 @@ OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at"
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at")
 SCORE_FIELDS = ("tp", "fp", "fn", "tn", "precision", "recall", "f1", "false_positive_rate")
 SUPPRESSION_FIELDS = (
-    "id", "sid", "reason", "created_at", "expires_at", "restored_at",
+    "id", "session_id", "sid", "reason", "created_at", "expires_at", "restored_at",
 )
 
 SITE_BROWSER_MARKER = site.MARKER
@@ -70,6 +70,7 @@ RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint", "do")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
+STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
 _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
@@ -195,7 +196,7 @@ def sessions(request):
     )
     try:
         if hasattr(adapter, "open_session"):
-            adapter.open_session(session.pk, live=live)
+            adapter.open_session(session.pk, live=_stacks_to_keep(session))
         adapter = _range(session, adapter)
         _aim_attacker(adapter)
         if hasattr(adapter, "for_session"):
@@ -219,6 +220,12 @@ def sessions(request):
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
     return _reply(_described(session), status=201)
+
+def _stacks_to_keep(opening):
+    shipping = timezone.now() - STACK_OUTLIVES_ITS_SESSION
+    return Session.objects.filter(
+        Q(ended_at=None) | Q(ended_at__gte=shipping)
+    ).exclude(pk=opening.pk).order_by("pk").values_list("pk", flat=True)
 
 def _described(session, judged=False):
     return _shape(session, SESSION_FIELDS) | {
@@ -510,7 +517,7 @@ def session_topology(request, session_id):
 
 @require_http_methods(["GET"])
 def origins(request):
-    return _reply({"origins": attacker.origins(_standing())})
+    return _reply({"origins": attacker.origins(_standing(_asked_session(request)))})
 
 @require_http_methods(["GET"])
 def session_commands(request, session_id):

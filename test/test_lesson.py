@@ -64,28 +64,45 @@ def test_excluding_one_rule_for_one_parameter_passes_the_lesson(minimal):
     assert result["diagnosis"] == [["lesson.diag.blocked_ratio", [2, 2]]]
 
 
-def test_two_sessions_tune_their_own_waf_and_their_own_sensor(minimal):
-    second = minimal
-    _tune(second, {"paranoia": 4})
-    first = _open(defense="minimal")
-    _tune(first, {"paranoia": 1})
-    committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
-    probe = 'alert http any any -> any any (msg:"FSL lesson isolation probe"; sid:9009901; rev:1;)\n'
-    applied = requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/?session={first}", json={"content": committed + probe},
-        timeout=120,
-    )
+@pytest.fixture(scope="module")
+def guided_beside_minimal(minimal):
+    began = time.monotonic()
+    first = _open(defense="minimal", guidance=True)
+    seen = {"took": time.monotonic() - began}
+    try:
+        seen["cases"] = requests.get(f"{PLATFORM_URL}/api/sessions/{first}/cases/", timeout=60).json()
+        seen["lesson"] = requests.get(f"{PLATFORM_URL}/api/sessions/{first}/", timeout=60).json()["lesson"]
 
-    second_tuning = requests.get(f"{PLATFORM_URL}/api/sessions/{second}/waf/", timeout=60).json()
-    first_rules = requests.get(f"{PLATFORM_URL}/api/rules/?session={first}", timeout=60).json()
-    second_rules = requests.get(f"{PLATFORM_URL}/api/rules/?session={second}", timeout=60).json()
-    served = _fire(first, O_BRIEN)["meta"].get("status")
-    refused = _fire(second, O_BRIEN)["meta"].get("status")
+        second = minimal
+        _tune(second, {"paranoia": 4})
+        _tune(first, {"paranoia": 1})
+        committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
+        probe = 'alert http any any -> any any (msg:"FSL lesson isolation probe"; sid:9009901; rev:1;)\n'
+        seen["committed"], seen["probe"] = committed, probe
+        seen["applied"] = requests.post(
+            f"{PLATFORM_URL}/api/rules/apply/?session={first}", json={"content": committed + probe},
+            timeout=120,
+        )
+
+        seen["second_tuning"] = requests.get(f"{PLATFORM_URL}/api/sessions/{second}/waf/", timeout=60).json()
+        seen["first_rules"] = requests.get(f"{PLATFORM_URL}/api/rules/?session={first}", timeout=60).json()
+        seen["second_rules"] = requests.get(f"{PLATFORM_URL}/api/rules/?session={second}", timeout=60).json()
+        seen["served"] = _fire(first, O_BRIEN)["meta"].get("status")
+        seen["refused"] = _fire(second, O_BRIEN)["meta"].get("status")
+    finally:
+        requests.post(f"{PLATFORM_URL}/api/sessions/{first}/close/", json={}, timeout=120)
+    return seen
+
+
+def test_two_sessions_tune_their_own_waf_and_their_own_sensor(guided_beside_minimal):
+    seen = guided_beside_minimal
+    committed, probe, applied = seen["committed"], seen["probe"], seen["applied"]
+    served, refused = seen["served"], seen["refused"]
 
     assert applied.status_code == 200, applied.text
-    assert first_rules["content"] == committed + probe
-    assert second_rules["content"] == committed, "a rule applied in one session reached another's sensor"
-    assert second_tuning["paranoia"] == 4, "a tuning applied in one session reached another's record"
+    assert seen["first_rules"]["content"] == committed + probe
+    assert seen["second_rules"]["content"] == committed, "a rule applied in one session reached another's sensor"
+    assert seen["second_tuning"]["paranoia"] == 4, "a tuning applied in one session reached another's record"
     assert (served, refused) == (200, 403), (
         "paranoia level 1 in the first session and 4 in the second should serve and "
         f"block the O'Brien search respectively; got {served} and {refused}"
@@ -108,14 +125,10 @@ def test_with_blocking_turned_off_verify_sees_the_stock_variant_leak(stack_is_up
     print(f"leaking VERIFY took {took:.0f} s")
 
 
-def test_a_guided_session_opens_with_the_lesson_s_logs_already_there(stack_is_up):
-    began = time.monotonic()
-    session_id = _open(defense="minimal", guidance=True)
-    took = time.monotonic() - began
-
-    cases = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/cases/", timeout=60).json()
-    lesson = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/", timeout=60).json()["lesson"]
+def test_a_guided_session_opens_with_the_lesson_s_logs_already_there(guided_beside_minimal):
+    cases = guided_beside_minimal["cases"]
+    lesson = guided_beside_minimal["lesson"]
 
     assert sorted(case["name"] for case in cases) == sorted(lesson["cases"])
     assert all(case["meta"].get("seed") for case in cases)
-    print(f"guided open took {took:.0f} s")
+    print(f"guided open took {guided_beside_minimal['took']:.0f} s")

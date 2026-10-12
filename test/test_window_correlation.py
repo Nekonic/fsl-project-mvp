@@ -50,13 +50,13 @@ def window_session(stack_is_up):
     source_ip = attacker.json()["source_ip"]
 
     started = _now()
-    from_attacker(BENIGN_PATH)
+    from_attacker(BENIGN_PATH, session=session_id)
     _record_window(session_id, "terminal-benign", False, source_ip, started, _now())
 
     time.sleep(GAP_SECONDS)
 
     started = _now()
-    from_attacker(ATTACK_PATH)
+    from_attacker(ATTACK_PATH, session=session_id)
     _record_window(session_id, "terminal-sqli", True, source_ip, started, _now())
 
     requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)

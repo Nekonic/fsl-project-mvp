@@ -8,11 +8,8 @@ def test_the_compose_range_reports_itself_ready():
     assert answer.status_code == 200
     assert answer.json() == {"ready": True, "substrate": "compose", "slot": None, "max_sessions": 2}
 
-def test_the_canary_corroborates_both_engines_on_the_live_stack():
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
-    answer = requests.post(
-        f"{PLATFORM_URL}/api/range/canary/", json={"session": session_id}, timeout=180
-    )
+def test_the_canary_corroborates_both_engines_on_the_live_stack(board_session):
+    answer = board_session["canary"]
 
     assert answer.status_code == 200, answer.text
     body = answer.json()

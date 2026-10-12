@@ -51,6 +51,16 @@ def test_a_suppression_carries_a_deadline(client, ids):
     assert created["expires_at"] > created["created_at"]
     assert created["restored_at"] is None
 
+def test_a_suppression_names_the_session_whose_sensor_it_silenced(client, ids, a_session_is_open):
+    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
+    listed = client.get("/api/rules/suppressions/").json()["suppressions"]
+
+    assert created["session_id"] == a_session_is_open.pk
+    assert [s["session_id"] for s in listed] == [a_session_is_open.pk], (
+        "a suppression that does not say which session it silenced cannot be told "
+        "apart from one an earlier run left behind"
+    )
+
 def test_a_suppression_lasts_as_long_as_was_asked(client, ids):
     from django.utils.dateparse import parse_datetime
 
