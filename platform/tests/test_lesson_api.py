@@ -35,7 +35,7 @@ class Stand:
         def runner(adapter, role, segment_id=""):
             def run(argv, stdin=None, timeout=60.0):
                 calls.append((adapter.session, role, " ".join(argv), stdin))
-                if " ".join(argv).endswith(crs.WORKERS):
+                if " ".join(argv).endswith(crs.workers_of(crs.Layout().pid)):
                     return Ran(0, str(len(calls)))
                 if " ".join(argv).endswith("cat > " + crs.EXCLUSIONS):
                     files[(adapter.session, role)] = stdin

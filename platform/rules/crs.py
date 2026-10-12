@@ -17,8 +17,6 @@ def workers_of(pid: str) -> str:
     return ('m=$(cat ' + pid + '); for d in /proc/[0-9]*; do '
             '[ "$(cut -d" " -f4 $d/stat 2>/dev/null)" = "$m" ] && echo ${d#/proc/}; done; true')
 
-RELOAD = ["sh", "-c", NGINX_RELOAD]
-WORKERS = workers_of(NGINX_PID)
 SETTLE_POLLS = 50
 FIRST_ID = 10000
 MOST_EXCLUSIONS = 20
