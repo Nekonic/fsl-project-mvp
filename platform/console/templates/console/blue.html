@@ -144,6 +144,8 @@
 
   quietKibana();
 
+{% include "console/debrief_script.html" %}
+
 {% include "console/blue_lesson_script.html" %}
 
   field("lesson-replay").addEventListener("click", replay);
@@ -180,6 +182,7 @@
     const practice = session.mode === "self";
     noteControls(practice);
     opening(taught);
+    if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("lesson-debrief"));
     modeControl(practice);
     hints(taught.text, taught.hints, declared);
     theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);

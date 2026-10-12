@@ -14,6 +14,20 @@ SHOWN = [views._shown_step(None, dict(step, query=None)) | {k: v for k, v in ste
 IDS = [step["id"] for step in STEPS]
 COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
 
+DEBRIEF = {
+    "lesson": "waf-exclusion", "title": "lesson.board.title",
+    "overview": {"passed": True, "verified": 2, "mode": "guided", "fix": "path_target",
+                 "steps": {"passed": 7, "total": 8}, "help": {"hints": 1, "skipped": 1, "done_for_me": 0}},
+    "evidence": [{"id": 4, "source": "modsecurity", "signature": "920273", "method": "GET",
+                  "path": "/search/?q=O%27Brien", "phase": "seed", "case": "board-normal-search-with-apostrophe",
+                  "timestamp": "2026-10-13T09:01:02+00:00"}],
+    "change": {"before": {"paranoia": 4, "exclusions": []}, "after": {"paranoia": 4, "exclusions": []},
+               "added": [], "removed": [], "diff": ["+SecRule REQUEST_FILENAME \"@beginsWith /search/\" \"id:10100\""]},
+    "cases": [{"name": "board-normal-search-with-apostrophe", "malicious": False, "before": "blocked", "after": "served"}],
+    "risk": [["lesson.risk.path_target", []], ["lesson.risk.replayed", [2]]],
+    "at": {"opened": "2026-10-13T09:00:00+00:00", "verified": "2026-10-13T09:30:00+00:00"},
+}
+
 GUIDED = """
 localStorage.setItem('fsl-lesson-landed-1', 'true');
 const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [],
@@ -112,6 +126,7 @@ browser.serve((request) => {
     } : null}};
   }
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
+  if (request.route === "/api/sessions/1/lesson/debrief/") return {body: DEBRIEF_JSON};
   if (request.route === "/api/sessions/1/lesson/hints/") {
     used(request.body);
     if (request.body.level === "hint") own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
@@ -142,7 +157,7 @@ browser.serve((request) => {
 """.replace("THEORY_JSON", json.dumps(wargames.lesson("board")["theory"])).replace(
     "HINTS_JSON", json.dumps(wargames.lesson("board")["hints"])).replace("STEPS_JSON", json.dumps([
     dict(step, discover="/kibana/app/discover#/?narrowed=brien") if step.get("query") else step for step in SHOWN
-])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS}))
+])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS})).replace("DEBRIEF_JSON", json.dumps(DEBRIEF))
 
 def guided(guidance):
     return GUIDED.replace("GUIDANCE", "true" if guidance else "false")
@@ -1459,3 +1474,26 @@ def test_verify_names_the_kind_of_fix_beside_the_verdict_without_counting_it_as_
 
     assert "PASS" in seen["result"]["verdict"] and seen["result"]["failing"] == 0
     assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"
+
+def test_a_pass_opens_the_debrief_in_the_check_tab_in_the_order_overview_evidence_change_cases_risk(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
+      const before = browser.element('lesson-debrief').classList.contains('hidden');
+      await browser.click('lesson-verify');
+      const box = browser.element('lesson-debrief');
+      return {before, hidden: box.classList.contains('hidden'), text: box.textContent,
+              order: [...box.querySelectorAll('[data-debrief]')].map((part) => part.dataset.debrief),
+              diff: box.querySelector('[data-diff]').textContent,
+              row: box.querySelector('[data-case]').textContent};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["before"], result["hidden"]) == (True, False)
+    assert result["order"] == ["overview", "evidence", "change", "cases", "risk"]
+    assert english("lesson.debrief.overview.line", 2) in result["text"]
+    assert english("lesson.debrief.help", 1, 1, 0) in result["text"]
+    assert "920273 · GET /search/?q=O%27Brien · " + english("lesson.debrief.phase.seed") in result["text"]
+    assert result["diff"].startswith("+SecRule")
+    assert english("outcome.blocked") in result["row"] and english("lesson.check.served") in result["row"]
+    assert english("lesson.risk.path_target") in result["text"]
+    assert "09:01" not in result["text"] and "09:30" not in result["text"], "times stay in the API"

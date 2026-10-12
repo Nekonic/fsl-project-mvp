@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+
 DO_IT = 4
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1
@@ -26,6 +28,27 @@ def fix_class(waf: dict | None, posture: dict | None, scope: str) -> str | None:
     if any(not (entry["path"] and entry["path"].startswith(scope)) for entry in added):
         return "target"
     return "path_target"
+
+def config_diff(before: str, after: str) -> list[str]:
+    return [
+        line for line in difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm="", n=0)
+        if line[:1] in "+-" and not line.startswith(("+++", "---"))
+    ]
+
+def exclusions_changed(before: list, after: list) -> dict:
+    return {"added": [entry for entry in after if entry not in before],
+            "removed": [entry for entry in before if entry not in after]}
+
+def help_counts(steps: dict) -> dict:
+    kept = list(steps.values())
+    return {
+        "hints": sum(1 for step in kept if step.get("hint")),
+        "skipped": sum(1 for step in kept if step.get("skipped") and not step.get("passed")),
+        "done_for_me": sum(1 for step in kept if step.get("done_for_me")),
+    }
+
+def risks(fix: str | None, attacks: int) -> list:
+    return ([[f"lesson.risk.{fix}", []]] if fix else []) + [["lesson.risk.replayed", [attacks]]]
 
 def served(status: int) -> bool:
     return 200 <= status < 300

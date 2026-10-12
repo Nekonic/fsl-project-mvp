@@ -1137,6 +1137,63 @@ def _started(session):
     seeded = list(session.cases.filter(meta__seed=True))
     return _judged_cases(session, seeded) if seeded else None
 
+@require_http_methods(["GET"])
+def lesson_debrief(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    taught = _taught(session)
+    runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
+    last = _verified(session, runs[-1]) if runs else None
+    started = _started(session)
+    before = {case["name"]: case["outcome"] for case in (started or {}).get("cases", [])}
+    after = {case["name"]: case["outcome"] for case in (last or {}).get("cases", [])}
+    steps = {step["id"] for step in taught.get("steps", [])}
+    return _reply({
+        "lesson": taught["id"],
+        "title": f"{taught['text']}.title",
+        "overview": {
+            "passed": last["passed"] if last else None, "verified": len(runs),
+            "mode": last["mode"] if last else session.mode, "fix": last["fix"] if last else None,
+            "steps": {"passed": sum(1 for step_id, kept in session.lesson_steps.items()
+                                    if step_id in steps and kept.get("passed")), "total": len(steps)},
+            "help": lesson.help_counts(session.lesson_steps),
+        },
+        "evidence": _evidence_rows(session, runs[-1] if runs else None),
+        "change": _change(session, (last or {}).get("waf")),
+        "cases": [{"name": name, "malicious": wargames.find_case(session.scenario, name)["malicious"],
+                   "before": before.get(name), "after": after.get(name)} for name in taught["cases"]],
+        "risk": lesson.risks(last["fix"] if last else None,
+                             sum(1 for name in taught["cases"] if wargames.find_case(session.scenario, name)["malicious"])),
+        "at": {"opened": session.started_at.isoformat(),
+               "verified": max((case.ended_at for case in session.cases.filter(meta__verify=runs[-1])),
+                               default=None) if runs else None},
+    })
+
+EVIDENCE_ROWS = 20
+
+def _evidence_rows(session, run):
+    phases = {case.case_id: ("verify" if case.meta.get("verify") == run else "seed", case.name)
+              for case in session.cases.all() if case.meta.get("seed") or (run and case.meta.get("verify") == run)}
+    found = session.detections.filter(marker__in=list(phases)).order_by("-timestamp")[:EVIDENCE_ROWS]
+    return [
+        {"id": detection.id, "source": detection.source, "signature": detection.signature,
+         "method": _request_of(detection.raw or {})[0], "path": _request_of(detection.raw or {})[1],
+         "phase": phases[detection.marker][0], "case": phases[detection.marker][1],
+         "timestamp": detection.timestamp.isoformat()}
+        for detection in found
+    ]
+
+def _change(session, waf):
+    declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
+    before = crs.checked(declared["waf"]) if declared else {"paranoia": None, "exclusions": []}
+    if not waf:
+        return {"before": before, "after": None, "added": [], "removed": [], "diff": []}
+    return {
+        "before": before,
+        "after": {"paranoia": waf.get("paranoia"), "exclusions": waf.get("exclusions") or []},
+        **lesson.exclusions_changed(before["exclusions"], waf.get("exclusions") or []),
+        "diff": lesson.config_diff(crs.rendered(before) if before["paranoia"] else "", waf.get("file") or ""),
+    }
+
 @require_http_methods(["GET", "PUT"])
 def session_waf(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
