@@ -161,3 +161,27 @@
     path: /
     params:
       sort: "-created_at"
+
+# A Korean search, as most of the board's readers type one. CRS blocks it from
+# paranoia level 3 (920272 and 942460, measured 2026-10-13); levels 1 and 2
+# serve it.
+- name: board-normal-search-korean
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /search/
+    params:
+      q: "\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
+
+# An ordinary comment in the same request shape as the XSS comment above: a
+# body rule keyed on the attack stays quiet on it, one keyed on any comment
+# does not.
+- name: board-normal-comment
+  malicious: false
+  correlation: marker
+  request:
+    method: POST
+    path: /posts/1/comments/
+    json:
+      body: "Thanks, the fix in the second reply worked for me."
