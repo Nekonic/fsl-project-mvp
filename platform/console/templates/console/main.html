@@ -160,6 +160,27 @@
       button.addEventListener("click", () => listOpen(button.closest("[data-failure]"))));
     renderRunning();
     renderFinished(finishedRows);
+    renderMine();
+  }
+
+  async function renderMine() {
+    const opened = openedSessions();
+    if (!opened.length) return;
+    const read = await api(`/api/sessions/?ids=${opened.join(",")}`);
+    if (!read.ok || !Array.isArray(read.body)) return;
+    document.querySelectorAll("[data-last]").forEach((line) => {
+      const [scenario, taught] = line.dataset.last.split("/");
+      const last = read.body.filter((session) => session.scenario === scenario && session.lesson_id === taught)
+        .sort((a, b) => b.id - a.id)[0];
+      if (!last) return;
+      const verdict = last.result && last.result.lesson;
+      const state = !last.ended_at ? esc(t("main.last.open"))
+        : verdict ? badge(verdict.passed ? "PASS" : "FAIL", verdict.passed ? "ok-strong" : "red-strong")
+          : esc(t("main.last.unverified"));
+      line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
+        esc(t("main.last", last.id, t(`kind.${kindOf(last)}`)))}</a> ${state}`;
+      line.classList.remove("hidden");
+    });
   }
 
   function opening(button) {

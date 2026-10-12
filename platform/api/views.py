@@ -200,6 +200,8 @@ def sessions(request):
             found = found.filter(ended_at=None)
         elif state == "closed":
             found = found.exclude(ended_at=None)
+        if request.GET.get("ids") is not None:
+            found = found.filter(pk__in=_asked_ids(request.GET["ids"]))
 
         return _reply([_described(s, judged=s.ended_at is not None) for s in found[:limit]])
 
@@ -260,6 +262,12 @@ def sessions(request):
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
     return _reply(_described(session), status=201)
+
+def _asked_ids(given):
+    try:
+        return [int(one, 10) for one in given.split(",") if one.strip()]
+    except ValueError:
+        raise BadRequest(f'"ids" must be session ids separated by commas, got {given!r}')
 
 def _stacks_to_keep(opening):
     shipping = timezone.now() - STACK_OUTLIVES_ITS_SESSION

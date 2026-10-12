@@ -751,3 +751,13 @@ def test_a_lesson_replay_returns_sqlmap_s_conclusion_its_command_the_403_count_a
     assert not row["conclusions"][-1].startswith("[06:"), "the clock stamp is not part of the conclusion"
     assert row["command"].startswith("sqlmap -u {target}/?sort=posts_post.id*")
     assert case.case_id in unquote(row["discover"]) and "X-FSL-Case" in unquote(row["discover"])
+
+def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client):
+    first, _, third = board(guidance=True), board(), board()
+    client.post_json(f"/api/sessions/{first.pk}/close/")
+
+    listed = client.get(f"/api/sessions/?ids={third.pk},{first.pk}").json()
+
+    assert [row["id"] for row in listed] == [third.pk, first.pk]
+    assert "result" in listed[1] and listed[1]["lesson_id"] == "waf-exclusion"
+    assert client.get("/api/sessions/?ids=1,x").status_code == 400

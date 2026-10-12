@@ -400,3 +400,11 @@ def test_a_closed_lesson_that_passed_shows_its_debrief_and_its_fix_on_the_score_
     assert english("lesson.debrief.heading") in seen["result"]["text"]
     assert english("lesson.risk.replayed", 2) in seen["result"]["text"]
     assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"
+
+def test_opening_a_session_page_remembers_its_id_in_this_browser_newest_first(client):
+    seen = open_page(client, "/session/1/", setup="localStorage.setItem('fsl-opened-sessions', '[5, 1, 3]');\n" + CLOSED,
+                     scenario="""
+      return JSON.parse(localStorage.getItem('fsl-opened-sessions'));
+    """)
+
+    assert seen["result"] == [1, 5, 3]
