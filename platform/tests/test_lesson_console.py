@@ -4,19 +4,92 @@ import re
 import pytest
 
 import wargames
+from api import views
 from tests.browser import english, open_page
 
 pytestmark = pytest.mark.django_db
 
 STEPS = wargames.lesson("board")["steps"]
+SHOWN = [views._shown_step(None, dict(step, query=None)) | {k: v for k, v in step.items() if k == "query"} for step in STEPS]
 IDS = [step["id"] for step in STEPS]
 COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
 
 GUIDED = """
-const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [], ended_at: null};
+const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [],
+               ended_at: null, progress: {}, fired: [], checked: [], states: []};
+const FULL = FULL_JSON;
+const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, done_for_me: false, wrong: 0, after: 0, tried: null, passed: null, skipped: null});
+const used = (entry) => { if (!range.used.some((one) => one.step === entry.step && one.level === entry.level)) range.used.push(entry); };
+const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: range.progress});
+const passing = (id) => { own(id).passed = own(id).passed || "now"; return stepState(id, {passed: true, reason: null}); };
+const failing = (id, poll, key, values) => {
+  const kept = own(id);
+  if (!poll && (kept.wrong += 1) >= 2) {
+    kept.wrong = 0;
+    kept.hint = Math.min(4, kept.hint + 1);
+    used({step: id, level: "hint"});
+  }
+  return stepState(id, {passed: false, reason: [key, values || []]});
+};
+const judge = (id, body) => {
+  const check = FULL[id];
+  const fail = `lesson.board.fail.${id}`;
+  if (check.kind === "click") return passing(id);
+  if (check.kind === "answer" || check.kind === "choice") {
+    const given = String(body.answer || "").trim();
+    if (check.accept.includes(given)) return passing(id);
+    return failing(id, false, (check.known || []).includes(given) ? `lesson.board.wrong.${id}.${given}` : "lesson.check.wrong");
+  }
+  if (check.kind === "alert") {
+    range.checked.push(body);
+    const found = range.detections.some((row) => row.id > own(id).after && row.marker === check.marker
+      && decodeURIComponent(row.path).includes(check.path));
+    return found ? passing(id) : failing(id, body.poll, fail);
+  }
+  if (check.kind === "waf") {
+    const there = range.waf.exclusions.some((entry) => entry.rule_id === check.rule_id && entry.target === check.target
+      && entry.path === check.path);
+    if (!there) return failing(id, body.poll, fail);
+    if (body.poll && own(id).tried === range.waf.version) return failing(id, true, `${fail}.reload`);
+    own(id).tried = range.waf.version;
+    range.fired.push(check.case);
+    return range.status === 200 ? passing(id) : failing(id, body.poll, `${fail}.reload`);
+  }
+  if (check.kind === "served") {
+    range.fired.push(check.case);
+    return range.status === 200 ? passing(id) : failing(id, body.poll, fail, [range.status]);
+  }
+  return range.passed ? passing(id) : failing(id, body.poll, "lesson.board.fail.verify");
+};
 browser.serve((request) => {
+  const parts = request.route.split("/");
+  const stepped = parts[4] === "lesson" && parts[5] === "steps" ? [request.route, parts[6], parts[7] ? `${parts[7]}/` : ""] : null;
+  if (stepped && !stepped[2]) {
+    const id = stepped[1];
+    range.states.push([id, request.body.state]);
+    if (request.body.state === "reached") own(id).after = Math.max(0, ...range.detections.map((row) => row.id));
+    else if (!own(id).passed) own(id).skipped = "now";
+    return {body: stepState(id, {})};
+  }
+  if (stepped && stepped[2] === "check/") return {body: judge(stepped[1], request.body)};
+  if (stepped) {
+    const id = stepped[1];
+    own(id).done_for_me = true;
+    used({step: id, level: "do"});
+    const check = FULL[id];
+    if (check.kind === "answer" || check.kind === "choice") return {body: judge(id, {answer: check.accept[0]})};
+    if (check.kind === "waf") {
+      const tuning = {paranoia: range.waf.paranoia, exclusions: [...range.waf.exclusions,
+        {rule_id: check.rule_id, target: check.target, path: check.path}]};
+      range.puts.push(tuning);
+      range.waf = {...tuning, version: "v-do"};
+      return {body: judge(id, {})};
+    }
+    if (check.kind === "click" || check.kind === "served") return {body: judge(id, {})};
+    return {body: stepState(id, {passed: false, reason: null})};
+  }
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
@@ -26,8 +99,10 @@ browser.serve((request) => {
   }
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
   if (request.route === "/api/sessions/1/lesson/hints/") {
-    range.used.push(request.body);
-    return {body: {hints: range.used}};
+    used(request.body);
+    if (request.body.level === "hint") own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
+    else own(request.body.step).done_for_me = true;
+    return {body: stepState(request.body.step, {})};
   }
   if (request.route === "/api/sessions/1/detections/") {
     return {body: range.detections.filter((row) => row.id > Number(request.query.after || 0))};
@@ -52,8 +127,8 @@ browser.serve((request) => {
 });
 """.replace("THEORY_JSON", json.dumps(wargames.lesson("board")["theory"])).replace(
     "HINTS_JSON", json.dumps(wargames.lesson("board")["hints"])).replace("STEPS_JSON", json.dumps([
-    dict(step, discover="/kibana/app/discover#/?narrowed=brien") if step.get("query") else step for step in STEPS
-]))
+    dict(step, discover="/kibana/app/discover#/?narrowed=brien") if step.get("query") else step for step in SHOWN
+])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS}))
 
 def guided(guidance):
     return GUIDED.replace("GUIDANCE", "true" if guidance else "false")
@@ -146,7 +221,7 @@ def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(c
       return {cards, folded, opened: !hidden(), answer: browser.text('lesson-answer'),
               hints: browser.text('lesson-hints'),
               form: ['lesson-paranoia', 'lesson-exclusions', 'lesson-save'].map((id) => document.getElementById(id)),
-              writes: browser.requests.filter((r) => r.method !== 'GET' && r.route !== '/api/sessions/1/ingest/').map((r) => r.route)};
+              writes: browser.requests.filter((r) => r.method !== 'GET' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)};
     """)
 
     assert seen["result"]["cards"] == ["why_rule", "why_target", "why_file"]
@@ -166,7 +241,7 @@ def test_verify_shows_pass_or_fail_with_passing_lines_in_green_and_failing_lines
       return {verdict: browser.text('lesson-verdict'), passed: passed.textContent, failing: failing.textContent,
               green: passed.querySelectorAll('.text-success').length,
               red: failing.querySelectorAll('.text-danger').length,
-              asked: browser.requests.filter((r) => r.method === 'POST' && r.route !== '/api/sessions/1/ingest/').map((r) => r.route)};
+              asked: browser.requests.filter((r) => r.method === 'POST' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)};
     """)
     result = seen["result"]
 
@@ -184,7 +259,7 @@ def test_replay_fires_the_chosen_lesson_case_through_the_attacks_api(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
       await browser.force('lesson-case', 'board-normal-search-with-apostrophe');
       await browser.click('lesson-replay');
-      return browser.requests.filter((r) => r.method === 'POST' && r.route !== '/api/sessions/1/ingest/').map((r) => [r.route, r.body]);
+      return browser.requests.filter((r) => r.method === 'POST' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => [r.route, r.body]);
     """)
 
     assert seen["result"] == [[
@@ -439,6 +514,33 @@ def test_the_step_reached_is_kept_per_session_and_resumed_on_the_next_visit(clie
     """)
 
     assert seen["result"] == {"resumed": english("lesson.board.label.exclude"), "kept": str(at("exclude") + 2)}
+
+def test_next_and_a_jump_in_the_list_record_a_step_left_unpassed_as_skipped_and_back_does_not(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      await browser.click('coach-pop-next');
+      {to("rule")}
+      document.querySelector('#coach-pop-act [data-act="value"]').value = '920273';
+      document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
+      await browser.settle();
+      await browser.wait(1500);
+      await browser.click('coach-pop-next');
+      await browser.click('coach-pop-back');
+      await browser.settle();
+      return range.states;
+    """)
+
+    assert seen["result"] == [
+        ["search", "reached"], ["search", "skipped"], ["find", "reached"], ["find", "skipped"], ["rule", "reached"],
+        ["target", "reached"], ["target", "skipped"], ["exclude", "reached"], ["target", "reached"],
+    ], "a passed step moves on without a skip; Back is not a skip"
+
+def test_the_hint_level_a_step_reached_is_resumed_from_the_session(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + "own('rule').hint = 1;", scenario=f"""
+      {to("rule")}
+      return browser.text('coach-pop-help');
+    """)
+
+    assert seen["result"] == english("lesson.board.nudge.rule"), "the level comes from the session, not from this browser"
 
 def test_closing_the_popover_hides_the_guide_until_the_steps_tab_brings_it_back(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
@@ -700,7 +802,8 @@ def test_the_alert_check_passes_on_a_new_blocked_o_brien_search_from_the_site_br
       await poll();
       await browser.wait(1500);
       return {earlier, fromACase, otherSearch, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
-              ingest: browser.requests.filter((r) => r.route === '/api/sessions/1/ingest/').map((r) => r.body)[0]};
+              polls: range.checked.length > 0 && range.checked.every((body) => body.poll === true),
+              read: browser.requests.filter((r) => r.route.endsWith('/ingest/') || r.route.includes('/detections/')).length};
     """)
     result = seen["result"]
 
@@ -708,7 +811,8 @@ def test_the_alert_check_passes_on_a_new_blocked_o_brien_search_from_the_site_br
     assert result["fromACase"] == result["otherSearch"] == english("lesson.board.label.search")
     assert result["after"] == english("lesson.board.label.find")
     assert result["said"] == english("lesson.board.line.search")
-    assert result["ingest"] == {"within": 600}, "only recent records, so a session with thousands still finds it"
+    assert result["polls"] is True, "a poll that finds nothing is not a wrong answer"
+    assert result["read"] == 0, "the platform reads the records and judges; the page only asks"
 
 def test_a_check_that_has_not_passed_yet_says_specifically_what_is_missing_in_its_status_line(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -739,14 +843,14 @@ def test_the_waf_check_passes_once_the_file_holds_the_exclusion_and_the_o_brien_
       range.status = 200;
       for (let i = 0; i < 5; i += 1) await browser.wait(1000);
       await browser.wait(1500);
-      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
-              fired: browser.requests.filter((r) => r.route === '/api/sessions/1/attacks/').map((r) => r.body)}};
+      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), fired: range.fired,
+              sent: browser.requests.filter((r) => r.route === '/api/sessions/1/attacks/').length}};
     """)
 
     assert seen["result"] == {
         "title": english("lesson.board.label.retry"), "said": english("lesson.board.line.exclude"),
-        "fired": [{"case": "board-normal-search-with-apostrophe"}],
-    }
+        "fired": ["board-normal-search-with-apostrophe"], "sent": 0,
+    }, "the platform replays the O'Brien search for the check; the page sends no attack of its own"
 
 def test_the_answer_check_explains_949110_and_accepts_920273(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -825,27 +929,31 @@ def test_the_verify_step_finishes_the_lesson_only_on_pass(client):
         "text": english("lesson.done"), "allDone": True, "hint": True,
     }
 
-def test_hints_climb_from_a_nudge_to_the_answer_to_doing_it_after_a_minute_each(client):
+def test_a_minute_on_a_step_offers_a_hint_without_recording_one_and_each_press_climbs(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       {to("rule")}
-      const state = () => ({{help: browser.text('coach-pop-help'),
+      const state = () => ({{help: browser.text('coach-pop-help'), button: browser.text('coach-pop-hint'),
                             doIt: !browser.element('coach-pop-do').classList.contains('hidden')}});
-      const minute = async () => {{ for (let i = 0; i < 60; i += 1) await browser.wait(1000); }};
       const start = state();
-      await minute();
+      for (let i = 0; i < 60; i += 1) await browser.wait(1000);
+      const offered = state();
+      const recorded = range.used.length;
+      await browser.click('coach-pop-hint');
       const one = state();
-      await minute();
-      await minute();
+      {hints(2)}
       const three = state();
-      await minute();
-      return {{start, one, three, four: state()}};
+      {hints(1)}
+      return {{start, offered, recorded, one, three, four: state(), used: range.used, level: range.progress.rule.hint}};
     """)
     result = seen["result"]
 
-    assert result["start"] == {"help": "", "doIt": False}
-    assert result["one"] == {"help": english("lesson.board.nudge.rule"), "doIt": False}
+    assert result["start"] == {"help": "", "button": english("lesson.hint.more"), "doIt": False}
+    assert result["offered"] == {"help": "", "button": english("lesson.hint.available"), "doIt": False}
+    assert result["recorded"] == 0, "the timer only offers a hint; the learner has not asked for one"
+    assert result["one"] == {"help": english("lesson.board.nudge.rule"), "button": english("lesson.hint.more"), "doIt": False}
     assert english("lesson.board.answer.rule") in result["three"]["help"] and not result["three"]["doIt"]
     assert result["four"]["doIt"] is True
+    assert (result["used"], result["level"]) == ([{"step": "rule", "level": "hint"}], 4)
 
 def test_two_wrong_answers_raise_the_hint_a_level(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -877,28 +985,33 @@ def test_do_it_for_me_performs_the_step_and_records_that_help_was_used(client):
     )
     assert english("lesson.helped") in result["marked"]
 
-def test_do_it_for_me_on_the_terminal_step_runs_the_command_in_the_waf_terminal(client):
+def test_do_it_for_me_on_the_terminal_step_has_the_platform_add_the_exclusion_and_types_nothing(client):
     seen = open_page(client, "/blue/1/", setup=coached() + WAF_TERMINAL, scenario=f"""
       {to("exclude")}
       {hints(4)}
       await browser.click('coach-pop-do');
-      return {{pasted, puts: range.puts.length}};
+      return {{pasted, puts: range.puts, asked: browser.requests.filter((r) => r.route.endsWith('/do/')).map((r) => r.route)}};
     """)
 
-    assert seen["result"] == {"pasted": [COMMAND["exclude"] + "\n"], "puts": 0}
+    assert seen["result"] == {"pasted": [], "puts": [{"paranoia": 4, "exclusions": [
+        {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}],
+        "asked": ["/api/sessions/1/lesson/steps/exclude/do/"]}, "the agent path: the platform adds it through the WAF API"
 
-def test_do_it_for_me_falls_back_to_the_waf_api_when_no_terminal_opens(client):
+def test_do_it_for_me_on_the_terminal_step_moves_on_once_the_platform_s_check_passes(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       {to("exclude")}
       {hints(4)}
+      range.status = 200;
       await browser.click('coach-pop-do');
-      for (let i = 0; i < 25; i += 1) await browser.wait(500);
-      return {{puts: range.puts, said: browser.text('coach-pop-typed')}};
+      await browser.wait(1500);
+      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), fired: range.fired,
+              marked: browser.element('lesson-step-list').querySelector('[data-step="{at("exclude")}"]').textContent}};
     """)
 
-    assert seen["result"]["puts"] == [{"paranoia": 4, "exclusions": [
-        {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}], "the agent path, PUT /waf/"
-    assert seen["result"]["said"] == english("lesson.run.missing")
+    assert seen["result"]["title"] == english("lesson.board.label.retry")
+    assert seen["result"]["said"] == english("lesson.board.line.exclude")
+    assert seen["result"]["fired"] == ["board-normal-search-with-apostrophe"]
+    assert english("lesson.helped") in seen["result"]["marked"]
 
 def test_do_it_for_me_on_the_first_step_opens_the_search_in_the_site_browser(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -1126,7 +1239,7 @@ def test_a_closed_session_s_lesson_and_network_panel_stop_polling(client):
       return browser.requests.slice(before).map((r) => r.route);
     """)
 
-    polled = [route for route in seen["result"] if route.endswith(("/ingest/", "/detections/", "/waf/", "/site/requests/"))]
+    polled = [route for route in seen["result"] if route.endswith(("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/"))]
     assert polled == [], "nothing keeps asking the platform about a session that has closed"
 
 def test_an_open_session_s_lesson_and_network_panel_keep_polling(client):
@@ -1139,4 +1252,4 @@ def test_an_open_session_s_lesson_and_network_panel_keep_polling(client):
       return browser.requests.slice(before).map((r) => r.route);
     """)
 
-    assert "/api/sessions/1/ingest/" in seen["result"] and "/api/sessions/1/site/requests/" in seen["result"]
+    assert "/api/sessions/1/lesson/steps/search/check/" in seen["result"] and "/api/sessions/1/site/requests/" in seen["result"]

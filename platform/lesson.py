@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+DO_IT = 4
+WRONGS_PER_HINT = 2
+
+def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
+    if given in check.get("accept", []):
+        return True, None
+    if given in check.get("known", []):
+        return False, [f"{wrong}.{given}", []]
+    return False, ["lesson.check.wrong", []]
+
 def served(status: int) -> bool:
     return 200 <= status < 300
 

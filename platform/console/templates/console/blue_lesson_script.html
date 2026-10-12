@@ -170,10 +170,10 @@ function noteControls() {
 }
 
 const AUTOMATIC = ["alert", "waf", "served"];
+const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1200;
 const WIDE = 480;
 const HELP_AFTER_SECONDS = 60;
-const WRONGS_PER_LEVEL = 2;
 const POINT = 2;
 const paneOpen = (name) => {
   const tab = document.querySelector(`.pane-tab[data-pane="${name}"]`);
@@ -184,7 +184,6 @@ const whereOf = (step) => (step.opens && !paneOpen(step.opens)
 const ANSWER = 3;
 const DO_IT = 4;
 const POLL_SECONDS = 5;
-const RECENT_SECONDS = 600;
 const STRETCH_KEY = "fsl-lesson-stretch";
 const MISSING_AFTER_FRAMES = 120;
 const GAP = 14;
@@ -328,8 +327,6 @@ function keep(key, value) {
   }
 }
 
-const served = (status) => status >= 200 && status < 300;
-
 function coach(prefix, declared) {
   const steps = declared.map((step) => ({ ...step, ...(step.point || { pane: true }) }));
   const box = field("coach-box");
@@ -342,11 +339,9 @@ function coach(prefix, declared) {
   let dismissed = false;
   let level = 0;
   let seconds = 0;
-  let wrongs = 0;
   let checking = false;
-  let triedVersion = null;
-  let seenDetection = 0;
-  let counted = false;
+  let offered = false;
+  let reaching = Promise.resolve();
   let statusText = "";
   let shownPending = "";
   let passing = false;
@@ -354,9 +349,18 @@ function coach(prefix, declared) {
   let finished = false;
   const used = (session && Array.isArray(session.hints) ? session.hints : []);
   const helped = new Set(used.filter((hint) => hint.level === "do").map((hint) => hint.step));
-  const hinted = new Set(used.filter((hint) => hint.level === "hint").map((hint) => hint.step));
+  let progress = {};
   let stretch = kept(STRETCH_KEY, false) === true;
   const check = () => steps[at].check || {};
+  const recordOf = (step) => progress[step.id] || {};
+
+  function learn(body) {
+    if (!body || !body.progress || typeof body.progress !== "object") return;
+    progress = body.progress;
+    Object.entries(progress).forEach(([id, record]) => { if (record.done_for_me) helped.add(id); });
+  }
+
+  learn(session);
 
   function say(text, tone) {
     const said = field("coach-pop-said");
@@ -385,7 +389,7 @@ function coach(prefix, declared) {
           esc(t(`${prefix}.label.${step.id}`))}${help}${state}</span></button></li>`;
     }).join("");
     field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
-      button.addEventListener("click", () => go(Number(button.dataset.step))));
+      button.addEventListener("click", () => jump(Number(button.dataset.step))));
   }
 
   function followStep(step) {
@@ -414,31 +418,36 @@ function coach(prefix, declared) {
     const lines = helpLines(step);
     field("coach-pop-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
     field("coach-pop-help").classList.toggle("hidden", !lines.length);
+    offered = false;
+    field("coach-pop-hint").textContent = t("lesson.hint.more");
+    field("coach-pop-hint").classList.remove("btn-blue");
     field("coach-pop-hint").classList.toggle("hidden", level >= DO_IT || finished);
     field("coach-pop-do").classList.toggle("hidden", level < DO_IT || finished);
     last = "";
   }
 
-  function recordHelp(step, kind) {
-    post(lessonPath("lesson/hints/"), { step: step.id, level: kind });
+  function offerHint() {
+    if (offered) return;
+    offered = true;
+    field("coach-pop-hint").textContent = t("lesson.hint.available");
+    field("coach-pop-hint").classList.add("btn-blue");
   }
 
-  function escalate() {
+  async function escalate() {
+    const step = steps[at];
     level = Math.min(DO_IT, level + 1);
-    if (!hinted.has(steps[at].id)) {
-      hinted.add(steps[at].id);
-      recordHelp(steps[at], "hint");
-    }
     seconds = 0;
     showHelp();
+    const read = await post(lessonPath("lesson/hints/"), { step: step.id, level: "hint" });
+    if (read.ok) learn(read.body);
   }
 
-  function wrong(text) {
+  function wrong(text, hint) {
     say(text, "fail");
-    wrongs += 1;
-    if (wrongs >= WRONGS_PER_LEVEL) {
-      wrongs = 0;
-      escalate();
+    if (Number(hint) > level) {
+      level = Math.min(DO_IT, Number(hint));
+      seconds = 0;
+      showHelp();
     }
   }
 
@@ -560,17 +569,31 @@ function coach(prefix, declared) {
     requestAnimationFrame(tick);
   }
 
+  function reach(step) {
+    reaching = post(stepPath(step), { state: "reached" }).then((read) => { if (read.ok) learn(read.body); });
+  }
+
+  function leave(index) {
+    const step = steps[at];
+    if (index === at || recordOf(step).passed) return;
+    post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+  }
+
+  function jump(index) {
+    leave(index);
+    go(index);
+  }
+
   function go(index, follow = true, line = "") {
     at = Math.max(0, Math.min(steps.length - 1, index));
     dismissed = false;
-    level = 0;
+    level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
     seconds = 0;
-    wrongs = 0;
     commandShown = false;
     finished = false;
-    counted = false;
     say(line, line ? "ok" : "");
     show(follow);
+    reach(steps[at]);
     countAlerts();
   }
 
@@ -596,70 +619,42 @@ function coach(prefix, declared) {
     }, PASS_PAUSE_MS);
   }
 
+  async function judged(step, body, tail = "check/") {
+    await reaching;
+    const read = await post(stepPath(step, tail), body, PATIENCE_FOR_RANGE_WORK);
+    if (!read.ok) return null;
+    learn(read.body);
+    return read.body;
+  }
+
+  function settle(step, verdict, loud) {
+    if (!verdict || steps[at] !== step) return;
+    if (verdict.passed) {
+      pass(step);
+      return;
+    }
+    if (!verdict.reason) return;
+    const text = t(verdict.reason[0], ...(verdict.reason[1] || []));
+    status(text);
+    if (loud) wrong(text, verdict.hint);
+  }
+
   async function run(step, loud) {
     if (checking || steps[at] !== step || finished) return;
     checking = true;
     status(t("lesson.status.checking"));
     try {
-      const outcome = await CHECKS[step.check.kind](step, loud);
-      if (steps[at] !== step) return;
-      if (outcome === true) pass(step);
-      else {
-        status(outcome || "");
-        if (outcome && loud) wrong(outcome);
-      }
+      settle(step, await judged(step, loud ? {} : { poll: true }), loud);
     } finally {
       checking = false;
     }
   }
 
-  async function replayed(step) {
-    const fired = await post(lessonPath("attacks/"), { case: step.check.case }, PATIENCE_FOR_RANGE_WORK);
-    return fired.ok ? Number((fired.body.meta || {}).status) || 0 : 0;
-  }
-
-  const CHECKS = {
-    async alert(step) {
-      await post(lessonPath("ingest/"), { within: RECENT_SECONDS });
-      const read = await api(lessonPath(`detections/?after=${seenDetection}`));
-      const rows = read.ok && Array.isArray(read.body) ? read.body : [];
-      rows.forEach((row) => { seenDetection = Math.max(seenDetection, Number(row.id) || 0); });
-      const before = counted;
-      counted = true;
-      const found = before && rows.some((row) => row.marker === step.check.marker
-        && readable(row.path || "").includes(step.check.path));
-      return found || t(`${prefix}.fail.${step.id}`);
-    },
-    async waf(step, loud) {
-      const read = await api(lessonPath("waf/"));
-      const tuning = read.ok ? read.body : {};
-      const there = (tuning.exclusions || []).some((entry) => Number(entry.rule_id) === Number(step.check.rule_id)
-        && entry.target === step.check.target && entry.path === step.check.path);
-      if (!there) return t(`${prefix}.fail.${step.id}`);
-      if (!step.check.case) return true;
-      if (!loud && triedVersion === tuning.version) return t(`${prefix}.fail.${step.id}.reload`);
-      triedVersion = tuning.version;
-      return served(await replayed(step)) || t(`${prefix}.fail.${step.id}.reload`);
-    },
-    async served(step) {
-      const status = await replayed(step);
-      return served(status) || t(`${prefix}.fail.${step.id}`, status || "-");
-    },
-    async verify() {
-      return t(`${prefix}.fail.verify`);
-    },
-  };
-
-  function answer(given) {
+  async function answer(given) {
     const step = steps[at];
     const value = String(given || "").trim();
     if (!value) return;
-    if ((step.check.accept || []).includes(value)) {
-      pass(step);
-      return;
-    }
-    wrong((step.check.known || []).includes(value)
-      ? t(`${prefix}.wrong.${step.id}.${value}`) : t("lesson.check.wrong"));
+    settle(step, await judged(step, { answer: value }), true);
   }
 
   function openSite(path) {
@@ -701,48 +696,32 @@ function coach(prefix, declared) {
     return false;
   }
 
-  async function putExclusion(step) {
-    const read = await api(lessonPath("waf/"));
-    const tuning = read.ok ? read.body : { paranoia: 4, exclusions: [] };
-    const exclusion = { rule_id: step.check.rule_id, target: step.check.target, path: step.check.path };
-    await api(lessonPath("waf/"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paranoia: tuning.paranoia, exclusions: [...(tuning.exclusions || []), exclusion] }),
-    }, PATIENCE_FOR_RANGE_WORK);
-    await run(step, true);
-  }
-
-  const DO = {
+  const SHOWN_BY_THE_CONSOLE = {
     alert: (step) => openSite(step.site),
-    click: async (step) => {
+    click: (step) => {
       openKibana(step.discover || session.discover);
-      await clickWhenThere(step);
+      clickWhenThere(step);
     },
-    answer: (step) => answer(step.check.accept[0]),
-    choice: (step) => answer(step.check.accept[0]),
-    waf: async (step) => {
-      if (!(await runCommand(step))) await putExclusion(step);
-    },
-    served: (step) => {
-      openSite(step.site);
-      run(step, true);
-    },
-    verify: () => field("lesson-verify").click(),
   };
 
-  function doIt() {
+  async function doIt() {
     const step = steps[at];
-    if (!helped.has(step.id)) recordHelp(step, "do");
     helped.add(step.id);
     stepList();
-    DO[step.check.kind](step);
+    if (SHOWN_BY_THE_CONSOLE[step.check.kind]) SHOWN_BY_THE_CONSOLE[step.check.kind](step);
+    status(t("lesson.status.checking"));
+    const verdict = await judged(step, {}, "do/");
+    if (step.check.kind === "verify") {
+      field("lesson-verify").click();
+      return;
+    }
+    settle(step, verdict, false);
   }
 
   function advanceFrom(step) {
     setTimeout(() => {
       if (steps[at] !== step) return;
-      if (step.check.kind === "click") pass(step);
+      if (step.check.kind === "click") run(step, true);
     }, 0);
   }
 
@@ -780,20 +759,18 @@ function coach(prefix, declared) {
   setInterval(() => {
     if (dismissed || finished || sessionClosed() || document.hidden) return;
     seconds += 1;
-    if (seconds >= HELP_AFTER_SECONDS && level < DO_IT) escalate();
+    if (seconds >= HELP_AFTER_SECONDS && level < DO_IT) offerHint();
     const kind = check().kind;
     if ((kind === "alert" || kind === "waf") && seconds % POLL_SECONDS === 0) run(steps[at], false);
   }, 1000);
 
-  verified.push((passed) => {
+  verified.push(() => {
     const step = steps[at];
-    if (step.check.kind !== "verify") return;
-    if (passed) pass(step);
-    else wrong(t(`${prefix}.fail.verify`));
+    if (step.check.kind === "verify") run(step, true);
   });
 
   field("coach-pop-back").addEventListener("click", () => go(at - 1));
-  field("coach-pop-next").addEventListener("click", () => go(at + 1));
+  field("coach-pop-next").addEventListener("click", () => jump(at + 1));
   field("coach-pop-close").addEventListener("click", () => {
     dismissed = true;
     show();
@@ -815,7 +792,9 @@ function coach(prefix, declared) {
     keep(STRETCH_KEY, stretch);
     show(false);
   });
+  level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
   show(true);
+  reach(steps[at]);
   countAlerts();
   requestAnimationFrame(tick);
   return (id) => go(steps.findIndex((step) => step.id === id), false);
