@@ -43,7 +43,7 @@ hand, the stock Ubuntu 24.04 cloud image.
 | `fsl-opnsense-<version>` built by an Ubuntu builder from the official nano image | done (26.7, 2026-10-11) | §3.6 |
 | OPNsense edge configured over mgmt ssh (`configure/`) | done (2026-10-11; survival of an OPNsense update not checked) | §6 |
 | Slot + configure via `/api/range/slot/`, `/api/range/configure/` | done (OPNsense edge; automatic after a close, §6.1) | §6 |
-| Acceptance on substrate openstack | partial (2026-10-11: 50 passed / 6 failed / 4 errors) | §7 |
+| Acceptance on substrate openstack | 77 passed / 0 failed / 71 skipped (2026-10-13, two workers; the skips are `COMPOSE_RANGE_ONLY`) | §7 |
 
 Steps below carry **[one-click]** where the script replaces them, and
 **[admin, once]** where they stay manual because a member cannot do them.
