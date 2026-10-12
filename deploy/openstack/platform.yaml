@@ -159,7 +159,7 @@ resources:
           template: |
             #cloud-config
             package_update: true
-            packages: [docker.io, docker-compose-v2, git]
+            packages: [docker.io, docker-compose-v2, git, python3-venv, nodejs]
             swap:
               filename: /swapfile
               size: 4G
