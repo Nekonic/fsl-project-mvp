@@ -385,8 +385,8 @@ Korean.
   first, then in plain sentences how many attacks were caught and benign
   requests passed.
 
-A session opened with `{"guidance": true, "defense": "minimal"}` is the WAF
-lesson: the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
+A session opened with `{"guidance": true}` is the WAF lesson, at the defense
+the lesson declares (`minimal`): the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
 also the benign O'Brien search. The blue console walks a beginner through seven
 steps, each checked by the platform: search O'Brien in the Website pane and
 see the WAF's 403, find that request in Kibana with a ready-made filter, name
@@ -395,10 +395,14 @@ one button that runs the command in the session's WAF terminal (appending a
 rule with id 10100, from the range 10100-10199 kept for hand-written rules, to
 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, reloading only if `nginx -t`
 passes and putting the previous file back if not), search again, and press
-Verify (`POST /api/sessions/<id>/verify/`). Each step has hints that end in "Do
-it for me"; "Do it yourself" removes the filter and the button. Hint and "Do it
-for me" use is recorded on the session (`POST
-/api/sessions/<id>/lesson/hints/`) and shown beside PASS or FAIL. Verify passes only when no sqlmap variant
+Verify (`POST /api/sessions/<id>/verify/`). The platform judges every step
+(`POST /api/sessions/<id>/lesson/steps/<step>/check/`) and records each step
+reached, passed or skipped; the session payload carries no answer key. Each
+step has hints that end in "Do it for me" (`.../do/`, a server action);
+"Do it yourself" removes the filter and the button. Hint and "Do it for me"
+use is recorded on the session and shown beside PASS or FAIL. The lesson's
+own replays count in neither score, and a leak its VERIFY finds is
+diagnosed, not scored as a lost objective. Verify passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
 answered. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
 what is in the WAF's file. The default, `{"defense": "full"}`, starts at

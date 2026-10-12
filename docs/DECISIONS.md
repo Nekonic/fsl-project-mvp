@@ -2296,3 +2296,31 @@ recommended design: `docs/superpowers/specs/2026-10-13-blue-team-course-design.m
 
 Not chosen: a triage/report track (one investigation lab only), virtual-patch
 SecRules for corp, learner accounts, locked lesson order, per-lesson `.ko.md`.
+
+### 2026-10-13 — The foundation, built
+
+The five foundation items of the course design, as built (unit-tested only):
+
+- The open path seeds and takes the lesson posture on every substrate. On a
+  slotted range the Suricata seed is skipped for `local.rules`, which
+  readiness has already read on every sensor; reseeding would reload a sensor
+  that may be shared between slots (unmeasured, see "Suricata rule isolation"
+  in the design).
+- `Session.lesson_steps` (0020) holds each step's reached, passed, skipped,
+  hint level and done-for-me; `lesson/steps/<step>/`, `.../check/` and
+  `.../do/` record and judge on the server; answer keys left the payload.
+  Done-for-me on the exclusion step adds the exclusion through `crs.apply`
+  instead of typing the command into the WAF terminal: the server cannot
+  type into the learner's terminal, and an agent must be able to call it.
+- `REPLAY_MARKS` (seed, verify, check, replay) keep the lesson's own traffic
+  out of both scores; VERIFY no longer credits loot.
+- `Session.waf_snapshots` (0021) at each VERIFY and before the close rebuild.
+- The goal line is corrected and pinned; `lesson.defense` is declared and
+  validated.
+
+Not yet proven live: `test_lesson` on OpenStack (now in the OpenStack run),
+the server-side checks against a real slot, and the close snapshot before a
+slot rebuild.
+
+Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests 1740 ->
+1769.
