@@ -21,7 +21,7 @@ the learner never asked for. There is no debrief beyond one line per step.
 ## What every platform surveyed shares
 
 1. A goal header before any action: one "To solve" sentence, the success
-   criterion, prerequisites, time, level (Dreamhack 학습목표, PortSwigger,
+   criterion, prerequisites, time, level (Dreamhack's learning objectives, PortSwigger,
    Immersive "how you will be measured").
 2. Short theory immediately followed by practice (Dreamhack, HTB Academy,
    KISA 40/60).
@@ -32,7 +32,7 @@ the learner never asked for. There is no debrief beyond one line per step.
    Adventure, TryHackMe difficulty = amount of guidance).
 5. A final unguided assessment (HTB Skills Assessment, RangeForce challenge).
 6. A debrief from the platform's own record: before/after per case, the change
-   made, timeline (Cyberbit, KISA "모의 공격 및 공격차단 확인", Igloo
+   made, timeline (Cyberbit, KISA's mock attack and blocking check, Igloo
    before/after).
 
 No surveyed platform has a defender-side WAF false-positive lesson; HTB's and
