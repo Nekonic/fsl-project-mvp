@@ -183,7 +183,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
-| 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (compose only) | the iframe in a person's browser |
+| 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (on OpenStack, to its slot's WAF over `mgmt`) | the iframe in a person's browser |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
@@ -198,10 +198,9 @@ so these do not connect). On compose `/waf-terminal/<session id>/` goes to a tty
 inside the platform that runs `docker exec` into `fsl-<id>-waf-1`.
 By default every port is published on `127.0.0.1`.
 On the platform VM, 8000 and 8002 are published on the VM's own address
-(`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). On substrate
-OpenStack `SITE_PORT` is `None`, so 8002 is unused there and needs no
-security-group rule; a platform VM run on substrate docker needs a rule
-opening 8002 (`docs/OPENSTACK.md` §3.5). The target is
+(`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`); the
+platform template's security group opens 8000 and 8002 (`docs/OPENSTACK.md`
+§3.5). The target is
 not published: the command-line cases and the acceptance tests reach it from
 inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the

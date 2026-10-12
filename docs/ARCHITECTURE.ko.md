@@ -263,7 +263,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | 콘솔 케이스, 도구 | 일회용 `fsl-kali` 컨테이너 | 그 컨테이너, 선택된 출발지에서 | sqlmap `--headers=` |
 | CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, `edge`에서(`board.com`이 해석되는 곳) | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(<선언된 기본 출발지>)`에서 | 그 컨테이너 | sqlmap `--headers=` |
-| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거쳐 | 플랫폼, `edge`에서 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API는 `browse`로 보여 줌 |
+| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거쳐 | 플랫폼, `edge`에서(OpenStack에서는 `mgmt`에서) | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API는 `browse`로 보여 줌 |
 
 프록시는 `mitmdump` 스크립트다. `/label/active`에서 `X-FSL-Case`를 설정하고,
 `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달한다.
@@ -312,10 +312,11 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 sandbox allow-forms allow-scripts allow-same-origin`이 붙는다. 대상은 레드팀이 스크립트를 심을 수 있는
 곳이다. 콘솔과 같은 출처라면 그 스크립트가 콘솔과 그 API를 읽고 조작할 수 있다. `allow-same-origin`
 없는 sandbox(불투명 출처)로 8000에서만 막을 수도 있지만, Chromium 기반 내장 브라우저는 그런 프레임을
-거부한다(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 docker에서 8002, 세션
-WAF가 없는 OpenStack에서는 `None`이다. 세션 API는 `site: {port, path}` 또는 `null`을 주고, 없으면
-콘솔은 창을 숨긴다. substrate docker로 도는 플랫폼 VM에는 8002를 여는 security group 규칙이
-필요하다(`docs/OPENSTACK.md` §3.5).
+거부한다(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 모든 substrate에서
+8002다. docker에서는 프록시가 세션의 WAF 컨테이너(`fsl-<id>-waf-1`)를 이름으로 부르고, OpenStack에서는
+세션마다 한 번 substrate에 그 슬롯의 gateway `mgmt` 주소를 물어 그리로 넘긴다(플랫폼 포트는
+`fsl-mgmt`를 거쳐 닿는다). 세션 API는 `site: {port, path}` 또는 `null`을 주고, 없으면 콘솔은 창을
+숨긴다. 플랫폼 템플릿의 security group이 8002를 연다(`docs/OPENSTACK.md` §3.5).
 
 기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 둔다(재시작하면 사라짐): 메서드,
 `http://<호스트><경로>`, 상태, WAF가 막았는지(403), 걸린 시간, 요청·응답 헤더, 각각 64 KB로 자른 본문
