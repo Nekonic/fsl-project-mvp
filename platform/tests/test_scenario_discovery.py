@@ -56,7 +56,7 @@ def test_the_board_declares_a_lesson_start_at_paranoia_level_4_and_a_full_defens
 
     assert wargames.defense("board", "minimal") == {"waf": {"paranoia": 4}, "suricata": "local.rules"}
     assert board["defense"]["full"]["waf"] == {"paranoia": 1}
-    assert "board-normal-search-with-apostrophe" in board["lesson"]["cases"]
+    assert "board-normal-search-with-apostrophe" in board["lessons"][0]["cases"]
 
 def test_a_scenario_without_a_defense_takes_the_default_and_nothing_else():
     assert wargames.defense("corp", wargames.DEFAULT_DEFENSE) is None
@@ -82,7 +82,7 @@ def test_a_defense_that_cannot_be_applied_is_refused_at_discovery(defense, reaso
 def test_a_lesson_naming_cases_the_case_file_lacks_is_refused_at_discovery(settings, tmp_path, taught, reason):
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
-    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": [{"id": "demo", "order": 1, **taught}]}))
     settings.FSL_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
@@ -93,7 +93,7 @@ def test_a_lesson_whose_defense_the_scenario_does_not_declare_is_refused_at_disc
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
     taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "defense": defense}
-    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": [{"id": "demo", "order": 1, **taught}]}))
     settings.FSL_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match="lesson's defense"):
@@ -129,7 +129,7 @@ def test_a_lesson_step_needs_an_id_and_its_command_is_text(settings, tmp_path):
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
     taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "steps": [{"command": 1}]}
-    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": [{"id": "demo", "order": 1, **taught}]}))
     settings.FSL_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match="steps"):
@@ -157,7 +157,7 @@ def test_every_lesson_step_declares_how_the_platform_checks_it(settings, tmp_pat
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
     taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "steps": [{"id": "a", "check": {"kind": "guess"}}]}
-    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": [{"id": "demo", "order": 1, **taught}]}))
     settings.FSL_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match="need a check"):
@@ -174,3 +174,37 @@ def test_every_board_step_says_where_the_coach_points_so_the_console_names_no_st
         assert {"panel", "kibana", "pane"} & set(point), f"{step['id']} points at nothing"
         assert step["id"] in wargames.CHECK_KINDS or f'"{step["id"]}"' not in console, f"the console still knows step {step['id']!r} by name"
     assert "data-test-subj" not in console, "Kibana's selectors are the scenario's data, not the console's"
+
+def test_the_catalogue_lists_each_lesson_with_what_its_card_shows(client):
+    board = {w["id"]: w for w in client.get("/api/wargames/").json()}["board"]
+
+    assert board["lessons"] == [{
+        "id": "waf-exclusion", "order": 1, "title": "lesson.board.title", "goal": "lesson.board.summary",
+        "minutes": 40, "level": "easy", "defense": "minimal", "prerequisites": [],
+        "steps": len(wargames.lesson("board")["steps"]),
+    }]
+    assert wargames.lesson("board", lesson_id="waf-exclusion") == wargames.lesson("board")
+
+@pytest.mark.parametrize("lessons, reason", [
+    ([{"id": "a", "order": 1}, {"id": "a", "order": 2}], "own id"),
+    ([{"id": "a", "order": 1}, {"id": "b", "order": 1}], "own whole-number order"),
+    ([{"id": "Not An Id", "order": 1}], "own id"),
+    ([{"id": "a", "order": 1, "prerequisites": ["missing"]}], "prerequisites"),
+    ([{"id": "a", "order": 1, "prerequisites": ["a"]}], "prerequisites"),
+    ([{"id": "a", "order": 1, "level": "brutal"}], "level"),
+    ([{"id": "a", "order": 1, "minutes": 0}], "minutes"),
+    ([], "non-empty"),
+])
+def test_a_lessons_list_that_cannot_be_offered_is_refused_at_discovery(settings, tmp_path, lessons, reason):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    taught = [{"text": "lesson.demo", "cases": ["board-normal-search"], **one} for one in lessons]
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": taught}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match=reason):
+        wargames._discover()
+
+def test_a_scenario_still_declaring_a_single_lesson_is_refused_rather_than_silently_lessonless():
+    with pytest.raises(wargames.InvalidCatalogue, match="lessons: list"):
+        wargames.checked_scenario({**A_SCENARIO, "lesson": {"text": "lesson.demo"}}, "demo", "scenario.yaml")

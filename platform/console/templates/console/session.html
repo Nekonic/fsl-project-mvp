@@ -334,7 +334,7 @@
   async function restart() {
     const button = field("restart");
     button.disabled = true;
-    const settings = session.guidance ? { guidance: true, defense: session.defense } : {};
+    const settings = session.guidance ? { guidance: true, lesson: session.lesson_id, defense: session.defense } : {};
     const started = await post("/api/sessions/", { scenario: session.scenario, ...settings }, PATIENCE_FOR_RANGE_WORK);
     if (started.ok && started.body.id) {
       location.href = `/session/${started.body.id}/`;
