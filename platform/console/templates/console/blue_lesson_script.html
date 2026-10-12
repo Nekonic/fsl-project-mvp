@@ -95,10 +95,20 @@ function replayRow(row) {
 const REPLAYS_SHOWN = 5;
 const replayed = new Map();
 
-function showReplay(list, row) {
+function detectRow(row) {
+  const said = (row.signatures || []).length ? t("lesson.detect.alerts", row.signatures.join(" · ")) : t("lesson.detect.none");
+  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-detected="${esc(row.name)}">
+    <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
+      ${debriefOutcome(row.outcome)}<span class="font-mono text-faint" data-verdict>${esc(row.verdict)}</span>
+      ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
+    <p class="text-muted" data-alerts>${esc(said)}</p>
+  </li>`;
+}
+
+function showReplay(list, row, render = replayRow) {
   const rows = [row, ...(replayed.get(list) || [])].slice(0, REPLAYS_SHOWN);
   replayed.set(list, rows);
-  list.innerHTML = rows.map(replayRow).join("");
+  list.innerHTML = rows.map(render).join("");
   list.querySelectorAll("[data-discover]").forEach((link) => link.addEventListener("click", () => {
     const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
     kibana.dataset.src = link.dataset.discover;
@@ -131,9 +141,9 @@ async function verifyLesson() {
     <span>${esc(passed ? t("lesson.verify.pass") : t("lesson.verify.failing", Math.max(1, failing.length)))}</span>
     <span class="ml-auto text-[12px] text-muted font-normal">${esc(clock(new Date()))}</span>`;
   field("lesson-passed").innerHTML = (checked.body.cases || [])
-    .filter((row) => row.outcome === "held" || row.outcome === "served")
+    .filter((row) => PASSING.includes(row.outcome))
     .map((row) => `<li class="flex gap-2 text-success"><span class="font-bold">✓</span><span><b>${
-      esc(caseLabel(row.name))}</b> — ${esc(t(row.outcome === "held" ? "lesson.check.held" : "lesson.check.served"))}</span></li>`)
+      esc(caseLabel(row.name))}</b> — ${esc(t(`lesson.check.${row.outcome}`))}</span></li>`)
     .join("");
   field("lesson-diagnosis").innerHTML = failing.map(([key, values]) =>
     `<li class="flex gap-2 rounded-md bg-danger-soft text-danger p-2"><span class="font-bold">✗</span><span>${
@@ -220,7 +230,10 @@ function noteControls(practice) {
   placeNote();
 }
 
-const AUTOMATIC = ["alert", "waf", "served"];
+const AUTOMATIC = ["alert", "waf", "served", "level", "rules"];
+const POLLED = ["alert", "waf", "level"];
+const changed = [];
+const refreshers = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1200;
 const WIDE = 480;
@@ -530,7 +543,10 @@ function coach(prefix, declared) {
     } else if (kind === "answer") {
       html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off"
         class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[12.5px]"
-        placeholder="${esc(t("lesson.answer.placeholder"))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+        placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, t("lesson.answer.placeholder")))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+    } else if (kind === "detect") {
+      html = `<button data-act="detect" class="self-start btn btn-sm btn-blue">${
+        esc(t("lesson.detect.check", caseLabel(check().case)))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
     } else if (kind === "replay") {
       html = `<button data-act="replay" class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.replay.check", caseLabel(check().case)))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
@@ -552,7 +568,7 @@ function coach(prefix, declared) {
     }
     act.querySelectorAll('[data-act="choose"]').forEach((button) =>
       button.addEventListener("click", () => answer(button.dataset.value)));
-    const again = act.querySelector('[data-act="replay"]');
+    const again = act.querySelector('[data-act="replay"], [data-act="detect"]');
     if (again) again.addEventListener("click", () => run(step, true));
   }
 
@@ -707,6 +723,7 @@ function coach(prefix, declared) {
     if (verdict.fix) fixes.set(step.id, `${t(`lesson.fix.${verdict.fix}`)} ${t("lesson.fix.note")}`);
     const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
     if (verdict.replay && rows) showReplay(rows, verdict.replay);
+    if (verdict.detected && rows) showReplay(rows, verdict.detected, detectRow);
     if (verdict.passed) {
       pass(step);
       return;
@@ -789,6 +806,7 @@ function coach(prefix, declared) {
     if (SHOWN_BY_THE_CONSOLE[step.check.kind]) SHOWN_BY_THE_CONSOLE[step.check.kind](step);
     status(t("lesson.status.checking"));
     const verdict = await judged(step, {}, "do/");
+    refreshers.forEach((refresh) => refresh(step.check.kind));
     if (step.check.kind === "verify") {
       field("lesson-verify").click();
       return;
@@ -839,12 +857,17 @@ function coach(prefix, declared) {
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < DO_IT) offerHint();
     const kind = check().kind;
-    if ((kind === "alert" || kind === "waf") && seconds % POLL_SECONDS === 0) run(steps[at], false);
+    if (POLLED.includes(kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
   }, 1000);
 
   verified.push(() => {
     const step = steps[at];
     if (step.check.kind === "verify") run(step, true);
+  });
+
+  changed.push((what) => {
+    const step = steps[at];
+    if (step.check.kind === what) run(step, true);
   });
 
   field("coach-pop-back").addEventListener("click", () => go(at - 1));
@@ -902,7 +925,7 @@ function folded(list, prefix, kind, ids, extra) {
 
 function caseRows(cases) {
   return (cases || []).map((row) => {
-    const good = row.outcome === "held" || row.outcome === "served";
+    const good = PASSING.includes(row.outcome);
     return `<li class="flex gap-2 ${good ? "text-success" : "rounded-md bg-danger-soft text-danger p-1.5"}" data-outcome="${esc(row.outcome)}">
       <span class="font-bold">${good ? "✓" : "✗"}</span><span><b>${esc(caseLabel(row.name))}</b> — ${
         esc(t(OUTCOME_WORDS[row.outcome] || "outcome.inconclusive"))}</span></li>`;
@@ -962,4 +985,123 @@ function hints(prefix, listed, steps) {
   toggle.addEventListener("click", () => { shown = !shown; place(); });
   field("lesson-answer-copy").addEventListener("click", () => copy(answer, field("lesson-answer-copy")));
   place();
+}
+
+function doneWhen(taught) {
+  const controls = taught.controls || [];
+  const lines = taught.detected_by ? ["lesson.goal.done.detected", "lesson.goal.done.quiet"]
+    : taught.verifies === false ? ["lesson.goal.done.steps"]
+      : ["lesson.goal.done.attacks", "lesson.goal.done.benign", ...(controls.includes("paranoia") ? ["lesson.goal.done.level"] : [])];
+  field("lesson-done").innerHTML = lines.map((key) => `<li>${esc(t(key))}</li>`).join("");
+  field("lesson-verify-section").classList.toggle("hidden", taught.verifies === false);
+}
+
+const LEVELS = [1, 2, 3, 4];
+
+function shownSection(id) {
+  field(id).classList.remove("hidden");
+  field(id).classList.add("flex");
+}
+
+async function readLevel() {
+  const read = await api(lessonPath("waf/"));
+  if (read.ok && Number.isInteger(read.body.paranoia)) field("lesson-level-pick").value = String(read.body.paranoia);
+  return read;
+}
+
+async function applyLevel() {
+  const status = field("lesson-level-status");
+  status.textContent = t("lesson.status.checking");
+  const standing = await api(lessonPath("waf/"));
+  if (!standing.ok) {
+    status.textContent = t("lesson.level.failed", detail(standing));
+    return;
+  }
+  const put = await api(lessonPath("waf/"), {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paranoia: Number(field("lesson-level-pick").value), exclusions: standing.body.exclusions || [] }),
+  }, PATIENCE_FOR_RANGE_WORK);
+  status.textContent = put.ok ? t("lesson.level.applied", put.body.paranoia) : t("lesson.level.failed", detail(put));
+  if (put.ok) changed.forEach((heard) => heard("level"));
+}
+
+function levelControl() {
+  shownSection("lesson-level");
+  field("lesson-level-pick").innerHTML = LEVELS.map((level) =>
+    `<option value="${level}">${esc(t("lesson.level.option", level))}</option>`).join("");
+  field("lesson-level-apply").addEventListener("click", applyLevel);
+  refreshers.push((kind) => { if (kind === "level") readLevel(); });
+  readLevel();
+}
+
+let rulesVersion = "";
+
+async function loadRules() {
+  const status = field("lesson-rules-status");
+  status.textContent = t("lesson.rules.loading");
+  const read = await api(`/api/rules/?session=${encodeURIComponent(sessionId())}`);
+  if (!read.ok) {
+    status.textContent = t("lesson.rules.unread", detail(read));
+    return;
+  }
+  field("lesson-rules-text").value = read.body.content || "";
+  rulesVersion = read.body.version || "";
+  status.textContent = "";
+}
+
+function showRuleErrors(result) {
+  const box = field("lesson-rules-errors");
+  const errors = Array.isArray(result.body.errors) ? result.body.errors : [];
+  const shown = errors.length ? errors.join("\n") : (result.body.output || "");
+  box.textContent = shown;
+  box.classList.toggle("hidden", !shown);
+  return errors;
+}
+
+async function validateRules() {
+  const status = field("lesson-rules-status");
+  status.textContent = t("lesson.status.checking");
+  field("lesson-rules-errors").classList.add("hidden");
+  const checked = await post("/api/rules/validate/",
+    { content: field("lesson-rules-text").value, session: sessionId() }, PATIENCE_FOR_RANGE_WORK);
+  if (checked.ok) {
+    status.textContent = t("lesson.rules.valid");
+    return true;
+  }
+  if (checked.body.ok !== false) {
+    status.textContent = t("lesson.rules.failed", detail(checked));
+    return false;
+  }
+  status.textContent = t(showRuleErrors(checked).length ? "lesson.rules.invalid" : "lesson.rules.no_error");
+  return false;
+}
+
+async function applyRules() {
+  if (!(await validateRules())) return;
+  const status = field("lesson-rules-status");
+  const applied = await post("/api/rules/apply/",
+    { content: field("lesson-rules-text").value, base: rulesVersion, session: sessionId() }, PATIENCE_FOR_RANGE_WORK);
+  if (!applied.ok) {
+    status.textContent = t("lesson.rules.failed", detail(applied));
+    return;
+  }
+  await loadRules();
+  status.textContent = t("lesson.rules.applied");
+  changed.forEach((heard) => heard("rules"));
+}
+
+function rulesEditor() {
+  shownSection("lesson-rules");
+  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10"
+    class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight whitespace-pre overflow-x-auto"></textarea>`;
+  field("lesson-rules-validate").addEventListener("click", validateRules);
+  field("lesson-rules-apply").addEventListener("click", applyRules);
+  refreshers.push((kind) => { if (kind === "rules") loadRules(); });
+  loadRules();
+}
+
+function lessonControls(taught) {
+  const controls = taught.controls || [];
+  if (controls.includes("paranoia")) levelControl();
+  if (controls.includes("rules")) rulesEditor();
 }
