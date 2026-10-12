@@ -320,9 +320,11 @@ config.xml (WAN addresses, pass rules, Suricata, syslog) followed by a reboot,
 and the WAF's ModSecurity log forwarding. `POST /api/range/slot/rebuild/`
 Nova-rebuilds every VM from its golden image, keeping its ports and addresses,
 so no edited data or rule carries over. The rebuild wipes the pushed config
-(the board is baked into its image and needs only the rebuild). Closing a
-session rebuilds the slot and then configures it again by itself once the VMs
-are ACTIVE: meanwhile `GET /api/range/ready/` reads phase `RESETTING` and a
+(board and corp run as containers on the wargame host image, which configure
+starts). Closing a session resets its own slot: it rebuilds Kali and the WAF,
+resets the edge (hash-checked, no reboot unless its files drifted) and the wargame host
+(`docker compose down -v`) in place, and configures them again by itself once
+the VMs are ACTIVE: meanwhile `GET /api/range/ready/` reads phase `RESETTING` and a
 session open is refused; on failure it reads `RESET_FAILED` with the reason,
 and `POST /api/range/configure/` retries. After `slot/rebuild/` called alone,
 run `configure/` yourself.

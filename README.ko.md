@@ -174,7 +174,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. OPNsense 엣지의 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅하며, WAF의 ModSecurity 로그 전달을 설정한다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. rebuild는 넣어 둔 설정을 지운다(게시판은 이미지에 들어 있어 rebuild만 하면 된다). 세션을 닫으면 slot을 rebuild하고, VM이 ACTIVE가 되면 플랫폼이 스스로 다시 configure한다. 그동안 `GET /api/range/ready/`는 단계 `RESETTING`을 보이고 세션 열기는 거부된다. 실패하면 이유와 함께 `RESET_FAILED`를 보이고, `POST /api/range/configure/`가 재시도한다. `slot/rebuild/`만 따로 호출했다면 `configure/`를 직접 실행한다.
+그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. OPNsense 엣지의 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅하며, WAF의 ModSecurity 로그 전달을 설정한다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. rebuild는 넣어 둔 설정을 지운다(board와 corp는 wargame 호스트 이미지 위의 컨테이너로 돌고, configure가 띄운다). 세션을 닫으면 그 세션의 slot만 초기화한다. Kali와 WAF는 rebuild하고, 엣지(해시 확인, 파일이 어긋났을 때만 재부팅)와 wargame 호스트(`docker compose down -v`)는 제자리에서 초기화하며, VM이 ACTIVE가 되면 플랫폼이 스스로 다시 configure한다. 그동안 `GET /api/range/ready/`는 단계 `RESETTING`을 보이고 세션 열기는 거부된다. 실패하면 이유와 함께 `RESET_FAILED`를 보이고, `POST /api/range/configure/`가 재시도한다. `slot/rebuild/`만 따로 호출했다면 `configure/`를 직접 실행한다.
 
 `cloud.yaml`의 `compute.slots`(기본 1)만큼 레인지 사본을 세운다. 사본마다 자기 엣지, WAF, Kali, wargame 호스트가 internet과 estate 네트워크의 자기 사본 위에 선다(slot N의 호스트는 `<host>-N`). 그만큼 세션이 동시에 돌고, 세션은 slot 하나를 잡으며, 닫으면 그 slot만 초기화한다. `slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받고, 없으면 모든 slot에 적용한다.
 

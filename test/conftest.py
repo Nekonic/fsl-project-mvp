@@ -255,8 +255,9 @@ def the_range_is_not_resetting(stack_is_up):
         readiness = wait_out_a_running_reset()
         assert not resetting(readiness), (
             f"the range was still resetting after {RESET_WAIT}s: {readiness}. A "
-            f"closed session rebuilds every slot VM, and a test that reaches a "
-            f"host meanwhile finds it gone"
+            f"closed session rebuilds its slot's Kali and WAF and resets its edge "
+            f"and wargame host in place, and a test that reaches a host meanwhile "
+            f"finds it gone or half configured"
         )
 
 @pytest.fixture(autouse=True)
