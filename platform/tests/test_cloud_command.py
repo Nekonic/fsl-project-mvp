@@ -251,3 +251,19 @@ def test_without_cloud_yaml_it_refuses_and_says_what_to_copy(tmp_path, action):
 
     assert done.returncode != 0
     assert "cloud.example.yaml" in done.stderr and "Traceback" not in done.stderr
+
+
+def test_up_waits_until_every_slot_stands_and_every_slot_is_ready():
+    platform = Platform(ready=[
+        {"ready": False, "slot": {"phase": "READY"},
+         "slots": [{"phase": "READY"}, {"phase": "NOT_STANDING"}]},
+        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "CHECKING"}]},
+        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "CHECKING"}]},
+        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
+    ])
+
+    converge(platform)
+
+    gets = [i for i, call in enumerate(platform.calls) if call == ("GET", "/ready/")]
+    assert len(gets) == 4, "a second slot still booting or checking is waited for, not skipped"
+    assert platform.calls.index(("POST", "/configure/")) > gets[1] - 1

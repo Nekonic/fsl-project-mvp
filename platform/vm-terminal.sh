@@ -1,15 +1,20 @@
 #!/bin/sh
 host="$1"
 [ -n "$host" ] || { echo "no host given"; sleep 2; exit 1; }
-addr=$(python - "$host" <<'PY'
+addr=$(python - "$host" "${2:-}" <<'PY'
 import os, sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 import django
 django.setup()
+from api.models import Session
 from range import substrate
 wanted = sys.argv[1]
+adapter = substrate()
+held = Session.objects.filter(pk=int(sys.argv[2]), ended_at=None).values_list("slot", flat=True).first() if sys.argv[2].isdigit() else None
+if hasattr(adapter, "in_slot"):
+    adapter = adapter.in_slot(held or 1)
 try:
-    for seg in substrate().describe().segments:
+    for seg in adapter.describe().segments:
         if seg.id == "mgmt":
             for node in seg.nodes:
                 if node.name == wanted:

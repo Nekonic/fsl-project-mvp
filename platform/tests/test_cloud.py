@@ -171,3 +171,14 @@ def test_the_floating_ip_to_keep_is_optional_and_must_be_an_address():
     assert cloud.parse(changed(network__address="192.168.0.210")).address == "192.168.0.210"
     assert cloud.parse(changed(network__address="")).address == ""
     assert "network.address: must be the IPv4 address" in refusal(changed(network__address="fip-one"))
+
+
+def test_one_range_slot_is_the_default_and_a_count_reaches_the_platform_through_heat():
+    assert cloud.read(cloud.EXAMPLE).slots == 1
+    assert cloud.parse(changed(compute__slots=None)).heat_parameters()["slots"] == "1"
+    assert cloud.parse(changed(compute__slots=2)).heat_parameters()["slots"] == "2"
+
+
+@pytest.mark.parametrize("given", [0, -1, True, "2"])
+def test_a_slot_count_that_is_not_a_whole_number_of_one_or_more_is_refused(given):
+    assert "compute.slots" in refusal(changed(compute__slots=given))

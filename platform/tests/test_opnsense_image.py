@@ -230,6 +230,11 @@ class Glance:
             return made
         if verb == "GET" and path == "v2.1/flavors":
             return {"flavors": [{"id": "f-2", "name": "m1.medium"}]}
+        if verb == "GET" and path == "v2.1/flavors/f-2":
+            return {"flavor": {"id": "f-2", "name": "m1.medium", "vcpus": 2, "ram": 4096}}
+        if verb == "GET" and path == "v2.1/limits":
+            return {"limits": {"absolute": {"maxTotalInstances": -1, "maxTotalCores": -1,
+                                            "maxTotalRAMSize": -1}}}
         if verb == "GET" and path == "v2.0/ports":
             return {"ports": [p for p in self.ports if p["network_id"] == query["network_id"][0]]}
         if verb == "GET" and path == "v2.0/security-groups":

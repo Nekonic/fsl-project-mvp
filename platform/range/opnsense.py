@@ -49,7 +49,7 @@ def _gateway(segment: Segment) -> dict:
 
 def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
              inside: dict[str, str], mtu: int, public_key: str, management: str = "",
-             front: str = "") -> dict:
+             front: str = "", hostname: str = "") -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -74,6 +74,8 @@ def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
         wanted["mgmt"] = {"id": mgmt.id, "address": management, "bits": mgmt.subnet.split("/")[1]}
     if front:
         wanted["front"] = front
+    if hostname:
+        wanted["hostname"] = hostname
     return wanted
 
 
@@ -121,6 +123,8 @@ def render(template: str, wanted: dict) -> str:
     root_user = next(user for user in root.findall("system/user")
                      if user.findtext("name") == "root")
     _set(root_user, "authorizedkeys", base64.b64encode(wanted["key"].encode()).decode())
+    if wanted.get("hostname"):
+        _set(root, "system/hostname", wanted["hostname"])
     for interface in INTERFACES:
         _set(root, f"interfaces/{interface}/mtu", str(wanted["mtu"]))
     for interface, held in (("wan", wanted.get("wan")), ("lan", wanted.get("lan")),

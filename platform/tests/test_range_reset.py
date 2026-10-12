@@ -37,7 +37,7 @@ class Slot:
 
 @pytest.fixture(autouse=True)
 def an_idle_reset():
-    with patch.dict(reset._state, {"state": reset.IDLE, "reason": ""}), \
+    with patch.dict(reset._states, clear=True), \
             patch("api.reset.RESET_POLL", 0):
         yield
 

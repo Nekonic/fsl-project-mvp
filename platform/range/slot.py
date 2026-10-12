@@ -12,6 +12,7 @@ from range import fabric
 from range.declared import Declaration
 
 HOST = "fsl_host"
+SLOT = "fsl_slot"
 GATEWAY_ROLE = "gateway"
 EDGE_ROLE = "edge"
 ATTACKER_ROLE = "attacker"
@@ -30,6 +31,7 @@ class Plan:
     ports: tuple[Port, ...] = ()
     standing: tuple[tuple[str, str, str], ...] = ()
     blocked: tuple[str, ...] = ()
+    slot: int = 1
 
     @property
     def clean(self) -> bool:
@@ -45,6 +47,23 @@ class Plan:
 
 def port_name(host: str, segment: str) -> str:
     return f"{host}.{segment}"
+
+def named(host: str, slot: int = 1) -> str:
+    return fabric.suffixed(host, slot)
+
+def slot_of(server: dict) -> int:
+    value = str((server.get("metadata") or {}).get(SLOT) or "1")
+    return int(value) if value.isdigit() else 0
+
+def in_slot(server: dict) -> bool:
+    return HOST in (server.get("metadata") or {})
+
+def server_of(servers: list, host: str, slot: int = 1) -> dict | None:
+    return next((server for server in servers
+                 if (server.get("metadata") or {}).get(HOST) == host and slot_of(server) == slot), None)
+
+def known_as(server: dict) -> str:
+    return server["metadata"][HOST] if in_slot(server) else server["name"]
 
 def _gateways(network: dict, subnets: list) -> tuple[tuple[str, str], ...]:
     return tuple(
@@ -70,18 +89,16 @@ def edge_of(declaration: Declaration) -> str:
     return declaration.roles.get(EDGE_ROLE) or declaration.roles.get(GATEWAY_ROLE, "")
 
 def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
-         servers: list, ready: dict) -> Plan:
-    bound = fabric.bound(declaration, networks)
+         servers: list, ready: dict, slot: int = 1) -> Plan:
+    bound = fabric.bound(declaration, networks, slot)
     outside = {origin.segment for origin in declaration.origins}
     edge = edge_of(declaration)
     attacker = declaration.roles.get(ATTACKER_ROLE, "")
     may_stand_outside = {host for host in (edge, attacker) if host}
-    named = {(port.get("network_id"), port.get("name")) for port in ports}
+    existing = {(port.get("network_id"), port.get("name")) for port in ports}
     boot, create, standing, blocked = [], [], [], []
     for host, entry in declaration.hosts.items():
-        server = next(
-            (s for s in servers if (s.get("metadata") or {}).get(HOST) == host), None
-        )
+        server = server_of(servers, host, slot)
         if server is not None:
             standing.append((host, server["id"], server.get("status", "")))
             continue
@@ -103,8 +120,8 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
             continue
         boot.append(host)
         for segment in entry.segments:
-            name = port_name(host, segment)
-            if (bound[segment]["id"], name) in named:
+            name = port_name(named(host, slot), segment)
+            if (bound[segment]["id"], name) in existing:
                 continue
             if host == edge:
                 fixed = _gateways(bound[segment], subnets)
@@ -114,7 +131,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
                 fixed = ()
             create.append(Port(host=host, segment=segment, name=name, fixed_ips=fixed))
     return Plan(boot=tuple(boot), ports=tuple(create), standing=tuple(standing),
-                blocked=tuple(blocked))
+                blocked=tuple(blocked), slot=slot)
 
 def user_data(names: dict, mac: str = "", addresses: tuple[str, ...] = ()) -> str:
     document = {

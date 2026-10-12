@@ -13,33 +13,38 @@ RUNNING = "running"
 FAILED = "failed"
 
 _guard = threading.Lock()
-_state = {"state": IDLE, "reason": ""}
+_states: dict[int, dict] = {}
 
-def standing() -> dict:
-    with _guard:
-        return dict(_state)
+def _of(slot: int) -> dict:
+    return _states.setdefault(slot, {"state": IDLE, "reason": ""})
 
-def configured_by_hand() -> None:
+def standing(slot: int = 1) -> dict:
     with _guard:
-        if _state["state"] == FAILED:
-            _state.update(state=IDLE, reason="")
+        return dict(_of(slot))
+
+def configured_by_hand(slot: int = 1) -> None:
+    with _guard:
+        if _of(slot)["state"] == FAILED:
+            _of(slot).update(state=IDLE, reason="")
 
 def begin(adapter, turn, rebuilt=None):
+    slot = getattr(adapter, "slot", 1)
     with _guard:
-        if _state["state"] == RUNNING:
+        if _of(slot)["state"] == RUNNING:
             return None
-        _state.update(state=RUNNING, reason="")
+        _of(slot).update(state=RUNNING, reason="")
     worker = threading.Thread(
-        target=_reset, args=(adapter, turn, rebuilt), name="fsl-range-reset", daemon=True
+        target=_reset, args=(adapter, turn, rebuilt), name=f"fsl-range-reset-{slot}", daemon=True
     )
     worker.start()
     return worker
 
-def _set(state: str, reason: str) -> None:
+def _set(slot: int, state: str, reason: str) -> None:
     with _guard:
-        _state.update(state=state, reason=reason)
+        _of(slot).update(state=state, reason=reason)
 
 def _reset(adapter, turn, rebuilt) -> None:
+    slot = getattr(adapter, "slot", 1)
     deadline = time.monotonic() + RESET_WAIT
     servers = None if rebuilt is None else {server for _, server in rebuilt}
     try:
@@ -55,9 +60,9 @@ def _reset(adapter, turn, rebuilt) -> None:
             _configure_once_active(adapter, deadline, servers,
                                    lambda: _holding(turn, adapter.configure_slot))
     except Exception as exc:
-        _set(FAILED, str(exc) or type(exc).__name__)
+        _set(slot, FAILED, str(exc) or type(exc).__name__)
     else:
-        _set(IDLE, "")
+        _set(slot, IDLE, "")
 
 def _holding(turn, step):
     with turn:

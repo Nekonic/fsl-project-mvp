@@ -228,7 +228,7 @@ def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environm
         "declared", "keystone", "user", "password", "domain", "project", "ssh_user",
         "ssh_key", "region", "interface", "source", "base_image",
         "flavor", "build_flavor", "role_flavors", "availability_zone", "subnets",
-        "mtu", "opnsense", "build_network", "platform", "image_tag",
+        "mtu", "opnsense", "build_network", "platform", "image_tag", "slots",
     ]))
     assert values == "https://keystone.example:5000"
 

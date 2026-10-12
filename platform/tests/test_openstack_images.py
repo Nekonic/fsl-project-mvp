@@ -13,13 +13,16 @@ from range.ports import RangeUnavailable
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASE = {"id": "img-ubuntu", "name": "ubuntu-24.04", "status": "active"}
 
+UNLIMITED = {"maxTotalInstances": -1, "maxTotalCores": -1, "maxTotalRAMSize": -1}
+
 class Cloud:
-    def __init__(self):
+    def __init__(self, limits=None):
         self.images = [dict(BASE)]
         self.servers = []
         self.consoles = {}
         self.calls = []
         self.ids = itertools.count(1)
+        self.limits = dict(UNLIMITED if limits is None else limits)
 
     def __call__(self, call, body=None):
         verb, url = call.split(" ", 1)
@@ -30,6 +33,10 @@ class Cloud:
             return {"images": [i for i in self.images if i["name"] == query["name"][0]]}
         if verb == "GET" and path == "v2.1/flavors":
             return {"flavors": [{"id": "f-1", "name": "m1.tiny"}, {"id": "f-2", "name": "m1.small"}]}
+        if verb == "GET" and path.startswith("v2.1/flavors/"):
+            return {"flavor": {"id": path.rsplit("/", 1)[1], "vcpus": 2, "ram": 4096}}
+        if verb == "GET" and path == "v2.1/limits":
+            return {"limits": {"absolute": self.limits}}
         if verb == "GET" and path == "v2.1/servers/detail":
             return {"servers": self.servers}
         if verb == "POST" and path == "v2.1/servers":
@@ -206,16 +213,60 @@ def test_a_base_image_the_cloud_lacks_is_named(cloud):
     with pytest.raises(RangeUnavailable, match="ubuntu-24.04"):
         adapter(cloud).ensure_images()
 
+def builders(cloud):
+    return [s for s in cloud.servers if images.BUILDS in s.get("metadata", {})]
+
+def test_builders_boot_only_as_many_as_the_project_quota_has_room_for():
+    cloud = Cloud(limits={"maxTotalInstances": 10, "totalInstancesUsed": 9,
+                          "maxTotalCores": 20, "totalCoresUsed": 18,
+                          "maxTotalRAMSize": 51200, "totalRAMUsed": 40960})
+
+    plan = adapter(cloud).ensure_images()
+
+    assert len(builders(cloud)) == 1, (
+        "two range slots leave room in the test cloud's quota for one 2-core builder; booting "
+        "every missing image's builder at once had Nova refuse the rest"
+    )
+    assert [found.host for found in plan.images if found.state == "missing"]
+
+def test_the_next_builder_boots_once_the_first_has_made_room():
+    cloud = Cloud(limits={"maxTotalInstances": 10, "totalInstancesUsed": 9})
+    build = adapter(cloud)
+    build.ensure_images()
+    [first] = builders(cloud)
+    cloud.servers.remove(first)
+
+    build.ensure_images()
+
+    assert len(builders(cloud)) == 1 and builders(cloud)[0]["id"] != first["id"]
+
+def test_no_room_and_no_builder_at_work_says_what_to_free():
+    cloud = Cloud(limits={"maxTotalCores": 20, "totalCoresUsed": 19})
+
+    with pytest.raises(RangeUnavailable, match="quota has no room"):
+        adapter(cloud).ensure_images()
+    assert builders(cloud) == []
+
+def test_an_unlimited_quota_boots_every_missing_builder_at_once():
+    cloud = Cloud()
+
+    plan = adapter(cloud).ensure_images()
+
+    assert len(builders(cloud)) == len([f for f in plan.images if f.bundle])
+
 def test_the_image_calls_send_the_documented_api_fields():
     reference = {
         openstack.IMAGES: "https://docs.openstack.org/api-ref/image/v2/#list-images",
         openstack.DELETE_IMAGE: "https://docs.openstack.org/api-ref/image/v2/#delete-image",
         openstack.FLAVORS: "https://docs.openstack.org/api-ref/compute/#list-flavors",
+        openstack.FLAVOR: "https://docs.openstack.org/api-ref/compute/#show-flavor-details",
+        openstack.LIMITS: "https://docs.openstack.org/api-ref/compute/#show-rate-and-absolute-limits",
         openstack.ACTION: "https://docs.openstack.org/api-ref/compute/#create-image-createimage-action",
         openstack.DELETE_SERVER: "https://docs.openstack.org/api-ref/compute/#delete-server",
     }
     source = pathlib.Path(openstack.__file__).read_text()
 
     for field in ('"createImage"', '"os-getConsoleOutput"', '"os-stop"', '"output"', '"status"',
-                  '"metadata"', '"config_drive"', '"user_data"', '"flavorRef"', '"imageRef"'):
+                  '"metadata"', '"config_drive"', '"user_data"', '"flavorRef"', '"imageRef"',
+                  '"limits"', '"absolute"', '"maxTotalCores"', '"totalCoresUsed"', '"vcpus"', '"ram"'):
         assert field in source, f"{field} is read or sent and checked against {reference}"

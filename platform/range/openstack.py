@@ -44,6 +44,8 @@ CREATE_IMAGE = "POST {glance}/v2/images"
 IMAGE_FILE = "{glance}/v2/images/{image}/file"
 DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
 FLAVORS = "GET {nova}/flavors"
+FLAVOR = "GET {nova}/flavors/{flavor}"
+LIMITS = "GET {nova}/limits"
 ACTION = "POST {nova}/servers/{server}/action"
 DELETE_SERVER = "DELETE {nova}/servers/{server}"
 SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
@@ -108,7 +110,10 @@ SETTINGS = {
     "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
     "platform": "FSL_OPENSTACK_PLATFORM",
     "image_tag": "FSL_IMAGE_TAG",
+    "slots": "FSL_OPENSTACK_SLOTS",
 }
+ROOM = (("maxTotalInstances", "totalInstancesUsed", ""), ("maxTotalCores", "totalCoresUsed", "vcpus"),
+        ("maxTotalRAMSize", "totalRAMUsed", "ram"))
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
 
@@ -138,6 +143,7 @@ def connect(
     build_network: str = "",
     platform: str = "",
     image_tag: str = "",
+    slots: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -168,14 +174,21 @@ def connect(
             availability_zone=availability_zone, inside=configured.pairs(subnets),
             mtu=int(mtu or 0), opnsense=configured.opnsense_from(opnsense),
             network=build_network, platform=platform, image_tag=image_tag,
+            slots=_count(slots or "1"),
         )
     except ValueError as error:
         raise RangeUnavailable(
-            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('role_flavors', 'subnets', 'mtu', 'opnsense'))}) "
+            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('role_flavors', 'subnets', 'mtu', 'opnsense', 'slots'))}) "
             f"do not parse: {error}; they come from cloud.yaml through the Heat stack"
         ) from error
     cloud, reader = _connected.get(known) or rediscover()
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
+
+def _count(text: str) -> int:
+    count = int(text)
+    if count < 1:
+        raise ValueError(f"{SETTINGS['slots']} is {count}; a range has one slot or more")
+    return count
 
 def once_it_answers(step):
     for _ in range(HOST_READS - 1):
@@ -429,6 +442,7 @@ class Build:
     network: str = ""
     platform: str = ""
     image_tag: str = ""
+    slots: int = 1
 
     def placed(self, server: dict) -> dict:
         return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
@@ -437,15 +451,38 @@ class Build:
 class OpenStack:
     def __init__(
         self, declared: Declaration, cloud: Cloud, get, rediscover=None,
-        build: Build = Build(),
+        build: Build = Build(), slot: int = 1,
     ):
         self.declared = declared
         self.cloud = cloud
         self.build = build
         self.get = get
         self.rediscover = rediscover
+        self.slot = slot
         self._shape: Shape | None = None
         self._generations: dict[str, str] = {}
+
+    @property
+    def slots(self) -> int:
+        return max(1, self.build.slots)
+
+    @property
+    def max_sessions(self) -> int:
+        return self.slots
+
+    def in_slot(self, number: int) -> "OpenStack":
+        if not 1 <= number <= self.slots:
+            raise RangeUnavailable(
+                f"slot {number} is not one of the {self.slots} slot(s) the cloud settings ask for"
+            )
+        return OpenStack(self.declared, self.cloud, self.get, self.rediscover, self.build, slot=number)
+
+    def every_slot(self) -> list["OpenStack"]:
+        return [self.in_slot(number) for number in range(1, self.slots + 1)]
+
+    def _visible(self, servers: list[dict]) -> list[dict]:
+        return [server for server in servers
+                if not slot.in_slot(server) or slot.slot_of(server) == self.slot]
 
     def describe(self) -> Shape:
         shape = self._shape
@@ -471,7 +508,7 @@ class OpenStack:
         ))
         wanted = ",".join(f"{SEGMENT_TAG}={carrier}" for carrier in carriers)
         bound = self._bind(self._all(NETWORKS, "networks", tags=wanted))
-        servers = self._all(SERVERS, "servers")
+        servers = self._visible(self._all(SERVERS, "servers"))
         self._generations = _generations(servers)
 
         allocated = {}
@@ -605,6 +642,8 @@ class OpenStack:
                 mark, _, segment_id = tag.partition("=")
                 if mark != SEGMENT_TAG or not segment_id:
                     continue
+                if fabric.slot_of(network) != fabric.owner(segment_id, self.slot):
+                    continue
                 if segment_id in found:
                     raise RangeUnavailable(
                         f"{found[segment_id]['id']} and {network['id']} both "
@@ -617,7 +656,7 @@ class OpenStack:
     def _nodes(self, network_name: str, servers: list[dict], cidr: str = "") -> tuple[Node, ...]:
         inside = ipaddress.ip_network(cidr) if cidr else None
         found = [
-            Node(name=server["name"], address=entry["addr"])
+            Node(name=slot.known_as(server), address=entry["addr"])
             for server in servers
             for entry in (server.get("addresses") or {}).get(network_name, [])
             if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4
@@ -626,7 +665,7 @@ class OpenStack:
         return tuple(sorted(found, key=lambda node: node.name))
 
     def _sensors(self, servers: list[dict]) -> tuple[Sensor, ...]:
-        standing = {server["name"] for server in servers}
+        standing = {slot.known_as(server) for server in servers}
         return tuple(
             Sensor(name=name, watches=host)
             for name, host in self.declared.watching()
@@ -650,23 +689,27 @@ class OpenStack:
     def plan_fabric(self) -> fabric.Plan:
         networks, subnets, keypairs, groups = self._fabric_standing()
         return fabric.plan(self.declared, networks, subnets, keypairs, self._public_key(),
-                           groups, self._reached(networks), self.build.inside)
+                           groups, self._reached(networks), self.build.inside, self.slots)
 
     def ensure_fabric(self) -> fabric.Plan:
         public_key = self._public_key(make=True)
         networks, subnets, keypairs, groups = self._fabric_standing()
         plan = fabric.plan(self.declared, networks, subnets, keypairs, public_key,
-                           groups, self._reached(networks), self.build.inside)
+                           groups, self._reached(networks), self.build.inside, self.slots)
         if plan.drifted:
             raise Drifted("; ".join(plan.drifted))
         carriers = {
-            segment: network["id"]
-            for segment, network in fabric.bound(self.declared, networks).items()
+            fabric.carrier(segment, number): network["id"]
+            for number in range(1, self.slots + 1)
+            for segment, network in fabric.bound(self.declared, networks, number).items()
         }
-        carriers.update({segment: self._make_network(segment) for segment in plan.networks})
+        wanted = {fabric.carrier(subnet.segment, subnet.slot): (subnet.segment, subnet.slot)
+                  for number in range(1, self.slots + 1)
+                  for subnet in fabric.wanted(self.declared, self.build.inside, number)}
+        carriers.update({carrier: self._make_network(*wanted[carrier]) for carrier in plan.networks})
         if plan.subnets:
             self.get(self._call(CREATE_SUBNETS), {"subnets": [
-                _subnet_body(subnet, carriers[subnet.segment]) for subnet in plan.subnets
+                _subnet_body(subnet, carriers[subnet.carrier]) for subnet in plan.subnets
             ]})
         if plan.keypair:
             self.get(self._call(IMPORT_KEYPAIR), {
@@ -717,7 +760,9 @@ class OpenStack:
     def teardown_fabric(self) -> list[tuple[str, str]]:
         networks, subnets, keypairs, groups = self._fabric_standing()
         own = []
-        for network in fabric.bound(self.declared, networks).values():
+        owned = {network["id"]: network for number in range(1, self.slots + 1)
+                 for network in fabric.bound(self.declared, networks, number).values()}
+        for network in owned.values():
             servers = [
                 port for port in self._all(PORTS, "ports", network=network["id"])
                 if str(port.get("device_owner") or "").startswith("compute:")
@@ -735,13 +780,13 @@ class OpenStack:
         self._shape = None
         return steps
 
-    def _make_network(self, segment: str) -> str:
+    def _make_network(self, segment: str, number: int = 1) -> str:
         created = self.get(self._call(CREATE_NETWORK), {
-            "network": {"name": f"fsl-{segment}"}
+            "network": {"name": fabric.network_name(segment, number)}
         })["network"]
         try:
             self.get(self._call(TAG_NETWORK, network=created["id"]), {
-                "tags": [f"{fabric.TAG}={segment}"]
+                "tags": fabric.network_tags(segment, number)
             })
         except RangeUnavailable:
             self.get(self._call(DELETE_NETWORK, network=created["id"]))
@@ -784,7 +829,14 @@ class OpenStack:
         made = {bundle.host: bundle for bundle in bundles}
         missing = [found for found in plan.images
                    if found.state == "missing" and found.host in made]
-        for found in missing:
+        room = self._builder_room() if missing else 0
+        if missing and room < 1 and not any(found.builder for found in plan.images):
+            raise RangeUnavailable(
+                f"{', '.join(found.host for found in missing)} need a builder and the project's "
+                f"quota has no room for one ({self.build.build_flavor}); take a slot down "
+                f"(DELETE /api/range/slot/?slot={self.slots}) or raise the quota, then build again"
+            )
+        for found in missing[:max(0, room)]:
             server = {
                 **self._builder_base(self.build.base_image),
                 "name": images.BUILDER + found.host,
@@ -807,6 +859,17 @@ class OpenStack:
             elif found.state == "ready" and found.builder:
                 self.get(self._call(DELETE_SERVER, server=found.builder))
         return self._image_plan(bundles)
+
+    def _builder_room(self) -> int:
+        absolute = (self.get(self._call(LIMITS)).get("limits") or {}).get("absolute") or {}
+        flavor = self.get(self._call(
+            FLAVOR, flavor=self._flavor(self.build.build_flavor, "build_flavor"))).get("flavor") or {}
+        rooms = [
+            (absolute[most] - absolute.get(used, 0)) // max(1, int(flavor.get(each) or 1) if each else 1)
+            for most, used, each in ROOM
+            if isinstance(absolute.get(most), int) and absolute[most] >= 0
+        ]
+        return min(rooms, default=len(self.declared.hosts))
 
     def _build_group(self) -> str:
         if not self.build.platform:
@@ -989,7 +1052,7 @@ class OpenStack:
     def console(self, host: str) -> str:
         server = next(
             (s for s in self._all(SERVERS, "servers")
-             if (s.get("metadata") or {}).get(slot.HOST) == host),
+             if slot.in_slot(s) and slot.named(s["metadata"][slot.HOST], slot.slot_of(s)) == host),
             None,
         )
         if server is None:
@@ -1014,6 +1077,7 @@ class OpenStack:
         if not plan.boot:
             return plan
         edge = slot.edge_of(self.declared)
+        own = self._port_name
         for port in plan.ports:
             body = {"network_id": bound[port.segment]["id"], "name": port.name,
                     "security_groups": [named_groups[fabric.group_of(port.segment)]]}
@@ -1026,20 +1090,21 @@ class OpenStack:
             ports.append(self.get(self._call(CREATE_PORT), {"port": body})["port"])
         named = {port["name"]: port for port in ports if port.get("name")}
         names = {
-            named[slot.port_name(host, slot.NAMED_ON)]["fixed_ips"][0]["ip_address"]: list(entry.names)
+            named[own(host, slot.NAMED_ON)]["fixed_ips"][0]["ip_address"]: list(entry.names)
             for host, entry in self.declared.hosts.items()
-            if entry.names and slot.port_name(host, slot.NAMED_ON) in named
+            if entry.names and own(host, slot.NAMED_ON) in named
         }
         prefixes = {subnet["id"]: subnet["cidr"].split("/")[1] for subnet in subnets}
         outside = {origin.segment for origin in self.declared.origins}
         for host in plan.boot:
             entry = self.declared.hosts[host]
-            facing = [named[slot.port_name(host, s)] for s in entry.segments if s in outside]
+            facing = [named[own(host, s)] for s in entry.segments if s in outside]
             server = {
-                "name": host, "imageRef": ready[host], "flavorRef": self._host_flavor(host),
-                "networks": [{"port": named[slot.port_name(host, s)]["id"]} for s in entry.segments],
+                "name": slot.named(host, self.slot), "imageRef": ready[host],
+                "flavorRef": self._host_flavor(host),
+                "networks": [{"port": named[own(host, s)]["id"]} for s in entry.segments],
                 "config_drive": True, "key_name": fabric.KEYPAIR,
-                "metadata": {slot.HOST: host},
+                "metadata": {slot.HOST: host, **({slot.SLOT: str(self.slot)} if self.slot > 1 else {})},
             }
             if not entry.image and not entry.uploads:
                 server["user_data"] = slot.user_data(
@@ -1054,6 +1119,9 @@ class OpenStack:
         self._shape = None
         return self._slot()[0]
 
+    def _port_name(self, host: str, segment: str) -> str:
+        return slot.port_name(slot.named(host, self.slot), segment)
+
     @staticmethod
     def _slot_groups(groups: list) -> dict[str, str]:
         named = {g["name"]: g["id"] for g in groups}
@@ -1063,7 +1131,7 @@ class OpenStack:
         return named
 
     def _fence_management(self, bound: dict, ports: list, fenced: str) -> None:
-        names = {slot.port_name(host, fabric.MANAGEMENT) for host in self.declared.hosts}
+        names = {self._port_name(host, fabric.MANAGEMENT) for host in self.declared.hosts}
         for port in ports:
             if (port["network_id"] == bound[fabric.MANAGEMENT]["id"] and port.get("name") in names
                     and list(port.get("security_groups") or []) != [fenced]):
@@ -1073,11 +1141,12 @@ class OpenStack:
 
     def teardown_slot(self) -> list[tuple[str, str]]:
         hosts = self.declared.hosts
-        bound = fabric.bound(self.declared, self._all(PROJECT_NETWORKS, "networks"))
-        made = {slot.port_name(host, s) for host, entry in hosts.items() for s in entry.segments}
+        bound = fabric.bound(self.declared, self._all(PROJECT_NETWORKS, "networks"), self.slot)
+        made = {self._port_name(host, s) for host, entry in hosts.items() for s in entry.segments}
         steps = [
             ("server", server["id"]) for server in self._all(SERVERS, "servers")
             if (server.get("metadata") or {}).get(slot.HOST) in hosts
+            and slot.slot_of(server) == self.slot
         ] + [
             ("port", port["id"])
             for network in bound.values()
@@ -1206,7 +1275,9 @@ class OpenStack:
                                    self.build.mtu, self._public_key(),
                                    management=self.address(slot.EDGE_ROLE),
                                    front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
-                                                       slot.NAMED_ON))
+                                                       slot.NAMED_ON),
+                                   hostname=slot.named(slot.edge_of(self.declared), self.slot)
+                                   if self.slot > 1 else "")
         return (wanted, collector, opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
                 (source / opnsense.INCLUDE).read_text(), (source / opnsense.RULES).read_text())
 
@@ -1325,15 +1396,22 @@ class OpenStack:
         return host, tuple(f"runs {wargame}" for wargame in entry.wargames)
 
     def open_collector(self) -> tuple[str, tuple[str, ...]]:
+        roles = (slot.EDGE_ROLE, GATEWAY_ROLE, *sorted(self.declared.watches))
         senders = list(dict.fromkeys(
-            self._address(role, self.declared.host(role), fabric.MANAGEMENT)
-            for role in (slot.EDGE_ROLE, GATEWAY_ROLE, *sorted(self.declared.watches))
+            self._address(role, self.declared.host(role), fabric.MANAGEMENT) for role in roles
         ))
+        sending = {self.declared.host(role) for role in roles}
+        elsewhere = [
+            entry["addr"] for server in self._all(SERVERS, "servers")
+            if slot.in_slot(server) and slot.slot_of(server) != self.slot
+            and server["metadata"][slot.HOST] in sending
+            for entries in (server.get("addresses") or {}).values() for entry in entries
+        ]
         group = next(
             group for group in self._all(SECURITY_GROUPS, "security_groups")
             if group["name"] == fabric.REACH_GROUP
         )
-        create, delete = fabric.hearing(group, senders)
+        create, delete = fabric.hearing(group, senders, kept=elsewhere)
         for rule in delete:
             self.get(self._call(DELETE_RULE, rule=rule))
         for rule in create:
@@ -1342,18 +1420,36 @@ class OpenStack:
 
     def _slot(self):
         networks, subnets, _, groups = self._fabric_standing()
-        bound = fabric.bound(self.declared, networks)
+        bound = fabric.bound(self.declared, networks, self.slot)
         ports = [
             port for network in bound.values()
             for port in self._all(PORTS, "ports", network=network["id"])
         ]
-        ready = {
+        ready = self._ready_images()
+        plan = slot.plan(self.declared, networks, subnets, ports,
+                         self._all(SERVERS, "servers"), ready, self.slot)
+        return plan, bound, subnets, ports, groups, ready
+
+    def _ready_images(self) -> dict[str, str]:
+        return {
             found.host: found.image for found in self.plan_images().images
             if found.state == "ready"
         }
-        plan = slot.plan(self.declared, networks, subnets, ports,
-                         self._all(SERVERS, "servers"), ready)
-        return plan, bound, subnets, ports, groups, ready
+
+    def plan_slots(self) -> list[slot.Plan]:
+        networks, subnets, _, _ = self._fabric_standing()
+        servers = self._all(SERVERS, "servers")
+        ready = self._ready_images()
+        listed: dict[str, list] = {}
+        plans = []
+        for number in range(1, self.slots + 1):
+            bound = fabric.bound(self.declared, networks, number)
+            ports = [
+                port for network in bound.values()
+                for port in listed.setdefault(network["id"], self._all(PORTS, "ports", network=network["id"]))
+            ]
+            plans.append(slot.plan(self.declared, networks, subnets, ports, servers, ready, number))
+        return plans
 
     def _call(self, call: str, **binding) -> str:
         return call.format(**vars(self.cloud), **binding)

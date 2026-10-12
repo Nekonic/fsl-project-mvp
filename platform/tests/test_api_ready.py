@@ -8,6 +8,8 @@ from rules.suricata import RulesUnreadable
 
 URL = "/api/range/ready/"
 
+pytestmark = pytest.mark.django_db
+
 class Cloud:
     def __init__(self, standing=(("fsl-waf", "s1", "ACTIVE"),), boot=(), blocked=()):
         self._plan = slot.Plan(boot=boot, standing=standing, blocked=blocked)

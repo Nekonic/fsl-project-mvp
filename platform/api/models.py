@@ -22,9 +22,15 @@ class Session(models.Model):
     browse_marker = models.CharField(max_length=64, default=fresh_browse_marker)
     hints = models.JSONField(default=list, blank=True)
     result_cache = models.JSONField(null=True, blank=True, default=None)
+    slot = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["slot"], condition=models.Q(ended_at=None), name="one_open_session_per_slot",
+            ),
+        ]
 
 class Case(models.Model):
 

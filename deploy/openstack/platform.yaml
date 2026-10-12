@@ -53,6 +53,8 @@ parameters:
     type: string
   opnsense:
     type: string
+  slots:
+    type: string
 
 conditions:
   zoned: {not: {equals: [{get_param: availability_zone}, ""]}}
@@ -145,6 +147,7 @@ resources:
             "%subnets%": {get_param: subnets}
             "%range_mtu%": {get_param: range_mtu}
             "%opnsense%": {get_param: opnsense}
+            "%slots%": {get_param: slots}
             "%project%": {get_param: "OS::project_id"}
             "%repository%": {get_param: repository}
             "%ref%": {get_param: ref}
@@ -183,6 +186,7 @@ resources:
                   FSL_OPENSTACK_SUBNETS=%subnets%
                   FSL_OPENSTACK_MTU=%range_mtu%
                   FSL_OPNSENSE=%opnsense%
+                  FSL_OPENSTACK_SLOTS=%slots%
                   FSL_OPENSTACK_SSH_USER=ubuntu
                   FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
                   FSL_OPENSTACK_BUILD_NETWORK=%network%

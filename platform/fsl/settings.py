@@ -64,11 +64,11 @@ ATTACKER_LABEL_FILE = "/label/active"
 ATTACKER_ORIGIN_FILE = "/label/origin"
 ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
 ATTACKER_SESSION_TERMINAL_URL = (
-    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else ""
+    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-kali/?arg={session}"
 )
 WAF_TERMINAL_URL = "/vm-terminal/fsl-waf/"
 WAF_SESSION_TERMINAL_URL = (
-    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else ""
+    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-waf/?arg={session}"
 )
 SITE_PORT = 8002 if FSL_SUBSTRATE == "range.docker.Docker" else None
 ATTACKER_ORIGIN_MODE = os.environ.get(
@@ -88,7 +88,8 @@ ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
-    "fsl-logs-{session}-*" if FSL_SUBSTRATE == "range.docker.Docker" else "",
+    {"range.docker.Docker": "fsl-logs-{session}-*",
+     "range.openstack.connect": "fsl-logs-slot{slot}-*"}.get(FSL_SUBSTRATE, ""),
 )
 
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
@@ -147,6 +148,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
                 "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
                 "platform": "FSL_OPENSTACK_PLATFORM",
                 "image_tag": "FSL_IMAGE_TAG",
+                "slots": "FSL_OPENSTACK_SLOTS",
             }.items()
         } | {"source": FSL_SOURCE},
     }.get(FSL_SUBSTRATE, {}),
