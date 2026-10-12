@@ -80,13 +80,18 @@ def checked_defense(declared: Any, source) -> dict[str, Any]:
             )
     return declared
 
-def checked_lesson(lesson: Any, known: set[str], source) -> None:
+def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFENSE,)) -> None:
     if lesson is None:
         return
     cases = lesson.get("cases") if isinstance(lesson, dict) else None
     if not isinstance(lesson, dict) or not isinstance(lesson.get("text"), str) \
             or not isinstance(cases, list) or not cases:
         raise InvalidCatalogue(f"{source}: a lesson needs a text key and a non-empty cases list")
+    if lesson.get("defense", DEFAULT_DEFENSE) not in defenses:
+        raise InvalidCatalogue(
+            f"{source}: the lesson's defense must be one the scenario declares, "
+            f"{', '.join(defenses)}; got {lesson.get('defense')!r}"
+        )
     unknown = sorted(str(name) for name in cases if name not in known)
     if unknown:
         raise InvalidCatalogue(f"{source}: lesson cases {', '.join(unknown)} are not in the case file")
@@ -117,7 +122,8 @@ def _discover() -> dict[str, dict[str, Any]]:
             case.get("name")
             for case in load_cases(Path(settings.WARGAME_CASES_DIR) / found[wargame_id]["case_file"])
         }
-        checked_lesson(found[wargame_id].get("lesson"), known, path)
+        checked_lesson(found[wargame_id].get("lesson"), known, path,
+                       tuple(found[wargame_id].get("defense") or (DEFAULT_DEFENSE,)))
     return found
 
 WARGAMES = _discover()
@@ -143,6 +149,9 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None) -> dict[str, Any] | N
         if step.get("command") else step
         for step in taught.get("steps", [])
     ]}
+
+def lesson_defense(wargame_id: str) -> str:
+    return (WARGAMES[wargame_id].get("lesson") or {}).get("defense", DEFAULT_DEFENSE)
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
@@ -256,6 +265,7 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
         "lesson_steps": len((wargame.get("lesson") or {}).get("steps") or []),
         "lesson_text": (wargame.get("lesson") or {}).get("text") or "",
+        "lesson_defense": lesson_defense(wargame["id"]) if wargame.get("lesson") else "",
         "category": wargame.get("category") or "",
         "difficulty": wargame.get("difficulty") or "",
         "minutes": wargame.get("minutes"),

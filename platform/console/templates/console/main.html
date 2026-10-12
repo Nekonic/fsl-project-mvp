@@ -92,7 +92,7 @@
         <div class="grid grid-cols-2 gap-3 mt-auto pt-4">
           <div class="pt-4 border-t border-line-subdued">
             ${wargame.lesson
-              ? `<button data-wargame="${id}" data-lesson="true" class="start btn btn-blue w-full">${esc(t("main.start_lesson"))}</button>`
+              ? `<button data-wargame="${id}" data-lesson="true" data-defense="${esc(wargame.lesson_defense || "")}" class="start btn btn-blue w-full">${esc(t("main.start_lesson"))}</button>`
               : `<button class="btn btn-ghost w-full" disabled>${esc(t("main.start_lesson"))}</button>`}
             <p class="text-[12px] mt-1.5 ${wargame.lesson ? "text-muted" : "text-faint"}">${
               esc(t(wargame.lesson ? "main.start_lesson.note" : "main.no_lesson.note"))}</p>
@@ -147,7 +147,8 @@
     starting = true;
     card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
     const ticking = opening(button);
-    const settings = button.dataset.lesson ? { guidance: true, defense: "minimal" } : {};
+    const defense = button.dataset.defense ? { defense: button.dataset.defense } : {};
+    const settings = button.dataset.lesson ? { guidance: true, ...defense } : {};
     const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings },
                                PATIENCE_FOR_RANGE_WORK);
     clearInterval(ticking);

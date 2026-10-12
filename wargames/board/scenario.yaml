@@ -19,6 +19,7 @@ defense:
     suricata: local.rules
 lesson:
   text: lesson.board
+  defense: minimal
   cases:
     - board-sqli-orderby-sqlmap
     - board-sqli-orderby-sqlmap-tamper

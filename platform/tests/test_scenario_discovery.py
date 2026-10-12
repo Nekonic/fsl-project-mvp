@@ -88,6 +88,23 @@ def test_a_lesson_naming_cases_the_case_file_lacks_is_refused_at_discovery(setti
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()
 
+@pytest.mark.parametrize("defense", ["minimal", ["full"]])
+def test_a_lesson_whose_defense_the_scenario_does_not_declare_is_refused_at_discovery(settings, tmp_path, defense):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    taught = {"text": "lesson.demo", "cases": ["board-normal-search"], "defense": defense}
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lesson": taught}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match="lesson's defense"):
+        wargames._discover()
+
+def test_the_board_lesson_declares_the_defense_it_starts_from_and_the_catalogue_says_so(client):
+    listed = {w["id"]: w for w in client.get("/api/wargames/").json()}
+
+    assert wargames.lesson_defense("board") == "minimal"
+    assert (listed["board"]["lesson_defense"], listed["corp"]["lesson_defense"]) == ("minimal", "")
+
 def test_the_catalogue_describes_each_scenario_for_its_card(client):
     listed = {w["id"]: w for w in client.get("/api/wargames/").json()}
     board = listed["board"]

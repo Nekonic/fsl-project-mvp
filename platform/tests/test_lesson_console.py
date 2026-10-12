@@ -277,11 +277,11 @@ def test_a_lesson_replay_that_leaked_says_so_beside_the_run(client):
 
     assert english("lesson.diag.leaked", "board-sqli-orderby-sqlmap", 3, 3) in seen["result"]
 
-CATALOGUE = """
+CATALOGUE_DECLARING = """
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [
-      {id: "board", name: "Board", description: "", cases: 1, lesson: true},
+      {id: "board", name: "Board", description: "", cases: 1, lesson: true, lesson_defense: DECLARED},
       {id: "corp", name: "Corp", description: "", cases: 1, lesson: false},
     ]};
   }
@@ -289,6 +289,8 @@ browser.serve((request) => {
   return {status: 404, body: {detail: "not served"}};
 });
 """
+
+CATALOGUE = CATALOGUE_DECLARING.replace("DECLARED", '"minimal"')
 
 def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_guided_minimal_session(client):
     seen = open_page(client, "/", setup=CATALOGUE, scenario="""
@@ -300,6 +302,28 @@ def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_gui
     assert seen["errors"] == []
     assert seen["result"]["lessons"] == ["board"]
     assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "defense": "minimal"}]
+
+def test_start_as_lesson_sends_the_defense_the_lesson_declares_not_a_fixed_one(client):
+    seen = open_page(client, "/", setup=CATALOGUE_DECLARING.replace("DECLARED", '"full"'), scenario="""
+      await browser.click('[data-lesson="true"]');
+      return browser.requests.filter((r) => r.method === 'POST').map((r) => r.body);
+    """)
+
+    assert seen["result"] == [{"scenario": "board", "guidance": True, "defense": "full"}]
+
+def test_the_goal_line_is_pinned_above_the_tabs_whichever_tab_is_open(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+      await browser.click('note-pill');
+      await browser.click('[data-tab="theory"]');
+      return {text: browser.text('lesson-goal-line'), hidden: browser.element('lesson-goal-line').classList.contains('hidden')};
+    """)
+    page = client.get("/blue/1/").content.decode()
+
+    assert seen["result"] == {"text": english("lesson.board.summary"), "hidden": False}
+    assert page.index('id="lesson-goal-line"') < page.index('id="lesson-tabs"') < page.index('data-pane-of="steps"'), (
+        "the goal sits above the tabs, outside every tab's pane"
+    )
+    assert "is not injectable" in english("lesson.board.summary") and "O'Brien" in english("lesson.board.summary")
 
 def test_the_catalogue_says_which_scenario_carries_a_lesson(client):
     listed = {w["id"]: w["lesson"] for w in client.get("/api/wargames/").json()}
