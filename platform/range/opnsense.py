@@ -39,7 +39,7 @@ def _gateway(segment: Segment) -> dict:
 
 
 def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
-             inside: dict[str, str], mtu: int, public_key: str) -> dict:
+             inside: dict[str, str], mtu: int, public_key: str, management: str = "") -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -56,9 +56,13 @@ def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
     if not public_key:
         raise RangeUnavailable("the platform has no public key for the edge to trust yet; build the fabric first")
     gateways = [_gateway(segment) for segment in origins]
-    return {"wan": gateways[0], "aliases": gateways[1:], "lan": _gateway(estate),
-            "home": home(inside), "collector": {"host": collector[0], "port": collector[1]},
-            "mtu": mtu, "key": public_key}
+    wanted = {"wan": gateways[0], "aliases": gateways[1:], "lan": _gateway(estate),
+              "home": home(inside), "collector": {"host": collector[0], "port": collector[1]},
+              "mtu": mtu, "key": public_key}
+    mgmt = next((s for s in segments if s.id == fabric.MANAGEMENT and s.subnet), None)
+    if management and mgmt is not None:
+        wanted["mgmt"] = {"id": mgmt.id, "address": management, "bits": mgmt.subnet.split("/")[1]}
+    return wanted
 
 
 def _set(parent, path: str, text: str):
@@ -96,7 +100,8 @@ def render(template: str, wanted: dict) -> str:
     _set(root_user, "authorizedkeys", base64.b64encode(wanted["key"].encode()).decode())
     for interface in INTERFACES:
         _set(root, f"interfaces/{interface}/mtu", str(wanted["mtu"]))
-    for interface, held in (("wan", wanted.get("wan")), ("lan", wanted.get("lan"))):
+    for interface, held in (("wan", wanted.get("wan")), ("lan", wanted.get("lan")),
+                            ("opt1", wanted.get("mgmt"))):
         if held:
             _set(root, f"interfaces/{interface}/ipaddr", held["address"])
             _set(root, f"interfaces/{interface}/subnet", held["bits"])

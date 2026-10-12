@@ -44,6 +44,17 @@ def test_the_wan_holds_the_first_origin_gateway_and_aliases_the_other_twenty_nin
     assert len(wanted["aliases"]) == 29
 
 
+def test_the_configured_edge_holds_its_management_address_statically_not_by_dhcp():
+    wanted = opnsense.settings(_segments(), COLLECTOR, INSIDE, 1450, KEY, management="10.31.0.230")
+    root = ElementTree.fromstring(opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted))
+
+    assert root.findtext("interfaces/opt1/ipaddr") == "10.31.0.230", (
+        "OPNsense on this cloud dropped Neutron's DHCP replies after its reconfigure, "
+        "so the platform lost the edge; the platform knows the address the port holds"
+    )
+    assert root.findtext("interfaces/opt1/subnet") == "24"
+
+
 def test_the_lan_holds_the_estate_gateway_so_the_estate_routes_through_the_edge():
     assert _wanted()["lan"] == {"id": "estate", "address": "10.30.0.1", "bits": "24"}
 

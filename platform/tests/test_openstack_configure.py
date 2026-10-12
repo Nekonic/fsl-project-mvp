@@ -98,7 +98,9 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
 
     (role, argv, stdin), *after = edge.calls
     assert role == "edge" and argv == opnsense.command()
-    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY)
+    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
+                               management=_adapter(Edge()).address("edge"))
+    assert wanted["mgmt"]["address"]
     assert stdin == opnsense.playback(
         opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted),
         (ROOT / opnsense.INCLUDE).read_text(),
@@ -178,3 +180,21 @@ def test_an_edge_whose_sensor_is_not_running_afterwards_is_drift():
 def test_an_edge_whose_wan_pass_rule_did_not_load_into_pf_is_drift():
     with pytest.raises(Drifted, match="wan rule|pf"):
         _adapter(Edge(wanrule=0)).configure_edge()
+
+def test_an_edge_whose_sensor_starts_after_ssh_answers_is_waited_for():
+    class LateSensor(Edge):
+        def __call__(self, role, segment_id=""):
+            inner = super().__call__(role, segment_id)
+            def run(argv, stdin=None, timeout=60.0):
+                if argv == opnsense.verify():
+                    reads = len([c for c in self.calls if c[1] == opnsense.verify()])
+                    self.sensor = "running" if reads >= 2 else "stopped"
+                return inner(argv, stdin, timeout)
+            return run
+
+    edge = LateSensor()
+
+    host, _ = _adapter(edge).configure_edge()
+
+    assert host == "fsl-edge"
+    assert len([call for call in edge.calls if call[1] == opnsense.verify()]) == 3
