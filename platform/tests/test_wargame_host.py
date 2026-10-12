@@ -266,3 +266,36 @@ def test_the_effect_reader_reads_corp_db_inside_its_container(monkeypatch):
     [remote] = sent
     assert remote[:4] == ["sudo", "docker", "exec", "corp-db"]
     assert effect.BINLOG_CMD in remote, "the binary log is corp-db's own, under its /var/lib/mysql"
+
+def test_clearing_the_host_removes_each_wargame_with_its_volumes_and_the_sensor_log():
+    argv = wargame_host.cleared(["board", "corp"], ("/var/log/suricata/eve.json",), True)
+    script = argv[-1].splitlines()
+
+    assert argv[:3] == ["sudo", "sh", "-c"] and script[0] == "set -e"
+    for wargame in ("board", "corp"):
+        assert any(f"-p {wargame} -f /opt/fsl/wargames/{wargame}.yaml down -v" in line
+                   for line in script), "anonymous volumes keep a session's database"
+    assert any("-p sensor" in line and "down -v" in line and "FSL_SENSOR_INTERFACE=lo" in line
+               for line in script)
+    assert any(line.startswith("rm -f /var/log/suricata/eve.json") for line in script)
+    assert script[-1] == f"tee {wargame_host.SENSOR_RULES} >/dev/null", (
+        "the session may change the sensor's rules, so the baseline is written back"
+    )
+    assert not any(" up " in line for line in script), "configure starts them afterwards"
+
+def test_a_host_without_a_sensor_or_logs_leaves_rsyslog_alone():
+    script = wargame_host.cleared(["board"], (), False)[-1]
+
+    assert "rsyslog" not in script and "-p sensor" not in script
+
+def test_no_wargame_container_holds_a_host_path_or_privilege_a_reset_in_place_would_keep():
+    for wargame in ENTRY.wargames:
+        services = yaml.safe_load(wargame_host.render(
+            yaml.safe_load((ROOT / wargame_host.COMPOSE.format(wargame=wargame)).read_text()),
+            "c0ffee", {}))["services"]
+        for name, service in services.items():
+            assert not service.get("privileged"), name
+            assert not service.get("volumes"), (
+                f"{name} mounts a host path, so the host is not reset by removing containers"
+            )
+            assert service.get("network_mode") != "host", name

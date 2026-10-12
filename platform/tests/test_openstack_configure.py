@@ -108,7 +108,10 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
         (ROOT / opnsense.RULES).read_text(),
         (ROOT / opnsense.SCRIPT).read_text(),
     )
-    assert [call[1] for call in after] == [opnsense.verify()]
+    assert [call[1] for call in after] == [
+        opnsense.verify(),
+        opnsense.record(opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted)),
+    ], "once settled, the edge records the config it booted into so a reset can check it"
     host, reported = done
     assert host == "fsl-edge" and "logs 10.31.0.195:5140" in reported
 
@@ -244,3 +247,242 @@ def test_an_edge_whose_sensor_starts_after_ssh_answers_is_waited_for():
 
     assert host == "fsl-edge"
     assert len([call for call in edge.calls if call[1] == opnsense.verify()]) == 3
+
+class Meeting(Edge):
+    def __init__(self, meeting, **kwargs):
+        super().__init__(**kwargs)
+        self.meeting = meeting
+
+    def __call__(self, role, segment_id=""):
+        inner = super().__call__(role, segment_id)
+        def run(argv, stdin=None, timeout=60.0):
+            if argv in (opnsense.command(), wargame_host.up("board")):
+                self.meeting.wait()
+            return inner(argv, stdin, timeout)
+        return run
+
+def test_the_wargames_start_while_the_edge_reboots():
+    import threading
+
+    edge = Meeting(threading.Barrier(2, timeout=5))
+
+    done = _adapter(edge).configure_slot()
+
+    assert [host for host, _ in done][:2] == ["fsl-edge", "fsl-waf"], (
+        "the steps run side by side and still report in the order they are declared"
+    )
+
+def test_a_step_that_fails_beside_others_fails_the_configure_with_its_own_reason():
+    import threading
+
+    edge = Meeting(threading.Barrier(2, timeout=5), sensor="stopped")
+
+    with pytest.raises(Drifted, match="its sensor is not running"):
+        _adapter(edge).configure_slot()
+
+    started = [argv for role, argv, _ in edge.calls if role == "wargames"]
+    assert wargame_host.sensor_up("10.30.0.63") in started, (
+        "the wargame host's steps ran to the end while the edge failed beside them"
+    )
+
+class LateWargameHost(Edge):
+    def __init__(self, unanswered, **kwargs):
+        super().__init__(**kwargs)
+        self.unanswered = unanswered
+
+    def __call__(self, role, segment_id=""):
+        inner = super().__call__(role, segment_id)
+        def run(argv, stdin=None, timeout=60.0):
+            if role == "wargames" and self.unanswered:
+                self.unanswered -= 1
+                self.calls.append((role, argv, stdin))
+                raise RangeUnavailable("fsl-wargame-host at 10.31.0.107 refused the connection")
+            return inner(argv, stdin, timeout)
+        return run
+
+def test_a_host_that_does_not_answer_yet_is_waited_for_without_rebooting_the_edge_again():
+    edge = LateWargameHost(unanswered=3)
+
+    done = _adapter(edge).configure_slot()
+
+    assert "fsl-wargame-host" in [host for host, _ in done]
+    assert len([call for call in edge.calls if call[1] == opnsense.command()]) == 1, (
+        "the rebuilt wargame host took longer to answer ssh than the edge took to "
+        "configure, and the whole configure was retried, rebooting the edge twice"
+    )
+
+def test_a_host_that_never_answers_still_fails_the_configure():
+    edge = LateWargameHost(unanswered=openstack.HOST_READS)
+
+    with pytest.raises(RangeUnavailable, match="refused the connection"):
+        _adapter(edge).configure_slot()
+
+
+class ResetsInPlace(Edge):
+    def __init__(self, said="fsl-edge reset\n", **kwargs):
+        super().__init__(**kwargs)
+        self.said = said
+
+    def __call__(self, role, segment_id=""):
+        inner = super().__call__(role, segment_id)
+        def run(argv, stdin=None, timeout=60.0):
+            if role == "edge" and argv == opnsense.command() and _in_place(stdin):
+                self.calls.append((role, argv, stdin))
+                return Ran(self.exit_code, self.said)
+            return inner(argv, stdin, timeout)
+        return run
+
+def _in_place(stdin):
+    return bool(stdin) and stdin.endswith(f'echo "{opnsense.RESET}"\n')
+
+def _reinstalls(edge):
+    return [call for call in edge.calls
+            if call[1] == opnsense.command() and not _in_place(call[2])]
+
+def test_resetting_the_edge_in_place_restarts_its_sensor_without_reinstalling_or_rebooting():
+    edge = ResetsInPlace()
+
+    host, reported = _adapter(edge).reset_edge()
+
+    assert host == "fsl-edge" and "reset in place" in reported
+    assert _reinstalls(edge) == [], (
+        "the edge's config is the same rendered file every session, and reinstalling "
+        "it means a reboot that sets the length of every reset"
+    )
+    (_, _, stdin), verified = edge.calls
+    assert verified[1] == opnsense.verify()
+    assert "configctl ids restart" in stdin and "configctl filter reload" in stdin
+    assert (ROOT / opnsense.RULES).read_text() in stdin, (
+        "the session may change fsl.rules, so the reset puts the baseline back"
+    )
+
+def test_the_in_place_reset_compares_every_installed_file_by_its_hash():
+    edge = ResetsInPlace()
+
+    _adapter(edge).reset_edge()
+
+    stdin = edge.calls[0][2]
+    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
+                               management=_adapter(Edge()).address("edge"), front="10.30.0.198")
+    config = opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted)
+    for content in (config, (ROOT / opnsense.INCLUDE).read_text(), (ROOT / opnsense.RULES).read_text()):
+        assert opnsense.fingerprint(content) in stdin
+    assert opnsense.SETTLED in stdin and opnsense.INSTALLED["config"] in stdin
+
+def test_the_in_place_reset_drops_the_range_states_and_keeps_the_management_ones():
+    edge = ResetsInPlace()
+
+    _adapter(edge).reset_edge()
+
+    stdin = edge.calls[0][2]
+    assert "pfctl -k 10.30.0.0/24" in stdin and "pfctl -k 0.0.0.0/0 -k 73.0.0.0/24" in stdin
+    assert "10.31.0.0/24" not in stdin and "-F state" not in stdin, (
+        "flushing every state drops the platform's own ssh session to the edge mid-reset"
+    )
+
+@pytest.mark.parametrize("said, why", [
+    ("fsl-edge drifted config\n", "config drifted"),
+    ("fsl-edge drifted include rules\n", "include, rules drifted"),
+    ("fsl-edge drifted sensor\n", "sensor drifted"),
+])
+def test_an_edge_whose_files_do_not_match_is_reinstalled_and_rebooted(said, why):
+    edge = ResetsInPlace(said=said)
+
+    host, reported = _adapter(edge).reset_edge()
+
+    assert len(_reinstalls(edge)) == 1, "a mismatch falls back to the install and reboot"
+    assert host == "fsl-edge"
+    assert f"reinstalled and rebooted: {why}" in reported
+    assert edge.calls[-1][1][2].endswith(f"> {opnsense.SETTLED}")
+
+def test_an_edge_that_does_not_hold_its_configuration_after_the_reset_is_reinstalled():
+    class LosesItsRule(ResetsInPlace):
+        def __call__(self, role, segment_id=""):
+            self.wanrule = 0 if not _reinstalls(self) else 1
+            return super().__call__(role, segment_id)
+
+    edge = LosesItsRule()
+
+    _, reported = _adapter(edge).reset_edge()
+
+    assert len(_reinstalls(edge)) == 1
+    assert any("did not hold its configuration" in line for line in reported)
+
+def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_same_vm():
+    edge, groups = ResetsInPlace(), Groups()
+
+    done = _adapter(edge, groups).reset_in_place()
+
+    on_the_host = [(argv, stdin) for role, argv, stdin in edge.calls if role == "wargames"]
+    cleared = wargame_host.cleared(OS.hosts["fsl-wargame-host"].wargames,
+                                   ("/var/log/suricata/eve.json",), True)
+    assert on_the_host[0] == (cleared, (ROOT / wargame_host.BASELINE_RULES).read_text())
+    assert [argv for argv, _ in on_the_host[1:3]] == [
+        wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
+    ]
+    assert wargame_host.sensor_up("10.30.0.63") in [argv for argv, _ in on_the_host]
+    assert {host for host, _ in done} == {"fsl-edge", "fsl-platform", "fsl-wargame-host"}
+    assert not [role for role, _, _ in edge.calls if role == "gateway"], (
+        "the waf is rebuilt from its image and configured once Nova has it back"
+    )
+
+def test_the_rebuilt_vms_are_configured_by_their_own_steps_only():
+    edge = ResetsInPlace()
+    adapter = _adapter(edge)
+    adapter._read = _shape
+
+    done = adapter.configure_rebuilt(["fsl-kali", "fsl-waf"])
+
+    assert [host for host, _ in done] == ["fsl-waf"]
+    assert {role for role, _, _ in edge.calls} == {"gateway"}
+
+class Nova:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, call, body=None):
+        self.calls.append((call, body))
+        return {}
+
+def _standing(adapter):
+    from range import slot
+
+    standing = (("fsl-waf", "srv-waf", "ACTIVE"), ("fsl-edge", "srv-edge", "ACTIVE"),
+                ("fsl-kali", "srv-kali", "ACTIVE"), ("fsl-wargame-host", "srv-wg", "ACTIVE"))
+    ready = {host: f"img-{host}" for host, _, _ in standing}
+    adapter._slot = lambda: (slot.Plan(standing=standing), {}, [], [], [], ready)
+    return adapter
+
+def test_a_close_rebuilds_only_the_vms_that_hold_a_shell():
+    nova = Nova()
+    adapter = _standing(_adapter(Edge(), nova))
+
+    rebuilt = adapter.reset_slot()
+
+    assert rebuilt == [("fsl-waf", "srv-waf"), ("fsl-kali", "srv-kali")]
+    assert [call for call, _ in nova.calls] == [
+        "POST http://nova:8774/v2.1/servers/srv-waf/action",
+        "POST http://nova:8774/v2.1/servers/srv-kali/action",
+    ], "the edge and the wargame host reset in place; Kali and the WAF hand out a shell"
+
+def test_rebuilding_the_slot_by_hand_still_rebuilds_every_vm():
+    nova = Nova()
+    adapter = _standing(_adapter(Edge(), nova))
+
+    rebuilt = adapter.rebuild_slot()
+
+    assert [host for host, _ in rebuilt] == ["fsl-waf", "fsl-edge", "fsl-kali", "fsl-wargame-host"]
+    assert len(nova.calls) == 4
+
+def test_the_rebuilt_vms_are_configured_from_a_fresh_read_of_the_cloud():
+    edge = ResetsInPlace()
+    adapter = _adapter(edge)
+    reads = []
+    adapter._read = lambda: reads.append(1) or _shape()
+
+    adapter.configure_rebuilt(["fsl-waf"])
+
+    assert reads == [1], (
+        "the shape read while Nova rebuilt the WAF carries its old launch time, so ssh "
+        "checked the rebuilt VM's new host key against the old one and never got in"
+    )

@@ -80,3 +80,12 @@ def test_the_template_geolocates_every_document_by_default_not_only_when_filebea
         "stream on one deployment; the template's default pipeline geolocates "
         "every write regardless, which is where src_ip -> country has to happen"
     )
+
+
+def test_a_small_batch_of_events_is_published_within_a_second():
+    config = flattened(yaml.safe_load(FILEBEAT.read_text()))
+
+    assert config["queue.mem.flush.timeout"] == "1s", (
+        "the memory queue holds events until 1600 have gathered or 10s pass, so "
+        "the few alerts one attack case draws waited up to 10s to reach the index"
+    )

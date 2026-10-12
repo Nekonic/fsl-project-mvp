@@ -28,7 +28,7 @@ import scoreboard
 import suppress
 import topology
 import wargames
-from api import effect, loot, site
+from api import effect, loot, reset, site
 from api.refusals import Conflict
 from api.models import (
     Case,
@@ -937,13 +937,20 @@ def close_session(request, session_id):
     if hasattr(adapter, "rebuild_slot"):
         try:
             with RULE_CHANGES:
-                rebuilt = adapter.rebuild_slot()
+                rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
             reply["rebuilding"] = [
                 {"host": host, "server": server} for host, server in rebuilt
             ]
         except (Drifted, RangeUnavailable) as exc:
             reply["rebuild"] = str(exc)
+        else:
+            if hasattr(adapter, "configure_slot"):
+                _lifted_by_the_rebuild(closed_at)
+                reset.begin(adapter, RULE_CHANGES, rebuilt)
     return _reply(reply)
+
+def _lifted_by_the_rebuild(rebuilt_at):
+    Suppression.objects.filter(restored_at__isnull=True).update(restored_at=rebuilt_at)
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
@@ -1383,7 +1390,11 @@ def suppressions(request):
 @require_http_methods(["POST"])
 @_in_turn
 def restore_suppression(request, suppression_id):
-    record = get_object_or_404(Suppression, pk=suppression_id, restored_at__isnull=True)
+    record = get_object_or_404(Suppression, pk=suppression_id)
+    if record.restored_at is not None:
+        return _reply(_shape(record, SUPPRESSION_FIELDS) | {
+            "detail": f"sid {record.sid} was already restored at {record.restored_at.isoformat()}"
+        })
     ok, detail = _restore(record)
     if not ok:
         return _reply({"detail": detail}, status=400)
@@ -1396,13 +1407,14 @@ def _restore(record) -> tuple[bool, str | None]:
         if record.session is None or record.session.ended_at is None:
             raise
         adapter = _range(record.session)
-        if not hasattr(adapter, "has_stack") or adapter.has_stack():
+        rebuilt = hasattr(adapter, "rebuild_slot")
+        if not rebuilt and (not hasattr(adapter, "has_stack") or adapter.has_stack()):
             raise
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
         return True, (
-            f"session {record.session_id} has ended and its sensor is gone, so "
-            f"nothing is left silenced"
+            f"session {record.session_id} has ended and its sensor is "
+            f"{'rebuilt from its image' if rebuilt else 'gone'}, so nothing is left silenced"
         )
     superseded = suppress.find(current, record.sid) is not None
     lift = suppress.discard if superseded else suppress.restore
@@ -1572,6 +1584,7 @@ def range_configure(request):
     adapter = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
     with RULE_CHANGES:
         done = adapter.configure_slot()
+    reset.configured_by_hand()
     return _reply({"configured": [
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
@@ -1605,13 +1618,27 @@ def _rules_at_baseline(adapter) -> bool:
 
 def _range_ready(adapter) -> dict:
     plan = adapter.plan_slot()
+    resetting = reset.standing()
+    unchecked = resetting["state"] == reset.RUNNING
     checks = {
         "active": plan.active,
-        "ground_truth": _ground_truth_readable(adapter),
-        "rules_baseline": _rules_at_baseline(adapter),
+        "ground_truth": None if unchecked else _ground_truth_readable(adapter),
+        "rules_baseline": None if unchecked else _rules_at_baseline(adapter),
     }
     blocked = []
-    if plan.boot or plan.blocked:
+    if unchecked:
+        phase = "RESETTING"
+        blocked.append(
+            "the range is resetting after the last session closed (each VM "
+            "rebuilt or reset in place, then configured); wait for it, no need to call configure"
+        )
+    elif resetting["state"] == reset.FAILED:
+        phase = "RESET_FAILED"
+        blocked.append(
+            f"the range reset after the last session failed: {resetting['reason']}; "
+            f"POST /api/range/configure/ retries it"
+        )
+    elif plan.boot or plan.blocked:
         phase = "NOT_STANDING"
         blocked += list(plan.blocked) or [f"{host} is not standing" for host in plan.boot]
     elif not plan.active:
@@ -1622,15 +1649,16 @@ def _range_ready(adapter) -> dict:
         phase = "CHECKING"
     else:
         phase = "READY"
-    if not checks["ground_truth"]:
+    if checks["ground_truth"] is False:
         blocked.append("the target's ground truth could not be read")
-    if not checks["rules_baseline"]:
+    if checks["rules_baseline"] is False:
         blocked.append("the sensor rules are off baseline or a suppression is in force")
     return {
-        "ready": all(checks.values()),
+        "ready": all(checks.values()) and resetting["state"] == reset.IDLE,
         "substrate": "openstack",
         "slot": {
             "phase": phase,
+            "reset": resetting,
             "standing": [{"host": host, "server": server, "status": status}
                          for host, server, status in plan.standing],
             "checks": checks,

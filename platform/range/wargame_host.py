@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
 
 import yaml
@@ -19,6 +20,10 @@ UP_TIMEOUT = 900.0
 SENSOR = "/opt/fsl/sensor.yaml"
 SENSOR_PROJECT = "sensor"
 SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
+SENSOR_RULES = "/opt/fsl/rules/local.rules"
+BASELINE_RULES = "deploy/suricata/rules/local.rules"
+LOG_READER_STATE = "/var/spool/rsyslog/imfile-state:*"
+STOP_GRACE = 1
 
 def render(document: dict, tag: str, publish: dict[str, int]) -> str:
     services = {}
@@ -70,3 +75,15 @@ def sensor_up(address: str) -> list[str]:
     interface = f"$(ip -o -4 addr show to {address} | awk '{{print $2}}')"
     return ["sh", "-c", f'sudo env {SENSOR_INTERFACE}="{interface}" docker compose '
                         f"-p {SENSOR_PROJECT} -f {SENSOR} up -d --wait --pull never"]
+
+def cleared(wargames, logs, sensed: bool) -> list[str]:
+    steps = ["set -e", *(["systemctl stop rsyslog"] if logs else [])]
+    steps += [f"docker compose -p {wargame} -f {INSTALLED.format(wargame=wargame)} "
+              f"down -v --remove-orphans --timeout {STOP_GRACE}" for wargame in wargames]
+    if sensed:
+        steps.append(f"{SENSOR_INTERFACE}=lo docker compose -p {SENSOR_PROJECT} -f {SENSOR} "
+                     f"down -v --timeout {STOP_GRACE}")
+    if logs:
+        steps.append(" ".join(["rm -f", *(shlex.quote(path) for path in logs), LOG_READER_STATE]))
+    steps.append(f"tee {SENSOR_RULES} >/dev/null")
+    return ["sudo", "sh", "-c", "\n".join(steps)]

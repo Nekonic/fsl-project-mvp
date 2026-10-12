@@ -41,9 +41,14 @@ def silenced(stack_is_up):
     try:
         yield record
     finally:
-        requests.post(
+        restored = requests.post(
             f"{PLATFORM_URL}/api/rules/suppressions/{record['id']}/restore/", timeout=300
         )
+        assert restored.ok, (
+            f"sid {SID} could not be restored after the test, so it stays silenced "
+            f"and every later session is refused until it expires: {restored.text}"
+        )
+        assert restored.json()["restored_at"] is not None, restored.text
 
 def test_the_rule_catches_the_attack_before_anything_is_silenced(stack_is_up):
     _, before = _run([SILENCED_CASE, CONTROL_CASE])

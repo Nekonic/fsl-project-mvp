@@ -187,3 +187,60 @@ def test_a_failed_rebuild_leaves_the_session_closed(client, session_id):
     assert Session.objects.get(pk=session_id).ended_at is not None
     assert "fsl-waf" in response.json()["rebuild"]
     assert "rebuilding" not in response.json()
+
+
+class RebuildsAndConfigures(Rebuilds):
+    def configure_slot(self):
+        return []
+
+
+def _silenced(session_id, minutes=60):
+    from api.models import Suppression
+
+    return Suppression.objects.create(
+        session_id=session_id, sid=9000004, original="alert x",
+        expires_at=timezone.now() + timedelta(minutes=minutes),
+    )
+
+
+def test_closing_on_the_cloud_lifts_the_suppressions_the_rebuild_wiped(client, session_id):
+    record = _silenced(session_id)
+
+    with patch("api.views.substrate", lambda: RebuildsAndConfigures()), \
+            patch("api.views.reset.begin") as began:
+        client.post_json(f"/api/sessions/{session_id}/close/")
+
+    record.refresh_from_db()
+    assert began.called
+    assert record.restored_at == Session.objects.get(pk=session_id).ended_at, (
+        "the close rebuilt every slot VM and the reset seeds the baseline rules, "
+        "but the suppression stayed on the books, so readiness refused every "
+        "new session until it expired"
+    )
+    restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
+    assert restored.status_code == 200, restored.content
+    assert "already restored" in restored.json()["detail"]
+
+
+def test_a_failed_rebuild_keeps_the_suppression_on_the_books(client, session_id):
+    from range.ports import Drifted
+
+    record = _silenced(session_id)
+    found = RebuildsAndConfigures(fail=Drifted("fsl-waf is not standing"))
+
+    with patch("api.views.substrate", lambda: found), patch("api.views.reset.begin"):
+        client.post_json(f"/api/sessions/{session_id}/close/")
+
+    record.refresh_from_db()
+    assert record.restored_at is None, (
+        "nothing was rebuilt, so the sensor still runs with the rule commented out"
+    )
+
+
+def test_closing_on_the_compose_range_leaves_the_suppression_to_its_own_sensor(client, session_id):
+    record = _silenced(session_id)
+
+    client.post_json(f"/api/sessions/{session_id}/close/")
+
+    record.refresh_from_db()
+    assert record.restored_at is None
