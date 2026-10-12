@@ -95,6 +95,8 @@ ELASTIC_SESSION_INDEX = os.environ.get(
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
 CANARY_WAIT = float(os.environ.get("FSL_CANARY_WAIT", "45"))
 CANARY_POLL = float(os.environ.get("FSL_CANARY_POLL", "3"))
+LESSON_ALERT_WAIT = float(os.environ.get("FSL_LESSON_ALERT_WAIT", "30"))
+LESSON_ALERT_POLL = float(os.environ.get("FSL_LESSON_ALERT_POLL", "3"))
 SENSOR_HOST = RANGE.hosts.get(RANGE.roles.get("sensor", ""))
 FSL_SENSOR_RULES = (
     os.environ.get("FSL_SENSOR_RULES")

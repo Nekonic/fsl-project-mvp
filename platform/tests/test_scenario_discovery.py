@@ -178,11 +178,15 @@ def test_every_board_step_says_where_the_coach_points_so_the_console_names_no_st
 def test_the_catalogue_lists_each_lesson_with_what_its_card_shows(client):
     board = {w["id"]: w for w in client.get("/api/wargames/").json()}["board"]
 
-    assert board["lessons"] == [{
-        "id": "waf-exclusion", "order": 1, "title": "lesson.board.title", "goal": "lesson.board.summary",
-        "minutes": 40, "level": "easy", "defense": "minimal", "prerequisites": [],
-        "steps": len(wargames.lesson("board")["steps"]),
-    }]
+    assert [card["id"] for card in board["lessons"]] == [
+        "console-tour", "read-the-block", "waf-exclusion", "choose-the-level", "ids-signature", "ids-body-xss",
+        "assessment",
+    ], "the recommended path, in lesson order"
+    assert next(card for card in board["lessons"] if card["id"] == "waf-exclusion") == {
+        "id": "waf-exclusion", "order": 2, "title": "lesson.board.title", "goal": "lesson.board.summary",
+        "minutes": 40, "level": "easy", "defense": "minimal", "prerequisites": ["read-the-block"],
+        "steps": len(wargames.lesson("board")["steps"]), "mode": "guided",
+    }
     assert wargames.lesson("board", lesson_id="waf-exclusion") == wargames.lesson("board")
 
 @pytest.mark.parametrize("lessons, reason", [
