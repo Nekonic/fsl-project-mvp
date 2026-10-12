@@ -29,17 +29,22 @@ runs `docker compose -p fsl-<session id> -f session.yaml up -d --wait
 directory compose started the platform from (its
 `com.docker.compose.project.working_dir` label), so the stack's bind mounts
 resolve on the host, and `FSL_SESSION` set to the session id. The platform then
-joins the session's `estate` (`docker network connect`, alias `platform`) and
+joins the session's `estate` (`docker network connect`, alias `platform`;
+its own `edge` keeps the default gateway through `gw_priority: 1`) and
 aims the session's proxy at the session's own WAF (`/label/origin`); the
 baseline is read after that. Sessions run concurrently: opening a session runs
-`down -v` only on `fsl-<n>` projects whose session has ended (leaving their
-`estate` first). Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2,
-`platform/fsl/settings.py`) and answers 409 past that; OpenStack keeps one.
-Closing a session leaves its stack until a later open. The OpenStack substrate has
-no `open_session`: its range is the Nova VMs, so no session stack starts. Its
-readiness probe and session baseline read the board VM through the adapter's
-`address("board")`, the VM's management address, which `loot.ground_truth`
-puts in place of the host in `BOARD_API_URL`.
+`down -v` only on `fsl-<n>` projects whose session ended more than three
+minutes ago (leaving their `estate` first), deciding which under one lock so
+two opens at once cannot take down each other's new stack. Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2,
+`platform/fsl/settings.py`) and answers 409 past that; OpenStack opens one per range slot.
+Closing a session leaves its stack until an open at least three minutes
+later, while its Filebeat ships the last alerts. The OpenStack substrate has
+no `open_session`: its range is the Nova VMs, so no session stack starts; the
+wargames run on one VM, `fsl-wargame-host`, as the same GHCR containers. Its
+readiness probe and session baseline read the board through the adapter's
+`address("board")`, the wargame host's management address, where the board's
+port 8000 is published, which `loot.ground_truth` puts in place of the host in
+`BOARD_API_URL`.
 
 Each target is a wargame, a folder under `wargames/` whose `compose.yaml`
 `session.yaml` includes: `board` (Django and MySQL, `loot_verified`) and
@@ -192,7 +197,7 @@ commits to its database (below).
 
 ## The declaration and the substrate seam
 
-Docker is the MVP's substrate; OpenStack is the target. The platform does not
+Docker and OpenStack are both first-class substrates (2026-10-11 ruling). The platform does not
 ask Docker what the range means. It reads that from
 `platform/range/declaration.yaml`: per segment an id, a display name and an
 attack origin; a role table (attacker, scorer, gateway, proxy, sensor, board,
@@ -240,7 +245,8 @@ OpenStack takes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`,
 `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE` and `_DOMAIN`, each refused by
 name when missing, and the range-shaping values `_BASE_IMAGE`, `_FLAVOR`,
 `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU` and
-`FSL_OPNSENSE`, refused by name where they are used. None has a default in
+`FSL_OPNSENSE`, refused by name where they are used, and `FSL_IMAGE_TAG` (the
+wargame host's images; written to `/opt/fsl/.env` at boot). None has a default in
 code: all come from `deploy/openstack/cloud.yaml` through the Heat stack
 (`platform/range/cloud.py` reads and validates that file). `redteam/harness.py` is handed a launcher and
 `platform/rules/suricata.py` a runner, so neither imports `subprocess` or
@@ -250,7 +256,7 @@ names a substrate.
 |---|---|---|
 | shape | `docker network ls/inspect`, label filter | Keystone v3, Neutron with `tags-any`, Nova |
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
-| runner | `docker exec` into the role's service container in the session's project | `ssh` to the instance |
+| runner | `docker exec` into the role's service container in the session's project | `ssh` to the instance; a role the wargame host fills and `compose:` maps to a service runs in that container (`sudo docker exec <service>`, `range/wargame_host.py`) |
 | address | the role's `estate` IP in the session's project | the host's `mgmt` address |
 | launcher | `docker run --rm --network <segment>`, with `--add-host` for the session WAF's names | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `fsl-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
 | tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` fired sqlmap from the `ru` and `tw` origins on 2026-10-08 |
@@ -269,11 +275,11 @@ Each concern has one owning file. The exceptions below exist in code today.
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
-| CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person, and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read; the platform reads neither |
+| CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read, its command filled in by `wargames.lesson` from the declared exclusion file and reload (`settings.FSL_WAF`); the platform reads neither |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
-| The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); the sensor host in `declaration.yaml` names the rule file and reload command `suricata.py` is handed |
+| The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `deploy/wargame-host/sensor.yaml` runs the estate sensor as a compose service the platform starts like a wargame |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
-| The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none |
+| The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none; on OpenStack they reach the same containers, `loot.py` over HTTP at the wargame host's published port and `effect.py` through the runner, which `docker exec`s into `corp-db` |
 
 ## Where requests come from
 
@@ -299,8 +305,8 @@ command, with the current `/label/active` marker, to
 `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
 On compose the red console frames `/terminal/<session id>/`, which nginx
 proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it frames
-`/vm-terminal/fsl-kali/`, a ttyd inside the platform that connects over ssh to
-the host's mgmt address; on compose, Kali and the WAF have no mgmt address, so
+`/vm-terminal/fsl-kali/?arg=<session id>`, a ttyd inside the platform that
+connects over ssh to the mgmt address of the host in the session's slot; on compose, Kali and the WAF have no mgmt address, so
 `/vm-terminal/` does not connect there.
 
 The blue console's WAF pane frames the URL the session API names
@@ -311,7 +317,7 @@ client's query and proxies to a ttyd inside the platform
 ttyd's `-a` passes that as the script's argument, and the script, after checking
 it is a number, runs `docker exec -it fsl-<id>-waf-1 bash`. The WAF image has
 no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
-OpenStack the pane keeps `/vm-terminal/fsl-waf/`.
+OpenStack the pane frames `/vm-terminal/fsl-waf/?arg=<session id>`.
 
 The blue console's Website pane is a browser inside the console: back,
 forward, reload, an address bar that shows the full URL
@@ -357,7 +363,8 @@ would do that on 8000 alone, but Chromium-based embedded browsers refuse such a
 frame (`ERR_BLOCKED_BY_CLIENT` in the Claude desktop browser). `SITE_PORT` is
 8002 on docker and `None` on OpenStack, where there is no session WAF to name;
 the session API gives `site: {port, path}` or `null`, and the console hides
-the pane without it. The acceptance VM's security group allows 8002.
+the pane without it. A platform VM on substrate docker needs a security-group
+rule for 8002 (`docs/OPENSTACK.md` §3.5).
 
 The recorder keeps each session's last 200 requests in the platform's memory
 (lost on restart): method, `http://<host><path>`, status, whether the WAF
@@ -410,7 +417,8 @@ session's own (`Session.waf`), written at open from the scenario's defense and
 changed through `/api/sessions/<id>/waf/` ("The WAF lesson"). `GET` reads the
 file with a 10 s timeout so a poll never holds a server thread longer. Every Suricata
 rule is `alert`, so the WAF is the only part of the range that blocks. The
-OpenStack WAF VM still runs `DetectionOnly` (`deploy/waf/modsecurity.conf`).
+OpenStack WAF VM blocks the same way (`SecRuleEngine On` in
+`deploy/waf/modsecurity.conf`, CRS's default threshold 5 and Paranoia Level 1).
 
 ## Where alerts go
 
@@ -440,8 +448,10 @@ Each ingest call:
 
 - first restores rule suppressions that have expired;
 - reads `fsl-logs-<session>-*` on docker (`ELASTIC_SESSION_INDEX`; each
-  session's Filebeat writes its own index) and `ELASTIC_INDEX` on OpenStack,
-  where the shared collector writes `fsl-logs-shared-<day>`;
+  session's Filebeat writes its own index) and `fsl-logs-slot<N>-*` on
+  OpenStack, where the shared collector tags each syslog line with the slot
+  its sender's hostname names (`-N` before the domain, slot 1 otherwise) and
+  writes it to that slot's index;
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
   to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
@@ -887,7 +897,9 @@ first) and created again by `up`, and deleted by `down`.
 `deploy/openstack/platform.yaml` is a Heat template. It creates:
 
 - network and subnet `fsl-platform`;
-- a router to the external network, and a floating IP;
+- a router to the external network, and a floating IP (or, with
+  `network.address` set, an association to one the project already holds,
+  which a stack delete leaves in place);
 - a security group opening tcp/22, tcp/8000 and ICMP to any address;
 - the Nova server `fsl-platform`, with a config drive.
 
@@ -909,7 +921,7 @@ from the checkout, which `bin/platform-rebuild` avoids by checking ghcr.io first
 
 So the compose control plane, and only it, runs inside one Nova VM; on the
 OpenStack substrate no session stack starts there, and the board's ground truth
-is read from the board VM at its management address. cloud-init sets
+is read from the wargame host at its management address. cloud-init sets
 `FSL_PUBLISH` to the VM's fixed address, so 8000 is published there
 and opened in the security group, and a browser reaches the console at the
 floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
@@ -965,21 +977,65 @@ boots it once under QEMU answering its configuration importer so it starts
 from `deploy/opnsense/config.xml`, converts it with `qemu-img` and serves it
 for the platform to upload as `fsl-opnsense-<version>` (`deploy/opnsense/build.sh`, `importer.py`).
 
-The fabric also makes two security groups: `fsl-range`, which every range
-port joins and which lets any IPv4 in (the WAF defends the range, not
-Neutron; anti-spoofing stays on), and `fsl-reach`, which lets nothing in.
-The platform attaches itself to `mgmt` through a port in `fsl-reach`, found
-by its own server id (`FSL_OPENSTACK_PLATFORM`, written at boot), so it can
-ssh to every host while no host can open a connection to it. The runner
-reaches a host at its `mgmt` address unless the caller names a segment.
+The wargames have no image each. One host image, `fsl-wargame-host`
+(`deploy/wargame-host/setup.sh`), is the base image plus `docker.io` and
+`docker-compose-v2`, and runs every wargame its declaration entry lists
+(`wargames: [board, corp]`) as the GHCR containers the docker substrate runs.
+`range/wargame_host.py` renders each `wargames/<id>/compose.yaml` for the host
+into the bundle: `build:` and the session network dropped, each container
+named by its service, the platform's `FSL_IMAGE_TAG` written into the image
+references, and the ports the WAF proxies to (`publish: {board: 8000, corp-wp:
+80}`) published; `daemon.json` gives Docker's bridges the tenant MTU. The
+builder, which has the Internet, pulls the images into the image; the range has
+none. The tag is in the bundle's digest, so a platform on a new tag plans a new
+host image. The image count stays fixed as wargames are added: the base, the
+edge, the WAF, Kali and the wargame host.
+
+The fabric also makes three security groups: `fsl-range`, which every range
+port off `mgmt` joins and which lets any IPv4 in (the WAF defends the range,
+not Neutron; anti-spoofing stays on); `fsl-reach`, which lets nothing in; and
+`fsl-mgmt`, which every range host's `mgmt` port joins and which lets in only
+members of `fsl-reach`. The platform attaches itself to `mgmt` through a port
+in `fsl-reach`, found by its own server id (`FSL_OPENSTACK_PLATFORM`, written
+at boot), so it can ssh to every host while no host can open a connection to
+it, and Kali's `mgmt` port reaches no other host. The runner reaches a host
+at its `mgmt` address unless the caller names a segment.
 
 The slot is the set of range hosts, managed through `/api/range/slot/` and
 planned by `range/slot.py`. Each host has a port per declared segment, named
-`<host>.<segment>`, all in `fsl-range`. The host filling `gateway` holds
+`<host>.<segment>`, in `fsl-range` or, on `mgmt`, `fsl-mgmt` (a standing
+`mgmt` port in another group is moved into it). The host filling `gateway` holds
 every origin's gateway address on one Internet port, and since cloud-init
 configures only the first, its user data adds the rest at every boot.
-Every host's user data appends the `estate` names (`board`, `board-db`) to
-`/etc/hosts`, which is how the WAF finds the board and the board its database.
+Every host's user data appends the `estate` names to `/etc/hosts` (the WAF's
+`board.com` and `corp.com`, the wargame host's `board` and `corp-wp`), which is
+how the WAF finds each wargame's published port; each database answers only
+inside its compose project on the host.
+
+Range slots. `compute.slots` in `cloud.yaml` (default 1, `FSL_OPENSTACK_SLOTS`
+on the platform) sets how many copies of the range stand at once, and
+`max_sessions` is that count. Slot 1 keeps the names above; slot N>1 names
+its servers and ports `<host>-N` (`fsl-edge-2`, `fsl-waf-2.mgmt`) and tags
+its servers `fsl_slot=N` beside `fsl_host`. Each slot beyond the first has
+its own copy of the internet and estate networks (`fsl-internet-N`,
+`fsl-estate-N`, tagged `fsl.slot=N`) with the same subnets, so every edge
+holds the same 30 origin gateways, every Kali the same origin addresses, and
+an alert's source is binned to the same country in every slot; Neutron allows
+the same CIDR on two networks that share no router. `mgmt` is shared: each
+slot's hosts take their own DHCP addresses there and `fsl-mgmt` fences them
+as before. A slot adapter (`OpenStack.in_slot(n)`) reads only its own slot's
+servers, by their declared host name, so roles, runners, topology and the
+edge's rendered settings are the same in every slot; slot N's edge renders
+its hostname as `fsl-edge-N`. Opening the collector for one slot keeps the
+other slots' sender rules. The platform binds a session to a slot at open
+(`Session.slot`, one open session per slot by a unique constraint): the
+first free slot that is READY, chosen under a lock. Every per-session range
+call goes to that slot, the close resets only it and marks only its
+suppressions restored, its reset state is its own (`api/reset.py`), and rule
+changes take that slot's turn, so one slot's reset does not hold the other
+slot's session. `run_on_role` takes `--session` or `--slot` and refuses
+neither when there is more than one slot; the console's VM terminals take the
+session as `?arg=<id>` (ttyd `-a`) and open its slot's host.
 
 The OPNsense edge `fsl-edge` (vtnet0 internet as WAN, vtnet1 estate as LAN,
 vtnet2 mgmt as opt1) boots in the slot. `POST /api/range/configure/` renders
@@ -990,7 +1046,8 @@ it then waits for a new boot time and checks that the edge holds the 30
 origin gateway addresses (one static, the rest as IP aliases), runs Suricata
 on the WAN in IDS mode with the estate and mgmt as `HOME_NET` and EVE alerts
 and HTTP records going to syslog, sends syslog to the collector, and has a WAN
-pass rule in pf. The rules editor writes the file the include names and
+pass rule in pf, which admits tcp 80 to the WAF's estate address and nothing
+else. The rules editor writes the file the include names and
 reloads with `suricatasc` on the socket it opens. The edge's syslog and the
 WAF's ModSecurity audit log reach the platform's Elasticsearch, with GeoIP
 enrichment. One Kali image serves every origin: its
@@ -1001,18 +1058,59 @@ The marker-adding proxy and the ttyd terminal run on the Kali box.
 `GET /api/range/console/<host>/` returns the Nova console URL of the server
 filling that host.
 
-`rebuild_slot()` (`POST /api/range/slot/rebuild/`) resets
-the slot: Nova rebuilds every standing slot VM from its golden image, keeping
-each server's id, flavour, ports and fixed IPs, so a session leaves the next
-one no edited rule or planted data. `POST /api/sessions/<id>/close/` calls
-it. A rebuild wipes the disk, so `POST /api/range/configure/` must follow once
-the VMs are ACTIVE; nothing calls it automatically.
+`rebuild_slot()` (`POST /api/range/slot/rebuild/`) rebuilds
+every standing slot VM from its golden image, keeping each server's id,
+flavour, ports and fixed IPs. `POST /api/sessions/<id>/close/` calls
+`reset_slot()` instead, which rebuilds only the VMs that hand out a shell
+(Kali, the WAF) and leaves the edge and the wargame host to be reset in place
+(`docs/OPENSTACK.md` §6.1), so a session leaves the next one no edited rule
+or planted data. A rebuild wipes the disk, so configure must follow once the
+VMs are ACTIVE. On the wargame host the in-place reset (`clear_wargames()`)
+runs `docker compose down -v` for each wargame and the estate sensor, removes
+the sensor's eve log and rsyslog's imfile state and writes the baseline rules
+back, leaving the images and no container or volume; configure's last step, `start_wargames()`, runs `sudo docker compose
+-p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for each
+wargame through the `wargames` role, so every session starts on freshly
+seeded targets. Then it starts the estate sensor: docker's Suricata image and
+`deploy/suricata/suricata.yaml`, from `deploy/wargame-host/sensor.yaml` with
+host networking, on the interface holding the host's estate address, so it
+sees the WAF-to-target leg docker's one sensor sees from the WAF's namespace.
+Its role, `estate-sensor`, maps to the compose service `suricata`, so the
+runner execs into it; the host entry names its rule file and reload command
+(`settings.FSL_EXTRA_SENSORS`), and every rule seed, validation, change and
+baseline check goes to both sensors. The host's `logs:` entry has rsyslog
+forward `eve.json` to the collector tagged `suricata` (`range/waf.py`'s
+forwarding, by tag), and `fsl-reach` hears the host as it hears the edge and
+the WAF.
+After a close the platform does that itself: `platform/api/reset.py` starts a
+background thread that, under one hold of the rules lock, runs two sides at
+once. One is `reset_in_place()`: the edge's in-place reset (`reset_edge()`:
+baseline `fsl.rules` back, the installed files checked by sha256 against the
+hash the edge recorded after its last install and boot, range pf states
+dropped, filter reloaded, Suricata restarted; on any mismatch it falls back
+to `configure_edge()`'s install and reboot), the collector's security group,
+and the wargame host (cleared, then wargames, sensor and log forwarding, in
+that order). The other polls `plan_slot()` until each rebuilt VM has been seen
+out of ACTIVE and back to ACTIVE, then runs `configure_rebuilt()` (the WAF's
+log forwarding) from a fresh read of the cloud. Both retry while a VM does not
+answer ssh (up to 30 minutes) and the first failure fails the reset.
+`configure_slot()` (the manual configure) runs every host's steps side by
+side, one thread per host: the edge (configure and reboot), the WAF, the
+collector's security group, and the wargame host; it waits for all of them
+and fails with the first failure in that order. The close answers at once; the reset
+state (idle, running, failed and why) is held in the platform process.
+`POST /api/range/configure/` stays the manual retry and clears a failed reset.
 
-On OpenStack, session create answers 409 while another session is open or the
-range is not ready. `GET /api/range/ready/` reports the slot's phase
-(`NOT_STANDING`, `REBUILDING`, `CHECKING`, `READY`) and three checks: every VM
+On OpenStack, session create answers 409 while every slot is held or no free
+slot is ready. `GET /api/range/ready/` reports every slot under `slots` (its
+number, the session holding it, its phase: `IN_USE` while a session holds it,
+`RESETTING` while its reset runs, `RESET_FAILED` with its reason if it
+failed, otherwise `NOT_STANDING`, `REBUILDING`, `CHECKING`, `READY`), its
+reset state, and three checks: every VM
 ACTIVE, the board's ground truth readable, and the sensor rules at baseline
-with no suppression in force. `POST /api/range/canary/` fires a marked case
+with no suppression of that slot in force. The top-level `ready` and `slot`
+are the slot the next open would take. `/api/range/slot/`, `slot/rebuild/`
+and `configure/` take `?slot=N`; without it they act on every slot. `POST /api/range/canary/` fires a marked case
 and reports whether Suricata and ModSecurity both alerted and how far their
 clocks differ; it is not part of the ready check. The landing page calls both.
 
@@ -1034,7 +1132,7 @@ of it is built (see above).
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |
      +--OpenStack API, as member fsl-range--> networks, VMs, consoles
-     +--management network, ssh-------------> Kali VM, target VMs
+     +--management network, ssh-------------> Kali VM, WAF VM, wargame host
 
  Internet network: one subnet per origin country (30), no Neutron router
    Kali VM: one port holds every attack address; the source is rewritten
@@ -1051,11 +1149,14 @@ of it is built (see above).
      |
      v
  estate network
-   board VM (Django on MySQL)
+   wargame host VM (Docker): board + board-db, corp-wp + corp-db,
+                             the GHCR images docker runs (2026-10-11)
+     Suricata on the estate NIC: the WAF-to-target leg (2026-10-12)
 
  Evidence:
    OPNsense: Suricata EVE, syslog-ng, UDP-------> Filebeat --+
    WAF VM: ModSecurity audit log --------------------------------+
+   wargame host: Suricata EVE, rsyslog imfile, UDP --------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
    Elasticsearch ----------------> Kibana --> blue team
@@ -1063,9 +1164,9 @@ of it is built (see above).
 
 Left to build:
 
-- Session lifecycle: after the rebuild, re-run `configure`, check WAF mode and
-  clock skew as part of readiness, and start the next session only on READY
-  without manual steps.
+- Session lifecycle: check WAF mode and clock skew as part of readiness
+  (re-running `configure` after the close-time rebuild is automatic since
+  2026-10-11).
 - Blocking (planned, 2026-10-08 spec): the WAF runs `SecRuleEngine On` and the
   blue team tunes CRS (paranoia level, rule exclusions) so the attack is
   blocked and benign traffic passes; Suricata detects. The starting paranoia level was

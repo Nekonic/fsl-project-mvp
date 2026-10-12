@@ -45,7 +45,7 @@ flowchart TB
 
 ### 스택 내부
 
-레드팀은 블루팀의 WAF와 IDS를 거쳐 워게임을 공격한다. 센서의 경보는 Elasticsearch로 간다. 플랫폼은 그 경보와 대상 시스템 자신의 기록(ground truth)으로 점수를 매긴다. 공격자가 제출한 탈취 데이터는 대상의 데이터와 대조한다. 스택은 compose 파일 둘로 나뉜다. `compose.yaml`은 컨트롤 플레인으로 하나만 오래 떠 있다: 플랫폼, Elasticsearch, Kibana, 그리고 OpenStack 레인지의 syslog만 받는 Filebeat인 `collector`. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata, Filebeat, Kali, 프록시, 그리고 이 파일이 include하는 `wargames/` 아래 워게임 폴더. 세션을 열면(`POST /api/sessions/`) `session.yaml`이 compose 프로젝트 `fsl-<세션 id>`로 뜨고, 모든 서비스가 healthy가 될 때까지 기다린 뒤 플랫폼이 그 세션 자신의 대상에서 baseline을 읽는다. 세션은 동시에 여럿 돈다: 스택마다 자기 `estate` 네트워크와 자기 Elasticsearch 인덱스(`fsl-logs-<세션 id>-*`)를 가지며, 새 세션을 열면 이미 닫힌 세션의 스택만 내린다. 동시에 열 수 있는 세션은 `FSL_MAX_SESSIONS`개(기본 2)까지이고, 그 이상은 409로 답한다. 스택 하나가 약 1.5 GB를 쓰기 때문이다. 세션을 닫아도 그 스택은 다음 세션이 열릴 때까지 남는다. 새 워게임에는 `compose.yaml`, `scenario.yaml`, `objectives.yaml`을 담은 폴더, `redteam/cases/` 아래 케이스 파일, `session.yaml`의 `include:` 한 줄이 필요하다. `platform/wargames.py`가 `scenario.yaml`로 워게임을 찾는다. 워게임은 둘이다: 게시판(`loot_verified`)과 WordPress 사이트 corp(`effect_observed`).
+레드팀은 블루팀의 WAF와 IDS를 거쳐 워게임을 공격한다. 센서의 경보는 Elasticsearch로 간다. 플랫폼은 그 경보와 대상 시스템 자신의 기록(ground truth)으로 점수를 매긴다. 공격자가 제출한 탈취 데이터는 대상의 데이터와 대조한다. 스택은 compose 파일 둘로 나뉜다. `compose.yaml`은 컨트롤 플레인으로 하나만 오래 떠 있다: 플랫폼, Elasticsearch, Kibana, 그리고 OpenStack 레인지의 syslog만 받는 Filebeat인 `collector`. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata, Filebeat, Kali, 프록시, 그리고 이 파일이 include하는 `wargames/` 아래 워게임 폴더. 세션을 열면(`POST /api/sessions/`) `session.yaml`이 compose 프로젝트 `fsl-<세션 id>`로 뜨고, 모든 서비스가 healthy가 될 때까지 기다린 뒤 플랫폼이 그 세션 자신의 대상에서 baseline을 읽는다. 세션은 동시에 여럿 돈다: 스택마다 자기 `estate` 네트워크와 자기 Elasticsearch 인덱스(`fsl-logs-<세션 id>-*`)를 가지며, 새 세션을 열면 닫힌 지 3분이 넘은 세션의 스택만 내린다. 막 닫힌 세션의 Filebeat가 채점에 쓰일 경보를 아직 보내고 있을 수 있기 때문이다. 동시에 열 수 있는 세션은 `FSL_MAX_SESSIONS`개(기본 2)까지이고, 그 이상은 409로 답한다. 스택 하나가 약 1.5 GB를 쓰기 때문이다. 세션을 닫아도 그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남는다. 새 워게임에는 `compose.yaml`, `scenario.yaml`, `objectives.yaml`을 담은 폴더, `redteam/cases/` 아래 케이스 파일, `session.yaml`의 `include:` 한 줄이 필요하다. `platform/wargames.py`가 `scenario.yaml`로 워게임을 찾는다. 워게임은 둘이다: 게시판(`loot_verified`)과 WordPress 사이트 corp(`effect_observed`).
 
 ```mermaid
 flowchart LR
@@ -87,7 +87,7 @@ flowchart LR
   console --> scoring
 ```
 
-그래프에 없는 것: Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 가고, 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 플랫폼은 substrate runner(compose에서는 `docker exec`, OpenStack에서는 ssh)로 센서의 탐지 규칙과 프록시의 시나리오 라벨을 쓰고, 공격자의 명령 로그와 corp-db의 MySQL 바이너리 로그(`mysqlbinlog`)를 읽는다. corp는 제출 데이터가 아니라 관찰된 효과로 채점된다. 게시판의 ground truth(`auth_user` 테이블)는 WAF를 거치지 않고 게시판에서 HTTP로 읽는다(`BOARD_API_URL`). compose에서 레드 터미널은 Kali 자체 ttyd이고, 플랫폼의 nginx가 그 세션의 `fsl-<id>-kali-1`을 `/terminal/<세션 id>/`로 내준다. OpenStack에서는 플랫폼 안의 ttyd가 Kali의 `mgmt` 주소로 ssh한다(`/vm-terminal/fsl-kali/`). 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
+그래프에 없는 것: Kali의 raw TCP는 프록시를 거치지 않고 WAF로 바로 가고, 플랫폼은 스크립트 시나리오를 WAF에 직접 쏜다. 플랫폼은 substrate runner(compose에서는 `docker exec`, OpenStack에서는 ssh)로 센서의 탐지 규칙과 프록시의 시나리오 라벨을 쓰고, 공격자의 명령 로그와 corp-db의 MySQL 바이너리 로그(`mysqlbinlog`)를 읽는다. corp는 제출 데이터가 아니라 관찰된 효과로 채점된다. 게시판의 ground truth(`auth_user` 테이블)는 WAF를 거치지 않고 게시판에서 HTTP로 읽는다(`BOARD_API_URL`). compose에서 레드 터미널은 Kali 자체 ttyd이고, 플랫폼의 nginx가 그 세션의 `fsl-<id>-kali-1`을 `/terminal/<세션 id>/`로 내준다. OpenStack에서는 플랫폼 안의 ttyd가 세션의 slot에 있는 Kali의 `mgmt` 주소로 ssh한다(`/vm-terminal/fsl-kali/?arg=<세션 id>`). 네트워크 구성은 `docs/ARCHITECTURE.md`에 있다.
 
 ## 스택 띄우기
 
@@ -118,10 +118,10 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 터미널 | 사람의 브라우저 |
 | 8002 | 블루 콘솔의 웹사이트 창: `/site/<세션 id>/<호스트>/`, 그 세션의 WAF로 넘김(compose 전용) | 사람의 브라우저 안 iframe |
-| 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 엣지와 WAF |
+| 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 엣지, WAF, wargame 호스트의 estate 센서 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
-플랫폼 이미지 안의 nginx가 8000과 8002를 받는다. 8002는 대상 사이트용 별도 출처라 대상에 심긴 스크립트가 콘솔을 읽거나 조작하지 못한다. 쿠키는 포트가 아니라 호스트 단위라 그런 스크립트도 콘솔이 보낼 쿠키는 심을 수 있지만, 콘솔은 쿠키를 쓰지 않는다. nginx는 8000을 받아 `/terminal/<세션 id>/`를 그 세션의 Kali 컨테이너 `fsl-<id>-kali-1`의 ttyd로(compose), `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다(OpenStack. compose에서는 Kali와 WAF에 `mgmt` 주소가 없어 연결되지 않는다). compose에서 `/waf-terminal/<세션 id>/`는 플랫폼 안의 ttyd로 가고, ttyd가 `fsl-<id>-waf-1`에 `docker exec`한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000과 8002를 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. substrate가 OpenStack이면 `SITE_PORT`가 `None`이라 8002는 쓰이지 않고 보안 그룹 규칙도 필요 없다. 인수 테스트 VM(docker)에서는 보안 그룹이 8002를 연다. 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost). edge 네트워크는 모든 세션이 함께 쓰므로 이 이름은 모든 세션의 WAF로 풀린다. 그래서 플랫폼은 세션마다 프록시를 그 세션의 WAF로 향하게 하고, 실행하는 도구에는 그 WAF를 가리키는 `--add-host`를 준다.
+플랫폼 이미지 안의 nginx가 8000과 8002를 받는다. 8002는 대상 사이트용 별도 출처라 대상에 심긴 스크립트가 콘솔을 읽거나 조작하지 못한다. 쿠키는 포트가 아니라 호스트 단위라 그런 스크립트도 콘솔이 보낼 쿠키는 심을 수 있지만, 콘솔은 쿠키를 쓰지 않는다. nginx는 8000을 받아 `/terminal/<세션 id>/`를 그 세션의 Kali 컨테이너 `fsl-<id>-kali-1`의 ttyd로(compose), `/vm-terminal/`을 플랫폼 안의 ttyd로 넘기고, ttyd는 해당 호스트의 `mgmt` 주소로 ssh한다(OpenStack. compose에서는 Kali와 WAF에 `mgmt` 주소가 없어 연결되지 않는다). compose에서 `/waf-terminal/<세션 id>/`는 플랫폼 안의 ttyd로 가고, ttyd가 `fsl-<id>-waf-1`에 `docker exec`한다. 기본값은 모든 포트를 `127.0.0.1`에 공개하는 것이다. 플랫폼 VM에서는 8000과 8002를 VM 자기 주소에(`FSL_PUBLISH`), 5140/udp를 `0.0.0.0`에(`FSL_SYSLOG_PUBLISH`) 공개한다. substrate가 OpenStack이면 `SITE_PORT`가 `None`이라 8002는 쓰이지 않고 보안 그룹 규칙도 필요 없다. substrate docker로 돌리는 플랫폼 VM에는 8002를 여는 규칙이 필요하다(`docs/OPENSTACK.md` §3.5). 대상 시스템은 공개하지 않는다. 명령줄 시나리오와 인수 테스트는 콘솔과 마찬가지로 레인지 안에서 대상 시스템에 닿는다. 레인지 안에서 대상 시스템은 WAF 뒤 80번 포트에 둘 있다: `http://board.com`(`edge` 네트워크 별칭)과 `http://corp.com`(`Host` 헤더로 닿는 vhost). edge 네트워크는 모든 세션이 함께 쓰므로 이 이름은 모든 세션의 WAF로 풀린다. 그래서 플랫폼은 세션마다 프록시를 그 세션의 WAF로 향하게 하고, 실행하는 도구에는 그 WAF를 가리키는 `--add-host`를 준다.
 
 ### OpenStack에서
 
@@ -168,13 +168,15 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 
 빌드가 실패하면 `detail`에 그 콘솔의 끝부분을 보여 준다. 같은 경로에 `DELETE`를 보내면 실패한 빌더와 오래된 스크립트로 만든 이미지를 지운다.
 
-이미지가 준비되면 POST 하나가 `fsl-edge`, `fsl-kali`, `fsl-waf`, `fsl-wg-board`를 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
+이미지가 준비되면 POST 하나가 `fsl-edge`, `fsl-kali`, `fsl-waf`, `fsl-wargame-host`(모든 wargame을 GHCR 컨테이너로)를 각각 자기 이미지에서 부팅하고, 플랫폼은 `mgmt`에서 ssh로 이들에 닿는다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. OPNsense 엣지의 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅하며, WAF의 ModSecurity 로그 전달을 설정한다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. 세션을 닫으면 이것이 호출된다. rebuild는 넣어 둔 설정을 지우므로 VM이 올라오면 `configure/`를 다시 실행한다(게시판은 이미지에 들어 있어 rebuild만 하면 된다).
+그다음 `POST /api/range/configure/`가 ssh로 설정을 넣는다. OPNsense 엣지의 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅하며, WAF의 ModSecurity 로그 전달을 설정한다. `POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지에서 Nova-rebuild하고(포트와 주소는 유지) 수정된 데이터나 규칙을 남기지 않는다. rebuild는 넣어 둔 설정을 지운다(게시판은 이미지에 들어 있어 rebuild만 하면 된다). 세션을 닫으면 slot을 rebuild하고, VM이 ACTIVE가 되면 플랫폼이 스스로 다시 configure한다. 그동안 `GET /api/range/ready/`는 단계 `RESETTING`을 보이고 세션 열기는 거부된다. 실패하면 이유와 함께 `RESET_FAILED`를 보이고, `POST /api/range/configure/`가 재시도한다. `slot/rebuild/`만 따로 호출했다면 `configure/`를 직접 실행한다.
+
+`cloud.yaml`의 `compute.slots`(기본 1)만큼 레인지 사본을 세운다. 사본마다 자기 엣지, WAF, Kali, wargame 호스트가 internet과 estate 네트워크의 자기 사본 위에 선다(slot N의 호스트는 `<host>-N`). 그만큼 세션이 동시에 돌고, 세션은 slot 하나를 잡으며, 닫으면 그 slot만 초기화한다. `slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받고, 없으면 모든 slot에 적용한다.
 
 레인지는 스택 바깥에 있다. `bin/platform-rebuild`로 교체한 플랫폼은 레인지 키를 유지하므로 slot과 fabric은 교체 중에도 서 있을 수 있다. 새 서버는 다음 `POST /api/range/fabric/`에서 `mgmt`에 다시 붙고, `configure/`가 레인지의 syslog를 새 서버로 돌린다. 키를 보관하지 않고 손으로 스택을 지우면 새 VM은 새 키를 만들고 fabric은 이전 키페어를 drift로 보고한다. 그때는 먼저 `/api/range/slot/`과 `/api/range/fabric/`에 `DELETE`를 보낸다. 이미지는 남는다.
 
@@ -213,7 +215,7 @@ bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
 
-전체 실행은 플랫폼을 재시작하고 대상 시스템, 규칙, 공격자의 출발지를 초기화하므로, 누군가 쓰고 있는 스택에는 돌려서는 안 된다. 세션은 그 실행이 직접 만든 것만 지운다. 플랫폼이 localhost에서 듣지 않는 경우(OpenStack 플랫폼 VM)에는 그 호스트에서 `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하며, 플랫폼이 compose가 아닌 substrate를 보고하면 compose 레인지를 다루는 테스트는 skip된다. `bin/prune`은 세션을 수동으로 지우고, `--apply` 없이 실행하면 dry run이다.
+전체 실행은 플랫폼을 재시작하고 대상 시스템, 규칙, 공격자의 출발지를 초기화하므로, 누군가 쓰고 있는 스택에는 돌려서는 안 된다. 세션은 그 실행이 직접 만든 것만 지운다. acceptance 단계는 `bin/acceptance`다: 레인지가 동시에 열 수 있는 세션 수(`GET /api/range/ready/`의 `max_sessions`)만큼 pytest 프로세스를 띄우고, Elasticsearch만 읽는 검사용 프로세스를 하나 더 띄운다. `bin/acceptance --plan`이 나눈 결과를 출력하고, `test/README.md`가 설명한다. 플랫폼이 localhost에서 듣지 않는 경우(OpenStack 플랫폼 VM)에는 그 호스트에서 `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하며, 플랫폼이 compose가 아닌 substrate를 보고하면 compose 레인지를 다루는 테스트는 skip된다. `bin/prune`은 세션을 수동으로 지우고, `--apply` 없이 실행하면 dry run이다.
 
 ```bash
 bin/prune --keep 20 --apply      # keep the newest 20
@@ -224,7 +226,7 @@ bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 
 ## 백업과 복원
 
-플랫폼의 데이터(세션, 시나리오, 탐지, 목표, 탐지정책, 억제)는 SQLite 파일 하나로, `fsl_platformdata` 볼륨의 `/data/db.sqlite3`다. 그 밖에는 아무것도 백업하지 않는다. Elasticsearch의 `fsl_esdata` 볼륨, `fsl_collectordata`에 있는 collector의 registry, 세션의 볼륨(`fsl-<id>_filebeatdata`, ModSecurity audit log가 있는 `fsl-<id>_waflogs`, Suricata `eve.json`이 있는 `fsl-<id>_suricatalogs`, 프록시의 시나리오 라벨이 있는 `fsl-<id>_label`) 모두 백업 대상이 아니며, 세션 볼륨은 세션이 닫힌 뒤 다음 세션이 열릴 때 지워진다. `docker compose down -v`는 컨트롤 플레인의 볼륨 세 개를 지운다.
+플랫폼의 데이터(세션, 시나리오, 탐지, 목표, 탐지정책, 억제)는 SQLite 파일 하나로, `fsl_platformdata` 볼륨의 `/data/db.sqlite3`다. 그 밖에는 아무것도 백업하지 않는다. Elasticsearch의 `fsl_esdata` 볼륨, `fsl_collectordata`에 있는 collector의 registry, 세션의 볼륨(`fsl-<id>_filebeatdata`, ModSecurity audit log가 있는 `fsl-<id>_waflogs`, Suricata `eve.json`이 있는 `fsl-<id>_suricatalogs`, 프록시의 시나리오 라벨이 있는 `fsl-<id>_label`) 모두 백업 대상이 아니며, 세션 볼륨은 세션이 닫히고 3분이 넘은 뒤 다른 세션이 열릴 때 지워진다. `docker compose down -v`는 컨트롤 플레인의 볼륨 세 개를 지운다.
 
 ```bash
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves

@@ -98,8 +98,10 @@ alert that does not mention the attack's mechanism is reported
   `declaration.yaml` names the rule file and reload command `rules/suricata.py`
   is handed;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF and
-  the lesson step text names the exclusion file path; `api/site.py` and
+  names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF
+  (on OpenStack the WAF pane is `vm-terminal.sh fsl-waf`) and the lesson step
+  text edits the exclusion file and reloads nginx, with the path and reload
+  `wargames.lesson` fills in from the declaration; `api/site.py` and
   `api/views.py` name the WAF container by the compose convention instead of
   the label lookup. `docs/ARCHITECTURE.md` keeps the table.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.

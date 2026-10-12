@@ -68,10 +68,13 @@ Suricata, Filebeat, Kali, the proxy, and one folder per wargame under
 every service is healthy; the platform then reads the target's baseline from
 that session's own target. Sessions run side by side: each stack has its own
 `estate` network and its own Elasticsearch index (`fsl-logs-<session id>-*`),
-and opening a session takes down only the stacks of sessions already closed.
+and opening a session takes down only the stacks of sessions closed more than
+three minutes before, since a just-closed session's Filebeat may still be
+shipping the alerts it is scored on.
 At most `FSL_MAX_SESSIONS` sessions (default 2) are open at once; one more
 answers 409, because each stack holds about 1.5 GB.
-Closing a session leaves its stack standing until the next open. A new wargame needs its folder with its `compose.yaml`,
+Closing a session leaves its stack standing until an open at least three
+minutes later. A new wargame needs its folder with its `compose.yaml`,
 `scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
 one more `include:` line in `session.yaml`; `platform/wargames.py` discovers it
 from `scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
@@ -126,8 +129,8 @@ not by submitted data. The board's ground truth (its `auth_user` table) is read
 over HTTP from the board itself (`BOARD_API_URL`), bypassing the WAF. On
 compose the red terminal is Kali's own ttyd, which the platform's nginx serves
 at `/terminal/<session id>/` from that session's `fsl-<id>-kali-1`; on OpenStack
-it is a ttyd inside the platform that ssh's to Kali's `mgmt` address
-(`/vm-terminal/fsl-kali/`). The networks are in `docs/ARCHITECTURE.md`.
+it is a ttyd inside the platform that ssh's to the `mgmt` address of the Kali
+in the session's slot (`/vm-terminal/fsl-kali/?arg=<session id>`). The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -181,7 +184,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (compose only) | the iframe in a person's browser |
-| 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge and the WAF on OpenStack |
+| 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000 and 8002. 8002 is a separate
@@ -197,8 +200,8 @@ By default every port is published on `127.0.0.1`.
 On the platform VM, 8000 and 8002 are published on the VM's own address
 (`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). On substrate
 OpenStack `SITE_PORT` is `None`, so 8002 is unused there and needs no
-security-group rule; on the acceptance VM (docker) the security group opens
-8002. The target is
+security-group rule; a platform VM run on substrate docker needs a rule
+opening 8002 (`docs/OPENSTACK.md` §3.5). The target is
 not published: the command-line cases and the acceptance tests reach it from
 inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` (aliased on the
@@ -305,8 +308,8 @@ A failed build shows the end of its console under `detail`; `DELETE` on the
 same path removes failed builders and images built from older scripts.
 
 With the images ready, one POST boots `fsl-edge`, `fsl-kali`, `fsl-waf`
-and `fsl-wg-board`, each from its image, and the platform reaches them over ssh
-on `mgmt`:
+and `fsl-wargame-host` (every wargame, as its GHCR containers), each from its
+image, and the platform reaches them over ssh on `mgmt`:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
@@ -316,9 +319,20 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 config.xml (WAN addresses, pass rules, Suricata, syslog) followed by a reboot,
 and the WAF's ModSecurity log forwarding. `POST /api/range/slot/rebuild/`
 Nova-rebuilds every VM from its golden image, keeping its ports and addresses,
-so no edited data or rule carries over; closing a session calls it. The
-rebuild wipes the pushed config, so run `configure/` again once the VMs are up
-(the board is baked into its image and needs only the rebuild).
+so no edited data or rule carries over. The rebuild wipes the pushed config
+(the board is baked into its image and needs only the rebuild). Closing a
+session rebuilds the slot and then configures it again by itself once the VMs
+are ACTIVE: meanwhile `GET /api/range/ready/` reads phase `RESETTING` and a
+session open is refused; on failure it reads `RESET_FAILED` with the reason,
+and `POST /api/range/configure/` retries. After `slot/rebuild/` called alone,
+run `configure/` yourself.
+
+`compute.slots` in `cloud.yaml` (default 1) stands that many copies of the
+range, each its own edge, WAF, Kali and wargame host on its own copy of the
+internet and estate networks (slot N's hosts are `<host>-N`), so that many
+sessions run at once; each session holds one slot, and its close resets only
+that slot. `slot/`, `slot/rebuild/` and `configure/` take `?slot=N`, and
+without it act on every slot.
 
 The range lives outside the stack. A platform replaced with `bin/platform-rebuild`
 keeps the range key, so the slot and the fabric can stand through
@@ -411,7 +425,11 @@ bin/verify            # also the acceptance tests in test/, against the live sta
 
 The full run restarts the platform and resets the target, the rules and the
 attacker's origin, so do not run it against a stack someone is using. It
-deletes only the sessions it created.
+deletes only the sessions it created. The acceptance step is `bin/acceptance`:
+one pytest process per session the range can hold at once (`max_sessions` of
+`GET /api/range/ready/`), plus one for the checks that read only
+Elasticsearch; `bin/acceptance --plan` prints the split, `test/README.md`
+explains it.
 On a platform that does not listen on localhost (the OpenStack platform VM),
 run it on that host with `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`;
 tests that exercise the compose range are skipped when the platform reports
@@ -434,8 +452,8 @@ volume. Nothing else is backed up: not Elasticsearch's `fsl_esdata` volume,
 not the collector's registry in `fsl_collectordata`, and not a session's
 volumes (`fsl-<id>_filebeatdata`, `fsl-<id>_waflogs` with ModSecurity's audit
 log, `fsl-<id>_suricatalogs` with Suricata's `eve.json`, `fsl-<id>_label`
-with the proxy's case label), which are deleted when a later session opens
-after this one closed. `docker compose down -v` deletes
+with the proxy's case label), which are deleted when a session opens more
+than three minutes after this one closed. `docker compose down -v` deletes
 the control plane's three volumes.
 
 ```bash

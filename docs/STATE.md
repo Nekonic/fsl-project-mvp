@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-11
+Updated: 2026-10-12
 
 ## Where things stand
 
@@ -219,10 +219,13 @@ objective model").
 ran 0.8-8.6 s late here), GeoIP in a bind mount, and the session Start/Stop
 lifecycle with the three-check READY gate; detail under backlog 2, step 7.
 
-- **Re-configure must follow a rebuild.** A rebuild wipes pfSense's and the
-  WAF's ssh-pushed config (`configure_slot`); the targets are baked. The console
-  calls `POST /api/range/configure/` once the VMs are ACTIVE; until then the
-  slot reads REBUILDING, then CHECKING, and the edge denies range traffic.
+- **Re-configure must follow a rebuild.** A rebuild wipes the edge's and the
+  WAF's ssh-pushed config (`configure_slot`); the targets are baked. Since
+  2026-10-11 the platform runs it itself after a close-time rebuild, once the
+  VMs are ACTIVE; until it finishes the slot reads RESETTING and the edge
+  denies range traffic. Since 2026-10-12 a close rebuilds only Kali and the
+  WAF; the edge and the wargame host are reset in place (`docs/OPENSTACK.md`
+  §6.1).
 
 **Committed (`4ec543b..`):**
 - **Left 1 - the WAN sticks.** `POST /api/range/configure/`
@@ -710,18 +713,41 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       topology/map/front-door). The invariant tests (isolation, seams, ratchet,
       benign cases, TP/TN) stay. Removing them lowers the tests floor on
       purpose; awaiting the user's ruling.
-- [ ] Push the local commits since 870b15f to `dev` (gate 2), then the
-      `images` workflow and the six GHCR packages made public by the user.
-      Ordered steps with commands and checks: `docs/state/now.md`.
-- [ ] First run on the cloud of everything built 2026-10-11 and never run:
-      `cloud.yaml`, `bin/cloud up|down`, `bin/platform-rebuild`, the OPNsense
-      edge and its image builder (the builder serves its disk; the platform
-      checks the SHA256 and uploads it), Kali on Ubuntu. The claims to check
-      live are listed in `docs/state/now.md` step 7 and in the two last
-      2026-10-11 entries of `docs/DECISIONS.md`. Before it: delete the
-      obsolete VMs `fsl-kiosk`, `fsl-wiki`, `fsl-juice-shop` (the core quota
-      is 20/20), with the user's yes; `fsl-acceptance` (.220) and
-      `m1.platform8` go only after the acceptance passes again.
+- [x] Push to `dev` (e5c92c7), the `images` workflow green, the six GHCR
+      packages public; done 2026-10-11.
+- [x] First run on the cloud of everything built 2026-10-11: base image
+      checked, `cloud.yaml`, `bin/cloud up|down` from a cleaned project, the
+      OPNsense 26.7 image builder, Kali on Ubuntu, the edge's Suricata, the
+      automatic reset after a close; obsolete VMs, images and the
+      `fsl-acceptance` VM deleted with the user's yes. Results and the fixes
+      it forced: `docs/OPENSTACK.md` §3.6, §5.2, §7; done 2026-10-11.
+- [ ] Push this branch (the live-run fixes since e5c92c7) to `dev`; gate 2.
+- [ ] WAF tuning on OpenStack: `PUT /api/sessions/<id>/waf/` has never
+      worked there, because `rules/crs.py` hard-codes the Docker image's CRS
+      path and nginx pid; `test_map`'s 4 errors. Name both per host, as the
+      sensor host names its rule file and reload command.
+- [ ] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
+      the three `test_corp_authz` tests, `test_board_loot` and
+      `test_objectives` reach compose containers (`kali`, `corp-db`) the
+      range lacks; make them reach the range through the API or skip them by
+      substrate. (Since 2026-10-11 `corp-db` is a container on
+      `fsl-wargame-host`, reached through `run_on_role`.)
+- [ ] `bin/cloud up` after `bin/cloud down` starts with an empty store:
+      `down` backs it up and nothing restores it. Restore the newest backup
+      on `up`, or say in `docs/OPENSTACK.md` §5.2 that `down` is not lossless.
+- [ ] `bin/cloud down` leaves the `fsl-build` security group the images
+      step makes; delete it there, or record that it stays as the keypair
+      does.
+- [ ] Unverified: the edge's Suricata include and rules surviving an
+      OPNsense update (`opnsense-update`); the edge has no Internet route and
+      cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
+- [ ] Acceptance run time: 2,900 s on OpenStack (fixture setup 1,689 s,
+      test bodies 1,179 s; `test_suppression` setup alone 578 s). Measure
+      where the setup goes, then: parallel sessions on substrate docker (the
+      platform VM's 8 GB limit under several sessions is unmeasured), polling
+      instead of fixed waits, edge configuration without a reboot.
+- [ ] Floating IP 192.168.0.220 is still allocated to `fsl-range` after
+      `fsl-acceptance` was deleted; release it with the user's yes.
 - [ ] Review of the seven-step lesson text; awaits the user.
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
@@ -777,16 +803,66 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       origin) wear nothing. One proxy round trip, the same call the red console
       makes on pick. Done 2026-10-09 (`platform/api/views.py`,
       `platform/tests/test_origins.py`).
-- [ ] Deferred (OpenStack is out of the MVP per the 2026-10-08 spec).
-      Acceptance on substrate openstack (`FSL_PLATFORM_URL=http://192.168.0.210:8000
-      bin/verify`, 2026-10-09: 23 passed, 78 skipped, 17 failed, 21 errors):
-      session fixtures hold a session open while others POST a new one, and
-      the single-slot range answers 409 (open). The other two causes are
-      fixed (`docs/OPENSTACK.md` §7): the sensor host in `declaration.yaml`
-      names its rule file and reload command, which `settings.py` turns into
-      `FSL_SENSOR_RULES`/`FSL_SENSOR_RELOAD`, and `bin/fetch-geoip` runs at
-      the VM's first boot. The stale `blue.html` comparison test was removed
-      2026-10-09.
+- [x] Acceptance on substrate openstack (first-class since the 2026-10-11
+      ruling: every acceptance test must pass there too, no docker-only marks
+      or skips). 2026-10-09 with pfSense: 23 passed, 17 failed, 21
+      errors; 2026-10-11 first OPNsense run: 24 passed, 14 failed, 22 errors,
+      mostly the 409 after each close (rebuild with no configure). Fixed: the
+      sensor host names its rule file and reload command, `bin/fetch-geoip`
+      runs at first boot, `FSL_TOOL_IMAGE` is written by cloud-init, and the
+      platform resets the range after a close (`platform/api/reset.py`).
+      2026-10-11 on a from-scratch range: 50 passed, 86 skipped, 6 failed, 4
+      errors; the rest is the two open items above (compose-only tests, WAF
+      tuning). Substrate docker on the same VM: 146 passed, 0 failed.
+      `test/range.py` now has its OpenStack side (`ThroughPlatform`, picked
+      from `/api/range/ready/`'s `substrate`): a role's command runs as
+      `manage.py run_on_role` in the platform container, through its own
+      `substrate().runner(role)`, so `target_code`, criterion 1 (Elasticsearch is
+      checked from the `scorer`) and the board ground-truth reads in
+      `test_board_loot`/`test_objectives` run on both substrates; not yet
+      run live.
+- [x] The wargames on the OpenStack range run on one host image,
+      `fsl-wargame-host`, as their GHCR containers (approved 2026-10-11;
+      `docs/DECISIONS.md`). Live 2026-10-12 on `m1.linux` (4 GB; 1.5 GB used
+      under the four containers): the old `fsl-wg-board` server, ports and
+      image deleted by hand; board, board-db, corp-wp and corp-db healthy;
+      `board.com` and `corp.com` answer 200 from Kali through the edge and
+      the WAF; `ready` reports the board's ground truth readable. The WAF
+      and Kali had to be booted again (`/etc/hosts` comes from boot-time user
+      data; `docs/OPENSTACK.md` §8).
+- [x] Management fenced (2026-10-12): from Kali's `mgmt` port nmap found the
+      wargame host's 22/80/8000 (`/internal/auth-users` answered 200), the
+      edge's 22/80/443 and the WAF's 22/80 open, and through the edge Kali
+      reached the wargame host's estate 8000 and 80 past the WAF. `mgmt` ports
+      now sit in `fsl-mgmt` (in only from `fsl-reach`), and the edge's WAN pass
+      rule admits tcp 80 to the WAF's estate address only.
+      `test/test_attacker_reach.py` checks both from Kali on either substrate.
+- [ ] `test/conftest.py`'s `COMPOSE_RANGE_ONLY` skips 15 modules on
+      openstack, which the 2026-10-11 ruling does not allow. The five corp
+      modules left it on 2026-10-12.
+- [x] `test_map.py::test_traffic_inside_the_estate_is_counted_but_not_placed`
+      needed a sensor on the WAF-to-target leg on openstack (the edge's sees
+      only the WAN). Since 2026-10-12 the wargame host runs docker's Suricata
+      image and config on its estate interface (`estate-sensor`); its eve log
+      reaches Elasticsearch decoded as `suricata` with the WAF's estate address
+      as source, and rule changes go to both sensors.
+- [x] Full `bin/verify` on openstack, 2026-10-12 (HEAD c05e912): unit 1695
+      passed; acceptance 72 passed, 0 failed, 0 errors, 76 skipped (the 15
+      `COMPOSE_RANGE_ONLY` modules); the only failure is the `core_loc`
+      ratchet (569 against 560, the +9 in `rules/crs.py` still awaiting the
+      user's acceptance). The range was left READY.
+- [x] Two range slots on openstack, 2026-10-12 (`compute.slots: 2`; slot 2
+      is `<host>-2` on `fsl-internet-2`/`fsl-estate-2`, `mgmt` shared, alerts
+      per slot in `fsl-logs-slotN-*`). Full `bin/verify` with two workers:
+      acceptance 72 passed, 0 failed, 0 errors, 76 skipped in 737 s (was
+      30:44 with one slot). Both slots left READY.
+- [ ] The VM's `/opt/fsl` git index still points at 9367bbf, so the VM's
+      `bin/verify` lists the files added since as untracked; re-point it
+      (fetch a bundle of HEAD and `git reset` the index) at the next deploy.
+- [x] An openstack session now aims the attacker at the declared default
+      origin on open (`_aim_attacker` ran only on docker); before, a rebuilt
+      `fsl-kali` left from its DHCP-primary address (`1.128.0.10`, Australia)
+      and `test_map` placed the default-origin attack there instead of Russia.
 - [ ] `/internal/auth-users` (the board's loot read_path) has no application
       auth; its only external block is nginx `location /internal/ { return 404; }`
       in `deploy/waf/range.conf`, independent of SecRuleEngine. Anything that
@@ -828,12 +904,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       does not render, so the prefetch raises ToolUnavailable rather than
       grabbing a wrong token).
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
-      set on the VM) rather than from the substrate in code; decide which.
+      written by the platform VM's cloud-init since 2026-10-11) rather than
+      from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
       (`register_pipeline.py` for Elasticsearch, `range/opnsense.py` +
-      `deploy/opnsense/` and the sensor host's rule path and reload command in
-      `declaration.yaml` for Suricata, `operator_log.py` + the `fsl-kali`
-      terminal wiring for the attacker box).
+      `deploy/opnsense/` and the sensor hosts' rule paths and reload commands in
+      `declaration.yaml` for Suricata, and since 2026-10-12 the estate sensor:
+      `deploy/wargame-host/sensor.yaml` runs Suricata on the wargame host and
+      `range/openstack.py` (`start_sensor`, `wargame_host.sensor_up`) starts it;
+      `operator_log.py` + the `fsl-kali` terminal wiring for the attacker
+      box). `CLAUDE.md`'s seam list does not name the estate sensor yet.
 - [ ] Site proxy and WAF terminal name the WAF container by convention instead
       of the label lookup (`platform/api/site.py` builds
       `http://fsl-<id>-waf-1`, `platform/api/views.py` builds `fsl-<id>-waf`);
@@ -1125,7 +1205,7 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    command-line cases reach the target from inside the range through
    `test/range.py`'s runner (the attacker box for probes, the `scorer` host
    for `redteam/run.py`), not a host port. The same suite runs unchanged
-   against the OpenStack range once `test/range.py` has its OpenStack adapter.
+   against the OpenStack range through `test/range.py`'s `ThroughPlatform` (2026-10-11).
    **Done (the blue-console UI change, 2026-10-05/06):** the two
    blue-screen panes the earlier backlog held out, Kibana (in compose) and the
    pfSense GUI pane (a reverse-proxy on `:8080`, auto-logged-in), plus removing
@@ -1178,7 +1258,9 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      Start's server-authoritative gate is the three read-only checks plus
      one-open-session. The minutes-long wait-ACTIVE -> `configure_slot` ->
      re-check after a Stop is sequenced by the console poll over the existing
-     `/configure/` and `/slot/` endpoints, not inside `close`.
+     `/configure/` and `/slot/` endpoints, not inside `close`. Superseded
+     2026-10-11: `close` starts a background reset that configures the slot
+     once its VMs are ACTIVE (`docs/DECISIONS.md`).
    - **Live-cloud verification is the user's to run** (the slot `active` check,
      the rebuild, and the canary firing through pfSense are proven against the
      Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
@@ -1209,6 +1291,12 @@ binary log via a substrate runner, proven end to end against the live stack.
 - A slot host booted again on its own (its server deleted, then POST)
   takes a new `estate` address the others' `/etc/hosts` does not have; take
   the whole slot down and up instead.
+- A slot server's `/etc/hosts` comes from the user data it was booted with,
+  and the reset's rebuild sends none, so a change to the declared names or a
+  host's estate address reaches a standing server only when it is booted
+  again.
+- On `mgmt`, the Neutron DHCP port (dnsmasq, tcp/udp 53) has no security
+  group and answers Kali's queries.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
 - The Kali terminal at `/terminal/` (`/terminal/<session id>/` per session), and the ttyd terminals at
