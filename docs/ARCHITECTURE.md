@@ -386,7 +386,7 @@ recorder replaces whatever `X-FSL-Case` the browser sent), and the request
 comes from the platform's `edge` address. Its alerts are ingested and listed
 like any other, so the learner finds them in Kibana and in `/detections/`, but
 `/score/` leaves out detections carrying that session's secret the way it
-leaves out seed and VERIFY replays: browsing is not a case, so it is neither a
+leaves out the lesson's own replays (seed, VERIFY, check, replay): browsing is not a case, so it is neither a
 true or false positive nor an unattributed alert. A literal `X-FSL-Case:
 browse` sent by hand is just an unknown marker and is scored, and `POST
 /api/attacker/label/` refuses labels that start with `browse`. The API never
@@ -492,14 +492,20 @@ guidance, defense}`, stored on the session (migration 0015). `defense` names one
 of the scenario's `defense` entries (default `full`); `guidance` (default off)
 needs the scenario to declare a `lesson`. The board declares `minimal` (CRS
 paranoia level 4, `local.rules`) and `full` (paranoia level 1, the same
-`local.rules`). On docker, after the stack is up, the open path seeds the
-sensor with the defense's rule file, or `local.rules` without a defense
-(`suricata.seed`), and writes the CRS tuning when there is a defense
-(`crs.apply`); a guided session then replays the lesson's cases once
-(`meta.seed`), so its ModSecurity and Suricata records are in Kibana when the
-learner arrives. If a replay at open cannot run, the open answers 503 and the
-session is closed; its stack is left standing and taken down by the next
-open. OpenStack sessions apply neither.
+`local.rules`). The lesson declares the defense it starts from
+(`lesson.defense`, `minimal` for the board, checked against the scenario's
+`defense` at discovery); a guided open that names no defense takes it, and
+`GET /api/wargames/` names it as `lesson_defense` for "Start as lesson". On
+every substrate, after the stack is up, the open path seeds the sensor with the
+defense's rule file, or `local.rules` without a defense (`suricata.seed`), and
+writes the CRS tuning when there is a defense (`crs.apply`); a guided session
+then replays the lesson's cases once (`meta.seed`), so its ModSecurity and
+Suricata records are in Kibana when the learner arrives. On a slotted
+(OpenStack) range the seed is skipped when the rule file is `local.rules`:
+readiness offered the slot only once every sensor held it, and a reseed would
+reload a sensor that may be shared between slots. If a replay at open cannot
+run, the open answers 503 and the session is closed; its stack is left
+standing and taken down by the next open.
 
 `platform/rules/crs.py` renders the tuning into
 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, the CRS hook that loads after
@@ -520,15 +526,21 @@ paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 `PUT /api/sessions/<id>/waf/` changes it (the agent path); `GET` reads the
 file in the session's WAF back through `crs.read`, which parses the paranoia
 level and every `ctl:ruleRemove*` line (commented lines skipped, continued
-lines joined), so it reports an edit made in the WAF terminal. A closed
-session reports what was last recorded, with `file: null`. The learner tunes in
+lines joined), so it reports an edit made in the WAF terminal. Each VERIFY,
+and each close before the slot is rebuilt, snapshots what `crs.read` reads
+(`Session.waf_snapshots`, migration 0021: `{at, run|closed, waf}`); the latest
+is also `Session.waf`, so a closed session reports the learner's last
+configuration, file included (`file: null` when none was ever read). A WAF
+that cannot be read takes no snapshot and stops neither. The learner tunes in
 the WAF terminal, not through the API.
 
 `POST /api/sessions/<id>/verify/` replays the scenario's `lesson.cases` through
 the same path as `/attacks/`, marked `meta.verify=<run>`, and judges only that
 run. An sqlmap case is leaked when the rows sqlmap dumped (`redteam/tools.py`
 `dumped`) match a `(username, hash)` of the session's snapshot
-(`loot.matched`); a leak also credits the objectives it proves. It is held
+(`loot.matched`); a leak is reported in the diagnosis and credits no
+objective (ruling D7, 2026-10-13): the learner's own check is not a lost
+objective. Loot a red player submits through `/loot/` still credits. It is held
 only on positive evidence: no matching row, sqlmap exited 0, printed its
 `[*] ending` line and no crash (traceback, user abort, a host that does not
 exist), no dumped row at all, and sqlmap's own conclusion "all tested
@@ -548,8 +560,13 @@ sqlmap reports is kept as `meta.forbidden` and is not judged. A benign case is
 served when curl reports a 2xx `http_code`. PASS needs every attack held and
 every benign case served (`platform/lesson.py`); the reply carries
 `diagnosis` keys that the console renders from `strings.html`, never TP/FP
-labels. Seed and VERIFY replays are left out of `/score/` (TP/FP/FN/TN, the
-alerts they drew, and the game); objectives a replay's leak credited stay.
+labels; it also carries `waf`, the snapshot taken before the run. A case
+marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check` for a
+step's check, `replay` for the Check tab's Replay) is left out of `/score/`
+(TP/FP/FN/TN, the alerts it drew, and the game) and out of the windows corp's
+effect observation attributes changes to. The Check tab replays through
+`POST /attacks/ {case, lesson: true}`, which takes only the lesson's cases in a
+guided session, judges the case like VERIFY and answers its `diagnosis`.
 The board's lesson replays `board-sqli-orderby-sqlmap`,
 `board-sqli-orderby-sqlmap-tamper` and four benign cases, among them the
 O'Brien search and `board-normal-sort` (`?sort=-created_at`), which fails a
@@ -599,12 +616,20 @@ below the site toolbar or the WAF banner when one is shown (40 px plus 8 px),
 folded by default to a pill ("Lesson note · step n/N"); open, it is 360 px wide
 and holds five tabs: Steps (the current step, Back/Next, every step to jump
 to), Goal (the summary, the done conditions, the four paragraphs), Theory,
-Hints and Check. It opens when the learner opens it or when a step points at
+Hints and Check. The goal line (`<lesson.text>.summary`) is pinned under the
+header, above the tabs. It opens when the learner opens it or when a step points at
 one of its own controls (and folds again when the guide moves off such a step);
 while open, its tab follows the step (Check for Replay and Verify, Steps
 otherwise). Every page load starts folded; only the tab is kept per viewer in
-localStorage (`fsl-lesson-note`), and the step reached in `fsl-lesson-step-<id>`, which the
-main and session pages read for "step n/N".
+localStorage (`fsl-lesson-note`), and the step shown in `fsl-lesson-step-<id>`, which the
+main and session pages read for "step n/N". Progress itself is the
+session's (`Session.lesson_steps`, migration 0020): per step `reached`,
+`passed`, `skipped` (times), `hint` (the level shown, 0-4) and `done_for_me`,
+reported as `progress` in `GET /api/sessions/<id>/`. `POST
+/api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}` records a
+step reached (which also fixes the newest detection id an alert check must
+pass) or left unpassed; the console sends `skipped` on Next or a list jump
+from a step not passed, never on Back or a pass.
 
 Theory holds five folded cards (`lesson.theory` in `scenario.yaml`; text under
 `<lesson.text>.theory.<card>.title|body`): paranoia levels, anomaly scoring
@@ -624,18 +649,28 @@ The steps are declared in the lesson definition (`lesson.steps` in
 `answer`, `choice`, `waf`, `served` or `verify` (`wargames.CHECK_KINDS`,
 validated at discovery), and as the step needs a `site` path, a Kibana `query`
 or the terminal `command`. The session API adds a `discover` link to a step
-with a `query` (`kibana.discover_path(..., narrowed)`). The board has seven
+with a `query` (`kibana.discover_path(..., narrowed)`) and shows a check's
+`kind` only, plus a choice's `options` and the `path` an alert or served
+check listens for: no answer key reaches the browser. The board has seven
 steps, each advanced by its check; Back and Next stay as the way around one:
 
 | Step | Where | Check |
 |---|---|---|
-| search: search O'Brien as a customer | Website pane | `alert`: `POST /ingest/ {within: 600}` then `/detections/?after=`; passes on a ModSecurity record marked `browse` whose path holds `O'Brien`, newer than the first read at the step's start |
+| search: search O'Brien as a customer | Website pane | `alert`: the platform ingests the last 600 s and passes on a record marked with the session's browse secret whose path holds `O'Brien`, newer than the step's `reached` |
 | find: that request in Kibana | Kibana, filter button `url : *Brien* and status : 403` | `click`: the row's expand toggle |
 | rule: which rule | answer box | `answer`: `920273`; `949110` gets "that is the score total rule" |
 | target: what it caught | four choices | `choice`: `ARGS:q` (address, cookie and header are the others) |
-| exclude: add the exception | WAF terminal, "Run in terminal" | `waf`: `GET /waf/` holds 920273 `ARGS:q` `/search/`, then the O'Brien case replayed through `/attacks/` is answered 2xx (the reload took effect) |
-| retry: search O'Brien again | Website pane | `served`: when the pane shows the O'Brien search, the same case is replayed and must be 2xx |
+| exclude: add the exception | WAF terminal, "Run in terminal" | `waf`: the WAF file holds 920273 `ARGS:q` `/search/`, then the O'Brien case, replayed with `meta.check`, is answered 2xx (the reload took effect); a poll replays once per file version |
+| retry: search O'Brien again | Website pane | `served`: when the pane shows the O'Brien search, the same case is replayed with `meta.check` and must be 2xx |
 | verify: are attacks still blocked | the note's Check tab | `verify`: VERIFY passes |
+
+Every check is judged by the platform, `POST
+/api/sessions/<id>/lesson/steps/<step>/check/` (`{answer}` for an answer or a
+choice, `{poll: true}` for a background poll), which records `passed` and
+answers `{passed, reason, hint, hints, progress}`; `reason` is a
+`strings.html` key with its values. `click` is the console's word. A failed
+check that is not a poll counts as wrong; two raise the step's hint level and
+record the hint.
 
 Checks run by themselves; there is no Check button. `alert` and `waf` are
 polled every 5 s while their step is shown, the tab is visible and the session
@@ -663,17 +698,20 @@ waits for ttyd's `term`, calls `term.paste(command + "\n")` and then
 
 Help climbs a ladder per step (`<lesson.text>.nudge|answer.<step>`): a nudge,
 then "look where the red box is", then the answer,
-then "Do it for me". It climbs on the Hint button, after 60 s on the step, or
-after two wrong answers or failed checks. "Do it for me" performs the step:
-opens the site at the step's path, opens the filtered Kibana and clicks the
-first row's toggle, enters the answer, runs the command in the WAF terminal
-(or, when no terminal opens within 10 s, `PUT /waf/` with the current paranoia
-level and the exclusion added), replays the case, or runs VERIFY. The first
-hint shown on a step and each "Do it for me" are recorded on the session,
-`POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"|"do"}`
-(`Session.hints`, migration 0017; 400 for a step or level the lesson does not
-have, 409 when closed). The steps done for the learner are marked in the step
-list from `hints` in `GET /api/sessions/<id>/`, and `result.lesson.helped`
+then "Do it for me". It climbs on the Hint button or after two wrong answers
+or failed checks; each press is `POST /api/sessions/<id>/lesson/hints/ {step,
+level: "hint"}`, which raises the step's `hint` level, and the first is
+recorded in `Session.hints` (migration 0017; 400 for a step or level the
+lesson does not have, 409 when closed). After 60 s on a step the Hint button
+only says "Hint available"; nothing is recorded until the learner presses it.
+"Do it for me" is `POST /api/sessions/<id>/lesson/steps/<step>/do/`, recorded
+as `done_for_me` and `{step, level: "do"}` in `hints`: the platform enters the
+answer, adds the exclusion through `crs.apply` with the current paranoia
+level, replays the case, or marks the click, then judges the step; the
+console still opens the site at the step's path, opens the filtered Kibana
+and clicks the first row's toggle, or runs VERIFY. The steps done for the
+learner are marked in the step
+list from `hints` and `progress` in `GET /api/sessions/<id>/`, and `result.lesson.helped`
 (`["hint", "do"]`, either or neither) puts "hints used" / "Do it for me used"
 beside PASS or FAIL on the main page and the closed session's page.
 
