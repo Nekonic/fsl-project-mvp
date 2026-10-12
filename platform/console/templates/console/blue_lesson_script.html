@@ -72,9 +72,11 @@ async function replay() {
   const name = field("lesson-case").value;
   const status = field("lesson-replay-status");
   status.textContent = t("lesson.replay.running", name);
-  const fired = await post(lessonPath("attacks/"), { case: name }, PATIENCE_FOR_RANGE_WORK);
+  const fired = await post(lessonPath("attacks/"), { case: name, lesson: true }, PATIENCE_FOR_RANGE_WORK);
+  const found = fired.ok && Array.isArray(fired.body.diagnosis) ? fired.body.diagnosis : [];
   status.textContent = fired.ok
-    ? t("lesson.replay.done", name) : t("lesson.replay.failed", detail(fired));
+    ? [t("lesson.replay.done", name), ...found.map(([key, values]) => t(key, ...values))].join(" ")
+    : t("lesson.replay.failed", detail(fired));
 }
 
 const verified = [];

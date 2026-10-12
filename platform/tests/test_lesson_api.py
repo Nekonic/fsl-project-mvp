@@ -260,13 +260,20 @@ def test_blocking_the_o_brien_search_fails_verify_as_a_benign_case_blocked(clien
     assert {"name": "board-normal-search-with-apostrophe", "malicious": False,
             "outcome": "blocked"} in result["cases"]
 
-def test_a_leak_found_by_verify_takes_the_objectives_it_proves(client):
-    session = board()
-    verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+def red_submits_the_dump(client, session):
+    rows = [{"username": name, "hash": digest} for name, digest in TRUTH.items()]
+    answer = client.post_json(f"/api/sessions/{session.pk}/loot/", {"loot": rows})
+    assert answer.status_code == 200, answer.content
+    return answer.json()
 
-    assert set(Objective.objects.values_list("key", flat=True)) == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full",
-    }
+def test_a_leak_found_by_verify_is_diagnosed_and_takes_no_objective(client):
+    session = board()
+    result, _ = verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+
+    assert ["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]] in result["diagnosis"]
+    assert Objective.objects.count() == 0, (
+        "the learner's own check found the leak; it is the lesson's diagnosis, not a lost objective"
+    )
 
 def test_verify_judges_only_its_own_run_not_the_seeded_or_earlier_cases(client):
     session = board()
@@ -365,6 +372,38 @@ def test_a_replayed_request_records_the_status_the_target_answered_with(client):
         "outside the lesson a block is not judged from the target's records, so it is not claimed"
     )
 
+def test_a_lesson_replay_is_marked_kept_out_of_both_scores_and_diagnosed(client):
+    from api.models import Detection
+    from django.utils import timezone
+
+    session = board(guidance=True)
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": DUMPED})
+    with patch("api.views.harness.fire", fire):
+        answer = client.post_json(
+            f"/api/sessions/{session.pk}/attacks/", {"case": "board-sqli-orderby-sqlmap", "lesson": True},
+        )
+    replayed = Case.objects.get()
+    Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
+                             signature="942100", timestamp=timezone.now(), marker=replayed.case_id)
+
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+
+    assert answer.status_code == 201, answer.content
+    assert replayed.meta["replay"] is True and replayed.meta["outcome"] == "leaked"
+    assert answer.json()["diagnosis"] == [["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]]]
+    assert (score["tp"], score["fn"], score["unattributed"]) == (0, 0, 0)
+    assert score["objectives"]["objectives"] == 0
+
+@pytest.mark.parametrize("body", [{"case": "board-sqli-search", "lesson": True}, {"case": "board-normal-search", "lesson": True}])
+def test_a_lesson_replay_is_refused_outside_a_lesson_or_for_a_case_the_lesson_does_not_hold(client, body):
+    session = board(guidance=body["case"] == "board-sqli-search")
+    fire, fired = attacker({})
+    with patch("api.views.harness.fire", fire):
+        answer = client.post_json(f"/api/sessions/{session.pk}/attacks/", body)
+
+    assert answer.status_code == 400, answer.content
+    assert fired == []
+
 @pytest.mark.parametrize("output, exit_code", [
     (LOST, 0),
     (HELD, 1),
@@ -390,7 +429,7 @@ def test_a_variant_that_ran_to_no_conclusion_proves_nothing_and_fails_verify(cli
             "outcome": "inconclusive"} in result["cases"]
     assert result["diagnosis"][0] == ["lesson.diag.blocked_ratio", [1, 2]]
 
-def test_replays_by_the_lesson_are_left_out_of_the_score_but_their_loot_counts(client):
+def test_replays_by_the_lesson_are_left_out_of_both_scores_and_loot_a_red_player_submits_still_counts(client):
     from api.models import Detection
     from django.utils import timezone
 
@@ -400,14 +439,17 @@ def test_replays_by_the_lesson_are_left_out_of_the_score_but_their_loot_counts(c
     marker = Case.objects.get(name="board-normal-search").case_id
     Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
                              signature="920273", timestamp=timezone.now(), marker=marker)
+    before = client.get(f"/api/sessions/{session.pk}/score/").json()
+    red_submits_the_dump(client, session)
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
 
     assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
     assert score["unattributed"] == 0, "an alert drawn by a lesson replay is not an orphan"
+    assert before["objectives"]["objectives"] == 0, "VERIFY's own leak is kept out of the first score"
     assert score["objectives"]["objectives"] == 3, (
-        "a real leak matched against the snapshot is still a lost objective"
+        "loot a red player submits, matched against the snapshot, is still a lost objective"
     )
     assert score["objectives"]["undetected"] == 3
 
@@ -470,6 +512,7 @@ def test_a_finished_lesson_reports_its_last_verdict_and_how_often_it_was_verifie
 def test_a_finished_session_reports_the_objectives_it_lost_and_how_many_went_unseen(client):
     session = board()
     verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+    red_submits_the_dump(client, session)
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     detail = client.get(f"/api/sessions/{session.pk}/").json()

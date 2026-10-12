@@ -69,6 +69,7 @@ SUPPRESSION_FIELDS = (
 SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint", "do")
+REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
 STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
@@ -654,7 +655,7 @@ def _observe_objectives(session) -> dict:
     except (effect.StateUnavailable, RangeUnavailable):
         return {"achieved": 0, "total": total}
 
-    windows = list(session.cases.filter(malicious=True))
+    windows = [case for case in session.cases.filter(malicious=True) if not _replayed(case)]
     rows = []
     for tier, at in effect.credited(spec, session.baseline, changes):
         case = _effect_window(windows, at)
@@ -764,6 +765,11 @@ def fire_attack(request, session_id):
     _refuse_closed(session)
     body = _payload(request)
     try:
+        if body.get("lesson") is True:
+            recorded, _ = _lesson_fire(session, _lesson_case(session, body.get("case")), {"replay": True})
+            return _reply(_shape(recorded, CASE_FIELDS) | {
+                "diagnosis": lesson.verdict([_row(session, recorded)])[1][1:],
+            }, status=201)
         recorded, _ = _fire(session, body.get("case"), body.get("origin"), _answered)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
@@ -808,6 +814,17 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
     _settle_and_observe(session)
     return recorded, ran
 
+def _lesson_case(session, name):
+    taught = wargames.lesson(session.scenario) if session.guidance else None
+    if not taught:
+        raise BadRequest(f"session {session.pk} is not a lesson, so it replays no lesson case")
+    if name not in taught["cases"]:
+        raise BadRequest(f'"case" must be one of the lesson\'s cases {taught["cases"]}, got {name!r}')
+    return name
+
+def _replayed(case):
+    return any(case.meta.get(mark) for mark in REPLAY_MARKS)
+
 def _answered(ran):
     status = tools.status(getattr(ran, "output", ""))
     return {"status": status} if status else {}
@@ -843,22 +860,19 @@ def session_verify(request, session_id):
     run = str(uuid.uuid4())
     try:
         for name in taught["cases"]:
-            recorded, ran = _lesson_fire(session, name, {"verify": run})
-            if recorded.meta.get("leaked"):
-                _credit_loot(session, tools.dumped(ran.output), recorded.case_id)
+            _lesson_fire(session, name, {"verify": run})
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     return _reply(_verified(session, run))
 
+def _row(session, case):
+    return {"name": case.name, "malicious": case.malicious,
+            "accounts": len(session.baseline) if isinstance(session.baseline, dict) else 0,
+            "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0),
+            "outcome": case.meta.get("outcome", "inconclusive")}
+
 def _verified(session, run):
-    accounts = len(session.baseline) if isinstance(session.baseline, dict) else 0
-    fired = list(session.cases.filter(meta__verify=run))
-    rows = [
-        {"name": case.name, "malicious": case.malicious, "accounts": accounts,
-         "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0),
-         "outcome": case.meta.get("outcome", "inconclusive")}
-        for case in fired
-    ]
+    rows = [_row(session, case) for case in session.cases.filter(meta__verify=run)]
     passed, diagnosis = lesson.verdict(rows)
     return {
         "passed": passed,
@@ -1259,10 +1273,7 @@ def session_score(request, session_id):
     )
 
 def _evidence(session, forced=None):
-    replayed = {
-        case.case_id for case in session.cases.all()
-        if case.meta.get("seed") or case.meta.get("verify")
-    }
+    replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
     detections = [
         d for d in session.detections.all() if d.marker not in replayed and d.marker != session.browse_marker
