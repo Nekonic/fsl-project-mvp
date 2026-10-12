@@ -19,7 +19,7 @@ from tests.test_strings import tables
 
 pytestmark = pytest.mark.django_db
 
-KOREAN = "서울 맛집 추천"
+KOREAN = "\uc11c\uc6b8 \ub9db\uc9d1 \ucd94\ucc9c"
 SQLMAP = ("board-sqli-orderby-sqlmap", "board-sqli-orderby-sqlmap-tamper")
 QUICK = override_settings(LESSON_ALERT_WAIT=0, LESSON_ALERT_POLL=0)
 

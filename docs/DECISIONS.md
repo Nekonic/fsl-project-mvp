@@ -1093,10 +1093,11 @@ product terms as CRS and ModSecurity write them instead of translations:
 | CRS 규칙 | CRS 룰 (the console's existing loanword for a rule) | — |
 | 참음성(TN) | TN | the en table already says TN; no translated term |
 
-The scoreboard's 정탐/미탐/오탐 tiles stay: they label the platform's own TP/FN/FP
-counts, not a CRS term. (Superseded by R1 below, 2026-10-11, and by the
-2026-10-13 Korean-terms entry: the tiles are gone and no score label carries
-정탐/미탐/오탐; 오탐 stays only as the CRS term in the lesson's cards.)
+The scoreboard's Korean TP/FN/FP tiles stay: they label the platform's own
+TP/FN/FP counts, not a CRS term. (Superseded by R1 below, 2026-10-11, and by
+the 2026-10-13 Korean-terms entry: the tiles are gone and no score label
+carries the Korean TP/FN/FP words of `docs/vocabulary.md`; the Korean false
+positive stays only as the CRS term in the lesson's cards.)
 
 ## 2026-10-11 — Console redesign: the approved mockup, plain-language results, the guide says what to type
 
@@ -2357,9 +2358,11 @@ only; nothing run live):
   live Kibana.
 - Debrief (SD-A/B/C, KO-K5): `GET /api/sessions/<id>/lesson/debrief/`,
   rendered by one script in the Check tab and on the score page.
-- Korean (KO-K1): R1 is read as covering 정탐/미탐/오탐 as score labels, so
-  `score.caught` is 탐지됨 and the parenthetical 미탐/오탐 left the score
-  labels; 오탐 remains only as the CRS term in the lesson's cards.
+- Korean (KO-K1): R1 is read as covering the Korean TP/FN/FP words
+  (`docs/vocabulary.md`) as score labels, so `score.caught` is the Korean for
+  "detected" and the parenthetical Korean FN/FP words left the score labels;
+  the Korean false positive remains only as the CRS term in the lesson's
+  cards.
 - PG-1: `fsl-opened-sessions` in localStorage and `GET /api/sessions/?ids=`.
 - OP-P3: lesson commands and rendering tested over every lesson and both
   declaration flavors; `settings.waf_layout` derives `FSL_WAF`.

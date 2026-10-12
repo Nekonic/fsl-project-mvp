@@ -169,7 +169,8 @@ def test_the_benign_warning_names_the_red_console_controls_that_run_benign_cases
         "console, and does not name the controls there by the labels they carry"
     )
 
-SCOREBOARD_LABELS = re.compile(r"\b(?:TP|FP|FN|TN)\b|(?i:zero-sum|제로섬)")
+ZERO_SUM_KO = "\uc81c\ub85c\uc12c"
+SCOREBOARD_LABELS = re.compile(rf"\b(?:TP|FP|FN|TN)\b|(?i:zero-sum|{ZERO_SUM_KO})")
 
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_no_text_a_person_reads_names_the_confusion_matrix_or_a_zero_sum_balance(language):
@@ -199,16 +200,24 @@ def test_the_do_it_yourself_waf_text_names_no_reload_that_only_one_substrate_acc
             f"sudo systemctl reload nginx; the text must point at the step's own reload: {text}"
         )
 
+TRUE_POSITIVE_KO = "\uc815\ud0d0"
+FALSE_NEGATIVE_KO = "\ubbf8\ud0d0"
+FALSE_POSITIVE_KO = "\uc624\ud0d0"
+DETECTED_KO = "\ud0d0\uc9c0\ub428"
+
 def test_korean_names_the_confusion_matrix_nowhere_and_says_false_positive_only_as_the_crs_term():
     korean = tables()["ko"]
-    labels = {key: text for key, text in korean.items() if re.search("정탐|미탐", text)}
-    outside_crs = {key: text for key, text in korean.items() if "오탐" in text and not key.startswith("lesson.")}
+    labels = {key: text for key, text in korean.items() if re.search(f"{TRUE_POSITIVE_KO}|{FALSE_NEGATIVE_KO}", text)}
+    outside_crs = {key: text for key, text in korean.items()
+                   if FALSE_POSITIVE_KO in text and not key.startswith("lesson.")}
 
-    assert labels == {}, f"R1: 정탐 and 미탐 are the TP/FN labels in Korean: {labels}"
-    assert outside_crs == {}, f"오탐 is the CRS documentation's false positive, used only in the lesson: {outside_crs}"
+    assert labels == {}, f"R1: the Korean TP and FN labels (docs/vocabulary.md) label no score: {labels}"
+    assert outside_crs == {}, (
+        f"the Korean for false positive is the CRS documentation's term, used only in the lesson: {outside_crs}"
+    )
 
 def test_the_score_labels_are_states_a_korean_reader_cannot_read_as_noise():
     korean = tables()["ko"]
 
-    assert korean["score.caught"] == "탐지됨", "잡음 also reads as 雜音, noise"
+    assert korean["score.caught"] == DETECTED_KO, "the Korean word for caught also reads as noise"
     assert all("(" not in korean[key] for key in ("score.caught", "score.missed", "score.wrongly_blocked", "score.passed"))
