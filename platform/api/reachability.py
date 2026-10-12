@@ -19,10 +19,13 @@ def scored_hosts() -> frozenset[str]:
     if time.monotonic() - age < TTL:
         return known
 
-    try:
-        segments = substrate().segments()
-    except RangeUnavailable:
-        segments = ()
+    adapter = substrate()
+    segments = []
+    for one in adapter.every_slot() if hasattr(adapter, "every_slot") else [adapter]:
+        try:
+            segments += one.segments()
+        except RangeUnavailable:
+            continue
 
     scorer = settings.RANGE.roles.get("scorer") or ""
     known = frozenset(

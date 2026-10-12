@@ -239,10 +239,13 @@ class ThroughPlatform:
     def run(self, role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
         if role == SCORER:
             return self.scorer.run(role, argv, timeout=timeout)
+        if session is None:
+            session = _default_session()
         done = self.scorer._dispatch(
             ["docker", "exec", self.scorer._host(SCORER).node,
              "python", "manage.py", "run_on_role", role,
-             json.dumps(stdout_apart(list(argv))), "--timeout", str(timeout)],
+             json.dumps(stdout_apart(list(argv))), "--timeout", str(timeout),
+             *(["--session", str(session)] if session is not None else [])],
             timeout + 60,
         )
         answer = next((line[len(PLATFORM_ANSWER):] for line in done.stdout.splitlines()

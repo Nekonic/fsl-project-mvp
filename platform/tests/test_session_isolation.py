@@ -377,7 +377,7 @@ def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/fsl-waf/"
 
-    assert "ttyd -W -b /vm-terminal/fsl-waf -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
+    assert "ttyd -W -a -b /vm-terminal/fsl-waf -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
         ROOT / "platform/entrypoint.sh").read_text()
     assert "mgmt" in declared.read(flavor="openstack").hosts["fsl-waf"].segments
     shell = (ROOT / "platform/vm-terminal.sh").read_text()

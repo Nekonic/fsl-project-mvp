@@ -168,7 +168,7 @@ class Standing:
         self.session = None
 
     def id(self) -> int | None:
-        if not BESIDE_ANOTHER_WORKER or substrate() != "compose":
+        if not BESIDE_ANOTHER_WORKER:
             return None
         assert not OPEN_NOW, (
             f"a range call named no session while session {sorted(OPEN_NOW)} is "
@@ -251,7 +251,7 @@ def wait_out_a_running_reset() -> dict | None:
 
 @pytest.fixture(autouse=True)
 def the_range_is_not_resetting(stack_is_up):
-    if substrate() == ThroughPlatform.substrate and not IDLE:
+    if substrate() == ThroughPlatform.substrate and not IDLE and not BESIDE_ANOTHER_WORKER:
         readiness = wait_out_a_running_reset()
         assert not resetting(readiness), (
             f"the range was still resetting after {RESET_WAIT}s: {readiness}. A "

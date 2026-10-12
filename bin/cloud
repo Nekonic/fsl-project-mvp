@@ -109,14 +109,18 @@ def _images(call):
     return None
 
 
+def _slots(ready: dict) -> list[dict]:
+    return ready.get("slots") or [ready.get("slot") or {}]
+
+
 def _standing(call):
-    slot = _done(call, "GET", "/ready/").get("slot") or {}
-    return slot if slot.get("phase") not in BOOTING else None
+    slots = _slots(_done(call, "GET", "/ready/"))
+    return slots if all(slot.get("phase") not in BOOTING for slot in slots) else None
 
 
 def _ready(call):
     ready = _done(call, "GET", "/ready/")
-    return ready if ready["ready"] else None
+    return ready if ready["ready"] and all(slot.get("phase") == "READY" for slot in _slots(ready)) else None
 
 
 def _configured(call, sleep):

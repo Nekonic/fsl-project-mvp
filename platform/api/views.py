@@ -6,6 +6,7 @@ import math
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
@@ -41,7 +42,7 @@ from api.models import (
 from ingest import elastic
 from redteam import harness, tools
 import operator_log
-from range import substrate
+from range import slot, substrate
 from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
@@ -75,13 +76,40 @@ _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
 RULE_CHANGES = threading.RLock()
+SLOT_CHOICE = threading.Lock()
+_TURNS_GUARD = threading.Lock()
+_SLOT_TURNS: dict[int, threading.RLock] = {}
+SETTLING_PHASES = ("RESETTING", "REBUILDING", "CHECKING")
 
-def _in_turn(change):
-    @functools.wraps(change)
-    def one_at_a_time(*args, **kwargs):
-        with RULE_CHANGES:
-            return change(*args, **kwargs)
-    return one_at_a_time
+def _turn(slot):
+    if slot is None:
+        return RULE_CHANGES
+    with _TURNS_GUARD:
+        return _SLOT_TURNS.setdefault(slot, threading.RLock())
+
+def _slotted(adapter) -> bool:
+    return hasattr(adapter, "in_slot")
+
+def _slot_of(session) -> int:
+    return session.slot if session is not None and session.slot else 1
+
+def _in_slot(adapter, number: int):
+    return adapter.in_slot(number) if _slotted(adapter) else adapter
+
+def _turn_of(session, adapter=None):
+    adapter = adapter or substrate()
+    if not _slotted(adapter):
+        return RULE_CHANGES
+    return _turn(_slot_of(_newest(session)) if adapter.slots > 1 else 1)
+
+def _named_in(number: int, host: str) -> str:
+    return slot.named(host, number) if host in settings.RANGE.hosts else host
+
+def _renamed(one, pairs):
+    return [(_named_in(getattr(one, "slot", 1), host), held) for host, held in pairs]
+
+def _of_slot(number: int):
+    return Q(session__slot=number) | (Q(session__slot=None) if number == 1 else Q(pk__in=[]))
 SUPPRESSION_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
@@ -179,21 +207,27 @@ def sessions(request):
         )
     guidance, defense, posture = _settings(scenario, body)
     adapter = substrate()
-    live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
-    if len(live) >= getattr(adapter, "max_sessions", 1):
-        raise Conflict(
-            f"{len(live)} {'session is' if len(live) == 1 else 'sessions are'} "
-            f"already open on the range; close one first"
-        )
-    if hasattr(adapter, "plan_slot"):
-        verdict = _range_ready(adapter)
-        if not verdict["ready"]:
+    with SLOT_CHOICE:
+        live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
+        if len(live) >= getattr(adapter, "max_sessions", 1):
             raise Conflict(
-                "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
+                f"{len(live)} {'session is' if len(live) == 1 else 'sessions are'} "
+                f"already open on the range; close one first"
             )
-    session = Session.objects.create(
-        scenario=scenario, baseline=[], guidance=guidance, defense=defense,
-    )
+        chosen = None
+        if hasattr(adapter, "plan_slot"):
+            verdict = _readiness(adapter, first_ready=True)
+            if not verdict["ready"]:
+                raise Conflict(
+                    "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
+                )
+            chosen = verdict["slot"].get("number") if _slotted(adapter) else None
+        try:
+            session = Session.objects.create(
+                scenario=scenario, baseline=[], guidance=guidance, defense=defense, slot=chosen,
+            )
+        except IntegrityError:
+            raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
     try:
         if hasattr(adapter, "open_session"):
             adapter.open_session(session.pk, live=_stacks_to_keep(session))
@@ -354,6 +388,8 @@ def _newest(session=None):
 
 def _range(session=None, adapter=None):
     adapter = adapter or substrate()
+    if _slotted(adapter):
+        return adapter.in_slot(_slot_of(_newest(session)) if adapter.slots > 1 else 1)
     if not hasattr(adapter, "for_session"):
         return adapter
     session = _newest(session)
@@ -376,7 +412,8 @@ def _written(request):
     if asked:
         _refuse_closed(asked)
         return asked
-    if not hasattr(substrate(), "for_session"):
+    adapter = substrate()
+    if not hasattr(adapter, "for_session") and getattr(adapter, "slots", 1) <= 1:
         return None
     found = Session.objects.filter(ended_at=None).order_by("-id").first()
     if found is None:
@@ -838,7 +875,7 @@ def session_waf(request, session_id):
     if request.method == "PUT":
         _refuse_closed(session)
         tuning = crs.checked(_payload(request))
-        with RULE_CHANGES:
+        with _turn_of(session):
             session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
             session.save(update_fields=["waf"])
     tuning = _waf_in_force(session)
@@ -919,9 +956,12 @@ def _waf_terminal_url(session):
         return settings.WAF_SESSION_TERMINAL_URL.format(session=session.pk)
     return settings.WAF_TERMINAL_URL
 
+def _session_index(session):
+    return settings.ELASTIC_SESSION_INDEX.format(session=session.pk, slot=_slot_of(session))
+
 def _discover(session, narrowed=None):
     return kibana.discover_path(
-        settings.ELASTIC_SESSION_INDEX.format(session=session.pk),
+        _session_index(session),
         session.started_at - timedelta(minutes=1),
         session.ended_at and session.ended_at + timedelta(minutes=1),
         narrowed,
@@ -942,22 +982,25 @@ def close_session(request, session_id):
 
     adapter = substrate()
     if hasattr(adapter, "rebuild_slot"):
+        turn = _turn_of(session, adapter)
         try:
-            with RULE_CHANGES:
+            adapter = _range(session, adapter)
+            with turn:
                 rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
             reply["rebuilding"] = [
-                {"host": host, "server": server} for host, server in rebuilt
+                {"host": _named_in(_slot_of(session), host), "server": server}
+                for host, server in rebuilt
             ]
         except (Drifted, RangeUnavailable) as exc:
             reply["rebuild"] = str(exc)
         else:
             if hasattr(adapter, "configure_slot"):
-                _lifted_by_the_rebuild(closed_at)
-                reset.begin(adapter, RULE_CHANGES, rebuilt)
+                _lifted_by_the_rebuild(closed_at, _slot_of(session))
+                reset.begin(adapter, turn, rebuilt)
     return _reply(reply)
 
-def _lifted_by_the_rebuild(rebuilt_at):
-    Suppression.objects.filter(restored_at__isnull=True).update(restored_at=rebuilt_at)
+def _lifted_by_the_rebuild(rebuilt_at, number=1):
+    Suppression.objects.filter(_of_slot(number), restored_at__isnull=True).update(restored_at=rebuilt_at)
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
@@ -1041,7 +1084,7 @@ def ingest_detections(request, session_id):
 
     documents, truncated = elastic.fetch(
         settings.ELASTIC_URL,
-        settings.ELASTIC_SESSION_INDEX.format(session=session.pk) or settings.ELASTIC_INDEX,
+        _session_index(session) or settings.ELASTIC_INDEX,
         start, end, newest_first=within is not None,
     )
 
@@ -1329,11 +1372,12 @@ def current_rules(request):
     return _reply({"content": content, "version": _version(content)})
 
 @require_http_methods(["POST"])
-@_in_turn
 def validate_rules(request):
     content = _rule_file(request)
-    outcomes = [suricata.validate(content, runner)
-                for runner, _, _ in _sensors(_range(_asked_session(request)))]
+    session = _asked_session(request)
+    with _turn_of(session):
+        outcomes = [suricata.validate(content, runner)
+                    for runner, _, _ in _sensors(_range(session))]
     outcome = next((o for o in outcomes if not o.ok), outcomes[0])
     payload = {"ok": outcome.ok, "output": outcome.output.strip()}
     return _reply(payload, status=200 if outcome.ok else 400)
@@ -1351,7 +1395,6 @@ def _minutes(given) -> float:
     return minutes
 
 @require_http_methods(["GET", "POST"])
-@_in_turn
 def suppressions(request):
     expired = _restore_expired()
 
@@ -1375,29 +1418,34 @@ def suppressions(request):
     minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
     expires_at = timezone.now() + timedelta(minutes=minutes)
     session = _written(request)
-    content = _live_rules(session)
+    with _turn_of(session):
+        content = _live_rules(session)
 
-    try:
-        silenced = suppress.silence(content, sid, expires_at.isoformat())
-    except KeyError:
-        raise Http404(f"no active rule carries sid {sid}")
+        try:
+            silenced = suppress.silence(content, sid, expires_at.isoformat())
+        except KeyError:
+            raise Http404(f"no active rule carries sid {sid}")
 
-    original = suppress.find(content, sid)
-    _apply(silenced, session)
+        original = suppress.find(content, sid)
+        _apply(silenced, session)
 
-    record = Suppression.objects.create(
-        session=session,
-        sid=sid,
-        original=original,
-        reason=body.get("reason") or "",
-        expires_at=expires_at,
-    )
+        record = Suppression.objects.create(
+            session=session,
+            sid=sid,
+            original=original,
+            reason=body.get("reason") or "",
+            expires_at=expires_at,
+        )
     return _reply(_shape(record, SUPPRESSION_FIELDS), status=201)
 
 @require_http_methods(["POST"])
-@_in_turn
 def restore_suppression(request, suppression_id):
     record = get_object_or_404(Suppression, pk=suppression_id)
+    with _turn_of(record.session):
+        record.refresh_from_db()
+        return _restored(record)
+
+def _restored(record):
     if record.restored_at is not None:
         return _reply(_shape(record, SUPPRESSION_FIELDS) | {
             "detail": f"sid {record.sid} was already restored at {record.restored_at.isoformat()}"
@@ -1452,12 +1500,15 @@ def _due():
 def _restore_expired() -> list:
     if not _due().exists():
         return []
-    with RULE_CHANGES:
-        lifted = []
-        for record in list(_due()):
+    lifted = []
+    for record in list(_due()):
+        with _turn_of(record.session):
+            record.refresh_from_db()
+            if record.restored_at is not None:
+                continue
             ok, detail = _restore(record)
-            lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
-        return lifted
+        lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
+    return lifted
 
 def _sensors(adapter):
     return [
@@ -1486,20 +1537,20 @@ def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 @require_http_methods(["POST"])
-@_in_turn
 def apply_rules(request):
     content = _rule_file(request)
     body = _payload(request)
     session = _written(request)
-    if "base" in body:
-        base = body["base"]
-        live = _version(_live_rules(session))
-        if base != live:
-            raise Conflict(
-                "the sensor's rules changed since this copy was loaded "
-                f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
-            )
-    _apply(content, session)
+    with _turn_of(session):
+        if "base" in body:
+            base = body["base"]
+            live = _version(_live_rules(session))
+            if base != live:
+                raise Conflict(
+                    "the sensor's rules changed since this copy was loaded "
+                    f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
+                )
+        _apply(content, session)
     ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))
 
@@ -1553,45 +1604,91 @@ def range_images(request):
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 def _slot_plan(plan):
+    number = getattr(plan, "slot", 1)
+    named = functools.partial(_named_in, number)
     return {
-        "boot": list(plan.boot),
+        "slot": number,
+        "boot": [named(host) for host in plan.boot],
         "ports": [
-            {"host": p.host, "segment": p.segment, "name": p.name,
+            {"host": named(p.host), "segment": p.segment, "name": p.name,
              "addresses": [address for _, address in p.fixed_ips]}
             for p in plan.ports
         ],
         "standing": [
-            {"host": host, "server": server, "status": status}
+            {"host": named(host), "server": server, "status": status}
             for host, server, status in plan.standing
         ],
-        "blocked": list(plan.blocked),
+        "blocked": [reason if number == 1 else f"slot {number}: {reason}" for reason in plan.blocked],
         "clean": plan.clean,
     }
+
+def _slot_plans(plans):
+    each = [_slot_plan(plan) for plan in plans]
+    if len(each) == 1:
+        return each[0]
+    return {
+        **{key: [entry for plan in each for entry in plan[key]]
+           for key in ("boot", "ports", "standing", "blocked")},
+        "clean": all(plan["clean"] for plan in each),
+        "slots": each,
+    }
+
+def _asked_slots(request, adapter) -> list[int]:
+    given = request.GET.get("slot")
+    every = list(range(1, getattr(adapter, "slots", 1) + 1))
+    if given in (None, ""):
+        return every
+    try:
+        wanted = int(given)
+    except ValueError:
+        raise BadRequest(f'"slot" must be a slot number, got {given!r}')
+    if wanted not in every:
+        raise BadRequest(f"slot {wanted} is not one of the slots {every} the cloud settings ask for")
+    return [wanted]
+
+def _each_slot(request, adapter, step):
+    numbers = _asked_slots(request, adapter)
+
+    def in_turn(number):
+        with _turn(number if _slotted(adapter) else None):
+            return step(_in_slot(adapter, number))
+
+    if len(numbers) == 1:
+        return [in_turn(numbers[0])]
+    with ThreadPoolExecutor(max_workers=len(numbers), thread_name_prefix="fsl-slot") as pool:
+        return list(pool.map(in_turn, numbers))
 
 @require_http_methods(["GET", "POST", "DELETE"])
 def range_slot(request):
     adapter = _built_by_the_cloud(substrate(), "plan_slot", "slot is")
     if request.method == "GET":
-        return _reply(_slot_plan(adapter.plan_slot()))
-    with RULE_CHANGES:
-        if request.method == "POST":
-            return _reply(_slot_plan(adapter.ensure_slot()))
-        removed = adapter.teardown_slot()
+        numbers = _asked_slots(request, adapter)
+        if hasattr(adapter, "plan_slots") and len(numbers) > 1:
+            return _reply(_slot_plans(adapter.plan_slots()))
+        return _reply(_slot_plans([_in_slot(adapter, n).plan_slot() for n in numbers]))
+    if request.method == "POST":
+        return _reply(_slot_plans(_each_slot(request, adapter, lambda one: one.ensure_slot())))
+    removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
+               for step in steps]
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 @require_http_methods(["POST"])
 def range_rebuild(request):
     adapter = _built_by_the_cloud(substrate(), "rebuild_slot", "slot is")
-    with RULE_CHANGES:
-        rebuilt = adapter.rebuild_slot()
+    rebuilt = [pair for pairs in _each_slot(request, adapter, lambda one: _renamed(one, one.rebuild_slot()))
+               for pair in pairs]
     return _reply({"rebuilt": [{"host": host, "server": server} for host, server in rebuilt]})
 
 @require_http_methods(["POST"])
 def range_configure(request):
     adapter = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
-    with RULE_CHANGES:
-        done = adapter.configure_slot()
-    reset.configured_by_hand()
+
+    def configured(one):
+        done = one.configure_slot()
+        reset.configured_by_hand(getattr(one, "slot", 1))
+        return _renamed(one, done)
+
+    done = [pair for pairs in _each_slot(request, adapter, configured) for pair in pairs]
     return _reply({"configured": [
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
@@ -1620,20 +1717,43 @@ def _rules_at_baseline(adapter) -> bool:
         return False
     now = timezone.now()
     return not Suppression.objects.filter(
-        restored_at__isnull=True, expires_at__gt=now
+        _of_slot(getattr(adapter, "slot", 1)), restored_at__isnull=True, expires_at__gt=now
     ).exists()
 
-def _range_ready(adapter) -> dict:
-    plan = adapter.plan_slot()
-    resetting = reset.standing()
-    unchecked = resetting["state"] == reset.RUNNING
+def _holders() -> dict[int, int]:
+    return {slot or 1: pk for slot, pk in
+            Session.objects.filter(ended_at=None).order_by("pk").values_list("slot", "pk")}
+
+def _readiness(adapter, first_ready=False) -> dict:
+    held = _holders()
+    numbers = range(1, getattr(adapter, "slots", 1) + 1)
+    plans = adapter.plan_slots() if hasattr(adapter, "plan_slots") else [adapter.plan_slot()]
+    verdicts = []
+    for number, plan in zip(numbers, plans):
+        verdicts.append(_range_ready(_in_slot(adapter, number), plan, held.get(number)))
+        if first_ready and verdicts[-1]["ready"]:
+            return verdicts[-1] | {"slots": [verdict["slot"] for verdict in verdicts]}
+    free = [verdict for verdict in verdicts if verdict["slot"].get("session") is None]
+    chosen = (next((verdict for verdict in free if verdict["ready"]), None)
+              or next((verdict for verdict in free if verdict["slot"].get("phase") in SETTLING_PHASES), None)
+              or (free or verdicts)[0])
+    return chosen | {"slots": [verdict["slot"] for verdict in verdicts]}
+
+def _range_ready(adapter, plan=None, held=None) -> dict:
+    number = getattr(adapter, "slot", 1)
+    plan = plan or adapter.plan_slot()
+    resetting = reset.standing(number)
+    unchecked = resetting["state"] == reset.RUNNING or held is not None
     checks = {
         "active": plan.active,
         "ground_truth": None if unchecked else _ground_truth_readable(adapter),
         "rules_baseline": None if unchecked else _rules_at_baseline(adapter),
     }
     blocked = []
-    if unchecked:
+    if held is not None:
+        phase = "IN_USE"
+        blocked.append(f"session {held} holds this slot")
+    elif unchecked:
         phase = "RESETTING"
         blocked.append(
             "the range is resetting after the last session closed (each VM "
@@ -1660,10 +1780,14 @@ def _range_ready(adapter) -> dict:
         blocked.append("the target's ground truth could not be read")
     if checks["rules_baseline"] is False:
         blocked.append("the sensor rules are off baseline or a suppression is in force")
+    if number != 1:
+        blocked = [f"slot {number}: {reason}" for reason in blocked]
     return {
-        "ready": all(checks.values()) and resetting["state"] == reset.IDLE,
+        "ready": held is None and all(checks.values()) and resetting["state"] == reset.IDLE,
         "substrate": "openstack",
         "slot": {
+            "number": number,
+            "session": held,
             "phase": phase,
             "reset": resetting,
             "standing": [{"host": host, "server": server, "status": status}
@@ -1679,7 +1803,7 @@ def range_ready(request):
     if not hasattr(adapter, "plan_slot"):
         return _reply({"ready": True, "substrate": "compose", "slot": None,
                        "max_sessions": getattr(adapter, "max_sessions", 1)})
-    return _reply(_range_ready(adapter) | {"max_sessions": getattr(adapter, "max_sessions", 1)})
+    return _reply(_readiness(adapter) | {"max_sessions": getattr(adapter, "max_sessions", 1)})
 
 CANARY_CASE = {
     "name": "range-canary",

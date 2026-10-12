@@ -24,6 +24,7 @@ network:
 compute:
   base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is
   availability_zone: ""                 # empty: Nova chooses
+  slots: 1                              # range slots: sessions that run at once, each its own edge, WAF, Kali and wargame host
   flavors:
     platform: m1.large                  # 8 GB or more
     builder: m1.medium                  # image builders; the OPNsense builder boots it under QEMU

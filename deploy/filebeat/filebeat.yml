@@ -40,6 +40,13 @@ filebeat.inputs:
           target: ""
           fields:
             fsl_source: syslog
+      - script:
+          lang: javascript
+          source: >
+            function process(event) {
+              var slot = /^[^.]*-(\d+)(\.|$)/.exec(event.Get("log.syslog.hostname") || "");
+              event.Put("fsl_slot", slot ? slot[1] : "1");
+            }
       - if:
           and:
             - equals:
@@ -84,6 +91,9 @@ setup.ilm.enabled: false
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
   index: "fsl-logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
+  indices:
+    - index: "fsl-logs-slot%{[fsl_slot]}-%{+yyyy.MM.dd}"
+      when.has_fields: ["fsl_slot"]
   pipeline: fsl-geoip
 
 logging.level: warning

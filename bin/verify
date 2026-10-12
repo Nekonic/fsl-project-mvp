@@ -146,10 +146,12 @@ import json, os, pathlib, sys, time, urllib.request
 def resetting():
     try:
         with urllib.request.urlopen(os.environ["FSL_PLATFORM_URL"] + "/api/range/ready/", timeout=30) as answer:
-            slot = json.load(answer).get("slot") or {}
+            readiness = json.load(answer)
     except (OSError, ValueError):
         return False
-    return slot.get("phase") in ("RESETTING", "REBUILDING") or (slot.get("reset") or {}).get("state") == "running"
+    slots = readiness.get("slots") or [readiness.get("slot") or {}]
+    return any(slot.get("phase") in ("RESETTING", "REBUILDING")
+               or (slot.get("reset") or {}).get("state") == "running" for slot in slots)
 
 deadline = time.monotonic() + 1800
 while resetting() and time.monotonic() < deadline:

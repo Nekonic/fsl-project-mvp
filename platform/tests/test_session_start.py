@@ -107,7 +107,7 @@ def test_starting_refuses_a_second_open_session_on_the_cloud(client):
 def test_the_readiness_gate_runs_before_the_row_is_created(client):
     seen = {}
 
-    def ready(adapter):
+    def ready(adapter, *checked):
         seen["rows"] = Session.objects.count()
         return _verdict(False, ["not ready"])
 

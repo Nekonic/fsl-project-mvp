@@ -76,6 +76,7 @@ class Cloud:
     dns: tuple[str, ...] = ()
     inside: dict[str, str] = field(default_factory=dict)
     flavors: dict[str, str] = field(default_factory=dict)
+    slots: int = 1
 
     @property
     def role_flavors(self) -> dict[str, str]:
@@ -105,6 +106,7 @@ class Cloud:
             "range_flavor": self.flavors["range"], "build_flavor": self.flavors["builder"],
             "role_flavors": joined(self.role_flavors), "subnets": joined(self.inside),
             "range_mtu": str(self.mtu), "opnsense": joined(self.opnsense.pairs()),
+            "slots": str(self.slots),
         }
 
     def cli_environment(self, environ=os.environ) -> dict[str, str]:
@@ -224,6 +226,12 @@ def _flavors(value) -> str | None:
     return f"has {', '.join(map(str, wrong))} not naming a flavor" if wrong else None
 
 
+def _slots(value) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return "must be a whole number of range slots, 1 or more"
+    return None
+
+
 def _environment(value) -> str | None:
     return None if isinstance(value, str) and ENVIRONMENT.fullmatch(value) else "must be an environment variable name"
 
@@ -240,7 +248,7 @@ SCHEMA = {
     },
     "compute": {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
-        "flavors": (_flavors, True),
+        "flavors": (_flavors, True), "slots": (_slots, False),
     },
     "keys": {"operator": (_name, True), "operator_file": (_text, True), "range": (_text, True)},
     "opnsense": {
@@ -349,6 +357,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         base_image=compute["base_image"],
         availability_zone=compute.get("availability_zone") or "",
         flavors={str(role): name for role, name in compute["flavors"].items()},
+        slots=compute.get("slots") or 1,
         operator_key=keys["operator"], operator_key_file=keys["operator_file"],
         range_key=keys["range"],
         opnsense=OPNsense(**document["opnsense"]),

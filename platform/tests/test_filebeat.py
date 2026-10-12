@@ -1,5 +1,7 @@
 import pathlib
 
+import pytest
+
 import yaml
 
 from range import fabric
@@ -88,4 +90,33 @@ def test_a_small_batch_of_events_is_published_within_a_second():
     assert config["queue.mem.flush.timeout"] == "1s", (
         "the memory queue holds events until 1600 have gathered or 10s pass, so "
         "the few alerts one attack case draws waited up to 10s to reach the index"
+    )
+
+
+def slot_rule():
+    import re
+    [heard] = syslog_inputs()
+    [script] = [step["script"] for step in heard["processors"] if "script" in step]
+    return re.compile(re.search(r"/(\^.*?)/\.exec", script["source"])[1])
+
+
+@pytest.mark.parametrize("hostname, slot", [
+    ("fsl-edge.range.internal", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
+    ("fsl-edge-2.range.internal", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
+])
+def test_a_range_vm_s_syslog_is_tagged_with_the_slot_its_hostname_names(hostname, slot):
+    found = slot_rule().match(hostname)
+
+    assert (found[1] if found else "1") == slot
+
+
+def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_own():
+    config = yaml.safe_load(FILEBEAT.read_text())
+    output = config["output.elasticsearch"]
+
+    assert output["index"] == "fsl-logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
+    assert output["indices"] == [{"index": "fsl-logs-slot%{[fsl_slot]}-%{+yyyy.MM.dd}",
+                                  "when.has_fields": ["fsl_slot"]}], (
+        "two slots send from the same origin addresses at once; one index for both would "
+        "score each session on the other's alerts"
     )
