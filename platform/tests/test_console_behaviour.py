@@ -144,6 +144,20 @@ def test_a_closed_lesson_shows_its_last_verdict_before_the_score(client):
     assert english("score.lesson.verified", 3) in seen["result"]["text"]
     assert seen["result"]["restart"] == english("session.restart.lesson")
 
+@pytest.mark.parametrize("now, earned, kind", [("guided", "self", "kind.practice"), ("self", "guided", "kind.lesson")])
+def test_a_closed_lesson_s_badge_names_the_mode_its_verdict_was_earned_in(client, now, earned, kind):
+    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
+        "guidance: false, kind: \"wargame\"",
+        f"guidance: true, kind: \"lesson\", mode: \"{now}\", lesson: {{text: \"lesson.board\", steps: []}}"
+    ).replace("lesson: null}", f"lesson: {{passed: true, verified: 1, diagnosis: [], mode: \"{earned}\"}}}}"), scenario="""
+      return browser.text('session-badges');
+    """)
+
+    assert seen["errors"] == []
+    assert english(kind) in seen["result"], (
+        "the badge on a judged lesson names the mode the VERIFY ran in, not the mode the session was switched to after"
+    )
+
 def test_a_closed_lesson_says_beside_its_verdict_which_help_was_used(client):
     seen = open_page(client, "/session/1/", setup=CLOSED.replace(
         "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
