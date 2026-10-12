@@ -972,35 +972,52 @@ def close_session(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
 
+    adapter = substrate()
+    resets = hasattr(adapter, "rebuild_slot") and hasattr(adapter, "configure_slot")
+    number = _slot_of(session) if _slotted(adapter) and adapter.slots > 1 else 1
     closed_at = timezone.now()
-    if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
-        session.refresh_from_db()
-        _refuse_closed(session)
+    with SLOT_CHOICE:
+        claimed = resets and reset.claim(number)
+        if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
+            if claimed:
+                reset.release(number)
+            session.refresh_from_db()
+            _refuse_closed(session)
     session.ended_at = closed_at
     site.forget(session.pk)
     reply = _shape(session, SESSION_FIELDS)
 
-    adapter = substrate()
-    if hasattr(adapter, "rebuild_slot"):
-        turn = _turn_of(session, adapter)
-        try:
-            adapter = _range(session, adapter)
-            with turn:
-                rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
-            reply["rebuilding"] = [
-                {"host": _named_in(_slot_of(session), host), "server": server}
-                for host, server in rebuilt
-            ]
-        except (Drifted, RangeUnavailable) as exc:
-            reply["rebuild"] = str(exc)
-        else:
-            if hasattr(adapter, "configure_slot"):
-                _lifted_by_the_rebuild(closed_at, _slot_of(session))
-                reset.begin(adapter, turn, rebuilt)
+    begun = None
+    try:
+        if hasattr(adapter, "rebuild_slot"):
+            begun = _rebuilt_on_close(session, adapter, closed_at, claimed, reply)
+    finally:
+        if claimed and begun is None:
+            reset.release(number)
     return _reply(reply)
 
+def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
+    turn = _turn_of(session, adapter)
+    try:
+        adapter = _range(session, adapter)
+        with turn:
+            rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
+        reply["rebuilding"] = [
+            {"host": _named_in(_slot_of(session), host), "server": server}
+            for host, server in rebuilt
+        ]
+    except (Drifted, RangeUnavailable) as exc:
+        reply["rebuild"] = str(exc)
+        return None
+    if not hasattr(adapter, "configure_slot"):
+        return None
+    _lifted_by_the_rebuild(closed_at, _slot_of(session))
+    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True)
+
 def _lifted_by_the_rebuild(rebuilt_at, number=1):
-    Suppression.objects.filter(_of_slot(number), restored_at__isnull=True).update(restored_at=rebuilt_at)
+    Suppression.objects.filter(
+        _of_slot(number), restored_at__isnull=True, created_at__lte=rebuilt_at,
+    ).update(restored_at=rebuilt_at)
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):

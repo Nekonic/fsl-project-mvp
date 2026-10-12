@@ -27,12 +27,20 @@ def configured_by_hand(slot: int = 1) -> None:
         if _of(slot)["state"] == FAILED:
             _of(slot).update(state=IDLE, reason="")
 
-def begin(adapter, turn, rebuilt=None):
-    slot = getattr(adapter, "slot", 1)
+def claim(slot: int) -> bool:
     with _guard:
         if _of(slot)["state"] == RUNNING:
-            return None
+            return False
         _of(slot).update(state=RUNNING, reason="")
+        return True
+
+def release(slot: int) -> None:
+    _set(slot, IDLE, "")
+
+def begin(adapter, turn, rebuilt=None, claimed=False):
+    slot = getattr(adapter, "slot", 1)
+    if not claimed and not claim(slot):
+        return None
     worker = threading.Thread(
         target=_reset, args=(adapter, turn, rebuilt), name=f"fsl-range-reset-{slot}", daemon=True
     )
