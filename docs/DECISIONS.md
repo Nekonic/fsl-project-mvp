@@ -2268,3 +2268,31 @@ deployed commit this time.
 
 Metrics: core_loc 569 (unchanged), dependencies 6, services 9, tests 1675 ->
 1731.
+
+## 2026-10-13 — The tutorial becomes a course; the lesson's state moves to the server
+
+The user found the one lesson goal-less, thin and unguided, asked for a survey
+of learning platforms and Korean vendors' writing, and approved the
+recommended design: `docs/superpowers/specs/2026-10-13-blue-team-course-design.md`
+(rulings D1-D11 there). In short:
+
+- Build order: a shared foundation (ungated open path, server-side step
+  progress and checks, check replays out of both scores, WAF snapshot at
+  VERIFY and close, corrected goal), then the existing lesson made honest
+  (Lesson / Practice / Wargame rungs, ticket opening, debrief), then a linear
+  path of lessons 0-7 inside `wargames/board/scenario.yaml` (and corp).
+- Lowering the paranoia level stays a passing fix (2026-10-10 kept); the
+  result names the fix.
+- Suricata lessons complete on detection and report in the second score only;
+  the learner writes the signature in a console text area through
+  `PUT /api/rules/apply/` (reverses "no rule editor", 2026-09-30, for
+  Suricata signatures only).
+- Leaks found by the learner's own VERIFY or a lesson check stay out of the
+  first score.
+- `board-easy`/`board-hard` as directories are retired: several lessons in one
+  scenario descriptor prove "one image, many scenarios".
+- The 60 s help timer no longer records a hint (changes the 2026-10-11
+  approved script).
+
+Not chosen: a triage/report track (one investigation lab only), virtual-patch
+SecRules for corp, learner accounts, locked lesson order, per-lesson `.ko.md`.
