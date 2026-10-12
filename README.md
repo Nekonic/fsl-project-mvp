@@ -386,7 +386,7 @@ Korean.
   requests passed.
 
 A session opened with `{"lesson": "waf-exclusion"}` (or `{"guidance": true}`,
-which takes the scenario's first lesson from its `lessons:` list) is the WAF
+which takes the scenario's `default_lesson`) is the WAF
 lesson, at the defense the lesson declares (`minimal`): the board's WAF starts
 at CRS paranoia level 4, which blocks sqlmap and also the benign O'Brien
 search. The home page offers it three ways: Lesson (guided), Practice
@@ -418,6 +418,24 @@ without judging by it. After a PASS a debrief
 to the WAF file, each case before and after, and the risk that remains. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
 what is in the WAF's file. The default, `{"defense": "full"}`, starts at
 paranoia level 1.
+
+That lesson is one of seven the board's `scenario.yaml` lists as a course, in
+recommended order: `console-tour` (send a request the WAF blocks, find its
+record in Kibana, name the rule), `read-the-block` (name the rule that blocked
+O'Brien and the parameter it fired on), `waf-exclusion`, `choose-the-level`
+(the highest paranoia level that serves every ordinary request, a Korean
+search included, and still holds sqlmap; PL2 as measured), `ids-signature`
+(a Suricata rule that alerts on both sqlmap `?sort=` variants and not on
+`?sort=-created_at`), `ids-body-xss` (alert on the comment XSS in the request
+body, not on an ordinary comment) and `assessment` (no guidance: the O'Brien
+and Korean searches served, sqlmap held). Answers about a block are read
+from the session's own records, not a key. The two IDS lessons complete on
+detection: every attack case draws a Suricata alert whose message names the
+attack and no ordinary case draws one; they report in the detection score
+only and mark no objective. Their note holds a Suricata rule editor over
+`/api/rules/` (validate shows Suricata's own error lines), and
+`choose-the-level` a paranoia level control over `/waf/`. Each lesson can be
+opened by its id: `{"lesson": "ids-signature"}`.
 
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,

@@ -2377,3 +2377,121 @@ debrief's evidence rows after a real ingest.
 
 Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests
 1740 -> 1810 (bin/measure).
+
+### 2026-10-13 — Measured on OpenStack slot 1 before Package 2
+
+Measured live on slot 1 of the test cloud, requests through the session's
+WAF to the board on the wargame host, CRS at each paranoia level:
+
+| Request | PL1 | PL2 | PL3 | PL4 | Rules at the first refusal |
+|---|---|---|---|---|---|
+| A Korean search ("Seoul restaurant recommendations", `board-normal-search-korean`) | 200 | 200 | 403 | 403 | 920272, 942460 |
+| `<b>bold</b> text` | 200 | 403 | 403 | 403 | 941320, 942131 |
+| `https://example.com/docs?page=2&lang=ko` | 200 | 403 | 403 | 403 | 931130 |
+| `C++ & C# tips` | 200 | 403 | 403 | 403 | 942440 |
+| O'Brien | 200 | 200 | 200 | 403 | 920273 |
+
+- PL1 refused none of 26 realistic requests: no false positive at the
+  default level (D1's question), so the PL4 start of `waf-exclusion` stays.
+- From PL2 a board 500 reaches the client as 502.
+- Suricata sid 9000001 at PL1: stock sqlmap at `?sort=` drew 897 alerts, the
+  tamper variant 474, but 18 tamper requests reached the board unmatched,
+  such as ``posts_post.id`=`posts_post.id`/**/ANd/**/8074=7435`` and
+  `posts_post.id"/**/And/**/1602/**/BeTWEEN...`; `?sort=-created_at`
+  matched nothing.
+- Each slot has its own sensor rule files: a probe rule, sid 9099901, applied
+  to slot 1 was absent from slot 2. This was the design's "Suricata rule
+  isolation" check; it unblocks lessons 4 and 5.
+- `POST /api/rules/validate/` with a broken rule answered `ok: false` and an
+  output of Info lines only; Suricata's error was not shown.
+- The exclusion posture `{paranoia 4, exclusions [949110, 959100]}` leaks on
+  the OpenStack wargame host as on docker: sqlmap found boolean and time blind
+  injection and dumped admin, jiwoo and minseo, and `/loot/` coverage was
+  1.0. The board's `?sort=` sink is live there (U2/U11).
+
+### 2026-10-13 — Package 2, built: the course on the board
+
+Package 2 of the course design, as built (unit and console tests only;
+nothing run live). `wargames/board/scenario.yaml` lists seven lessons:
+`console-tour` (0), `read-the-block` (1), `waf-exclusion` (2),
+`choose-the-level` (3), `ids-signature` (4), `ids-body-xss` (5) and
+`assessment` (7). Lesson 6 (corp) is not built; it is open in
+`docs/STATE.md` backlog 0.
+
+- **The default lesson.** `default_lesson: waf-exclusion` keeps
+  `{"guidance": true}` without a lesson, and a session whose `lesson` is
+  empty, on the lesson they always ran, now that `console-tour` comes first
+  by order. Not chosen: renumbering so the exclusion lesson stays first,
+  which would misstate the recommended path.
+- **Answers from the record.** Lessons 0, 1 and the Korean step of 3 accept
+  the rule, or the variable, that the session's own ModSecurity detections of
+  that request name (`of: rule|target`), with the CRS totals (949, 959, 980)
+  left out. The answer is a fact of the session, not a key that could drift
+  from the range; `949110` still gets its own explanation.
+- **Lessons judged by their steps.** A lesson with steps and no `verify` step
+  (0 and 1) refuses VERIFY with 400 and says `verifies: false`; its cases are
+  only replayed at open so there are records to read.
+- **Choose the level.** `solved_at: {paranoia: 2}` (from the measurements
+  above, with `board-normal-search-korean` among the lesson's cases) stays on
+  the server. VERIFY passes when every case passes, no exclusion was added
+  and the level is not below it; a higher level that passes every case also
+  passes, so the range, not the declared number, has the last word. Lowering
+  the level stays a passing fix in `waf-exclusion` (D1); here it is the task.
+  The level control in the note is `PUT /waf/` with the exclusions in force.
+- **Each lesson names the cases its VERIFY judges** (`cases:`, as before), so
+  `waf-exclusion`'s set is unchanged; the Korean case is in lessons 3 and 7.
+  The assessment also judges the other ordinary pages, so blocking
+  everything else cannot pass it.
+- **IDS lessons (D2).** `detected_by: suricata`: only Suricata's alerts
+  count, because ModSecurity's alerts on sqlmap would pass lesson 4 with no
+  rule written. A case is detected when an alert on its marker mentions the
+  case's `expect` (`SQL`, `XSS`), signatures that also fired on a benign case
+  of the run left out, as `/score/` does. VERIFY waits up to
+  `FSL_LESSON_ALERT_WAIT` (30 s) after the last case for every attack case's
+  alert; benign cases are listed before the attacks so their alerts are in by
+  then. The replays stay out of both scores (foundation) and no objective is
+  marked. Each row carries TP/FN/FP/TN for agents; the console says
+  "detected" and "no alert".
+- **Lesson 4's posture** is `ids`: PL1 and `no-uri-sqli.rules`
+  (`local.rules` without sid 9000001). With 9000001 loaded both sqlmap
+  variants already draw SQLi alerts (897 and 474 above), so the lesson would
+  pass before the learner wrote anything; without it nothing alerts on
+  `?sort=` and the learner's rule is the one that must fire. The WAF stays at
+  PL1: the sensor reads the request on its way in, before the WAF answers, so
+  a 403 does not hide it (the 474 tamper alerts were measured at PL1). The
+  answer kept on the server (and shown at the last hint) matches what a sort
+  value is instead of a quote: `pcre:"/[?&]sort=[-\w.]*[^-\w.&]/i"`.
+- **Lesson 5** keeps the `full` posture: sid 9000003 reads `http.uri` only,
+  so the body XSS already passes it unseen. Its first step asks which buffer
+  9000003 reads. `board-normal-comment` is the benign case in the XSS
+  comment's request shape.
+- **The rule editor (D3)** reads `GET /api/rules/`, checks with
+  `POST /api/rules/validate/` and writes with `POST /api/rules/apply/` on the
+  version it loaded. D3 names `PUT`; the existing endpoint is `POST` and is
+  kept. Validate now adds `errors` (the `Error` lines of every sensor that
+  refused) and reports the refusing output with the most of them, in product
+  code (`rules/suricata.py` unchanged, `core_loc` 567). Why the error was
+  missing: OPNsense's `suricata.yaml` template configures one logging output,
+  syslog, so after the config loads nothing more reaches the console of
+  `suricata -T` on the edge; only the Info lines printed before it remain
+  (https://github.com/opnsense/core/blob/master/src/opnsense/service/templates/OPNsense/IDS/suricata.yaml,
+  read 2026-10-13). The estate sensor on the wargame host runs docker's
+  config, which has no `logging` section, so it prints the error. Unverified
+  live: that the estate sensor's error lines now reach the editor.
+- **"Do it for me"** applies the level, or appends the lesson's answer rule
+  (both kept on the server), then judges the step.
+- **Assessment** declares `mode: self` and no steps; the home card offers it
+  as practice and wargame only.
+
+Tests whose assertions changed with these rulings: the catalogue test now
+lists the seven lessons in order and the exclusion lesson's card at order 2,
+with `read-the-block` as its prerequisite and its `mode`.
+
+Not yet proven live: every new lesson on a slot; the Kibana queries of the new
+click steps (`url : *1=1*`, `url : *sort=posts_post.id*`); the Suricata marker
+link (`http.request_headers.value`); the answer rules 9000101 and 9000102
+loaded by both sensors; alerts reaching Elasticsearch within 30 s; the Korean
+search at PL2 through the site browser.
+
+Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests
+1810 -> 1833 (bin/measure).

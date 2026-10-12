@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-12
+Updated: 2026-10-13
 
 ## Where things stand
 
@@ -31,7 +31,8 @@ terminal; an attack typed there between Start and Stop is attributed by time,
 source address and the proxy's marker. The blue console is a sidebar that
 frames the real tools (Kibana, a WAF terminal, and a Website pane: a site
 browser with a Network panel) and calls `/api/` for the session, the site's
-requests, lesson hints, verify, ingest and detections. The UI has no rule editor; the session page's confirm-close calls
+requests, lesson hints, verify, ingest and detections. The only rule editor is the Suricata one the IDS lessons
+show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusion- and level-only. The session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
 calls `/ingest/` too, and `redteam/run.py` prints the curl.
 
@@ -682,15 +683,18 @@ Build order, compose first and OpenStack later: (1) split compose into a shared
 control plane and a per-session data plane (`docker compose -p fsl-<session>`);
 (2) build each target image once, tagged, referenced by `image:`; (3) discover
 scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
-(`board-easy`/`board-hard` still open; the `defense` and `lesson` fields
-exist in `wargames/board/scenario.yaml` since step 7);
+(`board-easy`/`board-hard` are replaced by the lessons list in one
+`wargames/board/scenario.yaml`, D11 of 2026-10-13);
 (4) declaration roles name compose services, resolved per project; (5)
 `loot`/`effect` read the session's own target address; (6) a per-session index
 `fsl-logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
 only its own target and alerts. Status 2026-10-10: steps 1-8 built and
 live-verified (`bin/verify` all green on the acceptance VM 192.168.0.220,
-`docs/DECISIONS.md` 2026-10-10); `board-easy`/`board-hard` still open.
+`docs/DECISIONS.md` 2026-10-10). Since 2026-10-13 the board's
+`scenario.yaml` carries the course (lessons 0-5 and 7, Package 2 of
+`docs/superpowers/specs/2026-10-13-blue-team-course-design.md`), which is
+what `board-easy`/`board-hard` were for (D11).
 
 To do, found by the 2026-10-08 doc review (open until checked off):
 
@@ -721,11 +725,31 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       automatic reset after a close; obsolete VMs, images and the
       `fsl-acceptance` VM deleted with the user's yes. Results and the fixes
       it forced: `docs/OPENSTACK.md` §3.6, §5.2, §7; done 2026-10-11.
-- [ ] Push this branch (the live-run fixes since e5c92c7) to `dev`; gate 2.
-- [ ] WAF tuning on OpenStack: `PUT /api/sessions/<id>/waf/` has never
-      worked there, because `rules/crs.py` hard-codes the Docker image's CRS
-      path and nginx pid; `test_map`'s 4 errors. Name both per host, as the
-      sensor host names its rule file and reload command.
+- [x] Push this branch (the live-run fixes since e5c92c7) to `dev`; on
+      `origin/dev`.
+- [x] WAF tuning on OpenStack: `rules/crs.py` hard-coded the Docker image's
+      CRS path and nginx pid. The WAF layout is named per host since 504ad9b
+      ("WAF tuning and the WAF lesson work on the OpenStack WAF VM"; 72
+      acceptance passed 2026-10-12).
+- [x] Package 2 of the course design built 2026-10-13 (unit and console
+      tests only): lessons `console-tour`, `read-the-block`,
+      `choose-the-level`, `ids-signature`, `ids-body-xss` and `assessment`
+      beside `waf-exclusion` in `wargames/board/scenario.yaml`; benign cases
+      `board-normal-search-korean` and `board-normal-comment`; the Suricata
+      rule editor and the paranoia level control in the lesson note;
+      `docs/DECISIONS.md` 2026-10-13 "Package 2, built".
+- [ ] Package 2 live run: every new lesson on an OpenStack slot and on
+      docker. Unmeasured: the Kibana queries of the new click steps
+      (`url : *1=1*`, `url : *sort=posts_post.id*`), the Suricata marker
+      link (`http.request_headers.value`), the answer rules 9000101 and
+      9000102 against the sensors' Suricata (pcre and buffers as written,
+      never loaded), sqlmap's alerts reaching Elasticsearch within
+      `FSL_LESSON_ALERT_WAIT` (30 s), the Korean search at PL2 through the
+      site browser, and whether the edge's `suricata -T` now shows an error
+      line (its OPNsense template logs to syslog only).
+- [ ] Lesson 6 (corp: what a WAF cannot see) is not built: it needs a red
+      actor outside the lesson to make the option flip, and the corp replay
+      fixes (repeatable logins, reset before VERIFY).
 - [ ] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
       the three `test_corp_authz` tests, `test_board_loot` and
       `test_objectives` reach compose containers (`kali`, `corp-db`) the
@@ -875,7 +899,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `http.uri` only (SQLi has both a URI rule 9000001 and a body rule
       9000002; XSS has no body rule). That case is ModSecurity-only. Decide
       whether to add a `http.request_body` XSS rule for symmetry (changes the
-      detection score) or leave it WAF-only by design (step 7).
+      detection score) or leave it WAF-only by design (step 7). Since
+      2026-10-13 the `ids-body-xss` lesson has the learner write that rule;
+      the shipped baseline is unchanged.
 - [ ] `board-sqli-orderby-sqlmap` evades both engines on a clean exploit:
       boolean/time ORDER BY payloads carry no `--`/`union`/quote grammar, so
       Suricata sid 9000001 is fragile, and the dotted-column CVE payload has no

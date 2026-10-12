@@ -495,12 +495,15 @@ declare `lessons`. A scenario declares a `lessons:` list in `scenario.yaml`,
 each lesson with an `id`, an `order` and optionally `level` (easy, medium,
 hard), `minutes` and `prerequisites` (ids of the scenario's other lessons),
 checked at discovery; a descriptor still carrying a single `lesson:` is
-refused. The board has one, `waf-exclusion`. `lesson` (default the first by
-`order`) is kept as `Session.lesson` and reported as `lesson_id`; `mode` is
-`guided` (default) or `self` (`Session.mode`), refused on a wargame, and
-switched on an open lesson by `PATCH /api/sessions/<id>/ {mode}`. The board
-declares `minimal` (CRS paranoia level 4, `local.rules`) and `full`
-(paranoia level 1, the same `local.rules`). A lesson declares the defense it
+refused. The board has seven, listed under "The course on the board" below.
+`lesson` (default the scenario's `default_lesson`, else the first by `order`;
+the board's default is `waf-exclusion`) is kept as `Session.lesson` and
+reported as `lesson_id`; `mode` is `guided` (default, or the lesson's own
+`mode`) or `self` (`Session.mode`), refused on a wargame, and switched on an
+open lesson by `PATCH /api/sessions/<id>/ {mode}`. The board declares
+`minimal` (CRS paranoia level 4, `local.rules`), `full` (paranoia level 1,
+the same `local.rules`) and `ids` (paranoia level 1, `no-uri-sqli.rules`:
+`local.rules` without sid 9000001). A lesson declares the defense it
 starts from (`defense`, `minimal` for the board's lesson, checked against the
 scenario's `defense` at discovery); a guided open that names no defense takes
 it. `GET /api/wargames/` lists each scenario's `lessons` with `id`, `order`,
@@ -514,8 +517,10 @@ writes the CRS tuning when there is a defense (`crs.apply`); a guided session
 then replays the lesson's cases once (`meta.seed`), so its ModSecurity and
 Suricata records are in Kibana when the learner arrives. On a slotted
 (OpenStack) range the seed is skipped when the rule file is `local.rules`:
-readiness offered the slot only once every sensor held it, and a reseed would
-reload a sensor that may be shared between slots. If a replay at open cannot
+readiness offered the slot only once every sensor held it. Each slot's sensors
+hold their own rule files (measured 2026-10-13: a sid applied to slot 1 was
+absent from slot 2), so another rule file is seeded into the slot's sensors
+only. If a replay at open cannot
 run, the open answers 503 and the session is closed; its stack is left
 standing and taken down by the next open.
 
@@ -544,7 +549,8 @@ and each close before the slot is rebuilt, snapshots what `crs.read` reads
 is also `Session.waf`, so a closed session reports the learner's last
 configuration, file included (`file: null` when none was ever read). A WAF
 that cannot be read takes no snapshot and stops neither. The learner tunes in
-the WAF terminal, not through the API.
+the WAF terminal; a lesson that declares `controls: [paranoia]` also shows a
+level control in the note, which calls the same `PUT`.
 
 `POST /api/sessions/<id>/verify/` replays the session's lesson's `cases`
 through the same path as `/attacks/`, marked `meta.verify=<run>` and
@@ -693,7 +699,8 @@ replays one case, listing each run's `replay` row (newest five) with its
 Kibana link, and runs VERIFY; the verdict is PASS or FAIL, the cases that
 held or passed are listed in green with a tick, each failing diagnosis in red
 with a cross, and the fix class in grey beneath. After a PASS the Check tab
-shows the debrief. The note holds no tuning form.
+shows the debrief. The note holds no exclusion form; the level control and
+the Suricata rule editor appear only for a lesson that declares them.
 
 The debrief is `GET /api/sessions/<id>/lesson/debrief/` (a lesson session,
 open or closed), in the Igloo/ASEC report order: `overview` (the last
@@ -712,10 +719,11 @@ the Check tab and on the closed session's page.
 
 The steps are declared in the lesson definition (`lesson.steps` in
 `scenario.yaml`): an `id`, a `check` whose `kind` is one of `alert`, `click`,
-`answer`, `choice`, `waf`, `served`, `replay` or `verify`
-(`wargames.CHECK_KINDS`, validated at discovery; a `replay` names a case of
-its lesson and an `expect` of `held` or `served`), and as the step needs a `site` path, a Kibana `query`
-or the terminal `command`. The session API adds a `discover` link to a step
+`answer`, `choice`, `waf`, `served`, `replay`, `verify`, `level`, `rules` or
+`detect` (`wargames.CHECK_KINDS`, validated at discovery; a `replay` names a
+case of its lesson and an `expect` of `held` or `served`; the last three are
+described under "The course on the board"), and as the step needs a `site`
+path, a Kibana `query` or the terminal `command`. The session API adds a `discover` link to a step
 with a `query` (`kibana.discover_path(..., narrowed)`) and shows a check's
 `kind` only, plus a choice's `options` and the `path` an alert or served
 check listens for, and a replay's `case`: no answer key reaches the browser.
@@ -810,6 +818,79 @@ in the pane's bottom right. The box has `pointer-events: none` and is placed
 every animation frame; with no target for about 2 s the popover says where to
 look. Theory (five cards) and Hints (reasoning, then the folded solution) stay
 in the note, out of the path.
+
+### The course on the board
+
+`wargames/board/scenario.yaml` declares Package 2 of
+`docs/superpowers/specs/2026-10-13-blue-team-course-design.md` (rulings D1-D11)
+as one recommended path, open order, skipping allowed:
+
+| order | lesson | defense | judged by | to solve |
+|---|---|---|---|---|
+| 0 | `console-tour` | `full` | its steps | send a request the WAF blocks, find its record, name the rule |
+| 1 | `read-the-block` | `minimal` | its steps | name the rule that blocked O'Brien and the parameter it fired on |
+| 2 | `waf-exclusion` | `minimal` | VERIFY | the narrow exclusion (above) |
+| 3 | `choose-the-level` | `minimal` | VERIFY and the level | the highest paranoia level that serves every ordinary request and holds both sqlmap variants, no exclusions |
+| 4 | `ids-signature` | `ids` | detection (D2) | a Suricata rule that alerts on both sqlmap `?sort=` variants and not on `?sort=-created_at` |
+| 5 | `ids-body-xss` | `full` | detection (D2) | alert on the comment XSS in the body, not on an ordinary comment |
+| 7 | `assessment` | `minimal` | VERIFY | O'Brien and the Korean search served, both sqlmap variants held, no guidance (`mode: self`, no steps) |
+
+Lesson 6 (corp) is not built (`docs/STATE.md` backlog 0).
+
+A lesson whose steps include no `verify` is judged by its steps alone:
+`POST /verify/` answers 400 for it and the session payload says
+`verifies: false`, so the console hides VERIFY and its Goal says "answered
+from this session's own records". A lesson with no steps (the assessment)
+is judged by VERIFY.
+
+An `answer` check may read its accepted answers from the record instead of an
+`accept` list: `of: rule` or `of: target` with the `path` of the request (and
+`marker: browse` for the learner's own request). The platform ingests the last
+600 s, takes the session's ModSecurity detections of that request, drops the
+CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining
+`ruleId`, or the variable each names (after "against variable" in
+`details.match`, or "found within X:" or "X=" in `details.data`;
+`lesson.read_from`). Answers compare without case. With nothing recorded the
+reason is `lesson.check.unrecorded`, and "Do it for me" answers the first
+accepted value.
+
+`choose-the-level` declares `solved_at: {paranoia: 2}` (kept on the server)
+and `controls: [paranoia]`. Its `level` step passes when the WAF in force
+runs below the posture's level with no exclusion the posture lacks
+(`lesson.level_refused`; reasons `.unchanged` and `.excluded`); done for the
+learner it applies `solved_at`. Its VERIFY passes when every case passes, the
+snapshot holds no added exclusion and its level is not below `solved_at`
+(`lesson.unsolved`: `lesson.diag.level_low`, `lesson.diag.excluded`); a higher
+level that passes every case also passes. PL2 is the measured answer with
+`board-normal-search-korean` in the lesson (`docs/DECISIONS.md` 2026-10-13).
+
+`ids-signature` and `ids-body-xss` declare `detected_by: suricata` and
+`controls: [rules]`. Their completion is detection (ruling D2): VERIFY fires
+every case, then reads the session's detections from that source until every
+attack case has one or `FSL_LESSON_ALERT_WAIT` (30 s, polled every
+`FSL_LESSON_ALERT_POLL`) runs out. An attack case is `detected` when one of
+its alerts mentions the case's `expect` (`scoreboard.corroborated`, signatures
+that also fired on a benign case of the run left out), `uncorroborated` when
+it alerted without it, `missed` without an alert; a benign case is `quiet` or
+`alerted`. Each case row also carries `verdict` TP, FN, FP or TN. PASS needs
+every attack detected and every benign case quiet. The replays stay out of
+`/score/` and no objective is marked; ModSecurity's detections do not count.
+A `rules` step passes once the sensor's file (`GET /api/rules/`) holds a sid
+the posture's rule file does not (`suppress.sids`); done for the learner it
+appends the step's `rule` (kept on the server) and applies it. A `detect` step
+`{case, expect: alert|quiet}` fires the case marked `meta.check`, waits as
+VERIFY does (a `quiet` waits the whole time) and answers a `detected` row:
+outcome, verdict, the alert signatures and a Kibana link narrowed to the
+alerts carrying the marker (`kibana.sensed`). The step's reason on a fail is
+`lesson.check.missed|uncorroborated|alerted`.
+
+The rule editor (D3) reads `GET /api/rules/?session=<id>`, checks with
+`POST /api/rules/validate/` and writes with `POST /api/rules/apply/` on the
+version it loaded. Validate answers `errors`: the lines carrying Suricata's
+`Error` from every sensor that refused, and `output` is the refusing sensor's
+output with the most of them. The OPNsense edge's Suricata logs to syslog only
+(its template has no console output), so its `-T` output carries no error
+line; the wargame host's estate sensor prints them.
 
 ## How the scores are computed
 
