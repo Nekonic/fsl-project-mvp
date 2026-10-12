@@ -2,11 +2,23 @@ from __future__ import annotations
 
 import re
 import time
+from typing import NamedTuple
 
 EXCLUSIONS = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
-RELOAD = ["sh", "-c", "nginx -t 2>&1 && nginx -s reload 2>&1"]
-WORKERS = ('m=$(cat /tmp/nginx.pid); for d in /proc/[0-9]*; do '
-           '[ "$(cut -d" " -f4 $d/stat 2>/dev/null)" = "$m" ] && echo ${d#/proc/}; done; true')
+NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
+NGINX_PID = "/tmp/nginx.pid"
+
+class Layout(NamedTuple):
+    rules: str = EXCLUSIONS
+    reload: str = NGINX_RELOAD
+    pid: str = NGINX_PID
+
+def workers_of(pid: str) -> str:
+    return ('m=$(cat ' + pid + '); for d in /proc/[0-9]*; do '
+            '[ "$(cut -d" " -f4 $d/stat 2>/dev/null)" = "$m" ] && echo ${d#/proc/}; done; true')
+
+RELOAD = ["sh", "-c", NGINX_RELOAD]
+WORKERS = workers_of(NGINX_PID)
 SETTLE_POLLS = 50
 FIRST_ID = 10000
 MOST_EXCLUSIONS = 20
@@ -56,8 +68,8 @@ def rendered(tuning: dict) -> str:
                      if entry["path"] else f'SecAction "{actions}"')
     return "\n".join(lines) + "\n"
 
-def read(gateway) -> dict:
-    text = gateway(["sh", "-c", f"cat {EXCLUSIONS} 2>/dev/null || true"]).output
+def read(gateway, layout: Layout = Layout()) -> dict:
+    text = gateway(["sh", "-c", f"cat {layout.rules} 2>/dev/null || true"]).output
     return parsed(text) | {"file": text}
 
 def parsed(text: str) -> dict:
@@ -71,27 +83,27 @@ def parsed(text: str) -> dict:
                                "path": path.group(1) if path else ""})
     return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions}
 
-def apply(tuning, gateway) -> dict:
+def apply(tuning, gateway, layout: Layout = Layout()) -> dict:
     tuning = checked(tuning)
-    previous = read(gateway)["file"]
-    old = _workers(gateway)
-    _write(gateway, rendered(tuning))
-    ran = gateway(RELOAD)
+    previous = read(gateway, layout)["file"]
+    old = _workers(gateway, layout)
+    _write(gateway, rendered(tuning), layout)
+    ran = gateway(["sh", "-c", layout.reload])
     if not ran.ok:
-        _write(gateway, previous)
+        _write(gateway, previous, layout)
         raise TuningRefused("nginx refused the tuning, rolled back: " + ran.output.strip())
     for _ in range(SETTLE_POLLS):
-        if _workers(gateway) - old:
+        if _workers(gateway, layout) - old:
             return tuning
         time.sleep(0.1)
-    _write(gateway, previous)
-    gateway(RELOAD)
+    _write(gateway, previous, layout)
+    gateway(["sh", "-c", layout.reload])
     raise TuningRefused("nginx started no worker on the new tuning, rolled back")
 
-def _workers(gateway) -> set[str]:
-    return set(gateway(["sh", "-c", WORKERS]).output.split())
+def _workers(gateway, layout: Layout) -> set[str]:
+    return set(gateway(["sh", "-c", workers_of(layout.pid)]).output.split())
 
-def _write(gateway, content: str) -> None:
-    ran = gateway(["sh", "-c", "cat > " + EXCLUSIONS], stdin=content)
+def _write(gateway, content: str, layout: Layout) -> None:
+    ran = gateway(["sh", "-c", "cat > " + layout.rules], stdin=content)
     if not ran.ok:
-        raise TuningRefused(f"could not write {EXCLUSIONS}: {ran.output.strip()}")
+        raise TuningRefused(f"could not write {layout.rules}: {ran.output.strip()}")

@@ -309,7 +309,7 @@ def _take_defense(session, adapter, posture):
     suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD,
                   settings.FSL_SENSOR_RULES)
     if posture is not None:
-        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"))
+        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.FSL_WAF)
 
 def _seed_logs(session):
     for name in wargames.lesson(session.scenario)["cases"]:
@@ -832,7 +832,7 @@ def session_waf(request, session_id):
         _refuse_closed(session)
         tuning = crs.checked(_payload(request))
         with RULE_CHANGES:
-            session.waf = crs.apply(tuning, _range(session).runner("gateway"))
+            session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
             session.save(update_fields=["waf"])
     tuning = _waf_in_force(session)
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
@@ -842,7 +842,8 @@ def _waf_in_force(session):
     if session.ended_at is not None:
         return recorded | {"file": None}
     try:
-        return crs.read(functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT))
+        gateway = functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT)
+        return crs.read(gateway, settings.FSL_WAF)
     except RangeUnavailable:
         return recorded | {"file": None}
 
@@ -897,7 +898,7 @@ def session_detail(request, session_id):
         ])
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
-        "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(crs.EXCLUSIONS).parent),
+        "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints,
     })
 

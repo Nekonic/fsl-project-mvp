@@ -74,3 +74,13 @@ def test_an_older_hand_written_rule_with_the_same_id_is_replaced(tmp_path, befor
     after, _ = run(tmp_path, before)
 
     assert ids(after) == [10100] and "ruleRemoveTargetById=920273;ARGS:q" in after
+
+
+def test_on_openstack_the_command_edits_the_vm_s_file_and_reloads_its_nginx_with_sudo():
+    vm = crs.Layout("/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf",
+                    "sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1", "/run/nginx.pid")
+    command = next(step["command"] for step in wargames.lesson("board", vm)["steps"] if step["id"] == "exclude")
+
+    assert command.splitlines()[0] == f"F={vm.rules}"
+    assert crs.EXCLUSIONS not in command, "the container's path does not exist on the VM"
+    assert command.splitlines()[-1].startswith(f"if {vm.reload}; then echo reloaded; else cp ")

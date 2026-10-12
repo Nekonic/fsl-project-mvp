@@ -30,6 +30,7 @@ class Host:
     ssh_user: str = ""
     rules: str = ""
     reload: str = ""
+    pid: str = ""
     uploads: str = ""
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
@@ -145,6 +146,7 @@ def _hosts(entries) -> dict[str, Host]:
             ssh_user=entry.get("ssh_user") or "",
             rules=entry.get("rules") or "",
             reload=entry.get("reload") or "",
+            pid=entry.get("pid") or "",
             uploads=entry.get("uploads") or "",
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),

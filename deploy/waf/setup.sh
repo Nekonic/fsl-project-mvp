@@ -54,6 +54,7 @@ echo "load_module /usr/lib/nginx/modules/ngx_http_modsecurity_module.so;" \
 install -d /etc/nginx/modsecurity
 mv "$BUILD/coreruleset-$CRS" /etc/nginx/modsecurity/crs
 cp /etc/nginx/modsecurity/crs/crs-setup.conf.example /etc/nginx/modsecurity/crs/crs-setup.conf
+install -m 664 -g adm /dev/null /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
 install -m 644 "$BUILD/modsecurity-v$MODSECURITY/unicode.mapping" /etc/nginx/modsecurity/unicode.mapping
 install -m 644 "$HERE/modsecurity.conf" /etc/nginx/modsecurity/modsecurity.conf
 install -m 644 "$HERE/range.conf" /etc/nginx/conf.d/range.conf

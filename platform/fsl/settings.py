@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from range import declared
+from rules import crs
 from rules.suricata import RULE_PATH
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -104,6 +105,9 @@ FSL_SENSOR_RELOAD = tuple((
     or (SENSOR_HOST and SENSOR_HOST.reload)
     or "suricatasc -c reload-rules"
 ).split())
+WAF_HOST = RANGE.hosts.get(RANGE.roles.get("gateway", "")) or declared.Host()
+FSL_WAF = crs.Layout(WAF_HOST.rules or crs.EXCLUSIONS, WAF_HOST.reload or crs.NGINX_RELOAD,
+                     WAF_HOST.pid or crs.NGINX_PID)
 FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
 
 FSL_SUBSTRATE_OPTIONS = dict(

@@ -57,14 +57,14 @@ lesson:
     - id: exclude
       point: {pane: true, opens: waf}
       command: |-
-        F=/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+        F={waf_rules}
         cp "$F" "$F.bak"
         grep -v '"id:10100,' "$F.bak" > "$F"
         cat >> "$F" <<'EOF'
         SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10100,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"
         EOF
         tail -n 1 "$F"
-        if nginx -t; then nginx -s reload; else cp "$F.bak" "$F"; echo "nginx refused the rule; the previous file is back"; fi
+        if {waf_reload}; then echo reloaded; else cp "$F.bak" "$F"; echo "nginx refused the rule; the previous file is back"; fi
       check:
         kind: waf
         rule_id: 920273

@@ -154,7 +154,7 @@ def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(c
     assert "nginx" not in seen["result"]["hints"], "a hint says why, the steps say what to type"
     assert seen["result"]["folded"] is True and seen["result"]["opened"] is True
     assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in seen["result"]["answer"]
-    assert "if nginx -t; then nginx -s reload;" in seen["result"]["answer"]
+    assert "if nginx -t 2>&1 && nginx -s reload 2>&1; then echo reloaded;" in seen["result"]["answer"]
     assert seen["result"]["form"] == [None, None, None], "the tuning is done in the WAF terminal"
     assert seen["result"]["writes"] == []
 

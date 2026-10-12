@@ -114,3 +114,44 @@ def test_a_reload_that_starts_no_new_worker_is_rolled_back_and_refused(monkeypat
 
     assert stuck.file == "the previous file\n"
     assert stuck.calls[-1] == crs.RELOAD, "the previous file is reloaded"
+
+def test_on_openstack_tuning_writes_where_the_waf_vm_reads_and_reloads_it_with_systemd():
+    import os
+    import pathlib
+    import subprocess
+    import sys
+
+    read = subprocess.run(
+        [sys.executable, "-c", "import fsl.settings as s; print('\\n'.join(s.FSL_WAF))"],
+        cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("FSL_")},
+             "DJANGO_SETTINGS_MODULE": "fsl.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
+    )
+    assert read.returncode == 0, read.stderr[-300:]
+    layout = crs.Layout(*read.stdout.strip().splitlines())
+    setup = (pathlib.Path(__file__).resolve().parents[2] / "deploy/waf/setup.sh").read_text()
+    assert layout.rules.startswith("/etc/nginx/modsecurity/crs/rules/"), (
+        "the VM's modsecurity.conf includes /etc/nginx/modsecurity/crs/rules/*.conf, "
+        "not the container's /etc/modsecurity.d"
+    )
+    assert f"-g adm /dev/null {layout.rules}" in setup, "the ssh user writes the file without root"
+
+    calls = []
+
+    def vm(argv, stdin=None, timeout=60.0):
+        calls.append(argv[-1])
+        if "/proc/" in argv[-1]:
+            return Ran(0, "11" if len(calls) < 3 else "21")
+        return Ran(0, "")
+
+    crs.apply({"paranoia": 2}, vm, layout)
+
+    assert f"cat > {layout.rules}" in calls
+    assert calls[-1].startswith("m=$(cat /run/nginx.pid)"), "the VM's nginx keeps its pid in /run"
+    assert "sudo systemctl reload nginx" in calls[-2]
+
+def test_on_docker_tuning_keeps_the_container_paths_and_reload():
+    from django.conf import settings
+
+    assert settings.FSL_WAF == crs.Layout()
+    assert crs.Layout() == (crs.EXCLUSIONS, "nginx -t 2>&1 && nginx -s reload 2>&1", "/tmp/nginx.pid")

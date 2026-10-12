@@ -133,8 +133,16 @@ def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
         raise UnknownWargame(name)
     return declared[name]
 
-def lesson(wargame_id: str) -> dict[str, Any] | None:
-    return WARGAMES[wargame_id].get("lesson")
+def lesson(wargame_id: str, waf: crs.Layout | None = None) -> dict[str, Any] | None:
+    taught = WARGAMES[wargame_id].get("lesson")
+    if not taught:
+        return taught
+    waf = waf or settings.FSL_WAF
+    return taught | {"steps": [
+        step | {"command": step["command"].replace("{waf_rules}", waf.rules).replace("{waf_reload}", waf.reload)}
+        if step.get("command") else step
+        for step in taught.get("steps", [])
+    ]}
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"

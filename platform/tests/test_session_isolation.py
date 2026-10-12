@@ -372,6 +372,20 @@ def test_the_waf_terminal_is_a_shell_in_the_session_s_own_waf(client):
     assert 'docker exec -it "fsl-${session}-waf-1"' in shell
 
 @pytest.mark.django_db
+def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
+    with override_settings(WAF_SESSION_TERMINAL_URL=""):
+        session, = opened_sessions(1)
+        assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/fsl-waf/"
+
+    assert "ttyd -W -b /vm-terminal/fsl-waf -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
+        ROOT / "platform/entrypoint.sh").read_text()
+    assert "mgmt" in declared.read(flavor="openstack").hosts["fsl-waf"].segments
+    shell = (ROOT / "platform/vm-terminal.sh").read_text()
+    assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell, (
+        "the shell is the ssh user the platform tunes the WAF as, on the VM's management address"
+    )
+
+@pytest.mark.django_db
 def test_the_attacker_box_asked_for_no_session_is_the_newest_one(client):
     Session.objects.create(scenario="board", baseline=[])
     newest = Session.objects.create(scenario="board", baseline=[], ended_at="2026-10-10T00:00:00Z")
