@@ -86,8 +86,12 @@ openstack:
     board-db: fsl-wargame-host
     corp: fsl-wargame-host
     corp-db: fsl-wargame-host
+    estate-sensor: fsl-wargame-host
+  compose:
+    estate-sensor: suricata
   watches:
     sensor: edge
+    estate-sensor: wargames
   hosts:
     fsl-edge:
       segments: [internet, estate, mgmt]
@@ -110,6 +114,9 @@ openstack:
       segments: [estate, mgmt]
       names: [board, corp-wp]
       setup: deploy/wargame-host/setup.sh
-      files: [deploy/wargame-host]
+      files: [deploy/wargame-host, deploy/suricata/suricata.yaml, deploy/suricata/rules/local.rules]
       wargames: [board, corp]
       publish: {board: 8000, corp-wp: 80}
+      logs: {suricata: /var/log/suricata/eve.json}
+      rules: /var/lib/suricata/rules/local.rules
+      reload: suricatasc -c reload-rules

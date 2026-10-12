@@ -28,6 +28,7 @@ REBOOTING = "fsl-edge rebooting"
 INTERFACES = ("wan", "lan", "opt1")
 NAMESPACE = uuid.UUID("6f1c7e3a-5d0b-4c8e-9a51-2b7d4e0f9c11")
 LEVELS = "info,notice,warn,err,crit,alert,emerg"
+FRONT_PORT = "80"
 
 
 def home(inside: dict[str, str]) -> list[str]:
@@ -39,7 +40,8 @@ def _gateway(segment: Segment) -> dict:
 
 
 def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
-             inside: dict[str, str], mtu: int, public_key: str, management: str = "") -> dict:
+             inside: dict[str, str], mtu: int, public_key: str, management: str = "",
+             front: str = "") -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -62,6 +64,8 @@ def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
     mgmt = next((s for s in segments if s.id == fabric.MANAGEMENT and s.subnet), None)
     if management and mgmt is not None:
         wanted["mgmt"] = {"id": mgmt.id, "address": management, "bits": mgmt.subnet.split("/")[1]}
+    if front:
+        wanted["front"] = front
     return wanted
 
 
@@ -93,6 +97,17 @@ def _destination(parent, collector: dict):
         _set(destination, name, text)
 
 
+def _front_only(root, front: str):
+    crossing = next(rule for rule in root.findall("filter/rule")
+                    if rule.findtext("interface") == "wan" and rule.findtext("type") == "pass")
+    _set(crossing, "protocol", "tcp")
+    destination = crossing.find("destination")
+    for held in list(destination):
+        destination.remove(held)
+    _set(destination, "address", front)
+    _set(destination, "port", FRONT_PORT)
+
+
 def render(template: str, wanted: dict) -> str:
     root = ElementTree.fromstring(template)
     root_user = next(user for user in root.findall("system/user")
@@ -111,6 +126,8 @@ def render(template: str, wanted: dict) -> str:
     _set(root, "OPNsense/IDS/general/homenet", ",".join(wanted.get("home") or []))
     if wanted.get("collector"):
         _destination(root.find("OPNsense/Syslog/destinations"), wanted["collector"])
+    if wanted.get("front"):
+        _front_only(root, wanted["front"])
     ElementTree.indent(root)
     return '<?xml version="1.0"?>\n' + ElementTree.tostring(root, encoding="unicode") + "\n"
 

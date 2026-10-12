@@ -25,7 +25,8 @@ def built():
     return networks, subnets, keypairs
 
 GROUPS = [{"id": "sg-range", "name": fabric.RANGE_GROUP},
-          {"id": "sg-reach", "name": fabric.REACH_GROUP}]
+          {"id": "sg-reach", "name": fabric.REACH_GROUP},
+          {"id": "sg-mgmt", "name": fabric.MANAGEMENT_GROUP}]
 
 def planned(networks=(), subnets=(), keypairs=(), groups=GROUPS, reached=True):
     return fabric.plan(DECLARED, list(networks), list(subnets), list(keypairs),
@@ -145,10 +146,11 @@ def test_teardown_removes_subnets_before_networks_and_only_what_it_owns():
     assert kinds == ["subnet"] * 32 + ["network"] * 3 + ["keypair"]
     assert ("network", "net-other") not in steps
 
-def test_a_project_without_the_range_groups_gets_both():
+def test_a_project_without_the_range_groups_gets_all_of_them():
     plan = planned(*built(), groups=())
 
-    assert plan.groups == (fabric.RANGE_GROUP, fabric.REACH_GROUP) and not plan.clean
+    assert plan.groups == (fabric.RANGE_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP)
+    assert not plan.clean
 
 def test_a_platform_not_yet_on_management_is_attached():
     plan = planned(*built(), reached=False)
@@ -166,7 +168,7 @@ def test_teardown_removes_the_range_groups_last():
     steps = fabric.teardown(DECLARED, networks, subnets, keypairs,
                             GROUPS + [{"id": "sg-default", "name": "default"}])
 
-    assert steps[-2:] == [("group", "sg-range"), ("group", "sg-reach")]
+    assert steps[-3:] == [("group", "sg-mgmt"), ("group", "sg-reach"), ("group", "sg-range")]
 
 def test_the_planner_touches_no_cloud_and_no_disk():
     source = pathlib.Path(fabric.__file__).read_text()

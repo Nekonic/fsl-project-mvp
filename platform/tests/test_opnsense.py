@@ -147,6 +147,20 @@ def test_the_edge_routes_without_nat_and_never_answers_the_range_itself():
     assert ("opt1", "pass", None) in rules
 
 
+def test_from_the_internet_the_edge_passes_only_http_to_the_waf():
+    root = _rendered(front="10.30.0.198")
+
+    [crossing] = [r for r in root.findall("filter/rule")
+                  if r.findtext("interface") == "wan" and r.findtext("type") == "pass"]
+    assert crossing.findtext("protocol") == "tcp"
+    assert crossing.findtext("destination/address") == "10.30.0.198"
+    assert crossing.findtext("destination/port") == "80"
+    assert crossing.find("destination/any") is None, (
+        "a wan pass rule to any let Kali reach the wargame host's estate "
+        "address on 8000 and 80 through the edge, past the WAF"
+    )
+
+
 def test_hardware_offloading_is_off():
     system = _rendered().find("system")
 

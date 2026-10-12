@@ -16,6 +16,9 @@ INSTALLED = "/opt/fsl/wargames/{wargame}.yaml"
 TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks")
 UP_TIMEOUT = 900.0
+SENSOR = "/opt/fsl/sensor.yaml"
+SENSOR_PROJECT = "sensor"
+SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
 
 def render(document: dict, tag: str, publish: dict[str, int]) -> str:
     services = {}
@@ -62,3 +65,8 @@ def up(wargame: str) -> list[str]:
 
 def inside(container: str, argv: list[str], reads_input: bool) -> list[str]:
     return ["sudo", "docker", "exec", *(["-i"] if reads_input else []), container, *argv]
+
+def sensor_up(address: str) -> list[str]:
+    interface = f"$(ip -o -4 addr show to {address} | awk '{{print $2}}')"
+    return ["sh", "-c", f'sudo env {SENSOR_INTERFACE}="{interface}" docker compose '
+                        f"-p {SENSOR_PROJECT} -f {SENSOR} up -d --wait --pull never"]
