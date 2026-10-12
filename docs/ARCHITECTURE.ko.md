@@ -25,15 +25,17 @@ Filebeat, Kali, 프록시, wargame. 이 파일은 edge 네트워크와 `mgmt`에
 --wait --no-build`를 실행한다. 이때 `FSL_HOST_DIR`은 compose가 플랫폼을 띄운 호스트
 디렉터리(플랫폼 컨테이너의 `com.docker.compose.project.working_dir` 라벨)로 두어, 스택의
 bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 둔다. 이어서 플랫폼은
-세션의 `estate`에 붙고(`docker network connect`, 별칭 `platform`) 세션의 프록시를 그
+세션의 `estate`에 붙고(`docker network connect`, 별칭 `platform`; 기본 게이트웨이는
+`gw_priority: 1`로 플랫폼 자신의 `edge`에 남는다) 세션의 프록시를 그
 세션 자신의 WAF로 향하게 한다(`/label/origin`). baseline은 그 뒤에 읽는다. 세션은 동시에
-돈다: 세션을 열면 이미 끝난 세션의 `fsl-<n>` 프로젝트만 `down -v`하고(먼저 그 `estate`에서
-빠진다). docker는 세션을 최대 `FSL_MAX_SESSIONS`개(기본 2, `platform/fsl/settings.py`)까지
-열고 그 이상은 409로 답한다. OpenStack은 하나를 유지한다. 세션을 닫아도
-그 스택은 이후 세션이 열릴 때까지 남는다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
-세션 스택이 뜨지 않는다. 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`,
-즉 board VM의 관리망 주소로 board VM을 읽는다. `loot.ground_truth`가 `BOARD_API_URL`의
-호스트를 그 주소로 바꾼다.
+돈다: 세션을 열면 끝난 지 3분이 넘은 세션의 `fsl-<n>` 프로젝트만 `down -v`하고(먼저 그 `estate`에서
+빠진다), 어느 것을 내릴지는 잠금 하나 아래에서 정하므로 동시에 열리는 두 세션이 서로의 새 스택을 내리지 않는다. docker는 세션을 최대 `FSL_MAX_SESSIONS`개(기본 2, `platform/fsl/settings.py`)까지
+열고 그 이상은 409로 답한다. OpenStack은 레인지 slot마다 하나를 연다. 세션을 닫아도
+그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남고, 그동안 Filebeat가 마지막 경보를 보낸다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
+세션 스택이 뜨지 않는다. wargame은 VM 하나, `fsl-wargame-host`에서 같은 GHCR 컨테이너로
+돈다. 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`, 즉 board의 8000 포트가
+publish된 wargame 호스트의 관리망 주소로 board를 읽는다. `loot.ground_truth`가
+`BOARD_API_URL`의 호스트를 그 주소로 바꾼다.
 
 대상 시스템 하나가 wargame 하나이고, `wargames/` 아래 폴더 하나다. `session.yaml`이 그
 폴더의 `compose.yaml`을 include 한다: `board`(Django와 MySQL, `loot_verified`)와
@@ -175,7 +177,7 @@ corp는 두 번째 wargame이다: WordPress 6.6.2(`fsl-wg-corp-wp`)에 세 플�
 
 ## 선언과 substrate 이음매
 
-Docker는 MVP의 substrate이고, OpenStack은 목표다. 플랫폼은 레인지의 의미를 Docker에
+Docker와 OpenStack은 둘 다 일급 substrate다(2026-10-11 결정). 플랫폼은 레인지의 의미를 Docker에
 묻지 않고 `platform/range/declaration.yaml`에서 읽는다: 구간마다 id, 표시 이름, 공격
 출발지; 역할 표(attacker, scorer, gateway, proxy, sensor, board, board-db, corp,
 corp-db, 그리고 `openstack:` 아래에서 달라지는 edge, sensor, proxy 역할); sensor가
@@ -216,7 +218,8 @@ Docker는 `FSL_PROJECT`(기본값 `fsl`)를 받는다. OpenStack은 `FSL_OPENSTA
 `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`,
 `_DOMAIN`을 받으며, 없으면 이름을 들어 거부한다. 레인지 모양을 정하는 `_BASE_IMAGE`,
 `_FLAVOR`, `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`,
-`FSL_OPNSENSE`는 쓰이는 곳에서 이름을 들어 거부한다. 코드에는 기본값이 없다. 모두
+`FSL_OPNSENSE`, 그리고 `FSL_IMAGE_TAG`(wargame 호스트의 이미지; 부팅 시
+`/opt/fsl/.env`에 쓰인다)는 쓰이는 곳에서 이름을 들어 거부한다. 코드에는 기본값이 없다. 모두
 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 온다(`platform/range/cloud.py`가 그
 파일을 읽고 검사한다). `redteam/harness.py`에는 launcher가,
 `platform/rules/suricata.py`에는 runner가 전달되므로, 둘 다 `subprocess`를 import하지
@@ -226,7 +229,7 @@ Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 온다(`platform/range
 |---|---|---|
 | 구조 | `docker network ls/inspect`, 라벨 필터 | Keystone v3, `tags-any`를 쓰는 Neutron, Nova |
 | sensor | 선언된 각 sensor가 선언된 gateway의 네트워크 네임스페이스를 공유하지 않으면 레인지 기술(describe)을 거부한다 (`docker ps`, `.HostConfig.NetworkMode`) | 이름이 지정된 두 서버가 모두 존재하면 sensor를 보고한다; 그것이 gateway의 트래픽을 보는지 확인하는 것은 없다 |
-| runner | 세션 프로젝트에서 그 역할의 서비스 컨테이너로 `docker exec` | 인스턴스로 `ssh` |
+| runner | 세션 프로젝트에서 그 역할의 서비스 컨테이너로 `docker exec` | 인스턴스로 `ssh`; wargame 호스트가 맡고 `compose:`가 서비스에 대응시킨 역할은 그 컨테이너 안에서 실행된다(`sudo docker exec <service>`, `range/wargame_host.py`) |
 | address | 세션 프로젝트에서 그 역할의 `estate` IP | 호스트의 `mgmt` 주소 |
 | launcher | `docker run --rm --network <segment>`, 세션 WAF의 이름을 가리키는 `--add-host` 포함 | `runner("attacker")`: 선언된 attacker의 mgmt 주소로 ssh해 도구를 실행한다(origin은 attacker가 그 구간에 있는지만 확인하고, 출발 국가는 `fsl-origin` SNAT가 정한다); 다른 이미지는 거부되는데, Nova는 호스트를 부팅해 출력을 반환하고 삭제할 수 없기 때문이다 |
 | 테스트 대상 | 라이브 스택 | 공개된 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트; `fsl-range` 클라우드에서는 플랫폼 VM이 `/api/range/`를 통해 fabric, 이미지, slot을 구축했고, `describe()`가 서른 개 출발지 위의 WAF와 estate 및 mgmt 위의 네 호스트를 되읽었으며, `runner()`가 각 호스트에서 mgmt 주소로 ssh를 통해 실행됐다; `launcher()`는 2026-10-08 `ru`와 `tw` 출발지에서 sqlmap을 실행했다 |
@@ -244,11 +247,11 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
-| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고, 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 플랫폼은 어느 것도 읽지 않는다 |
+| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 그 명령의 파일 경로와 reload는 `wargames.lesson`이 선언(`settings.FSL_WAF`)에서 채운다. 플랫폼은 어느 것도 읽지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
-| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 센서 호스트가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다 |
+| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `deploy/wargame-host/sensor.yaml`은 플랫폼이 wargame처럼 띄우는 compose 서비스로 estate 센서를 돌린다 |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
-| 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음 |
+| 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음; OpenStack에서도 같은 컨테이너에 닿는다. `loot.py`는 wargame 호스트의 publish된 포트로 HTTP, `effect.py`는 `corp-db`로 `docker exec`하는 runner를 거친다 |
 
 ## 요청이 어디서 오는가
 
@@ -271,8 +274,8 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 `/label/active` marker와 함께 `/var/log/fsl/commands.log`에 덧붙인다. 플랫폼은
 `runner("attacker")`로 이를 읽어 `GET /api/sessions/<id>/commands/`로 제공한다. 레드
 콘솔은 compose에서 `/terminal/<세션 id>/`를 프레임에 띄우고, nginx가 이를
-`fsl-<id>-kali-1:7681`의 Kali 자체 ttyd로 넘긴다. OpenStack에서는 `/vm-terminal/fsl-kali/`를
-띄운다. 이는 플랫폼 안의 ttyd로, 호스트의 mgmt 주소로 ssh 접속한다. compose에서는 Kali와
+`fsl-<id>-kali-1:7681`의 Kali 자체 ttyd로 넘긴다. OpenStack에서는 `/vm-terminal/fsl-kali/?arg=<세션 id>`를
+띄운다. 이는 플랫폼 안의 ttyd로, 세션의 slot에 있는 호스트의 mgmt 주소로 ssh 접속한다. compose에서는 Kali와
 WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 
 블루 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `waf_terminal`)을
@@ -280,7 +283,7 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 클라이언트의 쿼리는 버린 뒤 플랫폼 안의 ttyd(`ttyd -a -b /waf-terminal -p 7693 /app/waf-terminal.sh`)로
 `?arg=<세션 id>`를 붙여 넘긴다. ttyd의 `-a`가 이를 스크립트 인자로 주고, 스크립트는 숫자인지 확인한 뒤
 `docker exec -it fsl-<id>-waf-1 bash`를 실행한다. WAF 이미지에는 ttyd가 없다. 같은
-`auth_request /terminal-allowed`가 막는다. OpenStack에서는 `/vm-terminal/fsl-waf/`를 그대로 쓴다.
+`auth_request /terminal-allowed`가 막는다. OpenStack에서는 `/vm-terminal/fsl-waf/?arg=<세션 id>`를 띄운다.
 
 블루 콘솔의 웹사이트 창은 콘솔 안의 브라우저다: 뒤로, 앞으로, 새로고침, http에는 Chrome처럼 "주의 요함"
 표시를 붙이고 전체 URL(`http://board.com/<경로>`)을 보여 주며 URL이나 경로와 Enter를 받는 주소창, iframe
@@ -311,7 +314,8 @@ sandbox allow-forms allow-scripts allow-same-origin`이 붙는다. 대상은 레
 없는 sandbox(불투명 출처)로 8000에서만 막을 수도 있지만, Chromium 기반 내장 브라우저는 그런 프레임을
 거부한다(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 docker에서 8002, 세션
 WAF가 없는 OpenStack에서는 `None`이다. 세션 API는 `site: {port, path}` 또는 `null`을 주고, 없으면
-콘솔은 창을 숨긴다. acceptance VM의 security group은 8002를 허용한다.
+콘솔은 창을 숨긴다. substrate docker로 도는 플랫폼 VM에는 8002를 여는 security group 규칙이
+필요하다(`docs/OPENSTACK.md` §3.5).
 
 기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 둔다(재시작하면 사라짐): 메서드,
 `http://<호스트><경로>`, 상태, WAF가 막았는지(403), 걸린 시간, 요청·응답 헤더, 각각 64 KB로 자른 본문
@@ -350,8 +354,8 @@ docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly threshold 5로 돌
 (`session.yaml`). Paranoia Level과 rule exclusion은 세션 자신의 것이며(`Session.waf`), 열 때
 시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 레슨"). `GET`은 10초 timeout으로
 파일을 읽으므로 폴링 하나가 서버 스레드를 그보다 오래 잡지 않는다. 모든 Suricata
-규칙은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM은 아직
-`DetectionOnly`로 돈다(`deploy/waf/modsecurity.conf`).
+규칙은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM도 같은 방식으로
+차단한다(`deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본값 threshold 5, Paranoia Level 1).
 
 ## 경보가 어디로 가는가
 
@@ -380,8 +384,9 @@ Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만
 
 - 먼저 만료된 규칙 억제(suppression)를 복원한다;
 - docker에서는 `fsl-logs-<session>-*`를 읽고(`ELASTIC_SESSION_INDEX`; 세션마다 자기
-  Filebeat가 자기 인덱스에 쓴다), OpenStack에서는 `ELASTIC_INDEX`를 읽는다(공유
-  collector가 `fsl-logs-shared-<day>`에 쓴다);
+  Filebeat가 자기 인덱스에 쓴다), OpenStack에서는 `fsl-logs-slot<N>-*`를 읽는다(공유
+  collector가 syslog 줄마다 송신자 hostname이 가리키는 slot(도메인 앞의 `-N`, 없으면 slot 1)을
+  붙여 그 slot의 인덱스에 쓴다);
 - 세션 시작 1분 전부터 종료(또는 현재) 1분 후까지의 `@timestamp`를 Elasticsearch에
   요청한다. `fsl-geoip` 파이프라인은 `@timestamp`를 이벤트 자체의 시각(Suricata의
   `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 설정하므로, 이 창은
@@ -735,7 +740,8 @@ openstack CLI와 Heat 파라미터를 움직이며, 스택이 이를 플랫폼�
 `deploy/openstack/platform.yaml`은 Heat 템플릿이며 다음을 만든다:
 
 - 네트워크와 서브넷 `fsl-platform`;
-- 외부 네트워크로 가는 라우터와 floating IP;
+- 외부 네트워크로 가는 라우터와 floating IP(`network.address`가 있으면 프로젝트가
+  이미 가진 floating IP를 연결만 하므로 스택을 지워도 남는다);
 - 모든 주소에 tcp/22, tcp/8000, ICMP를 여는 보안 그룹;
 - config drive를 가진 Nova 서버 `fsl-platform`.
 
@@ -754,7 +760,7 @@ GeoIP 엔드포인트는 URL로 약관에 동의하면 누구에게나 GeoLite2�
 멈추지 않으며(`ExecStartPre=-`), 그때 `up`이 없는 이미지를 체크아웃에서 빌드한다.
 `bin/platform-rebuild`는 먼저 ghcr.io를 확인해 이를 피한다.
 
-따라서 compose 컨트롤 플레인만 Nova VM 하나 안에서 돈다. OpenStack substrate에서는 그 안에 세션 스택이 뜨지 않고, board의 ground truth는 board VM의 관리망 주소에서 읽는다. cloud-init이 `FSL_PUBLISH`를
+따라서 compose 컨트롤 플레인만 Nova VM 하나 안에서 돈다. OpenStack substrate에서는 그 안에 세션 스택이 뜨지 않고, board의 ground truth는 wargame 호스트의 관리망 주소에서 읽는다. cloud-init이 `FSL_PUBLISH`를
 VM의 고정 주소로 설정하므로 8000이 그 주소에 publish되고 보안 그룹에서도
 열려, 브라우저가 floating IP로 콘솔에 접근한다. `FSL_SYSLOG_PUBLISH=0.0.0.0`은
 엣지의 syslog를 받기 위해 5140/udp를 모든 주소에 publish한다. 9200은 loopback에
@@ -801,19 +807,53 @@ SHA256을 콘솔에 출력한다. 플랫폼이 디스크를 가져와 SHA256을 
 답해 `deploy/opnsense/config.xml`로 시작하게 한 뒤, `qemu-img`로 바꿔 내놓으면
 플랫폼이 `fsl-opnsense-<version>`으로 올린다(`deploy/opnsense/build.sh`, `importer.py`).
 
-fabric은 보안 그룹도 둘 만든다: 모든 레인지 포트가 속하고 모든 IPv4를 허용하는
-`fsl-range`(레인지를 지키는 것은 Neutron이 아니라 WAF다; anti-spoofing은 유지), 그리고
-아무것도 허용하지 않는 `fsl-reach`. 플랫폼은 자신의 서버 id(부팅 시 쓰는
+wargame마다 이미지를 두지 않는다. 호스트 이미지 하나, `fsl-wargame-host`
+(`deploy/wargame-host/setup.sh`)가 기본 이미지에 `docker.io`와 `docker-compose-v2`를
+더한 것이고, 선언 항목이 나열한 모든 wargame(`wargames: [board, corp]`)을 docker
+substrate가 돌리는 GHCR 컨테이너로 돌린다. `range/wargame_host.py`가 각
+`wargames/<id>/compose.yaml`을 호스트용으로 렌더링해 번들에 넣는다: `build:`와 세션
+네트워크를 빼고, 컨테이너 이름을 서비스 이름으로 하고, 이미지 참조에 플랫폼의
+`FSL_IMAGE_TAG`를 쓰고, WAF가 프록시하는 포트(`publish: {board: 8000, corp-wp: 80}`)를
+publish한다. `daemon.json`은 Docker 브리지에 테넌트 MTU를 준다. 인터넷이 있는 빌더가
+이미지를 받아 이미지 안에 넣는다. 레인지에는 인터넷이 없다. 태그가 번들 digest에
+들어가므로, 새 태그의 플랫폼은 새 호스트 이미지를 계획한다. wargame이 늘어도 이미지
+수는 그대로다: 기본 이미지, 엣지, WAF, Kali, wargame 호스트.
+
+fabric은 보안 그룹을 셋 만든다: `mgmt` 밖의 모든 레인지 포트가 속하고 모든 IPv4를
+허용하는 `fsl-range`(레인지를 지키는 것은 Neutron이 아니라 WAF다; anti-spoofing은 유지),
+아무것도 허용하지 않는 `fsl-reach`, 그리고 모든 레인지 호스트의 `mgmt` 포트가 속하고
+`fsl-reach` 구성원만 허용하는 `fsl-mgmt`. 플랫폼은 자신의 서버 id(부팅 시 쓰는
 `FSL_OPENSTACK_PLATFORM`)로 찾은 `fsl-reach`의 포트로 `mgmt`에 붙으므로, 모든 호스트로
-ssh할 수 있지만 어떤 호스트도 플랫폼으로 연결을 열 수 없다. runner는 호출자가 구간을
-지정하지 않으면 호스트의 `mgmt` 주소로 접근한다.
+ssh할 수 있지만 어떤 호스트도 플랫폼으로 연결을 열 수 없고, Kali의 `mgmt` 포트는 다른
+호스트에 닿지 않는다. runner는 호출자가 구간을 지정하지 않으면 호스트의 `mgmt` 주소로
+접근한다.
 
 slot은 레인지 호스트의 집합으로, `/api/range/slot/`로 관리하고 `range/slot.py`가
-계획한다. 각 호스트는 선언된 구간마다 `<host>.<segment>` 이름의 포트를 가지며, 모두
-`fsl-range`에 속한다. `gateway` 역할의 호스트는 모든 출발지의 게이트웨이 주소를 인터넷
+계획한다. 각 호스트는 선언된 구간마다 `<host>.<segment>` 이름의 포트를 가지며,
+`fsl-range`에, `mgmt`에서는 `fsl-mgmt`에 속한다(다른 그룹에 있는 기존 `mgmt` 포트는
+옮긴다). `gateway` 역할의 호스트는 모든 출발지의 게이트웨이 주소를 인터넷
 포트 하나에 갖고, cloud-init은 첫 번째만 구성하므로 user data가 부팅마다 나머지를
-추가한다. 모든 호스트의 user data는 `estate` 이름(`board`, `board-db`)을
-`/etc/hosts`에 덧붙이며, WAF는 이것으로 board를, board는 자신의 DB를 찾는다.
+추가한다. 모든 호스트의 user data는 `estate` 이름(WAF의 `board.com`과 `corp.com`,
+wargame 호스트의 `board`와 `corp-wp`)을 `/etc/hosts`에 덧붙이며, WAF는 이것으로 각
+wargame의 publish된 포트를 찾는다. 각 DB는 호스트의 자기 compose 프로젝트 안에서만 답한다.
+
+레인지 slot. `cloud.yaml`의 `compute.slots`(기본 1, 플랫폼에서는 `FSL_OPENSTACK_SLOTS`)가
+레인지 사본을 몇 벌 동시에 세울지 정하고, `max_sessions`가 그 수다. slot 1은 위 이름을 그대로
+쓰고, slot N>1은 서버와 포트를 `<host>-N`(`fsl-edge-2`, `fsl-waf-2.mgmt`)으로 이름 짓고 서버에
+`fsl_host`와 함께 `fsl_slot=N`을 단다. 첫 slot 밖의 slot마다 internet과 estate 네트워크의
+사본(`fsl-internet-N`, `fsl-estate-N`, `fsl.slot=N` 태그)을 같은 subnet으로 가지므로, 모든 엣지가
+같은 출발지 게이트웨이 30개를, 모든 Kali가 같은 출발지 주소를 갖고, 경보의 출발지는 어느 slot에서나
+같은 나라로 분류된다. Neutron은 라우터를 공유하지 않는 두 네트워크에 같은 CIDR을 허용한다. `mgmt`는
+공유한다. slot마다 호스트가 거기서 자기 DHCP 주소를 받고, `fsl-mgmt`가 전과 같이 막는다. slot 어댑터
+(`OpenStack.in_slot(n)`)는 자기 slot의 서버만, 선언된 호스트 이름으로 읽으므로 역할, runner,
+토폴로지, 엣지의 렌더링 설정이 모든 slot에서 같다. slot N의 엣지는 hostname을 `fsl-edge-N`으로
+렌더링한다. 한 slot의 collector를 열 때 다른 slot의 송신자 규칙은 남긴다. 플랫폼은 세션을 열 때
+slot에 묶는다(`Session.slot`, unique 제약으로 slot당 열린 세션 하나): 잠금 아래에서 고른, READY인
+첫 빈 slot이다. 세션별 레인지 호출은 모두 그 slot으로 가고, 닫기는 그 slot만 초기화하며 그 slot의
+억제만 복원된 것으로 표시하고, 초기화 상태도 slot마다 따로다(`api/reset.py`). 규칙 변경은 그 slot의
+차례(lock)를 잡으므로 한 slot의 초기화가 다른 slot의 세션을 붙잡지 않는다. `run_on_role`은
+`--session`이나 `--slot`을 받고, slot이 둘 이상인데 둘 다 없으면 거부한다. 콘솔의 VM 터미널은
+세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 slot의 호스트를 연다.
 
 OPNsense 엣지 `fsl-edge`(vtnet0 internet이 WAN, vtnet1 estate가 LAN, vtnet2 mgmt가
 opt1)가 slot에서 부팅한다. `POST /api/range/configure/`는 slot에 맞춰
@@ -822,7 +862,8 @@ opt1)가 slot에서 부팅한다. `POST /api/range/configure/`는 slot에 맞춰
 엣지를 재부팅한다. 새 부팅 시각이 보일 때까지 기다린 다음, 엣지가 30개 출발지
 게이트웨이 주소를 갖고(하나는 static, 나머지는 IP alias), WAN에서 estate와 mgmt를
 `HOME_NET`으로 하여 IDS 모드로 Suricata를 돌리며 EVE 경보와 HTTP 기록을 syslog로
-보내고, syslog를 수집기로 보내고, pf에 WAN pass 규칙이 있는지 확인한다. 규칙 편집기는
+보내고, syslog를 수집기로 보내고, pf에 WAN pass 규칙이 있는지 확인한다. 이 규칙은
+WAF의 estate 주소로 가는 tcp 80만 통과시킨다. 규칙 편집기는
 include가 가리키는 파일에 쓰고, include가 여는 소켓으로 `suricatasc`를 불러 다시
 읽힌다. 엣지의 syslog와 WAF의 ModSecurity audit 로그는 GeoIP 보강과 함께 플랫폼의
 Elasticsearch로 간다. Kali 이미지 하나가 모든 출발지를 맡는다: 인터넷
@@ -831,17 +872,46 @@ Elasticsearch로 간다. Kali 이미지 하나가 모든 출발지를 맡는다:
 선택된 국가에서 나간다. marker를 붙이는 프록시와 ttyd 터미널은 Kali 박스에서 돈다.
 `GET /api/range/console/<host>/`는 그 호스트를 맡은 서버의 Nova 콘솔 URL을 반환한다.
 
-`rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 slot을 초기화한다: Nova가 상주
-slot VM을 각자의 골든 이미지로 재구축하되 서버 id, flavour, 포트, 고정 IP는 유지하므로,
-한 세션이 다음 세션에 수정된 규칙이나 심어 둔 데이터를 남기지 않는다.
-`POST /api/sessions/<id>/close/`가 이를 호출한다. 재구축은 디스크를 지우므로 VM이
-ACTIVE가 된 뒤 `POST /api/range/configure/`를 실행해야 하며, 이를 자동으로 호출하는
-것은 없다.
+`rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 상주 slot VM 전부를 각자의
+골든 이미지로 재구축하되 서버 id, flavour, 포트, 고정 IP는 유지한다.
+`POST /api/sessions/<id>/close/`는 대신 `reset_slot()`을 호출한다. 이것은 셸을 내주는
+VM(Kali, WAF)만 재구축하고 엣지와 wargame 호스트는 제자리에서 초기화하므로
+(`docs/OPENSTACK.md` §6.1), 한 세션이 다음 세션에 수정된 규칙이나 심어 둔 데이터를
+남기지 않는다. 재구축은 디스크를 지우므로 VM이 ACTIVE가 된 뒤 configure를 해야 한다.
+wargame 호스트의 제자리 초기화(`clear_wargames()`)는 wargame마다, 그리고 estate 센서에
+`docker compose down -v`를 실행하고, 센서의 eve 로그와 rsyslog의 imfile 상태를 지우고
+기준선 규칙을 되돌려 써서, 이미지만 남고 컨테이너나 볼륨은 없게 한다. configure의 마지막 단계 `start_wargames()`가 `wargames` 역할로
+wargame마다 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait
+--pull never`를 실행하므로, 세션마다 새로 시드된 대상에서 시작한다. 그다음 estate
+센서를 띄운다: docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`을
+`deploy/wargame-host/sensor.yaml`로 host 네트워킹으로 띄우고, 호스트의 estate 주소를 가진
+인터페이스를 본다. 그래서 docker의 센서 하나가 WAF 네임스페이스에서 보는 WAF→대상 구간을
+본다. 역할 `estate-sensor`는 compose 서비스 `suricata`에 매핑되어 runner가 그 안에서
+실행하고, 호스트 항목이 규칙 파일과 reload 명령을 정하며(`settings.FSL_EXTRA_SENSORS`),
+규칙 시드·검증·변경·기준선 검사는 두 센서 모두에 간다. 호스트의 `logs:` 항목에 따라
+rsyslog가 `eve.json`을 `suricata` 태그로 수집기에 보내고(`range/waf.py`의 태그별 전달),
+`fsl-reach`는 엣지·WAF와 같이 이 호스트를 듣는다. 종료 뒤에는 플랫폼이 직접 한다:
+`platform/api/reset.py`가 백그라운드 스레드를 띄워, 규칙 잠금을 한 번 잡은 채 두 쪽을 동시에
+돌린다. 한쪽은 `reset_in_place()`다: 엣지의 제자리 초기화(`reset_edge()`: 기준선
+`fsl.rules`를 되돌리고, 설치된 파일을 엣지가 마지막 설치·부팅 뒤 기록한 해시와 sha256으로
+비교하고, 레인지 pf 상태를 지우고, 필터를 다시 읽히고, Suricata를 재시작한다. 하나라도
+다르면 `configure_edge()`의 설치와 재부팅으로 넘어간다), 수집기 보안 그룹, wargame
+호스트(비우기, 그다음 wargame, 센서, 로그 전달 순서). 다른 쪽은 재구축한 VM 각각이 ACTIVE를
+벗어났다가 다시 ACTIVE가 되는 것을 `plan_slot()`으로 확인한 뒤, 클라우드를 새로 읽어
+`configure_rebuilt()`(WAF의 로그 전달)를 실행한다. 둘 다 VM이 ssh에 답하지 않는 동안
+재시도하고(최대 30분), 첫 실패가 초기화를 실패시킨다. `configure_slot()`(수동 configure)은
+호스트마다 스레드 하나로 단계를 나란히 돌린다: 엣지(설정과 재부팅), WAF, 수집기 보안 그룹,
+wargame 호스트. 모두 끝나기를 기다린 뒤 그 순서에서 첫 실패로 실패한다. close는 바로 응답하고, 초기화
+상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 들고 있다.
+`POST /api/range/configure/`는 수동 재시도로 남고, 실패한 초기화 상태를 지운다.
 
-OpenStack에서 세션 생성은 다른 세션이 열려 있거나 레인지가 준비되지 않았으면 409로
-답한다. `GET /api/range/ready/`는 slot의 단계(`NOT_STANDING`, `REBUILDING`,
-`CHECKING`, `READY`)와 세 가지 검사(모든 VM ACTIVE, board의 ground truth 읽기 가능,
-sensor 규칙이 기준선이고 적용 중인 억제 없음)를 보고한다. `POST /api/range/canary/`는
+OpenStack에서 세션 생성은 모든 slot이 차 있거나 준비된 빈 slot이 없으면 409로
+답한다. `GET /api/range/ready/`는 `slots` 아래에 slot마다 번호, 그 slot을 잡은 세션, 단계(세션이
+잡고 있으면 `IN_USE`, 초기화가 도는 동안 `RESETTING`, 실패했으면 그 이유와 함께 `RESET_FAILED`,
+그 밖에는 `NOT_STANDING`, `REBUILDING`, `CHECKING`, `READY`), 초기화 상태, 세 가지 검사(모든 VM
+ACTIVE, board의 ground truth 읽기 가능, sensor 규칙이 기준선이고 그 slot에 적용 중인 억제 없음)를
+보고한다. 최상위 `ready`와 `slot`은 다음 세션 열기가 잡을 slot이다. `/api/range/slot/`,
+`slot/rebuild/`, `configure/`는 `?slot=N`을 받고, 없으면 모든 slot에 적용한다. `POST /api/range/canary/`는
 marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두 경보를 냈는지와 두
 엔진의 시각 차이를 보고하며, ready 검사에는 포함되지 않는다. 랜딩 페이지가 둘 다
 호출한다.
@@ -864,7 +934,7 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
      terminal  ttyd in the platform, ssh to the Kali VM on mgmt
      |
      +--OpenStack API, as member fsl-range--> networks, VMs, consoles
-     +--management network, ssh-------------> Kali VM, target VMs
+     +--management network, ssh-------------> Kali VM, WAF VM, wargame host
 
  Internet network: one subnet per origin country (30), no Neutron router
    Kali VM: one port holds every attack address; the source is rewritten
@@ -881,11 +951,14 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
      |
      v
  estate network
-   board VM (Django on MySQL)
+   wargame host VM (Docker): board + board-db, corp-wp + corp-db,
+                             the GHCR images docker runs (2026-10-11)
+     Suricata on the estate NIC: the WAF-to-target leg (2026-10-12)
 
  Evidence:
    OPNsense: Suricata EVE, syslog-ng, UDP-------> Filebeat --+
    WAF VM: ModSecurity audit log --------------------------------+
+   wargame host: Suricata EVE, rsyslog imfile, UDP --------------+
                                                                  v
    Elasticsearch --> platform ingest --> scoring
    Elasticsearch ----------------> Kibana --> blue team
@@ -893,8 +966,8 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
 
 남은 작업:
 
-- 세션 수명 주기: 재구축 후 `configure` 재실행, WAF 모드와 시각 차이를 준비 상태
-  검사에 포함, 수작업 없이 READY일 때만 다음 세션 시작.
+- 세션 수명 주기: WAF 모드와 시각 차이를 준비 상태 검사에 포함(종료 시 재구축 뒤
+  `configure` 재실행은 2026-10-11부터 자동).
 - 차단(계획, 2026-10-08 스펙): WAF는 `SecRuleEngine On`으로 돌고, 블루팀은 CRS를
   튜닝(paranoia level, 규칙 제외)해 공격은 차단하고 정상 트래픽은 통과시킨다.
   Suricata는 탐지를 맡는다. 시작 상태는 2026-10-10에 측정했다(`docs/DECISIONS.md`):
