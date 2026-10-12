@@ -4,45 +4,52 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-11. Written for a session that has the cloud
+Updated: 2026-10-13. Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
 
-- `dev` = e5c92c7 (pushed, images green, GHCR public). This branch adds the
-  fixes the first live OpenStack run forced (`git log e5c92c7..`); not pushed.
-- Read first, before planning: the spec
-  `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`
-  and the living-doc artifact 37HeLkkLEFQgVWbwLuXH7S.
-- The cloud was cleaned and rebuilt from scratch with `bin/cloud up`: one
-  hand-uploaded image (`ubuntu-24.04`), every golden image and the OPNsense
-  26.7 edge built on the cloud. Results: `docs/OPENSTACK.md` status table
-  and §7.
-- Platform VM 192.168.0.210 (reserved floating IP), substrate openstack,
-  READY; `/opt/fsl` is a `dev` clone overlaid with this branch's files.
-- Acceptance: substrate docker 146 passed / 0 failed on that VM; substrate
-  openstack 50 passed / 6 failed / 4 errors (the rest is backlog 0).
+- Goal in flight: the blue-team course. Design and rulings D1-D11:
+  `docs/superpowers/specs/2026-10-13-blue-team-course-design.md` and the
+  2026-10-13 entries in `docs/DECISIONS.md`.
+- `dev` = 8f9acb0. This branch (`claude/task-list-review-fc4953`) adds the
+  course on top: the lesson foundation (server-side steps and checks, replays
+  out of both scores, WAF snapshots, ungated open path), the existing lesson
+  made honest (Lesson / Practice / Wargame rungs, ticket, start card,
+  debrief), lessons 0, 1, 3, 4, 5, 7, and the fixes the first live run forced.
+  Not pushed.
+- Platform VM 192.168.0.210 runs this branch's platform image, built on the
+  VM under the dev tag; `/opt/fsl` git index is re-pointed at the branch. Its
+  pre-course store backup is in `/opt/fsl/backups/*-pre-course/`. The 8002
+  rule on the `fsl-platform` security group was added by hand (the Heat
+  template now has it).
+- Live on 2026-10-13: full `bin/verify` on the VM, unit 2003 passed,
+  acceptance 77 passed / 0 failed / 0 errors / 71 skipped in 1,448 s; every
+  lesson walked end to end over the API on a slot.
 
 ## Waiting for the user
 
 1. Gate 2: push this branch to `dev` (fast-forward).
-2. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
-3. Test audit: remove the 223 tests the 2026-10-10 audit lists (lowers the
-   tests floor on purpose).
-4. Rename `/api/rules/suppressions/` (it disables rules; Suricata's
-   "suppression" hides alerts only).
-5. Review of the seven-step lesson text.
-6. Publishing the OPNsense image: BSD-2 allows it; a derived name needs
-   project@opnsense.org's permission.
+2. After the push: the images workflow, then `bin/cloud up --replace` run
+   untouched. It proves the 8002 rule and the `python3-venv`/`nodejs`
+   packages from the Heat template and the store restore under migrations
+   0020-0023; none of these can run before the images exist on GHCR.
+3. Review of the lesson text (now seven lessons; theory and hint cards still
+   name the answers by design).
+4. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
+5. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
+   publishing the OPNsense image.
 
 ## Next, in order
 
-1. After the push: the images workflow on the new `dev`, then
-   `bin/platform-rebuild` on 192.168.0.210 so `/opt/fsl` is a clean clone;
-   check the store and range key survive (never checked live).
-2. `bin/cloud down` then `up` keeps the store (restore `down`'s backup).
-3. WAF tuning on OpenStack (`rules/crs.py` per-host CRS path and reload).
-4. The compose-only tests on the OpenStack range.
-5. Acceptance run time (2,900 s): measure, then parallel sessions on
-   docker, polling instead of fixed waits, edge config without a reboot.
-6. Smaller: `down` leaves `fsl-build`; OPNsense-update survival unverified.
+1. Lesson 6 (corp, "make the option flip noticed"): needs a red actor outside
+   the lesson and repeatable corp replays (per-replay logins, reset before
+   VERIFY).
+2. At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under `/search/`
+   did not serve the Korean search (hypothesis: 920272 also matches the
+   request URI); measure, so the assessment has a narrow fix as well as the
+   level.
+3. The unexplained `test_corp_*` "no `_wpnonce`" error (once, passed on
+   rerun).
+4. Acceptance run time and ingest re-reading the whole window (paged since
+   f07919f, up to about 205k records).
