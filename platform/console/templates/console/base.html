@@ -156,6 +156,29 @@
       }
     }
 
+    const OPENED_KEY = "fsl-opened-sessions";
+    const OPENED_KEPT = 20;
+
+    function openedSessions() {
+      try {
+        const kept = JSON.parse(localStorage.getItem(OPENED_KEY));
+        return Array.isArray(kept) ? kept.filter(Number.isInteger) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function rememberSession(id) {
+      const opened = Number(id);
+      if (!Number.isInteger(opened)) return;
+      try {
+        localStorage.setItem(OPENED_KEY, JSON.stringify(
+          [opened, ...openedSessions().filter((kept) => kept !== opened)].slice(0, OPENED_KEPT)));
+      } catch (error) {
+        return;
+      }
+    }
+
     function crumbs(items) {
       const trail = [{ label: t("crumb.home"), href: "/" }, ...items];
       document.getElementById("crumbs").innerHTML = trail.map((item, index) =>

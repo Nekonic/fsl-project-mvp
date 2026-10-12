@@ -362,6 +362,7 @@
       activity();
       return;
     }
+    rememberSession(id);
     const listed = await api("/api/wargames/");
     wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
     const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };

@@ -154,6 +154,7 @@
   (async () => {
     const read = await api(lessonPath(""));
     session = read.ok ? read.body : null;
+    if (session) rememberSession(sessionId());
     const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
     if (session && session.discover) kibana.dataset.src = session.discover;
     if (session && session.waf_terminal) {

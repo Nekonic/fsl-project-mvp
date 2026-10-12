@@ -1497,3 +1497,40 @@ def test_a_pass_opens_the_debrief_in_the_check_tab_in_the_order_overview_evidenc
     assert english("outcome.blocked") in result["row"] and english("lesson.check.served") in result["row"]
     assert english("lesson.risk.path_target") in result["text"]
     assert "09:01" not in result["text"] and "09:30" not in result["text"], "times stay in the API"
+
+MINE = CATALOGUE.replace('  if (request.route === "/api/sessions/" && request.method === "POST")', """  if (request.route === "/api/sessions/" && request.query.ids) {
+    seen.ids = request.query.ids;
+    return {body: [
+      {id: 12, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "self", ended_at: "2026-10-13T10:00:00Z",
+       result: {objectives: {lost: 0, undetected: 0, total: 3}, lesson: {passed: true, verified: 1}}},
+      {id: 9, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "guided", ended_at: "2026-10-12T10:00:00Z",
+       result: {objectives: {lost: 0, undetected: 0, total: 3}, lesson: {passed: false, verified: 2}}},
+    ]};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST")""")
+
+def test_the_home_page_shows_each_lesson_s_last_result_from_the_sessions_this_browser_opened(client):
+    seen = open_page(client, "/", setup="const seen = {};\nlocalStorage.setItem('fsl-opened-sessions', '[12, 9]');\n" + MINE,
+                     scenario="""
+      await browser.settle();
+      const line = document.querySelector('[data-last="board/waf-exclusion"]');
+      return {ids: seen.ids, hidden: line.classList.contains('hidden'), text: line.textContent,
+              href: line.querySelector('a').getAttribute('href')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["ids"] == "12,9"
+    assert seen["result"]["hidden"] is False and seen["result"]["href"] == "/session/12/"
+    assert english("main.last", 12, english("kind.practice")) in seen["result"]["text"] and "PASS" in seen["result"]["text"]
+
+def test_a_browser_with_no_remembered_session_asks_for_none_and_storage_that_throws_breaks_nothing(client):
+    seen = open_page(client, "/", setup="const seen = {};\n" + MINE + """
+      Object.defineProperty(globalThis, 'localStorage', {value: {getItem() { throw new Error('blocked'); },
+                                                                setItem() { throw new Error('blocked'); }}});
+    """, scenario="""
+      await browser.settle();
+      return {ids: seen.ids || null, hidden: document.querySelector('[data-last="board/waf-exclusion"]').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"ids": None, "hidden": True}
