@@ -621,7 +621,9 @@ language switch.
   lesson also shows its newest run among the sessions this browser opened
   (`fsl-opened-sessions` in localStorage, written by the session and blue
   pages, newest first, at most 20; read through `?ids=`): the rung and
-  PASS/FAIL, still open, or closed without a VERIFY. Finished sessions with
+  PASS/FAIL, still open, or closed without a VERIFY. The rung beside a
+  verdict, here and on the session page, is the mode the last VERIFY ran in
+  (`result.lesson.mode`), not the mode the session was switched to after. Finished sessions with
   their `result`: PASS/FAIL from
   the last VERIFY run, or objectives lost of the total and how many went
   unnoticed. The result is scored once and stored (`Session.result_cache`,
@@ -666,7 +668,11 @@ localStorage (`fsl-lesson-note`), and the step shown in `fsl-lesson-step-<id>`, 
 main and session pages read for "step n/N". Progress itself is the
 session's (`Session.lesson_steps`, migration 0020): per step `reached`,
 `passed`, `skipped` (times), `hint` (the level shown, 0-4) and `done_for_me`,
-reported as `progress` in `GET /api/sessions/<id>/`. `POST
+reported as `progress` in `GET /api/sessions/<id>/` and in every lesson
+step and hint response. A step's record also carries what it has earned:
+`command` once the step is reached (never in self mode), `answer` once its
+hint level reaches 3 (`lesson.ANSWER`), and `line` once it is passed, the
+last two as `{en, ko}`. `POST
 /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}` records a
 step reached (which also fixes the newest detection id an alert check must
 pass) or left unpassed; the console sends `skipped` on Next or a list jump
@@ -726,7 +732,16 @@ described under "The course on the board"), and as the step needs a `site`
 path, a Kibana `query` or the terminal `command`. The session API adds a `discover` link to a step
 with a `query` (`kibana.discover_path(..., narrowed)`) and shows a check's
 `kind` only, plus a choice's `options` and the `path` an alert or served
-check listens for, and a replay's `case`: no answer key reaches the browser.
+check listens for, and a replay's `case`: no `accept` list or answer rule
+reaches the browser. A step's `command` is in the payload only once
+`progress` records the step reached. The answer text
+(`<lesson.text>.answer.<step>`) and the line said on a pass
+(`<lesson.text>.line.<step>`) sit in a `{% comment %}` section at the end of
+`strings.html`, which Django never renders; `console/strings.py` reads them
+and the step's `progress` record carries them once earned, so the string
+table on the page has neither. The theory and hint cards are on the page
+from the start and some name the answer (the board lesson's cards name
+920273 and `ARGS:q`): they are the help the Theory and Hints tabs give.
 The board has eight steps, each advanced by its check; Back and Next stay as
 the way around one:
 
@@ -774,7 +789,8 @@ is folded under "Show command"; "Run in terminal" opens the WAF pane if needed,
 waits for ttyd's `term`, calls `term.paste(command + "\n")` and then
 `term.input("\r")`, because bash keeps a bracketed paste's newline as text.
 
-Help climbs a ladder per step (`<lesson.text>.nudge|answer.<step>`): a nudge,
+Help climbs a ladder per step (`<lesson.text>.nudge.<step>` from the page,
+the answer from the step's `progress.answer`): a nudge,
 then "look where the red box is", then the answer,
 then "Do it for me". It climbs on the Hint button or after two wrong answers
 or failed checks; each press is `POST /api/sessions/<id>/lesson/hints/ {step,
