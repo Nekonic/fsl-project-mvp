@@ -75,6 +75,7 @@ BUILD_GROUP = "fsl-build"
 SENSOR_ROLE = "sensor"
 EDGE_REBOOT = 900
 EDGE_POLL = 15
+EDGE_SETTLE_READS = 8
 DISK_TIMEOUT = 60
 UPLOAD_TIMEOUT = 600
 CHUNK = 1 << 20
@@ -1063,7 +1064,8 @@ class OpenStack:
         source = Path(self.build.source)
         collector = (self._collector(), fabric.COLLECTOR_PORT)
         wanted = opnsense.settings(self.describe().segments, collector, self.build.inside,
-                                   self.build.mtu, self._public_key())
+                                   self.build.mtu, self._public_key(),
+                                   management=self.address(slot.EDGE_ROLE))
         edge = slot.edge_of(self.declared)
         staged = opnsense.playback(
             opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
@@ -1078,6 +1080,7 @@ class OpenStack:
                           f"{ran.output[-1000:]}")
         ran = self._rebooted(edge, before)
         expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
+        ran = self._settled(ran, expected, collector)
         missing = [address for address in expected if address not in opnsense.held(ran.output)]
         reported = opnsense.reported(ran.output)
         sensing = opnsense.sensing(ran.output)
@@ -1093,6 +1096,27 @@ class OpenStack:
                 f"{ran.output[-1000:]}"
             )
         return edge, reported
+
+    def _settled(self, ran: Ran, expected: list[str], collector: tuple[str, int]) -> Ran:
+        for _ in range(EDGE_SETTLE_READS):
+            if self._edge_holds_its_configuration(ran, expected, collector):
+                return ran
+            time.sleep(EDGE_POLL)
+            try:
+                ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
+            except RangeUnavailable:
+                continue
+        return ran
+
+    @staticmethod
+    def _edge_holds_its_configuration(ran: Ran, expected: list[str], collector: tuple[str, int]) -> bool:
+        return (
+            ran.ok
+            and set(expected) <= opnsense.held(ran.output)
+            and opnsense.sensing(ran.output)
+            and f"logs {collector[0]}:{collector[1]}" in opnsense.reported(ran.output)
+            and opnsense.wan_rule_loaded(ran.output)
+        )
 
     def _rebooted(self, edge: str, before: str) -> Ran:
         deadline = time.monotonic() + EDGE_REBOOT
