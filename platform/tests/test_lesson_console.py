@@ -88,8 +88,12 @@ browser.serve((request) => {
     if (check.kind === "click" || check.kind === "served") return {body: judge(id, {})};
     return {body: stepState(id, {passed: false, reason: null})};
   }
+  if (request.route === "/api/sessions/1/" && request.method === "PATCH") {
+    range.patched = request.body;
+    return {body: {id: 1, mode: request.body.mode}};
+  }
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
@@ -281,7 +285,9 @@ CATALOGUE_DECLARING = """
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [
-      {id: "board", name: "Board", description: "", cases: 1, lesson: true, lesson_defense: DECLARED},
+      {id: "board", name: "Board", description: "", cases: 1, lesson: true, lesson_defense: DECLARED,
+       lessons: [{id: "waf-exclusion", order: 1, title: "lesson.board.title", goal: "lesson.board.summary",
+                  minutes: 40, level: "easy", defense: DECLARED, prerequisites: [], steps: 8}]},
       {id: "corp", name: "Corp", description: "", cases: 1, lesson: false},
     ]};
   }
@@ -300,8 +306,8 @@ def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_gui
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["lessons"] == ["board"]
-    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "defense": "minimal"}]
+    assert seen["result"]["lessons"] == ["board", "board"], "the lesson and practice rungs of the one lesson"
+    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "minimal"}]
 
 def test_start_as_lesson_sends_the_defense_the_lesson_declares_not_a_fixed_one(client):
     seen = open_page(client, "/", setup=CATALOGUE_DECLARING.replace("DECLARED", '"full"'), scenario="""
@@ -309,7 +315,7 @@ def test_start_as_lesson_sends_the_defense_the_lesson_declares_not_a_fixed_one(c
       return browser.requests.filter((r) => r.method === 'POST').map((r) => r.body);
     """)
 
-    assert seen["result"] == [{"scenario": "board", "guidance": True, "defense": "full"}]
+    assert seen["result"] == [{"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "full"}]
 
 def test_the_goal_line_is_pinned_above_the_tabs_whichever_tab_is_open(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
@@ -1277,3 +1283,55 @@ def test_an_open_session_s_lesson_and_network_panel_keep_polling(client):
     """)
 
     assert "/api/sessions/1/lesson/steps/search/check/" in seen["result"] and "/api/sessions/1/site/requests/" in seen["result"]
+
+def test_the_home_card_shows_the_lesson_s_goal_level_time_and_prerequisites_and_starts_each_rung(client):
+    posted = []
+    for rung in ('[data-mode="guided"]', '[data-mode="self"]', '[data-rung="wargame"]'):
+        seen = open_page(client, "/", setup=CATALOGUE, scenario=f"""
+          const card = browser.text('[data-lesson-card="waf-exclusion"]');
+          await browser.click('{rung}');
+          return {{card, posted: browser.requests.filter((r) => r.method === 'POST').map((r) => r.body)}};
+        """)
+        assert seen["errors"] == []
+        posted += seen["result"]["posted"]
+    card = seen["result"]["card"]
+
+    for shown in (english("lesson.board.title"), english("lesson.board.summary"), english("difficulty.easy"),
+                  english("main.minutes", 40), english("main.lesson.needs_none"),
+                  english("main.rung.guided"), english("main.rung.self"), english("main.rung.wargame")):
+        assert shown in card, shown
+    assert posted == [
+        {"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "minimal"},
+        {"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "mode": "self", "defense": "minimal"},
+        {"scenario": "board"},
+    ], "lesson and practice run the same lesson; the wargame rung runs without guidance on the full defense"
+
+def test_practice_hides_the_steps_the_hints_and_the_coach_and_keeps_the_goal_and_check_tabs(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + """
+      range.mode = "self";
+    """, scenario="""
+      await browser.click('note-pill');
+      const tabs = [...document.querySelectorAll('#lesson-tabs .tab')]
+        .filter((tab) => !tab.classList.contains('hidden')).map((tab) => tab.dataset.tab);
+      const shown = [...document.querySelectorAll('[data-pane-of]')]
+        .filter((pane) => !pane.classList.contains('hidden')).map((pane) => pane.dataset.paneOf);
+      return {tabs, shown, pop: browser.element('coach-pop').classList.contains('hidden'),
+              why: document.querySelectorAll('#lesson-theory [data-shows]').length,
+              note: browser.text('lesson-mode-note'),
+              stepped: browser.requests.filter((r) => r.route.includes('/lesson/steps/')).length};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["tabs"] == ["goal", "theory", "check"]
+    assert seen["result"]["shown"] == ["goal"]
+    assert seen["result"]["pop"] is True and seen["result"]["stepped"] == 0, "no coach walks a practice run"
+    assert seen["result"]["why"] == 0
+    assert seen["result"]["note"] == english("lesson.mode.self")
+
+def test_the_mode_switch_patches_the_session_s_mode(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+      await browser.click('lesson-mode');
+      return {patched: range.patched, label: browser.text('lesson-mode')};
+    """)
+
+    assert seen["result"] == {"patched": {"mode": "self"}, "label": english("lesson.mode.to_self")}

@@ -182,3 +182,47 @@ def test_do_it_for_me_on_a_step_only_the_console_can_perform_records_it_and_pass
 
     assert (done["passed"], done["reason"]) == (False, None)
     assert done["progress"]["search"]["done_for_me"] is True
+
+def test_a_practice_session_shows_no_command_and_refuses_hints_and_done_for_me(client):
+    fire, _ = attacker({})
+    with patch("api.views.harness.fire", fire):
+        opened = client.post_json("/api/sessions/", {"lesson": "waf-exclusion", "mode": "self"}).json()
+    session = Session.objects.get(pk=opened["id"])
+
+    steps = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]
+    hint = client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", {"step": "rule", "level": "hint"})
+    done = step(client, session, "rule", "do/")
+
+    assert opened["mode"] == "self"
+    assert not any("command" in shown for shown in steps), "in practice the learner types the command"
+    assert (hint.status_code, done.status_code) == (409, 409)
+    assert check(client, session, "rule", {"answer": "920273"}).json()["passed"] is True
+
+def test_the_mode_is_switched_by_patch_and_each_verify_run_keeps_the_mode_it_ran_in(client):
+    session = board(guidance=True)
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+    with patch("api.views.harness.fire", fire):
+        guided = client.post_json(f"/api/sessions/{session.pk}/verify/").json()
+        switched = client.patch(f"/api/sessions/{session.pk}/", {"mode": "self"}, content_type="application/json")
+        practised = client.post_json(f"/api/sessions/{session.pk}/verify/").json()
+
+    assert switched.status_code == 200 and switched.json()["mode"] == "self"
+    assert (guided["mode"], practised["mode"]) == ("guided", "self")
+    assert client.get(f"/api/sessions/{session.pk}/").json()["result"]["lesson"]["mode"] == "self"
+
+@pytest.mark.parametrize("guidance, body, status", [
+    (True, {"mode": "alone"}, 400),
+    (False, {"mode": "self"}, 400),
+])
+def test_a_mode_that_is_not_one_or_a_session_that_is_not_a_lesson_is_refused(client, guidance, body, status):
+    session = board(guidance=guidance)
+
+    answer = client.patch(f"/api/sessions/{session.pk}/", body, content_type="application/json")
+
+    assert answer.status_code == status
+    assert Session.objects.get(pk=session.pk).mode == "guided"
+
+def test_a_wargame_cannot_be_opened_in_self_mode(client):
+    answer = client.post_json("/api/sessions/", {"mode": "self"})
+
+    assert answer.status_code == 400 and "mode" in answer.json()["detail"]

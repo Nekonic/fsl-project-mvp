@@ -153,8 +153,15 @@ function setNote(change) {
   placeNote();
 }
 
-function noteControls() {
+const GUIDE_ONLY_TABS = ["steps", "hint"];
+
+function noteControls(practice) {
   note = { ...note, ...readNote() };
+  if (practice) {
+    GUIDE_ONLY_TABS.forEach((name) => document.querySelector(`#lesson-tabs [data-tab="${name}"]`).classList.add("hidden"));
+    if (GUIDE_ONLY_TABS.includes(note.tab)) note.tab = "goal";
+    field("note-pill-text").textContent = t("kind.practice");
+  }
   field("lesson-collapse").textContent = t("lesson.note.collapse");
   field("lesson-collapse").addEventListener("click", () => {
     openedByStep = false;
@@ -821,8 +828,23 @@ function folded(list, prefix, kind, ids, extra) {
   }));
 }
 
+function modeControl(practice) {
+  const button = field("lesson-mode");
+  button.textContent = t(practice ? "lesson.mode.to_guided" : "lesson.mode.to_self");
+  field("lesson-mode-note").textContent = t(practice ? "lesson.mode.self" : "lesson.mode.guided");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const changed = await api(lessonPath(""), {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: practice ? "guided" : "self" }),
+    });
+    if (changed.ok) location.reload();
+    else button.disabled = false;
+  });
+}
+
 function theory(prefix, listed, coachTo) {
-  folded(field("lesson-theory"), prefix, "theory", cards(listed), (card) => card.shows
+  folded(field("lesson-theory"), prefix, "theory", cards(listed), (card) => card.shows && coachTo
     ? `<button class="self-start text-[12px] text-primary hover:underline" data-shows="${esc(card.shows)}">${esc(t("lesson.theory.show"))}</button>` : "");
   field("lesson-theory").querySelectorAll("[data-shows]").forEach((show) =>
     show.addEventListener("click", () => coachTo(show.dataset.shows)));

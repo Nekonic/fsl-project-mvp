@@ -261,6 +261,8 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [{id: "board", name: "Board", description: "", cases: 12, attacks: 8, benign: 4, objectives: 3,
                     lesson: true, lesson_steps: 11, lesson_text: "lesson.board",
+                    lessons: [{id: "waf-exclusion", order: 1, title: "lesson.board.title", goal: "lesson.board.summary",
+                               minutes: 40, level: "easy", defense: "minimal", prerequisites: [], steps: 11}],
                     category: "sql-injection", difficulty: "medium", minutes: 40}]};
   }
   if (request.route === "/api/range/ready/") return {body: {ready: true, substrate: "compose", slot: null, max_sessions: 2}};
@@ -270,7 +272,7 @@ browser.serve((request) => {
   }
   if (request.route === "/api/sessions/" && request.query.state === "open") {
     return {body: [
-      {id: 201, scenario: "board", kind: "lesson", ready: true, started_at: "2026-10-10T14:20:00Z"},
+      {id: 201, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "guided", ready: true, started_at: "2026-10-10T14:20:00Z"},
       {id: 202, scenario: "board", kind: "wargame", ready: false, started_at: new Date().toISOString()},
     ].filter((row) => !closed.has(String(row.id)))};
   }

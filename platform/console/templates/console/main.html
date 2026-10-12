@@ -70,7 +70,42 @@
     const wargame = scenarioOf(id);
     return localized(`wargame.${id}.name`, wargame ? wargame.name : id);
   };
-  const kindBadge = (kind) => badge(t(`kind.${kind}`), kind === "lesson" ? "blue" : "neutral");
+  const kindOf = (session) => (session.kind === "lesson" && session.mode === "self" ? "practice" : session.kind);
+  const kindBadge = (session) => badge(t(`kind.${kindOf(session)}`), session.kind === "lesson" ? "blue" : "neutral");
+  const lessonOf = (session) => {
+    const wargame = scenarioOf(session.scenario);
+    return wargame && session.lesson_id ? (wargame.lessons || []).find((taught) => taught.id === session.lesson_id) : null;
+  };
+
+  function lessonBlock(wargame, taught) {
+    const id = esc(wargame.id);
+    const needs = (taught.prerequisites || []).map((other) => {
+      const before = (wargame.lessons || []).find((listed) => listed.id === other);
+      return before ? t(before.title) : other;
+    });
+    const facts = [
+      taught.level ? t(`difficulty.${taught.level}`) : "",
+      taught.minutes ? t("main.minutes", taught.minutes) : "",
+      needs.length ? t("main.lesson.needs", needs.join(", ")) : t("main.lesson.needs_none"),
+    ].filter(Boolean);
+    const rung = (mode, tone) => `<button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
+        data-mode="${mode}" data-defense="${esc(taught.defense || "")}" class="start btn ${tone} w-full">${esc(t(`main.rung.${mode}`))}</button>`;
+    return `
+      <div class="pt-4 mt-4 border-t border-line-subdued" data-lesson-card="${esc(taught.id)}">
+        <h4 class="font-semibold text-heading">${esc(t(taught.title))}</h4>
+        <p class="text-body mt-1 leading-relaxed">${esc(t(taught.goal))}</p>
+        <p class="text-[12px] text-muted mt-1.5">${esc(facts.join(" · "))}</p>
+        <div class="grid grid-cols-3 gap-2 mt-3">
+          ${rung("guided", "btn-blue")}
+          ${rung("self", "btn-ghost")}
+          <button data-wargame="${id}" data-rung="wargame" class="start btn btn-ghost w-full">${esc(t("main.rung.wargame"))}</button>
+        </div>
+        <div class="grid grid-cols-3 gap-2 mt-1.5 text-[12px] text-muted">
+          <p>${esc(t("main.rung.guided.note"))}</p><p>${esc(t("main.rung.self.note"))}</p><p>${esc(t("main.rung.wargame.note"))}</p>
+        </div>
+        <p class="hidden text-[12px] mt-2" data-last="${id}/${esc(taught.id)}"></p>
+      </div>`;
+  }
 
   function scenarioCard(wargame) {
     const id = esc(wargame.id);
@@ -87,21 +122,18 @@
         <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
         ${counted ? `<p class="text-[12px] text-muted mt-3">${
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
-        <p class="text-[12px] mt-1 ${wargame.lesson ? "text-muted" : "text-faint"}">${
-          esc(wargame.lesson ? t("main.lesson_steps", wargame.lesson_steps) : t("main.no_lesson"))}</p>
+        ${(wargame.lessons || []).length ? wargame.lessons.map((taught) => lessonBlock(wargame, taught)).join("") : `
+        <p class="text-[12px] mt-1 text-faint">${esc(t("main.no_lesson"))}</p>
         <div class="grid grid-cols-2 gap-3 mt-auto pt-4">
           <div class="pt-4 border-t border-line-subdued">
-            ${wargame.lesson
-              ? `<button data-wargame="${id}" data-lesson="true" data-defense="${esc(wargame.lesson_defense || "")}" class="start btn btn-blue w-full">${esc(t("main.start_lesson"))}</button>`
-              : `<button class="btn btn-ghost w-full" disabled>${esc(t("main.start_lesson"))}</button>`}
-            <p class="text-[12px] mt-1.5 ${wargame.lesson ? "text-muted" : "text-faint"}">${
-              esc(t(wargame.lesson ? "main.start_lesson.note" : "main.no_lesson.note"))}</p>
+            <button class="btn btn-ghost w-full" disabled>${esc(t("main.start_lesson"))}</button>
+            <p class="text-[12px] mt-1.5 text-faint">${esc(t("main.no_lesson.note"))}</p>
           </div>
           <div class="pt-4 border-t border-line-subdued">
             <button data-wargame="${id}" class="start btn btn-ghost w-full">${esc(t("main.start"))}</button>
             <p class="text-[12px] text-muted mt-1.5">${esc(t("main.start.note"))}</p>
           </div>
-        </div>
+        </div>`}
         <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
              data-failure="${id}">
           <div class="flex flex-wrap items-start gap-2">
@@ -148,7 +180,9 @@
     card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
     const ticking = opening(button);
     const defense = button.dataset.defense ? { defense: button.dataset.defense } : {};
-    const settings = button.dataset.lesson ? { guidance: true, ...defense } : {};
+    const practice = button.dataset.mode === "self" ? { mode: "self" } : {};
+    const settings = button.dataset.lesson
+      ? { guidance: true, lesson: button.dataset.lessonId, ...practice, ...defense } : {};
     const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings },
                                PATIENCE_FOR_RANGE_WORK);
     clearInterval(ticking);
@@ -175,7 +209,7 @@
     list.innerHTML = running.length ? running.map((session) => `
       <div class="flex items-center gap-3 bg-panel rounded-md border border-line px-3 py-2">
         <span class="font-semibold text-heading">${esc(t("common.session", session.id))}</span>
-        ${kindBadge(session.kind)}
+        ${kindBadge(session)}
         <span class="text-body truncate">${esc(scenarioName(session.scenario))}</span>
         <span class="text-faint text-[12px] ml-auto">${esc(t("main.started_at", clock(session.started_at)))}</span>
         <button data-close="${esc(session.id)}" class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
@@ -209,15 +243,14 @@
   }
 
   function runningRow(session) {
-    const wargame = scenarioOf(session.scenario);
-    const lessonTitle = session.kind === "lesson" && wargame && wargame.lesson_text
-      ? ` · ${localized(`${wargame.lesson_text}.title`, "")}` : "";
-    const steps = session.kind === "lesson" && wargame && wargame.lesson_steps
-      ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id), wargame.lesson_steps))}</span>` : "";
+    const taught = session.kind === "lesson" ? lessonOf(session) : null;
+    const lessonTitle = taught ? ` · ${localized(taught.title, "")}` : "";
+    const steps = taught && taught.steps && session.mode !== "self"
+      ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id), taught.steps))}</span>` : "";
     return `
       <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-subdued">
         <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
-        ${kindBadge(session.kind)}
+        ${kindBadge(session)}
         <span class="text-body">${esc(scenarioName(session.scenario) + lessonTitle)}</span>
         ${steps}
         <span class="ml-auto">${stateBadge(session)}</span>
@@ -252,7 +285,7 @@
     return `
       <tr class="table-row hover:bg-subdued cursor-pointer" data-href="/session/${esc(session.id)}/">
         <td class="pl-5 font-semibold text-heading"><a href="/session/${esc(session.id)}/">${esc(t("common.session", session.id))}</a></td>
-        <td>${kindBadge(session.kind)}</td>
+        <td>${kindBadge(session)}</td>
         <td>${esc(scenarioName(session.scenario))}</td>
         <td>${resultCell(session)}</td>
         <td>${esc(t("main.minutes_spent", minutesBetween(session.started_at, session.ended_at)))}</td>

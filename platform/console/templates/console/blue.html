@@ -177,9 +177,11 @@
       `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
     field("lesson-case").innerHTML = taught.cases.map((name) =>
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
-    noteControls();
+    const practice = session.mode === "self";
+    noteControls(practice);
+    modeControl(practice);
     hints(taught.text, taught.hints, declared);
-    theory(taught.text, taught.theory, declared.length ? coach(taught.text, declared) : () => {});
+    theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);
   })();
 </script>
 {% endblock %}
