@@ -42,7 +42,7 @@ function renderDebrief(container, told) {
     overview.fix ? t(`lesson.fix.${overview.fix}`) : "",
   ].filter(Boolean);
   const evidence = told.evidence.length ? `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
-    `<li data-evidence>${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
+    `<li data-evidence class="break-all">${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
       localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>`
     : `<p class="text-muted">${esc(t("lesson.debrief.evidence.none"))}</p>`;
   const cases = `<table class="w-full text-[12px]"><thead><tr class="text-left text-muted">
