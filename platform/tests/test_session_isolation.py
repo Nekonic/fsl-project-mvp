@@ -428,6 +428,34 @@ def test_a_suppression_on_a_torn_down_session_is_lifted_not_stuck(client):
 
 
 @pytest.mark.django_db
+def test_a_suppression_on_a_session_whose_close_rebuilt_the_range_is_lifted_without_the_sensors(client):
+    from django.utils import timezone
+
+    from api.models import Suppression
+
+    closed = Session.objects.create(scenario="board", baseline=[], ended_at=timezone.now())
+    record = Suppression.objects.create(
+        session=closed, sid=9000004, original="alert x", expires_at=timezone.now(),
+    )
+
+    class Rebuilding:
+        def rebuild_slot(self):
+            return []
+
+        def runner(self, role, segment_id=""):
+            raise RangeUnavailable(f"{role} is rebuilding")
+
+    with patch("api.views._range", lambda session=None: Rebuilding()):
+        restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
+
+    assert restored.status_code == 200, restored.content
+    assert Suppression.objects.get(pk=record.pk).restored_at is not None, (
+        "on openstack the close rebuilds every sensor from its image, so a "
+        "restore sent while the sensors are down stayed in force and every "
+        "later session was refused as off baseline"
+    )
+
+@pytest.mark.django_db
 def test_a_suppression_on_an_open_session_is_not_dropped_when_its_sensor_is_down(client):
     from django.utils import timezone
 

@@ -6,6 +6,8 @@ import shlex
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
+from functools import partial
 from pathlib import Path
 from urllib.parse import quote
 
@@ -75,8 +77,11 @@ GATEWAY_ROLE = "gateway"
 BUILD_GROUP = "fsl-build"
 SENSOR_ROLE = "sensor"
 EDGE_REBOOT = 900
-EDGE_POLL = 15
-EDGE_SETTLE_READS = 8
+EDGE_POLL = 3
+EDGE_SETTLE_READS = 40
+HOST_READS = 100
+HOST_POLL = 3
+RESET_IN_PLACE = (slot.EDGE_ROLE, wargame_host.ROLE)
 DISK_TIMEOUT = 60
 UPLOAD_TIMEOUT = 600
 CHUNK = 1 << 20
@@ -171,6 +176,23 @@ def connect(
         ) from error
     cloud, reader = _connected.get(known) or rediscover()
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
+
+def once_it_answers(step):
+    for _ in range(HOST_READS - 1):
+        try:
+            return step()
+        except RangeUnavailable:
+            time.sleep(HOST_POLL)
+    return step()
+
+def alongside(*chains: list) -> list:
+    def in_order(chain: list) -> list:
+        return [once_it_answers(step) for step in chain]
+
+    with ThreadPoolExecutor(max_workers=max(1, len(chains))) as pool:
+        running = [pool.submit(in_order, chain) for chain in chains]
+        wait(running)
+    return [done for finished in running for done in finished.result()]
 
 def forget() -> None:
     _connected.clear()
@@ -426,15 +448,17 @@ class OpenStack:
         self._generations: dict[str, str] = {}
 
     def describe(self) -> Shape:
-        if self._shape is None:
+        shape = self._shape
+        if shape is None:
             try:
-                self._shape = self._read()
+                shape = self._read()
             except EndpointGone:
                 if self.rediscover is None:
                     raise
                 self.cloud, self.get = self.rediscover()
-                self._shape = self._read()
-        return self._shape
+                shape = self._read()
+            self._shape = shape
+        return shape
 
     def segments(self) -> tuple[Segment, ...]:
         return self.describe().segments
@@ -1065,7 +1089,7 @@ class OpenStack:
         self._shape = None
         return steps
 
-    def rebuild_slot(self) -> list[tuple[str, str]]:
+    def rebuild_slot(self, kept: frozenset[str] = frozenset()) -> list[tuple[str, str]]:
         plan, _bound, _subnets, _ports, _groups, ready = self._slot()
         if plan.blocked:
             raise Drifted("; ".join(plan.blocked))
@@ -1074,27 +1098,71 @@ class OpenStack:
                 f"the slot is not fully standing, so there is nothing to reset "
                 f"for {', '.join(plan.boot)}; provision it first"
             )
-        missing = [host for host, _server, _status in plan.standing if host not in ready]
+        rebuilding = [(host, server) for host, server, _status in plan.standing if host not in kept]
+        missing = [host for host, _server in rebuilding if host not in ready]
         if missing:
             raise Drifted(
                 f"image {', '.join(missing)} is not ready, so rebuilding would "
                 f"wipe some VMs and leave others; make the images ready first"
             )
-        rebuilt = []
-        for host, server, _status in plan.standing:
+        for host, server in rebuilding:
             self.get(self._call(ACTION, server=server), {"rebuild": {"imageRef": ready[host]}})
-            rebuilt.append((host, server))
         self._shape = None
-        return rebuilt
+        return rebuilding
+
+    def reset_slot(self) -> list[tuple[str, str]]:
+        return self.rebuild_slot(kept=self.reset_in_place_hosts())
+
+    def reset_in_place_hosts(self) -> frozenset[str]:
+        return frozenset(self.declared.roles[role] for role in RESET_IN_PLACE
+                         if role in self.declared.roles)
 
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
-        done = [self.configure_edge(), self.configure_waf(), self.open_collector()]
+        self.describe()
+        return alongside([self.configure_edge], [self.configure_waf], [self.open_collector],
+                         self._wargame_chain())
+
+    def reset_in_place(self) -> list[tuple[str, tuple[str, ...]]]:
+        self.describe()
+        hosts = self.reset_in_place_hosts()
+        edge = [self.reset_edge] if slot.edge_of(self.declared) in hosts else []
+        wargames = ([self.clear_wargames, *self._wargame_chain()]
+                    if wargame_host.ROLE in self.declared.roles else [])
+        return alongside(edge, [self.open_collector], wargames)
+
+    def configure_rebuilt(self, hosts) -> list[tuple[str, tuple[str, ...]]]:
+        self._shape = None
+        self.describe()
+        chains = {slot.edge_of(self.declared): [self.configure_edge],
+                  self.declared.host(GATEWAY_ROLE): [self.configure_waf]}
         if wargame_host.ROLE in self.declared.roles:
-            done.append(self.start_wargames())
-        done += [self.start_sensor(role, host) for role, host in self._hosted_sensors()]
-        done += [self.forward_logs(host) for host, entry in sorted(self.declared.hosts.items())
-                 if entry.logs and host in self.declared.roles.values()]
-        return done
+            chains[self.declared.host(wargame_host.ROLE)] = self._wargame_chain()
+        return alongside(*[chains[host] for host in dict.fromkeys(hosts) if host in chains])
+
+    def _wargame_chain(self) -> list:
+        chain = [self.start_wargames] if wargame_host.ROLE in self.declared.roles else []
+        chain += [partial(self.start_sensor, role, host) for role, host in self._hosted_sensors()]
+        chain += [partial(self.forward_logs, host)
+                  for host, entry in sorted(self.declared.hosts.items())
+                  if entry.logs and host in self.declared.roles.values()]
+        return chain
+
+    def clear_wargames(self) -> tuple[str, tuple[str, ...]]:
+        host = self.declared.host(wargame_host.ROLE)
+        entry = self.declared.hosts.get(host)
+        if entry is None or not entry.wargames:
+            raise Drifted(f"{host} fills {wargame_host.ROLE!r} and the declaration gives it no wargame to run")
+        sensed = any(filled == host for _, filled in self._hosted_sensors())
+        logs = tuple(path for _, path in sorted(entry.logs.items()))
+        ran = self.runner(wargame_host.ROLE)(
+            wargame_host.cleared(entry.wargames, logs, sensed),
+            stdin=(Path(self.build.source) / wargame_host.BASELINE_RULES).read_text(),
+            timeout=wargame_host.UP_TIMEOUT,
+        )
+        if not ran.ok:
+            raise Drifted(f"{host} did not clear its wargames (exit {ran.exit_code}): {ran.output[-1000:]}")
+        return host, tuple(f"cleared {wargame}" for wargame in entry.wargames) + (
+            ("cleared its sensor and its log",) if sensed else ())
 
     def _hosted_sensors(self) -> list[tuple[str, str]]:
         return [
@@ -1131,7 +1199,7 @@ class OpenStack:
     def _collector(self) -> str:
         return self.address(SCORER_ROLE)
 
-    def configure_edge(self) -> tuple[str, tuple[str, ...]]:
+    def _edge_wanted(self) -> tuple[dict, tuple[str, int], str, str, str]:
         source = Path(self.build.source)
         collector = (self._collector(), fabric.COLLECTOR_PORT)
         wanted = opnsense.settings(self.describe().segments, collector, self.build.inside,
@@ -1139,20 +1207,43 @@ class OpenStack:
                                    management=self.address(slot.EDGE_ROLE),
                                    front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
                                                        slot.NAMED_ON))
+        return (wanted, collector, opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
+                (source / opnsense.INCLUDE).read_text(), (source / opnsense.RULES).read_text())
+
+    @staticmethod
+    def _edge_expects(wanted: dict) -> list[str]:
+        return [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
+
+    def reset_edge(self) -> tuple[str, tuple[str, ...]]:
+        wanted, collector, config, include, rules = self._edge_wanted()
         edge = slot.edge_of(self.declared)
-        staged = opnsense.playback(
-            opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
-            (source / opnsense.INCLUDE).read_text(),
-            (source / opnsense.RULES).read_text(),
-            (source / opnsense.SCRIPT).read_text(),
-        )
+        flushed = [segment.subnet for segment in self.describe().segments
+                   if segment.id != fabric.MANAGEMENT and segment.subnet]
+        ran = self.runner(slot.EDGE_ROLE)(
+            opnsense.command(), stdin=opnsense.in_place(config, include, rules, flushed), timeout=180)
+        drifted = opnsense.drifted(ran.output)
+        why = (f"{', '.join(drifted)} drifted" if drifted
+               else f"the in-place reset exited {ran.exit_code}")
+        if ran.ok and opnsense.reset_done(ran.output):
+            ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
+            if self._edge_holds_its_configuration(ran, self._edge_expects(wanted), collector):
+                return edge, opnsense.reported(ran.output) + ("reset in place",)
+            why = "it did not hold its configuration after the reset"
+        host, reported = self.configure_edge()
+        return host, reported + (f"reinstalled and rebooted: {why}",)
+
+    def configure_edge(self) -> tuple[str, tuple[str, ...]]:
+        source = Path(self.build.source)
+        wanted, collector, config, include, rules = self._edge_wanted()
+        edge = slot.edge_of(self.declared)
+        staged = opnsense.playback(config, include, rules, (source / opnsense.SCRIPT).read_text())
         ran = self.runner(slot.EDGE_ROLE)(opnsense.command(), stdin=staged, timeout=120)
         before = opnsense.booted(ran.output)
         if not ran.ok or opnsense.REBOOTING not in ran.output or not before:
             raise Drifted(f"{edge} did not take its configuration (exit {ran.exit_code}): "
                           f"{ran.output[-1000:]}")
         ran = self._rebooted(edge, before)
-        expected = [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
+        expected = self._edge_expects(wanted)
         ran = self._settled(ran, expected, collector)
         missing = [address for address in expected if address not in opnsense.held(ran.output)]
         reported = opnsense.reported(ran.output)
@@ -1168,6 +1259,10 @@ class OpenStack:
                 f"its wan pass rule is {'in pf' if wan_rule else 'not loaded into pf'}: "
                 f"{ran.output[-1000:]}"
             )
+        recorded = self.runner(slot.EDGE_ROLE)(opnsense.record(config), timeout=60)
+        if not recorded.ok:
+            raise Drifted(f"{edge} did not record the configuration it settled on "
+                          f"(exit {recorded.exit_code}): {recorded.output[-1000:]}")
         return edge, reported
 
     def _settled(self, ran: Ran, expected: list[str], collector: tuple[str, int]) -> Ran:
@@ -1195,15 +1290,15 @@ class OpenStack:
         deadline = time.monotonic() + EDGE_REBOOT
         said = "it never answered"
         while time.monotonic() < deadline:
-            time.sleep(EDGE_POLL)
             try:
                 ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
             except RangeUnavailable as gone:
                 said = str(gone)
-                continue
-            if opnsense.booted(ran.output) not in ("", before):
-                return ran
-            said = "it had not rebooted yet"
+            else:
+                if opnsense.booted(ran.output) not in ("", before):
+                    return ran
+                said = "it had not rebooted yet"
+            time.sleep(EDGE_POLL)
         raise Drifted(f"{edge} did not come back from its reboot within {EDGE_REBOOT}s: {said}")
 
     def configure_waf(self) -> tuple[str, tuple[str, ...]]:

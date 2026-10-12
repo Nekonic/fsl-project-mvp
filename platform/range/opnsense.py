@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import shlex
 import uuid
 import xml.etree.ElementTree as ElementTree
@@ -19,12 +20,19 @@ IMAGE_PROPERTIES = {"hw_vif_model": "virtio", "hw_disk_bus": "virtio", "os_distr
                     "min_ram": 3072}
 STAGED = {"config": "/tmp/fsl-config.xml", "include": "/tmp/fsl-suricata.yaml",
           "rules": "/tmp/fsl.rules"}
+INSTALLED = {"config": "/conf/config.xml", "include": "/usr/local/etc/suricata/conf.d/fsl.yaml",
+             "rules": "/usr/local/etc/suricata/rules/fsl.rules"}
+SETTLED = "/conf/fsl-settled"
+SOCKET = "/var/run/suricata-command.socket"
+SENSOR_ANSWER = 60
 WAN = "vtnet0"
 REPORTS = "fsl-edge "
 HOLDS = "fsl-edge wan "
 SENSING = "fsl-edge sensor "
 BOOTED = "fsl-edge booted "
 REBOOTING = "fsl-edge rebooting"
+RESET = "fsl-edge reset"
+DRIFTED = "fsl-edge drifted"
 INTERFACES = ("wan", "lan", "opt1")
 NAMESPACE = uuid.UUID("6f1c7e3a-5d0b-4c8e-9a51-2b7d4e0f9c11")
 LEVELS = "info,notice,warn,err,crit,alert,emerg"
@@ -150,6 +158,59 @@ def playback(config: str, include: str, rules: str, script: str) -> str:
 
 def command() -> list[str]:
     return ["sh"]
+
+
+def fingerprint(content: str) -> str:
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def record(config: str) -> list[str]:
+    return ["sh", "-c", f"echo \"{fingerprint(config)} $(sha256 -q {INSTALLED['config']})\" "
+                        f"> {SETTLED}"]
+
+
+def _flushes(subnets: list[str]) -> str:
+    return "".join(
+        f"/sbin/pfctl -k {subnet} >/dev/null 2>&1\n"
+        f"/sbin/pfctl -k 0.0.0.0/0 -k {subnet} >/dev/null 2>&1\n"
+        for subnet in subnets
+    )
+
+
+def in_place(config: str, include: str, rules: str, subnets: list[str]) -> str:
+    return _heredoc(STAGED["rules"], rules) + (
+        "set -eu\n"
+        f"install -m 0644 {STAGED['rules']} {INSTALLED['rules']}\n"
+        f"rm -f {STAGED['rules']}\n"
+        "drift=''\n"
+        f"[ \"$(cat {SETTLED} 2>/dev/null)\" = "
+        f"\"{fingerprint(config)} $(sha256 -q {INSTALLED['config']} 2>/dev/null)\" ] "
+        "|| drift=\"$drift config\"\n"
+        f"[ \"$(sha256 -q {INSTALLED['include']} 2>/dev/null)\" = \"{fingerprint(include)}\" ] "
+        "|| drift=\"$drift include\"\n"
+        f"[ \"$(sha256 -q {INSTALLED['rules']} 2>/dev/null)\" = \"{fingerprint(rules)}\" ] "
+        "|| drift=\"$drift rules\"\n"
+        f"if [ -n \"$drift\" ]; then echo \"{DRIFTED}$drift\"; exit 0; fi\n"
+        f"{_flushes(subnets)}"
+        "/usr/local/sbin/configctl filter reload >/dev/null\n"
+        "/usr/local/sbin/configctl ids restart >/dev/null\n"
+        "tries=0\n"
+        f"until /usr/local/bin/suricatasc -c uptime {SOCKET} >/dev/null 2>&1; do\n"
+        "  tries=$((tries + 1))\n"
+        f"  if [ \"$tries\" -ge {SENSOR_ANSWER} ]; then echo \"{DRIFTED} sensor\"; exit 0; fi\n"
+        "  sleep 1\n"
+        "done\n"
+        f"echo \"{RESET}\"\n"
+    )
+
+
+def drifted(output: str) -> tuple[str, ...]:
+    return next((tuple(line[len(DRIFTED):].split()) for line in output.splitlines()
+                 if line.startswith(DRIFTED)), ())
+
+
+def reset_done(output: str) -> bool:
+    return RESET in output.splitlines()
 
 
 def verify() -> list[str]:

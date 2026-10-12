@@ -73,6 +73,8 @@ filebeat.inputs:
               fields:
                 fsl_source: modsecurity
 
+queue.mem.flush.timeout: 1s
+
 setup.template.name: fsl-logs
 setup.template.pattern: fsl-logs-*
 setup.template.settings:
