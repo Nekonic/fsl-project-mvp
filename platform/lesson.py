@@ -5,6 +5,7 @@ import re
 
 import suppress
 
+ANSWER = 3
 DO_IT = 4
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1

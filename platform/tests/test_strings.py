@@ -1,9 +1,10 @@
-import json
 import pathlib
 import re
 
 import pytest
 from django.test import Client
+
+from console import strings
 
 pytestmark = pytest.mark.django_db
 
@@ -12,19 +13,8 @@ TEMPLATES = sorted(path.name for path in CONSOLE.glob("*.html") if path.name != 
 PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
 
 def tables():
-    source = (CONSOLE / "strings.html").read_text()
-    found = {}
-    for language in ("en", "ko"):
-        start = source.index(f"    {language}: {{")
-        block = source[start + source[start:].index("{"):]
-        depth, end = 0, 0
-        for position, character in enumerate(block):
-            depth += (character == "{") - (character == "}")
-            if depth == 0:
-                end = position + 1
-                break
-        found[language] = json.loads(re.sub(r",(\s*})", r"\1", block[:end]))
-    return found
+    shown, withheld = strings.shown(), strings.withheld()
+    return {language: shown[language] | withheld[language] for language in strings.LANGUAGES}
 
 def used_keys():
     keys = set()
@@ -118,6 +108,33 @@ def test_every_page_ships_the_string_table(client, path):
 
     assert "const STRINGS" in page, path
     assert 'id="language"' in page, path
+
+def test_the_blue_page_ships_no_withheld_answer_or_pass_line(client):
+    page = client.get("/blue/1/").content.decode()
+    rendered = strings.parsed(page[page.index("const STRINGS"):])
+    withheld = strings.withheld()
+
+    assert all(withheld[language] for language in strings.LANGUAGES)
+    for language in strings.LANGUAGES:
+        assert not set(withheld[language]) & set(rendered[language])
+        assert not set(withheld[language].values()) & set(rendered[language].values())
+        assert not [key for key in withheld[language] if key in page]
+    assert "{% comment %}" not in page and "const WITHHELD" not in page
+
+def test_every_lesson_step_has_a_withheld_answer_and_line_in_both_languages():
+    import wargames
+
+    withheld = strings.withheld()
+    missing = [
+        f"{taught['text']}.{part}.{step['id']}"
+        for wargame_id in wargames.WARGAMES for taught in wargames.lessons(wargame_id)
+        for step in taught.get("steps", []) for part in ("answer", "line")
+        if any(f"{taught['text']}.{part}.{step['id']}" not in withheld[language] for language in strings.LANGUAGES)
+    ]
+    leftover = [key for key in tables()["en"] if re.fullmatch(r"lesson\.[a-z]+\.(?:answer|line)\.[a-z_]+", key)
+                and key not in withheld["en"]]
+
+    assert missing == [] and leftover == []
 
 def test_no_korean_is_written_outside_the_string_table():
     korean = re.compile(r"[\uac00-\ud7a3]")

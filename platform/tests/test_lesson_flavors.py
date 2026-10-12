@@ -55,7 +55,9 @@ def test_every_lesson_exclusion_command_runs_against_the_flavor_s_file(tmp_path,
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
 def test_every_lesson_renders_its_steps_for_a_session_on_either_flavor(client, wargame_id, lesson_id, flavor):
-    session = Session.objects.create(scenario=wargame_id, baseline={}, guidance=True, lesson=lesson_id)
+    declared = wargames.lesson(wargame_id, lesson_id=lesson_id)["steps"]
+    session = Session.objects.create(scenario=wargame_id, baseline={}, guidance=True, lesson=lesson_id,
+                                     lesson_steps={step["id"]: {"reached": "2026-10-13T09:00:00+00:00"} for step in declared})
 
     with override_settings(FSL_WAF=layout(flavor)):
         shown = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]
@@ -63,6 +65,5 @@ def test_every_lesson_renders_its_steps_for_a_session_on_either_flavor(client, w
     assert shown["id"] == lesson_id
     assert [step["id"] for step in shown["steps"]] == [step["id"] for step in wargames.lesson(wargame_id, lesson_id=lesson_id)["steps"]]
     assert all("accept" not in step["check"] for step in shown["steps"]), "no answer key leaves the server"
-    for step in shown["steps"]:
-        if step.get("command"):
-            assert step["command"] == commands(wargame_id, lesson_id, flavor)[step["id"]]
+    assert {step["id"]: step["command"] for step in shown["steps"] if step.get("command")} == commands(
+        wargame_id, lesson_id, flavor), "every reached step carries its command, rendered for the flavor"
