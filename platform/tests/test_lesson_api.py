@@ -761,3 +761,12 @@ def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client)
     assert [row["id"] for row in listed] == [third.pk, first.pk]
     assert "result" in listed[1] and listed[1]["lesson_id"] == "waf-exclusion"
     assert client.get("/api/sessions/?ids=1,x").status_code == 400
+
+def test_a_session_whose_lesson_the_scenario_no_longer_declares_still_lists_and_reads(client):
+    gone = board(guidance=True, lesson="retired-lesson")
+
+    listed = client.get("/api/sessions/").json()
+    read = client.get(f"/api/sessions/{gone.pk}/")
+
+    assert [row["lesson_id"] for row in listed] == [None]
+    assert read.status_code == 200 and read.json()["lesson"] is None

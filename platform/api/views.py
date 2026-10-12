@@ -335,7 +335,10 @@ def lesson_hints(request, session_id):
     return _reply(_lesson_state(session, step))
 
 def _lesson_of(session):
-    return wargames.lesson(session.scenario, lesson_id=session.lesson or None)
+    try:
+        return wargames.lesson(session.scenario, lesson_id=session.lesson or None)
+    except wargames.UnknownWargame:
+        return None
 
 def _lesson_id(session):
     taught = _lesson_of(session) if session.guidance else None
