@@ -72,6 +72,7 @@ class Cloud:
     password_file: str = ""
     password_env: str = ""
     availability_zone: str = ""
+    address: str = ""
     dns: tuple[str, ...] = ()
     inside: dict[str, str] = field(default_factory=dict)
     flavors: dict[str, str] = field(default_factory=dict)
@@ -91,12 +92,13 @@ class Cloud:
             raise Invalid(f"identity.password_file names {path}, which does not exist")
         return path.read_text().strip()
 
-    def heat_parameters(self) -> dict[str, str]:
+    def heat_parameters(self, floating_ip_id: str = "") -> dict[str, str]:
         return {
             "keystone": self.keystone, "user": self.user, "domain": self.domain,
             "region": self.region, "interface": self.interface,
             "image": self.base_image, "flavor": self.flavors["platform"],
             "key_name": self.operator_key, "external_network": self.external_network,
+            "floating_address": self.address, "floating_ip_id": floating_ip_id,
             "availability_zone": self.availability_zone,
             "cidr": self.platform_cidr, "dns": ",".join(self.dns),
             "repository": self.repository, "ref": self.ref,
@@ -196,6 +198,14 @@ def _dns(value) -> str | None:
     return None
 
 
+def _address(value) -> str | None:
+    try:
+        ipaddress.IPv4Address(str(value))
+    except ValueError:
+        return "must be the IPv4 address of a floating IP this project already holds"
+    return None
+
+
 def _sha256(value) -> str | None:
     return None if isinstance(value, str) and SHA256.fullmatch(value) else "must be 64 lower-case hex digits"
 
@@ -225,7 +235,7 @@ SCHEMA = {
         "password_file": (_text, False), "password_env": (_environment, False),
     },
     "network": {
-        "external": (_name, True), "dns": (_dns, True), "mtu": (_mtu, True),
+        "external": (_name, True), "address": (_address, False), "dns": (_dns, True), "mtu": (_mtu, True),
         "platform": (_cidr, True), "estate": (_cidr, True), "mgmt": (_cidr, True),
     },
     "compute": {
@@ -332,7 +342,8 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         project=identity["project"], user=identity["user"],
         password_file=identity.get("password_file") or "",
         password_env=identity.get("password_env") or "",
-        external_network=network["external"], dns=tuple(map(str, network["dns"])),
+        external_network=network["external"], address=str(network.get("address") or ""),
+        dns=tuple(map(str, network["dns"])),
         mtu=network["mtu"], platform_cidr=network["platform"],
         inside={segment: network[segment] for segment in INSIDE},
         base_image=compute["base_image"],

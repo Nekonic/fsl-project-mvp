@@ -153,12 +153,18 @@ class Cli:
 
     def __call__(self, argv, stdin=None, check=True):
         self.ran.append(argv)
+        if argv[1:3] == ["network", "show"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=b"fsl-platform\n")
         said = self.answers.get(argv[2], b"")
         return subprocess.CompletedProcess(argv, 0 if said is not None else 1, stdout=said or b"")
 
 
-LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"}},'
-                b' {"ID": "srv-2", "Name": "fsl-build-mine", "Properties": {}}]')
+LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"},'
+                b' "Networks": {"fsl-platform": ["10.20.0.9"]}},'
+                b' {"ID": "srv-2", "Name": "fsl-build-mine", "Properties": {},'
+                b' "Networks": {"fsl-platform": ["10.20.0.8"]}},'
+                b' {"ID": "srv-3", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"},'
+                b' "Networks": {"other-platform": ["10.40.0.9"]}}]')
 
 
 def test_down_removes_the_slot_then_the_fabric_then_the_stack():
@@ -183,10 +189,9 @@ def test_down_removes_builders_first_because_their_ports_hold_the_platform_netwo
 def test_only_builders_on_this_stack_s_network_are_removed():
     cli = Cli(servers=LEFT_BUILDER)
 
-    command().rebuild.remove_builders("fsl-platform", cli)
+    assert command().rebuild.remove_builders("fsl-platform", cli) == ["srv-1"]
 
-    [listed] = [argv for argv in cli.ran if argv[1:3] == ["server", "list"]]
-    assert listed[listed.index("--network") + 1] == "net-stack"
+    assert ["openstack", "network", "show", "net-stack", "-f", "value", "-c", "name"] in cli.ran
     assert ["openstack", "stack", "resource", "show", "fsl-platform", "network",
             "-f", "value", "-c", "physical_resource_id"] in cli.ran
 

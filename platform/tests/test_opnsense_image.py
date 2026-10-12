@@ -72,6 +72,19 @@ def test_the_bundle_carries_the_release_settings_and_the_image_config():
     assert "deploy/opnsense/importer.py" in found and "deploy/opnsense/build.sh" in found
 
 
+def test_the_image_keeps_the_serial_console_and_its_login_prompt_after_the_import():
+    config = ElementTree.fromstring(members(edge_bundle())[opnsense.IMAGE_CONFIG])
+
+    assert config.findtext("system/primaryconsole") == "serial", (
+        "the nano image's own config puts the console on serial; without it the import moves "
+        "the console to video and the builder never sees login:"
+    )
+    assert config.findtext("system/serialspeed") == "115200"
+    assert config.find("system/disableconsolemenu") is not None, (
+        "without it the serial console logs root in to the console menu with no password"
+    )
+
+
 def test_a_generated_file_may_not_shadow_one_from_the_repo():
     with pytest.raises(Exception, match="both a repo file and a generated one"):
         images.bundle(ROOT, "fsl-edge", EDGE.setup, EDGE.files,
@@ -165,6 +178,26 @@ def test_the_importer_gives_up_with_what_the_console_said():
 
     with pytest.raises(SystemExit, match="Mounting filesystems"):
         module.awaited(ours, b"login:", time.monotonic() + 0.5, bytearray())
+
+
+def test_the_importer_presses_the_power_button_until_qemu_exits():
+    module = importer()
+    module.PRESS_EVERY = 0.2
+    console, _ = socket.socketpair()
+    monitor, pressed = socket.socketpair()
+
+    class Qemu:
+        polls = itertools.chain([None] * 6, itertools.repeat(0))
+
+        def poll(self):
+            return next(self.polls)
+
+    module.powered_off(Qemu(), console, monitor)
+    pressed.settimeout(0.5)
+
+    assert pressed.recv(4096).count(b"system_powerdown\n") >= 2, (
+        "OPNsense ignores a power button pressed as login: appears, so it is pressed again"
+    )
 
 
 class Glance:

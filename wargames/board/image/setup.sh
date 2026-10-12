@@ -15,7 +15,7 @@ SQL
 useradd --system --home-dir /opt/board --shell /usr/sbin/nologin board
 cp -r ../app /opt/board
 python3 -m venv /opt/board/venv
-/opt/board/venv/bin/pip install --no-cache-dir -r /opt/board/requirements.txt
+/opt/board/venv/bin/pip install --no-cache-dir setuptools==84.0.0 -r /opt/board/requirements.txt
 install -d /opt/board/posts/static/vendor
 curl -fsSLo /opt/board/posts/static/vendor/bootstrap.min.css \
   https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css

@@ -81,6 +81,21 @@ def test_the_board_is_reached_by_name_through_the_waf():
         "board wargame cannot be reached by name"
     )
 
+def test_a_session_network_cannot_take_the_platform_s_default_gateway():
+    joined = composed.services()["platform"]["networks"]
+    pinned = {
+        name: entry["gw_priority"]
+        for name, entry in (joined.items() if isinstance(joined, dict) else [])
+        if isinstance(entry, dict) and entry.get("gw_priority", 0) > 0
+    }
+
+    assert len(pinned) == 1, (
+        f"opening a session connects the platform to the session's network at "
+        f"gw-priority 0; unless one of the platform's own networks outranks it, "
+        f"Docker may make the session network the default gateway and move the "
+        f"8000 publish onto it, and the reply to the open never arrives: {pinned}"
+    )
+
 def test_the_platform_needs_no_build_argument_to_come_up():
     platform = composed.services()["platform"]
     build = platform.get("build")

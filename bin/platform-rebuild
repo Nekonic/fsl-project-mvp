@@ -172,10 +172,10 @@ def builders(stack: str, run=run) -> list[str]:
     network = stack_network(stack, run)
     if network is None:
         return []
-    done = run(["openstack", "server", "list", "--name", f"^{BUILDER}", "--network", network,
-                "--long", "-f", "json"])
+    name = run(["openstack", "network", "show", network, "-f", "value", "-c", "name"]).stdout.decode().strip()
+    done = run(["openstack", "server", "list", "--name", f"^{BUILDER}", "--long", "-f", "json"])
     return [row["ID"] for row in json.loads(done.stdout or b"[]")
-            if BUILDS in str(row.get("Properties") or "")]
+            if BUILDS in str(row.get("Properties") or "") and name in (row.get("Networks") or {})]
 
 
 def remove_builders(stack: str, run=run) -> list[str]:
@@ -240,18 +240,33 @@ def back_up(old: Host) -> Path:
     return Path(done.stdout.splitlines()[0])
 
 
-def stack_arguments(cloud) -> list[str]:
+def reserved_floating_ip(address: str, run=run) -> str:
+    if not address:
+        return ""
+    done = run(["openstack", "floating", "ip", "list", "--floating-ip-address", address,
+                "-f", "value", "-c", "ID"])
+    found = done.stdout.decode().split()
+    if len(found) != 1:
+        raise Refused(
+            f"platform-rebuild: network.address names {address}, which this project holds no "
+            f"floating IP at; an admin creates it once with openstack floating ip create "
+            f"--project <project> --floating-ip-address {address} <external network>"
+        )
+    return found[0]
+
+
+def stack_arguments(cloud, run=run) -> list[str]:
     return [
-        argument for name, value in cloud.heat_parameters().items()
+        argument for name, value in cloud.heat_parameters(reserved_floating_ip(cloud.address, run)).items()
         for argument in ("--parameter", f"{name}={value}")
     ]
 
 
 def replace_stack(cloud, existed: bool) -> str:
+    parameters = stack_arguments(cloud)
     if existed:
         delete_stack(cloud.stack)
-    run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE),
-         *stack_arguments(cloud), cloud.stack])
+    run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE), *parameters, cloud.stack])
     address = address_of(cloud.stack)
     if not address:
         raise Refused(f"platform-rebuild: stack {cloud.stack} has no address output")

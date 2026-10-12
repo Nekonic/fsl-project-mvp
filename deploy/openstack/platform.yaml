@@ -5,7 +5,8 @@ description: >
   Docker, clones the repo and brings the whole platform up with docker compose
   from images prebuilt on ghcr.io. Every parameter comes from cloud.yaml
   (bin/platform-rebuild); the API password and the range ssh key are added
-  over ssh.
+  over ssh. With floating_ip_id set the stack only associates that floating
+  IP, so deleting the stack disassociates it and leaves it in the project.
 
 parameters:
   keystone:
@@ -25,6 +26,10 @@ parameters:
   key_name:
     type: string
   external_network:
+    type: string
+  floating_address:
+    type: string
+  floating_ip_id:
     type: string
   availability_zone:
     type: string
@@ -51,6 +56,8 @@ parameters:
 
 conditions:
   zoned: {not: {equals: [{get_param: availability_zone}, ""]}}
+  reserved: {not: {equals: [{get_param: floating_ip_id}, ""]}}
+  allocated: {equals: [{get_param: floating_ip_id}, ""]}
 
 resources:
   network:
@@ -97,9 +104,18 @@ resources:
 
   floating_ip:
     type: OS::Neutron::FloatingIP
+    condition: allocated
     depends_on: router_interface
     properties:
       floating_network: {get_param: external_network}
+      port_id: {get_resource: port}
+
+  floating_ip_association:
+    type: OS::Neutron::FloatingIPAssociation
+    condition: reserved
+    depends_on: router_interface
+    properties:
+      floatingip_id: {get_param: floating_ip_id}
       port_id: {get_resource: port}
 
   server:
@@ -134,7 +150,7 @@ resources:
             "%ref%": {get_param: ref}
             "%mtu%": {get_attr: [network, mtu]}
             "%fixed_ip%": {get_attr: [port, fixed_ips, 0, ip_address]}
-            "%floating_ip%": {get_attr: [floating_ip, floating_ip_address]}
+            "%floating_ip%": {if: [reserved, {get_param: floating_address}, {get_attr: [floating_ip, floating_ip_address]}]}
             "%network%": {get_resource: network}
           template: |
             #cloud-config
@@ -152,6 +168,7 @@ resources:
                 content: |
                   FSL_SUBSTRATE=range.openstack.connect
                   DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
+                  FSL_TOOL_IMAGE=fsl-kali
                   FSL_OPENSTACK_KEYSTONE=%keystone%
                   FSL_OPENSTACK_USER=%user%
                   FSL_OPENSTACK_DOMAIN=%domain%
@@ -213,4 +230,4 @@ resources:
 outputs:
   address:
     description: The floating IP the platform is reached at, by ssh.
-    value: {get_attr: [floating_ip, floating_ip_address]}
+    value: {if: [reserved, {get_param: floating_address}, {get_attr: [floating_ip, floating_ip_address]}]}
