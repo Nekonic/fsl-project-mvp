@@ -2376,4 +2376,4 @@ Kibana marker link, the ticket and start card on an OpenStack slot, and the
 debrief's evidence rows after a real ingest.
 
 Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests
-1740 -> 1809 (bin/measure).
+1740 -> 1810 (bin/measure).
