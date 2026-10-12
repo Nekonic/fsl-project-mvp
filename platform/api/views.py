@@ -50,7 +50,7 @@ from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES
 
-SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
+SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "mode", "defense")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
     "expect", "correlation", "source_ip", "started_at", "ended_at", "meta",
@@ -71,6 +71,7 @@ SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint", "do")
 LESSON_STEP_STATES = ("reached", "skipped")
+MODES = ("guided", "self")
 RECENT_ALERTS = 600
 SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",)}
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
@@ -211,6 +212,7 @@ def sessions(request):
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
     guidance, taught, defense, posture = _settings(scenario, body)
+    mode = _mode(body, guidance)
     adapter = substrate()
     with SLOT_CHOICE:
         live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
@@ -229,7 +231,7 @@ def sessions(request):
             chosen = verdict["slot"].get("number") if _slotted(adapter) else None
         try:
             session = Session.objects.create(
-                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, slot=chosen,
+                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, mode=mode, defense=defense, slot=chosen,
             )
         except IntegrityError:
             raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
@@ -313,6 +315,7 @@ def lesson_hints(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
     taught = _taught(session)
+    _refuse_self(session)
     body = _payload(request)
     steps = [step["id"] for step in taught.get("steps", [])]
     step, level = body.get("step"), body.get("level")
@@ -411,6 +414,7 @@ def lesson_step_do(request, session_id, step_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
     taught, step = _taught_step(session, step_id)
+    _refuse_self(session)
     session = _progressed(session, step_id, lambda kept, held: _helped_on(kept, held, step_id, "do"))
     check = step["check"]
     try:
@@ -504,7 +508,7 @@ def _alert_seen(session, check, after):
 
 def _last_verdict(session, run, verified):
     judged = _verified(session, run)
-    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"]}
+    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"], "mode": judged["mode"]}
 
 def _settings(scenario, body):
     asked = body.get("lesson")
@@ -524,6 +528,19 @@ def _settings(scenario, body):
             f"{defense!r} is not a defense of {scenario!r}; expected one of "
             f"{', '.join(wargames.WARGAMES[scenario].get('defense') or [wargames.DEFAULT_DEFENSE])}"
         )
+
+def _mode(body, guidance):
+    mode = body.get("mode", MODES[0])
+    if mode not in MODES:
+        raise BadRequest(f'"mode" must be one of {list(MODES)}, got {mode!r}')
+    if mode != MODES[0] and not guidance:
+        raise BadRequest(f'"mode" {mode!r} is a way to run a lesson; a wargame has no guidance to leave out')
+    return mode
+
+def _refuse_self(session):
+    if session.mode == "self":
+        raise Conflict(f"session {session.pk} runs the lesson in self mode, which gives no help; "
+                       f"PATCH its mode to guided first")
 
 def _asked_lesson(scenario, asked):
     known = [taught["id"] for taught in wargames.lessons(scenario)]
@@ -1050,7 +1067,7 @@ def session_verify(request, session_id):
     _snapshot_waf(session, run=run)
     try:
         for name in taught["cases"]:
-            _lesson_fire(session, name, {"verify": run})
+            _lesson_fire(session, name, {"verify": run, "mode": session.mode})
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     return _reply(_verified(session, run))
@@ -1062,11 +1079,13 @@ def _row(session, case):
             "outcome": case.meta.get("outcome", "inconclusive")}
 
 def _verified(session, run):
-    rows = [_row(session, case) for case in session.cases.filter(meta__verify=run)]
+    ran = list(session.cases.filter(meta__verify=run))
+    rows = [_row(session, case) for case in ran]
     passed, diagnosis = lesson.verdict(rows)
     return {
         "passed": passed,
         "run": run,
+        "mode": next((case.meta.get("mode") for case in ran if case.meta.get("mode")), None),
         "waf": next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None),
         "cases": [
             {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.outcome(row)}
@@ -1154,9 +1173,17 @@ def _take_turn(session):
         Session.objects.filter(pk=session.pk).update(rotation=F("rotation") + 1)
         return Session.objects.values_list("rotation", flat=True).get(pk=session.pk) - 1
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "PATCH"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
+    if request.method == "PATCH":
+        _refuse_closed(session)
+        _taught(session)
+        mode = _payload(request).get("mode")
+        if mode not in MODES:
+            raise BadRequest(f'"mode" must be one of {list(MODES)}, got {mode!r}')
+        Session.objects.filter(pk=session.pk).update(mode=mode)
+        session.mode = mode
     taught = _lesson_of(session) if session.guidance else None
     if taught:
         taught = dict(taught, steps=[_shown_step(session, step) for step in taught.get("steps", [])])
@@ -1168,7 +1195,8 @@ def session_detail(request, session_id):
 
 def _shown_step(session, step):
     check = step["check"]
-    shown = dict(step, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})
+    kept = {key: value for key, value in step.items() if not (key == "command" and session and session.mode == "self")}
+    shown = dict(kept, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})
     return dict(shown, discover=_discover(session, step["query"])) if step.get("query") else shown
 
 def _site(session):
