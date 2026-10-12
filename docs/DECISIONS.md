@@ -1094,7 +1094,9 @@ product terms as CRS and ModSecurity write them instead of translations:
 | 참음성(TN) | TN | the en table already says TN; no translated term |
 
 The scoreboard's 정탐/미탐/오탐 tiles stay: they label the platform's own TP/FN/FP
-counts, not a CRS term.
+counts, not a CRS term. (Superseded by R1 below, 2026-10-11, and by the
+2026-10-13 Korean-terms entry: the tiles are gone and no score label carries
+정탐/미탐/오탐; 오탐 stays only as the CRS term in the lesson's cards.)
 
 ## 2026-10-11 — Console redesign: the approved mockup, plain-language results, the guide says what to type
 

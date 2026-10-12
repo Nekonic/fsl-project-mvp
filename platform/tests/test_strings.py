@@ -198,3 +198,17 @@ def test_the_do_it_yourself_waf_text_names_no_reload_that_only_one_substrate_acc
             f"{language}: the container reloads with nginx -s reload and the WAF VM with "
             f"sudo systemctl reload nginx; the text must point at the step's own reload: {text}"
         )
+
+def test_korean_names_the_confusion_matrix_nowhere_and_says_false_positive_only_as_the_crs_term():
+    korean = tables()["ko"]
+    labels = {key: text for key, text in korean.items() if re.search("정탐|미탐", text)}
+    outside_crs = {key: text for key, text in korean.items() if "오탐" in text and not key.startswith("lesson.")}
+
+    assert labels == {}, f"R1: 정탐 and 미탐 are the TP/FN labels in Korean: {labels}"
+    assert outside_crs == {}, f"오탐 is the CRS documentation's false positive, used only in the lesson: {outside_crs}"
+
+def test_the_score_labels_are_states_a_korean_reader_cannot_read_as_noise():
+    korean = tables()["ko"]
+
+    assert korean["score.caught"] == "탐지됨", "잡음 also reads as 雜音, noise"
+    assert all("(" not in korean[key] for key in ("score.caught", "score.missed", "score.wrongly_blocked", "score.passed"))
