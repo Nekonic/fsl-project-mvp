@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from range import ATTACKER, RangeUnavailable, SCORER, run, start_hint
+from range import ATTACKER, RangeUnavailable, SCORER, ThroughPlatform, run, start_hint, substrate, use
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
@@ -20,26 +20,44 @@ ENGINES = {"suricata", "modsecurity"}
 
 COMPOSE_RANGE_ONLY = {
     "test_attacker_box", "test_board_exfil", "test_concurrent_sessions",
-    "test_corp_cve_content_write",
-    "test_corp_cve_option_flip", "test_corp_cve_rogue_admin",
-    "test_corp_observe_live", "test_corp_site", "test_event_time",
+    "test_event_time",
     "test_fabric", "test_front_door", "test_judge_isolation", "test_lesson",
     "test_operator_log", "test_ready", "test_segmentation",
     "test_strategy_comparison", "test_terminal", "test_topology",
     "test_window_correlation",
 }
 
-def range_readiness() -> dict:
+def range_readiness() -> dict | None:
     try:
-        return requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=30).json()
+        readiness = requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=30).json()
     except (requests.RequestException, ValueError):
-        return {}
+        return None
+    return readiness if isinstance(readiness, dict) else None
+
+RESET_WAIT = 1800
+RESET_POLL = 2
+SETTLING = {"RESETTING", "REBUILDING", "CHECKING"}
+RESETTING = {"RESETTING", "REBUILDING"}
+
+def settled(readiness: dict | None) -> bool:
+    if readiness is None:
+        return False
+    return bool(readiness.get("ready", True)) or (readiness.get("slot") or {}).get("phase") not in SETTLING
+
+def wait_out_a_reset() -> dict | None:
+    deadline = time.monotonic() + RESET_WAIT
+    while True:
+        readiness = range_readiness()
+        if settled(readiness) or time.monotonic() >= deadline:
+            return readiness
+        time.sleep(RESET_POLL)
 
 def range_substrate() -> str:
-    return range_readiness().get("substrate") or "compose"
+    return (range_readiness() or {}).get("substrate") or "compose"
 
 def pytest_collection_modifyitems(config, items):
     substrate = range_substrate()
+    use(substrate)
     if substrate == "compose":
         return
     skip = pytest.mark.skip(
@@ -76,7 +94,10 @@ def stack_is_up():
     assert _reachable(PLATFORM_URL), (
         f"could not reach {PLATFORM_URL}. Run `{start_hint()}` first."
     )
-    readiness = range_readiness()
+    readiness = wait_out_a_reset()
+    assert readiness is not None, (
+        f"{PLATFORM_URL}/api/range/ready/ gave no readable answer within {RESET_WAIT}s"
+    )
     if (readiness.get("substrate") or "compose") != "compose":
         assert readiness.get("ready"), f"the range is not ready: {readiness}"
         return
@@ -103,8 +124,12 @@ def the_run_leaves_no_session_open(stack_is_up):
     real_post = requests.post
 
     def post(url, *args, **kwargs):
+        opening = url.rstrip("/") == f"{PLATFORM_URL}/api/sessions"
         answer = real_post(url, *args, **kwargs)
-        if url.rstrip("/") == f"{PLATFORM_URL}/api/sessions" and answer.status_code == 201:
+        if opening and answer.status_code == 409 and "resetting" in answer.text:
+            wait_out_a_reset()
+            answer = real_post(url, *args, **kwargs)
+        if opening and answer.status_code == 201:
             made_by_this_run(answer.json()["id"])
         return answer
 
@@ -125,6 +150,28 @@ def a_module_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
     count = len(OPENED_IN_ORDER)
     yield
     _close_opened_since(count)
+
+def resetting(readiness: dict | None) -> bool:
+    slot = (readiness or {}).get("slot") or {}
+    return slot.get("phase") in RESETTING or (slot.get("reset") or {}).get("state") == "running"
+
+def wait_out_a_running_reset() -> dict | None:
+    deadline = time.monotonic() + RESET_WAIT
+    while True:
+        readiness = range_readiness()
+        if not resetting(readiness) or time.monotonic() >= deadline:
+            return readiness
+        time.sleep(RESET_POLL)
+
+@pytest.fixture(autouse=True)
+def the_range_is_not_resetting(stack_is_up):
+    if substrate() == ThroughPlatform.substrate:
+        readiness = wait_out_a_running_reset()
+        assert not resetting(readiness), (
+            f"the range was still resetting after {RESET_WAIT}s: {readiness}. A "
+            f"closed session rebuilds every slot VM, and a test that reaches a "
+            f"host meanwhile finds it gone"
+        )
 
 @pytest.fixture(autouse=True)
 def a_test_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
@@ -187,6 +234,7 @@ def _opened_by(output: str) -> None:
             requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
 def run_redteam() -> int:
+    wait_out_a_reset()
     try:
         result = run(
             SCORER,
@@ -222,12 +270,12 @@ def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
     last: dict = {}
 
     while time.time() < deadline:
-        ingest = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/ingest/")
+        ingest = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/ingest/", timeout=120)
         if ingest.ok:
             last = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/").json()
             if until(last):
                 return last
-        time.sleep(5)
+        time.sleep(2)
 
     detections = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"

@@ -197,8 +197,8 @@ def sessions(request):
         if hasattr(adapter, "open_session"):
             adapter.open_session(session.pk, live=live)
         adapter = _range(session, adapter)
+        _aim_attacker(adapter)
         if hasattr(adapter, "for_session"):
-            _aim_attacker(adapter)
             _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)
         if hasattr(adapter, "for_session") and not session.baseline \

@@ -149,3 +149,20 @@ def test_the_cap_is_read_from_the_environment(monkeypatch):
     finally:
         monkeypatch.delenv("FSL_MAX_SESSIONS")
         importlib.reload(configured)
+
+def test_an_openstack_session_starts_with_the_attacker_at_the_front_door(client):
+    aimed = []
+
+    with patch("api.views.substrate", lambda: Cloud()), patch(
+        "api.views._range_ready", return_value=_verdict(True)
+    ), patch("api.views.loot.ground_truth", return_value={}), patch(
+        "api.views._aim_attacker", lambda adapter: aimed.append(adapter)
+    ):
+        opened = client.post_json("/api/sessions/", {})
+
+    assert opened.status_code == 201
+    assert len(aimed) == 1, (
+        "the rebuilt attacker box leaves from whichever address DHCP made primary, "
+        "not the declared default origin, so an attack sent with no origin is "
+        "placed somewhere the range never chose"
+    )
