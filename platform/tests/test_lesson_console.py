@@ -1515,6 +1515,32 @@ def test_a_pass_opens_the_debrief_in_the_check_tab_in_the_order_overview_evidenc
     assert english("lesson.risk.path_target") in result["text"]
     assert "09:01" not in result["text"] and "09:30" not in result["text"], "times stay in the API"
 
+def test_a_pass_reads_the_verify_run_s_alerts_into_the_session_before_the_debrief_lists_them(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
+      await browser.click('lesson-verify');
+      const asked = browser.requests.map((r) => r.method + " " + r.route);
+      const ingest = browser.requests.find((r) => r.route === "/api/sessions/1/ingest/");
+      return {after: asked.slice(asked.indexOf("POST /api/sessions/1/verify/")), within: ingest && ingest.body.within};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["after"][:3] == ["POST /api/sessions/1/verify/", "POST /api/sessions/1/ingest/",
+                                   "GET /api/sessions/1/lesson/debrief/"], (
+        "the debrief's evidence is the session's own records, and nothing had read the VERIFY run's "
+        "alerts into them, so the evidence log after a PASS was empty"
+    )
+    assert 60 <= result["within"] <= 120
+
+def test_a_fail_reads_no_alerts_and_shows_no_debrief(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = false;", scenario="""
+      await browser.click('lesson-verify');
+      return browser.requests.map((r) => r.route);
+    """)
+
+    assert "/api/sessions/1/ingest/" not in seen["result"]
+    assert "/api/sessions/1/lesson/debrief/" not in seen["result"]
+
 MINE = CATALOGUE.replace('  if (request.route === "/api/sessions/" && request.method === "POST")', """  if (request.route === "/api/sessions/" && request.query.ids) {
     seen.ids = request.query.ids;
     return {body: [
