@@ -15,6 +15,7 @@ IDS = [step["id"] for step in STEPS]
 COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
 
 GUIDED = """
+localStorage.setItem('fsl-lesson-landed-1', 'true');
 const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [],
                ended_at: null, progress: {}, fired: [], checked: [], states: []};
 const FULL = FULL_JSON;
@@ -93,7 +94,7 @@ browser.serve((request) => {
     return {body: {id: 1, mode: request.body.mode}};
   }
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", start: range.start || null, hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
@@ -513,14 +514,17 @@ def test_the_steps_tab_lists_the_steps_with_the_current_one_marked_and_leaves_th
       await browser.click('coach-pop-next');
       const listed = [...browser.element('lesson-step-list').querySelectorAll('[data-step]')];
       const steps = document.querySelector('[data-pane-of="steps"]');
-      return {listed: listed.length, done: listed[0].textContent.includes('✓'),
+      return {listed: listed.length, done: listed[0].textContent.includes('○') && !listed[0].textContent.includes('✓'),
+              skipped: listed[0].textContent, count: browser.text('lesson-step-count'),
               current: listed[1].textContent, buttons: steps.querySelectorAll('button:not([data-step])').length,
               repeated: steps.textContent.includes(browser.text('coach-pop-text')),
               shown: browser.element('lesson-coach-show').classList.contains('hidden')};
     """)
     result = seen["result"]
 
-    assert (result["listed"], result["done"]) == (len(STEPS), True)
+    assert (result["listed"], result["done"]) == (len(STEPS), True), "a step left unpassed is hollow, not ticked"
+    assert english("lesson.skipped") in result["skipped"]
+    assert result["count"] == english("lesson.steps.passed", 0, len(STEPS))
     assert english("lesson.board.label.find") in result["current"]
     assert english("lesson.status.current") in result["current"]
     assert result["repeated"] is False, "the instruction is said once, in the popover"
@@ -950,7 +954,7 @@ def test_the_verify_step_finishes_the_lesson_only_on_pass(client):
       await browser.click('lesson-verify');
       const list = [...browser.element('lesson-step-list').querySelectorAll('[data-step]')];
       return {{failed, said: browser.text('coach-pop-said'), text: browser.text('coach-pop-text'),
-              allDone: list.every((item) => item.textContent.includes('✓')),
+              allDone: list.at(-1).textContent.includes('✓') && !list.slice(0, -1).some((item) => item.textContent.includes('✓')),
               hint: browser.element('coach-pop-hint').classList.contains('hidden')}};
     """)
 
@@ -1335,3 +1339,55 @@ def test_the_mode_switch_patches_the_session_s_mode(client):
     """)
 
     assert seen["result"] == {"patched": {"mode": "self"}, "label": english("lesson.mode.to_self")}
+
+FIRST_VISIT = """
+localStorage.removeItem('fsl-lesson-landed-1');
+range.start = {passed: false, diagnosis: [], cases: [
+  {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
+  {name: "board-normal-search-with-apostrophe", malicious: false, outcome: "blocked"},
+]};
+"""
+
+def test_the_first_open_lands_on_the_goal_tab_and_a_later_one_starts_folded(client):
+    first = open_page(client, "/blue/1/", setup=guided(True) + FIRST_VISIT, scenario="""
+      const shown = [...document.querySelectorAll('[data-pane-of]')]
+        .filter((pane) => !pane.classList.contains('hidden')).map((pane) => pane.dataset.paneOf);
+      return {open: !browser.element('lesson').classList.contains('hidden'), shown,
+              landed: localStorage.getItem('fsl-lesson-landed-1')};
+    """)
+    later = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+      return browser.element('lesson').classList.contains('hidden');
+    """)
+
+    assert first["errors"] == []
+    assert first["result"] == {"open": True, "shown": ["goal"], "landed": "true"}
+    assert later["result"] is True
+
+def test_the_goal_tab_opens_with_a_ticket_whose_facts_come_from_the_waf_and_the_starting_verdict(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + FIRST_VISIT, scenario="""
+      const red = [...browser.element('lesson-start-cases').querySelectorAll('[data-outcome]')]
+        .filter((row) => row.classList.contains('text-danger')).map((row) => row.textContent);
+      return {ticket: browser.text('lesson-ticket-text'), waf: browser.text('lesson-ticket-waf'),
+              verdict: browser.text('lesson-start-verdict'), red,
+              asked: browser.requests.filter((r) => r.route === '/api/sessions/1/waf/').length};
+    """)
+    result = seen["result"]
+
+    assert result["ticket"] == english("lesson.board.ticket")
+    assert result["waf"] == english("lesson.ticket.waf", 4, 0) and result["asked"] >= 1
+    assert "FAIL" in result["verdict"] and english("lesson.start.heading") in result["verdict"]
+    assert result["red"] == [f"✗ {english('case.board-normal-search-with-apostrophe')} — {english('outcome.blocked')}"]
+
+def test_why_on_a_step_opens_the_theory_card_that_explains_it(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      const first = browser.element('coach-pop-why').classList.contains('hidden');
+      {to("find")}
+      const shown = !browser.element('coach-pop-why').classList.contains('hidden');
+      await browser.click('coach-pop-why');
+      const card = document.querySelector('#lesson-theory [data-card="scoring"]');
+      return {{first, shown, tab: JSON.parse(localStorage.getItem('fsl-lesson-note')).tab,
+              open: !browser.element('lesson').classList.contains('hidden'),
+              expanded: card.getAttribute('aria-expanded')}};
+    """)
+
+    assert seen["result"] == {"first": True, "shown": True, "tab": "theory", "open": True, "expanded": "true"}

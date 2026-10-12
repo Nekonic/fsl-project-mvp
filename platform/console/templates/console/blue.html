@@ -179,6 +179,7 @@
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     const practice = session.mode === "self";
     noteControls(practice);
+    opening(taught);
     modeControl(practice);
     hints(taught.text, taught.hints, declared);
     theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);

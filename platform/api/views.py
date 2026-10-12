@@ -1080,19 +1080,28 @@ def _row(session, case):
 
 def _verified(session, run):
     ran = list(session.cases.filter(meta__verify=run))
-    rows = [_row(session, case) for case in ran]
-    passed, diagnosis = lesson.verdict(rows)
     return {
-        "passed": passed,
+        **_judged_cases(session, ran),
         "run": run,
         "mode": next((case.meta.get("mode") for case in ran if case.meta.get("mode")), None),
         "waf": next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None),
+    }
+
+def _judged_cases(session, cases):
+    rows = [_row(session, case) for case in cases]
+    passed, diagnosis = lesson.verdict(rows)
+    return {
+        "passed": passed,
         "cases": [
             {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.outcome(row)}
             for row in rows
         ],
         "diagnosis": diagnosis,
     }
+
+def _started(session):
+    seeded = list(session.cases.filter(meta__seed=True))
+    return _judged_cases(session, seeded) if seeded else None
 
 @require_http_methods(["GET", "PUT"])
 def session_waf(request, session_id):
@@ -1191,6 +1200,7 @@ def session_detail(request, session_id):
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
+        "start": _started(session) if taught else None,
     })
 
 def _shown_step(session, step):
