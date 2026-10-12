@@ -296,6 +296,39 @@ def test_a_guided_session_replays_the_lesson_once_at_open_so_its_logs_are_there_
     assert all(case.meta.get("seed") is True for case in Case.objects.filter(session_id=opened["id"]))
     assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"]["cases"] == LESSON
 
+class OneSlot:
+    session = "slot-1"
+    slots = max_sessions = 1
+
+    def __init__(self, stand):
+        self.runner = stand.runner().__get__(self)
+
+    def in_slot(self, number):
+        return self
+
+    def segments(self):
+        return ()
+
+    def launcher(self, segment_id):
+        return lambda image, argv, timeout=600.0: Ran(0, "")
+
+@pytest.mark.takes_defense
+def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the_logs(client):
+    stand = Stand()
+    fire, fired = attacker({})
+    with patch("api.views.substrate", lambda: OneSlot(stand)), patch("api.views.harness.fire", fire):
+        answer = client.post_json("/api/sessions/", {"guidance": True, "defense": "minimal"})
+
+    assert answer.status_code == 201, answer.content
+    session = Session.objects.get(pk=answer.json()["id"])
+    written = [call for call in stand.to("gateway") if call[3] is not None]
+    assert written and "tx.blocking_paranoia_level=4" in written[0][3], "the lesson opened at the WAF's own level"
+    assert session.waf == {"paranoia": 4, "exclusions": []}
+    assert fired == LESSON and all(case.meta.get("seed") for case in session.cases.all())
+    assert stand.to("sensor") == [], (
+        "the slot was offered only once its sensors held the baseline rules, so the open leaves them alone"
+    )
+
 def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
     fire, fired = attacker({})
     with patch("api.views.harness.fire", fire):
