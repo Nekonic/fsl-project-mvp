@@ -44,13 +44,18 @@ session, and you do not make the user say "continue".
    the metrics without gating them, so compare `bin/measure` against
    `metrics.json` by hand. A change to the live stack (compose, the range,
    session isolation) is also run against the acceptance suite on the OpenStack
-   deployment before it is pushed. Show the command and its output, not a claim
-   that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
+   deployment before it is pushed. Acceptance is not the only live path: list
+   every path the change can affect — `bin/cloud up --replace` (backup, new VM,
+   store restore), `bin/cloud down`/`up`, a slot reset — and run each one end to
+   end, untouched, before the push; a step finished by hand does not count, and
+   a path a doc marks "not checked live" blocks the push until it has run.
+   Show the command and its output, not a claim that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
    and say what you learned — a reported failure beats a half-finished success.
 
 6. **Gate 2 — visual review before anything outward.** Before a push or a
    merge, present what was done and what changed as a picture, not prose (see
-   "The visual review"), with the verification evidence beside it. Wait. Push
+   "The visual review"), with the verification evidence beside it — one row
+   per live path from step 5 and its run. Wait. Push
    and merge are the user's; a push goes to `dev` as a fast-forward.
 
 Stop between gates only for a real blocker or a decision that changes what the
