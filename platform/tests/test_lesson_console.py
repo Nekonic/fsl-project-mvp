@@ -38,7 +38,7 @@ browser.serve((request) => {
     range.waf = {...request.body, version: "v2"};
     return {body: range.waf};
   }
-  if (request.route === "/api/sessions/1/attacks/") return {status: 201, body: {meta: {status: range.status}}};
+  if (request.route === "/api/sessions/1/attacks/") return {status: 201, body: {meta: {status: range.status}, diagnosis: range.diagnosis}};
   if (request.route === "/api/sessions/1/verify/") {
     return {body: {passed: range.passed, run: "r", cases: [
       {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
@@ -188,8 +188,19 @@ def test_replay_fires_the_chosen_lesson_case_through_the_attacks_api(client):
     """)
 
     assert seen["result"] == [[
-        "/api/sessions/1/attacks/", {"case": "board-normal-search-with-apostrophe"},
-    ]]
+        "/api/sessions/1/attacks/", {"case": "board-normal-search-with-apostrophe", "lesson": True},
+    ]], "marked as the lesson's own replay, so neither score counts it"
+
+def test_a_lesson_replay_that_leaked_says_so_beside_the_run(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + """
+      range.diagnosis = [["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]]];
+    """, scenario="""
+      await browser.force('lesson-case', 'board-sqli-orderby-sqlmap');
+      await browser.click('lesson-replay');
+      return browser.text('lesson-replay-status');
+    """)
+
+    assert english("lesson.diag.leaked", "board-sqli-orderby-sqlmap", 3, 3) in seen["result"]
 
 CATALOGUE = """
 browser.serve((request) => {
