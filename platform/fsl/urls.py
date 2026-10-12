@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/verify/", views.session_verify),
     path("api/sessions/<int:session_id>/lesson/hints/", views.lesson_hints),
+    path("api/sessions/<int:session_id>/lesson/debrief/", views.lesson_debrief),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/", views.lesson_step),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/check/", views.lesson_step_check),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/do/", views.lesson_step_do),

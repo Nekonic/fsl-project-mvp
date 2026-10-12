@@ -378,3 +378,25 @@ def test_the_red_console_groups_cases_into_attacks_and_benign_with_what_their_la
         result["objectives"].index(english("objective.board-auth-user-full")), "objectives run easiest first"
     assert "1/2" in result["taken"].replace(" ", "")
     assert result["loot"] is False, "a loot-verified target offers the hash submission at the top"
+
+def test_a_closed_lesson_that_passed_shows_its_debrief_and_its_fix_on_the_score_page(client):
+    import json
+
+    from tests.test_lesson_console import DEBRIEF
+
+    setup = CLOSED.replace(
+        "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
+    ).replace("lesson: null}", "lesson: {passed: true, verified: 2, diagnosis: [], fix: \"level\"}}").replace(
+        '  return {status: 404, body: {detail: "not served"}};',
+        '  if (request.route === "/api/sessions/1/lesson/debrief/") return {body: ' + json.dumps(DEBRIEF) + '};\n'
+        '  return {status: 404, body: {detail: "not served"}};')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="""
+      return {hidden: browser.element('debrief').classList.contains('hidden'), text: browser.text('debrief'),
+              fix: browser.text('[data-fix]')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["hidden"] is False
+    assert english("lesson.debrief.heading") in seen["result"]["text"]
+    assert english("lesson.risk.replayed", 2) in seen["result"]["text"]
+    assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"

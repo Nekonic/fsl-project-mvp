@@ -80,12 +80,11 @@ async function replay() {
   if (fired.ok && fired.body.replay) showReplay(field("lesson-replay-rows"), fired.body.replay);
 }
 
-const REPLAY_TONE = { held: "ok", served: "ok", leaked: "red", blocked: "red", inconclusive: "warn" };
 
 function replayRow(row) {
   return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-replay="${esc(row.name)}">
     <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
-      ${badge(t(OUTCOME_WORDS[row.outcome] || "outcome.inconclusive"), REPLAY_TONE[row.outcome] || "warn")}
+      ${debriefOutcome(row.outcome)}
       ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
     ${row.command ? `<pre class="code" data-command>${esc(row.command)}</pre>` : ""}
     ${(row.conclusions || []).map((line) => `<p class="font-mono text-body" data-conclusion>${esc(line)}</p>`).join("")}
@@ -141,6 +140,7 @@ async function verifyLesson() {
       esc(t(key, ...values))}</span></li>`).join("");
   field("lesson-fix").textContent = checked.body.fix ? `${t(`lesson.fix.${checked.body.fix}`)} ${t("lesson.fix.note")}` : "";
   field("lesson-fix").classList.toggle("hidden", !checked.body.fix);
+  if (passed) showDebrief(field("lesson-debrief"));
 }
 
 const NOTE_KEY = "fsl-lesson-note";
@@ -899,11 +899,6 @@ function folded(list, prefix, kind, ids, extra) {
     toggle.setAttribute("aria-expanded", String(opened));
   }));
 }
-
-const OUTCOME_WORDS = {
-  held: "lesson.check.held", served: "lesson.check.served", blocked: "outcome.blocked",
-  leaked: "outcome.leaked", inconclusive: "outcome.inconclusive",
-};
 
 function caseRows(cases) {
   return (cases || []).map((row) => {

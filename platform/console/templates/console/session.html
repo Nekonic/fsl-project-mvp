@@ -60,6 +60,7 @@
 
 <section id="scoreboard" class="hidden">
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
+  <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
   <div class="grid lg:grid-cols-[1fr_400px] gap-5">
     <div class="card">
       <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
@@ -119,6 +120,8 @@
 {% endblock %}
 {% block script %}
 <script>
+{% include "console/debrief_script.html" %}
+
   const id = sessionId();
   const field = (name) => document.getElementById(name);
   const show = (name, visible) => field(name).classList.toggle("hidden", !visible);
@@ -215,6 +218,7 @@
       <div class="min-w-0 flex-1">
         <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "score.lesson.passed" : "score.lesson.failed", localized(`${lessonText()}.title`, "")))}</div>
         <p class="text-muted mt-0.5">${esc(reasons)}</p>
+        ${judged.fix ? `<p class="text-[12px] text-muted mt-0.5" data-fix>${esc(`${t(`lesson.fix.${judged.fix}`)} ${t("lesson.fix.note")}`)}</p>` : ""}
       </div>
       <div class="text-right text-[13px]">
         <div class="label">${esc(t("score.lesson.progress"))}</div>
@@ -326,6 +330,7 @@
     show("activity", false);
     show("scoreboard", true);
     verdictBanner();
+    if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("debrief"));
     objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [],
                    score.ok && Array.isArray(score.body.breaches) ? score.body.breaches : []);
     if (score.ok) judgement(score.body);
