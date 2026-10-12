@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
@@ -69,6 +70,9 @@ SUPPRESSION_FIELDS = (
 SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint", "do")
+LESSON_STEP_STATES = ("reached", "skipped")
+RECENT_ALERTS = 600
+SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",)}
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
@@ -307,9 +311,7 @@ def _helped(session):
 def lesson_hints(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
-    taught = wargames.lesson(session.scenario) if session.guidance else None
-    if not taught:
-        raise BadRequest(f"session {session.pk} is not a lesson")
+    taught = _taught(session)
     body = _payload(request)
     steps = [step["id"] for step in taught.get("steps", [])]
     step, level = body.get("step"), body.get("level")
@@ -317,13 +319,180 @@ def lesson_hints(request, session_id):
         raise BadRequest(f'"step" must be one of {steps}, got {step!r}')
     if level not in HINT_LEVELS:
         raise BadRequest(f'"level" must be one of {list(HINT_LEVELS)}, got {level!r}')
-    used = {"step": step, "level": level}
+    session = _progressed(session, step, lambda kept, held: _helped_on(kept, held, step, level))
+    return _reply(_lesson_state(session, step))
+
+def _taught(session):
+    taught = wargames.lesson(session.scenario) if session.guidance else None
+    if not taught:
+        raise BadRequest(f"session {session.pk} is not a lesson")
+    return taught
+
+def _taught_step(session, step_id):
+    taught = _taught(session)
+    for step in taught.get("steps", []):
+        if step["id"] == step_id:
+            return taught, step
+    raise Http404(f"the lesson has no step {step_id!r}")
+
+def _progressed(session, step_id, change):
     with transaction.atomic():
-        session = Session.objects.select_for_update().get(pk=session.pk)
-        if used not in session.hints:
-            session.hints = [*session.hints, used]
-            session.save(update_fields=["hints"])
-    return _reply({"hints": session.hints})
+        held = Session.objects.select_for_update().get(pk=session.pk)
+        kept = dict(held.lesson_steps.get(step_id) or {})
+        change(kept, held)
+        held.lesson_steps = {**held.lesson_steps, step_id: kept}
+        held.save(update_fields=["lesson_steps", "hints"])
+    return held
+
+def _helped_on(kept, held, step_id, level):
+    used = {"step": step_id, "level": level}
+    if used not in held.hints:
+        held.hints = [*held.hints, used]
+    if level == "do":
+        kept["done_for_me"] = True
+    else:
+        kept["hint"] = min(lesson.DO_IT, kept.get("hint", 0) + 1)
+
+def _progress(session):
+    return {
+        step_id: {"reached": kept.get("reached"), "passed": kept.get("passed"), "skipped": kept.get("skipped"),
+                  "hint": kept.get("hint", 0), "done_for_me": bool(kept.get("done_for_me"))}
+        for step_id, kept in session.lesson_steps.items()
+    }
+
+def _lesson_state(session, step_id, **judged):
+    return {**judged, "hint": session.lesson_steps.get(step_id, {}).get("hint", 0),
+            "hints": session.hints, "progress": _progress(session)}
+
+@require_http_methods(["POST"])
+def lesson_step(request, session_id, step_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    _taught_step(session, step_id)
+    state = _payload(request).get("state")
+    if state not in LESSON_STEP_STATES:
+        raise BadRequest(f'"state" must be one of {list(LESSON_STEP_STATES)}, got {state!r}')
+    now = timezone.now().isoformat()
+    newest = session.detections.aggregate(last=Max("id"))["last"] or 0
+
+    def mark(kept, held):
+        if state == "reached":
+            kept.setdefault("reached", now)
+            kept["after"] = newest
+        elif not kept.get("passed"):
+            kept["skipped"] = now
+
+    return _reply(_lesson_state(_progressed(session, step_id, mark), step_id))
+
+@require_http_methods(["POST"])
+def lesson_step_check(request, session_id, step_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    taught, step = _taught_step(session, step_id)
+    body = _payload(request)
+    poll = body.get("poll") is True
+    kept = session.lesson_steps.get(step_id) or {}
+    try:
+        passed, reason, tried = _judge(session, taught, step, body, poll, kept)
+    except harness.ToolUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    return _reply(_judged_step(session, step_id, passed, reason, poll, tried))
+
+@require_http_methods(["POST"])
+def lesson_step_do(request, session_id, step_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _refuse_closed(session)
+    taught, step = _taught_step(session, step_id)
+    session = _progressed(session, step_id, lambda kept, held: _helped_on(kept, held, step_id, "do"))
+    check = step["check"]
+    try:
+        if check["kind"] in ("answer", "choice"):
+            passed, reason, tried = _judge(session, taught, step, {"answer": check["accept"][0]}, False, {})
+        elif check["kind"] == "waf":
+            _put_exclusion(session, check)
+            passed, reason, tried = _judge(session, taught, step, {}, False, {})
+        elif check["kind"] in ("click", "served"):
+            passed, reason, tried = _judge(session, taught, step, {}, False, {})
+        else:
+            return _reply(_lesson_state(session, step_id, passed=False, reason=None))
+    except harness.ToolUnavailable as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    return _reply(_judged_step(session, step_id, passed, reason, True, tried))
+
+def _put_exclusion(session, check):
+    wanted = {"rule_id": check["rule_id"], "target": check["target"], "path": check["path"]}
+    with _turn_of(session):
+        standing = _waf_in_force(session)
+        exclusions = [entry for entry in standing["exclusions"] if entry != wanted] + [wanted]
+        session.waf = crs.apply({"paranoia": standing["paranoia"] or 1, "exclusions": exclusions},
+                                _range(session).runner("gateway"), settings.FSL_WAF)
+        session.save(update_fields=["waf"])
+
+def _judged_step(session, step_id, passed, reason, poll, tried):
+    now = timezone.now().isoformat()
+
+    def mark(kept, held):
+        if tried is not None:
+            kept["tried"] = tried
+        if passed:
+            kept.setdefault("passed", now)
+            return
+        if poll:
+            return
+        kept["wrong"] = kept.get("wrong", 0) + 1
+        if kept["wrong"] >= lesson.WRONGS_PER_HINT:
+            kept["wrong"] = 0
+            _helped_on(kept, held, step_id, "hint")
+
+    session = _progressed(session, step_id, mark)
+    return _lesson_state(session, step_id, passed=passed, reason=None if passed else reason)
+
+def _judge(session, taught, step, body, poll, kept):
+    check, prefix, step_id = step["check"], taught["text"], step["id"]
+    failed = f"{prefix}.fail.{step_id}"
+    kind = check["kind"]
+    if kind == "click":
+        return True, None, None
+    if kind in ("answer", "choice"):
+        given = body.get("answer")
+        if not isinstance(given, str) or not given.strip():
+            raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
+        passed, reason = lesson.answered(check, given.strip(), f"{prefix}.wrong.{step_id}")
+        return passed, reason, None
+    if kind == "alert":
+        return _alert_seen(session, check, kept.get("after", 0)), [failed, []], None
+    if kind == "served":
+        status = _check_replay(session, check["case"], step_id)
+        return lesson.served(status), [failed, [status or "-"]], None
+    if kind == "waf":
+        return _waf_check(session, check, step_id, poll, kept, failed)
+    runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
+    return bool(runs) and _verified(session, runs[-1])["passed"], [f"{prefix}.fail.verify", []], None
+
+def _waf_check(session, check, step_id, poll, kept, failed):
+    standing = _waf_in_force(session)
+    wanted = {"rule_id": check["rule_id"], "target": check["target"], "path": check["path"]}
+    if wanted not in standing["exclusions"]:
+        return False, [failed, []], None
+    if not check.get("case"):
+        return True, None, None
+    version = _version(json.dumps(standing, sort_keys=True))
+    if poll and kept.get("tried") == version:
+        return False, [f"{failed}.reload", []], None
+    served = lesson.served(_check_replay(session, check["case"], step_id))
+    return served, [f"{failed}.reload", []], version
+
+def _check_replay(session, name, step_id):
+    recorded, _ = _lesson_fire(session, name, {"check": step_id})
+    return int(recorded.meta.get("status") or 0)
+
+def _alert_seen(session, check, after):
+    _ingest(session, RECENT_ALERTS)
+    marker = session.browse_marker if check.get("marker") == SITE_BROWSER_MARKER else check.get("marker")
+    return any(
+        check.get("path", "") in unquote(_request_of(detection.raw or {})[1])
+        for detection in session.detections.filter(id__gt=after, marker=marker)
+    )
 
 def _last_verdict(session, run, verified):
     judged = _verified(session, run)
@@ -951,15 +1120,17 @@ def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     taught = wargames.lesson(session.scenario) if session.guidance else None
     if taught:
-        taught = dict(taught, steps=[
-            dict(step, discover=_discover(session, step["query"])) if step.get("query") else step
-            for step in taught.get("steps", [])
-        ])
+        taught = dict(taught, steps=[_shown_step(session, step) for step in taught.get("steps", [])])
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
-        "site": _site(session), "hints": session.hints,
+        "site": _site(session), "hints": session.hints, "progress": _progress(session),
     })
+
+def _shown_step(session, step):
+    check = step["check"]
+    shown = dict(step, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})
+    return dict(shown, discover=_discover(session, step["query"])) if step.get("query") else shown
 
 def _site(session):
     if not settings.SITE_PORT:
@@ -1102,12 +1273,15 @@ def _case_errors(body):
 @require_http_methods(["POST"])
 def ingest_detections(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
+    within = _payload(request).get("within")
+    if within is not None and (isinstance(within, bool) or not isinstance(within, int) or within < 1):
+        raise BadRequest(f'"within" is a number of seconds above zero, got {within!r}')
+    return _reply(_ingest(session, within))
+
+def _ingest(session, within=None):
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
-    within = _payload(request).get("within")
     if within is not None:
-        if isinstance(within, bool) or not isinstance(within, int) or within < 1:
-            raise BadRequest(f'"within" is a number of seconds above zero, got {within!r}')
         start = max(start, timezone.now() - timedelta(seconds=within))
     try:
         restored = _restore_expired()
@@ -1163,7 +1337,7 @@ def ingest_detections(request, session_id):
         reply["truncated"] = {"read": read, "total": total}
         session.read_of = [read, total]
         session.save(update_fields=["read_of"])
-    return _reply(reply)
+    return reply
 
 @require_http_methods(["GET"])
 def session_detections(request, session_id):
