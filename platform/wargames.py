@@ -22,7 +22,8 @@ SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_mode
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
-CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "verify"}
+CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "replay", "verify"}
+REPLAY_EXPECTS = ("held", "served")
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 LESSON_ID = re.compile(r"[a-z0-9][a-z0-9-]*", re.ASCII)
 
@@ -137,6 +138,15 @@ def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFEN
         raise InvalidCatalogue(
             f"{source}: lesson steps {', '.join(unchecked)} need a check whose kind is one of "
             f"{', '.join(sorted(CHECK_KINDS))}"
+        )
+    unreplayable = [
+        step["id"] for step in steps if step["check"]["kind"] == "replay"
+        and (step["check"].get("case") not in cases or step["check"].get("expect") not in REPLAY_EXPECTS)
+    ]
+    if unreplayable:
+        raise InvalidCatalogue(
+            f"{source}: replay steps {', '.join(unreplayable)} need a case of the lesson and an expect of "
+            f"{', '.join(REPLAY_EXPECTS)}"
         )
 
 def _discover() -> dict[str, dict[str, Any]]:

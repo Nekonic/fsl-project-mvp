@@ -1,4 +1,5 @@
 import json
+from urllib.parse import unquote
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -735,3 +736,18 @@ def test_a_lesson_reports_where_it_started_from_the_replay_at_open(client):
     }
     assert ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]] in start["diagnosis"]
     assert client.get(f"/api/sessions/{plain.pk}/").json()["start"] is None
+
+def test_a_lesson_replay_returns_sqlmap_s_conclusion_its_command_the_403_count_and_a_kibana_link(client):
+    session = board(guidance=True)
+    stock = (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": stock})
+    with patch("api.views.harness.fire", fire):
+        row = client.post_json(f"/api/sessions/{session.pk}/attacks/",
+                               {"case": "board-sqli-orderby-sqlmap", "lesson": True}).json()["replay"]
+    case = Case.objects.get()
+
+    assert row["outcome"] == "held" and row["forbidden"] == 2065
+    assert row["conclusions"][-1].startswith("[CRITICAL] all tested parameters do not appear to be injectable")
+    assert not row["conclusions"][-1].startswith("[06:"), "the clock stamp is not part of the conclusion"
+    assert row["command"].startswith("sqlmap -u {target}/?sort=posts_post.id*")
+    assert case.case_id in unquote(row["discover"]) and "X-FSL-Case" in unquote(row["discover"])

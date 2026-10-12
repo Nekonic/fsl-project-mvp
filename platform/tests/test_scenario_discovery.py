@@ -208,3 +208,18 @@ def test_a_lessons_list_that_cannot_be_offered_is_refused_at_discovery(settings,
 def test_a_scenario_still_declaring_a_single_lesson_is_refused_rather_than_silently_lessonless():
     with pytest.raises(wargames.InvalidCatalogue, match="lessons: list"):
         wargames.checked_scenario({**A_SCENARIO, "lesson": {"text": "lesson.demo"}}, "demo", "scenario.yaml")
+
+@pytest.mark.parametrize("check", [
+    {"kind": "replay", "case": "board-normal-sort", "expect": "held"},
+    {"kind": "replay", "case": "board-normal-search", "expect": "leaked"},
+])
+def test_a_replay_step_must_name_a_case_of_its_lesson_and_an_outcome_it_can_pass_on(settings, tmp_path, check):
+    folder = tmp_path / "wargames" / "demo"
+    folder.mkdir(parents=True)
+    taught = {"id": "demo", "order": 1, "text": "lesson.demo", "cases": ["board-normal-search"],
+              "steps": [{"id": "again", "check": check}]}
+    (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "lessons": [taught]}))
+    settings.FSL_SOURCE = str(tmp_path)
+
+    with pytest.raises(wargames.InvalidCatalogue, match="replay steps again"):
+        wargames._discover()

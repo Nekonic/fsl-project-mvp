@@ -109,3 +109,17 @@ def test_core_does_not_start_anything_itself():
         "redteam/harness.py is gated core and shelled out to docker run, so "
         "the hypothesis could not be carried anywhere without a daemon"
     )
+
+def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
+    from pathlib import Path
+
+    from redteam.tools import conclusions
+
+    fixtures = Path(__file__).resolve().parent / "fixtures"
+    dumped = conclusions((fixtures / "sqlmap-orderby-dump.out").read_text())
+    missing = conclusions((fixtures / "sqlmap-host-missing.out").read_text())
+
+    assert any("identified the following injection point" in line for line in dumped)
+    assert all(not line.startswith("[0") for line in dumped)
+    assert missing == ["[CRITICAL] host 'nowhere' does not exist"]
+    assert conclusions("") == []

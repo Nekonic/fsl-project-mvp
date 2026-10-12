@@ -73,7 +73,7 @@ HINT_LEVELS = ("hint", "do")
 LESSON_STEP_STATES = ("reached", "skipped")
 MODES = ("guided", "self")
 RECENT_ALERTS = 600
-SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",)}
+SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",), "replay": ("case",)}
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
@@ -404,10 +404,10 @@ def lesson_step_check(request, session_id, step_id):
     poll = body.get("poll") is True
     kept = session.lesson_steps.get(step_id) or {}
     try:
-        passed, reason, tried = _judge(session, taught, step, body, poll, kept)
+        passed, reason, tried, *seen = _judge(session, taught, step, body, poll, kept)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    return _reply(_judged_step(session, step_id, passed, reason, poll, tried))
+    return _reply(_judged_step(session, step_id, passed, reason, poll, tried) | dict(*seen))
 
 @require_http_methods(["POST"])
 def lesson_step_do(request, session_id, step_id):
@@ -422,9 +422,9 @@ def lesson_step_do(request, session_id, step_id):
             passed, reason, tried = _judge(session, taught, step, {"answer": check["accept"][0]}, False, {})
         elif check["kind"] == "waf":
             _put_exclusion(session, check)
-            passed, reason, tried = _judge(session, taught, step, {}, False, {})
-        elif check["kind"] in ("click", "served"):
-            passed, reason, tried = _judge(session, taught, step, {}, False, {})
+            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
+        elif check["kind"] in ("click", "served", "replay"):
+            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
         else:
             return _reply(_lesson_state(session, step_id, passed=False, reason=None))
     except harness.ToolUnavailable as exc:
@@ -476,6 +476,8 @@ def _judge(session, taught, step, body, poll, kept):
     if kind == "served":
         status = _check_replay(session, check["case"], step_id)
         return lesson.served(status), [failed, [status or "-"]], None
+    if kind == "replay":
+        return _replay_check(session, check, step_id, failed)
     if kind == "waf":
         return _waf_check(session, check, step_id, poll, kept, failed)
     runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
@@ -483,16 +485,45 @@ def _judge(session, taught, step, body, poll, kept):
 
 def _waf_check(session, check, step_id, poll, kept, failed):
     standing = _waf_in_force(session)
+    fixed = {"fix": _fix(session, standing)}
     wanted = {"rule_id": check["rule_id"], "target": check["target"], "path": check["path"]}
     if wanted not in standing["exclusions"]:
-        return False, [failed, []], None
+        return False, [failed, []], None, fixed
     if not check.get("case"):
-        return True, None, None
+        return True, None, None, fixed
     version = _version(json.dumps(standing, sort_keys=True))
     if poll and kept.get("tried") == version:
-        return False, [f"{failed}.reload", []], None
+        return False, [f"{failed}.reload", []], None, fixed
     served = lesson.served(_check_replay(session, check["case"], step_id))
-    return served, [f"{failed}.reload", []], version
+    return served, [f"{failed}.reload", []], version, fixed
+
+def _replay_check(session, check, step_id, failed):
+    recorded, _ = _lesson_fire(session, check["case"], {"check": step_id})
+    outcome = lesson.outcome(_row(session, recorded))
+    shown = {"replay": _replay_row(session, recorded)}
+    if outcome == check["expect"]:
+        return True, None, None, shown
+    if outcome == "inconclusive":
+        return False, ["lesson.check.inconclusive", [check["case"]]], None, shown
+    return False, [failed, []], None, shown
+
+def _replay_row(session, recorded):
+    meta = recorded.meta
+    return {
+        "name": recorded.name,
+        "outcome": lesson.outcome(_row(session, recorded)),
+        "conclusions": meta.get("conclusions") or [],
+        "command": " ".join([meta["tool"], *meta.get("args", [])]) if meta.get("tool") else "",
+        "forbidden": meta.get("forbidden", 0),
+        "status": meta.get("status", 0),
+        "discover": _discover(session, kibana.marked(recorded.case_id)),
+    }
+
+def _fix(session, waf):
+    taught = _lesson_of(session) or {}
+    scope = next((step["check"].get("path", "") for step in taught.get("steps", []) if step["check"]["kind"] == "waf"), "")
+    declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
+    return lesson.fix_class(waf, crs.checked(declared["waf"]) if declared else None, scope)
 
 def _check_replay(session, name, step_id):
     recorded, _ = _lesson_fire(session, name, {"check": step_id})
@@ -508,7 +539,8 @@ def _alert_seen(session, check, after):
 
 def _last_verdict(session, run, verified):
     judged = _verified(session, run)
-    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"], "mode": judged["mode"]}
+    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"],
+            "mode": judged["mode"], "fix": judged["fix"]}
 
 def _settings(scenario, body):
     asked = body.get("lesson")
@@ -975,6 +1007,7 @@ def fire_attack(request, session_id):
             recorded, _ = _lesson_fire(session, _lesson_case(session, body.get("case")), {"replay": True})
             return _reply(_shape(recorded, CASE_FIELDS) | {
                 "diagnosis": lesson.verdict([_row(session, recorded)])[1][1:],
+                "replay": _replay_row(session, recorded),
             }, status=201)
         recorded, _ = _fire(session, body.get("case"), body.get("origin"), _answered)
     except harness.ToolUnavailable as exc:
@@ -1045,7 +1078,7 @@ def _lesson_fire(session, name, marks):
             return dict(marks, status=status, blocked=status == 403)
         leaked = sorted(loot.matched(tools.dumped(ran.output), truth))
         held = not leaked and tools.found_not_injectable(ran.exit_code, ran.output)
-        return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output),
+        return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output), conclusions=tools.conclusions(ran.output),
                     outcome="leaked" if leaked else "held" if held else "inconclusive",
                     blocked=held)
 
@@ -1084,7 +1117,8 @@ def _verified(session, run):
         **_judged_cases(session, ran),
         "run": run,
         "mode": next((case.meta.get("mode") for case in ran if case.meta.get("mode")), None),
-        "waf": next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None),
+        "waf": (waf := next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None)),
+        "fix": _fix(session, waf),
     }
 
 def _judged_cases(session, cases):

@@ -81,6 +81,9 @@ lessons:
         site: "/search/?q=O'Brien"
         point: {panel: "#site-address", opens: site}
         check: {kind: served, case: board-normal-search-with-apostrophe, path: "O'Brien"}
+      - id: sqlmap
+        point: {pane: true}
+        check: {kind: replay, case: board-sqli-orderby-sqlmap, expect: held}
       - id: verify
         point: {panel: "#lesson-verify", tab: check}
         check: {kind: verify}

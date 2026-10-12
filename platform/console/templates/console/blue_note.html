@@ -81,6 +81,7 @@
         <select id="lesson-case" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px] font-mono"></select>
         <button id="lesson-replay" data-t="lesson.replay.button" class="self-start btn btn-sm btn-ghost"></button>
         <p id="lesson-replay-status" class="text-muted text-[12px]"></p>
+        <ul id="lesson-replay-rows" class="flex flex-col gap-2"></ul>
       </section>
       <section class="flex flex-col gap-2 border-t border-line-subdued pt-4">
         <h3 data-t="lesson.verify.heading" class="font-semibold text-heading"></h3>
@@ -90,6 +91,7 @@
           <div id="lesson-verdict" class="px-3 py-2.5 rounded-t-lg flex items-center gap-2 font-semibold"></div>
           <ul id="lesson-passed" class="px-3 pt-3 space-y-2"></ul>
           <ul id="lesson-diagnosis" class="p-3 space-y-2"></ul>
+          <p id="lesson-fix" class="hidden px-3 pb-3 text-[12px] text-muted"></p>
         </div>
       </section>
     </div>

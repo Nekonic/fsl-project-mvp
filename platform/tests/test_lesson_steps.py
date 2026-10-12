@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from api.models import Case, Detection, Session
 from rules import crs
-from tests.test_lesson_api import HELD, Stand, attacker, board
+from tests.test_lesson_api import FIXTURES, HELD, Stand, attacker, board
 
 pytestmark = pytest.mark.django_db
 
@@ -226,3 +226,44 @@ def test_a_wargame_cannot_be_opened_in_self_mode(client):
     answer = client.post_json("/api/sessions/", {"mode": "self"})
 
     assert answer.status_code == 400 and "mode" in answer.json()["detail"]
+
+LEAKED = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
+
+@pytest.mark.parametrize("output, passed, reason", [
+    (HELD, True, None),
+    (LEAKED, False, ["lesson.board.fail.sqlmap", []]),
+    ("[*] ending @ 04:37:56\n", False, ["lesson.check.inconclusive", ["board-sqli-orderby-sqlmap"]]),
+])
+def test_the_regression_replay_fires_sqlmap_once_on_click_and_says_held_leaked_or_inconclusive(client, output, passed, reason):
+    session = board(guidance=True)
+    fire, fired = attacker({"board-sqli-orderby-sqlmap": output})
+    with patch("api.views.harness.fire", fire):
+        answer = check(client, session, "sqlmap").json()
+
+    assert fired == ["board-sqli-orderby-sqlmap"]
+    assert (answer["passed"], answer["reason"]) == (passed, reason)
+    assert answer["replay"]["command"].startswith("sqlmap -u {target}/?sort=")
+    assert Case.objects.get().meta["check"] == "sqlmap"
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+    assert score["tp"] + score["fn"] == 0, "a check's replay is not an attack case of the score"
+    assert Session.objects.get(pk=session.pk).objectives.count() == 0
+
+@pytest.mark.parametrize("tuning, fix", [
+    ({"paranoia": 4, "exclusions": [EXCLUSION]}, "path_target"),
+    ({"paranoia": 4, "exclusions": [dict(EXCLUSION, path="/")]}, "target"),
+    ({"paranoia": 4, "exclusions": [dict(EXCLUSION, path="")]}, "target"),
+    ({"paranoia": 4, "exclusions": [dict(EXCLUSION, target="")]}, "rule"),
+    ({"paranoia": 3, "exclusions": [EXCLUSION]}, "level"),
+    ({"paranoia": 4, "exclusions": []}, None),
+])
+def test_the_waf_check_and_verify_name_how_narrow_the_fix_is_and_never_judge_by_it(client, tuning, fix):
+    session = board(guidance=True, defense="minimal")
+    stand = Stand()
+    stand.files[(session.pk, "gateway")] = crs.rendered(tuning)
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+    with patch("range.docker.Docker.runner", stand.runner()), patch("api.views.harness.fire", fire):
+        checked = check(client, session, "exclude").json()
+        verified = client.post_json(f"/api/sessions/{session.pk}/verify/").json()
+
+    assert (checked["fix"], verified["fix"]) == (fix, fix)
+    assert verified["passed"] is True, "the narrowness is reported beside PASS, never gating it"

@@ -60,6 +60,10 @@ def send_json(request):
         return json.loads(answer.read() or b"{}")
 
 
+def marked(marker):
+    return f'transaction.request.headers.X-FSL-Case : "{marker}"'
+
+
 def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 
