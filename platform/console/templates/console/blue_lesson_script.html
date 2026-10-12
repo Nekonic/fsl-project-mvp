@@ -126,6 +126,7 @@ async function verifyLesson() {
   verdict.textContent = t("lesson.verify.running");
   field("lesson-passed").innerHTML = "";
   field("lesson-diagnosis").innerHTML = "";
+  const began = Date.now();
   const checked = await post(lessonPath("verify/"), {}, PATIENCE_FOR_RANGE_WORK);
   if (!checked.ok) {
     verdict.textContent = t("lesson.verify.failed", detail(checked));
@@ -150,7 +151,9 @@ async function verifyLesson() {
       esc(t(key, ...values))}</span></li>`).join("");
   field("lesson-fix").textContent = checked.body.fix ? `${t(`lesson.fix.${checked.body.fix}`)} ${t("lesson.fix.note")}` : "";
   field("lesson-fix").classList.toggle("hidden", !checked.body.fix);
-  if (passed) showDebrief(field("lesson-debrief"));
+  if (!passed) return;
+  await post(lessonPath("ingest/"), { within: Math.ceil((Date.now() - began) / 1000) + 60 }, PATIENCE_FOR_RANGE_WORK);
+  showDebrief(field("lesson-debrief"));
 }
 
 const NOTE_KEY = "fsl-lesson-note";
