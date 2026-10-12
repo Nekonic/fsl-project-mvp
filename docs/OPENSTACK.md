@@ -241,15 +241,15 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 
 | Group | Made by | Rules |
 |---|---|---|
-| `fsl-platform` | Heat stack | tcp 22, tcp 8000, icmp in |
+| `fsl-platform` | Heat stack | tcp 22, tcp 8000, tcp 8002, icmp in |
 | `fsl-range` | fabric | all IPv4 in; on every range port off `mgmt` (anti-spoofing stays on) |
 | `fsl-reach` | fabric | nothing in, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
 | `fsl-mgmt` | fabric | all IPv4 in from members of `fsl-reach` (the platform's `mgmt` port) only; on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
 | `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
 
-8002 (the blue console's site browser) is served only on substrate docker
-(`SITE_PORT` is `None` on openstack). The template's `fsl-platform` group
-does not open it. On a platform VM run on substrate docker, open it:
+8002 is the blue console's site browser on both substrates; on openstack the
+platform proxies it to the session's slot's WAF over `mgmt`. A platform
+stack made before 2026-10-13 lacks the rule; add it by hand:
 
 ```bash
 openstack security group rule create --protocol tcp --dst-port 8002 fsl-platform

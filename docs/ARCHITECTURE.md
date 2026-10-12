@@ -291,7 +291,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Console case, tool | a throwaway `fsl-kali` container | that container, on the chosen origin | sqlmap `--headers=` |
 | CLI run, HTTP | the platform, `redteam/run.py` | the platform, on `edge` (where `board.com` resolves) | added by the harness |
 | CLI run, tool | a throwaway `fsl-kali` container, from `launcher(<declared default origin>)` | that container | sqlmap `--headers=` |
-| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | the platform, on `edge` | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
+| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | the platform, on `edge` (on OpenStack, on `mgmt`) | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
 and, when `/label/origin` names an address, forwards the request there with the
@@ -361,10 +361,12 @@ plant script in; on the console's origin that script could read and drive the
 console and its APIs. A sandbox without `allow-same-origin` (an opaque origin)
 would do that on 8000 alone, but Chromium-based embedded browsers refuse such a
 frame (`ERR_BLOCKED_BY_CLIENT` in the Claude desktop browser). `SITE_PORT` is
-8002 on docker and `None` on OpenStack, where there is no session WAF to name;
-the session API gives `site: {port, path}` or `null`, and the console hides
-the pane without it. A platform VM on substrate docker needs a security-group
-rule for 8002 (`docs/OPENSTACK.md` §3.5).
+8002 on every substrate. On docker the proxy names the session's WAF
+container (`fsl-<id>-waf-1`); on OpenStack it asks the substrate once per
+session for its slot's gateway address on `mgmt`, which the platform's port
+reaches through `fsl-mgmt`. The session API gives `site: {port, path}` or
+`null`, and the console hides the pane without it. The platform template's
+security group opens 8002 (`docs/OPENSTACK.md` §3.5).
 
 The recorder keeps each session's last 200 requests in the platform's memory
 (lost on restart): method, `http://<host><path>`, status, whether the WAF
