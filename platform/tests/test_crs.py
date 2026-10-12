@@ -3,6 +3,9 @@ import pytest
 from range.ports import Ran
 from rules import crs
 
+RELOAD = ["sh", "-c", crs.Layout().reload]
+WORKERS = crs.workers_of(crs.Layout().pid)
+
 class Gateway:
     def __init__(self, live="", reload=Ran(0, "test is successful"), workers=None):
         self.file = live
@@ -12,7 +15,7 @@ class Gateway:
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         joined = " ".join(argv)
-        if joined.endswith(crs.WORKERS):
+        if joined.endswith(WORKERS):
             return Ran(0, self.workers.pop(0) if len(self.workers) > 1 else self.workers[0])
         self.calls.append(argv)
         if "nginx -t" in joined:
@@ -76,7 +79,7 @@ def test_applying_writes_the_exclusion_file_and_reloads_nginx():
     assert applied == {"paranoia": 2, "exclusions": []}
     assert "tx.blocking_paranoia_level=2" in gateway.file
     assert any(crs.EXCLUSIONS in " ".join(argv) for argv in gateway.calls)
-    assert gateway.calls[-1] == crs.RELOAD
+    assert gateway.calls[-1] == RELOAD
 
 def test_a_tuning_nginx_refuses_is_rolled_back_to_the_previous_file():
     gateway = Gateway(live="the previous file\n", reload=Ran(1, "nginx: [emerg] Rules error"))
@@ -113,7 +116,7 @@ def test_a_reload_that_starts_no_new_worker_is_rolled_back_and_refused(monkeypat
         crs.apply({"paranoia": 2}, stuck)
 
     assert stuck.file == "the previous file\n"
-    assert stuck.calls[-1] == crs.RELOAD, "the previous file is reloaded"
+    assert stuck.calls[-1] == RELOAD, "the previous file is reloaded"
 
 def test_on_openstack_tuning_writes_where_the_waf_vm_reads_and_reloads_it_with_systemd():
     import os
