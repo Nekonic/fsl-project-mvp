@@ -11,6 +11,10 @@ def find(content: str, sid: int) -> str | None:
     at = _active(lines, sid)
     return None if at is None else lines[at]
 
+def sids(content: str) -> set[int]:
+    return {sid for line in content.splitlines()
+            if line.strip() and not line.lstrip().startswith("#") and (sid := _sid(line)) is not None}
+
 def silence(content: str, sid: int, until: str) -> str:
     lines = content.splitlines(keepends=True)
     at = _active(lines, sid)

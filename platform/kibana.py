@@ -64,6 +64,10 @@ def marked(marker):
     return f'transaction.request.headers.X-FSL-Case : "{marker}"'
 
 
+def sensed(marker):
+    return f'event_type : "alert" and http.request_headers.value : "{marker}"'
+
+
 def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 

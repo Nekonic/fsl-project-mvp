@@ -22,8 +22,13 @@ SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_mode
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
-CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "replay", "verify"}
+CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "replay", "verify", "level", "rules", "detect"}
 REPLAY_EXPECTS = ("held", "served")
+DETECT_EXPECTS = ("alert", "quiet")
+ANSWERS_OF = ("rule", "target")
+LESSON_MODES = ("guided", "self")
+DETECTORS = ("suricata",)
+CONTROLS = ("paranoia", "rules")
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 LESSON_ID = re.compile(r"[a-z0-9][a-z0-9-]*", re.ASCII)
 
@@ -51,6 +56,7 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
         **{field: loaded[field] for field in SCENARIO_FIELDS},
         **checked_card(loaded, source),
         **({"lessons": loaded["lessons"]} if "lessons" in loaded else {}),
+        **({"default_lesson": loaded["default_lesson"]} if "default_lesson" in loaded else {}),
         **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
     }
 
@@ -98,6 +104,49 @@ def checked_lessons(lessons: Any, known: set[str], source, defenses=(DEFAULT_DEF
     for taught in lessons:
         checked_lesson_card(taught, set(ids) - {taught["id"]}, source)
         checked_lesson(taught, known, source, defenses)
+        checked_lesson_judging(taught, source)
+
+def checked_default_lesson(scenario: dict, source) -> None:
+    named = scenario.get("default_lesson")
+    if named is not None and named not in [taught["id"] for taught in scenario.get("lessons") or []]:
+        raise InvalidCatalogue(f"{source}: default_lesson must name one of the scenario's lessons, got {named!r}")
+
+def checked_lesson_judging(taught: dict, source) -> None:
+    where = f"{source}: lesson {taught['id']}"
+    if taught.get("mode", LESSON_MODES[0]) not in LESSON_MODES:
+        raise InvalidCatalogue(f"{where} mode must be one of {', '.join(LESSON_MODES)}")
+    if taught.get("detected_by") is not None and taught["detected_by"] not in DETECTORS:
+        raise InvalidCatalogue(f"{where} detected_by must be one of {', '.join(DETECTORS)}")
+    controls = taught.get("controls", [])
+    if not isinstance(controls, list) or not set(controls) <= set(CONTROLS):
+        raise InvalidCatalogue(f"{where} controls must be a list drawn from {', '.join(CONTROLS)}, got {controls!r}")
+    if "solved_at" in taught:
+        try:
+            crs.checked(taught["solved_at"])
+        except crs.TuningRefused as exc:
+            raise InvalidCatalogue(f"{where} solved_at: {exc}") from exc
+    for step in taught.get("steps", []):
+        checked_step_judging(taught, step, f"{where} step {step['id']}")
+
+def checked_step_judging(taught: dict, step: dict, where: str) -> None:
+    check = step["check"]
+    kind = check["kind"]
+    if kind == "answer" and "of" in check and not (
+            check["of"] in ANSWERS_OF and isinstance(check.get("path"), str) and check["path"]):
+        raise InvalidCatalogue(f"{where}: an answer read from the record needs of: one of "
+                               f"{', '.join(ANSWERS_OF)} and the path of the request it is about")
+    if kind in ("answer", "choice") and "of" not in check and not (
+            isinstance(check.get("accept"), list) and check["accept"]):
+        raise InvalidCatalogue(f"{where}: an answer needs an accept list, or of: to read it from the record")
+    if kind == "detect" and not (taught.get("detected_by") and check.get("case") in taught["cases"]
+                                 and check.get("expect") in DETECT_EXPECTS):
+        raise InvalidCatalogue(f"{where}: a detect step needs a lesson detected_by, a case of the lesson and an "
+                               f"expect of {', '.join(DETECT_EXPECTS)}")
+    if kind == "rules" and not (taught.get("detected_by") and isinstance(step.get("rule"), str) and step["rule"].strip()):
+        raise InvalidCatalogue(f"{where}: a rules step needs a lesson detected_by and the rule it applies when done for "
+                               f"the learner")
+    if kind == "level" and "solved_at" not in taught:
+        raise InvalidCatalogue(f"{where}: a level step needs the lesson's solved_at")
 
 def checked_lesson_card(taught: dict, others: set[str], source) -> None:
     if "level" in taught and taught["level"] not in DIFFICULTIES:
@@ -162,6 +211,7 @@ def _discover() -> dict[str, dict[str, Any]]:
         }
         checked_lessons(found[wargame_id].get("lessons"), known, path,
                         tuple(found[wargame_id].get("defense") or (DEFAULT_DEFENSE,)))
+        checked_default_lesson(found[wargame_id], path)
     return found
 
 WARGAMES = _discover()
@@ -184,7 +234,8 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | N
     listed = lessons(wargame_id)
     if not listed:
         return None
-    taught = next((taught for taught in listed if taught["id"] == lesson_id), None) if lesson_id else listed[0]
+    wanted = lesson_id or WARGAMES[wargame_id].get("default_lesson")
+    taught = next((taught for taught in listed if taught["id"] == wanted), None) if wanted else listed[0]
     if taught is None:
         raise UnknownWargame(lesson_id)
     waf = waf or settings.FSL_WAF
@@ -196,6 +247,9 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | N
 
 def lesson_defense(wargame_id: str, lesson_id: str | None = None) -> str:
     return (lesson(wargame_id, lesson_id=lesson_id) or {}).get("defense", DEFAULT_DEFENSE)
+
+def lesson_mode(wargame_id: str, lesson_id: str | None = None) -> str:
+    return (lesson(wargame_id, lesson_id=lesson_id) or {}).get("mode", LESSON_MODES[0])
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
@@ -330,6 +384,7 @@ def _lesson_card(taught: dict[str, Any]) -> dict[str, Any]:
         "defense": taught.get("defense", DEFAULT_DEFENSE),
         "prerequisites": list(taught.get("prerequisites") or []),
         "steps": len(taught.get("steps") or []),
+        "mode": taught.get("mode", LESSON_MODES[0]),
     }
 
 def _summary(case: dict[str, Any]) -> str:

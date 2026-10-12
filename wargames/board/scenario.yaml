@@ -17,13 +17,17 @@ defense:
   full:
     waf: {paranoia: 1}
     suricata: local.rules
+  ids:
+    waf: {paranoia: 1}
+    suricata: no-uri-sqli.rules
+default_lesson: waf-exclusion
 lessons:
   - id: waf-exclusion
-    order: 1
+    order: 2
     text: lesson.board
     level: easy
     minutes: 40
-    prerequisites: []
+    prerequisites: [read-the-block]
     defense: minimal
     cases:
       - board-sqli-orderby-sqlmap
@@ -87,3 +91,204 @@ lessons:
       - id: verify
         point: {panel: "#lesson-verify", tab: check}
         check: {kind: verify}
+  - id: console-tour
+    order: 0
+    text: lesson.tour
+    level: easy
+    minutes: 15
+    prerequisites: []
+    defense: full
+    cases:
+      - board-normal-search
+      - board-sqli-search
+    theory:
+      - {id: panes}
+      - {id: record, shows: find}
+      - {id: rule, shows: rule}
+    hints: [why_403, why_two]
+    steps:
+      - id: search
+        site: "/search/?q=' OR 1=1--"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: alert, marker: browse, path: "1=1"}
+      - id: find
+        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *1=1* and status : 403"
+        check: {kind: click}
+      - id: rule
+        point: {kibana: '[data-test-subj="field-rule"]', opens: elk}
+        check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
+      - id: engine
+        point: {kibana: '[data-test-subj="field-fsl_source"]', first: '[data-test-subj="field-rule"]', opens: elk}
+        check: {kind: choice, options: [modsecurity, suricata], accept: [modsecurity]}
+  - id: read-the-block
+    order: 1
+    text: lesson.read
+    level: easy
+    minutes: 20
+    prerequisites: [console-tour]
+    defense: minimal
+    cases:
+      - board-normal-search-with-apostrophe
+      - board-normal-search
+    theory:
+      - {id: anomaly, shows: total}
+      - {id: fields, shows: target}
+    hints: [why_total, why_variable]
+    steps:
+      - id: search
+        site: "/search/?q=O'Brien"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: alert, marker: browse, path: "O'Brien"}
+      - id: find
+        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *Brien* and status : 403"
+        check: {kind: click}
+      - id: rule
+        point: {kibana: '[data-test-subj="field-rule"]', opens: elk}
+        check: {kind: answer, of: rule, path: "O'Brien", known: ["949110"]}
+      - id: target
+        point:
+          kibana: '[data-test-subj="field-transaction.messages.details.data"]'
+          first: '[data-test-subj="field-rule"]'
+          opens: elk
+        check: {kind: answer, of: target, path: "O'Brien"}
+      - id: total
+        point: {kibana: '[data-test-subj="field-rule"]', opens: elk}
+        check: {kind: choice, options: [total, sqli, charset], accept: [total]}
+  - id: choose-the-level
+    order: 3
+    text: lesson.level
+    level: medium
+    minutes: 30
+    prerequisites: [read-the-block]
+    defense: minimal
+    controls: [paranoia]
+    solved_at: {paranoia: 2}
+    cases:
+      - board-normal-search-korean
+      - board-normal-search-with-apostrophe
+      - board-normal-search
+      - board-normal-post-list
+      - board-normal-sort
+      - board-sqli-orderby-sqlmap
+      - board-sqli-orderby-sqlmap-tamper
+    theory:
+      - {id: levels}
+      - {id: tradeoff, shows: level}
+      - {id: highest}
+    hints: [why_korean, why_highest, why_no_exclusion]
+    steps:
+      - id: search
+        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: alert, marker: browse, path: "\uC11C\uC6B8"}
+      - id: find
+        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *search* and status : 403"
+        check: {kind: click}
+      - id: rule
+        point: {kibana: '[data-test-subj="field-rule"]', opens: elk}
+        check: {kind: answer, of: rule, marker: browse, path: "\uC11C\uC6B8", known: ["949110"]}
+      - id: level
+        point: {panel: "#lesson-level", tab: check}
+        check: {kind: level}
+      - id: verify
+        point: {panel: "#lesson-verify", tab: check}
+        check: {kind: verify}
+  - id: ids-signature
+    order: 4
+    text: lesson.ids
+    level: medium
+    minutes: 45
+    prerequisites: [console-tour]
+    defense: ids
+    detected_by: suricata
+    controls: [rules]
+    cases:
+      - board-normal-sort
+      - board-normal-post-list
+      - board-sqli-orderby-sqlmap
+      - board-sqli-orderby-sqlmap-tamper
+    theory:
+      - {id: signature, shows: write}
+      - {id: buffers}
+      - {id: allow, shows: write}
+      - {id: corroborate, shows: stock}
+      - {id: detect_only}
+    hints: [why_quote, why_tamper, why_msg]
+    steps:
+      - id: payloads
+        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *sort=posts_post.id* and status : 403"
+        check: {kind: click}
+      - id: write
+        point: {panel: "#lesson-rules", tab: check}
+        rule: >-
+          alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi attempt - sort is not a column name";
+          flow:established,to_server; http.uri; pcre:"/[?&]sort=[-\w.]*[^-\w.&]/i";
+          classtype:web-application-attack; sid:9000101; rev:1;)
+        check: {kind: rules}
+      - id: stock
+        check: {kind: detect, case: board-sqli-orderby-sqlmap, expect: alert}
+      - id: tamper
+        check: {kind: detect, case: board-sqli-orderby-sqlmap-tamper, expect: alert}
+      - id: sort
+        check: {kind: detect, case: board-normal-sort, expect: quiet}
+      - id: verify
+        point: {panel: "#lesson-verify", tab: check}
+        check: {kind: verify}
+  - id: ids-body-xss
+    order: 5
+    text: lesson.xss
+    level: medium
+    minutes: 30
+    prerequisites: [ids-signature]
+    defense: full
+    detected_by: suricata
+    controls: [rules]
+    cases:
+      - board-normal-comment
+      - board-normal-search
+      - board-xss-img-onerror-in-comment
+    theory:
+      - {id: body, shows: buffer}
+      - {id: handlers, shows: write}
+    hints: [why_body, why_handler]
+    steps:
+      - id: buffer
+        point: {panel: "#lesson-rules", tab: check}
+        check:
+          kind: choice
+          options: [http.uri, http.request_body, http.header, http.cookie]
+          accept: [http.uri]
+      - id: write
+        point: {panel: "#lesson-rules", tab: check}
+        rule: >-
+          alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL XSS attempt - script or event handler in request body";
+          flow:established,to_server; http.request_body; pcre:"/(<script|javascript:|\bon[a-z]+[\s+]*=)/i";
+          classtype:web-application-attack; sid:9000102; rev:1;)
+        check: {kind: rules}
+      - id: xss
+        check: {kind: detect, case: board-xss-img-onerror-in-comment, expect: alert}
+      - id: comment
+        check: {kind: detect, case: board-normal-comment, expect: quiet}
+      - id: verify
+        point: {panel: "#lesson-verify", tab: check}
+        check: {kind: verify}
+  - id: assessment
+    order: 7
+    text: lesson.exam
+    level: hard
+    minutes: 40
+    prerequisites: [waf-exclusion, choose-the-level]
+    defense: minimal
+    mode: self
+    cases:
+      - board-normal-search-with-apostrophe
+      - board-normal-search-korean
+      - board-normal-search
+      - board-normal-post-list
+      - board-normal-sort
+      - board-sqli-orderby-sqlmap
+      - board-sqli-orderby-sqlmap-tamper
