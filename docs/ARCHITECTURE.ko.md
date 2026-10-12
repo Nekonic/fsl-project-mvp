@@ -509,7 +509,8 @@ guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처�
   케이스·목표 수를 보여 주고, 카드 아래 레슨마다 목표, 난이도, 시간, 선수 레슨과 시작 버튼 셋을 둔다:
   레슨(안내), 연습(`mode: self`), 워게임(안내 없이 full defense). 레슨마다 이 브라우저가 연 세션
   (localStorage의 `fsl-opened-sessions`, 세션·블루 화면이 쓰고 최신순 최대 20개, `?ids=`로 읽음) 가운데
-  가장 새 실행을 단계 종류와 PASS/FAIL, 진행 중, 검증 없이 닫음으로 보여 준다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
+  가장 새 실행을 단계 종류와 PASS/FAIL, 진행 중, 검증 없이 닫음으로 보여 준다. 판정 옆의 단계 종류는 여기서도
+  세션 화면에서도 마지막 검증이 돈 모드(`result.lesson.mode`)이고, 그 뒤에 바꾼 세션 모드가 아니다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
   아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다
   (`Session.result_cache`, migration 0018; 입력은 `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가
   있는 행 수, 케이스와 목표의 마지막 id·행 수). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이
@@ -539,7 +540,9 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고(사이
 (`fsl-lesson-note`)에, 보고 있는 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로
 "단계 n/N"을 보여 준다. 진행 자체는 세션의 것이다(`Session.lesson_steps`, 마이그레이션 0020): 단계마다
 `reached`, `passed`, `skipped`(시각), `hint`(보인 단계, 0-4), `done_for_me`를 남기고
-`GET /api/sessions/<id>/`의 `progress`로 알려 준다. `POST /api/sessions/<id>/lesson/steps/<step>/
+`GET /api/sessions/<id>/`와 모든 레슨 단계·힌트 응답의 `progress`로 알려 준다. 단계의 기록에는 얻은 것도
+실린다: 단계에 도달하면 `command`(연습 모드에서는 없음), 힌트 단계가 3(`lesson.ANSWER`)에 이르면 `answer`,
+통과하면 `line`이며 뒤의 둘은 `{en, ko}`이다. `POST /api/sessions/<id>/lesson/steps/<step>/
 {state: reached|skipped}`는 단계에 도달했음(alert 확인이 넘어야 할 가장 새 탐지 id도 정함) 또는
 통과하지 않고 떠났음을 남긴다. 콘솔은 통과하지 않은 단계에서 다음이나 목록으로 옮길 때 `skipped`를
 보내고, 이전이나 통과로 옮길 때는 보내지 않는다. 단계 목록은 `progress`가 통과라고 할 때만 ✓를 붙이고,
@@ -579,8 +582,12 @@ seed 재생을 검증과 같은 규칙으로 판정한다(board에서는 PL4가 
 밝힌다. 뒤의 셋은 "board의 과정"에 설명한다),
 그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널 `command`. 세션 API는 `query`가 있는 단계에
 `discover` 링크를 더하고(`kibana.discover_path(..., narrowed)`), 확인은 `kind`만, 그리고 선택지의
-`options`와 alert·served 확인이 기다리는 `path`, replay의 `case`만 보인다: 정답 키는 브라우저에 가지
-않는다. board는 여덟 단계이고, 각 단계는
+`options`와 alert·served 확인이 기다리는 `path`, replay의 `case`만 보인다: `accept` 목록과 정답 규칙은
+브라우저에 가지 않는다. 단계의 `command`는 `progress`가 그 단계에 도달했다고 남긴 뒤에만 응답에 있다.
+정답 문구(`<lesson.text>.answer.<step>`)와 통과 때 하는 말(`<lesson.text>.line.<step>`)은 Django가
+그리지 않는 `strings.html` 끝의 `{% comment %}` 구역에 있고, `console/strings.py`가 읽어 얻은 때에 단계의
+`progress` 기록에 싣는다. 그래서 화면의 문자열 표에는 둘 다 없다. 이론·힌트 카드는 처음부터 화면에 있고
+일부는 답을 말한다(board 레슨의 카드는 920273과 `ARGS:q`를 말한다): 이론·힌트 탭이 주는 도움이다. board는 여덟 단계이고, 각 단계는
 그 확인으로 넘어간다. 이전/다음은 확인을 건너뛰는 길로 남는다:
 
 | 단계 | 어디서 | 확인 |
@@ -617,7 +624,7 @@ id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 
 `term.paste(command + "\n")`, 이어서 `term.input("\r")`을 부른다. bash는 bracketed paste의 줄바꿈을
 글자로 두기 때문이다.
 
-도움은 단계마다 사다리를 오른다(`<lesson.text>.nudge|answer.<step>`): 귀띔, "빨간 상자가 있는 곳을 보세요",
+도움은 단계마다 사다리를 오른다(화면의 `<lesson.text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔, "빨간 상자가 있는 곳을 보세요",
 정답, "대신 해 주기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸 오른다. 누를 때마다
 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를 올리고, 처음 것은
 `Session.hints`에 기록된다(migration 0017; 레슨에 없는 단계나 level은 400, 닫힌 세션은 409). 한 단계에서

@@ -2311,7 +2311,9 @@ The five foundation items of the course design, as built (unit-tested only):
   in the design).
 - `Session.lesson_steps` (0020) holds each step's reached, passed, skipped,
   hint level and done-for-me; `lesson/steps/<step>/`, `.../check/` and
-  `.../do/` record and judge on the server; answer keys left the payload.
+  `.../do/` record and judge on the server; the `accept` lists left the
+  payload (the step commands and the answer and line strings followed in
+  "Answer text and step commands withheld until earned", below).
   Done-for-me on the exclusion step adds the exclusion through `crs.apply`
   instead of typing the command into the WAF terminal: the server cannot
   type into the learner's terminal, and an agent must be able to call it.
@@ -2498,3 +2500,33 @@ search at PL2 through the site browser.
 
 Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests
 1810 -> 1833 (bin/measure).
+
+### 2026-10-13 — Answer text and step commands withheld until earned
+
+Review of Package 2 found that X4 ("answer keys leave the session payload")
+held only for the `accept` lists: `strings.html` shipped every lesson's
+`<lesson.text>.answer.<step>` (the board's said "920273.") and
+`<lesson.text>.line.<step>` to every page, and the guided payload carried the
+exclusion step's command (`ctl:ruleRemoveTargetById=920273;ARGS:q`) before
+the rule and target steps were passed.
+
+- The 66 answer and line strings, both languages, moved to a
+  `{% comment %}` section at the end of `strings.html`: still the one table
+  for Korean, never rendered. `console/strings.py` parses it (the parser the
+  string tests already used, now shared).
+- A step's `progress` record carries `answer` (`{en, ko}`) once its hint
+  level reaches 3 (`lesson.ANSWER`), `line` once passed, and `command` once
+  reached outside self mode; the step's `command` in the payload follows the
+  same rule. The console renders what it receives and refreshes the popover
+  and the Hints tab's solution when a command arrives.
+- Kept on the page: the theory and hint cards, some of which name the answer
+  (the board lesson's "Why 920273?"). They are the Theory and Hints tabs'
+  help, read when the learner opens them; withholding them is a product
+  decision not taken here.
+- The Practice label on the home page and the session page reads
+  `result.lesson.mode`, the mode the last VERIFY ran in, and falls back to the
+  session's mode only before a VERIFY.
+
+Tests whose assertions changed: the Hints tab's solution test reaches the
+exclusion step before reading the command, and asserts it absent before;
+the flavor test marks every step reached before comparing commands.

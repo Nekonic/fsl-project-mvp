@@ -404,7 +404,9 @@ passes and putting the previous file back if not), search again, run sqlmap
 once more to see it still held, and press Verify
 (`POST /api/sessions/<id>/verify/`). The platform judges every step
 (`POST /api/sessions/<id>/lesson/steps/<step>/check/`) and records each step
-reached, passed or skipped; the session payload carries no answer key. Each
+reached, passed or skipped; the session payload carries no answer key, a
+step's command only once the step is reached, and a step's answer text only
+once its hints reach it. Each
 step has hints that end in "Do it for me" (`.../do/`, a server action);
 "Do it yourself" removes the filter and the button. Hint and "Do it for me"
 use is recorded on the session and shown beside PASS or FAIL. The lesson's
