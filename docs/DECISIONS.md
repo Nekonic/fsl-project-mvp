@@ -2326,3 +2326,54 @@ slot rebuild.
 
 Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests 1740 ->
 1769.
+
+### 2026-10-13 — Package 1, built: the existing lesson made honest
+
+The Package 1 items of the course design, as built (unit and console tests
+only; nothing run live):
+
+- `scenario.yaml` declares `lessons:`, a list (id, order, level, minutes,
+  prerequisites, then the lesson as before); the board's one lesson is
+  `waf-exclusion`. `Session.lesson` (0022) records which lesson a session
+  runs; `POST /api/sessions/` takes `lesson` and `guidance: true` still means
+  the first. This is the shape Package 2 fills (D11).
+- Rungs (CS-A, HG2): `Session.mode` (0023) guided or self, switched by
+  `PATCH /api/sessions/<id>/`, kept on every VERIFY case. Self mode strips
+  the step commands from the payload and refuses hints and done-for-me
+  (409), so an agent in practice gets no more help than a person. Wargame
+  is the plain session.
+- Opening (BR-B3, BR-B4, SA-A): the first open of a session lands on Goal;
+  the ticket's second line is only what `GET /waf/` read; the starting card
+  judges the seed replay with VERIFY's rules (`start` in the detail). The
+  step list ticks passed steps only; a skipped one is hollow.
+- Steps (CK-C3, CK-C4, RS-R1): step `sqlmap` (kind `replay`) after `retry`,
+  so the board lesson is eight steps. The fix class (`lesson.fix_class`) is
+  computed in product code from `crs.parsed` output already read by the
+  check or the VERIFY snapshot; `rules/` is unchanged and `core_loc` stays
+  567. Replay rows carry sqlmap's conclusion lines (`tools.conclusions`),
+  the command, the 403 count labelled not judged, and a Kibana link on the
+  marker (`kibana.marked` names the WAF's marker field). Unverified: that
+  the KQL `transaction.request.headers.X-FSL-Case : "<id>"` matches in the
+  live Kibana.
+- Debrief (SD-A/B/C, KO-K5): `GET /api/sessions/<id>/lesson/debrief/`,
+  rendered by one script in the Check tab and on the score page.
+- Korean (KO-K1): R1 is read as covering 정탐/미탐/오탐 as score labels, so
+  `score.caught` is 탐지됨 and the parenthetical 미탐/오탐 left the score
+  labels; 오탐 remains only as the CRS term in the lesson's cards.
+- PG-1: `fsl-opened-sessions` in localStorage and `GET /api/sessions/?ids=`.
+- OP-P3: lesson commands and rendering tested over every lesson and both
+  declaration flavors; `settings.waf_layout` derives `FSL_WAF`.
+
+Tests whose assertions changed with a ruling: the steps-tab and
+verify-finish console tests (SA-A: a step left unpassed is hollow, not
+ticked), the step-count test (eight steps) and the step after `retry`
+(`sqlmap`); the home-card tests post `lesson` with the start. The console
+fixtures mark the session visited so the folded-note tests keep describing
+a later visit.
+
+Not yet proven live: the regression replay's timing (13-18 s expected), the
+Kibana marker link, the ticket and start card on an OpenStack slot, and the
+debrief's evidence rows after a real ingest.
+
+Metrics: core_loc 567 (unchanged), dependencies 6, services 9, tests
+1740 -> 1809 (bin/measure).

@@ -385,17 +385,24 @@ Korean.
   first, then in plain sentences how many attacks were caught and benign
   requests passed.
 
-A session opened with `{"guidance": true}` is the WAF lesson, at the defense
-the lesson declares (`minimal`): the board's WAF starts at CRS paranoia level 4, which blocks sqlmap and
-also the benign O'Brien search. The blue console walks a beginner through seven
-steps, each checked by the platform: search O'Brien in the Website pane and
+A session opened with `{"lesson": "waf-exclusion"}` (or `{"guidance": true}`,
+which takes the scenario's first lesson from its `lessons:` list) is the WAF
+lesson, at the defense the lesson declares (`minimal`): the board's WAF starts
+at CRS paranoia level 4, which blocks sqlmap and also the benign O'Brien
+search. The home page offers it three ways: Lesson (guided), Practice
+(`"mode": "self"`: no steps, hints or guide; the learner types every command)
+and Wargame (no guidance, the full defense). The lesson opens on its goal: a
+customer ticket whose WAF facts are read from the WAF, and the starting
+PASS/FAIL from the replay at open. The blue console walks a beginner through
+eight steps, each checked by the platform: search O'Brien in the Website pane and
 see the WAF's 403, find that request in Kibana with a ready-made filter, name
 the rule (920273), say what it caught (`ARGS:q`), add the rule exclusion with
 one button that runs the command in the session's WAF terminal (appending a
 rule with id 10100, from the range 10100-10199 kept for hand-written rules, to
 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, reloading only if `nginx -t`
-passes and putting the previous file back if not), search again, and press
-Verify (`POST /api/sessions/<id>/verify/`). The platform judges every step
+passes and putting the previous file back if not), search again, run sqlmap
+once more to see it still held, and press Verify
+(`POST /api/sessions/<id>/verify/`). The platform judges every step
 (`POST /api/sessions/<id>/lesson/steps/<step>/check/`) and records each step
 reached, passed or skipped; the session payload carries no answer key. Each
 step has hints that end in "Do it for me" (`.../do/`, a server action);
@@ -404,7 +411,11 @@ use is recorded on the session and shown beside PASS or FAIL. The lesson's
 own replays count in neither score, and a leak its VERIFY finds is
 diagnosed, not scored as a lost objective. Verify passes only when no sqlmap variant
 dumps a hash that matches the board's own accounts and every benign case is
-answered. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
+answered; beside the verdict it names how narrow the fix was (path-scoped
+target exclusion, target exclusion, whole rule removed, level lowered),
+without judging by it. After a PASS a debrief
+(`GET /api/sessions/<id>/lesson/debrief/`) shows the evidence, the change made
+to the WAF file, each case before and after, and the risk that remains. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
 what is in the WAF's file. The default, `{"defense": "full"}`, starts at
 paranoia level 1.
 
