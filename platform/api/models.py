@@ -22,6 +22,7 @@ class Session(models.Model):
     browse_marker = models.CharField(max_length=64, default=fresh_browse_marker)
     hints = models.JSONField(default=list, blank=True)
     lesson_steps = models.JSONField(default=dict, blank=True)
+    waf_snapshots = models.JSONField(default=list, blank=True)
     result_cache = models.JSONField(null=True, blank=True, default=None)
     slot = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
 

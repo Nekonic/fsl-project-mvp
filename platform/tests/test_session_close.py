@@ -5,6 +5,10 @@ import pytest
 from django.utils import timezone
 
 from api.models import Objective, Session
+from range.ports import Ran
+
+def a_waf_with_an_empty_file(role, segment_id=""):
+    return lambda argv, stdin=None, timeout=60.0: Ran(0, "")
 
 pytestmark = pytest.mark.django_db
 
@@ -125,6 +129,8 @@ def test_two_loots_at_once_record_an_objective_once(client, session_id):
 
 
 class Rebuilds:
+    runner = staticmethod(a_waf_with_an_empty_file)
+
     def __init__(self, fail=None):
         self.rebuilt = 0
         self.fail = fail
@@ -162,6 +168,8 @@ def test_closing_stamps_ended_at_before_it_rebuilds(client, session_id):
     order = []
 
     class Recorder:
+        runner = staticmethod(a_waf_with_an_empty_file)
+
         def rebuild_slot(self):
             order.append(Session.objects.get(pk=session_id).ended_at is not None)
             return []
