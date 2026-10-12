@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, replace
 from range import cloud as configured
 from range import fabric, images, opnsense, slot, waf, wargame_host
 from range.declared import Declaration
+from rules import suricata
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
     reported, reporting,
@@ -1224,9 +1225,7 @@ class OpenStack:
         sensed = any(filled == host for _, filled in self._hosted_sensors())
         logs = tuple(path for _, path in sorted(entry.logs.items()))
         ran = self.runner(wargame_host.ROLE)(
-            wargame_host.cleared(entry.wargames, logs, sensed),
-            stdin=(Path(self.build.source) / wargame_host.BASELINE_RULES).read_text(),
-            timeout=wargame_host.UP_TIMEOUT,
+            wargame_host.cleared(entry.wargames, logs, sensed), timeout=wargame_host.UP_TIMEOUT,
         )
         if not ran.ok:
             raise Drifted(f"{host} did not clear its wargames (exit {ran.exit_code}): {ran.output[-1000:]}")
@@ -1246,7 +1245,15 @@ class OpenStack:
         if not ran.ok:
             raise Drifted(f"{host} did not start its sensor on {address} (exit {ran.exit_code}): "
                           f"{ran.output[-1000:]}")
-        return host, (f"senses {slot.NAMED_ON} at {address}",)
+        entry = self.declared.hosts[host]
+        if not entry.rules or not entry.reload:
+            raise Drifted(f"{host} runs a sensor and the declaration names no rule file and reload for it")
+        try:
+            suricata.seed((Path(self.build.source) / wargame_host.BASELINE_RULES).read_text(),
+                          self.runner(role), entry.reload.split(), entry.rules)
+        except suricata.RuleApplyError as exc:
+            raise Drifted(f"{host} did not load the baseline rules into its sensor: {exc}")
+        return host, (f"senses {slot.NAMED_ON} at {address}", f"loaded {entry.rules}")
 
     def forward_logs(self, host: str) -> tuple[str, tuple[str, ...]]:
         role = next(role for role, filled in sorted(self.declared.roles.items())

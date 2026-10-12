@@ -571,7 +571,7 @@ and the wargame host in place"):
 | `fsl-kali` | Nova rebuild from its image, then nothing to configure | the red team's root shell; anything outside config can carry over |
 | `fsl-waf` | Nova rebuild, then `configure_waf()` (audit-log forwarding) | the blue team's shell (`vm-terminal.sh fsl-waf`) |
 | `fsl-edge` | in place: baseline `fsl.rules` written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` checked by sha256; pf states of every range subnet dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | the session can change only `fsl.rules`, and only the platform reaches its GUI and ssh (`fsl-mgmt`) |
-| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed, baseline rules written back; then the usual `up -d --wait --pull never`, sensor and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
+| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then the usual `up -d --wait --pull never`, the sensor, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
 
 OPNsense rewrites `config.xml` on its first boot after an install
 (migrations add uuids, defaults and `persisted_at` stamps), so the edge's file

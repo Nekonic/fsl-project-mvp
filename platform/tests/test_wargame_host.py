@@ -278,8 +278,8 @@ def test_clearing_the_host_removes_each_wargame_with_its_volumes_and_the_sensor_
     assert any("-p sensor" in line and "down -v" in line and "FSL_SENSOR_INTERFACE=lo" in line
                for line in script)
     assert any(line.startswith("rm -f /var/log/suricata/eve.json") for line in script)
-    assert script[-1] == f"tee {wargame_host.SENSOR_RULES} >/dev/null", (
-        "the session may change the sensor's rules, so the baseline is written back"
+    assert not any("rules" in line for line in script), (
+        "the baseline rules reach the sensor through rules/suricata.py once it is up"
     )
     assert not any(" up " in line for line in script), "configure starts them afterwards"
 

@@ -20,7 +20,6 @@ UP_TIMEOUT = 900.0
 SENSOR = "/opt/fsl/sensor.yaml"
 SENSOR_PROJECT = "sensor"
 SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
-SENSOR_RULES = "/opt/fsl/rules/local.rules"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 LOG_READER_STATE = "/var/spool/rsyslog/imfile-state:*"
 STOP_GRACE = 1
@@ -85,5 +84,4 @@ def cleared(wargames, logs, sensed: bool) -> list[str]:
                      f"down -v --timeout {STOP_GRACE}")
     if logs:
         steps.append(" ".join(["rm -f", *(shlex.quote(path) for path in logs), LOG_READER_STATE]))
-    steps.append(f"tee {SENSOR_RULES} >/dev/null")
     return ["sudo", "sh", "-c", "\n".join(steps)]

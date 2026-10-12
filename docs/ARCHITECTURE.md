@@ -277,7 +277,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read, its command filled in by `wargames.lesson` from the declared exclusion file and reload (`settings.FSL_WAF`); the platform reads neither |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
-| The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `deploy/wargame-host/sensor.yaml` runs the estate sensor as a compose service the platform starts like a wargame |
+| The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack), and its baseline rules then go through `suricata.py` |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none; on OpenStack they reach the same containers, `loot.py` over HTTP at the wargame host's published port and `effect.py` through the runner, which `docker exec`s into `corp-db` |
 
@@ -1067,14 +1067,15 @@ flavour, ports and fixed IPs. `POST /api/sessions/<id>/close/` calls
 or planted data. A rebuild wipes the disk, so configure must follow once the
 VMs are ACTIVE. On the wargame host the in-place reset (`clear_wargames()`)
 runs `docker compose down -v` for each wargame and the estate sensor, removes
-the sensor's eve log and rsyslog's imfile state and writes the baseline rules
-back, leaving the images and no container or volume; configure's last step, `start_wargames()`, runs `sudo docker compose
+the sensor's eve log and rsyslog's imfile state, leaving the images and no container or volume; configure's last step, `start_wargames()`, runs `sudo docker compose
 -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for each
 wargame through the `wargames` role, so every session starts on freshly
 seeded targets. Then it starts the estate sensor: docker's Suricata image and
 `deploy/suricata/suricata.yaml`, from `deploy/wargame-host/sensor.yaml` with
 host networking, on the interface holding the host's estate address, so it
-sees the WAF-to-target leg docker's one sensor sees from the WAF's namespace.
+sees the WAF-to-target leg docker's one sensor sees from the WAF's namespace;
+once it answers, `start_sensor()` seeds the baseline rules through
+`rules/suricata.py` with the rule file and reload the host entry names.
 Its role, `estate-sensor`, maps to the compose service `suricata`, so the
 runner execs into it; the host entry names its rule file and reload command
 (`settings.FSL_EXTRA_SENSORS`), and every rule seed, validation, change and
