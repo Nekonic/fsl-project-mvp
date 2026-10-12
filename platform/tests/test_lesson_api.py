@@ -287,6 +287,47 @@ def test_verify_judges_only_its_own_run_not_the_seeded_or_earlier_cases(client):
     assert result["passed"] is True
     assert Case.objects.count() == 2 * len(LESSON)
 
+def test_verify_snapshots_the_waf_it_judged_and_a_closed_session_reports_that_config(client):
+    session = board(waf={"paranoia": 4, "exclusions": []})
+    stand = Stand()
+    tuned = {"paranoia": 4, "exclusions": [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}
+    stand.files[(session.pk, "gateway")] = crs.rendered(tuned)
+    with patch("range.docker.Docker.runner", stand.runner()):
+        result, _ = verify(client, session, {
+            "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
+        })
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+    read = client.get(f"/api/sessions/{session.pk}/waf/").json()
+
+    assert result["waf"] == tuned | {"file": crs.rendered(tuned)}
+    assert Session.objects.get(pk=session.pk).waf_snapshots[0]["run"] == result["run"]
+    assert {k: read[k] for k in ("paranoia", "exclusions", "file")} == result["waf"], (
+        "after close the learner's last configuration, not the one the session opened with"
+    )
+
+def test_close_snapshots_the_waf_before_the_slot_is_rebuilt_and_an_unreadable_waf_does_not_stop_it(client):
+    stand, order = Stand(), []
+    tuned = {"paranoia": 3, "exclusions": []}
+
+    class Rebuilt(OneSlot):
+        def rebuild_slot(self):
+            order.append(len(stand.to("gateway")))
+            return []
+
+    session = board(waf={"paranoia": 4, "exclusions": []})
+    stand.files[("slot-1", "gateway")] = crs.rendered(tuned)
+    with patch("api.views.substrate", lambda: Rebuilt(stand)):
+        closed = client.post_json(f"/api/sessions/{session.pk}/close/")
+    unreadable = board(waf={"paranoia": 2, "exclusions": []})
+    left = client.post_json(f"/api/sessions/{unreadable.pk}/close/")
+
+    assert closed.status_code == left.status_code == 200
+    assert order == [1], "the configuration is read before the rebuild wipes it"
+    assert Session.objects.get(pk=session.pk).waf_snapshots[0]["closed"] is True
+    assert client.get(f"/api/sessions/{session.pk}/waf/").json()["paranoia"] == 3
+    assert Session.objects.get(pk=unreadable.pk).ended_at is not None
+    assert client.get(f"/api/sessions/{unreadable.pk}/waf/").json()["paranoia"] == 2
+
 def test_a_scenario_with_no_lesson_has_nothing_to_verify(client):
     session = Session.objects.create(scenario="corp", baseline=[])
 

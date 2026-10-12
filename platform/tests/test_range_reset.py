@@ -7,7 +7,7 @@ import pytest
 from api import reset
 from api.models import Session
 from range import slot
-from range.ports import Drifted, RangeUnavailable
+from range.ports import Drifted, Ran, RangeUnavailable
 
 pytestmark = pytest.mark.django_db
 
@@ -33,7 +33,7 @@ class Slot:
         return [("fsl-edge", ("sensing",))]
 
     def runner(self, role):
-        return lambda *a, **k: None
+        return lambda *a, **k: Ran(0, "")
 
 @pytest.fixture(autouse=True)
 def an_idle_reset():

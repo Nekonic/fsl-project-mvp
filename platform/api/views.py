@@ -1027,6 +1027,7 @@ def session_verify(request, session_id):
             f"leak could not be told from a block; open a new session"
         )
     run = str(uuid.uuid4())
+    _snapshot_waf(session, run=run)
     try:
         for name in taught["cases"]:
             _lesson_fire(session, name, {"verify": run})
@@ -1046,6 +1047,7 @@ def _verified(session, run):
     return {
         "passed": passed,
         "run": run,
+        "waf": next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None),
         "cases": [
             {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.outcome(row)}
             for row in rows
@@ -1066,14 +1068,31 @@ def session_waf(request, session_id):
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
 
 def _waf_in_force(session):
-    recorded = session.waf or {"paranoia": None, "exclusions": []}
+    recorded = {"file": None} | (session.waf or {"paranoia": None, "exclusions": []})
     if session.ended_at is not None:
-        return recorded | {"file": None}
+        return recorded
     try:
-        gateway = functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT)
-        return crs.read(gateway, settings.FSL_WAF)
+        return _waf_read(session)
     except RangeUnavailable:
-        return recorded | {"file": None}
+        return recorded
+
+def _waf_read(session):
+    gateway = functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT)
+    return crs.read(gateway, settings.FSL_WAF)
+
+def _snapshot_waf(session, **taken):
+    try:
+        read = _waf_read(session)
+    except (RangeUnavailable, Drifted):
+        return None
+    snapshot = {"at": timezone.now().isoformat(), **taken, "waf": read}
+    with transaction.atomic():
+        held = Session.objects.select_for_update().get(pk=session.pk)
+        held.waf_snapshots = [*held.waf_snapshots, snapshot]
+        held.waf = read
+        held.save(update_fields=["waf_snapshots", "waf"])
+    session.waf_snapshots, session.waf = held.waf_snapshots, held.waf
+    return snapshot
 
 def _record_case(session, case, started_at, ended_at, meta):
     return Case.objects.create(
@@ -1175,6 +1194,7 @@ def close_session(request, session_id):
 
     begun = None
     try:
+        _snapshot_waf(session, closed=True)
         if hasattr(adapter, "rebuild_slot"):
             begun = _rebuilt_on_close(session, adapter, closed_at, claimed, reply)
     finally:
