@@ -737,6 +737,20 @@ def test_a_lesson_reports_where_it_started_from_the_replay_at_open(client):
     assert ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]] in start["diagnosis"]
     assert client.get(f"/api/sessions/{plain.pk}/").json()["start"] is None
 
+@pytest.mark.parametrize("taught", ["console-tour", "read-the-block"])
+def test_a_lesson_judged_by_its_steps_shows_no_starting_verdict(client, taught):
+    fire, _ = attacker({"board-sqli-search": "http_code=403\n", "board-normal-search-with-apostrophe": "http_code=403\n"})
+    with patch("api.views.harness.fire", fire):
+        opened = client.post_json("/api/sessions/", {"lesson": taught}).json()
+
+    shown = client.get(f"/api/sessions/{opened['id']}/").json()
+
+    assert shown["lesson"]["verifies"] is False
+    assert shown["start"] is None, (
+        "the starting verdict judges the seed replay by VERIFY's rules; a lesson with no VERIFY "
+        "showed FAIL before it began and called a curl SQLi the WAF answered 403 inconclusive"
+    )
+
 def test_a_lesson_replay_returns_sqlmap_s_conclusion_its_command_the_403_count_and_a_kibana_link(client):
     session = board(guidance=True)
     stock = (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()

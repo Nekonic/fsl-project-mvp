@@ -1435,7 +1435,7 @@ def session_detail(request, session_id):
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
-        "start": _started(session) if taught else None,
+        "start": _started(session) if taught and taught["verifies"] else None,
     })
 
 def _shown_step(session, step):
