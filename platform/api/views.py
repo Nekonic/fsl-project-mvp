@@ -233,8 +233,7 @@ def sessions(request):
             adapter.open_session(session.pk, live=_stacks_to_keep(session))
         adapter = _range(session, adapter)
         _aim_attacker(adapter)
-        if hasattr(adapter, "for_session"):
-            _take_defense(session, adapter, posture)
+        _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)
         if hasattr(adapter, "for_session") and not session.baseline \
                 and wargames.objective_model(scenario) == "loot_verified":
@@ -243,7 +242,7 @@ def sessions(request):
                 f"nothing it loses could be checked; the session is closed"
             )
         session.save(update_fields=["baseline", "waf"])
-        if guidance and hasattr(adapter, "for_session"):
+        if guidance:
             _seed_logs(session)
         session.ready_at = timezone.now()
         session.save(update_fields=["ready_at"])
@@ -346,9 +345,11 @@ def _settings(scenario, body):
 
 def _take_defense(session, adapter, posture):
     ruleset = (posture or {}).get("suricata", DEFAULT_RULES)
-    rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset
-    for runner, reload_command, path in _sensors(adapter):
-        suricata.seed(rules.read_text(), runner, reload_command, path)
+    checked_at_baseline_when_ready = _slotted(adapter) and ruleset == DEFAULT_RULES
+    if not checked_at_baseline_when_ready:
+        rules = (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset).read_text()
+        for runner, reload_command, path in _sensors(adapter):
+            suricata.seed(rules, runner, reload_command, path)
     if posture is not None:
         session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.FSL_WAF)
 
