@@ -70,7 +70,7 @@ WAF_TERMINAL_URL = "/vm-terminal/fsl-waf/"
 WAF_SESSION_TERMINAL_URL = (
     "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-waf/?arg={session}"
 )
-SITE_PORT = 8002 if FSL_SUBSTRATE == "range.docker.Docker" else None
+SITE_PORT = 8002
 ATTACKER_ORIGIN_MODE = os.environ.get(
     "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
 )

@@ -10,8 +10,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from api.models import Session
+from range import substrate
+from range.ports import RangeUnavailable
 
 MARKER = "browse"
+GATEWAY_ROLE = "gateway"
 MARKER_HEADER = "X-FSL-Case"
 KEPT_PER_SESSION = 200
 BODY_LIMIT = 64 * 1024
@@ -23,12 +26,27 @@ NOT_RETURNED = {"connection", "content-encoding", "content-length", "keep-alive"
                 "transfer-encoding"}
 
 _records: dict[int, deque] = {}
+_wafs: dict[int, str] = {}
 _numbers = itertools.count(1)
 _lock = threading.Lock()
 
 
 def waf_url(session_id: int) -> str:
     return f"http://fsl-{session_id}-waf-1"
+
+
+def waf_of(session: Session) -> str:
+    adapter = substrate()
+    if not hasattr(adapter, "in_slot"):
+        return waf_url(session.pk)
+    with _lock:
+        known = _wafs.get(session.pk)
+    if known:
+        return known
+    found = f"http://{adapter.in_slot(session.slot or 1).address(GATEWAY_ROLE)}"
+    with _lock:
+        _wafs[session.pk] = found
+    return found
 
 
 def _text(body: bytes, size: int) -> dict:
@@ -49,6 +67,7 @@ def kept(session_id: int) -> list[dict]:
 def forget(session_id: int) -> None:
     with _lock:
         _records.pop(session_id, None)
+        _wafs.pop(session_id, None)
 
 
 def shown_marker(session: Session, text: str) -> str:
@@ -68,9 +87,9 @@ def proxy(request, session_id, host):
     body = request.body
     started = time.monotonic()
     try:
-        answer = requests.request(request.method, waf_url(session_id) + target, headers=sent, data=body or None,
+        answer = requests.request(request.method, waf_of(session) + target, headers=sent, data=body or None,
                                   allow_redirects=False, timeout=TIMEOUT, stream=True)
-    except requests.RequestException:
+    except (requests.RequestException, RangeUnavailable):
         return HttpResponse("the session's WAF did not answer", status=502, content_type="text/plain")
     returned = {name: value for name, value in answer.headers.items() if name.lower() not in NOT_RETURNED}
     record = {

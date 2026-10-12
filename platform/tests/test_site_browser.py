@@ -407,3 +407,35 @@ def test_a_session_keeps_only_its_latest_requests(client):
         proxied(client, f"{session.pk}/board.com/", Answer(200, b""), uri="/")
 
     assert len(client.get(f"/api/sessions/{session.pk}/site/requests/").json()) == site.KEPT_PER_SESSION
+
+def test_on_a_cloud_range_the_proxy_reaches_the_waf_of_the_session_s_own_slot(client, monkeypatch):
+    asked = []
+
+    class Slot:
+        def __init__(self, number):
+            self.number = number
+
+        def address(self, role):
+            asked.append((self.number, role))
+            return f"10.31.0.{self.number}0"
+
+    class Cloud:
+        def in_slot(self, number):
+            return Slot(number)
+
+    monkeypatch.setattr(site, "substrate", Cloud)
+    session = Session.objects.create(scenario="board", baseline=[], slot=2)
+    try:
+        _, first = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/search/?q=a")
+        _, second = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/posts/")
+    finally:
+        site.forget(session.pk)
+
+    assert first.call_args.args == ("GET", "http://10.31.0.20/search/?q=a")
+    assert second.call_args.args == ("GET", "http://10.31.0.20/posts/")
+    assert asked == [(2, "gateway")], (
+        "the WAF's address is looked up once per session, not on every page the learner opens"
+    )
+    assert client.get(f"/api/sessions/{session.pk}/").json()["site"]["port"] == 8002, (
+        "on OpenStack the Website pane is offered too, or a lesson's first step cannot be done"
+    )
