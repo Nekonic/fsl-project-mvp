@@ -141,7 +141,19 @@ else
 fi
 
 if "$PY" - <<'RULECHECK'
-import json, os, pathlib, sys, urllib.request
+import json, os, pathlib, sys, time, urllib.request
+
+def resetting():
+    try:
+        with urllib.request.urlopen(os.environ["FSL_PLATFORM_URL"] + "/api/range/ready/", timeout=30) as answer:
+            slot = json.load(answer).get("slot") or {}
+    except (OSError, ValueError):
+        return False
+    return slot.get("phase") in ("RESETTING", "REBUILDING") or (slot.get("reset") or {}).get("state") == "running"
+
+deadline = time.monotonic() + 1800
+while resetting() and time.monotonic() < deadline:
+    time.sleep(2)
 
 body = json.dumps(
     {"content": pathlib.Path("deploy/suricata/rules/local.rules").read_text()}

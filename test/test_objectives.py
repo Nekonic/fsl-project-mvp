@@ -10,7 +10,7 @@ EXFIL_CASE = "board-sqli-search"
 
 def _auth_users_of(session_id):
     body = run(BOARD, [
-        "python", "-c",
+        "python3", "-c",
         "import urllib.request,sys; "
         "sys.stdout.write(urllib.request.urlopen("
         "'http://127.0.0.1:8000/internal/auth-users', timeout=20).read().decode())",

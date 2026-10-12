@@ -2,11 +2,24 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
 import requests
 
 import test_corp_cve_content_write as content
 import test_corp_observe_live as exploits
 from conftest import PLATFORM_URL
+from range import missing, substrate
+
+
+@pytest.fixture
+def corp_stands(stack_is_up):
+    absent = missing(exploits.CORP, exploits.CORP_DB)
+    assert not absent, (
+        f"the corp wargame is not on this range (substrate {substrate()}): "
+        f"{', '.join(absent)} {'has' if len(absent) == 1 else 'have'} no host "
+        f"in platform/range/declaration.yaml for it, so nothing builds or boots "
+        f"the target and the live exploit has nothing to change"
+    )
 
 
 def _session():
@@ -76,7 +89,7 @@ def test_corp_is_offered_in_the_console_catalogue(stack_is_up):
     assert corp["public_url"] == "http://corp.com", corp
 
 
-def test_a_live_rogue_admin_is_credited_from_the_targets_own_row_with_no_signature(stack_is_up):
+def test_a_live_rogue_admin_is_credited_from_the_targets_own_row_with_no_signature(corp_stands):
     baseline = exploits._admin_ids()
     created = set()
     session_id = None
@@ -114,7 +127,7 @@ def test_a_live_rogue_admin_is_credited_from_the_targets_own_row_with_no_signatu
             _close(session_id)
 
 
-def test_a_live_option_flip_is_credited_from_the_targets_own_row(stack_is_up):
+def test_a_live_option_flip_is_credited_from_the_targets_own_row(corp_stands):
     session_id = None
     try:
         session_id = _session()
@@ -142,7 +155,7 @@ def test_a_live_option_flip_is_credited_from_the_targets_own_row(stack_is_up):
             _close(session_id)
 
 
-def test_a_live_content_overwrite_is_credited_from_the_targets_own_row(stack_is_up):
+def test_a_live_content_overwrite_is_credited_from_the_targets_own_row(corp_stands):
     original = content._target_post()
     session_id = None
     title = "Defaced by an unauthenticated guest"

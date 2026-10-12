@@ -77,12 +77,20 @@ def declared(key: str) -> dict[str, str]:
 def declared_roles() -> dict[str, str]:
     return declared("roles")
 
+def declared_on_openstack() -> tuple[dict[str, str], set[str]]:
+    document = yaml.safe_load(DECLARATION.read_text()) or {}
+    overlay = document.get("openstack") or {}
+    roles = {**(document.get("roles") or {}), **(overlay.get("roles") or {})}
+    hosts = set(document.get("hosts") or {}) | set(overlay.get("hosts") or {})
+    return roles, hosts
+
 DOCKER_HOSTS = {
     role: Host(node=node, unit=declared("compose").get(role, ""))
     for role, node in declared_roles().items()
 }
 
 class Docker:
+    substrate = "compose"
 
     def __init__(self, hosts=None, root=REPO_ROOT):
         self.hosts = dict(DOCKER_HOSTS if hosts is None else hosts)
@@ -184,6 +192,9 @@ class Docker:
             )
         return found[0]
 
+    def missing(self, *roles: str) -> list[str]:
+        return [role for role in roles if role not in self.hosts]
+
     def _host(self, role: str) -> Host:
         host = self.hosts.get(role)
         if host is None:
@@ -205,7 +216,76 @@ class Docker:
                 _said(getattr(exc, "stdout", None)),
             ) from exc
 
-RANGE = Docker()
+STDOUT_END = "fsl.stdout.end"
+PLATFORM_ANSWER = "fsl.platform.answer="
+
+def stdout_apart(argv: list[str]) -> list[str]:
+    return ["sh", "-c", f'"$@"; code=$?; printf "\\n%s\\n" {STDOUT_END}; exit $code',
+            "sh", *argv]
+
+def split_output(output: str) -> tuple[str, str]:
+    stdout, found, stderr = output.partition(f"\n{STDOUT_END}\n")
+    return (stdout, stderr) if found else (output, "")
+
+class ThroughPlatform:
+    substrate = "openstack"
+
+    def __init__(self, scorer=None):
+        self.scorer = scorer or Docker()
+        self.roles, self.hosts = declared_on_openstack()
+
+    def run(self, role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
+        if role == SCORER:
+            return self.scorer.run(role, argv, timeout=timeout)
+        done = self.scorer._dispatch(
+            ["docker", "exec", self.scorer._host(SCORER).node,
+             "python", "manage.py", "run_on_role", role,
+             json.dumps(stdout_apart(list(argv))), "--timeout", str(timeout)],
+            timeout + 60,
+        )
+        answer = next((line[len(PLATFORM_ANSWER):] for line in done.stdout.splitlines()
+                       if line.startswith(PLATFORM_ANSWER)), None)
+        if done.returncode != 0 or answer is None:
+            said = (done.stderr or done.stdout or "").strip()[-500:]
+            raise RangeUnavailable(
+                f"the platform could not run the command on the host filling "
+                f"{role!r} ({self.roles.get(role, 'no host')}): "
+                + (said or f"docker exited {done.returncode}")
+            )
+        ran = json.loads(answer)
+        stdout, stderr = split_output(ran["output"])
+        return Ran(exit_code=ran["exit_code"], stdout=stdout, stderr=stderr)
+
+    def missing(self, *roles: str) -> list[str]:
+        return [f"{role} ({self.roles.get(role, 'no host')})" for role in roles
+                if self.roles.get(role) not in self.hosts]
+
+    def segments(self, role: str, timeout: float = 60.0) -> frozenset[str]:
+        raise RangeUnavailable(
+            f"the harness reads segments from compose containers; on the "
+            f"OpenStack range {role!r} is a Nova server"
+        )
+
+    def recreate(self, role: str, timeout: float = 300.0) -> None:
+        raise RangeUnavailable(
+            f"the harness recreates compose containers; on the OpenStack range "
+            f"{role!r} is a Nova server the platform rebuilds after a close"
+        )
+
+    def start_hint(self, *roles: str, fresh: bool = False) -> str:
+        return "bin/cloud up, then wait for GET /api/range/ready/ to say ready"
+
+RANGE: Docker | ThroughPlatform = Docker()
+
+def use(substrate: str) -> None:
+    global RANGE
+    RANGE = ThroughPlatform() if substrate == ThroughPlatform.substrate else Docker()
+
+def substrate() -> str:
+    return RANGE.substrate
+
+def missing(*roles: str) -> list[str]:
+    return RANGE.missing(*roles)
 
 def run(role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
     return RANGE.run(role, argv, timeout=timeout, session=session)
