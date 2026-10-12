@@ -19,3 +19,11 @@ for compose in wargames/*.yaml; do
   docker compose -f "/opt/fsl/wargames/${compose##*/}" config --quiet
   docker compose -f "/opt/fsl/wargames/${compose##*/}" pull --quiet
 done
+
+install -m 0644 ../suricata/suricata.yaml /opt/fsl/suricata.yaml
+install -m 0644 sensor.yaml /opt/fsl/sensor.yaml
+install -d -m 0755 /opt/fsl/rules
+install -m 0644 ../suricata/rules/local.rules /opt/fsl/rules/local.rules
+install -d -m 2750 -g adm /var/log/suricata
+FSL_SENSOR_INTERFACE=lo docker compose -f /opt/fsl/sensor.yaml config --quiet
+FSL_SENSOR_INTERFACE=lo docker compose -f /opt/fsl/sensor.yaml pull --quiet

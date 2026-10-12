@@ -37,6 +37,7 @@ class Host:
     names: tuple[str, ...] = ()
     wargames: tuple[str, ...] = ()
     publish: dict[str, int] = field(default_factory=dict)
+    logs: dict[str, str] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class Declaration:
@@ -159,6 +160,7 @@ def _hosts(entries) -> dict[str, Host]:
             names=tuple(entry.get("names") or ()),
             wargames=tuple(entry.get("wargames") or ()),
             publish={str(service): int(port) for service, port in (entry.get("publish") or {}).items()},
+            logs={str(tag): str(path) for tag, path in (entry.get("logs") or {}).items()},
         )
         for name, entry in (entries or {}).items()
     }
@@ -169,6 +171,7 @@ def _overlaid(document: dict, flavor: str) -> dict:
         return document
     merged = dict(document)
     merged["roles"] = {**(document.get("roles") or {}), **(overlay.get("roles") or {})}
+    merged["compose"] = {**(document.get("compose") or {}), **(overlay.get("compose") or {})}
     if "watches" in overlay:
         merged["watches"] = overlay["watches"]
     hosts = {name: dict(entry) for name, entry in (document.get("hosts") or {}).items()}

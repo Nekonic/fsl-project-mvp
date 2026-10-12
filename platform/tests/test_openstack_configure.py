@@ -22,10 +22,11 @@ def _shape():
                 nodes=(Node("fsl-edge", o.subnet.replace("0/24", "1")),))
         for o in OS.origins
     )
-    estate = Segment(id="estate", name="Estate", subnet="10.30.0.0/24", gateway="10.30.0.1")
+    estate = Segment(id="estate", name="Estate", subnet="10.30.0.0/24", gateway="10.30.0.1",
+                     nodes=(Node("fsl-waf", "10.30.0.198"), Node("fsl-wargame-host", "10.30.0.63")))
     mgmt = Segment(id="mgmt", name="Management", subnet="10.31.0.0/24",
                    nodes=(Node("fsl-edge", "10.31.0.63"), Node("fsl-platform", "10.31.0.195"),
-                          Node("fsl-waf", "10.31.0.198")))
+                          Node("fsl-waf", "10.31.0.198"), Node("fsl-wargame-host", "10.31.0.107")))
     return Shape(segments=origins + (estate, mgmt), sensors=())
 
 class Edge:
@@ -99,7 +100,7 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
     (role, argv, stdin), *after = edge.calls
     assert role == "edge" and argv == opnsense.command()
     wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
-                               management=_adapter(Edge()).address("edge"))
+                               management=_adapter(Edge()).address("edge"), front="10.30.0.198")
     assert wanted["mgmt"]["address"]
     assert stdin == opnsense.playback(
         opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted),
@@ -148,12 +149,54 @@ def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collecto
 
     done = _adapter(edge, groups).configure_slot()
 
-    assert [host for host, _ in done] == ["fsl-edge", "fsl-waf", "fsl-platform", "fsl-wargame-host"]
-    assert [argv for role, argv, _ in edge.calls if role == "wargames"] == [
+    assert [host for host, _ in done] == [
+        "fsl-edge", "fsl-waf", "fsl-platform", "fsl-wargame-host", "fsl-wargame-host",
+        "fsl-wargame-host",
+    ]
+    assert [argv for role, argv, _ in edge.calls if role == "wargames"][:2] == [
         wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
     ], "a rebuilt wargame host holds the images and no containers; configure starts them"
     heard = {r["remote_ip_prefix"] for r in groups.group["security_group_rules"]}
-    assert heard == {"10.31.0.63/32", "10.31.0.198/32"}
+    assert heard == {"10.31.0.63/32", "10.31.0.198/32", "10.31.0.107/32"}, (
+        "the wargame host ships its sensor's eve log to the collector as the edge does"
+    )
+
+def test_the_wargame_host_starts_its_sensor_on_the_interface_holding_its_estate_address():
+    edge = Edge()
+
+    _adapter(edge).configure_slot()
+
+    started = [argv for role, argv, _ in edge.calls if role == "wargames"]
+    assert wargame_host.sensor_up("10.30.0.63") in started
+    assert started.index(wargame_host.sensor_up("10.30.0.63")) > started.index(
+        wargame_host.up("corp")), "the sensor starts once the wargames it watches answer"
+    assert "show to 10.30.0.63" in wargame_host.sensor_up("10.30.0.63")[2]
+
+def test_the_wargame_host_forwards_its_sensor_eve_log_to_the_collector_tagged_suricata():
+    from range import waf
+
+    edge = Edge()
+    _adapter(edge).configure_slot()
+
+    forwarded = [(argv, stdin) for role, argv, stdin in edge.calls
+                 if role == "wargames" and argv == waf.command("suricata")]
+    assert forwarded == [(waf.command("suricata"), waf.forwarding(
+        "/var/log/suricata/eve.json", "10.31.0.195", 5140, "suricata"))], (
+        "the collector decodes a syslog line as Suricata by its program name"
+    )
+
+def test_a_sensor_that_does_not_come_up_healthy_is_drift():
+    class Refusing(Edge):
+        def __call__(self, role, segment_id=""):
+            inner = super().__call__(role, segment_id)
+            def run(argv, stdin=None, timeout=60.0):
+                if argv == wargame_host.sensor_up("10.30.0.63"):
+                    return Ran(1, "container suricata is unhealthy")
+                return inner(argv, stdin, timeout)
+            return run
+
+    with pytest.raises(Drifted, match="sensor"):
+        _adapter(Refusing()).configure_slot()
 
 def test_the_waf_is_told_to_forward_its_audit_log_to_the_platform_on_management():
     from range import waf

@@ -306,8 +306,8 @@ def _settings(scenario, body):
 def _take_defense(session, adapter, posture):
     ruleset = (posture or {}).get("suricata", DEFAULT_RULES)
     rules = Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset
-    suricata.seed(rules.read_text(), adapter.runner("sensor"), settings.FSL_SENSOR_RELOAD,
-                  settings.FSL_SENSOR_RULES)
+    for runner, reload_command, path in _sensors(adapter):
+        suricata.seed(rules.read_text(), runner, reload_command, path)
     if posture is not None:
         session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.FSL_WAF)
 
@@ -1317,9 +1317,10 @@ def current_rules(request):
 @require_http_methods(["POST"])
 @_in_turn
 def validate_rules(request):
-    outcome = suricata.validate(
-        _rule_file(request), _range(_asked_session(request)).runner("sensor")
-    )
+    content = _rule_file(request)
+    outcomes = [suricata.validate(content, runner)
+                for runner, _, _ in _sensors(_range(_asked_session(request)))]
+    outcome = next((o for o in outcomes if not o.ok), outcomes[0])
     payload = {"ok": outcome.ok, "output": outcome.output.strip()}
     return _reply(payload, status=200 if outcome.ok else 400)
 
@@ -1439,12 +1440,28 @@ def _restore_expired() -> list:
             lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
         return lifted
 
+def _sensors(adapter):
+    return [
+        (adapter.runner(role), reload_command, path)
+        for role, path, reload_command in (
+            ("sensor", settings.FSL_SENSOR_RULES, settings.FSL_SENSOR_RELOAD),
+            *settings.FSL_EXTRA_SENSORS,
+        )
+    ]
+
 def _live_rules(session=None):
     return suricata.current(_range(session).runner("sensor"), settings.FSL_SENSOR_RULES)
 
 def _apply(content, session=None):
-    suricata.apply(content, _range(session).runner("sensor"), settings.FSL_SENSOR_RELOAD,
-                   settings.FSL_SENSOR_RULES)
+    sensors = _sensors(_range(session))
+    previous = suricata.current(sensors[0][0], sensors[0][2]) if len(sensors) > 1 else None
+    for done, (runner, reload_command, path) in enumerate(sensors):
+        try:
+            suricata.apply(content, runner, reload_command, path)
+        except suricata.RuleApplyError:
+            for undone, undone_reload, undone_path in sensors[:done]:
+                suricata.seed(previous, undone, undone_reload, undone_path)
+            raise
 
 def _version(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
@@ -1576,10 +1593,10 @@ def _baseline_rules() -> str:
 
 def _rules_at_baseline(adapter) -> bool:
     try:
-        live = suricata.current(adapter.runner("sensor"), settings.FSL_SENSOR_RULES)
+        live = [suricata.current(runner, path) for runner, _, path in _sensors(adapter)]
     except (suricata.RulesUnreadable, RangeUnavailable):
         return False
-    if live != _baseline_rules():
+    if any(rules != _baseline_rules() for rules in live):
         return False
     now = timezone.now()
     return not Suppression.objects.filter(

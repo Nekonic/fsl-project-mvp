@@ -105,6 +105,13 @@ FSL_SENSOR_RELOAD = tuple((
     or (SENSOR_HOST and SENSOR_HOST.reload)
     or "suricatasc -c reload-rules"
 ).split())
+
+def _sensing(role):
+    host = RANGE.hosts.get(RANGE.roles[role]) or declared.Host()
+    return role, host.rules or RULE_PATH, tuple((host.reload or "suricatasc -c reload-rules").split())
+
+FSL_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if role != "sensor")
+
 WAF_HOST = RANGE.hosts.get(RANGE.roles.get("gateway", "")) or declared.Host()
 FSL_WAF = crs.Layout(WAF_HOST.rules or crs.EXCLUSIONS, WAF_HOST.reload or crs.NGINX_RELOAD,
                      WAF_HOST.pid or crs.NGINX_PID)

@@ -50,6 +50,7 @@ CREATE_RULE = "POST {neutron}/v2.0/security-group-rules"
 DELETE_GROUP = "DELETE {neutron}/v2.0/security-groups/{group}"
 DELETE_RULE = "DELETE {neutron}/v2.0/security-group-rules/{rule}"
 CREATE_PORT = "POST {neutron}/v2.0/ports"
+UPDATE_PORT = "PUT {neutron}/v2.0/ports/{port}"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
 ATTACH = "POST {nova}/servers/{server}/os-interface"
 
@@ -657,6 +658,11 @@ class OpenStack:
                     "security_group_id": named[name], "direction": "ingress",
                     "ethertype": "IPv4",
                 }})
+            if name == fabric.MANAGEMENT_GROUP:
+                self.get(self._call(CREATE_RULE), {"security_group_rule": {
+                    "security_group_id": named[name], "direction": "ingress",
+                    "ethertype": "IPv4", "remote_group_id": named[fabric.REACH_GROUP],
+                }})
         if plan.reach:
             self._attach(carriers[fabric.MANAGEMENT], named[fabric.REACH_GROUP])
         self._shape = None
@@ -979,15 +985,14 @@ class OpenStack:
         plan, bound, subnets, ports, groups, ready = self._slot()
         if plan.blocked:
             raise Drifted("; ".join(plan.blocked))
+        named_groups = self._slot_groups(groups)
+        self._fence_management(bound, ports, named_groups[fabric.MANAGEMENT_GROUP])
         if not plan.boot:
             return plan
-        group = next((g["id"] for g in groups if g["name"] == fabric.RANGE_GROUP), None)
-        if group is None:
-            raise Drifted(f"the fabric has no security group {fabric.RANGE_GROUP}; build the fabric first")
         edge = slot.edge_of(self.declared)
         for port in plan.ports:
             body = {"network_id": bound[port.segment]["id"], "name": port.name,
-                    "security_groups": [group]}
+                    "security_groups": [named_groups[fabric.group_of(port.segment)]]}
             if port.fixed_ips:
                 body["fixed_ips"] = [
                     {"subnet_id": subnet, "ip_address": address} for subnet, address in port.fixed_ips
@@ -1024,6 +1029,23 @@ class OpenStack:
             self.get(self._call(BOOT), {"server": self.build.placed(server)})
         self._shape = None
         return self._slot()[0]
+
+    @staticmethod
+    def _slot_groups(groups: list) -> dict[str, str]:
+        named = {g["name"]: g["id"] for g in groups}
+        missing = [name for name in (fabric.RANGE_GROUP, fabric.MANAGEMENT_GROUP) if name not in named]
+        if missing:
+            raise Drifted(f"the fabric has no security group {', '.join(missing)}; build the fabric first")
+        return named
+
+    def _fence_management(self, bound: dict, ports: list, fenced: str) -> None:
+        names = {slot.port_name(host, fabric.MANAGEMENT) for host in self.declared.hosts}
+        for port in ports:
+            if (port["network_id"] == bound[fabric.MANAGEMENT]["id"] and port.get("name") in names
+                    and list(port.get("security_groups") or []) != [fenced]):
+                self.get(self._call(UPDATE_PORT, port=port["id"]),
+                         {"port": {"security_groups": [fenced]}})
+                port["security_groups"] = [fenced]
 
     def teardown_slot(self) -> list[tuple[str, str]]:
         hosts = self.declared.hosts
@@ -1069,7 +1091,39 @@ class OpenStack:
         done = [self.configure_edge(), self.configure_waf(), self.open_collector()]
         if wargame_host.ROLE in self.declared.roles:
             done.append(self.start_wargames())
+        done += [self.start_sensor(role, host) for role, host in self._hosted_sensors()]
+        done += [self.forward_logs(host) for host, entry in sorted(self.declared.hosts.items())
+                 if entry.logs and host in self.declared.roles.values()]
         return done
+
+    def _hosted_sensors(self) -> list[tuple[str, str]]:
+        return [
+            (role, self.declared.host(role)) for role in sorted(self.declared.watches)
+            if self._container(role, self.declared.host(role))
+        ]
+
+    def start_sensor(self, role: str, host: str) -> tuple[str, tuple[str, ...]]:
+        address = self._address(role, host, slot.NAMED_ON)
+        ran = self.runner(wargame_host.ROLE)(wargame_host.sensor_up(address),
+                                             timeout=wargame_host.UP_TIMEOUT)
+        if not ran.ok:
+            raise Drifted(f"{host} did not start its sensor on {address} (exit {ran.exit_code}): "
+                          f"{ran.output[-1000:]}")
+        return host, (f"senses {slot.NAMED_ON} at {address}",)
+
+    def forward_logs(self, host: str) -> tuple[str, tuple[str, ...]]:
+        role = next(role for role, filled in sorted(self.declared.roles.items())
+                    if filled == host and not self._container(role, host))
+        collector = self._collector()
+        for tag, path in sorted(self.declared.hosts[host].logs.items()):
+            ran = self.runner(role)(
+                waf.command(tag), stdin=waf.forwarding(path, collector, fabric.COLLECTOR_PORT, tag),
+                timeout=120,
+            )
+            if not ran.ok:
+                raise Drifted(f"{host} did not take its {tag} log forwarding: {ran.output[-1000:]}")
+        return host, tuple(f"logs {path} to {collector}:{fabric.COLLECTOR_PORT}"
+                           for _, path in sorted(self.declared.hosts[host].logs.items()))
 
     def address(self, role: str) -> str:
         return self._address(role, self.declared.host(role), fabric.MANAGEMENT)
@@ -1082,7 +1136,9 @@ class OpenStack:
         collector = (self._collector(), fabric.COLLECTOR_PORT)
         wanted = opnsense.settings(self.describe().segments, collector, self.build.inside,
                                    self.build.mtu, self._public_key(),
-                                   management=self.address(slot.EDGE_ROLE))
+                                   management=self.address(slot.EDGE_ROLE),
+                                   front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
+                                                       slot.NAMED_ON))
         edge = slot.edge_of(self.declared)
         staged = opnsense.playback(
             opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
@@ -1174,10 +1230,10 @@ class OpenStack:
         return host, tuple(f"runs {wargame}" for wargame in entry.wargames)
 
     def open_collector(self) -> tuple[str, tuple[str, ...]]:
-        senders = [
+        senders = list(dict.fromkeys(
             self._address(role, self.declared.host(role), fabric.MANAGEMENT)
-            for role in (slot.EDGE_ROLE, GATEWAY_ROLE)
-        ]
+            for role in (slot.EDGE_ROLE, GATEWAY_ROLE, *sorted(self.declared.watches))
+        ))
         group = next(
             group for group in self._all(SECURITY_GROUPS, "security_groups")
             if group["name"] == fabric.REACH_GROUP

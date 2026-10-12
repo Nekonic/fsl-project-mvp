@@ -127,6 +127,9 @@ def test_the_host_bundle_carries_the_setup_and_the_shipped_files():
         members = set(archive.getnames())
     assert members == {
         "deploy/wargame-host/setup.sh",
+        "deploy/wargame-host/sensor.yaml",
+        "deploy/suricata/suricata.yaml",
+        "deploy/suricata/rules/local.rules",
         wargame_host.DAEMON,
         *(wargame_host.SHIPPED.format(wargame=w) for w in ENTRY.wargames),
     }

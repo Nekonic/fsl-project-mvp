@@ -1,0 +1,18 @@
+services:
+  suricata:
+    image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
+    container_name: suricata
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    environment:
+      PGID: "4"
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=${FSL_SENSOR_INTERFACE:?the estate interface}"]
+    volumes:
+      - /opt/fsl/suricata.yaml:/etc/suricata/suricata.yaml
+      - /opt/fsl/rules:/var/lib/suricata/rules
+      - /var/log/suricata:/var/log/suricata
+    healthcheck:
+      test: ["CMD", "suricatasc", "-c", "uptime"]
+      interval: 5s
+      timeout: 5s
+      retries: 24

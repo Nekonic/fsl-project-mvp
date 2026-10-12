@@ -107,13 +107,34 @@ def test_the_range_group_lets_anything_in_and_the_reach_group_nothing(cloud, ada
     adapter.ensure_fabric()
 
     groups = {g["name"]: g["id"] for g in cloud.groups}
-    assert set(groups) == {fabric.RANGE_GROUP, fabric.REACH_GROUP}
-    assert cloud.rules == [{"security_group_id": groups[fabric.RANGE_GROUP],
-                            "direction": "ingress", "ethertype": "IPv4"}], (
+    assert set(groups) == {fabric.RANGE_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP}
+    assert [r for r in cloud.rules if r["security_group_id"] != groups[fabric.MANAGEMENT_GROUP]] == [
+        {"security_group_id": groups[fabric.RANGE_GROUP], "direction": "ingress", "ethertype": "IPv4"}
+    ], (
         "a new group lets everything out and nothing in; the range's hosts "
         "are defended by the WAF, not by Neutron, and the platform's port on "
         "management must take nothing a range host starts"
     )
+
+def test_a_host_on_management_takes_connections_from_the_platform_alone(cloud, adapter):
+    adapter.ensure_fabric()
+
+    groups = {g["name"]: g["id"] for g in cloud.groups}
+    assert [r for r in cloud.rules if r["security_group_id"] == groups[fabric.MANAGEMENT_GROUP]] == [
+        {"security_group_id": groups[fabric.MANAGEMENT_GROUP], "direction": "ingress",
+         "ethertype": "IPv4", "remote_group_id": groups[fabric.REACH_GROUP]}
+    ], (
+        "the attacker has a port on management too; a management port that "
+        "lets in any range host lets Kali reach the edge's web GUI and the "
+        "wargame host's published ports without crossing the edge or the WAF"
+    )
+
+def test_the_management_group_goes_before_the_reach_group_it_names(cloud, adapter):
+    adapter.ensure_fabric()
+    groups = {g["id"]: g["name"] for g in cloud.groups}
+
+    order = [groups[ident] for kind, ident in adapter.teardown_fabric() if kind == "group"]
+    assert order.index(fabric.MANAGEMENT_GROUP) < order.index(fabric.REACH_GROUP)
 
 def test_the_platform_joins_management_through_a_port_in_the_reach_group(cloud, platform):
     platform.ensure_fabric()

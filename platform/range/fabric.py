@@ -11,7 +11,8 @@ MANAGEMENT = "mgmt"
 NO_DEFAULT_ROUTE = {MANAGEMENT}
 RANGE_GROUP = "fsl-range"
 REACH_GROUP = "fsl-reach"
-GROUPS = (RANGE_GROUP, REACH_GROUP)
+MANAGEMENT_GROUP = "fsl-mgmt"
+GROUPS = (RANGE_GROUP, REACH_GROUP, MANAGEMENT_GROUP)
 COLLECTOR_PORT = 5140
 
 @dataclass(frozen=True)
@@ -165,8 +166,11 @@ def teardown(declaration: Declaration, networks: list, subnets: list,
         [("subnet", s["id"]) for s in subnets if s["network_id"] in owned]
         + [("network", network_id) for network_id in owned]
         + [("keypair", k["name"]) for k in keypairs if k["name"] == KEYPAIR]
-        + [("group", g["id"]) for name in GROUPS for g in groups if g["name"] == name]
+        + [("group", g["id"]) for name in reversed(GROUPS) for g in groups if g["name"] == name]
     )
+
+def group_of(segment: str) -> str:
+    return MANAGEMENT_GROUP if segment == MANAGEMENT else RANGE_GROUP
 
 def _collector_rule(rule: dict) -> bool:
     return (rule.get("direction") == "ingress" and rule.get("protocol") == "udp"

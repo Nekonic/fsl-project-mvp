@@ -39,7 +39,8 @@ class Cloud:
                 "gateway_ip": want.cidr.replace("0/24", "1") if want.gateway else None,
             })
         self.groups = [{"id": "sg-range", "name": fabric.RANGE_GROUP},
-                       {"id": "sg-reach", "name": fabric.REACH_GROUP}]
+                       {"id": "sg-reach", "name": fabric.REACH_GROUP},
+                       {"id": "sg-mgmt", "name": fabric.MANAGEMENT_GROUP}]
         self.images = [{"id": "img-ubuntu", "name": "ubuntu-24.04", "status": "active"}]
         for host, entry in decl.hosts.items():
             if entry.image:
@@ -85,6 +86,10 @@ class Cloud:
                 for f in body["port"].get("fixed_ips") or []
             ] or self.allocate(port["network_id"])
             self.ports.append(port)
+            return {"port": port}
+        if verb == "PUT" and path.startswith("v2.0/ports/"):
+            port = next(p for p in self.ports if p["id"] == path.rsplit("/", 1)[1])
+            port.update(body["port"])
             return {"port": port}
         if verb == "POST" and path == "v2.1/servers":
             server = dict(body["server"], id=f"srv-{next(self.ids)}", status="BUILD", addresses={})
@@ -210,10 +215,33 @@ def test_every_host_boots_from_its_own_image_on_its_own_ports(cloud):
         )
         assert server["key_name"] == fabric.KEYPAIR
 
-def test_every_range_port_is_in_the_range_group(cloud):
+def test_every_range_port_off_management_is_in_the_range_group(cloud):
     adapter(cloud).ensure_slot()
 
-    assert {tuple(p["security_groups"]) for p in cloud.ports} == {("sg-range",)}
+    assert {tuple(p["security_groups"]) for p in cloud.ports
+            if not p["name"].endswith(".mgmt")} == {("sg-range",)}
+
+def test_every_management_port_takes_connections_from_the_platform_alone(cloud):
+    adapter(cloud).ensure_slot()
+
+    assert {tuple(p["security_groups"]) for p in cloud.ports
+            if p["name"].endswith(".mgmt")} == {("sg-mgmt",)}, (
+        "Kali has a management port; in the range group it reaches the edge's "
+        "web GUI and the wargame host's published ports without crossing the "
+        "edge or the WAF"
+    )
+
+def test_a_management_port_made_before_the_fence_is_moved_into_it(cloud):
+    adapter(cloud).ensure_slot()
+    host = cloud.port(f"{WARGAME_HOST}.mgmt")
+    host["security_groups"] = ["sg-range"]
+
+    adapter(cloud).ensure_slot()
+
+    assert host["security_groups"] == ["sg-mgmt"]
+    assert [c for c in cloud.calls if c[0] == "PUT"] == [
+        ("PUT", f"v2.0/ports/{host['id']}", {"port": {"security_groups": ["sg-mgmt"]}})
+    ]
 
 def test_every_host_is_told_where_the_others_are_on_the_estate(cloud):
     adapter(cloud).ensure_slot()

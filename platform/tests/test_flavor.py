@@ -31,7 +31,26 @@ def test_the_openstack_flavor_puts_opnsense_at_the_edge_as_the_sensor():
         "the attacker still addresses the WAF by name; the edge only routes and "
         "watches, so what fills 'gateway' does not change"
     )
-    assert d.watches == {"sensor": "edge"}
+    assert d.watches == {"sensor": "edge", "estate-sensor": "wargames"}
+
+def test_the_openstack_flavor_watches_the_inside_leg_on_the_wargame_host():
+    d = openstack()
+
+    assert d.roles["estate-sensor"] == "fsl-wargame-host"
+    assert d.compose["estate-sensor"] == "suricata", (
+        "docker's sensor sees the WAF's leg to the target too; on openstack the "
+        "edge sees only the wan, so the wargame host runs the same sensor image"
+    )
+    host = d.hosts["fsl-wargame-host"]
+    assert host.rules == "/var/lib/suricata/rules/local.rules"
+    assert host.reload == "suricatasc -c reload-rules"
+    assert host.logs == {"suricata": "/var/log/suricata/eve.json"}
+
+def test_the_docker_flavor_keeps_one_sensor_and_no_overlay_compose_role():
+    d = declared.read()
+
+    assert d.watches == {"sensor": "gateway"}
+    assert "estate-sensor" not in d.compose
 
 def test_the_openstack_flavor_adds_the_edge_and_kali_and_takes_the_waf_off_the_internet():
     d = openstack()
