@@ -1,8 +1,14 @@
 const OUTCOME_WORDS = {
   held: "lesson.check.held", served: "lesson.check.served", blocked: "outcome.blocked",
   leaked: "outcome.leaked", inconclusive: "outcome.inconclusive",
+  detected: "outcome.detected", quiet: "outcome.quiet", missed: "outcome.missed",
+  uncorroborated: "outcome.uncorroborated", alerted: "outcome.alerted",
 };
-const DEBRIEF_TONE = { held: "ok", served: "ok", leaked: "red", blocked: "red", inconclusive: "warn" };
+const DEBRIEF_TONE = {
+  held: "ok", served: "ok", leaked: "red", blocked: "red", inconclusive: "warn",
+  detected: "ok", quiet: "ok", missed: "red", uncorroborated: "warn", alerted: "red",
+};
+const PASSING = ["held", "served", "detected", "quiet"];
 
 function debriefSection(name, inner) {
   return `<section class="flex flex-col gap-1.5" data-debrief="${name}">

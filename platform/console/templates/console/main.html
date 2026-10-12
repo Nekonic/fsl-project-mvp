@@ -96,7 +96,7 @@
         <p class="text-body mt-1 leading-relaxed">${esc(t(taught.goal))}</p>
         <p class="text-[12px] text-muted mt-1.5">${esc(facts.join(" · "))}</p>
         <div class="grid grid-cols-3 gap-2 mt-3">
-          ${rung("guided", "btn-blue")}
+          ${taught.steps === 0 ? `<span></span>` : rung("guided", "btn-blue")}
           ${rung("self", "btn-ghost")}
           <button data-wargame="${id}" data-rung="wargame" class="start btn btn-ghost w-full">${esc(t("main.rung.wargame"))}</button>
         </div>

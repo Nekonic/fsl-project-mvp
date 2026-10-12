@@ -43,7 +43,7 @@
       </div>
       <div class="rounded-lg bg-subdued p-3">
         <div data-t="lesson.goal.done" class="label mb-1"></div>
-        <ul class="list-disc pl-4 space-y-0.5">
+        <ul id="lesson-done" class="list-disc pl-4 space-y-0.5">
           <li data-t="lesson.goal.done.attacks"></li>
           <li data-t="lesson.goal.done.benign"></li>
         </ul>
@@ -76,6 +76,26 @@
     </div>
 
     <div data-pane-of="check" class="hidden flex-col gap-4">
+      <section id="lesson-level" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
+        <h3 data-t="lesson.level.heading" class="font-semibold text-heading"></h3>
+        <p data-t="lesson.level.note" class="text-muted text-[12px]"></p>
+        <div class="flex gap-2">
+          <select id="lesson-level-pick" class="flex-1 border border-line rounded-md px-2 h-8 bg-panel text-[12px]"></select>
+          <button id="lesson-level-apply" data-t="lesson.level.apply" class="btn btn-sm btn-blue shrink-0"></button>
+        </div>
+        <p id="lesson-level-status" class="text-muted text-[12px]"></p>
+      </section>
+      <section id="lesson-rules" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
+        <h3 data-t="lesson.rules.heading" class="font-semibold text-heading"></h3>
+        <p data-t="lesson.rules.note" class="text-muted text-[12px]"></p>
+        <div id="lesson-rules-box"></div>
+        <div class="flex gap-2">
+          <button id="lesson-rules-validate" data-t="lesson.rules.validate" class="btn btn-sm btn-ghost"></button>
+          <button id="lesson-rules-apply" data-t="lesson.rules.apply" class="btn btn-sm btn-blue"></button>
+        </div>
+        <p id="lesson-rules-status" class="text-muted text-[12px]"></p>
+        <pre id="lesson-rules-errors" class="hidden code text-[11px] whitespace-pre-wrap"></pre>
+      </section>
       <section class="flex flex-col gap-2">
         <h3 data-t="lesson.replay.heading" class="font-semibold text-heading"></h3>
         <select id="lesson-case" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px] font-mono"></select>
@@ -83,7 +103,7 @@
         <p id="lesson-replay-status" class="text-muted text-[12px]"></p>
         <ul id="lesson-replay-rows" class="flex flex-col gap-2"></ul>
       </section>
-      <section class="flex flex-col gap-2 border-t border-line-subdued pt-4">
+      <section id="lesson-verify-section" class="flex flex-col gap-2 border-t border-line-subdued pt-4">
         <h3 data-t="lesson.verify.heading" class="font-semibold text-heading"></h3>
         <p data-t="lesson.verify.intro" class="text-muted"></p>
         <button id="lesson-verify" data-t="lesson.verify.button" class="btn btn-blue w-full"></button>

@@ -182,6 +182,8 @@
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     const practice = session.mode === "self";
     noteControls(practice);
+    doneWhen(taught);
+    lessonControls(taught);
     opening(taught);
     if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("lesson-debrief"));
     modeControl(practice);
