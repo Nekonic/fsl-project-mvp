@@ -154,9 +154,23 @@ function setNote(change) {
 }
 
 const GUIDE_ONLY_TABS = ["steps", "hint"];
+const LANDED_KEY = (id) => `fsl-lesson-landed-${id}`;
+let landedOnGoal = false;
+
+function firstOpen() {
+  try {
+    if (localStorage.getItem(LANDED_KEY(sessionId()))) return false;
+    localStorage.setItem(LANDED_KEY(sessionId()), "true");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 
 function noteControls(practice) {
   note = { ...note, ...readNote() };
+  landedOnGoal = firstOpen();
+  if (landedOnGoal) note = { ...note, open: true, tab: "goal" };
   if (practice) {
     GUIDE_ONLY_TABS.forEach((name) => document.querySelector(`#lesson-tabs [data-tab="${name}"]`).classList.add("hidden"));
     if (GUIDE_ONLY_TABS.includes(note.tab)) note.tab = "goal";
@@ -341,6 +355,8 @@ function coach(prefix, declared) {
   Object.assign(box.style, { pointerEvents: "none" });
   pop.style.zIndex = "10000";
   let at = Math.min(steps.length, lessonStep(sessionId())) - 1;
+  const explained = new Map(cards(session && session.lesson ? session.lesson.theory : [])
+    .filter((card) => card.shows).map((card) => [card.shows, card.id]));
   let last = "";
   let lost = 0;
   let dismissed = false;
@@ -354,6 +370,7 @@ function coach(prefix, declared) {
   let passing = false;
   let commandShown = false;
   let finished = false;
+  let shownOnce = false;
   const used = (session && Array.isArray(session.hints) ? session.hints : []);
   const helped = new Set(used.filter((hint) => hint.level === "do").map((hint) => hint.step));
   let progress = {};
@@ -365,6 +382,7 @@ function coach(prefix, declared) {
     if (!body || !body.progress || typeof body.progress !== "object") return;
     progress = body.progress;
     Object.entries(progress).forEach(([id, record]) => { if (record.done_for_me) helped.add(id); });
+    if (shownOnce) stepList();
   }
 
   learn(session);
@@ -381,13 +399,17 @@ function coach(prefix, declared) {
   }
 
   function stepList() {
+    const passedCount = steps.filter((step) => recordOf(step).passed).length;
+    field("lesson-step-count").textContent = t("lesson.steps.passed", passedCount, steps.length);
     field("lesson-step-list").innerHTML = steps.map((step, index) => {
-      const done = index < at || (finished && index === at);
+      const done = Boolean(recordOf(step).passed);
       const current = index === at;
-      const mark = done ? "✓" : String(index + 1);
-      const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : "badge-muted";
+      const skipped = !done && !current && Boolean(recordOf(step).skipped);
+      const mark = done ? "✓" : skipped ? "○" : String(index + 1);
+      const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
       const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
-      const help = helped.has(step.id) ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.helped"))}</span>` : "";
+      const help = helped.has(step.id) ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.helped"))}</span>`
+        : skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
       const state = current && !done ? `<span class="block text-[11.5px] text-primary font-normal">${
         esc(t("lesson.status.current"))}${statusText ? ` · ${esc(statusText)}` : ""}</span>` : "";
       return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
@@ -430,7 +452,16 @@ function coach(prefix, declared) {
     field("coach-pop-hint").classList.remove("btn-blue");
     field("coach-pop-hint").classList.toggle("hidden", level >= DO_IT || finished);
     field("coach-pop-do").classList.toggle("hidden", level < DO_IT || finished);
+    field("coach-pop-why").classList.toggle("hidden", !explained.has(step.id));
     last = "";
+  }
+
+  function why() {
+    const card = explained.get(steps[at].id);
+    if (!card) return;
+    setNote({ open: true, tab: "theory" });
+    const toggle = field("lesson-theory").querySelector(`[data-card="${card}"]`);
+    if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
   }
 
   function offerHint() {
@@ -524,6 +555,7 @@ function coach(prefix, declared) {
     field("coach-pop-next").disabled = at === steps.length - 1;
     field("lesson-coach-show").classList.toggle("hidden", !dismissed);
     stepList();
+    shownOnce = true;
     last = "";
     lost = 0;
   }
@@ -785,6 +817,7 @@ function coach(prefix, declared) {
   field("lesson-coach-show").addEventListener("click", () => go(at));
   field("coach-pop-hint").addEventListener("click", escalate);
   field("coach-pop-do").addEventListener("click", doIt);
+  field("coach-pop-why").addEventListener("click", why);
   field("coach-pop-view").addEventListener("click", () => {
     commandShown = !commandShown;
     command();
@@ -800,7 +833,7 @@ function coach(prefix, declared) {
     show(false);
   });
   level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
-  show(true);
+  show(!landedOnGoal);
   reach(steps[at]);
   countAlerts();
   requestAnimationFrame(tick);
@@ -826,6 +859,38 @@ function folded(list, prefix, kind, ids, extra) {
     body.classList.toggle("flex", opened);
     toggle.setAttribute("aria-expanded", String(opened));
   }));
+}
+
+const OUTCOME_WORDS = {
+  held: "lesson.check.held", served: "lesson.check.served", blocked: "outcome.blocked",
+  leaked: "outcome.leaked", inconclusive: "outcome.inconclusive",
+};
+
+function caseRows(cases) {
+  return (cases || []).map((row) => {
+    const good = row.outcome === "held" || row.outcome === "served";
+    return `<li class="flex gap-2 ${good ? "text-success" : "rounded-md bg-danger-soft text-danger p-1.5"}" data-outcome="${esc(row.outcome)}">
+      <span class="font-bold">${good ? "✓" : "✗"}</span><span><b>${esc(caseLabel(row.name))}</b> — ${
+        esc(t(OUTCOME_WORDS[row.outcome] || "outcome.inconclusive"))}</span></li>`;
+  }).join("");
+}
+
+async function opening(taught) {
+  field("lesson-ticket-text").textContent = localized(`${taught.text}.ticket`, "");
+  field("lesson-ticket").classList.toggle("hidden", !field("lesson-ticket-text").textContent);
+  const start = session.start;
+  if (start) {
+    field("lesson-start").classList.remove("hidden");
+    field("lesson-start").classList.add(start.passed ? "border-success-soft" : "border-danger-soft");
+    field("lesson-start-verdict").classList.add(...(start.passed ? ["bg-success-soft", "text-success"] : ["bg-danger-soft", "text-danger"]));
+    field("lesson-start-verdict").innerHTML = `<span class="badge ${start.passed ? "badge-pass" : "badge-fail"}">${
+      start.passed ? "PASS" : "FAIL"}</span><span>${esc(t("lesson.start.heading"))}</span>`;
+    field("lesson-start-cases").innerHTML = caseRows(start.cases);
+  }
+  const waf = await api(lessonPath("waf/"));
+  if (!waf.ok || !Number.isInteger(waf.body.paranoia)) return;
+  field("lesson-ticket-waf").textContent = t("lesson.ticket.waf", waf.body.paranoia, (waf.body.exclusions || []).length);
+  field("lesson-ticket-waf").classList.remove("hidden");
 }
 
 function modeControl(practice) {

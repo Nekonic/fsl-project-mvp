@@ -717,3 +717,21 @@ def test_a_lesson_the_scenario_does_not_have_or_without_guidance_is_refused(clie
     assert answer.status_code == 400, answer.content
     assert refused in answer.json()["detail"]
     assert Session.objects.count() == 0
+
+def test_a_lesson_reports_where_it_started_from_the_replay_at_open(client):
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
+                        "board-normal-search-with-apostrophe": "http_code=403\n"})
+    with patch("api.views.harness.fire", fire):
+        opened = client.post_json("/api/sessions/", {"guidance": True}).json()
+    plain = board()
+
+    start = client.get(f"/api/sessions/{opened['id']}/").json()["start"]
+
+    assert start["passed"] is False
+    assert {row["name"]: row["outcome"] for row in start["cases"]} == {
+        "board-sqli-orderby-sqlmap": "held", "board-sqli-orderby-sqlmap-tamper": "held",
+        "board-normal-search": "served", "board-normal-search-with-apostrophe": "blocked",
+        "board-normal-post-list": "served", "board-normal-sort": "served",
+    }
+    assert ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]] in start["diagnosis"]
+    assert client.get(f"/api/sessions/{plain.pk}/").json()["start"] is None
