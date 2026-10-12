@@ -14,6 +14,7 @@ identity:
 
 network:
   external: provider                    # the external network floating IPs come from
+  address: ""                           # a floating IP the project already holds, kept across rebuilds; empty: a new one per stack
   dns: [8.8.8.8, 8.8.4.4]
   mtu: 1450                             # the tenant networks' MTU (1450 on VXLAN)
   platform: 10.20.0.0/24                # the platform VM's network

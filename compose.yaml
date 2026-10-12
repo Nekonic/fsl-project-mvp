@@ -114,7 +114,12 @@ services:
     container_name: fsl-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
-    networks: [edge, edge-br, edge-hk, edge-us, mgmt]
+    networks:
+      edge: {gw_priority: 1}
+      edge-br: {}
+      edge-hk: {}
+      edge-us: {}
+      mgmt: {}
     ports:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
       - "${FSL_PUBLISH:-127.0.0.1}:8002:8002"

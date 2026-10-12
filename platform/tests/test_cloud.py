@@ -165,3 +165,9 @@ def test_the_platform_refuses_a_cloud_setting_it_cannot_parse():
         openstack.connect(declared.read(), keystone="http://k:5000", user="u", password="p",
                           project="p", ssh_user="ubuntu", ssh_key="/k", region="R",
                           interface="public", domain="default", subnets="estate")
+
+
+def test_the_floating_ip_to_keep_is_optional_and_must_be_an_address():
+    assert cloud.parse(changed(network__address="192.168.0.210")).address == "192.168.0.210"
+    assert cloud.parse(changed(network__address="")).address == ""
+    assert "network.address: must be the IPv4 address" in refusal(changed(network__address="fip-one"))

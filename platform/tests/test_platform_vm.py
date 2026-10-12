@@ -143,10 +143,13 @@ def test_the_vm_publishes_the_platform_on_its_own_address():
     )
     assert f"mv {compose_env['path']} /opt/fsl/.env" in moved, moved
 
+FLOATING_ADDRESS = {"if": ["reserved", {"get_param": "floating_address"},
+                           {"get_attr": ["floating_ip", "floating_ip_address"]}]}
+
 def test_django_answers_to_the_floating_ip():
     [server] = resources_of("OS::Nova::Server")
     params = server["user_data"]["str_replace"]["params"]
-    [floating] = [k for k, v in params.items() if v == {"get_attr": ["floating_ip", "floating_ip_address"]}]
+    [floating] = [k for k, v in params.items() if v == FLOATING_ADDRESS]
     lines = written_credentials()["content"].splitlines()
 
     assert f"DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],{floating}" in lines, (
@@ -169,7 +172,19 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
 
     assert names == {
         variable for name, variable in SETTINGS.items() if name not in ("password", "platform", "source")
-    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS"}, names
+    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "FSL_TOOL_IMAGE"}, names
+
+def test_the_harness_asks_for_the_attacker_the_openstack_range_declares():
+    from range import declared
+
+    attacker = declared.read(flavor=declared.flavor_for("range.openstack.connect")).roles["attacker"]
+    lines = written_credentials()["content"].splitlines()
+
+    assert f"FSL_TOOL_IMAGE={attacker}" in lines, (
+        "the OpenStack launcher runs a tool only on the attacker host the range "
+        "declares and refuses any other image; without this the harness asks for "
+        "the GHCR Kali image and every case is refused before it is sent"
+    )
 
 def test_images_are_built_on_the_platforms_own_network_which_reaches_the_internet():
     [server] = resources_of("OS::Nova::Server")
@@ -266,3 +281,25 @@ def test_the_platform_vm_installs_everything_it_runs_on_the_stock_image():
     )
     assert "git clone" in commands and "docker" in " ".join(
         entry["content"] for entry in config["write_files"] if entry["path"].endswith(".service"))
+
+def test_a_reserved_floating_ip_is_associated_never_owned_so_a_stack_delete_keeps_it():
+    resources = template()["resources"]
+    conditions = template()["conditions"]
+
+    assert resources["floating_ip"]["condition"] == "allocated"
+    assert resources["floating_ip_association"]["condition"] == "reserved"
+    assert conditions["reserved"] == {"not": conditions["allocated"]}
+    assert conditions["allocated"] == {"equals": [{"get_param": "floating_ip_id"}, ""]}
+    [associated] = resources_of("OS::Neutron::FloatingIPAssociation")
+    assert associated == {"floatingip_id": {"get_param": "floating_ip_id"},
+                          "port_id": {"get_resource": "port"}}
+    assert template()["outputs"]["address"]["value"] == FLOATING_ADDRESS
+
+def test_without_an_address_in_cloud_yaml_the_stack_allocates_its_own_floating_ip():
+    parameters = example().heat_parameters()
+
+    assert parameters["floating_address"] == parameters["floating_ip_id"] == ""
+    assert example().heat_parameters("fip-1")["floating_ip_id"] == "fip-1"
+
+def test_no_parameter_shares_a_name_with_a_resource_because_heat_refuses_the_template():
+    assert not set(template()["parameters"]) & set(template()["resources"])

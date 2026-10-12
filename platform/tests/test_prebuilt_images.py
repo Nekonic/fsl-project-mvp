@@ -260,3 +260,43 @@ def test_the_rebuild_takes_the_range_key_from_the_running_platform_once(tmp_path
 
     assert key.read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
     assert key.stat().st_mode & 0o777 == 0o600
+
+
+class FloatingIps:
+    def __init__(self, held):
+        self.held, self.ran = held, []
+
+    def __call__(self, argv, stdin=None, check=True):
+        self.ran.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout=self.held)
+
+
+def test_the_reserved_floating_ip_is_found_by_its_address(tmp_path):
+    module = rebuild()
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="192.168.0.210"), {},
+                           lambda _: "/bin/openstack")
+    cli = FloatingIps(b"fip-210\n")
+
+    parameters = module.stack_arguments(cloud, cli)
+
+    assert cli.ran == [["openstack", "floating", "ip", "list", "--floating-ip-address",
+                        "192.168.0.210", "-f", "value", "-c", "ID"]]
+    assert "floating_address=192.168.0.210" in parameters and "floating_ip_id=fip-210" in parameters
+
+
+def test_an_address_the_project_does_not_hold_stops_the_rebuild(tmp_path):
+    module = rebuild()
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="192.168.0.210"), {},
+                           lambda _: "/bin/openstack")
+
+    with pytest.raises(module.Refused, match="holds no floating IP at"):
+        module.stack_arguments(cloud, FloatingIps(b""))
+
+
+def test_without_an_address_no_floating_ip_is_looked_up(tmp_path):
+    module = rebuild()
+    cloud, _ = module.load(written_cloud(tmp_path), {}, lambda _: "/bin/openstack")
+    cli = FloatingIps(b"")
+
+    assert "floating_ip_id=" in module.stack_arguments(cloud, cli)
+    assert cli.ran == []

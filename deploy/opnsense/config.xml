@@ -3,6 +3,10 @@
   <theme>opnsense</theme>
   <system>
     <optimization>normal</optimization>
+    <serialspeed>115200</serialspeed>
+    <primaryconsole>serial</primaryconsole>
+    <secondaryconsole>video</secondaryconsole>
+    <disableconsolemenu/>
     <hostname>fsl-edge</hostname>
     <domain>range.internal</domain>
     <dnsallowoverride>0</dnsallowoverride>
