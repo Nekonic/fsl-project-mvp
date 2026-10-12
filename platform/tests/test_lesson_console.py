@@ -1541,6 +1541,17 @@ def test_a_fail_reads_no_alerts_and_shows_no_debrief(client):
     assert "/api/sessions/1/ingest/" not in seen["result"]
     assert "/api/sessions/1/lesson/debrief/" not in seen["result"]
 
+def test_a_long_request_path_in_the_debrief_s_evidence_wraps_inside_the_note(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
+      await browser.click('lesson-verify');
+      return [...browser.element('lesson-debrief').querySelectorAll('[data-evidence]')].map((row) => row.className);
+    """)
+
+    assert seen["result"] and all("break-all" in name for name in seen["result"]), (
+        "a sqlmap request path has no spaces; unwrapped it ran past the note and the score page "
+        "scrolled sideways (1,773 px wide at a 1,440 px window, live 2026-10-13)"
+    )
+
 MINE = CATALOGUE.replace('  if (request.route === "/api/sessions/" && request.method === "POST")', """  if (request.route === "/api/sessions/" && request.query.ids) {
     seen.ids = request.query.ids;
     return {body: [
