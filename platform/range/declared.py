@@ -35,6 +35,8 @@ class Host:
     files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
+    wargames: tuple[str, ...] = ()
+    publish: dict[str, int] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class Declaration:
@@ -85,6 +87,10 @@ class Declaration:
             if host.uploads and not host.setup:
                 raise ValueError(
                     f"host {name!r} uploads {host.uploads!r} and has no setup script to make it"
+                )
+            if host.publish and not host.wargames:
+                raise ValueError(
+                    f"host {name!r} publishes {', '.join(sorted(host.publish))} and runs no wargame"
                 )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
@@ -151,6 +157,8 @@ def _hosts(entries) -> dict[str, Host]:
             files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),
+            wargames=tuple(entry.get("wargames") or ()),
+            publish={str(service): int(port) for service, port in (entry.get("publish") or {}).items()},
         )
         for name, entry in (entries or {}).items()
     }

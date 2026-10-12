@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from range import cloud, declared, openstack, opnsense
+from range import cloud, declared, openstack, opnsense, wargame_host
 from range.ports import Drifted, Node, Ran, RangeUnavailable, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -143,12 +143,15 @@ def test_an_edge_logging_somewhere_else_afterwards_is_drift():
     with pytest.raises(Drifted, match="logs"):
         _adapter(Edge(logs="10.9.9.9:514")).configure_edge()
 
-def test_configuring_the_slot_configures_the_edge_and_the_waf_and_opens_the_collector_to_both():
+def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collector_and_starts_the_wargames():
     edge, groups = Edge(), Groups()
 
     done = _adapter(edge, groups).configure_slot()
 
-    assert [host for host, _ in done] == ["fsl-edge", "fsl-waf", "fsl-platform"]
+    assert [host for host, _ in done] == ["fsl-edge", "fsl-waf", "fsl-platform", "fsl-wargame-host"]
+    assert [argv for role, argv, _ in edge.calls if role == "wargames"] == [
+        wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
+    ], "a rebuilt wargame host holds the images and no containers; configure starts them"
     heard = {r["remote_ip_prefix"] for r in groups.group["security_group_rules"]}
     assert heard == {"10.31.0.63/32", "10.31.0.198/32"}
 

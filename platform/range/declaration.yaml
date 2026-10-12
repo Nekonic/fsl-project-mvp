@@ -75,17 +75,17 @@ hosts:
     names: [board.com, corp.com]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
-  fsl-wg-board:
-    segments: [estate, mgmt]
-    names: [board, board-db]
-    setup: wargames/board/image/setup.sh
-    files: [wargames/board/image, wargames/board/app]
 
 openstack:
   roles:
     edge: fsl-edge
     sensor: fsl-edge
     proxy: fsl-kali
+    wargames: fsl-wargame-host
+    board: fsl-wargame-host
+    board-db: fsl-wargame-host
+    corp: fsl-wargame-host
+    corp-db: fsl-wargame-host
   watches:
     sensor: edge
   hosts:
@@ -103,7 +103,13 @@ openstack:
       files: [deploy/kali, deploy/proxy/stamp.py]
     fsl-waf:
       segments: [estate, mgmt]
-      names: [board.com]
       rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
       reload: sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1
       pid: /run/nginx.pid
+    fsl-wargame-host:
+      segments: [estate, mgmt]
+      names: [board, corp-wp]
+      setup: deploy/wargame-host/setup.sh
+      files: [deploy/wargame-host]
+      wargames: [board, corp]
+      publish: {board: 8000, corp-wp: 80}

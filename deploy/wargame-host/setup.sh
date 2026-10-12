@@ -1,0 +1,21 @@
+set -eu
+cd "$(dirname "$0")"
+
+APT="apt-get -y -o DPkg::Lock::Timeout=600"
+
+export DEBIAN_FRONTEND=noninteractive
+sed -i 's/^Components:.*/Components: main restricted universe/' \
+  /etc/apt/sources.list.d/ubuntu.sources
+$APT update
+$APT install docker.io docker-compose-v2
+
+install -d -m 0755 /etc/docker /opt/fsl/wargames
+install -m 0644 daemon.json /etc/docker/daemon.json
+systemctl enable docker
+systemctl restart docker
+
+for compose in wargames/*.yaml; do
+  install -m 0644 "$compose" /opt/fsl/wargames/
+  docker compose -f "/opt/fsl/wargames/${compose##*/}" config --quiet
+  docker compose -f "/opt/fsl/wargames/${compose##*/}" pull --quiet
+done

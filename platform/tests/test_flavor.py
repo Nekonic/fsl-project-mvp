@@ -52,9 +52,9 @@ def test_the_openstack_flavor_adds_the_edge_and_kali_and_takes_the_waf_off_the_i
     assert d.hosts["fsl-waf"].segments == ("estate", "mgmt"), (
         "the WAF stands behind the edge, on the estate only"
     )
-    assert set(d.hosts["fsl-waf"].names) == {"board.com"}, (
-        "the attacker reaches the target by name through the WAF, so the WAF "
-        "carries its name on the estate"
+    assert set(d.hosts["fsl-waf"].names) == {"board.com", "corp.com"}, (
+        "the attacker reaches every wargame by name through the WAF, so the WAF "
+        "carries their names on the estate"
     )
 
 def test_an_unknown_flavor_is_just_the_base():

@@ -2,6 +2,7 @@ import base64
 import ipaddress
 import itertools
 import pathlib
+from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -13,7 +14,14 @@ from range.ports import Drifted
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DECLARED = declared.read()
+WARGAME_HOST = "fsl-wargame-host"
+_BASE = declared.read()
+_OS = declared.read(flavor="openstack")
+DECLARED = replace(
+    _BASE,
+    roles={**_BASE.roles, **{role: host for role, host in _OS.roles.items() if host == WARGAME_HOST}},
+    hosts={**_BASE.hosts, WARGAME_HOST: _OS.hosts[WARGAME_HOST]},
+)
 
 class Cloud:
     def __init__(self, decl=DECLARED, source=ROOT):
@@ -37,7 +45,7 @@ class Cloud:
             if entry.image:
                 self.images.append({"id": f"img-{host}", "name": entry.image, "status": "active"})
                 continue
-            digest = images.bundle(source, host, entry.setup, entry.files).digest
+            digest = openstack.OpenStack(decl, SPEC, get=self, build=build(source))._bundle(host, entry).digest
             self.images.append({"id": f"img-{host}", "name": host, "status": "active",
                                 images.BUNDLE: digest})
         self.ports, self.servers, self.calls = [], [], []
@@ -113,10 +121,12 @@ SPEC = openstack.Cloud(
 def cloud():
     return Cloud()
 
+def build(source=ROOT):
+    return openstack.Build(source=str(source), base_image="ubuntu-24.04", inside=INSIDE, flavor="m1.small",
+                           network="net-platform", platform="srv-platform", image_tag="c0ffee", mtu=1450)
+
 def adapter(cloud, decl=DECLARED):
-    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", inside=INSIDE, flavor="m1.small",
-                            network="net-platform", platform="srv-platform")
-    return openstack.OpenStack(decl, SPEC, get=cloud, build=build)
+    return openstack.OpenStack(decl, SPEC, get=cloud, build=build())
 
 def edge_declaration():
     from range.declared import Declaration, Host, Origin, Segment
@@ -208,10 +218,12 @@ def test_every_range_port_is_in_the_range_group(cloud):
 def test_every_host_is_told_where_the_others_are_on_the_estate(cloud):
     adapter(cloud).ensure_slot()
 
-    board = cloud.port("fsl-wg-board.estate")["fixed_ips"][0]["ip_address"]
+    wargames = cloud.port(f"{WARGAME_HOST}.estate")["fixed_ips"][0]["ip_address"]
+    names = DECLARED.hosts[WARGAME_HOST].names
+    assert "board" in names
     for host in DECLARED.hosts:
         [written] = [f for f in cloud.config(host)["write_files"] if f["path"] == "/etc/hosts"]
-        assert f"{board} board board-db\n" in written["content"]
+        assert f"{wargames} {' '.join(names)}\n" in written["content"]
 
 def test_the_gateway_adds_every_origin_gateway_to_its_internet_nic(cloud):
     adapter(cloud).ensure_slot()
@@ -233,9 +245,9 @@ def test_a_slot_standing_writes_nothing_the_second_time(cloud):
     assert plan.clean and len(plan.standing) == len(DECLARED.hosts)
 
 def test_a_slot_whose_images_are_not_ready_is_refused_before_anything_is_written(cloud):
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wg-board"]
+    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wargame-host"]
 
-    with pytest.raises(Drifted, match="fsl-wg-board"):
+    with pytest.raises(Drifted, match="fsl-wargame-host"):
         adapter(cloud).ensure_slot()
     assert [c for c in cloud.calls if c[0] != "GET"] == []
 
@@ -269,9 +281,9 @@ def test_a_slot_not_fully_standing_is_not_rebuilt(cloud):
 
 def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(cloud):
     adapter(cloud).ensure_slot()
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wg-board"]
+    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wargame-host"]
 
-    with pytest.raises(Drifted, match="fsl-wg-board"):
+    with pytest.raises(Drifted, match="fsl-wargame-host"):
         adapter(cloud).rebuild_slot()
 
     assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == [], (

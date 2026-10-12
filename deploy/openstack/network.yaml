@@ -29,8 +29,7 @@ tenant:                           # fsl-range — VMs on `master`, reached via t
       mgmt: 10.31.0.158
     fsl-kali:     { fsl-internet: "origin source IPs (30 countries, per-country SNAT)", mgmt: 10.31.0.x }
     fsl-waf:      { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }   # ModSecurity reverse-proxy, fronts the targets
-    fsl-wg-board: { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }
-    fsl-wg-corp:  { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }
+    fsl-wargame-host: { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }   # Docker: board :8000, corp-wp :80 published; board-db, corp-db inside
   paths:
     external: "operator 192.168.0.x -> FIP 192.168.0.210 -> platform (console :8000)"
     attack:   "fsl-kali -> fsl-internet (spoofed origin) -> OPNsense WAN -> fsl-estate -> WAF -> board/corp"

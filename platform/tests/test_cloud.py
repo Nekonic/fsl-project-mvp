@@ -32,7 +32,7 @@ def test_the_committed_example_is_a_usable_cloud():
     assert found.base_image == "ubuntu-24.04"
     assert found.inside == {"estate": "10.30.0.0/24", "mgmt": "10.31.0.0/24"}
     assert found.flavors["platform"] == "m1.large"
-    assert found.role_flavors == {"edge": "m1.medium"}
+    assert found.role_flavors == {"edge": "m1.medium", "wargames": "m1.medium"}
     assert found.opnsense.image == "fsl-opnsense-26.7"
 
 

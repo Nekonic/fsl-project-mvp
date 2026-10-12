@@ -13,7 +13,7 @@ import requests
 from dataclasses import dataclass, field, replace
 
 from range import cloud as configured
-from range import fabric, images, opnsense, slot, waf
+from range import fabric, images, opnsense, slot, waf, wargame_host
 from range.declared import Declaration
 from range.ports import (
     Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute,
@@ -101,6 +101,7 @@ SETTINGS = {
     "opnsense": "FSL_OPNSENSE",
     "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
     "platform": "FSL_OPENSTACK_PLATFORM",
+    "image_tag": "FSL_IMAGE_TAG",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
@@ -130,6 +131,7 @@ def connect(
     opnsense: str = "",
     build_network: str = "",
     platform: str = "",
+    image_tag: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -159,7 +161,7 @@ def connect(
             build_flavor=build_flavor, role_flavors=configured.pairs(role_flavors),
             availability_zone=availability_zone, inside=configured.pairs(subnets),
             mtu=int(mtu or 0), opnsense=configured.opnsense_from(opnsense),
-            network=build_network, platform=platform,
+            network=build_network, platform=platform, image_tag=image_tag,
         )
     except ValueError as error:
         raise RangeUnavailable(
@@ -403,6 +405,7 @@ class Build:
     opnsense: configured.OPNsense | None = None
     network: str = ""
     platform: str = ""
+    image_tag: str = ""
 
     def placed(self, server: dict) -> dict:
         return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
@@ -481,6 +484,7 @@ class OpenStack:
 
     def runner(self, role: str, segment_id: str = ""):
         host = self.declared.host(role)
+        container = self._container(role, host)
 
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
             address = self._address(role, host, segment_id)
@@ -489,7 +493,10 @@ class OpenStack:
                 config = self._config(Path(scratch) / "ssh_config", address)
                 command = self._ssh(address, stdin is not None, said, config,
                                     self._ssh_user(host))
-                command.append(shlex.join(reporting(argv)))
+                sent = reporting(argv)
+                if container:
+                    sent = wargame_host.inside(container, sent, stdin is not None)
+                command.append(shlex.join(sent))
                 done = execute(host, command, stdin, timeout)
                 logged = said.read_text() if said.exists() else ""
                 complaint = " ".join(filter(None, (
@@ -507,6 +514,10 @@ class OpenStack:
             return ran
 
         return run
+
+    def _container(self, role: str, host: str) -> str:
+        entry = self.declared.hosts.get(host)
+        return self.declared.compose.get(role, "") if entry and entry.wargames else ""
 
     def _ssh_user(self, host: str) -> str:
         entry = self.declared.hosts.get(host)
@@ -830,6 +841,9 @@ class OpenStack:
 
     def _bundle(self, host: str, entry) -> images.Bundle:
         source = Path(self.build.source)
+        if entry.wargames:
+            return images.bundle(source, host, entry.setup, entry.files, generated=wargame_host.generated(
+                source, host, entry.wargames, entry.publish, self.build.image_tag, self.build.mtu))
         if not entry.uploads:
             return images.bundle(source, host, entry.setup, entry.files)
         if entry.uploads != opnsense.UPLOADS:
@@ -1052,7 +1066,10 @@ class OpenStack:
         return rebuilt
 
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
-        return [self.configure_edge(), self.configure_waf(), self.open_collector()]
+        done = [self.configure_edge(), self.configure_waf(), self.open_collector()]
+        if wargame_host.ROLE in self.declared.roles:
+            done.append(self.start_wargames())
+        return done
 
     def address(self, role: str) -> str:
         return self._address(role, self.declared.host(role), fabric.MANAGEMENT)
@@ -1144,6 +1161,17 @@ class OpenStack:
         if not ran.ok:
             raise Drifted(f"{host} did not take its log forwarding: {ran.output[-1000:]}")
         return host, (f"logs {audit} to {collector}:{fabric.COLLECTOR_PORT}",)
+
+    def start_wargames(self) -> tuple[str, tuple[str, ...]]:
+        host = self.declared.host(wargame_host.ROLE)
+        entry = self.declared.hosts.get(host)
+        if entry is None or not entry.wargames:
+            raise Drifted(f"{host} fills {wargame_host.ROLE!r} and the declaration gives it no wargame to run")
+        for wargame in entry.wargames:
+            ran = self.runner(wargame_host.ROLE)(wargame_host.up(wargame), timeout=wargame_host.UP_TIMEOUT)
+            if not ran.ok:
+                raise Drifted(f"{host} did not start {wargame} (exit {ran.exit_code}): {ran.output[-1000:]}")
+        return host, tuple(f"runs {wargame}" for wargame in entry.wargames)
 
     def open_collector(self) -> tuple[str, tuple[str, ...]]:
         senders = [

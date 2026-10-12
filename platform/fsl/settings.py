@@ -139,6 +139,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
                 "opnsense": "FSL_OPNSENSE",
                 "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
                 "platform": "FSL_OPENSTACK_PLATFORM",
+                "image_tag": "FSL_IMAGE_TAG",
             }.items()
         } | {"source": FSL_SOURCE},
     }.get(FSL_SUBSTRATE, {}),
