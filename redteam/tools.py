@@ -11,6 +11,13 @@ FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
 TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
 ENDED = "[*] ending @"
 NOT_INJECTABLE = "all tested parameters do not appear to be injectable"
+CONCLUSION = re.compile(
+    r"(?:seem|appear) to be injectable|appears to be '.*' injectable|identified the following injection point"
+    r"|\[CRITICAL\] (?:all tested|host |heuristics detected)"
+)
+STAMP = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] ")
+CONCLUSIONS_KEPT = 4
+LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
 TOOL_IMAGE = os.environ.get(
@@ -104,6 +111,10 @@ def status(output: str) -> int:
 
 def forbidden(output: str) -> int:
     return sum(int(times) for times in FORBIDDEN.findall(output or ""))
+
+def conclusions(output: str) -> list[str]:
+    found = [STAMP.sub("", line).strip() for line in (output or "").splitlines() if CONCLUSION.search(line)]
+    return [line if len(line) <= LINE_KEPT else line[:LINE_KEPT] + "…" for line in found[-CONCLUSIONS_KEPT:]]
 
 def dumped(output: str) -> list[tuple[str, str]]:
     rows = [

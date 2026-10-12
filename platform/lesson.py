@@ -2,6 +2,7 @@ from __future__ import annotations
 
 DO_IT = 4
 WRONGS_PER_HINT = 2
+CRS_DEFAULT_LEVEL = 1
 
 def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
     if given in check.get("accept", []):
@@ -9,6 +10,22 @@ def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
     if given in check.get("known", []):
         return False, [f"{wrong}.{given}", []]
     return False, ["lesson.check.wrong", []]
+
+def fix_class(waf: dict | None, posture: dict | None, scope: str) -> str | None:
+    if not waf:
+        return None
+    posture = posture or {}
+    level = waf.get("paranoia") or CRS_DEFAULT_LEVEL
+    if posture.get("paranoia") and level < posture["paranoia"]:
+        return "level"
+    added = [entry for entry in waf.get("exclusions") or [] if entry not in (posture.get("exclusions") or [])]
+    if not added:
+        return None
+    if any(not entry["target"] for entry in added):
+        return "rule"
+    if any(not (entry["path"] and entry["path"].startswith(scope)) for entry in added):
+        return "target"
+    return "path_target"
 
 def served(status: int) -> bool:
     return 200 <= status < 300

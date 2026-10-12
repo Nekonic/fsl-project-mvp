@@ -56,6 +56,15 @@ const judge = (id, body) => {
     range.fired.push(check.case);
     return range.status === 200 ? passing(id) : failing(id, body.poll, `${fail}.reload`);
   }
+  if (check.kind === "replay") {
+    range.fired.push(check.case);
+    const outcome = range.replayOutcome || "held";
+    const replay = {name: check.case, outcome, conclusions: ["[CRITICAL] all tested parameters do not appear to be injectable"],
+                    command: "sqlmap -u {target}/?sort=posts_post.id*", forbidden: 2065, status: 0, discover: "/kibana/app/discover#/?marker"};
+    if (outcome === "held") return {...passing(id), replay};
+    const inconclusive = outcome === "inconclusive";
+    return {...failing(id, false, inconclusive ? "lesson.check.inconclusive" : fail, inconclusive ? [check.case] : []), replay};
+  }
   if (check.kind === "served") {
     range.fired.push(check.case);
     return range.status === 200 ? passing(id) : failing(id, body.poll, fail, [range.status]);
@@ -118,9 +127,9 @@ browser.serve((request) => {
     range.waf = {...request.body, version: "v2"};
     return {body: range.waf};
   }
-  if (request.route === "/api/sessions/1/attacks/") return {status: 201, body: {meta: {status: range.status}, diagnosis: range.diagnosis}};
+  if (request.route === "/api/sessions/1/attacks/") return {status: 201, body: {meta: {status: range.status}, diagnosis: range.diagnosis, replay: range.replay}};
   if (request.route === "/api/sessions/1/verify/") {
-    return {body: {passed: range.passed, run: "r", cases: [
+    return {body: {passed: range.passed, run: "r", fix: range.fix || null, cases: [
       {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
       {name: "board-normal-search-with-apostrophe", malicious: false, outcome: range.passed ? "served" : "blocked"},
     ], diagnosis: range.passed ? [["lesson.diag.blocked_ratio", [1, 1]]] : [
@@ -366,10 +375,10 @@ def to(step):
 def hints(times):
     return "for (let i = 0; i < %d; i += 1) await browser.click('coach-pop-hint');" % times
 
-def test_the_lesson_is_seven_steps_each_checked_by_the_platform():
-    assert IDS == ["search", "find", "rule", "target", "exclude", "retry", "verify"]
+def test_the_lesson_is_eight_steps_each_checked_by_the_platform():
+    assert IDS == ["search", "find", "rule", "target", "exclude", "retry", "sqlmap", "verify"]
     assert [step["check"]["kind"] for step in STEPS] == [
-        "alert", "click", "answer", "choice", "waf", "served", "verify",
+        "alert", "click", "answer", "choice", "waf", "served", "replay", "verify",
     ]
 
 def test_the_coach_boxes_its_target_as_soon_as_the_step_shows_it(client):
@@ -943,7 +952,7 @@ def test_the_served_check_runs_when_the_site_shows_the_o_brien_search_again(clie
     """)
 
     assert seen["result"]["blocked"] == [english("lesson.board.label.retry"), english("lesson.board.fail.retry", 403)]
-    assert seen["result"]["after"] == english("lesson.board.label.verify")
+    assert seen["result"]["after"] == english("lesson.board.label.sqlmap")
 
 def test_the_verify_step_finishes_the_lesson_only_on_pass(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -1104,7 +1113,7 @@ def test_every_step_draws_its_box_on_something_the_console_can_reach_in_both_mod
     expected = {
         "search": "#site-address", "find": '[data-test-subj="docTableExpandToggleColumn"]',
         "rule": '[data-test-subj="field-rule"]', "target": '[data-test-subj="field-transaction.messages.details.data"]',
-        "exclude": "pane", "retry": "#site-address", "verify": "#lesson-verify",
+        "exclude": "pane", "retry": "#site-address", "sqlmap": "pane", "verify": "#lesson-verify",
     }
 
     assert seen["errors"] == []
@@ -1391,3 +1400,62 @@ def test_why_on_a_step_opens_the_theory_card_that_explains_it(client):
     """)
 
     assert seen["result"] == {"first": True, "shown": True, "tab": "theory", "open": True, "expanded": "true"}
+
+def test_the_regression_step_replays_sqlmap_only_when_pressed_and_shows_its_conclusion(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      {to("sqlmap")}
+      await browser.wait(6000);
+      const before = range.fired.length;
+      const button = browser.text('[data-act="replay"]');
+      await browser.click('[data-act="replay"]');
+      return {{before, button, fired: range.fired, rows: browser.text('[data-act="rows"]'), said: browser.text('coach-pop-said')}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["before"] == 0, "the replay takes about 15 seconds, so it runs on a press, never on a poll"
+    assert result["button"] == english("lesson.replay.check", "board-sqli-orderby-sqlmap")
+    assert result["fired"] == ["board-sqli-orderby-sqlmap"]
+    assert "all tested parameters do not appear to be injectable" in result["rows"]
+
+def test_an_inconclusive_regression_replay_gets_its_own_message(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + "range.replayOutcome = 'inconclusive';", scenario=f"""
+      {to("sqlmap")}
+      await browser.click('[data-act="replay"]');
+      return browser.text('coach-pop-status');
+    """)
+
+    assert seen["result"] == english("lesson.check.inconclusive", "board-sqli-orderby-sqlmap")
+
+def test_a_replay_row_shows_the_conclusion_the_command_the_403s_as_not_judged_and_a_kibana_link(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + """
+      range.replay = {name: "board-sqli-orderby-sqlmap", outcome: "held", forbidden: 2065, status: 0,
+                      conclusions: ["[CRITICAL] all tested parameters do not appear to be injectable"],
+                      command: "sqlmap -u {target}/?sort=posts_post.id*", discover: "/kibana/app/discover#/?marker=abc"};
+    """, scenario="""
+      await browser.force('lesson-case', 'board-sqli-orderby-sqlmap');
+      await browser.click('lesson-replay');
+      const row = document.querySelector('#lesson-replay-rows [data-replay]');
+      const shown = {conclusion: row.querySelector('[data-conclusion]').textContent,
+                     command: row.querySelector('[data-command]').textContent,
+                     forbidden: row.querySelector('[data-forbidden]').textContent};
+      await browser.click('#lesson-replay-rows [data-discover]');
+      return {...shown, frame: browser.element('pane-frame').getAttribute('src')};
+    """)
+
+    assert seen["result"] == {
+        "conclusion": "[CRITICAL] all tested parameters do not appear to be injectable",
+        "command": "sqlmap -u {target}/?sort=posts_post.id*",
+        "forbidden": english("lesson.replay.forbidden", 2065),
+        "frame": "/kibana/app/discover#/?marker=abc",
+    }
+
+def test_verify_names_the_kind_of_fix_beside_the_verdict_without_counting_it_as_a_failure(client):
+    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true; range.fix = 'level';", scenario="""
+      await browser.click('lesson-verify');
+      return {verdict: browser.text('lesson-verdict'), fix: browser.text('lesson-fix'),
+              failing: browser.element('lesson-diagnosis').querySelectorAll('li').length};
+    """)
+
+    assert "PASS" in seen["result"]["verdict"] and seen["result"]["failing"] == 0
+    assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"
