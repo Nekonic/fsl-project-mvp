@@ -210,7 +210,7 @@ def sessions(request):
         raise BadRequest(
             f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
         )
-    guidance, defense, posture = _settings(scenario, body)
+    guidance, taught, defense, posture = _settings(scenario, body)
     adapter = substrate()
     with SLOT_CHOICE:
         live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
@@ -229,7 +229,7 @@ def sessions(request):
             chosen = verdict["slot"].get("number") if _slotted(adapter) else None
         try:
             session = Session.objects.create(
-                scenario=scenario, baseline=[], guidance=guidance, defense=defense, slot=chosen,
+                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, slot=chosen,
             )
         except IntegrityError:
             raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
@@ -268,6 +268,7 @@ def _stacks_to_keep(opening):
 def _described(session, judged=False):
     return _shape(session, SESSION_FIELDS) | {
         "kind": "lesson" if session.guidance else "wargame",
+        "lesson_id": _lesson_id(session),
         "ready": session.ready_at is not None,
         **({"result": _result(session)} if judged else {}),
     }
@@ -322,8 +323,15 @@ def lesson_hints(request, session_id):
     session = _progressed(session, step, lambda kept, held: _helped_on(kept, held, step, level))
     return _reply(_lesson_state(session, step))
 
+def _lesson_of(session):
+    return wargames.lesson(session.scenario, lesson_id=session.lesson or None)
+
+def _lesson_id(session):
+    taught = _lesson_of(session) if session.guidance else None
+    return taught["id"] if taught else None
+
 def _taught(session):
-    taught = wargames.lesson(session.scenario) if session.guidance else None
+    taught = _lesson_of(session) if session.guidance else None
     if not taught:
         raise BadRequest(f"session {session.pk} is not a lesson")
     return taught
@@ -499,19 +507,31 @@ def _last_verdict(session, run, verified):
     return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"]}
 
 def _settings(scenario, body):
-    guidance = body.get("guidance", False)
+    asked = body.get("lesson")
+    guidance = body.get("guidance", asked is not None)
     if not isinstance(guidance, bool):
         raise BadRequest(f'"guidance" must be true or false, got {guidance!r}')
     if guidance and not wargames.lesson(scenario):
         raise BadRequest(f"{scenario!r} has no lesson to guide")
-    defense = body.get("defense", wargames.lesson_defense(scenario) if guidance else wargames.DEFAULT_DEFENSE)
+    taught = _asked_lesson(scenario, asked) if guidance else ""
+    if asked is not None and not guidance:
+        raise BadRequest(f'"lesson" {asked!r} runs with guidance; leave "guidance" out or send true')
+    defense = body.get("defense", wargames.lesson_defense(scenario, taught) if guidance else wargames.DEFAULT_DEFENSE)
     try:
-        return guidance, defense, wargames.defense(scenario, defense)
+        return guidance, taught, defense, wargames.defense(scenario, defense)
     except (wargames.UnknownWargame, TypeError):
         raise BadRequest(
             f"{defense!r} is not a defense of {scenario!r}; expected one of "
             f"{', '.join(wargames.WARGAMES[scenario].get('defense') or [wargames.DEFAULT_DEFENSE])}"
         )
+
+def _asked_lesson(scenario, asked):
+    known = [taught["id"] for taught in wargames.lessons(scenario)]
+    if asked is None:
+        return known[0]
+    if asked not in known:
+        raise BadRequest(f'"lesson" must be one of {scenario!r}\'s lessons {known}, got {asked!r}')
+    return asked
 
 def _take_defense(session, adapter, posture):
     ruleset = (posture or {}).get("suricata", DEFAULT_RULES)
@@ -524,7 +544,7 @@ def _take_defense(session, adapter, posture):
         session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.FSL_WAF)
 
 def _seed_logs(session):
-    for name in wargames.lesson(session.scenario)["cases"]:
+    for name in _lesson_of(session)["cases"]:
         _lesson_fire(session, name, {"seed": True})
 
 def _aim_attacker(adapter):
@@ -984,7 +1004,7 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
     return recorded, ran
 
 def _lesson_case(session, name):
-    taught = wargames.lesson(session.scenario) if session.guidance else None
+    taught = _lesson_of(session) if session.guidance else None
     if not taught:
         raise BadRequest(f"session {session.pk} is not a lesson, so it replays no lesson case")
     if name not in taught["cases"]:
@@ -1018,7 +1038,7 @@ def _lesson_fire(session, name, marks):
 def session_verify(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
-    taught = wargames.lesson(session.scenario)
+    taught = _lesson_of(session)
     if not taught:
         raise BadRequest(f"{session.scenario!r} has no lesson to verify")
     if not (isinstance(session.baseline, dict) and session.baseline):
@@ -1137,7 +1157,7 @@ def _take_turn(session):
 @require_http_methods(["GET"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    taught = wargames.lesson(session.scenario) if session.guidance else None
+    taught = _lesson_of(session) if session.guidance else None
     if taught:
         taught = dict(taught, steps=[_shown_step(session, step) for step in taught.get("steps", [])])
     return _reply(_described(session, judged=True) | {

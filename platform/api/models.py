@@ -16,6 +16,7 @@ class Session(models.Model):
     read_of = models.JSONField(null=True, blank=True, default=None)
     rotation = models.PositiveIntegerField(default=0)
     guidance = models.BooleanField(default=False)
+    lesson = models.CharField(max_length=64, blank=True, default="")
     defense = models.CharField(max_length=32, default="full")
     waf = models.JSONField(null=True, blank=True, default=None)
     ready_at = models.DateTimeField(null=True, blank=True)

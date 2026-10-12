@@ -24,6 +24,7 @@ DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
 CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "verify"}
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
+LESSON_ID = re.compile(r"[a-z0-9][a-z0-9-]*", re.ASCII)
 
 def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
     if not isinstance(loaded, dict):
@@ -37,6 +38,8 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
             f"{source}: a scenario needs a non-empty {', '.join(SCENARIO_FIELDS)}; "
             f"{', '.join(missing)} is missing or blank"
         )
+    if "lesson" in loaded:
+        raise InvalidCatalogue(f"{source}: lessons are declared as a lessons: list, not a single lesson:")
     if loaded["objective_model"] not in OBJECTIVE_MODELS:
         raise InvalidCatalogue(
             f"{source}: objective_model {loaded['objective_model']!r} is not one of "
@@ -46,7 +49,7 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
         "id": wargame_id,
         **{field: loaded[field] for field in SCENARIO_FIELDS},
         **checked_card(loaded, source),
-        **({"lesson": loaded["lesson"]} if "lesson" in loaded else {}),
+        **({"lessons": loaded["lessons"]} if "lessons" in loaded else {}),
         **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
     }
 
@@ -80,9 +83,34 @@ def checked_defense(declared: Any, source) -> dict[str, Any]:
             )
     return declared
 
-def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFENSE,)) -> None:
-    if lesson is None:
+def checked_lessons(lessons: Any, known: set[str], source, defenses=(DEFAULT_DEFENSE,)) -> None:
+    if lessons is None:
         return
+    if not isinstance(lessons, list) or not lessons or not all(isinstance(taught, dict) for taught in lessons):
+        raise InvalidCatalogue(f"{source}: lessons is a non-empty list of lessons")
+    ids = [taught.get("id") for taught in lessons]
+    if not all(isinstance(found, str) and LESSON_ID.fullmatch(found) for found in ids) or len(set(ids)) != len(ids):
+        raise InvalidCatalogue(f"{source}: every lesson needs its own id of lowercase letters, digits and dashes, got {ids}")
+    orders = [taught.get("order") for taught in lessons]
+    if not all(type(order) is int for order in orders) or len(set(orders)) != len(orders):
+        raise InvalidCatalogue(f"{source}: every lesson needs its own whole-number order, got {orders}")
+    for taught in lessons:
+        checked_lesson_card(taught, set(ids) - {taught["id"]}, source)
+        checked_lesson(taught, known, source, defenses)
+
+def checked_lesson_card(taught: dict, others: set[str], source) -> None:
+    if "level" in taught and taught["level"] not in DIFFICULTIES:
+        raise InvalidCatalogue(f"{source}: lesson {taught['id']} level must be one of {', '.join(DIFFICULTIES)}")
+    minutes = taught.get("minutes", 1)
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+        raise InvalidCatalogue(f"{source}: lesson {taught['id']} minutes must be a whole number above zero")
+    needed = taught.get("prerequisites", [])
+    if not isinstance(needed, list) or not set(needed) <= others:
+        raise InvalidCatalogue(
+            f"{source}: lesson {taught['id']} prerequisites must name other lessons of the scenario, got {needed!r}"
+        )
+
+def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFENSE,)) -> None:
     cases = lesson.get("cases") if isinstance(lesson, dict) else None
     if not isinstance(lesson, dict) or not isinstance(lesson.get("text"), str) \
             or not isinstance(cases, list) or not cases:
@@ -122,8 +150,8 @@ def _discover() -> dict[str, dict[str, Any]]:
             case.get("name")
             for case in load_cases(Path(settings.WARGAME_CASES_DIR) / found[wargame_id]["case_file"])
         }
-        checked_lesson(found[wargame_id].get("lesson"), known, path,
-                       tuple(found[wargame_id].get("defense") or (DEFAULT_DEFENSE,)))
+        checked_lessons(found[wargame_id].get("lessons"), known, path,
+                        tuple(found[wargame_id].get("defense") or (DEFAULT_DEFENSE,)))
     return found
 
 WARGAMES = _discover()
@@ -139,10 +167,16 @@ def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
         raise UnknownWargame(name)
     return declared[name]
 
-def lesson(wargame_id: str, waf: crs.Layout | None = None) -> dict[str, Any] | None:
-    taught = WARGAMES[wargame_id].get("lesson")
-    if not taught:
-        return taught
+def lessons(wargame_id: str) -> list[dict[str, Any]]:
+    return sorted(WARGAMES[wargame_id].get("lessons") or [], key=lambda taught: taught["order"])
+
+def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | None = None) -> dict[str, Any] | None:
+    listed = lessons(wargame_id)
+    if not listed:
+        return None
+    taught = next((taught for taught in listed if taught["id"] == lesson_id), None) if lesson_id else listed[0]
+    if taught is None:
+        raise UnknownWargame(lesson_id)
     waf = waf or settings.FSL_WAF
     return taught | {"steps": [
         step | {"command": step["command"].replace("{waf_rules}", waf.rules).replace("{waf_reload}", waf.reload)}
@@ -150,8 +184,8 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None) -> dict[str, Any] | N
         for step in taught.get("steps", [])
     ]}
 
-def lesson_defense(wargame_id: str) -> str:
-    return (WARGAMES[wargame_id].get("lesson") or {}).get("defense", DEFAULT_DEFENSE)
+def lesson_defense(wargame_id: str, lesson_id: str | None = None) -> str:
+    return (lesson(wargame_id, lesson_id=lesson_id) or {}).get("defense", DEFAULT_DEFENSE)
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
@@ -251,26 +285,41 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
     loaded = _load(wargame["id"])
     reached = {case.get("stage") for case in loaded}
     attacks = sum(1 for case in loaded if case["malicious"])
+    first = lesson(wargame["id"])
     return {
         "id": wargame["id"],
         "name": wargame["name"],
         "description": wargame["description"],
         "public_url": wargame["public_url"],
         "judged": wargame["objective_model"] != "none",
-        "lesson": bool(wargame.get("lesson")),
+        "lesson": bool(wargame.get("lessons")),
         "model": wargame["objective_model"],
         "cases": len(loaded),
         "attacks": attacks,
         "benign": len(loaded) - attacks,
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
-        "lesson_steps": len((wargame.get("lesson") or {}).get("steps") or []),
-        "lesson_text": (wargame.get("lesson") or {}).get("text") or "",
-        "lesson_defense": lesson_defense(wargame["id"]) if wargame.get("lesson") else "",
+        "lesson_steps": len((first or {}).get("steps") or []),
+        "lesson_text": (first or {}).get("text") or "",
+        "lesson_defense": lesson_defense(wargame["id"]) if first else "",
+        "lessons": [_lesson_card(taught) for taught in lessons(wargame["id"])],
         "category": wargame.get("category") or "",
         "difficulty": wargame.get("difficulty") or "",
         "minutes": wargame.get("minutes"),
         "covers": [stage for stage in lifecycle.STAGES if stage in reached],
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],
+    }
+
+def _lesson_card(taught: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": taught["id"],
+        "order": taught["order"],
+        "title": f"{taught['text']}.title",
+        "goal": f"{taught['text']}.summary",
+        "minutes": taught.get("minutes"),
+        "level": taught.get("level") or "",
+        "defense": taught.get("defense", DEFAULT_DEFENSE),
+        "prerequisites": list(taught.get("prerequisites") or []),
+        "steps": len(taught.get("steps") or []),
     }
 
 def _summary(case: dict[str, Any]) -> str:

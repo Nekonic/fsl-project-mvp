@@ -694,3 +694,26 @@ def test_evidence_that_arrives_after_close_refreshes_the_stored_result(client):
 
     assert (before["lost"], before["undetected"]) == (1, 1)
     assert (after["lost"], after["undetected"]) == (1, 0), "an alert ingested after close is in the next list"
+
+def test_a_guided_open_records_the_lesson_it_runs_and_defaults_to_the_first(client):
+    fire, _ = attacker({})
+    with patch("api.views.harness.fire", fire):
+        named = client.post_json("/api/sessions/", {"lesson": "waf-exclusion"}).json()
+        client.post_json(f"/api/sessions/{named['id']}/close/")
+        guided = client.post_json("/api/sessions/", {"guidance": True}).json()
+
+    assert (named["guidance"], named["lesson_id"]) == (True, "waf-exclusion")
+    assert Session.objects.get(pk=guided["id"]).lesson == "waf-exclusion"
+    assert client.get(f"/api/sessions/{guided['id']}/").json()["lesson"]["id"] == "waf-exclusion"
+
+@pytest.mark.parametrize("body, refused", [
+    ({"lesson": "no-such-lesson"}, "no-such-lesson"),
+    ({"lesson": "waf-exclusion", "guidance": False}, "guidance"),
+    ({"scenario": "corp", "lesson": "waf-exclusion"}, "no lesson"),
+])
+def test_a_lesson_the_scenario_does_not_have_or_without_guidance_is_refused(client, body, refused):
+    answer = client.post_json("/api/sessions/", body)
+
+    assert answer.status_code == 400, answer.content
+    assert refused in answer.json()["detail"]
+    assert Session.objects.count() == 0
