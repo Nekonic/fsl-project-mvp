@@ -16,11 +16,19 @@ django.setup()
 
 from django.conf import settings
 
+from api.models import Session
 from range import substrate
 from wargames import WARGAMES
 from redteam import harness
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "board.yaml"
+
+def range_of(adapter, session_id):
+    if hasattr(adapter, "for_session"):
+        return adapter.for_session(session_id)
+    if hasattr(adapter, "in_slot"):
+        return adapter.in_slot(Session.objects.get(pk=session_id).slot or 1)
+    return adapter
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="FSL red team harness")
@@ -37,7 +45,7 @@ def main() -> int:
     bound = {}
 
     def opened(session_id):
-        session_range = adapter.for_session(session_id) if hasattr(adapter, "for_session") else adapter
+        session_range = range_of(adapter, session_id)
         bound["launch"] = session_range.launcher(settings.RANGE.default_origin)
         print(f"session {session_id} opened", flush=True)
 
