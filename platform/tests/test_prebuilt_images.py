@@ -300,3 +300,53 @@ def test_without_an_address_no_floating_ip_is_looked_up(tmp_path):
 
     assert "floating_ip_id=" in module.stack_arguments(cloud, cli)
     assert cli.ran == []
+
+
+class NewPlatform:
+    def __init__(self):
+        self.ran = []
+
+    def ssh(self, command, stdin=None, check=True):
+        self.ran.append(command)
+        return subprocess.CompletedProcess([], 0, b"")
+
+    def copy(self, source, destination):
+        self.ran.append(f"copy {source} {destination}")
+
+
+COMPOSE_2_40_DOCKER = """#!/bin/sh
+case "$*" in
+  *"config --images platform"*) printf 'docker.elastic.co/elasticsearch/elasticsearch:8\\nghcr.io/nekonic/fsl-platform:dev\\n' ;;
+  "inspect --format {{.Config.Image}} fsl-platform") echo ghcr.io/nekonic/fsl-platform:dev ;;
+  *) exit 1 ;;
+esac
+"""
+
+
+def test_the_store_restore_runs_exactly_the_platform_image(tmp_path):
+    module = rebuild()
+    store = tmp_path / "store.sqlite3"
+    store.write_bytes(b"")
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, store)
+
+    [restore] = [command for command in platform.ran if "docker run" in command]
+    image = re.search(r"\$\((.*?)\) -c ", restore).group(1)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (bin_dir / "docker").write_text(COMPOSE_2_40_DOCKER)
+    for tool in bin_dir.iterdir():
+        tool.chmod(0o755)
+    resolved = subprocess.run(
+        ["sh", "-c", f'set -- $({image}); echo "$@"'],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, capture_output=True, text=True, check=True,
+    ).stdout.split()
+
+    assert resolved == ["ghcr.io/nekonic/fsl-platform:dev"], (
+        f"the restore runs docker run with {resolved}: Compose 2.40 lists the images platform "
+        f"depends on too, so anything but the platform image alone breaks bin/cloud up --replace"
+    )

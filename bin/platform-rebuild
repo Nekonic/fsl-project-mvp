@@ -289,7 +289,7 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None) -> 
         new.ssh(
             f"cd {CHECKOUT} && {compose} stop platform && sudo docker run --rm --network none "
             f"--entrypoint sh --user fsl -v fsl_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
-            f"$(sudo docker compose -f {CHECKOUT}/compose.yaml config --images platform) -c "
+            "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
     new.ssh(f"cd {CHECKOUT} && {compose} up -d platform")
