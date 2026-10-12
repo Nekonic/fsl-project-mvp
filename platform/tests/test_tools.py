@@ -53,6 +53,19 @@ def test_tool_case_in_the_default_file_declares_args():
         )
 
 
+def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_ends_the_run_on():
+    from pathlib import Path
+
+    from redteam.harness import load_cases
+
+    cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml")}
+
+    assert "--skip-heuristics" in cases["board-sqli-orderby-sqlmap-tamper"]["args"], (
+        "from paranoia level 2 a board 500 is refused after its headers are sent and nginx drops the "
+        "connection; when the tampered heuristic probe drew one, sqlmap stopped after one request and "
+        "VERIFY read the variant as inconclusive at the level the lesson names as the answer"
+    )
+
 def launcher(exit_code, output=""):
     from range.ports import Ran
 
