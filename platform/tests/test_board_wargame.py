@@ -80,15 +80,3 @@ def test_a_session_with_no_scenario_fires_cases_at_the_board(client):
         client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": name})
 
     assert fired.call_args.args[0]["request"]["headers"]["Host"] == "board.com"
-
-
-def test_the_board_vm_gives_django_3_2_the_distutils_ubuntu_24_04_python_lacks():
-    from pathlib import Path
-
-    board = Path(__file__).resolve().parents[2] / "wargames/board"
-    setup = (board / "image/setup.sh").read_text()
-
-    assert "Django==3.2." in (board / "app/requirements.txt").read_text()
-    assert "setuptools==" in setup and "-r /opt/board/requirements.txt" in setup, (
-        "Django 3.2 imports distutils, which Python 3.12 removed; setuptools provides it"
-    )

@@ -171,7 +171,8 @@ def test_boot_writes_every_other_setting_the_adapter_requires():
     names = {line.split("=", 1)[0] for line in content.splitlines() if line}
 
     assert names == {
-        variable for name, variable in SETTINGS.items() if name not in ("password", "platform", "source")
+        variable for name, variable in SETTINGS.items()
+        if name not in ("password", "platform", "source", "image_tag")
     } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "FSL_TOOL_IMAGE"}, names
 
 def test_the_harness_asks_for_the_attacker_the_openstack_range_declares():

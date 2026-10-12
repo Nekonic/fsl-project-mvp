@@ -29,6 +29,7 @@ compute:
     builder: m1.medium                  # image builders; the OPNsense builder boots it under QEMU
     range: m1.small                     # every range VM no role below names; 20 GB disk or more
     edge: m1.medium                     # OPNsense wants 3 GB of RAM or more
+    wargames: m1.medium                 # the wargame host: two MySQL, Django and WordPress containers
 
 keys:
   operator: fsl-claude                  # the Nova keypair the platform VM boots with
