@@ -1592,6 +1592,28 @@ def ingest_detections(request, session_id):
         raise BadRequest(f'"within" is a number of seconds above zero, got {within!r}')
     return _reply(_ingest(session, within))
 
+INGEST_PAGES = 40
+
+def _fetched(index, start, end, newest_first):
+    documents, truncated = elastic.fetch(settings.ELASTIC_URL, index, start, end, newest_first=newest_first)
+    seen = {doc_id for doc_id, _ in documents}
+    page = documents
+    for _ in range(INGEST_PAGES):
+        if newest_first or not truncated or not page:
+            break
+        after = parse_datetime(str(page[-1][1].get("@timestamp") or ""))
+        if after is None or after <= start:
+            break
+        start = after
+        page, more = elastic.fetch(settings.ELASTIC_URL, index, start, end)
+        fresh = [(doc_id, doc) for doc_id, doc in page if doc_id not in seen]
+        seen.update(doc_id for doc_id, _ in fresh)
+        documents = documents + fresh
+        truncated = more and (len(documents), max(truncated[1], len(documents)))
+        if not fresh:
+            break
+    return documents, truncated
+
 def _ingest(session, within=None):
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
@@ -1602,11 +1624,8 @@ def _ingest(session, within=None):
     except (RangeUnavailable, suricata.RulesUnreadable):
         restored = []
 
-    documents, truncated = elastic.fetch(
-        settings.ELASTIC_URL,
-        _session_index(session) or settings.ELASTIC_INDEX,
-        start, end, newest_first=within is not None,
-    )
+    documents, truncated = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end,
+                                    newest_first=within is not None)
 
     held = dict(session.detections.values_list("detection_id", "marker"))
     known = set(held)

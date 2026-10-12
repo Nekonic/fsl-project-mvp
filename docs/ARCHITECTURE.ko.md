@@ -392,8 +392,11 @@ Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만
   요청한다. `fsl-geoip` 파이프라인은 `@timestamp`를 이벤트 자체의 시각(Suricata의
   `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 설정하므로, 이 창은
   Filebeat가 읽은 시점이 아니라 이벤트가 발생한 시점으로 이벤트를 고른다;
-- 오래된 것부터 최대 5000개의 hit를 읽는다. 이를 넘으면 응답에 `truncated`가 실리고
-  세션은 `read_of`를 기록하며, 점수에 `score.warning.truncated`가 추가된다;
+- 오래된 것부터 한 번에 5000개의 hit를 읽고, 잘리면 받은 것 중 가장 새로운 `@timestamp`부터
+  다시 묻는다(`api/views.py` `_fetched`, 최대 40번 더; 이미 읽은 문서는 `_id`로 건너뛴다). 그래도
+  창을 다 읽지 못하거나 5000개가 한 시각을 공유하면 응답에 `truncated`가 실리고 세션은
+  `read_of`를 기록하며, 점수에 `score.warning.truncated`가 추가된다. sqlmap 케이스 하나가
+  5000개 넘는 기록을 남기므로, 한 번만 읽으면 그 뒤에 쏜 케이스가 모두 FN이 됐다;
 - Suricata의 `alert` 이벤트를 유지하고, ModSecurity 레코드는 매칭된 규칙 메시지마다
   Detection 하나(id `<Elasticsearch _id>:<n>`)로 바꾼다;
 - 이벤트 시각이 창 밖인 경보는 버리고 `stale`로 센다;
