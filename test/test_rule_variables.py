@@ -1,38 +1,8 @@
 import pytest
-import requests
-
-from conftest import PLATFORM_URL
-
-PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"FSL ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009996; rev:1;)\n'
 
 @pytest.fixture(scope="module")
-def fired_with_a_ported_rule(stack_is_up, baseline_rules):
-    from conftest import score_when_ready
-
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": baseline_rules + PORTED_RULE, "session": session_id}, timeout=180,
-    ).raise_for_status()
-    try:
-        for name in ("board-sqli-search", "board-sqli-union-search"):
-            sent = requests.post(
-                f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-                json={"case": name}, timeout=300,
-            )
-            assert sent.status_code == 201, sent.text
-        score_when_ready(session_id, lambda totals: totals["tp"] > 0)
-        listed = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-        ).json()
-        yield listed if isinstance(listed, list) else listed["detections"]
-    finally:
-        requests.post(
-            f"{PLATFORM_URL}/api/rules/apply/",
-            json={"content": baseline_rules, "session": session_id}, timeout=180,
-        )
+def fired_with_a_ported_rule(rules_session):
+    return rules_session["listed"]
 
 def test_a_rule_written_against_http_ports_actually_fires(fired_with_a_ported_rule):
     ported = [

@@ -33,7 +33,16 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    launch = substrate().launcher(settings.RANGE.default_origin)
+    adapter = substrate()
+    bound = {}
+
+    def opened(session_id):
+        session_range = adapter.for_session(session_id) if hasattr(adapter, "for_session") else adapter
+        bound["launch"] = session_range.launcher(settings.RANGE.default_origin)
+        print(f"session {session_id} opened", flush=True)
+
+    def launch(image, argv, timeout=600.0):
+        return bound["launch"](image, argv, timeout=timeout)
 
     case_file = Path(args.cases).name
     scenario = next(
@@ -50,7 +59,7 @@ def main() -> int:
 
     session_id = harness.run(
         cases, args.platform, launch, args.tool_target, scenario,
-        announce=lambda opened: print(f"session {opened} opened", flush=True),
+        announce=opened,
     )
 
     print(f"session {session_id} done")

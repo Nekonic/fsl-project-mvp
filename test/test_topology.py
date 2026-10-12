@@ -1,36 +1,14 @@
 import ipaddress
 
 import pytest
-import requests
-
-from conftest import PLATFORM_URL, score_when_ready
-
-CASE = "board-sqli-search"
 
 @pytest.fixture(scope="module")
-def drawn(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    sent = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": CASE}, timeout=300,
+def drawn(full_run):
+    return dict(
+        full_run["topology"],
+        session_id=full_run["session_id"],
+        detections=full_run["detections"],
     )
-    assert sent.status_code == 201, sent.text
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
-
-    def case_detected(totals):
-        return any(c["name"] == CASE and c["detected"] for c in totals["per_case"])
-
-    score_when_ready(session_id, until=case_detected)
-    shape = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
-    ).json()
-    shape["session_id"] = session_id
-    shape["detections"] = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
-    return shape
 
 def node(drawn, segment_id):
     return {n["name"] for s in drawn["segments"] if s["id"] == segment_id
@@ -95,10 +73,8 @@ def test_the_diagram_and_the_alert_stream_are_one_object(drawn):
 
 
 @pytest.fixture(scope="module")
-def top(drawn):
-    return requests.get(
-        f"{PLATFORM_URL}/api/sessions/{drawn['session_id']}/top/", timeout=120
-    ).json()
+def top(full_run):
+    return full_run["top"]
 
 def test_every_alert_is_counted_against_exactly_one_address(top, drawn):
     addressed = [d for d in drawn["detections"] if d["src_ip"]]
@@ -135,7 +111,7 @@ def test_every_top_table_is_ordered_by_count(top):
         counts = [row["alerts"] for row in top[name]]
         assert counts == sorted(counts, reverse=True), name
 
-def test_the_running_range_matches_what_was_declared(stack_is_up):
+def test_the_running_range_matches_what_was_declared(full_run):
     import pathlib
 
     import yaml
@@ -147,10 +123,7 @@ def test_the_running_range_matches_what_was_declared(stack_is_up):
     fixed = {s["id"] for s in declared["segments"] if not s.get("origins")}
     origins = {o["id"] for s in declared["segments"] for o in s.get("origins") or []}
 
-    running = requests.get(f"{PLATFORM_URL}/api/sessions/?limit=1", timeout=60).json()[0]["id"]
-    shape = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{running}/topology/", timeout=60
-    ).json()
+    shape = full_run["topology"]
     standing = {s["id"] for s in shape["segments"]}
 
     assert fixed <= standing and standing - fixed <= origins, (

@@ -5,6 +5,7 @@ import os
 import re
 import socket
 import subprocess
+import threading
 import time
 from dataclasses import replace
 
@@ -32,6 +33,7 @@ _TIMEOUT = 30
 SESSION_DEADLINE = 540
 SESSION_PREFIX = "fsl-"
 SESSION_PROJECT = re.compile(r"fsl-(\d+)")
+STACKS_CHANGING = threading.Lock()
 
 class Docker:
     def __init__(self, declared: Declaration, project: str = "fsl",
@@ -259,11 +261,12 @@ class Docker:
         deadline = time.monotonic() + SESSION_DEADLINE
         host_dir = self._host_dir()
         project = f"{SESSION_PREFIX}{session_id}"
-        kept = {project, *(f"{SESSION_PREFIX}{n}" for n in live)}
-        for ended in self._session_projects():
-            if ended not in kept:
-                self._detach(ended)
-                self._compose(["-p", ended, "down", "-v"], deadline)
+        with STACKS_CHANGING:
+            kept = {project, *(f"{SESSION_PREFIX}{n}" for n in live)}
+            for ended in self._session_projects():
+                if ended not in kept:
+                    self._detach(ended)
+                    self._compose(["-p", ended, "down", "-v"], deadline)
         self._compose(
             ["-p", project, "-f", self.session_file,
              "up", "-d", "--wait", "--no-build"],

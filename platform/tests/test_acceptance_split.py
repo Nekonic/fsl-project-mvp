@@ -1,0 +1,189 @@
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def load(name, path):
+    loader = SourceFileLoader(name, str(path))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+split = load("acceptance_split", ROOT / "bin/acceptance")
+opening = load("acceptance_opening", ROOT / "test/opening.py")
+
+
+def processes(workers):
+    together, after = split.plan(workers)
+    return together + after
+
+
+@pytest.mark.parametrize("workers", [1, 2, 3, 4])
+def test_every_module_runs_in_exactly_one_process(workers):
+    ran = [module for process in processes(workers) for module in process.modules]
+
+    assert sorted(ran) == split.modules(), (
+        "a module ran twice or not at all, so the split run is not the suite"
+    )
+
+
+@pytest.mark.parametrize("workers", [2, 3, 4])
+def test_modules_sharing_a_session_fixture_run_in_one_process(workers):
+    where = {module: process.name for process in processes(workers) for module in process.modules}
+    users = {}
+    for module, shared in split.shared_by_module().items():
+        for fixture in shared:
+            users.setdefault(fixture, set()).add(where[module])
+
+    split_up = {fixture: names for fixture, names in users.items() if len(names) > 1}
+    assert not split_up, (
+        f"a shared session was opened once per process instead of once: {split_up}"
+    )
+
+
+def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
+    shared = split.shared_by_module()
+
+    assert "full_run" in shared["test_acceptance"]
+    assert "full_run" in shared["test_strategy_honesty"]
+    assert "board_session" in shared["test_board_loot"]
+    assert not shared["test_window_correlation"], (
+        "a helper's session_id argument was read as the red-team fixture"
+    )
+
+
+def test_one_worker_runs_the_session_modules_in_the_order_pytest_would():
+    together, after = split.plan(1)
+    worker = next(process for process in together if process.role == "worker")
+
+    assert worker.modules == [m for m in split.modules() if m not in split.IDLE]
+    assert after == []
+
+
+@pytest.mark.parametrize("workers", [2, 3])
+def test_the_modules_that_hold_two_sessions_run_alone_after_the_rest(workers):
+    together, after = split.plan(workers)
+
+    assert not {m for p in together for m in p.modules} & set(split.SOLO)
+    assert [p.modules for p in after] == [sorted(split.SOLO)]
+
+
+@pytest.mark.parametrize("workers", [2, 3])
+def test_the_checks_that_need_a_standing_stack_share_one_and_go_first(workers):
+    holding = [p for p in processes(workers) if set(p.modules) & set(split.STANDING_STACK)]
+
+    assert len(holding) == 1, "each worker opened a session of its own for them"
+    first = holding[0].modules[:len(split.STANDING_STACK)]
+    assert sorted(first) == sorted(split.STANDING_STACK)
+
+
+def test_the_idle_modules_ask_for_no_session_and_touch_no_host():
+    shared = split.shared_by_module()
+    for module in split.IDLE:
+        source = (split.TESTS / f"{module}.py").read_text()
+        assert not shared[module], module
+        for touch in ("/api/sessions/", "run(", "from_attacker", "standing_stack", "segments("):
+            assert touch not in source, (
+                f"{module} runs while a range reset is in progress, and it {touch!r}"
+            )
+
+
+def test_the_heaviest_group_is_placed_first_and_the_load_evened_out():
+    placed = split.balanced([["a"], ["b"], ["c"], ["d"]], {"a": 10, "b": 9, "c": 2, "d": 1}, 2)
+
+    assert sorted((p.modules, p.estimate) for p in placed) == [(["a", "d"], 11), (["b", "c"], 11)]
+
+
+def test_a_bonded_group_is_never_split_across_workers():
+    placed = split.balanced([["a", "b", "c"], ["d"]], {"a": 5, "b": 5, "c": 5, "d": 1}, 3)
+
+    assert sorted(p.modules for p in placed) == [["a", "b", "c"], ["d"]]
+
+
+def test_an_unmeasured_module_still_weighs_something():
+    placed = split.balanced([["new"], ["old"]], {"old": 1}, 1)
+
+    assert placed[0].estimate == split.UNMEASURED_SECONDS + 1
+
+
+def test_the_summary_adds_every_process_report():
+    first = split.totals_of(
+        '<testsuites><testsuite tests="5" failures="1" errors="0" skipped="2" time="9">'
+        '<testcase classname="test_board" name="a" time="3"/>'
+        '<testcase classname="test_board" name="b" time="4"/></testsuite></testsuites>'
+    )
+    second = split.totals_of(
+        '<testsuite tests="3" failures="0" errors="1" skipped="0" time="2">'
+        '<testcase classname="test_map" name="c" time="2"/></testsuite>'
+    )
+    merged = first.add(second)
+
+    assert (merged.passed, merged.failed, merged.errors, merged.skipped) == (4, 1, 1, 2)
+    assert merged.per_module == {"test_board": 7.0, "test_map": 2.0}
+    assert merged.line(60, 3) == "4 passed, 1 failed, 1 errors, 2 skipped in 60s across 3 processes"
+
+
+def test_the_worker_count_is_what_the_range_lets_open_at_once(monkeypatch):
+    monkeypatch.setattr(split, "_ask", lambda platform, path: {"max_sessions": 2})
+    assert split.workers_the_range_allows("http://platform") == 2
+
+    def unreachable(platform, path):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(split, "_ask", unreachable)
+    assert split.workers_the_range_allows("http://platform") == 1
+
+
+def test_a_refusal_for_want_of_room_is_told_apart_from_any_other():
+    assert opening.refused_for_room(409, "2 sessions are already open on the range; close one first")
+    assert opening.refused_for_room(409, "the range is not ready: the slot is resetting")
+    assert not opening.refused_for_room(409, "the range is not ready: the target's ground truth could not be read")
+    assert not opening.refused_for_room(503, "already open on the range")
+
+
+def test_room_means_a_free_session_on_a_range_that_has_settled():
+    assert opening.has_room({"ready": True, "max_sessions": 2}, 1)
+    assert not opening.has_room({"ready": True, "max_sessions": 2}, 2)
+    for phase in ("RESETTING", "REBUILDING", "CHECKING"):
+        assert not opening.has_room({"ready": False, "max_sessions": 2, "slot": {"phase": phase}}, 0)
+    assert not opening.has_room({"ready": False, "slot": {"reset": {"state": "running"}}}, 0)
+    assert opening.has_room({"ready": False, "slot": {"phase": "NOT_STANDING"}}, 0), (
+        "a range that will not come up by itself is waited on for half an hour"
+    )
+    assert opening.has_room({}, 0) and not opening.has_room({}, 1)
+
+
+def test_waiting_for_room_polls_until_there_is_some_or_time_is_up():
+    now = [0.0]
+    answers = iter([False, False, True])
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    assert opening.wait_for_room(lambda: next(answers), 60, 5, lambda: now[0], sleep)
+    assert now[0] == 10
+    assert not opening.wait_for_room(lambda: False, 12, 5, lambda: now[0], sleep)
+
+
+def test_an_open_refused_for_room_is_retried_once_there_is_room():
+    answers = iter(["409", "409", "201"])
+    made_room = []
+
+    result = opening.retried(lambda: next(answers), lambda said: said == "409",
+                             lambda: made_room.append(1) or True, attempts=5)
+
+    assert result == "201" and len(made_room) == 2
+
+
+def test_retrying_stops_when_no_room_comes_or_the_attempts_run_out():
+    assert opening.retried(lambda: "409", lambda said: True, lambda: False, attempts=5) == "409"
+    tries = []
+    opening.retried(lambda: tries.append(1) or "409", lambda said: True, lambda: True, attempts=3)
+    assert len(tries) == 3

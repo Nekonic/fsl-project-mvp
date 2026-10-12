@@ -1,6 +1,8 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 
 from api.models import Session
 from range import slot
@@ -166,3 +168,25 @@ def test_an_openstack_session_starts_with_the_attacker_at_the_front_door(client)
         "not the declared default origin, so an attack sent with no origin is "
         "placed somewhere the range never chose"
     )
+
+def test_docker_keeps_the_stack_of_a_session_closed_moments_ago(client):
+    opened = []
+    now = timezone.now()
+    shipping = Session.objects.create(scenario="board", baseline=[],
+                                      ended_at=now - timedelta(seconds=30))
+    shipped = Session.objects.create(scenario="board", baseline=[],
+                                     ended_at=now - timedelta(hours=1))
+
+    def open_session(self, session_id, live=()):
+        opened.append(list(live))
+
+    with patch("range.docker.Docker.open_session", open_session):
+        answer = client.post_json("/api/sessions/", {})
+
+    assert answer.status_code == 201, answer.content
+    assert opened == [[shipping.pk]], (
+        "a stack taken down the moment its session closes loses the alerts its "
+        "Filebeat has not shipped yet, and that session is scored without them; "
+        f"kept {opened}, closed an hour ago: {shipped.pk}"
+    )
+

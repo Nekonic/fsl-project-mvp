@@ -1,54 +1,15 @@
 import pytest
-import requests
 
-from conftest import (
-    PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines,
-)
-
-CASE = "board-sqli-search"
 EDGE_COUNTRY = "Russia"
-DETECT_WITHOUT_BLOCKING_SEARCH = {
-    "paranoia": 1,
-    "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
-}
 
 @pytest.fixture(scope="module")
-def drawn(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    tuned = requests.put(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/waf/",
-        json=DETECT_WITHOUT_BLOCKING_SEARCH, timeout=120,
-    )
-    assert tuned.ok, tuned.text
-    sent = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": CASE}, timeout=300,
-    )
-    assert sent.status_code == 201, sent.text
-    case_id = sent.json()["case_id"]
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
-
-    def case_seen_by_both(totals):
-        return seen_by_both_engines(session_id, totals, case_id=case_id)
-
-    score = score_when_ready(session_id, until=case_seen_by_both)
-    own = {
-        d["src_ip"] for d in credited_to(session_id, score, case_id=case_id)
-        if d["src_ip"]
-    }
-    session_map = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
-    ).json()
-    listed = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
+def drawn(tuned_session):
+    session_map = tuned_session["map"]
     return dict(
         session_map,
-        points=[p for p in session_map["points"] if own & set(p["ips"])],
+        points=[p for p in session_map["points"] if tuned_session["own"] & set(p["ips"])],
         every_point=session_map["points"],
-        listed=listed,
+        listed=tuned_session["listed"],
     )
 
 def test_the_attack_is_placed_somewhere(drawn):

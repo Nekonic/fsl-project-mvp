@@ -1,19 +1,8 @@
 import pytest
-import requests
-
-from conftest import PLATFORM_URL
-
-CASE = "board-sqli-orderby-sqlmap"
 
 @pytest.fixture(scope="module")
-def fired(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    sent = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": CASE, "origin": "hk"}, timeout=900,
-    )
+def fired(origins_session):
+    sent = origins_session["tool"]
     assert sent.status_code == 201, sent.text
     return sent.json()
 
@@ -26,15 +15,8 @@ def test_a_case_that_runs_a_tool_gets_the_tool_run(fired):
 def test_the_tool_leaves_by_the_origin_it_was_told_to(fired):
     assert fired["meta"]["origin"] == "hk"
 
-def test_an_origin_the_range_does_not_have_is_refused(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-
-    sent = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": CASE, "origin": "dmz"}, timeout=120,
-    )
+def test_an_origin_the_range_does_not_have_is_refused(origins_session):
+    sent = origins_session["refused"]
 
     assert sent.status_code == 404, (
         f"the tool was started anyway, on whatever network the adapter picked: "

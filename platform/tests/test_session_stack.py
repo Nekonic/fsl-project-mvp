@@ -120,6 +120,27 @@ def test_a_new_session_keeps_the_stacks_of_sessions_still_open():
 
 
 @pytest.mark.opens_session_stack
+def test_the_open_sessions_are_read_while_no_other_open_is_taking_stacks_down():
+    from range.docker import STACKS_CHANGING
+
+    class ReadUnderTheLock:
+        def __iter__(self):
+            assert STACKS_CHANGING.locked(), (
+                "the open sessions were read before taking the lock, so a session "
+                "opened meanwhile has a project this open does not know is live "
+                "and takes down"
+            )
+            return iter([3])
+
+    compose = Compose(projects=["fsl-3", "fsl-5"])
+    opened(compose, live=ReadUnderTheLock())
+
+    downs = [argv for argv in compose.argvs() if "down" in argv]
+    assert downs == [["docker", "compose", "-p", "fsl-5", "down", "-v"]]
+    assert not STACKS_CHANGING.locked(), "the lock was held past the teardown"
+
+
+@pytest.mark.opens_session_stack
 def test_the_platform_joins_the_new_estate_and_leaves_an_ended_one_first():
     compose = Compose(
         projects=["fsl-3"],

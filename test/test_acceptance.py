@@ -1,15 +1,12 @@
 import requests
 
-from conftest import PLATFORM_URL, score_when_ready, target_code
+from conftest import PLATFORM_URL, target_code
 from range import SCORER, run
 
-NOISY_RULE = (
-    '\nalert http any any -> any any (msg:"FSL deliberate false positive"; '
-    'http.uri; content:"release"; nocase; sid:9009999; rev:1;)\n'
-)
-
-def test_criterion_1_services_answer():
-    assert requests.get(f"{PLATFORM_URL}/api/rules/", timeout=5).ok
+def test_criterion_1_services_answer(standing_stack):
+    assert requests.get(
+        f"{PLATFORM_URL}/api/rules/", params={"session": standing_stack}, timeout=5
+    ).ok
     assert 0 < target_code() < 500
     assert run(SCORER, [
         "python", "-c",
@@ -74,47 +71,18 @@ def test_detections_are_spread_across_cases(session_id, score):
         f"Score: {score}"
     )
 
-def test_criterion_4_adding_a_rule_moves_the_score():
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    original = requests.get(
-        f"{PLATFORM_URL}/api/rules/", params={"session": session_id}
-    ).json()["content"]
+def test_criterion_4_adding_a_rule_moves_the_score(rules_session):
+    assert rules_session["noisy"].ok, rules_session["noisy"].text
 
-    applied = requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": original + NOISY_RULE, "session": session_id},
-        timeout=120,
-    )
-    assert applied.ok, applied.text
-
-    fired = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": "board-normal-search"}, timeout=300,
-    )
-    assert fired.status_code == 201, fired.text
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
-
-    after = score_when_ready(session_id, until=lambda s: s["fp"] > 0)
+    after = rules_session["after"]
     assert after["fp"] > 0, (
         f"a rule hitting 'release' was added but no false positive was "
         f"scored. Score: {after}"
     )
 
-def test_invalid_rule_is_rejected_and_not_applied():
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
-    rules = f"{PLATFORM_URL}/api/rules/?session={session_id}"
-    before = requests.get(rules).json()["content"]
-
-    response = requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": "this is not a rule", "session": session_id},
-        timeout=120,
-    )
-
-    assert response.status_code == 400
-    assert requests.get(rules).json()["content"] == before
+def test_invalid_rule_is_rejected_and_not_applied(rules_session):
+    assert rules_session["invalid"].status_code == 400
+    assert rules_session["rules_after_invalid"] == rules_session["rules_before_invalid"]
 
 def test_the_score_accounts_for_every_alert_it_ingested(session_id, score):
     rows = requests.get(

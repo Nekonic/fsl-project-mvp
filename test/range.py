@@ -114,8 +114,8 @@ class Docker:
         code, stderr = finished
         return Ran(exit_code=code, stdout=done.stdout, stderr=stderr)
 
-    def segments(self, role: str, timeout: float = 60.0) -> frozenset[str]:
-        node = self._node(role, None, timeout)
+    def segments(self, role: str, timeout: float = 60.0, session: int | None = None) -> frozenset[str]:
+        node = self._node(role, session, timeout)
         done = self._dispatch(
             ["docker", "inspect", node, "--format",
              "{{json .NetworkSettings.Networks}}"],
@@ -175,6 +175,8 @@ class Docker:
         host = self._host(role)
         if not host.unit:
             return host.node
+        if session is None:
+            session = _default_session()
         done = self._dispatch(
             ["docker", "ps", "--filter", f"label=com.docker.compose.service={host.unit}",
              "--format", '{{.Names}} {{.Label "com.docker.compose.project"}}'],
@@ -260,7 +262,7 @@ class ThroughPlatform:
         return [f"{role} ({self.roles.get(role, 'no host')})" for role in roles
                 if self.roles.get(role) not in self.hosts]
 
-    def segments(self, role: str, timeout: float = 60.0) -> frozenset[str]:
+    def segments(self, role: str, timeout: float = 60.0, session: int | None = None) -> frozenset[str]:
         raise RangeUnavailable(
             f"the harness reads segments from compose containers; on the "
             f"OpenStack range {role!r} is a Nova server"
@@ -276,6 +278,11 @@ class ThroughPlatform:
         return "bin/cloud up, then wait for GET /api/range/ready/ to say ready"
 
 RANGE: Docker | ThroughPlatform = Docker()
+_default_session: Callable[[], int | None] = lambda: None
+
+def default_to(session: Callable[[], int | None]) -> None:
+    global _default_session
+    _default_session = session
 
 def use(substrate: str) -> None:
     global RANGE
@@ -290,8 +297,8 @@ def missing(*roles: str) -> list[str]:
 def run(role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
     return RANGE.run(role, argv, timeout=timeout, session=session)
 
-def segments(role: str, timeout: float = 60.0) -> frozenset[str]:
-    return RANGE.segments(role, timeout=timeout)
+def segments(role: str, timeout: float = 60.0, session: int | None = None) -> frozenset[str]:
+    return RANGE.segments(role, timeout=timeout, session=session)
 
 def recreate(role: str, timeout: float = 300.0) -> None:
     RANGE.recreate(role, timeout=timeout)

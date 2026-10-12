@@ -1,19 +1,10 @@
 import ipaddress
 
 import pytest
-import requests
-
-from conftest import (
-    PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines,
-)
-
-CASE = "board-sqli-search"
 
 @pytest.fixture(scope="module")
-def origins(stack_is_up):
-    listed = requests.get(f"{PLATFORM_URL}/api/origins/", timeout=120)
-    assert listed.status_code == 200, listed.text
-    return listed.json()["origins"]
+def origins(origins_session):
+    return origins_session["origins"]
 
 @pytest.fixture(scope="module")
 def elsewhere(origins):
@@ -39,41 +30,8 @@ def test_exactly_one_origin_is_the_front_door(origins):
     assert [o["id"] for o in origins if o["default"]].__len__() == 1
 
 @pytest.fixture(scope="module")
-def two_places(elsewhere, stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-
-    case_ids = {}
-    for place, origin in (("front", ""), ("elsewhere", elsewhere["id"])):
-        sent = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-            json={"case": CASE, "origin": origin}, timeout=300,
-        )
-        assert sent.status_code == 201, sent.text
-        case_ids[place] = sent.json()["case_id"]
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=60)
-
-    def both_seen_by_both(totals):
-        return all(
-            seen_by_both_engines(session_id, totals, case_id=case_id)
-            for case_id in case_ids.values()
-        )
-
-    score = score_when_ready(session_id, until=both_seen_by_both)
-    return {
-        "session_id": session_id,
-        "sources": {
-            place: {
-                d["src_ip"] for d in credited_to(session_id, score, case_id=case_id)
-                if d["src_ip"]
-            }
-            for place, case_id in case_ids.items()
-        },
-        "map": requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
-        ).json(),
-    }
+def two_places(origins_session, elsewhere):
+    return origins_session
 
 def test_an_attack_sent_from_elsewhere_arrives_from_elsewhere(two_places, elsewhere):
     subnet = ipaddress.ip_network(elsewhere["subnet"])
@@ -106,17 +64,9 @@ def test_the_map_draws_more_than_one_place(two_places):
         f"origin never reached the target or its range geolocates to nothing"
     )
 
-def test_rotation_does_not_stay_in_one_place(stack_is_up, origins):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-
+def test_rotation_does_not_stay_in_one_place(origins_session, origins):
     sent = []
-    for _ in range(len(origins)):
-        response = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-            json={"case": CASE, "origin": "rotate"}, timeout=300,
-        )
+    for response in origins_session["rotated"]:
         assert response.status_code == 201, response.text
         sent.append(response.json()["meta"]["origin"])
 
