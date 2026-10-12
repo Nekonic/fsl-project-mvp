@@ -315,6 +315,13 @@ def test_the_waf_blocks_rather_than_only_logging():
         "DetectionOnly lets every variant through and the lesson cannot be passed"
     )
 
+def test_the_openstack_waf_vm_blocks_as_the_container_does():
+    shipped = (COMPOSE.parent / "deploy/waf/modsecurity.conf").read_text()
+
+    assert "SecRuleEngine On" in shipped.splitlines(), (
+        "the VM ran DetectionOnly, so the lesson's attacks went through on OpenStack"
+    )
+
 def test_no_sensor_reads_its_live_rules_from_a_directory_every_session_shares():
     mounted = composed.services()["suricata"].get("volumes") or []
 

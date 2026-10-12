@@ -122,7 +122,8 @@ def test_the_board_lesson_gives_the_exact_command_for_every_terminal_step():
     commands = {step["id"]: step.get("command", "") for step in wargames.lesson("board")["steps"]}
 
     assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in commands["exclude"]
-    assert commands["exclude"].splitlines()[-1].startswith("if nginx -t; then nginx -s reload; else cp "), (
+    assert commands["exclude"].splitlines()[-1].startswith(
+        "if nginx -t 2>&1 && nginx -s reload 2>&1; then echo reloaded; else cp "), (
         "the reload runs only on a file nginx accepted, and a refused file is put back"
     )
     assert commands["search"] == "", "a step in the site or in Kibana is done there, not typed"

@@ -104,3 +104,6 @@ openstack:
     fsl-waf:
       segments: [estate, mgmt]
       names: [board.com]
+      rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+      reload: sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1
+      pid: /run/nginx.pid

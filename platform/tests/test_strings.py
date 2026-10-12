@@ -189,3 +189,12 @@ def test_the_console_templates_write_no_confusion_matrix_label_either():
     ]
 
     assert offenders == [], offenders
+
+def test_the_do_it_yourself_waf_text_names_no_reload_that_only_one_substrate_accepts():
+    table = tables()
+    for language in ("en", "ko"):
+        text = table[language]["lesson.board.write"]
+        assert "nginx -s reload" not in text and "systemctl" not in text, (
+            f"{language}: the container reloads with nginx -s reload and the WAF VM with "
+            f"sudo systemctl reload nginx; the text must point at the step's own reload: {text}"
+        )
