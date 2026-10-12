@@ -97,6 +97,8 @@ alert that does not mention the attack's mechanism is reported
   Suricata on the OPNsense edge (OpenStack), and the sensor host in
   `declaration.yaml` names the rule file and reload command `rules/suricata.py`
   is handed;
+  `range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and
+  starts the estate sensor on the wargame host when a slot is configured or reset;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF
   (on OpenStack the WAF pane is `vm-terminal.sh fsl-waf`) and the lesson step

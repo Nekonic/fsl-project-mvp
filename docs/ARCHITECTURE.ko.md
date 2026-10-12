@@ -249,7 +249,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 그 명령의 파일 경로와 reload는 `wargames.lesson`이 선언(`settings.FSL_WAF`)에서 채운다. 플랫폼은 어느 것도 읽지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
-| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `deploy/wargame-host/sensor.yaml`은 플랫폼이 wargame처럼 띄우는 compose 서비스로 estate 센서를 돌린다 |
+| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 wargame 호스트의 estate 센서 compose 서비스를 멈추고 다시 띄우며(OpenStack), 그 뒤 기준 규칙은 `suricata.py`를 거친다 |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음; OpenStack에서도 같은 컨테이너에 닿는다. `loot.py`는 wargame 호스트의 publish된 포트로 HTTP, `effect.py`는 `corp-db`로 `docker exec`하는 runner를 거친다 |
 
@@ -879,14 +879,14 @@ VM(Kali, WAF)만 재구축하고 엣지와 wargame 호스트는 제자리에서 
 (`docs/OPENSTACK.md` §6.1), 한 세션이 다음 세션에 수정된 규칙이나 심어 둔 데이터를
 남기지 않는다. 재구축은 디스크를 지우므로 VM이 ACTIVE가 된 뒤 configure를 해야 한다.
 wargame 호스트의 제자리 초기화(`clear_wargames()`)는 wargame마다, 그리고 estate 센서에
-`docker compose down -v`를 실행하고, 센서의 eve 로그와 rsyslog의 imfile 상태를 지우고
-기준선 규칙을 되돌려 써서, 이미지만 남고 컨테이너나 볼륨은 없게 한다. configure의 마지막 단계 `start_wargames()`가 `wargames` 역할로
+`docker compose down -v`를 실행하고, 센서의 eve 로그와 rsyslog의 imfile 상태를 지워서, 이미지만 남고 컨테이너나 볼륨은 없게 한다. configure의 마지막 단계 `start_wargames()`가 `wargames` 역할로
 wargame마다 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait
 --pull never`를 실행하므로, 세션마다 새로 시드된 대상에서 시작한다. 그다음 estate
 센서를 띄운다: docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`을
 `deploy/wargame-host/sensor.yaml`로 host 네트워킹으로 띄우고, 호스트의 estate 주소를 가진
 인터페이스를 본다. 그래서 docker의 센서 하나가 WAF 네임스페이스에서 보는 WAF→대상 구간을
-본다. 역할 `estate-sensor`는 compose 서비스 `suricata`에 매핑되어 runner가 그 안에서
+본다. 센서가 응답하면 `start_sensor()`가 호스트 항목이 정한 규칙 파일과 reload로
+`rules/suricata.py`를 거쳐 기준선 규칙을 시드한다. 역할 `estate-sensor`는 compose 서비스 `suricata`에 매핑되어 runner가 그 안에서
 실행하고, 호스트 항목이 규칙 파일과 reload 명령을 정하며(`settings.FSL_EXTRA_SENSORS`),
 규칙 시드·검증·변경·기준선 검사는 두 센서 모두에 간다. 호스트의 `logs:` 항목에 따라
 rsyslog가 `eve.json`을 `suricata` 태그로 수집기에 보내고(`range/waf.py`의 태그별 전달),

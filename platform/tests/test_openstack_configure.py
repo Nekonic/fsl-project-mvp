@@ -44,6 +44,8 @@ class Edge:
     def __call__(self, role, segment_id=""):
         def run(argv, stdin=None, timeout=60.0):
             self.calls.append((role, argv, stdin))
+            if role != "edge" and "reload-rules" in " ".join(argv):
+                return Ran(self.exit_code, '{"message": "done", "return": "OK"}')
             if role != "edge":
                 return Ran(self.exit_code, "")
             if argv == opnsense.command():
@@ -174,6 +176,34 @@ def test_the_wargame_host_starts_its_sensor_on_the_interface_holding_its_estate_
     assert started.index(wargame_host.sensor_up("10.30.0.63")) > started.index(
         wargame_host.up("corp")), "the sensor starts once the wargames it watches answer"
     assert "show to 10.30.0.63" in wargame_host.sensor_up("10.30.0.63")[2]
+
+def test_the_wargame_host_sensor_is_handed_the_baseline_rules_through_its_declared_file_and_reload():
+    edge = ResetsInPlace()
+
+    _adapter(edge).reset_in_place()
+
+    host = OS.hosts["fsl-wargame-host"]
+    sensed = [(argv, stdin) for role, argv, stdin in edge.calls if role == "estate-sensor"]
+    written = [stdin for argv, stdin in sensed if argv[:2] == ["sh", "-c"] and f"> {host.rules}" in argv[2]]
+    assert written == [(ROOT / wargame_host.BASELINE_RULES).read_text()], (
+        "the session may change the sensor's rules, so the reset writes the baseline back"
+    )
+    assert [argv for argv, _ in sensed][-1] == host.reload.split()
+    started = [argv for role, argv, _ in edge.calls if role in ("wargames", "estate-sensor")]
+    assert started.index(wargame_host.sensor_up("10.30.0.63")) < started.index(host.reload.split())
+
+def test_a_wargame_host_sensor_that_does_not_reload_its_baseline_is_drift():
+    class Refusing(Edge):
+        def __call__(self, role, segment_id=""):
+            inner = super().__call__(role, segment_id)
+            def run(argv, stdin=None, timeout=60.0):
+                if role == "estate-sensor" and "reload-rules" in " ".join(argv):
+                    return Ran(1, "Unable to connect to socket")
+                return inner(argv, stdin, timeout)
+            return run
+
+    with pytest.raises(Drifted, match="baseline rules"):
+        _adapter(Refusing()).configure_slot()
 
 def test_the_wargame_host_forwards_its_sensor_eve_log_to_the_collector_tagged_suricata():
     from range import waf
@@ -416,7 +446,7 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
     on_the_host = [(argv, stdin) for role, argv, stdin in edge.calls if role == "wargames"]
     cleared = wargame_host.cleared(OS.hosts["fsl-wargame-host"].wargames,
                                    ("/var/log/suricata/eve.json",), True)
-    assert on_the_host[0] == (cleared, (ROOT / wargame_host.BASELINE_RULES).read_text())
+    assert on_the_host[0] == (cleared, None)
     assert [argv for argv, _ in on_the_host[1:3]] == [
         wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
     ]
