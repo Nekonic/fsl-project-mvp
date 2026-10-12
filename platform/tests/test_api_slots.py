@@ -96,7 +96,7 @@ def cloud():
             patch("api.views._aim_attacker", lambda adapter: None), \
             patch("api.views.loot.ground_truth", lambda wargame, host: {"admin": host}), \
             patch.dict(reset._states, clear=True), \
-            patch("api.views.reset.begin", lambda adapter, turn, rebuilt: held.reset.append(("begun", adapter.slot))):
+            patch("api.views.reset.begin", lambda adapter, turn, rebuilt, **_: held.reset.append(("begun", adapter.slot))):
         yield held
 
 
@@ -147,6 +147,59 @@ def test_closing_a_session_resets_its_own_slot_only_and_lifts_only_its_suppressi
         "the other slot's sensor still runs without that rule; marking it restored would "
         "leave its session with a hole the platform no longer reports"
     )
+
+
+def test_an_open_while_a_close_is_between_ended_at_and_its_reset_does_not_take_that_slot(client, cloud):
+    opened(client)
+    second = opened(client)
+    raced = []
+
+    def open_in_the_gap(pk):
+        raced.append(client.post_json("/api/sessions/", {}))
+
+    with patch("api.views.site.forget", open_in_the_gap):
+        client.post_json(f"/api/sessions/{second.pk}/close/")
+
+    assert raced[0].status_code == 409 and "resetting" in raced[0].json()["detail"], (
+        "the close frees the slot and then rebuilds it; an open in between took the slot "
+        "and had its Kali, WAF and wargame host reset under it"
+    )
+    assert Session.objects.filter(ended_at=None).count() == 1
+
+
+def test_a_close_lifts_only_suppressions_made_before_it(client, cloud):
+    opened(client)
+    second = opened(client)
+    later = []
+
+    def reset_then_a_new_session_suppresses():
+        newer = Session.objects.create(scenario="board", baseline=[], slot=second.slot)
+        later.append(Suppression.objects.create(
+            session=newer, sid=3, original="", expires_at="2099-01-01T00:00:00Z"))
+        return [("fsl-waf", "s2")]
+
+    with patch.object(Slot, "reset_slot", lambda self: reset_then_a_new_session_suppresses()):
+        client.post_json(f"/api/sessions/{second.pk}/close/")
+
+    later[0].refresh_from_db()
+    assert later[0].restored_at is None, (
+        "that rule was commented out after the rebuild, on the sensor the next session uses"
+    )
+
+
+def test_a_failed_reset_on_close_frees_the_slot_s_reset_state(client, cloud):
+    from range.ports import Drifted
+
+    opened(client)
+    second = opened(client)
+
+    def drifted(self):
+        raise Drifted("fsl-waf is not standing")
+
+    with patch.object(Slot, "reset_slot", drifted):
+        client.post_json(f"/api/sessions/{second.pk}/close/")
+
+    assert reset.standing(second.slot)["state"] == reset.IDLE
 
 
 def test_readiness_lists_every_slot_and_who_holds_it(client, cloud):
