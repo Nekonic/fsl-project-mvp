@@ -2530,3 +2530,66 @@ the rule and target steps were passed.
 Tests whose assertions changed: the Hints tab's solution test reaches the
 exclusion step before reading the command, and asserts it absent before;
 the flavor test marks every step reached before comparing commands.
+
+### 2026-10-13 — The course run live on OpenStack; what the run broke
+
+Branch deployed to the platform VM (192.168.0.210, two slots) over the `dev`
+clone with rsync and a local `docker compose build platform` under the GHCR
+tag; migrations 0020-0023 applied to the kept store (backup in
+`/opt/fsl/backups/db-20261012T1816*-pre-course`). Every lesson was walked over
+the REST API on a slot, then the full `bin/verify` ran with two workers.
+
+| Lesson | Steps passed | VERIFY | Took |
+|---|---|---|---|
+| console-tour | 4/4 (2/4 before the site fix) | none | 29 s |
+| read-the-block | 5/5 | none | 49 s |
+| waf-exclusion | 8/8 with the site; 7/8 before | PASS, `path_target`; held at PL4, leaked 3 of 3 under {PL4, 949110, 959100} | 355 s |
+| choose-the-level | 5/5 | PASS at PL2 (FAIL before the tamper fix) | 195 s |
+| ids-signature | 6/6 | PASS, 2/2 detected, sort quiet | 179 s |
+| ids-body-xss | 5/5 | PASS, 1/1 detected, comment quiet | 64 s |
+| assessment (self) | none | PASS at PL2, `level`; FAIL at PL4 with 920273, 920272 and 942460 excluded on `ARGS:q` (the Korean search still 403) | 114 s |
+
+The sqlmap cases send requests on the OpenStack Kali (1,973 403s for the
+stock variant, no `--disable-hashing` error). Closing an `ids` session restored
+slot 1's edge rules to `local.rules` (sids 9000001-9000004, 9000101 gone;
+`rules_baseline` true), and `GET /waf/` on a closed session returned the
+learner's last configuration.
+
+Fixed, each measured first:
+
+- `redteam/run.py` launched every case from slot 1's Kali whatever slot the
+  session took; a slot-2 run hit slot 1's Kali mid-rebuild (ssh refused) and
+  19 acceptance tests errored on the shared fixture. It now asks
+  `in_slot(session.slot)`.
+- The Website pane was docker only (`SITE_PORT` None), so the browse steps of
+  four lessons could not pass on OpenStack. The proxy now reaches the slot's
+  WAF over `mgmt` (the platform's port already reaches it through
+  `fsl-mgmt`); the platform template opens 8002, and the live group got the
+  rule by hand.
+- From PL2, CRS 950100 and 959100 refuse a board 500 after its headers are
+  sent and nginx drops the connection; when the tamper variant's heuristic
+  probe drew one, sqlmap ended "unable to connect" after one request (4 of 10
+  runs at PL2) and VERIFY read it inconclusive. The variant now passes
+  `--skip-heuristics` (6 of 6 held at PL2; still dumps under the control).
+- One red team run now leaves more than 5000 records (13,403), and the single
+  capped read scored every case fired after sqlmap FN. A full ingest pages by
+  `@timestamp` in `api/views.py`; `ingest/elastic.py` and `core_loc` are
+  unchanged.
+- The debrief after a live PASS listed no evidence (nothing had ingested the
+  VERIFY run); the console ingests the run's window first. Its long request
+  paths now wrap (the score page was 1,773 px wide at 1,440).
+- console-tour and read-the-block showed a FAIL start card judged by VERIFY's
+  rules, calling a curl SQLi the WAF answered 403 inconclusive; only a lesson
+  with a VERIFY shows one.
+
+Full `bin/verify` on OpenStack after the fixes: unit 2003 passed; acceptance
+77 passed, 0 failed, 0 errors, 71 skipped (`COMPOSE_RANGE_ONLY`) in 1,448 s;
+27 min in all; ratchet clean. The first run, before the fixes: acceptance 58
+passed, 19 errors; the second: 73 passed, 1 failed, 3 errors (the
+`test_corp_*` rogue-admin fixture found no `_wpnonce` once and passed on a
+rerun; not explained).
+
+Open, not decided here: the assessment's goal says "at the WAF's strictest
+level", yet PL2 passes it (D1 keeps lowering the level a passing fix, named
+`level`), and a parameter-scoped exclusion at PL4 did not serve the Korean
+search (hypothesis, not checked: 920272 also matches it in `REQUEST_URI`).
