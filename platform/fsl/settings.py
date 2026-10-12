@@ -113,9 +113,11 @@ def _sensing(role):
 
 FSL_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if role != "sensor")
 
-WAF_HOST = RANGE.hosts.get(RANGE.roles.get("gateway", "")) or declared.Host()
-FSL_WAF = crs.Layout(WAF_HOST.rules or crs.EXCLUSIONS, WAF_HOST.reload or crs.NGINX_RELOAD,
-                     WAF_HOST.pid or crs.NGINX_PID)
+def waf_layout(shape):
+    host = shape.hosts.get(shape.roles.get("gateway", "")) or declared.Host()
+    return crs.Layout(host.rules or crs.EXCLUSIONS, host.reload or crs.NGINX_RELOAD, host.pid or crs.NGINX_PID)
+
+FSL_WAF = waf_layout(RANGE)
 FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
 
 FSL_SUBSTRATE_OPTIONS = dict(
