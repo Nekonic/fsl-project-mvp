@@ -43,7 +43,7 @@ publish된 wargame 호스트의 관리망 주소로 board를 읽는다. `loot.gr
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
 콘솔의 시나리오 카드에 쓰는 `category`, `difficulty`(easy, medium, hard), `minutes`, 그리고
-`defense`와 `lesson`이며 뒤의 "WAF 레슨"에 설명한다). `image`는 아직 아무 코드도 읽지
+`defense`와 `lessons`이며 뒤의 "WAF 레슨"에 설명한다). `image`는 아직 아무 코드도 읽지
 않는다. 앱 이미지는 CI(`.github/workflows/images.yml`)가 빌드하고
 `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`로 pull하거나, 로컬에서 그 이름으로
 빌드한다. 세션은 그 이미지로 `--no-build` 기동한다. 플랫폼은 자기 `FSL_IMAGE_TAG`를
@@ -416,13 +416,21 @@ bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLit
 
 ## WAF 레슨
 
-세션은 두 설정으로 연다: `POST /api/sessions/` `{scenario, guidance, defense}`,
-세션에 저장된다(마이그레이션 0015). `defense`는 시나리오의 `defense` 항목 중 하나를
-고르고(기본값 `full`), `guidance`(기본값 꺼짐)는 시나리오에 `lesson`이 있어야 한다.
-board는 `minimal`(CRS paranoia level 4, `local.rules`)과 `full`(paranoia level 1, 같은
-`local.rules`)을 선언한다. lesson은 시작할 defense를 선언하고(`lesson.defense`, board는
-`minimal`, 발견 시 시나리오의 `defense`와 대조), defense를 밝히지 않은 guidance 세션은 그것을 쓰며,
-`GET /api/wargames/`가 "레슨으로 시작"에 쓰도록 `lesson_defense`로 알려 준다. 모든 기반에서 스택이
+세션은 `POST /api/sessions/` `{scenario, guidance, lesson, mode, defense}`로 열고, 세션에
+저장된다(마이그레이션 0015, 0022, 0023). `defense`는 시나리오의 `defense` 항목 중 하나를
+고르고(기본값 `full`), `guidance`(기본값 꺼짐, `lesson`을 주면 켜짐)는 시나리오에 `lessons`가 있어야
+한다. 시나리오는 `scenario.yaml`에 `lessons:` 목록을 선언하고, 레슨마다 `id`, `order`와 선택적으로
+`level`(easy, medium, hard), `minutes`, `prerequisites`(같은 시나리오의 다른 레슨 id)를 두며 발견 시
+검증한다. 아직 단일 `lesson:`을 쓰는 descriptor는 거부한다. board에는 `waf-exclusion` 하나가 있다.
+`lesson`(기본값은 `order`가 가장 앞선 레슨)은 `Session.lesson`에 남고 `lesson_id`로 보고된다. `mode`는
+`guided`(기본값) 또는 `self`(`Session.mode`)이고, 워게임에서는 거부되며, 열린 레슨에서
+`PATCH /api/sessions/<id>/ {mode}`로 바꾼다. board는 `minimal`(CRS paranoia level 4, `local.rules`)과
+`full`(paranoia level 1, 같은 `local.rules`)을 선언한다. 레슨은 시작할 defense를 선언하고(`defense`,
+board 레슨은 `minimal`, 발견 시 시나리오의 `defense`와 대조), defense를 밝히지 않은 guidance 세션은
+그것을 쓴다. `GET /api/wargames/`는 시나리오마다 `lessons`를 `id`, `order`, `title`·`goal` 문자열 키,
+`minutes`, `level`, `defense`, `prerequisites`, 단계 수와 함께 나열하고, 첫 레슨의 `lesson_defense`,
+`lesson_text`, `lesson_steps`도 그대로 둔다. `GET /api/sessions/?ids=1,2`는 세션 목록을 주어진 id로
+좁힌다. 모든 기반에서 스택이
 뜬 뒤 여는 경로가 센서에 그 defense의 규칙 파일을, defense가 없으면 `local.rules`를
 넣고(`suricata.seed`), defense가 있을 때 CRS 튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
 lesson의 케이스를 한 번 재생하므로(`meta.seed`), 학습자가 들어왔을 때 ModSecurity와
@@ -452,8 +460,8 @@ Level과 모든 `ctl:ruleRemove*` 줄을 파싱하므로(주석 줄은 건너뛰
 못했으면 `file: null`). 읽을 수 없는 WAF는 스냅샷을 남기지 않고 검증도 닫기도 막지 않는다. 학습자는 API가
 아니라 WAF 터미널에서 튜닝한다.
 
-`POST /api/sessions/<id>/verify/`는 시나리오의 `lesson.cases`를 `/attacks/`와 같은
-경로로 재생하고 `meta.verify=<run>`을 붙이며, 그 실행만 판정한다. sqlmap 케이스는
+`POST /api/sessions/<id>/verify/`는 세션 레슨의 `cases`를 `/attacks/`와 같은
+경로로 재생하고 `meta.verify=<run>`과 `meta.mode`(실행할 때의 모드)를 붙이며, 그 실행만 판정한다. sqlmap 케이스는
 sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `(username, hash)`와
 맞으면(`loot.matched`) 유출이다. 유출은 진단에 보고되고 목표로 인정되지 않는다(판정 D7,
 2026-10-13): 학습자 자신의 확인은 잃은 목표가 아니다. 레드가 `/loot/`로 제출한 탈취물은 그대로
@@ -472,10 +480,17 @@ pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는�
 정상 케이스는 curl이 2xx `http_code`를 보고하면 응답받은 것이다. 통과는 모든 공격이
 막히고 모든 정상 케이스가 응답받아야 한다(`platform/lesson.py`). 응답의 `diagnosis`
 키는 콘솔이 `strings.html`로 표시하며, TP/FP 라벨은 보여주지 않는다. 응답에는 실행 전에 남긴
-스냅샷 `waf`도 있다. `views.REPLAY_MARKS`(`seed`, `verify`, 단계 확인의 `check`, 검증 탭 재실행의
+스냅샷 `waf`, `mode`, 그리고 그 스냅샷에서 읽은 학습자 조치의 종류 `fix`도 있다(`lesson.fix_class`,
+판정 D1): Paranoia Level이 레슨 posture보다 낮으면 `level`(레벨이 없는 파일은 CRS 기본값 1로 본다),
+아니면 posture에 없는 예외가 규칙 전체를 빼면 `rule`, 경로 없이 또는 레슨 `waf` 단계의 경로보다 넓은
+경로에서 대상을 빼면 `target`, 더한 예외가 모두 그 경로 안의 대상이면 `path_target`, 더한 것이 없으면
+null이다. 판정 옆에 알려 줄 뿐 판정을 바꾸지 않는다. `views.REPLAY_MARKS`(`seed`, `verify`, 단계 확인의 `check`, 검증 탭 재실행의
 `replay`) 중 하나가 붙은 케이스는 `/score/`(TP/FP/FN/TN, 그것이 일으킨 경보, 게임)와, corp의 효과
 관찰이 변화를 귀속시키는 창에서 빠진다. 검증 탭의 재실행은 `POST /attacks/ {case, lesson: true}`로,
-guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처럼 판정해 `diagnosis`를 답한다. board의 lesson은
+guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처럼 판정해 `diagnosis`와 `replay` 행을
+답한다: 결과, sqlmap의 결론 줄(`tools.conclusions`: 주입 가능·불가 판정과 치명적 중단, 시각 제외, 최대
+넷), 선언된 명령, "판정에 쓰지 않음"이라고 적은 403 횟수, 그 케이스의 marker로 좁힌 Kibana `discover`
+링크(`kibana.marked`). board의 lesson은
 `board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
 재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
 `board-normal-sort`(`?sort=-created_at`)가 있다.
@@ -488,7 +503,10 @@ guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처�
 - 메인(`/`): 진행 중인 세션과 그 종류(`lesson`/`wargame`), 레슨이 도달한 단계, 열기가 끝났는지
   (`ready`, `Session.ready_at`에서. 그 전까지 "준비 중 n초 / 약 80초"). 시나리오 카드는
   `scenario.yaml`의 category, difficulty, minutes와 `GET /api/wargames/`의 공격 케이스·정상
-  케이스·목표·레슨 단계 수를 보여 준다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
+  케이스·목표 수를 보여 주고, 카드 아래 레슨마다 목표, 난이도, 시간, 선수 레슨과 시작 버튼 셋을 둔다:
+  레슨(안내), 연습(`mode: self`), 워게임(안내 없이 full defense). 레슨마다 이 브라우저가 연 세션
+  (localStorage의 `fsl-opened-sessions`, 세션·블루 화면이 쓰고 최신순 최대 20개, `?ids=`로 읽음) 가운데
+  가장 새 실행을 단계 종류와 PASS/FAIL, 진행 중, 검증 없이 닫음으로 보여 준다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
   아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다
   (`Session.result_cache`, migration 0018; 입력은 `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가
   있는 행 수, 케이스와 목표의 마지막 id·행 수). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이
@@ -496,7 +514,8 @@ guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처�
   "열린 세션 닫기"가 열린 세션을 나열해 각각 `ingest/` 뒤 `close/`로 닫는다.
   `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
 - 세션(`/session/<id>/`): 머리글 수치(레슨 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔 카드,
-  `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 레슨 판정과 마지막 진단, 그다음 주 점수
+  `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 레슨 판정과 마지막 진단, 조치의 종류,
+  통과했으면 결과 보고(아래), 그다음 주 점수
   (모든 목표의 빼앗김 여부, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음 방어 판단을 평범한 문장으로
   보여 준다: "공격 8건 중 7건을 잡았습니다 · 1건을 놓쳤습니다 (이름)", "정상 요청 4건 중 3건은 통과 ·
   1건을 잘못 막았습니다 (O'Brien 검색)", 그리고 케이스 하나는 경보가 많아도 한 번으로 센다는 것.
@@ -512,14 +531,24 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고(사이
 목록), 목표(요약, 완료 조건, 네 문단), 이론, 힌트, 검증. 목표 한 줄(`<lesson.text>.summary`)은 머리글
 아래, 탭 위에 고정된다. 학습자가 펼치거나 단계가 노트 안 컨트롤을
 가리킬 때만 펼쳐지고(그런 단계를 벗어나면 다시 접힘), 펼쳐져 있는 동안 탭은 단계를 따라간다(재생·검증은
-검증 탭, 나머지는 단계 탭). 페이지를 열 때마다 접힌 채로 시작하며, 탭만 보는 사람마다 localStorage
+검증 탭, 나머지는 단계 탭). 이 브라우저가 세션의 블루 콘솔을 처음 열 때(`fsl-lesson-landed-<id>`)는
+노트가 목표 탭으로 펼쳐지고, 그 뒤로는 열 때마다 접힌 채로 시작하며, 탭만 보는 사람마다 localStorage
 (`fsl-lesson-note`)에, 보고 있는 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로
 "단계 n/N"을 보여 준다. 진행 자체는 세션의 것이다(`Session.lesson_steps`, 마이그레이션 0020): 단계마다
 `reached`, `passed`, `skipped`(시각), `hint`(보인 단계, 0-4), `done_for_me`를 남기고
 `GET /api/sessions/<id>/`의 `progress`로 알려 준다. `POST /api/sessions/<id>/lesson/steps/<step>/
 {state: reached|skipped}`는 단계에 도달했음(alert 확인이 넘어야 할 가장 새 탐지 id도 정함) 또는
 통과하지 않고 떠났음을 남긴다. 콘솔은 통과하지 않은 단계에서 다음이나 목록으로 옮길 때 `skipped`를
-보내고, 이전이나 통과로 옮길 때는 보내지 않는다.
+보내고, 이전이나 통과로 옮길 때는 보내지 않는다. 단계 목록은 `progress`가 통과라고 할 때만 ✓를 붙이고,
+통과하지 않고 떠난 단계는 빈 원과 "건너뜀"으로 표시하며, 위에 "N단계 중 n단계 통과"를 보인다. 이론 카드가
+`shows`로 가리키는 단계에는 popover에 그 카드를 여는 "왜?" 링크가 있다.
+
+목표 탭은 고객 문의로 시작한다(`<lesson.text>.ticket`). 둘째 줄은 `GET /waf/`에서 읽은 것(Paranoia
+Level과 예외 수)만 말한다. 그다음 요약, 그다음 출발점 판정이다: `GET /api/sessions/<id>/`의 `start`가
+seed 재생을 검증과 같은 규칙으로 판정한다(board에서는 PL4가 O'Brien 검색에서 실패하고, 그것이 유일한
+빨간 줄이다). 목표 탭에는 안내 레슨과 연습 사이의 전환도 있다. 연습(`mode: self`)에서는 응답에 단계 명령이
+없고, 힌트와 "대신 해 주기"는 409로 답하며, 콘솔은 단계·힌트 탭, 안내, "위치 보기"를 숨긴다. 목표, 이론,
+검증 탭은 남고 학습자가 모든 명령을 직접 입력한다.
 
 이론 탭에는 접힌 카드 다섯 장이 있다(`scenario.yaml`의 `lesson.theory`, 문구는
 `<lesson.text>.theory.<card>.title|body`): Paranoia Level, Anomaly Scoring(403에 949110과
@@ -527,15 +556,27 @@ guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고(사이
 `ctl:ruleRemoveTargetById` 한 줄 읽기. 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를
 그 단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(왜 920273인지, 왜 ARGS:q만인지, 왜 900번
 파일인지, `scenario.yaml`의 `lesson.hints`, 문구는 `<lesson.text>.hint.*`). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로 있고 복사 버튼이
-있다. 검증 탭은 케이스 하나를 다시 실행하고 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나
-통과한 케이스는 초록 ✓로, 실패한 진단은 빨간 ✗로 따로 보여 준다. 노트에는 튜닝 입력란이 없다.
+있다. 검증 탭은 케이스 하나를 다시 실행해 실행마다 `replay` 행(최근 다섯)을 Kibana 링크와 함께
+보여 주고, 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나 통과한 케이스는 초록 ✓로, 실패한 진단은
+빨간 ✗로, 조치의 종류는 그 아래 회색으로 보여 준다. PASS 뒤에는 검증 탭에 결과 보고가 나온다. 노트에는
+튜닝 입력란이 없다.
+
+결과 보고는 `GET /api/sessions/<id>/lesson/debrief/`(열렸든 닫혔든 레슨 세션)이고, Igloo/ASEC 보고서
+순서를 따른다: `overview`(마지막 검증의 판정, 실행 횟수, 모드와 조치 종류, 전체 중 통과한 단계, 힌트를
+쓴·건너뛴·대신 해 준 단계 수), `evidence`(marker가 seed나 마지막 검증 케이스인 세션 자신의 탐지 최대
+20개, 규칙·요청·단계·케이스. Elasticsearch는 읽지 않음), `change`(선언된 시작 posture와 마지막 검증
+스냅샷의 비교: 더하고 뺀 예외, 두 레벨, posture에 대해 `crs.rendered`가 쓰는 내용과 제외 파일의 줄 diff),
+`cases`(레슨 케이스마다 시작 시와 마지막 검증의 결과), `risk`(조치 종류가 정하는 문자열 키와, 레슨의 공격
+케이스만 다시 보냈다는 것). `at`에는 시작과 마지막 검증 시각이 에이전트용으로 있고 콘솔은 보여 주지 않는다.
+`debrief_script.html`이 검증 탭과 닫힌 세션 화면에 그린다.
 
 단계는 레슨 정의에 선언한다(`scenario.yaml`의 `lesson.steps`): `id`, `kind`가 `alert`, `click`,
-`answer`, `choice`, `waf`, `served`, `verify` 중 하나인 `check`(`wargames.CHECK_KINDS`, 발견 시 검증),
+`answer`, `choice`, `waf`, `served`, `replay`, `verify` 중 하나인 `check`(`wargames.CHECK_KINDS`, 발견 시
+검증. `replay`는 레슨의 케이스와 `held`나 `served`인 `expect`를 밝힌다),
 그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널 `command`. 세션 API는 `query`가 있는 단계에
 `discover` 링크를 더하고(`kibana.discover_path(..., narrowed)`), 확인은 `kind`만, 그리고 선택지의
-`options`와 alert·served 확인이 기다리는 `path`만 보인다: 정답 키는 브라우저에 가지 않는다.
-board는 일곱 단계이고, 각 단계는
+`options`와 alert·served 확인이 기다리는 `path`, replay의 `case`만 보인다: 정답 키는 브라우저에 가지
+않는다. board는 여덟 단계이고, 각 단계는
 그 확인으로 넘어간다. 이전/다음은 확인을 건너뛰는 길로 남는다:
 
 | 단계 | 어디서 | 확인 |
@@ -546,11 +587,12 @@ board는 일곱 단계이고, 각 단계는
 | target: 무엇이 걸렸나 | 선택지 넷 | `choice`: `ARGS:q`(나머지는 주소, 쿠키, 헤더) |
 | exclude: 예외 적용 | WAF 터미널, "터미널에서 실행" | `waf`: WAF 파일에 920273 `ARGS:q` `/search/`가 있고, `meta.check`를 붙여 다시 보낸 O'Brien 케이스가 2xx(reload가 적용됨). 폴링은 파일 버전마다 한 번만 다시 보냄 |
 | retry: O'Brien 다시 검색 | 웹사이트 창 | `served`: 창에 O'Brien 검색이 보이면 같은 케이스를 `meta.check`를 붙여 다시 보내 2xx여야 함 |
+| sqlmap: sqlmap은 여전히 막히나 | popover의 "board-sqli-orderby-sqlmap 다시 실행" | `replay`: 누를 때만(약 15초, 폴링하지 않음) 케이스를 `meta.check`를 붙여 다시 보내 막혔으면 통과. 유출은 실패이고, 결론 없는 실행은 따로 그렇다고 말함(`lesson.check.inconclusive`). 응답에 `replay` 행이 있음 |
 | verify: 공격은 여전히 막히나 | 노트의 검증 탭 | `verify`: 검증 PASS |
 
 모든 확인은 플랫폼이 판정한다: `POST /api/sessions/<id>/lesson/steps/<step>/check/`(답과 선택지는
 `{answer}`, 배경 폴링은 `{poll: true}`)가 `passed`를 남기고 `{passed, reason, hint, hints, progress}`로
-답한다. `reason`은 값이 딸린 `strings.html` 키다. `click`은 콘솔의 말을 믿는다. 폴링이 아닌 실패한
+답한다(`waf` 확인은 `fix`, `replay` 확인은 `replay`도). `reason`은 값이 딸린 `strings.html` 키다. `click`은 콘솔의 말을 믿는다. 폴링이 아닌 실패한
 확인은 틀린 것으로 세고, 두 번이면 그 단계의 힌트 단계를 올리고 힌트를 기록한다.
 
 확인은 저절로 돈다. 확인 버튼은 없다. `alert`와 `waf`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
