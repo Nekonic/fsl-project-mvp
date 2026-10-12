@@ -147,8 +147,7 @@
     const state = closed ? badge(t("state.closed"), "neutral")
       : session.ready ? badge(t("state.ready"), "ok", true)
         : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
-    const kind = session.kind === "lesson" && session.mode === "self" ? "practice" : session.kind;
-    field("session-badges").innerHTML = badge(t(`kind.${kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
+    field("session-badges").innerHTML = badge(t(`kind.${kindOf(session)}`), session.kind === "lesson" ? "blue" : "neutral") + state;
     const parts = [scenarioName()];
     if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);

@@ -1523,6 +1523,23 @@ def test_the_home_page_shows_each_lesson_s_last_result_from_the_sessions_this_br
     assert seen["result"]["hidden"] is False and seen["result"]["href"] == "/session/12/"
     assert english("main.last", 12, english("kind.practice")) in seen["result"]["text"] and "PASS" in seen["result"]["text"]
 
+@pytest.mark.parametrize("now, earned, kind", [("guided", "self", "kind.practice"), ("self", "guided", "kind.lesson")])
+def test_the_home_page_labels_a_last_result_by_the_mode_its_verdict_was_earned_in(client, now, earned, kind):
+    switched = MINE.replace(
+        'mode: "self", ended_at: "2026-10-13T10:00:00Z",', f'mode: "{now}", ended_at: "2026-10-13T10:00:00Z",'
+    ).replace("lesson: {passed: true, verified: 1}}", f'lesson: {{passed: true, verified: 1, mode: "{earned}"}}}}')
+    assert switched.count(f'mode: "{earned}"}}') == 1
+    seen = open_page(client, "/", setup="const seen = {};\nlocalStorage.setItem('fsl-opened-sessions', '[12, 9]');\n" + switched,
+                     scenario="""
+      await browser.settle();
+      return document.querySelector('[data-last="board/waf-exclusion"]').textContent;
+    """)
+
+    assert seen["errors"] == []
+    assert english("main.last", 12, english(kind)) in seen["result"], (
+        "the label beside a verdict names the mode the VERIFY ran in, not the mode the session was switched to after"
+    )
+
 def test_a_browser_with_no_remembered_session_asks_for_none_and_storage_that_throws_breaks_nothing(client):
     seen = open_page(client, "/", setup="const seen = {};\n" + MINE + """
       Object.defineProperty(globalThis, 'localStorage', {value: {getItem() { throw new Error('blocked'); },

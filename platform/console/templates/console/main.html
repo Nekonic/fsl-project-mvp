@@ -70,7 +70,6 @@
     const wargame = scenarioOf(id);
     return localized(`wargame.${id}.name`, wargame ? wargame.name : id);
   };
-  const kindOf = (session) => (session.kind === "lesson" && session.mode === "self" ? "practice" : session.kind);
   const kindBadge = (session) => badge(t(`kind.${kindOf(session)}`), session.kind === "lesson" ? "blue" : "neutral");
   const lessonOf = (session) => {
     const wargame = scenarioOf(session.scenario);
