@@ -459,9 +459,13 @@ Each ingest call:
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
   `transaction.time_stamp`), so the window selects events by when they
   happened, not when Filebeat read them;
-- reads at most 5000 hits, oldest first. Beyond that the reply carries
-  `truncated` and the session records `read_of`, which adds
-  `score.warning.truncated` to the score;
+- reads 5000 hits at a time, oldest first, and when a read is cut asks again
+  from the newest `@timestamp` it got (`api/views.py` `_fetched`, at most 40
+  more reads; documents already read are skipped by `_id`). A window it still
+  cannot finish, or one whose 5000 hits share one timestamp, makes the reply
+  carry `truncated` and the session record `read_of`, which adds
+  `score.warning.truncated` to the score. One sqlmap case leaves more than
+  5000 records, so a single read scored every case fired after it FN;
 - keeps Suricata's `alert` events, and turns ModSecurity's record into one
   Detection per matched rule message, with id `<Elasticsearch _id>:<n>`;
 - drops alerts whose own event time falls outside the window, counted as

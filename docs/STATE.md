@@ -1329,13 +1329,14 @@ binary log via a substrate runner, proven end to end against the live stack.
   `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`, are unauthenticated
   shells for whoever reaches the platform's port: loopback on compose, the VM's
   address (`FSL_PUBLISH`) on the platform VM.
-- `elastic.fetch` reads at most 5000 documents per ingest, oldest first, `http`
-  records included (a three-day window read 5000 of 42,231). Truncation drops
-  the newest: the last cases fired become FN and the last benign ones TN, so a
-  busier red team looks better defended. `Session.read_of` flags it and stays
-  set after a later ingest that fits (`Session.truncated` was removed in
-  migration 0012). Paging with `search_after` needs a monotonic write-time
-  field; one `set: _ingest.timestamp` processor gives it.
+- `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
+  records included. Since 2026-10-13 a full ingest pages by `@timestamp`
+  (`api/views.py` `_fetched`, up to 41 reads, about 205,000 documents); past
+  that, or when 5000 documents share one timestamp, the newest are still
+  dropped and `Session.read_of` flags it. Each ingest re-reads the whole
+  window. Paging with `search_after` inside `ingest/elastic.py` (a gated
+  core file) would need a monotonic write-time field; one
+  `set: _ingest.timestamp` processor gives it.
 - ModSecurity's `Detection.raw` holds the rule message, request, host and
   place, not the whole audit record.
 - The operator log is lost when the attacker box is recreated, and its whole
