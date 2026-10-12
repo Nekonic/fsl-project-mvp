@@ -234,6 +234,7 @@ const AUTOMATIC = ["alert", "waf", "served", "level", "rules"];
 const POLLED = ["alert", "waf", "level"];
 const changed = [];
 const refreshers = [];
+const commandsArrived = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1200;
 const WIDE = 480;
@@ -246,6 +247,7 @@ const paneOpen = (name) => {
 const whereOf = (step) => (step.opens && !paneOpen(step.opens)
   ? { panel: `.pane-tab[data-pane="${step.opens}"]`, pending: step.opens } : step);
 const ANSWER = 3;
+const spoken = (texts) => (texts ? texts[language] || texts.en || "" : "");
 const DO_IT = 4;
 const POLL_SECONDS = 5;
 const STRETCH_KEY = "fsl-lesson-stretch";
@@ -426,7 +428,20 @@ function coach(prefix, declared) {
     if (!body || !body.progress || typeof body.progress !== "object") return;
     progress = body.progress;
     Object.entries(progress).forEach(([id, record]) => { if (record.done_for_me) helped.add(id); });
-    if (shownOnce) stepList();
+    const shownCommand = steps[at] && steps[at].command;
+    const arrived = steps.filter((step, index) => {
+      const given = recordOf(step).command;
+      if (!given || given === step.command) return false;
+      step.command = declared[index].command = given;
+      return true;
+    });
+    if (arrived.length) commandsArrived.forEach((heard) => heard());
+    if (!shownOnce) return;
+    stepList();
+    if (steps[at] && steps[at].command !== shownCommand) {
+      command();
+      last = "";
+    }
   }
 
   learn(session);
@@ -482,7 +497,7 @@ function coach(prefix, declared) {
     const lines = [];
     if (level >= 1) lines.push(t(`${prefix}.nudge.${step.id}`));
     if (level >= POINT) lines.push(t("lesson.hint.point"));
-    if (level >= ANSWER) lines.push(t(`${prefix}.answer.${step.id}`));
+    if (level >= ANSWER && recordOf(step).answer) lines.push(spoken(recordOf(step).answer));
     return lines;
   }
 
@@ -521,7 +536,9 @@ function coach(prefix, declared) {
     seconds = 0;
     showHelp();
     const read = await post(lessonPath("lesson/hints/"), { step: step.id, level: "hint" });
-    if (read.ok) learn(read.body);
+    if (!read.ok) return;
+    learn(read.body);
+    if (steps[at] === step) showHelp();
   }
 
   function wrong(text, hint) {
@@ -694,7 +711,7 @@ function coach(prefix, declared) {
 
   function pass(step) {
     if (steps[at] !== step || passing) return;
-    const line = [t(`${prefix}.line.${step.id}`), fixes.get(step.id)].filter(Boolean).join(" ");
+    const line = [spoken(recordOf(step).line), fixes.get(step.id)].filter(Boolean).join(" ");
     status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
     if (at === steps.length - 1) {
       finished = true;
@@ -974,16 +991,17 @@ function theory(prefix, listed, coachTo) {
 
 function hints(prefix, listed, steps) {
   folded(field("lesson-hints"), prefix, "hint", cards(listed), () => "");
-  const answer = steps.filter((step) => step.command).map((step) => step.command).join("\n");
-  field("lesson-answer").textContent = answer;
+  const answer = () => steps.filter((step) => step.command).map((step) => step.command).join("\n");
   let shown = false;
   const toggle = field("lesson-answer-toggle");
   const place = () => {
+    field("lesson-answer").textContent = answer();
     field("lesson-answer-box").classList.toggle("hidden", !shown);
     toggle.textContent = t(shown ? "lesson.hint.hide" : "lesson.hint.show");
   };
   toggle.addEventListener("click", () => { shown = !shown; place(); });
-  field("lesson-answer-copy").addEventListener("click", () => copy(answer, field("lesson-answer-copy")));
+  commandsArrived.push(place);
+  field("lesson-answer-copy").addEventListener("click", () => copy(answer(), field("lesson-answer-copy")));
   place();
 }
 

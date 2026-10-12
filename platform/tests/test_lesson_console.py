@@ -5,6 +5,7 @@ import pytest
 
 import wargames
 from api import views
+from console import strings
 from tests.browser import english, open_page
 
 pytestmark = pytest.mark.django_db
@@ -33,9 +34,14 @@ localStorage.setItem('fsl-lesson-landed-1', 'true');
 const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [],
                ended_at: null, progress: {}, fired: [], checked: [], states: []};
 const FULL = FULL_JSON;
+const WITHHELD = WITHHELD_JSON;
+const COMMANDS = COMMANDS_JSON;
+const revealed = () => Object.fromEntries(Object.entries(range.progress).map(([id, kept]) => [id, {...kept,
+  ...(kept.hint >= 3 ? {answer: WITHHELD[id].answer} : {}), ...(kept.passed ? {line: WITHHELD[id].line} : {}),
+  ...(kept.reached && COMMANDS[id] && (range.mode || "guided") !== "self" ? {command: COMMANDS[id]} : {})}]));
 const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, done_for_me: false, wrong: 0, after: 0, tried: null, passed: null, skipped: null});
 const used = (entry) => { if (!range.used.some((one) => one.step === entry.step && one.level === entry.level)) range.used.push(entry); };
-const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: range.progress});
+const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: revealed()});
 const passing = (id) => { own(id).passed = own(id).passed || "now"; return stepState(id, {passed: true, reason: null}); };
 const failing = (id, poll, key, values) => {
   const kept = own(id);
@@ -91,7 +97,10 @@ browser.serve((request) => {
   if (stepped && !stepped[2]) {
     const id = stepped[1];
     range.states.push([id, request.body.state]);
-    if (request.body.state === "reached") own(id).after = Math.max(0, ...range.detections.map((row) => row.id));
+    if (request.body.state === "reached") {
+      own(id).after = Math.max(0, ...range.detections.map((row) => row.id));
+      own(id).reached = own(id).reached || "now";
+    }
     else if (!own(id).passed) own(id).skipped = "now";
     return {body: stepState(id, {})};
   }
@@ -117,7 +126,7 @@ browser.serve((request) => {
     return {body: {id: 1, mode: request.body.mode}};
   }
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", start: range.start || null, hints: range.used, progress: range.progress, ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", start: range.start || null, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: "lesson.board",
@@ -156,8 +165,12 @@ browser.serve((request) => {
 });
 """.replace("THEORY_JSON", json.dumps(wargames.lesson("board")["theory"])).replace(
     "HINTS_JSON", json.dumps(wargames.lesson("board")["hints"])).replace("STEPS_JSON", json.dumps([
-    dict(step, discover="/kibana/app/discover#/?narrowed=brien") if step.get("query") else step for step in SHOWN
-])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS})).replace("DEBRIEF_JSON", json.dumps(DEBRIEF))
+    {key: value for key, value in step.items() if key != "command"}
+    | ({"discover": "/kibana/app/discover#/?narrowed=brien"} if step.get("query") else {}) for step in SHOWN
+])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS})).replace(
+    "WITHHELD_JSON", json.dumps({step_id: {part: strings.both(f"lesson.board.{part}.{step_id}") for part in ("answer", "line")}
+                                 for step_id in IDS})).replace(
+    "COMMANDS_JSON", json.dumps({step_id: command for step_id, command in COMMAND.items() if command})).replace("DEBRIEF_JSON", json.dumps(DEBRIEF))
 
 def guided(guidance):
     return GUIDED.replace("GUIDANCE", "true" if guidance else "false")
@@ -247,7 +260,10 @@ def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(c
       const cards = [...browser.element('lesson-hints').querySelectorAll('[data-card]')].map((c) => c.dataset.card);
       const folded = hidden();
       await browser.click('lesson-answer-toggle');
-      return {cards, folded, opened: !hidden(), answer: browser.text('lesson-answer'),
+      const unreached = browser.text('lesson-answer');
+      await browser.click('[data-step="4"]');
+      await browser.wait(16);
+      return {cards, folded, opened: !hidden(), unreached, answer: browser.text('lesson-answer'),
               hints: browser.text('lesson-hints'),
               form: ['lesson-paranoia', 'lesson-exclusions', 'lesson-save'].map((id) => document.getElementById(id)),
               writes: browser.requests.filter((r) => r.method !== 'GET' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)};
@@ -257,6 +273,7 @@ def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(c
     assert english("lesson.board.hint.why_rule.title") in seen["result"]["hints"]
     assert "nginx" not in seen["result"]["hints"], "a hint says why, the steps say what to type"
     assert seen["result"]["folded"] is True and seen["result"]["opened"] is True
+    assert "920273" not in seen["result"]["unreached"], "a step's command reaches the browser once the step is reached"
     assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in seen["result"]["answer"]
     assert "if nginx -t 2>&1 && nginx -s reload 2>&1; then echo reloaded;" in seen["result"]["answer"]
     assert seen["result"]["form"] == [None, None, None], "the tuning is done in the WAF terminal"

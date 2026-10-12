@@ -1,9 +1,12 @@
+import json
 from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
 
+import wargames
 from api.models import Case, Detection, Session
+from console import strings
 from rules import crs
 from tests.test_lesson_api import FIXTURES, HELD, Stand, attacker, board
 
@@ -28,6 +31,76 @@ def test_the_session_payload_carries_no_answer_key(client):
     assert steps["exclude"] == {"kind": "waf"}
     assert steps["retry"] == {"kind": "served", "path": "O'Brien"}
     assert steps["search"] == {"kind": "alert", "path": "O'Brien"}
+
+def withheld_texts(prefix):
+    return {encoded(text) for table in strings.withheld().values() for key, text in table.items()
+            if key.startswith(f"{prefix}.")}
+
+def encoded(text):
+    return json.dumps(text, ensure_ascii=False)[1:-1]
+
+def hint(client, session, step_id):
+    return client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", {"step": step_id, "level": "hint"}).json()
+
+def test_no_answer_text_for_an_unreached_step_is_in_the_session_payload(client):
+    session = board(guidance=True)
+
+    payload = json.dumps(client.get(f"/api/sessions/{session.pk}/").json(), ensure_ascii=False)
+
+    assert "920273" not in payload and "ctl:ruleRemove" not in payload
+    assert not [text for text in withheld_texts("lesson.board") if text in payload]
+
+@pytest.mark.parametrize("wargame_id, lesson_id", [(wargame_id, taught["id"]) for wargame_id in wargames.WARGAMES
+                                                    for taught in wargames.lessons(wargame_id)])
+def test_no_lesson_sends_a_step_command_or_a_withheld_text_before_the_step_is_reached(client, wargame_id, lesson_id):
+    taught = wargames.lesson(wargame_id, lesson_id=lesson_id)
+    session = Session.objects.create(scenario=wargame_id, baseline={}, guidance=True, lesson=lesson_id)
+
+    payload = json.dumps(client.get(f"/api/sessions/{session.pk}/").json(), ensure_ascii=False)
+
+    assert not [step["id"] for step in taught.get("steps", []) if step.get("command") and encoded(step["command"]) in payload]
+    assert not [text for text in withheld_texts(taught["text"]) if text in payload]
+
+def test_a_step_s_command_arrives_once_the_step_is_reached(client):
+    session = board(guidance=True)
+    command = next(shown["command"] for shown in wargames.lesson("board")["steps"] if shown["id"] == "exclude")
+
+    reached = step(client, session, "exclude", body={"state": "reached"}).json()
+    shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+
+    assert reached["progress"]["exclude"]["command"] == command
+    assert shown["exclude"]["command"] == command
+    assert "command" not in shown["retry"] and "command" not in reached["progress"].get("rule", {})
+
+def test_a_session_in_self_mode_gets_no_command_even_at_its_step(client):
+    session = board(guidance=True)
+    Session.objects.filter(pk=session.pk).update(mode="self")
+
+    reached = step(client, session, "exclude", body={"state": "reached"}).json()
+    shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+
+    assert "command" not in reached["progress"]["exclude"] and "command" not in shown["exclude"]
+
+def test_the_answer_text_arrives_at_the_answer_hint_level_in_both_languages(client):
+    session = board(guidance=True)
+
+    before = [hint(client, session, "rule")["progress"]["rule"] for _ in range(2)]
+    third = hint(client, session, "rule")["progress"]["rule"]
+
+    assert all("answer" not in record for record in before)
+    assert third["hint"] == 3
+    assert third["answer"] == strings.both("lesson.board.answer.rule")
+    assert set(third["answer"]) == set(strings.LANGUAGES)
+    assert client.get(f"/api/sessions/{session.pk}/").json()["progress"]["rule"]["answer"] == third["answer"]
+
+def test_a_step_s_line_arrives_in_the_check_response_that_passes_it(client):
+    session = board(guidance=True)
+
+    wrong = check(client, session, "rule", {"answer": "1234"}).json()
+    right = check(client, session, "rule", {"answer": "920273"}).json()
+
+    assert "line" not in wrong["progress"]["rule"]
+    assert right["progress"]["rule"]["line"] == strings.both("lesson.board.line.rule")
 
 def test_a_step_reached_then_left_unpassed_is_recorded_skipped_and_a_passed_one_is_not(client):
     session = board(guidance=True)

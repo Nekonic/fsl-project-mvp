@@ -33,6 +33,7 @@ import topology
 import wargames
 from api import effect, loot, reset, site
 from api.refusals import Conflict
+from console import strings
 from api.models import (
     Case,
     Detection,
@@ -381,11 +382,28 @@ def _helped_on(kept, held, step_id, level):
         kept["hint"] = min(lesson.DO_IT, kept.get("hint", 0) + 1)
 
 def _progress(session):
+    taught = _lesson_of(session) if session.guidance and session.lesson_steps else None
+    declared = {step["id"]: step for step in (taught or {}).get("steps", [])}
     return {
         step_id: {"reached": kept.get("reached"), "passed": kept.get("passed"), "skipped": kept.get("skipped"),
-                  "hint": kept.get("hint", 0), "done_for_me": bool(kept.get("done_for_me"))}
+                  "hint": kept.get("hint", 0), "done_for_me": bool(kept.get("done_for_me")),
+                  **_revealed(session, taught, declared.get(step_id), kept)}
         for step_id, kept in session.lesson_steps.items()
     }
+
+def _revealed(session, taught, step, kept):
+    if not step:
+        return {}
+    named = f"{taught['text']}.{{}}.{step['id']}"
+    return {
+        **({"answer": strings.both(named.format("answer"))} if kept.get("hint", 0) >= lesson.ANSWER else {}),
+        **({"line": strings.both(named.format("line"))} if kept.get("passed") else {}),
+        **({"command": step["command"]} if _command_shown(session, step) else {}),
+    }
+
+def _command_shown(session, step):
+    reached = (session.lesson_steps.get(step["id"]) or {}).get("reached")
+    return bool(step.get("command")) and session.mode != "self" and bool(reached)
 
 def _lesson_state(session, step_id, **judged):
     return {**judged, "hint": session.lesson_steps.get(step_id, {}).get("hint", 0),
@@ -1423,7 +1441,7 @@ def session_detail(request, session_id):
 def _shown_step(session, step):
     check = step["check"]
     kept = {key: value for key, value in step.items()
-            if key not in SERVER_ONLY_STEP and not (key == "command" and session and session.mode == "self")}
+            if key not in SERVER_ONLY_STEP and not (key == "command" and session and not _command_shown(session, step))}
     shown = dict(kept, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})
     return dict(shown, discover=_discover(session, step["query"])) if step.get("query") else shown
 
