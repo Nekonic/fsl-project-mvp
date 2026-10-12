@@ -504,7 +504,7 @@ def _settings(scenario, body):
         raise BadRequest(f'"guidance" must be true or false, got {guidance!r}')
     if guidance and not wargames.lesson(scenario):
         raise BadRequest(f"{scenario!r} has no lesson to guide")
-    defense = body.get("defense", wargames.DEFAULT_DEFENSE)
+    defense = body.get("defense", wargames.lesson_defense(scenario) if guidance else wargames.DEFAULT_DEFENSE)
     try:
         return guidance, defense, wargames.defense(scenario, defense)
     except (wargames.UnknownWargame, TypeError):

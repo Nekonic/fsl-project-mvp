@@ -172,6 +172,7 @@
     const taught = session.lesson;
     const declared = Array.isArray(taught.steps) ? taught.steps : [];
     field("lesson-goal").textContent = t(`${taught.text}.summary`);
+    field("lesson-goal-line").textContent = t(`${taught.text}.summary`);
     field("lesson-steps").innerHTML = PARAGRAPHS.map((step) =>
       `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
     field("lesson-case").innerHTML = taught.cases.map((name) =>

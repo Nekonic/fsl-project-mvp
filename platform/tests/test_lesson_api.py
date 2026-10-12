@@ -377,6 +377,15 @@ def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the
         "the slot was offered only once its sensors held the baseline rules, so the open leaves them alone"
     )
 
+def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(client):
+    fire, _ = attacker({})
+    with patch("api.views.harness.fire", fire):
+        guided = client.post_json("/api/sessions/", {"guidance": True}).json()
+        client.post_json(f"/api/sessions/{guided['id']}/close/")
+        plain = client.post_json("/api/sessions/", {}).json()
+
+    assert (guided["defense"], plain["defense"]) == ("minimal", "full")
+
 def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
     fire, fired = attacker({})
     with patch("api.views.harness.fire", fire):
