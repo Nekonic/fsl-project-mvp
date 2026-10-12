@@ -12,6 +12,10 @@ wanted = sys.argv[1]
 adapter = substrate()
 held = Session.objects.filter(pk=int(sys.argv[2]), ended_at=None).values_list("slot", flat=True).first() if sys.argv[2].isdigit() else None
 if hasattr(adapter, "in_slot"):
+    if held is None and adapter.slots > 1:
+        print(f"no open session {sys.argv[2] or '(none given)'}; with {adapter.slots} slots "
+              f"there is no telling which slot's {wanted} to open", file=sys.stderr)
+        raise SystemExit(2)
     adapter = adapter.in_slot(held or 1)
 try:
     for seg in adapter.describe().segments:
@@ -25,7 +29,7 @@ except SystemExit:
 except Exception:
     pass
 PY
-)
+) || { sleep 3; exit 1; }
 [ -n "$addr" ] || { echo "no mgmt address for $host - the range may be down"; sleep 3; exit 1; }
 exec ssh -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=no \
   -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}"
