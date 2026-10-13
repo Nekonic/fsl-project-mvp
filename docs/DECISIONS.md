@@ -2608,3 +2608,33 @@ the course follows a second survey of how learners actually work through
 lessons (task classes of different problems, each changing one thing; worked
 example first; judgement and volume as difficulty axes); its plan goes
 through gate 1.
+
+## 2026-10-13 — Scenario course: foundations, scenarios on live traffic, a GNS3 topology
+
+The user judged the scripted step lessons the wrong direction: they teach a
+tool's clicks, carry no traffic, ask for no judgement and repeat one task
+without hints instead of harder tasks. Approved design:
+`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`.
+
+- Audience: security-club freshmen who may not know networking; foundations
+  F1-F6 come first, taught on the range.
+- The unit becomes a scenario with continuous benign and attack traffic;
+  difficulty rises by task class (judgement, availability vs blocking,
+  missed attacks, unknown), support fades inside a class.
+- An attack scheduled by a scenario is the red team's attempt: when it dumps
+  the secret it submits the loot and the first score counts the loss (the
+  target still decides). The learner's own VERIFY and lesson checks stay out
+  (D7 kept for those).
+- Blocked customer requests are counted in the second score (availability,
+  as Locked Shields weighs uptime against attacks).
+- Completion: over a final verification window every attack is held and
+  every customer request served (the 2026-10-08 two-condition rule, judged
+  over a window instead of one replay of each case).
+- The topology is a real GNS3 project per substrate, served by a GNS3 3.1
+  server in the platform's compose (`services` 9 -> 10, accepted); learners
+  see it read-only; GNS3's MCP is for development only.
+- O'Brien leaves the course and stays a benign regression case.
+
+Not chosen: a topology generated or drawn by the platform alone (the user:
+AI-drawn topologies invent layers that are neither network nor service);
+GNS3 3.0.6 (no MCP, fails to open projects whose images are missing).
