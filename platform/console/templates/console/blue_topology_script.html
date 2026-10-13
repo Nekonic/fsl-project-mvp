@@ -11,6 +11,7 @@ function topologyDraw() {
   const xs = nodes.map((node) => node.x), ys = nodes.map((node) => node.y);
   const left = Math.min(...xs) - MAP_MARGIN, top = Math.min(...ys) - MAP_MARGIN;
   const walked = topo.hops.map((hop) => hop.node);
+  const unrecorded = new Set(topo.hops.filter((hop) => hop.evidence === false).map((hop) => hop.node));
   const steps = new Set(walked.slice(1).map((name, at) => [walked[at], name].sort().join(" ")));
   const links = topo.project.topology.links.map((link) => {
     const [one, other] = link.nodes.map((end) => byId[end.node_id]);
@@ -28,9 +29,11 @@ function topologyDraw() {
     const said = shown ? t(`topology.node.${shown.status === "running" ? "running" : "not_reported"}`) : "";
     const addresses = shown ? Object.entries(shown.addresses).map(([on, list]) => `${on} ${list.join(", ")}`) : [];
     const title = `<title>${esc([node.name, said, ...addresses].filter(Boolean).join("\n"))}</title>`;
+    const hollow = unrecorded.has(node.name);
     const mark = switching
       ? `<rect x="${x - 22}" y="${y - 10}" width="44" height="20" rx="4" style="fill: var(${tone})">${title}</rect>`
-      : `<circle cx="${x}" cy="${y}" r="14" style="fill: var(${tone})">${title}</circle>`;
+      : `<circle cx="${x}" cy="${y}" r="14" data-recorded="${!hollow}" `
+        + `style="fill: var(${hollow ? "--panel" : tone}); stroke: var(${tone}); stroke-width: 3">${title}</circle>`;
     return `<g data-node="${esc(node.name)}">${mark}<text x="${x}" y="${y + 32}" text-anchor="middle" `
       + `style="fill: var(--text); font-size: 12px; font-family: var(--font-mono)">${esc(node.name)}</text></g>`;
   });
@@ -40,15 +43,27 @@ function topologyDraw() {
 }
 
 function topologyHop(hop) {
+  if (hop.kind === "unknown") {
+    return `<li data-hop="unknown"><span class="font-mono text-heading">?</span>`
+      + `<div class="text-muted">${esc(t("topology.hop.unknown"))}</div></li>`;
+  }
   const lines = [];
-  if (hop.source !== undefined) lines.push(t("topology.hop.source", hop.source || "?"));
-  if (hop.alerts) lines.push(t("topology.hop.alerts", hop.alerts.length));
+  if ("source" in hop) lines.push(t("topology.hop.source", hop.source || t("topology.unknown")));
+  if (hop.sensor) lines.push(t("topology.hop.alerts", hop.sensor, hop.alerts.length));
   if (hop.verdict === "blocked") lines.push(t("topology.hop.blocked", hop.rules.join(", ") || "-"));
   if (hop.verdict === "passed") lines.push(t("topology.hop.passed", hop.rules.join(", ") || "-"));
+  if ("verdict" in hop && !hop.verdict) lines.push(t("topology.hop.verdict_unknown"));
   if (hop.reached === false) lines.push(t("topology.hop.not_reached"));
   if (hop.reached && hop.status) lines.push(t("topology.hop.status", hop.status));
-  return `<li><span class="font-mono text-heading">${esc(hop.node)}</span>`
+  if ("reached" in hop && hop.reached === null) lines.push(t("topology.hop.reach_unknown"));
+  if (hop.evidence === false) lines.push(t("topology.hop.no_record"));
+  return `<li data-hop="${esc(hop.kind)}"><span class="font-mono text-heading">${esc(hop.node)}</span>`
     + lines.map((line) => `<div class="text-muted">${esc(line)}</div>`).join("") + "</li>";
+}
+
+function topologyAsked(chosen) {
+  const [kind, id] = [chosen.slice(0, chosen.indexOf(":")), chosen.slice(chosen.indexOf(":") + 1)];
+  return `${kind === "case" ? "case" : "request"}=${encodeURIComponent(id)}`;
 }
 
 async function topologyFollow() {
@@ -56,21 +71,31 @@ async function topologyFollow() {
   topo.hops = [];
   field("topology-hops").innerHTML = "";
   if (chosen) {
-    const read = await api(`/api/sessions/${sessionId()}/topology/follow/?request=${encodeURIComponent(chosen)}`);
+    const read = await api(`/api/sessions/${sessionId()}/topology/follow/?${topologyAsked(chosen)}`);
     topo.hops = read.ok ? read.body.hops : [];
-    field("topology-hops").innerHTML = read.ok ? topo.hops.map(topologyHop).join("")
+    const elsewhere = read.ok && read.body.elsewhere && read.body.elsewhere.length
+      ? `<li class="text-muted">${esc(t("topology.elsewhere", read.body.elsewhere.length))}</li>` : "";
+    field("topology-hops").innerHTML = read.ok ? topo.hops.map(topologyHop).join("") + elsewhere
       : `<li class="text-danger">${esc((read.body && read.body.detail) || read.status)}</li>`;
   }
   topologyDraw();
 }
 
 async function topologyRequests() {
-  const read = await api(`/api/sessions/${sessionId()}/site/requests/`);
-  const rows = read.ok ? read.body.slice().reverse() : [];
+  const [sent, fired] = await Promise.all([
+    api(`/api/sessions/${sessionId()}/site/requests/`), api(`/api/sessions/${sessionId()}/cases/`),
+  ]);
+  const rows = (sent.ok ? sent.body.slice().reverse() : [])
+    .map((row) => [`request:${row.id}`, `${row.method} ${readable(row.url)} ${row.status}`]);
+  const cases = (fired.ok ? fired.body.slice().reverse() : [])
+    .map((row) => [`case:${row.case_id}`, `${row.name}${row.meta && row.meta.status ? ` ${row.meta.status}` : ""}`]);
+  const group = (label, list) => list.length ? `<optgroup label="${esc(t(label))}">`
+    + list.map(([value, text]) => `<option value="${esc(value)}">${esc(text)}</option>`).join("") + "</optgroup>" : "";
   const kept = field("topology-request").value;
-  field("topology-request").innerHTML = `<option value="">${esc(t(rows.length ? "topology.pick" : "topology.none"))}</option>`
-    + rows.map((row) => `<option value="${row.id}">${esc(`${row.method} ${readable(row.url)} ${row.status}`)}</option>`).join("");
-  if (rows.some((row) => String(row.id) === kept)) field("topology-request").value = kept;
+  field("topology-request").innerHTML
+    = `<option value="">${esc(t(rows.length || cases.length ? "topology.pick" : "topology.none"))}</option>`
+    + group("topology.group.site", rows) + group("topology.group.cases", cases);
+  if ([...rows, ...cases].some(([value]) => value === kept)) field("topology-request").value = kept;
 }
 
 function topologyView(which) {

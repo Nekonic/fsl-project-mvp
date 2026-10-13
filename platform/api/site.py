@@ -70,6 +70,15 @@ def forget(session_id: int) -> None:
         _wafs.pop(session_id, None)
 
 
+def _peer(answer) -> str:
+    for socket_of in (lambda: answer.raw.connection.sock, lambda: answer.raw._fp.fp.raw._sock):
+        try:
+            return socket_of().getpeername()[0]
+        except (AttributeError, OSError, TypeError, IndexError):
+            continue
+    return ""
+
+
 def shown_marker(session: Session, text: str) -> str:
     return text.replace(session.browse_marker, MARKER) if isinstance(text, str) else text
 
@@ -97,6 +106,7 @@ def proxy(request, session_id, host):
         "at": time.time(),
         "method": request.method,
         "url": f"http://{host}{target}",
+        "to": _peer(answer),
         "status": answer.status_code,
         "blocked": answer.status_code == BLOCKED,
         "request_headers": dict(sent, **{MARKER_HEADER: MARKER}),

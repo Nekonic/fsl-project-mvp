@@ -929,38 +929,59 @@ def session_topology(request, session_id):
 
     return _reply({**shape, "unplaced": unplaced, "project": _drawn(session, described)})
 
+def _site_record(session, asked):
+    try:
+        wanted = int(asked, 10)
+    except ValueError:
+        raise BadRequest(f'"request" must be a Website pane request id, got {asked!r}')
+    record = next((kept for kept in site.kept(session.pk) if kept["id"] == wanted), None)
+    if record is None:
+        raise Http404(f"session {session.pk} kept no request {wanted}")
+    return record
+
+def _sent(session, record, case):
+    roles = settings.RANGE.roles
+    if record:
+        host = record["url"].split("/")[2].split(".")[0]
+        return {"kind": "browse", "sender": roles["scorer"], "to": record.get("to") or "",
+                "status": record.get("status"), "blocked": record.get("blocked"),
+                "target": host if host in roles else "board"}
+    target = session.scenario if session.scenario in roles else "board"
+    if case:
+        return {"kind": "case", "sender": roles["attacker"], "on": case.meta.get("launched_on") or "",
+                "source": case.meta.get("source_ip") or "", "status": case.meta.get("status") or None,
+                "blocked": case.meta.get("blocked"), "target": target}
+    return {"kind": "marker", "sender": roles["proxy"], "target": target}
+
 @require_http_methods(["GET"])
 def session_follow(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    asked = request.GET.get("request")
-    record = None
-    if asked is not None:
-        try:
-            wanted = int(asked, 10)
-        except ValueError:
-            raise BadRequest(f'"request" must be a Website pane request id, got {asked!r}')
-        record = next((kept for kept in site.kept(session.pk) if kept["id"] == wanted), None)
-        if record is None:
-            raise Http404(f"session {session_id} kept no request {wanted}")
-    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else "")
+    asked, fired = request.GET.get("request"), request.GET.get("case")
+    record = _site_record(session, asked) if asked is not None else None
+    case = None
+    if fired and record is None:
+        case = session.cases.filter(case_id=fired).first()
+        if case is None:
+            raise Http404(f"session {session_id} recorded no case {fired}")
+    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else case.case_id if case else "")
     if not marker:
-        raise BadRequest('name a "marker" or a Website pane "request" to follow')
+        raise BadRequest('name a "marker", a Website pane "request" or a fired "case" to follow')
     stored = session.browse_marker if marker == SITE_BROWSER_MARKER else marker
     detections = session.detections.filter(marker=stored)
-    target = "board"
     if record:
         start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
         detections = detections.filter(
             timestamp__gte=start - FOLLOW_SLACK,
             timestamp__lte=start + timedelta(milliseconds=record.get("ms") or 0) + FOLLOW_SLACK)
-        host = record["url"].split("/")[2].split(".")[0]
-        target = host if host in settings.RANGE.roles else target
     detections = list(detections)
     nodes = _drawn(session, _range(session).describe())["nodes"]
-    followed = topology.follow(gns3.local(), settings.RANGE, nodes, detections, record, target)
+    number = _slot_of(session)
+    followed = topology.follow(gns3.local(), settings.RANGE, nodes, _sent(session, record, case),
+                               detections, lambda name: _named_in(number, name))
     return _reply({
         "marker": marker,
         "request": {name: record[name] for name in site.SUMMARY} if record else None,
+        "case": {"case_id": case.case_id, "name": case.name} if case else None,
         "detections": len(detections),
         **followed,
     })
@@ -1198,6 +1219,7 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
     origin = _origin_for(session, requested_origin)
     if origin:
         attacker.wear_origin(origin, adapter.runner("proxy"))
+    launched_on = origin["id"] if origin else settings.RANGE.default_origin
 
     target_url = origin["target_url"] if origin else settings.TARGET_URL
     spec = dict(case.get("request") or {})
@@ -1206,11 +1228,7 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
         case["request"] = spec
 
     started_at = timezone.now()
-    ran = harness.fire(
-        case,
-        adapter.launcher(origin["id"] if origin else settings.RANGE.default_origin),
-        target_url,
-    )
+    ran = harness.fire(case, adapter.launcher(launched_on), target_url)
 
     finished_at = timezone.now()
     Session.objects.filter(pk=session.pk, ended_at__lt=finished_at).update(ended_at=finished_at)
@@ -1220,6 +1238,9 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
             harness.case_meta(case),
             **({"origin": origin["id"], "target_url": origin["target_url"]}
                if origin else {}),
+            **({"source_ip": origin["source_ip"]}
+               if origin and settings.ATTACKER_ORIGIN_MODE == "snat" else {}),
+            launched_on=launched_on,
             **witness(ran),
         ),
     )

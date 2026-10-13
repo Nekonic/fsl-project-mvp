@@ -12,11 +12,21 @@ PROJECT = json.loads(
     (pathlib.Path(__file__).resolve().parents[2] / "deploy/topology/range-docker.gns3").read_text()
 )
 HOPS = [
-    {"node": "fsl-platform", "kind": "host", "source": "172.30.0.9"},
+    {"node": "fsl-platform", "kind": "host", "evidence": True, "source": "172.30.0.9"},
     {"node": "estate", "kind": "segment"},
-    {"node": "fsl-waf", "kind": "host", "alerts": [], "verdict": "blocked", "rules": ["920272", "949110"]},
+    {"node": "fsl-waf", "kind": "host", "evidence": True, "sensor": "fsl-suricata", "alerts": [],
+     "verdict": "blocked", "rules": ["920272", "949110"]},
     {"node": "estate", "kind": "segment"},
-    {"node": "fsl-wg-board", "kind": "host", "status": None, "reached": False},
+    {"node": "fsl-wg-board", "kind": "host", "evidence": True, "status": None, "reached": False},
+]
+CASE_HOPS = [
+    {"node": "fsl-kali", "kind": "host", "evidence": True, "source": None},
+    {"node": "internet", "kind": "segment"},
+    {"node": None, "kind": "unknown"},
+    {"node": "fsl-waf", "kind": "host", "evidence": False, "sensor": "fsl-suricata", "alerts": [],
+     "verdict": None, "rules": []},
+    {"node": "estate", "kind": "segment"},
+    {"node": "fsl-wg-board", "kind": "host", "evidence": False, "status": None, "reached": None},
 ]
 
 def serving(web_ui):
@@ -29,7 +39,11 @@ browser.serve((request) => {{
     "fsl-kali": {{status: "not reported", addresses: {{}}}}}}}}}}}};
   if (request.route === "/api/sessions/1/site/requests/") return {{body: [
     {{id: 7, method: "GET", url: "http://board.com/search/?q=%ED%95%9C", status: 403, blocked: true}}]}};
-  if (request.route === "/api/sessions/1/topology/follow/") return {{body: {{hops: {js(HOPS)}}}}};
+  if (request.route === "/api/sessions/1/cases/") return {{body: [
+    {{case_id: "c-1", name: "board-normal-search", meta: {{status: 200}}}}]}};
+  if (request.route === "/api/sessions/1/topology/follow/") return {{body: request.query.case
+    ? {{hops: {js(CASE_HOPS)}, elsewhere: [{{sensor: null, signature: "x", sid: 1}}]}}
+    : {{hops: {js(HOPS)}, elsewhere: []}}}};
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
 """
@@ -42,7 +56,8 @@ return {
   said: browser.text('topology-said'),
   svg: browser.element('topology-svg').innerHTML,
   hops: browser.text('topology-hops'),
-  follows: browser.requests.filter((r) => r.route.endsWith('/topology/follow/')).map((r) => r.query.request),
+  follows: browser.requests.filter((r) => r.route.endsWith('/topology/follow/')).map((r) => r.query.request || `case ${r.query.case}`),
+  offered: [...browser.element('topology-request').querySelectorAll('option')].map((o) => o.value),
 };
 """
 
@@ -59,7 +74,7 @@ def test_the_topology_pane_frames_the_gns3_web_ui_through_its_read_only_sign_in(
 def test_without_gns3_the_pane_draws_the_project_and_follows_a_chosen_request(client):
     seen = open_page(client, "/blue/1/", setup=serving(None), scenario="""
       await browser.click('[data-pane="topology"]');
-      await browser.choose('topology-request', '7');
+      await browser.choose('topology-request', 'request:7');
     """ + READ)
     result = seen["result"]
 
@@ -71,3 +86,21 @@ def test_without_gns3_the_pane_draws_the_project_and_follows_a_chosen_request(cl
     assert result["svg"].count('data-path="true"') == 3, "the three links the request crossed are marked"
     assert english("topology.hop.blocked", "920272, 949110") in result["hops"]
     assert english("topology.hop.not_reached") in result["hops"]
+
+def test_a_case_fired_from_kali_is_offered_and_an_unrecorded_stretch_is_said_rather_than_drawn(client):
+    seen = open_page(client, "/blue/1/", setup=serving(None), scenario="""
+      await browser.click('[data-pane="topology"]');
+      await browser.choose('topology-request', 'case:c-1');
+    """ + READ)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["offered"] == ["", "request:7", "case:c-1"]
+    assert result["follows"] == ["case c-1"]
+    assert result["svg"].count('data-path="true"') == 3, "no link is drawn across the unknown stretch"
+    assert result["svg"].count('data-recorded="false"') == 2, "a hop with no record is drawn hollow"
+    for said in (english("topology.hop.source", english("topology.unknown")), english("topology.hop.unknown"),
+                 english("topology.hop.alerts", "fsl-suricata", 0), english("topology.hop.verdict_unknown"),
+                 english("topology.hop.reach_unknown"), english("topology.hop.no_record"),
+                 english("topology.elsewhere", 1)):
+        assert said in result["hops"]
