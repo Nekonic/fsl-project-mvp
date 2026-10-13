@@ -101,6 +101,9 @@ def test_learners_sign_in_as_a_read_only_auditor_through_the_bundled_web_ui_s_ow
     assert '"path": "/"' in provision
     assert 'localStorage.setItem("controllerIds", "controller-1")' in page
     assert 'location: "bundled"' in page and "authToken: token" in page
+    assert 'localStorage.setItem("showInterfaceLabels", "false")' in page, (
+        "port numbers on every link end are noise to a learner reading the map"
+    )
 
 @pytest.fixture
 def provision(monkeypatch, tmp_path):

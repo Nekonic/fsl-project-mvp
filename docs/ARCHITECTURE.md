@@ -277,7 +277,14 @@ containers are `docker` nodes carrying their real images; OpenStack VMs are
 `qemu` nodes with no disk image (the OPNsense edge has three NICs in vtnet
 order); the wargame host's containers hang off a switch per compose project
 (`board-default`, `corp-default`); a sensor that shares another's network
-namespace or the host network has no NIC. `platform/tests/test_gns3_topology.py`
+namespace or the host network has no NIC and a note beside it says whose
+network it watches (in the Docker project a dashed line joins `fsl-suricata` to
+`fsl-waf`). Each declared segment is a titled rectangle holding its switch
+(Internet, Application estate, Management and monitoring), and each container
+or VM has a plain-words note (`attacker's machine (Kali)`, `web firewall
+(ModSecurity + CRS)`); node names stay the host names, because GNS3 3.1 makes a
+node's label its name. The learner's sign-in page hides port labels.
+`platform/tests/test_gns3_topology.py`
 derives the expected nodes and links from `declaration.yaml`, `compose.yaml`,
 `session.yaml` and the wargame compose files and checks GNS3's structural
 rules. `bin/check-topology` installs gns3-server 2.2.61 and 3.1.0a6 into venvs

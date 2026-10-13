@@ -2,6 +2,7 @@ import json
 import pathlib
 import re
 import uuid
+from xml.etree import ElementTree
 
 import pytest
 import yaml
@@ -216,3 +217,48 @@ def test_the_edge_is_a_vm_with_three_nics_in_the_order_opnsense_assigns_them():
     assert [order[n] for n in sorted(order)] == list(
         declared.read(flavor="openstack").hosts["fsl-edge"].segments
     )
+
+def drawn_shapes(document):
+    shapes = []
+    for drawing in document["topology"]["drawings"]:
+        svg = ElementTree.fromstring(drawing["svg"])
+        assert len(svg) == 1 and svg[0].tag in {"rect", "text", "line"}, drawing["svg"]
+        shape = svg[0]
+        shapes.append({"kind": shape.tag, "x": drawing["x"], "y": drawing["y"],
+                       "width": float(svg.get("width")), "height": float(svg.get("height")),
+                       "text": shape.text or "", "font": shape.get("font-family")})
+    return shapes
+
+def inside(x, y, box):
+    return box["x"] <= x <= box["x"] + box["width"] and box["y"] <= y <= box["y"] + box["height"]
+
+def test_every_drawing_is_one_shape_both_gns3_releases_draw_in_a_font_the_web_ui_has(gns3):
+    texts = [shape for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
+
+    assert texts
+    assert {shape["font"] for shape in texts} == {"Noto Sans"}
+
+def test_each_declared_segment_is_a_titled_zone_holding_its_switch(gns3):
+    entries = yaml.safe_load(declared.DECLARATION.read_text())["segments"]
+    shapes = drawn_shapes(gns3)
+    zones = [shape for shape in shapes if shape["kind"] == "rect"]
+    switches = nodes(gns3)
+    for entry in entries:
+        titles = [shape for shape in shapes if shape["kind"] == "text" and shape["text"].startswith(entry["name"])]
+        assert len(titles) == 1, entry["name"]
+        holding = [zone for zone in zones if inside(titles[0]["x"], titles[0]["y"], zone)
+                   and inside(switches[entry["id"]]["x"] + 25, switches[entry["id"]]["y"] + 25, zone)]
+        assert holding, f"{entry['name']}: no zone holds both its title and the {entry['id']} switch"
+
+def test_a_node_with_no_nic_says_whose_network_it_watches_next_to_it(gns3):
+    linked = {end["node_id"] for link in gns3["topology"]["links"] for end in link["nodes"]}
+    names = set(nodes(gns3))
+    texts = [shape for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
+    unlinked = [node for node in gns3["topology"]["nodes"] if node["node_id"] not in linked]
+
+    assert unlinked
+    for node in unlinked:
+        near = [shape["text"] for shape in texts
+                if abs(shape["x"] - node["x"]) < 250 and abs(shape["y"] - node["y"]) < 150]
+        assert [said for said in near if "host network" in said or any(
+            name in said for name in names - {node["name"]})], (node["name"], near)

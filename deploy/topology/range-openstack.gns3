@@ -6,58 +6,202 @@
     "name": "fsl-range-openstack",
     "project_id": "dfa9484b-cf7d-56d9-8685-58be7ad78930",
     "revision": 9,
-    "scene_height": 1000,
+    "scene_height": 1200,
     "scene_width": 2000,
     "show_grid": false,
-    "show_interface_labels": true,
+    "show_interface_labels": false,
     "show_layers": false,
     "snap_to_grid": false,
     "topology": {
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "4f2d24aa-02b0-5868-9921-d6ef7fecabb6",
-                "locked": false,
+                "drawing_id": "9756aa14-dd6b-599e-9924-d7569f92d49a",
+                "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"576\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on OpenStack: one slot; VMs, and the wargame host's containers</text></svg>",
-                "x": -720,
-                "y": -330,
+                "svg": "<svg width=\"708\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on OpenStack: one slot; VMs, and the wargame host's containers</text></svg>",
+                "x": -780,
+                "y": -390,
                 "z": 2
             },
             {
-                "drawing_id": "7840a060-d24e-5551-8f89-81b7abdfd8cc",
-                "locked": false,
+                "drawing_id": "e8e40029-f98d-58f3-840d-fe3d7ff5b110",
+                "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"576\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">fsl-edge: OPNsense, vtnet0 wan, vtnet1 lan, vtnet2 opt1; Suricata on wan</text></svg>",
-                "x": -440,
-                "y": 90,
-                "z": 2
-            },
-            {
-                "drawing_id": "d492a94f-a8e1-5943-9a22-c1ee4cb2ceca",
-                "locked": false,
-                "rotation": 0,
-                "svg": "<svg width=\"368\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">suricata: host network, watches the estate NIC</text></svg>",
-                "x": 200,
-                "y": -205,
-                "z": 2
-            },
-            {
-                "drawing_id": "adf47e08-2ac4-588f-bac1-8d2091c90c94",
-                "locked": false,
-                "rotation": 0,
-                "svg": "<svg width=\"660\" height=\"520\"><rect width=\"660\" height=\"520\" fill=\"#ffffff\" fill-opacity=\"0.0\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
-                "x": 220,
-                "y": -260,
+                "svg": "<svg width=\"460\" height=\"320\"><rect width=\"460\" height=\"320\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -780,
+                "y": -160,
                 "z": 0
             },
             {
-                "drawing_id": "f44670ea-a1bf-5539-91cb-2efdf3725cf7",
-                "locked": false,
+                "drawing_id": "86485198-878c-5920-bee6-a54b90bd8f3e",
+                "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"504\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">inside fsl-wargame-host: docker compose projects board and corp</text></svg>",
+                "svg": "<svg width=\"104\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
+                "x": -770,
+                "y": -155,
+                "z": 2
+            },
+            {
+                "drawing_id": "ebfdf3a6-73ca-5960-bba1-9fb46bed37d2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"1310\" height=\"620\"><rect width=\"1310\" height=\"620\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -290,
+                "y": -310,
+                "z": 0
+            },
+            {
+                "drawing_id": "cc7aef43-b23e-5df5-be6d-b69367b0c8d6",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"215\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
+                "x": -280,
+                "y": -305,
+                "z": 2
+            },
+            {
+                "drawing_id": "60c88f19-3a58-5c77-b0f9-b8784d8ac95b",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"780\" height=\"540\"><rect width=\"780\" height=\"540\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
+                "x": 220,
+                "y": -270,
+                "z": 0
+            },
+            {
+                "drawing_id": "175bd525-821e-5eab-b583-c217c62e98f4",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"435\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">inside fsl-wargame-host: docker compose projects board and corp</text></svg>",
                 "x": 520,
-                "y": 240,
+                "y": 245,
+                "z": 2
+            },
+            {
+                "drawing_id": "77f5f97e-9436-5fda-9d41-b7547b2521d6",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"740\" height=\"300\"><rect width=\"740\" height=\"300\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": -290,
+                "y": 330,
+                "z": 0
+            },
+            {
+                "drawing_id": "3d87e08a-8f1a-583d-9e52-282f3925f23b",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"293\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Management and monitoring</text></svg>",
+                "x": 150,
+                "y": 335,
+                "z": 2
+            },
+            {
+                "drawing_id": "c4b85217-22b6-58a1-be87-c261308cd999",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"223\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">attacker's machine (Kali VM)</text></svg>",
+                "x": -770,
+                "y": -55,
+                "z": 2
+            },
+            {
+                "drawing_id": "9be453ec-0803-5a5f-b14f-aa33cf0589b9",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"319\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">edge firewall (OPNsense), Suricata on WAN</text></svg>",
+                "x": -282,
+                "y": -75,
+                "z": 2
+            },
+            {
+                "drawing_id": "f38b7fab-8eff-5028-847b-69806bd60e67",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"249\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">vtnet0 wan, vtnet1 lan, vtnet2 opt1</text></svg>",
+                "x": -282,
+                "y": -57,
+                "z": 2
+            },
+            {
+                "drawing_id": "96264d19-0619-55b3-8749-a537e132d5a2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"275\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">web firewall VM (ModSecurity + CRS)</text></svg>",
+                "x": -230,
+                "y": -200,
+                "z": 2
+            },
+            {
+                "drawing_id": "c5edab9d-833a-5085-a6c0-56f564882452",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"171\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">wargame host (Docker)</text></svg>",
+                "x": 225,
+                "y": -50,
+                "z": 2
+            },
+            {
+                "drawing_id": "cbcca53a-7936-530e-b08f-4d0c8f5d23bc",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"178\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">network IDS (Suricata)</text></svg>",
+                "x": 320,
+                "y": -190,
+                "z": 2
+            },
+            {
+                "drawing_id": "9b7f38d8-3caf-52e5-8037-33d8b97f33fc",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"302\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">host network: watches the host's estate NIC</text></svg>",
+                "x": 320,
+                "y": -173,
+                "z": 2
+            },
+            {
+                "drawing_id": "084323d0-ef14-5861-9523-98ff3cc08db6",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"112\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board website</text></svg>",
+                "x": 825,
+                "y": -160,
+                "z": 2
+            },
+            {
+                "drawing_id": "c40c2428-04aa-5b0c-976e-1dbfbc1606b2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"193\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board's database (MySQL)</text></svg>",
+                "x": 825,
+                "y": -40,
+                "z": 2
+            },
+            {
+                "drawing_id": "4b709d9f-f95a-581a-b905-b36a0a9bac05",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"193\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp website (WordPress)</text></svg>",
+                "x": 825,
+                "y": 80,
+                "z": 2
+            },
+            {
+                "drawing_id": "1977584a-52ee-5096-a48e-a9c360a81176",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"186\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp's database (MySQL)</text></svg>",
+                "x": 825,
+                "y": 200,
+                "z": 2
+            },
+            {
+                "drawing_id": "7b7b7ecc-c429-5f7a-bc76-a3ad7d5d871a",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"252\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">range platform: console, scoring</text></svg>",
+                "x": 65,
+                "y": 545,
                 "z": 2
             }
         ],
@@ -402,7 +546,7 @@
                     ]
                 },
                 "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": -440,
+                "x": -480,
                 "y": 0,
                 "z": 1
             },
@@ -668,7 +812,7 @@
                 },
                 "symbol": ":/symbols/classic/server.svg",
                 "x": 0,
-                "y": 560,
+                "y": 520,
                 "z": 1
             },
             {
@@ -923,7 +1067,7 @@
                 },
                 "symbol": ":/symbols/classic/ids.svg",
                 "x": 260,
-                "y": -170,
+                "y": -200,
                 "z": 1
             }
         ]
