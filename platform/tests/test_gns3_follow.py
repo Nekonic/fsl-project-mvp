@@ -341,3 +341,25 @@ def test_a_second_slot_s_hosts_are_placed_by_the_names_the_range_reports_them_un
 
     assert drawn["nodes"]["fsl-waf"] == {"status": "running", "addresses": {"mgmt": ["10.31.0.195"]}}, (
         "OpenStack reports a slot's servers by their declared names; the slot suffix is only on the VM's own hostname")
+
+@pytest.mark.django_db
+def test_following_a_request_reads_the_waf_s_records_that_arrived_since_the_last_ingest(client):
+    from django.utils import timezone
+
+    from api import site
+    from api.models import Session
+
+    session = Session.objects.get(pk=open_session(client))
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now())
+    record = browsed("/search/?q=%27+OR+1%3D1--", 403, request_id=3)
+    audit = {"fsl_source": "modsecurity", "@timestamp": timezone.now().isoformat(), "transaction": {
+        "client_ip": "10.31.0.238", "time_stamp": timezone.now().strftime("%a %b %d %H:%M:%S %Y"),
+        "request": {"method": "GET", "uri": "/search/?q=%27+OR+1%3D1--", "headers": {"X-FSL-Case": session.browse_marker}},
+        "messages": [{"message": "SQL Injection Attack Detected via libinjection", "details": {"ruleId": "942100"}},
+                     {"message": "Inbound Anomaly Score Exceeded", "details": {"ruleId": "949110"}}]}}
+    arrived = patch("api.views._fetched", lambda index, start, end, newest_first: ([("audit-1", audit)], None))
+    with stub(), patch.object(site, "kept", return_value=[record]), arrived:
+        shown = client.get(f"/api/sessions/{session.pk}/topology/follow/?request=3").json()
+
+    waf = next(hop for hop in shown["hops"] if hop["node"] == "fsl-waf")
+    assert waf["verdict"] == "blocked" and waf["rules"] == ["942100", "949110"], "the rules come with the follow, not later"
