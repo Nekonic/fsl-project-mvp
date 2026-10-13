@@ -362,3 +362,18 @@ def test_a_scenario_without_a_lesson_names_a_path_scoped_exception_on_any_path_a
 
     assert views._fix(session, waf) == "path_target"
     assert views._fix(session, dict(waf, exclusions=[{"rule_id": 942100, "target": "ARGS:body", "path": ""}])) == "target"
+
+def test_the_debrief_timeline_reads_in_the_order_the_attacks_came(client):
+    session = opened("4.1")
+    state = session.scenario_state
+    late = scenarios.window_attacks(wargames.scenario_run("4.1"), state["schedule"],
+                                    scenarios.at(state["opened_at"]) + timedelta(seconds=60),
+                                    scenarios.at(state["opened_at"]))
+    state["schedule"] += late
+    Session.objects.filter(pk=session.pk).update(scenario_state=state, ended_at=timezone.now())
+
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+    times = [entry["at"] for entry in told["timeline"]]
+
+    assert times == [210, 300, 600]
+    assert [entry["n"] for entry in told["timeline"]] == [2, 0, 1]

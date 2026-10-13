@@ -544,6 +544,7 @@ def debrief(session) -> dict:
         state["schedule"], scenarios.at(window["started_at"]), scenarios.at(window["ends_at"]))}
     for entry in timeline:
         entry["in_window"] = entry["n"] in windowed
+    timeline.sort(key=lambda entry: entry["at"])
     before = {entry["case"]: entry["outcome"] for entry in timeline if not entry["in_window"] and entry["outcome"]}
     after = {entry["case"]: entry["outcome"] for entry in timeline if entry["in_window"] and entry["outcome"]}
     help_steps = lesson.help_counts(session.lesson_steps) if session.lesson_steps else {"hints": 0, "skipped": 0,
