@@ -314,3 +314,22 @@ def test_a_rules_step_passes_on_a_changed_rule_as_well_as_a_new_one():
 
 def step_rule(scenario_id):
     return next(step["rule"] for step in wargames.scenario_run(scenario_id)["steps"] if step["id"] == "fix") + "\n"
+
+def test_a_detection_debrief_counts_and_shows_only_the_ids_alerts(client):
+    session = opened("3.2")
+    case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=SQLMAP, malicious=True,
+                               pattern="CAPEC-66", correlation="marker", started_at=timezone.now(),
+                               ended_at=timezone.now(), meta={"scheduled": "3.2"})
+    state = session.scenario_state
+    state["schedule"][0].update(state="fired", case_id=case.case_id, outcome="held",
+                                fired_at=timezone.now().isoformat())
+    Session.objects.filter(pk=session.pk).update(scenario_state=state, ended_at=timezone.now())
+    alert(session, case.case_id, source="modsecurity", rule="942100")
+
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+    assert told["timeline"][0]["detected"] is False and told["evidence"] == []
+
+    alert(session, case.case_id, source="suricata", rule="9000101")
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+    assert told["timeline"][0]["detected"] is True
+    assert [row["source"] for row in told["evidence"]] == ["suricata"]
