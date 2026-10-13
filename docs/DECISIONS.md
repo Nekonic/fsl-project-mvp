@@ -2926,3 +2926,48 @@ container path against a real daemon.
 Metrics: core_loc 567 (unchanged), dependencies 6, services 10,
 wargame_services 4, product_loc 19,355 -> 20,234, tests 1912 -> 1947
 (bin/measure).
+
+### 2026-10-13 — Korean pairs of the learner's GNS3 maps
+
+The user approved Korean copies of the two maps, for security-club freshmen who
+read the console in Korean. `*.ko.gns3` is the fourth place Korean belongs
+(CLAUDE.md, Working language).
+
+- **A pair, not a second map.** `range-docker.ko.gns3` and
+  `range-openstack.ko.gns3` are the English files with only the drawing text
+  translated (title, zone titles, the notes beside nodes), in
+  `docs/vocabulary.md`'s terms where it has one (인터넷, 서비스 구간,
+  관리·관제 구간, 웹 방화벽, 공격자 PC, 경계 방화벽, 로그 저장소 ...). Node
+  names stay the host names: the platform, the follow view and GNS3 3.1's
+  label rule all match on them. A text drawing's `width` is re-estimated for
+  the Korean text; height, position and every rect and line are unchanged.
+- **Every id is `uuid5(<English id>, "ko")`, the project name gets
+  ` (한국어)`.** GNS3's compute keeps nodes in one dict keyed by node id
+  (`compute/base_manager.py` `create_node` returns the existing node for a
+  known id), so a pair sharing node ids could not both be open. Rejected: the
+  same ids (breaks opening both); random ids (no rule a test can rebuild).
+- **The English file is canonical.** `test_gns3_topology.py` rebuilds the
+  Korean file from the English one by the id rule and fails on any difference
+  but the words; every Korean drawing text has Hangul and no English one does;
+  no id repeats across the four files; the compose and declaration consistency
+  tests run on both files of each pair. No generator script: an edit to an
+  English map is redone on its pair by hand, and the test says where they
+  drifted.
+- **The console's language picks the map.** `GET /api/topology/?language=ko`
+  serves the Korean project (and its `web_ui` deep link names the Korean
+  project id); `en` or no parameter the English; another value is 400. The
+  overlay and the follow walk keep reading the English file, since names and
+  links are identical; the follow view draws the project the pane was served.
+
+Checked: `bin/check-topology` loads all four files in gns3-server 2.2.61 and
+3.1.0a6 (names kept); a local 3.1.0a6 controller loaded all four as four
+projects with distinct ids, the Korean name accepted. Not checked: opening the
+Korean projects on the live GNS3 service (the local controller cannot create
+docker or uBridge nodes off Linux). Expected cost, not measured: opening the
+pairs doubles GNS3's Created containers (19 to 38, about 4 kB each) and the
+switches' kernel bridges, and lengthens the restart reopen (18 s for two
+projects). There is no repo-wide Korean guard to widen: the console-template
+test is unchanged, and the board wargame's own pages are Korean content.
+
+Metrics: core_loc 567, dependencies 6, services 10 (unchanged); tests
+1912 -> 1920; product_loc 19355 -> 19363 (bin/measure).

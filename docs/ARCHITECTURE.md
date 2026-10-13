@@ -291,8 +291,18 @@ rules. `bin/check-topology` installs gns3-server 2.2.61 and 3.1.0a6 into venvs
 under `~/.cache/fsl/check-topology` and runs each release's `load_topology` on a
 copy of each file.
 
+Each project has a Korean pair for Korean learners,
+`deploy/topology/range-docker.ko.gns3` and `range-openstack.ko.gns3`: the same
+nodes, links, ports and positions, with only the drawn words (map title, zone
+titles, the notes beside nodes) in Korean, in the terms of
+`docs/vocabulary.md`; node names stay the host names. Every id in the pair is
+`uuid5(<English id>, "ko")` and the project name carries a Korean suffix,
+because GNS3's compute keeps nodes by node id alone, so two open projects may
+not share one. The English file is canonical; the test rebuilds the Korean
+file's structure from it and fails on any difference but the words.
+
 The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) copies
-both files into their own directories under `/var/lib/fsl-gns3/projects`
+every file into its own directory under `/var/lib/fsl-gns3/projects`
 (rewriting this repo's `:dev` image tags to `FSL_IMAGE_TAG`, the tag the host
 runs), sets the admin password before the controller database exists
 (`FSL_GNS3_ADMIN_PASSWORD`, or generated once into
@@ -307,7 +317,7 @@ key; nothing in the console exposes MCP.
 
 GNS3 opens a project only by creating every node on its compute, and a
 read-only user cannot open one (`Project.Allocate`), so `provision.py` opens
-both projects as admin at start and the Auditor sees them open. Creating is not
+every project as admin at start and the Auditor sees them open. Creating is not
 starting: no node is ever started. What creation needs, and the service has:
 `qemu-system-x86` for the `qemu` nodes (no disk image); uBridge 1.2.3, built
 from its release tag with `cap_net_admin,cap_net_raw` file capabilities, and
@@ -322,8 +332,13 @@ socket's group at start as `fsl` does in the platform. `GET /api/topology/`
 offers the web UI (`web_ui`) only while GNS3 reports the project `opened`;
 otherwise the console's Topology pane draws the same file itself.
 
-`GET /api/topology/` returns the substrate's project from GNS3
-(`platform/gns3.py`) or the repo's file. `GET /api/sessions/<id>/topology/`
+`GET /api/topology/?language=en|ko` returns the substrate's project drawn in
+that language from GNS3 (`platform/gns3.py`) or the repo's file (`en` when
+absent, 400 for another); the console sends its own language, and `web_ui`
+deep-links the GNS3 web UI to that project's id. The overlay and the follow
+view below read the English file: the pair has the same node names and links,
+so a hop is the same on either map, and the pane draws the project it was
+served. `GET /api/sessions/<id>/topology/`
 adds `project.nodes`: each host node's addresses per declared segment from the
 same range read, `running` or `not reported`. `GET
 /api/sessions/<id>/topology/follow/?request=<Website pane request id>` (or

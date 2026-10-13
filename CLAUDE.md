@@ -38,12 +38,17 @@ messages, PR descriptions, documents, the state and decision files — because
 Korean costs about twice the tokens per line and every session re-reads them.
 Code carries no comments in any language.
 
-Korean belongs in exactly three places, nowhere else:
+Korean belongs in exactly four places, nowhere else:
 
 - `*.ko.md` — a document for Korean readers. The English file is canonical; add
   a `.ko.md` beside it only when the user asks (as with `README.ko.md` and
   `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
   `.ko.md`, update both together so the pair never drifts.
+- `*.ko.gns3` — a Korean copy of a GNS3 project for Korean learners (as with
+  `deploy/topology/range-docker.ko.gns3`). The English `.gns3` file is
+  canonical; the pair keeps the same nodes, links, ports and positions, every
+  id mapped one to one, and differs only in the drawing text and the project
+  id and name. Change both together; a test holds the pair.
 - `platform/console/templates/console/strings.html` — the console's `en`/`ko`
   string table, the only template allowed Korean, enforced by a test.
 - `docs/vocabulary.md` — term translations and their sources.

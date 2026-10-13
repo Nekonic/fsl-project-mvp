@@ -17,6 +17,7 @@ from tests.test_topology import EDGE, MGMT, stub
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "deploy" / "topology" / "range-docker.gns3"
 OPENSTACK = ROOT / "deploy" / "topology" / "range-openstack.gns3"
+DOCKER_KO = ROOT / "deploy" / "topology" / "range-docker.ko.gns3"
 
 def detection(source, src_ip, **raw):
     return SimpleNamespace(source=source, src_ip=src_ip, signature=f"{source} saw it", raw=raw)
@@ -201,6 +202,28 @@ def test_the_topology_endpoint_serves_the_substrate_s_project(client):
         found = client.get("/api/topology/").json()
 
     assert found["project"]["name"] == "fsl-range-docker"
+
+@pytest.mark.django_db
+def test_the_topology_endpoint_serves_the_project_drawn_in_the_language_the_console_asks_for(client):
+    with override_settings(FSL_GNS3_URL=""):
+        english = client.get("/api/topology/?language=en").json()
+        korean = client.get("/api/topology/?language=ko").json()
+        refused = client.get("/api/topology/?language=fr")
+
+    assert english["project"] == json.loads(DOCKER.read_text())
+    assert korean["project"] == json.loads(DOCKER_KO.read_text())
+    assert refused.status_code == 400
+
+def test_the_web_ui_opens_the_project_drawn_in_the_language_asked_for():
+    korean = json.loads(DOCKER_KO.read_text())
+    with override_settings(FSL_GNS3_URL="http://gns3:3080"):
+        post, get = served_by("opened", korean)
+        with post, get as fetched:
+            found = gns3.project("ko")
+
+    assert {call.args[0].split("/projects/")[1].split("/")[0] for call in fetched.call_args_list} == {
+        korean["project_id"]}
+    assert found["web_ui"]["path"].endswith(f"?project={korean['project_id']}")
 
 @pytest.mark.django_db
 def test_a_session_s_topology_carries_the_project_overlay_from_the_same_range_read(client):

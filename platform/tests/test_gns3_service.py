@@ -93,6 +93,16 @@ def test_each_project_is_copied_into_its_own_directory_before_the_server_starts(
         "the admin password only takes effect when the controller database is first made"
     )
 
+def test_every_map_and_its_korean_pair_is_copied_into_a_directory_of_its_own():
+    entrypoint = (GNS3 / "entrypoint.sh").read_text()
+    copied = sorted(path.name for path in TOPOLOGY.glob("*.gns3"))
+
+    assert "for project in /topology/*.gns3; do" in entrypoint
+    assert 'name="$(basename "$project" .gns3)"' in entrypoint
+    assert copied == ["range-docker.gns3", "range-docker.ko.gns3",
+                      "range-openstack.gns3", "range-openstack.ko.gns3"]
+    assert len({name.removesuffix(".gns3") for name in copied}) == len(copied)
+
 def test_learners_sign_in_as_a_read_only_auditor_through_the_bundled_web_ui_s_own_storage():
     provision = (GNS3 / "provision.py").read_text()
     page = (GNS3 / "auditor.html").read_text()

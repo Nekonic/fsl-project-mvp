@@ -259,7 +259,15 @@ GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.6
 `~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의 `load_topology`를 각 파일의
 사본에 돌린다.
 
-`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 두 파일을
+프로젝트마다 한국어 학습자를 위한 한국어 짝이 있다: `deploy/topology/range-docker.ko.gns3`와
+`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 그려진 글자(지도 제목, 구간 제목,
+노드 옆 메모)만 `docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름은 호스트 이름 그대로다.
+GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프로젝트가 id를 함께 쓸 수 없다. 그래서
+짝의 모든 id는 `uuid5(<영어 id>, "ko")`이고 프로젝트 이름에는 한국어 접미사가 붙는다. 영어 파일이
+기준이다. 테스트가 영어 파일에서 한국어 파일의 구조를 다시 만들어 글자 말고 다른 차이가 있으면
+실패한다.
+
+`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 모든 파일을
 `/var/lib/fsl-gns3/projects` 아래 각자의 디렉터리로 복사하고(이 레포의 `:dev` 이미지 태그를
 호스트가 실행하는 태그 `FSL_IMAGE_TAG`로 바꿔 쓴다), 컨트롤러 데이터베이스가 생기기 전에 admin
 비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/var/lib/fsl-gns3/admin-password`에 한 번 생성),
@@ -270,7 +278,7 @@ learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localSto
 /opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다.
 
 GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 열고, 읽기 전용 사용자는 프로젝트를 열 수
-없다(`Project.Allocate`). 그래서 `provision.py`가 시작할 때 admin으로 두 프로젝트를 열어 두고,
+없다(`Project.Allocate`). 그래서 `provision.py`가 시작할 때 admin으로 모든 프로젝트를 열어 두고,
 Auditor는 열린 프로젝트를 본다. 만들기는 시작이 아니다: 어떤 노드도 시작하지 않는다. 만들기에
 필요하고 서비스가 갖춘 것: `qemu` 노드에는 `qemu-system-x86`(디스크 이미지 없음),
 `ethernet_switch` 노드에는 릴리스 태그에서 빌드하고 `cap_net_admin,cap_net_raw` 파일
@@ -282,8 +290,11 @@ capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위
 그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를
 내주고, 아니면 콘솔의 토폴로지 창이 같은 파일을 직접 그린다.
 
-`GET /api/topology/`는 substrate의 프로젝트를 GNS3에서(`platform/gns3.py`) 또는 레포 파일에서
-돌려준다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
+`GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 프로젝트를
+GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면 `en`, 다른 값이면 400). 콘솔은
+자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로 연다. 아래의 오버레이와
+따라가기는 영어 파일을 읽는다: 짝은 노드 이름과 링크가 같아서 홉은 어느 지도에서나 같고, 창은
+받은 프로젝트를 그린다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
 읽기에서 얻은 호스트 노드별 선언 구간 주소와 `running` 또는 `not reported`.
 `GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는
 `?case=<케이스 id>`, `?marker=`)는 사실만으로 경로를 그린다. 보낸 쪽은 실제로 보낸 것이다:
