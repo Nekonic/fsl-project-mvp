@@ -53,4 +53,5 @@ comments:
 profiles:
   community: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6}
   plain: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4, comment: 6}
+  readers: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4}
 default_profile: community

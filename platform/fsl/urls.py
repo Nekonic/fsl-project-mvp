@@ -1,6 +1,6 @@
 from django.urls import path
 
-from api import site, views
+from api import scenario_run, site, views
 from console import views as console
 
 urlpatterns = [
@@ -29,6 +29,11 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/traffic/", views.session_traffic),
     path("api/sessions/<int:session_id>/verify/", views.session_verify),
+    path("api/sessions/<int:session_id>/scenario/", scenario_run.scenario_status),
+    path("api/sessions/<int:session_id>/scenario/verify-window/", scenario_run.verify_window),
+    path("api/sessions/<int:session_id>/scenario/hints/", scenario_run.scenario_hints),
+    path("api/sessions/<int:session_id>/triage/", scenario_run.triage),
+    path("api/sessions/<int:session_id>/scenario/debrief/", scenario_run.scenario_debrief),
     path("api/sessions/<int:session_id>/lesson/hints/", views.lesson_hints),
     path("api/sessions/<int:session_id>/lesson/debrief/", views.lesson_debrief),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/", views.lesson_step),

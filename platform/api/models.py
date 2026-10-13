@@ -28,6 +28,8 @@ class Session(models.Model):
     result_cache = models.JSONField(null=True, blank=True, default=None)
     slot = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
     traffic = models.JSONField(null=True, blank=True, default=None)
+    course_scenario = models.CharField(max_length=32, blank=True, default="")
+    scenario_state = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]

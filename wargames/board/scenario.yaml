@@ -27,7 +27,67 @@ defense:
         - {rule_id: 949110}
         - {rule_id: 959100}
     suricata: local.rules
+  level2:
+    waf: {paranoia: 2}
+    suricata: local.rules
+  level3:
+    waf: {paranoia: 3}
+    suricata: local.rules
 default_lesson: waf-exclusion
+scenarios:
+  - id: "1.1"
+    order: 1
+    text: scenario.shift
+    task_class: judgement
+    guidance: worked
+    minutes: 15
+    window_minutes: 3
+    briefing: {situation: scenario.shift.situation, goal: scenario.shift.goal, measured_by: scenario.shift.measured_by}
+    defense: level2
+    traffic: {profile: community, rate: 2}
+    attacks:
+      - {at: 150, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {judged: all}
+    cards:
+      - {id: evidence, when: start}
+      - {id: alert, when: alert}
+      - {id: blocked, when: blocked}
+      - {id: window, when: window}
+    hints: [source, verdict, loot]
+    steps:
+      - id: open
+        point: {panel: '.pane-tab[data-pane="triage"]'}
+        check: {kind: click}
+      - id: customer
+        point: {panel: "#triage-list", opens: triage}
+        check: {kind: triage, judged: customer}
+      - id: attack
+        point: {panel: "#triage-list", opens: triage}
+        check: {kind: triage, judged: attack}
+      - id: all
+        point: {panel: "#triage-list", opens: triage}
+        check: {kind: triage, judged: all}
+      - id: done
+        point: {panel: "#scenario-done"}
+        check: {kind: click}
+  - id: "2.1"
+    order: 2
+    text: scenario.korean
+    task_class: availability
+    guidance: faded
+    minutes: 20
+    window_minutes: 4
+    briefing: {situation: scenario.korean.situation, goal: scenario.korean.goal, measured_by: scenario.korean.measured_by}
+    defense: level3
+    traffic: {profile: readers, rate: 2}
+    attacks:
+      - {at: 240, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {}
+    cards:
+      - {id: blocked, when: blocked}
+      - {id: narrow, when: alert}
+      - {id: window, when: window}
+    hints: [find, target, referer, level]
 foundations:
   - id: f1
     order: 1
