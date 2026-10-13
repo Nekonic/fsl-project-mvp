@@ -67,7 +67,7 @@ folded in — a defence that blocks everything scores perfectly here and loses
 every objective.
 
 One case is one decision however many alerts it drew (`board-sqli-orderby-sqlmap`
-sends about 94 requests and draws many alerts, and counts once); say so when
+sends about 2,000 requests through the WAF and draws many alerts, and counts once); say so when
 reporting, because per-alert counting measures the alert threshold, not the
 defence. A true positive must also
 survive `expect`: the case names a substring its signature should match, and an
@@ -87,7 +87,9 @@ alert that does not mention the attack's mechanism is reported
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
   configuration and the nginx reload, `kibana.py` the only one that knows the
-  Kibana API, `attacker.py` the only one that knows the attacker box, and the loot
+  Kibana API, `gns3.py` the only one that knows the GNS3 API (its container's
+  own `deploy/gns3/provision.py` aside), `attacker.py` the only one that knows
+  the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
