@@ -51,6 +51,7 @@ BLOCKING_RULE = "949110"
 UPSTREAM_FAILED = {502, 503, 504}
 TRANSIT = ("edge", "gateway", "wargames")
 SEEN_KEPT = 5
+LOG_STORE = "elasticsearch"
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -262,3 +263,24 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
                  for host, found in sorted(heard.items()) if host not in placed for d in found]
     return {"source": sent["sender"], "address": source or None, "target": goal,
             "hops": hops, "elsewhere": elsewhere}
+
+def _images(project) -> dict[str, str]:
+    return {node["name"]: str((node.get("properties") or {}).get("image") or "")
+            for node in project["topology"]["nodes"]}
+
+def _on_map(declared, kinds, role) -> str:
+    service = declared.compose.get(role, "")
+    return service if service in kinds else declared.roles.get(role, "")
+
+def facts(project, declared, scenario) -> dict[str, list[str]]:
+    near, kinds = _wired(project), _kinds(project)
+    outside = {origin.segment for origin in declared.origins} & set(kinds)
+    entered = {name for segment in outside for name in near[segment] if kinds[name] != SWITCH}
+    transit = [declared.roles[role] for role in TRANSIT if declared.roles.get(role) in entered]
+    stores = sorted(name for name, image in _images(project).items() if LOG_STORE in image)
+    database = _on_map(declared, kinds, f"{scenario}-db")
+    return {
+        "entry": transit[:1],
+        "logs": stores or [declared.roles["scorer"]],
+        "segment": sorted(name for name in near.get(database, ()) if kinds[name] == SWITCH),
+    }

@@ -68,14 +68,21 @@ def sensed(marker):
     return f'event_type : "alert" and http.request_headers.value : "{marker}"'
 
 
+def sensed_http(marker):
+    return f'event_type : "http" and http.request_headers.value : "{marker}"'
+
+
 def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 
 
-def discover_path(index, start, end, narrowed=None):
+def discover_path(index, start, end, narrowed=None, everything=False):
     query = ALERTS_QUERY if not index else f"({ALERTS_QUERY}) and _index : {index}"
     if narrowed:
         query = f"{query} and ({narrowed})"
+    if everything:
+        query = " and ".join(part for part in (f"_index : {index}" if index else "",
+                                               f"({narrowed})" if narrowed else "") if part) or "*"
     until = rison(end.isoformat()) if end else "now"
     global_state = f"(time:(from:{rison(start.isoformat())},to:{until}))"
     app_state = (

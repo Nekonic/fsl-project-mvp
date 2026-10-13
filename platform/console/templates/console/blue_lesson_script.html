@@ -92,6 +92,15 @@ function replayRow(row) {
   </li>`;
 }
 
+function kaliRow(row) {
+  const counted = Object.entries(row.sensors || {}).map(([sensor, count]) => `${sensor || "-"} ${count}`).join(" · ");
+  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-kali="${esc(row.name)}">
+    <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
+      ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
+    <p class="text-muted" data-requests>${esc(t("lesson.kali.requests", row.requests || 0))}${counted ? ` (${esc(counted)})` : ""}</p>
+  </li>`;
+}
+
 const REPLAYS_SHOWN = 5;
 const replayed = new Map();
 
@@ -210,10 +219,10 @@ function firstOpen() {
   }
 }
 
-function noteControls(practice) {
+function noteControls(practice, landing = "goal") {
   note = { ...note, ...readNote() };
   landedOnGoal = firstOpen();
-  if (landedOnGoal) note = { ...note, open: true, tab: "goal" };
+  if (landedOnGoal) note = { ...note, open: true, tab: landing };
   if (practice) {
     GUIDE_ONLY_TABS.forEach((name) => document.querySelector(`#lesson-tabs [data-tab="${name}"]`).classList.add("hidden"));
     if (GUIDE_ONLY_TABS.includes(note.tab)) note.tab = "goal";
@@ -233,8 +242,9 @@ function noteControls(practice) {
   placeNote();
 }
 
-const AUTOMATIC = ["alert", "waf", "served", "level", "rules"];
-const POLLED = ["alert", "waf", "level"];
+const AUTOMATIC = ["alert", "waf", "served", "level", "rules", "sent"];
+const POLLED = ["alert", "waf", "level", "sent"];
+const SENT_SETTLES_MS = 1500;
 const changed = [];
 const refreshers = [];
 const commandsArrived = [];
@@ -570,10 +580,21 @@ function coach(prefix, declared) {
     } else if (kind === "replay") {
       html = `<button data-act="replay" class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.replay.check", caseLabel(check().case)))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
+    } else if (kind === "kali") {
+      html = `<button data-act="kali" class="self-start btn btn-sm btn-blue">${
+        esc(t("lesson.kali.check"))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
+    } else if (kind === "loot") {
+      html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
+        class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight"
+        placeholder="${esc(t("lesson.loot.placeholder"))}"></textarea><button class="self-start btn btn-sm btn-blue">${
+        esc(t("lesson.loot.submit"))}</button></form>`;
     } else if (kind === "choice") {
       html = `<div class="flex flex-col gap-1.5">${check().options.map((option) =>
         `<button data-act="choose" data-value="${esc(option)}" class="text-left btn btn-sm btn-ghost">${
           esc(t(`${prefix}.option.${step.id}.${option}`))}</button>`).join("")}</div>`;
+    }
+    if (kind !== "click" && step.discover && !stretch) {
+      html = `<button data-act="chip" class="self-start btn btn-sm btn-ghost font-mono">${esc(t(`${prefix}.chip.${step.id}`))}</button>${html}`;
     }
     act.innerHTML = html;
     act.classList.toggle("hidden", !html);
@@ -588,7 +609,14 @@ function coach(prefix, declared) {
     }
     act.querySelectorAll('[data-act="choose"]').forEach((button) =>
       button.addEventListener("click", () => answer(button.dataset.value)));
-    const again = act.querySelector('[data-act="replay"], [data-act="detect"]');
+    const pasted = act.querySelector('[data-act="loot"]');
+    if (pasted) {
+      pasted.addEventListener("submit", (event) => {
+        event.preventDefault();
+        answer(pasted.querySelector('[data-act="value"]').value);
+      });
+    }
+    const again = act.querySelector('[data-act="replay"], [data-act="detect"], [data-act="kali"]');
     if (again) again.addEventListener("click", () => run(step, true));
   }
 
@@ -602,8 +630,9 @@ function coach(prefix, declared) {
     field("coach-pop-code-box").classList.toggle("hidden", !(commandShown || stretch));
     field("coach-pop-view").textContent = t(commandShown || stretch ? "lesson.command.hide" : "lesson.command.show");
     field("coach-pop-view").classList.toggle("hidden", stretch);
-    field("coach-pop-run").classList.toggle("hidden", stretch);
-    field("coach-pop-typed").textContent = stretch ? t("lesson.stretch.type") : t("lesson.run.note");
+    const onKali = check().kind === "kali";
+    field("coach-pop-run").classList.toggle("hidden", stretch || onKali);
+    field("coach-pop-typed").textContent = onKali ? t("lesson.kali.where") : stretch ? t("lesson.stretch.type") : t("lesson.run.note");
     pop.classList.toggle("pop-wide", shown);
   }
 
@@ -744,6 +773,8 @@ function coach(prefix, declared) {
     const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
     if (verdict.replay && rows) showReplay(rows, verdict.replay);
     if (verdict.detected && rows) showReplay(rows, verdict.detected, detectRow);
+    if (verdict.kali && rows) showReplay(rows, verdict.kali, kaliRow);
+    if (verdict.loot && verdict.loot.matched.length) fixes.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
     if (verdict.passed) {
       pass(step);
       return;
@@ -811,9 +842,19 @@ function coach(prefix, declared) {
     return false;
   }
 
+  function openNamed(step) {
+    const tab = document.querySelector(step.opens ? `.pane-tab[data-pane="${step.opens}"]` : step.panel || "none");
+    if (tab && tab.classList.contains("pane-tab") && tab.getAttribute("aria-selected") !== "true") openPane(tab);
+  }
+
   const SHOWN_BY_THE_CONSOLE = {
     alert: (step) => openSite(step.site),
+    sent: (step) => openSite(step.site),
     click: (step) => {
+      if (!step.kibana) {
+        openNamed(step);
+        return;
+      }
       openKibana(step.discover || session.discover);
       clickWhenThere(step);
     },
@@ -867,6 +908,10 @@ function coach(prefix, declared) {
 
   site.heard.push((path) => {
     const step = steps[at];
+    if (step.check.kind === "sent") {
+      if (new RegExp(step.check.match).test(readable(path))) setTimeout(() => run(step, false), SENT_SETTLES_MS);
+      return;
+    }
     if (!step.check.path || !readable(path).includes(step.check.path)) return;
     if (step.check.kind === "served") run(step, true);
     if (step.check.kind === "alert") setTimeout(() => run(step, false), POLL_SECONDS * 1000);
@@ -990,6 +1035,11 @@ function theory(prefix, listed, coachTo) {
     ? `<button class="self-start text-[12px] text-primary hover:underline" data-shows="${esc(card.shows)}">${esc(t("lesson.theory.show"))}</button>` : "");
   field("lesson-theory").querySelectorAll("[data-shows]").forEach((show) =>
     show.addEventListener("click", () => coachTo(show.dataset.shows)));
+}
+
+function openFirstCard() {
+  const first = field("lesson-theory").querySelector("[data-card]");
+  if (first && first.getAttribute("aria-expanded") !== "true") first.click();
 }
 
 function hints(prefix, listed, steps) {

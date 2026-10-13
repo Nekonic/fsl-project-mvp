@@ -195,7 +195,7 @@
     field("lesson-case").innerHTML = taught.cases.map((name) =>
       `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     const practice = session.mode === "self";
-    noteControls(practice);
+    noteControls(practice, taught.group === "foundations" ? "theory" : "goal");
     doneWhen(taught);
     lessonControls(taught);
     opening(taught);
@@ -203,6 +203,7 @@
     modeControl(practice);
     hints(taught.text, taught.hints, declared);
     theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);
+    if (taught.group === "foundations") openFirstCard();
   })();
 </script>
 {% endblock %}
