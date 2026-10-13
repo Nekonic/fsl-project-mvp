@@ -2830,3 +2830,99 @@ CLAUDE.md say sqlmap sends "about 94 requests", while these runs sent
 
 Metrics: core_loc 567 (unchanged; `elastic.suricata_marker` renamed from
 private), dependencies 6, services 10, tests 1893 -> 1912 (bin/measure).
+
+### 2026-10-13 — P3 built: customers who use the board for the whole session
+
+Phase P3 of the scenario course design. `docs/ARCHITECTURE.md`, "Customer
+traffic", has the mix, the generator, the API and the per-substrate table.
+
+- **A customer request is a `CustomerRequest` row, not a `Case`.** The
+  ruling counts each blocked customer request; a session at 1-2 requests a
+  second makes 3,600-7,200 an hour. As cases they would flood `per_case`,
+  break "one case is one decision", and make `correlate` (cases × detections,
+  pure Python) grow with both: 600 customer cases against the 16,859
+  detections of session 304 is about ten million comparisons on every score
+  read. Instead score 2 gains a `customers` block computed in SQL
+  (`Count` with filters; the alerted ones by a `marker IN (SELECT marker FROM
+  detections)` subquery), the console says "Customer requests blocked: N of
+  M" (R1, plain words), and TP/FP/FN/TN, `per_case` and the game are
+  unchanged. Records arrive as JSON lines pulled by byte offset and stored with
+  one `bulk_create` per 1 MiB.
+- **Blocked means 403 from the defence.** Django's own CSRF 403 is recorded
+  with `refused_by: "app"` (the generator recognises its page) and counted under
+  `other`, so a broken flow is not charged to the defence. No answer within
+  10 s is `unanswered`, kept apart.
+- **Every request carries its own UUID marker,** the same shape as a case's,
+  because a `user-` prefix would let a learner sort alerts into customers and
+  attacks without judging them (task class 1).
+- **Origins.** Customers never use the declared default origin, nor on
+  OpenStack any address the attacker sends from: each origin's `source_ip`
+  (the SNAT address `fsl-origin` wears) and the VM's unbound source, read with
+  `ip route get` to the target (on slot 1 it is 1.128.0.10, Australia, not the
+  default origin's address). Twelve personas are allocated by largest
+  remainder over the declared weights the range offers: on OpenStack kr 9,
+  us 1, jp 1, cn 1. The KR origin has two addresses in the declaration (its
+  Cloudflare share) and one is the attacker's, so the nine Korean customers
+  share the other; origins with a single address (tw, hk and ten more) are
+  the attacker's alone and offer customers nothing. Raising KR's count would
+  need new fixed IPs on the
+  Kali port, which only a slot rebuild makes. Docker has no KR network, so
+  its customers come from us, hk and br.
+- **The SNAT conflict on OpenStack** (`fsl-origin` SNATs everything leaving the
+  VM) is solved by account: the generator runs as `fsl-users` (`setpriv`),
+  each persona binds its own origin address, and `POSTROUTING -m owner
+  --uid-owner fsl-users -j RETURN` is inserted at position 1, before the
+  `FSL-ORIGIN` jump that `fsl-origin` appends. Not chosen: per-process binding
+  alone (the SNAT rewrites the bound source too); SNAT with an address range
+  (the kernel picks one address per source/destination pair, so every
+  customer would look alike).
+- **Shipped at start, not baked.** `deploy/kali/setup.sh` is unchanged. The
+  Kali VM is rebuilt from its golden image at every close, and the image's
+  bundle digest covers `deploy/kali/`: any change there marks the image not
+  ready, and `rebuild_slot` then refuses every close's reset until the image
+  pipeline has run. So `attacker.place_customers` creates the account, inserts
+  the exemption and writes the program over the runner (`sudo`) each time the
+  customers start; the program lives in `deploy/traffic/`, outside every
+  image bundle.
+- **Docker** runs the generator in `fsl-<id>-users`, a container from the Kali
+  image started by the adapter on the personas' origin networks, labelled
+  `fsl.customers=<id>`, removed at stop and by the next session open's
+  cleanup. It is not a compose service: `services` stays 10 and
+  `wargame_services` 4.
+- **Rate**: default 1 request a second, cap 50 (P0's measured ceiling).
+  Workers are `2 + 2 × rate` threads (at most 64) sharing one pace.
+- **Lifecycle**: `PUT/GET/DELETE /api/sessions/<id>/traffic/`; the close
+  stops the generator and reads its last records before the slot is reset,
+  and goes on if the box is unreachable, keeping the error. The session page
+  shows the switch only with `?traffic` in its URL.
+- **The plan holds the seeded accounts' passwords** (jiwoo, minseo) and is
+  0600 to `fsl-users`; root on the Kali VM can read it, and the red console's
+  terminal is root. These are the board's seed values, public in this repo,
+  and no objective is about them.
+
+The closed-session score bug: `session.html` drew the first-score table from
+`/score/`'s `breaches` and, when the call failed (or answered without its
+tables), passed an empty list, so every objective read "Kept" while the
+header, from `GET /api/sessions/<id>/`, said 3/3 lost. Now the table and the
+second score say the score could not be read and the page reads it again
+every 5 s, up to four tries. Why `/score/` failed that once is not
+reproduced: session 304's score answers 200 in 0.6-1.4 s (1.7 MB, its
+16,859 detection ids), and the platform container had been recreated at
+04:01:27 during that session (the 849423d deploy), nine seconds of restart
+being one way a single call fails right after a close.
+
+Not run live: the deploy to the platform VM and the live run asked for (a
+board session at PL2 with customers at 2 requests a second for five minutes
+beside one sqlmap run) were blocked by the session's permission mode before
+the first `rsync`; everything above is unit-tested only. What the live run
+must show: the customers' source addresses in the WAF and Suricata records
+differ from the attacker's; every customer request is recorded (records vs
+the edge sensor's http events with their markers); the `<b>`, URL and
+`C++ & C#` searches are counted blocked at PL2; the sqlmap case keeps its
+own detections; ingest keeps up; the generator stops at close. Also unproven:
+`setpriv`/`setsid` surviving `sudo` over the runner's ssh, and the Docker
+container path against a real daemon.
+
+Metrics: core_loc 567 (unchanged), dependencies 6, services 10,
+wargame_services 4, product_loc 19,355 -> 20,234, tests 1912 -> 1947
+(bin/measure).

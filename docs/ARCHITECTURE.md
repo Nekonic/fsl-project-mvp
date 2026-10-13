@@ -388,6 +388,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | CLI run, HTTP | the platform, `redteam/run.py` | the platform, on `edge` (where `board.com` resolves) | added by the harness |
 | CLI run, tool | a throwaway `fsl-kali` container, from `launcher(<declared default origin>)` | that container | sqlmap `--headers=` |
 | Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | the platform, on `edge` (on OpenStack, on `mgmt`) | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
+| Customers | `deploy/traffic/users.py`, in `fsl-<id>-users` (docker) or as `fsl-users` on the Kali VM (OpenStack) | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
 
 The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
 and, when `/label/origin` names an address, forwards the request there with the
@@ -1163,7 +1164,73 @@ times the difficulty taken, minus 1 per FP. `balance` is `defender - attacker`.
 When nothing is taken the balance is minus FP. The weights and dwell times are
 v1 defaults (`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
 
+Customers. The score's `customers` block counts the customer requests the
+session recorded (below): `sent`, `served` (2xx and 3xx), `blocked` (403,
+except Django's own CSRF refusal, which the generator marks
+`refused_by: "app"`), `unanswered` (no answer within 10 s, status 0), `other`
+(any other 4xx or 5xx), `alerted` (customer requests whose marker some alert
+carries) and `blocked_actions`. Each request counts once; none is a case, so
+the `per_case` list and TP/FP/FN/TN are unchanged, and an alert a customer
+request drew is not counted in `unattributed`. The console's second score
+says "Customer requests blocked: N of M" beside the case sentences.
+
 The score endpoint is read-only and keeps no history.
+
+## Customer traffic
+
+A board session can carry its customers: Korean community users who browse,
+search, sign in and comment for the whole session. The mix is declared in
+`wargames/board/traffic.yaml` (users, origin weights, the seeded accounts,
+posts 1-3, browser User-Agents, search terms, comment texts, profiles of
+action weights). `platform/traffic.py` renders it: twelve personas allocated to
+origins by the declared weights (largest remainder), each with its own source
+address, browser and language; and 2,000 flows of steps the box cycles
+through. Sign-in and comments are form posts: the flow first GETs the page,
+the box takes `csrfmiddlewaretoken` from it and sends it with the `csrftoken`
+cookie, and follows the 302. A flow whose page carried no token (the GET was
+blocked) stops there, as a browser would.
+
+`deploy/traffic/users.py` is the generator: Python's standard library only,
+paced to the plan's rate across threads, one fresh UUID in `X-FSL-Case` per
+request (the same shape as a case's marker, so a learner cannot tell a
+customer from an attack by it), one JSON line per request in
+`records.jsonl`. It re-reads the plan when the file changes and stops when the
+file is removed or on SIGTERM.
+
+| | Docker | OpenStack |
+|---|---|---|
+| Where it runs | `fsl-<id>-users`, a container from the Kali image started by `Docker.users_box` on the personas' origin networks, labelled `fsl.customers=<id>`; not a compose service | the slot's `fsl-kali` VM, as the system account `fsl-users` |
+| Source address | the container's own address on each origin network | each persona is bound to one of the VM's origin addresses |
+| Kept apart from the attacker | the declared default origin is not used; the container's addresses are its own | the default origin is not used; nor is any origin's `source_ip` the attacker wears, nor the VM's unbound source (`ip route get` to the target); `POSTROUTING -m owner --uid-owner fsl-users -j RETURN` is inserted before the `FSL-ORIGIN` SNAT jump, so the attacker's origin rewrite never applies to customers |
+
+`platform/attacker.py` holds every command run on the box: `place_customers`
+(the account, the NAT exemption and the program, through `sudo` on OpenStack),
+`run_customers` (writes the plan, starts the program with `setsid` and
+`setpriv` if it is not running), `stop_customers`, `customer_records`. The
+program is shipped from the platform at each start, not baked into the Kali
+image: the VM is rebuilt from its golden image at every close, and a file under
+`deploy/kali/` would change that image's digest and stop the next rebuild until
+the image was rebuilt.
+
+API (`platform/api/customers.py`, `views.session_traffic`):
+
+- `PUT /api/sessions/<id>/traffic/ {rate, profile}` starts the customers or
+  changes a running generator's rate and profile (same personas). `rate` is
+  requests per second, default 1, at most 50; `profile` is `community`
+  (default) or `plain` (no unusual searches). 404 for a wargame with no
+  `traffic.yaml`, 409 for a closed session, 503 when the box or the origins are
+  not there.
+- `GET` reads the new records first, then returns `running`, `rate`,
+  `profile`, the counts above, `sources` (origin, address, requests) and
+  `by_action`.
+- `DELETE` stops it and reads what it sent last. Closing the session does the
+  same before the slot is rebuilt; if the box is unreachable the close goes on
+  and the error is kept in `traffic.error`.
+
+Records are pulled by byte offset (`tail -c`, at most 1 MiB a call, whole lines
+only) into `CustomerRequest` rows with one `bulk_create` per call; the offset
+lives in `Session.traffic`. The session page offers the switch only with
+`?traffic` in its URL, for testing; a scenario (P4) will start it itself.
 
 ## Decisions
 

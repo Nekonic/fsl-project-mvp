@@ -337,6 +337,7 @@ capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위
 | CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, `edge`에서(`board.com`이 해석되는 곳) | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(<선언된 기본 출발지>)`에서 | 그 컨테이너 | sqlmap `--headers=` |
 | 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거쳐 | 플랫폼, `edge`에서(OpenStack에서는 `mgmt`에서) | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API는 `browse`로 보여 줌 |
+| 고객 | `deploy/traffic/users.py`, `fsl-<id>-users`에서(docker) 또는 Kali VM의 `fsl-users`로(OpenStack) | 기본이 아닌 출발지의 페르소나 자신의 주소. 공격자가 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
 프록시는 `mitmdump` 스크립트다. `/label/active`에서 `X-FSL-Case`를 설정하고,
 `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달한다.
@@ -908,7 +909,62 @@ corroborated되지 않은 케이스는 `score.warning.wrong_reason`을 추가한
 FP다. 가중치와 체류 시간은 v1 기본값이다
 (`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
 
+고객. score의 `customers` 블록은 세션이 기록한 고객 요청(아래)을 센다: `sent`,
+`served`(2xx·3xx), `blocked`(403. 단 Django 자체의 CSRF 거절은 생성기가
+`refused_by: "app"`으로 표시해 뺀다), `unanswered`(10초 안에 응답 없음, status 0),
+`other`(그 밖의 4xx·5xx), `alerted`(어떤 경보가 그 마커를 가진 고객 요청),
+`blocked_actions`. 요청 하나는 한 번 세며 케이스가 아니다. 그래서 `per_case`와
+TP/FP/FN/TN은 그대로이고, 고객 요청이 일으킨 경보는 `unattributed`에 세지 않는다.
+콘솔의 두 번째 점수는 케이스 문장 옆에 "막힌 고객 요청: M건 중 N건"이라고 쓴다.
+
 score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
+
+## 고객 트래픽
+
+board 세션은 고객을 둘 수 있다. 세션 내내 둘러보고, 검색하고, 로그인하고, 댓글을
+다는 한국 커뮤니티 사용자다. 구성은 `wargames/board/traffic.yaml`에 선언한다(사용자
+수, 출발지 가중치, 시드 계정, 글 1-3, 브라우저 User-Agent, 검색어, 댓글, 행동
+가중치 프로필). `platform/traffic.py`가 이를 그린다: 선언된 가중치로 출발지에
+나눈(최대 잉여) 페르소나 12명, 각자 출발 주소·브라우저·언어를 갖고, 박스가 돌려
+가며 보내는 흐름 2,000개. 로그인과 댓글은 폼 POST다. 흐름이 먼저 페이지를 GET하고,
+박스가 그 페이지의 `csrfmiddlewaretoken`을 `csrftoken` 쿠키와 함께 보내고, 302를
+따라간다. 페이지에 토큰이 없으면(GET이 막혔으면) 브라우저처럼 거기서 멈춘다.
+
+`deploy/traffic/users.py`가 생성기다. 표준 라이브러리만 쓰며, 스레드들이 계획의
+속도에 맞춰 보내고, 요청마다 새 UUID를 `X-FSL-Case`에 싣는다(케이스 마커와 같은
+모양이라 학습자가 마커로 고객과 공격을 가를 수 없다). 요청마다 JSON 한 줄을
+`records.jsonl`에 쓴다. 계획 파일이 바뀌면 다시 읽고, 파일이 지워지거나 SIGTERM을
+받으면 멈춘다.
+
+| | Docker | OpenStack |
+|---|---|---|
+| 실행 위치 | `fsl-<id>-users`. `Docker.users_box`가 Kali 이미지로 페르소나의 출발지 네트워크에 띄우는 컨테이너, 라벨 `fsl.customers=<id>`. compose 서비스가 아니다 | 슬롯의 `fsl-kali` VM, 시스템 계정 `fsl-users`로 |
+| 출발 주소 | 출발지 네트워크마다 컨테이너 자신의 주소 | 페르소나마다 VM의 출발지 주소 하나에 묶는다 |
+| 공격자와 분리 | 선언된 기본 출발지는 쓰지 않는다. 주소는 컨테이너 자신의 것 | 기본 출발지를 쓰지 않고, 공격자가 쓰는 출발지별 `source_ip`도, VM이 묶지 않고 보낼 때의 출발 주소(대상까지 `ip route get`)도 쓰지 않는다. `POSTROUTING -m owner --uid-owner fsl-users -j RETURN`을 `FSL-ORIGIN` SNAT 점프보다 앞에 넣어 공격자의 출발지 바꾸기가 고객에게 적용되지 않는다 |
+
+박스에서 도는 명령은 모두 `platform/attacker.py`에 있다: `place_customers`(계정,
+NAT 예외, 프로그램. OpenStack에서는 `sudo`로), `run_customers`(계획을 쓰고, 돌고
+있지 않으면 `setsid`와 `setpriv`로 시작), `stop_customers`, `customer_records`.
+프로그램은 Kali 이미지에 굽지 않고 시작할 때마다 플랫폼이 보낸다. VM은 닫을 때마다
+골든 이미지로 다시 만들어지고, `deploy/kali/` 아래 파일이 바뀌면 그 이미지의
+다이제스트가 바뀌어 이미지를 다시 만들 때까지 다음 재구축이 멈추기 때문이다.
+
+API(`platform/api/customers.py`, `views.session_traffic`):
+
+- `PUT /api/sessions/<id>/traffic/ {rate, profile}`은 고객을 시작하거나, 돌고 있는
+  생성기의 속도와 프로필을 바꾼다(페르소나는 그대로). `rate`는 초당 요청 수,
+  기본 1, 최대 50. `profile`은 `community`(기본) 또는 `plain`(특이한 검색 없음).
+  `traffic.yaml`이 없는 워게임은 404, 닫힌 세션은 409, 박스나 출발지가 없으면 503.
+- `GET`은 새 기록을 먼저 읽고 `running`, `rate`, `profile`, 위의 수, `sources`
+  (출발지, 주소, 요청 수), `by_action`을 돌려준다.
+- `DELETE`는 멈추고 마지막으로 보낸 것까지 읽는다. 세션을 닫을 때도 슬롯을 다시
+  만들기 전에 똑같이 한다. 박스에 닿지 않으면 닫기는 계속하고 오류를
+  `traffic.error`에 남긴다.
+
+기록은 바이트 오프셋으로 가져온다(`tail -c`, 호출당 최대 1 MiB, 온전한 줄만).
+호출마다 `bulk_create` 한 번으로 `CustomerRequest` 행이 되고, 오프셋은
+`Session.traffic`에 둔다. 세션 페이지는 URL에 `?traffic`이 있을 때만 시험용으로
+스위치를 보인다. 시나리오(P4)는 스스로 시작한다.
 
 ## 결정
 
