@@ -158,3 +158,66 @@ def test_on_docker_tuning_keeps_the_container_paths_and_reload():
 
     assert settings.FSL_WAF == crs.Layout()
     assert crs.Layout() == (crs.EXCLUSIONS, "nginx -t 2>&1 && nginx -s reload 2>&1", "/tmp/nginx.pid")
+
+KOREAN_SEARCH_AT_PL3 = {
+    "paranoia": 3,
+    "exclusions": [
+        {"rule_id": 920272, "target": "REQUEST_URI_RAW", "path": "/search/"},
+        {"rule_id": 920272, "target": "ARGS:q", "path": "/search/"},
+        {"rule_id": 942460, "target": "ARGS:q", "path": "/search/"},
+    ],
+    "thresholds": {"inbound": 10000, "outbound": 10000},
+}
+
+def test_the_raw_request_uri_can_be_removed_from_one_rule_under_one_path():
+    rendered = crs.rendered(crs.checked(KOREAN_SEARCH_AT_PL3))
+
+    assert rendered.splitlines()[1] == (
+        'SecRule REQUEST_FILENAME "@beginsWith /search/" '
+        '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_URI_RAW"'
+    )
+
+def test_anomaly_thresholds_are_set_beside_the_paranoia_level():
+    rendered = crs.rendered(crs.checked({"paranoia": 1, "thresholds": {"outbound": 8, "inbound": 12}}))
+
+    assert rendered == (
+        'SecAction "id:10000,phase:1,pass,nolog,'
+        'setvar:tx.blocking_paranoia_level=1,setvar:tx.detection_paranoia_level=1,'
+        'setvar:tx.inbound_anomaly_score_threshold=12,setvar:tx.outbound_anomaly_score_threshold=8"\n'
+    )
+
+def test_a_tuning_with_the_raw_uri_and_thresholds_reads_back_as_written():
+    tuning = crs.checked(KOREAN_SEARCH_AT_PL3)
+
+    assert crs.parsed(crs.rendered(tuning)) == tuning
+
+def test_a_tuning_without_thresholds_reads_back_without_them():
+    tuning = crs.checked({"paranoia": 2, "exclusions": [{"rule_id": 949110}]})
+
+    assert crs.parsed(crs.rendered(tuning)) == tuning
+    assert "thresholds" not in tuning
+
+@pytest.mark.parametrize("thresholds", [
+    "10000",
+    {"inbound": 0},
+    {"inbound": 100001},
+    {"inbound": "5"},
+    {"inbound": True},
+    {"critical": 5},
+    {"inbound": 5.5},
+])
+def test_a_threshold_outside_an_anomaly_score_is_refused(thresholds):
+    with pytest.raises(crs.TuningRefused):
+        crs.checked({"paranoia": 1, "thresholds": thresholds})
+
+@pytest.mark.parametrize("target", ["REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY"])
+def test_only_the_raw_uri_itself_joins_the_targets(target):
+    with pytest.raises(crs.TuningRefused):
+        crs.checked({"paranoia": 1, "exclusions": [{"rule_id": 920272, "target": target}]})
+
+def test_applying_thresholds_writes_them_and_reads_them_back():
+    gateway = Gateway()
+
+    crs.apply(KOREAN_SEARCH_AT_PL3, gateway)
+
+    assert crs.read(gateway)["thresholds"] == {"inbound": 10000, "outbound": 10000}

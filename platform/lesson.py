@@ -27,6 +27,8 @@ def fix_class(waf: dict | None, posture: dict | None, scope: str) -> str | None:
     level = waf.get("paranoia") or CRS_DEFAULT_LEVEL
     if posture.get("paranoia") and level < posture["paranoia"]:
         return "level"
+    if (waf.get("thresholds") or {}) != (posture.get("thresholds") or {}):
+        return "threshold"
     added = [entry for entry in waf.get("exclusions") or [] if entry not in (posture.get("exclusions") or [])]
     if not added:
         return None
