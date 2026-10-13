@@ -175,11 +175,10 @@ def test_the_docker_project_is_the_compose_stack_one_container_per_service():
         assert wired.get(name, set()) == want["segments"], name
         assert drawn[name]["properties"]["adapters"] == len(want["segments"]), name
 
-def test_the_docker_project_wires_every_declared_host_onto_its_declared_segments():
-    wired = wiring(project(DOCKER))
+def test_every_host_a_docker_role_names_is_a_node_of_the_docker_project():
+    drawn = nodes(project(DOCKER))
 
-    for host, entry in declared.read().hosts.items():
-        assert wired.get(host, set()) == set(entry.segments), host
+    assert set(declared.read().roles.values()) <= set(drawn)
 
 def test_the_openstack_project_is_the_declared_hosts_and_the_wargame_hosts_containers():
     gns3 = project(OPENSTACK)

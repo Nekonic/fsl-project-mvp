@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GNS3</title>
+</head>
+<body>
+<p id="said">Signing in read-only...</p>
+<script>
+(async () => {
+  const auditor = __FSL_AUDITOR__;
+  const said = document.getElementById("said");
+  const port = parseInt(location.port, 10) || (location.protocol === "https:" ? 443 : 80);
+  const answer = await fetch("/v3/access/users/authenticate", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(auditor),
+  });
+  if (!answer.ok) {
+    said.textContent = "GNS3 refused the read-only sign-in (" + answer.status + ").";
+    return;
+  }
+  const token = (await answer.json()).access_token;
+  localStorage.setItem("controller-1", JSON.stringify({
+    id: 1, name: "local", location: "bundled", host: location.hostname, port: port,
+    protocol: location.protocol, authToken: token, username: auditor.username, tokenExpired: false,
+  }));
+  localStorage.setItem("controllerIds", "controller-1");
+  const project = new URLSearchParams(location.search).get("project");
+  location.replace("/static/web-ui/controller/1/" +
+    (project ? "project/" + encodeURIComponent(project) : "projects"));
+})();
+</script>
+</body>
+</html>

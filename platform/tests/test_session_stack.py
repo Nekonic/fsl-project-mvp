@@ -324,7 +324,7 @@ def test_the_session_stack_has_the_shape_the_platform_opens_it_with():
         "session's, and Docker refuses the second stack"
     )
 
-    assert set(control["services"]) == {"platform", "elasticsearch", "kibana", "collector"}
+    assert set(control["services"]) == {"platform", "elasticsearch", "kibana", "collector", "gns3"}
 
     platform = control["services"]["platform"]
     mounted = {entry.split(":")[1]: entry.split(":")[0] for entry in platform["volumes"]}

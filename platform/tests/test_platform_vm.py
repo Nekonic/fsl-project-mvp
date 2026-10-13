@@ -127,6 +127,7 @@ def test_a_browser_reaches_the_platform_at_the_floating_ip():
         ("tcp", 22, 22),
         ("tcp", 8000, 8000),
         ("tcp", 8002, 8002),
+        ("tcp", 3080, 3080),
         ("icmp", None, None),
     }, opened
 
