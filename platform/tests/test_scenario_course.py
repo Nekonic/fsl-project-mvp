@@ -267,3 +267,8 @@ def test_an_availability_window_leaked_by_the_unseen_variant_fails_on_both_score
 
     assert result["passed"] is False
     assert any(reason[0] == "scenario.fail.leaked" for reason in result["reasons"])
+
+def test_a_writer_waits_for_the_store_instead_of_failing_a_scheduled_attack():
+    from django.conf import settings
+
+    assert settings.DATABASES["default"]["OPTIONS"]["timeout"] >= 30
