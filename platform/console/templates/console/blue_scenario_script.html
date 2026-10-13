@@ -8,7 +8,6 @@ const PHASE_TONE = { running: "blue", window: "warn", passed: "ok-strong", faile
 const ENDED = ["passed", "failed"];
 let scenario = null;
 let scenarioReadAt = 0;
-const cardsShown = new Set();
 
 function remembered(key, fallback) {
   try {
@@ -71,23 +70,23 @@ function briefingClose() {
 }
 
 function cardsShow() {
-  const dismissed = remembered(CARDS_KEY(sessionId()), []);
   const stack = field("scenario-cards");
-  scenario.cards.filter((id) => !dismissed.includes(id) && !cardsShown.has(id)).forEach((id) => {
-    cardsShown.add(id);
+  const dismissed = remembered(CARDS_KEY(sessionId()), []);
+  const next = scenario.cards.find((id) => !dismissed.includes(id));
+  if (next && !stack.querySelector("[data-card]")) {
     const card = document.createElement("div");
     card.className = "card note-shadow p-3 flex flex-col gap-1 text-[12.5px]";
-    card.dataset.card = id;
-    card.innerHTML = `<b class="text-heading">${esc(t(`${scenario.text}.card.${id}.title`))}</b>
-      <p class="text-body leading-relaxed">${esc(t(`${scenario.text}.card.${id}.body`))}</p>
+    card.dataset.card = next;
+    card.innerHTML = `<b class="text-heading">${esc(t(`${scenario.text}.card.${next}.title`))}</b>
+      <p class="text-body leading-relaxed">${esc(t(`${scenario.text}.card.${next}.body`))}</p>
       <button type="button" class="self-end btn btn-sm btn-ghost">${esc(t("scenario.card.dismiss"))}</button>`;
     card.querySelector("button").addEventListener("click", () => {
-      remember(CARDS_KEY(sessionId()), [...remembered(CARDS_KEY(sessionId()), []), id]);
+      remember(CARDS_KEY(sessionId()), [...remembered(CARDS_KEY(sessionId()), []), next]);
       card.remove();
-      stack.classList.toggle("hidden", !stack.querySelector("[data-card]"));
+      cardsShow();
     });
     stack.appendChild(card);
-  });
+  }
   const any = Boolean(stack.querySelector("[data-card]"));
   stack.classList.toggle("hidden", !any);
   stack.classList.toggle("flex", any);

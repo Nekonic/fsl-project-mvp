@@ -632,3 +632,23 @@ def test_a_new_waf_change_the_engine_happened_to_read_first_is_not_called_applie
 
     session.refresh_from_db()
     assert session.scenario_state["offer"]["reason"] == "waf"
+
+def test_a_judgement_window_is_judged_on_the_verdicts_and_reports_blocked_customers_beside_them():
+    session = opened("1.1")
+    marker = str(uuid.uuid4())
+    customer(session, timezone.now() - timedelta(minutes=2), status=403, marker=marker)
+    alert(session, marker, at=timezone.now() - timedelta(minutes=2))
+    item = scenario_run._items(session)[0]["item"]
+    scenario_run._update(session.pk, lambda state, held: state["triage"].update(
+        {item: {"verdict": "customer", "succeeded": None, "right": True, "tries": 1, "wrong": 0, "first_right": True,
+                "at": "x"}}))
+    session.refresh_from_db()
+
+    result = window_judged(session, blocked_inside=2)
+
+    assert result["passed"] is True, result
+    assert result["customers_blocked"] == 2
+
+def test_an_availability_scenario_must_ask_for_customers_served_and_attacks_held():
+    with pytest.raises(wargames.InvalidCatalogue, match="completion"):
+        checked(declared(completion={"served": "all"}))
