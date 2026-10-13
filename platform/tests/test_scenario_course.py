@@ -333,3 +333,23 @@ def test_a_detection_debrief_counts_and_shows_only_the_ids_alerts(client):
     told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
     assert told["timeline"][0]["detected"] is True
     assert [row["source"] for row in told["evidence"]] == ["suricata"]
+
+@pytest.mark.parametrize("waf, named", [
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
+    ({"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_HEADERS:Referer", "path": ""}],
+      "thresholds": {"inbound": 5, "outbound": 4}}, "target"),
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 20000, "outbound": 4}}, "threshold"),
+])
+def test_lowering_the_thresholds_is_not_named_a_threshold_fix_raising_them_is(waf, named):
+    import lesson
+
+    posture = wargames.defense("board", "untuned")["waf"]
+    assert lesson.fix_class(waf, posture, "") == named
+
+def test_raising_the_thresholds_above_the_crs_defaults_is_a_threshold_fix():
+    import lesson
+
+    assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 10}},
+                            {"paranoia": 2, "exclusions": []}, "") == "threshold"
+    assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}},
+                            {"paranoia": 2, "exclusions": []}, "") is None

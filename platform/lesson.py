@@ -9,6 +9,7 @@ ANSWER = 3
 DO_IT = 4
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1
+CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
 CRS_TOTALS = ("949", "959", "980")
 PASTED_ROW = re.compile(r"^\s*\|?\s*([\w.@+-]+)\s*[|:\s]\s*(\S+?)\s*\|?\s*$")
 VARIABLE = re.compile(r"against variable `([^']+)'|found within ([A-Z_]+(?::[^:\s]+)?)|^([A-Z_]+:[^=\s]+)=")
@@ -27,7 +28,7 @@ def fix_class(waf: dict | None, posture: dict | None, scope: str) -> str | None:
     level = waf.get("paranoia") or CRS_DEFAULT_LEVEL
     if posture.get("paranoia") and level < posture["paranoia"]:
         return "level"
-    if (waf.get("thresholds") or {}) != (posture.get("thresholds") or {}):
+    if any(_threshold(waf, way) > _threshold(posture, way) for way in CRS_THRESHOLDS):
         return "threshold"
     added = [entry for entry in waf.get("exclusions") or [] if entry not in (posture.get("exclusions") or [])]
     if not added:
@@ -37,6 +38,9 @@ def fix_class(waf: dict | None, posture: dict | None, scope: str) -> str | None:
     if any(not (entry["path"] and entry["path"].startswith(scope)) for entry in added):
         return "target"
     return "path_target"
+
+def _threshold(tuning: dict, way: str) -> int:
+    return (tuning.get("thresholds") or {}).get(way, CRS_THRESHOLDS[way])
 
 def config_diff(before: str, after: str) -> list[str]:
     return [
