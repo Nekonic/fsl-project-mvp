@@ -1,0 +1,827 @@
+{
+    "auto_close": false,
+    "auto_open": true,
+    "drawing_grid_size": 25,
+    "grid_size": 75,
+    "name": "fsl-range-docker",
+    "project_id": "1b9040fc-efb8-5b83-9745-df8e32ae7d9b",
+    "revision": 9,
+    "scene_height": 1000,
+    "scene_width": 2000,
+    "show_grid": false,
+    "show_interface_labels": true,
+    "show_layers": false,
+    "snap_to_grid": false,
+    "topology": {
+        "computes": [],
+        "drawings": [
+            {
+                "drawing_id": "fa61ca8a-2eb3-546e-9a49-2aedd23185b0",
+                "locked": false,
+                "rotation": 0,
+                "svg": "<svg width=\"552\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on Docker: one session's stack and the shared control plane</text></svg>",
+                "x": -700,
+                "y": -330,
+                "z": 2
+            },
+            {
+                "drawing_id": "02a54dd2-488d-5a16-a41c-a97d29de0009",
+                "locked": false,
+                "rotation": 0,
+                "svg": "<svg width=\"496\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">internet: 30 origin /24s, one Docker network per origin in use</text></svg>",
+                "x": -560,
+                "y": 70,
+                "z": 2
+            },
+            {
+                "drawing_id": "25cedb20-51a5-5d29-a5e3-21d898e83503",
+                "locked": false,
+                "rotation": 0,
+                "svg": "<svg width=\"376\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">fsl-suricata shares fsl-waf's network namespace</text></svg>",
+                "x": -250,
+                "y": -205,
+                "z": 2
+            },
+            {
+                "drawing_id": "9c078db4-4689-530a-bd77-de15b1a69717",
+                "locked": false,
+                "rotation": 0,
+                "svg": "<svg width=\"496\" height=\"24\"><text font-family=\"TypeWriter\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">fsl-platform joins the session's estate when the session opens</text></svg>",
+                "x": -560,
+                "y": 430,
+                "z": 2
+            }
+        ],
+        "links": [
+            {
+                "filters": {},
+                "link_id": "c914bb7f-ac9c-5687-b226-06a05a4eeb5e",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "3f06e0b8-d8c7-53fe-aa82-1ba422c9fe3d",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "f44d745f-7b6c-52fb-b6d8-9641de479211",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                        "port_number": 1
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "69ba00c4-36c6-52a0-a845-a5d387485a93",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                        "port_number": 2
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "d3698831-740c-546f-8618-73e8964b69e9",
+                "nodes": [
+                    {
+                        "adapter_number": 1,
+                        "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "b192f041-8a1c-5db4-b534-0ab6e860f2d6",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "7f1242d8-f697-59ea-8898-cdc438640eec",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 1
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "5336ce50-e74c-5717-9699-796c0d60a29f",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "e6ef9639-d282-5b98-875c-92c95190f96b",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 2
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "fbb2f540-5c03-5c72-8954-eb6a6e79110a",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "3df55691-a25b-5fdb-83b5-c0d75aa90700",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 3
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "a74c41c9-452c-5258-8782-9c694ab772d3",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "74bf9f48-63f8-5dd3-9620-93e9e763e17e",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 4
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "e2a6d93d-ade0-5c56-8a62-17afdcdfac88",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "3971071b-9ccb-5da3-959f-34c287e0b070",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                        "port_number": 3
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "497c26c8-fdf1-58c4-a336-c79d2f5cdefc",
+                "nodes": [
+                    {
+                        "adapter_number": 1,
+                        "node_id": "3971071b-9ccb-5da3-959f-34c287e0b070",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "727937b7-142c-5d38-a062-8074a1a7f62d",
+                "nodes": [
+                    {
+                        "adapter_number": 2,
+                        "node_id": "3971071b-9ccb-5da3-959f-34c287e0b070",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "port_number": 5
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "6536f43d-1145-5782-a7ed-6ebd90dec1e9",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "2572051b-73ef-5e99-9f00-bebc598c9f9a",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                        "port_number": 1
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "4b440b90-9d17-501c-8687-ebc419e2a36b",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "f349ab74-48c6-5fe0-a922-c421c3e10222",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                        "port_number": 2
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "c1d8bb01-1c59-5539-916d-8023e3cf2271",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "10cd8bba-c8ef-5ea1-b075-8c287604e59a",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                        "port_number": 3
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "65e41ad9-ba19-5606-aeea-934c6c533b81",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "d1be56c5-8aa1-54cb-af8f-118c1c66787b",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                        "port_number": 4
+                    }
+                ],
+                "suspend": false
+            }
+        ],
+        "nodes": [
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "internet",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "internet",
+                "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                "node_type": "ethernet_switch",
+                "properties": {
+                    "ports_mapping": [
+                        {
+                            "name": "Ethernet0",
+                            "port_number": 0,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet1",
+                            "port_number": 1,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet2",
+                            "port_number": 2,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet3",
+                            "port_number": 3,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet4",
+                            "port_number": 4,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet5",
+                            "port_number": 5,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet6",
+                            "port_number": 6,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet7",
+                            "port_number": 7,
+                            "type": "access",
+                            "vlan": 1
+                        }
+                    ]
+                },
+                "symbol": ":/symbols/classic/ethernet_switch.svg",
+                "x": -420,
+                "y": 0,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "estate",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "estate",
+                "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                "node_type": "ethernet_switch",
+                "properties": {
+                    "ports_mapping": [
+                        {
+                            "name": "Ethernet0",
+                            "port_number": 0,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet1",
+                            "port_number": 1,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet2",
+                            "port_number": 2,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet3",
+                            "port_number": 3,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet4",
+                            "port_number": 4,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet5",
+                            "port_number": 5,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet6",
+                            "port_number": 6,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet7",
+                            "port_number": 7,
+                            "type": "access",
+                            "vlan": 1
+                        }
+                    ]
+                },
+                "symbol": ":/symbols/classic/ethernet_switch.svg",
+                "x": 180,
+                "y": 0,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "mgmt",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "mgmt",
+                "node_id": "619461b6-d9ba-50d0-92fe-bb7986fd5e77",
+                "node_type": "ethernet_switch",
+                "properties": {
+                    "ports_mapping": [
+                        {
+                            "name": "Ethernet0",
+                            "port_number": 0,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet1",
+                            "port_number": 1,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet2",
+                            "port_number": 2,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet3",
+                            "port_number": 3,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet4",
+                            "port_number": 4,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet5",
+                            "port_number": 5,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet6",
+                            "port_number": 6,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet7",
+                            "port_number": 7,
+                            "type": "access",
+                            "vlan": 1
+                        }
+                    ]
+                },
+                "symbol": ":/symbols/classic/ethernet_switch.svg",
+                "x": 180,
+                "y": 360,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-kali",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-kali",
+                "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-kali:dev"
+                },
+                "symbol": ":/symbols/classic/computer.svg",
+                "x": -700,
+                "y": -120,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-proxy",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-proxy",
+                "node_id": "f44d745f-7b6c-52fb-b6d8-9641de479211",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-proxy:dev"
+                },
+                "symbol": ":/symbols/classic/docker_guest.svg",
+                "x": -700,
+                "y": 120,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-waf",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-waf",
+                "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 2,
+                    "image": "owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05"
+                },
+                "symbol": ":/symbols/classic/firewall.svg",
+                "x": -120,
+                "y": 0,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-suricata",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-suricata",
+                "node_id": "b7d2fc84-0055-5119-92a4-22fbf63be224",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 0,
+                    "image": "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
+                },
+                "symbol": ":/symbols/classic/ids.svg",
+                "x": -120,
+                "y": -170,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-wg-board",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-wg-board",
+                "node_id": "7f1242d8-f697-59ea-8898-cdc438640eec",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-board:dev"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 480,
+                "y": -210,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-wg-board-db",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-wg-board-db",
+                "node_id": "e6ef9639-d282-5b98-875c-92c95190f96b",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 480,
+                "y": -70,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-wg-corp-wp",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-wg-corp-wp",
+                "node_id": "3df55691-a25b-5fdb-83b5-c0d75aa90700",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-corp:dev"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 480,
+                "y": 70,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-wg-corp-db",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-wg-corp-db",
+                "node_id": "74bf9f48-63f8-5dd3-9620-93e9e763e17e",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-corp-db:dev"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 480,
+                "y": 210,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-platform",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-platform",
+                "node_id": "3971071b-9ccb-5da3-959f-34c287e0b070",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 3,
+                    "image": "ghcr.io/nekonic/fsl-platform:dev"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": -420,
+                "y": 360,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-filebeat",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-filebeat",
+                "node_id": "2572051b-73ef-5e99-9f00-bebc598c9f9a",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/beats/filebeat:8.15.0"
+                },
+                "symbol": ":/symbols/classic/docker_guest.svg",
+                "x": -120,
+                "y": 560,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-elasticsearch",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-elasticsearch",
+                "node_id": "f349ab74-48c6-5fe0-a922-c421c3e10222",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 60,
+                "y": 560,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-collector",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-collector",
+                "node_id": "10cd8bba-c8ef-5ea1-b075-8c287604e59a",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/beats/filebeat:8.15.0"
+                },
+                "symbol": ":/symbols/classic/docker_guest.svg",
+                "x": 240,
+                "y": 560,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-kibana",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-kibana",
+                "node_id": "d1be56c5-8aa1-54cb-af8f-118c1c66787b",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/kibana/kibana:8.15.0"
+                },
+                "symbol": ":/symbols/classic/server.svg",
+                "x": 420,
+                "y": 560,
+                "z": 1
+            }
+        ]
+    },
+    "type": "topology",
+    "version": "2.2.61",
+    "zoom": 100
+}

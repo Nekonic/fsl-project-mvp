@@ -71,7 +71,7 @@ watches:
 
 hosts:
   fsl-waf:
-    segments: [internet, estate, mgmt]
+    segments: [internet, estate]
     names: [board.com, corp.com]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
