@@ -186,8 +186,7 @@ function triageDock() {
 }
 
 function popoverDocked(step) {
-  const target = step && step.panel ? document.querySelector(step.panel) : null;
-  const docked = Boolean(target && target.closest("#triage")) && paneOpen("triage");
+  const docked = Boolean(step) && paneOpen("triage");
   dockedIn(field("coach-pop"), docked, popoverHome, docked);
   return docked;
 }
