@@ -210,8 +210,18 @@ def test_a_threshold_outside_an_anomaly_score_is_refused(thresholds):
     with pytest.raises(crs.TuningRefused):
         crs.checked({"paranoia": 1, "thresholds": thresholds})
 
-@pytest.mark.parametrize("target", ["REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY"])
-def test_only_the_raw_uri_itself_joins_the_targets(target):
+def test_the_whole_request_body_can_be_removed_from_one_rule_under_the_comment_path():
+    tuning = crs.checked({"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_BODY", "path": "/posts/"}]})
+
+    assert crs.rendered(tuning).splitlines()[1] == (
+        'SecRule REQUEST_FILENAME "@beginsWith /posts/" '
+        '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_BODY"'
+    )
+    assert crs.parsed(crs.rendered(tuning)) == tuning
+
+@pytest.mark.parametrize("target", ["REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY:x",
+                                    "REQUEST_BODYX", "REQUEST_BODY_LENGTH"])
+def test_only_the_raw_uri_and_the_whole_body_themselves_join_the_targets(target):
     with pytest.raises(crs.TuningRefused):
         crs.checked({"paranoia": 1, "exclusions": [{"rule_id": 920272, "target": target}]})
 
