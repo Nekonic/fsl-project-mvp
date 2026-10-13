@@ -177,6 +177,91 @@ def test_the_main_page_says_beside_a_pass_which_help_was_used(client):
     assert "PASS" in seen["result"] and english("result.helped.do") in seen["result"]
     assert english("result.helped.hint") not in seen["result"]
 
+SCORE_FAILS_ONCE = CLOSED.replace("browser.serve((request) => {", """
+let scored = 0;
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/score/" && scored++ === 0) {
+    return {status: 503, body: {detail: "database is locked"}};
+  }""", 1)
+
+def test_a_score_that_did_not_load_says_so_instead_of_calling_every_objective_kept(client):
+    seen = open_page(client, "/session/1/", setup=SCORE_FAILS_ONCE, scenario="""
+      const first = {objectives: browser.text('objective-rows'), lost: browser.text('lost-count'),
+                     judged: browser.text('judgement')};
+      await browser.wait(5000);
+      return {first, then: {objectives: browser.text('objective-rows'), lost: browser.text('lost-count')},
+              asked: browser.requests.filter((r) => r.route === "/api/sessions/1/score/").length};
+    """)
+    first, then = seen["result"]["first"], seen["result"]["then"]
+
+    assert seen["errors"] == []
+    assert english("score.kept") not in first["objectives"], (
+        "the score did not load and the table still said every objective was kept, "
+        "while the header said some were lost"
+    )
+    assert english("score.unavailable", "database is locked") in first["objectives"]
+    assert first["lost"] == "—"
+    assert seen["result"]["asked"] == 2, "the page did not read the score again"
+    assert then["lost"] == "1 / 2" and english("score.lost_unseen") in then["objectives"]
+
+def test_a_score_that_answered_without_its_tables_is_not_read_as_nothing_lost(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
+        'if (request.route === "/api/sessions/1/score/") {', 'if (request.route === "/api/sessions/1/score/") {\n'
+        '    return {body: {}};'), scenario="""
+      return browser.text('objective-rows');
+    """)
+
+    assert english("score.kept") not in seen["result"]
+    assert english("score.retrying") in seen["result"]
+
+def test_the_second_score_says_how_many_customer_requests_the_defence_blocked(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
+        "game: {revealed: true, balance: 3.5}",
+        "customers: {sent: 600, served: 590, blocked: 9, unanswered: 1, other: 0, alerted: 12, "
+        "blocked_actions: {\"search-unusual\": 9}}, game: {revealed: true, balance: 3.5}"), scenario="""
+      return browser.text('judgement');
+    """)
+
+    assert english("score.customers", 600, 9) in seen["result"]
+    assert english("score.customers_action", english("traffic.action.search-unusual"), 9) in seen["result"]
+    assert english("score.customers_unanswered", 1) in seen["result"]
+    assert english("score.customers_note") in seen["result"]
+
+OPEN_WITH_TRAFFIC = """
+location.search = "?traffic";
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", guidance: false, kind: "wargame", ready: true,
+                   started_at: "2026-10-10T14:20:00Z", ended_at: null, result: null}};
+  }
+  if (request.route === "/api/sessions/1/traffic/") {
+    const running = request.method === "PUT";
+    return {body: {declared: true, profiles: ["community", "plain"], running, rate: running ? request.body.rate : null,
+                   profile: "community", sent: running ? 0 : 42, blocked: 3, error: ""}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_the_customer_traffic_toggle_is_offered_only_for_testing(client):
+    hidden = open_page(client, "/session/1/", setup=OPEN_WITH_TRAFFIC.replace('location.search = "?traffic";', ""),
+                       scenario="return browser.element('traffic').classList.contains('hidden');")
+    shown = open_page(client, "/session/1/", setup=OPEN_WITH_TRAFFIC, scenario="""
+      const before = browser.text('traffic-status');
+      await browser.force('#traffic-rate', '2');
+      await browser.click('#traffic-start');
+      const put = browser.requests.find((r) => r.method === "PUT");
+      return {hidden: browser.element('traffic').classList.contains('hidden'), before, put: put && put.body,
+              after: browser.text('traffic-status')};
+    """)
+
+    assert hidden["result"] is True, "a learner's session page offered the customer traffic switch"
+    assert shown["errors"] == []
+    assert shown["result"]["hidden"] is False
+    assert shown["result"]["before"] == english("traffic.status", english("traffic.stopped"), 0, 42, 3)
+    assert shown["result"]["put"] == {"rate": 2, "profile": "community"}
+    assert shown["result"]["after"].startswith(english("traffic.running"))
+
 def test_an_open_session_shows_no_scoreboard_and_offers_close(client):
     seen = open_page(client, "/session/1/", scenario="""
       return {
