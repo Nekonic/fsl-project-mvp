@@ -199,7 +199,7 @@
                 "drawing_id": "7b7b7ecc-c429-5f7a-bc76-a3ad7d5d871a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"252\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">range platform: console, scoring</text></svg>",
+                "svg": "<svg width=\"352\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">range platform: console, scoring, log store (Elasticsearch)</text></svg>",
                 "x": 65,
                 "y": 545,
                 "z": 2
