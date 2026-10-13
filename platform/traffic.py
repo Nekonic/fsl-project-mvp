@@ -15,7 +15,8 @@ LANGUAGES = {
     "": "en-US,en;q=0.9",
 }
 SEARCHES = ("search-korean", "search-english", "search-unusual")
-ACTIONS = ("home", "newest", "post", *SEARCHES, "login", "comment")
+COMMENTS = {"comment": None, "comment-code": "code"}
+ACTIONS = ("home", "newest", "post", *SEARCHES, "login", *COMMENTS)
 NEEDED = ("users", "origins", "accounts", "posts", "agents", "searches", "comments", "profiles", "default_profile")
 
 class InvalidTraffic(ValueError):
@@ -38,6 +39,9 @@ def checked(declared: Any, source) -> dict[str, Any]:
                  and not declared["searches"].get(action.removeprefix("search-"))]
         if empty:
             raise InvalidTraffic(f"{source}: profile {name!r} searches {empty} and no term is declared for them")
+        unwritten = [action for action in weights if COMMENTS.get(action) and not declared["comments"].get(COMMENTS[action])]
+        if unwritten:
+            raise InvalidTraffic(f"{source}: profile {name!r} posts {unwritten} and no comment is declared for them")
     if declared["default_profile"] not in declared["profiles"]:
         raise InvalidTraffic(f"{source}: default_profile {declared['default_profile']!r} is not a profile")
     if not declared["posts"] or not declared["agents"]:
@@ -99,7 +103,9 @@ def personas(declared: dict[str, Any], available: list[dict], rng: random.Random
 def _search(term: str) -> str:
     return "/search/?" + urlencode({"q": term})
 
-def _comment_text(declared: dict[str, Any], persona: dict, rng: random.Random) -> str:
+def _comment_text(declared: dict[str, Any], persona: dict, rng: random.Random, kind: str | None = None) -> str:
+    if kind:
+        return rng.choice(declared["comments"][kind])
     korean = persona["origin"] == KOREAN and rng.random() >= KOREAN_WRITES_ENGLISH
     return rng.choice(declared["comments"]["korean" if korean else "english"])
 
@@ -120,12 +126,12 @@ def steps(declared: dict[str, Any], action: str, persona: dict, rng: random.Rand
             {"step": "login", "method": "POST", "path": "/accounts/login/", "csrf": True, "follow": True,
              "form": {"username": account["username"], "password": account["password"], "next": ""}},
         ]
-    if action == "comment":
+    if action in COMMENTS:
         post = rng.choice(declared["posts"])
         return [
             {"step": "post", "method": "GET", "path": f"/posts/{post}/"},
             {"step": "comment", "method": "POST", "path": f"/posts/{post}/comments/", "csrf": True, "follow": True,
-             "form": {"body": _comment_text(declared, persona, rng)}},
+             "form": {"body": _comment_text(declared, persona, rng, COMMENTS[action])}},
         ]
     raise InvalidTraffic(f"no action {action!r}; actions are {ACTIONS}")
 
