@@ -1,4 +1,5 @@
 import os
+import threading
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 
@@ -13,3 +14,10 @@ if not settings.DEBUG and not os.environ.get("DJANGO_SECRET_KEY"):
     )
 
 application = get_wsgi_application()
+
+def resume_scenarios():
+    from api import scenario_run
+
+    scenario_run.resume()
+
+threading.Thread(target=resume_scenarios, name="fsl-scenarios-resume", daemon=True).start()

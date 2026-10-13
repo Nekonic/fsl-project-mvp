@@ -35,7 +35,7 @@ import suppress
 import topology
 import wargames
 import traffic
-from api import customers, effect, loot, reset, site
+from api import customers, effect, loot, reset, scenario_run, site
 from api.refusals import Conflict
 from console import strings
 from api.models import (
@@ -221,12 +221,17 @@ def sessions(request):
     scenario = body.get("scenario")
     if scenario is None:
         scenario = "board"
-    if not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
+    played = scenario if wargames.scenario_owner(scenario) else ""
+    if played:
+        scenario, guidance, taught, defense, posture = scenario_run.settings_for(played, body)
+        mode = MODES[0]
+    elif not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
         raise BadRequest(
-            f"{scenario!r} is not a wargame; expected one of {', '.join(wargames.WARGAMES)}"
+            f"{scenario!r} is not a wargame or a scenario; expected one of {', '.join(wargames.WARGAMES)}"
         )
-    guidance, taught, defense, posture = _settings(scenario, body)
-    mode = _mode(body, guidance, scenario, taught)
+    else:
+        guidance, taught, defense, posture = _settings(scenario, body)
+        mode = _mode(body, guidance, scenario, taught)
     adapter = substrate()
     with SLOT_CHOICE:
         live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
@@ -246,6 +251,7 @@ def sessions(request):
         try:
             session = Session.objects.create(
                 scenario=scenario, baseline=[], guidance=guidance, lesson=taught, mode=mode, defense=defense, slot=chosen,
+                course_scenario=played,
             )
         except IntegrityError:
             raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
@@ -263,11 +269,13 @@ def sessions(request):
                 f"nothing it loses could be checked; the session is closed"
             )
         session.save(update_fields=["baseline", "waf"])
-        if guidance:
+        if guidance and not played:
             _seed_logs(session)
         session.ready_at = timezone.now()
         session.save(update_fields=["ready_at"])
-    except (harness.ToolUnavailable, loot.GroundTruthUnavailable) as exc:
+        if played:
+            scenario_run.begin(session, adapter, posture)
+    except (harness.ToolUnavailable, loot.GroundTruthUnavailable, traffic.NoOrigin, RangeUnavailable) as exc:
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         return _reply({"detail": str(exc)}, status=503)
     except Exception:
@@ -289,7 +297,8 @@ def _stacks_to_keep(opening):
 
 def _described(session, judged=False):
     return _shape(session, SESSION_FIELDS) | {
-        "kind": "lesson" if session.guidance else "wargame",
+        "kind": "scenario" if session.course_scenario else "lesson" if session.guidance else "wargame",
+        "course_scenario": session.course_scenario or None,
         "lesson_id": _lesson_id(session),
         "ready": session.ready_at is not None,
         **({"result": _result(session)} if judged else {}),
@@ -308,8 +317,10 @@ def _result_inputs(session):
     detections = session.detections.aggregate(last=Max("id"), rows=Count("id"), marked=Count("marker"))
     cases = session.cases.aggregate(last=Max("id"), rows=Count("id"))
     objectives = session.objectives.aggregate(last=Max("id"), rows=Count("id"))
+    windows = (session.scenario_state or {}).get("windows") or []
     return [session.ended_at and session.ended_at.isoformat(), len(session.hints or []),
-            *detections.values(), *cases.values(), *objectives.values()]
+            *detections.values(), *cases.values(), *objectives.values(),
+            [window.get("result") and window["result"]["passed"] for window in windows]]
 
 def _judged(session):
     cases, _, result, _ = _evidence(session)
@@ -325,7 +336,14 @@ def _judged(session):
             if wargames.judged(session.scenario) else 0,
         },
         "lesson": dict(_last_verdict(session, runs[-1], len(runs)), helped=_helped(session)) if runs else None,
+        "scenario": _scenario_result(session),
     }
+
+def _scenario_result(session):
+    judged = [window["result"] for window in (session.scenario_state or {}).get("windows") or [] if window.get("result")]
+    if not judged:
+        return None
+    return {"passed": judged[-1]["passed"], "fix": judged[-1]["fix"], "windows": len(judged), "helped": _helped(session)}
 
 def _helped(session):
     return [level for level in HINT_LEVELS if any(hint.get("level") == level for hint in session.hints or [])]
@@ -542,9 +560,14 @@ def _judged_step(session, step_id, passed, reason, poll, tried):
         kept["wrong"] = kept.get("wrong", 0) + 1
         if kept["wrong"] >= lesson.WRONGS_PER_HINT:
             kept["wrong"] = 0
-            _helped_on(kept, held, step_id, "hint")
+            stuck.append(step_id)
+            if not held.course_scenario:
+                _helped_on(kept, held, step_id, "hint")
 
+    stuck = []
     session = _progressed(session, step_id, mark)
+    if stuck:
+        scenario_run.stuck(session, "check", step_id)
     return _lesson_state(session, step_id, passed=passed, reason=None if passed else reason)
 
 def _judge(session, taught, step, body, poll, kept):
@@ -583,6 +606,8 @@ def _judge(session, taught, step, body, poll, kept):
         return _kali_check(session, step, kept, failed)
     if kind == "loot":
         return _loot_check(session, check, body.get("answer"), failed)
+    if kind == "triage":
+        return scenario_run.triage_passed(session, check["judged"]), [failed, []], None
     if kind == "waf":
         return _waf_check(session, check, step_id, poll, kept, failed)
     runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
@@ -1611,6 +1636,7 @@ def session_waf(request, session_id):
             tuning = crs.checked({**kept, **body})
             session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
             session.save(update_fields=["waf"])
+        scenario_run.waf_applied(session, tuning)
     tuning = _waf_in_force(session)
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
 
@@ -1761,6 +1787,7 @@ def close_session(request, session_id):
 
     begun = None
     try:
+        scenario_run.end(session)
         if (session.traffic or {}).get("running"):
             customers.stop_on_close(session, _range(session, adapter))
         _snapshot_waf(session, closed=True)
