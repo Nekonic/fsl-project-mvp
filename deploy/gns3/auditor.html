@@ -26,6 +26,7 @@
     protocol: location.protocol, authToken: token, username: auditor.username, tokenExpired: false,
   }));
   localStorage.setItem("controllerIds", "controller-1");
+  localStorage.setItem("showInterfaceLabels", "false");
   const project = new URLSearchParams(location.search).get("project");
   location.replace("/static/web-ui/controller/1/" +
     (project ? "project/" + encodeURIComponent(project) : "projects"));

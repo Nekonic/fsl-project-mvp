@@ -248,7 +248,12 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 노드, OpenStack VM은 디스크 이미지 없는 `qemu` 노드(OPNsense 엣지는 vtnet 순서대로 NIC
 셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
 `corp-default`)에 붙는다. 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
-센서는 NIC가 없다. `platform/tests/test_gns3_topology.py`가 `declaration.yaml`,
+센서는 NIC가 없고, 옆의 메모가 누구의 네트워크를 지켜보는지 말한다(Docker 프로젝트에서는
+점선이 `fsl-suricata`를 `fsl-waf`에 잇는다). 선언된 구간마다 그 스위치를 담은 제목 붙은
+사각형이 있고(Internet, Application estate, Management and monitoring), 컨테이너와 VM마다
+쉬운 말 메모가 붙는다(`attacker's machine (Kali)`, `web firewall (ModSecurity + CRS)`). GNS3
+3.1은 노드 라벨을 이름으로 바꾸므로 노드 이름은 호스트 이름 그대로 둔다. 학습자 로그인 페이지는
+포트 라벨을 숨긴다. `platform/tests/test_gns3_topology.py`가 `declaration.yaml`,
 `compose.yaml`, `session.yaml`, wargame compose 파일에서 기대 노드와 링크를 유도해 비교하고
 GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을
 `~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의 `load_topology`를 각 파일의
