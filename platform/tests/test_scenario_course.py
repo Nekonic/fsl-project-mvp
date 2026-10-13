@@ -272,3 +272,30 @@ def test_a_writer_waits_for_the_store_instead_of_failing_a_scheduled_attack():
     from django.conf import settings
 
     assert settings.DATABASES["default"]["OPTIONS"]["timeout"] >= 30
+
+def test_a_judgement_window_judges_the_items_listed_when_it_opened_not_ones_that_arrive_later_with_an_earlier_time():
+    session = opened("1.1")
+    shown = str(uuid.uuid4())
+    customer(session, timezone.now() - timedelta(minutes=3), status=403, marker=shown)
+    alert(session, shown, at=timezone.now() - timedelta(minutes=3))
+    item = scenario_run._items(session)[0]["item"]
+    scenario_run._update(session.pk, lambda state, held: state["triage"].update(
+        {item: {"verdict": "customer", "succeeded": None, "right": True, "tries": 1, "wrong": 0, "first_right": True,
+                "at": "x"}}))
+    session.refresh_from_db()
+    begun = timezone.now() - timedelta(minutes=2)
+    scenario_run.start_window(session, "learner", begun)
+    late = str(uuid.uuid4())
+    customer(session, begun - timedelta(seconds=40), status=403, marker=late)
+    alert(session, late, at=begun - timedelta(seconds=40))
+    session.refresh_from_db()
+    window = session.scenario_state["windows"][-1]
+
+    assert window["items"] == [item]
+    patches, _ = firing(HELD)
+    with Stack(patches), patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
+            patch("api.views._snapshot_waf", lambda session, **taken: None), \
+            patch("api.scenario_run._observe", lambda session, now: None):
+        scenario_run.tick(scenarios.at(window["ends_at"]) + timedelta(seconds=1))
+    session.refresh_from_db()
+    assert session.scenario_state["windows"][-1]["result"]["passed"] is True
