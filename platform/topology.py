@@ -77,7 +77,7 @@ def overlay(project, described, declared, named=lambda name: name) -> dict:
     for name, kind in _kinds(project).items():
         if kind == SWITCH:
             continue
-        found = seen.get(named(name))
+        found = seen.get(name, seen.get(named(name)))
         nodes[name] = {"status": "running" if found is not None else "not reported",
                        "addresses": found or {}}
     return {"project_id": project["project_id"], "nodes": nodes}

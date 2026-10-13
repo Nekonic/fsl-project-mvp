@@ -331,3 +331,13 @@ def test_following_a_website_request_reads_the_sensor_s_http_records_by_its_mark
 
     assert shown["sensed"] == 2, "its own marker, or no marker and the same URL; never another request's"
 
+
+def test_a_second_slot_s_hosts_are_placed_by_the_names_the_range_reports_them_under():
+    stack = declared.read(flavor="openstack")
+    described = Shape(segments=(Segment(id="mgmt", name="Management", subnet="10.31.0.0/24", nodes=(
+        Node(name="fsl-waf", address="10.31.0.195"), Node(name="fsl-platform", address="10.31.0.238"))),), sensors=())
+
+    drawn = topology.overlay(json.loads(OPENSTACK.read_text()), described, stack, lambda name: f"{name}-2")
+
+    assert drawn["nodes"]["fsl-waf"] == {"status": "running", "addresses": {"mgmt": ["10.31.0.195"]}}, (
+        "OpenStack reports a slot's servers by their declared names; the slot suffix is only on the VM's own hostname")
