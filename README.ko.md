@@ -202,6 +202,8 @@ http://localhost:8000 을 열고 세션을 시작한 뒤, 레드 콘솔과 블�
 
 이 레슨은 board의 `scenario.yaml`이 과정으로 나열한 레슨 일곱 개 중 하나이며, 권장 순서는 다음과 같다: `console-tour`(WAF가 막는 요청을 보내고, Kibana에서 그 기록을 찾아, 규칙을 말하기), `read-the-block`(O'Brien을 막은 규칙과 그 규칙이 걸린 파라미터 말하기), `waf-exclusion`, `choose-the-level`(한국어 검색을 포함한 정상 요청을 모두 통과시키면서 sqlmap은 계속 막는 가장 높은 Paranoia Level; 측정값은 PL2), `ids-signature`(sqlmap `?sort=` 두 변형에는 경보를 내고 `?sort=-created_at`에는 내지 않는 Suricata 규칙), `ids-body-xss`(요청 본문의 댓글 XSS에는 경보, 정상 댓글에는 경보 없음), `assessment`(안내 없이 O'Brien·한국어 검색은 통과, sqlmap은 차단). 차단에 대한 답은 정답 키가 아니라 세션 자신의 기록에서 읽는다. IDS 레슨 둘은 탐지로 완료된다: 모든 공격 케이스에 공격 이름을 담은 Suricata 경보가 나고 정상 케이스에는 나지 않아야 하며, 탐지 점수로만 보고하고 목표에는 표시하지 않는다. 그 노트에는 `/api/rules/` 위의 Suricata 규칙 편집기가 있고(검사는 Suricata 자신의 오류 줄을 보여 준다), `choose-the-level`에는 `/waf/` 위의 Paranoia Level 조절이 있다. 레슨은 id로 열 수 있다: `{"lesson": "ids-signature"}`.
 
+이 레슨들 앞에 메인 화면은 네트워크가 처음인 학습자를 위한 기초 여섯 단원을 보여 주며, 각각 id로 연다(`{"lesson": "f1"}`부터 `f6`까지): F1은 토폴로지 창에서 레인지의 지도를 읽고, F2는 한국어 검색 하나를 홉마다 따라가고, F3은 그 요청의 메서드, 경로, 파라미터, 상태 코드를 읽고, F4는 Kibana에서 기록을 찾아 WAF의 기록과 IDS의 기록을 구별하고, F5는 차단된 SQL 인젝션과 레드팀 콘솔 Kali 터미널에서 실행한 sqlmap을 따라가고, F6은 차단 룰이 꺼진 WAF(defense `missed`)에 같은 sqlmap을 실행해 빼낸 계정을 제출하고 첫째 점수에서 손실을 읽는다. 답은 모두 학습자 자신의 기록이나 substrate의 토폴로지에서 읽고, 정해진 정답 키는 없다. 학습자가 직접 실행한 sqlmap은 다른 레드 행동처럼 두 점수에 모두 들어간다.
+
 스크립트 시나리오는 인수 테스트처럼 명령줄에서도 실행할 수 있다. 대상 시스템은 공개하지 않으므로 하니스는 레인지 안, 플랫폼에서 실행한다.
 
 ```bash

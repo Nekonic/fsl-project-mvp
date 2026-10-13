@@ -2746,3 +2746,87 @@ walks internet, fsl-edge, estate, fsl-waf (passed, no rule), fsl-wargame-host,
 board-default, board (200). The hop list says the source is unknown: a
 Website-pane request carries no origin address, and on OpenStack the platform
 sends it to the slot's WAF over `mgmt`, not through the edge the walk draws.
+
+### 2026-10-13 — P2 built: foundations F1-F6, answered from the learner's own records
+
+Phase P2 of the scenario course design, as built and walked live on OpenStack
+(platform VM 192.168.0.210, both slots). `docs/ARCHITECTURE.md`, "Foundations
+F1-F6", has the units, the new step kinds and where each answer is read.
+
+- **A group beside the lessons.** The units are a `foundations:` list in the
+  board's `scenario.yaml` (ids f1-f6), not lessons ordered before the others:
+  `wargames.lessons()`, the default lesson and the course's order stay as they
+  are until P6 removes the old lessons, and the catalogue lists the group first
+  as "Foundations" with minutes and what each unit teaches.
+- **No question has a fixed answer.** Range facts come from the substrate's
+  GNS3 project and the declaration, so F1 answers fsl-edge / fsl-platform /
+  board-default on OpenStack and fsl-waf / fsl-elasticsearch / estate on
+  Docker. On OpenStack Elasticsearch has no node of its own; it runs in the
+  platform's compose, so the log store is the scorer's host; the OpenStack
+  map's note for fsl-platform now says "log store (Elasticsearch)". Request facts come from the
+  learner's own Website pane request, follow walk and records; counts from the
+  sensor's http records; leaks from `/loot/` against the session snapshot.
+- **F4 sends a second request.** The WAF's audit log is `RelevantOnly`, so a
+  Korean search the WAF passed leaves no WAF record and no "WAF verdict" to
+  read. F4 first asks which engine recorded the Korean search (Suricata only;
+  the Kibana link for it shows every record, not only alerts), then has the
+  learner search `<script>alert(1)</script>` and read the WAF record's `status`
+  and `source_ip`. Not chosen: running F1-F4 at `minimal` so the Korean search
+  is blocked, which would make the course's first request a false positive.
+- **The learner runs sqlmap.** A `kali` step's command is the case's argv with
+  the step's own `X-FSL-Case` marker (as the harness labels tool cases); the
+  stamping proxy's label was not used because the Red console clears it when it
+  opens. The run is recorded as an ordinary malicious case when the sensor's
+  http records carry the marker and sqlmap's user agent, so it counts in both
+  scores (it is the learner's red action, not a platform replay).
+- **F6 hands in the loot inside the unit.** The step takes the pasted sqlmap
+  table and credits it through the same code as `POST /loot/`, attributed to
+  the kali case by its id. The red console's loot panel takes JSON only and
+  attributes by a two-minute window from submission, which a freshman reading
+  the output would often miss, and an unattributed objective counts as lost
+  unnoticed. `_credit_loot` now keeps the matched accounts on the case it was
+  attributed to (`meta.loot`).
+- **F6's posture** is a new defense, `missed`: PL1 with 949110 and 959100
+  removed (the measured leaking posture was PL4 with the same removals; PL1
+  keeps F5 and F6 at the same level so only the removal differs).
+
+Found live and fixed (each a commit):
+
+- The topology overlay placed nothing on slot 2: OpenStack reports a slot's
+  servers by their declared names and the overlay looked up `fsl-waf-2`. A
+  Website pane request on slot 2 was drawn platform, unknown, fsl-waf with no
+  source address, and F2's source question had no answer to read.
+- Follow showed a blocked request with no rule ids: the blue console ingests
+  only after a VERIFY. Follow now ingests the last 600 s first.
+- The kali step's Kibana link put the alerts-only query in front and matched
+  nothing.
+- F6's run left 16,864 records and the first score said three objectives lost
+  unnoticed (TP 0, FN 1) until something ingested; the kali check now ingests
+  when it records the run (then: three lost, noticed; TP 1).
+
+Live walk over the API (sessions 299-304, closed):
+
+| Unit | Session (slot) | Result |
+|---|---|---|
+| F1 | 299 (1) | entry fsl-edge, logs fsl-platform, segment board-default passed; fsl-waf, fsl-elasticsearch, estate refused |
+| F2 | 300 (2) | the Korean search 200; follow drew fsl-platform (10.31.0.238) -> mgmt -> fsl-waf (passed) -> estate -> fsl-wargame-host (sensor: 1 http record, 10.30.0.177 -> 10.30.0.184:8000, 200) -> board-default -> board; source 10.31.0.238, port 8000 (and 80), status 200 passed, 10.0.0.1 / 443 / 403 refused |
+| F3 | 301 (1) | GET, /search/, q, 2xx passed; POST, the search words, 4xx refused |
+| F4 | 302 (2) | engine suricata passed, modsecurity refused; `<script>` 403; status 403, WAF source_ip 10.31.0.238 passed |
+| F5 | 303 (1) | `' OR 1=1--` 403, stopped at fsl-waf, rule 942100 passed (949110 explained); sqlmap from Kali via the platform's attacker runner, 20 s, sqlmap counted 1,973 403s, the edge sensor recorded 1,836 http records with the marker; 1,928 and 1,973 passed, 918 refused |
+| F6 | 304 (2) | exclusions read from the WAF (949110 passed, 942100 refused); sqlmap 69 s dumped admin, jiwoo, minseo; the sensors recorded 2,304 (estate) and 2,233 (edge); a forged row matched nothing, the table matched 3; leaked 3; first score 3/3 lost, noticed |
+
+Not proven: the learner's typing in the Red console's ttyd terminal (the live
+runs used the attacker runner with `/etc/profile.d/fsl.sh`, the same proxy
+environment); the Kibana views behind the `records: all` and kali links
+(the queries were read, not opened in Kibana); the console walk of every unit
+in a browser (only F2's follow view and F6's pages were captured); Docker.
+Why the edge sensor recorded 7% fewer requests than sqlmap sent is not
+measured (hypothesis: UDP syslog loss between OPNsense and the collector); the
+10% tolerance covers it. Observed, not fixed: a closed session's first-score
+table shows every objective kept when `/score/` fails to load (once, right
+after close) although the header says 3/3 lost; the score page's note and
+CLAUDE.md say sqlmap sends "about 94 requests", while these runs sent
+1,973-2,304.
+
+Metrics: core_loc 567 (unchanged; `elastic.suricata_marker` renamed from
+private), dependencies 6, services 10, tests 1893 -> 1912 (bin/measure).
