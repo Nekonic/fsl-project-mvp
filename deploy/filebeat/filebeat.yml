@@ -33,6 +33,7 @@ filebeat.inputs:
     id: range-syslog
     host: "0.0.0.0:5140"
     max_message_size: 64KiB
+    read_buffer: 32MiB
     processors:
       - syslog:
           field: message
