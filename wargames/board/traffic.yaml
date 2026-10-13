@@ -1,0 +1,56 @@
+# The board's customers: a Korean community whose readers browse, search,
+# sign in and comment for as long as a session runs. Korean text is written as
+# \u escapes (CLAUDE.md keeps Korean out of repo files other than three).
+#
+# Searches and comments go through the board's own forms. Sign-in and comments
+# are form posts that carry the page's CSRF token, as a browser sends them; a
+# JSON post is refused by Django's CSRF check (403, measured 2026-10-13).
+# The unusual searches are ones real readers type and CRS refuses from
+# paranoia level 2 (measured 2026-10-13).
+
+users: 12
+origins: {kr: 70, jp: 6, us: 8, cn: 3, vn: 3, tw: 3, hk: 3, br: 2, de: 1, gb: 1}
+accounts:
+  - {username: jiwoo, password: jiwoo1234}
+  - {username: minseo, password: minseo1234}
+posts: [1, 2, 3]
+agents:
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
+  - "Mozilla/5.0 (Linux; Android 14; SM-S921N) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36"
+  - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0"
+searches:
+  korean:
+    - "서울 맛집 추천"
+    - "점심 메뉴 추천"
+    - "주말 스터디"
+    - "노트북 추천"
+    - "강남역 카페"
+    - "공지"
+    - "스터디 모집"
+  english:
+    - "study group"
+    - "lunch"
+    - "python tutorial"
+    - "weekend meetup"
+    - "notice"
+  unusual:
+    - "<b>공지</b>"
+    - "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+    - "C++ & C#"
+comments:
+  korean:
+    - "좋은 정보 감사합니다"
+    - "저도 참여하고 싶어요"
+    - "혹시 몇 시에 모이나요?"
+    - "여기 가봤는데 괜찮았어요"
+    - "공지 확인했습니다"
+  english:
+    - "Thanks for sharing!"
+    - "Count me in for Saturday."
+    - "Is the meetup still on this week?"
+profiles:
+  community: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6}
+  plain: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4, comment: 6}
+default_profile: community

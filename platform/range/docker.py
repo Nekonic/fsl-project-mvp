@@ -28,6 +28,8 @@ PROJECT_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
 SEGMENT_LABEL = "fsl.segment.id"
 ESTATE = "estate"
+CUSTOMERS = "users"
+CUSTOMERS_LABEL = "fsl.customers"
 
 _TIMEOUT = 30
 SESSION_DEADLINE = 540
@@ -128,21 +130,52 @@ class Docker:
         host = self.declared.host(role)
 
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
-            command = ["docker", "exec"]
-            if stdin is not None:
-                command.append("-i")
-            command += [self._container(role), *reporting(argv)]
-            done = execute(host, command, stdin, timeout)
-            ran = reported(done)
-            if ran is None:
-                said = (done.stderr or done.stdout or "").strip()[:300]
-                raise RangeUnavailable(
-                    f"{host} never reported the command finishing: "
-                    + (said or f"docker exited {done.returncode}")
-                )
-            return ran
+            return self._exec(host, self._container(role), argv, stdin, timeout)
 
         return run
+
+    def _exec(self, host: str, container: str, argv: list[str], stdin: str | None, timeout: float) -> Ran:
+        command = ["docker", "exec"]
+        if stdin is not None:
+            command.append("-i")
+        command += [container, *reporting(argv)]
+        done = execute(host, command, stdin, timeout)
+        ran = reported(done)
+        if ran is None:
+            said = (done.stderr or done.stdout or "").strip()[:300]
+            raise RangeUnavailable(
+                f"{host} never reported the command finishing: "
+                + (said or f"docker exited {done.returncode}")
+            )
+        return ran
+
+    def _customers_box(self) -> str:
+        return f"{SESSION_PREFIX}{self.session}-{CUSTOMERS}"
+
+    def users_box(self, segment_ids: list[str], image: str):
+        name = self._customers_box()
+        if not self._lines(["ps", "-q", "--filter", f"name=^{name}$"]):
+            networks = [self._network_of(segment_id) for segment_id in segment_ids]
+            if not networks:
+                raise RangeUnavailable(f"{name} is not running and no segment was named to start it on")
+            self.drop_users_box()
+            self._read([
+                "run", "-d", "--name", name, "--init", "--label", f"{CUSTOMERS_LABEL}={self.session}",
+                "--network", networks[0], "--entrypoint", "sleep", image, "infinity",
+            ])
+            for network in networks[1:]:
+                self._read(["network", "connect", network, name])
+
+        def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
+            return self._exec(name, name, argv, stdin, timeout)
+
+        return run
+
+    def drop_users_box(self, name: str = "") -> None:
+        try:
+            self._read(["rm", "-f", name or self._customers_box()])
+        except RangeUnavailable:
+            pass
 
     def launcher(self, segment_id: str):
         def launch(image: str, argv: list[str], timeout: float = 600.0) -> Ran:
@@ -267,6 +300,11 @@ class Docker:
                 if ended not in kept:
                     self._detach(ended)
                     self._compose(["-p", ended, "down", "-v"], deadline)
+            for line in self._lines(["ps", "-a", "--filter", f"label={CUSTOMERS_LABEL}", "--format",
+                                     f'{{{{.Names}}}} {{{{.Label "{CUSTOMERS_LABEL}"}}}}']):
+                name, _, owner = line.partition(" ")
+                if f"{SESSION_PREFIX}{owner}" not in kept:
+                    self.drop_users_box(name)
         self._compose(
             ["-p", project, "-f", self.session_file,
              "up", "-d", "--wait", "--no-build"],
