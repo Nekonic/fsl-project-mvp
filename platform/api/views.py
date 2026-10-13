@@ -1134,6 +1134,10 @@ def session_follow(request, session_id):
     return _reply(_followed(session, record, case, marker))
 
 def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER):
+    try:
+        _ingest(session, RECENT_ALERTS)
+    except elastic.ElasticUnavailable:
+        pass
     stored = session.browse_marker if marker == SITE_BROWSER_MARKER else marker
     detections = session.detections.filter(marker=stored)
     if record:
