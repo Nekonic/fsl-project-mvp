@@ -2729,3 +2729,20 @@ images' labels; an image built locally by compose carries
 `com.docker.compose.project=fsl`, but compose and the platform's lookups filter
 on running containers or `oneoff=False`, which these never are (`docker
 compose ps` lists none; checked live).
+
+Then the maps were made readable for a learner (segment zones, plain-words
+notes, the sensor's namespace drawn; `docs/ARCHITECTURE.md`, The topology).
+GNS3 3.1 rewrites a node's label to its name on load (`controller/node.py`),
+so the plain words are text drawings beside the nodes, and the names stay the
+host names the platform and the consistency test match on. A drawing whose
+font is the 2.2 default (TypeWriter 10) is shown in Noto Sans by the 3.1 web
+UI and any other TypeWriter text in the browser's serif, so every text is Noto
+Sans. The web UI opens with its topology summary over the map; that panel's
+visibility is a constant in the bundle, not a stored setting, so the learner
+closes it once. Checked live on session 297 (board, slot 1): the blue
+console's Topology pane frames the opened OpenStack project; "Follow a
+request" on the Website pane's search for 서울 맛집 추천 (200, not blocked)
+walks internet, fsl-edge, estate, fsl-waf (passed, no rule), fsl-wargame-host,
+board-default, board (200). The hop list says the source is unknown: a
+Website-pane request carries no origin address, and on OpenStack the platform
+sends it to the slot's WAF over `mgmt`, not through the edge the walk draws.
