@@ -12,7 +12,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from pathlib import Path, PurePosixPath
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
@@ -595,6 +595,34 @@ def _accepted(session, check):
         if check["path"] in unquote(_request_of(detection.raw or {})[1])
     ])
 
+def _window_of(record):
+    start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
+    return start - FOLLOW_SLACK, start + timedelta(milliseconds=record.get("ms") or 0) + FOLLOW_SLACK
+
+def _browsed(session, record):
+    start, end = _window_of(record)
+    return session.detections.filter(marker=session.browse_marker, timestamp__gte=start, timestamp__lte=end)
+
+def _sensed_for(session, record):
+    start, end = _window_of(record)
+    asked = urlsplit(record["url"])
+    return _sensed(session, start, end, session.browse_marker, asked.path + (f"?{asked.query}" if asked.query else ""))
+
+def _sensed(session, start, end, marker, path=""):
+    try:
+        documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
+    except elastic.ElasticUnavailable:
+        return []
+    found = []
+    for _, doc in documents:
+        http = doc.get("http") or {}
+        if doc.get("fsl_source") != "suricata" or doc.get("event_type") != "http":
+            continue
+        labelled = elastic.suricata_marker(http)
+        if labelled == marker or (path and not labelled and http.get("url") == path):
+            found.append(doc)
+    return found
+
 def _detect_check(session, taught, check, step_id, failed):
     recorded, _ = _lesson_fire(session, check["case"], {"check": step_id})
     row = _detection_rows(session, taught, [recorded], watch=True)[0]
@@ -966,25 +994,31 @@ def session_follow(request, session_id):
     marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else case.case_id if case else "")
     if not marker:
         raise BadRequest('name a "marker", a Website pane "request" or a fired "case" to follow')
+    return _reply(_followed(session, record, case, marker))
+
+def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER):
     stored = session.browse_marker if marker == SITE_BROWSER_MARKER else marker
     detections = session.detections.filter(marker=stored)
     if record:
-        start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
-        detections = detections.filter(
-            timestamp__gte=start - FOLLOW_SLACK,
-            timestamp__lte=start + timedelta(milliseconds=record.get("ms") or 0) + FOLLOW_SLACK)
+        detections = _browsed(session, record)
+        seen = _sensed_for(session, record)
+    elif case:
+        seen = _sensed(session, case.started_at - FOLLOW_SLACK, case.ended_at + FOLLOW_SLACK, stored)
+    else:
+        seen = []
     detections = list(detections)
     nodes = _drawn(session, _range(session).describe())["nodes"]
     number = _slot_of(session)
     followed = topology.follow(gns3.local(), settings.RANGE, nodes, _sent(session, record, case),
-                               detections, lambda name: _named_in(number, name))
-    return _reply({
+                               detections, lambda name: _named_in(number, name), seen)
+    return {
         "marker": marker,
         "request": {name: record[name] for name in site.SUMMARY} if record else None,
         "case": {"case_id": case.case_id, "name": case.name} if case else None,
         "detections": len(detections),
+        "sensed": len(seen),
         **followed,
-    })
+    }
 
 @require_http_methods(["GET"])
 def origins(request):
