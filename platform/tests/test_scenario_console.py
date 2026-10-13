@@ -14,7 +14,7 @@ def status(card=CARD, **changed):
     return {
         **card, "phase": "running", "opened_at": "2026-10-13T06:00:00+00:00", "ends_at": "2026-10-13T06:20:00+00:00",
         "window_at": "2026-10-13T06:16:00+00:00", "time_left": 754,
-        "live": {"customers_blocked_per_minute": 12, "alerts_per_minute": 31, "objectives_lost": 0,
+        "live": {"customers_blocked_per_minute": 12, "alerted_per_minute": 31, "objectives_lost": 0,
                  "customers": {"sent": 90, "served": 70, "blocked": 20}},
         "window": None, "windows": 0, "completion": {"state": "pending", "reasons": [], "fix": None},
         "cards": ["blocked"], "text": "scenario.korean" if card is CARD else "scenario.shift",

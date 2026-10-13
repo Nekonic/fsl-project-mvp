@@ -547,19 +547,22 @@ def test_opening_a_hint_records_it_and_clears_the_offer(client):
         client.post_json(f"/api/sessions/{session.pk}/scenario/hints/")
     assert client.post_json(f"/api/sessions/{session.pk}/scenario/hints/").status_code == 409
 
-def test_the_status_counts_the_last_minute_and_hides_the_schedule(client):
+def test_the_status_counts_the_last_minute_one_alerted_request_per_marker_and_hides_the_schedule(client):
     session = opened()
     now = timezone.now()
     customer(session, now - timedelta(seconds=20), status=403)
     customer(session, now - timedelta(minutes=3), status=403)
     customer(session, now - timedelta(seconds=10), status=200)
-    alert(session, None, at=now - timedelta(seconds=5))
-    alert(session, None, at=now - timedelta(minutes=5))
+    alert(session, "sqlmap-run", at=now - timedelta(seconds=5))
+    alert(session, "sqlmap-run", at=now - timedelta(seconds=4), rule="942100")
+    alert(session, "a-customer", at=now - timedelta(seconds=3))
+    alert(session, None, at=now - timedelta(seconds=2))
+    alert(session, "earlier", at=now - timedelta(minutes=5))
 
     status = client.get(f"/api/sessions/{session.pk}/scenario/").json()
 
     assert status["live"]["customers_blocked_per_minute"] == 1
-    assert status["live"]["alerts_per_minute"] == 1
+    assert status["live"]["alerted_per_minute"] == 2
     assert status["live"]["customers"] == {"sent": 3, "served": 1, "blocked": 2}
     assert (status["phase"], status["completion"]["state"]) == ("running", "pending")
     assert set(status["cards"]) == {"blocked", "narrow"}
