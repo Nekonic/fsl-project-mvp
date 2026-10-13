@@ -2971,3 +2971,17 @@ test is unchanged, and the board wargame's own pages are Korean content.
 
 Metrics: core_loc 567, dependencies 6, services 10 (unchanged); tests
 1912 -> 1920; product_loc 19355 -> 19363 (bin/measure).
+
+### 2026-10-13 — Customer traffic checked live (OpenStack, session 305, slot 1)
+
+Deployed with the Korean GNS3 maps (all four projects opened in fsl-gns3;
+migration 0024 applied). At PL2 with customers at 2/s and
+board-sqli-orderby-sqlmap fired once (launched from origin ru): customers left
+from kr 175.192.0.10, us 73.0.0.10, cn 36.128.0.10 and jp 106.128.0.10, none
+from the attacker's origin; after 315 customer requests, 308 were served and 7
+blocked, all 7 of them `search-unusual` (the `<b>`, URL and `C++ & C#`
+searches measured in P0), each drawing an alert; comments (33), logins (12),
+Korean searches (58) and post pages were all served. The sqlmap case kept its
+own verdict (TP) in the second score. Closing stopped the generator
+(`running: false`, 870 requests sent, 17 blocked) before the slot reset.
+Open: 24 detections stayed unattributed in that session; not yet traced.
