@@ -49,6 +49,7 @@ volumes:
   esdata:
   collectordata:
   platformdata:
+  gns3data:
 
 services:
   elasticsearch:
@@ -133,6 +134,8 @@ services:
       WARGAME_CASES_DIR: "/app/redteam/cases"
       FSL_SOURCE: "/src"
       FSL_IMAGE_TAG: "${FSL_IMAGE_TAG:-dev}"
+      FSL_GNS3_URL: "http://gns3:3080"
+      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
     env_file:
       - path: ./openstack.env
         required: false
@@ -145,3 +148,18 @@ services:
       - ./session.yaml:/src/session.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - platformdata:/data
+
+  gns3:
+    platform: linux/amd64
+    build: ./deploy/gns3
+    image: ghcr.io/nekonic/fsl-gns3:${FSL_IMAGE_TAG:-dev}
+    container_name: fsl-gns3
+    networks: [mgmt]
+    ports:
+      - "${FSL_PUBLISH:-127.0.0.1}:3080:3080"
+    environment:
+      FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
+      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
+    volumes:
+      - ./deploy/topology:/topology:ro
+      - gns3data:/data
