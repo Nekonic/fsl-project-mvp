@@ -4,6 +4,7 @@ import ipaddress
 import json
 import math
 import re
+import shlex
 import threading
 import time
 import uuid
@@ -12,7 +13,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from pathlib import Path, PurePosixPath
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
@@ -78,7 +79,8 @@ LESSON_STEP_STATES = ("reached", "skipped")
 MODES = ("guided", "self")
 RECENT_ALERTS = 600
 SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",), "replay": ("case",),
-               "detect": ("case", "expect")}
+               "detect": ("case", "expect"), "sent": ("match",), "kali": ("case",)}
+COUNT_TOLERANCE = 0.1
 SERVER_ONLY = ("solved_at",)
 SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
@@ -401,12 +403,22 @@ def _revealed(session, taught, step, kept):
     return {
         **({"answer": strings.both(named.format("answer"))} if kept.get("hint", 0) >= lesson.ANSWER else {}),
         **({"line": strings.both(named.format("line"))} if kept.get("passed") else {}),
-        **({"command": step["command"]} if _command_shown(session, step) else {}),
+        **({"command": _command_of(session, step)} if _command_shown(session, step) else {}),
     }
+
+def _command_of(session, step):
+    if step["check"]["kind"] != "kali":
+        return step.get("command") or ""
+    marker = (session.lesson_steps.get(step["id"]) or {}).get("marker")
+    return _kali_command(session, step["check"]["case"], marker) if marker else ""
+
+def _kali_command(session, name, marker):
+    case = dict(wargames.find_case(session.scenario, name), case_id=marker, correlation="marker")
+    return shlex.join(tools.tool_argv(case, wargames.WARGAMES[session.scenario]["public_url"])[1])
 
 def _command_shown(session, step):
     reached = (session.lesson_steps.get(step["id"]) or {}).get("reached")
-    return bool(step.get("command")) and session.mode != "self" and bool(reached)
+    return bool(_command_of(session, step)) and session.mode != "self" and bool(reached)
 
 def _lesson_state(session, step_id, **judged):
     return {**judged, "hint": session.lesson_steps.get(step_id, {}).get("hint", 0),
@@ -416,7 +428,8 @@ def _lesson_state(session, step_id, **judged):
 def lesson_step(request, session_id, step_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
-    _taught_step(session, step_id)
+    _, taught_step = _taught_step(session, step_id)
+    armed = taught_step["check"]["kind"] == "kali"
     state = _payload(request).get("state")
     if state not in LESSON_STEP_STATES:
         raise BadRequest(f'"state" must be one of {list(LESSON_STEP_STATES)}, got {state!r}')
@@ -427,6 +440,8 @@ def lesson_step(request, session_id, step_id):
         if state == "reached":
             kept.setdefault("reached", now)
             kept["after"] = newest
+            if armed:
+                kept.setdefault("marker", str(uuid.uuid4()))
         elif not kept.get("passed"):
             kept["skipped"] = now
 
@@ -456,7 +471,7 @@ def lesson_step_do(request, session_id, step_id):
     check = step["check"]
     try:
         if check["kind"] in ("answer", "choice"):
-            accepted = _accepted(session, check)
+            accepted = _accepted(session, check, taught)
             if not accepted:
                 return _reply(_judged_step(session, step_id, False, ["lesson.check.unrecorded", []], True, None))
             passed, reason, tried = _judge(session, taught, step, {"answer": accepted[0]}, False, {})
@@ -469,7 +484,13 @@ def lesson_step_do(request, session_id, step_id):
         elif check["kind"] == "rules":
             _put_rule(session, step)
             passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
-        elif check["kind"] in ("click", "served", "replay", "detect"):
+        elif check["kind"] == "kali":
+            session = _kali_do(session, step)
+            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, session.lesson_steps[step_id])
+        elif check["kind"] == "loot":
+            _loot_do(session, check)
+            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
+        elif check["kind"] in ("click", "served", "replay", "detect", "sent"):
             passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
         else:
             return _reply(_lesson_state(session, step_id, passed=False, reason=None))
@@ -535,7 +556,7 @@ def _judge(session, taught, step, body, poll, kept):
         given = body.get("answer")
         if not isinstance(given, str) or not given.strip():
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
-        accepted = _accepted(session, check)
+        accepted = _accepted(session, check, taught)
         if not accepted:
             return False, ["lesson.check.unrecorded", []], None
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
@@ -555,6 +576,12 @@ def _judge(session, taught, step, body, poll, kept):
         return lesson.served(status), [failed, [status or "-"]], None
     if kind == "replay":
         return _replay_check(session, check, step_id, failed)
+    if kind == "sent":
+        return bool(_site_requests(session, check)), [failed, []], None
+    if kind == "kali":
+        return _kali_check(session, step, kept, failed)
+    if kind == "loot":
+        return _loot_check(session, check, body.get("answer"), failed)
     if kind == "waf":
         return _waf_check(session, check, step_id, poll, kept, failed)
     runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
@@ -584,9 +611,17 @@ def _replay_check(session, check, step_id, failed):
         return False, ["lesson.check.inconclusive", [check["case"]]], None, shown
     return False, [failed, []], None, shown
 
-def _accepted(session, check):
+def _accepted(session, check, taught=None):
     if "of" not in check:
         return check["accept"]
+    if check["of"] in wargames.RANGE_FACTS:
+        return _range_fact(session, check["of"])
+    if check["of"] in wargames.REQUEST_FACTS:
+        about = _taught_check(taught, check["about"])
+        record = (_site_requests(session, about) or [None])[-1]
+        return _request_fact(session, record, check["of"]) if record else []
+    if check["of"] in wargames.KALI_FACTS:
+        return _kali_fact(session, check["about"], check["of"])
     _ingest(session, RECENT_ALERTS)
     marker = session.browse_marker if check.get("marker") == SITE_BROWSER_MARKER else check.get("marker")
     found = session.detections.filter(source="modsecurity", **({"marker": marker} if marker else {}))
@@ -594,6 +629,44 @@ def _accepted(session, check):
         detection.raw or {} for detection in found
         if check["path"] in unquote(_request_of(detection.raw or {})[1])
     ])
+
+def _taught_check(taught, step_id):
+    return next(step["check"] for step in taught.get("steps", []) if step["id"] == step_id)
+
+def _site_requests(session, check):
+    pattern = re.compile(check["match"])
+    return [record for record in site.kept(session.pk) if pattern.search(unquote(record["url"].replace("+", " ")))]
+
+def _range_fact(session, of):
+    if of == "lost":
+        return [str(_result(session)["objectives"]["lost"])]
+    if of == "excluded":
+        return [str(entry["rule_id"]) for entry in _waf_in_force(session)["exclusions"]]
+    return topology.facts(gns3.local(), settings.RANGE, session.scenario)[of]
+
+def _request_fact(session, record, of):
+    url = urlsplit(record["url"])
+    if of in ("status", "status_class", "method", "path", "parameter"):
+        return {"status": [str(record["status"])], "status_class": [f"{record['status'] // 100}xx"],
+                "method": [record["method"]], "path": list(dict.fromkeys([url.path, url.path.rstrip("/") or "/"])),
+                "parameter": sorted(parse_qs(url.query, keep_blank_values=True))}[of]
+    if of in ("source", "stopped_at"):
+        followed = _followed(session, record=record)
+        if of == "source":
+            return [followed["address"]] if followed["address"] else []
+        return [hop["node"] for hop in followed["hops"] if hop.get("verdict") == "blocked"]
+    if of in ("port", "sensor_source"):
+        events = _sensed_for(session, record)
+        if of == "sensor_source":
+            return sorted({str(event["src_ip"]) for event in events if event.get("src_ip")})
+        return list(dict.fromkeys([str(url.port or 80), *(str(event["dest_port"]) for event in events
+                                                           if event.get("dest_port"))]))
+    _ingest(session, RECENT_ALERTS)
+    recorded = list(_browsed(session, record))
+    if of == "waf_source":
+        return sorted({detection.src_ip for detection in recorded if detection.source == "modsecurity" and detection.src_ip})
+    heard = {detection.source for detection in recorded} | ({"suricata"} if _sensed_for(session, record) else set())
+    return sorted(heard)
 
 def _window_of(record):
     start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
@@ -622,6 +695,70 @@ def _sensed(session, start, end, marker, path=""):
         if labelled == marker or (path and not labelled and http.get("url") == path):
             found.append(doc)
     return found
+
+def _counted(events):
+    by_sensor = {}
+    for event in events:
+        said = str(((event.get("log") or {}).get("syslog") or {}).get("hostname") or "").split(".")[0]
+        by_sensor[said] = by_sensor.get(said, 0) + 1
+    return max(by_sensor.values(), default=0), by_sensor
+
+def _kali_check(session, step, kept, failed):
+    marker = kept.get("marker")
+    if not marker:
+        return False, [failed, []], None
+    case = wargames.find_case(session.scenario, step["check"]["case"])
+    recorded = session.cases.filter(case_id=marker).first()
+    reached = parse_datetime(kept.get("reached") or "") or session.started_at
+    events = _sensed(session, reached - FOLLOW_SLACK, timezone.now() + FOLLOW_SLACK, marker)
+    ran = [event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
+    count, by_sensor = _counted(events)
+    shown = {"kali": {"name": case["name"], "requests": count, "sensors": by_sensor,
+                      "discover": _discover(session, kibana.sensed_http(marker))}}
+    if recorded is None and not ran:
+        return False, ["lesson.check.kali_none", [case["tool"]]], None, shown
+    if recorded is None:
+        first = min((parse_datetime(str(event.get("timestamp") or "")) for event in ran), default=None) or reached
+        _record_case(session, dict(case, case_id=marker, correlation="marker"), first, timezone.now(),
+                     {"kali": step["id"], "launched_on": settings.RANGE.default_origin,
+                      "command": _kali_command(session, case["name"], marker)})
+        _settle_and_observe(session)
+    return True, None, None, shown
+
+def _kali_do(session, step):
+    name = step["check"]["case"]
+    recorded, _ = _fire(session, name, None, lambda ran: {
+        "kali": step["id"], "done_for_me": True, "dumped": tools.dumped(ran.output),
+        "conclusions": tools.conclusions(ran.output)})
+    return _progressed(session, step["id"], lambda kept, held: kept.update(marker=recorded.case_id))
+
+def _kali_case(session, step_id):
+    marker = (session.lesson_steps.get(step_id) or {}).get("marker")
+    return session.cases.filter(case_id=marker).first() if marker else None
+
+def _kali_fact(session, step_id, of):
+    recorded = _kali_case(session, step_id)
+    if recorded is None:
+        return []
+    if of == "leaked":
+        return [str(len(recorded.meta["loot"]))] if "loot" in recorded.meta else []
+    count, _ = _counted(_sensed(session, recorded.started_at - FOLLOW_SLACK, timezone.now(), recorded.case_id))
+    return [str(found) for found in lesson.within(count, COUNT_TOLERANCE)]
+
+def _loot_check(session, check, given, failed):
+    recorded = _kali_case(session, check["about"])
+    if recorded is None:
+        return False, ["lesson.check.loot_no_run", []], None
+    if isinstance(given, str) and given.strip():
+        _credit_loot(session, lesson.pasted_rows(given, tools.dumped(given)), recorded.case_id)
+        recorded.refresh_from_db()
+    matched = recorded.meta.get("loot") or []
+    return bool(matched), [failed, []], None, {"loot": {"matched": matched}}
+
+def _loot_do(session, check):
+    recorded = _kali_case(session, check["about"])
+    if recorded is not None and recorded.meta.get("dumped"):
+        _credit_loot(session, recorded.meta["dumped"], recorded.case_id)
 
 def _detect_check(session, taught, check, step_id, failed):
     recorded, _ = _lesson_fire(session, check["case"], {"check": step_id})
@@ -730,7 +867,7 @@ def _refuse_self(session):
                        f"PATCH its mode to guided first")
 
 def _asked_lesson(scenario, asked):
-    known = [taught["id"] for taught in wargames.lessons(scenario)]
+    known = wargames.taught_ids(scenario)
     if asked is None:
         return wargames.lesson(scenario)["id"]
     if asked not in known:
@@ -1175,6 +1312,7 @@ def _credit_loot(session, submitted, case_id):
 
     at, earliest, latest = _loot_window(session, case_id, timezone.now())
     attributed = scoreboard.attribute(at, _malicious_attempts(session), earliest, latest)
+    _keep_loot(session, matched_users, case_id, attributed)
 
     before = session.objectives.count()
     Objective.objects.bulk_create(
@@ -1196,6 +1334,14 @@ def _credit_loot(session, submitted, case_id):
         "attempted": attempted,
         "unattributed": [] if attributed else [tier["key"] for tier in credited],
     }
+
+def _keep_loot(session, matched_users, case_id, attributed):
+    owner = session.cases.filter(case_id=case_id, malicious=True).first() if case_id else None
+    owner = owner or (session.cases.filter(case_id=attributed.case_id).first() if attributed else None)
+    if owner is None or not matched_users:
+        return
+    owner.meta = dict(owner.meta, loot=sorted(set(owner.meta.get("loot") or []) | matched_users))
+    owner.save(update_fields=["meta"])
 
 def _loot_window(session, case_id, submitted_at):
     if case_id:
@@ -1546,8 +1692,12 @@ def _shown_step(session, step):
     check = step["check"]
     kept = {key: value for key, value in step.items()
             if key not in SERVER_ONLY_STEP and not (key == "command" and session and not _command_shown(session, step))}
+    if session and check["kind"] == "kali" and _command_shown(session, step):
+        kept["command"] = _command_of(session, step)
     shown = dict(kept, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})
-    return dict(shown, discover=_discover(session, step["query"])) if step.get("query") else shown
+    if not step.get("query"):
+        return shown
+    return dict(shown, discover=_discover(session, step["query"], everything=step.get("records") == "all"))
 
 def _site(session):
     if not settings.SITE_PORT:
@@ -1562,12 +1712,13 @@ def _waf_terminal_url(session):
 def _session_index(session):
     return settings.ELASTIC_SESSION_INDEX.format(session=session.pk, slot=_slot_of(session))
 
-def _discover(session, narrowed=None):
+def _discover(session, narrowed=None, everything=False):
     return kibana.discover_path(
         _session_index(session),
         session.started_at - timedelta(minutes=1),
         session.ended_at and session.ended_at + timedelta(minutes=1),
         narrowed,
+        everything,
     )
 
 @require_http_methods(["POST"])

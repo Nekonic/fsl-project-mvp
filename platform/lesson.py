@@ -10,6 +10,7 @@ DO_IT = 4
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1
 CRS_TOTALS = ("949", "959", "980")
+PASTED_ROW = re.compile(r"^\s*\|?\s*([\w.@+-]+)\s*[|:\s]\s*(\S+?)\s*\|?\s*$")
 VARIABLE = re.compile(r"against variable `([^']+)'|found within ([A-Z_]+(?::[^:\s]+)?)|^([A-Z_]+:[^=\s]+)=")
 
 def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
@@ -139,3 +140,12 @@ def detection_verdict(rows: list[dict]) -> tuple[bool, list]:
             diagnosis.append([f"lesson.diag.{found}", [row["name"]]])
     passed = bool(rows) and all(detection_outcome(row) in ("detected", "quiet") for row in rows)
     return passed, diagnosis
+
+def within(count: int, ratio: float) -> list[int]:
+    if count <= 0:
+        return []
+    spread = max(2, round(count * ratio))
+    return [count, *(found for found in range(max(1, count - spread), count + spread + 1) if found != count)]
+
+def pasted_rows(text: str, parsed: list) -> list:
+    return parsed or [found.groups() for found in map(PASTED_ROW.match, text.splitlines()) if found]

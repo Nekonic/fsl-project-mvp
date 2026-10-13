@@ -20,7 +20,189 @@ defense:
   ids:
     waf: {paranoia: 1}
     suricata: no-uri-sqli.rules
+  missed:
+    waf:
+      paranoia: 1
+      exclusions:
+        - {rule_id: 949110}
+        - {rule_id: 959100}
+    suricata: local.rules
 default_lesson: waf-exclusion
+foundations:
+  - id: f1
+    order: 1
+    text: lesson.range
+    level: easy
+    minutes: 10
+    prerequisites: []
+    defense: full
+    cases: [board-normal-search]
+    theory:
+      - {id: map, shows: map}
+    hints: [why_entry]
+    steps:
+      - id: map
+        point: {panel: '.pane-tab[data-pane="topology"]'}
+        check: {kind: click}
+      - id: entry
+        point: {pane: true, opens: topology}
+        check: {kind: answer, of: entry}
+      - id: logs
+        point: {pane: true, opens: topology}
+        check: {kind: answer, of: logs}
+      - id: segment
+        point: {pane: true, opens: topology}
+        check: {kind: answer, of: segment}
+  - id: f2
+    order: 2
+    text: lesson.follow
+    level: easy
+    minutes: 15
+    prerequisites: [f1]
+    defense: full
+    cases: [board-normal-search]
+    theory:
+      - {id: path, shows: follow}
+    hints: [why_source]
+    steps:
+      - id: search
+        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
+      - id: follow
+        point: {panel: "#topology-request", opens: topology}
+        check: {kind: click}
+      - id: source
+        point: {panel: "#topology-hops", opens: topology}
+        check: {kind: answer, of: source, about: search}
+      - id: port
+        point: {panel: "#topology-hops", opens: topology}
+        check: {kind: answer, of: port, about: search}
+      - id: status
+        point: {panel: "#topology-hops", opens: topology}
+        check: {kind: answer, of: status, about: search}
+  - id: f3
+    order: 3
+    text: lesson.http
+    level: easy
+    minutes: 10
+    prerequisites: [f2]
+    defense: full
+    cases: [board-normal-search]
+    theory:
+      - {id: request, shows: method}
+    hints: [why_parameter]
+    steps:
+      - id: search
+        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
+      - id: method
+        point: {panel: "#site-dev-toggle", opens: site}
+        check: {kind: answer, of: method, about: search}
+      - id: path
+        point: {panel: "#site-address", opens: site}
+        check: {kind: answer, of: path, about: search}
+      - id: parameter
+        point: {panel: "#site-address", opens: site}
+        check: {kind: answer, of: parameter, about: search}
+      - id: meaning
+        point: {panel: "#site-dev-toggle", opens: site}
+        check: {kind: choice, of: status_class, about: search, options: [2xx, 3xx, 4xx, 5xx]}
+  - id: f4
+    order: 4
+    text: lesson.logs
+    level: easy
+    minutes: 15
+    prerequisites: [f3]
+    defense: full
+    cases: [board-normal-search]
+    theory:
+      - {id: records, shows: engine}
+    hints: [why_one_engine]
+    steps:
+      - id: search
+        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
+      - id: engine
+        point: {pane: true, opens: elk}
+        query: 'event_type : "http" and url : *search*'
+        records: all
+        check: {kind: choice, of: engine, about: search, options: [modsecurity, suricata]}
+      - id: probe
+        site: "/search/?q=<script>alert(1)</script>"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: sent, match: script}
+      - id: find
+        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *script* and status : 403"
+        check: {kind: click}
+      - id: verdict
+        point: {kibana: '[data-test-subj="field-status"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        check: {kind: answer, of: status, about: probe}
+      - id: address
+        point: {kibana: '[data-test-subj="field-source_ip"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        check: {kind: answer, of: waf_source, about: probe}
+  - id: f5
+    order: 5
+    text: lesson.attack
+    level: easy
+    minutes: 25
+    prerequisites: [f4]
+    defense: full
+    cases: [board-normal-search]
+    theory:
+      - {id: attack, shows: stopped}
+    hints: [why_total, why_count]
+    steps:
+      - id: attack
+        site: "/search/?q=' OR 1=1--"
+        point: {panel: "#site-address", opens: site}
+        check: {kind: sent, match: "1=1"}
+      - id: follow
+        point: {panel: "#topology-request", opens: topology}
+        check: {kind: click}
+      - id: stopped
+        point: {panel: "#topology-hops", opens: topology}
+        check: {kind: answer, of: stopped_at, about: attack}
+      - id: rule
+        point: {panel: "#topology-hops", opens: topology}
+        check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
+      - id: sqlmap
+        point: {pane: true}
+        check: {kind: kali, case: board-sqli-orderby-sqlmap}
+      - id: requests
+        point: {pane: true}
+        check: {kind: answer, of: requests, about: sqlmap}
+  - id: f6
+    order: 6
+    text: lesson.miss
+    level: medium
+    minutes: 25
+    prerequisites: [f5]
+    defense: missed
+    cases: [board-normal-search]
+    theory:
+      - {id: cost, shows: lost}
+    hints: [why_leak]
+    steps:
+      - id: excluded
+        point: {pane: true, opens: waf}
+        command: cat {waf_rules}
+        check: {kind: answer, of: excluded}
+      - id: sqlmap
+        point: {pane: true}
+        check: {kind: kali, case: board-sqli-orderby-sqlmap}
+      - id: loot
+        point: {pane: true}
+        check: {kind: loot, about: sqlmap}
+      - id: leaked
+        point: {pane: true}
+        check: {kind: answer, of: leaked, about: sqlmap}
+      - id: lost
+        point: {pane: true}
+        check: {kind: answer, of: lost}
 lessons:
   - id: waf-exclusion
     order: 2
