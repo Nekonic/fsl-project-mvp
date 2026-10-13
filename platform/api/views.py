@@ -1633,11 +1633,11 @@ def session_waf(request, session_id):
         body = _payload(request)
         crs.checked(body)
         with _turn_of(session):
-            kept = {} if "thresholds" in body else _thresholds_of(_waf_in_force(session))
-            tuning = crs.checked({**kept, **body})
+            standing = _waf_in_force(session)
+            tuning = crs.checked({**({} if "thresholds" in body else _thresholds_of(standing)), **body})
             session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
             session.save(update_fields=["waf"])
-        scenario_run.waf_applied(session, tuning)
+        scenario_run.waf_applied(session, tuning, (standing.get("file") or "").strip() == crs.rendered(tuning).strip())
     tuning = _waf_in_force(session)
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
 

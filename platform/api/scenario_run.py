@@ -266,24 +266,24 @@ def _observe(session, now) -> None:
             and session.scenario_state.get("idle_offered") != session.scenario_state["last_change"]:
         stuck(session, "idle", "", idle_offered=session.scenario_state["last_change"])
 
-def _waf_seen(session, text, now, applied=False) -> None:
+def _waf_seen(session, text, now) -> str:
     version = scenarios.version_of(text)
 
     def seen(state, held):
         changes = state.setdefault("waf", [])
         if changes and changes[-1]["version"] == version:
-            return applied
+            return
         changes.append({"at": now.isoformat(), "version": version})
         if len(changes) > 1:
             state["last_change"] = now.isoformat()
-        return False
-    _, again = _update(session.pk, seen)
-    if again:
-        stuck(session, "waf", version)
+    _update(session.pk, seen)
+    return version
 
-def waf_applied(session, tuning) -> None:
+def waf_applied(session, tuning, again) -> None:
     if session.course_scenario and session.scenario_state:
-        _waf_seen(session, crs.rendered(tuning), timezone.now(), applied=True)
+        version = _waf_seen(session, crs.rendered(tuning), timezone.now())
+        if again:
+            stuck(session, "waf", version)
 
 def stuck(session, reason, about, **marks) -> None:
     if not (session.course_scenario and session.scenario_state):

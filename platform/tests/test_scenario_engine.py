@@ -613,3 +613,22 @@ def test_the_score_reads_customer_records_before_it_sets_their_alerts_apart(clie
         client.get(f"/api/sessions/{session.pk}/score/")
 
     assert pulled == [session.pk]
+
+def test_a_new_waf_change_the_engine_happened_to_read_first_is_not_called_applied_again(client):
+    from tests.test_lesson_api import Stand
+
+    session = opened(waf={"paranoia": 3, "exclusions": []})
+    first = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "ARGS:q", "path": "/search/"}]}
+    second = {"paranoia": 3, "exclusions": [{"rule_id": 949110}]}
+    put = lambda tuning: client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(tuning),
+                                    content_type="application/json")
+    with patch("range.docker.Docker.runner", Stand().runner()):
+        put(first)
+        scenario_run._waf_seen(session, crs.rendered(crs.checked(second)), timezone.now())
+        put(second)
+        session.refresh_from_db()
+        assert session.scenario_state["offer"] is None
+        put(second)
+
+    session.refresh_from_db()
+    assert session.scenario_state["offer"]["reason"] == "waf"
