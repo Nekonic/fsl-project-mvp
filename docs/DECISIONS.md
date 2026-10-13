@@ -3102,3 +3102,124 @@ UDP-dropped marker (above).
 
 Metrics: core_loc 567 -> 580 (crs.py, above), dependencies 6, services 10,
 product_loc 22,385 -> 23,979, tests 1955 -> 2017 (bin/measure).
+
+## 2026-10-13 — P5 built: scenarios 1.2-4.1, and the fixes before them
+
+Phase P5 of the scenario course design, built and run live on OpenStack
+(platform VM 192.168.0.210, both slots, sessions 314-327). `docs/ARCHITECTURE.md`,
+"Scenarios", has the descriptor fields and the table of the eleven scenarios.
+
+**Fixes first.**
+
+- **The strip counts alerted requests, not alert rows.** It read 17,352
+  "alerts" a minute during sqlmap because each Detection row (one rule message)
+  counted. `live.alerted_per_minute` counts distinct markers that drew an alert
+  in the last minute: each customer request once, each attack case once however
+  many requests it sent (one case is one decision, as in the triage list).
+  Detections without a marker (the UDP drops below) are not counted.
+- **The Judge pane keeps its list clear.** With the pane open the list leaves
+  the lesson note's column free (padding computed from the note's box), and the
+  cards, the opened hints and a coach popover whose step points into the pane
+  are moved into a dock above the list; they float again when another pane
+  opens. Checked headless at 1440x900 and 1280x800 (below).
+- **UDP syslog drops.** `deploy/openstack/platform.yaml` writes
+  `/etc/sysctl.d/90-fsl-syslog.conf` (`net.core.rmem_max = 33554432`,
+  `net.core.rmem_default = 4194304`) and runs `sysctl --system` first;
+  Filebeat's UDP input sets `read_buffer: 32MiB` (the socket then shows
+  `rb67108864`). Applied by hand on 192.168.0.210 at 06:59 UTC (the same file,
+  `sysctl --system`, the collector recreated). The collector's
+  `/proc/net/snmp` (its network namespace) around one stock sqlmap run: before,
+  6,013 datagrams received and 445 receive-buffer errors (6.9% of that burst;
+  21,709 since 2026-10-12); after, 0 errors over a stock run (6,597
+  datagrams) and a tamper run (8,102). Not yet proven: the cloud-init path on a
+  rebuilt VM.
+
+**Rulings.**
+
+- **"Kind" in 1.3 is the attack pattern.** The brief asks 1.3 to judge "both
+  kind and whether it succeeded" over several attack kinds; read as the attack's
+  CAPEC pattern from the case file (CAPEC-66, -63, -126), asked beside the
+  verdict when the completion says `pattern: judged`, judged against the
+  case's own `pattern`, never shown on an item. The Korean labels follow KISA's
+  vulnerability-assessment guide (2026 edition): SQL 인젝션, 크로스사이트
+  스크립팅(XSS), 경로 추적 (the secure-coding guide says 경로 조작; AWS's
+  Korean docs 경로 탐색).
+- **The availability completion may name thresholds.** 2.3 completes when the
+  thresholds in force at the window's snapshot are at most 5 inbound and 4
+  outbound (missing thresholds are the CRS defaults) as well as on served and
+  held.
+- **`REQUEST_BODY` joins the tuning targets** (one alternation in `rules/crs.py`,
+  `core_loc` stays 580). A Korean comment at PL3 is matched by 920272 in
+  `REQUEST_BODY`; the WAF terminal already accepted the exclusion, the API did
+  not. The test that pinned `REQUEST_BODY` as refused now pins
+  `REQUEST_BODY:x`, `REQUEST_BODYX` and `REQUEST_BODY_LENGTH`. Measured live
+  (session 324): with `920272;REQUEST_BODY` excluded under `/posts/`, the next
+  match on a Korean comment is 920272 on `ARGS:body`.
+- **A person as the red team (4.2).** Not built: it needs a second person. The
+  engine accepts `red: person` with no schedule; its window judges the
+  malicious cases the person fired inside it (not replays) like scheduled ones.
+- **4.1's unseen attack is an evasion of the covered family.** Nothing outside
+  SQL injection at `?sort=` succeeds against the board without a planted
+  vulnerability: the search, union and sign-in injections are parameterised by
+  the ORM (and the sign-in and comment JSON posts are refused by Django's CSRF
+  check), the templates escape the XSS, and the traversal reaches no file
+  (all measured held in 1.3, below). Against PL1 these sqlmap tamper sets were
+  all held, about 15-17 s each, "not injectable" (session 314):
+  `modsecurityversioned,space2comment`, `modsecurityzeroversioned,space2comment`,
+  `space2mysqlblank,versionedmorekeywords,randomcase`,
+  `space2morehash,versionedkeywords`; and with 942100 and 942190 removed at PL1
+  both the stock and the tamper case were still held. The first became
+  `board-sqli-orderby-sqlmap-versioned`, fired only by 4.1. The new false
+  positive is the club's code questions in comments (942100, 942190, 941100,
+  941110, 941160 on `ARGS:body` at PL1), a new customer action `comment-code`
+  in the `club` profile. Corp has real CVEs that succeed, but no customer
+  traffic; a corp scenario needs P3's generator for WordPress first.
+- **The English comments without a final period** the brief lists among 2.2's
+  false positives were not reproduced: at PL2 every English comment of session
+  315 (49) and of the probe (`Thanks for sharing!`, `Count me in for Saturday`)
+  passed the WAF (the probe's reached Django's CSRF 403), and `C++ & C#` sent as
+  the search form encodes it was served. 2.2's false positives are the `<b>`
+  search (941320) and the YouTube link (931130), both on `ARGS:q`.
+
+**Fixed after a live run broke it.**
+
+- Session 317: a scheduled sqlmap that took the accounts failed to record its
+  case, "database is locked", while other writers ingested; SQLite's busy
+  timeout is now 30 s (was the driver's 5 s).
+- Session 319 (1.3, customers at 4/s): every listed item was judged right and
+  the window still failed, 148 of 152: four customer requests reached the store
+  after I'm done with alert times up to 74 s before it. A judgement window now
+  keeps the items listed when it opened and judges those; verdicts given during
+  it still count.
+- Session 320 (3.1): the rules step compared sids only, so fixing a value of
+  sid 9000101 left it failing. A rule now counts when its sid is new or its
+  text differs from the posture's.
+- Session 321 (3.2): the debrief said "alerted" for attacks only the WAF saw
+  and listed WAF records. A detection scenario's debrief now reads the
+  detector its completion names.
+- Session 324 (2.3): lowering the thresholds, the task, was named a threshold
+  fix with the warning for raising them. Only a threshold above the posture's
+  is a threshold fix now.
+- A deploy (platform restart) during the close's background slot reset left
+  slot 2's sensor rules off baseline and the slot refused sessions until
+  `POST /api/range/configure/?slot=2`. Not fixed: a reset interrupted by a
+  restart is not resumed at boot; deploy only when `/api/range/ready/` shows no
+  slot resetting.
+
+**Live runs.** One session per scenario, two final checks each: first with a
+wrong defence, then with a right one. Driven over the API
+(`scratchpad/p5/run.py`); verdicts were taken from the range's record
+(`scenario_run._truths`), WAF exceptions from the rules and matched variables
+on the customers' records, signatures written by hand.
+
+RESULTS_TABLE
+
+Screenshots (headless Chromium, Korean): every scenario's briefing and one
+debrief per task class, in the session's scratchpad `p5/`.
+
+Not proven: a person driving the console end to end (the runs used the API);
+the Docker substrate; 4.2; the cloud-init sysctl on a rebuilt VM; the 3.1
+rules step passing live after its fix (SESSION_31_STEP); hints offered when
+idle in a P5 scenario (none of these runs idled with customers blocked).
+
+Metrics: METRICS_LINE

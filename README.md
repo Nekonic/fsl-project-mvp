@@ -453,7 +453,7 @@ the learner's own sqlmap run counts in both scores like any other red action.
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
 attacker use the board while the learner defends with the real tools. Each
 opens on a briefing (situation, goal, how it is measured, time); a strip shows
-the time left, customers blocked and alerts per minute, and objectives lost;
+the time left, customers blocked and alerted requests per minute, and objectives lost;
 an attack schedule the learner does not see fires through the normal path,
 and a dump it gets counts in the first score when the board's accounts match.
 "I'm done" (or the schedule) opens a final check of a few minutes: it passes
@@ -461,7 +461,14 @@ when no customer is blocked, every attack held, and the scenario's own
 criterion holds. `1.1` "A quiet shift" asks the learner to judge each request
 that drew an alert, customer or attack and whether it got the data
 (`/api/sessions/<id>/triage/`); `2.1` "Korean searches blocked" asks for the
-customers a PL3 WAF refuses to be served without letting sqlmap through. A
+customers a PL3 WAF refuses to be served without letting sqlmap through. The
+rest of the course follows by task class: `1.2` and `1.3` judge alerts when an
+inherited exception lets sqlmap take the accounts (1.3 also the kind of each
+attack), `2.2` and `2.3` serve customers blocked at PL2 and while lowering the
+anomaly thresholds to 5/4 at PL3, `3.1` to `3.4` make the IDS alert on the sort
+attack, its tamper variant and the comment XSS in an IDS rules pane (second
+score only), and `4.1` gives no help against an unseen sqlmap variant and new
+false positives. A
 hint is offered when the learner is stuck and recorded only when opened; the
 debrief adds the customers blocked and the attack timeline. Detail:
 `docs/ARCHITECTURE.md`, "Scenarios".

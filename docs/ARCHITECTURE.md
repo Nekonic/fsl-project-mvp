@@ -1279,8 +1279,9 @@ judges it over a final verification window. The design is
 | `minutes`, `window_minutes` | the scenario's length and its final verification window |
 | `defense` | a posture of the wargame's `defense:` map (CRS level, exclusions, thresholds; Suricata ruleset) |
 | `traffic` | `{profile, rate}` for the customers (`traffic.yaml`) |
+| `red` | `schedule` (the default) or `person`: a person uses the red console and the scenario may declare no attacks |
 | `attacks` | `[{at, case, origin}]`: seconds after open, a malicious case, an origin; hidden from the learner |
-| `completion` | per class: judgement `{judged: all}`; availability and unknown `{served: all, held: all}`; detection `{detected_by: suricata}` |
+| `completion` | per class: judgement `{judged: all}`, optionally `pattern: judged`; availability `{served: all, held: all}`, optionally `thresholds: {inbound, outbound}`; unknown `{served: all, held: all}`; detection `{detected_by: suricata}` |
 | `cards` | `[{id, when}]`, `when` one of `start`, `alert`, `blocked`, `window` |
 | `hints` | hint ids, offered one at a time |
 
@@ -1326,9 +1327,15 @@ entry inside it for every attack case the schedule names that is not already
 due there. What it judges is the class's `completion`: `served`, no customer
 request blocked by the defence within it (403, not the app's); `held`, every
 attack inside it fired and was held (no loot match, no effect); `judged`,
-every item first seen before the window judged right; `detected_by`, every
+every item listed when the window opened judged right (the list is kept with
+the window; verdicts given during it count, and an item that reaches the
+records later with an earlier time is not added); `detected_by`, every
 attack inside it drew a corroborated Suricata alert and no customer request
-did. A judgement scenario is judged on its verdicts alone, as the design's
+did; `thresholds`, the CRS anomaly thresholds in force at the window's WAF
+snapshot are at most the ones named (a tuning without thresholds runs at the
+CRS defaults, 5 inbound and 4 outbound). With `red: person` the window also
+judges, like scheduled ones, the malicious cases the person fired inside it
+that are not replays. A judgement scenario is judged on its verdicts alone, as the design's
 class table says, so customers blocked during its window are reported beside
 the result, not counted against it. The result
 names the fix (`lesson.fix_class` on the WAF snapshot taken then: `level`,
@@ -1346,12 +1353,17 @@ count; never the case name or a label. Replays and the learner's own Website
 pane requests are left out. A verdict `{item, verdict: attack|customer,
 succeeded}` is judged against the record (a case's `malicious`, or a customer
 row) and `succeeded` against the target (loot matched on the case, or an
-objective in its window). The step check kind `triage` (`judged: customer |
+objective in its window). A scenario whose completion has `pattern: judged`
+also asks an attack's `pattern`, one of the CAPEC ids of the case file's
+malicious cases (listed in the scenario card's `patterns`), judged against the
+case's own `pattern`; it is kept with the verdict and never shown on an item. The step check kind `triage` (`judged: customer |
 attack | all`) passes on the learner's right verdicts.
 
 **Status, hints, debrief.** `GET .../scenario/` returns the scenario card,
 `phase` (running, window, passed, failed, closed), `time_left`, the last
-minute's blocked customers and alerts, objectives lost, the window, the
+minute's blocked customers and alerted requests (`alerted_per_minute`, distinct
+markers that drew an alert: each customer request, and each attack case once
+however many requests it sent), objectives lost, the window, the
 completion, the cards due and the hint offer. A hint is offered (not
 recorded) when a step check fails twice, the same item is judged wrong twice,
 a `PUT /waf/` writes the file already in force, or five minutes pass without a
@@ -1363,19 +1375,40 @@ hidden) returns the lesson debrief's shape plus `customers` and the attack
 
 **Console.** The home page lists the scenarios under each wargame; Start
 opens the blue console on the briefing. A strip above the panes shows the
-time left, customers blocked and alerts per minute, objectives lost, the hint
-offer and I'm done; a judgement scenario adds the Judge pane; cards appear
-when their moment comes; the debrief opens when the window is judged. A worked
+time left, customers blocked and alerted requests per minute, objectives lost,
+the hint offer and I'm done; a judgement scenario adds the Judge pane, which
+keeps its list clear: the note's column is left free and the cards, the opened
+hints and a coach popover pointing into the pane are docked above the list; a
+detection or unknown scenario adds the IDS rules pane (the rule editor on
+`/api/rules/`); cards appear when their moment comes; the debrief opens when the window is judged. A worked
 scenario's steps run on the lesson note with its Check tab and hint list
 hidden.
 
-**On the board.** `1.1` "A quiet shift" (judgement, worked, 15 min, window 3):
-`level2` (PL2), customers `community` at 2/s, one sqlmap at 150 s from `ru`.
-`2.1` "Korean searches blocked" (availability, faded, 20 min, window 4):
-`level3` (PL3), customers `readers` (the `plain` mix without comments) at 2/s,
-one sqlmap at 240 s. At PL3 a Korean search is refused by 920272 and 942460 on
-`ARGS:q` (and 920272 on `REQUEST_URI_RAW` once those are excluded), and every
-page a customer opens after one by 920272 on `REQUEST_HEADERS:Referer`.
+**On the board.** Eleven scenarios, listed on the home page by task class
+after the foundations (`order`):
+
+| Id | Title | Class, guidance | Posture | Customers | Attacks (hidden) |
+|---|---|---|---|---|---|
+| 1.1 | A quiet shift | judgement, worked | `level2`: PL2 | `community` 2/s | sqlmap at 150 s (`ru`) |
+| 1.2 | An inherited exception | judgement, faded | `inherited`: PL2, 949110 and 959100 removed | `community` 2/s | sqlmap at 120 s, a search injection at 300 s (`ru`) |
+| 1.3 | A busy evening | judgement, none; judges the pattern too | `inherited` | `community` 4/s | eight cases from 90 to 660 s, all from `kr`: sqlmap stock and tamper, search, union and sign-in injections, two XSS, path traversal |
+| 2.1 | Korean searches blocked | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s |
+| 2.2 | Tags and links blocked | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s |
+| 2.3 | Lowering the threshold | availability, none; final check at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s |
+| 3.1 | A rule that never fires | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s |
+| 3.2 | The sort attack the IDS misses | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s |
+| 3.3 | The same attack, spelled differently | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s |
+| 3.4 | XSS in a comment | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s |
+| 4.1 | An evening on your own | unknown, none (no cards, no hints) | `full` | `club` 2/s (adds code questions in comments) | `board-sqli-orderby-sqlmap-versioned` at 300 s, sqlmap at 600 s (`us`) |
+
+At PL3 a Korean search is refused by 920272 and 942460 on `ARGS:q` (and 920272
+on `REQUEST_URI_RAW` once those are excluded), and every page a customer opens
+after one by 920272 on `REQUEST_HEADERS:Referer`; a Korean comment by 920272 on
+`REQUEST_BODY` and 942460 on `ARGS:body`. At PL2 the `<b>` search is refused by
+941320 and the YouTube link by 931130, both on `ARGS:q`. At PL1 the club's code
+questions are refused by 942100, 942190, 941100, 941110 and 941160 on
+`ARGS:body`. Scenario 4.2 (a person on the red console against the learner) is
+not declared: it needs a second person; the engine accepts `red: person`.
 
 ## Decisions
 
