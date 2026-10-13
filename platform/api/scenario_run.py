@@ -531,7 +531,8 @@ def debrief(session) -> dict:
     last = judged[-1]["result"] if judged else None
     opened = scenarios.at(state["opened_at"])
     cases = {case.case_id: case for case in session.cases.all()}
-    marked = set(session.detections.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
+    sensed = _sensed_by(session, declared)
+    marked = set(sensed.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
     timeline = [
         {"n": entry["n"], "case": entry["case"], "origin": entry["origin"], "state": entry["state"],
          "in_window": entry["in_window"], "outcome": entry.get("outcome"), "leaked": entry.get("leaked") or [],
@@ -562,7 +563,7 @@ def debrief(session) -> dict:
                                     if step_id in steps and kept.get("passed")), "total": len(steps)},
             "help": dict(help_steps, hints=help_steps["hints"] + len(state["hints"])),
         },
-        "evidence": _evidence(session, cases),
+        "evidence": _evidence(session, cases, sensed),
         "change": views._change(session, waf),
         "cases": [{"name": name, "malicious": True, "before": before.get(name), "after": after.get(name)}
                   for name in dict.fromkeys(entry["case"] for entry in timeline)],
@@ -580,9 +581,13 @@ def debrief(session) -> dict:
         "at": {"opened": state["opened_at"], "verified": judged[-1]["ends_at"] if judged else None},
     }
 
-def _evidence(session, cases) -> list[dict]:
+def _sensed_by(session, declared):
+    detector = declared["completion"].get("detected_by")
+    return session.detections.filter(source=detector) if detector else session.detections.all()
+
+def _evidence(session, cases, sensed) -> list[dict]:
     attacks = {case_id: case for case_id, case in cases.items() if case.meta.get("scheduled")}
-    found = session.detections.filter(marker__in=list(attacks)).order_by("-timestamp")[:views.EVIDENCE_ROWS]
+    found = sensed.filter(marker__in=list(attacks)).order_by("-timestamp")[:views.EVIDENCE_ROWS]
     return [
         {"id": detection.id, "source": detection.source, "signature": detection.signature,
          "method": views._request_of(detection.raw or {})[0], "path": views._request_of(detection.raw or {})[1],
