@@ -145,7 +145,8 @@ def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_
     with indexed(http_event("another", "/?sort=x", 403, agent=SQLMAP_AGENT)):
         early = step(client, session, "sqlmap").json()
     run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="fsl-edge", agent=SQLMAP_AGENT) for n in range(40)]
-    with indexed(*run):
+    alert = dict(run[0], event_type="alert", alert={"signature": "FSL SQLi attempt", "signature_id": 9000001})
+    with indexed(*run, alert):
         ran = step(client, session, "sqlmap").json()
         close = step(client, session, "requests", body={"answer": "38"}).json()["passed"]
         far = step(client, session, "requests", body={"answer": "20"}).json()["passed"]
@@ -159,6 +160,8 @@ def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_
     recorded = Case.objects.get(session=session, case_id=marker)
     assert recorded.malicious and recorded.meta["kali"] == "sqlmap", "the learner's own red action, scored like any other"
     assert not any(recorded.meta.get(mark) for mark in ("seed", "verify", "check", "replay"))
+    assert Detection.objects.filter(session=session, marker=marker).count() == 1, (
+        "the run's alerts are read when it is recorded, so the first score knows it was noticed")
     assert (close, far) == (True, False), "a count within 10% of the record passes"
 
 def test_what_leaked_is_judged_by_the_board_s_own_accounts_and_counts_in_the_first_score(client):

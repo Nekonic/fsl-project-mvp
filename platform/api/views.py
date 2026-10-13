@@ -723,6 +723,10 @@ def _kali_check(session, step, kept, failed):
                      {"kali": step["id"], "launched_on": settings.RANGE.default_origin,
                       "command": _kali_command(session, case["name"], marker)})
         _settle_and_observe(session)
+        try:
+            _ingest(session)
+        except elastic.ElasticUnavailable:
+            pass
     return True, None, None, shown
 
 def _kali_do(session, step):
