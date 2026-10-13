@@ -1072,7 +1072,10 @@ def session_top(request, session_id):
 
 @require_http_methods(["GET"])
 def range_topology(request):
-    return _reply(gns3.project())
+    language = request.GET.get("language") or gns3.ENGLISH
+    if language not in strings.LANGUAGES:
+        raise BadRequest(f'"language" is one of {", ".join(strings.LANGUAGES)}, got {language!r}')
+    return _reply(gns3.project(language))
 
 def _drawn(session, described):
     number = _slot_of(session)

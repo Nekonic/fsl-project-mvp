@@ -14,6 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOPOLOGY = ROOT / "deploy" / "topology"
 DOCKER = TOPOLOGY / "range-docker.gns3"
 OPENSTACK = TOPOLOGY / "range-openstack.gns3"
+DOCKER_KO = TOPOLOGY / "range-docker.ko.gns3"
+OPENSTACK_KO = TOPOLOGY / "range-openstack.ko.gns3"
+PAIRS = {DOCKER: DOCKER_KO, OPENSTACK: OPENSTACK_KO}
+KOREAN_NAME = re.compile(r" \([\uac00-\ud7a3]+\)")
+HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
 RFC1123 = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-([^}]*))?\}")
@@ -101,9 +106,71 @@ def openstack_expected():
         expected.setdefault(host, {"type": "qemu", "segments": {fabric.MANAGEMENT}})
     return stack, expected
 
-@pytest.fixture(params=[DOCKER, OPENSTACK], ids=["docker", "openstack"])
+def korean_id(english_id):
+    return str(uuid.uuid5(uuid.UUID(english_id), "ko"))
+
+def english_of(document):
+    for english in PAIRS:
+        kept = project(english)
+        if document["project_id"] in (kept["project_id"], korean_id(kept["project_id"])):
+            return kept
+    raise AssertionError(f"{document['name']} pairs with no English project")
+
+@pytest.fixture(params=[DOCKER, DOCKER_KO, OPENSTACK, OPENSTACK_KO],
+                ids=["docker", "docker-ko", "openstack", "openstack-ko"])
 def gns3(request):
     return project(request.param)
+
+def test_the_directory_holds_each_english_project_and_its_korean_pair_and_nothing_else():
+    assert sorted(TOPOLOGY.glob("*.gns3")) == sorted([*PAIRS, *PAIRS.values()])
+
+def without_words(svg):
+    drawn = ElementTree.fromstring(svg)
+    if drawn[0].tag == "text":
+        drawn.attrib.pop("width")
+        drawn[0].text = ""
+    return ElementTree.tostring(drawn, encoding="unicode")
+
+@pytest.mark.parametrize("english", list(PAIRS), ids=["docker", "openstack"])
+def test_a_korean_project_is_its_english_pair_with_its_own_ids_and_only_the_drawn_words_changed(english):
+    kept, korean = project(english), project(PAIRS[english])
+    expected = json.loads(json.dumps(kept))
+    expected["project_id"] = korean_id(kept["project_id"])
+    assert korean["name"].startswith(kept["name"])
+    assert KOREAN_NAME.fullmatch(korean["name"].removeprefix(kept["name"])), korean["name"]
+    expected["name"] = korean["name"]
+    for node in expected["topology"]["nodes"]:
+        node["node_id"] = korean_id(node["node_id"])
+    for link in expected["topology"]["links"]:
+        link["link_id"] = korean_id(link["link_id"])
+        for end in link["nodes"]:
+            end["node_id"] = korean_id(end["node_id"])
+    drawings = korean["topology"]["drawings"]
+    assert len(drawings) == len(expected["topology"]["drawings"])
+    for drawing, said in zip(expected["topology"]["drawings"], drawings):
+        drawing["drawing_id"] = korean_id(drawing["drawing_id"])
+        assert without_words(drawing["svg"]) == without_words(said["svg"]), said["svg"]
+        drawing["svg"] = said["svg"]
+
+    assert korean == expected
+
+def test_every_word_drawn_on_a_korean_map_is_korean_and_none_on_an_english_one(gns3):
+    texts = [shape["text"] for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
+    korean = gns3["project_id"] != english_of(gns3)["project_id"]
+
+    assert [text for text in texts if bool(HANGUL.search(text)) != korean] == []
+
+def test_no_two_projects_share_an_id_because_the_gns3_compute_keeps_nodes_by_id_alone():
+    ids = []
+    for path in [*PAIRS, *PAIRS.values()]:
+        document = project(path)
+        ids += [document["project_id"]]
+        ids += [node["node_id"] for node in document["topology"]["nodes"]]
+        ids += [link["link_id"] for link in document["topology"]["links"]]
+        ids += [drawing["drawing_id"] for drawing in document["topology"]["drawings"]]
+
+    assert len(ids) == len(set(ids))
+    assert len({project(path)["name"] for path in [*PAIRS, *PAIRS.values()]}) == 4
 
 def test_both_projects_are_revision_9_so_gns3_2_2_opens_them_and_3_upgrades_them(gns3):
     assert gns3["revision"] == 9
@@ -159,8 +226,9 @@ def test_the_segments_are_the_declared_segments_as_switches(gns3):
     assert declared_segments <= switches
     assert not {name for name in switches - declared_segments if not name.endswith("-default")}
 
-def test_the_docker_project_is_the_compose_stack_one_container_per_service():
-    gns3 = project(DOCKER)
+@pytest.mark.parametrize("drawn_in", [DOCKER, DOCKER_KO], ids=["en", "ko"])
+def test_the_docker_project_is_the_compose_stack_one_container_per_service(drawn_in):
+    gns3 = project(drawn_in)
     expected = docker_expected()
     declared_segments, _ = segment_ids()
     drawn = {name: node for name, node in nodes(gns3).items() if node["node_type"] != SWITCH}
@@ -176,13 +244,15 @@ def test_the_docker_project_is_the_compose_stack_one_container_per_service():
         assert wired.get(name, set()) == want["segments"], name
         assert drawn[name]["properties"]["adapters"] == len(want["segments"]), name
 
-def test_every_host_a_docker_role_names_is_a_node_of_the_docker_project():
-    drawn = nodes(project(DOCKER))
+@pytest.mark.parametrize("drawn_in", [DOCKER, DOCKER_KO], ids=["en", "ko"])
+def test_every_host_a_docker_role_names_is_a_node_of_the_docker_project(drawn_in):
+    drawn = nodes(project(drawn_in))
 
     assert set(declared.read().roles.values()) <= set(drawn)
 
-def test_the_openstack_project_is_the_declared_hosts_and_the_wargame_hosts_containers():
-    gns3 = project(OPENSTACK)
+@pytest.mark.parametrize("drawn_in", [OPENSTACK, OPENSTACK_KO], ids=["en", "ko"])
+def test_the_openstack_project_is_the_declared_hosts_and_the_wargame_hosts_containers(drawn_in):
+    gns3 = project(drawn_in)
     stack, expected = openstack_expected()
     declared_segments, _ = segment_ids()
     bridges = {segment for want in expected.values() for segment in want["segments"]} - declared_segments
@@ -201,8 +271,9 @@ def test_the_openstack_project_is_the_declared_hosts_and_the_wargame_hosts_conta
     for host, entry in stack.hosts.items():
         assert wired[host] & declared_segments == set(entry.segments), host
 
-def test_the_edge_is_a_vm_with_three_nics_in_the_order_opnsense_assigns_them():
-    gns3 = project(OPENSTACK)
+@pytest.mark.parametrize("drawn_in", [OPENSTACK, OPENSTACK_KO], ids=["en", "ko"])
+def test_the_edge_is_a_vm_with_three_nics_in_the_order_opnsense_assigns_them(drawn_in):
+    gns3 = project(drawn_in)
     edge = nodes(gns3)[declared.read(flavor="openstack").roles["edge"]]
     by_id = {node["node_id"]: node["name"] for node in gns3["topology"]["nodes"]}
     order = {}
@@ -241,10 +312,12 @@ def test_every_drawing_is_one_shape_both_gns3_releases_draw_in_a_font_the_web_ui
 def test_each_declared_segment_is_a_titled_zone_holding_its_switch(gns3):
     entries = yaml.safe_load(declared.DECLARATION.read_text())["segments"]
     shapes = drawn_shapes(gns3)
+    english = [shape["text"] for shape in drawn_shapes(english_of(gns3))]
     zones = [shape for shape in shapes if shape["kind"] == "rect"]
     switches = nodes(gns3)
     for entry in entries:
-        titles = [shape for shape in shapes if shape["kind"] == "text" and shape["text"].startswith(entry["name"])]
+        titles = [shape for shape, said in zip(shapes, english)
+                  if shape["kind"] == "text" and said.startswith(entry["name"])]
         assert len(titles) == 1, entry["name"]
         holding = [zone for zone in zones if inside(titles[0]["x"], titles[0]["y"], zone)
                    and inside(switches[entry["id"]]["x"] + 25, switches[entry["id"]]["y"] + 25, zone)]
@@ -253,7 +326,8 @@ def test_each_declared_segment_is_a_titled_zone_holding_its_switch(gns3):
 def test_a_node_with_no_nic_says_whose_network_it_watches_next_to_it(gns3):
     linked = {end["node_id"] for link in gns3["topology"]["links"] for end in link["nodes"]}
     names = set(nodes(gns3))
-    texts = [shape for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
+    english = [shape["text"] for shape in drawn_shapes(english_of(gns3))]
+    texts = [dict(shape, text=said) for shape, said in zip(drawn_shapes(gns3), english) if shape["kind"] == "text"]
     unlinked = [node for node in gns3["topology"]["nodes"] if node["node_id"] not in linked]
 
     assert unlinked

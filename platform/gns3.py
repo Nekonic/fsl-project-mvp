@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import requests
 from django.conf import settings
 
 TIMEOUT = (3, 10)
 BOOTSTRAP = "/static/web-ui/fsl-auditor.html"
+ENGLISH = "en"
 
-def local() -> dict:
-    return json.loads(settings.FSL_TOPOLOGY.read_text())
+def drawn_in(language: str) -> Path:
+    english = settings.FSL_TOPOLOGY
+    return english if language == ENGLISH else english.with_suffix(f".{language}{english.suffix}")
+
+def local(language: str = ENGLISH) -> dict:
+    return json.loads(drawn_in(language).read_text())
 
 def _served(project_id: str) -> tuple[dict, str]:
     api = settings.FSL_GNS3_URL.rstrip("/") + "/v3"
@@ -24,8 +30,8 @@ def _served(project_id: str) -> tuple[dict, str]:
     gns3file.raise_for_status()
     return gns3file.json(), found.json().get("status", "")
 
-def project() -> dict:
-    kept = local()
+def project(language: str = ENGLISH) -> dict:
+    kept = local(language)
     if not settings.FSL_GNS3_URL:
         return {"source": "file", "status": "", "detail": "FSL_GNS3_URL is not set", "project": kept,
                 "web_ui": None}

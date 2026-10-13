@@ -120,7 +120,7 @@ function topologyView(which) {
 async function topologyOpen() {
   if (!topo.read) {
     const [project, mine] = await Promise.all([
-      api("/api/topology/"), api(`/api/sessions/${sessionId()}/topology/`),
+      api(`/api/topology/?language=${encodeURIComponent(language)}`),api(`/api/sessions/${sessionId()}/topology/`),
     ]);
     if (!project.ok) {
       field("topology-said").textContent = (project.body && project.body.detail) || String(project.status);

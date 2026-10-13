@@ -104,3 +104,15 @@ def test_a_case_fired_from_kali_is_offered_and_an_unrecorded_stretch_is_said_rat
                  english("topology.hop.reach_unknown"), english("topology.hop.no_record"),
                  english("topology.elsewhere", 1)):
         assert said in result["hops"]
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(client, language):
+    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
+    seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
+      await browser.click('[data-pane="topology"]');
+      return browser.requests.filter((r) => r.route === '/api/topology/').map((r) => r.query.language);
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == [language]
