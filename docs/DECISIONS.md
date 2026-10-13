@@ -2638,3 +2638,47 @@ without hints instead of harder tasks. Approved design:
 Not chosen: a topology generated or drawn by the platform alone (the user:
 AI-drawn topologies invent layers that are neither network nor service);
 GNS3 3.0.6 (no MCP, fails to open projects whose images are missing).
+
+### 2026-10-13 — P1 built: the topology as GNS3 projects; GNS3 cannot open them without their emulators
+
+Built: `deploy/topology/range-{docker,openstack}.gns3` (revision 9), the
+consistency test against the declaration and the compose files,
+`bin/check-topology` (gns3-server 2.2.61 and 3.1.0a6 each load both files:
+2.2 validates its JSON schema, 3.1 upgrades to revision 10 and validates; names
+kept), the `gns3` control-plane service (`services` 9 -> 10, accepted in the
+ruling above; port 3080 published like 8000, opened in the platform security
+group), `GET /api/topology/`, the per-session `project` overlay on
+`GET /api/sessions/<id>/topology/`, `GET /api/sessions/<id>/topology/follow/`,
+and the blue console's Topology pane. `platform/gns3.py` is the one file that
+knows the GNS3 API (ARCHITECTURE's seam table; CLAUDE.md's list still needs
+the line).
+
+Measured against the image on Linux (and gns3-server on macOS): GNS3 3.1 opens
+a project only by creating every node on its compute, and creation is not
+inert. `qemu` needs `qemu-system-x86_64` (with it installed, qemu nodes create
+without a disk image); `ethernet_switch` starts uBridge and a kernel bridge
+(`compute/builtin/nodes/ethernet_switch.py`, needs uBridge built with its
+`brctl` module and `CAP_NET_ADMIN`; Debian has no uBridge package); `docker`
+needs a Docker daemon, and only `ImageMissingError` is tolerated as a degraded
+node (`controller/node.py`). Without them both projects load and stay closed;
+the web UI's map calls `POST /projects/{id}/open`, which needs
+`Project.Allocate`, so the Auditor gets 403 on a closed project, while it sees
+a project an administrator holds open (checked with a two-qemu-node project).
+The design's "nodes are never started (no KVM, no privilege, no docker
+socket)" therefore does not give a viewable project. Until that is decided,
+`/api/topology/` offers the web UI only while GNS3 reports the project
+`opened`, and the Topology pane draws the same file itself; the follow view
+works either way.
+
+Also found: a non-admin user's project list is empty unless the project is in
+a resource pool the user has an ACE on (direct ACEs list only the user's own
+projects); the console deep-links to the project instead. Installed with
+`[ai-features]`, 3.1 tries to `git clone` its skills repository at start; the
+image has no git, so it logs an error and fetches nothing. The two `.gns3`
+files are 1,801 of the `product_loc` rise (JSON, indented as GNS3 writes it).
+
+Open: give the GNS3 container `qemu-system-x86`, a uBridge build and
+`CAP_NET_ADMIN` plus a Docker endpoint that reports the images missing (the
+docker nodes then open degraded), or keep the console's own drawing as the
+learner's view and GNS3 as the files' validator and the development MCP
+server.

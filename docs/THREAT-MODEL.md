@@ -75,6 +75,14 @@ The target is not published; port 8000 is the console. The XSS cases make the ta
 any browser that loads its pages, so the API also refuses cross-origin writes
 and any write whose body is not `application/json`.
 
+**The GNS3 server is published read-only to anyone who reaches 3080.** Its
+sign-in page (`/static/web-ui/fsl-auditor.html`) carries the learner's password,
+and the learner holds only the built-in Auditor role. The admin password is
+`FSL_GNS3_ADMIN_PASSWORD` or generated into the GNS3 data volume, and API keys
+for MCP are minted only by `docker exec` on the platform host. Its admin can
+create and start nodes, but the container has no emulator, no Docker socket and
+no capability, so a node cannot run there.
+
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.
 

@@ -16,7 +16,7 @@ ModSecurity 경보를 그 라벨에 자동으로 매칭할 수 있으므로, 오
 
 compose 서비스와 네트워크는 아래 표에 있고, `bin/measure`가 그 수를 센다.
 compose 파일 둘이 이들을 나눠 갖는다. `compose.yaml`은 컨트롤 플레인이다(프로젝트
-`fsl`, 하나만 오래 떠 있음): 플랫폼, Elasticsearch, Kibana, `collector`, 그리고 edge
+`fsl`, 하나만 오래 떠 있음): 플랫폼, Elasticsearch, Kibana, `collector`, GNS3 서버, 그리고 edge
 네트워크 넷과 `mgmt`. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata,
 Filebeat, Kali, 프록시, wargame. 이 파일은 edge 네트워크와 `mgmt`에 `external`
 (`fsl_<network>`)로 붙고, 자기 `estate` 네트워크(고정 서브넷 없음, Docker가 사설 풀에서
@@ -54,7 +54,7 @@ publish된 wargame 호스트의 관리망 주소로 board를 읽는다. `loot.gr
 
 `session.yaml`과 wargame 어디에도 `container_name` 고정이 없다. 세션의 컨테이너는
 `fsl-<id>-<service>-1`이다. 고정 이름은 컨트롤 플레인(`fsl-platform`,
-`fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`)에만 남는다. 아래 첫 표는 세션
+`fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`, `fsl-gns3`)에만 남는다. 아래 첫 표는 세션
 서비스를 선언된 호스트 이름으로 적으며, `platform/range/docker.py`가 컨테이너를 그
 이름으로 되돌려 매핑한다.
 
@@ -84,8 +84,9 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
 | `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
+| `fsl-gns3` | control | `deploy/gns3`에서 만든 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6; 읽기 전용으로 마운트한 `deploy/topology`의 프로젝트를 제공) | mgmt | 3080 |
 
-8000과 8002는 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
+8000, 8002, 3080은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
 
 | 네트워크 | 구간 | 서브넷 | 이름 | 출발지 |
@@ -239,6 +240,47 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 제거할 수 있지만 아직 제거하지 않았다. 어댑터가 레인지를 구동하기 전에 남은 작업은
 `docs/STATE.md`의 "The substrate seam"에 있다.
 
+## 토폴로지
+
+레인지 토폴로지는 GNS3 프로젝트 파일 두 개다: `deploy/topology/range-docker.gns3`와
+`deploy/topology/range-openstack.gns3`. `revision` 9라서 GNS3 2.2가 열고 3.x는 불러올 때
+올린다. 구간은 `ethernet_switch` 노드, Docker 컨테이너는 실제 이미지를 가진 `docker`
+노드, OpenStack VM은 디스크 이미지 없는 `qemu` 노드(OPNsense 엣지는 vtnet 순서대로 NIC
+셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
+`corp-default`)에 붙는다. 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
+센서는 NIC가 없다. `platform/tests/test_gns3_topology.py`가 `declaration.yaml`,
+`compose.yaml`, `session.yaml`, wargame compose 파일에서 기대 노드와 링크를 유도해 비교하고
+GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을
+`~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의 `load_topology`를 각 파일의
+사본에 돌린다.
+
+`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 두 파일을
+`/data/projects` 아래 각자의 디렉터리로 복사하고, 컨트롤러 데이터베이스가 생기기 전에 admin
+비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/data/admin-password`에 한 번 생성),
+learner 사용자에게 `/`에 대한 내장 Auditor 역할을 주고(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값
+`fsl-auditor`, 플랫폼에도 전달), `/static/web-ui/fsl-auditor.html`을 쓴다. 이 페이지는
+learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localStorage`의 `controller-1`,
+`controllerIds`)에 토큰을 둔다. 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
+/opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다.
+
+GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 연다: `qemu` 노드는
+`qemu-system-x86_64`, `ethernet_switch`는 `CAP_NET_ADMIN`을 가진 uBridge(3.1은 커널
+브리지로 구현), `docker` 노드는 Docker 데몬이 필요하고, 이미지가 없는 경우만 허용된다(노드를
+degraded로 둔다). 서비스에는 이 중 아무것도 없으므로 두 프로젝트는 불러와지되 닫힌 채로 남고,
+웹 UI가 보여 주지 못하며, 읽기 전용 사용자는 열 수 없다(`Project.Allocate`). 그래서
+`GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를 내주고,
+콘솔의 토폴로지 창은 같은 파일을 직접 그린다. 2026-10-13 Linux에서 이미지로 측정했다.
+관리자가 열어 둔 프로젝트는 Auditor도 본다.
+
+`GET /api/topology/`는 substrate의 프로젝트를 GNS3에서(`platform/gns3.py`) 또는 레포 파일에서
+돌려준다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
+읽기에서 얻은 호스트 노드별 선언 구간 주소와 `running` 또는 `not reported`.
+`GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는 `?marker=`)는
+출발 주소의 노드에서 게이트웨이를 거쳐 대상까지 프로젝트 링크를 따라가되 스위치와 엣지,
+게이트웨이, wargame 호스트만 통과하고, 센서 경보는 센서가 지켜보는 호스트에, WAF의 규칙 id와
+판정은 게이트웨이에(403으로 응답했거나 CRS의 차단 평가 규칙 949110이 걸리면 차단), 상태 코드는
+대상에 붙인다.
+
 ## 격리 경계(isolation seams)
 
 각 관심사는 하나의 파일만 소유한다. 아래 예외는 현재 코드에 존재한다.
@@ -247,6 +289,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
+| GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 learner를 만들고 프로젝트를 연다. 콘솔의 토폴로지 창은 `gns3.py`가 돌려준 포트와 경로의 웹 UI를 iframe으로 연다 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 그 명령의 파일 경로와 reload는 `wargames.lesson`이 선언(`settings.FSL_WAF`)에서 채운다. 플랫폼은 어느 것도 읽지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 wargame 호스트의 estate 센서 compose 서비스를 멈추고 다시 띄우며(OpenStack), 그 뒤 기준 규칙은 `suricata.py`를 거친다 |

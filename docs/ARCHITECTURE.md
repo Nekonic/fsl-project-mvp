@@ -18,7 +18,7 @@ mechanically. The objective score was added once that held.
 The compose services and networks are listed below; `bin/measure` counts them.
 Two compose files hold them. `compose.yaml` is the control plane (project
 `fsl`, one long-lived copy): the platform, Elasticsearch, Kibana, the
-`collector`, the four edge networks and `mgmt`. `session.yaml` is one
+`collector`, the GNS3 server, the four edge networks and `mgmt`. `session.yaml` is one
 session's data plane: the WAF, Suricata, Filebeat, Kali, the proxy and the
 wargames. It joins the edge networks and `mgmt` as `external`
 (`fsl_<network>`) and owns its `estate` network (no fixed subnet; Docker draws
@@ -65,7 +65,7 @@ name; sessions start from it with `--no-build`. The platform passes its own
 
 Nothing in `session.yaml` or a wargame pins `container_name`; a session's
 containers are `fsl-<id>-<service>-1`. Only the control plane keeps fixed names
-(`fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`). The
+(`fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`, `fsl-gns3`). The
 first table below gives each session service under its declared host name,
 which `platform/range/docker.py` maps the container back to.
 
@@ -97,8 +97,9 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
+| `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6; serves the projects in `deploy/topology`, mounted read-only) | mgmt | 3080 |
 
-8000 and 8002 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
+8000, 8002 and 3080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
 
 | Network | Segment | Subnet | Name | Origin |
@@ -267,6 +268,56 @@ path. The OpenStack adapter would make it removable; nothing removes it yet.
 What is left before the adapter can drive a range is listed in
 `docs/STATE.md` under "The substrate seam".
 
+## The topology
+
+The range's topology is two GNS3 project files, `deploy/topology/range-docker.gns3`
+and `deploy/topology/range-openstack.gns3`, `revision` 9 so GNS3 2.2 opens them
+and 3.x upgrades them on load. Segments are `ethernet_switch` nodes; Docker
+containers are `docker` nodes carrying their real images; OpenStack VMs are
+`qemu` nodes with no disk image (the OPNsense edge has three NICs in vtnet
+order); the wargame host's containers hang off a switch per compose project
+(`board-default`, `corp-default`); a sensor that shares another's network
+namespace or the host network has no NIC. `platform/tests/test_gns3_topology.py`
+derives the expected nodes and links from `declaration.yaml`, `compose.yaml`,
+`session.yaml` and the wargame compose files and checks GNS3's structural
+rules. `bin/check-topology` installs gns3-server 2.2.61 and 3.1.0a6 into venvs
+under `~/.cache/fsl/check-topology` and runs each release's `load_topology` on a
+copy of each file.
+
+The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) copies
+both files into their own directories under `/data/projects`, sets the admin
+password before the controller database exists (`FSL_GNS3_ADMIN_PASSWORD`, or
+generated once into `/data/admin-password`), gives the learner user the
+built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
+`fsl-auditor`, also handed to the platform), and writes
+`/static/web-ui/fsl-auditor.html`, which signs in as the learner and stores the
+token where the bundled web UI reads its controller (`controller-1`,
+`controllerIds` in `localStorage`). For development MCP use (`/v3/mcp/`), `docker
+exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
+key; nothing in the console exposes MCP.
+
+GNS3 opens a project only by creating every node on its compute: a `qemu` node
+needs `qemu-system-x86_64`, an `ethernet_switch` uBridge with `CAP_NET_ADMIN`
+(3.1 backs it with a kernel bridge), a `docker` node a Docker daemon; only a
+missing image is tolerated (the node is kept degraded). The service has none of
+these, so both projects load and stay closed, the web UI cannot show them, and
+a read-only user cannot open them (`Project.Allocate`). `GET /api/topology/`
+therefore offers the web UI (`web_ui`) only while GNS3 reports the project
+`opened`, and the console's Topology pane falls back to drawing the same file
+itself. Measured 2026-10-13 against the image on Linux; the Auditor sees a
+project an administrator holds open.
+
+`GET /api/topology/` returns the substrate's project from GNS3
+(`platform/gns3.py`) or the repo's file. `GET /api/sessions/<id>/topology/`
+adds `project.nodes`: each host node's addresses per declared segment from the
+same range read, `running` or `not reported`. `GET
+/api/sessions/<id>/topology/follow/?request=<Website pane request id>` (or
+`?marker=`) walks the project's links from the source address's node through the
+gateway to the target, passing only through switches and the edge, gateway and
+wargame hosts, and puts the sensor's alerts on the host it watches, the WAF's
+rule ids and verdict on the gateway (blocked when the request was answered 403
+or CRS's blocking evaluation, 949110, fired), and the status on the target.
+
 ## Isolation seams
 
 Each concern has one owning file. The exceptions below exist in code today.
@@ -275,6 +326,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
+| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects; the console's Topology pane frames the web UI at the port and path `gns3.py` returns |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and the lesson's WAF-pane step text names the exclusion file and the audit log for them to read, its command filled in by `wargames.lesson` from the declared exclusion file and reload (`settings.FSL_WAF`); the platform reads neither |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack), and its baseline rules then go through `suricata.py` |
