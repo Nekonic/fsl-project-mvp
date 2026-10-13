@@ -636,6 +636,15 @@ class OpenStack:
 
         return launch
 
+    def users_box(self, segment_ids: list[str], image: str):
+        attacker = self.declared.roles.get(ATTACKER_ROLE, "")
+        if image != attacker:
+            raise RangeUnavailable(
+                f"asked to run customers from {image!r}; on OpenStack they run on the attacker "
+                f"this range already has - {attacker!r} - which stands on every origin"
+            )
+        return self.runner(ATTACKER_ROLE)
+
     def _bind(self, networks: list[dict]) -> dict[str, dict]:
         found: dict[str, dict] = {}
         for network in networks:
