@@ -15,6 +15,7 @@ from urllib.parse import urlencode, urlsplit
 MARKER = "X-FSL-Case"
 TOKEN = re.compile(rb'name="csrfmiddlewaretoken" value="([^"]+)"')
 CSRF_REFUSED = b"CSRF verification failed"
+DJANGO_REFUSED = b"<span>(403)</span></h1>"
 REDIRECTS = (301, 302, 303, 307, 308)
 TIMEOUT = 10
 BODY_KEPT = 1 << 20
@@ -209,7 +210,8 @@ class Customers:
             "method": method,
             "path": path,
             "status": answer.status,
-            "refused_by": "app" if answer.status == 403 and CSRF_REFUSED in answer.page else "",
+            "refused_by": "app" if answer.status == 403 and (CSRF_REFUSED in answer.page or DJANGO_REFUSED in answer.page)
+            else "",
             "sent_at": sent_at,
             "elapsed_ms": int((time.monotonic() - started) * 1000),
         })
