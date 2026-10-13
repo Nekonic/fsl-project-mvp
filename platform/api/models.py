@@ -27,6 +27,7 @@ class Session(models.Model):
     waf_snapshots = models.JSONField(default=list, blank=True)
     result_cache = models.JSONField(null=True, blank=True, default=None)
     slot = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
+    traffic = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         ordering = ["-started_at"]
@@ -66,6 +67,26 @@ class Case(models.Model):
             started_at=self.started_at,
             ended_at=self.ended_at,
         )
+
+class CustomerRequest(models.Model):
+
+    session = models.ForeignKey(Session, related_name="customer_requests", on_delete=models.CASCADE)
+    marker = models.CharField(max_length=64)
+    action = models.CharField(max_length=32)
+    step = models.CharField(max_length=16)
+    user = models.CharField(max_length=16)
+    origin = models.CharField(max_length=16)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    method = models.CharField(max_length=8)
+    path = models.TextField()
+    status = models.PositiveSmallIntegerField()
+    refused_by = models.CharField(max_length=8, blank=True, default="")
+    sent_at = models.DateTimeField()
+    elapsed_ms = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sent_at"]
+        unique_together = [("session", "marker")]
 
 class Detection(models.Model):
 

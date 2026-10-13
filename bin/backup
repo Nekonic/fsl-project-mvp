@@ -19,6 +19,7 @@ TABLES = (
     ("sessions", "api_session"),
     ("cases", "api_case"),
     ("detections", "api_detection"),
+    ("customer requests", "api_customerrequest"),
     ("objectives", "api_objective"),
     ("rule sets", "api_ruleset"),
     ("suppressions", "api_suppression"),

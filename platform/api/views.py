@@ -34,7 +34,8 @@ import scoreboard
 import suppress
 import topology
 import wargames
-from api import effect, loot, reset, site
+import traffic
+from api import customers, effect, loot, reset, site
 from api.refusals import Conflict
 from console import strings
 from api.models import (
@@ -1751,6 +1752,8 @@ def close_session(request, session_id):
 
     begun = None
     try:
+        if (session.traffic or {}).get("running"):
+            customers.stop_on_close(session, _range(session, adapter))
         _snapshot_waf(session, closed=True)
         if hasattr(adapter, "rebuild_slot"):
             begun = _rebuilt_on_close(session, adapter, closed_at, claimed, reply)
@@ -2018,6 +2021,8 @@ def session_score(request, session_id):
         )
 
     cases, detections, result, signatures = _evidence(session, forced)
+    alerted = customers.alerted_markers(session)
+    unmatched = set(result.unmatched_detection_ids)
     totals = compute_score(result)
     per_case = _per_case(result, _expected(session.scenario, cases), signatures)
     breaches = _breaches(session, cases, result)
@@ -2031,7 +2036,8 @@ def session_score(request, session_id):
         {
             **_shape(totals, SCORE_FIELDS),
             "benign_cases": totals.fp + totals.tn,
-            "unattributed": len(result.unmatched_detection_ids),
+            "unattributed": sum(1 for d in detections if d.detection_id in unmatched and d.marker not in alerted),
+            "customers": customers.availability(session, alerted),
             "warnings": warnings,
             "per_case": per_case,
             "objectives": board.__dict__,
@@ -2041,6 +2047,27 @@ def session_score(request, session_id):
             "game": _game(session, cases, detections, result, breaches, totals),
         }
     )
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def session_traffic(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    try:
+        if request.method == "GET":
+            customers.refresh(session, _range(session))
+        elif request.method == "DELETE":
+            customers.stop(session, _range(session))
+        else:
+            _refuse_closed(session)
+            customers.start(session, _range(session), _payload(request))
+    except customers.NoTraffic as exc:
+        raise Http404(str(exc))
+    except traffic.InvalidTraffic:
+        raise
+    except ValueError as exc:
+        raise BadRequest(str(exc))
+    except (traffic.NoOrigin, RangeUnavailable) as exc:
+        return _reply({"detail": str(exc)}, status=503)
+    return _reply(customers.status(session))
 
 def _evidence(session, forced=None):
     replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
