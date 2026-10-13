@@ -1006,8 +1006,9 @@ window)으로 판정한다. 설계는
 | `minutes`, `window_minutes` | 시나리오 길이와 최종 점검 시간 |
 | `defense` | wargame의 `defense:` 중 하나(CRS 수준, 예외, 기준값, Suricata 규칙 묶음) |
 | `traffic` | 고객의 `{profile, rate}`(`traffic.yaml`) |
+| `red` | `schedule`(기본값) 또는 `person`: 사람이 레드 콘솔을 쓰고, 시나리오는 공격을 하나도 선언하지 않아도 된다 |
 | `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초, 악성 케이스, 출발지. 학습자에게 보이지 않는다 |
-| `completion` | 종류별: judgement `{judged: all}`, availability와 unknown `{served: all, held: all}`, detection `{detected_by: suricata}` |
+| `completion` | 종류별: judgement `{judged: all}`, 선택으로 `pattern: judged`. availability `{served: all, held: all}`, 선택으로 `thresholds: {inbound, outbound}`. unknown `{served: all, held: all}`. detection `{detected_by: suricata}` |
 | `cards` | `[{id, when}]`, `when`은 `start`, `alert`, `blocked`, `window` 중 하나 |
 | `hints` | 하나씩 제안하는 힌트 id |
 
@@ -1047,9 +1048,14 @@ worked 시나리오는 `guidance`와 `lesson`을 자기 id로 두어 단계가 `
 `window_minutes` 동안 연다. 엔진은 일정에 있는 공격 케이스 중 그 안에 예정되지 않은
 것마다 하나씩 그 안에 넣는다. 판정하는 것은 종류의 `completion`이다. `served`는 그
 안에서 방어가 막은 고객 요청(앱이 아닌 403)이 없음, `held`는 그 안의 공격이 모두
-실행되어 막힘(loot 일치·효과 없음), `judged`는 점검 시간 전에 처음 보인 항목을 모두
+실행되어 막힘(loot 일치·효과 없음), `judged`는 점검 시간이 열릴 때 목록에 있던 항목을 모두(목록은 점검 시간과 함께
+남고, 점검 중에 한 판단도 들어가며, 나중에 더 이른 시각으로 기록에 들어온 항목은
+더하지 않는다)
 맞게 판단함, `detected_by`는 그 안의 공격마다 공격 이름이 든 Suricata 경보가 나고
-고객 요청에는 나지 않음이다. judgement 시나리오는 설계의 종류 표대로 판단만으로
+고객 요청에는 나지 않음, `thresholds`는 점검 시간의 WAF 스냅숏에서 적용 중인 CRS
+이상 점수 임계치가 적힌 값 이하임이다(임계치가 없는 튜닝은 CRS 기본값, 인바운드 5와
+아웃바운드 4로 돈다). `red: person`이면 그 안에서 사람이 보낸 악성 케이스 중 재전송이
+아닌 것도 일정의 공격처럼 판정한다. judgement 시나리오는 설계의 종류 표대로 판단만으로
 판정하므로, 그 점검 시간에 막힌 고객은 결과 옆에 알릴 뿐 실패로 세지 않는다. 결과는 그때 찍은 WAF 스냅숏에 `lesson.fix_class`를 적용해 조치를
 밝힌다(`level`, `threshold`, `rule`, `target`, `path_target`). 실패한 뒤 다시 열 수
 있다.
@@ -1063,11 +1069,15 @@ worked 시나리오는 `guidance`와 `lesson`을 자기 id로 두어 단계가 `
 보이지 않는다. 재전송과 학습자의 웹사이트 창 요청은 뺀다. 판단
 `{item, verdict: attack|customer, succeeded}`는 기록(케이스의 `malicious` 또는
 고객 행)과, `succeeded`는 대상(케이스에 맞은 loot, 또는 그 시간 안의 목표)과
-대조한다. 단계 점검 종류 `triage`(`judged: customer | attack | all`)는 학습자의 맞는
+대조한다. completion에 `pattern: judged`가 있는 시나리오는 공격의 `pattern`도
+묻는다. 케이스 파일의 악성 케이스가 가진 CAPEC id 중 하나이고(시나리오 카드의
+`patterns`), 케이스 자신의 `pattern`과 대조하며, 판단과 함께 남기고 항목에는
+보이지 않는다. 단계 점검 종류 `triage`(`judged: customer | attack | all`)는 학습자의 맞는
 판단으로 통과한다.
 
 **상태, 힌트, 결과 보고.** `GET .../scenario/`는 시나리오 카드, `phase`(running,
-window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 경보, 빼앗긴
+window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 경보 난 요청(`alerted_per_minute`, 경보가 난
+서로 다른 마커 수: 고객 요청 하나하나, 공격 케이스는 요청을 몇 개 보냈든 한 번), 빼앗긴
 목표, 점검 시간, 완료 상태, 띄울 카드, 힌트 제안을 돌려준다. 단계 점검이 두 번
 실패하거나, 같은 항목을 두 번 틀리거나, `PUT /waf/`가 이미 적용된 파일을 다시
 쓰거나, 고객이 막히는 동안 5분째 WAF가 바뀌지 않으면 힌트를 제안한다(기록하지
@@ -1077,17 +1087,38 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 `timeline`을 더해 돌려주고, 콘솔은 둘 다 `debrief_script.html`로 그린다.
 
 **콘솔.** 홈 페이지는 wargame마다 시나리오를 나열하고, 시작은 블루 콘솔을 상황
-설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보, 빼앗긴 목표, 힌트
-제안, 다 했습니다를 보인다. judgement 시나리오는 판단 창을 더한다. 카드는 때가 되면
+설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보 난 요청, 빼앗긴 목표,
+힌트 제안, 다 했습니다를 보인다. judgement 시나리오는 판단 창을 더하고, 판단 창은
+목록을 가리지 않는다: 레슨 메모의 열을 비워 두고, 카드와 연 힌트, 창 안을 가리키는
+코치 말풍선은 목록 위에 붙인다. detection과 unknown 시나리오는 IDS 룰 창(`/api/rules/`
+위의 룰 편집기)을 더한다. 카드는 때가 되면
 뜨고, 점검 시간이 판정되면 결과 보고가 열린다. worked 시나리오의 단계는 레슨 메모
 위에서 돌고, 그 점검 탭과 힌트 목록은 숨긴다.
 
-**board 위에서.** `1.1` "조용한 근무"(judgement, worked, 15분, 점검 3분): `level2`
-(PL2), 고객 `community` 초당 2건, 150초에 `ru`에서 sqlmap 한 번. `2.1` "막힌 한글
-검색"(availability, faded, 20분, 점검 4분): `level3`(PL3), 고객 `readers`(댓글을 뺀
-`plain`) 초당 2건, 240초에 sqlmap 한 번. PL3에서 한글 검색은 `ARGS:q`의 920272와
-942460에 막히고(그 둘을 빼면 `REQUEST_URI_RAW`의 920272), 그 뒤 고객이 여는 모든
-페이지는 `REQUEST_HEADERS:Referer`의 920272에 막힌다.
+**board 위에서.** 시나리오 열한 개를 홈 페이지에 기초 다음, 과제 종류 순서로
+나열한다(`order`):
+
+| Id | 제목 | 종류, 안내 | 태세 | 고객 | 공격(숨김) |
+|---|---|---|---|---|---|
+| 1.1 | 조용한 근무 | judgement, worked | `level2`: PL2 | `community` 초당 2건 | 150초에 sqlmap(`ru`) |
+| 1.2 | 물려받은 예외 | judgement, faded | `inherited`: PL2, 949110과 959100 제거 | `community` 초당 2건 | 120초에 sqlmap, 300초에 검색 인젝션(`ru`) |
+| 1.3 | 바쁜 저녁 | judgement, none, 공격 종류도 판단 | `inherited` | `community` 초당 4건 | 90~660초에 케이스 여덟 개, 모두 `kr`: sqlmap 기본·tamper, 검색·union·로그인 인젝션, XSS 둘, 경로 추적 |
+| 2.1 | 막힌 한글 검색 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap |
+| 2.2 | 막힌 태그와 링크 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap |
+| 2.3 | 임계치 낮추기 | availability, none, 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap |
+| 3.1 | 울리지 않는 룰 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap |
+| 3.2 | IDS가 놓치는 sort 공격 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap |
+| 3.3 | 다르게 쓴 같은 공격 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(공백 사이의 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형 |
+| 3.4 | 댓글 속 XSS | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS |
+| 4.1 | 혼자 맡는 저녁 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문을 더함) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
+
+PL3에서 한글 검색은 `ARGS:q`의 920272와 942460에 막히고(그 둘을 빼면
+`REQUEST_URI_RAW`의 920272), 그 뒤 고객이 여는 모든 페이지는
+`REQUEST_HEADERS:Referer`의 920272에, 한글 댓글은 `REQUEST_BODY`의 920272와
+`ARGS:body`의 942460에 막힌다. PL2에서 `<b>` 검색은 941320에, 유튜브 링크는
+931130에 막히고 둘 다 `ARGS:q`다. PL1에서 동아리의 코드 질문은 `ARGS:body`의
+942100, 942190, 941100, 941110, 941160에 막힌다. 시나리오 4.2(레드 콘솔의 사람 대
+학습자)는 선언하지 않았다. 두 번째 사람이 필요하고, 엔진은 `red: person`을 받는다.
 
 ## 결정
 
