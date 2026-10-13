@@ -299,3 +299,18 @@ def test_a_judgement_window_judges_the_items_listed_when_it_opened_not_ones_that
         scenario_run.tick(scenarios.at(window["ends_at"]) + timedelta(seconds=1))
     session.refresh_from_db()
     assert session.scenario_state["windows"][-1]["result"]["passed"] is True
+
+def test_a_rules_step_passes_on_a_changed_rule_as_well_as_a_new_one():
+    import lesson
+
+    broken = (RULES / "broken-sort.rules").read_text()
+    fixed = broken.replace('http.request_body; pcre:"/[?&]sort=', 'http.uri; pcre:"/[?&]sort=')
+    spaced = broken.replace("sid:9000101; rev:1;)", "sid:9000101;  rev:1;)")
+
+    assert lesson.added_rules(broken, broken) == []
+    assert lesson.added_rules(spaced, broken) == []
+    assert lesson.added_rules(fixed, broken) == [9000101]
+    assert lesson.added_rules(broken + step_rule("3.1"), broken) == [9000102]
+
+def step_rule(scenario_id):
+    return next(step["rule"] for step in wargames.scenario_run(scenario_id)["steps"] if step["id"] == "fix") + "\n"
