@@ -19,6 +19,7 @@ ROWS = {
     "api_session": 3,
     "api_case": 5,
     "api_detection": 7,
+    "api_customerrequest": 4,
     "api_objective": 2,
     "api_ruleset": 1,
     "api_suppression": 0,
