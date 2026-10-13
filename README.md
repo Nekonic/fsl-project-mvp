@@ -184,7 +184,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (on OpenStack, to its slot's WAF over `mgmt`) | the iframe in a person's browser |
-| 3080 | `gns3`, GNS3 3.1's API and web UI: the range's topology as GNS3 projects; the blue console's Topology pane frames `/static/web-ui/fsl-auditor.html`, which signs in read-only | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
+| 3080 | `gns3`, GNS3 3.1's API and web UI: the range's topology as GNS3 projects, held open, no node started; the blue console's Topology pane frames `/static/web-ui/fsl-auditor.html`, which signs in read-only. The container has `CAP_NET_ADMIN`, `/dev/net/tun` and the Docker socket, which GNS3 needs to open a project (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 

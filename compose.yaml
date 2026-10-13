@@ -49,7 +49,6 @@ volumes:
   esdata:
   collectordata:
   platformdata:
-  gns3data:
 
 services:
   elasticsearch:
@@ -160,6 +159,11 @@ services:
     environment:
       FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
       FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
+      FSL_IMAGE_TAG: "${FSL_IMAGE_TAG:-dev}"
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun:/dev/net/tun
     volumes:
       - ./deploy/topology:/topology:ro
-      - gns3data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/fsl-gns3:/var/lib/fsl-gns3

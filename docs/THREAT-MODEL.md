@@ -78,10 +78,17 @@ and any write whose body is not `application/json`.
 **The GNS3 server is published read-only to anyone who reaches 3080.** Its
 sign-in page (`/static/web-ui/fsl-auditor.html`) carries the learner's password,
 and the learner holds only the built-in Auditor role. The admin password is
-`FSL_GNS3_ADMIN_PASSWORD` or generated into the GNS3 data volume, and API keys
-for MCP are minted only by `docker exec` on the platform host. Its admin can
-create and start nodes, but the container has no emulator, no Docker socket and
-no capability, so a node cannot run there.
+`FSL_GNS3_ADMIN_PASSWORD` or generated into `/var/lib/fsl-gns3/admin-password`
+and never given to learners, and API keys for MCP are minted only by
+`docker exec` on the platform host. **GNS3's admin controls the platform host's
+Docker daemon**, as the platform container does: to open the projects the
+container holds the Docker socket (and `CAP_NET_ADMIN`, `/dev/net/tun`), and a
+`docker` node is a privileged container on the host's daemon, created and never
+started by us; an admin who starts one, or adds a node, runs code as root on
+the host. The Auditor is refused every write tried (start, open, close,
+delete, node and drawing create, image pull, user create: 403, measured
+2026-10-13); it can read the host's Docker image list
+(`GET /v3/computes/local/docker/images`).
 
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.

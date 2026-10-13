@@ -2682,3 +2682,50 @@ Open: give the GNS3 container `qemu-system-x86`, a uBridge build and
 docker nodes then open degraded), or keep the console's own drawing as the
 learner's view and GNS3 as the files' validator and the development MCP
 server.
+
+### 2026-10-13 — GNS3 holds the projects open; learners see the real web UI
+
+The user chose the first option above: learners see GNS3's own web UI with the
+range's project open, read-only. Built and measured on the platform VM
+(192.168.0.210, branch synced over the `dev` clone, `docker compose build
+gns3`):
+
+- The image adds `qemu-system-x86` and uBridge 1.2.3 built from the
+  `GNS3/ubridge` release tag (3.1.0a6 refuses uBridge below 1.2.3; 1.3.0 is
+  four days old), with `setcap cap_net_admin,cap_net_raw+ep`; the server runs
+  as `gns3` (uid 10002), which joins the Docker socket's group at start as
+  `fsl` does in the platform.
+- The service gets `cap_add: [NET_ADMIN]`, `/dev/net/tun` and the Docker
+  socket; not privileged, no host network. Data moves from the `gns3data`
+  volume to `/var/lib/fsl-gns3` bound at the same path, because the host's
+  daemon resolves the docker nodes' bind mounts (GNS3's resources directory,
+  each image's `VOLUME`s) on the host.
+- Result: both projects `opened` within about a second each of the server
+  answering, every node created and none started or degraded: docker 17 nodes
+  (14 docker, 3 switches started as kernel bridges inside the container), 16
+  links; openstack 15 nodes (5 qemu, 5 docker, 5 switches), 16 links. GNS3
+  pulled nothing: the entrypoint rewrites the repo's `ghcr.io/nekonic/*:dev`
+  tags to `FSL_IMAGE_TAG`, the tag the host runs, so every image was already on
+  the daemon (third-party images are pinned by digest or version and were
+  present). Without the rewrite each `:dev` image would be pulled (fsl-kali
+  1.33 GB, corp and corp-db 1.1 GB each, board 0.6 GB, ...). A host that does
+  not hold an image pulls it on open; a failed pull keeps that node degraded.
+- Costs: 19 containers `GNS3.<node>.<project id>` in state Created on the host
+  daemon, 4.1 kB each; `/var/lib/fsl-gns3` 19 MB; the image 1.06 GB, of which
+  the added packages are 137 MiB (qemu-system-x86 63 MiB, qemu-system-data
+  18 MiB); idle `fsl-gns3` 266-270 MiB RSS and 0.3-0.4% CPU; a restart reopens
+  both projects in 18 s (stale containers are removed and recreated by GNS3).
+- The learner (Auditor) sees the opened project's map through
+  `fsl-auditor.html` on :3080, and is refused (403) start, open, close,
+  delete, node and drawing create, image pull and user create; it can read the
+  host's Docker image list.
+- The `fsl-platform` security group lacked 3080 (stack made before P1); added
+  as in `docs/OPENSTACK.md` §3.5.
+
+Consequences: GNS3's admin now controls the platform host's Docker daemon, as
+the platform container already does (`docs/THREAT-MODEL.md`); its password is
+generated and never handed to learners. The GNS3 containers carry their
+images' labels; an image built locally by compose carries
+`com.docker.compose.project=fsl`, but compose and the platform's lookups filter
+on running containers or `oneoff=False`, which these never are (`docker
+compose ps` lists none; checked live).

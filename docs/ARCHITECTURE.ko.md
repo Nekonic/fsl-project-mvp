@@ -84,7 +84,7 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
 | `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
-| `fsl-gns3` | control | `deploy/gns3`에서 만든 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6; 읽기 전용으로 마운트한 `deploy/topology`의 프로젝트를 제공) | mgmt | 3080 |
+| `fsl-gns3` | control | `deploy/gns3`에서 만든 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3; 읽기 전용으로 마운트한 `deploy/topology`의 프로젝트를 제공하고 열어 둔다; `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓) | mgmt | 3080 |
 
 8000, 8002, 3080은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
@@ -255,22 +255,27 @@ GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.6
 사본에 돌린다.
 
 `gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 두 파일을
-`/data/projects` 아래 각자의 디렉터리로 복사하고, 컨트롤러 데이터베이스가 생기기 전에 admin
-비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/data/admin-password`에 한 번 생성),
+`/var/lib/fsl-gns3/projects` 아래 각자의 디렉터리로 복사하고(이 레포의 `:dev` 이미지 태그를
+호스트가 실행하는 태그 `FSL_IMAGE_TAG`로 바꿔 쓴다), 컨트롤러 데이터베이스가 생기기 전에 admin
+비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/var/lib/fsl-gns3/admin-password`에 한 번 생성),
 learner 사용자에게 `/`에 대한 내장 Auditor 역할을 주고(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값
 `fsl-auditor`, 플랫폼에도 전달), `/static/web-ui/fsl-auditor.html`을 쓴다. 이 페이지는
 learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localStorage`의 `controller-1`,
 `controllerIds`)에 토큰을 둔다. 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
 /opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다.
 
-GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 연다: `qemu` 노드는
-`qemu-system-x86_64`, `ethernet_switch`는 `CAP_NET_ADMIN`을 가진 uBridge(3.1은 커널
-브리지로 구현), `docker` 노드는 Docker 데몬이 필요하고, 이미지가 없는 경우만 허용된다(노드를
-degraded로 둔다). 서비스에는 이 중 아무것도 없으므로 두 프로젝트는 불러와지되 닫힌 채로 남고,
-웹 UI가 보여 주지 못하며, 읽기 전용 사용자는 열 수 없다(`Project.Allocate`). 그래서
-`GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를 내주고,
-콘솔의 토폴로지 창은 같은 파일을 직접 그린다. 2026-10-13 Linux에서 이미지로 측정했다.
-관리자가 열어 둔 프로젝트는 Auditor도 본다.
+GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 열고, 읽기 전용 사용자는 프로젝트를 열 수
+없다(`Project.Allocate`). 그래서 `provision.py`가 시작할 때 admin으로 두 프로젝트를 열어 두고,
+Auditor는 열린 프로젝트를 본다. 만들기는 시작이 아니다: 어떤 노드도 시작하지 않는다. 만들기에
+필요하고 서비스가 갖춘 것: `qemu` 노드에는 `qemu-system-x86`(디스크 이미지 없음),
+`ethernet_switch` 노드에는 릴리스 태그에서 빌드하고 `cap_net_admin,cap_net_raw` 파일
+capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위치마다 컨테이너 자기
+네트워크 네임스페이스 안에 커널 브리지와 TAP을 만든다), `docker` 노드에는 호스트의 Docker
+소켓(노드마다 호스트 데몬에 특권 컨테이너 `GNS3.<노드>.<프로젝트 id>`를 만들기만 하고 시작하지
+않는다). 호스트 데몬은 그 컨테이너의 바인드 마운트를 호스트에서 찾으므로 데이터 디렉터리는 양쪽에서
+같은 경로다(`/var/lib/fsl-gns3`). 서버는 `gns3` 사용자로 돌고, 플랫폼의 `fsl`처럼 시작할 때 소켓의
+그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를
+내주고, 아니면 콘솔의 토폴로지 창이 같은 파일을 직접 그린다.
 
 `GET /api/topology/`는 substrate의 프로젝트를 GNS3에서(`platform/gns3.py`) 또는 레포 파일에서
 돌려준다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
