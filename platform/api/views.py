@@ -9,7 +9,8 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
@@ -25,6 +26,7 @@ from django.views.decorators.http import require_http_methods
 
 import attacker
 import game
+import gns3
 import kibana
 import lesson
 import scoreboard
@@ -82,6 +84,7 @@ SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
+FOLLOW_SLACK = timedelta(seconds=5)
 STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
 _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
@@ -898,9 +901,19 @@ def session_top(request, session_id):
     })
 
 @require_http_methods(["GET"])
+def range_topology(request):
+    return _reply(gns3.project())
+
+def _drawn(session, described):
+    number = _slot_of(session)
+    return topology.overlay(gns3.local(), described, settings.RANGE,
+                            lambda name: _named_in(number, name))
+
+@require_http_methods(["GET"])
 def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    shape = topology.shape(_range(session).describe(), settings.RANGE)
+    described = _range(session).describe()
+    shape = topology.shape(described, settings.RANGE)
 
     for segment in shape["segments"]:
         segment["alerts"] = 0
@@ -914,7 +927,43 @@ def session_topology(request, session_id):
         else:
             zone["alerts"] += 1
 
-    return _reply({**shape, "unplaced": unplaced})
+    return _reply({**shape, "unplaced": unplaced, "project": _drawn(session, described)})
+
+@require_http_methods(["GET"])
+def session_follow(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    asked = request.GET.get("request")
+    record = None
+    if asked is not None:
+        try:
+            wanted = int(asked, 10)
+        except ValueError:
+            raise BadRequest(f'"request" must be a Website pane request id, got {asked!r}')
+        record = next((kept for kept in site.kept(session.pk) if kept["id"] == wanted), None)
+        if record is None:
+            raise Http404(f"session {session_id} kept no request {wanted}")
+    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else "")
+    if not marker:
+        raise BadRequest('name a "marker" or a Website pane "request" to follow')
+    stored = session.browse_marker if marker == SITE_BROWSER_MARKER else marker
+    detections = session.detections.filter(marker=stored)
+    target = "board"
+    if record:
+        start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
+        detections = detections.filter(
+            timestamp__gte=start - FOLLOW_SLACK,
+            timestamp__lte=start + timedelta(milliseconds=record.get("ms") or 0) + FOLLOW_SLACK)
+        host = record["url"].split("/")[2].split(".")[0]
+        target = host if host in settings.RANGE.roles else target
+    detections = list(detections)
+    nodes = _drawn(session, _range(session).describe())["nodes"]
+    followed = topology.follow(gns3.local(), settings.RANGE, nodes, detections, record, target)
+    return _reply({
+        "marker": marker,
+        "request": {name: record[name] for name in site.SUMMARY} if record else None,
+        "detections": len(detections),
+        **followed,
+    })
 
 @require_http_methods(["GET"])
 def origins(request):
