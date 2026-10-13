@@ -97,7 +97,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
-| `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6; serves the projects in `deploy/topology`, mounted read-only) | mgmt | 3080 |
+| `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3; serves the projects in `deploy/topology`, mounted read-only, and holds them open; `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket) | mgmt | 3080 |
 
 8000, 8002 and 3080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
@@ -285,9 +285,11 @@ under `~/.cache/fsl/check-topology` and runs each release's `load_topology` on a
 copy of each file.
 
 The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) copies
-both files into their own directories under `/data/projects`, sets the admin
-password before the controller database exists (`FSL_GNS3_ADMIN_PASSWORD`, or
-generated once into `/data/admin-password`), gives the learner user the
+both files into their own directories under `/var/lib/fsl-gns3/projects`
+(rewriting this repo's `:dev` image tags to `FSL_IMAGE_TAG`, the tag the host
+runs), sets the admin password before the controller database exists
+(`FSL_GNS3_ADMIN_PASSWORD`, or generated once into
+`/var/lib/fsl-gns3/admin-password`), gives the learner user the
 built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
 `fsl-auditor`, also handed to the platform), and writes
 `/static/web-ui/fsl-auditor.html`, which signs in as the learner and stores the
@@ -296,16 +298,22 @@ token where the bundled web UI reads its controller (`controller-1`,
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP.
 
-GNS3 opens a project only by creating every node on its compute: a `qemu` node
-needs `qemu-system-x86_64`, an `ethernet_switch` uBridge with `CAP_NET_ADMIN`
-(3.1 backs it with a kernel bridge), a `docker` node a Docker daemon; only a
-missing image is tolerated (the node is kept degraded). The service has none of
-these, so both projects load and stay closed, the web UI cannot show them, and
-a read-only user cannot open them (`Project.Allocate`). `GET /api/topology/`
-therefore offers the web UI (`web_ui`) only while GNS3 reports the project
-`opened`, and the console's Topology pane falls back to drawing the same file
-itself. Measured 2026-10-13 against the image on Linux; the Auditor sees a
-project an administrator holds open.
+GNS3 opens a project only by creating every node on its compute, and a
+read-only user cannot open one (`Project.Allocate`), so `provision.py` opens
+both projects as admin at start and the Auditor sees them open. Creating is not
+starting: no node is ever started. What creation needs, and the service has:
+`qemu-system-x86` for the `qemu` nodes (no disk image); uBridge 1.2.3, built
+from its release tag with `cap_net_admin,cap_net_raw` file capabilities, and
+`CAP_NET_ADMIN` plus `/dev/net/tun` for the `ethernet_switch` nodes (3.1 backs
+each with a kernel bridge and TAPs inside the container's own network
+namespace); the host's Docker socket for the `docker` nodes, each created
+(never started) as a privileged container `GNS3.<node>.<project id>` on the
+host's daemon. The host daemon resolves those containers' bind mounts on the
+host, so the data directory is the same path on both sides
+(`/var/lib/fsl-gns3`). The server runs as the user `gns3`, which joins the
+socket's group at start as `fsl` does in the platform. `GET /api/topology/`
+offers the web UI (`web_ui`) only while GNS3 reports the project `opened`;
+otherwise the console's Topology pane draws the same file itself.
 
 `GET /api/topology/` returns the substrate's project from GNS3
 (`platform/gns3.py`) or the repo's file. `GET /api/sessions/<id>/topology/`

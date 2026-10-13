@@ -15,7 +15,7 @@ BOOTSTRAP = "fsl-auditor.html"
 ADMIN = "admin"
 AUDITOR_ROLE = "Auditor"
 READY_WITHIN = 180
-DATA = Path("/data")
+DATA = Path(os.environ.get("FSL_GNS3_DATA") or "/var/lib/fsl-gns3")
 
 def admin_password() -> str:
     given = os.environ.get("FSL_GNS3_ADMIN_PASSWORD")
