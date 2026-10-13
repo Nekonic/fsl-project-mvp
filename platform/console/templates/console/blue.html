@@ -16,6 +16,10 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/></svg>
     <span data-t="blue.pane.topology"></span>
   </button>
+  <button class="pane-tab rail-btn hidden" data-pane="triage">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></svg>
+    <span data-t="blue.pane.triage"></span>
+  </button>
   <button class="pane-tab rail-btn" data-pane="waf" data-src="/vm-terminal/fsl-waf/">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
     <span data-t="blue.pane.waf"></span>
@@ -27,6 +31,7 @@
 </nav>
 
 <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
+  {% include "console/blue_scenario.html" %}
   <div id="waf-banner" class="hidden h-10 term-bar text-[12.5px] items-center px-4 gap-3 shrink-0 min-w-0">
     <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
     <span class="text-faint">·</span>
@@ -53,6 +58,7 @@
     <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="console" referrerpolicy="no-referrer"></iframe>
     {% include "console/blue_topology.html" %}
+    {% include "console/blue_triage.html" %}
     <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
       <p id="pane-status-title" class="text-heading font-medium"></p>
       <p id="pane-status-note" class="text-muted max-w-md"></p>
@@ -71,6 +77,7 @@
   const tabs = Array.from(document.querySelectorAll(".pane-tab"));
   let session = null;
   const BAR_HEIGHT = 40;
+  const STRIP_HEIGHT = 44;
   const OVERLAY_GAP = 8;
   const CLOSED_CHECK_MS = 30000;
   const sessionClosed = () => Boolean(session && session.ended_at);
@@ -97,6 +104,13 @@
     devPlace();
     overlaysBelowBars();
     field("topology").style.display = tab.dataset.pane === "topology" ? "flex" : "none";
+    field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
+    if (tab.dataset.pane === "triage") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      triageOpen();
+      return;
+    }
     if (tab.dataset.pane === "topology") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";
@@ -114,7 +128,8 @@
 
   function overlaysBelowBars() {
     const bar = [field("site-bar"), field("waf-banner")].find((shown) => !shown.classList.contains("hidden"));
-    const top = `${(bar ? bar.offsetHeight || BAR_HEIGHT : 0) + OVERLAY_GAP}px`;
+    const strip = field("scenario-strip").classList.contains("hidden") ? 0 : field("scenario-strip").offsetHeight || STRIP_HEIGHT;
+    const top = `${(bar ? bar.offsetHeight || BAR_HEIGHT : 0) + strip + OVERLAY_GAP}px`;
     field("note-pill").style.top = top;
     field("lesson").style.top = top;
   }
@@ -162,6 +177,8 @@
 
 {% include "console/blue_lesson_script.html" %}
 
+{% include "console/blue_scenario_script.html" %}
+
   field("lesson-replay").addEventListener("click", replay);
   field("lesson-verify").addEventListener("click", verifyLesson);
 
@@ -183,6 +200,7 @@
       crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
               { label: t("blue.title"), href: `/blue/${sessionId()}/` }, { label: t("crumb.lesson") }]);
     }
+    if (session && session.course_scenario) await scenarioStart(session);
     openPane(kibana);
     watchClosed();
     if (!session || !session.lesson) return;
@@ -197,11 +215,12 @@
     const practice = session.mode === "self";
     noteControls(practice, taught.group === "foundations" ? "theory" : "goal");
     doneWhen(taught);
+    if (session.course_scenario) scenarioNote();
     lessonControls(taught);
     opening(taught);
     if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("lesson-debrief"));
     modeControl(practice);
-    hints(taught.text, taught.hints, declared);
+    hints(taught.text, session.course_scenario ? [] : taught.hints, declared);
     theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);
     if (taught.group === "foundations") openFirstCard();
   })();

@@ -128,6 +128,31 @@
       </section>` : "";
   }
 
+  function scenariosBlock(wargame) {
+    const id = esc(wargame.id);
+    const runs = (wargame.scenarios || []).map((one) => `
+      <li class="flex flex-col gap-1" data-course-scenario="${esc(one.id)}">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-blue">${esc(one.id)}</span>
+          <h4 class="font-semibold text-heading flex-1 min-w-0">${esc(t(one.title))}</h4>
+          <span class="text-[12px] text-muted shrink-0">${esc(t("main.minutes", one.minutes))}</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          ${badge(t(`scenario.class.${one.task_class}`), "neutral")}
+          ${badge(t(`scenario.guidance.${one.guidance}`), "muted")}
+        </div>
+        <p class="text-body leading-relaxed"><span class="text-muted">${esc(t("main.scenario.practise"))}</span> ${esc(t(one.practise))}</p>
+        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start self-start btn btn-sm btn-blue">${esc(t("main.scenario.start"))}</button>
+        <p class="hidden text-[12px]" data-last-scenario="${esc(one.id)}"></p>
+      </li>`).join("");
+    return runs ? `
+      <section class="pt-4 mt-4 border-t border-line-subdued" data-scenarios="${id}">
+        <h4 class="text-[15px] font-bold text-heading">${esc(t("main.group.scenarios"))}</h4>
+        <p class="text-[12px] text-muted mt-0.5">${esc(t("main.group.scenarios.note"))}</p>
+        <ol class="mt-3 flex flex-col gap-4">${runs}</ol>
+      </section>` : "";
+  }
+
   function scenarioCard(wargame) {
     const id = esc(wargame.id);
     const counted = typeof wargame.attacks === "number";
@@ -144,6 +169,7 @@
         ${counted ? `<p class="text-[12px] text-muted mt-3">${
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
+        ${scenariosBlock(wargame)}
         ${(wargame.lessons || []).length ? wargame.lessons.map((taught) => lessonBlock(wargame, taught)).join("") : `
         <p class="text-[12px] mt-1 text-faint">${esc(t("main.no_lesson"))}</p>
         <div class="grid grid-cols-2 gap-3 mt-auto pt-4">
@@ -190,6 +216,18 @@
     if (!opened.length) return;
     const read = await api(`/api/sessions/?ids=${opened.join(",")}`);
     if (!read.ok || !Array.isArray(read.body)) return;
+    document.querySelectorAll("[data-last-scenario]").forEach((line) => {
+      const last = read.body.filter((session) => session.course_scenario === line.dataset.lastScenario)
+        .sort((a, b) => b.id - a.id)[0];
+      if (!last) return;
+      const verdict = last.result && last.result.scenario;
+      const state = !last.ended_at ? esc(t("main.last.open"))
+        : verdict ? badge(verdict.passed ? "PASS" : "FAIL", verdict.passed ? "ok-strong" : "red-strong")
+          : esc(t("main.last.unverified"));
+      line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
+        esc(t("main.last", last.id, t(`kind.${kindOf(last)}`)))}</a> ${state}`;
+      line.classList.remove("hidden");
+    });
     document.querySelectorAll("[data-last]").forEach((line) => {
       const [scenario, taught] = line.dataset.last.split("/");
       const last = read.body.filter((session) => session.scenario === scenario && session.lesson_id === taught)
@@ -226,12 +264,14 @@
     const practice = button.dataset.mode === "self" ? { mode: "self" } : {};
     const settings = button.dataset.lesson
       ? { guidance: true, lesson: button.dataset.lessonId, ...practice, ...defense } : {};
-    const started = await post("/api/sessions/", { scenario: button.dataset.wargame, ...settings },
-                               PATIENCE_FOR_RANGE_WORK);
+    const asked = button.dataset.course ? { scenario: button.dataset.course }
+      : { scenario: button.dataset.wargame, ...settings };
+    const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
     clearInterval(ticking);
     starting = false;
     if (started.ok && started.body.id) {
-      location.href = `/session/${started.body.id}/`;
+      rememberSession(started.body.id);
+      location.href = button.dataset.course ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
       return;
     }
     button.textContent = label;
@@ -310,6 +350,11 @@
 
   function resultCell(session) {
     const result = session.result || {};
+    const judged = result.scenario || result.lesson;
+    if (result.scenario) {
+      return (judged.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong")) + (judged.helped || []).map((kind) =>
+        ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
+    }
     if (result.lesson) {
       const verdict = result.lesson.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong");
       return verdict + (result.lesson.helped || []).map((kind) =>

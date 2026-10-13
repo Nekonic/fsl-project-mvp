@@ -196,7 +196,8 @@
 
   async function activity() {
     const cases = await api(`/api/sessions/${id}/cases/`);
-    const rows = cases.ok && Array.isArray(cases.body) ? cases.body.slice(-8).reverse() : [];
+    const hidden = (row) => session.course_scenario && !session.ended_at && row.meta && row.meta.scheduled;
+    const rows = cases.ok && Array.isArray(cases.body) ? cases.body.filter((row) => !hidden(row)).slice(-8).reverse() : [];
     show("activity-empty", rows.length === 0);
     field("activity-list").innerHTML = rows.map((row) => {
       const outcome = caseOutcome(row.malicious, row.meta);
@@ -216,7 +217,27 @@
   const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
   const caseLabel = (name) => localized(`case.${name}`, name);
 
+  function scenarioBanner(judged) {
+    const banner = field("verdict");
+    banner.classList.toggle("border-l-success", judged.passed);
+    banner.classList.toggle("border-l-danger", !judged.passed);
+    banner.innerHTML = `
+      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
+      ${(judged.helped || []).map((kind) => `<span class="badge badge-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
+      <div class="min-w-0 flex-1">
+        <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
+          session.course_scenario))}</div>
+        ${judged.fix ? `<p class="text-[12px] text-muted mt-0.5" data-fix>${esc(`${t(`lesson.fix.${judged.fix}`)} ${t("lesson.fix.note")}`)}</p>` : ""}
+      </div>`;
+  }
+
   function verdictBanner() {
+    const scenarioJudged = session.result && session.result.scenario;
+    if (scenarioJudged) {
+      show("verdict", true);
+      scenarioBanner(scenarioJudged);
+      return;
+    }
     const judged = session.result && session.result.lesson;
     show("verdict", Boolean(judged));
     if (!judged) return;
@@ -377,7 +398,8 @@
     show("traffic", false);
     show("scoreboard", true);
     verdictBanner();
-    if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("debrief"));
+    if (session.course_scenario) showScenarioDebrief(field("debrief"));
+    else if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("debrief"));
     await scoreTables(0);
   }
 
@@ -418,7 +440,8 @@
     button.disabled = true;
     const settings = session.guidance
       ? { guidance: true, lesson: session.lesson_id, mode: session.mode, defense: session.defense } : {};
-    const started = await post("/api/sessions/", { scenario: session.scenario, ...settings }, PATIENCE_FOR_RANGE_WORK);
+    const asked = session.course_scenario ? { scenario: session.course_scenario } : { scenario: session.scenario, ...settings };
+    const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
     if (started.ok && started.body.id) {
       location.href = `/session/${started.body.id}/`;
       return;
