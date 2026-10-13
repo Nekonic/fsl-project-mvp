@@ -6,7 +6,9 @@
 # are form posts that carry the page's CSRF token, as a browser sends them; a
 # JSON post is refused by Django's CSRF check (403, measured 2026-10-13).
 # The unusual searches are ones real readers type and CRS refuses from
-# paranoia level 2 (measured 2026-10-13).
+# paranoia level 2 (measured 2026-10-13). The code comments are a security
+# club's questions about SQL and templates; CRS refuses them at paranoia level
+# 1 (942100, 942190, 941100, 941110, 941160 on ARGS:body, measured 2026-10-13).
 
 users: 12
 origins: {kr: 70, jp: 6, us: 8, cn: 3, vn: 3, tw: 3, hk: 3, br: 2, de: 1, gb: 1}
@@ -50,8 +52,14 @@ comments:
     - "Thanks for sharing!"
     - "Count me in for Saturday."
     - "Is the meetup still on this week?"
+  code:
+    - "SELECT * FROM users WHERE id = 1 returns nothing, what am I missing?"
+    - "Use a prepared statement: cursor.execute(\"SELECT name FROM posts WHERE id = %s\", (post_id,))"
+    - "UNION SELECT needs the same number of columns on both sides"
+    - "Django escapes <script> in templates unless you mark it |safe"
 profiles:
   community: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6}
   plain: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4, comment: 6}
   readers: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4}
+  club: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6, comment-code: 4}
 default_profile: community

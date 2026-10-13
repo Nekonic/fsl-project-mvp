@@ -60,9 +60,25 @@ def test_a_profile_renders_only_its_actions_and_the_plain_one_searches_nothing_u
     community = traffic.flows(mix(), "community", users, random.Random("1"), count=3000)
     plain = traffic.flows(mix(), "plain", users, random.Random("1"), count=3000)
 
-    assert {flow["action"] for flow in community} == set(traffic.ACTIONS)
+    assert {flow["action"] for flow in community} == set(traffic.ACTIONS) - {"comment-code"}
     assert "search-unusual" not in {flow["action"] for flow in plain}
     assert all(users[flow["user"]]["account"] for flow in community if flow["action"] == "login")
+
+def test_the_club_profile_posts_the_code_questions_through_the_comment_form():
+    users = traffic.personas(mix(), offered("kr", "us"), random.Random("1"))
+    club = traffic.flows(mix(), "club", users, random.Random("1"), count=3000)
+    coded = [flow for flow in club if flow["action"] == "comment-code"]
+
+    assert {flow["action"] for flow in club} == set(traffic.ACTIONS)
+    assert coded and {flow["steps"][-1]["form"]["body"] for flow in coded} == set(mix()["comments"]["code"])
+    assert all(flow["steps"][-1]["csrf"] and flow["steps"][-1]["path"].endswith("/comments/") for flow in coded)
+
+def test_a_profile_that_posts_code_questions_needs_them_declared():
+    declared = mix()
+    declared["comments"] = {key: value for key, value in declared["comments"].items() if key != "code"}
+
+    with pytest.raises(traffic.InvalidTraffic, match="comment-code"):
+        traffic.checked(declared, "test")
 
 def test_the_rendering_is_the_same_for_the_same_seed():
     users = traffic.personas(mix(), offered("kr"), random.Random("7"))
