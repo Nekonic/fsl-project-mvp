@@ -2985,3 +2985,120 @@ Korean searches (58) and post pages were all served. The sqlmap case kept its
 own verdict (TP) in the second score. Closing stopped the generator
 (`running: false`, 870 requests sent, 17 blocked) before the slot reset.
 Open: 24 detections stayed unattributed in that session; not yet traced.
+
+### 2026-10-13 — The 24 unattributed detections of session 305, traced
+
+18 were alerts on customer requests whose records had not been pulled when
+`/score/` was read, so their markers matched no `CustomerRequest` row; `/score/`
+now pulls the records first while the customers run. The other 6 are Suricata
+`FSL SQLi attempt - URI` alerts on sqlmap requests (5.188.10.10, inside the case
+window) whose `http` records never reached Elasticsearch, so
+`elastic._transaction_markers` had no marker to join. The collector's UDP
+syslog input counted 20,538 receive-buffer errors of about 916k datagrams
+(2.2%) since 2026-10-12; a sqlmap run sends about 2,800 records in 16 s. Not
+fixed: Filebeat's `read_buffer` is capped by the host's `net.core.rmem_max`,
+which is not namespaced, so the fix is a sysctl in the platform VM's cloud-init
+and a rebuild, or TCP syslog. Every scenario run below still shows 0-18 such
+alerts (session 313: 18, all Suricata, all marker-less, all from the attacker).
+
+## 2026-10-13 — P4 built: the scenario engine and its console, run live with 1.1 and 2.1
+
+Phase P4 of the scenario course design, as built and run on OpenStack
+(platform VM 192.168.0.210, both slots, sessions 307-313).
+`docs/ARCHITECTURE.md`, "Scenarios", has the descriptor, the engine, the API
+and the console.
+
+- **`scenario` names a course scenario too.** `POST /api/sessions/
+  {"scenario": "2.1"}` resolves the wargame that declares it; ids are `N.N`, so
+  they cannot be a wargame directory. `Session.scenario` stays the wargame; the
+  course scenario is `Session.course_scenario` and its run
+  `Session.scenario_state` (0025). `lesson`, `guidance`, `defense` and `mode`
+  are refused: the scenario sets them.
+- **One engine thread in the platform process,** resumed at boot by
+  `fsl/wsgi.py`. Not chosen: a separate process. The state is one JSON column
+  written under an in-process lock; on SQLite `select_for_update` is a no-op,
+  so a second writer would lose updates. Proven live: the platform restarted at
+  06:33:39-06:33:50 during session 313 and its attack due at 06:35:42 fired at
+  06:35:43.
+- **A scheduled attack is the red team's attempt** (ruling above):
+  `meta.scheduled`, not a replay mark; a dump goes through `_credit_loot`,
+  attributed to its case.
+- **One triage item per marker:** each customer request, and each attack case
+  however many requests it sent. Per request, one sqlmap run would be about
+  2,000 items, and one case is one decision. The item id hashes the marker
+  with the session's browse marker so it cannot be matched to `/cases/`; the
+  session page hides scheduled cases from its activity while the scenario
+  runs. `/cases/` itself still lists them (an agent can read it).
+- **The window judges the class's completion** (the design's class table),
+  which the first 1.1 run forced: session 312 judged all seven items right and
+  failed on nine customers blocked during the window, which 1.1 asks the
+  learner to judge, not fix. Judgement completes on the verdicts of the items
+  first seen before the window (an attack fired inside it appears after "I'm
+  done"); availability and unknown on `{served: all, held: all}`; detection on
+  `{detected_by: suricata}`. Blocked customers and held attacks are reported
+  beside every result. This reads instruction 4 of the P4 brief ("no customer
+  blocked, every attack held, and the class's criterion") through the class
+  table; if the base criteria were meant for every class, judgement scenarios
+  need a posture with no false positive, which 1.1 by design has.
+- **Stuck:** a hint is offered, not recorded. In a scenario session the step
+  engine's hint after two failed checks becomes an offer. "The same WAF change
+  re-applied" is a `PUT /waf/` that writes the file already in force; the 20 s
+  poll cannot see an identical rewrite, and A-B-A is an undo, so neither counts.
+  Found live: a poll landing between the write and the PUT's record called a
+  new change a re-application (session 310); the PUT now compares with the
+  file it read before writing.
+- **CRS (instruction 6).** `rules/crs.py` takes the target `REQUEST_URI_RAW`
+  and `thresholds {inbound, outbound}` as setvars on the level's `SecAction`;
+  `GET /waf/` parses them back and a `PUT` without `thresholds` keeps them.
+  `core_loc` 567 -> 580 (+13, all `crs.py`: the constants `THRESHOLDS`,
+  `HIGHEST_THRESHOLD` and the `THRESHOLD` pattern 3, the check 5, the render 2,
+  the parse 2, the return 1; the target is one alternation on the existing
+  line). Reason: scenarios 2.1 and 2.3, the user-approved plan.
+- **1.1's posture is PL2** with the `community` customers: the tuning has no
+  per-path paranoia level, and PL3 everywhere blocks about 40% of customers.
+  Measured at PL2 (session 306): 3 of 415 customer requests blocked, all the
+  YouTube-link search (931130).
+- **2.1 uses a `readers` profile** (`plain` without comments). Measured at PL3
+  with `plain` (session 306): 291 of 728 blocked; Korean searches by 920272 and
+  942460 on `ARGS:q`; Korean comments by 920272 on `REQUEST_BODY` and 942460
+  on `ARGS:body`; and every page opened after a Korean search (home, post,
+  newest, login, English search) by 920272 on `REQUEST_HEADERS:Referer`. The
+  Referer stays in 2.1; comments are a second false positive and belong to 2.3
+  (and `REQUEST_BODY` is not a tuning target).
+- **Fixed in P3's generator:** the board answers in the customer's language,
+  so a Korean customer's CSRF refusal (two flows of one persona racing the
+  token rotation at sign-in) was Korean, and the generator, looking for the
+  English sentence, recorded it as blocked by the defence. Session 307's
+  window failed on exactly one such sign-in.
+
+Live runs (OpenStack, sessions closed, slots reset):
+
+| Session | Scenario, what was done | Window | Fix named | First score | Customers blocked (all / in window) |
+|---|---|---|---|---|---|
+| 308 | 2.1, no fix | FAIL: 156 customers blocked | none | 0 lost, sqlmap held | 273 / 156 |
+| 307 | 2.1, narrow fix (920272 `REQUEST_URI_RAW` and `ARGS:q`, 942460 `ARGS:q` under `/search/`; 920272 `REQUEST_HEADERS:Referer`) | FAIL: 1 blocked, a Korean CSRF page counted as the defence's (fixed) | target | 0 lost | 82 / 1 |
+| 309 | 2.1, the same narrow fix | PASS | target | 0 lost, sqlmap held | 84 / 0 |
+| 310 | 2.1, over-broad: 949110 removed | PASS: sqlmap held | rule | 0 lost | 89 / 0 |
+| 311 | 2.1, over-broad: 949110 and 959100 removed | FAIL: 1 of 1 attacks took data | rule | 3/3 lost (admin, jiwoo, minseo), noticed | 57 / 0 |
+| 312 | 1.1, items judged (one wrong twice, hint offered and opened) | FAIL under the first rule: 9 blocked | none | 0 lost | 16 / 9 |
+| 313 | 1.1, the same, platform restarted mid-run | PASS: 12 of 12 items right | none | 0 lost, both sqlmap runs held | 20 / 8 (reported) |
+
+The narrow fix's class is `target`, not `path_target`, because the Referer
+exclusion has no path. Removing 949110 alone did not leak: 959100 still
+refused the board's 500s, so sqlmap found nothing (as P0 measured for the
+thresholds); the window passed and the result names the fix `rule`. Only with
+959100 removed too did sqlmap dump the accounts, the window fail and the first
+score count 3/3 lost.
+
+Screenshots (headless Chromium, en and ko): the home page's scenario group,
+the briefing, the live strip, the Judge pane, the debrief and the session page
+of 311 and 313.
+
+Not proven: the Docker substrate; the detection and unknown classes (no
+scenario yet); the idle and failed-check hint triggers live (unit only; the
+triage trigger ran live); the console driven by a person end to end (the runs
+used the API; the screenshots show the pages on those sessions); the
+UDP-dropped marker (above).
+
+Metrics: core_loc 567 -> 580 (crs.py, above), dependencies 6, services 10,
+product_loc 22,385 -> 23,979, tests 1955 -> 2017 (bin/measure).
