@@ -2030,6 +2030,8 @@ def session_score(request, session_id):
         )
 
     cases, detections, result, signatures = _evidence(session, forced)
+    if (session.traffic or {}).get("running"):
+        customers.refresh(session, _range(session))
     alerted = customers.alerted_markers(session)
     unmatched = set(result.unmatched_detection_ids)
     totals = compute_score(result)
