@@ -116,7 +116,9 @@ def unsolved(waf: dict | None, wanted: dict) -> list:
         [["lesson.diag.level_low", [level]]] if level < wanted["paranoia"] else [])
 
 def added_rules(live: str, baseline: str) -> list[int]:
-    return sorted(suppress.sids(live) - suppress.sids(baseline))
+    started = {sid: " ".join(suppress.find(baseline, sid).split()) for sid in suppress.sids(baseline)}
+    return sorted(sid for sid in suppress.sids(live)
+                  if started.get(sid) != " ".join(suppress.find(live, sid).split()))
 
 def detection_outcome(row: dict) -> str:
     if row["malicious"]:
