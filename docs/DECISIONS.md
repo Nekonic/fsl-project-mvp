@@ -2593,3 +2593,18 @@ Open, not decided here: the assessment's goal says "at the WAF's strictest
 level", yet PL2 passes it (D1 keeps lowering the level a passing fix, named
 `level`), and a parameter-scoped exclusion at PL4 did not serve the Korean
 search (hypothesis, not checked: 920272 also matches it in `REQUEST_URI`).
+
+## 2026-10-13 — The Korean search replaces O'Brien as the course's false positive
+
+The user: O'Brien is not a search the club's users would make; a Korean search
+being blocked is the realistic case. O'Brien was the lesson's false positive
+only because it was the one measured on 2026-10-10, and it appears only at
+PL4, which forced the "someone set the strictest level" opening. The
+2026-10-13 measurement found the Korean search blocked from PL3 (920272,
+942460) and other realistic false positives from PL2. The lessons move to the
+Korean search; `board-normal-search-with-apostrophe` stays as a benign case
+(benign cases are never removed) but no lesson is built on it. The rework of
+the course follows a second survey of how learners actually work through
+lessons (task classes of different problems, each changing one thing; worked
+example first; judgement and volume as difficulty axes); its plan goes
+through gate 1.
