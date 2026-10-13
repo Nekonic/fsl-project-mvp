@@ -10,9 +10,9 @@ const DEBRIEF_TONE = {
 };
 const PASSING = ["held", "served", "detected", "quiet"];
 
-function debriefSection(name, inner) {
+function debriefSection(name, inner, heading = `lesson.debrief.${name}`) {
   return `<section class="flex flex-col gap-1.5" data-debrief="${name}">
-    <h4 class="label">${esc(t(`lesson.debrief.${name}`))}</h4>${inner}</section>`;
+    <h4 class="label">${esc(t(heading))}</h4>${inner}</section>`;
 }
 
 function debriefOutcome(outcome) {
@@ -68,7 +68,8 @@ function renderDebrief(container, told) {
   const facts = [
     ran + (overview.mode === "self" ? ` · ${t("kind.practice")}` : ""),
     overview.steps.total ? t("lesson.steps.passed", overview.steps.passed, overview.steps.total) : "",
-    t("lesson.debrief.help", overview.help.hints, overview.help.skipped, overview.help.done_for_me),
+    told.scenario ? t("scenario.debrief.help", overview.help.hints)
+      : t("lesson.debrief.help", overview.help.hints, overview.help.skipped, overview.help.done_for_me),
     overview.fix ? t(`lesson.fix.${overview.fix}`) : "",
   ].filter(Boolean);
   const evidence = told.evidence.length ? `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
@@ -86,7 +87,7 @@ function renderDebrief(container, told) {
     ...(told.timeline ? [debriefSection("timeline", debriefTimeline(told.timeline))] : []),
     ...(told.task_class === "judgement" ? [debriefSection("triage", `<p>${esc(t("scenario.debrief.triage.line",
       told.triage.right, told.triage.items, told.triage.first_try))}</p>`)] : []),
-    debriefSection("evidence", evidence),
+    debriefSection("evidence", evidence, told.scenario ? "scenario.debrief.evidence" : "lesson.debrief.evidence"),
     debriefSection("change", debriefChange(told.change)),
     debriefSection("cases", cases),
     debriefSection("risk", `<ul class="list-disc pl-4 space-y-1">${told.risk.map(([key, values]) =>
