@@ -121,6 +121,11 @@ def waf_layout(shape):
 
 FSL_WAF = waf_layout(RANGE)
 FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
+FSL_TOPOLOGY = Path(FSL_SOURCE) / "deploy" / "topology" / f"range-{declared.flavor_for(FSL_SUBSTRATE) or 'docker'}.gns3"
+FSL_GNS3_URL = os.environ.get("FSL_GNS3_URL", "")
+FSL_GNS3_USER = os.environ.get("FSL_GNS3_AUDITOR_USER") or "learner"
+FSL_GNS3_PASSWORD = os.environ.get("FSL_GNS3_AUDITOR_PASSWORD") or "fsl-auditor"
+FSL_GNS3_WEB_PORT = int(os.environ.get("FSL_GNS3_WEB_PORT") or 3080)
 
 FSL_SUBSTRATE_OPTIONS = dict(
     {
