@@ -277,3 +277,57 @@ def test_the_site_proxy_records_the_address_it_actually_reached_and_nothing_when
     assert site._peer(reached) == "10.31.0.44"
     assert site._peer(closed) == "172.30.0.3", "a WAF that closes the connection still names its address"
     assert site._peer(SimpleNamespace()) == ""
+
+KOREAN = "/search/?q=%EC%84%9C%EC%9A%B8+%EB%A7%9B%EC%A7%91"
+
+def http_event(marker, url, status, host="fsl-wargame-host"):
+    from django.utils import timezone
+
+    return {"fsl_source": "suricata", "event_type": "http", "timestamp": timezone.now().isoformat(),
+            "src_ip": "10.30.0.102", "dest_ip": "10.30.0.63", "dest_port": 8000, "log": {"syslog": {"hostname": host}},
+            "http": {"url": url, "status": status, "http_method": "GET", "http_user_agent": "Mozilla/5.0",
+                     "request_headers": [{"name": "X-FSL-Case", "value": marker}] if marker else []}}
+
+def browsed(url, status, request_id=1):
+    import time
+
+    return {"id": request_id, "at": time.time(), "method": "GET", "url": f"http://board.com{url}", "to": "10.31.0.44",
+            "status": status, "blocked": status == 403, "ms": 40}
+
+def test_a_sensor_hop_shows_the_http_records_of_a_request_no_rule_alerted_on():
+    sent = {"kind": "browse", "sender": "fsl-platform", "to": "10.31.0.44", "status": 200, "blocked": False}
+    seen = [http_event("browse-1", KOREAN, 200)]
+
+    def walk(events):
+        return {hop["node"]: hop for hop in topology.follow(
+            json.loads(OPENSTACK.read_text()), declared.read(flavor="openstack"), openstack_nodes(), sent, [],
+            seen=events)["hops"]}
+
+    found, quiet = walk(seen), walk([])
+
+    assert found["fsl-wargame-host"]["requests"] == 1 and found["fsl-wargame-host"]["alerts"] == []
+    assert found["fsl-wargame-host"]["evidence"] is True, "the sensor recorded the request though nothing alerted"
+    assert found["fsl-wargame-host"]["seen"][0] == {"src_ip": "10.30.0.102", "dest_ip": "10.30.0.63", "dest_port": 8000,
+                                                    "method": "GET", "url": KOREAN, "status": 200}
+    assert quiet["fsl-wargame-host"]["evidence"] is False
+
+@pytest.mark.django_db
+def test_following_a_website_request_reads_the_sensor_s_http_records_by_its_marker_or_its_url(client):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from api import site
+    from api.models import Session
+
+    session = Session.objects.get(pk=open_session(client))
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=1))
+    events = [http_event(session.browse_marker, KOREAN, 200), http_event("", KOREAN, 200),
+              http_event("someone-else", KOREAN, 200)]
+    indexed = patch("api.views._fetched", lambda index, start, end, newest_first: (
+        [(f"doc-{position}", event) for position, event in enumerate(events)], None))
+    with stub(), patch.object(site, "kept", return_value=[browsed(KOREAN, 200, request_id=7)]), indexed:
+        shown = client.get(f"/api/sessions/{session.pk}/topology/follow/?request=7").json()
+
+    assert shown["sensed"] == 2, "its own marker, or no marker and the same URL; never another request's"
+

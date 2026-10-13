@@ -50,6 +50,7 @@ SWITCH = "ethernet_switch"
 BLOCKING_RULE = "949110"
 UPSTREAM_FAILED = {502, 503, 504}
 TRANSIT = ("edge", "gateway", "wargames")
+SEEN_KEPT = 5
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -99,11 +100,13 @@ def _inner(near, kinds, shared, start, goal) -> list[str]:
         frontier = reached
     return []
 
-def _raw(detection, *keys):
-    found = detection.raw or {}
+def _dig(found, *keys):
     for key in keys:
         found = found.get(key) if isinstance(found, dict) else None
     return found
+
+def _raw(detection, *keys):
+    return _dig(detection.raw or {}, *keys)
 
 def _rule_id(detection) -> str:
     return str(_raw(detection, "details", "ruleId") or "")
@@ -125,7 +128,10 @@ def _addresses(nodes, name, segment) -> list[str]:
     return ((nodes.get(name) or {}).get("addresses") or {}).get(segment) or []
 
 def _sensor_of(detection, sensors, named) -> str:
-    said = str(_raw(detection, "log", "syslog", "hostname") or "")
+    return _said_by(detection.raw or {}, sensors, named)
+
+def _said_by(raw, sensors, named) -> str:
+    said = str(_dig(raw, "log", "syslog", "hostname") or "")
     if said:
         return next((host for host in sensors if named(host) == said.split(".")[0]), "")
     return next(iter(sensors)) if len(sensors) == 1 else ""
@@ -196,7 +202,12 @@ def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, s
             _step(path, near, name)
     return path, source
 
-def follow(project, declared, nodes, sent, detections, named=lambda name: name) -> dict:
+def _request_seen(event) -> dict:
+    return {"src_ip": event.get("src_ip"), "dest_ip": event.get("dest_ip"), "dest_port": event.get("dest_port"),
+            "method": _dig(event, "http", "http_method"), "url": _dig(event, "http", "url"),
+            "status": _dig(event, "http", "status")}
+
+def follow(project, declared, nodes, sent, detections, named=lambda name: name, seen=()) -> dict:
     near, kinds = _wired(project), _kinds(project)
     target = sent.get("target") or "board"
     service = declared.compose.get(target, "")
@@ -210,10 +221,14 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name) 
     for detection in detections:
         if detection.source == "suricata":
             heard.setdefault(_sensor_of(detection, sensors, named), []).append(detection)
+    saw: dict[str, list] = {}
+    for event in seen:
+        saw.setdefault(_said_by(event, sensors, named), []).append(event)
     rules = sorted({_rule_id(d) for d in detections if d.source == "modsecurity"} - {""})
     logged = any(d.source == "modsecurity" for d in detections)
     verdict = _verdict(sent, rules, logged)
-    status = sent.get("status") or _status_seen([d for d in detections if d.source == "suricata"])
+    status = (sent.get("status") or _status_seen([d for d in detections if d.source == "suricata"])
+              or next((_dig(event, "http", "status") for event in seen if _dig(event, "http", "status")), None))
     reached = _reached(verdict, status)
 
     hops, placed = [], set()
@@ -228,10 +243,11 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name) 
         if position == 0:
             hop["source"] = source or None
         if name in watching and watching[name] not in placed:
-            alerts = heard.get(watching[name], [])
+            alerts, requests = heard.get(watching[name], []), saw.get(watching[name], [])
             hop.update(sensor=watching[name],
-                       alerts=[{"signature": d.signature, "sid": _sid(d)} for d in alerts])
-            hop["evidence"] = hop["evidence"] or bool(alerts)
+                       alerts=[{"signature": d.signature, "sid": _sid(d)} for d in alerts],
+                       requests=len(requests), seen=[_request_seen(event) for event in requests[:SEEN_KEPT]])
+            hop["evidence"] = hop["evidence"] or bool(alerts) or bool(requests)
             placed.add(watching[name])
         if name == declared.roles["gateway"] and "verdict" not in placed:
             hop.update(verdict=verdict, rules=rules)

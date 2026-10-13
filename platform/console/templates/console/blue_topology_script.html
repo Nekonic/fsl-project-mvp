@@ -50,6 +50,10 @@ function topologyHop(hop) {
   const lines = [];
   if ("source" in hop) lines.push(t("topology.hop.source", hop.source || t("topology.unknown")));
   if (hop.sensor) lines.push(t("topology.hop.alerts", hop.sensor, hop.alerts.length));
+  if (hop.sensor && hop.requests) lines.push(t("topology.hop.saw", hop.sensor, hop.requests));
+  (hop.seen || []).slice(0, 1).forEach((seen) => lines.push(t("topology.hop.seen", seen.src_ip || "?",
+    `${seen.dest_ip || "?"}:${seen.dest_port || "?"}`, `${seen.method || ""} ${readable(seen.url || "")}`.trim(),
+    seen.status || "-")));
   if (hop.verdict === "blocked") lines.push(t("topology.hop.blocked", hop.rules.join(", ") || "-"));
   if (hop.verdict === "passed") lines.push(t("topology.hop.passed", hop.rules.join(", ") || "-"));
   if ("verdict" in hop && !hop.verdict) lines.push(t("topology.hop.verdict_unknown"));

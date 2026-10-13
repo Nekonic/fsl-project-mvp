@@ -83,7 +83,7 @@ def _transaction_markers(
         key = _transaction_key(doc)
         if key is None or key in markers:
             continue
-        marker = _suricata_marker(doc.get("http") or {})
+        marker = suricata_marker(doc.get("http") or {})
         if marker:
             markers[key] = marker
     return markers
@@ -115,7 +115,7 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
             "severity": alert.get("severity"),
             "timestamp": _parse_time(doc.get("timestamp")),
             "src_ip": doc.get("src_ip"),
-            "marker": _suricata_marker(doc.get("http") or {}),
+            "marker": suricata_marker(doc.get("http") or {}),
             "raw": doc,
         }
     ]
@@ -152,7 +152,7 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
     return detections
 
 
-def _suricata_marker(http: dict[str, Any]) -> str | None:
+def suricata_marker(http: dict[str, Any]) -> str | None:
     for header in http.get("request_headers") or []:
         if str(header.get("name", "")).lower() == _MARKER_KEY:
             return header.get("value")
