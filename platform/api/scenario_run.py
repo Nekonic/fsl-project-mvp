@@ -184,6 +184,8 @@ def _settle(pk, n, **changed) -> None:
 def start_window(session, by, now=None):
     now = now or timezone.now()
     declared = declared_of(session)
+    listed = [item["item"] for item in _items(session) if item["first"] < now] \
+        if declared["task_class"] == "judgement" else None
 
     def start(state, held):
         windows = state["windows"]
@@ -191,7 +193,7 @@ def start_window(session, by, now=None):
             raise Conflict(f"session {held.pk}'s verification window is already open until {windows[-1]['ends_at']}")
         end = now + timedelta(minutes=declared["window_minutes"])
         windows.append({"n": len(windows), "started_at": now.isoformat(), "ends_at": end.isoformat(), "by": by,
-                        "result": None})
+                        "result": None, **({"items": listed} if listed is not None else {})})
         state["schedule"] += scenarios.window_attacks(declared, state["schedule"], now,
                                                       scenarios.at(state["opened_at"]))
         return windows[-1]
@@ -235,7 +237,9 @@ def _person_attacks(session, start, end) -> list[dict]:
 
 def _extra(session, declared, state, entries, start, end) -> list:
     if declared["task_class"] == "judgement":
-        return scenarios.judged_items([item["item"] for item in _items(session) if item["first"] < start],
+        listed = state["windows"][-1].get("items")
+        return scenarios.judged_items(listed if listed is not None else
+                                      [item["item"] for item in _items(session) if item["first"] < start],
                                       state["triage"])
     if declared["task_class"] == "detection":
         return _detection_reasons(session, entries, start, end)
