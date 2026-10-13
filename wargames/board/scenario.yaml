@@ -33,6 +33,24 @@ defense:
   level3:
     waf: {paranoia: 3}
     suricata: local.rules
+  inherited:
+    waf:
+      paranoia: 2
+      exclusions:
+        - {rule_id: 949110}
+        - {rule_id: 959100}
+    suricata: local.rules
+  untuned:
+    waf:
+      paranoia: 3
+      thresholds: {inbound: 10000, outbound: 10000}
+    suricata: local.rules
+  broken-rule:
+    waf: {paranoia: 1}
+    suricata: broken-sort.rules
+  spelled:
+    waf: {paranoia: 1}
+    suricata: spaced-sort.rules
 default_lesson: waf-exclusion
 scenarios:
   - id: "1.1"
@@ -71,7 +89,7 @@ scenarios:
         point: {panel: "#scenario-done"}
         check: {kind: click}
   - id: "2.1"
-    order: 2
+    order: 4
     text: scenario.korean
     task_class: availability
     guidance: faded
@@ -88,6 +106,177 @@ scenarios:
       - {id: narrow, when: alert}
       - {id: window, when: window}
     hints: [find, target, referer, level]
+  - id: "1.2"
+    order: 2
+    text: scenario.inherited
+    task_class: judgement
+    guidance: faded
+    minutes: 15
+    window_minutes: 3
+    briefing: {situation: scenario.inherited.situation, goal: scenario.inherited.goal, measured_by: scenario.inherited.measured_by}
+    defense: inherited
+    traffic: {profile: community, rate: 2}
+    attacks:
+      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+      - {at: 300, case: board-sqli-search, origin: ru}
+    completion: {judged: all}
+    cards:
+      - {id: records, when: start}
+      - {id: logged, when: alert}
+      - {id: window, when: window}
+    hints: [logged, objectives, tried]
+  - id: "1.3"
+    order: 3
+    text: scenario.busy
+    task_class: judgement
+    guidance: none
+    minutes: 20
+    window_minutes: 4
+    briefing: {situation: scenario.busy.situation, goal: scenario.busy.goal, measured_by: scenario.busy.measured_by}
+    defense: inherited
+    traffic: {profile: community, rate: 4}
+    attacks:
+      - {at: 90, case: board-sqli-orderby-sqlmap, origin: kr}
+      - {at: 210, case: board-sqli-search, origin: kr}
+      - {at: 260, case: board-xss-script-tag-in-search, origin: kr}
+      - {at: 330, case: board-sqli-orderby-sqlmap-tamper, origin: kr}
+      - {at: 480, case: board-sqli-login-bypass, origin: kr}
+      - {at: 540, case: board-sqli-union-search, origin: kr}
+      - {at: 600, case: board-path-traversal-static, origin: kr}
+      - {at: 660, case: board-xss-img-onerror-in-comment, origin: kr}
+    completion: {judged: all, pattern: judged}
+    hints: [kinds, succeeded]
+  - id: "2.2"
+    order: 5
+    text: scenario.markup
+    task_class: availability
+    guidance: faded
+    minutes: 20
+    window_minutes: 4
+    briefing: {situation: scenario.markup.situation, goal: scenario.markup.goal, measured_by: scenario.markup.measured_by}
+    defense: level2
+    traffic: {profile: community, rate: 2}
+    attacks:
+      - {at: 240, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {served: all, held: all}
+    cards:
+      - {id: blocked, when: blocked}
+      - {id: sort, when: alert}
+      - {id: window, when: window}
+    hints: [rules, scope, sqlmap]
+  - id: "2.3"
+    order: 6
+    text: scenario.threshold
+    task_class: availability
+    guidance: none
+    minutes: 30
+    window_minutes: 5
+    briefing: {situation: scenario.threshold.situation, goal: scenario.threshold.goal, measured_by: scenario.threshold.measured_by}
+    defense: untuned
+    traffic: {profile: plain, rate: 2}
+    attacks:
+      - {at: 600, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {served: all, held: all, thresholds: {inbound: 5, outbound: 4}}
+    hints: [iterate, body]
+  - id: "3.1"
+    order: 7
+    text: scenario.fixrule
+    task_class: detection
+    guidance: worked
+    minutes: 15
+    window_minutes: 3
+    briefing: {situation: scenario.fixrule.situation, goal: scenario.fixrule.goal, measured_by: scenario.fixrule.measured_by}
+    defense: broken-rule
+    traffic: {profile: plain, rate: 2}
+    attacks:
+      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {detected_by: suricata}
+    cards:
+      - {id: detect, when: start}
+      - {id: window, when: window}
+    hints: [buffer, apply]
+    steps:
+      - id: rules
+        point: {panel: '.pane-tab[data-pane="rules"]'}
+        check: {kind: click}
+      - id: buffer
+        point: {panel: "#lesson-rules", opens: rules}
+        check: {kind: choice, options: [http.uri, http.request_body, http.header, http.cookie], accept: [http.uri]}
+      - id: fix
+        point: {panel: "#lesson-rules", opens: rules}
+        rule: >-
+          alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi attempt - sort is not a column name";
+          flow:established,to_server; http.uri; pcre:"/[?&]sort=[-\w.]*[^-\w.&]/i";
+          classtype:web-application-attack; sid:9000102; rev:1;)
+        check: {kind: rules}
+      - id: done
+        point: {panel: "#scenario-done"}
+        check: {kind: click}
+  - id: "3.2"
+    order: 8
+    text: scenario.writerule
+    task_class: detection
+    guidance: faded
+    minutes: 20
+    window_minutes: 4
+    briefing: {situation: scenario.writerule.situation, goal: scenario.writerule.goal, measured_by: scenario.writerule.measured_by}
+    defense: ids
+    traffic: {profile: plain, rate: 2}
+    attacks:
+      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+    completion: {detected_by: suricata}
+    cards:
+      - {id: missed, when: alert}
+      - {id: sort, when: start}
+      - {id: window, when: window}
+    hints: [where, allow, msg]
+  - id: "3.3"
+    order: 9
+    text: scenario.tamper
+    task_class: detection
+    guidance: faded
+    minutes: 20
+    window_minutes: 4
+    briefing: {situation: scenario.tamper.situation, goal: scenario.tamper.goal, measured_by: scenario.tamper.measured_by}
+    defense: spelled
+    traffic: {profile: plain, rate: 2}
+    attacks:
+      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+      - {at: 300, case: board-sqli-orderby-sqlmap-tamper, origin: ru}
+    completion: {detected_by: suricata}
+    cards:
+      - {id: variant, when: alert}
+      - {id: window, when: window}
+    hints: [compare, allow]
+  - id: "3.4"
+    order: 10
+    text: scenario.body
+    task_class: detection
+    guidance: none
+    minutes: 15
+    window_minutes: 3
+    briefing: {situation: scenario.body.situation, goal: scenario.body.goal, measured_by: scenario.body.measured_by}
+    defense: full
+    traffic: {profile: plain, rate: 2}
+    attacks:
+      - {at: 120, case: board-xss-img-onerror-in-comment, origin: ru}
+      - {at: 240, case: board-xss-script-tag-in-search, origin: ru}
+    completion: {detected_by: suricata}
+    hints: [buffer, handler]
+  - id: "4.1"
+    order: 11
+    text: scenario.unknown
+    task_class: unknown
+    guidance: none
+    minutes: 25
+    window_minutes: 5
+    briefing: {situation: scenario.unknown.situation, goal: scenario.unknown.goal, measured_by: scenario.unknown.measured_by}
+    defense: full
+    traffic: {profile: club, rate: 2}
+    attacks:
+      - {at: 300, case: board-sqli-orderby-sqlmap-versioned, origin: us}
+      - {at: 600, case: board-sqli-orderby-sqlmap, origin: us}
+    completion: {served: all, held: all}
 foundations:
   - id: f1
     order: 1

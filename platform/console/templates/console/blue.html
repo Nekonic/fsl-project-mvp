@@ -20,6 +20,10 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></svg>
     <span data-t="blue.pane.triage"></span>
   </button>
+  <button class="pane-tab rail-btn hidden" data-pane="rules">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+    <span data-t="blue.pane.rules"></span>
+  </button>
   <button class="pane-tab rail-btn" data-pane="waf" data-src="/vm-terminal/fsl-waf/">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
     <span data-t="blue.pane.waf"></span>
@@ -59,6 +63,7 @@
             title="console" referrerpolicy="no-referrer"></iframe>
     {% include "console/blue_topology.html" %}
     {% include "console/blue_triage.html" %}
+    {% include "console/blue_rules.html" %}
     <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
       <p id="pane-status-title" class="text-heading font-medium"></p>
       <p id="pane-status-note" class="text-muted max-w-md"></p>
@@ -105,7 +110,13 @@
     overlaysBelowBars();
     field("topology").style.display = tab.dataset.pane === "topology" ? "flex" : "none";
     field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
+    field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
     triageDock();
+    if (tab.dataset.pane === "rules") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      return;
+    }
     if (tab.dataset.pane === "triage") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";

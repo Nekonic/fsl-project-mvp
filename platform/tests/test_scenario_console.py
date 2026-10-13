@@ -303,3 +303,42 @@ def test_the_judge_pane_docks_the_cards_the_hints_and_the_coach_above_its_list_a
     assert result["before"] == {"cards": False, "hints": False}
     assert result["docked"] == {"cards": True, "hints": True, "coach": True, "first": "coach-pop", "position": "static"}
     assert result["released"] == {"cards": False, "hints": False, "coach": False, "position": ""}
+
+def test_a_detection_scenario_opens_the_ids_rules_in_their_own_pane(client):
+    card = wargames.scenario_card(wargames.scenario_run("3.2"))
+    setup = serving(status(card, id="3.2", cards=[])).replace(
+        'if (request.route === "/api/sessions/1/ingest/")',
+        '''if (request.route === "/api/rules/") return {body: {content: "alert http any any -> any any (sid:1;)", version: "v1"}};
+  if (request.route === "/api/sessions/1/ingest/")''')
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      await browser.click('briefing-start');
+      const tab = browser.element('[data-pane="rules"]');
+      await browser.click('[data-pane="rules"]');
+      return {hidden: tab.classList.contains('hidden'), inPane: browser.element('lesson-rules').parentNode.id,
+              shown: browser.element('rules-pane').style.display, text: browser.element('lesson-rules-text').value,
+              judge: browser.element('[data-pane="triage"]').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"hidden": False, "inPane": "rules-pane-body", "shown": "flex",
+                              "text": "alert http any any -> any any (sid:1;)", "judge": True}
+
+def test_a_judgement_scenario_that_asks_the_kind_posts_it_with_the_verdict(client):
+    card = wargames.scenario_card(wargames.scenario_run("1.3"))
+    seen = open_page(client, "/blue/1/", setup=serving(status(card, id="1.3", cards=[])), scenario="""
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      await browser.click('[data-item="b2"] [data-judge="attack"]');
+      const asked = browser.element('[data-item="b2"] [data-kind-of]').classList.contains('flex');
+      const before = browser.element('[data-item="b2"] [data-got-in]').classList.contains('flex');
+      const kinds = [...document.querySelectorAll('[data-item="b2"] [data-pattern]')].map((button) => button.textContent);
+      await browser.click('[data-item="b2"] [data-pattern="CAPEC-66"]');
+      await browser.click('[data-item="b2"] [data-succeeded="false"]');
+      return {asked, before, kinds, posted: range.posted};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["asked"], result["before"]) == (True, False)
+    assert result["kinds"] == [english(f"triage.pattern.{pattern}") for pattern in card["patterns"]]
+    assert result["posted"] == [{"item": "b2", "verdict": "attack", "succeeded": False, "pattern": "CAPEC-66"}]

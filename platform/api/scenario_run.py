@@ -210,11 +210,14 @@ def judge_window(session) -> dict:
     window = state["windows"][-1]
     start, end = scenarios.at(window["started_at"]), scenarios.at(window["ends_at"])
     declared = declared_of(session)
-    extra = _extra(session, declared, state, start, end)
-    result = scenarios.judged_window(state["schedule"], window, _blocked_between(session, start, end), extra,
-                                     declared["completion"])
+    entries = state["schedule"] + (_person_attacks(session, start, end) if declared.get("red") == "person" else [])
     taken = views._snapshot_waf(session, scenario_window=window["n"])
-    result["fix"] = views._fix(session, (taken or {}).get("waf") or session.waf)
+    waf = (taken or {}).get("waf") or session.waf
+    extra = _extra(session, declared, state, entries, start, end) + scenarios.threshold_reasons(
+        declared["completion"], waf)
+    result = scenarios.judged_window(entries, window, _blocked_between(session, start, end), extra,
+                                     declared["completion"])
+    result["fix"] = views._fix(session, waf)
     result["judged_at"] = timezone.now().isoformat()
 
     def keep(state, held):
@@ -222,16 +225,24 @@ def judge_window(session) -> dict:
     _update(session.pk, keep)
     return result
 
-def _extra(session, declared, state, start, end) -> list:
+def _person_attacks(session, start, end) -> list[dict]:
+    fired = [case for case in session.cases.filter(malicious=True, started_at__gte=start, started_at__lt=end)
+             .order_by("started_at") if not case.meta.get("scheduled") and not views._replayed(case)]
+    return [{"n": -1 - index, "case": case.name, "origin": case.meta.get("origin") or "", "at": None,
+             "due": case.started_at.isoformat(), "state": scenarios.FIRED, "in_window": True, "case_id": case.case_id,
+             "outcome": scenarios.LEAKED if _succeeded(session, case) else scenarios.HELD}
+            for index, case in enumerate(fired)]
+
+def _extra(session, declared, state, entries, start, end) -> list:
     if declared["task_class"] == "judgement":
         return scenarios.judged_items([item["item"] for item in _items(session) if item["first"] < start],
                                       state["triage"])
     if declared["task_class"] == "detection":
-        return _detection_reasons(session, state, start, end)
+        return _detection_reasons(session, entries, start, end)
     return []
 
-def _detection_reasons(session, state, start, end) -> list:
-    fired = [entry for entry in scenarios.inside(state["schedule"], start, end) if entry.get("case_id")]
+def _detection_reasons(session, entries, start, end) -> list:
+    fired = [entry for entry in scenarios.inside(entries, start, end) if entry.get("case_id")]
     expected = wargames.expectations(session.scenario)
     missed = []
     for entry in fired:
@@ -342,14 +353,16 @@ def _item(item, rows, shown, sources, triage) -> dict:
         "waf": "blocked" if blocked else "logged" if waf else "none",
         "status": 403 if blocked else int(shown["status"]) if str(shown.get("status") or "").isdigit() else None,
         "rules": engines[:SHOWN_RULES],
-        **({"judged": {key: triage[item][key] for key in ("verdict", "succeeded", "right")}} if item in triage else {}),
+        **({"judged": {key: triage[item][key] for key in ("verdict", "succeeded", "right", "pattern")
+                       if key in triage[item]}} if item in triage else {}),
     }
 
 def _truths(session) -> dict[str, dict]:
     replayed = {case.case_id for case in session.cases.all() if views._replayed(case)}
     secret = session.browse_marker
     truths = {
-        scenarios.item_id(secret, case.case_id): {"malicious": case.malicious, "succeeded": _succeeded(session, case)}
+        scenarios.item_id(secret, case.case_id): {"malicious": case.malicious, "succeeded": _succeeded(session, case),
+                                                  "pattern": case.pattern}
         for case in session.cases.all() if case.case_id not in replayed
     }
     for marker in customers.alerted_markers(session):
@@ -395,20 +408,30 @@ def triage(request, session_id):
         raise BadRequest(f'"verdict" must be one of {list(scenarios.VERDICTS)}, got {verdict!r}')
     if verdict == scenarios.ATTACK and not isinstance(succeeded, bool):
         raise BadRequest(f'"succeeded" must be true or false for an attack, got {succeeded!r}')
+    pattern = _asked_pattern(declared_of(session), verdict, body.get("pattern"))
     truth = _truths(session).get(item)
     if truth is None or item not in {shown["item"] for shown in _items(session)}:
         raise BadRequest(f'"item" must be one of the items GET triage/ lists, got {item!r}')
-    result = scenarios.judged(truth, verdict, succeeded)
+    result = scenarios.judged(truth, verdict, succeeded, pattern)
 
     def keep(state, held):
         state["triage"][item] = scenarios.kept_judgement(state["triage"].get(item), verdict, succeeded, result,
-                                                         timezone.now().isoformat())
+                                                         timezone.now().isoformat(), pattern)
         return state["triage"][item]
     session, kept = _update(session.pk, keep)
     if scenarios.stuck_on_triage(kept):
         stuck(session, "triage", item)
     right = sum(1 for one in session.scenario_state["triage"].values() if one["right"])
     return views._reply(dict(result, item=item, tries=kept["tries"], right_so_far=right))
+
+def _asked_pattern(declared, verdict, pattern):
+    patterns = wargames.scenario_patterns(declared)
+    if not patterns or verdict != scenarios.ATTACK:
+        return None
+    if pattern not in patterns:
+        raise BadRequest(f'"pattern" must be one of {patterns} for an attack in scenario {declared["id"]}, '
+                         f'got {pattern!r}')
+    return pattern
 
 @require_http_methods(["GET"])
 def scenario_status(request, session_id):
