@@ -95,6 +95,25 @@
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
+# The same injection through sqlmap's tamper scripts written against
+# ModSecurity: keywords wrapped in MySQL versioned comments (/*!30874AND*/) and
+# spaces turned into comments. Held at paranoia level 1 (2026-10-13); no
+# lesson or availability scenario fires it, so it is the unseen variant of the
+# unknown-attack scenario.
+- name: board-sqli-orderby-sqlmap-versioned
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=posts_post.id*",
+         "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql",
+         "--random-agent", "--tamper=modsecurityversioned,space2comment", "--skip-heuristics",
+         "-D", "board", "-T", "auth_user", "-C", "username,password",
+         "--dump", "--batch", "--answers=crack=N", "--flush-session"]
+
 - name: board-xss-script-tag-in-search
   malicious: true
   stage: initial-compromise
