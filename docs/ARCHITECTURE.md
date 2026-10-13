@@ -657,7 +657,12 @@ If no new worker appears within 5 s the reload did not happen: it restores the
 previous file, reloads and refuses. Input is validated before anything is written:
 paranoia 1-4, rule id 900000-999999, target `ARGS`, `ARGS_GET`, `ARGS_POST`,
 `ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional
-`:name`, a path of `[A-Za-z0-9_./-]`, at most 20 entries.
+`:name`, or `REQUEST_URI_RAW` (the Korean search at PL3 also matches 920272
+there), a path of `[A-Za-z0-9_./-]`, at most 20 entries; optional
+`thresholds` `{inbound, outbound}` (1-100000) are set as
+`tx.inbound_anomaly_score_threshold` and `tx.outbound_anomaly_score_threshold`
+on the same `SecAction` as the level and read back. A `PUT` that leaves
+`thresholds` out keeps the ones in force; `"thresholds": null` clears them.
 `PUT /api/sessions/<id>/waf/` changes it (the agent path); `GET` reads the
 file in the session's WAF back through `crs.read`, which parses the paranoia
 level and every `ctl:ruleRemove*` line (commented lines skipped, continued
@@ -1245,7 +1250,132 @@ API (`platform/api/customers.py`, `views.session_traffic`):
 Records are pulled by byte offset (`tail -c`, at most 1 MiB a call, whole lines
 only) into `CustomerRequest` rows with one `bulk_create` per call; the offset
 lives in `Session.traffic`. The session page offers the switch only with
-`?traffic` in its URL, for testing; a scenario (P4) will start it itself.
+`?traffic` in its URL, for testing; a scenario starts it itself.
+
+The generator tells the board's own CSRF refusal (`refused_by: "app"`, not
+counted as blocked) by Django's failure page, `<span>(403)</span></h1>`, as
+well as its English sentence: the board answers in the customer's language, and
+a Korean customer's refusal (two flows of one persona racing the token rotation
+at sign-in) is in Korean.
+
+## Scenarios
+
+A scenario is a timed exercise on the range: customers and an attacker use
+the board while the learner defends with the real tools, and the platform
+judges it over a final verification window. The design is
+`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`
+(phase P4); rulings are the 2026-10-13 "scenario course" entries in
+`docs/DECISIONS.md`.
+
+**Descriptor.** `scenarios:` in a wargame's `scenario.yaml`, validated by
+`wargames.checked_scenarios`:
+
+| Field | Meaning |
+|---|---|
+| `id`, `order` | `1.1`, `2.1`, ...; ids share one namespace with the foundations and lessons |
+| `task_class` | `judgement`, `availability`, `detection` or `unknown` |
+| `guidance` | `worked` (may declare `steps`, run on the lesson step engine), `faded`, `none` |
+| `text`, `briefing` | the strings prefix; `briefing` maps `situation`, `goal`, `measured_by` to string keys |
+| `minutes`, `window_minutes` | the scenario's length and its final verification window |
+| `defense` | a posture of the wargame's `defense:` map (CRS level, exclusions, thresholds; Suricata ruleset) |
+| `traffic` | `{profile, rate}` for the customers (`traffic.yaml`) |
+| `attacks` | `[{at, case, origin}]`: seconds after open, a malicious case, an origin; hidden from the learner |
+| `completion` | per class: judgement `{judged: all}`; availability and unknown `{served: all, held: all}`; detection `{detected_by: suricata}` |
+| `cards` | `[{id, when}]`, `when` one of `start`, `alert`, `blocked`, `window` |
+| `hints` | hint ids, offered one at a time |
+
+`GET /api/wargames/` lists each scenario's card (`wargames.scenario_card`)
+without `attacks`; `GET /api/sessions/<id>/` drops `attacks` and the cases
+from a worked scenario's steps.
+
+**Opening.** `POST /api/sessions/ {"scenario": "2.1"}` resolves the wargame
+from the scenario id, refuses `lesson`, `guidance`, `defense` and `mode`, takes
+the declared posture as any session does, then `scenario_run.begin` starts the
+customers and writes `Session.scenario_state` (migration 0025, beside
+`Session.course_scenario`): the schedule with each attack's absolute due time,
+the windows, the verdicts, the hint offer and the WAF versions seen. A worked
+scenario sets `guidance` and `lesson` to its id, so its steps run on
+`/lesson/steps/` without seeding replays. Customers that cannot start close
+the session with 503.
+
+**The engine** (`platform/api/scenario_run.py`, pure rules in
+`platform/scenarios.py`) is one thread in the platform process, started on
+the first scenario and at boot by `fsl/wsgi.py` (`resume`, which puts an
+attack interrupted mid-fire back to due). Every `FSL_SCENARIO_TICK` (2 s) it,
+for each open scenario session:
+
+- opens the window at its scheduled time (`minutes - window_minutes` after
+  open) if the learner has not;
+- claims each due attack and fires it on a pool of four through
+  `views._fire`, marked `meta.scheduled` (not a replay mark, so it counts in
+  both scores); a sqlmap dump goes through `views._credit_loot`, attributed to
+  that case, so the first score counts a loss only when the board's own
+  accounts match; the entry keeps `outcome` held or leaked;
+- every `FSL_SCENARIO_OBSERVE` (15 s) pulls the customers' records, ingests
+  the last 180 s, and every `FSL_SCENARIO_WAF_POLL` (20 s) reads the WAF file
+  to notice a change made in the terminal;
+- judges an open window once it has ended and every attack due inside it has
+  fired or failed.
+
+Closing cancels the attacks still due; one already firing finishes and is
+recorded.
+
+**The final verification window.** `POST .../scenario/verify-window/` ("I'm
+done") or the schedule opens it for `window_minutes`; the engine adds one
+entry inside it for every attack case the schedule names that is not already
+due there. What it judges is the class's `completion`: `served`, no customer
+request blocked by the defence within it (403, not the app's); `held`, every
+attack inside it fired and was held (no loot match, no effect); `judged`,
+every item first seen before the window judged right; `detected_by`, every
+attack inside it drew a corroborated Suricata alert and no customer request
+did. A judgement scenario is judged on its verdicts alone, as the design's
+class table says, so customers blocked during its window are reported beside
+the result, not counted against it. The result
+names the fix (`lesson.fix_class` on the WAF snapshot taken then: `level`,
+`threshold`, `rule`, `target`, `path_target`). A failed window can be followed
+by another.
+
+**Judging alerts** (`GET/POST /api/sessions/<id>/triage/`). One item per
+marker that drew alerts: each customer request, and each attack case however
+many requests it sent (one case is one decision). The item id is a hash of the
+marker with the session's browse marker, so it cannot be matched to
+`/cases/`. An item shows the first and last alert, the alert count, source
+addresses, one request, the WAF verdict (`blocked` when a 949/959 total fired,
+`logged`, `none`), the status and up to 12 rules with engine, id, message and
+count; never the case name or a label. Replays and the learner's own Website
+pane requests are left out. A verdict `{item, verdict: attack|customer,
+succeeded}` is judged against the record (a case's `malicious`, or a customer
+row) and `succeeded` against the target (loot matched on the case, or an
+objective in its window). The step check kind `triage` (`judged: customer |
+attack | all`) passes on the learner's right verdicts.
+
+**Status, hints, debrief.** `GET .../scenario/` returns the scenario card,
+`phase` (running, window, passed, failed, closed), `time_left`, the last
+minute's blocked customers and alerts, objectives lost, the window, the
+completion, the cards due and the hint offer. A hint is offered (not
+recorded) when a step check fails twice, the same item is judged wrong twice,
+a `PUT /waf/` writes the file already in force, or five minutes pass without a
+WAF change while customers are blocked; `POST .../scenario/hints/` opens the
+next hint and records it in `Session.hints`. `GET .../scenario/debrief/`
+(409 until a window is judged or the session closes, so the schedule stays
+hidden) returns the lesson debrief's shape plus `customers` and the attack
+`timeline`; the console renders both with `debrief_script.html`.
+
+**Console.** The home page lists the scenarios under each wargame; Start
+opens the blue console on the briefing. A strip above the panes shows the
+time left, customers blocked and alerts per minute, objectives lost, the hint
+offer and I'm done; a judgement scenario adds the Judge pane; cards appear
+when their moment comes; the debrief opens when the window is judged. A worked
+scenario's steps run on the lesson note with its Check tab and hint list
+hidden.
+
+**On the board.** `1.1` "A quiet shift" (judgement, worked, 15 min, window 3):
+`level2` (PL2), customers `community` at 2/s, one sqlmap at 150 s from `ru`.
+`2.1` "Korean searches blocked" (availability, faded, 20 min, window 4):
+`level3` (PL3), customers `readers` (the `plain` mix without comments) at 2/s,
+one sqlmap at 240 s. At PL3 a Korean search is refused by 920272 and 942460 on
+`ARGS:q` (and 920272 on `REQUEST_URI_RAW` once those are excluded), and every
+page a customer opens after one by 920272 on `REQUEST_HEADERS:Referer`.
 
 ## Decisions
 
