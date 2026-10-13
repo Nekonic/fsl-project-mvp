@@ -105,6 +105,7 @@
     overlaysBelowBars();
     field("topology").style.display = tab.dataset.pane === "topology" ? "flex" : "none";
     field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
+    triageDock();
     if (tab.dataset.pane === "triage") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";
