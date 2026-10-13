@@ -20,12 +20,15 @@ def workers_of(pid: str) -> str:
 SETTLE_POLLS = 50
 FIRST_ID = 10000
 MOST_EXCLUSIONS = 20
-TARGET = re.compile(r"(ARGS|ARGS_GET|ARGS_POST|ARGS_NAMES|REQUEST_COOKIES|REQUEST_HEADERS)(:[\w-]+)?", re.ASCII)
+TARGET = re.compile(r"(ARGS|ARGS_GET|ARGS_POST|ARGS_NAMES|REQUEST_COOKIES|REQUEST_HEADERS)(:[\w-]+)?|REQUEST_URI_RAW", re.ASCII)
 PATH = re.compile(r"/[\w./-]*", re.ASCII)
+THRESHOLDS = ("inbound", "outbound")
+HIGHEST_THRESHOLD = 100000
 
 LEVEL = re.compile(r"tx\.blocking_paranoia_level=([1-4])\b")
 REMOVED = re.compile(r"ctl:ruleRemove(?:TargetById=(\d+);([\w:-]+)|ById=(\d+))")
 BEGINS = re.compile(r'"@beginsWith (/[\w./-]*)"')
+THRESHOLD = re.compile(r"tx\.(inbound|outbound)_anomaly_score_threshold=(\d+)")
 
 class TuningRefused(ValueError):
     pass
@@ -39,7 +42,13 @@ def checked(tuning) -> dict:
     exclusions = tuning.get("exclusions") or []
     if not isinstance(exclusions, list) or len(exclusions) > MOST_EXCLUSIONS:
         raise TuningRefused(f'"exclusions" must be a list of at most {MOST_EXCLUSIONS} entries')
-    return {"paranoia": paranoia, "exclusions": [_exclusion(entry) for entry in exclusions]}
+    thresholds = tuning.get("thresholds") or {}
+    if not isinstance(thresholds, dict) or not set(thresholds) <= set(THRESHOLDS) or not all(
+            type(score) is int and 1 <= score <= HIGHEST_THRESHOLD for score in thresholds.values()):
+        raise TuningRefused(f'"thresholds" maps inbound and outbound to an anomaly score from 1 to '
+                            f'{HIGHEST_THRESHOLD}, got {thresholds!r}')
+    return {"paranoia": paranoia, "exclusions": [_exclusion(entry) for entry in exclusions],
+            **({"thresholds": thresholds} if thresholds else {})}
 
 def _exclusion(entry) -> dict:
     entry = entry if isinstance(entry, dict) else {}
@@ -56,7 +65,9 @@ def rendered(tuning: dict) -> str:
     level = tuning["paranoia"]
     lines = [
         f'SecAction "id:{FIRST_ID},phase:1,pass,nolog,'
-        f'setvar:tx.blocking_paranoia_level={level},setvar:tx.detection_paranoia_level={level}"'
+        f'setvar:tx.blocking_paranoia_level={level},setvar:tx.detection_paranoia_level={level}'
+        + "".join(f",setvar:tx.{way}_anomaly_score_threshold={score}"
+                  for way, score in sorted(tuning.get("thresholds", {}).items())) + '"'
     ]
     for offset, entry in enumerate(tuning["exclusions"], start=1):
         control = (f"ruleRemoveTargetById={entry['rule_id']};{entry['target']}"
@@ -79,7 +90,9 @@ def parsed(text: str) -> dict:
         for rule, target, whole in REMOVED.findall(line):
             exclusions.append({"rule_id": int(rule or whole), "target": target,
                                "path": path.group(1) if path else ""})
-    return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions}
+    thresholds = {way: int(score) for way, score in THRESHOLD.findall("\n".join(lines))}
+    return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions,
+            **({"thresholds": thresholds} if thresholds else {})}
 
 def apply(tuning, gateway, layout: Layout = Layout()) -> dict:
     tuning = checked(tuning)

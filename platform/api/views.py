@@ -504,14 +504,14 @@ def _put_exclusion(session, check):
     with _turn_of(session):
         standing = _waf_in_force(session)
         exclusions = [entry for entry in standing["exclusions"] if entry != wanted] + [wanted]
-        session.waf = crs.apply({"paranoia": standing["paranoia"] or 1, "exclusions": exclusions},
-                                _range(session).runner("gateway"), settings.FSL_WAF)
+        session.waf = crs.apply({"paranoia": standing["paranoia"] or 1, "exclusions": exclusions,
+                                 **_thresholds_of(standing)}, _range(session).runner("gateway"), settings.FSL_WAF)
         session.save(update_fields=["waf"])
 
 def _put_level(session, taught):
     posture = _posture(session)
     with _turn_of(session):
-        session.waf = crs.apply({"paranoia": taught["solved_at"]["paranoia"], "exclusions": posture["exclusions"]},
+        session.waf = crs.apply({**posture, "paranoia": taught["solved_at"]["paranoia"]},
                                 _range(session).runner("gateway"), settings.FSL_WAF)
         session.save(update_fields=["waf"])
 
@@ -1604,12 +1604,18 @@ def session_waf(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     if request.method == "PUT":
         _refuse_closed(session)
-        tuning = crs.checked(_payload(request))
+        body = _payload(request)
+        crs.checked(body)
         with _turn_of(session):
+            kept = {} if "thresholds" in body else _thresholds_of(_waf_in_force(session))
+            tuning = crs.checked({**kept, **body})
             session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
             session.save(update_fields=["waf"])
     tuning = _waf_in_force(session)
     return _reply(dict(tuning, version=_version(json.dumps(tuning, sort_keys=True))))
+
+def _thresholds_of(standing):
+    return {"thresholds": standing["thresholds"]} if standing.get("thresholds") else {}
 
 def _waf_in_force(session):
     recorded = {"file": None} | (session.waf or {"paranoia": None, "exclusions": []})
