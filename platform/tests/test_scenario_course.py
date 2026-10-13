@@ -353,3 +353,12 @@ def test_raising_the_thresholds_above_the_crs_defaults_is_a_threshold_fix():
                             {"paranoia": 2, "exclusions": []}, "") == "threshold"
     assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}},
                             {"paranoia": 2, "exclusions": []}, "") is None
+
+def test_a_scenario_without_a_lesson_names_a_path_scoped_exception_on_any_path_a_path_target():
+    from api import views
+
+    session = opened("4.1")
+    waf = {"paranoia": 1, "exclusions": [{"rule_id": 942100, "target": "ARGS:body", "path": "/posts/"}]}
+
+    assert views._fix(session, waf) == "path_target"
+    assert views._fix(session, dict(waf, exclusions=[{"rule_id": 942100, "target": "ARGS:body", "path": ""}])) == "target"

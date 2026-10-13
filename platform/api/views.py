@@ -843,7 +843,7 @@ def _replay_row(session, recorded):
     }
 
 def _fix(session, waf):
-    taught = _lesson_of(session) or {}
+    taught = (_lesson_of(session) if session.guidance else None) or {}
     scope = next((step["check"].get("path", "") for step in taught.get("steps", []) if step["check"]["kind"] == "waf"), "")
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
     return lesson.fix_class(waf, crs.checked(declared["waf"]) if declared else None, scope)
