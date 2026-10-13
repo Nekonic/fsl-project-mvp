@@ -18,12 +18,13 @@ CUSTOMER = "customer"
 VERDICTS = (ATTACK, CUSTOMER)
 WRONGS_BEFORE_OFFER = 2
 IDLE = timedelta(minutes=5)
+CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
 
 def at(value: str) -> datetime:
     return parse_datetime(value)
 
 def schedule(declared: dict, opened_at: datetime) -> list[dict]:
-    ordered = sorted(declared["attacks"], key=lambda attack: attack["at"])
+    ordered = sorted(declared.get("attacks") or [], key=lambda attack: attack["at"])
     return [
         {"n": n, "case": attack["case"], "origin": attack.get("origin") or "", "at": attack["at"],
          "due": (opened_at + timedelta(seconds=attack["at"])).isoformat(), "state": DUE, "in_window": False}
@@ -43,7 +44,7 @@ def window_attacks(declared: dict, entries: list[dict], start: datetime, opened_
     end = start + timedelta(minutes=declared["window_minutes"])
     already = {entry["case"] for entry in inside(entries, start, end) if entry["state"] != CANCELLED}
     origins: dict[str, str] = {}
-    for attack in sorted(declared["attacks"], key=lambda attack: attack["at"]):
+    for attack in sorted(declared.get("attacks") or [], key=lambda attack: attack["at"]):
         origins.setdefault(attack["case"], attack.get("origin") or "")
     missing = [case for case in origins if case not in already]
     gap = (end - start) / (len(missing) + 1)
@@ -83,20 +84,33 @@ def judged_items(items: list[str], triage: dict) -> list:
 def item_id(secret: str, marker: str) -> str:
     return hashlib.sha256(f"{secret}|{marker}".encode()).hexdigest()[:16]
 
-def judged(truth: dict, verdict: str, succeeded) -> dict:
+def judged(truth: dict, verdict: str, succeeded, pattern: str | None = None) -> dict:
     wanted = ATTACK if truth["malicious"] else CUSTOMER
     verdict_right = verdict == wanted
     succeeded_right = None if verdict == CUSTOMER else succeeded is truth["succeeded"]
-    return {"right": verdict_right and succeeded_right is not False,
-            "verdict_right": verdict_right, "succeeded_right": succeeded_right}
+    pattern_right = None if verdict == CUSTOMER or pattern is None else pattern == truth.get("pattern")
+    return {"right": verdict_right and succeeded_right is not False and pattern_right is not False,
+            "verdict_right": verdict_right, "succeeded_right": succeeded_right,
+            **({"pattern_right": pattern_right} if pattern is not None else {})}
 
-def kept_judgement(kept: dict | None, verdict: str, succeeded, result: dict, now: str) -> dict:
+def kept_judgement(kept: dict | None, verdict: str, succeeded, result: dict, now: str, pattern: str | None = None) -> dict:
     kept = dict(kept or {})
     tries = kept.get("tries", 0) + 1
     wrong = 0 if result["right"] else kept.get("wrong", 0) + 1
     return {"verdict": verdict, "succeeded": succeeded if verdict == ATTACK else None, "right": result["right"],
             "tries": tries, "wrong": wrong, "first_right": kept.get("first_right", result["right"] and tries == 1),
-            "at": now}
+            "at": now, **({"pattern": pattern} if verdict == ATTACK and pattern is not None else {})}
+
+def threshold_reasons(completion: dict, waf: dict | None) -> list:
+    highest = completion.get("thresholds")
+    if not highest:
+        return []
+    in_force = {way: ((waf or {}).get("thresholds") or {}).get(way, default) for way, default in CRS_THRESHOLDS.items()}
+    if all(in_force[way] <= score for way, score in highest.items()):
+        return []
+    return [["scenario.fail.threshold", [in_force["inbound"], in_force["outbound"],
+                                         highest.get("inbound", in_force["inbound"]),
+                                         highest.get("outbound", in_force["outbound"])]]]
 
 def stuck_on_triage(kept: dict) -> bool:
     return kept["wrong"] >= WRONGS_BEFORE_OFFER

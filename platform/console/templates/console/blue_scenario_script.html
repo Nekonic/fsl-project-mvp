@@ -216,6 +216,10 @@ function triageRow(item) {
     <div class="flex flex-wrap items-center gap-2 mt-1">
       <button type="button" class="btn btn-sm btn-ghost" data-judge="customer">${esc(t("triage.customer"))}</button>
       <button type="button" class="btn btn-sm btn-ghost" data-judge="attack">${esc(t("triage.attack"))}</button>
+      <span class="hidden items-center gap-2 flex-wrap" data-kind-of>
+        <span class="text-muted">${esc(t("triage.pattern"))}</span>
+        ${(scenario.patterns || []).map((pattern) => `<button type="button" class="btn btn-sm btn-ghost" data-pattern="${esc(pattern)}">${esc(t(`triage.pattern.${pattern}`))}</button>`).join("")}
+      </span>
       <span class="hidden items-center gap-2" data-got-in>
         <span class="text-muted">${esc(t("triage.succeeded"))}</span>
         <button type="button" class="btn btn-sm btn-ghost" data-succeeded="true">${esc(t("triage.yes"))}</button>
@@ -227,7 +231,8 @@ function triageRow(item) {
 }
 
 async function triageJudge(row, verdict, succeeded) {
-  const body = { item: row.dataset.item, verdict, ...(verdict === "attack" ? { succeeded } : {}) };
+  const body = { item: row.dataset.item, verdict, ...(verdict === "attack" ? { succeeded } : {}),
+    ...(verdict === "attack" && row.dataset.pattern ? { pattern: row.dataset.pattern } : {}) };
   const judged = await post(scenarioPath("triage/"), body);
   const said = row.querySelector("[data-said]");
   if (!judged.ok) {
@@ -236,21 +241,36 @@ async function triageJudge(row, verdict, succeeded) {
   }
   const answer = judged.body;
   said.className = `text-[12px] ${answer.right ? "text-success" : "text-danger"}`;
-  said.textContent = t(answer.right ? "triage.said.right"
-    : answer.verdict_right ? "triage.said.succeeded" : "triage.said.verdict");
+  said.textContent = t(answer.right ? "triage.said.right" : !answer.verdict_right ? "triage.said.verdict"
+    : answer.pattern_right === false ? "triage.said.pattern" : "triage.said.succeeded");
   row.querySelector("[data-judged]").innerHTML = badge(t(answer.right ? "triage.right" : "triage.wrong"), answer.right ? "ok" : "red");
   changed.forEach((then) => then("triage"));
   scenarioRead();
 }
 
+function shownIn(element, shown) {
+  element.classList.toggle("hidden", !shown);
+  element.classList.toggle("flex", shown);
+}
+
 function triageWire(row) {
   const gotIn = row.querySelector("[data-got-in]");
+  const kindOf = row.querySelector("[data-kind-of]");
+  const asksPattern = (scenario.patterns || []).length > 0;
   row.querySelectorAll("[data-judge]").forEach((button) => button.addEventListener("click", () => {
     const verdict = button.dataset.judge;
     triageVerdicts.set(row.dataset.item, verdict);
-    gotIn.classList.toggle("hidden", verdict !== "attack");
-    gotIn.classList.toggle("flex", verdict === "attack");
+    shownIn(kindOf, verdict === "attack" && asksPattern);
+    shownIn(gotIn, verdict === "attack" && !asksPattern);
     if (verdict === "customer") triageJudge(row, verdict);
+  }));
+  row.querySelectorAll("[data-pattern]").forEach((button) => button.addEventListener("click", () => {
+    row.dataset.pattern = button.dataset.pattern;
+    row.querySelectorAll("[data-pattern]").forEach((other) => {
+      other.classList.toggle("btn-blue", other === button);
+      other.classList.toggle("btn-ghost", other !== button);
+    });
+    shownIn(gotIn, true);
   }));
   row.querySelectorAll("[data-succeeded]").forEach((button) => button.addEventListener("click", () =>
     triageJudge(row, "attack", button.dataset.succeeded === "true")));
@@ -275,10 +295,20 @@ function scenarioNote() {
   document.querySelector('#lesson-tabs [data-tab="check"]').classList.add("hidden");
 }
 
+const EDITS_RULES = ["detection", "unknown"];
+
+function rulesPane() {
+  document.querySelector('.pane-tab[data-pane="rules"]').classList.remove("hidden");
+  field("rules-pane-body").appendChild(field("lesson-rules"));
+  rulesEditor();
+  field("lesson-rules-text").setAttribute("rows", "18");
+}
+
 async function scenarioStart(started) {
   if (!(await scenarioRead())) return;
   const tab = document.querySelector('.pane-tab[data-pane="triage"]');
   tab.classList.toggle("hidden", scenario.task_class !== "judgement");
+  if (EDITS_RULES.includes(scenario.task_class)) rulesPane();
   if (!remembered(BRIEFED_KEY(sessionId()), false) && !started.ended_at) briefingShow();
   field("briefing-start").addEventListener("click", briefingClose);
   field("scenario-briefing-open").addEventListener("click", briefingShow);
@@ -301,6 +331,6 @@ async function scenarioStart(started) {
     if (!document.hidden && scenario && scenario.phase !== "closed") scenarioRead();
   }, SCENARIO_POLL_MS);
   setInterval(() => {
-    if (!document.hidden && paneOpen("triage") && !field("triage-list").querySelector("[data-got-in].flex")) triageOpen();
+    if (!document.hidden && paneOpen("triage") && !field("triage-list").querySelector("[data-got-in].flex, [data-kind-of].flex")) triageOpen();
   }, TRIAGE_POLL_MS);
 }

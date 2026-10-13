@@ -32,6 +32,9 @@ BRIEFING = ("situation", "goal", "measured_by")
 CARD_MOMENTS = ("start", "alert", "blocked", "window")
 COMPLETION = {"judgement": {"judged": ("all",)}, "availability": {"served": ("all",), "held": ("all",)},
               "detection": {"detected_by": ("suricata",)}, "unknown": {"served": ("all",), "held": ("all",)}}
+COMPLETION_OPTIONS = {"judgement": ("pattern",), "availability": ("thresholds",)}
+PATTERN_JUDGED = "judged"
+REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 REPLAY_EXPECTS = ("held", "served")
 DETECT_EXPECTS = ("alert", "quiet")
@@ -171,13 +174,19 @@ def checked_scenario_run(one: dict, known: dict[str, bool], where: str, defenses
     if not isinstance(shaped, dict) or shaped.get("profile") not in profiles:
         raise InvalidCatalogue(f"{where}: traffic.profile must be one of the wargame's customer profiles "
                                f"{sorted(profiles)}")
-    checked_attacks(one.get("attacks"), known, minutes, where)
+    red = one.get("red", REDS[0])
+    if red not in REDS:
+        raise InvalidCatalogue(f"{where}: red must be one of {', '.join(REDS)}, got {red!r}")
+    checked_attacks(one.get("attacks"), known, minutes, where, red == "person")
     completion = one.get("completion")
     wanted = COMPLETION[one["task_class"]]
-    if not isinstance(completion, dict) or set(completion) != set(wanted) or any(
+    optional = COMPLETION_OPTIONS.get(one["task_class"], ())
+    if not isinstance(completion, dict) or set(completion) - set(optional) != set(wanted) or any(
             completion[key] not in allowed for key, allowed in wanted.items()):
         raise InvalidCatalogue(f"{where}: a {one['task_class']} scenario's completion is "
-                               f"{ {key: list(allowed) for key, allowed in wanted.items()} }")
+                               f"{ {key: list(allowed) for key, allowed in wanted.items()} }, optionally "
+                               f"{', '.join(optional) or 'nothing else'}")
+    checked_completion_options(completion, where)
     cards = one.get("cards", [])
     if not isinstance(cards, list) or not all(isinstance(card, dict) and isinstance(card.get("id"), str)
                                               and card.get("when") in CARD_MOMENTS for card in cards):
@@ -186,9 +195,21 @@ def checked_scenario_run(one: dict, known: dict[str, bool], where: str, defenses
     if not isinstance(hints, list) or not all(isinstance(hint, str) for hint in hints) or len(set(hints)) != len(hints):
         raise InvalidCatalogue(f"{where}: hints are a list of distinct hint ids")
 
-def checked_attacks(attacks: Any, known: dict[str, bool], minutes: int, where: str) -> None:
+def checked_completion_options(completion: dict, where: str) -> None:
+    if "pattern" in completion and completion["pattern"] != PATTERN_JUDGED:
+        raise InvalidCatalogue(f"{where}: completion.pattern can only be {PATTERN_JUDGED!r}")
+    thresholds = completion.get("thresholds", {"inbound": 1})
+    if not isinstance(thresholds, dict) or not thresholds or not set(thresholds) <= set(crs.THRESHOLDS) or not all(
+            type(score) is int and 1 <= score <= crs.HIGHEST_THRESHOLD for score in thresholds.values()):
+        raise InvalidCatalogue(f"{where}: completion.thresholds maps inbound and outbound to the highest anomaly "
+                               f"threshold the final check accepts")
+
+def checked_attacks(attacks: Any, known: dict[str, bool], minutes: int, where: str, by_person: bool = False) -> None:
+    if by_person and attacks in (None, []):
+        return
     if not isinstance(attacks, list) or not attacks:
-        raise InvalidCatalogue(f"{where}: attacks is a non-empty list of an at, a case and an optional origin")
+        raise InvalidCatalogue(f"{where}: attacks is a non-empty list of an at, a case and an optional origin, "
+                               f"unless red is person")
     for attack in attacks:
         attack = attack if isinstance(attack, dict) else {}
         at, case, origin = attack.get("at"), attack.get("case"), attack.get("origin", "")
@@ -201,7 +222,9 @@ def checked_attacks(attacks: Any, known: dict[str, bool], minutes: int, where: s
             raise InvalidCatalogue(f"{where}: an attack's origin names an origin, got {origin!r}")
 
 def as_lesson(one: dict) -> dict:
-    return one | {"cases": list(dict.fromkeys(attack["case"] for attack in one["attacks"])), "group": "scenarios"}
+    detector = (one.get("completion") or {}).get("detected_by")
+    return one | {"cases": list(dict.fromkeys(attack["case"] for attack in one.get("attacks") or [])),
+                  "group": "scenarios", **({"detected_by": detector} if detector else {})}
 
 def checked_default_lesson(scenario: dict, source) -> None:
     named = scenario.get("default_lesson")
@@ -562,7 +585,15 @@ def scenario_card(one: dict[str, Any]) -> dict[str, Any]:
         "defense": one["defense"],
         "steps": len(one.get("steps") or []),
         "hints": len(one.get("hints") or []),
+        "red": one.get("red", REDS[0]),
+        "patterns": scenario_patterns(one),
     }
+
+def scenario_patterns(one: dict[str, Any]) -> list[str]:
+    if "pattern" not in one.get("completion", {}):
+        return []
+    owner = scenario_owner(one["id"])
+    return sorted({case["pattern"] for case in cases(owner) if case["malicious"] and case["pattern"]}) if owner else []
 
 def _summary(case: dict[str, Any]) -> str:
     if is_tool_case(case):

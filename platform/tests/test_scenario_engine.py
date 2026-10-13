@@ -96,8 +96,12 @@ def alert(session, marker, source="modsecurity", rule="920272", at=None, src="17
                                     signature=f"rule {rule}", timestamp=at or timezone.now(), src_ip=src,
                                     marker=marker, raw=raw)
 
-def test_the_board_declares_its_two_scenarios_in_order():
-    assert [one["id"] for one in wargames.scenarios("board")] == ["1.1", "2.1"]
+COURSE = ["1.1", "1.2", "1.3", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "3.4", "4.1"]
+
+def test_the_board_declares_its_scenarios_in_task_class_order():
+    assert [one["id"] for one in wargames.scenarios("board")] == COURSE
+    assert [one["task_class"] for one in wargames.scenarios("board")] == [
+        "judgement"] * 3 + ["availability"] * 3 + ["detection"] * 4 + ["unknown"]
     assert wargames.scenario_owner("2.1") == "board"
     assert wargames.scenario_owner("9.9") is None
 
@@ -137,7 +141,7 @@ def test_the_catalogue_shows_each_scenario_without_its_attack_schedule(client):
     listed = client.get("/api/wargames/").json()
     board = next(wargame for wargame in listed if wargame["id"] == "board")
 
-    assert [one["id"] for one in board["scenarios"]] == ["1.1", "2.1"]
+    assert [one["id"] for one in board["scenarios"]] == COURSE
     shown = json.dumps(board["scenarios"])
     assert "attacks" not in shown and SQLMAP not in shown and '"at"' not in shown
     assert board["scenarios"][1] | {} == board["scenarios"][1]
