@@ -347,6 +347,21 @@ sensor on the path is returned under `elsewhere`; the WAF's verdict (blocked on
 logged rule, else unknown) and rule ids sit on the gateway; the target is
 reached only when the WAF passed it and answered something other than 502-504.
 
+Follow first ingests the last 600 s (the blue console ingests only after a
+VERIFY, so a request blocked a moment ago would show no rule otherwise). It
+also reads the Suricata `http` events of the request through the ingest path
+(`elastic.fetch`, the same paging as the full ingest; `elastic.suricata_marker`
+reads their marker): a Website pane request's by its browse marker in its time
+window, or by the same URL when the event has no marker; a fired case's by its
+case id in its window. A sensor hop carries `requests` (how many http records
+that sensor wrote of it) and the first five as `seen` (source, destination and
+port, method, URL, status), and an http record is evidence: a request no rule
+alerted on is still shown passing the sensor. The http events never become
+`Detection` rows, so neither score sees them. The overlay places hosts by the
+names the range reports them under; OpenStack reports a slot's servers by their
+declared names (`slot.known_as`), and only the VM's own hostname, which the
+syslog records carry, has the slot suffix.
+
 ## Isolation seams
 
 Each concern has one owning file. The exceptions below exist in code today.
@@ -921,6 +936,58 @@ in the pane's bottom right. The box has `pointer-events: none` and is placed
 every animation frame; with no target for about 2 s the popover says where to
 look. Theory (five cards) and Hints (reasoning, then the folded solution) stay
 in the note, out of the path.
+
+### Foundations F1-F6
+
+`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`
+phase P2. The board's `scenario.yaml` declares a `foundations:` list beside
+`lessons:`, checked like a lesson list (ids unique across both lists).
+`wargames.foundations()` lists it; `wargames.lesson(lesson_id=...)` finds a
+unit in either list and marks a foundation `group: foundations`, and
+`wargames.lessons()` and the default lesson are unchanged. `GET
+/api/wargames/` adds `foundations` (the lesson card plus `learns`, the string
+key of what the unit teaches); the main page lists them first under
+"Foundations" with minutes, what each teaches and a Start button (a guided
+open of that unit). A foundation's note lands on its one explanation card
+(Theory, opened) on the first visit.
+
+| unit | defense | the learner | answers read from |
+|---|---|---|---|
+| f1 My range | `full` | opens the Topology pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image, else the scorer's host (fsl-platform on OpenStack, where Elasticsearch runs in the platform's compose); the switch the scenario's database node is linked to (`board-default`, `estate`) |
+| f2 Follow one request | `full` | searches in Korean in the Website pane, follows it in the Topology pane | the learner's own Website pane request: the follow walk's source address, the URL's port and the http records' destination ports, the status |
+| f3 HTTP | `full` | the same request's method, path, parameter, status class | the same request record |
+| f4 Reading logs | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
+| f5 Follow an attack | `full` | sends `' OR 1=1--`, follows it, names the host that stopped it and the rule that recognised it; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the follow walk's blocking hop, the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
+| f6 What a miss costs | `missed` | reads the WAF's exclusion file, runs the same sqlmap, pastes the dumped table, says how many accounts leaked and how many objectives the first score counts lost | the WAF file in force, the loot matched against the session's snapshot, `result.objectives.lost` |
+
+`missed` is CRS paranoia level 1 with `ruleRemoveById` 949110 and 959100 and
+`local.rules`. No unit question carries an `accept` list.
+
+New check kinds: `sent` passes when the session's Website pane kept a request
+whose decoded URL matches the step's `match` regular expression (the console
+checks 1.5 s after the pane shows a matching path, and polls); `kali` names a
+tool case of the case file: reaching the step gives it a marker, and its
+`command` is the case's argv for the scenario's `public_url` with
+`--headers=X-FSL-Case: <marker>` appended (`tools.tool_argv`, the harness's own
+labelling). The check passes when the sensor's http records carry the marker
+and the tool's user agent; it then records the run as an ordinary malicious
+case (`meta.kali`, no replay mark, so it counts in both scores like any other
+red action) and ingests the session. The marker is in the command rather than
+the proxy label because opening the Red console clears the label. "Do it for
+me" fires the case from the attacker box instead (`meta.done_for_me`, the
+dump kept as `meta.dumped`). `loot` takes the pasted table (`tools.dumped`,
+or `name:hash` and `| name | hash |` lines) and credits it as `POST /loot/`
+does, attributed to the kali case; `_credit_loot` now keeps the matched
+accounts on the case it was attributed to (`meta.loot`).
+
+An answer reads `of:` one of `entry`, `logs`, `segment`, `lost`, `excluded`
+(range facts), one of `source`, `port`, `status`, `method`, `path`,
+`parameter`, `status_class`, `engine`, `sensor_source`, `waf_source`,
+`stopped_at` with `about:` a `sent` step (the latest Website pane request
+matching it), or `requests` or `leaked` with `about:` a `kali` step
+(`wargames.read_from_record`, refused at discovery otherwise). A step may ask
+for a Kibana link over every record (`records: all`,
+`kibana.discover_path(..., everything=True)`).
 
 ### The course on the board
 

@@ -439,6 +439,17 @@ only and mark no objective. Their note holds a Suricata rule editor over
 `choose-the-level` a paranoia level control over `/waf/`. Each lesson can be
 opened by its id: `{"lesson": "ids-signature"}`.
 
+Before those lessons the home page lists six foundations for learners new to
+networks, each opened by its id (`{"lesson": "f1"}` to `f6`): F1 reads the
+range's map in the Topology pane, F2 follows one Korean search hop by hop, F3
+reads its method, path, parameter and status code, F4 finds records in Kibana
+and tells the WAF's from the IDS's, F5 follows a blocked SQL injection and a
+sqlmap run from the Red console's Kali terminal, and F6 runs the same sqlmap
+against a WAF whose blocking rules are off (defense `missed`), hands in the
+dumped accounts and reads the loss in the first score. Every answer is read
+from the learner's own records or the substrate's topology, never a fixed key;
+the learner's own sqlmap run counts in both scores like any other red action.
+
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,
 from the platform:

@@ -300,6 +300,17 @@ capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위
 949110이면 차단, 다른 상태 코드나 기록된 규칙이 있으면 통과, 아니면 알 수 없음)과 규칙 id는
 게이트웨이에 붙고, 대상은 WAF가 통과시키고 502-504가 아닌 응답이 왔을 때만 도달로 본다.
 
+따라가기는 먼저 최근 600초를 수집한다(블루 콘솔은 검증 뒤에만 수집하므로, 방금 막힌 요청은 그러지
+않으면 규칙이 보이지 않는다). 또 그 요청의 Suricata `http` 이벤트를 수집 경로로 읽는다
+(`elastic.fetch`, 전체 수집과 같은 페이지 나눔; 표시는 `elastic.suricata_marker`로 읽는다):
+웹사이트 창 요청은 그 시간 창 안의 browse 마커로, 이벤트에 마커가 없으면 같은 URL로; 실행한 케이스는
+그 시간 창 안의 케이스 id로. 센서 홉은 `requests`(그 센서가 이 요청을 기록한 http 기록 수)와 앞의
+다섯 개를 `seen`(출발지, 목적지와 포트, 메서드, URL, 상태 코드)으로 싣고, http 기록도 증거다. 경보가
+하나도 없던 요청도 센서를 지나간 것으로 보인다. http 이벤트는 `Detection` 행이 되지 않으므로 어느
+점수에도 들어가지 않는다. overlay는 레인지가 보고하는 이름으로 호스트를 놓는다. OpenStack은 슬롯의
+서버를 선언 이름(`slot.known_as`)으로 보고하고, syslog 기록에 실리는 VM 자체의 hostname만 슬롯 접미사를
+가진다.
+
 ## 격리 경계(isolation seams)
 
 각 관심사는 하나의 파일만 소유한다. 아래 예외는 현재 코드에 존재한다.
@@ -717,6 +728,45 @@ id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 
 노트와는 겹치지 않으며, 터미널 단계에서는 창 오른쪽 아래에 놓인다. 상자는 `pointer-events: none`이고
 매 애니메이션 프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 준다. 이론
 카드 다섯 장과 힌트(이유, 그다음 접힌 풀이)는 경로 밖, 노트에 남는다.
+
+### 기초 F1-F6
+
+`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의 P2 단계다. board의
+`scenario.yaml`은 `lessons:` 옆에 `foundations:` 목록을 선언하고, 레슨 목록처럼 검사한다(id는 두 목록에
+걸쳐 유일). `wargames.foundations()`가 목록을 주고, `wargames.lesson(lesson_id=...)`은 두 목록 어디서든
+단원을 찾아 기초에는 `group: foundations`를 붙인다. `wargames.lessons()`와 기본 레슨은 그대로다.
+`GET /api/wargames/`는 `foundations`(레슨 카드에 단원이 가르치는 것의 문자열 키 `learns`를 더한 것)를
+더하고, 메인 페이지는 "기초" 아래 맨 앞에 시간, 배우는 것, 시작 버튼(그 단원의 안내 세션)과 함께
+보여 준다. 기초 단원의 노트는 첫 방문에 설명 카드 하나(이론 탭, 펼친 채)로 연다.
+
+| 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
+|---|---|---|---|
+| f1 내 레인지 | `full` | 토폴로지 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드, 없으면 scorer 호스트(OpenStack은 플랫폼 compose에서 Elasticsearch가 도는 fsl-platform), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
+| f2 요청 하나 따라가기 | `full` | 웹사이트 창에서 한국어로 검색하고 토폴로지 창에서 따라간다 | 학습자 자신의 웹사이트 창 요청: 따라가기의 출발지 주소, URL의 포트와 http 기록의 목적지 포트, 상태 코드 |
+| f3 HTTP | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
+| f4 로그 읽기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
+| f5 공격 따라가기 | `full` | `' OR 1=1--`를 보내 따라가서 막은 호스트와 알아본 룰을 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 따라가기의 차단 홉, 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
+| f6 놓치면 무엇을 잃나 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
+
+`missed`는 CRS paranoia level 1에 949110과 959100을 `ruleRemoveById`로 끄고 `local.rules`를 쓴다. 단원의
+질문에는 `accept` 목록이 없다.
+
+새 check 종류: `sent`는 세션의 웹사이트 창이 보관한 요청 중 디코딩한 URL이 단계의 `match` 정규식과 맞는
+것이 있으면 통과한다(콘솔은 창에 맞는 경로가 보이고 1.5초 뒤 확인하고, 폴링도 한다). `kali`는 케이스
+파일의 도구 케이스를 가리킨다. 단계에 닿으면 마커가 생기고, `command`는 시나리오 `public_url`에 대한
+케이스 argv에 `--headers=X-FSL-Case: <marker>`를 붙인 것이다(`tools.tool_argv`, 하네스 자체의 표시 방식).
+센서의 http 기록에 그 마커와 도구의 user agent가 있으면 통과하고, 그 실행을 평범한 악성 케이스로
+기록하고(`meta.kali`, 재생 표시 없음, 다른 레드 행동처럼 두 점수에 모두 들어감) 세션을 수집한다. 마커를
+프록시 라벨이 아니라 명령에 넣는 것은 레드팀 콘솔을 열면 라벨이 지워지기 때문이다. "대신 해 주기"는
+공격자 박스에서 케이스를 대신 실행한다(`meta.done_for_me`, 덤프는 `meta.dumped`). `loot`는 붙여 넣은
+표(`tools.dumped`, 또는 `name:hash`와 `| name | hash |` 줄)를 `POST /loot/`처럼 인정하고 kali 케이스에
+귀속한다. `_credit_loot`는 이제 일치한 계정을 귀속된 케이스에 남긴다(`meta.loot`).
+
+답은 `of:`로 읽는다: 레인지 사실 `entry`, `logs`, `segment`, `lost`, `excluded`; `sent` 단계를 `about:`으로
+가리키는 `source`, `port`, `status`, `method`, `path`, `parameter`, `status_class`, `engine`,
+`sensor_source`, `waf_source`, `stopped_at`(그와 맞는 가장 최근 웹사이트 창 요청); `kali` 단계를
+가리키는 `requests`, `leaked`(`wargames.read_from_record`, 아니면 discovery에서 거부). 단계는 모든 기록에
+대한 Kibana 링크를 요청할 수 있다(`records: all`, `kibana.discover_path(..., everything=True)`).
 
 ### board의 과정
 
