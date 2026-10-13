@@ -285,11 +285,20 @@ capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위
 `GET /api/topology/`는 substrate의 프로젝트를 GNS3에서(`platform/gns3.py`) 또는 레포 파일에서
 돌려준다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
 읽기에서 얻은 호스트 노드별 선언 구간 주소와 `running` 또는 `not reported`.
-`GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는 `?marker=`)는
-출발 주소의 노드에서 게이트웨이를 거쳐 대상까지 프로젝트 링크를 따라가되 스위치와 엣지,
-게이트웨이, wargame 호스트만 통과하고, 센서 경보는 센서가 지켜보는 호스트에, WAF의 규칙 id와
-판정은 게이트웨이에(403으로 응답했거나 CRS의 차단 평가 규칙 949110이 걸리면 차단), 상태 코드는
-대상에 붙인다.
+`GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는
+`?case=<케이스 id>`, `?marker=`)는 사실만으로 경로를 그린다. 보낸 쪽은 실제로 보낸 것이다:
+웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는 공격자 박스, 마커만
+있으면 proxy 역할. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
+기록하고, 케이스는 경보에 적힌 주소를, 없으면 레인지가 내주는 이름(케이스가 출발한 구간의
+게이트웨이 주소, 없으면 모든 레인지 호스트의 `/etc/hosts`대로 estate의 주소)을 쓴다. 보낸
+쪽은 케이스를 띄운 구간(`launched_on`으로 기록) 또는 목적지와 같이 붙은 구간으로 나가고, 구간이
+바뀌면 두 구간에 모두 링크된 엣지·게이트웨이·wargame 호스트 하나를 지나며, 게이트웨이는 estate로
+대상에 닿는다. 어떤 사실로도 정해지지 않는 구간은 추측한 링크가 아니라 `unknown` 홉이다. 호스트
+홉마다 이 요청의 기록이 있는지(`evidence`)를 말한다: suricata 경보는 그 센서가 지켜보는 호스트에
+붙고, 센서는 경보의 syslog hostname으로 가른다(`fsl-edge`와 `fsl-wargame-host`, 슬롯 접미사
+포함). 경로 위에 없는 센서의 경보는 `elsewhere`로 돌려준다. WAF 판정(403이거나 CRS 차단 평가
+949110이면 차단, 다른 상태 코드나 기록된 규칙이 있으면 통과, 아니면 알 수 없음)과 규칙 id는
+게이트웨이에 붙고, 대상은 WAF가 통과시키고 502-504가 아닌 응답이 왔을 때만 도달로 본다.
 
 ## 격리 경계(isolation seams)
 

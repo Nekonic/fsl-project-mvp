@@ -327,11 +327,25 @@ otherwise the console's Topology pane draws the same file itself.
 adds `project.nodes`: each host node's addresses per declared segment from the
 same range read, `running` or `not reported`. `GET
 /api/sessions/<id>/topology/follow/?request=<Website pane request id>` (or
-`?marker=`) walks the project's links from the source address's node through the
-gateway to the target, passing only through switches and the edge, gateway and
-wargame hosts, and puts the sensor's alerts on the host it watches, the WAF's
-rule ids and verdict on the gateway (blocked when the request was answered 403
-or CRS's blocking evaluation, 949110, fired), and the status on the target.
+`?case=<case id>`, or `?marker=`) draws the path from facts only. The sender is
+what sent it: the platform's site proxy (scorer role) for a Website pane
+request, the attacker box for a fired case, the proxy role for a bare marker.
+The destination is the address the request reached: the site proxy records the
+WAF address its socket connected to; a case uses the address its alerts name,
+else the name the range serves (the gateway's address on the segment the case
+started on, or else on the estate, as every range host's `/etc/hosts` has it).
+The sender leaves on the segment the case was launched on (recorded as
+`launched_on`) or on the segment it shares with the destination; a segment
+change crosses the one edge, gateway or wargame host linked to both, and the
+gateway reaches the target over the estate. A stretch no fact settles is an
+`unknown` hop, never a guessed link. Each host hop says whether a record of the
+request is there (`evidence`): a suricata alert is placed on the host its
+sensor watches, the sensor told apart by the syslog hostname the alert carries
+(`fsl-edge` versus `fsl-wargame-host`, slot-suffixed), and an alert from no
+sensor on the path is returned under `elsewhere`; the WAF's verdict (blocked on
+403 or CRS's blocking evaluation 949110, passed on any other status or a
+logged rule, else unknown) and rule ids sit on the gateway; the target is
+reached only when the WAF passed it and answered something other than 502-504.
 
 ## Isolation seams
 
