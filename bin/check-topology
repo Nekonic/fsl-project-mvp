@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TOPOLOGY = ROOT / "deploy" / "topology"
+VERSIONS = ("2.2.61", "3.1.0a6")
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "fsl" / "check-topology"
+
+LOAD = """
+import json, sys, types
+import aiohttp.web
+try:
+    import magic
+except ImportError:
+    sys.modules["magic"] = types.ModuleType("magic")
+    print("libmagic is not installed here; magic is stubbed, which loading a topology never calls", file=sys.stderr)
+from gns3server.version import __version__
+from gns3server.controller.topology import load_topology
+path = sys.argv[1]
+before = json.load(open(path))["revision"]
+loaded = load_topology(path)
+nodes = loaded["topology"]["nodes"]
+links = loaded["topology"]["links"]
+print(f"gns3-server {__version__}: loaded revision {before} as {loaded['revision']}, "
+      f"{len(nodes)} nodes, {len(links)} links, names "
+      f"{'kept' if [n['name'] for n in nodes] == [n['name'] for n in json.load(open(sys.argv[2]))['topology']['nodes']] else 'CHANGED'}")
+"""
+
+def venv(version: str, python: str) -> Path:
+    home = CACHE / version
+    interpreter = home / "bin" / "python"
+    if (home / ".installed").is_file():
+        return interpreter
+    shutil.rmtree(home, ignore_errors=True)
+    subprocess.run([python, "-m", "venv", str(home)], check=True)
+    subprocess.run([str(interpreter), "-m", "pip", "install", "--quiet", "--upgrade", "pip"], check=True)
+    subprocess.run([str(interpreter), "-m", "pip", "install", "--quiet", f"gns3-server=={version}"], check=True)
+    (home / ".installed").write_text(version)
+    return interpreter
+
+def check(interpreter: Path, project: Path) -> bool:
+    with tempfile.TemporaryDirectory() as scratch:
+        copy = Path(scratch) / project.stem / project.name
+        copy.parent.mkdir()
+        shutil.copyfile(project, copy)
+        done = subprocess.run(
+            [str(interpreter), "-I", "-c", LOAD, str(copy), str(project)],
+            capture_output=True, text=True, cwd=scratch,
+        )
+    failed = (done.stderr or "").strip().splitlines()[-1:] or [f"exit {done.returncode}"]
+    said = done.stdout.strip() if done.returncode == 0 else failed[0]
+    print(f"  {project.name}: {'ok' if done.returncode == 0 else 'FAILED'}: {said}")
+    return done.returncode == 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="load the range's GNS3 projects in real gns3-server releases")
+    parser.add_argument("--python", default=os.environ.get("FSL_CHECK_PYTHON", "python3"))
+    parser.add_argument("--version", action="append", choices=VERSIONS)
+    args = parser.parse_args()
+    projects = sorted(TOPOLOGY.glob("*.gns3"))
+    if not projects:
+        print(f"check-topology: no .gns3 file in {TOPOLOGY}")
+        return 1
+    passed = True
+    for version in args.version or VERSIONS:
+        try:
+            interpreter = venv(version, args.python)
+        except subprocess.CalledProcessError as exc:
+            print(f"gns3-server {version}: could not install ({exc})")
+            passed = False
+            continue
+        print(f"gns3-server {version} ({CACHE / version})")
+        for project in projects:
+            passed = check(interpreter, project) and passed
+    return 0 if passed else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
