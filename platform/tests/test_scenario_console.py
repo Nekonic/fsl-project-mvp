@@ -342,3 +342,28 @@ def test_a_judgement_scenario_that_asks_the_kind_posts_it_with_the_verdict(clien
     assert (result["asked"], result["before"]) == (True, False)
     assert result["kinds"] == [english(f"triage.pattern.{pattern}") for pattern in card["patterns"]]
     assert result["posted"] == [{"item": "b2", "verdict": "attack", "succeeded": False, "pattern": "CAPEC-66"}]
+
+def test_with_the_judge_pane_open_the_coach_docks_even_for_a_step_that_points_outside_it(client):
+    from api import views
+
+    taught = wargames.lesson("board", lesson_id="1.1")
+    lesson = {"id": "1.1", "text": taught["text"], "cases": [], "hints": taught["hints"], "verifies": False,
+              "steps": [views._shown_step(None, step) for step in taught["steps"]]}
+    setup = "localStorage.setItem('fsl-lesson-landed-1', 'true');" + serving(
+        status(JUDGEMENT, id="1.1", cards=[]), lesson=lesson)
+    setup = setup.replace('if (request.route === "/api/sessions/1/ingest/")', '''if (request.route.includes("/lesson/steps/")) {
+    return {body: {passed: false, reason: null, hint: 0, hints: [], progress: {}}};
+  }
+  if (request.route === "/api/sessions/1/ingest/")''')
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      Object.getPrototypeOf(document.body).getBoundingClientRect =
+        () => ({left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30});
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      for (let i = 0; i < 3; i += 1) await browser.wait(1000);
+      return {docked: browser.element('coach-pop').parentNode === browser.element('triage-dock'),
+              target: browser.element('coach-box').dataset.target};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"docked": True, "target": '.pane-tab[data-pane="triage"]'}
