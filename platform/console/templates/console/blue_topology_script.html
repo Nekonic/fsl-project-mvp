@@ -1,0 +1,113 @@
+const topo = { read: false, project: null, web: null, nodes: {}, hops: [] };
+const NODE_SIZE = 50;
+const MAP_MARGIN = 60;
+function topologyCentre(node) {
+  return [node.x + NODE_SIZE / 2, node.y + NODE_SIZE / 2];
+}
+
+function topologyDraw() {
+  const nodes = topo.project.topology.nodes;
+  const byId = Object.fromEntries(nodes.map((node) => [node.node_id, node]));
+  const xs = nodes.map((node) => node.x), ys = nodes.map((node) => node.y);
+  const left = Math.min(...xs) - MAP_MARGIN, top = Math.min(...ys) - MAP_MARGIN;
+  const walked = topo.hops.map((hop) => hop.node);
+  const steps = new Set(walked.slice(1).map((name, at) => [walked[at], name].sort().join(" ")));
+  const links = topo.project.topology.links.map((link) => {
+    const [one, other] = link.nodes.map((end) => byId[end.node_id]);
+    const onPath = steps.has([one.name, other.name].sort().join(" "));
+    const [x1, y1] = topologyCentre(one), [x2, y2] = topologyCentre(other);
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" data-path="${onPath}" `
+      + `style="stroke: var(${onPath ? "--primary" : "--border-strong"}); stroke-width: ${onPath ? 4 : 1.5}"></line>`;
+  });
+  const marks = nodes.map((node) => {
+    const [x, y] = topologyCentre(node);
+    const shown = topo.nodes[node.name];
+    const switching = node.node_type === "ethernet_switch";
+    const tone = walked.includes(node.name) ? "--primary"
+      : switching ? "--text-faint" : shown && shown.status === "running" ? "--success" : "--border-strong";
+    const said = shown ? t(`topology.node.${shown.status === "running" ? "running" : "not_reported"}`) : "";
+    const addresses = shown ? Object.entries(shown.addresses).map(([on, list]) => `${on} ${list.join(", ")}`) : [];
+    const title = `<title>${esc([node.name, said, ...addresses].filter(Boolean).join("\n"))}</title>`;
+    const mark = switching
+      ? `<rect x="${x - 22}" y="${y - 10}" width="44" height="20" rx="4" style="fill: var(${tone})">${title}</rect>`
+      : `<circle cx="${x}" cy="${y}" r="14" style="fill: var(${tone})">${title}</circle>`;
+    return `<g data-node="${esc(node.name)}">${mark}<text x="${x}" y="${y + 32}" text-anchor="middle" `
+      + `style="fill: var(--text); font-size: 12px; font-family: var(--font-mono)">${esc(node.name)}</text></g>`;
+  });
+  field("topology-svg").setAttribute("viewBox", [left, top, Math.max(...xs) - left + NODE_SIZE + MAP_MARGIN,
+    Math.max(...ys) - top + NODE_SIZE + MAP_MARGIN].join(" "));
+  field("topology-svg").innerHTML = links.join("") + marks.join("");
+}
+
+function topologyHop(hop) {
+  const lines = [];
+  if (hop.source !== undefined) lines.push(t("topology.hop.source", hop.source || "?"));
+  if (hop.alerts) lines.push(t("topology.hop.alerts", hop.alerts.length));
+  if (hop.verdict === "blocked") lines.push(t("topology.hop.blocked", hop.rules.join(", ") || "-"));
+  if (hop.verdict === "passed") lines.push(t("topology.hop.passed", hop.rules.join(", ") || "-"));
+  if (hop.reached === false) lines.push(t("topology.hop.not_reached"));
+  if (hop.reached && hop.status) lines.push(t("topology.hop.status", hop.status));
+  return `<li><span class="font-mono text-heading">${esc(hop.node)}</span>`
+    + lines.map((line) => `<div class="text-muted">${esc(line)}</div>`).join("") + "</li>";
+}
+
+async function topologyFollow() {
+  const chosen = field("topology-request").value;
+  topo.hops = [];
+  field("topology-hops").innerHTML = "";
+  if (chosen) {
+    const read = await api(`/api/sessions/${sessionId()}/topology/follow/?request=${encodeURIComponent(chosen)}`);
+    topo.hops = read.ok ? read.body.hops : [];
+    field("topology-hops").innerHTML = read.ok ? topo.hops.map(topologyHop).join("")
+      : `<li class="text-danger">${esc((read.body && read.body.detail) || read.status)}</li>`;
+  }
+  topologyDraw();
+}
+
+async function topologyRequests() {
+  const read = await api(`/api/sessions/${sessionId()}/site/requests/`);
+  const rows = read.ok ? read.body.slice().reverse() : [];
+  const kept = field("topology-request").value;
+  field("topology-request").innerHTML = `<option value="">${esc(t(rows.length ? "topology.pick" : "topology.none"))}</option>`
+    + rows.map((row) => `<option value="${row.id}">${esc(`${row.method} ${readable(row.url)} ${row.status}`)}</option>`).join("");
+  if (rows.some((row) => String(row.id) === kept)) field("topology-request").value = kept;
+}
+
+function topologyView(which) {
+  const gns3 = which === "gns3" && topo.web;
+  field("topology-gns3").setAttribute("aria-selected", String(Boolean(gns3)));
+  field("topology-follow").setAttribute("aria-selected", String(!gns3));
+  field("topology-request").style.display = gns3 ? "none" : "";
+  field("topology-map").style.display = gns3 ? "none" : "flex";
+  field("topology-frame").style.display = gns3 ? "block" : "none";
+  if (gns3 && !field("topology-frame").src) {
+    const at = new URL(location.href);
+    at.port = String(topo.web.port);
+    field("topology-frame").src = at.origin + topo.web.path;
+  }
+  if (!gns3) topologyFollow();
+}
+
+async function topologyOpen() {
+  if (!topo.read) {
+    const [project, mine] = await Promise.all([
+      api("/api/topology/"), api(`/api/sessions/${sessionId()}/topology/`),
+    ]);
+    if (!project.ok) {
+      field("topology-said").textContent = (project.body && project.body.detail) || String(project.status);
+      return;
+    }
+    topo.read = true;
+    topo.project = project.body.project;
+    topo.web = project.body.web_ui;
+    topo.nodes = mine.ok && mine.body.project ? mine.body.project.nodes : {};
+    field("topology-gns3").disabled = !topo.web;
+    field("topology-said").textContent = topo.web ? "" : t("topology.no_web_ui");
+    field("topology-said").title = project.body.detail || "";
+    field("topology-gns3").addEventListener("click", () => topologyView("gns3"));
+    field("topology-follow").addEventListener("click", () => topologyView("follow"));
+    field("topology-request").addEventListener("change", topologyFollow);
+  }
+  await topologyRequests();
+  topologyView(topo.web ? "gns3" : "follow");
+}
