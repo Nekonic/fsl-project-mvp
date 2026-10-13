@@ -450,6 +450,22 @@ dumped accounts and reads the loss in the first score. Every answer is read
 from the learner's own records or the substrate's topology, never a fixed key;
 the learner's own sqlmap run counts in both scores like any other red action.
 
+After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
+attacker use the board while the learner defends with the real tools. Each
+opens on a briefing (situation, goal, how it is measured, time); a strip shows
+the time left, customers blocked and alerts per minute, and objectives lost;
+an attack schedule the learner does not see fires through the normal path,
+and a dump it gets counts in the first score when the board's accounts match.
+"I'm done" (or the schedule) opens a final check of a few minutes: it passes
+when no customer is blocked, every attack held, and the scenario's own
+criterion holds. `1.1` "A quiet shift" asks the learner to judge each request
+that drew an alert, customer or attack and whether it got the data
+(`/api/sessions/<id>/triage/`); `2.1` "Korean searches blocked" asks for the
+customers a PL3 WAF refuses to be served without letting sqlmap through. A
+hint is offered when the learner is stuck and recorded only when opened; the
+debrief adds the customers blocked and the attack timeline. Detail:
+`docs/ARCHITECTURE.md`, "Scenarios".
+
 The scripted cases can also be fired from the command line, as the acceptance
 tests do. The target is not published, so the harness runs inside the range,
 from the platform:

@@ -543,7 +543,11 @@ slot 2에는 없었다) 다른 규칙 파일은 그 slot의 센서에만 들어�
 않은 것이므로 이전 파일을 되돌려 재적재하고 거부한다. 쓰기 전에 입력을
 검증한다: paranoia 1-4, 규칙 id 900000-999999, target은 `ARGS`, `ARGS_GET`,
 `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`에 선택적 `:이름`,
-경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개. `PUT /api/sessions/<id>/waf/`가 이를
+또는 `REQUEST_URI_RAW`(PL3의 한글 검색은 920272가 여기서도 걸린다), 경로는
+`[A-Za-z0-9_./-]`, 항목은 최대 20개. 선택적 `thresholds` `{inbound, outbound}`
+(1-100000)는 수준과 같은 `SecAction`에 `tx.inbound_anomaly_score_threshold`,
+`tx.outbound_anomaly_score_threshold`로 쓰고 다시 읽는다. `thresholds`를 뺀 `PUT`은
+적용 중인 값을 지키고, `"thresholds": null`은 지운다. `PUT /api/sessions/<id>/waf/`가 이를
 바꾸고(에이전트 경로), `GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽는다. `crs.read`는 Paranoia
 Level과 모든 `ctl:ruleRemove*` 줄을 파싱하므로(주석 줄은 건너뛰고 이어진 줄은 합침) WAF 터미널에서
 고친 내용도 알려 준다. 검증마다, 그리고 닫을 때 slot을 다시 짓기 전에 `crs.read`가 읽은 것을
@@ -975,7 +979,115 @@ API(`platform/api/customers.py`, `views.session_traffic`):
 기록은 바이트 오프셋으로 가져온다(`tail -c`, 호출당 최대 1 MiB, 온전한 줄만).
 호출마다 `bulk_create` 한 번으로 `CustomerRequest` 행이 되고, 오프셋은
 `Session.traffic`에 둔다. 세션 페이지는 URL에 `?traffic`이 있을 때만 시험용으로
-스위치를 보인다. 시나리오(P4)는 스스로 시작한다.
+스위치를 보인다. 시나리오는 스스로 시작한다.
+
+생성기는 board 자신의 CSRF 거부(`refused_by: "app"`, 막힘으로 세지 않음)를 영어
+문장뿐 아니라 Django 실패 페이지의 `<span>(403)</span></h1>`로도 알아본다. board는
+고객의 언어로 답하므로, 한국 고객의 거부(한 페르소나의 흐름 둘이 로그인 때 토큰
+교체와 겹친 경우)는 한국어로 온다.
+
+## 시나리오
+
+시나리오는 레인지 위의 시간 제한 연습이다. 고객과 공격자가 board를 쓰는 동안
+학습자는 실제 도구로 방어하고, 플랫폼은 마지막 최종 점검 시간(verification
+window)으로 판정한다. 설계는
+`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`(P4
+단계), 결정은 `docs/DECISIONS.md`의 2026-10-13 "scenario course" 항목들이다.
+
+**기술(descriptor).** wargame의 `scenario.yaml`에 있는 `scenarios:`.
+`wargames.checked_scenarios`가 검증한다.
+
+| 필드 | 뜻 |
+|---|---|
+| `id`, `order` | `1.1`, `2.1` 등. id는 기초·레슨과 한 이름 공간을 쓴다 |
+| `task_class` | `judgement`, `availability`, `detection`, `unknown` |
+| `guidance` | `worked`(레슨 단계 엔진에서 도는 `steps`를 둘 수 있음), `faded`, `none` |
+| `text`, `briefing` | 문자열 접두어. `briefing`은 `situation`, `goal`, `measured_by`를 문자열 키에 잇는다 |
+| `minutes`, `window_minutes` | 시나리오 길이와 최종 점검 시간 |
+| `defense` | wargame의 `defense:` 중 하나(CRS 수준, 예외, 기준값, Suricata 규칙 묶음) |
+| `traffic` | 고객의 `{profile, rate}`(`traffic.yaml`) |
+| `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초, 악성 케이스, 출발지. 학습자에게 보이지 않는다 |
+| `completion` | 종류별: judgement `{judged: all}`, availability와 unknown `{served: all, held: all}`, detection `{detected_by: suricata}` |
+| `cards` | `[{id, when}]`, `when`은 `start`, `alert`, `blocked`, `window` 중 하나 |
+| `hints` | 하나씩 제안하는 힌트 id |
+
+`GET /api/wargames/`는 시나리오 카드(`wargames.scenario_card`)를 `attacks` 없이
+보여 준다. `GET /api/sessions/<id>/`는 worked 시나리오의 단계에서 `attacks`와
+케이스를 뺀다.
+
+**열기.** `POST /api/sessions/ {"scenario": "2.1"}`은 시나리오 id로 wargame을
+찾고, `lesson`, `guidance`, `defense`, `mode`는 거부하며, 다른 세션처럼 선언된
+태세를 적용한 뒤 `scenario_run.begin`이 고객을 시작하고
+`Session.scenario_state`(마이그레이션 0025, `Session.course_scenario` 옆)를 쓴다:
+공격마다 절대 시각으로 정한 일정, 점검 시간들, 판단, 힌트 제안, 본 WAF 버전.
+worked 시나리오는 `guidance`와 `lesson`을 자기 id로 두어 단계가 `/lesson/steps/`
+위에서 돌고, 재전송 씨앗은 보내지 않는다. 고객을 시작하지 못하면 세션을 닫고
+503을 돌려준다.
+
+**엔진**(`platform/api/scenario_run.py`, 순수 규칙은 `platform/scenarios.py`)은
+플랫폼 프로세스 안의 스레드 하나다. 첫 시나리오에서, 그리고 부팅 때
+`fsl/wsgi.py`의 `resume`이 시작한다(발사 중 끊긴 공격은 다시 예정으로 돌린다).
+`FSL_SCENARIO_TICK`(2초)마다 열린 시나리오 세션마다:
+
+- 학습자가 열지 않았으면 예정 시각(연 뒤 `minutes - window_minutes`)에 점검
+  시간을 연다.
+- 때가 된 공격을 차지해 네 개짜리 풀에서 `views._fire`로 보낸다.
+  `meta.scheduled`로 표시하며(재전송 표시가 아니므로 두 점수 모두에 들어간다),
+  sqlmap이 덤프한 행은 그 케이스로 귀속해 `views._credit_loot`에 넘긴다. 그래서
+  첫 번째 점수는 board 자신의 계정과 맞을 때만 손실로 센다. 항목에는 `outcome`
+  held 또는 leaked가 남는다.
+- `FSL_SCENARIO_OBSERVE`(15초)마다 고객 기록을 가져오고 최근 180초를
+  ingest하며, `FSL_SCENARIO_WAF_POLL`(20초)마다 WAF 파일을 읽어 터미널에서 한
+  변경을 알아챈다.
+- 끝났고 그 안의 공격이 모두 실행되었거나 실패한 점검 시간을 판정한다.
+
+닫으면 남은 공격은 취소된다. 이미 발사 중인 공격은 끝까지 돌고 기록된다.
+
+**최종 점검 시간.** `POST .../scenario/verify-window/`("다 했습니다")나 일정이
+`window_minutes` 동안 연다. 엔진은 일정에 있는 공격 케이스 중 그 안에 예정되지 않은
+것마다 하나씩 그 안에 넣는다. 판정하는 것은 종류의 `completion`이다. `served`는 그
+안에서 방어가 막은 고객 요청(앱이 아닌 403)이 없음, `held`는 그 안의 공격이 모두
+실행되어 막힘(loot 일치·효과 없음), `judged`는 점검 시간 전에 처음 보인 항목을 모두
+맞게 판단함, `detected_by`는 그 안의 공격마다 공격 이름이 든 Suricata 경보가 나고
+고객 요청에는 나지 않음이다. judgement 시나리오는 설계의 종류 표대로 판단만으로
+판정하므로, 그 점검 시간에 막힌 고객은 결과 옆에 알릴 뿐 실패로 세지 않는다. 결과는 그때 찍은 WAF 스냅숏에 `lesson.fix_class`를 적용해 조치를
+밝힌다(`level`, `threshold`, `rule`, `target`, `path_target`). 실패한 뒤 다시 열 수
+있다.
+
+**경보 판단**(`GET/POST /api/sessions/<id>/triage/`). 경보가 난 마커마다 항목
+하나다. 고객 요청 하나하나, 그리고 공격 케이스 하나(요청을 몇 개 보냈든 케이스
+하나는 결정 하나). 항목 id는 마커를 세션의 browse 마커와 함께 해시한 값이라
+`/cases/`와 맞춰 볼 수 없다. 항목은 처음과 마지막 경보, 경보 수, 출발 주소, 요청
+하나, WAF 판정(949/959 합계가 나면 `blocked`, `logged`, `none`), 상태 코드,
+엔진·번호·메시지·수가 붙은 규칙 최대 12개를 보이고, 케이스 이름이나 정답 표시는
+보이지 않는다. 재전송과 학습자의 웹사이트 창 요청은 뺀다. 판단
+`{item, verdict: attack|customer, succeeded}`는 기록(케이스의 `malicious` 또는
+고객 행)과, `succeeded`는 대상(케이스에 맞은 loot, 또는 그 시간 안의 목표)과
+대조한다. 단계 점검 종류 `triage`(`judged: customer | attack | all`)는 학습자의 맞는
+판단으로 통과한다.
+
+**상태, 힌트, 결과 보고.** `GET .../scenario/`는 시나리오 카드, `phase`(running,
+window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 경보, 빼앗긴
+목표, 점검 시간, 완료 상태, 띄울 카드, 힌트 제안을 돌려준다. 단계 점검이 두 번
+실패하거나, 같은 항목을 두 번 틀리거나, `PUT /waf/`가 이미 적용된 파일을 다시
+쓰거나, 고객이 막히는 동안 5분째 WAF가 바뀌지 않으면 힌트를 제안한다(기록하지
+않는다). `POST .../scenario/hints/`가 다음 힌트를 열고 `Session.hints`에 기록한다.
+`GET .../scenario/debrief/`는(점검 시간이 판정되거나 세션이 닫히기 전에는 409라
+일정이 드러나지 않는다) 레슨 결과 보고와 같은 모양에 `customers`와 공격
+`timeline`을 더해 돌려주고, 콘솔은 둘 다 `debrief_script.html`로 그린다.
+
+**콘솔.** 홈 페이지는 wargame마다 시나리오를 나열하고, 시작은 블루 콘솔을 상황
+설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보, 빼앗긴 목표, 힌트
+제안, 다 했습니다를 보인다. judgement 시나리오는 판단 창을 더한다. 카드는 때가 되면
+뜨고, 점검 시간이 판정되면 결과 보고가 열린다. worked 시나리오의 단계는 레슨 메모
+위에서 돌고, 그 점검 탭과 힌트 목록은 숨긴다.
+
+**board 위에서.** `1.1` "조용한 근무"(judgement, worked, 15분, 점검 3분): `level2`
+(PL2), 고객 `community` 초당 2건, 150초에 `ru`에서 sqlmap 한 번. `2.1` "막힌 한글
+검색"(availability, faded, 20분, 점검 4분): `level3`(PL3), 고객 `readers`(댓글을 뺀
+`plain`) 초당 2건, 240초에 sqlmap 한 번. PL3에서 한글 검색은 `ARGS:q`의 920272와
+942460에 막히고(그 둘을 빼면 `REQUEST_URI_RAW`의 920272), 그 뒤 고객이 여는 모든
+페이지는 `REQUEST_HEADERS:Referer`의 920272에 막힌다.
 
 ## 결정
 
