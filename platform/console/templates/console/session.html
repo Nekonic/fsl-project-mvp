@@ -28,6 +28,19 @@
 
 <p id="closed" class="text-muted text-[13px] mb-5 hidden"></p>
 
+<section id="traffic" class="hidden card p-4 mb-5 max-w-xl text-[13px]">
+  <div data-t="traffic.heading" class="font-semibold text-heading mb-2"></div>
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="flex flex-col gap-1"><span data-t="traffic.rate" class="label"></span>
+      <input id="traffic-rate" type="number" min="0.1" max="50" step="0.1" value="1" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px]"></label>
+    <label class="flex flex-col gap-1"><span data-t="traffic.profile" class="label"></span>
+      <select id="traffic-profile" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px]"></select></label>
+    <button id="traffic-start" data-t="traffic.start" class="btn btn-sm btn-blue"></button>
+    <button id="traffic-stop" data-t="traffic.stop" class="btn btn-sm btn-ghost"></button>
+  </div>
+  <p id="traffic-status" class="text-muted mt-2"></p>
+</section>
+
 <div id="consoles" class="grid md:grid-cols-2 gap-5">
   <a id="blue" href="#" class="card p-6 border-t-4 border-t-primary lift block">
     <div class="flex items-center justify-between">
@@ -292,9 +305,19 @@
       parts.push(judgementBlock([passed.length, benign.length], sentence,
         blocked.map((row) => t("score.drew_alerts", caseLabel(row.name), row.detection_ids.length)), plural(passed.map((row) => row.name))));
     }
+    const customers = score.customers || {};
+    if (customers.sent) {
+      const wrong = Object.entries(customers.blocked_actions || {})
+        .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
+      if (customers.unanswered) wrong.push(t("score.customers_unanswered", customers.unanswered));
+      const served = !customers.blocked && !customers.unanswered ? t("score.customers_served") : "";
+      parts.push(judgementBlock([customers.blocked, customers.sent],
+        t("score.customers", customers.sent, customers.blocked), wrong, served));
+    }
     if (!parts.length) parts.push(`<p class="text-muted">${esc(t("score.no_cases"))}</p>`);
     const unproven = caught.filter((row) => row.corroborated === false).length;
     const notes = [t("score.one_case_once")];
+    if (customers.sent) notes.push(t("score.customers_note"));
     if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
     notes.push(t("score.not_added"));
     (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...values)));
@@ -320,20 +343,74 @@
     }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${esc(t("score.no_cases"))}</td></tr>`;
   }
 
-  async function scoreboard() {
+  const SCORE_TRIES = 4;
+  const SCORE_RETRY_AFTER = 5000;
+
+  function scoreUnread(failed, retrying) {
+    const said = `${t("score.unavailable", detail(failed))}${retrying ? ` ${t("score.retrying")}` : ""}`;
+    field("lost-count").textContent = "—";
+    field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-danger" colspan="6">${esc(said)}</td></tr>`;
+    field("judgement").innerHTML = `<p class="text-danger">${esc(said)}</p>`;
+    field("case-rows").innerHTML = "";
+  }
+
+  async function scoreTables(tried) {
     const [score, tiers] = await Promise.all([
       api(`/api/sessions/${id}/score/`),
       api(`/api/wargames/${session.scenario}/objectives/`),
     ]);
+    const read = score.ok && Array.isArray(score.body.breaches) && Array.isArray(score.body.per_case);
+    if (!read) {
+      const retrying = tried + 1 < SCORE_TRIES;
+      scoreUnread(score.ok ? { body: {}, status: 0 } : score, retrying);
+      if (retrying) setTimeout(() => scoreTables(tried + 1), SCORE_RETRY_AFTER);
+      return;
+    }
+    objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [], score.body.breaches);
+    judgement(score.body);
+  }
+
+  async function scoreboard() {
     show("consoles", false);
     show("activity", false);
+    show("traffic", false);
     show("scoreboard", true);
     verdictBanner();
     if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("debrief"));
-    objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [],
-                   score.ok && Array.isArray(score.body.breaches) ? score.body.breaches : []);
-    if (score.ok) judgement(score.body);
-    else field("judgement").innerHTML = `<p class="text-danger">${esc(t("score.unavailable", detail(score)))}</p>`;
+    await scoreTables(0);
+  }
+
+  const testingTraffic = new URLSearchParams(location.search).has("traffic");
+  let trafficOffered = false;
+
+  function trafficLine(state) {
+    const running = t(state.running ? "traffic.running" : "traffic.stopped");
+    const line = t("traffic.status", running, state.rate || 0, state.sent || 0, state.blocked || 0);
+    field("traffic-status").textContent = line + (state.error ? ` · ${state.error}` : "");
+  }
+
+  async function trafficPanel() {
+    if (!testingTraffic || !session || session.ended_at) return;
+    const state = await api(`/api/sessions/${id}/traffic/`);
+    if (!state.ok || !state.body.declared) return;
+    show("traffic", true);
+    if (!trafficOffered) {
+      trafficOffered = true;
+      field("traffic-profile").innerHTML = (state.body.profiles || [])
+        .map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
+      if (state.body.profile) field("traffic-profile").value = state.body.profile;
+      if (state.body.rate) field("traffic-rate").value = state.body.rate;
+    }
+    trafficLine(state.body);
+  }
+
+  async function trafficChange(method, body) {
+    const changed = await api(`/api/sessions/${id}/traffic/`, {
+      method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
+    });
+    if (changed.ok) trafficLine(changed.body);
+    else field("traffic-status").textContent = t("traffic.failed", detail(changed));
   }
 
   async function restart() {
@@ -377,7 +454,13 @@
     const waf = await api(`/api/sessions/${id}/waf/`);
     consoles(waf.ok ? waf.body.paranoia : null, result.lost, result.total);
     activity();
+    trafficPanel();
   }
+
+  field("traffic-start").addEventListener("click", () => trafficChange("PUT", {
+    rate: Number(field("traffic-rate").value), profile: field("traffic-profile").value,
+  }));
+  field("traffic-stop").addEventListener("click", () => trafficChange("DELETE"));
 
   field("close").addEventListener("click", () => {
     show("close", false);
