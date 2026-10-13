@@ -279,10 +279,17 @@ class Board(BaseHTTPRequestHandler):
         form = self._form()
         if self._cookies().get("csrftoken") != "T1" or form.get("csrfmiddlewaretoken") != ["F1"]:
             return self._answer(403, b"<h1>Forbidden</h1><p>CSRF verification failed. Request aborted.</p>")
+        if form.get("body") == ["stale"]:
+            return self._answer(403, KOREAN_CSRF_PAGE)
         noted["form"] = form
         if self.path == "/accounts/login/":
             return self._answer(302, headers=[("Location", "/"), ("Set-Cookie", "sessionid=S1; Path=/")])
         return self._answer(302, headers=[("Location", self.path.removesuffix("comments/"))])
+
+KOREAN_CSRF_PAGE = (
+    '<div id="summary"><h1>Forbidden <span>(403)</span></h1>'
+    "<p>CSRF \uac80\uc99d\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4.</p></div>"
+).encode()
 
 @pytest.fixture
 def board():
@@ -359,3 +366,17 @@ def test_a_form_whose_page_carried_no_token_is_not_posted(tmp_path, board):
 
     assert {request["method"] for request in Board.seen} == {"GET"}
     assert records and all(record["method"] == "GET" for record in records)
+
+def test_the_board_s_csrf_refusal_in_the_customer_s_language_is_the_app_s_not_the_defence_s(tmp_path, board):
+    persona = {"id": "u01", "origin": "kr", "bind": "", "target": board, "agent": "Mozilla/5.0",
+               "language": "ko-KR", "account": None}
+    flows = [{"user": 0, "action": "comment", "steps": [
+        {"step": "post", "method": "GET", "path": "/posts/1/"},
+        {"step": "comment", "method": "POST", "path": "/posts/1/comments/", "csrf": True, "form": {"body": "stale"}},
+    ]}]
+    plan = {"host": "board.com", "rate": 50, "profile": "community", "users": [persona], "flows": flows}
+
+    records = _run(tmp_path, plan, lambda: any(r["method"] == "POST" for r in Board.seen))
+
+    refused = [record for record in records if record["method"] == "POST"]
+    assert refused and {(record["status"], record["refused_by"]) for record in refused} == {(403, "app")}
