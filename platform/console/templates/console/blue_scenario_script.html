@@ -39,7 +39,7 @@ function stripShow() {
   field("scenario-phase").innerHTML = badge(t(`scenario.phase.${scenario.phase}`), PHASE_TONE[scenario.phase] || "neutral");
   field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
   field("scenario-blocked").textContent = String(scenario.live.customers_blocked_per_minute);
-  field("scenario-alerts").textContent = String(scenario.live.alerts_per_minute);
+  field("scenario-alerts").textContent = String(scenario.live.alerted_per_minute);
   field("scenario-lost").textContent = String(scenario.live.objectives_lost);
   const checking = scenario.phase === "window";
   const done = field("scenario-done");

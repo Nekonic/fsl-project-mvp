@@ -433,7 +433,8 @@ def status(session) -> dict:
         "time_left": max(0, round((ends - now).total_seconds())),
         "live": {
             "customers_blocked_per_minute": _blocked_between(session, now - MINUTE, now + MINUTE),
-            "alerts_per_minute": session.detections.filter(timestamp__gte=now - MINUTE).count(),
+            "alerted_per_minute": session.detections.filter(timestamp__gte=now - MINUTE).exclude(marker=None)
+            .order_by().values("marker").distinct().count(),
             "objectives_lost": session.objectives.count(),
             "customers": {key: value for key, value in customers.counted(session.customer_requests.all()).items()
                           if key in ("sent", "served", "blocked")},
