@@ -253,3 +253,16 @@ def test_a_worked_scenario_coaches_its_steps_and_polls_the_triage_checks(client)
     assert english("scenario.shift.goal") in result["done"]
     assert result["hints"] == "", "the scenario's hints are offered when stuck, not listed in the note"
     assert any("/lesson/steps/customer/check/" in route for route in result["checked"])
+
+def test_cards_come_one_at_a_time_and_a_dismissed_card_stays_dismissed(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1", cards=["evidence", "alert"])), scenario="""
+      await browser.click('briefing-start');
+      const first = [...document.querySelectorAll('[data-card]')].map((card) => card.dataset.card);
+      await browser.click('[data-card="evidence"] button');
+      const second = [...document.querySelectorAll('[data-card]')].map((card) => card.dataset.card);
+      await browser.wait(6000);
+      return {first, second, after: [...document.querySelectorAll('[data-card]')].map((card) => card.dataset.card),
+              kept: localStorage.getItem('fsl-scenario-cards-1')};
+    """)
+
+    assert seen["result"] == {"first": ["evidence"], "second": ["alert"], "after": ["alert"], "kept": '["evidence"]'}

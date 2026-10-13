@@ -30,8 +30,8 @@ TASK_CLASSES = ("judgement", "availability", "detection", "unknown")
 GUIDANCE = ("worked", "faded", "none")
 BRIEFING = ("situation", "goal", "measured_by")
 CARD_MOMENTS = ("start", "alert", "blocked", "window")
-COMPLETION = {"judgement": {"judged": ("all",)}, "availability": {}, "detection": {"detected_by": ("suricata",)},
-              "unknown": {}}
+COMPLETION = {"judgement": {"judged": ("all",)}, "availability": {"served": ("all",), "held": ("all",)},
+              "detection": {"detected_by": ("suricata",)}, "unknown": {"served": ("all",), "held": ("all",)}}
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 REPLAY_EXPECTS = ("held", "served")
 DETECT_EXPECTS = ("alert", "quiet")

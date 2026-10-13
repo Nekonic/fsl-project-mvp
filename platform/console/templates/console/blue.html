@@ -198,7 +198,8 @@
     }
     if (session && session.lesson) {
       crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
-              { label: t("blue.title"), href: `/blue/${sessionId()}/` }, { label: t("crumb.lesson") }]);
+              { label: t("blue.title"), href: `/blue/${sessionId()}/` },
+              { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
     }
     if (session && session.course_scenario) await scenarioStart(session);
     openPane(kibana);

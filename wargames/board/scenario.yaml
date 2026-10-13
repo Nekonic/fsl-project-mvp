@@ -82,7 +82,7 @@ scenarios:
     traffic: {profile: readers, rate: 2}
     attacks:
       - {at: 240, case: board-sqli-orderby-sqlmap, origin: ru}
-    completion: {}
+    completion: {served: all, held: all}
     cards:
       - {id: blocked, when: blocked}
       - {id: narrow, when: alert}

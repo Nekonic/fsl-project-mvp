@@ -211,7 +211,8 @@ def judge_window(session) -> dict:
     start, end = scenarios.at(window["started_at"]), scenarios.at(window["ends_at"])
     declared = declared_of(session)
     extra = _extra(session, declared, state, start, end)
-    result = scenarios.judged_window(state["schedule"], window, _blocked_between(session, start, end), extra)
+    result = scenarios.judged_window(state["schedule"], window, _blocked_between(session, start, end), extra,
+                                     declared["completion"])
     taken = views._snapshot_waf(session, scenario_window=window["n"])
     result["fix"] = views._fix(session, (taken or {}).get("waf") or session.waf)
     result["judged_at"] = timezone.now().isoformat()

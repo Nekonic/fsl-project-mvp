@@ -61,15 +61,16 @@ def ready_to_judge(entries: list[dict], window: dict, now: datetime) -> bool:
     start, end = at(window["started_at"]), at(window["ends_at"])
     return now >= end and all(entry["state"] in SETTLED for entry in inside(entries, start, end))
 
-def judged_window(entries: list[dict], window: dict, blocked: int, extra: list) -> dict:
+def judged_window(entries: list[dict], window: dict, blocked: int, extra: list, completion: dict) -> dict:
     attacks = [entry for entry in inside(entries, at(window["started_at"]), at(window["ends_at"]))
                if entry["state"] != CANCELLED]
     leaked = [entry for entry in attacks if entry.get("outcome") == LEAKED]
     unfired = [entry for entry in attacks if entry["state"] != FIRED]
+    held = "held" in completion
     reasons = (
-        ([["scenario.fail.blocked", [blocked]]] if blocked else [])
-        + ([["scenario.fail.leaked", [len(leaked), len(attacks)]]] if leaked else [])
-        + ([["scenario.fail.unfired", [len(unfired)]]] if unfired else [])
+        ([["scenario.fail.blocked", [blocked]]] if blocked and "served" in completion else [])
+        + ([["scenario.fail.leaked", [len(leaked), len(attacks)]]] if leaked and held else [])
+        + ([["scenario.fail.unfired", [len(unfired)]]] if unfired and (held or "detected_by" in completion) else [])
         + extra
     )
     return {"passed": not reasons, "reasons": reasons, "attacks": len(attacks),
