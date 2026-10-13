@@ -155,6 +155,7 @@ def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_
     assert f"'--headers=X-FSL-Case: {marker}'" in shown["sqlmap"]["command"]
     assert early["passed"] is False and early["reason"] == ["lesson.check.kali_none", ["sqlmap"]]
     assert ran["passed"] is True and ran["kali"]["requests"] == 40
+    assert "modsecurity" not in ran["kali"]["discover"], "the Kibana link shows the http records, not only alerts"
     recorded = Case.objects.get(session=session, case_id=marker)
     assert recorded.malicious and recorded.meta["kali"] == "sqlmap", "the learner's own red action, scored like any other"
     assert not any(recorded.meta.get(mark) for mark in ("seed", "verify", "check", "replay"))

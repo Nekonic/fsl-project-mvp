@@ -714,7 +714,7 @@ def _kali_check(session, step, kept, failed):
     ran = [event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
     count, by_sensor = _counted(events)
     shown = {"kali": {"name": case["name"], "requests": count, "sensors": by_sensor,
-                      "discover": _discover(session, kibana.sensed_http(marker))}}
+                      "discover": _discover(session, kibana.sensed_http(marker), everything=True)}}
     if recorded is None and not ran:
         return False, ["lesson.check.kali_none", [case["tool"]]], None, shown
     if recorded is None:
