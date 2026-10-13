@@ -189,6 +189,7 @@ function keepNote() {
 function placeNote() {
   field("lesson").classList.toggle("hidden", !note.open);
   field("lesson").classList.toggle("flex", note.open);
+  triageRoom();
   field("note-pill").classList.toggle("hidden", note.open);
   document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
     tab.setAttribute("aria-selected", String(tab.dataset.tab === note.tab)));
@@ -320,6 +321,10 @@ function locate(step) {
 function placePopover(step, rect) {
   const pop = field("coach-pop");
   const arrow = field("coach-pop-arrow");
+  if (popoverDocked(step)) {
+    arrow.classList.add("hidden");
+    return;
+  }
   const width = pop.offsetWidth || 340;
   const height = pop.offsetHeight || 200;
   const viewWidth = window.innerWidth || 1440;

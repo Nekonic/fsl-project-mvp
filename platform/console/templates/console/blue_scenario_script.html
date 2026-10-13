@@ -154,6 +154,45 @@ async function scenarioDebrief() {
 }
 
 const triageVerdicts = new Map();
+const DOCKED = ["scenario-hints", "scenario-cards"];
+const DOCKED_STYLE = { position: "static", width: "auto", maxWidth: "none", left: "", top: "" };
+const UNDOCKED_STYLE = { position: "", width: "", maxWidth: "", left: "", top: "" };
+const popoverHome = field("coach-pop").parentNode;
+
+function dockedIn(element, docked, home, first = false) {
+  const dock = field("triage-dock");
+  const place = docked ? dock : home;
+  const placed = element.parentNode === place && (!first || place.children[0] === element);
+  if (!placed) {
+    element.remove();
+    if (first) place.prepend(element);
+    else place.appendChild(element);
+  }
+  Object.assign(element.style, docked ? DOCKED_STYLE : UNDOCKED_STYLE);
+}
+
+function triageRoom() {
+  const aside = paneOpen("triage") ? noteBox() : null;
+  const pane = boxOf(field("triage"));
+  const right = pane ? pane.left + pane.width : 0;
+  field("triage").style.paddingRight = aside && aside.left < right ? `${Math.ceil(right - aside.left + OVERLAY_GAP)}px` : "";
+}
+
+function triageDock() {
+  const shown = paneOpen("triage");
+  DOCKED.forEach((id) => dockedIn(field(id), shown, field("pane")));
+  if (!shown) dockedIn(field("coach-pop"), false, popoverHome);
+  triageRoom();
+}
+
+function popoverDocked(step) {
+  const target = step && step.panel ? document.querySelector(step.panel) : null;
+  const docked = Boolean(target && target.closest("#triage")) && paneOpen("triage");
+  dockedIn(field("coach-pop"), docked, popoverHome, docked);
+  return docked;
+}
+
+window.addEventListener("resize", triageRoom);
 
 function triageRule(rule) {
   return `${t(rule.engine === "modsecurity" ? "triage.engine.waf" : "triage.engine.ids")} ${rule.rule} · ${rule.signature} ×${rule.count}`;

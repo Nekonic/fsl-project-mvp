@@ -266,3 +266,40 @@ def test_cards_come_one_at_a_time_and_a_dismissed_card_stays_dismissed(client):
     """)
 
     assert seen["result"] == {"first": ["evidence"], "second": ["alert"], "after": ["alert"], "kept": '["evidence"]'}
+
+def test_the_judge_pane_docks_the_cards_the_hints_and_the_coach_above_its_list_and_releases_them(client):
+    from api import views
+
+    taught = wargames.lesson("board", lesson_id="1.1")
+    lesson = {"id": "1.1", "text": taught["text"], "cases": [], "hints": taught["hints"], "verifies": False,
+              "steps": [views._shown_step(None, step) for step in taught["steps"]]}
+    setup = "localStorage.setItem('fsl-lesson-landed-1', 'true');" + serving(
+        status(JUDGEMENT, id="1.1", cards=["evidence"], hints={"offer": None, "opened": ["source"], "left": 2}),
+        lesson=lesson)
+    setup = setup.replace('if (request.route === "/api/sessions/1/ingest/")', '''if (request.route.includes("/lesson/steps/")) {
+    return {body: {passed: request.route.includes("/open/"), reason: null, hint: 0, hints: [], progress: {}}};
+  }
+  if (request.route === "/api/sessions/1/ingest/")''')
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      Object.getPrototypeOf(document.body).getBoundingClientRect =
+        () => ({left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30});
+      await browser.click('briefing-start');
+      await browser.click('scenario-offer');
+      const inDock = (id) => browser.element(id).parentNode === browser.element('triage-dock');
+      const before = {cards: inDock('scenario-cards'), hints: inDock('scenario-hints')};
+      await browser.click('[data-pane="triage"]');
+      for (let i = 0; i < 4; i += 1) await browser.wait(1000);
+      const docked = {cards: inDock('scenario-cards'), hints: inDock('scenario-hints'), coach: inDock('coach-pop'),
+                      first: browser.element('triage-dock').children[0].id,
+                      position: browser.element('scenario-cards').style.position};
+      await browser.click('[data-pane="topology"]');
+      const released = {cards: inDock('scenario-cards'), hints: inDock('scenario-hints'), coach: inDock('coach-pop'),
+                        position: browser.element('scenario-cards').style.position};
+      return {before, docked, released};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["before"] == {"cards": False, "hints": False}
+    assert result["docked"] == {"cards": True, "hints": True, "coach": True, "first": "coach-pop", "position": "static"}
+    assert result["released"] == {"cards": False, "hints": False, "coach": False, "position": ""}
