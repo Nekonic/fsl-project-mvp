@@ -40,7 +40,18 @@ Updated: 2026-10-13. Written for a session that has the cloud
 5. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
    publishing the OPNsense image.
 
+- P4 (2026-10-13): the scenario engine and console are built and were run
+  live on OpenStack (sessions 307-313, closed): 2.1 fails with no fix, passes
+  with the narrow fix and with 949110 removed (959100 still holds sqlmap),
+  fails and loses 3/3 with 949110 and 959100 removed; 1.1 passes on its
+  verdicts. Detail: `docs/DECISIONS.md`, "P4 built". Not pushed.
+
 ## Next, in order
+
+0. P5: the remaining scenarios (1.2, 1.3, 2.2, 2.3, 3.x, 4.x). Open from P4:
+   the judgement class judged on its verdicts alone (confirm), the UDP drops
+   that leave some sqlmap alerts without a marker (a `net.core.rmem_max` sysctl
+   in the platform VM's cloud-init, or TCP syslog).
 
 1. Lesson 6 (corp, "make the option flip noticed"): needs a red actor outside
    the lesson and repeatable corp replays (per-replay logins, reset before
