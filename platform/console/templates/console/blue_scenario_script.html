@@ -1,0 +1,268 @@
+const scenarioPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
+const SCENARIO_POLL_MS = 5000;
+const TRIAGE_POLL_MS = 15000;
+const BRIEFED_KEY = (id) => `fsl-scenario-briefed-${id}`;
+const CARDS_KEY = (id) => `fsl-scenario-cards-${id}`;
+const DEBRIEFED_KEY = (id) => `fsl-scenario-debriefed-${id}`;
+const PHASE_TONE = { running: "blue", window: "warn", passed: "ok-strong", failed: "red-strong", closed: "neutral" };
+const ENDED = ["passed", "failed"];
+let scenario = null;
+let scenarioReadAt = 0;
+const cardsShown = new Set();
+
+function remembered(key, fallback) {
+  try {
+    const kept = JSON.parse(localStorage.getItem(key));
+    return kept === null ? fallback : kept;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    return;
+  }
+}
+
+const minutesAndSeconds = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+const scenarioLeft = () => (scenario
+  ? Math.max(0, scenario.time_left - Math.round((Date.now() - scenarioReadAt) / 1000)) : 0);
+const scenarioTitle = () => `${scenario.id} ${t(scenario.title)}`;
+
+function stripShow() {
+  const strip = field("scenario-strip");
+  strip.classList.remove("hidden");
+  strip.classList.add("flex");
+  field("scenario-name").textContent = scenarioTitle();
+  field("scenario-phase").innerHTML = badge(t(`scenario.phase.${scenario.phase}`), PHASE_TONE[scenario.phase] || "neutral");
+  field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
+  field("scenario-blocked").textContent = String(scenario.live.customers_blocked_per_minute);
+  field("scenario-alerts").textContent = String(scenario.live.alerts_per_minute);
+  field("scenario-lost").textContent = String(scenario.live.objectives_lost);
+  const checking = scenario.phase === "window";
+  const done = field("scenario-done");
+  done.disabled = checking || scenario.phase === "closed";
+  done.textContent = t(checking ? "scenario.done.checking" : "scenario.done");
+  const offer = scenario.hints.offer;
+  field("scenario-offer").classList.toggle("hidden", !offer);
+  field("scenario-offer").title = offer ? t(`scenario.hint.why.${offer.reason}`) : "";
+  overlaysBelowBars();
+}
+
+function briefingShow() {
+  field("briefing-class").textContent = t(`scenario.class.${scenario.task_class}`);
+  field("briefing-guidance").textContent = t(`scenario.guidance.${scenario.guidance}`);
+  field("briefing-minutes").textContent = t("main.minutes", scenario.minutes);
+  field("briefing-title").textContent = scenarioTitle();
+  field("briefing-situation").textContent = t(scenario.briefing.situation);
+  field("briefing-goal").textContent = t(scenario.briefing.goal);
+  field("briefing-measured").textContent = t(scenario.briefing.measured_by);
+  field("briefing-time").textContent = t("scenario.briefing.time_line", scenario.minutes, scenario.window_minutes,
+    minutesAndSeconds(scenarioLeft()));
+  field("briefing").classList.remove("hidden");
+}
+
+function briefingClose() {
+  field("briefing").classList.add("hidden");
+  remember(BRIEFED_KEY(sessionId()), true);
+}
+
+function cardsShow() {
+  const dismissed = remembered(CARDS_KEY(sessionId()), []);
+  const stack = field("scenario-cards");
+  scenario.cards.filter((id) => !dismissed.includes(id) && !cardsShown.has(id)).forEach((id) => {
+    cardsShown.add(id);
+    const card = document.createElement("div");
+    card.className = "card note-shadow p-3 flex flex-col gap-1 text-[12.5px]";
+    card.dataset.card = id;
+    card.innerHTML = `<b class="text-heading">${esc(t(`${scenario.text}.card.${id}.title`))}</b>
+      <p class="text-body leading-relaxed">${esc(t(`${scenario.text}.card.${id}.body`))}</p>
+      <button type="button" class="self-end btn btn-sm btn-ghost">${esc(t("scenario.card.dismiss"))}</button>`;
+    card.querySelector("button").addEventListener("click", () => {
+      remember(CARDS_KEY(sessionId()), [...remembered(CARDS_KEY(sessionId()), []), id]);
+      card.remove();
+      stack.classList.toggle("hidden", !stack.querySelector("[data-card]"));
+    });
+    stack.appendChild(card);
+  });
+  const any = Boolean(stack.querySelector("[data-card]"));
+  stack.classList.toggle("hidden", !any);
+  stack.classList.toggle("flex", any);
+}
+
+function hintsShow() {
+  const opened = scenario.hints.opened;
+  field("scenario-hint-list").innerHTML = opened.length
+    ? opened.map((id) => `<li class="text-body leading-relaxed" data-hint="${esc(id)}">${esc(t(`${scenario.text}.hint.${id}`))}</li>`).join("")
+    : `<li class="text-muted">${esc(t("scenario.hint.none"))}</li>`;
+  field("scenario-hints").classList.remove("hidden");
+  field("scenario-hints").classList.add("flex");
+}
+
+async function hintOpen() {
+  const opened = await post(scenarioPath("scenario/hints/"));
+  if (opened.ok) scenario.hints = { offer: opened.body.offer, opened: opened.body.opened, left: opened.body.left };
+  hintsShow();
+  stripShow();
+}
+
+async function scenarioRead() {
+  const read = await api(scenarioPath("scenario/"));
+  if (!read.ok) return false;
+  scenario = read.body;
+  scenarioReadAt = Date.now();
+  stripShow();
+  cardsShow();
+  if (ENDED.includes(scenario.completion.state) && remembered(DEBRIEFED_KEY(sessionId()), 0) < scenario.windows) {
+    remember(DEBRIEFED_KEY(sessionId()), scenario.windows);
+    scenarioDebrief();
+  }
+  return true;
+}
+
+async function scenarioDone() {
+  field("scenario-done").disabled = true;
+  const started = await post(scenarioPath("scenario/verify-window/"));
+  if (started.ok) {
+    scenario = started.body;
+    scenarioReadAt = Date.now();
+  }
+  stripShow();
+}
+
+function verdictBox(state) {
+  const passed = state.completion.state === "passed";
+  const reasons = state.completion.reasons.map(([key, values]) => t(key, ...values));
+  const fix = state.completion.fix ? `${t(`lesson.fix.${state.completion.fix}`)} ${t("lesson.fix.note")}` : "";
+  field("scenario-verdict").innerHTML = `
+    <span class="badge ${passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${passed ? "PASS" : "FAIL"}</span>
+    <div class="min-w-0 flex-1">
+      <div class="font-bold text-[15px] text-heading">${esc(t(passed ? "scenario.verdict.passed" : "scenario.verdict.failed", scenarioTitle()))}</div>
+      ${reasons.map((line) => `<p class="text-muted mt-0.5" data-reason>${esc(line)}</p>`).join("")}
+      ${fix ? `<p class="text-[12px] text-muted mt-0.5" data-fix>${esc(fix)}</p>` : ""}
+    </div>`;
+}
+
+async function scenarioDebrief() {
+  const told = await api(scenarioPath("scenario/debrief/"));
+  if (!told.ok) return;
+  verdictBox(scenario);
+  renderDebrief(field("scenario-debrief-body"), told.body);
+  field("scenario-debrief").classList.remove("hidden");
+}
+
+const triageVerdicts = new Map();
+
+function triageRule(rule) {
+  return `${t(rule.engine === "modsecurity" ? "triage.engine.waf" : "triage.engine.ids")} ${rule.rule} · ${rule.signature} ×${rule.count}`;
+}
+
+function triageRow(item) {
+  const judged = item.judged ? badge(t(item.judged.right ? "triage.right" : "triage.wrong"), item.judged.right ? "ok" : "red") : "";
+  const request = `${item.request.method} ${item.request.path}`.trim();
+  return `<li class="card p-3 flex flex-col gap-1.5" data-item="${esc(item.item)}">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="font-mono text-faint">${esc(clock(item.first))}</span>
+      ${badge(t(`triage.waf.${item.waf}`), item.waf === "blocked" ? "warn" : "neutral")}
+      ${item.status ? `<span class="font-mono text-body">HTTP ${esc(item.status)}</span>` : ""}
+      <span class="text-muted">${esc(t("triage.alerts", item.alerts))}</span>
+      <span data-judged>${judged}</span>
+    </div>
+    <div class="font-mono break-all text-heading">${esc(request || "—")}</div>
+    <div class="text-muted">${esc(t("triage.from", item.sources.join(", ") || "—"))}</div>
+    <ul class="font-mono text-[11.5px] text-body flex flex-col gap-0.5">${item.rules.map((rule) =>
+      `<li class="break-all">${esc(triageRule(rule))}</li>`).join("")}</ul>
+    <div class="flex flex-wrap items-center gap-2 mt-1">
+      <button type="button" class="btn btn-sm btn-ghost" data-judge="customer">${esc(t("triage.customer"))}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-judge="attack">${esc(t("triage.attack"))}</button>
+      <span class="hidden items-center gap-2" data-got-in>
+        <span class="text-muted">${esc(t("triage.succeeded"))}</span>
+        <button type="button" class="btn btn-sm btn-ghost" data-succeeded="true">${esc(t("triage.yes"))}</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-succeeded="false">${esc(t("triage.no"))}</button>
+      </span>
+      <span class="text-[12px]" data-said></span>
+    </div>
+  </li>`;
+}
+
+async function triageJudge(row, verdict, succeeded) {
+  const body = { item: row.dataset.item, verdict, ...(verdict === "attack" ? { succeeded } : {}) };
+  const judged = await post(scenarioPath("triage/"), body);
+  const said = row.querySelector("[data-said]");
+  if (!judged.ok) {
+    said.textContent = detail(judged);
+    return;
+  }
+  const answer = judged.body;
+  said.className = `text-[12px] ${answer.right ? "text-success" : "text-danger"}`;
+  said.textContent = t(answer.right ? "triage.said.right"
+    : answer.verdict_right ? "triage.said.succeeded" : "triage.said.verdict");
+  row.querySelector("[data-judged]").innerHTML = badge(t(answer.right ? "triage.right" : "triage.wrong"), answer.right ? "ok" : "red");
+  changed.forEach((then) => then("triage"));
+  scenarioRead();
+}
+
+function triageWire(row) {
+  const gotIn = row.querySelector("[data-got-in]");
+  row.querySelectorAll("[data-judge]").forEach((button) => button.addEventListener("click", () => {
+    const verdict = button.dataset.judge;
+    triageVerdicts.set(row.dataset.item, verdict);
+    gotIn.classList.toggle("hidden", verdict !== "attack");
+    gotIn.classList.toggle("flex", verdict === "attack");
+    if (verdict === "customer") triageJudge(row, verdict);
+  }));
+  row.querySelectorAll("[data-succeeded]").forEach((button) => button.addEventListener("click", () =>
+    triageJudge(row, "attack", button.dataset.succeeded === "true")));
+}
+
+async function triageOpen() {
+  const read = await api(scenarioPath("triage/"));
+  if (!read.ok) {
+    field("triage-list").innerHTML = `<li class="text-muted">${esc(detail(read))}</li>`;
+    return;
+  }
+  field("triage-count").textContent = t("triage.count", read.body.judged, read.body.total);
+  field("triage-list").innerHTML = read.body.items.length ? read.body.items.map(triageRow).join("")
+    : `<li class="text-muted">${esc(t("triage.none"))}</li>`;
+  field("triage-list").querySelectorAll("[data-item]").forEach(triageWire);
+}
+
+function scenarioNote() {
+  if (!scenario) return;
+  field("lesson-done").innerHTML = [scenario.briefing.goal, scenario.briefing.measured_by]
+    .map((key) => `<li>${esc(t(key))}</li>`).join("");
+  document.querySelector('#lesson-tabs [data-tab="check"]').classList.add("hidden");
+}
+
+async function scenarioStart(started) {
+  if (!(await scenarioRead())) return;
+  const tab = document.querySelector('.pane-tab[data-pane="triage"]');
+  tab.classList.toggle("hidden", scenario.task_class !== "judgement");
+  if (!remembered(BRIEFED_KEY(sessionId()), false) && !started.ended_at) briefingShow();
+  field("briefing-start").addEventListener("click", briefingClose);
+  field("scenario-briefing-open").addEventListener("click", briefingShow);
+  field("scenario-done").addEventListener("click", scenarioDone);
+  field("scenario-offer").addEventListener("click", hintOpen);
+  field("scenario-hints-close").addEventListener("click", () => {
+    field("scenario-hints").classList.add("hidden");
+    field("scenario-hints").classList.remove("flex");
+  });
+  field("scenario-phase").addEventListener("click", () => {
+    if (ENDED.includes(scenario.completion.state) || scenario.phase === "closed") scenarioDebrief();
+  });
+  field("scenario-debrief-close").addEventListener("click", () => field("scenario-debrief").classList.add("hidden"));
+  field("triage-reload").addEventListener("click", triageOpen);
+  setInterval(() => {
+    if (!scenario || document.hidden) return;
+    field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
+  }, 1000);
+  setInterval(() => {
+    if (!document.hidden && scenario && scenario.phase !== "closed") scenarioRead();
+  }, SCENARIO_POLL_MS);
+  setInterval(() => {
+    if (!document.hidden && paneOpen("triage") && !field("triage-list").querySelector("[data-got-in].flex")) triageOpen();
+  }, TRIAGE_POLL_MS);
+}

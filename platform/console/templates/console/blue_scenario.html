@@ -1,0 +1,47 @@
+<div id="scenario-strip" class="hidden h-11 border-b border-line bg-subdued items-center px-3 gap-4 shrink-0 min-w-0 text-[12.5px]">
+  <span id="scenario-name" class="font-semibold text-heading truncate"></span>
+  <span id="scenario-phase" class="shrink-0"></span>
+  <span class="flex items-center gap-1.5 shrink-0"><span data-t="scenario.strip.left" class="text-muted"></span><b id="scenario-left" class="font-mono text-heading"></b></span>
+  <span class="flex items-center gap-1.5 shrink-0"><span data-t="scenario.strip.blocked" class="text-muted"></span><b id="scenario-blocked" class="font-mono text-heading"></b></span>
+  <span class="hidden md:flex items-center gap-1.5 shrink-0"><span data-t="scenario.strip.alerts" class="text-muted"></span><b id="scenario-alerts" class="font-mono text-heading"></b></span>
+  <span class="flex items-center gap-1.5 shrink-0"><span data-t="scenario.strip.lost" class="text-muted"></span><b id="scenario-lost" class="font-mono text-heading"></b></span>
+  <button type="button" id="scenario-offer" class="hidden btn btn-sm btn-ghost shrink-0" data-t="scenario.hint.offer"></button>
+  <button type="button" id="scenario-briefing-open" class="ml-auto text-[12px] text-primary hover:underline shrink-0" data-t="scenario.briefing.reopen"></button>
+  <button type="button" id="scenario-done" class="btn btn-sm btn-blue shrink-0" data-t="scenario.done"></button>
+</div>
+
+<div id="scenario-cards" class="hidden absolute left-4 bottom-4 z-[34] w-[340px] max-w-[calc(100%-2rem)] flex-col gap-2"></div>
+
+<div id="scenario-hints" class="hidden absolute left-4 top-16 z-[34] w-[340px] max-w-[calc(100%-2rem)] card note-shadow p-4 flex-col gap-2 text-[12.5px]">
+  <div class="flex items-center">
+    <b data-t="scenario.hint.heading" class="text-heading"></b>
+    <button type="button" id="scenario-hints-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
+  </div>
+  <ol id="scenario-hint-list" class="flex flex-col gap-2"></ol>
+</div>
+
+<div id="scenario-debrief" class="hidden absolute inset-0 z-[37] bg-page overflow-auto">
+  <div class="max-w-[760px] mx-auto p-6 flex flex-col gap-4">
+    <div id="scenario-verdict" class="card p-4 flex flex-wrap items-start gap-3"></div>
+    <div id="scenario-debrief-body" class="card p-5 flex flex-col gap-3 text-[13px]"></div>
+    <button type="button" id="scenario-debrief-close" class="self-start btn btn-ghost" data-t="scenario.debrief.back"></button>
+  </div>
+</div>
+
+<div id="briefing" class="hidden fixed inset-0 z-50 bg-page overflow-auto">
+  <div class="max-w-[640px] mx-auto px-6 py-10 flex flex-col gap-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span id="briefing-class" class="badge badge-blue"></span>
+      <span id="briefing-guidance" class="badge badge-neutral"></span>
+      <span id="briefing-minutes" class="text-[12px] text-muted ml-auto"></span>
+    </div>
+    <h1 id="briefing-title" class="text-[22px] font-bold text-heading"></h1>
+    <section class="card p-5 flex flex-col gap-4 text-[14px] leading-relaxed">
+      <div><div data-t="scenario.briefing.situation" class="label mb-1"></div><p id="briefing-situation" class="text-body"></p></div>
+      <div><div data-t="scenario.briefing.goal" class="label mb-1"></div><p id="briefing-goal" class="text-heading font-semibold"></p></div>
+      <div><div data-t="scenario.briefing.measured_by" class="label mb-1"></div><p id="briefing-measured" class="text-body"></p></div>
+      <div><div data-t="scenario.briefing.time" class="label mb-1"></div><p id="briefing-time" class="text-body"></p></div>
+    </section>
+    <button type="button" id="briefing-start" class="self-start btn btn-blue" data-t="scenario.briefing.start"></button>
+  </div>
+</div>

@@ -537,7 +537,7 @@ def debrief(session) -> dict:
         "change": views._change(session, waf),
         "cases": [{"name": name, "malicious": True, "before": before.get(name), "after": after.get(name)}
                   for name in dict.fromkeys(entry["case"] for entry in timeline)],
-        "risk": [[f"lesson.risk.{last['fix']}", []]] if last and last["fix"] else [],
+        "risk": [[f"scenario.risk.{last['fix']}", []]] if last and last["fix"] else [],
         "customers": {
             **{key: everything[key] for key in ("sent", "served", "blocked")},
             "in_window": [_blocked_between(session, scenarios.at(window["started_at"]), scenarios.at(window["ends_at"]))

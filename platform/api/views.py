@@ -83,6 +83,7 @@ SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",), 
                "detect": ("case", "expect"), "sent": ("match",), "kali": ("case",)}
 COUNT_TOLERANCE = 0.1
 SERVER_ONLY = ("solved_at",)
+SCHEDULE = ("attacks", "completion")
 SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
@@ -1723,8 +1724,10 @@ def session_detail(request, session_id):
         session.mode = mode
     taught = _lesson_of(session) if session.guidance else None
     if taught:
-        taught = {key: value for key, value in taught.items() if key not in SERVER_ONLY} | {
-            "steps": [_shown_step(session, step) for step in taught.get("steps", [])], "verifies": _verifies(taught)}
+        hidden = SERVER_ONLY + (SCHEDULE if session.course_scenario else ())
+        taught = {key: value for key, value in taught.items() if key not in hidden} | {
+            "steps": [_shown_step(session, step) for step in taught.get("steps", [])], "verifies": _verifies(taught),
+            **({"cases": []} if session.course_scenario else {})}
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),

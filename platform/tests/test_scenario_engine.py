@@ -177,6 +177,8 @@ def test_a_worked_scenario_opens_on_the_step_engine_without_seeding_replays(clie
     detail = client.get(f"/api/sessions/{answer.json()['id']}/").json()
     assert detail["lesson"]["id"] == "1.1"
     assert [step["id"] for step in detail["lesson"]["steps"]] == ["open", "customer", "attack", "all", "done"]
+    assert detail["lesson"]["cases"] == [] and "attacks" not in detail["lesson"]
+    assert SQLMAP not in json.dumps(detail), "the session's own page names no scheduled attack"
 
 def test_customers_that_cannot_start_close_the_scenario_session(client):
     from range.ports import RangeUnavailable
