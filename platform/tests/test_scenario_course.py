@@ -344,15 +344,15 @@ def test_lowering_the_thresholds_is_not_named_a_threshold_fix_raising_them_is(wa
     import lesson
 
     posture = wargames.defense("board", "untuned")["waf"]
-    assert lesson.fix_class(waf, posture, "") == named
+    assert lesson.fix_class(waf, posture) == named
 
 def test_raising_the_thresholds_above_the_crs_defaults_is_a_threshold_fix():
     import lesson
 
     assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 10}},
-                            {"paranoia": 2, "exclusions": []}, "") == "threshold"
+                            {"paranoia": 2, "exclusions": []}) == "threshold"
     assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}},
-                            {"paranoia": 2, "exclusions": []}, "") is None
+                            {"paranoia": 2, "exclusions": []}) is None
 
 def test_a_scenario_without_a_lesson_names_a_path_scoped_exception_on_any_path_a_path_target():
     from api import views

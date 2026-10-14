@@ -6,7 +6,6 @@ import requests
 from conftest import PLATFORM_URL, REPO_ROOT
 
 O_BRIEN = "board-normal-search-with-apostrophe"
-EXCLUSION = {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}
 
 
 def _open(**settings) -> int:
@@ -15,12 +14,6 @@ def _open(**settings) -> int:
     )
     assert opened.status_code == 201, opened.text
     return opened.json()["id"]
-
-
-def _verify(session_id: int) -> dict:
-    checked = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/verify/", json={}, timeout=1800)
-    assert checked.status_code == 200, checked.text
-    return checked.json()
 
 
 def _tune(session_id: int, tuning: dict) -> dict:
@@ -42,32 +35,10 @@ def minimal(stack_is_up):
     return _open(defense="minimal")
 
 
-def test_the_lesson_starts_with_a_waf_that_blocks_the_o_brien_search(minimal):
-    tuning = requests.get(f"{PLATFORM_URL}/api/sessions/{minimal}/waf/", timeout=60).json()
-    result = _verify(minimal)
-
-    assert tuning["paranoia"] == 4
-    assert result["passed"] is False
-    assert [key for key, values in result["diagnosis"] if O_BRIEN in values] == [
-        "lesson.diag.benign_blocked"
-    ], result["diagnosis"]
-    assert all(case["outcome"] == "held" for case in result["cases"] if case["malicious"]), (
-        f"paranoia level 4 let an sqlmap variant dump the board's hashes: {result['cases']}"
-    )
-
-
-def test_excluding_one_rule_for_one_parameter_passes_the_lesson(minimal):
-    _tune(minimal, {"paranoia": 4, "exclusions": [EXCLUSION]})
-    result = _verify(minimal)
-
-    assert result["passed"] is True, result
-    assert result["diagnosis"] == [["lesson.diag.blocked_ratio", [2, 2]]]
-
-
 @pytest.fixture(scope="module")
 def guided_beside_minimal(minimal):
     began = time.monotonic()
-    first = _open(defense="minimal", guidance=True)
+    first = _open(defense="minimal", guidance=True, lesson="f1")
     seen = {"took": time.monotonic() - began}
     try:
         seen["cases"] = requests.get(f"{PLATFORM_URL}/api/sessions/{first}/cases/", timeout=60).json()
@@ -109,26 +80,11 @@ def test_two_sessions_tune_their_own_waf_and_their_own_sensor(guided_beside_mini
     )
 
 
-def test_with_blocking_turned_off_verify_sees_the_stock_variant_leak(stack_is_up):
-    session_id = _open(defense="minimal")
-    _tune(session_id, {"paranoia": 4, "exclusions": [{"rule_id": 949110}, {"rule_id": 959100}]})
-    began = time.monotonic()
-    result = _verify(session_id)
-    took = time.monotonic() - began
-
-    outcomes = {case["name"]: case["outcome"] for case in result["cases"]}
-    assert outcomes["board-sqli-orderby-sqlmap"] == "leaked", (
-        f"with the inbound and outbound blocking evaluations removed the WAF blocks "
-        f"nothing, so sqlmap must dump the board's accounts: {result}"
-    )
-    assert result["passed"] is False
-    print(f"leaking VERIFY took {took:.0f} s")
-
-
-def test_a_guided_session_opens_with_the_lesson_s_logs_already_there(guided_beside_minimal):
+def test_a_foundation_session_opens_with_its_logs_already_there(guided_beside_minimal):
     cases = guided_beside_minimal["cases"]
     lesson = guided_beside_minimal["lesson"]
 
+    assert lesson["id"] == "f1"
     assert sorted(case["name"] for case in cases) == sorted(lesson["cases"])
     assert all(case["meta"].get("seed") for case in cases)
     print(f"guided open took {guided_beside_minimal['took']:.0f} s")

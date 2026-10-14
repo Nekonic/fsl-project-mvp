@@ -250,20 +250,21 @@ def test_ingest_can_read_only_the_last_minutes_so_a_long_session_still_finds_a_n
     assert client.post_json(f"/api/sessions/{session.pk}/ingest/", {"within": 0}).status_code == 400
 
 def test_a_lesson_step_with_a_query_carries_a_discover_link_narrowed_to_it(client):
-    session = Session.objects.create(scenario="board", baseline=[], guidance=True)
+    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f4")
 
     steps = {step["id"]: step for step in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert "Brien" in steps["find"]["discover"] and "403" in steps["find"]["discover"]
+    assert "script" in steps["find"]["discover"] and "403" in steps["find"]["discover"]
     assert f"fsl-logs-{session.pk}" in steps["find"]["discover"]
     assert "discover" not in steps["search"]
 
-def test_the_lesson_s_alert_check_looks_for_the_site_browser_s_own_marker():
+def test_the_rule_answer_reads_the_records_of_the_site_browser_s_own_marker():
     import wargames
 
-    search = wargames.lesson("board")["steps"][0]
+    rule = next(step for step in wargames.lesson("board", lesson_id="f5")["steps"] if step["id"] == "rule")
 
-    assert search["check"] == {"kind": "alert", "marker": views.SITE_BROWSER_MARKER, "path": "O'Brien"}
+    assert rule["check"] == {"kind": "answer", "of": "rule", "marker": views.SITE_BROWSER_MARKER, "path": "1=1",
+                             "known": ["949110"]}
 
 class Answer:
     def __init__(self, status, content=b"", headers=None):

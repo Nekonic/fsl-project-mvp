@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 STATE = threading.RLock()
 FIRING = ThreadPoolExecutor(max_workers=4, thread_name_prefix="fsl-scenario-attack")
-ASKED_KEYS = ("lesson", "guidance", "defense", "mode")
+ASKED_KEYS = ("lesson", "guidance", "defense")
 RECENT = 180
 MINUTE = timedelta(minutes=1)
 SHOWN_ITEMS = 200
@@ -558,7 +558,7 @@ def debrief(session) -> dict:
         "title": f"{declared['text']}.title",
         "task_class": declared["task_class"],
         "overview": {
-            "passed": last["passed"] if last else None, "verified": len(judged), "mode": session.mode,
+            "passed": last["passed"] if last else None, "verified": len(judged),
             "fix": last["fix"] if last else None, "reasons": last["reasons"] if last else [],
             "steps": {"passed": sum(1 for step_id, kept in session.lesson_steps.items()
                                     if step_id in steps and kept.get("passed")), "total": len(steps)},

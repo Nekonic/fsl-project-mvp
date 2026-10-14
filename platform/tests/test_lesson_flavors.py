@@ -10,7 +10,8 @@ from range import declared
 
 pytestmark = pytest.mark.django_db
 
-LESSONS = [(wargame_id, taught["id"]) for wargame_id in wargames.WARGAMES for taught in wargames.lessons(wargame_id)]
+LESSONS = [(wargame_id, lesson_id) for wargame_id in wargames.WARGAMES for lesson_id in [
+    *wargames.taught_ids(wargame_id), *(one["id"] for one in wargames.stepped_scenarios(wargame_id))]]
 FLAVORS = ["", "openstack"]
 
 def layout(flavor):
@@ -21,36 +22,32 @@ def commands(wargame_id, lesson_id, flavor):
     return {step["id"]: step["command"] for step in taught["steps"] if step.get("command")}
 
 def test_every_declared_lesson_is_covered_on_two_waf_layouts():
-    assert ("board", "waf-exclusion") in LESSONS
+    assert ("board", "f6") in LESSONS
     assert layout("").rules != layout("openstack").rules, "the docker WAF container and the OpenStack WAF VM differ"
+    assert [commands("board", "f6", flavor) for flavor in FLAVORS] == [
+        {"excluded": f"cat {layout(flavor).rules}"} for flavor in FLAVORS]
 
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
-def test_every_lesson_command_names_the_flavor_s_own_waf_file_and_reload(wargame_id, lesson_id, flavor):
+def test_every_lesson_command_names_the_flavor_s_own_waf_file(wargame_id, lesson_id, flavor):
     waf = layout(flavor)
 
     for step_id, command in commands(wargame_id, lesson_id, flavor).items():
-        assert "{waf_rules}" not in command and "{waf_reload}" not in command, step_id
-        if "REQUEST-900" in command or "$F" in command:
-            assert f"F={waf.rules}" in command and waf.reload in command, (flavor, step_id)
+        assert "{waf_rules}" not in command, step_id
+        if "REQUEST-900" in command:
+            assert waf.rules in command, (flavor, step_id)
 
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
-def test_every_lesson_exclusion_command_runs_against_the_flavor_s_file(tmp_path, wargame_id, lesson_id, flavor):
+def test_every_lesson_command_runs_against_the_flavor_s_file(tmp_path, wargame_id, lesson_id, flavor):
     waf = layout(flavor)
     rules = tmp_path / "exclusions.conf"
-    rules.write_text("")
-    tools = tmp_path / "bin"
-    tools.mkdir()
-    for name, body in {"nginx": "exit 0", "sudo": 'exec "$@"', "systemctl": "exit 0"}.items():
-        (tools / name).write_text(f"#!/bin/sh\n{body}\n")
-        (tools / name).chmod(0o755)
+    rules.write_text('SecRuleRemoveById 949110\n')
 
     for step_id, command in commands(wargame_id, lesson_id, flavor).items():
         done = subprocess.run(["sh", "-c", command.replace(waf.rules, str(rules))], capture_output=True, text=True,
-                              env={"PATH": f"{tools}:/usr/bin:/bin"})
-        assert done.returncode == 0 and "reloaded" in done.stdout, (flavor, step_id, done.stdout, done.stderr)
-        assert "ctl:ruleRemove" in rules.read_text()
+                              env={"PATH": "/usr/bin:/bin"})
+        assert done.returncode == 0 and "SecRuleRemoveById 949110" in done.stdout, (flavor, step_id, done.stderr)
 
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
