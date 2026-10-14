@@ -176,15 +176,16 @@ def labels(document):
 def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_that_segment():
     shown = {pair: label["text"] for pair, label in labels(slot_map()).items()}
 
-    assert shown[("fsl-kali", "internet")] == "ens3 5.188.10.10/24 (+1)", "the default origin's address comes first"
-    assert shown[("fsl-edge", "internet")] == "vtnet0 5.188.10.1/24 (+1)"
+    assert shown[("fsl-kali", "internet")] == "ens3 5.188.10.10/24", "the default origin's address, and only it"
+    assert shown[("fsl-edge", "internet")] == "vtnet0 5.188.10.1/24"
     assert shown[("fsl-edge", "estate")] == "vtnet1 10.30.0.1/24"
     assert shown[("fsl-waf", "estate")] == "ens3 10.30.0.177/24"
-    assert shown[("fsl-wargame-host", "board-default")] == "br-7cc6b1febc1d 172.18.0.1/16"
+    assert shown[("fsl-wargame-host", "board-default")] == "", "the host's side of a Docker bridge carries no label"
     assert shown[("board", "board-default")] == "eth0 172.18.0.3/16"
     assert shown[("corp-db", "corp-default")] == "eth0 172.19.0.2/16"
     assert all(text == "" for (one, _), text in shown.items() if one in {"internet", "estate", "board-default",
-                                                                          "corp-default"})
+                                                                          "corp-default", "monitoring"})
+    assert all(text == "" for (_, other), text in shown.items() if other == "monitoring")
     assert not [text for text in shown.values() if "10.31.0." in text], "no management address reaches the map"
 
 def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing():
@@ -236,7 +237,35 @@ def test_a_label_sits_on_the_side_of_its_node_that_faces_the_link():
 
     assert shown[("fsl-kali", "internet")]["x"] > 30, "internet is right of Kali, so the label is too"
     assert shown[("internet", "fsl-kali")]["x"] < 30
-    assert shown[("fsl-waf", "estate")]["y"] > 30, "estate is below the WAF"
+
+@pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
+def test_every_label_lies_level_clear_of_its_node_on_the_side_its_link_leaves(path):
+    document = slot_map(2, path)
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    size = topology.SYMBOL_SIZE
+    for link in document["topology"]["links"]:
+        ends = [by_id[end["node_id"]] for end in link["nodes"]]
+        for end, node, other in ((link["nodes"][0], *ends), (link["nodes"][1], *ends[::-1])):
+            label = end["label"]
+            across, down = topology.leaving(node, other)
+            assert label["rotation"] == 0
+            if across > 0:
+                assert label["x"] > size and label["y"] < size // 2 and topology.STARTS in label["style"]
+            elif across < 0:
+                assert label["x"] < 0 and label["y"] < size // 2 and topology.ENDS in label["style"]
+            elif down > 0:
+                assert label["y"] > size and label["x"] > size // 2
+            else:
+                assert label["y"] < 0 and label["x"] > size // 2
+
+@pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
+def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
+    found = read_slot() + [Interface("fsl-waf", "eth1", "5.188.10.4/24", "internet"),
+                           Interface("fsl-waf", "eth2", "73.0.0.4/24", "internet")]
+    texts = [label["text"] for label in labels(slot_map(2, path, found)).values()]
+
+    assert [text for text in texts if "+" in text or interfaces.BRIDGE_PREFIX in text or text.count("/") > 1] == []
+    assert any(text for text in texts)
 
 class Served:
     def __init__(self, opened=()):

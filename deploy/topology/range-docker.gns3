@@ -16,192 +16,138 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "f616548e-38c5-5396-a185-46ebf0f02728",
+                "drawing_id": "7e5c6f19-bfea-53ea-a250-d3a91a3e02f8",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"400\" height=\"460\"><rect width=\"400\" height=\"460\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -616,
-                "y": -360,
+                "svg": "<svg width=\"350\" height=\"300\"><rect width=\"350\" height=\"300\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -500,
+                "y": -150,
                 "z": 0
             },
             {
-                "drawing_id": "4ef87dba-b07a-5729-9b45-b81e6a407e1c",
+                "drawing_id": "563fd47a-3c60-5924-a330-dc5fab341c4f",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"760\" height=\"600\"><rect width=\"760\" height=\"600\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -206,
-                "y": -360,
+                "svg": "<svg width=\"1060\" height=\"505\"><rect width=\"1060\" height=\"505\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -140,
+                "y": -290,
                 "z": 0
             },
             {
-                "drawing_id": "792d5031-111c-58fa-859b-c90604991170",
+                "drawing_id": "981b383c-3c7a-59b0-9860-31d0704228b0",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"599\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on Docker: the network you defend (one session)</text></svg>",
-                "x": -616,
-                "y": -420,
+                "svg": "<svg width=\"1060\" height=\"200\"><rect width=\"1060\" height=\"200\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": -140,
+                "y": 230,
+                "z": 0
+            },
+            {
+                "drawing_id": "acca6ee8-6b4e-5dd9-8a28-6f2d8f7c0f6f",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"375\" height=\"27\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range (Docker): the network you defend</text></svg>",
+                "x": -500,
+                "y": -340,
                 "z": 2
             },
             {
-                "drawing_id": "84904bd2-52f1-5d5a-a6d9-e7826d94a145",
+                "drawing_id": "455b48d7-ed4e-5229-9e50-07c35d5df0fa",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"102\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
-                "x": -606,
-                "y": -355,
+                "svg": "<svg width=\"88\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
+                "x": -490,
+                "y": -145,
                 "z": 2
             },
             {
-                "drawing_id": "af689a6b-f72b-5063-954b-99163bbabe07",
+                "drawing_id": "dc9e3ecc-cca8-5443-b563-2a73f8c0c92d",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"301\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#b03a2e\" fill-opacity=\"1.0\">customers and the attacker come from here</text></svg>",
-                "x": -606,
-                "y": 52,
+                "svg": "<svg width=\"186\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
+                "x": -130,
+                "y": -285,
                 "z": 2
             },
             {
-                "drawing_id": "6b274d74-d3c0-5fae-9203-49bb411a5ad5",
+                "drawing_id": "293c4ed3-5ad2-548d-aa81-cd70e7a0807a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"380\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#b03a2e\" fill-opacity=\"1.0\">30 origin /24s, one Docker network per origin in use</text></svg>",
-                "x": -606,
-                "y": 70,
+                "svg": "<svg width=\"117\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
+                "x": -130,
+                "y": 235,
                 "z": 2
             },
             {
-                "drawing_id": "7cf4524a-a477-5df0-b669-3d4e5b18e1d3",
+                "drawing_id": "3bf26ee2-d639-5e26-ba50-e74eb0ce3a54",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"222\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
-                "x": -196,
-                "y": -355,
+                "svg": "<svg width=\"119\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">attacker's PC (Kali)</text></svg>",
+                "x": -450,
+                "y": 38,
                 "z": 2
             },
             {
-                "drawing_id": "07631aba-04dc-542d-818f-195e244335fa",
+                "drawing_id": "1a416574-cdd1-56ac-bdf9-37cc3bc48a2b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"206\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">attacker's machine (Kali)</text></svg>",
-                "x": -616,
-                "y": 0,
+                "svg": "<svg width=\"429\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">web firewall (ModSecurity + CRS) and Suricata: board.com, corp.com</text></svg>",
+                "x": 10,
+                "y": 38,
                 "z": 2
             },
             {
-                "drawing_id": "20c24af8-5033-5a7c-8edb-77fd597b81b6",
+                "drawing_id": "4cdb5f28-d709-528e-9c8c-2dfe600a048a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"262\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">web firewall (ModSecurity + CRS)</text></svg>",
-                "x": -201,
-                "y": 0,
+                "svg": "<svg width=\"168\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board website: board.com</text></svg>",
+                "x": 658,
+                "y": -176,
                 "z": 2
             },
             {
-                "drawing_id": "f373705e-de35-5d04-8bd6-d7cd2ecd5270",
+                "drawing_id": "fcc5b0e0-a23d-577d-8efa-157d1e382181",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"222\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">answers board.com and corp.com</text></svg>",
-                "x": -201,
-                "y": 18,
+                "svg": "<svg width=\"166\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board's database (MySQL)</text></svg>",
+                "x": 658,
+                "y": -66,
                 "z": 2
             },
             {
-                "drawing_id": "103d029b-71dc-5b64-945a-5efeed7404fa",
+                "drawing_id": "a7d463c0-650d-5492-b929-5f910180db2f",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"182\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">network IDS (Suricata)</text></svg>",
-                "x": -71,
-                "y": -250,
+                "svg": "<svg width=\"228\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp website (WordPress): corp.com</text></svg>",
+                "x": 658,
+                "y": 44,
                 "z": 2
             },
             {
-                "drawing_id": "0c8eafec-cfb4-5ff8-8b80-dd05b5352c21",
+                "drawing_id": "0049d40f-5752-5954-b655-d89c7f8e27f9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"294\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">runs inside fsl-waf's network namespace:</text></svg>",
-                "x": -71,
-                "y": -232,
+                "svg": "<svg width=\"157\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp's database (MySQL)</text></svg>",
+                "x": 658,
+                "y": 154,
                 "z": 2
             },
             {
-                "drawing_id": "611063a1-d66e-5751-809f-5fb25dad76d0",
+                "drawing_id": "047c86a2-5caa-54c3-97b0-5c760d1601d2",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"222\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">sees every packet the WAF sees</text></svg>",
-                "x": -71,
-                "y": -215,
+                "svg": "<svg width=\"361\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">log shipper (Filebeat): reads the WAF's and Suricata's logs</text></svg>",
+                "x": 10,
+                "y": 378,
                 "z": 2
             },
             {
-                "drawing_id": "f4056bea-b92e-5a00-8b62-45da8885cdfb",
+                "drawing_id": "5c8f7470-4a37-59ee-9f0d-9c3fbae8043e",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"198\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board website: board.com</text></svg>",
-                "x": 339,
-                "y": -240,
-                "z": 2
-            },
-            {
-                "drawing_id": "22e6d55f-ccfa-56ce-bf9e-61903f830bbf",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"198\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board's database (MySQL)</text></svg>",
-                "x": 339,
-                "y": -115,
-                "z": 2
-            },
-            {
-                "drawing_id": "c41255bb-ec11-598d-8416-dd55b0035232",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"278\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp website (WordPress): corp.com</text></svg>",
-                "x": 339,
-                "y": 15,
-                "z": 2
-            },
-            {
-                "drawing_id": "d81d2e4a-807b-5290-8c58-c7d8544c5c43",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"190\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp's database (MySQL)</text></svg>",
-                "x": 339,
-                "y": 140,
-                "z": 2
-            },
-            {
-                "drawing_id": "b3b4c5e2-7a36-56a1-bcb6-eb4892a7db49",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"606\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">log store (Elasticsearch): fsl-waf and fsl-suricata send their records here</text></svg>",
-                "x": -71,
-                "y": 280,
-                "z": 2
-            },
-            {
-                "drawing_id": "7994ca2c-c3eb-5a30-8bc2-8b779cbd2e73",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"337\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">every machine here is a container (round icon)</text></svg>",
-                "x": -616,
-                "y": 360,
-                "z": 2
-            },
-            {
-                "drawing_id": "47dcc05b-b0f5-521a-b732-b97fa4b7219c",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"596\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">This map shows how the range is wired. The machines run in the range, not in GNS3:</text></svg>",
-                "x": -616,
-                "y": 380,
-                "z": 2
-            },
-            {
-                "drawing_id": "4be6c75a-9bc2-5305-a923-23b985de0248",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"712\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">GNS3 never starts them, so the red marks on the links mean stopped in GNS3, not down in the range.</text></svg>",
-                "x": -616,
-                "y": 398,
+                "svg": "<svg width=\"151\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">log store (Elasticsearch)</text></svg>",
+                "x": 510,
+                "y": 378,
                 "z": 2
             }
         ],
@@ -260,6 +206,9 @@
             {
                 "filters": {},
                 "link_id": "b192f041-8a1c-5db4-b534-0ab6e860f2d6",
+                "link_style": {
+                    "link_type": "flowchart"
+                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -277,6 +226,9 @@
             {
                 "filters": {},
                 "link_id": "5336ce50-e74c-5717-9699-796c0d60a29f",
+                "link_style": {
+                    "link_type": "flowchart"
+                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -294,6 +246,9 @@
             {
                 "filters": {},
                 "link_id": "fbb2f540-5c03-5c72-8954-eb6a6e79110a",
+                "link_style": {
+                    "link_type": "flowchart"
+                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -311,6 +266,9 @@
             {
                 "filters": {},
                 "link_id": "a74c41c9-452c-5258-8782-9c694ab772d3",
+                "link_style": {
+                    "link_type": "flowchart"
+                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -324,9 +282,66 @@
                     }
                 ],
                 "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "b60278d2-1977-50f0-a76b-a7e0023d9b53",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "40eae1a4-1e9e-5bd4-aa91-e08b6f26d9b4",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "795d2929-32ab-5ef4-939d-1bff2b8b9b15",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "f349ab74-48c6-5fe0-a922-c421c3e10222",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                        "port_number": 1
+                    }
+                ],
+                "suspend": false
             }
         ],
         "nodes": [
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-kali",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-kali",
+                "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "ghcr.io/nekonic/fsl-kali:dev"
+                },
+                "symbol": ":/symbols/affinity/circle/red/scull.svg",
+                "x": -450,
+                "y": -30,
+                "z": 1
+            },
             {
                 "compute_id": "local",
                 "console_type": "none",
@@ -393,8 +408,31 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -356,
-                "y": -70,
+                "x": -230,
+                "y": -30,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-waf",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-waf",
+                "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 2,
+                    "image": "owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05"
+                },
+                "symbol": ":/symbols/affinity/circle/green/shield.svg",
+                "x": 10,
+                "y": -30,
                 "z": 1
             },
             {
@@ -463,77 +501,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 84,
-                "y": -70,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-kali",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "fsl-kali",
-                "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
-                "node_type": "docker",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-kali:dev"
-                },
-                "symbol": ":/symbols/affinity/circle/red/scull.svg",
-                "x": -576,
-                "y": -70,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-waf",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "fsl-waf",
-                "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
-                "node_type": "docker",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapters": 2,
-                    "image": "owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05"
-                },
-                "symbol": ":/symbols/affinity/circle/green/shield.svg",
-                "x": -136,
-                "y": -70,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-suricata",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "fsl-suricata",
-                "node_id": "b7d2fc84-0055-5119-92a4-22fbf63be224",
-                "node_type": "docker",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapters": 0,
-                    "image": "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-                },
-                "symbol": ":/symbols/affinity/circle/green/inspect.svg",
-                "x": -136,
-                "y": -260,
+                "x": 270,
+                "y": -30,
                 "z": 1
             },
             {
@@ -555,8 +524,8 @@
                     "image": "ghcr.io/nekonic/fsl-board:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 274,
-                "y": -260,
+                "x": 590,
+                "y": -195,
                 "z": 1
             },
             {
@@ -578,8 +547,8 @@
                     "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 274,
-                "y": -135,
+                "x": 590,
+                "y": -85,
                 "z": 1
             },
             {
@@ -601,8 +570,8 @@
                     "image": "ghcr.io/nekonic/fsl-corp:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 274,
-                "y": -5,
+                "x": 590,
+                "y": 25,
                 "z": 1
             },
             {
@@ -624,8 +593,101 @@
                     "image": "ghcr.io/nekonic/fsl-corp-db:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 274,
-                "y": 120,
+                "x": 590,
+                "y": 135,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-filebeat",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-filebeat",
+                "node_id": "40eae1a4-1e9e-5bd4-aa91-e08b6f26d9b4",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/beats/filebeat:8.15.0"
+                },
+                "symbol": ":/symbols/affinity/circle/gray/docker.svg",
+                "x": 10,
+                "y": 310,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "monitoring",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "monitoring",
+                "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                "node_type": "ethernet_switch",
+                "properties": {
+                    "ports_mapping": [
+                        {
+                            "name": "Ethernet0",
+                            "port_number": 0,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet1",
+                            "port_number": 1,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet2",
+                            "port_number": 2,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet3",
+                            "port_number": 3,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet4",
+                            "port_number": 4,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet5",
+                            "port_number": 5,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet6",
+                            "port_number": 6,
+                            "type": "access",
+                            "vlan": 1
+                        },
+                        {
+                            "name": "Ethernet7",
+                            "port_number": 7,
+                            "type": "access",
+                            "vlan": 1
+                        }
+                    ]
+                },
+                "symbol": ":/symbols/affinity/square/gray/switch.svg",
+                "x": 270,
+                "y": 310,
                 "z": 1
             },
             {
@@ -647,8 +709,8 @@
                     "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": -136,
-                "y": 260,
+                "x": 510,
+                "y": 310,
                 "z": 1
             }
         ]

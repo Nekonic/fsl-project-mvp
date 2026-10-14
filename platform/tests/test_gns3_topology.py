@@ -38,6 +38,10 @@ GNS3_2_2_TOP_LEVEL = {
 }
 GNS3_2_2_TOPOLOGY = {"computes", "drawings", "links", "nodes"}
 SWITCH = "ethernet_switch"
+MONITORING = "monitoring"
+FLOWCHART = "flowchart"
+STRAIGHT_WITHIN = 6
+UBUNTU_SIZE = (65, 59)
 
 def project(path):
     return json.loads(path.read_text())
@@ -253,9 +257,11 @@ def test_the_segments_are_the_declared_segments_as_switches(any_map):
     declared_segments = segment_ids()[0] if is_system(gns3) else defended_ids()
     switches = {name for name, node in nodes(gns3).items() if node["node_type"] == SWITCH}
 
+    allowed = set() if is_system(gns3) else {MONITORING}
+
     assert declared_segments <= switches
-    assert not {name for name in switches - declared_segments if not name.endswith("-default")}
-    assert is_system(gns3) or fabric.MANAGEMENT not in switches
+    assert not {name for name in switches - declared_segments - allowed if not name.endswith("-default")}
+    assert is_system(gns3) or (fabric.MANAGEMENT not in switches and MONITORING in switches)
 
 def test_the_docker_system_map_is_the_compose_stack_one_container_per_service():
     gns3 = project(SYSTEM_DOCKER)
@@ -353,8 +359,12 @@ def test_each_declared_segment_is_a_titled_zone_holding_its_switch(any_map):
                    and inside(switches[entry["id"]]["x"] + 25, switches[entry["id"]]["y"] + 25, zone)]
         assert holding, f"{entry['name']}: no zone holds both its title and the {entry['id']} switch"
 
-def test_a_node_with_no_nic_says_whose_network_it_watches_next_to_it(any_map):
-    gns3 = any_map
+@pytest.fixture(params=[SYSTEM_DOCKER, SYSTEM_OPENSTACK], ids=["system-docker", "system-openstack"])
+def system_map(request):
+    return project(request.param)
+
+def test_a_node_with_no_nic_says_whose_network_it_watches_next_to_it(system_map):
+    gns3 = system_map
     linked = {end["node_id"] for link in gns3["topology"]["links"] for end in link["nodes"]}
     names = set(nodes(gns3))
     english = [shape["text"] for shape in drawn_shapes(english_of(gns3))]
@@ -380,27 +390,74 @@ def ends(document):
     return {frozenset((by_id[end["node_id"]]["name"], end["adapter_number"], end["port_number"])
                       for end in link["nodes"]) for link in document["topology"]["links"]}
 
-def learner_expected(system, stack):
+def sensor_node(stack, drawn, role):
+    return stack.compose.get(role) if stack.compose.get(role) in drawn else stack.roles[role]
+
+def network_mode(stack, flavor, role):
+    services = yaml.safe_load(SENSOR_COMPOSE.read_text())["services"] if flavor else composed.services()
+    return (services.get(stack.compose.get(role, "")) or {}).get("network_mode", "")
+
+def nic_owner(stack, flavor, role):
+    mode = network_mode(stack, flavor, role)
+    if mode.startswith("service:"):
+        shared = mode.removeprefix("service:")
+        return next(stack.roles[other] for other, service in stack.compose.items() if service == shared)
+    return stack.roles[role]
+
+def own_nic(system, name):
+    return name in nodes(system) and nodes(system)[name]["properties"].get("adapters", 0) > 0
+
+def log_shippers(stack, flavor):
+    if flavor:
+        senders = {stack.roles["gateway"]} | {stack.roles[role] for role in stack.watches}
+        return senders | {host for host, entry in stack.hosts.items() if entry.logs}
+    services = yaml.safe_load(composed.SESSION.read_text())["services"]
+    written = {volume.split(":")[0] for role in ("gateway", *stack.watches)
+               for volume in services[stack.compose[role]].get("volumes") or []}
+    return {f"fsl-{name}" for name, service in services.items()
+            if fabric.MANAGEMENT in network_keys(service) and name not in stack.compose.values()
+            and written & {volume.split(":")[0] for volume in service.get("volumes") or []}}
+
+def mgmt_adapters(system, names):
+    by_id = {node["node_id"]: node["name"] for node in system["topology"]["nodes"]}
+    adapters = {}
+    for link in system["topology"]["links"]:
+        named = {by_id[end["node_id"]]: end["adapter_number"] for end in link["nodes"]}
+        if fabric.MANAGEMENT in named:
+            adapters.update({name: adapter for name, adapter in named.items() if name in names})
+    return adapters
+
+def monitoring_ends(document):
+    by_id = {node["node_id"]: node["name"] for node in document["topology"]["nodes"]}
+    found = {}
+    for link in document["topology"]["links"]:
+        named = {by_id[end["node_id"]]: end["adapter_number"] for end in link["nodes"]}
+        if MONITORING in named:
+            found.update({name: adapter for name, adapter in named.items() if name != MONITORING})
+    return found
+
+def learner_expected(system, stack, flavor=""):
     defended = {name for name, node in nodes(system).items() if node["node_type"] == SWITCH} - {fabric.MANAGEMENT}
     drawn = nodes(system)
     plumbing = {stack.roles["scorer"]} | ({stack.roles["proxy"]} - {stack.roles["attacker"]})
-    sensing = {stack.compose.get(role) if stack.compose.get(role) in drawn else stack.roles[role]
-               for role in stack.watches}
+    sensing = {sensor_node(stack, drawn, role) for role in stack.watches}
+    sensing = {name for name in sensing if own_nic(system, name)}
     kept = {name for name, on in wiring(system).items() if on & defended} - plumbing
-    return kept | sensing | {log_store()[0]}, defended
+    return kept | sensing | log_shippers(stack, flavor) | {log_store()[0]}, defended
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_the_learner_map_is_the_system_map_without_the_management_segment_and_the_training_plumbing(drawn_in):
     learner, system = project(drawn_in), project(SYSTEMS[drawn_in])
     stack = declared.read(flavor=FLAVORS[drawn_in])
-    hosts, defended = learner_expected(system, stack)
+    hosts, defended = learner_expected(system, stack, FLAVORS[drawn_in])
     switches = {name for name, node in nodes(learner).items() if node["node_type"] == SWITCH}
     shown = set(nodes(learner)) - switches
     kept = hosts | defended
+    wired = {link for link in ends(learner) if MONITORING not in {end[0] for end in link}}
 
-    assert switches == defended
+    assert switches == defended | {MONITORING}
     assert shown == hosts, f"missing {sorted(hosts - shown)}, extra {sorted(shown - hosts)}"
-    assert ends(learner) == {link for link in ends(system) if {end[0] for end in link} <= kept}
+    assert wired == {link for link in ends(system) if {end[0] for end in link} <= kept}
     for name, node in nodes(learner).items():
         if name in nodes(system):
             assert node["node_type"] == nodes(system)[name]["node_type"], name
@@ -414,22 +471,82 @@ def test_no_word_on_a_learner_map_names_the_platform_or_its_management_segment(d
 
     assert [said for said in english if scorer in said or "mgmt" in said or "anagement" in said] == []
 
+def near(node, shape, reach=60):
+    width, height = UBUNTU_SIZE if node["symbol"] == "ubuntu.svg" else (60, 60)
+    return (shape["x"] - reach < node["x"] + width and node["x"] - reach < shape["x"] + shape["width"]
+            and shape["y"] - reach < node["y"] + height and node["y"] - reach < shape["y"] + shape["height"])
+
+def notes_beside(learner, name, reach=60):
+    node = nodes(english_of(learner))[name]
+    return [shape["text"] for shape in drawn_shapes(english_of(learner))
+            if shape["kind"] == "text" and near(node, shape, reach)]
+
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_the_log_store_is_drawn_unlinked_as_the_place_the_waf_and_the_sensors_send_records(drawn_in):
-    learner = project(drawn_in)
+def test_the_log_store_sits_on_the_monitoring_segment_with_exactly_the_hosts_that_ship_records_to_it(drawn_in):
+    learner, system = project(drawn_in), project(SYSTEMS[drawn_in])
+    flavor = FLAVORS[drawn_in]
+    stack = declared.read(flavor=flavor)
     name, wanted = log_store()
     store = nodes(learner)[name]
-    linked = {end["node_id"] for link in learner["topology"]["links"] for end in link["nodes"]}
-    stack = declared.read(flavor=FLAVORS[drawn_in])
-    senders = {stack.roles["gateway"]} | ({stack.compose.get(role) if stack.compose.get(role) in nodes(learner)
-                                           else stack.roles[role] for role in stack.watches} - {stack.roles["gateway"]})
-    english = [shape for shape in drawn_shapes(english_of(learner)) if shape["kind"] == "text"]
-    beside = [shape["text"] for shape in english
-              if abs(shape["x"] - store["x"]) < 120 and abs(shape["y"] - store["y"]) < 60]
+    shippers = log_shippers(stack, flavor)
+    adapters = mgmt_adapters(system, shippers | {name})
 
     assert store["node_type"] == "docker" and store["properties"]["image"] == wanted
-    assert store["node_id"] not in linked, "no cable on the learner map carries the records"
-    assert [said for said in beside if "log store" in said and all(sender in said for sender in senders)], beside
+    assert wiring(learner)[name] == {MONITORING}
+    assert monitoring_ends(learner) == {**{shipper: adapters[shipper] for shipper in shippers}, name: adapters.get(name, 0)}
+    assert not {stack.roles["attacker"], stack.roles["scorer"]} & set(monitoring_ends(learner))
+    assert flavor != "openstack" or shippers == {stack.roles["gateway"], stack.roles["edge"], stack.roles["wargames"]}
+    assert flavor == "openstack" or shippers == {"fsl-filebeat"}
+    assert [said for said in notes_beside(learner, name) if "log store" in said]
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_monitoring_is_a_titled_zone_holding_its_switch_and_the_log_store(drawn_in):
+    learner = project(drawn_in)
+    shapes = drawn_shapes(learner)
+    english = [shape["text"] for shape in drawn_shapes(english_of(learner))]
+    zones = [shape for shape in shapes if shape["kind"] == "rect"]
+    titles = [shape for shape, said in zip(shapes, english) if shape["kind"] == "text" and said == "Monitoring"]
+
+    assert len(titles) == 1
+    for name in (MONITORING, log_store()[0]):
+        node = nodes(learner)[name]
+        assert [zone for zone in zones if inside(titles[0]["x"], titles[0]["y"], zone)
+                and inside(node["x"] + 30, node["y"] + 30, zone)], name
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_no_node_on_a_learner_map_floats(drawn_in):
+    learner = project(drawn_in)
+    linked = {end["node_id"] for link in learner["topology"]["links"] for end in link["nodes"]}
+
+    assert [node["name"] for node in learner["topology"]["nodes"] if node["node_id"] not in linked] == []
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_a_sensor_with_no_nic_of_its_own_is_named_beside_the_node_whose_nic_it_uses(drawn_in):
+    learner, system = project(drawn_in), project(SYSTEMS[drawn_in])
+    flavor = FLAVORS[drawn_in]
+    stack = declared.read(flavor=flavor)
+    folded = [role for role in stack.watches if sensor_node(stack, nodes(system), role) not in nodes(learner)]
+
+    assert folded, "every learner map folds at least one host-network sensor into its host"
+    for role in folded:
+        assert not own_nic(system, sensor_node(stack, nodes(system), role)), role
+        owner = nic_owner(stack, flavor, role)
+        assert owner in nodes(learner) and [said for said in notes_beside(learner, owner) if "Suricata" in said], (
+            role, owner, notes_beside(learner, owner))
+
+def centre(node):
+    width, height = UBUNTU_SIZE if node["symbol"] == "ubuntu.svg" else (60, 60)
+    return node["x"] + width / 2, node["y"] + height / 2
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_every_learner_link_runs_level_or_upright_or_is_drawn_as_right_angles(drawn_in):
+    learner = project(drawn_in)
+    by_id = {node["node_id"]: node for node in learner["topology"]["nodes"]}
+    for link in learner["topology"]["links"]:
+        (ax, ay), (bx, by) = (centre(by_id[end["node_id"]]) for end in link["nodes"])
+        straight = abs(ax - bx) <= STRAIGHT_WITHIN or abs(ay - by) <= STRAIGHT_WITHIN
+        assert (link.get("link_style") or {}).get("link_type", "") == ("" if straight else FLOWCHART), (
+            [by_id[end["node_id"]]["name"] for end in link["nodes"]])
 
 def domains():
     named = declared.read().hosts[declared.read().roles["gateway"]].names
@@ -443,8 +560,7 @@ def test_the_waf_and_each_site_show_the_domain_learners_type(drawn_in):
 
     def beside(name):
         node = nodes(learner)[name]
-        return " ".join(shape["text"] for shape in texts
-                        if -320 < shape["x"] - node["x"] < 120 and abs(shape["y"] - node["y"]) < 100)
+        return " ".join(shape["text"] for shape in texts if near(node, shape))
 
     assert set(domains().values()) == {"board.com", "corp.com"}
     assert all(domain in beside(stack.roles["gateway"]) for domain in domains().values())
@@ -452,18 +568,19 @@ def test_the_waf_and_each_site_show_the_domain_learners_type(drawn_in):
         site = stack.compose[role] if stack.compose[role] in nodes(learner) else stack.roles[role]
         assert domain in beside(site), (site, domain)
 
-@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_a_learner_map_says_in_plain_words_that_gns3_never_starts_the_machines(drawn_in):
-    learner = project(drawn_in)
-    texts = [shape["text"] for shape in drawn_shapes(learner)]
-    english = [shape["text"] for shape in drawn_shapes(english_of(learner))]
-    korean = learner["project_id"] != english_of(learner)["project_id"]
-    legend = [position for position, said in enumerate(english)
-              if "GNS3" in said and ("not in GNS3" in said or "red" in said)]
+FILLER = ("GNS3", "icon", "one slot", "one session", "docker compose", "come from here", "origin /24",
+          "vtnet0 wan", "(wan)", "(lan)")
 
-    assert len(legend) == 2, "one line says where the machines run, one what the red marks mean"
-    for position in legend:
-        assert "GNS3" in texts[position] and bool(HANGUL.search(texts[position])) == korean
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_a_learner_map_draws_no_legend_and_no_filler_only_a_short_title(drawn_in):
+    learner = project(drawn_in)
+    texts = [shape["text"] for shape in drawn_shapes(learner) if shape["kind"] == "text"]
+    english = [shape["text"] for shape in drawn_shapes(english_of(learner)) if shape["kind"] == "text"]
+    titles = [said for said in english if said.endswith(": the network you defend")]
+
+    assert [said for said in english if any(filler in said for filler in FILLER)] == []
+    assert [said for said in texts if "GNS3" in said or "아이콘" in said or "슬롯 하나" in said or "세션 하나" in said] == []
+    assert len(titles) == 1 and titles[0].startswith("fsl range (")
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_fetches(drawn_in):
@@ -485,6 +602,9 @@ def test_a_symbol_tells_a_vm_from_a_container_and_the_defence_from_the_sites(dra
         name = stack.compose.get(role) if stack.compose.get(role) in shown else stack.roles[role]
         return shown[name]["symbol"]
 
+    system = nodes(project(SYSTEMS[drawn_in]))
+    drawn_sensors = [role for role in stack.watches if sensor_node(stack, system, role) in shown]
+
     for node in shown.values():
         if node["node_type"] == "docker":
             assert "/circle/" in node["symbol"], node["name"]
@@ -492,6 +612,8 @@ def test_a_symbol_tells_a_vm_from_a_container_and_the_defence_from_the_sites(dra
             assert "/square/" in node["symbol"] or not node["symbol"].startswith(":"), node["name"]
     assert symbol("attacker").endswith("/red/scull.svg")
     assert symbol("gateway").endswith("/green/shield.svg")
-    assert {symbol(role).rsplit("/", 1)[1] for role in stack.watches} <= {"inspect.svg", "firewall.svg"}
+    assert {shown[sensor_node(stack, system, role)]["symbol"].rsplit("/", 1)[1]
+            for role in drawn_sensors} <= {"inspect.svg", "firewall.svg"}
+    assert "edge" not in stack.roles or symbol("edge").endswith("/green/firewall.svg")
     assert symbol("board").endswith("/blue/server.svg") and symbol("board-db").endswith("/blue/storage.svg")
     assert shown[log_store()[0]]["symbol"].endswith("/gray/statistics.svg")

@@ -283,12 +283,21 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   their Korean pairs: the network the learner defends, as a company's network
   would look. It is the system map without `mgmt`, every host's link to it,
   the scorer, the control-plane containers and a proxy host of its own, plus
-  the log store (`fsl-elasticsearch`, compose's image) drawn unlinked with a
-  note naming the WAF and the sensors that send it records.
-  `test_gns3_topology.py` checks it as exactly that projection. The WAF and
-  the sites carry the domains learners type (`board.com`, `corp.com`, the WAF
-  host's declared names); a legend says the machines run in the range, not in
-  GNS3, so GNS3's red link marks mean stopped in GNS3. Symbols are GNS3's
+  a `monitoring` switch (a titled Monitoring zone) linking the log store
+  (`fsl-elasticsearch`, compose's image) to exactly the hosts that ship it
+  records: on OpenStack the WAF, the edge and the wargame host, each on the
+  adapter of its management NIC, because each forwards its own syslog to the
+  collector (the gateway, every `watches` sensor's host and every host with
+  `logs`); on Docker `fsl-filebeat`, the session's shipper that reads the WAF's
+  and Suricata's log volumes. A sensor with no NIC of its own (Suricata in the
+  WAF's namespace on Docker, on the wargame host's network on OpenStack) is
+  not a node; the note of the host whose NIC it uses names it, so no node
+  floats. `test_gns3_topology.py` checks it as exactly that projection. The
+  WAF and the sites carry the domains learners type (`board.com`, `corp.com`,
+  the WAF host's declared names). There is no legend: a short title, a title
+  per zone and one plain line per node. Every link runs level or upright, or
+  is a GNS3 3.1 `flowchart` link (`link_style.link_type`) drawn as right
+  angles, so the estate and monitoring switches read as buses. Symbols are GNS3's
   bundled affinity set (square for a VM, circle for a container; red attacker,
   green defence, blue sites, gray log store and switches, a globe for the
   internet), and the wargame host wears the gns3-registry Ubuntu symbol, which
@@ -299,7 +308,7 @@ Segments are `ethernet_switch` nodes; Docker
 containers are `docker` nodes carrying their real images; OpenStack VMs are
 `qemu` nodes with no disk image (the OPNsense edge has three NICs in vtnet
 order); the wargame host's containers hang off a switch per compose project
-(`board-default`, `corp-default`); a sensor that shares another's network
+(`board-default`, `corp-default`); on the system map a sensor that shares another's network
 namespace or the host network has no NIC and a note beside it says whose
 network it watches (in the Docker project a dashed line joins `fsl-suricata` to
 `fsl-waf`). Each declared segment is a titled rectangle holding its switch
@@ -322,8 +331,13 @@ The learner sees the addresses of their own range. `api/maps.py` derives, from
 the learner map, one project per OpenStack slot (`slot 1`, `slot 2`) or Docker
 session (`session <id>`) in each language (`topology.labelled`): every host's
 link end is labelled with the interface and its address on that segment, read
-from the range (the default origin's address first, `(+N)` for the rest, as
-on Kali's and the edge's internet side); every id is `uuid5(<learner id>,
+from the range (only the default origin's address on Kali's and the edge's
+internet side; nothing on the wargame host's side of a Docker bridge, whose
+`br-` name means nothing to a learner; nothing on a `monitoring` link, whose
+NIC is on the management network). A label lies level beside its node on the
+side its link leaves (`topology.leaving`), above a level line clear of GNS3's
+status mark, right of an upright one, right-aligned with `text-anchor: end`
+on a node's left; every id is `uuid5(<learner id>,
 "slot-<n>")` (or `session-<id>`), the name gets the suffix, and
 `show_interface_labels` is on. The adapters read the interfaces
 (`interfaces()`): on OpenStack `ip -o -4 addr` (`ifconfig` on OPNsense) on
