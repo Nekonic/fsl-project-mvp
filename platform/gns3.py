@@ -85,6 +85,9 @@ def publish(document: dict) -> str:
         made = requests.post(f"{_api()}/projects/{project_id}/import", headers=headers,
                              data=_portable(document), timeout=IMPORT_TIMEOUT)
         made.raise_for_status()
+        kept = requests.put(f"{_api()}/projects/{project_id}", headers=headers, json={"auto_close": False},
+                            timeout=IMPORT_TIMEOUT)
+        kept.raise_for_status()
         opened = requests.post(f"{_api()}/projects/{project_id}/open", headers=headers, json={},
                                timeout=IMPORT_TIMEOUT)
         opened.raise_for_status()
