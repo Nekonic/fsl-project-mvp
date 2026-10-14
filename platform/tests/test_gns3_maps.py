@@ -392,15 +392,19 @@ def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_
         return reply
 
     with patch("gns3.requests.post", side_effect=answer("post")), \
+         patch("gns3.requests.put", side_effect=answer("put")), \
          patch("gns3.requests.delete", side_effect=answer("delete")):
         assert gns3.publish(document) == "opened"
 
     project_id = document["project_id"]
     assert [(method, path) for method, path, _ in calls] == [
         ("post", "/access/users/authenticate"), ("delete", f"/projects/{project_id}"),
-        ("post", f"/projects/{project_id}/import"), ("post", f"/projects/{project_id}/open"),
-        ("post", f"/projects/{project_id}/nodes/start")], (
+        ("post", f"/projects/{project_id}/import"), ("put", f"/projects/{project_id}"),
+        ("post", f"/projects/{project_id}/open"), ("post", f"/projects/{project_id}/nodes/start")], (
         "every node is started, so GNS3 draws each link end green; the display containers only idle")
+    assert calls[3][2]["json"] == {"auto_close": False}, (
+        "an import is made with auto_close on whatever the file says, and a project closed when the last web "
+        "client left stops its nodes")
     assert calls[0][2]["json"] == {"username": "admin", "password": "s3cret"}
     archive = zipfile.ZipFile(io.BytesIO(calls[2][2]["data"]))
     assert json.loads(archive.read("project.gns3")) == document, (
