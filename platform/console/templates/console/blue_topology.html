@@ -1,6 +1,7 @@
 <div id="topology" class="absolute inset-0 flex-col bg-panel" style="display: none">
   <div class="h-10 border-b border-line bg-subdued flex items-center px-3 gap-2 shrink-0 min-w-0 text-[12.5px]">
     <button type="button" id="topology-gns3" class="tab" data-t="topology.view.gns3"></button>
+    <button type="button" id="topology-addresses" class="tab" data-t="topology.view.addresses"></button>
     <button type="button" id="topology-follow" class="tab" data-t="topology.view.follow"></button>
     <select id="topology-request" class="h-7 min-w-0 flex-1 max-w-md border border-line rounded-md bg-panel px-2 font-mono text-[12px]"></select>
     <span id="topology-said" class="text-muted truncate"></span>
@@ -8,6 +9,7 @@
   <div class="flex-1 min-h-0 relative">
     <iframe id="topology-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="GNS3" referrerpolicy="no-referrer"></iframe>
+    <div id="topology-table" class="absolute inset-0 overflow-auto px-4 py-3 text-[12.5px]" style="display: none"></div>
     <div id="topology-map" class="absolute inset-0 flex flex-col md:flex-row min-h-0">
       <svg id="topology-svg" class="flex-1 min-h-0 min-w-0" preserveAspectRatio="xMidYMid meet"></svg>
       <ol id="topology-hops" class="md:w-80 shrink-0 overflow-auto border-t md:border-t-0 md:border-l border-line px-4 py-3 text-[12.5px] flex flex-col gap-2"></ol>

@@ -962,7 +962,19 @@ def _maps_live(adapter) -> list[str]:
 
 def _map_read(session):
     on_map = {node["name"] for node in gns3.local()["topology"]["nodes"]}
+    on_map |= {name for name, shown in topology.shown_as(settings.RANGE).items() if shown in on_map}
     return lambda: _range(session).interfaces(on_map)
+
+@require_http_methods(["GET"])
+def session_addresses(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    key = _map_key(session)
+    if key is None:
+        return _reply({"devices": [], "services": [], "detail": "this range cannot list its interfaces"})
+    try:
+        return _reply({**maps.addresses(key, _map_read(session)), "detail": ""})
+    except RangeUnavailable as exc:
+        return _reply({"devices": [], "services": [], "detail": str(exc)[:300]})
 
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)

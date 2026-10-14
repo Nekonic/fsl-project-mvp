@@ -1,4 +1,4 @@
-const topo = { read: false, project: null, web: null, nodes: {}, hops: [] };
+const topo = { read: false, project: null, web: null, nodes: {}, hops: [], addresses: null };
 const NODE_SIZE = 50;
 const MAP_MARGIN = 60;
 function topologyCentre(node) {
@@ -103,13 +103,45 @@ async function topologyRequests() {
   if ([...rows, ...cases].some(([value]) => value === kept)) field("topology-request").value = kept;
 }
 
+function topologyTable(heads, rows) {
+  return `<table class="w-full max-w-xl mb-5"><thead><tr class="text-left text-muted">`
+    + heads.map((head) => `<th class="font-normal py-1 pr-2">${esc(t(head))}</th>`).join("")
+    + `</tr></thead><tbody class="font-mono">`
+    + rows.map((row) => `<tr class="border-t border-line">${row.map((cell) =>
+      `<td class="py-1 pr-2">${esc(cell)}</td>`).join("")}</tr>`).join("") + "</tbody></table>";
+}
+
+async function topologyAddresses() {
+  if (!topo.addresses) {
+    const read = await api(`/api/sessions/${sessionId()}/topology/addresses/`);
+    topo.addresses = read.ok ? read.body : { devices: [], services: [], detail: (read.body && read.body.detail) || String(read.status) };
+  }
+  const { devices, services, detail } = topo.addresses;
+  const blank = t("topology.addresses.none");
+  field("topology-table").innerHTML = (detail ? `<p class="text-danger mb-3">${esc(detail)}</p>` : "")
+    + `<h3 class="font-semibold text-heading mb-1">${esc(t("topology.addresses.heading"))}</h3>`
+    + topologyTable(["topology.addresses.device", "topology.addresses.interface", "topology.addresses.address",
+      "topology.addresses.gateway"], devices.map((row, at) => [at && devices[at - 1].device === row.device ? "" : row.device,
+      row.interface, row.address, row.gateway || blank]))
+    + `<h3 class="font-semibold text-heading mb-1">${esc(t("topology.addresses.services"))}</h3>`
+    + topologyTable(["topology.addresses.name", "topology.addresses.host", "topology.addresses.port"],
+      services.map((row) => [row.name, row.host, String(row.port)]));
+}
+
 function topologyView(which) {
   const gns3 = which === "gns3" && topo.web;
+  const table = which === "addresses";
   field("topology-gns3").setAttribute("aria-selected", String(Boolean(gns3)));
-  field("topology-follow").setAttribute("aria-selected", String(!gns3));
-  field("topology-request").style.display = gns3 ? "none" : "";
-  field("topology-map").style.display = gns3 ? "none" : "flex";
+  field("topology-addresses").setAttribute("aria-selected", String(table));
+  field("topology-follow").setAttribute("aria-selected", String(!gns3 && !table));
+  field("topology-request").style.display = gns3 || table ? "none" : "";
+  field("topology-map").style.display = gns3 || table ? "none" : "flex";
+  field("topology-table").style.display = table ? "block" : "none";
   field("topology-frame").style.display = gns3 ? "block" : "none";
+  if (table) {
+    topologyAddresses();
+    return;
+  }
   if (gns3 && !field("topology-frame").src) {
     const at = new URL(location.href);
     at.port = String(topo.web.port);
@@ -136,6 +168,7 @@ async function topologyOpen() {
     field("topology-said").title = project.body.detail || "";
     field("topology-gns3").addEventListener("click", () => topologyView("gns3"));
     field("topology-follow").addEventListener("click", () => topologyView("follow"));
+    field("topology-addresses").addEventListener("click", () => topologyView("addresses"));
     field("topology-request").addEventListener("change", topologyFollow);
   }
   await topologyRequests();

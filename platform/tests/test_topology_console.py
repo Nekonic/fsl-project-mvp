@@ -16,7 +16,7 @@ HOPS = [
     {"node": "fsl-waf", "kind": "host", "evidence": True, "sensor": "fsl-suricata", "alerts": [],
      "verdict": "blocked", "rules": ["920272", "949110"]},
     {"node": "estate", "kind": "segment"},
-    {"node": "fsl-wg-board", "kind": "host", "evidence": True, "status": None, "reached": False},
+    {"node": "board.com", "kind": "host", "evidence": True, "status": None, "reached": False},
 ]
 CASE_HOPS = [
     {"node": "fsl-kali", "kind": "host", "evidence": True, "source": None},
@@ -25,7 +25,7 @@ CASE_HOPS = [
     {"node": "fsl-waf", "kind": "host", "evidence": False, "sensor": "fsl-suricata", "alerts": [],
      "verdict": None, "rules": []},
     {"node": "estate", "kind": "segment"},
-    {"node": "fsl-wg-board", "kind": "host", "evidence": False, "status": None, "reached": None},
+    {"node": "board.com", "kind": "host", "evidence": False, "status": None, "reached": None},
 ]
 
 def serving(web_ui):
@@ -36,6 +36,11 @@ browser.serve((request) => {{
   if (request.route === "/api/sessions/1/topology/") return {{body: {{segments: [], project: {{nodes: {{
     "fsl-waf": {{status: "running", addresses: {{estate: ["172.30.0.3"]}}}},
     "fsl-kali": {{status: "not reported", addresses: {{}}}}}}}}}}}};
+  if (request.route === "/api/sessions/1/topology/addresses/") return {{body: {{detail: "", devices: [
+    {{device: "fsl-waf", interface: "eth1", address: "5.188.10.4/24", segment: "internet", gateway: "5.188.10.1"}},
+    {{device: "fsl-waf", interface: "eth0", address: "172.30.0.3/24", segment: "estate", gateway: ""}},
+    {{device: "board.com", interface: "eth0", address: "172.30.0.5/24", segment: "estate", gateway: "172.30.0.1"}}],
+    services: [{{name: "board.com", host: "fsl-waf", port: 80}}, {{name: "board-db", host: "fsl-wg-board-db", port: 3306}}]}}}};
   if (request.route === "/api/sessions/1/site/requests/") return {{body: [
     {{id: 7, method: "GET", url: "http://board.com/search/?q=%ED%95%9C", status: 403, blocked: true}}]}};
   if (request.route === "/api/sessions/1/cases/") return {{body: [
@@ -118,3 +123,28 @@ def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(
 
     assert seen["errors"] == []
     assert seen["result"] == [[language, "1"]], "the pane asks for the map of its own session's range"
+
+def test_the_addressing_table_lists_each_device_s_interfaces_and_the_services_beside_the_map(client):
+    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    seen = open_page(client, "/blue/1/", setup=serving(web_ui), scenario="""
+      await browser.click('[data-pane="topology"]');
+      await browser.click('#topology-addresses');
+      return {
+        table: browser.element('topology-table').innerHTML,
+        tableShown: browser.element('topology-table').style.display,
+        frameShown: browser.element('topology-frame').style.display,
+        asked: browser.requests.filter((r) => r.route.endsWith('/topology/addresses/')).length,
+      };
+    """)
+    result = seen["result"]
+    rows = [row for row in result["table"].split("<tr") if "<td" in row]
+
+    assert seen["errors"] == []
+    assert result["tableShown"] == "block" and result["frameShown"] == "none" and result["asked"] == 1
+    for key in ("topology.addresses.device", "topology.addresses.interface", "topology.addresses.address",
+                "topology.addresses.gateway", "topology.addresses.services", "topology.addresses.port"):
+        assert english(key) in result["table"], key
+    assert ">fsl-waf<" in rows[0] and "5.188.10.4/24" in rows[0] and "5.188.10.1" in rows[0]
+    assert ">fsl-waf<" not in rows[1] and english("topology.addresses.none") in rows[1], (
+        "a device is named once, and an interface without the default route says so")
+    assert "board.com" in rows[3] and ">80<" in rows[3] and "fsl-wg-board-db" in rows[4] and ">3306<" in rows[4]
