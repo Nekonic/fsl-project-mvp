@@ -542,10 +542,8 @@ def test_a_slot_keeps_the_map_of_its_newest_session_and_a_docker_range_the_maps_
     assert f"session {standing.pk} board" in _maps_live(SimpleNamespace())
 
 def label_box(node, label):
-    width = len(label["text"]) * topology.LABEL_CHAR
-    left = label["x"] - (width if topology.ENDS in label["style"] else 0)
-    top = label["y"] + topology.GLYPH_TOP
-    return (node["x"] + left, node["y"] + top, node["x"] + left + width, node["y"] + label["y"] + topology.GLYPH_BOTTOM)
+    left, top, right, bottom = topology.label_box(label)
+    return node["x"] + left, node["y"] + top, node["x"] + right, node["y"] + bottom
 
 def overlap(one, other):
     return one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]
@@ -596,7 +594,7 @@ def drawn_parts(document):
             lines += [((left, top), (right, top)), ((right, top), (right, bottom)),
                       ((right, bottom), (left, bottom)), ((left, bottom), (left, top))]
         else:
-            captions.append((svg[0].text, (left, top + 4, right, top + 22)))
+            captions.append((svg[0].text, (left, top, right, bottom)))
     return lines, captions
 
 @pytest.mark.parametrize("path, found", [(OPENSTACK, None), (OPENSTACK_KO, None), (DOCKER, DOCKER_FOUND)],
