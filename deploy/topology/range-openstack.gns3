@@ -16,165 +16,111 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "43354233-867b-55e3-8f85-3dc7924ff357",
+                "drawing_id": "822a4981-6259-5c8a-9bfb-8033a73a3aef",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"380\" height=\"190\"><rect width=\"380\" height=\"190\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -300,
-                "y": -390,
+                "svg": "<svg width=\"400\" height=\"170\"><rect width=\"400\" height=\"170\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -560,
+                "y": -100,
                 "z": 0
             },
             {
-                "drawing_id": "ca885749-d952-5a60-aabb-9bbb3c2136a3",
+                "drawing_id": "29f45a10-8852-5330-ab7f-c7abbe2a3613",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"1900\" height=\"500\"><rect width=\"1900\" height=\"500\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -300,
-                "y": -190,
+                "svg": "<svg width=\"72\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
+                "x": -550,
+                "y": -96,
+                "z": 2
+            },
+            {
+                "drawing_id": "c111c836-fdf1-59b0-91c6-8e277a35f1b5",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"720\" height=\"370\"><rect width=\"720\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -130,
+                "y": -100,
                 "z": 0
             },
             {
-                "drawing_id": "0e2ad45d-4448-59bd-bd07-6585d8ef3754",
+                "drawing_id": "b6bd762c-8a0e-5df9-9bc2-3f057daf5fb7",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"730\" height=\"470\"><rect width=\"730\" height=\"470\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
-                "x": 850,
-                "y": -180,
+                "svg": "<svg width=\"153\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
+                "x": -120,
+                "y": -96,
+                "z": 2
+            },
+            {
+                "drawing_id": "083f702d-2804-505f-8aea-409f5ebb3648",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"490\" height=\"170\"><rect width=\"490\" height=\"170\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": 90,
+                "y": 340,
                 "z": 0
             },
             {
-                "drawing_id": "4a22e387-7015-5342-bf9a-19feddb08fea",
+                "drawing_id": "c9f841a8-ae32-501a-9443-9a74fb775a3b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"560\" height=\"170\"><rect width=\"560\" height=\"170\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": 290,
-                "y": 330,
+                "svg": "<svg width=\"89\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
+                "x": 100,
+                "y": 476,
+                "z": 2
+            },
+            {
+                "drawing_id": "c66b7d97-f822-59f8-b624-532941d4dea2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"400\" height=\"800\"><rect width=\"400\" height=\"800\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
+                "x": 670,
+                "y": -400,
                 "z": 0
             },
             {
-                "drawing_id": "b897a3c4-e6c8-5fde-8595-6d9e3aa3613e",
+                "drawing_id": "90002d66-1c8c-5f42-ad5c-669490bf55f9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"408\" height=\"27\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range (OpenStack): the network you defend</text></svg>",
-                "x": -300,
-                "y": -440,
+                "svg": "<svg width=\"127\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"12.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">fsl-wargame-host</text></svg>",
+                "x": 680,
+                "y": -396,
                 "z": 2
             },
             {
-                "drawing_id": "2a9839e9-a23c-5951-9b60-de9f3349a2de",
+                "drawing_id": "7a9aa638-a9fb-5594-8401-135ea78d0c57",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"88\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
-                "x": -290,
-                "y": -385,
+                "svg": "<svg width=\"370\" height=\"290\"><rect width=\"370\" height=\"290\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 685,
+                "y": -360,
+                "z": 0
+            },
+            {
+                "drawing_id": "be0681fe-733b-5e11-a285-7cbf0713d746",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"113\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">board_default</text></svg>",
+                "x": 695,
+                "y": -356,
                 "z": 2
             },
             {
-                "drawing_id": "bd3a5861-3904-5cf9-ac2e-70168a768563",
+                "drawing_id": "a1f51815-18c6-57ea-b02c-e107449b4205",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"186\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
-                "x": -290,
-                "y": -185,
-                "z": 2
+                "svg": "<svg width=\"370\" height=\"290\"><rect width=\"370\" height=\"290\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 685,
+                "y": 70,
+                "z": 0
             },
             {
-                "drawing_id": "88d46ca9-1e83-5323-a511-5cda8842726c",
+                "drawing_id": "b4c91cb3-93a7-5d89-b1a3-499eda79c996",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"117\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
-                "x": 420,
-                "y": 335,
-                "z": 2
-            },
-            {
-                "drawing_id": "938a1aae-417b-526a-9eb6-fd848e2808b7",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"202\" height=\"19\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">containers inside fsl-wargame-host</text></svg>",
-                "x": 860,
-                "y": 265,
-                "z": 2
-            },
-            {
-                "drawing_id": "1215dbe8-c8ad-5ba5-8964-c43f226bdf13",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"142\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">attacker's PC (Kali VM)</text></svg>",
-                "x": -230,
-                "y": -242,
-                "z": 2
-            },
-            {
-                "drawing_id": "21801e7f-43b0-5940-81bf-39845c924aa8",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"279\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">edge firewall (OPNsense) + Suricata on WAN</text></svg>",
-                "x": -287,
-                "y": 40,
-                "z": 2
-            },
-            {
-                "drawing_id": "b609522c-eb3b-5b61-9f0a-42da4d1e3ed4",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"348\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">web firewall (ModSecurity + CRS): board.com, corp.com</text></svg>",
-                "x": 24,
-                "y": 40,
-                "z": 2
-            },
-            {
-                "drawing_id": "dca35106-4f0f-5be8-9bab-43990191fa15",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"279\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">Docker host; Suricata watches its estate NIC</text></svg>",
-                "x": 467,
-                "y": 40,
-                "z": 2
-            },
-            {
-                "drawing_id": "1f262c0b-5434-5d23-8c37-3c2fd4a73e91",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"168\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board website: board.com</text></svg>",
-                "x": 1318,
-                "y": -121,
-                "z": 2
-            },
-            {
-                "drawing_id": "cc877c30-c2a5-587b-bb6b-2a20a3633abf",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"166\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board's database (MySQL)</text></svg>",
-                "x": 1318,
-                "y": -11,
-                "z": 2
-            },
-            {
-                "drawing_id": "4fa62cb1-7710-53ea-8891-6098d5b1710a",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"228\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp website (WordPress): corp.com</text></svg>",
-                "x": 1318,
-                "y": 99,
-                "z": 2
-            },
-            {
-                "drawing_id": "2a834c4a-8fb5-5216-8ef6-9711e3f0195c",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"157\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp's database (MySQL)</text></svg>",
-                "x": 1318,
-                "y": 209,
-                "z": 2
-            },
-            {
-                "drawing_id": "ed0446ef-3267-5e21-b822-5d9c77637f99",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"151\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">log store (Elasticsearch)</text></svg>",
-                "x": 658,
-                "y": 409,
+                "svg": "<svg width=\"105\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">corp_default</text></svg>",
+                "x": 695,
+                "y": 326,
                 "z": 2
             }
         ],
@@ -216,9 +162,6 @@
             {
                 "filters": {},
                 "link_id": "3a55f18b-3dbe-59f9-a237-353733bd5bcd",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 1,
@@ -253,9 +196,6 @@
             {
                 "filters": {},
                 "link_id": "206a5453-8d67-5492-91db-71b1f8a55a12",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -273,9 +213,6 @@
             {
                 "filters": {},
                 "link_id": "25594c11-8b20-5c61-96cc-59ba269a4dfd",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 2,
@@ -293,9 +230,6 @@
             {
                 "filters": {},
                 "link_id": "9f775eb7-2dd7-5bed-9651-93185ff552fb",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 3,
@@ -313,9 +247,6 @@
             {
                 "filters": {},
                 "link_id": "54f8ae1b-fe8d-54a7-b9e9-f8fca670100a",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -333,9 +264,6 @@
             {
                 "filters": {},
                 "link_id": "3e33a403-572d-5b0f-849b-6044339fdbcc",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -353,9 +281,6 @@
             {
                 "filters": {},
                 "link_id": "e83a6844-2b3d-5e47-a0dd-cfba0e8b7d66",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -373,9 +298,6 @@
             {
                 "filters": {},
                 "link_id": "065f75ad-978d-561f-b016-cd72d4cb883a",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -410,9 +332,6 @@
             {
                 "filters": {},
                 "link_id": "c8fe49fa-16ff-5948-bac2-09ceea2f4f2e",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 2,
@@ -430,9 +349,6 @@
             {
                 "filters": {},
                 "link_id": "7cbb7fe7-3d4e-5023-b56a-00ed7bce6c00",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 1,
@@ -487,8 +403,8 @@
                     "platform": "x86_64"
                 },
                 "symbol": ":/symbols/affinity/square/red/scull.svg",
-                "x": -230,
-                "y": -310,
+                "x": -510,
+                "y": -30,
                 "z": 1
             },
             {
@@ -557,8 +473,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -30,
-                "y": -310,
+                "x": -270,
+                "y": -30,
                 "z": 1
             },
             {
@@ -568,8 +484,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "fsl-edge",
-                    "x": -68,
-                    "y": 8
+                    "x": null,
+                    "y": -25
                 },
                 "name": "fsl-edge",
                 "node_id": "49763d22-74b0-5f65-9b2d-231402270989",
@@ -652,8 +568,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 350,
-                "y": -130,
+                "x": 210,
+                "y": -30,
                 "z": 1
             },
             {
@@ -663,8 +579,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "fsl-waf",
-                    "x": -60,
-                    "y": 8
+                    "x": -71,
+                    "y": 22
                 },
                 "name": "fsl-waf",
                 "node_id": "bf4f5135-8fff-5b3c-a811-e3cbb3ed3162",
@@ -677,8 +593,8 @@
                     "platform": "x86_64"
                 },
                 "symbol": ":/symbols/affinity/square/green/shield.svg",
-                "x": 350,
-                "y": -30,
+                "x": 210,
+                "y": 170,
                 "z": 1
             },
             {
@@ -702,7 +618,7 @@
                     "platform": "x86_64"
                 },
                 "symbol": "ubuntu.svg",
-                "x": 728,
+                "x": 448,
                 "y": -30,
                 "z": 1
             },
@@ -713,8 +629,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board-default",
-                    "x": null,
-                    "y": -25
+                    "x": -28,
+                    "y": 66
                 },
                 "name": "board-default",
                 "node_id": "13c7423b-e157-5ec3-bfd1-1efc2472cf95",
@@ -772,8 +688,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 930,
-                "y": -85,
+                "x": 730,
+                "y": -160,
                 "z": 1
             },
             {
@@ -842,8 +758,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 930,
-                "y": 135,
+                "x": 730,
+                "y": 100,
                 "z": 1
             },
             {
@@ -852,11 +768,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "board",
+                    "text": "board.com",
                     "x": null,
                     "y": -25
                 },
-                "name": "board",
+                "name": "board.com",
                 "node_id": "f7699695-9dfe-546c-8e6c-17a9911591eb",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -865,8 +781,8 @@
                     "image": "ghcr.io/nekonic/fsl-board:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 1250,
-                "y": -140,
+                "x": 950,
+                "y": -160,
                 "z": 1
             },
             {
@@ -876,8 +792,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board-db",
-                    "x": null,
-                    "y": -25
+                    "x": 68,
+                    "y": 22
                 },
                 "name": "board-db",
                 "node_id": "80b10c99-d556-5aa4-beed-038772cfef5f",
@@ -888,8 +804,8 @@
                     "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 1250,
-                "y": -30,
+                "x": 730,
+                "y": -310,
                 "z": 1
             },
             {
@@ -898,11 +814,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "corp-wp",
+                    "text": "corp.com",
                     "x": null,
                     "y": -25
                 },
-                "name": "corp-wp",
+                "name": "corp.com",
                 "node_id": "63f61ddc-d7c6-50f7-9275-faf141a0b93e",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -911,8 +827,8 @@
                     "image": "ghcr.io/nekonic/fsl-corp:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 1250,
-                "y": 80,
+                "x": 950,
+                "y": 100,
                 "z": 1
             },
             {
@@ -922,8 +838,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp-db",
-                    "x": null,
-                    "y": -25
+                    "x": 68,
+                    "y": 22
                 },
                 "name": "corp-db",
                 "node_id": "ef98e724-e729-506e-8fea-eca34e33c062",
@@ -934,8 +850,8 @@
                     "image": "ghcr.io/nekonic/fsl-corp-db:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 1250,
-                "y": 190,
+                "x": 730,
+                "y": 250,
                 "z": 1
             },
             {
@@ -945,8 +861,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "monitoring",
-                    "x": -12,
-                    "y": 78
+                    "x": -98,
+                    "y": 22
                 },
                 "name": "monitoring",
                 "node_id": "b73ead19-1bd5-5f7f-8ad0-132055d2e5ba",
@@ -1004,7 +920,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 350,
+                "x": 210,
                 "y": 390,
                 "z": 1
             },
@@ -1027,7 +943,7 @@
                     "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": 590,
+                "x": 450,
                 "y": 390,
                 "z": 1
             }

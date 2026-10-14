@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import uuid
+from xml.etree import ElementTree
 
 from range.interfaces import BRIDGE_PREFIX
 from range.slot import NAMED_ON
@@ -58,6 +59,18 @@ TRANSIT = ("edge", "gateway", "wargames")
 SEEN_KEPT = 5
 LOG_STORE = "elasticsearch"
 CONSOLE = "console"
+SITE_PORT = 80
+DATABASE_PORT = 3306
+DATABASE_SUFFIX = "-db"
+
+def domains(declared) -> dict[str, str]:
+    gateway = declared.hosts.get(declared.roles.get("gateway", ""))
+    return {name.split(".")[0]: name for name in (gateway.names if gateway else ())}
+
+def shown_as(declared) -> dict[str, str]:
+    return {name: domain for role, domain in domains(declared).items()
+            for name in (declared.compose.get(role, ""), declared.roles.get(role, ""))
+            if name and name not in declared.hosts}
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -73,10 +86,11 @@ def _kinds(project) -> dict[str, str]:
 
 def overlay(project, described, declared, named=lambda name: name, beside=()) -> dict:
     carried = {origin.id: origin.segment for origin in declared.origins}
+    called = shown_as(declared)
     seen: dict[str, dict[str, list[str]]] = {}
     for segment in described.segments:
         for node in segment.nodes:
-            on = seen.setdefault(node.name, {}).setdefault(carried.get(segment.id, segment.id), [])
+            on = seen.setdefault(called.get(node.name, node.name), {}).setdefault(carried.get(segment.id, segment.id), [])
             if node.address and node.address not in on:
                 on.append(node.address)
     nodes = {}
@@ -209,6 +223,7 @@ def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, s
         path.append(holder)
     if holder == gateway:
         upstream = declared.roles.get(sent.get("target", ""), "")
+        upstream = shown_as(declared).get(upstream, upstream)
         _step(path, near, NAMED_ON if linked(gateway, NAMED_ON) and linked(upstream, NAMED_ON) else None)
         _step(path, near, upstream or None)
         holder = upstream
@@ -228,8 +243,7 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
     if sent["kind"] != "browse" and sent["sender"] not in kinds:
         sent = dict(sent, sender=declared.roles["attacker"])
     target = sent.get("target") or "board"
-    service = declared.compose.get(target, "")
-    goal = service if service in kinds else declared.roles.get(target, "")
+    goal = _on_map(declared, kinds, target)
     path, source = _walk(near, kinds, declared, nodes, dict(sent, target=target), detections, goal)
 
     sensors = {declared.roles[sensing]: declared.roles.get(sensed, "")
@@ -290,8 +304,10 @@ def _images(project) -> dict[str, str]:
             for node in project["topology"]["nodes"]}
 
 def _on_map(declared, kinds, role) -> str:
-    service = declared.compose.get(role, "")
-    return service if service in kinds else declared.roles.get(role, "")
+    called = shown_as(declared)
+    service = called.get(declared.compose.get(role, ""), declared.compose.get(role, ""))
+    host = declared.roles.get(role, "")
+    return service if service in kinds else called.get(host, host)
 
 def facts(project, declared, scenario) -> dict[str, list[str]]:
     near, kinds = _wired(project), _kinds(project)
@@ -306,26 +322,32 @@ def facts(project, declared, scenario) -> dict[str, list[str]]:
         "segment": sorted(name for name in near.get(database, ()) if kinds[name] == SWITCH),
     }
 
-LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #1b4f8a;fill-opacity: 1.0;"
-SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #5b6770;fill-opacity: 1.0;"
+LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #1b4f8a;fill-opacity: 1.0;"
+SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #5b6770;fill-opacity: 1.0;"
 STARTS = "text-anchor: start;"
 ENDS = "text-anchor: end;"
 SYMBOL_SIZE = 60
 LABEL_GAP = 6
 LABEL_RISE = 28
+LABEL_FALL = 4
 LABEL_SIDE = 9
 LABEL_DROP = 4
 LABEL_CLIMB = 22
 KOREAN_SUFFIX = " ("
+CAPTION_CHAR = 0.62
 
 def renamed(value: str, salt: str) -> str:
     return str(uuid.uuid5(uuid.UUID(value), salt))
 
+def _ip(one):
+    return ipaddress.ip_interface(one.address).ip
+
+def _head(found, first):
+    return min(found, key=lambda one: (not first or _ip(one) not in ipaddress.ip_network(first), one.name, _ip(one)))
+
 def _said(found, first) -> str:
-    head = min(found, key=lambda one: (not first or ipaddress.ip_interface(one.address).ip
-                                       not in ipaddress.ip_network(first), one.name,
-                                       ipaddress.ip_interface(one.address).ip))
-    return f"{head.name} {head.address}"
+    head = _head(found, first)
+    return f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}"
 
 def leaving(node, other) -> tuple[int, int]:
     dx, dy = other["x"] - node["x"], other["y"] - node["y"]
@@ -336,13 +358,57 @@ def leaving(node, other) -> tuple[int, int]:
 def _placed_label(node, other) -> tuple[int, int, str]:
     half = SYMBOL_SIZE // 2
     across, down = leaving(node, other)
+    beside = half + LABEL_FALL if other["y"] < node["y"] else half - LABEL_RISE
     if across > 0:
-        return SYMBOL_SIZE + LABEL_GAP, half - LABEL_RISE, STARTS
+        return SYMBOL_SIZE + LABEL_GAP, beside, STARTS
     if across < 0:
-        return -LABEL_GAP, half - LABEL_RISE, ENDS
+        return -LABEL_GAP, beside, ENDS
     if down > 0:
         return half + LABEL_SIDE, SYMBOL_SIZE + LABEL_DROP, STARTS
     return half + LABEL_SIDE, -LABEL_CLIMB, STARTS
+
+def _shape(drawing) -> tuple[ElementTree.Element, ElementTree.Element]:
+    svg = ElementTree.fromstring(drawing["svg"])
+    return svg, svg[0]
+
+def _area(drawing) -> tuple[float, float, float, float]:
+    svg, _ = _shape(drawing)
+    return drawing["x"], drawing["y"], drawing["x"] + float(svg.get("width")), drawing["y"] + float(svg.get("height"))
+
+def _within(x, y, area) -> bool:
+    return area[0] <= x <= area[2] and area[1] <= y <= area[3]
+
+def _smallest(x, y, zones):
+    holding = [zone for zone in zones if _within(x, y, _area(zone))]
+    return min(holding, key=lambda zone: (_area(zone)[2] - _area(zone)[0]) * (_area(zone)[3] - _area(zone)[1]),
+               default=None)
+
+def captions(document) -> dict[str, dict]:
+    drawings = document["topology"]["drawings"]
+    zones = [drawing for drawing in drawings if _shape(drawing)[1].tag == "rect"]
+    texts = [drawing for drawing in drawings if _shape(drawing)[1].tag == "text"]
+    titled = {id(_smallest(text["x"], text["y"], zones)): text for text in texts}
+    found = {}
+    for node in document["topology"]["nodes"]:
+        if node["node_type"] == SWITCH:
+            zone = _smallest(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2, zones)
+            if zone is not None and id(zone) in titled:
+                found[node["name"]] = titled[id(zone)]
+    return found
+
+def _networks(found, first) -> dict[str, str]:
+    held: dict[str, list] = {}
+    for one in found:
+        if one.segment:
+            held.setdefault(one.segment, []).append(one)
+    return {segment: str(ipaddress.ip_interface(_head(ones, first).address).network) for segment, ones in held.items()}
+
+def _captioned(drawing, network) -> None:
+    svg, text = _shape(drawing)
+    added = f" {network}"
+    text.text = (text.text or "") + added
+    svg.set("width", str(round(float(svg.get("width")) + len(added) * float(text.get("font-size")) * CAPTION_CHAR)))
+    drawing["svg"] = ElementTree.tostring(svg, encoding="unicode")
 
 def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     document = json.loads(json.dumps(project))
@@ -365,6 +431,10 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
             end["label"] = {"text": text, "style": (SWITCH_LABEL_STYLE if switching else LABEL_STYLE) + anchor,
                             "x": x, "y": y, "rotation": 0}
         link["link_id"] = renamed(link["link_id"], salt)
+    networks = _networks(found, first)
+    for segment, caption in captions(document).items():
+        if segment in networks:
+            _captioned(caption, networks[segment])
     for node in document["topology"]["nodes"]:
         node["node_id"] = renamed(node["node_id"], salt)
     for link in document["topology"]["links"]:
@@ -373,3 +443,24 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     for drawing in document["topology"]["drawings"]:
         drawing["drawing_id"] = renamed(drawing["drawing_id"], salt)
     return document
+
+def addressing(project, declared, found, first: str = "") -> dict:
+    kinds = _kinds(project)
+    order = [name for name, kind in kinds.items() if kind != SWITCH]
+    held: dict[tuple[str, str, str], list] = {}
+    for one in found:
+        if kinds.get(one.host, SWITCH) != SWITCH and kinds.get(one.segment) == SWITCH:
+            held.setdefault((one.host, one.name, one.segment), []).append(one)
+    devices = []
+    for (host, name, segment), ones in sorted(held.items(), key=lambda item: (order.index(item[0][0]), item[0][1])):
+        head = _head(ones, first)
+        devices.append({"device": host, "interface": name, "address": head.address, "segment": segment,
+                        "gateway": next((one.gateway for one in ones if one.gateway), "")})
+    gateway = declared.roles.get("gateway", "")
+    services = [{"name": domain, "host": gateway, "port": SITE_PORT} for domain in domains(declared).values()]
+    for role in domains(declared):
+        database = f"{role}{DATABASE_SUFFIX}"
+        if database in declared.roles:
+            services.append({"name": declared.compose.get(database, database),
+                             "host": _on_map(declared, kinds, database), "port": DATABASE_PORT})
+    return {"devices": devices, "services": services}

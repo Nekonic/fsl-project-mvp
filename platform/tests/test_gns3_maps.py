@@ -1,12 +1,16 @@
+import dataclasses
 import io
 import json
+import re
 import pathlib
 import uuid
 import zipfile
 from types import SimpleNamespace
+from xml.etree import ElementTree
 from unittest.mock import patch
 
 import pytest
+import yaml
 from django.test import override_settings
 
 import gns3
@@ -24,6 +28,7 @@ DOCKER = TOPOLOGY / "range-docker.gns3"
 LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 SWITCH = "ethernet_switch"
 DEFAULT_ORIGIN = "5.188.10.0/24"
+LABEL = re.compile(r"[a-z][a-z0-9]* \.\d{1,3}")
 KOREAN_SUFFIX = json.loads(OPENSTACK_KO.read_text())["name"].removeprefix("fsl-range-openstack")
 
 KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
@@ -161,7 +166,11 @@ def test_a_docker_session_s_interfaces_are_named_by_matching_each_endpoint_s_mac
     assert sorted(execs) == ["fsl-7-kali-1", "fsl-7-waf-1"], "a container off the learner's map is not read"
 
 def slot_map(number=2, path=OPENSTACK, found=None):
-    return topology.labelled(json.loads(path.read_text()), found if found is not None else read_slot(),
+    flavor = "openstack" if path in (OPENSTACK, OPENSTACK_KO) else ""
+    called = topology.shown_as(declared.read(flavor=flavor))
+    found = found if found is not None else read_slot()
+    return topology.labelled(json.loads(path.read_text()),
+                             [dataclasses.replace(one, host=called.get(one.host, one.host)) for one in found],
                              f"slot-{number}", f"slot {number}", DEFAULT_ORIGIN)
 
 def labels(document):
@@ -176,13 +185,13 @@ def labels(document):
 def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_that_segment():
     shown = {pair: label["text"] for pair, label in labels(slot_map()).items()}
 
-    assert shown[("fsl-kali", "internet")] == "ens3 5.188.10.10/24", "the default origin's address, and only it"
-    assert shown[("fsl-edge", "internet")] == "vtnet0 5.188.10.1/24"
-    assert shown[("fsl-edge", "estate")] == "vtnet1 10.30.0.1/24"
-    assert shown[("fsl-waf", "estate")] == "ens3 10.30.0.177/24"
+    assert shown[("fsl-kali", "internet")] == "ens3 .10", "the default origin's address, and only it"
+    assert shown[("fsl-edge", "internet")] == "vtnet0 .1"
+    assert shown[("fsl-edge", "estate")] == "vtnet1 .1"
+    assert shown[("fsl-waf", "estate")] == "ens3 .177"
     assert shown[("fsl-wargame-host", "board-default")] == "", "the host's side of a Docker bridge carries no label"
-    assert shown[("board", "board-default")] == "eth0 172.18.0.3/16"
-    assert shown[("corp-db", "corp-default")] == "eth0 172.19.0.2/16"
+    assert shown[("board.com", "board-default")] == "eth0 .3"
+    assert shown[("corp-db", "corp-default")] == "eth0 .2"
     assert all(text == "" for (one, _), text in shown.items() if one in {"internet", "estate", "board-default",
                                                                           "corp-default", "monitoring"})
     assert all(text == "" for (_, other), text in shown.items() if other == "monitoring")
@@ -196,12 +205,13 @@ def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawi
                             | {link["link_id"] for link in document["topology"]["links"]}
                             | {d["drawing_id"] for d in document["topology"]["drawings"]})
 
-    assert labels(one)[("fsl-waf", "estate")]["text"] == "ens3 10.30.0.102/24"
-    assert labels(two)[("fsl-waf", "estate")]["text"] == "ens3 10.30.0.177/24"
+    assert labels(one)[("fsl-waf", "estate")]["text"] == "ens3 .102"
+    assert labels(two)[("fsl-waf", "estate")]["text"] == "ens3 .177"
     assert not ids(one) & ids(two) and not ids(one) & ids(english) and not ids(two) & ids(english)
     assert two["project_id"] == str(uuid.uuid5(uuid.UUID(english["project_id"]), "slot-2"))
     assert one["name"] == "fsl-range-openstack slot 1" and two["show_interface_labels"] is True
-    assert [d["svg"] for d in two["topology"]["drawings"]] == [d["svg"] for d in english["topology"]["drawings"]]
+    assert [d["svg"] for d in two["topology"]["drawings"] if "<rect" in d["svg"]] == [
+        d["svg"] for d in english["topology"]["drawings"] if "<rect" in d["svg"]]
     assert [(n["name"], n["symbol"], n["x"], n["y"]) for n in two["topology"]["nodes"]] == [
         (n["name"], n["symbol"], n["x"], n["y"]) for n in english["topology"]["nodes"]]
 
@@ -210,7 +220,7 @@ def test_the_korean_slot_map_keeps_its_language_in_the_name_and_differs_in_id_fr
 
     assert KOREAN_SUFFIX.startswith(" (") and korean["name"] == "fsl-range-openstack slot 2" + KOREAN_SUFFIX
     assert korean["project_id"] != slot_map(2)["project_id"]
-    assert labels(korean)[("fsl-waf", "estate")]["text"] == "ens3 10.30.0.177/24"
+    assert labels(korean)[("fsl-waf", "estate")]["text"] == "ens3 .177"
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_schemas(path):
@@ -248,11 +258,12 @@ def test_every_label_lies_level_clear_of_its_node_on_the_side_its_link_leaves(pa
         for end, node, other in ((link["nodes"][0], *ends), (link["nodes"][1], *ends[::-1])):
             label = end["label"]
             across, down = topology.leaving(node, other)
+            below = other["y"] < node["y"]
             assert label["rotation"] == 0
             if across > 0:
-                assert label["x"] > size and label["y"] < size // 2 and topology.STARTS in label["style"]
+                assert label["x"] > size and (label["y"] > size // 2) == below and topology.STARTS in label["style"]
             elif across < 0:
-                assert label["x"] < 0 and label["y"] < size // 2 and topology.ENDS in label["style"]
+                assert label["x"] < 0 and (label["y"] > size // 2) == below and topology.ENDS in label["style"]
             elif down > 0:
                 assert label["y"] > size and label["x"] > size // 2
             else:
@@ -264,7 +275,7 @@ def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
                            Interface("fsl-waf", "eth2", "73.0.0.4/24", "internet")]
     texts = [label["text"] for label in labels(slot_map(2, path, found)).values()]
 
-    assert [text for text in texts if "+" in text or interfaces.BRIDGE_PREFIX in text or text.count("/") > 1] == []
+    assert [text for text in texts if text and not LABEL.fullmatch(text)] == []
     assert any(text for text in texts)
 
 class Served:
@@ -293,6 +304,7 @@ def served(settings, monkeypatch):
     for name in ("publish", "status", "remove_except"):
         monkeypatch.setattr(gns3, name, getattr(fake, name))
     maps._loaded.clear()
+    maps._found.clear()
     return fake
 
 def test_a_slot_s_maps_are_loaded_in_both_languages_and_not_again_while_nothing_changed(served):
@@ -309,7 +321,7 @@ def test_a_changed_address_loads_the_slot_s_maps_again(served):
     maps.publish("slot 2", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
 
     assert len(served.published) == 4
-    assert labels(served.published[-2])[("fsl-waf", "estate")]["text"] == "ens3 10.30.0.99/24"
+    assert labels(served.published[-2])[("fsl-waf", "estate")]["text"] == "ens3 .99"
 
 def test_tidying_keeps_only_the_maps_of_the_slots_or_sessions_still_standing(served):
     maps.tidy(maps.SESSION, ["session 4"])
@@ -391,3 +403,124 @@ def test_the_topology_endpoint_serves_the_session_s_own_map_when_gns3_runs(clien
     assert found["project"] == {"name": "mine"}
     assert asked.call_args.args[:2] == ("session 9", "ko")
     assert refused.status_code == 400
+
+PROC_ROUTE = """Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT
+ens3\t00000000\t01001E0A\t0003\t0\t0\t100\t00000000\t0\t0\t0
+ens3\t00001E0A\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0
+"""
+NETSTAT = """Routing tables
+
+Internet:
+Destination        Gateway            Flags     Netif Expire
+default            5.188.10.254       UGS      vtnet0
+10.30.0.0/24       link#2             U        vtnet1
+"""
+CONTAINER_ROUTE = "eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n"
+
+def test_the_default_route_is_read_from_proc_or_netstat_and_held_by_the_interface_it_leaves_by():
+    waf = interfaces.placed("fsl-waf", WAF_IP + PROC_ROUTE, [("10.30.0.0/24", "estate")])
+    edge = interfaces.placed("fsl-edge", EDGE_IFCONFIG + NETSTAT, [])
+
+    assert interfaces.routed(PROC_ROUTE) == {"ens3": "10.30.0.1"}
+    assert interfaces.routed(NETSTAT) == {"vtnet0": "5.188.10.254"}
+    assert {(one.name, one.gateway) for one in waf} == {("ens3", "10.30.0.1"), ("ens4", "")}
+    assert {one.gateway for one in edge if one.name == "vtnet0"} == {"5.188.10.254"}
+    assert interfaces.ROUTES in interfaces.LISTED and interfaces.ROUTES in interfaces.MACS
+    assert "-n cat /proc/net/route" in interfaces.CONTAINERS
+
+def caption_texts(document):
+    return [ElementTree.fromstring(d["svg"])[0].text for d in document["topology"]["drawings"] if "<text" in d["svg"]]
+
+@pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO], ids=["openstack", "openstack-ko"])
+def test_each_zone_caption_on_a_slot_s_map_carries_the_network_its_segment_holds_on_the_range(path):
+    template, drawn = json.loads(path.read_text()), slot_map(2, path)
+    networks = {"internet": DEFAULT_ORIGIN, "estate": "10.30.0.0/24",
+                "board-default": "172.18.0.0/16", "corp-default": "172.19.0.0/16"}
+    before = {segment: ElementTree.fromstring(d["svg"])[0].text for segment, d in topology.captions(template).items()}
+    after = {segment: ElementTree.fromstring(d["svg"])[0].text for segment, d in topology.captions(drawn).items()}
+
+    assert set(after) == {*networks, "monitoring"}
+    assert after == {segment: f"{before[segment]} {networks[segment]}" if segment in networks else before[segment]
+                     for segment in before}
+    assert not [text for text in caption_texts(drawn) if "10.31.0." in text], "no management network is named"
+    assert "fsl-wargame-host" in caption_texts(drawn), "the box around the containers names their host and nothing else"
+
+def routed_slot():
+    said = {"attacker": KALI_IP, "edge": EDGE_IFCONFIG + NETSTAT, "gateway": WAF_IP + PROC_ROUTE,
+            "wargames": HOST_IP + PROC_ROUTE}
+    adapter, _ = slot_adapter(said)
+    containers = HOST_CONTAINERS.replace("@container board-db", CONTAINER_ROUTE + "@container board-db")
+    original = adapter.runner
+
+    def runner(role):
+        run = original(role)
+        return lambda argv, **kwargs: Ran(0, containers) if role == "wargames" and argv[0] == "sudo" else run(argv, **kwargs)
+    adapter.runner = runner
+    return adapter.interfaces()
+
+def test_the_addressing_table_lists_each_device_s_interfaces_on_the_learner_s_segments_and_the_services(settings):
+    settings.RANGE = declared.read(flavor="openstack")
+    found = maps.shown(routed_slot())
+    table = topology.addressing(json.loads(OPENSTACK.read_text()), settings.RANGE, found, DEFAULT_ORIGIN)
+    rows = {(row["device"], row["interface"]): row for row in table["devices"]}
+
+    assert rows[("fsl-kali", "ens3")]["address"] == "5.188.10.10/24", "the default origin's address, as on the map"
+    assert rows[("fsl-waf", "ens3")] == {"device": "fsl-waf", "interface": "ens3", "address": "10.30.0.177/24",
+                                         "segment": "estate", "gateway": "10.30.0.1"}
+    assert rows[("fsl-edge", "vtnet0")]["gateway"] == "5.188.10.254" and rows[("fsl-edge", "vtnet1")]["gateway"] == ""
+    assert rows[("board.com", "eth0")] == {"device": "board.com", "interface": "eth0", "address": "172.18.0.3/16",
+                                           "segment": "board-default", "gateway": "172.18.0.1"}
+    assert ("fsl-wargame-host", "br-7cc6b1febc1d") in rows, "the containers' gateway is listed with its interface"
+    assert not [row for row in table["devices"] if row["address"].startswith(("10.31.", "172.17."))], (
+        "no management address and no bridge off the map")
+    devices = [row["device"] for row in table["devices"]]
+    assert devices == sorted(devices, key=[node["name"] for node in json.loads(OPENSTACK.read_text())["topology"]["nodes"]].index)
+    assert table["services"] == [
+        {"name": "board.com", "host": "fsl-waf", "port": 80}, {"name": "corp.com", "host": "fsl-waf", "port": 80},
+        {"name": "board-db", "host": "board-db", "port": 3306}, {"name": "corp-db", "host": "corp-db", "port": 3306}]
+
+def test_the_service_ports_are_the_ones_the_waf_and_the_databases_listen_on():
+    nginx = (ROOT / "deploy" / "waf" / "range.conf").read_text()
+    session = yaml.safe_load((ROOT / "session.yaml").read_text())
+    board = yaml.safe_load((ROOT / "wargames" / "board" / "compose.yaml").read_text())
+
+    assert re.findall(r"listen (\d+)", nginx) == [str(topology.SITE_PORT)] * 2
+    assert session["services"]["waf"]["environment"]["PORT"] == str(topology.SITE_PORT)
+    assert board["services"]["board-db"]["image"].startswith("mysql@")
+    assert (ROOT / "wargames" / "corp" / "db" / "Dockerfile").read_text().startswith("FROM mysql@")
+    assert topology.DATABASE_PORT == 3306, "MySQL's default port, which neither database changes"
+
+def test_a_slot_s_addressing_table_is_read_once_and_kept_with_its_map(served):
+    reads = []
+
+    def read():
+        reads.append(1)
+        return read_slot()
+
+    first = maps.addresses("slot 2", read)
+    maps.publish("slot 2", read)
+    again = maps.addresses("slot 2", lambda: [])
+
+    assert first == again and len(reads) == 2
+    assert {row["device"] for row in first["devices"]} >= {"fsl-kali", "fsl-edge", "fsl-waf", "board.com", "corp.com"}
+    maps.tidy(maps.SLOT, [])
+    assert "slot 2" not in maps._found
+
+@pytest.mark.django_db
+def test_the_addresses_endpoint_serves_the_session_s_table_and_says_why_when_the_range_cannot(client):
+    from tests.sessions import open_session
+
+    session_id = open_session(client)
+    table = {"devices": [{"device": "fsl-waf"}], "services": []}
+    with patch("api.views._map_key", return_value="slot 1"), patch.object(maps, "addresses", return_value=table):
+        found = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
+    with patch("api.views._map_key", return_value="slot 1"), \
+         patch.object(maps, "addresses", side_effect=RangeUnavailable("fsl-waf did not answer")):
+        refused = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
+    with patch("api.views._map_key", return_value=None):
+        none = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
+
+    assert found == {**table, "detail": ""}
+    assert refused == {"devices": [], "services": [], "detail": "fsl-waf did not answer"}
+    assert none["devices"] == [] and none["detail"]
+    assert client.get("/api/sessions/999999/topology/addresses/").status_code == 404

@@ -38,7 +38,7 @@ def docker_nodes():
         "fsl-proxy": {"internet": ["5.188.10.5"]},
         "fsl-waf": {"internet": ["5.188.10.4"], "estate": ["172.30.0.3"]},
         "fsl-platform": {"internet": ["5.188.10.2"], "estate": ["172.30.0.9"], "mgmt": ["172.31.0.4"]},
-        "fsl-wg-board": {"estate": ["172.30.0.2"]},
+        "board.com": {"estate": ["172.30.0.2"]},
     }
     return {name: {"status": "running", "addresses": held} for name, held in standing.items()}
 
@@ -62,7 +62,7 @@ def test_on_openstack_the_website_pane_arrives_at_the_slot_s_waf_from_the_consol
 
     found = followed("openstack", openstack_nodes(), sent)
 
-    assert walked(found) == [None, "fsl-waf", "estate", "fsl-wargame-host", "board-default", "board"], (
+    assert walked(found) == [None, "fsl-waf", "estate", "fsl-wargame-host", "board-default", "board.com"], (
         "the site proxy reaches the WAF over the training plumbing, which the learner's map leaves out"
     )
     hops = by_node(found)
@@ -74,7 +74,7 @@ def test_on_openstack_the_website_pane_arrives_at_the_slot_s_waf_from_the_consol
     assert hops["fsl-waf"]["verdict"] == "passed" and hops["fsl-waf"]["evidence"] is True
     assert hops["fsl-wargame-host"]["sensor"] == "fsl-wargame-host" and hops["fsl-wargame-host"]["alerts"] == []
     assert hops["fsl-wargame-host"]["evidence"] is False, "a sensor that raised nothing is no record of the request"
-    assert hops["board"] == {"node": "board", "kind": "host", "evidence": True, "status": 200, "reached": True}
+    assert hops["board.com"] == {"node": "board.com", "kind": "host", "evidence": True, "status": 200, "reached": True}
 
 def test_on_openstack_a_case_leaves_kali_with_its_origin_address_and_the_edge_routes_it_to_the_waf():
     sent = {"kind": "case", "sender": "fsl-kali", "on": "ru", "source": "5.188.10.10", "status": 403}
@@ -89,13 +89,13 @@ def test_on_openstack_a_case_leaves_kali_with_its_origin_address_and_the_edge_ro
 
     assert walked(found) == [
         "fsl-kali", "internet", "fsl-edge", "estate", "fsl-waf", "estate", "fsl-wargame-host",
-        "board-default", "board",
+        "board-default", "board.com",
     ]
     assert found["hops"][0]["source"] == "5.188.10.10"
     assert hops["fsl-edge"]["sensor"] == "fsl-edge"
     assert hops["fsl-edge"]["alerts"] == [{"signature": "suricata saw it", "sid": 9000001}]
     assert hops["fsl-waf"]["verdict"] == "blocked" and hops["fsl-waf"]["rules"] == ["942100", "949110"]
-    assert hops["board"]["reached"] is False and hops["board"]["status"] is None
+    assert hops["board.com"]["reached"] is False and hops["board.com"]["status"] is None
 
 def test_a_case_with_no_alert_reaches_the_waf_by_the_name_the_range_serves_and_says_what_it_did_not_see():
     sent = {"kind": "case", "sender": "fsl-kali", "on": "ru", "source": "", "status": 200}
@@ -131,14 +131,14 @@ def test_on_docker_a_website_request_arrives_at_the_waf_from_the_console_s_brows
 
     found = followed("", docker_nodes(), sent, seen)
 
-    assert walked(found) == [None, "fsl-waf", "estate", "fsl-wg-board"]
+    assert walked(found) == [None, "fsl-waf", "estate", "board.com"]
     assert found["hops"][0]["kind"] == "console" and found["hops"][0]["source"] == "172.30.0.9"
     waf = found["hops"][1]
     assert waf["verdict"] == "passed" and waf["rules"] == ["920272"]
     assert waf["sensor"] == "fsl-suricata" and waf["alerts"] == [], (
         "on Docker the sensor shares the WAF's namespace, so its alerts sit on the WAF"
     )
-    assert found["hops"][-1] == {"node": "fsl-wg-board", "kind": "host", "evidence": True,
+    assert found["hops"][-1] == {"node": "board.com", "kind": "host", "evidence": True,
                                  "status": 200, "reached": True}
 
 def test_on_docker_a_case_starts_on_its_origin_network_where_the_waf_answers_to_the_name():
@@ -147,7 +147,7 @@ def test_on_docker_a_case_starts_on_its_origin_network_where_the_waf_answers_to_
 
     found = followed("", docker_nodes(), sent, seen)
 
-    assert walked(found) == ["fsl-kali", "internet", "fsl-waf", "estate", "fsl-wg-board"], (
+    assert walked(found) == ["fsl-kali", "internet", "fsl-waf", "estate", "board.com"], (
         "no edge on Docker: the case box stands on the origin network with the WAF"
     )
     assert found["hops"][0]["source"] == "5.188.10.77", "the sensor saw the address the box really used"
@@ -237,7 +237,7 @@ def test_a_session_s_topology_carries_the_project_overlay_from_the_same_range_re
 
     assert drawn["project"]["project_id"] == json.loads(DOCKER.read_text())["project_id"]
     assert drawn["project"]["nodes"]["fsl-waf"]["status"] == "running"
-    assert drawn["project"]["nodes"]["fsl-wg-board"]["status"] == "not reported"
+    assert drawn["project"]["nodes"]["board.com"]["status"] == "not reported"
 
 @pytest.mark.django_db
 def test_following_a_website_request_reads_its_record_and_its_detections(client):

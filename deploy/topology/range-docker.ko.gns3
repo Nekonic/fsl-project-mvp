@@ -16,138 +16,57 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "a5aaa25a-6848-51d1-bf2b-12097e37d7da",
+                "drawing_id": "d59d2fee-06a1-5dcb-9e80-df08ccc022f9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"350\" height=\"300\"><rect width=\"350\" height=\"300\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -500,
-                "y": -150,
+                "svg": "<svg width=\"400\" height=\"170\"><rect width=\"400\" height=\"170\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -560,
+                "y": -100,
                 "z": 0
             },
             {
-                "drawing_id": "ba643807-489e-50da-877c-6392a77c0e8e",
+                "drawing_id": "1593574c-34d7-5e3a-9c65-30cbc966fc31",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"1060\" height=\"505\"><rect width=\"1060\" height=\"505\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -140,
-                "y": -290,
+                "svg": "<svg width=\"47\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137</text></svg>",
+                "x": -550,
+                "y": -96,
+                "z": 2
+            },
+            {
+                "drawing_id": "9cbfb20b-bbcd-51eb-a845-d4b361db48c2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"720\" height=\"580\"><rect width=\"720\" height=\"580\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -90,
+                "y": -300,
                 "z": 0
             },
             {
-                "drawing_id": "214865bf-4d65-5e81-b88b-6681e31bd6f3",
+                "drawing_id": "95eb5420-e6c0-5270-8ee1-01808eb595d9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"1060\" height=\"200\"><rect width=\"1060\" height=\"200\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -140,
-                "y": 230,
+                "svg": "<svg width=\"81\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
+                "x": -80,
+                "y": -296,
+                "z": 2
+            },
+            {
+                "drawing_id": "82fb02c1-2a9a-5633-a7e7-dd7b4f3210c2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"720\" height=\"170\"><rect width=\"720\" height=\"170\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": -90,
+                "y": 340,
                 "z": 0
             },
             {
-                "drawing_id": "fffc1008-6bcc-5c7c-b489-07fc3e263c23",
+                "drawing_id": "51631df2-4793-56a2-8ace-e25e5b8e4c8b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"355\" height=\"27\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl \uc0ac\uc774\ubc84 \ub808\uc778\uc9c0 (Docker): \ub0b4\uac00 \uc9c0\ud0a4\ub294 \ub124\ud2b8\uc6cc\ud06c</text></svg>",
-                "x": -500,
-                "y": -340,
-                "z": 2
-            },
-            {
-                "drawing_id": "fc318921-5afa-5051-a3e5-c00cbf777bdb",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"56\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137</text></svg>",
-                "x": -490,
-                "y": -145,
-                "z": 2
-            },
-            {
-                "drawing_id": "43c2c187-583f-585e-ae61-d0e59e8ed9e7",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"96\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
-                "x": -130,
-                "y": -285,
-                "z": 2
-            },
-            {
-                "drawing_id": "281f54f0-5eb8-5b2d-8f1c-04e707dba568",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"78\" height=\"32\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
-                "x": -130,
-                "y": 235,
-                "z": 2
-            },
-            {
-                "drawing_id": "1be6aecb-2f60-5da1-b16f-7b82a10cf3d7",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"93\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uacf5\uaca9\uc790 PC (Kali)</text></svg>",
-                "x": -450,
-                "y": 38,
-                "z": 2
-            },
-            {
-                "drawing_id": "0f2b5b38-6506-51d2-acd2-23c3ad2336ea",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"388\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uc6f9 \ubc29\ud654\ubcbd (ModSecurity + CRS)\uacfc Suricata: board.com, corp.com</text></svg>",
-                "x": 10,
-                "y": 38,
-                "z": 2
-            },
-            {
-                "drawing_id": "f86ed023-c9d1-501b-bbc5-6c9debe7dac1",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"163\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uac8c\uc2dc\ud310 \uc6f9\uc0ac\uc774\ud2b8: board.com</text></svg>",
-                "x": 658,
-                "y": -176,
-                "z": 2
-            },
-            {
-                "drawing_id": "48f884bb-6d57-5506-b5c9-08f906c2e3d0",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"166\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uac8c\uc2dc\ud310 \ub370\uc774\ud130\ubca0\uc774\uc2a4 (MySQL)</text></svg>",
-                "x": 658,
-                "y": -66,
-                "z": 2
-            },
-            {
-                "drawing_id": "0aaf3e00-f76e-5311-893d-b69fca7e10ea",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"221\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ud68c\uc0ac \uc6f9\uc0ac\uc774\ud2b8 (WordPress): corp.com</text></svg>",
-                "x": 658,
-                "y": 44,
-                "z": 2
-            },
-            {
-                "drawing_id": "701fe147-5a40-5996-989c-8b59a7c9ee87",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"155\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ud68c\uc0ac \ub370\uc774\ud130\ubca0\uc774\uc2a4 (MySQL)</text></svg>",
-                "x": 658,
-                "y": 154,
-                "z": 2
-            },
-            {
-                "drawing_id": "bfffb987-b8be-566a-ac80-079df8bfff9e",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"313\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ub85c\uadf8 \uc218\uc9d1\uae30 (Filebeat): \uc6f9 \ubc29\ud654\ubcbd\uacfc Suricata \ub85c\uadf8\ub97c \uc77d\uc74c</text></svg>",
-                "x": 10,
-                "y": 378,
-                "z": 2
-            },
-            {
-                "drawing_id": "01c0d48d-4533-5168-9312-64f806a2dfe1",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"157\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ub85c\uadf8 \uc800\uc7a5\uc18c (Elasticsearch)</text></svg>",
-                "x": 510,
-                "y": 378,
+                "svg": "<svg width=\"68\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
+                "x": -80,
+                "y": 476,
                 "z": 2
             }
         ],
@@ -206,9 +125,6 @@
             {
                 "filters": {},
                 "link_id": "9408ec27-1e3c-57b2-8b4f-481160143a0d",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -226,9 +142,6 @@
             {
                 "filters": {},
                 "link_id": "8ef5678d-dfde-5a4c-8d13-b439395b2143",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -246,9 +159,6 @@
             {
                 "filters": {},
                 "link_id": "af201c6f-25d8-5dc2-8947-95692c321ece",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -266,9 +176,6 @@
             {
                 "filters": {},
                 "link_id": "837b04af-a0b4-55f4-aa5b-9a3ce2453889",
-                "link_style": {
-                    "link_type": "flowchart"
-                },
                 "nodes": [
                     {
                         "adapter_number": 0,
@@ -338,7 +245,7 @@
                     "image": "ghcr.io/nekonic/fsl-kali:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/red/scull.svg",
-                "x": -450,
+                "x": -510,
                 "y": -30,
                 "z": 1
             },
@@ -408,7 +315,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -230,
+                "x": -270,
                 "y": -30,
                 "z": 1
             },
@@ -431,7 +338,7 @@
                     "image": "owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05"
                 },
                 "symbol": ":/symbols/affinity/circle/green/shield.svg",
-                "x": 10,
+                "x": -30,
                 "y": -30,
                 "z": 1
             },
@@ -442,8 +349,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "estate",
-                    "x": null,
-                    "y": -25
+                    "x": 68,
+                    "y": 22
                 },
                 "name": "estate",
                 "node_id": "d26fb283-be61-57f5-9426-105c215f753f",
@@ -501,7 +408,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 270,
+                "x": 210,
                 "y": -30,
                 "z": 1
             },
@@ -511,11 +418,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-wg-board",
+                    "text": "board.com",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-wg-board",
+                "name": "board.com",
                 "node_id": "dbf1a6bc-8f5c-5e3f-b46d-007fe98c4edf",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -524,8 +431,8 @@
                     "image": "ghcr.io/nekonic/fsl-board:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 590,
-                "y": -195,
+                "x": 210,
+                "y": -230,
                 "z": 1
             },
             {
@@ -547,8 +454,8 @@
                     "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 590,
-                "y": -85,
+                "x": 490,
+                "y": -230,
                 "z": 1
             },
             {
@@ -557,11 +464,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-wg-corp-wp",
-                    "x": null,
-                    "y": -25
+                    "text": "corp.com",
+                    "x": -6,
+                    "y": 66
                 },
-                "name": "fsl-wg-corp-wp",
+                "name": "corp.com",
                 "node_id": "3c3bcf8f-52c9-54ba-9eb3-82e84a0e5aab",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -570,8 +477,8 @@
                     "image": "ghcr.io/nekonic/fsl-corp:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 590,
-                "y": 25,
+                "x": 210,
+                "y": 170,
                 "z": 1
             },
             {
@@ -581,8 +488,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "fsl-wg-corp-db",
-                    "x": null,
-                    "y": -25
+                    "x": -33,
+                    "y": 66
                 },
                 "name": "fsl-wg-corp-db",
                 "node_id": "c8495790-bdce-5c92-92f3-9f5e79a4eec2",
@@ -593,8 +500,8 @@
                     "image": "ghcr.io/nekonic/fsl-corp-db:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 590,
-                "y": 135,
+                "x": 490,
+                "y": 170,
                 "z": 1
             },
             {
@@ -616,8 +523,8 @@
                     "image": "docker.elastic.co/beats/filebeat:8.15.0"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/docker.svg",
-                "x": 10,
-                "y": 310,
+                "x": -30,
+                "y": 390,
                 "z": 1
             },
             {
@@ -686,8 +593,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 270,
-                "y": 310,
+                "x": 210,
+                "y": 390,
                 "z": 1
             },
             {
@@ -709,8 +616,8 @@
                     "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": 510,
-                "y": 310,
+                "x": 450,
+                "y": 390,
                 "z": 1
             }
         ]
