@@ -2,8 +2,10 @@ import pathlib
 import re
 
 import pytest
+import yaml
 from django.test import Client
 
+import traffic
 from console import strings
 
 pytestmark = pytest.mark.django_db
@@ -238,3 +240,14 @@ def test_the_score_labels_are_states_a_korean_reader_cannot_read_as_noise():
 
     assert korean["score.caught"] == DETECTED_KO, "the Korean word for caught also reads as noise"
     assert all("(" not in korean[key] for key in ("score.caught", "score.missed", "score.wrongly_blocked", "score.passed"))
+
+def test_every_customer_action_a_wargame_declares_has_a_label():
+    root = pathlib.Path(__file__).resolve().parents[2] / "wargames"
+    declared = {action for path in root.glob("*/traffic.yaml")
+                for profile in traffic.checked(yaml.safe_load(path.read_text(encoding="utf-8")), path)["profiles"].values()
+                for action in profile}
+    table = tables()
+
+    for language in strings.LANGUAGES:
+        unlabelled = sorted(action for action in declared if f"traffic.action.{action}" not in table[language])
+        assert not unlabelled, f"the debrief shows these customer actions by their ids in {language}: {unlabelled}"
