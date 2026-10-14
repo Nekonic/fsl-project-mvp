@@ -968,10 +968,14 @@ API(`platform/api/customers.py`, `views.session_traffic`):
 
 - `PUT /api/sessions/<id>/traffic/ {rate, profile}`은 고객을 시작하거나, 돌고 있는
   생성기의 속도와 프로필을 바꾼다(페르소나는 그대로). `rate`는 초당 요청 수,
-  기본 1, 최대 50. `profile`은 `community`(기본) 또는 `plain`(특이한 검색 없음).
+  기본 1, 최대 50. `profile`은 워게임이 선언한 프로필 중 하나다. board에는
+  `community`(기본), `plain`(특이한 검색 없음), `readers`(댓글을 뺀 `plain`),
+  `club`(`community`에 댓글 속 코드 질문을 더함)이 있다.
   `traffic.yaml`이 없는 워게임은 404, 닫힌 세션은 409, 박스나 출발지가 없으면 503.
-- `GET`은 새 기록을 먼저 읽고 `running`, `rate`, `profile`, 위의 수, `sources`
-  (출발지, 주소, 요청 수), `by_action`을 돌려준다.
+- `GET`은 새 기록을 먼저 읽고 `declared`, `profiles`, `running`, `rate`,
+  `profile`, `started_at`, `stopped_at`, `error`, 수 `sent`, `served`,
+  `blocked`(앱이 아니라 방어가 낸 403), `unanswered`, `other`, `sources`
+  (출발지, 주소, 요청 수), `by_action`(동작별 보낸 수와 막힌 수)을 돌려준다.
 - `DELETE`는 멈추고 마지막으로 보낸 것까지 읽는다. 세션을 닫을 때도 슬롯을 다시
   만들기 전에 똑같이 한다. 박스에 닿지 않으면 닫기는 계속하고 오류를
   `traffic.error`에 남긴다.
@@ -1007,21 +1011,21 @@ window)으로 판정한다. 설계는
 | `defense` | wargame의 `defense:` 중 하나(CRS 수준, 예외, 기준값, Suricata 규칙 묶음) |
 | `traffic` | 고객의 `{profile, rate}`(`traffic.yaml`) |
 | `red` | `schedule`(기본값) 또는 `person`: 사람이 레드 콘솔을 쓰고, 시나리오는 공격을 하나도 선언하지 않아도 된다 |
-| `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초, 악성 케이스, 출발지. 학습자에게 보이지 않는다 |
+| `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초(`minutes` 안), 악성 케이스, 출발지(선택). 학습자에게 보이지 않는다 |
 | `completion` | 종류별: judgement `{judged: all}`, 선택으로 `pattern: judged`. availability `{served: all, held: all}`, 선택으로 `thresholds: {inbound, outbound}`. unknown `{served: all, held: all}`. detection `{detected_by: suricata}` |
 | `cards` | `[{id, when}]`, `when`은 `start`, `alert`, `blocked`, `window` 중 하나 |
 | `hints` | 하나씩 제안하는 힌트 id |
 
 `GET /api/wargames/`는 시나리오 카드(`wargames.scenario_card`)를 `attacks` 없이
-보여 준다. `GET /api/sessions/<id>/`는 worked 시나리오의 단계에서 `attacks`와
-케이스를 뺀다.
+보여 준다. `GET /api/sessions/<id>/`는 worked 시나리오의 `lesson`에서 `attacks`와
+`completion`을 빼고 `cases`를 비운다.
 
 **열기.** `POST /api/sessions/ {"scenario": "2.1"}`은 시나리오 id로 wargame을
 찾고, `lesson`, `guidance`, `defense`, `mode`는 거부하며, 다른 세션처럼 선언된
 태세를 적용한 뒤 `scenario_run.begin`이 고객을 시작하고
 `Session.scenario_state`(마이그레이션 0025, `Session.course_scenario` 옆)를 쓴다:
 공격마다 절대 시각으로 정한 일정, 점검 시간들, 판단, 힌트 제안, 본 WAF 버전.
-worked 시나리오는 `guidance`와 `lesson`을 자기 id로 두어 단계가 `/lesson/steps/`
+worked 시나리오는 `guidance`를 참으로, `lesson`을 자기 id로 두어 단계가 `/lesson/steps/`
 위에서 돌고, 재전송 씨앗은 보내지 않는다. 고객을 시작하지 못하면 세션을 닫고
 503을 돌려준다.
 
@@ -1103,13 +1107,13 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 | 1.1 | 조용한 근무 | judgement, worked | `level2`: PL2 | `community` 초당 2건 | 150초에 sqlmap(`ru`) |
 | 1.2 | 물려받은 예외 | judgement, faded | `inherited`: PL2, 949110과 959100 제거 | `community` 초당 2건 | 120초에 sqlmap, 300초에 검색 인젝션(`ru`) |
 | 1.3 | 바쁜 저녁 | judgement, none, 공격 종류도 판단 | `inherited` | `community` 초당 4건 | 90~660초에 케이스 여덟 개, 모두 `kr`: sqlmap 기본·tamper, 검색·union·로그인 인젝션, XSS 둘, 경로 추적 |
-| 2.1 | 막힌 한글 검색 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap |
-| 2.2 | 막힌 태그와 링크 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap |
-| 2.3 | 임계치 낮추기 | availability, none, 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap |
-| 3.1 | 울리지 않는 룰 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap |
-| 3.2 | IDS가 놓치는 sort 공격 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap |
-| 3.3 | 다르게 쓴 같은 공격 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(공백 사이의 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형 |
-| 3.4 | 댓글 속 XSS | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS |
+| 2.1 | 막힌 한글 검색 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap (`ru`) |
+| 2.2 | 막힌 태그와 링크 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap (`ru`) |
+| 2.3 | 임계치 낮추기 | availability, none, 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap (`ru`) |
+| 3.1 | 울리지 않는 룰 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
+| 3.2 | IDS가 놓치는 sort 공격 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
+| 3.3 | 다르게 쓴 같은 공격 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(공백 사이의 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형 (`ru`) |
+| 3.4 | 댓글 속 XSS | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS (`ru`) |
 | 4.1 | 혼자 맡는 저녁 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문을 더함) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
 
 PL3에서 한글 검색은 `ARGS:q`의 920272와 942460에 막히고(그 둘을 빼면

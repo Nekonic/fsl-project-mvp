@@ -456,9 +456,12 @@ opens on a briefing (situation, goal, how it is measured, time); a strip shows
 the time left, customers blocked and alerted requests per minute, and objectives lost;
 an attack schedule the learner does not see fires through the normal path,
 and a dump it gets counts in the first score when the board's accounts match.
-"I'm done" (or the schedule) opens a final check of a few minutes: it passes
-when no customer is blocked, every attack held, and the scenario's own
-criterion holds. `1.1` "A quiet shift" asks the learner to judge each request
+"I'm done" (or the schedule) opens a final check of a few minutes, judged by
+task class: judgement passes when every alerted item listed at its start is
+judged right (blocked customers are reported, not counted); availability and
+unknown when no customer is blocked and every attack is held (2.3 also needs
+anomaly thresholds of at most 5/4); detection when every attack draws a
+corroborated Suricata alert and no customer request does. `1.1` "A quiet shift" asks the learner to judge each request
 that drew an alert, customer or attack and whether it got the data
 (`/api/sessions/<id>/triage/`); `2.1` "Korean searches blocked" asks for the
 customers a PL3 WAF refuses to be served without letting sqlmap through. The
