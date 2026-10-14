@@ -7,6 +7,12 @@ RUN apt-get update \
  && make -C "/tmp/ubridge-${UBRIDGE}" \
  && install -m 0755 "/tmp/ubridge-${UBRIDGE}/ubridge" /usr/local/bin/ubridge
 
+ARG REGISTRY=fddde6574a46904f709ecb89c5bea383de6bbecf
+RUN mkdir -p /symbols \
+ && for name in ubuntu.svg ubuntu.txt; do \
+      curl -fsSL "https://raw.githubusercontent.com/GNS3/gns3-registry/${REGISTRY}/symbols/${name}" -o "/symbols/${name}"; \
+    done
+
 FROM python:3.13-slim
 
 RUN apt-get update \
@@ -16,6 +22,7 @@ RUN apt-get update \
  && useradd --system --create-home --uid 10002 gns3
 
 COPY --from=ubridge /usr/local/bin/ubridge /usr/local/bin/ubridge
+COPY --from=ubridge /symbols /opt/fsl-gns3/symbols
 RUN setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/ubridge
 
 COPY entrypoint.sh provision.py auditor.html /opt/fsl-gns3/
