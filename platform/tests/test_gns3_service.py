@@ -111,8 +111,11 @@ def test_learners_sign_in_as_a_read_only_auditor_through_the_bundled_web_ui_s_ow
     assert '"path": "/"' in provision
     assert 'localStorage.setItem("controllerIds", "controller-1")' in page
     assert 'location: "bundled"' in page and "authToken: token" in page
-    assert 'localStorage.setItem("showInterfaceLabels", "false")' in page, (
-        "port numbers on every link end are noise to a learner reading the map"
+    assert 'localStorage.setItem("showInterfaceLabels", "true")' in page, (
+        "each link end of a range's own map names the interface and its address"
+    )
+    assert 'localStorage.setItem("integrateLinkLabelsToLinks", "false")' in page, (
+        "GNS3 3.1 draws the labels at their stored positions only when they are not folded into the links"
     )
 
 @pytest.fixture
@@ -171,3 +174,27 @@ def test_the_system_maps_stay_off_the_learners_gns3_server():
         "the glob does not descend into system/, so the full wiring is never opened where learners read"
     )
     assert "/topology/system" not in entrypoint
+
+def test_the_read_only_page_closes_the_node_list_and_fits_the_map_through_the_web_ui_s_own_controls():
+    page = (GNS3 / "auditor.html").read_text()
+
+    assert 'button(map, "account_tree").click()' in page, "the topology summary opens over the map on every load"
+    assert 'button(map, "zoom_out").click()' in page and "ZOOM_STEP = 0.1" in page, (
+        "the zoom-out button steps the scale by 0.1; the project's own zoom field is not read by the web UI"
+    )
+    assert 'button(map, "zoom_out_map").click()' in page and "movementX: dx" in page, (
+        "the web UI pans in its moving mode by each mousemove's movementX/movementY"
+    )
+    assert 'frame.src = opened' in page and 'location.replace(opened)' in page, (
+        "a project opens inside a same-origin frame the page can steer; the project list opens as before"
+    )
+
+def test_the_platform_reads_the_gns3_admin_password_it_needs_to_load_a_range_s_own_map():
+    platform = composed.services()["platform"]
+    entrypoint = (GNS3 / "entrypoint.sh").read_text()
+
+    assert "/var/lib/fsl-gns3:/run/fsl-gns3:ro" in platform["volumes"]
+    assert platform["environment"]["FSL_GNS3_ADMIN_PASSWORD"] == "${FSL_GNS3_ADMIN_PASSWORD:-}"
+    assert 'chgrp "$gid" "$DATA/admin-password"' in entrypoint and 'chmod 640 "$DATA/admin-password"' in entrypoint, (
+        "only the docker socket's group, which the platform's user joins and which is root on the host, reads it"
+    )

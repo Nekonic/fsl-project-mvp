@@ -22,6 +22,10 @@ fi
 if [ -z "${FSL_GNS3_ADMIN_PASSWORD:-}" ]; then
   [ -s "$DATA/admin-password" ] || python -c 'import secrets; print(secrets.token_urlsafe(24))' > "$DATA/admin-password"
   chmod 600 "$DATA/admin-password"
+  if [ -n "${gid:-}" ] && [ "$gid" != 0 ]; then
+    chgrp "$gid" "$DATA/admin-password"
+    chmod 640 "$DATA/admin-password"
+  fi
   FSL_GNS3_ADMIN_PASSWORD="$(cat "$DATA/admin-password")"
 fi
 export FSL_GNS3_ADMIN_PASSWORD
