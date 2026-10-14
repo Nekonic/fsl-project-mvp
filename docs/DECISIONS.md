@@ -3804,3 +3804,104 @@ CHECKING, ground truth unreadable); `reset_in_place` and `configure_rebuilt`
 were run by hand on both slots and both returned READY. Restarting the
 platform right after a close loses that slot's reset; a restart should wait
 for `/api/range/ready/` to show no slot resetting.
+
+## 2026-10-15 — Learner-map link labels carry the full address; the attacker node is `kali` with OffSec's dragon
+
+The user asked for the whole address with its prefix at every host's link
+end, and for the attacker node to be named and drawn as the Kali box it is.
+
+- **Labels.** A host end reads `<interface> <address>/<prefix>` (`ens3
+  10.30.0.102/24`, `vtnet0 5.188.10.1/24`, `eth0 172.18.0.3/16`); a switch
+  end stays its short port (`e0`), a monitoring end the NIC alone. The
+  lab-style `.<octet>` of 2026-10-14 is gone; the zone captions still carry
+  the networks.
+- **Room for them.** The columns right of the internet zone moved apart
+  (firewall or Docker's WAF at x 0, `sw1` and `waf` 270, the site 540, `sw2`
+  800, the database 1060) and the zones widened to match, the same in all
+  four templates, so a 20-character label fits between its node and a zone's
+  edge. The drawing is about 10% wider (1730 against 1580 units).
+- **Clearances measured, not assumed.** In the 3.1.0a6 web UI (`getBBox` on
+  the live map) a link label renders at its `x` + 3 with glyphs from `y` + 4
+  to `y` + 23 (Noto Sans at 13.3 px, the style's 10.0 read as points, 6.4-6.6
+  units a character, estimated at 7); a node's name at `x` + 3 from `y` + 1
+  to `y` + 22 (14.7 px bold, up to 8.5 a character, estimated at 9). The status
+  mark is a circle of radius 6, 60 along the link from the node's centre
+  (`LABEL_DISTANCE = 60`, `r = 6` in the web UI's link widget). A shallow
+  label rises 32 above its line or falls 6 below it, and its reach includes
+  the mark; a steep label stands 10 aside of the line over a band widened by
+  the mark's radius; a shallow label that would touch its own node's name
+  goes to the other side of its line (`internet`'s `e0`). A new test holds
+  every label of every generated map (both substrates, both wargames, both
+  languages on OpenStack) clear of every link line, every status mark, every
+  node's name, every zone edge and caption, by 3 units.
+- **A relayout bug, caught live.** The first relayout rewrote every
+  `width="…"` in a zone's svg, `stroke-width` included, so each zone drew as
+  a solid block; no test looked at the stroke. Fixed, and a test now holds
+  every learner zone to a 2-unit outline over a 0.06 fill with the box's own
+  size.
+- **`kali`.** The node `attacker` is now `kali` (`topology.ATTACKER`); the
+  role stays `attacker`, so the follow view, the overlay and the lesson's
+  range questions only see the new name (the f1 map text says `kali (the
+  attacker's Kali Linux box)`, and that each link end names the interface
+  and its address with the network prefix).
+- **The Kali dragon, under OffSec's policy.** The Kali Linux Trademark
+  Policy (https://www.kali.org/docs/policy/trademark/, updated 2025-06-10)
+  covers the dragon (listed among the marks, `kali-dragon-tm.png`) and says:
+  "We encourage others to use the marks so long as they are used to identify
+  the products and services of OffSec." It also says: "Please do not modify
+  the marks." and "When using an OffSec trademark in written materials, you
+  should provide a statement indicating that the [trademark] is a trademark
+  of OffSec." Its limits: "You can't put the trademarks on anything that you
+  produce commercially (whether or not you make a profit) – at least not
+  without receiving written permission." and "Any other use outside of the
+  scope of the Trademark Policy is not permitted without express written
+  permission of OffSec." The map's node is a Kali Linux box and the map is
+  an internal, non-commercial training range, so the dragon identifies
+  OffSec's product, as the policy encourages. Used: the press pack the
+  policy links (gitlab.com/kalilinux/documentation/press-pack, commit
+  360c018b, `Kali/Logomark/kali-dragon-black.svg`, sha256 `083264e7…`),
+  fetched by the GNS3 image at build, checked by digest, given only `width`
+  and `height` 60 (it has a viewBox and no size, and GNS3 sizes a node by
+  its symbol: 135x135 otherwise), saved as `kali.svg` with a `kali.txt`
+  stating the mark, the source and the change, uploaded by `provision.py`
+  like the Ubuntu symbol; not vendored. The Topology pane's footer says
+  "KALI LINUX™ is a trademark of OffSec." (en/ko). Not covered: if this
+  training is ever sold, the policy's commercial clause needs OffSec's
+  written permission; the dragon also drops the square/circle VM-or-container
+  cue for that one node.
+
+Tests: 2037 before, 2041 after. Added (4): no label on a line, a mark, a
+name, a zone's edge or caption (6 maps); the Kali symbol's pinned fetch and
+the `kali` node; the trademark line in the Topology pane (en, ko); zones as
+2-unit outlines (4 templates). Rewritten because the design changed: the
+label texts and the label pattern in `test_gns3_maps.py` (full address with
+prefix), `label_box` (now `topology.label_box`, with the measured offsets),
+`attacker` to `kali` in node and hop names (`test_gns3_maps.py`,
+`test_gns3_follow.py`, `test_topology_console.py`), the symbol tests in
+`test_gns3_topology.py` (the fetched list includes the Kali stage's files;
+`kali` is exempt from square/circle and must be `kali.svg`).
+
+Live (platform VM, OpenStack): deployed (`platform`, `gns3` rebuilt;
+`fsl-gns3: symbol kali.svg uploaded`, the file `<svg width="60" height="60"
+viewBox=...`), sessions 460 (board, slot 1) and 461 (corp, slot 2), both
+languages. Slot 1: `kali` `ens3 5.188.10.10/24`, `customers` `ens3
+175.192.0.10/24`, `firewall` `vtnet0 5.188.10.1/24`/`vtnet1 10.30.0.1/24`,
+`waf` `ens3 10.30.0.102/24`, `board.com` `ens3 10.30.0.63/24` and `eth0
+172.18.0.3/16`, `board-db` `eth0 172.18.0.2/16`; slot 2 the same with `.177`,
+`.184` and 172.19.0.0/16. An in-page check over the rendered SVG (label
+`getBoundingClientRect` against every node image, name, caption, status mark,
+zone edge and link path) found nothing touching on any of the four views;
+the nearest label to a mark is 2.6 px clear at the fitted zoom. Sessions 458
+and 459 before them showed the solid zones above; the platform was restarted
+for the fix while they were open (no reset running), then both were closed
+and both slots returned to READY before 460 and 461 opened.
+
+`bin/verify` on the platform VM (`FSL_PLATFORM_URL=http://192.168.0.210:8000`;
+the port is published on 10.20.0.7, where Django answers 400 to that host
+name, and not on localhost): all green, acceptance 74 passed, 0 failed, 71
+skipped in 1002 s; ratchet holds (core_loc 580, tests 2041). The run before
+it had one failure, `test_a_live_content_overwrite_is_credited_from_the_targets_own_row`
+(the post was overwritten but session 466 credited nothing), in the effect
+path this change does not touch; it passed on the rerun and is left as a
+possible flake to watch.
+
