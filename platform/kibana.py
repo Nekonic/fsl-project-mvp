@@ -60,14 +60,6 @@ def send_json(request):
         return json.loads(answer.read() or b"{}")
 
 
-def marked(marker):
-    return f'transaction.request.headers.X-FSL-Case : "{marker}"'
-
-
-def sensed(marker):
-    return f'event_type : "alert" and http.request_headers.value : "{marker}"'
-
-
 def sensed_http(marker):
     return f'event_type : "http" and http.request_headers.value : "{marker}"'
 

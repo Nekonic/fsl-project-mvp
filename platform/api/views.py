@@ -56,7 +56,7 @@ from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES
 
-SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "mode", "defense")
+SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
     "expect", "correlation", "source_ip", "started_at", "ended_at", "meta",
@@ -77,12 +77,9 @@ SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint", "do")
 LESSON_STEP_STATES = ("reached", "skipped")
-MODES = ("guided", "self")
 RECENT_ALERTS = 600
-SHOWN_CHECK = {"choice": ("options",), "alert": ("path",), "served": ("path",), "replay": ("case",),
-               "detect": ("case", "expect"), "sent": ("match",), "kali": ("case",)}
+SHOWN_CHECK = {"choice": ("options",), "sent": ("match",), "kali": ("case",)}
 COUNT_TOLERANCE = 0.1
-SERVER_ONLY = ("solved_at",)
 SCHEDULE = ("attacks", "completion")
 SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
@@ -225,14 +222,12 @@ def sessions(request):
     played = scenario if wargames.scenario_owner(scenario) else ""
     if played:
         scenario, guidance, taught, defense, posture = scenario_run.settings_for(played, body)
-        mode = MODES[0]
     elif not isinstance(scenario, str) or scenario not in wargames.WARGAMES:
         raise BadRequest(
             f"{scenario!r} is not a wargame or a scenario; expected one of {', '.join(wargames.WARGAMES)}"
         )
     else:
         guidance, taught, defense, posture = _settings(scenario, body)
-        mode = _mode(body, guidance, scenario, taught)
     adapter = substrate()
     with SLOT_CHOICE:
         live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
@@ -251,7 +246,7 @@ def sessions(request):
             chosen = verdict["slot"].get("number") if _slotted(adapter) else None
         try:
             session = Session.objects.create(
-                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, mode=mode, defense=defense, slot=chosen,
+                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, slot=chosen,
                 course_scenario=played,
             )
         except IntegrityError:
@@ -326,9 +321,6 @@ def _result_inputs(session):
 def _judged(session):
     cases, _, result, _ = _evidence(session)
     breaches = _breaches(session, cases, result)
-    runs = list(dict.fromkeys(
-        case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")
-    ))
     return {
         "objectives": {
             "lost": len(breaches),
@@ -336,7 +328,6 @@ def _judged(session):
             "total": len(wargames.objectives(session.scenario)["tiers"])
             if wargames.judged(session.scenario) else 0,
         },
-        "lesson": dict(_last_verdict(session, runs[-1], len(runs)), helped=_helped(session)) if runs else None,
         "scenario": _scenario_result(session),
     }
 
@@ -354,7 +345,6 @@ def lesson_hints(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
     taught = _taught(session)
-    _refuse_self(session)
     body = _payload(request)
     steps = [step["id"] for step in taught.get("steps", [])]
     step, level = body.get("step"), body.get("level")
@@ -438,7 +428,7 @@ def _kali_command(session, name, marker):
 
 def _command_shown(session, step):
     reached = (session.lesson_steps.get(step["id"]) or {}).get("reached")
-    return bool(_command_of(session, step)) and session.mode != "self" and bool(reached)
+    return bool(_command_of(session, step)) and bool(reached)
 
 def _lesson_state(session, step_id, **judged):
     return {**judged, "hint": session.lesson_steps.get(step_id, {}).get("hint", 0),
@@ -454,12 +444,10 @@ def lesson_step(request, session_id, step_id):
     if state not in LESSON_STEP_STATES:
         raise BadRequest(f'"state" must be one of {list(LESSON_STEP_STATES)}, got {state!r}')
     now = timezone.now().isoformat()
-    newest = session.detections.aggregate(last=Max("id"))["last"] or 0
 
     def mark(kept, held):
         if state == "reached":
             kept.setdefault("reached", now)
-            kept["after"] = newest
             if armed:
                 kept.setdefault("marker", str(uuid.uuid4()))
         elif not kept.get("passed"):
@@ -473,86 +461,54 @@ def lesson_step_check(request, session_id, step_id):
     _refuse_closed(session)
     taught, step = _taught_step(session, step_id)
     body = _payload(request)
-    poll = body.get("poll") is True
     kept = session.lesson_steps.get(step_id) or {}
     try:
-        passed, reason, tried, *seen = _judge(session, taught, step, body, poll, kept)
+        passed, reason, *seen = _judge(session, taught, step, body, kept)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    return _reply(_judged_step(session, step_id, passed, reason, poll, tried) | dict(*seen))
+    return _reply(_judged_step(session, step_id, passed, reason, body.get("poll") is True) | dict(*seen))
 
 @require_http_methods(["POST"])
 def lesson_step_do(request, session_id, step_id):
     session = get_object_or_404(Session, pk=session_id)
     _refuse_closed(session)
     taught, step = _taught_step(session, step_id)
-    _refuse_self(session)
     session = _progressed(session, step_id, lambda kept, held: _helped_on(kept, held, step_id, "do"))
     check = step["check"]
     try:
         if check["kind"] in ("answer", "choice"):
             accepted = _accepted(session, check, taught)
             if not accepted:
-                return _reply(_judged_step(session, step_id, False, ["lesson.check.unrecorded", []], True, None))
-            passed, reason, tried = _judge(session, taught, step, {"answer": accepted[0]}, False, {})
-        elif check["kind"] == "waf":
-            _put_exclusion(session, check)
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
-        elif check["kind"] == "level":
-            _put_level(session, taught)
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
+                return _reply(_judged_step(session, step_id, False, ["lesson.check.unrecorded", []], True))
+            passed, reason, *_ = _judge(session, taught, step, {"answer": accepted[0]}, {})
         elif check["kind"] == "rules":
             _put_rule(session, step)
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
+            passed, reason, *_ = _judge(session, taught, step, {}, {})
         elif check["kind"] == "kali":
             session = _kali_do(session, step)
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, session.lesson_steps[step_id])
+            passed, reason, *_ = _judge(session, taught, step, {}, session.lesson_steps[step_id])
         elif check["kind"] == "loot":
             _loot_do(session, check)
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
-        elif check["kind"] in ("click", "served", "replay", "detect", "sent"):
-            passed, reason, tried, *_ = _judge(session, taught, step, {}, False, {})
+            passed, reason, *_ = _judge(session, taught, step, {}, {})
         else:
-            return _reply(_lesson_state(session, step_id, passed=False, reason=None))
+            passed, reason, *_ = _judge(session, taught, step, {}, {})
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    return _reply(_judged_step(session, step_id, passed, reason, True, tried))
-
-def _put_exclusion(session, check):
-    wanted = {"rule_id": check["rule_id"], "target": check["target"], "path": check["path"]}
-    with _turn_of(session):
-        standing = _waf_in_force(session)
-        exclusions = [entry for entry in standing["exclusions"] if entry != wanted] + [wanted]
-        session.waf = crs.apply({"paranoia": standing["paranoia"] or 1, "exclusions": exclusions,
-                                 **_thresholds_of(standing)}, _range(session).runner("gateway"), settings.FSL_WAF)
-        session.save(update_fields=["waf"])
-
-def _put_level(session, taught):
-    posture = _posture(session)
-    with _turn_of(session):
-        session.waf = crs.apply({**posture, "paranoia": taught["solved_at"]["paranoia"]},
-                                _range(session).runner("gateway"), settings.FSL_WAF)
-        session.save(update_fields=["waf"])
+    return _reply(_judged_step(session, step_id, passed, reason, True))
 
 def _put_rule(session, step):
     with _turn_of(session):
         live = _live_rules(session)
         _apply(f"{live.rstrip()}\n{step['rule'].strip()}\n", session)
 
-def _posture(session):
-    declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
-    return crs.checked(declared["waf"]) if declared else {"paranoia": lesson.CRS_DEFAULT_LEVEL, "exclusions": []}
-
 def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
     return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
 
-def _judged_step(session, step_id, passed, reason, poll, tried):
+def _judged_step(session, step_id, passed, reason, poll):
     now = timezone.now().isoformat()
 
     def mark(kept, held):
-        if tried is not None:
-            kept["tried"] = tried
         if passed:
             kept.setdefault("passed", now)
             return
@@ -571,72 +527,30 @@ def _judged_step(session, step_id, passed, reason, poll, tried):
         scenario_run.stuck(session, "check", step_id)
     return _lesson_state(session, step_id, passed=passed, reason=None if passed else reason)
 
-def _judge(session, taught, step, body, poll, kept):
+def _judge(session, taught, step, body, kept):
     check, prefix, step_id = step["check"], taught["text"], step["id"]
     failed = f"{prefix}.fail.{step_id}"
     kind = check["kind"]
     if kind == "click":
-        return True, None, None
+        return True, None
     if kind in ("answer", "choice"):
         given = body.get("answer")
         if not isinstance(given, str) or not given.strip():
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
         accepted = _accepted(session, check, taught)
         if not accepted:
-            return False, ["lesson.check.unrecorded", []], None
-        passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
-        return passed, reason, None
-    if kind == "level":
-        refused = lesson.level_refused(_waf_in_force(session), _posture(session))
-        return refused is None, [f"{failed}.{refused}" if refused else failed, []], None
+            return False, ["lesson.check.unrecorded", []]
+        return lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
     if kind == "rules":
         added = lesson.added_rules(_live_rules(session), _posture_rules(session))
-        return bool(added), [failed, []], None, {"added": added}
-    if kind == "detect":
-        return _detect_check(session, taught, check, step_id, failed)
-    if kind == "alert":
-        return _alert_seen(session, check, kept.get("after", 0)), [failed, []], None
-    if kind == "served":
-        status = _check_replay(session, check["case"], step_id)
-        return lesson.served(status), [failed, [status or "-"]], None
-    if kind == "replay":
-        return _replay_check(session, check, step_id, failed)
+        return bool(added), [failed, []], {"added": added}
     if kind == "sent":
-        return bool(_site_requests(session, check)), [failed, []], None
+        return bool(_site_requests(session, check)), [failed, []]
     if kind == "kali":
         return _kali_check(session, step, kept, failed)
     if kind == "loot":
         return _loot_check(session, check, body.get("answer"), failed)
-    if kind == "triage":
-        return scenario_run.triage_passed(session, check["judged"]), [failed, []], None
-    if kind == "waf":
-        return _waf_check(session, check, step_id, poll, kept, failed)
-    runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
-    return bool(runs) and _verified(session, runs[-1])["passed"], [f"{prefix}.fail.verify", []], None
-
-def _waf_check(session, check, step_id, poll, kept, failed):
-    standing = _waf_in_force(session)
-    fixed = {"fix": _fix(session, standing)}
-    wanted = {"rule_id": check["rule_id"], "target": check["target"], "path": check["path"]}
-    if wanted not in standing["exclusions"]:
-        return False, [failed, []], None, fixed
-    if not check.get("case"):
-        return True, None, None, fixed
-    version = _version(json.dumps(standing, sort_keys=True))
-    if poll and kept.get("tried") == version:
-        return False, [f"{failed}.reload", []], None, fixed
-    served = lesson.served(_check_replay(session, check["case"], step_id))
-    return served, [f"{failed}.reload", []], version, fixed
-
-def _replay_check(session, check, step_id, failed):
-    recorded, _ = _lesson_fire(session, check["case"], {"check": step_id})
-    outcome = lesson.outcome(_row(session, recorded))
-    shown = {"replay": _replay_row(session, recorded)}
-    if outcome == check["expect"]:
-        return True, None, None, shown
-    if outcome == "inconclusive":
-        return False, ["lesson.check.inconclusive", [check["case"]]], None, shown
-    return False, [failed, []], None, shown
+    return scenario_run.triage_passed(session, check["judged"]), [failed, []]
 
 def _accepted(session, check, taught=None):
     if "of" not in check:
@@ -652,7 +566,7 @@ def _accepted(session, check, taught=None):
     _ingest(session, RECENT_ALERTS)
     marker = session.browse_marker if check.get("marker") == SITE_BROWSER_MARKER else check.get("marker")
     found = session.detections.filter(source="modsecurity", **({"marker": marker} if marker else {}))
-    return lesson.read_from(check["of"], [
+    return lesson.rules_named([
         detection.raw or {} for detection in found
         if check["path"] in unquote(_request_of(detection.raw or {})[1])
     ])
@@ -733,7 +647,7 @@ def _counted(events):
 def _kali_check(session, step, kept, failed):
     marker = kept.get("marker")
     if not marker:
-        return False, [failed, []], None
+        return False, [failed, []]
     case = wargames.find_case(session.scenario, step["check"]["case"])
     recorded = session.cases.filter(case_id=marker).first()
     reached = parse_datetime(kept.get("reached") or "") or session.started_at
@@ -743,7 +657,7 @@ def _kali_check(session, step, kept, failed):
     shown = {"kali": {"name": case["name"], "requests": count, "sensors": by_sensor,
                       "discover": _discover(session, kibana.sensed_http(marker), everything=True)}}
     if recorded is None and not ran:
-        return False, ["lesson.check.kali_none", [case["tool"]]], None, shown
+        return False, ["lesson.check.kali_none", [case["tool"]]], shown
     if recorded is None:
         first = min((parse_datetime(str(event.get("timestamp") or "")) for event in ran), default=None) or reached
         _record_case(session, dict(case, case_id=marker, correlation="marker"), first, timezone.now(),
@@ -754,7 +668,7 @@ def _kali_check(session, step, kept, failed):
             _ingest(session)
         except elastic.ElasticUnavailable:
             pass
-    return True, None, None, shown
+    return True, None, shown
 
 def _kali_do(session, step):
     name = step["check"]["case"]
@@ -779,98 +693,28 @@ def _kali_fact(session, step_id, of):
 def _loot_check(session, check, given, failed):
     recorded = _kali_case(session, check["about"])
     if recorded is None:
-        return False, ["lesson.check.loot_no_run", []], None
+        return False, ["lesson.check.loot_no_run", []]
     if isinstance(given, str) and given.strip():
         _credit_loot(session, lesson.pasted_rows(given, tools.dumped(given)), recorded.case_id)
         recorded.refresh_from_db()
     matched = recorded.meta.get("loot") or []
-    return bool(matched), [failed, []], None, {"loot": {"matched": matched}}
+    return bool(matched), [failed, []], {"loot": {"matched": matched}}
 
 def _loot_do(session, check):
     recorded = _kali_case(session, check["about"])
     if recorded is not None and recorded.meta.get("dumped"):
         _credit_loot(session, recorded.meta["dumped"], recorded.case_id)
 
-def _detect_check(session, taught, check, step_id, failed):
-    recorded, _ = _lesson_fire(session, check["case"], {"check": step_id})
-    row = _detection_rows(session, taught, [recorded], watch=True)[0]
-    found = lesson.detection_outcome(row)
-    shown = {"detected": {"name": recorded.name, "outcome": found, "verdict": lesson.scored(row),
-                          "signatures": row["alerts"], "discover": _discover(session, kibana.sensed(recorded.case_id))}}
-    wanted = ("detected",) if check["expect"] == "alert" else ("quiet",)
-    if found in wanted:
-        return True, None, None, shown
-    return False, [f"lesson.check.{found}", [recorded.name, row["expect"]]], None, shown
-
-def _detection_rows(session, taught, cases, watch=False):
-    expected = wargames.expectations(session.scenario)
-    wanted = [case.case_id for case in cases if case.malicious]
-    deadline = time.monotonic() + settings.LESSON_ALERT_WAIT
-    while True:
-        if watch:
-            _ingest(session, RECENT_ALERTS)
-        alerts = _alerts_by_case(session, taught, cases)
-        if not watch or time.monotonic() >= deadline or (wanted and all(alerts.get(case_id) for case_id in wanted)):
-            break
-        time.sleep(settings.LESSON_ALERT_POLL)
-    indiscriminate = {signature for case in cases if not case.malicious for signature in alerts.get(case.case_id, [])}
-    return [
-        {"name": case.name, "malicious": case.malicious, "alerts": alerts.get(case.case_id, []),
-         "expect": expected.get(case.name, ""),
-         "corroborated": scoreboard.corroborated(expected.get(case.name), alerts.get(case.case_id, []), indiscriminate)}
-        for case in cases
-    ]
-
-def _alerts_by_case(session, taught, cases):
-    found = session.detections.filter(source=taught["detected_by"], marker__in=[case.case_id for case in cases])
-    alerts = {}
-    for detection in found:
-        alerts.setdefault(detection.marker, [])
-        if detection.signature not in alerts[detection.marker]:
-            alerts[detection.marker].append(detection.signature)
-    return alerts
-
-def _replay_row(session, recorded):
-    meta = recorded.meta
-    return {
-        "name": recorded.name,
-        "outcome": lesson.outcome(_row(session, recorded)),
-        "conclusions": meta.get("conclusions") or [],
-        "command": " ".join([meta["tool"], *meta.get("args", [])]) if meta.get("tool") else "",
-        "forbidden": meta.get("forbidden", 0),
-        "status": meta.get("status", 0),
-        "discover": _discover(session, kibana.marked(recorded.case_id)),
-    }
-
 def _fix(session, waf):
-    taught = (_lesson_of(session) if session.guidance else None) or {}
-    scope = next((step["check"].get("path", "") for step in taught.get("steps", []) if step["check"]["kind"] == "waf"), "")
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
-    return lesson.fix_class(waf, crs.checked(declared["waf"]) if declared else None, scope)
-
-def _check_replay(session, name, step_id):
-    recorded, _ = _lesson_fire(session, name, {"check": step_id})
-    return int(recorded.meta.get("status") or 0)
-
-def _alert_seen(session, check, after):
-    _ingest(session, RECENT_ALERTS)
-    marker = session.browse_marker if check.get("marker") == SITE_BROWSER_MARKER else check.get("marker")
-    return any(
-        check.get("path", "") in unquote(_request_of(detection.raw or {})[1])
-        for detection in session.detections.filter(id__gt=after, marker=marker)
-    )
-
-def _last_verdict(session, run, verified):
-    judged = _verified(session, run)
-    return {"passed": judged["passed"], "verified": verified, "diagnosis": judged["diagnosis"],
-            "mode": judged["mode"], "fix": judged["fix"]}
+    return lesson.fix_class(waf, crs.checked(declared["waf"]) if declared else None)
 
 def _settings(scenario, body):
     asked = body.get("lesson")
     guidance = body.get("guidance", asked is not None)
     if not isinstance(guidance, bool):
         raise BadRequest(f'"guidance" must be true or false, got {guidance!r}')
-    if guidance and not wargames.lesson(scenario):
+    if guidance and not wargames.taught_ids(scenario):
         raise BadRequest(f"{scenario!r} has no lesson to guide")
     taught = _asked_lesson(scenario, asked) if guidance else ""
     if asked is not None and not guidance:
@@ -884,23 +728,10 @@ def _settings(scenario, body):
             f"{', '.join(wargames.WARGAMES[scenario].get('defense') or [wargames.DEFAULT_DEFENSE])}"
         )
 
-def _mode(body, guidance, scenario="", taught=""):
-    mode = body.get("mode", wargames.lesson_mode(scenario, taught) if guidance else MODES[0])
-    if mode not in MODES:
-        raise BadRequest(f'"mode" must be one of {list(MODES)}, got {mode!r}')
-    if mode != MODES[0] and not guidance:
-        raise BadRequest(f'"mode" {mode!r} is a way to run a lesson; a wargame has no guidance to leave out')
-    return mode
-
-def _refuse_self(session):
-    if session.mode == "self":
-        raise Conflict(f"session {session.pk} runs the lesson in self mode, which gives no help; "
-                       f"PATCH its mode to guided first")
-
 def _asked_lesson(scenario, asked):
     known = wargames.taught_ids(scenario)
     if asked is None:
-        return wargames.lesson(scenario)["id"]
+        return known[0]
     if asked not in known:
         raise BadRequest(f'"lesson" must be one of {scenario!r}\'s lessons {known}, got {asked!r}')
     return asked
@@ -917,7 +748,7 @@ def _take_defense(session, adapter, posture):
 
 def _seed_logs(session):
     for name in _lesson_of(session)["cases"]:
-        _lesson_fire(session, name, {"seed": True})
+        _fire(session, name, None, _seeded)
 
 def _aim_attacker(adapter):
     attacker.wear_origin(
@@ -1415,12 +1246,6 @@ def fire_attack(request, session_id):
     _refuse_closed(session)
     body = _payload(request)
     try:
-        if body.get("lesson") is True:
-            recorded, _ = _lesson_fire(session, _lesson_case(session, body.get("case")), {"replay": True})
-            return _reply(_shape(recorded, CASE_FIELDS) | {
-                "diagnosis": lesson.verdict([_row(session, recorded)])[1][1:],
-                "replay": _replay_row(session, recorded),
-            }, status=201)
         recorded, _ = _fire(session, body.get("case"), body.get("origin"), _answered)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
@@ -1465,14 +1290,6 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
     _settle_and_observe(session)
     return recorded, ran
 
-def _lesson_case(session, name):
-    taught = _lesson_of(session) if session.guidance else None
-    if not taught:
-        raise BadRequest(f"session {session.pk} is not a lesson, so it replays no lesson case")
-    if name not in taught["cases"]:
-        raise BadRequest(f'"case" must be one of the lesson\'s cases {taught["cases"]}, got {name!r}')
-    return name
-
 def _replayed(case):
     return any(case.meta.get(mark) for mark in REPLAY_MARKS)
 
@@ -1480,138 +1297,11 @@ def _answered(ran):
     status = tools.status(getattr(ran, "output", ""))
     return {"status": status} if status else {}
 
-def _lesson_fire(session, name, marks):
-    malicious = wargames.find_case(session.scenario, name)["malicious"]
-    truth = session.baseline if isinstance(session.baseline, dict) else {}
-
-    def witness(ran):
-        if not malicious:
-            status = tools.status(ran.output)
-            return dict(marks, status=status, blocked=status == 403)
-        leaked = sorted(loot.matched(tools.dumped(ran.output), truth))
-        held = not leaked and tools.found_not_injectable(ran.exit_code, ran.output)
-        return dict(marks, leaked=leaked, forbidden=tools.forbidden(ran.output), conclusions=tools.conclusions(ran.output),
-                    outcome="leaked" if leaked else "held" if held else "inconclusive",
-                    blocked=held)
-
-    return _fire(session, name, None, witness)
-
-@require_http_methods(["POST"])
-def session_verify(request, session_id):
-    session = get_object_or_404(Session, pk=session_id)
-    _refuse_closed(session)
-    taught = _lesson_of(session)
-    if not taught:
-        raise BadRequest(f"{session.scenario!r} has no lesson to verify")
-    if not _verifies(taught):
-        raise BadRequest(f"lesson {taught['id']!r} is judged by its steps; it has no VERIFY")
-    if not (isinstance(session.baseline, dict) and session.baseline):
-        raise Conflict(
-            f"session {session.pk} holds no snapshot of the target's accounts, so a "
-            f"leak could not be told from a block; open a new session"
-        )
-    run = str(uuid.uuid4())
-    _snapshot_waf(session, run=run)
-    try:
-        for name in taught["cases"]:
-            _lesson_fire(session, name, {"verify": run, "mode": session.mode})
-    except harness.ToolUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
-    return _reply(_verified(session, run, watch=True))
-
-def _verifies(taught):
-    steps = taught.get("steps") or []
-    return not steps or any(step["check"]["kind"] == "verify" for step in steps)
-
-def _row(session, case):
-    return {"name": case.name, "malicious": case.malicious,
-            "accounts": len(session.baseline) if isinstance(session.baseline, dict) else 0,
-            "leaked": case.meta.get("leaked") or [], "status": case.meta.get("status", 0),
-            "outcome": case.meta.get("outcome", "inconclusive")}
-
-def _verified(session, run, watch=False):
-    ran = list(session.cases.filter(meta__verify=run))
-    waf = next((taken["waf"] for taken in session.waf_snapshots if taken.get("run") == run), None)
-    judged = _judged_cases(session, ran, watch)
-    wanted = (_lesson_of(session) or {}).get("solved_at")
-    unsolved = lesson.unsolved(waf, crs.checked(wanted)) if wanted and judged["passed"] else []
-    return {
-        **judged,
-        "passed": judged["passed"] and not unsolved,
-        "diagnosis": judged["diagnosis"] + unsolved,
-        "run": run,
-        "mode": next((case.meta.get("mode") for case in ran if case.meta.get("mode")), None),
-        "waf": waf,
-        "fix": _fix(session, waf),
-    }
-
-def _judged_cases(session, cases, watch=False):
-    taught = _lesson_of(session) or {}
-    if taught.get("detected_by"):
-        rows = _detection_rows(session, taught, cases, watch)
-        passed, diagnosis = lesson.detection_verdict(rows)
-        return {"passed": passed, "diagnosis": diagnosis, "cases": [
-            {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.detection_outcome(row),
-             "verdict": lesson.scored(row)} for row in rows]}
-    rows = [_row(session, case) for case in cases]
-    passed, diagnosis = lesson.verdict(rows)
-    return {
-        "passed": passed,
-        "cases": [
-            {"name": row["name"], "malicious": row["malicious"], "outcome": lesson.outcome(row)}
-            for row in rows
-        ],
-        "diagnosis": diagnosis,
-    }
-
-def _started(session):
-    seeded = list(session.cases.filter(meta__seed=True))
-    return _judged_cases(session, seeded) if seeded else None
-
-@require_http_methods(["GET"])
-def lesson_debrief(request, session_id):
-    session = get_object_or_404(Session, pk=session_id)
-    taught = _taught(session)
-    runs = list(dict.fromkeys(case.meta["verify"] for case in session.cases.all() if case.meta.get("verify")))
-    last = _verified(session, runs[-1]) if runs else None
-    started = _started(session)
-    before = {case["name"]: case["outcome"] for case in (started or {}).get("cases", [])}
-    after = {case["name"]: case["outcome"] for case in (last or {}).get("cases", [])}
-    steps = {step["id"] for step in taught.get("steps", [])}
-    return _reply({
-        "lesson": taught["id"],
-        "title": f"{taught['text']}.title",
-        "overview": {
-            "passed": last["passed"] if last else None, "verified": len(runs),
-            "mode": last["mode"] if last else session.mode, "fix": last["fix"] if last else None,
-            "steps": {"passed": sum(1 for step_id, kept in session.lesson_steps.items()
-                                    if step_id in steps and kept.get("passed")), "total": len(steps)},
-            "help": lesson.help_counts(session.lesson_steps),
-        },
-        "evidence": _evidence_rows(session, runs[-1] if runs else None),
-        "change": _change(session, (last or {}).get("waf")),
-        "cases": [{"name": name, "malicious": wargames.find_case(session.scenario, name)["malicious"],
-                   "before": before.get(name), "after": after.get(name)} for name in taught["cases"]],
-        "risk": lesson.risks(last["fix"] if last else None,
-                             sum(1 for name in taught["cases"] if wargames.find_case(session.scenario, name)["malicious"])),
-        "at": {"opened": session.started_at.isoformat(),
-               "verified": max((case.ended_at for case in session.cases.filter(meta__verify=runs[-1])),
-                               default=None) if runs else None},
-    })
+def _seeded(ran):
+    status = tools.status(ran.output)
+    return {"seed": True, "status": status, "blocked": status == 403}
 
 EVIDENCE_ROWS = 20
-
-def _evidence_rows(session, run):
-    phases = {case.case_id: ("verify" if case.meta.get("verify") == run else "seed", case.name)
-              for case in session.cases.all() if case.meta.get("seed") or (run and case.meta.get("verify") == run)}
-    found = session.detections.filter(marker__in=list(phases)).order_by("-timestamp")[:EVIDENCE_ROWS]
-    return [
-        {"id": detection.id, "source": detection.source, "signature": detection.signature,
-         "method": _request_of(detection.raw or {})[0], "path": _request_of(detection.raw or {})[1],
-         "phase": phases[detection.marker][0], "case": phases[detection.marker][1],
-         "timestamp": detection.timestamp.isoformat()}
-        for detection in found
-    ]
 
 def _change(session, waf):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
@@ -1711,28 +1401,19 @@ def _take_turn(session):
         Session.objects.filter(pk=session.pk).update(rotation=F("rotation") + 1)
         return Session.objects.values_list("rotation", flat=True).get(pk=session.pk) - 1
 
-@require_http_methods(["GET", "PATCH"])
+@require_http_methods(["GET"])
 def session_detail(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    if request.method == "PATCH":
-        _refuse_closed(session)
-        _taught(session)
-        mode = _payload(request).get("mode")
-        if mode not in MODES:
-            raise BadRequest(f'"mode" must be one of {list(MODES)}, got {mode!r}')
-        Session.objects.filter(pk=session.pk).update(mode=mode)
-        session.mode = mode
     taught = _lesson_of(session) if session.guidance else None
     if taught:
-        hidden = SERVER_ONLY + (SCHEDULE if session.course_scenario else ())
+        hidden = SCHEDULE if session.course_scenario else ()
         taught = {key: value for key, value in taught.items() if key not in hidden} | {
-            "steps": [_shown_step(session, step) for step in taught.get("steps", [])], "verifies": _verifies(taught),
+            "steps": [_shown_step(session, step) for step in taught.get("steps", [])],
             **({"cases": []} if session.course_scenario else {})}
     return _reply(_described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
         "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
-        "start": _started(session) if taught and taught["verifies"] else None,
     })
 
 def _shown_step(session, step):

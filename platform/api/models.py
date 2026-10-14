@@ -17,7 +17,6 @@ class Session(models.Model):
     rotation = models.PositiveIntegerField(default=0)
     guidance = models.BooleanField(default=False)
     lesson = models.CharField(max_length=64, blank=True, default="")
-    mode = models.CharField(max_length=8, default="guided")
     defense = models.CharField(max_length=32, default="full")
     waf = models.JSONField(null=True, blank=True, default=None)
     ready_at = models.DateTimeField(null=True, blank=True)

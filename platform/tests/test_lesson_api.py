@@ -1,13 +1,16 @@
 import json
+from datetime import timedelta
 from urllib.parse import unquote
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 
-import lesson
-from api.models import Case, Objective, Session
+import wargames
+from api.models import Case, Detection, Objective, Session
+from api.views import REPLAY_MARKS
 from range.ports import Ran
 from rules import crs
 
@@ -16,14 +19,9 @@ pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 TRUTH = json.loads((FIXTURES / "board-auth-users.json").read_text())
-LESSON = [
-    "board-sqli-orderby-sqlmap", "board-sqli-orderby-sqlmap-tamper",
-    "board-normal-search", "board-normal-search-with-apostrophe",
-    "board-normal-post-list", "board-normal-sort",
-]
+SEEDED = ["board-normal-search"]
 DUMPED = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
 HELD = (FIXTURES / "sqlmap-not-injectable.out").read_text()
-LOST = (FIXTURES / "sqlmap-host-missing.out").read_text()
 
 class Stand:
     def __init__(self):
@@ -63,6 +61,15 @@ def attacker(outputs):
 
 def board(**fields):
     return Session.objects.create(scenario="board", baseline=dict(TRUTH), **fields)
+
+def foundation(lesson_id, **fields):
+    return board(guidance=True, lesson=lesson_id, defense=wargames.lesson_defense("board", lesson_id), **fields)
+
+def step(client, session, step_id, tail="check/", body=None):
+    return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
+
+def unsensed():
+    return patch("api.views._fetched", lambda index, start, end, newest_first: ([], None))
 
 def put(client, session_id, tuning):
     return client.put(
@@ -207,59 +214,6 @@ def test_a_tuning_nginx_refuses_is_reported_and_not_saved(client):
     assert answer.status_code == 400 and "Rules error" in answer.json()["detail"]
     assert Session.objects.get(pk=session.pk).waf == {"paranoia": 4, "exclusions": []}
 
-def verify(client, session, outputs):
-    fire, fired = attacker(outputs)
-    with patch("api.views.harness.fire", fire):
-        answer = client.post_json(f"/api/sessions/{session.pk}/verify/")
-    assert answer.status_code == 200, answer.content
-    return answer.json(), fired
-
-def test_verify_replays_every_lesson_case_and_passes_when_nothing_leaks_and_benign_is_served(client):
-    session = board()
-    result, fired = verify(client, session, {
-        "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
-    })
-
-    assert fired == LESSON
-    assert result["passed"] is True
-    assert result["diagnosis"] == [["lesson.diag.blocked_ratio", [2, 2]]]
-    assert all(case.meta["verify"] == result["run"] for case in Case.objects.all())
-
-def test_a_variant_that_dumped_the_hashes_fails_verify_on_the_target_s_own_records(client):
-    session = board()
-    result, _ = verify(client, session, {
-        "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": DUMPED,
-    })
-
-    assert result["passed"] is False
-    assert ["lesson.diag.leaked", ["board-sqli-orderby-sqlmap-tamper", 3, 3]] in result["diagnosis"]
-    tamper = Case.objects.get(name="board-sqli-orderby-sqlmap-tamper")
-    assert tamper.meta["blocked"] is False and tamper.meta["leaked"] == sorted(TRUTH)
-
-def test_a_dump_that_matches_no_snapshot_account_is_neither_a_leak_nor_a_block(client):
-    session = board()
-    fake = DUMPED.replace(TRUTH["admin"], "admin1234").replace(TRUTH["jiwoo"], "x").replace(
-        TRUTH["minseo"], "y")
-    result, _ = verify(client, session, {
-        "board-sqli-orderby-sqlmap": fake, "board-sqli-orderby-sqlmap-tamper": HELD,
-    })
-
-    assert result["passed"] is False, "sqlmap got rows through, so nothing was blocked"
-    assert {"name": "board-sqli-orderby-sqlmap", "malicious": True,
-            "outcome": "inconclusive"} in result["cases"]
-    assert Objective.objects.count() == 0, "rows that match no account take nothing"
-
-def test_blocking_the_o_brien_search_fails_verify_as_a_benign_case_blocked(client):
-    session = board()
-    result, _ = verify(client, session, {
-        "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
-        "board-normal-search-with-apostrophe": "http_code=403\n",
-    })
-
-    assert result["passed"] is False
-    assert ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]] in result["diagnosis"]
-    assert {"name": "board-normal-search-with-apostrophe", "malicious": False,
-            "outcome": "blocked"} in result["cases"]
 
 def red_submits_the_dump(client, session):
     rows = [{"username": name, "hash": digest} for name, digest in TRUTH.items()]
@@ -267,42 +221,65 @@ def red_submits_the_dump(client, session):
     assert answer.status_code == 200, answer.content
     return answer.json()
 
-def test_a_leak_found_by_verify_is_diagnosed_and_takes_no_objective(client):
-    session = board()
-    result, _ = verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+def red_fires(client, session, name="board-sqli-orderby-sqlmap", output=HELD):
+    fire, _ = attacker({name: output})
+    with patch("api.views.harness.fire", fire):
+        answer = client.post_json(f"/api/sessions/{session.pk}/attacks/", {"case": name})
+    assert answer.status_code == 201, answer.content
+    return answer.json()
 
-    assert ["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]] in result["diagnosis"]
-    assert Objective.objects.count() == 0, (
-        "the learner's own check found the leak; it is the lesson's diagnosis, not a lost objective"
-    )
+def old_replays(session):
+    at = timezone.now()
+    for mark, name, malicious, meta in (
+        ("verify", "board-sqli-orderby-sqlmap", True, {"verify": "run-1", "leaked": sorted(TRUTH), "outcome": "leaked"}),
+        ("check", "board-sqli-orderby-sqlmap-tamper", True, {"check": "write", "status": 403}),
+        ("replay", "board-normal-search", False, {"replay": True, "status": 200, "outcome": "served"}),
+    ):
+        Case.objects.create(session=session, case_id=f"old-{mark}", name=name, malicious=malicious,
+                            correlation="marker", started_at=at - timedelta(seconds=30),
+                            ended_at=at - timedelta(seconds=5), meta=meta)
+        Detection.objects.create(session=session, detection_id=f"alert-{mark}", source="modsecurity",
+                                 signature="942100" if malicious else "920273",
+                                 timestamp=at - timedelta(seconds=20), marker=f"old-{mark}")
 
-def test_verify_judges_only_its_own_run_not_the_seeded_or_earlier_cases(client):
-    session = board()
-    verify(client, session, {"board-normal-search-with-apostrophe": "http_code=403\n",
-                             "board-sqli-orderby-sqlmap": HELD,
-                             "board-sqli-orderby-sqlmap-tamper": HELD})
-    result, _ = verify(client, session, {
-        "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
-    })
+def test_done_for_me_on_the_loot_step_credits_what_sqlmap_dumped_against_the_target_s_own_accounts(client):
+    session = foundation("f6")
+    fire, fired = attacker({"board-sqli-orderby-sqlmap": DUMPED})
+    with patch("api.views.harness.fire", fire), unsensed():
+        step(client, session, "sqlmap", "do/")
+        looted = step(client, session, "loot", "do/").json()
 
-    assert result["passed"] is True
-    assert Case.objects.count() == 2 * len(LESSON)
+    assert fired == ["board-sqli-orderby-sqlmap"]
+    assert looted["passed"] is True
+    assert Case.objects.get(session=session).meta["loot"] == sorted(TRUTH)
+    assert Objective.objects.filter(session=session).count() == 3
 
-def test_verify_snapshots_the_waf_it_judged_and_a_closed_session_reports_that_config(client):
+def test_a_dump_that_matches_no_snapshot_account_is_not_loot(client):
+    session = foundation("f6")
+    fake = DUMPED.replace(TRUTH["admin"], "admin1234").replace(TRUTH["jiwoo"], "x").replace(
+        TRUTH["minseo"], "y")
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": fake})
+    with patch("api.views.harness.fire", fire), unsensed():
+        step(client, session, "sqlmap", "do/")
+        looted = step(client, session, "loot", "do/").json()
+
+    assert looted["passed"] is False
+    assert "loot" not in Case.objects.get(session=session).meta
+    assert Objective.objects.count() == 0, "rows that match no account take nothing"
+
+def test_close_snapshots_the_waf_the_learner_left_and_a_closed_session_reports_that_config(client):
     session = board(waf={"paranoia": 4, "exclusions": []})
     stand = Stand()
     tuned = {"paranoia": 4, "exclusions": [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}
     stand.files[(session.pk, "gateway")] = crs.rendered(tuned)
     with patch("range.docker.Docker.runner", stand.runner()):
-        result, _ = verify(client, session, {
-            "board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
-        })
-    client.post_json(f"/api/sessions/{session.pk}/close/")
+        client.post_json(f"/api/sessions/{session.pk}/close/")
     read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
-    assert result["waf"] == tuned | {"file": crs.rendered(tuned)}
-    assert Session.objects.get(pk=session.pk).waf_snapshots[0]["run"] == result["run"]
-    assert {k: read[k] for k in ("paranoia", "exclusions", "file")} == result["waf"], (
+    snapshot = Session.objects.get(pk=session.pk).waf_snapshots[0]
+    assert snapshot["closed"] is True
+    assert {k: snapshot["waf"][k] for k in ("paranoia", "exclusions", "file")} == tuned | {"file": crs.rendered(tuned)}
+    assert {k: read[k] for k in ("paranoia", "exclusions", "file")} == tuned | {"file": crs.rendered(tuned)}, (
         "after close the learner's last configuration, not the one the session opened with"
     )
 
@@ -329,21 +306,14 @@ def test_close_snapshots_the_waf_before_the_slot_is_rebuilt_and_an_unreadable_wa
     assert Session.objects.get(pk=unreadable.pk).ended_at is not None
     assert client.get(f"/api/sessions/{unreadable.pk}/waf/").json()["paranoia"] == 2
 
-def test_a_scenario_with_no_lesson_has_nothing_to_verify(client):
-    session = Session.objects.create(scenario="corp", baseline=[])
-
-    answer = client.post_json(f"/api/sessions/{session.pk}/verify/")
-
-    assert answer.status_code == 400
-
 def test_a_guided_session_replays_the_lesson_once_at_open_so_its_logs_are_there_to_read(client):
     fire, fired = attacker({})
     with patch("api.views.harness.fire", fire):
         opened = client.post_json("/api/sessions/", {"guidance": True}).json()
 
-    assert fired == LESSON
+    assert fired == SEEDED
     assert all(case.meta.get("seed") is True for case in Case.objects.filter(session_id=opened["id"]))
-    assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"]["cases"] == LESSON
+    assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"]["cases"] == SEEDED
 
 class OneSlot:
     session = "slot-1"
@@ -373,7 +343,7 @@ def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the
     written = [call for call in stand.to("gateway") if call[3] is not None]
     assert written and "tx.blocking_paranoia_level=4" in written[0][3], "the lesson opened at the WAF's own level"
     assert session.waf == {"paranoia": 4, "exclusions": []}
-    assert fired == LESSON and all(case.meta.get("seed") for case in session.cases.all())
+    assert fired == SEEDED and all(case.meta.get("seed") for case in session.cases.all())
     assert stand.to("sensor") == [], (
         "the slot was offered only once its sensors held the baseline rules, so the open leaves them alone"
     )
@@ -381,11 +351,11 @@ def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the
 def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(client):
     fire, _ = attacker({})
     with patch("api.views.harness.fire", fire):
-        guided = client.post_json("/api/sessions/", {"guidance": True}).json()
+        guided = client.post_json("/api/sessions/", {"lesson": "f6"}).json()
         client.post_json(f"/api/sessions/{guided['id']}/close/")
         plain = client.post_json("/api/sessions/", {}).json()
 
-    assert (guided["defense"], plain["defense"]) == ("minimal", "full")
+    assert (guided["defense"], plain["defense"]) == ("missed", "full")
 
 def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
     fire, fired = attacker({})
@@ -394,21 +364,6 @@ def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
 
     assert fired == []
     assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"] is None
-
-def test_the_verdict_needs_every_attack_held_and_every_benign_case_served():
-    held = {"name": "a", "malicious": True, "leaked": [], "accounts": 3, "status": 0,
-            "outcome": "held"}
-    leaked = dict(held, leaked=["admin"], outcome="leaked")
-    unproven = dict(held, outcome="inconclusive")
-    served = {"name": "b", "malicious": False, "leaked": [], "accounts": 3, "status": 200}
-    blocked = dict(served, status=403)
-
-    assert lesson.verdict([held, served])[0] is True
-    assert lesson.verdict([leaked, served])[0] is False
-    assert lesson.verdict([unproven, served])[0] is False
-    assert lesson.verdict([held, blocked])[0] is False
-    assert lesson.verdict([])[0] is False
-    assert lesson.verdict([held, leaked, served])[1][0] == ["lesson.diag.blocked_ratio", [1, 2]]
 
 def test_a_replayed_request_records_the_status_the_target_answered_with(client):
     session = board()
@@ -423,73 +378,26 @@ def test_a_replayed_request_records_the_status_the_target_answered_with(client):
         "outside the lesson a block is not judged from the target's records, so it is not claimed"
     )
 
-def test_a_lesson_replay_is_marked_kept_out_of_both_scores_and_diagnosed(client):
-    from api.models import Detection
-    from django.utils import timezone
-
-    session = board(guidance=True)
-    fire, _ = attacker({"board-sqli-orderby-sqlmap": DUMPED})
+def test_a_foundation_s_seed_cases_are_kept_out_of_both_scores(client):
+    fire, _ = attacker({"board-normal-search": "http_code=403\n"})
     with patch("api.views.harness.fire", fire):
-        answer = client.post_json(
-            f"/api/sessions/{session.pk}/attacks/", {"case": "board-sqli-orderby-sqlmap", "lesson": True},
-        )
-    replayed = Case.objects.get()
+        opened = client.post_json("/api/sessions/", {"guidance": True}).json()
+    session = Session.objects.get(pk=opened["id"])
+    seeded = Case.objects.get(session=session)
     Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
-                             signature="942100", timestamp=timezone.now(), marker=replayed.case_id)
+                             signature="920273", timestamp=timezone.now(), marker=seeded.case_id)
 
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
 
-    assert answer.status_code == 201, answer.content
-    assert replayed.meta["replay"] is True and replayed.meta["outcome"] == "leaked"
-    assert answer.json()["diagnosis"] == [["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]]]
-    assert (score["tp"], score["fn"], score["unattributed"]) == (0, 0, 0)
+    assert {mark: seeded.meta[mark] for mark in ("seed", "status", "blocked")} == {
+        "seed": True, "status": 403, "blocked": True}
+    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
+    assert score["unattributed"] == 0, "an alert drawn by a seed is not an orphan"
     assert score["objectives"]["objectives"] == 0
 
-@pytest.mark.parametrize("body", [{"case": "board-sqli-search", "lesson": True}, {"case": "board-normal-search", "lesson": True}])
-def test_a_lesson_replay_is_refused_outside_a_lesson_or_for_a_case_the_lesson_does_not_hold(client, body):
-    session = board(guidance=body["case"] == "board-sqli-search")
-    fire, fired = attacker({})
-    with patch("api.views.harness.fire", fire):
-        answer = client.post_json(f"/api/sessions/{session.pk}/attacks/", body)
-
-    assert answer.status_code == 400, answer.content
-    assert fired == []
-
-@pytest.mark.parametrize("output, exit_code", [
-    (LOST, 0),
-    (HELD, 1),
-    ("", 0),
-    (HELD.replace("[*] ending", "[*] still"), 0),
-])
-def test_a_variant_that_ran_to_no_conclusion_proves_nothing_and_fails_verify(client, output, exit_code):
-    session = board()
-
-    def fire(case, launch, target_url):
-        if case["name"] == "board-sqli-orderby-sqlmap-tamper":
-            return SimpleNamespace(exit_code=exit_code, output=output)
-        if case["malicious"]:
-            return SimpleNamespace(exit_code=0, output=HELD)
-        return SimpleNamespace(exit_code=0, output="http_code=200\n")
-
-    with patch("api.views.harness.fire", fire):
-        result = client.post_json(f"/api/sessions/{session.pk}/verify/").json()
-
-    assert result["passed"] is False
-    assert ["lesson.diag.inconclusive", ["board-sqli-orderby-sqlmap-tamper"]] in result["diagnosis"]
-    assert {"name": "board-sqli-orderby-sqlmap-tamper", "malicious": True,
-            "outcome": "inconclusive"} in result["cases"]
-    assert result["diagnosis"][0] == ["lesson.diag.blocked_ratio", [1, 2]]
-
-def test_replays_by_the_lesson_are_left_out_of_both_scores_and_loot_a_red_player_submits_still_counts(client):
-    from api.models import Detection
-    from django.utils import timezone
-
-    session = board()
-    verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED,
-                             "board-sqli-orderby-sqlmap-tamper": HELD})
-    marker = Case.objects.get(name="board-normal-search").case_id
-    Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
-                             signature="920273", timestamp=timezone.now(), marker=marker)
+def test_old_lesson_replays_are_left_out_of_both_scores_and_loot_a_red_player_submits_still_counts(client):
+    session = board(guidance=True, lesson="waf-exclusion")
+    old_replays(session)
     before = client.get(f"/api/sessions/{session.pk}/score/").json()
     red_submits_the_dump(client, session)
     client.post_json(f"/api/sessions/{session.pk}/close/")
@@ -498,7 +406,7 @@ def test_replays_by_the_lesson_are_left_out_of_both_scores_and_loot_a_red_player
 
     assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
     assert score["unattributed"] == 0, "an alert drawn by a lesson replay is not an orphan"
-    assert before["objectives"]["objectives"] == 0, "VERIFY's own leak is kept out of the first score"
+    assert before["objectives"]["objectives"] == 0, "a replay's own leak is kept out of the first score"
     assert score["objectives"]["objectives"] == 3, (
         "loot a red player submits, matched against the snapshot, is still a lost objective"
     )
@@ -518,17 +426,6 @@ def test_a_guided_open_whose_replay_cannot_run_is_refused_as_unavailable(client)
         "the half-open session is closed, so the next open takes its stack down"
     )
 
-@pytest.mark.parametrize("baseline", [None, {}, []])
-def test_verify_refuses_a_session_with_no_snapshot_of_the_target_s_accounts(client, baseline):
-    session = Session.objects.create(scenario="board", baseline=baseline)
-    fire, fired = attacker({})
-    with patch("api.views.harness.fire", fire):
-        answer = client.post_json(f"/api/sessions/{session.pk}/verify/")
-
-    assert answer.status_code == 409
-    assert "no snapshot" in answer.json()["detail"]
-    assert fired == [], "nothing is replayed when no leak could be told from a block"
-
 def test_a_session_says_whether_it_is_a_lesson_and_that_it_is_ready_only_once_it_has_opened(client):
     fire, _ = attacker({})
     with patch("api.views.harness.fire", fire):
@@ -543,39 +440,16 @@ def test_a_session_says_whether_it_is_a_lesson_and_that_it_is_ready_only_once_it
     )
     assert "result" not in listed[opening.pk], "an open row in the list is not judged"
 
-def test_a_finished_lesson_reports_its_last_verdict_and_how_often_it_was_verified(client):
-    session = board(guidance=True)
-    verify(client, session, {"board-normal-search-with-apostrophe": "http_code=403\n",
-                             "board-sqli-orderby-sqlmap": HELD,
-                             "board-sqli-orderby-sqlmap-tamper": HELD})
-    verify(client, session, {"board-sqli-orderby-sqlmap": HELD,
-                             "board-sqli-orderby-sqlmap-tamper": HELD})
-    client.post_json(f"/api/sessions/{session.pk}/close/")
-
-    row = client.get("/api/sessions/?state=closed").json()[0]
-
-    assert (row["result"]["lesson"]["passed"], row["result"]["lesson"]["verified"]) == (True, 2)
-    assert row["result"]["lesson"]["diagnosis"] == [["lesson.diag.blocked_ratio", [2, 2]]], (
-        "the last run's reasons, in the same keys VERIFY answered with"
-    )
-    assert row["result"]["objectives"] == {"lost": 0, "undetected": 0, "total": 3}
-
 def test_a_finished_session_reports_the_objectives_it_lost_and_how_many_went_unseen(client):
     session = board()
-    verify(client, session, {"board-sqli-orderby-sqlmap": DUMPED})
+    red_fires(client, session, output=DUMPED)
     red_submits_the_dump(client, session)
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     detail = client.get(f"/api/sessions/{session.pk}/").json()
 
     assert detail["result"]["objectives"] == {"lost": 3, "undetected": 3, "total": 3}
-    assert (detail["result"]["lesson"]["passed"], detail["result"]["lesson"]["verified"]) == (False, 1)
-
-def test_an_unverified_session_has_no_lesson_verdict_to_report(client):
-    session = board()
-    client.post_json(f"/api/sessions/{session.pk}/close/")
-
-    assert client.get(f"/api/sessions/{session.pk}/").json()["result"]["lesson"] is None
+    assert detail["result"] == {"objectives": detail["result"]["objectives"], "scenario": None}
 
 def test_the_session_names_its_waf_box_and_where_the_crs_rules_live(client):
     session = board()
@@ -585,41 +459,35 @@ def test_the_session_names_its_waf_box_and_where_the_crs_rules_live(client):
     assert detail["waf_box"] == f"fsl-{session.pk}-waf"
     assert detail["waf_rules"] == "/etc/modsecurity.d/owasp-crs/rules"
 
-def test_hints_and_done_for_me_are_recorded_on_the_session_and_reported_beside_the_verdict(client):
-    session = board(guidance=True)
+def test_hints_and_done_for_me_are_recorded_on_the_session_and_read_back_after_close(client):
+    session = foundation("f1")
     hints = f"/api/sessions/{session.pk}/lesson/hints/"
 
-    client.post_json(hints, {"step": "rule", "level": "hint"})
-    client.post_json(hints, {"step": "rule", "level": "hint"})
-    recorded = client.post_json(hints, {"step": "exclude", "level": "do"}).json()
-    verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+    second = [client.post_json(hints, {"step": "entry", "level": "hint"}).json() for _ in range(2)][-1]
+    third = client.post_json(hints, {"step": "entry", "level": "hint"}).json()
+    recorded = client.post_json(hints, {"step": "map", "level": "do"}).json()
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
-    assert recorded["hints"] == [{"step": "rule", "level": "hint"}, {"step": "exclude", "level": "do"}]
+    assert recorded["hints"] == [{"step": "entry", "level": "hint"}, {"step": "map", "level": "do"}]
+    assert "answer" not in second["progress"]["entry"], "the answer is withheld until the third hint"
+    assert third["progress"]["entry"]["answer"]
     detail = client.get(f"/api/sessions/{session.pk}/").json()
     assert detail["hints"] == recorded["hints"]
-    assert detail["result"]["lesson"]["helped"] == ["hint", "do"]
-    assert client.get("/api/sessions/?state=closed").json()[0]["result"]["lesson"]["helped"] == ["hint", "do"]
+    assert (detail["progress"]["entry"]["hint"], detail["progress"]["map"]["done_for_me"]) == (3, True)
 
-def test_a_lesson_verified_without_help_reports_none(client):
-    session = board(guidance=True)
-    verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
-
-    assert client.get(f"/api/sessions/{session.pk}/").json()["result"]["lesson"]["helped"] == []
-
-@pytest.mark.parametrize("body", [{"step": "nowhere", "level": "hint"}, {"step": "rule", "level": "answer"}, {}])
+@pytest.mark.parametrize("body", [{"step": "nowhere", "level": "hint"}, {"step": "entry", "level": "answer"}, {}])
 def test_a_hint_the_lesson_does_not_have_is_refused(client, body):
-    session = board(guidance=True)
+    session = foundation("f1")
 
     assert client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", body).status_code == 400
 
 def test_hints_are_refused_for_a_closed_session_or_one_that_is_not_a_lesson(client):
-    closed = board(guidance=True)
+    closed = foundation("f1")
     client.post_json(f"/api/sessions/{closed.pk}/close/")
     plain = board()
 
-    assert client.post_json(f"/api/sessions/{closed.pk}/lesson/hints/", {"step": "rule", "level": "hint"}).status_code == 409
-    assert client.post_json(f"/api/sessions/{plain.pk}/lesson/hints/", {"step": "rule", "level": "hint"}).status_code == 400
+    assert client.post_json(f"/api/sessions/{closed.pk}/lesson/hints/", {"step": "entry", "level": "hint"}).status_code == 409
+    assert client.post_json(f"/api/sessions/{plain.pk}/lesson/hints/", {"step": "entry", "level": "hint"}).status_code == 400
 
 def test_reading_the_waf_for_a_poll_waits_on_the_gateway_only_briefly(client):
     session = board(waf={"paranoia": 4, "exclusions": []})
@@ -659,9 +527,10 @@ def test_a_polled_read_of_the_detections_reads_the_stack_s_shape_once_not_on_eve
     assert read == [session.pk]
 
 def test_listing_closed_sessions_scores_each_once_then_reads_the_stored_result(client):
-    for guidance in (True, False):
-        session = board(guidance=guidance)
-        verify(client, session, {"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD})
+    for fields in ({"guidance": True, "lesson": "f1"}, {}):
+        session = board(**fields)
+        red_fires(client, session, output=DUMPED)
+        red_submits_the_dump(client, session)
         client.post_json(f"/api/sessions/{session.pk}/close/")
     first = client.get("/api/sessions/?state=closed").json()
 
@@ -699,18 +568,20 @@ def test_evidence_that_arrives_after_close_refreshes_the_stored_result(client):
 def test_a_guided_open_records_the_lesson_it_runs_and_defaults_to_the_first(client):
     fire, _ = attacker({})
     with patch("api.views.harness.fire", fire):
-        named = client.post_json("/api/sessions/", {"lesson": "waf-exclusion"}).json()
+        named = client.post_json("/api/sessions/", {"lesson": "f3"}).json()
         client.post_json(f"/api/sessions/{named['id']}/close/")
         guided = client.post_json("/api/sessions/", {"guidance": True}).json()
 
-    assert (named["guidance"], named["lesson_id"]) == (True, "waf-exclusion")
-    assert Session.objects.get(pk=guided["id"]).lesson == "waf-exclusion"
-    assert client.get(f"/api/sessions/{guided['id']}/").json()["lesson"]["id"] == "waf-exclusion"
+    assert (named["guidance"], named["lesson_id"]) == (True, "f3")
+    assert Session.objects.get(pk=guided["id"]).lesson == "f1"
+    assert client.get(f"/api/sessions/{guided['id']}/").json()["lesson"]["id"] == "f1"
 
 @pytest.mark.parametrize("body, refused", [
     ({"lesson": "no-such-lesson"}, "no-such-lesson"),
-    ({"lesson": "waf-exclusion", "guidance": False}, "guidance"),
-    ({"scenario": "corp", "lesson": "waf-exclusion"}, "no lesson"),
+    ({"lesson": "waf-exclusion"}, "waf-exclusion"),
+    ({"lesson": "3.1"}, "3.1"),
+    ({"lesson": "f1", "guidance": False}, "guidance"),
+    ({"scenario": "corp", "lesson": "f1"}, "no lesson"),
 ])
 def test_a_lesson_the_scenario_does_not_have_or_without_guidance_is_refused(client, body, refused):
     answer = client.post_json("/api/sessions/", body)
@@ -719,68 +590,51 @@ def test_a_lesson_the_scenario_does_not_have_or_without_guidance_is_refused(clie
     assert refused in answer.json()["detail"]
     assert Session.objects.count() == 0
 
-def test_a_lesson_reports_where_it_started_from_the_replay_at_open(client):
-    fire, _ = attacker({"board-sqli-orderby-sqlmap": HELD, "board-sqli-orderby-sqlmap-tamper": HELD,
-                        "board-normal-search-with-apostrophe": "http_code=403\n"})
-    with patch("api.views.harness.fire", fire):
-        opened = client.post_json("/api/sessions/", {"guidance": True}).json()
-    plain = board()
+def test_done_for_me_on_the_sqlmap_step_runs_it_under_the_step_s_label_and_keeps_its_conclusion_and_command(client):
+    session = foundation("f5")
+    hidden = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+    step(client, session, "sqlmap", tail="", body={"state": "reached"})
+    fire, _ = attacker({"board-sqli-orderby-sqlmap": (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()})
+    with patch("api.views.harness.fire", fire), unsensed():
+        done = step(client, session, "sqlmap", "do/").json()
+        checked = step(client, session, "sqlmap").json()
+    case = Case.objects.get(session=session)
+    command = done["progress"]["sqlmap"]["command"]
 
-    start = client.get(f"/api/sessions/{opened['id']}/").json()["start"]
-
-    assert start["passed"] is False
-    assert {row["name"]: row["outcome"] for row in start["cases"]} == {
-        "board-sqli-orderby-sqlmap": "held", "board-sqli-orderby-sqlmap-tamper": "held",
-        "board-normal-search": "served", "board-normal-search-with-apostrophe": "blocked",
-        "board-normal-post-list": "served", "board-normal-sort": "served",
-    }
-    assert ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]] in start["diagnosis"]
-    assert client.get(f"/api/sessions/{plain.pk}/").json()["start"] is None
-
-@pytest.mark.parametrize("taught", ["console-tour", "read-the-block"])
-def test_a_lesson_judged_by_its_steps_shows_no_starting_verdict(client, taught):
-    fire, _ = attacker({"board-sqli-search": "http_code=403\n", "board-normal-search-with-apostrophe": "http_code=403\n"})
-    with patch("api.views.harness.fire", fire):
-        opened = client.post_json("/api/sessions/", {"lesson": taught}).json()
-
-    shown = client.get(f"/api/sessions/{opened['id']}/").json()
-
-    assert shown["lesson"]["verifies"] is False
-    assert shown["start"] is None, (
-        "the starting verdict judges the seed replay by VERIFY's rules; a lesson with no VERIFY "
-        "showed FAIL before it began and called a curl SQLi the WAF answered 403 inconclusive"
-    )
-
-def test_a_lesson_replay_returns_sqlmap_s_conclusion_its_command_the_403_count_and_a_kibana_link(client):
-    session = board(guidance=True)
-    stock = (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()
-    fire, _ = attacker({"board-sqli-orderby-sqlmap": stock})
-    with patch("api.views.harness.fire", fire):
-        row = client.post_json(f"/api/sessions/{session.pk}/attacks/",
-                               {"case": "board-sqli-orderby-sqlmap", "lesson": True}).json()["replay"]
-    case = Case.objects.get()
-
-    assert row["outcome"] == "held" and row["forbidden"] == 2065
-    assert row["conclusions"][-1].startswith("[CRITICAL] all tested parameters do not appear to be injectable")
-    assert not row["conclusions"][-1].startswith("[06:"), "the clock stamp is not part of the conclusion"
-    assert row["command"].startswith("sqlmap -u {target}/?sort=posts_post.id*")
-    assert case.case_id in unquote(row["discover"]) and "X-FSL-Case" in unquote(row["discover"])
+    assert "command" not in hidden["sqlmap"], "a step's command is shown once the learner reaches it"
+    assert done["passed"] is True and done["progress"]["sqlmap"]["done_for_me"] is True
+    assert command.startswith("sqlmap -u ") and case.case_id in command
+    assert case.meta["conclusions"][-1].startswith("[CRITICAL] all tested parameters do not appear to be injectable")
+    assert not case.meta["conclusions"][-1].startswith("[06:"), "the clock stamp is not part of the conclusion"
+    assert case.case_id in unquote(checked["kali"]["discover"])
+    assert not any(case.meta.get(mark) for mark in REPLAY_MARKS), "a run done for the learner is scored as theirs"
 
 def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client):
-    first, _, third = board(guidance=True), board(), board()
+    first, _, third = foundation("f1"), board(), board()
     client.post_json(f"/api/sessions/{first.pk}/close/")
 
     listed = client.get(f"/api/sessions/?ids={third.pk},{first.pk}").json()
 
     assert [row["id"] for row in listed] == [third.pk, first.pk]
-    assert "result" in listed[1] and listed[1]["lesson_id"] == "waf-exclusion"
+    assert "result" in listed[1] and listed[1]["lesson_id"] == "f1"
     assert client.get("/api/sessions/?ids=1,x").status_code == 400
 
-def test_a_session_whose_lesson_the_scenario_no_longer_declares_still_lists_and_reads(client):
-    gone = board(guidance=True, lesson="retired-lesson")
+def test_an_old_closed_session_whose_lesson_is_gone_still_lists_reads_and_keeps_its_replays_out_of_both_scores(client):
+    gone = board(guidance=True, lesson="waf-exclusion", ended_at=timezone.now(),
+                 lesson_steps={"exclude": {"reached": "2026-10-01T00:00:00+00:00", "passed": "2026-10-01T00:05:00+00:00",
+                                           "after": 1, "tried": "2026-10-01T00:04:00+00:00"}},
+                 hints=[{"step": "rule", "level": "hint"}])
+    old_replays(gone)
 
     listed = client.get("/api/sessions/").json()
     read = client.get(f"/api/sessions/{gone.pk}/")
+    score = client.get(f"/api/sessions/{gone.pk}/score/").json()
 
-    assert [row["lesson_id"] for row in listed] == [None]
-    assert read.status_code == 200 and read.json()["lesson"] is None
+    assert [(row["id"], row["kind"], row["lesson_id"]) for row in listed] == [(gone.pk, "lesson", None)]
+    assert listed[0]["result"] == {"objectives": {"lost": 0, "undetected": 0, "total": 3}, "scenario": None}
+    assert read.status_code == 200, read.content
+    assert (read.json()["lesson"], read.json()["lesson_id"]) == (None, None)
+    assert read.json()["progress"]["exclude"]["passed"] and "answer" not in read.json()["progress"]["exclude"]
+    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
+    assert score["unattributed"] == 0, "an alert drawn by an old verify, check or replay is not an orphan"
+    assert score["objectives"]["objectives"] == 0 and score["breaches"] == []

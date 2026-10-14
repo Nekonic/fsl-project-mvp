@@ -23,8 +23,7 @@ SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_mode
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
-CHECK_KINDS = {"alert", "click", "answer", "choice", "waf", "served", "replay", "verify", "level", "rules", "detect",
-               "sent", "kali", "loot", "triage"}
+CHECK_KINDS = {"click", "answer", "choice", "rules", "sent", "kali", "loot", "triage"}
 TRIAGE_JUDGED = ("attack", "customer", "all")
 TASK_CLASSES = ("judgement", "availability", "detection", "unknown")
 GUIDANCE = ("worked", "faded", "none")
@@ -36,16 +35,12 @@ COMPLETION_OPTIONS = {"judgement": ("pattern",), "availability": ("thresholds",)
 PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
-REPLAY_EXPECTS = ("held", "served")
-DETECT_EXPECTS = ("alert", "quiet")
-ANSWERS_OF = ("rule", "target")
+ANSWERS_OF = ("rule",)
 RANGE_FACTS = ("entry", "logs", "segment", "lost", "excluded")
 REQUEST_FACTS = ("source", "port", "status", "method", "path", "parameter", "status_class", "engine",
                  "sensor_source", "waf_source", "stopped_at")
 KALI_FACTS = ("requests", "leaked")
-LESSON_MODES = ("guided", "self")
 DETECTORS = ("suricata",)
-CONTROLS = ("paranoia", "rules")
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 LESSON_ID = re.compile(r"[a-z0-9][a-z0-9-]*", re.ASCII)
 
@@ -61,8 +56,6 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
             f"{source}: a scenario needs a non-empty {', '.join(SCENARIO_FIELDS)}; "
             f"{', '.join(missing)} is missing or blank"
         )
-    if "lesson" in loaded:
-        raise InvalidCatalogue(f"{source}: lessons are declared as a lessons: list, not a single lesson:")
     if loaded["objective_model"] not in OBJECTIVE_MODELS:
         raise InvalidCatalogue(
             f"{source}: objective_model {loaded['objective_model']!r} is not one of "
@@ -72,10 +65,8 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
         "id": wargame_id,
         **{field: loaded[field] for field in SCENARIO_FIELDS},
         **checked_card(loaded, source),
-        **({"lessons": loaded["lessons"]} if "lessons" in loaded else {}),
         **({"foundations": loaded["foundations"]} if "foundations" in loaded else {}),
         **({"scenarios": loaded["scenarios"]} if "scenarios" in loaded else {}),
-        **({"default_lesson": loaded["default_lesson"]} if "default_lesson" in loaded else {}),
         **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
     }
 
@@ -126,11 +117,10 @@ def checked_lessons(lessons: Any, known: set[str], source, defenses=(DEFAULT_DEF
         checked_lesson_judging(taught, source)
 
 def checked_groups(scenario: dict, source) -> None:
-    ids = [taught["id"] for group in ("foundations", "lessons", "scenarios") for taught in scenario.get(group) or []]
+    ids = [taught["id"] for group in ("foundations", "scenarios") for taught in scenario.get(group) or []]
     twice = sorted({found for found in ids if ids.count(found) > 1})
     if twice:
-        raise InvalidCatalogue(f"{source}: {', '.join(twice)} is declared twice among the foundations, lessons and "
-                               f"scenarios")
+        raise InvalidCatalogue(f"{source}: {', '.join(twice)} is declared twice among the foundations and scenarios")
 
 def checked_scenarios(declared: Any, known: dict[str, bool], source, defenses, profiles) -> None:
     if declared is None:
@@ -226,25 +216,10 @@ def as_lesson(one: dict) -> dict:
     return one | {"cases": list(dict.fromkeys(attack["case"] for attack in one.get("attacks") or [])),
                   "group": "scenarios", **({"detected_by": detector} if detector else {})}
 
-def checked_default_lesson(scenario: dict, source) -> None:
-    named = scenario.get("default_lesson")
-    if named is not None and named not in [taught["id"] for taught in scenario.get("lessons") or []]:
-        raise InvalidCatalogue(f"{source}: default_lesson must name one of the scenario's lessons, got {named!r}")
-
 def checked_lesson_judging(taught: dict, source) -> None:
     where = f"{source}: lesson {taught['id']}"
-    if taught.get("mode", LESSON_MODES[0]) not in LESSON_MODES:
-        raise InvalidCatalogue(f"{where} mode must be one of {', '.join(LESSON_MODES)}")
     if taught.get("detected_by") is not None and taught["detected_by"] not in DETECTORS:
         raise InvalidCatalogue(f"{where} detected_by must be one of {', '.join(DETECTORS)}")
-    controls = taught.get("controls", [])
-    if not isinstance(controls, list) or not set(controls) <= set(CONTROLS):
-        raise InvalidCatalogue(f"{where} controls must be a list drawn from {', '.join(CONTROLS)}, got {controls!r}")
-    if "solved_at" in taught:
-        try:
-            crs.checked(taught["solved_at"])
-        except crs.TuningRefused as exc:
-            raise InvalidCatalogue(f"{where} solved_at: {exc}") from exc
     for step in taught.get("steps", []):
         checked_step_judging(taught, step, f"{where} step {step['id']}")
 
@@ -271,17 +246,11 @@ def checked_step_judging(taught: dict, step: dict, where: str) -> None:
     if kind in ("answer", "choice") and "of" not in check and not (
             isinstance(check.get("accept"), list) and check["accept"]):
         raise InvalidCatalogue(f"{where}: an answer needs an accept list, or of: to read it from the record")
-    if kind == "detect" and not (taught.get("detected_by") and check.get("case") in taught["cases"]
-                                 and check.get("expect") in DETECT_EXPECTS):
-        raise InvalidCatalogue(f"{where}: a detect step needs a lesson detected_by, a case of the lesson and an "
-                               f"expect of {', '.join(DETECT_EXPECTS)}")
     if kind == "rules" and not (taught.get("detected_by") and isinstance(step.get("rule"), str) and step["rule"].strip()):
         raise InvalidCatalogue(f"{where}: a rules step needs a lesson detected_by and the rule it applies when done for "
                                f"the learner")
     if kind == "triage" and check.get("judged") not in TRIAGE_JUDGED:
         raise InvalidCatalogue(f"{where}: a triage step needs judged:, one of {', '.join(TRIAGE_JUDGED)}")
-    if kind == "level" and "solved_at" not in taught:
-        raise InvalidCatalogue(f"{where}: a level step needs the lesson's solved_at")
 
 def _pattern(given: Any) -> bool:
     if not isinstance(given, str) or not given:
@@ -335,15 +304,6 @@ def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFEN
     unarmed = [step["id"] for step in steps if step["check"]["kind"] == "kali" and step["check"].get("case") not in known]
     if unarmed:
         raise InvalidCatalogue(f"{source}: kali steps {', '.join(unarmed)} need case:, a tool case of the case file")
-    unreplayable = [
-        step["id"] for step in steps if step["check"]["kind"] == "replay"
-        and (step["check"].get("case") not in cases or step["check"].get("expect") not in REPLAY_EXPECTS)
-    ]
-    if unreplayable:
-        raise InvalidCatalogue(
-            f"{source}: replay steps {', '.join(unreplayable)} need a case of the lesson and an expect of "
-            f"{', '.join(REPLAY_EXPECTS)}"
-        )
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.FSL_SOURCE) / "wargames"
@@ -358,11 +318,9 @@ def _discover() -> dict[str, dict[str, Any]]:
         }
         known = set(malicious)
         defenses = tuple(found[wargame_id].get("defense") or (DEFAULT_DEFENSE,))
-        checked_lessons(found[wargame_id].get("lessons"), known, path, defenses)
         checked_lessons(found[wargame_id].get("foundations"), known, path, defenses)
         checked_scenarios(found[wargame_id].get("scenarios"), malicious, path, defenses, _profiles(path.parent))
         checked_groups(found[wargame_id], path)
-        checked_default_lesson(found[wargame_id], path)
     return found
 
 def _profiles(directory: Path) -> set[str]:
@@ -384,9 +342,6 @@ def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
         raise UnknownWargame(name)
     return declared[name]
 
-def lessons(wargame_id: str) -> list[dict[str, Any]]:
-    return sorted(WARGAMES[wargame_id].get("lessons") or [], key=lambda taught: taught["order"])
-
 def foundations(wargame_id: str) -> list[dict[str, Any]]:
     return sorted(WARGAMES[wargame_id].get("foundations") or [], key=lambda taught: taught["order"])
 
@@ -407,30 +362,22 @@ def stepped_scenarios(wargame_id: str) -> list[dict[str, Any]]:
     return [as_lesson(one) for one in scenarios(wargame_id) if one.get("steps") is not None]
 
 def taught_ids(wargame_id: str) -> list[str]:
-    return [taught["id"] for taught in foundations(wargame_id) + lessons(wargame_id)]
+    return [taught["id"] for taught in foundations(wargame_id)]
 
-def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | None = None) -> dict[str, Any] | None:
-    listed = lessons(wargame_id)
-    if not listed:
-        return None
-    wanted = lesson_id or WARGAMES[wargame_id].get("default_lesson")
-    taught = next((taught for taught in foundations(wargame_id) + listed + stepped_scenarios(wargame_id)
-                   if taught["id"] == wanted), None) if wanted else listed[0]
+def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | None) -> dict[str, Any]:
+    taught = next((taught for taught in foundations(wargame_id) + stepped_scenarios(wargame_id)
+                   if taught["id"] == lesson_id), None)
     if taught is None:
         raise UnknownWargame(lesson_id)
     waf = waf or settings.FSL_WAF
     grouped = {"group": "foundations"} if taught in foundations(wargame_id) else {}
     return taught | grouped | {"steps": [
-        step | {"command": step["command"].replace("{waf_rules}", waf.rules).replace("{waf_reload}", waf.reload)}
-        if step.get("command") else step
+        step | {"command": step["command"].replace("{waf_rules}", waf.rules)} if step.get("command") else step
         for step in taught.get("steps", [])
     ]}
 
-def lesson_defense(wargame_id: str, lesson_id: str | None = None) -> str:
-    return (lesson(wargame_id, lesson_id=lesson_id) or {}).get("defense", DEFAULT_DEFENSE)
-
-def lesson_mode(wargame_id: str, lesson_id: str | None = None) -> str:
-    return (lesson(wargame_id, lesson_id=lesson_id) or {}).get("mode", LESSON_MODES[0])
+def lesson_defense(wargame_id: str, lesson_id: str) -> str:
+    return lesson(wargame_id, lesson_id=lesson_id).get("defense", DEFAULT_DEFENSE)
 
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
@@ -530,25 +477,18 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
     loaded = _load(wargame["id"])
     reached = {case.get("stage") for case in loaded}
     attacks = sum(1 for case in loaded if case["malicious"])
-    first = lesson(wargame["id"])
     return {
         "id": wargame["id"],
         "name": wargame["name"],
         "description": wargame["description"],
         "public_url": wargame["public_url"],
         "judged": wargame["objective_model"] != "none",
-        "lesson": bool(wargame.get("lessons")),
         "model": wargame["objective_model"],
         "cases": len(loaded),
         "attacks": attacks,
         "benign": len(loaded) - attacks,
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
-        "lesson_steps": len((first or {}).get("steps") or []),
-        "lesson_text": (first or {}).get("text") or "",
-        "lesson_defense": lesson_defense(wargame["id"]) if first else "",
-        "lessons": [_lesson_card(taught) for taught in lessons(wargame["id"])],
-        "foundations": [_lesson_card(taught) | {"learns": f"{taught['text']}.learns"}
-                        for taught in foundations(wargame["id"])],
+        "foundations": [_foundation_card(taught) for taught in foundations(wargame["id"])],
         "scenarios": [scenario_card(one) for one in scenarios(wargame["id"])],
         "category": wargame.get("category") or "",
         "difficulty": wargame.get("difficulty") or "",
@@ -557,7 +497,7 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "uncovered": [stage for stage in lifecycle.STAGES if stage not in reached],
     }
 
-def _lesson_card(taught: dict[str, Any]) -> dict[str, Any]:
+def _foundation_card(taught: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": taught["id"],
         "order": taught["order"],
@@ -568,7 +508,7 @@ def _lesson_card(taught: dict[str, Any]) -> dict[str, Any]:
         "defense": taught.get("defense", DEFAULT_DEFENSE),
         "prerequisites": list(taught.get("prerequisites") or []),
         "steps": len(taught.get("steps") or []),
-        "mode": taught.get("mode", LESSON_MODES[0]),
+        "learns": f"{taught['text']}.learns",
     }
 
 def scenario_card(one: dict[str, Any]) -> dict[str, Any]:

@@ -165,7 +165,7 @@ def test_opening_a_scenario_takes_its_posture_starts_customers_and_schedules_its
     assert scenarios.at(state["schedule"][0]["due"]) - opened_at == timedelta(seconds=240)
     assert scenarios.at(state["window_at"]) - opened_at == timedelta(minutes=16)
 
-@pytest.mark.parametrize("body", [{"defense": "full"}, {"lesson": "f1"}, {"guidance": True}, {"mode": "self"}])
+@pytest.mark.parametrize("body", [{"defense": "full"}, {"lesson": "f1"}, {"guidance": True}])
 def test_a_scenario_refuses_settings_it_declares_itself(client, body):
     answer = client.post_json("/api/sessions/", {"scenario": "2.1", **body})
 
