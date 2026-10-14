@@ -3264,3 +3264,115 @@ blocked).
 Metrics (bin/measure, 2026-10-14): core_loc 580, dependencies 6, services 10
 (unchanged), product_loc 23,979 -> 24,662, tests 2017 -> 2052. `bin/verify
 --fast`: 2310 unit and console tests passed.
+
+## 2026-10-14 — P6 built: the older course removed
+
+Phase P6 of `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`,
+approved by the user (option a): foundations F1-F6 and the scenarios replace
+the older course, so it goes. `2026-10-13-blue-team-course-design.md` is marked
+superseded.
+
+**Removed.** Lessons 0-5 and 7 (`lessons:` and `default_lesson` in the board's
+`scenario.yaml`: console-tour, read-the-block, waf-exclusion,
+choose-the-level, ids-signature, ids-body-xss, assessment) and everything only
+they used: `POST /api/sessions/<id>/verify/`, `GET .../lesson/debrief/`, the
+Lesson / Practice / Wargame rungs (`Session.mode`, `PATCH` on a session, the
+self-mode refusals), the start card, the ticket, the level control, the Check
+tab and its replay (`POST /attacks/ {lesson: true}`), the check kinds `alert`,
+`waf`, `served`, `replay`, `verify`, `level` and `detect`, `controls`,
+`solved_at`, the `of: target` answer, `{waf_reload}` in step commands,
+`FSL_LESSON_ALERT_WAIT/POLL`, `kibana.marked` and `kibana.sensed`, and 451
+strings in each language. Production: 19 files, -2,127 lines, +121, and
+migration 0026; `product_loc` 24,662 -> 22,720.
+
+**Kept.** The server-side step engine (reached, skipped, check, do, hints,
+withheld answers and lines, commands revealed once reached), the kinds the
+foundations and worked scenarios use (click, answer, choice, rules, sent,
+kali, loot, triage), WAF snapshots (each scenario final check and each close),
+the scenario debrief, the fix class (`lesson.fix_class(waf, posture)`; with no
+lesson `waf` step left its path scope was always empty, so it is dropped: an
+added exclusion with no path is `target`, with one `path_target`, as scenarios
+were already judged), the Topology pane, customer traffic, the scenario engine
+and every scenario, and the plain wargame session (guidance off). The rule
+editor moved into the blue console's rules pane, where the detection and
+unknown scenarios already showed it.
+
+**Rulings.**
+
+- `{"guidance": true}` alone opens the first foundation (f1); it opened the
+  default lesson.
+- `Session.mode` had no reader left and is dropped (0026). The other lesson
+  fields stay: foundations and worked scenarios read `guidance`, `lesson`,
+  `lesson_steps`, `hints` and `waf_snapshots`.
+- 0026 also clears `result_cache`: cached results carried the removed lesson
+  verdict. The first session list after the deploy rescored: 31 s for 25
+  closed sessions on the live store (5.7 GB), then 4 s from the cache.
+- Old data stays readable. `REPLAY_MARKS` keeps `verify`, `check` and `replay`
+  (no longer written) so old sessions' replays stay out of both scores; a
+  session whose lesson id is gone shows `lesson: null`, as before.
+- A `mode` in a request body is ignored like any unknown field; scenarios no
+  longer refuse it (`scenario_run.ASKED_KEYS`).
+
+**Tests.** `bin/measure` counts 2052 -> 1981: 71 deleted, each one's sole
+subject removed (VERIFY and its diagnosis, the lesson debrief, the rungs and
+mode, the start card and ticket, the level control, the replay section, the
+removed kinds, the hand-written exclusion command, the seven lessons'
+content). 121 were retargeted at a foundation unit or a worked scenario because
+they also guard shared behaviour (the step engine, the coach and note, hints
+and done-for-me, withheld answers, seeds and old replays out of both scores,
+the close snapshot, catalogue validation, the old-session read), and 17 adapted
+where an assertion or fixture named a removed field. The floor drops by 71,
+approved by the user.
+
+| File | Before | Deleted | Retargeted | Adapted | After |
+|---|---|---|---|---|---|
+| test_lesson_console.py | 86 | 17 | 61 | 0 | 69 |
+| test_lesson_api.py | 52 | 14 | 14 | 4 | 38 |
+| test_lesson_steps.py | 27 | 9 | 18 | 0 | 18 |
+| test_lesson_path.py | 17 | 10 | 5 | 0 | 7 |
+| test_lesson_exclusion_command.py | 7 | 7 | 0 | 0 | 0 (removed) |
+| test_lesson_path_console.py | 6 | 4 | 2 | 0 | 2 |
+| test_lesson_debrief.py | 3 | 3 | 0 | 0 | 0 (removed) |
+| test/test_lesson.py | 5 | 3 | 1 | 1 | 2 |
+| test_scenario_discovery.py | 23 | 2 | 11 | 1 | 21 |
+| test_console_behaviour.py | 23 | 1 | 3 | 3 | 22 |
+| test_strings.py | 17 | 1 | 1 | 0 | 16 |
+| test_lesson_flavors.py | 4 | 0 | 3 | 1 | 4 |
+| test_site_browser.py, test_foundations.py, test_scenario_engine.py, test_scenario_course.py, test_scenario_console.py | - | 0 | 2 | 7 | unchanged |
+
+The old `alert` and `served` console tests became `sent` tests (the poll is
+never a wrong answer; a request seen in the Website pane triggers the check).
+
+**Live (OpenStack, platform VM 192.168.0.210, 2026-10-14).** The store was
+backed up to `/opt/fsl/backups/db-20261014-pre-p6.sqlite3`, the branch synced
+and the platform rebuilt with both slots idle; 0026 applied to the kept store.
+
+- Home page (Korean, headless Chromium): six foundations, eleven scenarios, one
+  "워게임 시작" per wargame card, no lesson card, no page errors.
+- Session 250 (closed `assessment` session in practice mode, 7 seed and 7
+  verify cases): lists with kind `lesson`, `lesson_id` null, no `mode`,
+  `result` without a lesson verdict; the detail reads `lesson: null`; `/score/`
+  TP/FP/FN/TN 0/0/0/0 with no case scored, as before the deploy; the score page
+  renders (0/3 lost). Sessions 296-304 list and read.
+- F2 (session 335, slot 2): the Korean search 200; follow drew fsl-platform
+  (10.31.0.238) -> mgmt -> fsl-waf (passed) -> estate -> fsl-wargame-host ->
+  board-default -> board; source 10.31.0.238, port 80 and status 200 passed,
+  10.0.0.1, 443 and 403 refused; all five steps passed; the seed case is
+  marked `seed`. (Session 334 was the script's first try: follow asked without
+  the request id, 400.)
+- 2.1 (session 333, slot 1): the narrow fix (920272 on `REQUEST_URI_RAW` and
+  `ARGS:q`, 942460 on `ARGS:q` under `/search/`, 920272 on
+  `REQUEST_HEADERS:Referer`) at PL3 put by `PUT /waf/` 8 s after open; the
+  scheduled sqlmap at 242 s held (not injectable, 1,973 403s, detected); the
+  final check PASS, fix `target`, 0 customers blocked in the window, 1 of 1
+  attacks held (a second sqlmap inside the window also held); first score 0/3
+  lost; 4 of 2,313 customer requests blocked, all in the seconds before the
+  fix.
+
+Not done: `CLAUDE.md` still says the lesson step text "edits the exclusion
+file and reloads nginx, with the path and reload `wargames.lesson` fills in";
+F6's step only reads the file now and only `{waf_rules}` is filled in. The
+file is the user's to change.
+
+Metrics (bin/measure): core_loc 580, dependencies 6, services 10
+(unchanged), product_loc 24,662 -> 22,720, tests 2052 -> 1981.
