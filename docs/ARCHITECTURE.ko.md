@@ -84,7 +84,7 @@ label, canary)는 `session`을 쿼리나 본문에서 받는다. 없으면 쓰�
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만(OpenStack 레인지) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
 | `fsl-platform` | control | `platform/` (waitress 아래 Django, nginx 뒤; nginx는 `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공한다); compose 플러그인을 갖고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
-| `fsl-gns3` | control | `deploy/gns3`에서 만든 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3; 읽기 전용으로 마운트한 `deploy/topology`의 프로젝트를 제공하고 열어 둔다; `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓) | mgmt | 3080 |
+| `fsl-gns3` | control | `deploy/gns3`에서 만든 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static; 플랫폼이 올린 학습자 지도를 열어 두고 표시용 노드를 시작한다; `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스) | mgmt | 3080 |
 
 8000, 8002, 3080은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩되며 둘 다
 기본값은 127.0.0.1이다. 9200은 loopback에만 바인딩된다.
@@ -247,96 +247,96 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 
 - **시스템 지도** `deploy/topology/system/range-{docker,openstack}.gns3`: 선언의 전체 배선(관리
   구간, `fsl-platform`, 컨트롤 플레인 컨테이너, 표시 프록시). 영어만 있고 개발과 GNS3 MCP용이다.
-  GNS3 서비스의 glob이 이 디렉터리에 닿지 않으므로 학습자에게는 보이지 않는다.
+  GNS3 서비스는 레포의 지도를 보지 않으므로 학습자에게는 보이지 않는다.
 - **학습자 지도** `deploy/topology/range-{docker,openstack}.gns3`와 한국어 짝: 학습자가 지키는
-  네트워크를 회사 네트워크처럼 보여 준다. 시스템 지도에서 `mgmt`, 모든 호스트의 `mgmt` 링크,
-  scorer, 컨트롤 플레인 컨테이너, 따로 선 proxy 호스트를 뺀 것에 `monitoring` 스위치(제목
-  붙은 관제 구간)를 더해, 로그 저장소(`fsl-elasticsearch`, compose의 이미지)를 기록을 보내는
-  호스트와만 잇는다. OpenStack은 WAF, 엣지, wargame 호스트이고 각자 관리 NIC의 어댑터로
-  잇는다(각자 자기 syslog를 collector로 보낸다: gateway, `watches` 센서마다 그 호스트, `logs`가
-  있는 호스트). Docker는 세션의 수집기 `fsl-filebeat`로, WAF와 Suricata의 로그 볼륨을 읽는다.
-  자기 NIC가 없는 센서(Docker는 WAF 네임스페이스의 Suricata, OpenStack은 wargame 호스트
-  네트워크의 Suricata)는 노드로 그리지 않고 그 NIC를 쓰는 호스트에 접어 넣는다. 그래서
-  떠 있는 노드가 없다. `test_gns3_topology.py`가 정확히 그 투영인지 확인한다. 지도는 실습
-  토폴로지를 그리는 방식(Cisco NetAcad 실습 토폴로지, NSRC 워크숍 논리도)대로 그린다: 노드에는
-  호스트 이름만 붙고, 사이트에는 학습자가 입력하는 도메인(`board.com`, `corp.com`, WAF 호스트의
-  선언 이름)이 이름으로 붙으며(`topology.shown_as`가 레인지의 컨테이너 이름을 이 이름으로
-  옮기고, GNS3 2.2.61과 3.1.0a6은 점이 든 RFC 1123 이름을 불러올 때 그대로 둔다), 구간마다 상자
-  하나에 구간 이름만 캡션으로 붙고(컨테이너를 두른 상자에는 호스트 이름, 브리지에는 Docker
-  네트워크 이름), 제목·범례·메모는 없다. 링크는 모두 직선 하나(수평, 수직, 대각선)이고, 다른
-  링크나 노드를 가로지르지 않으며 두 링크가 선의 한 구간을 함께 쓰지 않는다(K2,3 때문에 세
-  호스트를 서비스 구간과 관제 구간 모두에 수평·수직선만으로 이을 수 없어, 엣지와 wargame 호스트는
-  `monitoring`에 대각선 하나씩으로 닿는다). 심볼은
-  GNS3에 번들된 affinity 세트다(VM은 네모, 컨테이너는 동그라미; 공격자 빨강, 방어 초록, 사이트
-  파랑, 로그 저장소와 스위치 회색, 인터넷은 지구본). wargame 호스트는 gns3-registry의 Ubuntu
-  심볼을 쓰며, GNS3 이미지가 고정한 커밋에서 받아 `provision.py`가 올린다. 지도는 원점을
-  가운데로 놓는다.
+  회사 웹 서비스 네트워크를 실습 토폴로지를 그리는 방식(Cisco NetAcad 실습 토폴로지, NSRC 워크숍
+  논리도)의 논리도로 그린다: 역할 호스트 이름, 링크 끝마다 인터페이스와 마지막 옥텟, 구간마다
+  네트워크 캡션, 그 밖에는 없다(제목·범례·메모, 기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지
+  이름 모두 없음). 노드는 `internet` 스위치의 `customers`와 `attacker`, `firewall`(OpenStack의
+  OPNsense 엣지, 그 Suricata는 여기에 접어 넣음), `waf`와 사이트(`board.com` 또는 `corp.com`, WAF
+  호스트의 선언 이름)가 붙는 `service-sw`, OpenStack에서는 사이트 뒤의 데이터베이스 스위치
+  (`board-db-sw`)와 데이터베이스(`board-db`), Docker에서는 `service-sw`에 붙는 데이터베이스(Docker
+  레인지에는 엣지가 없고 사이트와 데이터베이스가 estate에 있으므로 지도도 그렇다), 그리고
+  `log-server`(Elasticsearch)를 기록이 실제로 닿는 호스트와 잇는 `monitoring-sw`다. OpenStack은
+  방화벽, WAF, 사이트(estate 센서가 사이트의 호스트에서 돌며 자기 eve.json을 보낸다), Docker는
+  WAF 하나다(세션 수집기가 WAF의 감사 로그와, WAF 네임스페이스에서 도는 Suricata의 볼륨을 읽는다).
+  템플릿은 두 워게임의 사이트, 데이터베이스, 데이터베이스 스위치를 한자리에 그리고,
+  `topology.for_wargame`이 세션의 것만 남긴다. 고객을 선언하지 않은 워게임(`corp`, `traffic.yaml`
+  없음)에는 `customers` 노드가 없다. `topology.learner(선언, 워게임)`이 레인지의 이름을 지도의
+  이름으로 옮긴다: 호스트(`fsl-kali`는 `attacker`이고, 고객 프로그램이 거기서 돌면 `customers`도;
+  `fsl-edge`는 `firewall`; wargame 호스트와 사이트 컨테이너는 사이트; `fsl-elasticsearch`는
+  `log-server`), 역할, 구간에서 스위치로(출발지는 `internet`, estate는 `service-sw`, 워게임의 compose
+  네트워크는 그 데이터베이스 스위치), 센서마다 그 NIC를 쓰는 노드. overlay, 따라가기, 레슨의 레인지
+  질문, 인터페이스 읽기가 모두 이것을 거친다. 링크는 모두 직선 하나(수평, 수직, 대각선)이고 다른 링크나
+  노드를 가로지르지 않는다. 바로 위에서 링크가 들어오는 노드는 이름을 옆에 둔다. 심볼은 GNS3에 번들된
+  affinity 세트로, 실제 기계가 VM이면 네모, 컨테이너면 동그라미다(공격자 빨강, 고객은 회색
+  클라이언트, 방어 초록, 사이트 파랑, 로그 서버와 스위치 회색, 인터넷은 지구본).
+- **학습자 지도의 호스트는 모두 표시용 컨테이너다.** GNS3는 링크 끝을 노드 상태로 칠하므로 멈춘
+  노드는 끝이 모두 빨강이다. 호스트마다 고정한 이미지 하나(`busybox`, `topology.DISPLAY_IMAGE`)의
+  `docker` 노드로, `sleep`만 돌고 콘솔은 없다. 실제 기계는 레인지에서 돌고 지도의 노드는 그것을
+  보여 주기만 한다. 플랫폼 VM에서 슬롯 1의 board 지도와 슬롯 2의 corp 지도를 두 언어로 올려 잰 값:
+  표시용 컨테이너 26개, 그 프로세스와 runc shim의 PSS 115MB, uBridge 프로세스 12MB
+  (`docs/DECISIONS.md`).
 
-구간은 `ethernet_switch` 노드, Docker 컨테이너는 실제 이미지를 가진 `docker`
-노드, OpenStack VM은 디스크 이미지 없는 `qemu` 노드(OPNsense 엣지는 vtnet 순서대로 NIC
-셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
-`corp-default`)에 붙는다. 시스템 지도에서 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
+구간은 `ethernet_switch` 노드다. 시스템 지도에서 Docker 컨테이너는 실제 이미지를 가진, 시작하지
+않는 `docker` 노드, OpenStack VM은 디스크 이미지 없는 `qemu` 노드(OPNsense 엣지는 vtnet 순서대로
+NIC 셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
+`corp-default`)에 붙는다. 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
 센서는 NIC가 없고, 옆의 메모가 누구의 네트워크를 지켜보는지 말한다(Docker 프로젝트에서는
 점선이 `fsl-suricata`를 `fsl-waf`에 잇는다). 시스템 지도에서는 선언된 구간마다 그 스위치를 담은
 제목 붙은 사각형이 있고(Internet, Application estate, Management and monitoring), 컨테이너와
 VM마다 쉬운 말 메모가 붙는다. GNS3 3.1은 노드 라벨을 이름으로 바꾼다.
 `platform/tests/test_gns3_topology.py`가 `declaration.yaml`, `compose.yaml`, `session.yaml`,
 wargame compose 파일에서 시스템 지도의 기대 노드와 링크를 유도해 비교하고
-GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을
-`~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의 `load_topology`를 각 파일의
-사본과, 학습자 지도마다 가짜 레인지로 만든 레인지 지도에 돌리며, 노드가 쓰는 번들 심볼이 그
-버전에 있는지 확인한다.
+GNS3의 구조 규칙을 확인하며, 워게임마다 학습자 지도를 위의 투영으로 확인한다: 노드, `topology.learner`를
+거쳐 시스템 지도의 배선과 맞춘 링크, 로그 링크, 배치, 표시용 노드. `bin/check-topology`는
+gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의
+`load_topology`를 각 파일의 사본과, 학습자 지도마다 워게임별로 가짜 레인지로 만든 레인지 지도에
+돌리며, 노드가 쓰는 번들 심볼이 그 버전에 있는지 확인한다.
 
 ### 내 레인지의 지도
 
-학습자는 자기 레인지의 주소를 본다. `api/maps.py`는 학습자 지도에서 OpenStack 슬롯(`slot 1`,
-`slot 2`) 또는 Docker 세션(`session <id>`)마다, 언어마다 프로젝트 하나를 만든다
-(`topology.labelled`): 호스트 쪽 링크 끝마다 그 구간의 인터페이스 이름과 주소의 마지막 옥텟을
-레인지에서 읽어 붙이고(`ens3 .102`, `vtnet0 .1`; Kali와 엣지의 인터넷 쪽은 기본 출발지 주소
-하나만; Docker 브리지의 wargame 호스트 쪽은 지도에서 뜻 없는 `br-` 이름이라 비우고, NIC가 관리
-네트워크에 있는 `monitoring` 링크도 비운다), 구간 캡션마다 그 구간이 레인지에서 가진 네트워크를
-덧붙인다(`서비스 구간 10.30.0.0/24`, `board_default 172.18.0.0/16`; 스위치의 캡션은 그 스위치를
-담은 가장 작은 상자의 글자다, `topology.captions`). 관제 구간은 이름만 둔다. 라벨은 링크가 나가는
-쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 선 위에, 링크가 올라가면 선 아래에, GNS3 상태
-표시에 닿지 않게; 수직 링크는 선 오른쪽, 노드 왼쪽이면 `text-anchor: end`로 오른쪽 정렬. 모든 id는
-`uuid5(<학습자 지도 id>, "slot-<n>")`(또는 `session-<id>`), 이름에는 접미사를 붙이고
-`show_interface_labels`를 켠다. 인터페이스는 어댑터가 읽는다(`interfaces()`): OpenStack은 슬롯의
-호스트마다 그 호스트 자체에서 도는 runner로 `ip -o -4 addr`(OPNsense는 `ifconfig`)를, wargame
-호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크 id로 읽는다. Docker는
-세션 엔드포인트의 MAC을 컨테이너 안의 `/sys/class/net`과 맞춘다. 같은 읽기에서 호스트와
-컨테이너마다 기본 경로(`/proc/net/route`, OPNsense는 `netstat -rn`)를 읽어 그 경로가 나가는
-인터페이스에 게이트웨이를 붙인다.
+학습자는 자기 레인지의 주소를 본다. `api/maps.py`는 학습자 지도에서 OpenStack 슬롯 또는 Docker
+세션과 그 세션의 워게임마다(`slot 1 board`, `session <id> corp`), 언어마다 프로젝트 하나를 만든다
+(`topology.labelled`): 호스트 쪽 링크 끝마다 그 스위치 구간의 실제 인터페이스 이름과 주소의 마지막
+옥텟을 `topology.learner`를 거쳐 레인지에서 읽어 붙인다(`ens3 .102`, `vtnet0 .1`). 공격자는 기본
+출발지의 주소, 고객은 가장 많이 오는 출발지(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼
+기본 출발지는 뺀다)의 첫 주소(상자에 그런 주소가 없으면 비운다. 고객 상자가 고객과 함께 뜨는 Docker가
+그렇다), 사이트는 `service-sw`에서는 호스트의 주소(WAF는 거기로 사이트에 닿는다), 데이터베이스
+스위치에서는 사이트 컨테이너의 주소다. 스위치 쪽 끝, Docker 브리지(`br-`), NIC가 관리 네트워크에 있는
+`monitoring-sw` 링크는 비운다. 구간 캡션마다 그 스위치에 붙은 라벨의 네트워크를 덧붙인다(`인터넷
+175.192.0.0/24, 5.188.10.0/24`, `서비스 구간 10.30.0.0/24`, `내부 DB 구간 172.18.0.0/16`; 스위치의
+캡션은 그 스위치를 담은 가장 작은 상자의 글자다, `topology.captions`). 관제 구간은 이름만 둔다. 라벨은
+링크가 나가는 쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 선 위에, 링크가 올라가면 선 아래에,
+GNS3 상태 표시에 닿지 않게; 위로 나가는 링크는 노드 오른쪽, 노드 왼쪽이면 `text-anchor: end`로
+오른쪽 정렬. 모든 id는 `uuid5(<학습자 지도 id>, "slot-<n>-<워게임>")`(또는 `session-<id>-<워게임>`),
+이름에는 키를 붙이고 `show_interface_labels`를 켠다. 인터페이스는 어댑터가 읽는다(`interfaces()`):
+OpenStack은 슬롯의 호스트마다 그 호스트 자체에서 도는 runner로 `ip -o -4 addr`(OPNsense는
+`ifconfig`)를, wargame 호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크
+id로 읽는다. Docker는 세션 엔드포인트의 MAC을 컨테이너 안의 `/sys/class/net`과 맞춘다.
 
-지도에는 마지막 옥텟 말고는 주소를 쓰지 않는다. 토폴로지 창의 주소 표 보기
-(`GET /api/sessions/<id>/topology/addresses/`, `topology.addressing`)가 같은 읽기(`api/maps.py`가
-슬롯이나 세션마다 두고, 지도를 올릴 때 새로 읽는다)에서 지도 호스트마다 학습자 구간의
-인터페이스(장비, 인터페이스, 주소/프리픽스, 기본 게이트웨이)와 서비스를 보여 준다: WAF의 도메인마다
-포트 80(`deploy/waf/range.conf`와 세션 WAF가 듣는 포트), 사이트마다 데이터베이스 3306(MySQL
-기본값). 레인지를 읽지 못하면 빈 표와 이유를 `detail`에 돌려준다.
-
-`gns3.publish`는 GNS3 admin으로
-로그인해(비밀번호는 `FSL_GNS3_ADMIN_PASSWORD` 또는 `/run/fsl-gns3/admin-password`; GNS3 데이터
-디렉터리를 읽기 전용으로 붙이고, 파일은 Docker 소켓 그룹에 0640) 프로젝트를 지우고, URL의
-프로젝트 id를 그대로 가진 `project.gns3`로 portable 프로젝트를 가져와(GNS3는 스냅숏처럼 모든 id를
-유지한다) 연다. 지도는 세션을 열 때, 슬롯 초기화가 끝난 뒤, 그리고 토폴로지 창이 물었는데
-(`GET /api/topology/?language=&session=`) GNS3가 열어 두지 않았을 때 올린다. 바뀌지 않은 지도는
-다시 올리지 않고, 더는 없는 슬롯이나 세션의 지도는 지운다. 만든 지도는 커밋하지 않는다. GNS3가
-올리지 못하면 엔드포인트는 학습자 지도를 내주고 이유를 `detail`에 쓴다.
+`gns3.publish`는 GNS3 admin으로 로그인해(비밀번호는 `FSL_GNS3_ADMIN_PASSWORD` 또는
+`/run/fsl-gns3/admin-password`; GNS3 데이터 디렉터리를 읽기 전용으로 붙이고, 파일은 Docker 소켓 그룹에
+0640) 프로젝트를 지우고, URL의 프로젝트 id를 그대로 가진 `project.gns3`로 portable 프로젝트를 가져와
+(GNS3는 스냅숏처럼 모든 id를 유지한다) `auto_close`를 끄고(가져오기는 파일과 상관없이 이것을 켜고,
+마지막 웹 클라이언트가 떠나 닫힌 프로젝트는 노드를 멈춘다) 연 뒤 노드를 시작한다. 지도는 세션을 열 때,
+슬롯 초기화가 끝난 뒤, 그리고 토폴로지 창이 물었는데(`GET /api/topology/?language=&session=`) GNS3가
+열어 두지 않았을 때 올린다. 바뀌지 않은 지도는 다시 올리지 않는다. 남기는 지도는 슬롯마다 가장 최근
+세션의 것과 Docker에서 열린 세션의 것이고 나머지는 지운다. 만든 지도는 커밋하지 않는다. GNS3가
+올리지 못하면 엔드포인트는 세션 워게임의 학습자 지도를 파일에서 내주고 이유를 `detail`에 쓴다.
 
 프로젝트마다 한국어 학습자를 위한 한국어 짝이 있다: `deploy/topology/range-docker.ko.gns3`와
-`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 구간 이름을 쓴 캡션만
-`docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름과, 호스트나 Docker 네트워크 이름을 쓴
-캡션은 기계가 아는 그대로다.
+`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 구간 캡션만
+`docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름은 역할 이름 그대로다.
 GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프로젝트가 id를 함께 쓸 수 없다. 그래서
 짝의 모든 id는 `uuid5(<영어 id>, "ko")`이고 프로젝트 이름에는 한국어 접미사가 붙는다. 영어 파일이
 기준이다. 테스트가 영어 파일에서 한국어 파일의 구조를 다시 만들어 글자 말고 다른 차이가 있으면
 실패한다.
 
-`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 모든 파일을
-`/var/lib/fsl-gns3/projects` 아래 각자의 디렉터리로 복사하고(이 레포의 `:dev` 이미지 태그를
-호스트가 실행하는 태그 `FSL_IMAGE_TAG`로 바꿔 쓴다), 컨트롤러 데이터베이스가 생기기 전에 admin
-비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/var/lib/fsl-gns3/admin-password`에 한 번 생성),
-learner 사용자에게 `/`에 대한 내장 Auditor 역할을 주고(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값
+`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 플랫폼이 올린 지도만
+가진다(템플릿은 모든 워게임을 그리므로 아무것도 복사해 넣지 않는다). 컨트롤러 데이터베이스가 생기기
+전에 admin 비밀번호를 정하며(`FSL_GNS3_ADMIN_PASSWORD`, 없으면 `/var/lib/fsl-gns3/admin-password`에 한
+번 생성), learner 사용자에게 `/`에 대한 내장 Auditor 역할을 주고(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값
 `fsl-auditor`, 플랫폼에도 전달), `/static/web-ui/fsl-auditor.html`을 쓴다. 이 페이지는
 learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localStorage`의 `controller-1`,
 `controllerIds`)에 토큰을 두고, 링크 끝 라벨을 프로젝트가 정한 자리에 그리도록
@@ -344,42 +344,42 @@ learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localSto
 열고, 지도가 그려지면 토폴로지 요약 창을 닫고(3.1.0a6 번들에서 이 창의 표시 여부는 상수다), 그림이
 들어갈 때까지 웹 UI의 축소 버튼(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않는다)을 누르고,
 이동 모드에서 mousemove 한 번으로 가운데로 옮긴다(웹 UI는 `movementX`/`movementY`만큼 옮긴다). 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
-/opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다.
+/opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다. 콘솔의
+탭 이름은 네트워크 구성도(Network map)이고, 학습자가 읽는 어떤 말도 GNS3를 이름으로 쓰지 않는다.
 
-GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 열고, 읽기 전용 사용자는 프로젝트를 열 수
-없다(`Project.Allocate`). 그래서 `provision.py`가 시작할 때 admin으로 모든 프로젝트를 열어 두고,
-Auditor는 열린 프로젝트를 본다. 만들기는 시작이 아니다: 어떤 노드도 시작하지 않는다. 만들기에
-필요하고 서비스가 갖춘 것: `qemu` 노드에는 `qemu-system-x86`(디스크 이미지 없음),
-`ethernet_switch` 노드에는 릴리스 태그에서 빌드하고 `cap_net_admin,cap_net_raw` 파일
-capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위치마다 컨테이너 자기
-네트워크 네임스페이스 안에 커널 브리지와 TAP을 만든다), `docker` 노드에는 호스트의 Docker
-소켓(노드마다 호스트 데몬에 특권 컨테이너 `GNS3.<노드>.<프로젝트 id>`를 만들기만 하고 시작하지
-않는다). 호스트 데몬은 그 컨테이너의 바인드 마운트를 호스트에서 찾으므로 데이터 디렉터리는 양쪽에서
-같은 경로다(`/var/lib/fsl-gns3`). 서버는 `gns3` 사용자로 돌고, 플랫폼의 `fsl`처럼 시작할 때 소켓의
-그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를
-내주고, 아니면 콘솔의 토폴로지 창이 같은 파일을 직접 그린다.
+읽기 전용 사용자는 프로젝트를 열 수 없으므로(`Project.Allocate`) `provision.py`가 시작할 때 admin으로
+모든 프로젝트를 열고 멈춘 표시용 노드를 시작하며(고정 이미지만; 다른 이미지의 노드는 절대 돌리지
+않는다), Auditor는 열려 있고 초록인 지도를 본다. 서비스가 갖춘 것: `ethernet_switch` 노드에는 릴리스
+태그에서 빌드하고 `cap_net_admin,cap_net_raw` 파일 capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`,
+`/dev/net/tun`(3.1은 스위치마다 컨테이너 자기 네트워크 네임스페이스 안에 커널 브리지와 TAP을 만든다),
+`docker` 노드에는 호스트의 Docker 소켓(노드마다 호스트 데몬의 컨테이너 `GNS3.<노드>.<프로젝트 id>`),
+`busybox-static`(GNS3가 시작하는 docker 노드마다 넣어 준다), 호스트의 pid 네임스페이스(`pid: host`:
+uBridge가 시작한 노드의 인터페이스를 컨테이너의 호스트 pid 네임스페이스로 옮긴다). `qemu-system-x86`은
+시스템 지도의 `qemu` 노드를 위해 남긴다. 호스트 데몬은 컨테이너의 바인드 마운트를 호스트에서 찾으므로
+데이터 디렉터리는 양쪽에서 같은 경로다(`/var/lib/fsl-gns3`). 서버는 `gns3` 사용자로 돌고, 플랫폼의
+`fsl`처럼 시작할 때 소켓의 그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로
+보고할 때만 웹 UI(`web_ui`)를 내주고, 아니면 콘솔의 토폴로지 창이 같은 지도를 직접 그린다.
 
 `GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 학습자 지도를(`&session=<id>`가
-있으면 위의 그 세션 레인지 지도를)
-GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면 `en`, 다른 값이면 400). 콘솔은
-자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로 연다. 아래의 오버레이와
-따라가기는 영어 학습자 지도를 읽는다: 짝은 노드 이름과 링크가 같아서 홉은 어느 지도에서나 같고, 창은
-받은 프로젝트를 그린다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
-읽기에서 얻은 호스트 노드별 선언 구간 주소와 `running` 또는 `not reported`.
-`GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는
-`?case=<케이스 id>`, `?marker=`)는 사실만으로 경로를 그린다. 보낸 쪽은 실제로 보낸 것이다:
-웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는 공격자 박스, 마커만
-있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용 배관이다: 웹사이트 창 요청은 `console` 홉
-(학습자의 브라우저, WAF가 기록한 그 주소)에서 시작해 `mgmt`나 플랫폼을 거치지 않고 바로 WAF에 닿고,
-proxy가 표시한 마커는 공격자에서 그린다. 세션 overlay는 지도에 있는 호스트와 지도에 있는 구간의
-주소만 싣는다. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
+있으면 위의 그 세션 워게임의 지도를) GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면
+`en`, 다른 값이면 400). 콘솔은 자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로
+연다. 아래의 오버레이와 따라가기는 세션 워게임의 영어 지도를 읽는다: 짝은 노드 이름과 링크가 같아서
+홉은 어느 지도에서나 같고, 창은 받은 프로젝트를 그린다. `GET /api/sessions/<id>/topology/`는
+`project.nodes`를 더한다: 같은 레인지 읽기에서 얻은 호스트 노드별 스위치 주소와 `running` 또는 `not
+reported`. `GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는 `?case=<케이스
+id>`, `?customer=<고객 요청 마커>`, `?marker=`)는 사실만으로 지도의 이름으로 경로를 그린다. 보낸 쪽은
+실제로 보낸 것이다: 웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는
+`attacker`, 고객 요청은 `customers`, 마커만 있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용
+배관이다: 웹사이트 창 요청은 `console` 홉(학습자의 브라우저, WAF가 기록한 그 주소)에서 시작해 `mgmt`나
+플랫폼을 거치지 않고 바로 `waf`에 닿고, proxy가 표시한 마커는 `attacker`에서 그린다. 세션 overlay는
+지도에 있는 호스트와 지도에 있는 스위치의 주소만 싣는다. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
 기록하고, 케이스는 경보에 적힌 주소를, 없으면 레인지가 내주는 이름(케이스가 출발한 구간의
 게이트웨이 주소, 없으면 모든 레인지 호스트의 `/etc/hosts`대로 estate의 주소)을 쓴다. 보낸
 쪽은 케이스를 띄운 구간(`launched_on`으로 기록) 또는 목적지와 같이 붙은 구간으로 나가고, 구간이
 바뀌면 두 구간에 모두 링크된 엣지·게이트웨이·wargame 호스트 하나를 지나며, 게이트웨이는 estate로
 대상에 닿는다. 어떤 사실로도 정해지지 않는 구간은 추측한 링크가 아니라 `unknown` 홉이다. 호스트
-홉마다 이 요청의 기록이 있는지(`evidence`)를 말한다: suricata 경보는 그 센서가 지켜보는 호스트에
-붙고, 센서는 경보의 syslog hostname으로 가른다(`fsl-edge`와 `fsl-wargame-host`, 슬롯 접미사
+홉마다 이 요청의 기록이 있는지(`evidence`)를 말한다: suricata 경보는 그 센서가 지켜보는 노드에
+붙고(`firewall`, 사이트 호스트의 estate 센서는 사이트, Docker는 `waf`), 센서는 경보의 syslog hostname으로 가른다(`fsl-edge`와 `fsl-wargame-host`, 슬롯 접미사
 포함). 경로 위에 없는 센서의 경보는 `elsewhere`로 돌려준다. WAF 판정(403이거나 CRS 차단 평가
 949110이면 차단, 다른 상태 코드나 기록된 규칙이 있으면 통과, 아니면 알 수 없음)과 규칙 id는
 게이트웨이에 붙고, 대상은 WAF가 통과시키고 502-504가 아닌 응답이 왔을 때만 도달로 본다.
@@ -388,7 +388,7 @@ proxy가 표시한 마커는 공격자에서 그린다. 세션 overlay는 지도
 않으면 규칙이 보이지 않는다). 또 그 요청의 Suricata `http` 이벤트를 수집 경로로 읽는다
 (`elastic.fetch`, 전체 수집과 같은 페이지 나눔; 표시는 `elastic.suricata_marker`로 읽는다):
 웹사이트 창 요청은 그 시간 창 안의 browse 마커로, 이벤트에 마커가 없으면 같은 URL로; 실행한 케이스는
-그 시간 창 안의 케이스 id로. 센서 홉은 `requests`(그 센서가 이 요청을 기록한 http 기록 수)와 앞의
+그 시간 창 안의 케이스 id로, 고객 요청은 보낸 시각 앞뒤의 그 마커로. 센서 홉은 `requests`(그 센서가 이 요청을 기록한 http 기록 수)와 앞의
 다섯 개를 `seen`(출발지, 목적지와 포트, 메서드, URL, 상태 코드)으로 싣고, http 기록도 증거다. 경보가
 하나도 없던 요청도 센서를 지나간 것으로 보인다. http 이벤트는 `Detection` 행이 되지 않으므로 어느
 점수에도 들어가지 않는다. overlay는 레인지가 보고하는 이름으로 호스트를 놓는다. OpenStack은 슬롯의
