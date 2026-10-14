@@ -7,7 +7,7 @@ import pytest
 import requests
 
 import range as the_range
-from opening import CAP_REFUSAL, has_room, refused_for_room, retried, wait_for_room
+from opening import has_room, refused_a_run_for_room, refused_for_room, retried, wait_for_room
 from range import ATTACKER, RangeUnavailable, SCORER, ThroughPlatform, run, start_hint, substrate, use
 
 pytest_plugins = ["shared_sessions"]
@@ -26,8 +26,6 @@ ENGINES = {"suricata", "modsecurity"}
 SPLIT = os.environ.get("FSL_SPLIT", "")
 IDLE = SPLIT == "idle"
 BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("FSL_WORKERS") or 1) > 1
-REDTEAM_ATTEMPTS = 3
-
 COMPOSE_RANGE_ONLY = {
     "test_attacker_box", "test_board_exfil", "test_concurrent_sessions",
     "test_event_time",
@@ -46,6 +44,7 @@ def range_readiness() -> dict | None:
 
 RESET_WAIT = 1800
 RESET_POLL = 2
+ATTEMPTS_WHILE_WAITING = int(RESET_WAIT / RESET_POLL)
 SETTLING = {"RESETTING", "REBUILDING", "CHECKING"}
 RESETTING = {"RESETTING", "REBUILDING"}
 
@@ -160,7 +159,7 @@ def opened_when_there_is_room(post, url, *args, **kwargs):
         lambda: post(url, *args, **kwargs),
         lambda answer: refused_for_room(answer.status_code, answer.text),
         room_after_a_pause,
-        attempts=int(RESET_WAIT / RESET_POLL),
+        attempts=ATTEMPTS_WHILE_WAITING,
     )
 
 class Standing:
@@ -344,7 +343,7 @@ def _redteam_once():
     return result
 
 def _refused_a_session(result) -> bool:
-    return not result.ok and CAP_REFUSAL in result.output and not any(
+    return not result.ok and refused_a_run_for_room(result.output) and not any(
         OPENED_LINE.match(line.strip()) for line in result.stdout.splitlines()
     )
 
@@ -352,7 +351,7 @@ def run_redteam() -> int:
     STANDING.release()
     wait_out_a_reset()
     result = retried(_redteam_once, _refused_a_session, wait_for_room_on_the_range,
-                     attempts=REDTEAM_ATTEMPTS)
+                     attempts=ATTEMPTS_WHILE_WAITING)
     assert result.ok, f"red team run failed:\n{result.output}"
 
     for line in result.stdout.splitlines():

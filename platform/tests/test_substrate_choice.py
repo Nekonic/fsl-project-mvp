@@ -141,3 +141,31 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, capsys, 
         "a session opened on slot 2 fired from slot 1's Kali, which a close had "
         "just sent to be rebuilt, so ssh was refused and the run failed"
     )
+
+def test_a_refused_open_prints_what_the_platform_said(monkeypatch, capsys):
+    import importlib.util
+    import sys
+
+    import requests
+
+    spec = importlib.util.spec_from_file_location("redteam_cli_refused", CLI)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    answer = requests.Response()
+    answer.status_code = 409
+    answer.reason = "Conflict"
+    answer.url = "http://localhost:8000/api/sessions/"
+    answer._content = b'{"detail": "2 sessions are already open on the range; close one first"}'
+
+    def run(cases, platform_url, launch, tool_target, scenario, announce):
+        answer.raise_for_status()
+
+    monkeypatch.setattr(cli.harness, "run", run)
+    monkeypatch.setattr(sys, "argv", ["run.py"])
+
+    assert cli.main() == 1
+    said = capsys.readouterr().err
+    assert "409 Client Error" in said and "already open on the range" in said, (
+        "the run printed the status alone, so a refusal for want of room could "
+        "not be told from any other and the acceptance suite gave up after three"
+    )
