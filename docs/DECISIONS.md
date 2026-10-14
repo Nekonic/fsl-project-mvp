@@ -3376,3 +3376,21 @@ file is the user's to change.
 
 Metrics (bin/measure): core_loc 580, dependencies 6, services 10
 (unchanged), product_loc 24,662 -> 22,720, tests 2052 -> 1981.
+
+## 2026-10-14 — The acceptance red team run waits for a slot like every other open
+
+The P6 gate-2 `bin/verify` on the OpenStack VM ended with 19 errors, every one
+at the shared `full_run` fixture: `redteam/run.py` got 409 on
+`POST /api/sessions/` three times. A replay with a readiness watcher showed
+the cause is in the suite, not in P1-P6: two workers share two slots, a close
+resets its slot for about 70 s, and when a slot turns READY both workers open.
+The other worker opens with a direct POST polled every 2 s (900 attempts); the
+red team run opens from a `docker exec` and a Django start-up, seconds later,
+and had 3 attempts, so it loses ties (replay: lost to session 354 at 05:42:43,
+took the next slot as 355; the failing run lost all three).
+
+The red team run now has the same budget as every other open, and retries
+only a refusal for want of room: `redteam/run.py` prints the platform's 409
+body beside the status (`raise_for_status` dropped it), so the suite tells
+"already open" or "resetting" from any other 409 and does not spin on a real
+failure. The old 2026-10-12 line above ("retries the open once") is superseded.
