@@ -3469,3 +3469,75 @@ loaded, so a map is refreshed at the next open or reset, not at restart.
 
 Metrics (bin/verify --fast): core_loc 580, dependencies 6, services 10 (unchanged),
 product_loc 22,725 -> 24,295, tests 1983 -> 2013.
+
+## 2026-10-14 — The learner's GNS3 map without the legend, the filler or a floating node
+
+The user judged the learner maps messy: a legend, filler lines, diagonal
+labels running into links, two unlinked nodes, `(+99)` suffixes and Docker
+bridge names. Both substrates and both languages change; the system maps do
+not.
+
+- **No legend, no filler.** The three legend lines, the Internet zone's
+  "come from here", "(one slot)", "docker compose projects board, corp", the
+  edge's vtnet line and Docker's origin count are gone. The title is
+  `fsl range (<substrate>): the network you defend`; each node keeps one
+  plain line (the domains stay on the WAF and the sites). The dashed box keeps
+  a caption, `containers inside fsl-wargame-host`, because it is the only
+  thing saying the containers run on that host.
+- **The log store is linked the way records travel.** A `monitoring` switch in
+  a titled Monitoring zone joins `fsl-elasticsearch` to the hosts that ship it
+  records. On OpenStack each of the WAF, the edge and the wargame host
+  forwards its own syslog to the collector (`range/openstack.py`
+  `configure_waf`, `configure_edge`, the wargame host's `logs`), so the three
+  are linked on the adapter of their management NIC, the one the records leave
+  by. On Docker the WAF has no NIC on that network; `fsl-filebeat`, the
+  session's shipper, reads the WAF's and Suricata's log volumes and is on the
+  management network, so it is the one linked, its note saying what it reads.
+  The test derives the members: on OpenStack the gateway, every `watches`
+  sensor's host and every host with `logs`; on Docker every session service on
+  `mgmt` sharing a volume with the gateway's or a sensor's service. The
+  collector (`fsl-collector`) is not drawn: the log store stands for the
+  platform's receiving end, as before. Monitoring links carry no address,
+  because the NIC is on the management network, which the learner map does
+  not show.
+- **Suricata with no NIC is folded into its host.** GNS3 has no host-network
+  container, and a NIC drawn for it would be false. Options were a floating
+  node (rejected: the complaint), a fake link (rejected: false), or naming it
+  in the note of the host whose NIC it uses. Chosen: the note. OpenStack's
+  wargame host reads "Docker host; Suricata watches its estate NIC", Docker's
+  WAF "web firewall (ModSecurity + CRS) and Suricata: ...". The edge already
+  said "Suricata on WAN". The follow view never placed alerts on the Suricata
+  node (it attaches them to the watching host), so nothing else moves.
+- **Level labels.** GNS3 3.1 draws a `link_style.link_type: flowchart` link
+  as right angles (a Z through the midpoint), and the controller keeps it on
+  import; 2.2.61 still loads the file. A link between two nodes that are not
+  level or upright is a flowchart link, so the estate switch, the monitoring
+  switch and the wargame host's bridges read as buses and every label sits on
+  a level or upright segment. Three hosts on both estate and monitoring
+  cannot all be joined by straight level or upright lines (K2,3), hence the
+  right angles. `topology.labelled` sets each label at rotation 0 beside its
+  node on the side its link leaves: above a level line, clear of the 10 px
+  status mark GNS3 puts 60 px from the node's centre, right of an upright one,
+  and right-aligned with `text-anchor: end` on a node's left (the web UI keeps
+  the style). A label's x, y are its text box's top-left (the web UI adds 3
+  and 14 to reach the baseline). Only the default origin's address is shown;
+  the host side of a Docker bridge (`br-...`) is left blank and the
+  container's `eth0` address stays.
+- **Checked by rendering, not by eye alone.** A local gns3-server 3.1.0a6
+  (its own web UI, `fsl-auditor.html`) loaded each map with a fixture range,
+  and a script in the page compared every interface label, node name and note
+  with every icon, status mark, link path, zone border and the frame. Every
+  overlap it found was fixed until it reported none; the live maps then
+  reported none too.
+
+Live (platform VM, OpenStack, both slots READY): deployed after the gate-4
+`bin/verify` run ended `EXIT=0`; slot 1 and 2 maps reloaded in both languages
+(slot 1 WAF `ens3 10.30.0.102/24`, wargame host `ens3 10.30.0.63/24`; slot 2
+WAF `ens3 10.30.0.177/24`, wargame host `ens3 10.30.0.184/24`; Kali
+`ens3 5.188.10.10/24`, edge `vtnet0 5.188.10.1/24`, containers' `eth0`), and
+session 399's Topology pane framed slot 1's map in both languages; closed. The
+in-page check reported no overlap, cut-off or floating node on any of the six
+views.
+
+Not done: the Docker learner map is rendered locally only (no Docker range
+runs live); `fsl-collector` stays off the map.
