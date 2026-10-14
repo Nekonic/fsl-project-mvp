@@ -3739,3 +3739,68 @@ end green; the console pane showed slot 1's map under Network map /
 네트워크 구성도; both closed. Session 434 and 435 failed to open on the first
 deploy (`_maps_live` used the suppression query's `session__slot`); fixed and
 tested before the run above.
+
+## 2026-10-15 — The learner map's switches are sw1, sw2, sw3 and every link is labelled at both ends
+
+The user's two objections to the role-named map: nobody names a switch
+`service-sw` or `board-db-sw`, and some link ends had no interface label. The
+lab topologies the map follows label every link end with an interface (Cisco
+NetAcad lab topology) and number switches (`sw1` in the NSRC workshop logical
+diagram).
+
+- **Switch names.** `sw1` is the service segment, `sw2` the database segment,
+  `sw3` monitoring, in that fixed order; `internet` stays the cloud. The zone
+  captions already name each segment. The template's two database switches
+  (`board-db-sw`, `corp-db-sw`, drawn in one place) became one `sw2` that both
+  wargames' site and database hang off, as `sw1` already carries both sites
+  (board on `e0`/`e1`, corp on `e2`/`e3`). Docker has no database segment, so
+  its map has `sw1` and `sw3` and no `sw2`; numbering by role rather than by
+  count keeps a name meaning one segment on both substrates and in the f1
+  answer (`sw2` on OpenStack, `sw1` on Docker).
+- **Both ends labelled.** A switch end carries the port the link uses in
+  short form (`Ethernet2` is `e2`), read from the node's `ports_mapping`. A
+  host end on `sw3` carries the NIC name alone (`vtnet2`, `ens4`), because its
+  address is on the management network the learner does not see. The
+  `log-server` end is the log store's own NIC on that network where it has
+  one (Docker, `fsl-elasticsearch`'s), otherwise the platform VM's: the
+  platform takes no SSH, so OpenStack reads its NICs with the same `ip -o -4
+  addr` in the pinned `busybox` (already on the host for the display nodes) on
+  the host network (`interfaces.on_this_host`), only when the map asks for
+  the scorer host. The dual-homed site keeps `ens3 .63` on `sw1` and
+  `eth0 .3` on `sw2`, one at each of its own link ends. The one end that can
+  stay blank is Docker's `customers`: its box runs only while the customers
+  do (unchanged).
+- **Placement.** Three steep links climb into `sw3` side by side, so the old
+  rule (right of the node, near its top) put three labels on one spot. A
+  steep link's label now sits beside the line on the side the node's other
+  links leave more room, above the node and past GNS3's status mark where the
+  node's name is beside it (it stays right of the node where its name is
+  above); a shallow link's label sits above or below the line by the same
+  rule, clear of where the line runs under the text. GNS3's web UI places a
+  link label's `y` as the text's top (`y += bbox.height` in its label
+  converter), which the clearances assume.
+
+Tests: 2033 before, 2037 after (`bin/measure`). Added (4): a switch end names its
+port and a monitoring end only the NIC; the log server's NIC is the log
+store's before the platform's; every link of every learner map (both
+substrates, both wargames, both languages on OpenStack) is labelled at both
+ends and every switch is `sw\d+` or `internet`; no two labels overlap and
+none covers a node. Rewritten because the design changed: in
+`test_gns3_maps.py` the assertions that switch ends and `monitoring-sw` ends
+are blank (now port and NIC), the label-side test (side by room, and a
+climbing link above a node named beside it), the label-format test (ports
+and bare NICs besides `nic .octet`); switch names in `test_gns3_maps.py`,
+`test_gns3_follow.py`, `test_foundations.py`, `test_topology_console.py` and
+`test_gns3_topology.py` (`DATABASE_SWITCH` for the removed `SWITCH_SUFFIX`).
+
+Live (platform VM, OpenStack): sessions 456 (board, slot 1) and 457 (corp,
+slot 2), both languages: 12 and 11 links, every end labelled (`log-server`
+`ens7` read from the platform VM), every end green, no label on another or
+on a node; first try put `sw3`'s three climbing labels just above the switch,
+between the converging lines and under GNS3's status marks, so they now sit
+above the marks (`LABEL_ABOVE`). Sessions 454/455 were closed and the platform
+restarted seconds later, which killed both slots' reset threads (slots stuck
+CHECKING, ground truth unreadable); `reset_in_place` and `configure_rebuilt`
+were run by hand on both slots and both returned READY. Restarting the
+platform right after a close loses that slot's reset; a restart should wait
+for `/api/range/ready/` to show no slot resetting.
