@@ -41,10 +41,7 @@ Updated: 2026-10-14 (after P6). Written for a session that has the cloud
    the store restore under the new migrations, the GNS3 service from its
    GHCR image, and the syslog sysctl from cloud-init on a rebuilt VM.
 3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
-4. `CLAUDE.md`'s seam note still says the lesson step text edits the
-   exclusion file and reloads nginx; since P6 F6 only reads it (`cat
-   {waf_rules}`) and only `{waf_rules}` is filled in.
-5. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
+4. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
    publishing the OPNsense image.
 
 ## Next, in order
