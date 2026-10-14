@@ -37,7 +37,7 @@
                 "drawing_id": "01491f25-038a-52b4-833f-0252b530f537",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"520\" height=\"370\"><rect width=\"520\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"520\" stroke=\"#2e6da4\"/></svg>",
+                "svg": "<svg width=\"520\" height=\"370\"><rect width=\"520\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
                 "x": 220,
                 "y": -100,
                 "z": 0
@@ -55,7 +55,7 @@
                 "drawing_id": "511b3cd8-ea13-5b4a-b915-cff161a83822",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"530\" height=\"180\"><rect width=\"530\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"530\" stroke=\"#5b6770\"/></svg>",
+                "svg": "<svg width=\"530\" height=\"180\"><rect width=\"530\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
                 "x": -140,
                 "y": 320,
                 "z": 0

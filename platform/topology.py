@@ -395,7 +395,7 @@ STARTS = "text-anchor: start;"
 ENDS = "text-anchor: end;"
 SYMBOL_SIZE = 60
 LABEL_GAP = 6
-LABEL_RISE = 28
+LABEL_RISE = 32
 LABEL_FALL = 6
 LABEL_ASIDE = 10
 LABEL_BELOW = 64
@@ -406,7 +406,10 @@ LABEL_CLEAR = 3
 STATUS_MARK_ALONG = 60
 STATUS_MARK_RADIUS = 6
 GLYPH_TOP = 4
-GLYPH_BOTTOM = 18
+GLYPH_BOTTOM = 23
+NAME_TOP = 1
+NAME_BOTTOM = 22
+LABEL_NUDGE = 3
 PORT_NAME = re.compile(r"(?P<kind>[A-Za-z])[A-Za-z]*(?P<number>\d+)")
 KOREAN_SUFFIX = " ("
 CAPTION_CHAR = 0.62
@@ -448,14 +451,18 @@ def named_above(node) -> bool:
     return (node.get("label") or {}).get("x") is None
 
 def _box(x, y, anchor, width) -> tuple[float, float, float, float]:
-    left = x - width if anchor == ENDS else x
+    left = x + LABEL_NUDGE - (width if anchor == ENDS else 0)
     return left, y + GLYPH_TOP, left + width, y + GLYPH_BOTTOM
+
+def label_box(label) -> tuple[float, float, float, float]:
+    return _box(label["x"], label["y"], ENDS if ENDS in label["style"] else STARTS, len(label["text"]) * LABEL_CHAR)
 
 def name_box(node) -> tuple[float, float, float, float]:
     label = node.get("label") or {}
     width = len(label.get("text") or "") * NAME_CHAR
     x = (SYMBOL_SIZE - width) / 2 if label.get("x") is None else label["x"]
-    return _box(x, label.get("y") or 0, STARTS, width)
+    y = label.get("y") or 0
+    return x + LABEL_NUDGE, y + NAME_TOP, x + LABEL_NUDGE + width, y + NAME_BOTTOM
 
 def _covers(one, other) -> bool:
     return (one[0] - LABEL_CLEAR < other[2] and other[0] < one[2] + LABEL_CLEAR
@@ -473,17 +480,18 @@ def _placed_label(node, other, others, text) -> tuple[int, int, str]:
         placed = []
         for side in (first, under if first == over else over):
             y = round(min(crossed) - LABEL_RISE if side == over else max(crossed) + LABEL_FALL)
-            placed.append((SYMBOL_SIZE + LABEL_GAP, y, STARTS) if dx > 0 else (-LABEL_GAP, y, ENDS))
+            placed.append((SYMBOL_SIZE + LABEL_GAP - LABEL_NUDGE, y, STARTS) if dx > 0
+                          else (-LABEL_GAP - LABEL_NUDGE, y, ENDS))
         return next((one for one in placed if not _covers(_box(*one, len(text) * LABEL_CHAR), name_box(node))),
                     placed[0])
     if dy < 0 and named_above(node):
-        return SYMBOL_SIZE + LABEL_GAP, LABEL_FALL, STARTS
+        return SYMBOL_SIZE + LABEL_GAP - LABEL_NUDGE, LABEL_FALL, STARTS
     top = LABEL_BELOW if dy > 0 else LABEL_ABOVE
     crossed = [half + dx / dy * (y - half)
                for y in (top + GLYPH_TOP - STATUS_MARK_RADIUS, top + GLYPH_BOTTOM + STATUS_MARK_RADIUS)]
     if _roomier(((1, 0), (-1, 0)), others) == (1, 0):
-        return round(max(crossed) + LABEL_ASIDE), top, STARTS
-    return round(min(crossed) - LABEL_ASIDE), top, ENDS
+        return round(max(crossed) + LABEL_ASIDE) - LABEL_NUDGE, top, STARTS
+    return round(min(crossed) - LABEL_ASIDE) - LABEL_NUDGE, top, ENDS
 
 def port_label(node, number: int) -> str:
     named = next((port["name"] for port in (node.get("properties") or {}).get("ports_mapping") or ()

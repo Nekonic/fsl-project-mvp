@@ -739,3 +739,13 @@ def test_the_kali_symbol_is_offsec_s_own_dragon_fetched_at_a_pinned_commit_check
     for drawn_in in LEARNER_MAPS:
         kali = [node for node in project(drawn_in)["topology"]["nodes"] if node["name"] == topology.ATTACKER]
         assert [(node["symbol"], node["label"]["text"]) for node in kali] == [(KALI_SYMBOL, "kali")], drawn_in
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_every_zone_of_a_learner_map_is_a_thin_outline_over_a_faint_fill(drawn_in):
+    zones = [ElementTree.fromstring(drawing["svg"]) for drawing in project(drawn_in)["topology"]["drawings"]]
+    boxes = [(svg, svg[0]) for svg in zones if svg[0].tag == "rect"]
+
+    assert boxes
+    for svg, box in boxes:
+        assert box.get("stroke-width") == "2" and box.get("fill-opacity") == "0.06", ElementTree.tostring(svg)
+        assert (box.get("width"), box.get("height")) == (svg.get("width"), svg.get("height"))
