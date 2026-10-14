@@ -187,3 +187,17 @@ def test_retrying_stops_when_no_room_comes_or_the_attempts_run_out():
     tries = []
     opening.retried(lambda: tries.append(1) or "409", lambda said: True, lambda: True, attempts=3)
     assert len(tries) == 3
+
+
+def test_a_red_team_run_refused_for_want_of_room_is_told_apart_from_any_other_refusal():
+    lost_the_slot = ("requests.exceptions.HTTPError: 409 Client Error: Conflict for url: "
+                     "http://localhost:8000/api/sessions/: {\"detail\": \"the range is not ready: "
+                     "slot 2: the range is resetting after the last session closed\"}")
+    assert opening.refused_a_run_for_room(lost_the_slot)
+    assert opening.refused_a_run_for_room(
+        "409 Client Error: Conflict: {\"detail\": \"2 sessions are already open on the range; close one first\"}")
+    assert not opening.refused_a_run_for_room(
+        "409 Client Error: Conflict: {\"detail\": \"fsl-edge did not take its configuration\"}"), (
+        "a range that refused for a reason other than room is retried for half an hour"
+    )
+    assert not opening.refused_a_run_for_room("503 Server Error: already open on the range")

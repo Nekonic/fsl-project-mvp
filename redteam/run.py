@@ -14,6 +14,7 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 django.setup()
 
+import requests
 from django.conf import settings
 
 from api.models import Session
@@ -65,10 +66,14 @@ def main() -> int:
     if attacks == len(cases):
         print("warning: no benign cases, false positives cannot be scored", file=sys.stderr)
 
-    session_id = harness.run(
-        cases, args.platform, launch, args.tool_target, scenario,
-        announce=opened,
-    )
+    try:
+        session_id = harness.run(
+            cases, args.platform, launch, args.tool_target, scenario,
+            announce=opened,
+        )
+    except requests.HTTPError as refused:
+        print(f"{refused}: {refused.response.text}", file=sys.stderr)
+        return 1
 
     print(f"session {session_id} done")
     print(f"  score:   curl -X POST {args.platform}/api/sessions/{session_id}/ingest/")

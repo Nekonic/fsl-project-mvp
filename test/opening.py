@@ -9,6 +9,10 @@ def refused_for_room(status: int, said: str) -> bool:
     return status == 409 and any(refusal in said for refusal in ROOM_REFUSALS)
 
 
+def refused_a_run_for_room(output: str) -> bool:
+    return CAP_REFUSAL in output and any(refusal in output for refusal in ROOM_REFUSALS)
+
+
 def has_room(readiness: dict | None, open_sessions: int) -> bool:
     readiness = readiness or {}
     slot = readiness.get("slot") or {}
