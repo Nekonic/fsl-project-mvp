@@ -160,7 +160,7 @@
     const state = closed ? badge(t("state.closed"), "neutral")
       : session.ready ? badge(t("state.ready"), "ok", true)
         : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
-    field("session-badges").innerHTML = badge(t(`kind.${kindOf(session)}`), session.kind === "lesson" ? "blue" : "neutral") + state;
+    field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
     const parts = [scenarioName()];
     if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);
@@ -232,31 +232,9 @@
   }
 
   function verdictBanner() {
-    const scenarioJudged = session.result && session.result.scenario;
-    if (scenarioJudged) {
-      show("verdict", true);
-      scenarioBanner(scenarioJudged);
-      return;
-    }
-    const judged = session.result && session.result.lesson;
+    const judged = session.result && session.result.scenario;
     show("verdict", Boolean(judged));
-    if (!judged) return;
-    const banner = field("verdict");
-    banner.classList.toggle("border-l-success", judged.passed);
-    banner.classList.toggle("border-l-danger", !judged.passed);
-    const reasons = (judged.diagnosis || []).map(([key, values]) => t(key, ...values)).join(" ");
-    banner.innerHTML = `
-      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
-      ${(judged.helped || []).map((kind) => `<span class="badge badge-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
-      <div class="min-w-0 flex-1">
-        <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "score.lesson.passed" : "score.lesson.failed", localized(`${lessonText()}.title`, "")))}</div>
-        <p class="text-muted mt-0.5">${esc(reasons)}</p>
-        ${judged.fix ? `<p class="text-[12px] text-muted mt-0.5" data-fix>${esc(`${t(`lesson.fix.${judged.fix}`)} ${t("lesson.fix.note")}`)}</p>` : ""}
-      </div>
-      <div class="text-right text-[13px]">
-        <div class="label">${esc(t("score.lesson.progress"))}</div>
-        <div class="font-semibold text-heading">${esc(t("score.lesson.verified", judged.verified))}</div>
-      </div>`;
+    if (judged) scenarioBanner(judged);
   }
 
   function objectiveTable(tiers, breaches) {
@@ -399,7 +377,6 @@
     show("scoreboard", true);
     verdictBanner();
     if (session.course_scenario) showScenarioDebrief(field("debrief"));
-    else if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("debrief"));
     await scoreTables(0);
   }
 
@@ -438,8 +415,7 @@
   async function restart() {
     const button = field("restart");
     button.disabled = true;
-    const settings = session.guidance
-      ? { guidance: true, lesson: session.lesson_id, mode: session.mode, defense: session.defense } : {};
+    const settings = session.lesson_id ? { guidance: true, lesson: session.lesson_id, defense: session.defense } : {};
     const asked = session.course_scenario ? { scenario: session.course_scenario } : { scenario: session.scenario, ...settings };
     const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
     if (started.ok && started.body.id) {
@@ -468,7 +444,7 @@
     header(result.lost, result.total);
     if (session.ended_at) {
       show("close", false);
-      field("restart").textContent = t(session.guidance ? "session.restart.lesson" : "session.restart");
+      field("restart").textContent = t(session.lesson_id ? "session.restart.lesson" : "session.restart");
       show("restart", true);
       await scoreboard();
       return;

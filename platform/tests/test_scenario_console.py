@@ -254,7 +254,7 @@ def test_a_worked_scenario_coaches_its_steps_and_polls_the_triage_checks(client)
       await browser.click('briefing-start');
       await browser.click('[data-pane="triage"]');
       for (let i = 0; i < 12; i += 1) await browser.wait(1000);
-      return {checked: range.checked || [], check: browser.element('#lesson-tabs [data-tab="check"]').classList.contains('hidden'),
+      return {checked: range.checked || [], check: document.querySelector('#lesson-tabs [data-tab="check"]') === null,
               done: browser.text('lesson-done'), hints: browser.text('lesson-hints')};
     """)
     result = seen["result"]

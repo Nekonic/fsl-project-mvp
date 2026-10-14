@@ -3,5 +3,17 @@
     <b data-t="rules.pane.heading" class="text-heading shrink-0"></b>
     <span data-t="rules.pane.note" class="text-muted truncate"></span>
   </div>
-  <div id="rules-pane-body" class="p-4 flex flex-col gap-3 text-[13px]"></div>
+  <div id="rules-pane-body" class="p-4 flex flex-col gap-3 text-[13px]">
+    <section id="lesson-rules" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
+      <h3 data-t="lesson.rules.heading" class="font-semibold text-heading"></h3>
+      <p data-t="lesson.rules.note" class="text-muted text-[12px]"></p>
+      <div id="lesson-rules-box"></div>
+      <div class="flex gap-2">
+        <button id="lesson-rules-validate" data-t="lesson.rules.validate" class="btn btn-sm btn-ghost"></button>
+        <button id="lesson-rules-apply" data-t="lesson.rules.apply" class="btn btn-sm btn-blue"></button>
+      </div>
+      <p id="lesson-rules-status" class="text-muted text-[12px]"></p>
+      <pre id="lesson-rules-errors" class="hidden code text-[11px] whitespace-pre-wrap"></pre>
+    </section>
+  </div>
 </div>

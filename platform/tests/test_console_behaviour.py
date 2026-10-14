@@ -73,7 +73,7 @@ browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
     return {body: {id: 1, scenario: "board", guidance: false, kind: "wargame", ready: true,
                    started_at: "2026-10-10T14:20:00Z", ended_at: "2026-10-10T15:02:00Z",
-                   result: {objectives: {lost: 1, undetected: 1, total: 3}, lesson: null}}};
+                   result: {objectives: {lost: 1, undetected: 1, total: 3}, scenario: null}}};
   }
   if (request.route === "/api/wargames/board/objectives/") {
     return {body: [
@@ -129,39 +129,32 @@ def test_a_closed_session_leads_with_what_was_taken_then_says_in_plain_sentences
     assert not re.search(r"\b(TP|FP|FN|TN)\b", result["page"]), "no scoreboard labels on a page a person reads"
     assert "Zero-sum" not in result["page"] and "3.5" not in result["page"]
 
-def test_a_closed_lesson_shows_its_last_verdict_before_the_score(client):
-    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
-        "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
-    ).replace("lesson: null}", "lesson: {passed: false, verified: 3, diagnosis: "
-              "[[\"lesson.diag.benign_blocked\", [\"board-normal-search-with-apostrophe\", 403]]]}}"), scenario="""
-      return {hidden: browser.element('verdict').classList.contains('hidden'), text: browser.text('verdict'),
-              restart: browser.text('restart')};
-    """)
+FOUNDATION_CLOSED = CLOSED.replace(
+    "guidance: false, kind: \"wargame\"",
+    "guidance: true, kind: \"lesson\", lesson_id: \"f1\", defense: \"minimal\", lesson: {text: \"lesson.range\", steps: []}")
 
-    assert seen["result"]["hidden"] is False
-    assert "FAIL" in seen["result"]["text"]
-    assert english("lesson.diag.benign_blocked", "board-normal-search-with-apostrophe", 403) in seen["result"]["text"]
-    assert english("score.lesson.verified", 3) in seen["result"]["text"]
-    assert seen["result"]["restart"] == english("session.restart.lesson")
-
-@pytest.mark.parametrize("now, earned, kind", [("guided", "self", "kind.practice"), ("self", "guided", "kind.lesson")])
-def test_a_closed_lesson_s_badge_names_the_mode_its_verdict_was_earned_in(client, now, earned, kind):
-    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
-        "guidance: false, kind: \"wargame\"",
-        f"guidance: true, kind: \"lesson\", mode: \"{now}\", lesson: {{text: \"lesson.board\", steps: []}}"
-    ).replace("lesson: null}", f"lesson: {{passed: true, verified: 1, diagnosis: [], mode: \"{earned}\"}}}}"), scenario="""
-      return browser.text('session-badges');
+def test_a_closed_foundation_shows_no_verdict_and_offers_to_restart_the_lesson(client):
+    seen = open_page(client, "/session/1/", setup=FOUNDATION_CLOSED, scenario="""
+      const hidden = browser.element('verdict').classList.contains('hidden');
+      const label = browser.text('restart');
+      const badges = browser.text('session-badges');
+      await browser.click('restart');
+      return {hidden, restart: label, badges,
+              posted: browser.requests.filter((r) => r.method === 'POST').map((r) => r.body)};
     """)
 
     assert seen["errors"] == []
-    assert english(kind) in seen["result"], (
-        "the badge on a judged lesson names the mode the VERIFY ran in, not the mode the session was switched to after"
-    )
+    assert seen["result"]["hidden"] is True, "a foundation is judged by its steps, so a closed one shows no verdict banner"
+    assert english("kind.lesson") in seen["result"]["badges"]
+    assert seen["result"]["restart"] == english("session.restart.lesson")
+    assert seen["result"]["posted"][0] == {"scenario": "board", "guidance": True, "lesson": "f1", "defense": "minimal"}
 
-def test_a_closed_lesson_says_beside_its_verdict_which_help_was_used(client):
-    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
-        "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
-    ).replace("lesson: null}", "lesson: {passed: true, verified: 1, diagnosis: [], helped: [\"hint\", \"do\"]}}"), scenario="""
+SCENARIO_CLOSED = CLOSED.replace(
+    "guidance: false, kind: \"wargame\"", "guidance: false, kind: \"scenario\", course_scenario: \"2.1\"")
+
+def test_a_closed_scenario_says_beside_its_verdict_which_help_was_used(client):
+    seen = open_page(client, "/session/1/", setup=SCENARIO_CLOSED.replace(
+        "scenario: null}", "scenario: {passed: true, fix: null, windows: 1, helped: [\"hint\", \"do\"]}}"), scenario="""
       return browser.text('verdict');
     """)
 
@@ -170,7 +163,7 @@ def test_a_closed_lesson_says_beside_its_verdict_which_help_was_used(client):
 
 def test_the_main_page_says_beside_a_pass_which_help_was_used(client):
     seen = open_page(client, "/", setup=FULL_RANGE.replace(
-        "lesson: {passed: true, verified: 1}", "lesson: {passed: true, verified: 1, helped: [\"do\"]}"), scenario="""
+        "helped: []}}},", "helped: [\"do\"]}}},"), scenario="""
       return browser.text('finished');
     """)
 
@@ -359,9 +352,10 @@ const closed = new Set();
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [{id: "board", name: "Board", description: "", cases: 12, attacks: 8, benign: 4, objectives: 3,
-                    lesson: true, lesson_steps: 11, lesson_text: "lesson.board",
-                    lessons: [{id: "waf-exclusion", order: 1, title: "lesson.board.title", goal: "lesson.board.summary",
-                               minutes: 40, level: "easy", defense: "minimal", prerequisites: [], steps: 11}],
+                    foundations: [{id: "f1", order: 1, title: "lesson.range.title", goal: "lesson.range.summary",
+                                   minutes: 40, level: "easy", defense: "minimal", prerequisites: [], steps: 11,
+                                   learns: "lesson.range.learns"}],
+                    scenarios: [],
                     category: "sql-injection", difficulty: "medium", minutes: 40}]};
   }
   if (request.route === "/api/range/ready/") return {body: {ready: true, substrate: "compose", slot: null, max_sessions: 2}};
@@ -371,16 +365,16 @@ browser.serve((request) => {
   }
   if (request.route === "/api/sessions/" && request.query.state === "open") {
     return {body: [
-      {id: 201, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "guided", ready: true, started_at: "2026-10-10T14:20:00Z"},
+      {id: 201, scenario: "board", kind: "lesson", lesson_id: "f1", ready: true, started_at: "2026-10-10T14:20:00Z"},
       {id: 202, scenario: "board", kind: "wargame", ready: false, started_at: new Date().toISOString()},
     ].filter((row) => !closed.has(String(row.id)))};
   }
   if (request.route === "/api/sessions/" && request.query.state === "closed") {
     return {body: [
-      {id: 200, scenario: "board", kind: "lesson", started_at: "2026-10-10T13:13:00Z", ended_at: "2026-10-10T13:55:00Z",
-       result: {objectives: {lost: 0, undetected: 0, total: 3}, lesson: {passed: true, verified: 1}}},
+      {id: 200, scenario: "board", kind: "scenario", course_scenario: "2.1", started_at: "2026-10-10T13:13:00Z",
+       ended_at: "2026-10-10T13:55:00Z", result: {objectives: {lost: 0, undetected: 0, total: 3}, scenario: {passed: true, fix: null, windows: 1, helped: []}}},
       {id: 199, scenario: "board", kind: "wargame", started_at: "2026-10-10T12:58:00Z", ended_at: "2026-10-10T13:26:00Z",
-       result: {objectives: {lost: 2, undetected: 1, total: 3}, lesson: null}},
+       result: {objectives: {lost: 2, undetected: 1, total: 3}, scenario: null}},
     ]};
   }
   const closing = /^\\/api\\/sessions\\/(\\d+)\\/close\\/$/.exec(request.route);
@@ -478,16 +472,12 @@ def test_the_red_console_groups_cases_into_attacks_and_benign_with_what_their_la
     assert "1/2" in result["taken"].replace(" ", "")
     assert result["loot"] is False, "a loot-verified target offers the hash submission at the top"
 
-def test_a_closed_lesson_that_passed_shows_its_debrief_and_its_fix_on_the_score_page(client):
-    import json
+def test_a_closed_scenario_shows_its_debrief_and_its_fix_on_the_score_page(client):
+    from tests.test_scenario_console import DEBRIEF
 
-    from tests.test_lesson_console import DEBRIEF
-
-    setup = CLOSED.replace(
-        "guidance: false, kind: \"wargame\"", "guidance: true, kind: \"lesson\", lesson: {text: \"lesson.board\", steps: []}"
-    ).replace("lesson: null}", "lesson: {passed: true, verified: 2, diagnosis: [], fix: \"level\"}}").replace(
+    setup = SCENARIO_CLOSED.replace("scenario: null}", "scenario: {passed: false, fix: \"rule\", windows: 1, helped: []}}").replace(
         '  return {status: 404, body: {detail: "not served"}};',
-        '  if (request.route === "/api/sessions/1/lesson/debrief/") return {body: ' + json.dumps(DEBRIEF) + '};\n'
+        '  if (request.route === "/api/sessions/1/scenario/debrief/") return {body: ' + js(DEBRIEF) + '};\n'
         '  return {status: 404, body: {detail: "not served"}};')
     seen = open_page(client, "/session/1/", setup=setup, scenario="""
       return {hidden: browser.element('debrief').classList.contains('hidden'), text: browser.text('debrief'),
@@ -497,8 +487,8 @@ def test_a_closed_lesson_that_passed_shows_its_debrief_and_its_fix_on_the_score_
     assert seen["errors"] == []
     assert seen["result"]["hidden"] is False
     assert english("lesson.debrief.heading") in seen["result"]["text"]
-    assert english("lesson.risk.replayed", 2) in seen["result"]["text"]
-    assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"
+    assert english("scenario.risk.rule") in seen["result"]["text"]
+    assert seen["result"]["fix"] == f"{english('lesson.fix.rule')} {english('lesson.fix.note')}"
 
 def test_opening_a_session_page_remembers_its_id_in_this_browser_newest_first(client):
     seen = open_page(client, "/session/1/", setup="localStorage.setItem('fsl-opened-sessions', '[5, 1, 3]');\n" + CLOSED,

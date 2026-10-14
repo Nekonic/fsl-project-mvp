@@ -123,13 +123,13 @@ def test_the_blue_page_ships_no_withheld_answer_or_pass_line(client):
         assert not [key for key in withheld[language] if key in page]
     assert "{% comment %}" not in page and "const WITHHELD" not in page
 
-def test_every_lesson_step_has_a_withheld_answer_and_line_in_both_languages():
+def test_every_foundation_step_has_a_withheld_answer_and_line_in_both_languages():
     import wargames
 
     withheld = strings.withheld()
     missing = [
         f"{taught['text']}.{part}.{step['id']}"
-        for wargame_id in wargames.WARGAMES for taught in wargames.lessons(wargame_id)
+        for wargame_id in wargames.WARGAMES for taught in wargames.foundations(wargame_id)
         for step in taught.get("steps", []) for part in ("answer", "line")
         if any(f"{taught['text']}.{part}.{step['id']}" not in withheld[language] for language in strings.LANGUAGES)
     ]
@@ -209,15 +209,6 @@ def test_the_console_templates_write_no_confusion_matrix_label_either():
     ]
 
     assert offenders == [], offenders
-
-def test_the_do_it_yourself_waf_text_names_no_reload_that_only_one_substrate_accepts():
-    table = tables()
-    for language in ("en", "ko"):
-        text = table[language]["lesson.board.write"]
-        assert "nginx -s reload" not in text and "systemctl" not in text, (
-            f"{language}: the container reloads with nginx -s reload and the WAF VM with "
-            f"sudo systemctl reload nginx; the text must point at the step's own reload: {text}"
-        )
 
 TRUE_POSITIVE_KO = "\uc815\ud0d0"
 FALSE_NEGATIVE_KO = "\ubbf8\ud0d0"

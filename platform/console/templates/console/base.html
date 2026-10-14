@@ -188,10 +188,6 @@
       ).join('<span class="text-faint">/</span>');
     }
 
-    const earnedIn = (session) => (session.result && session.result.lesson && session.result.lesson.mode) || session.mode;
-
-    const kindOf = (session) => (session.kind === "lesson" && earnedIn(session) === "self" ? "practice" : session.kind);
-
     function badge(text, tone, dot) {
       return `<span class="badge badge-${tone}">${dot ? `<span class="dot dot-${tone}"></span>` : ""}${esc(text)}</span>`;
     }
