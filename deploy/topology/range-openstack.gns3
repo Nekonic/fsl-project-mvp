@@ -19,8 +19,8 @@
                 "drawing_id": "49d37a28-900f-592b-9b2e-83d2d4d84cf3",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"340\" height=\"460\"><rect width=\"340\" height=\"460\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -756,
+                "svg": "<svg width=\"430\" height=\"460\"><rect width=\"430\" height=\"460\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -802,
                 "y": -360,
                 "z": 0
             },
@@ -29,7 +29,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"1090\" height=\"600\"><rect width=\"1090\" height=\"600\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -406,
+                "x": -362,
                 "y": -360,
                 "z": 0
             },
@@ -38,7 +38,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"655\" height=\"545\"><rect width=\"655\" height=\"545\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
-                "x": 19,
+                "x": 63,
                 "y": -325,
                 "z": 0
             },
@@ -47,7 +47,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"599\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on OpenStack: the network you defend (one slot)</text></svg>",
-                "x": -756,
+                "x": -802,
                 "y": -420,
                 "z": 2
             },
@@ -56,7 +56,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"102\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
-                "x": -746,
+                "x": -792,
                 "y": -355,
                 "z": 2
             },
@@ -65,7 +65,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"301\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#b03a2e\" fill-opacity=\"1.0\">customers and the attacker come from here</text></svg>",
-                "x": -746,
+                "x": -792,
                 "y": 70,
                 "z": 2
             },
@@ -74,7 +74,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"222\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
-                "x": -396,
+                "x": -352,
                 "y": -355,
                 "z": 2
             },
@@ -83,7 +83,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"460\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">inside fsl-wargame-host: docker compose projects board and corp</text></svg>",
-                "x": 29,
+                "x": 73,
                 "y": 195,
                 "z": 2
             },
@@ -92,7 +92,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"230\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">attacker's machine (Kali VM)</text></svg>",
-                "x": -746,
+                "x": -792,
                 "y": 0,
                 "z": 2
             },
@@ -101,7 +101,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"334\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">edge firewall (OPNsense), Suricata on WAN</text></svg>",
-                "x": -401,
+                "x": -357,
                 "y": 0,
                 "z": 2
             },
@@ -110,7 +110,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"308\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">vtnet0 wan (internet), vtnet1 lan (estate)</text></svg>",
-                "x": -401,
+                "x": -357,
                 "y": 18,
                 "z": 2
             },
@@ -119,7 +119,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"286\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">web firewall VM (ModSecurity + CRS)</text></svg>",
-                "x": -71,
+                "x": -357,
                 "y": -250,
                 "z": 2
             },
@@ -128,7 +128,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"222\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">answers board.com and corp.com</text></svg>",
-                "x": -71,
+                "x": -357,
                 "y": -232,
                 "z": 2
             },
@@ -137,7 +137,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"174\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">wargame host (Docker)</text></svg>",
-                "x": 29,
+                "x": 73,
                 "y": 0,
                 "z": 2
             },
@@ -146,7 +146,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"182\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">network IDS (Suricata)</text></svg>",
-                "x": 119,
+                "x": 163,
                 "y": -250,
                 "z": 2
             },
@@ -155,7 +155,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"316\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">host network: watches the host's estate NIC</text></svg>",
-                "x": 119,
+                "x": 163,
                 "y": -232,
                 "z": 2
             },
@@ -164,7 +164,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"198\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board website: board.com</text></svg>",
-                "x": 479,
+                "x": 523,
                 "y": -240,
                 "z": 2
             },
@@ -173,7 +173,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"198\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">board's database (MySQL)</text></svg>",
-                "x": 479,
+                "x": 523,
                 "y": -115,
                 "z": 2
             },
@@ -182,7 +182,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"278\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp website (WordPress): corp.com</text></svg>",
-                "x": 479,
+                "x": 523,
                 "y": 15,
                 "z": 2
             },
@@ -191,7 +191,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"190\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">corp's database (MySQL)</text></svg>",
-                "x": 479,
+                "x": 523,
                 "y": 140,
                 "z": 2
             },
@@ -200,7 +200,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"654\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">log store (Elasticsearch): fsl-waf, fsl-edge and suricata send their records here</text></svg>",
-                "x": -261,
+                "x": -217,
                 "y": 280,
                 "z": 2
             },
@@ -209,7 +209,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"308\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">square icon: a VM; round icon: a container</text></svg>",
-                "x": -756,
+                "x": -802,
                 "y": 360,
                 "z": 2
             },
@@ -218,7 +218,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"596\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">This map shows how the range is wired. The machines run in the range, not in GNS3:</text></svg>",
-                "x": -756,
+                "x": -802,
                 "y": 380,
                 "z": 2
             },
@@ -227,7 +227,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"712\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">GNS3 never starts them, so the red marks on the links mean stopped in GNS3, not down in the range.</text></svg>",
-                "x": -756,
+                "x": -802,
                 "y": 398,
                 "z": 2
             }
@@ -488,7 +488,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -516,
+                "x": -532,
                 "y": -70,
                 "z": 1
             },
@@ -558,7 +558,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": -136,
+                "x": -62,
                 "y": -70,
                 "z": 1
             },
@@ -583,7 +583,7 @@
                     "platform": "x86_64"
                 },
                 "symbol": ":/symbols/affinity/square/red/scull.svg",
-                "x": -696,
+                "x": -752,
                 "y": -70,
                 "z": 1
             },
@@ -608,7 +608,7 @@
                     "platform": "x86_64"
                 },
                 "symbol": ":/symbols/affinity/square/green/firewall.svg",
-                "x": -326,
+                "x": -282,
                 "y": -70,
                 "z": 1
             },
@@ -633,7 +633,7 @@
                     "platform": "x86_64"
                 },
                 "symbol": ":/symbols/affinity/square/green/shield.svg",
-                "x": -136,
+                "x": -62,
                 "y": -260,
                 "z": 1
             },
@@ -658,7 +658,7 @@
                     "platform": "x86_64"
                 },
                 "symbol": "ubuntu.svg",
-                "x": 54,
+                "x": 98,
                 "y": -70,
                 "z": 1
             },
@@ -728,7 +728,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 244,
+                "x": 288,
                 "y": -170,
                 "z": 1
             },
@@ -798,7 +798,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 244,
+                "x": 288,
                 "y": 30,
                 "z": 1
             },
@@ -821,7 +821,7 @@
                     "image": "ghcr.io/nekonic/fsl-board:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 414,
+                "x": 458,
                 "y": -260,
                 "z": 1
             },
@@ -844,7 +844,7 @@
                     "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 414,
+                "x": 458,
                 "y": -135,
                 "z": 1
             },
@@ -867,7 +867,7 @@
                     "image": "ghcr.io/nekonic/fsl-corp:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 414,
+                "x": 458,
                 "y": -5,
                 "z": 1
             },
@@ -890,7 +890,7 @@
                     "image": "ghcr.io/nekonic/fsl-corp-db:dev"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 414,
+                "x": 458,
                 "y": 120,
                 "z": 1
             },
@@ -913,7 +913,7 @@
                     "image": "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
                 },
                 "symbol": ":/symbols/affinity/circle/green/inspect.svg",
-                "x": 54,
+                "x": 98,
                 "y": -260,
                 "z": 1
             },
@@ -936,7 +936,7 @@
                     "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": -326,
+                "x": -282,
                 "y": 260,
                 "z": 1
             }

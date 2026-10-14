@@ -309,8 +309,12 @@ def facts(project, declared, scenario) -> dict[str, list[str]]:
 LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #1b4f8a;fill-opacity: 1.0;"
 SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #5b6770;fill-opacity: 1.0;"
 SYMBOL_SIZE = 60
-LABEL_REACH = 46
-LABEL_CHAR = 5.0
+LABEL_REACH = 36
+LABEL_CHAR = 5.2
+LABEL_GAP = 6
+LABEL_BELOW = 12
+ALONG = 0.5
+RISING = 0.15
 KOREAN_SUFFIX = " ("
 
 def renamed(value: str, salt: str) -> str:
@@ -329,16 +333,11 @@ def _placed_label(text, node, other) -> tuple[int, int]:
     dx, dy = other["x"] - node["x"], other["y"] - node["y"]
     length = math.hypot(dx, dy) or 1
     ux, uy = dx / length, dy / length
-    x = half + ux * LABEL_REACH
-    y = half + uy * LABEL_REACH + 3
+    x, y = half + ux * LABEL_REACH, half + uy * LABEL_REACH
     width = len(text) * LABEL_CHAR
-    if ux < -0.35:
-        x -= width
-    elif abs(ux) <= 0.35:
-        x -= width / 2
-    if uy < -0.35:
-        y -= 4
-    return round(x), round(y)
+    if abs(ux) <= ALONG:
+        return round(x + LABEL_GAP), round(y + LABEL_BELOW if uy > 0 else y)
+    return round(x if ux > 0 else x - width), round(y + LABEL_BELOW if uy < -RISING else y - LABEL_GAP)
 
 def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     document = json.loads(json.dumps(project))

@@ -444,7 +444,7 @@ def test_the_waf_and_each_site_show_the_domain_learners_type(drawn_in):
     def beside(name):
         node = nodes(learner)[name]
         return " ".join(shape["text"] for shape in texts
-                        if abs(shape["x"] - node["x"]) < 120 and abs(shape["y"] - node["y"]) < 100)
+                        if -320 < shape["x"] - node["x"] < 120 and abs(shape["y"] - node["y"]) < 100)
 
     assert set(domains().values()) == {"board.com", "corp.com"}
     assert all(domain in beside(stack.roles["gateway"]) for domain in domains().values())
