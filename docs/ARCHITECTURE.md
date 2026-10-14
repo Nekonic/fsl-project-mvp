@@ -291,13 +291,20 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   `logs`); on Docker `fsl-filebeat`, the session's shipper that reads the WAF's
   and Suricata's log volumes. A sensor with no NIC of its own (Suricata in the
   WAF's namespace on Docker, on the wargame host's network on OpenStack) is
-  not a node; the note of the host whose NIC it uses names it, so no node
+  not a node and is folded into the host whose NIC it uses, so no node
   floats. `test_gns3_topology.py` checks it as exactly that projection. The
-  WAF and the sites carry the domains learners type (`board.com`, `corp.com`,
-  the WAF host's declared names). There is no legend: a short title, a title
-  per zone and one plain line per node. Every link runs level or upright, or
-  is a GNS3 3.1 `flowchart` link (`link_style.link_type`) drawn as right
-  angles, so the estate and monitoring switches read as buses. Symbols are GNS3's
+  map is drawn the way lab topologies are (Cisco NetAcad lab topology, NSRC
+  workshop logical diagram): a node carries its hostname and nothing else, the
+  sites carry the domains learners type (`board.com`, `corp.com`, the WAF
+  host's declared names; `topology.shown_as` maps the range's container names
+  to them, and GNS3 2.2.61 and 3.1.0a6 keep a dotted RFC 1123 name on load),
+  each zone is a box captioned with its segment's name only (the host's name
+  for the box round its containers, the Docker network's name for a bridge),
+  and there is no title, legend or note. Every link is one straight line,
+  level, upright or diagonal, none crossing another link or a node and no two
+  sharing a stretch of line (K2,3 forbids joining three hosts to both estate
+  and monitoring with level and upright lines alone, so the edge and the
+  wargame host reach `monitoring` on a diagonal each). Symbols are GNS3's
   bundled affinity set (square for a VM, circle for a container; red attacker,
   green defence, blue sites, gray log store and switches, a globe for the
   internet), and the wargame host wears the gns3-registry Ubuntu symbol, which
@@ -311,11 +318,10 @@ order); the wargame host's containers hang off a switch per compose project
 (`board-default`, `corp-default`); on the system map a sensor that shares another's network
 namespace or the host network has no NIC and a note beside it says whose
 network it watches (in the Docker project a dashed line joins `fsl-suricata` to
-`fsl-waf`). Each declared segment is a titled rectangle holding its switch
-(Internet, Application estate, Management and monitoring), and each container
-or VM has a plain-words note (`attacker's machine (Kali)`, `web firewall
-(ModSecurity + CRS)`); node names stay the host names, because GNS3 3.1 makes a
-node's label its name.
+`fsl-waf`). On the system map each declared segment is a titled rectangle
+holding its switch (Internet, Application estate, Management and monitoring),
+and each container or VM has a plain-words note; GNS3 3.1 makes a node's label
+its name.
 `platform/tests/test_gns3_topology.py`
 derives the system maps' expected nodes and links from `declaration.yaml`, `compose.yaml`,
 `session.yaml` and the wargame compose files and checks GNS3's structural
@@ -330,21 +336,38 @@ release.
 The learner sees the addresses of their own range. `api/maps.py` derives, from
 the learner map, one project per OpenStack slot (`slot 1`, `slot 2`) or Docker
 session (`session <id>`) in each language (`topology.labelled`): every host's
-link end is labelled with the interface and its address on that segment, read
-from the range (only the default origin's address on Kali's and the edge's
-internet side; nothing on the wargame host's side of a Docker bridge, whose
-`br-` name means nothing to a learner; nothing on a `monitoring` link, whose
-NIC is on the management network). A label lies level beside its node on the
-side its link leaves (`topology.leaving`), above a level line clear of GNS3's
-status mark, right of an upright one, right-aligned with `text-anchor: end`
-on a node's left; every id is `uuid5(<learner id>,
+link end is labelled with the interface and the last octet of its address on
+that segment (`ens3 .102`, `vtnet0 .1`), read from the range (only the default
+origin's address on Kali's and the edge's internet side; nothing on the
+wargame host's side of a Docker bridge, whose `br-` name means nothing on a
+map; nothing on a `monitoring` link, whose NIC is on the management network),
+and each zone caption gains the network its segment holds on the range
+(`Application estate 10.30.0.0/24`, `board_default 172.18.0.0/16`; the
+caption of a switch is the text in the smallest box holding it,
+`topology.captions`); Monitoring keeps its name alone. A label lies level
+beside its node on the side its link leaves (`topology.leaving`), above the
+line or below it when the link climbs, clear of GNS3's status mark, right of
+an upright one, right-aligned with `text-anchor: end` on a node's left; every
+id is `uuid5(<learner id>,
 "slot-<n>")` (or `session-<id>`), the name gets the suffix, and
 `show_interface_labels` is on. The adapters read the interfaces
 (`interfaces()`): on OpenStack `ip -o -4 addr` (`ifconfig` on OPNsense) on
 each slot host over a runner that runs on the host itself, and on the wargame
 host the compose containers' addresses through `nsenter` and the bridges by
 Docker network id; on Docker each session endpoint's MAC is matched to
-`/sys/class/net` inside its container. `gns3.publish` signs in as GNS3's admin
+`/sys/class/net` inside its container. The same read takes each host's and
+container's default route (`/proc/net/route`, `netstat -rn` on OPNsense) and
+gives the gateway to the interface it leaves by.
+
+The map carries no addresses beyond the last octet; the Topology pane's
+Addressing table view (`GET /api/sessions/<id>/topology/addresses/`,
+`topology.addressing`) lists, from the same read (kept per slot or session by
+`api/maps.py` and refreshed when the map is loaded), each map host's
+interfaces on the learner's segments (device, interface, address/prefix,
+default gateway) and the services: each domain on the WAF (port 80, the port
+`deploy/waf/range.conf` and the session WAF listen on) and each site's
+database (3306, MySQL's default). A range that cannot be read answers with
+empty tables and the reason in `detail`. `gns3.publish` signs in as GNS3's admin
 (the password from `FSL_GNS3_ADMIN_PASSWORD` or `/run/fsl-gns3/admin-password`,
 the GNS3 data directory mounted read-only; the file is 0640 to the Docker
 socket's group), deletes the project, imports it as a portable project whose
@@ -358,9 +381,9 @@ says why in `detail`.
 
 Each project has a Korean pair for Korean learners,
 `deploy/topology/range-docker.ko.gns3` and `range-openstack.ko.gns3`: the same
-nodes, links, ports and positions, with only the drawn words (map title, zone
-titles, the notes beside nodes) in Korean, in the terms of
-`docs/vocabulary.md`; node names stay the host names. Every id in the pair is
+nodes, links, ports and positions, with only the zone captions that name a
+segment in Korean, in the terms of `docs/vocabulary.md`; node names and the
+captions naming a host or a Docker network stay as the machine knows them. Every id in the pair is
 `uuid5(<English id>, "ko")` and the project name carries a Korean suffix,
 because GNS3's compute keeps nodes by node id alone, so two open projects may
 not share one. The English file is canonical; the test rebuilds the Korean

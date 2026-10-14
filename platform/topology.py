@@ -452,7 +452,8 @@ def addressing(project, declared, found, first: str = "") -> dict:
         if kinds.get(one.host, SWITCH) != SWITCH and kinds.get(one.segment) == SWITCH:
             held.setdefault((one.host, one.name, one.segment), []).append(one)
     devices = []
-    for (host, name, segment), ones in sorted(held.items(), key=lambda item: (order.index(item[0][0]), item[0][1])):
+    for (host, name, segment), ones in sorted(held.items(), key=lambda item: (order.index(item[0][0]),
+                                                                          item[0][1].startswith(BRIDGE_PREFIX), item[0][1])):
         head = _head(ones, first)
         devices.append({"device": host, "interface": name, "address": head.address, "segment": segment,
                         "gateway": next((one.gateway for one in ones if one.gateway), "")})
