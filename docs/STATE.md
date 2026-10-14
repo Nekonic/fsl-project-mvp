@@ -14,7 +14,10 @@ On 2026-09-20 the repo moved from proving the hypothesis to building the
 smallest product that demonstrates it
 (`docs/superpowers/specs/2026-09-20-product-flow-design.md`, all four phases
 done). On 2026-10-08 the user approved the next direction, a session-isolated
-learning MVP (backlog 0).
+learning MVP (backlog 0). Since 2026-10-13 its course is foundations F1-F6
+and eleven timed scenarios on live customer traffic, judged over a final
+check (`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`);
+the older lessons 0-5 and 7 remain until P6 removes them.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -32,7 +35,7 @@ source address and the proxy's marker. The blue console is a sidebar that
 frames the real tools (Kibana, a WAF terminal, and a Website pane: a site
 browser with a Network panel) and calls `/api/` for the session, the site's
 requests, lesson hints, verify, ingest and detections. The only rule editor is the Suricata one the IDS lessons
-show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusion- and level-only. The session page's confirm-close calls
+and the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusion- and level-only. The session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
 calls `/ingest/` too, and `redteam/run.py` prints the curl.
 
@@ -747,6 +750,29 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `FSL_LESSON_ALERT_WAIT` (30 s), the Korean search at PL2 through the
       site browser, and whether the edge's `suricata -T` now shows an error
       line (its OPNsense template logs to syslog only).
+- [x] Scenario course P0-P4 (2026-10-13): the GNS3 topology and its pane,
+      foundations F1-F6, customer traffic, the scenario engine and console;
+      P4 run live with 1.1 and 2.1 (sessions 307-313).
+      `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`.
+- [x] Scenario course P5 (2026-10-13/14): scenarios 1.2, 1.3, 2.2, 2.3,
+      3.1-3.4 and 4.1 on the board; every scenario failed a final check with
+      a wrong defence and passed one with a right defence, live on OpenStack
+      (sessions 307-332; table in `docs/DECISIONS.md`, "P5 built").
+- [x] UDP syslog drops that left some sqlmap alerts without a marker: a
+      32 MiB receive buffer (`net.core.rmem_max` in the platform VM's
+      cloud-init, Filebeat `read_buffer`); 0 receive-buffer errors live over
+      every P5 run. Open: the cloud-init path on a rebuilt VM.
+- [ ] Scenario course P6: remove lessons 0-5 and 7 and the rungs; docs; a
+      live run.
+- [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
+      accepts `red: person`. Needs a second person to run live.
+- [ ] A range reset interrupted by a platform restart is not resumed at
+      boot: the slot refuses sessions until `POST /api/range/configure/`.
+- [ ] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under
+      `/search/` did not serve the Korean search (hypothesis: 920272 also
+      matches the request URI); measure.
+- [ ] The unexplained `test_corp_*` "no `_wpnonce`" error (once, passed on
+      rerun).
 - [ ] Lesson 6 (corp: what a WAF cannot see) is not built: it needs a red
       actor outside the lesson to make the option flip, and the corp replay
       fixes (repeatable logins, reset before VERIFY).

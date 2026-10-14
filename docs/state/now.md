@@ -4,63 +4,49 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-13. Written for a session that has the cloud
+Updated: 2026-10-14. Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
 
-- Goal in flight: the blue-team course. Design and rulings D1-D11:
-  `docs/superpowers/specs/2026-10-13-blue-team-course-design.md` and the
-  2026-10-13 entries in `docs/DECISIONS.md`.
-- `dev` = 8f9acb0. This branch (`claude/task-list-review-fc4953`) adds the
-  course on top: the lesson foundation (server-side steps and checks, replays
-  out of both scores, WAF snapshots, ungated open path), the existing lesson
-  made honest (Lesson / Practice / Wargame rungs, ticket, start card,
-  debrief), lessons 0, 1, 3, 4, 5, 7, and the fixes the first live run forced.
-  Not pushed.
-- Platform VM 192.168.0.210 runs this branch's platform image, built on the
-  VM under the dev tag; `/opt/fsl` git index is re-pointed at the branch. Its
-  pre-course store backup is in `/opt/fsl/backups/*-pre-course/`. The 8002
-  rule on the `fsl-platform` security group was added by hand (the Heat
-  template now has it).
-- Live on 2026-10-13: full `bin/verify` on the VM, unit 2003 passed,
-  acceptance 77 passed / 0 failed / 0 errors / 71 skipped in 1,448 s; every
-  lesson walked end to end over the API on a slot.
+- Goal in flight: the scenario course. Design:
+  `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`;
+  rulings: the 2026-10-13 entries in `docs/DECISIONS.md` (P4 built, P5 built).
+- `dev` = 8f9acb0. This branch (`claude/task-list-review-fc4953`) adds, not
+  pushed: the GNS3 topology and its pane (P1), foundations F1-F6 (P2),
+  customer traffic (P3), the scenario engine and console (P4), and the
+  scenarios 1.1-1.3, 2.1-2.3, 3.1-3.4 and 4.1 on the board (P5), with the
+  fixes the live runs forced. The older course (lessons 0-5 and 7, the
+  Lesson / Practice / Wargame rungs) is still in the code beside it.
+- Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
+  slots): each failed a final check with a wrong defence and passed one with
+  a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
+- The platform VM runs this branch's platform image, built on the VM; its
+  pre-course store backup is in `/opt/fsl/backups/*-pre-course/`. The UDP
+  receive-buffer sysctl was applied there by hand (the same file cloud-init
+  now writes).
 
 ## Waiting for the user
 
 1. Gate 2: push this branch to `dev` (fast-forward).
 2. After the push: the images workflow, then `bin/cloud up --replace` run
-   untouched. It proves the 8002 rule and the `python3-venv`/`nodejs`
-   packages from the Heat template and the store restore under migrations
-   0020-0023; none of these can run before the images exist on GHCR.
-3. Review of the lesson text (now seven lessons; theory and hint cards still
-   name the answers by design).
-4. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
-5. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
+   untouched. It proves what cannot run before the images exist on GHCR: the
+   8002 rule and the `python3-venv`/`nodejs` packages from the Heat template,
+   the store restore under the new migrations, the GNS3 service from its
+   GHCR image, and the syslog sysctl from cloud-init on a rebuilt VM.
+3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
+4. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
    publishing the OPNsense image.
-
-- P4 (2026-10-13): the scenario engine and console are built and were run
-  live on OpenStack (sessions 307-313, closed): 2.1 fails with no fix, passes
-  with the narrow fix and with 949110 removed (959100 still holds sqlmap),
-  fails and loses 3/3 with 949110 and 959100 removed; 1.1 passes on its
-  verdicts. Detail: `docs/DECISIONS.md`, "P4 built". Not pushed.
 
 ## Next, in order
 
-0. P5: the remaining scenarios (1.2, 1.3, 2.2, 2.3, 3.x, 4.x). Open from P4:
-   the judgement class judged on its verdicts alone (confirm), the UDP drops
-   that leave some sqlmap alerts without a marker (a `net.core.rmem_max` sysctl
-   in the platform VM's cloud-init, or TCP syslog).
-
-1. Lesson 6 (corp, "make the option flip noticed"): needs a red actor outside
-   the lesson and repeatable corp replays (per-replay logins, reset before
-   VERIFY).
-2. At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under `/search/`
-   did not serve the Korean search (hypothesis: 920272 also matches the
-   request URI); measure, so the assessment has a narrow fix as well as the
-   level.
-3. The unexplained `test_corp_*` "no `_wpnonce`" error (once, passed on
-   rerun).
-4. Acceptance run time and ingest re-reading the whole window (paged since
+1. P6 cleanup: remove lessons 0-5 and 7 and the rungs now that the
+   foundations and scenarios replace them; docs; a live run.
+2. 4.2, a person as the red team against the learner: the engine accepts
+   `red: person`; needs a second person to run it live.
+3. A corp lesson or scenario: corp's CVEs succeed but it has no customer
+   traffic; needs a generator for WordPress first (P3's shape).
+4. A range reset interrupted by a platform restart is not resumed at boot;
+   deploy only when `/api/range/ready/` shows no slot resetting, or resume it.
+5. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
