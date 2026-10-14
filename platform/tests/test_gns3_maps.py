@@ -278,7 +278,8 @@ def test_every_label_lies_level_clear_of_its_node_on_the_side_its_link_leaves(pa
             elif down > 0:
                 assert label["y"] > size and label["x"] > size // 2
             else:
-                assert label["y"] < 0 and label["x"] > size // 2
+                assert label["x"] > size and 0 <= label["y"] < size // 2 and topology.STARTS in label["style"], (
+                    "a link that climbs leaves the space above the node to the node's own name")
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
@@ -448,3 +449,22 @@ def test_each_zone_caption_on_a_slot_s_map_carries_the_networks_its_links_are_la
     assert not [text for text in caption_texts(drawn) if "10.31.0." in text], "no management network is named"
     assert not [text for text in caption_texts(drawn) if "wargame" in text or "_default" in text], (
         "no zone names a machine or a Docker network")
+
+@pytest.mark.django_db
+def test_a_slot_keeps_the_map_of_its_newest_session_and_a_docker_range_the_maps_of_its_open_ones():
+    from django.utils import timezone
+
+    from api.models import Session
+    from api.views import _maps_live
+
+    slotted = SimpleNamespace(slots=2, in_slot=lambda number: None)
+    standing = Session.objects.create(scenario="board")
+    Session.objects.create(scenario="board", slot=1, ended_at=timezone.now())
+    Session.objects.create(scenario="corp", slot=1)
+    Session.objects.create(scenario="board", slot=2, ended_at=timezone.now())
+
+    assert _maps_live(slotted) == ["slot 1 corp", "slot 2 board"], "one wargame's map per slot, the newest session's"
+    assert sorted(_maps_live(SimpleNamespace())) == sorted(
+        f"session {session.pk} {session.scenario}" for session in Session.objects.filter(ended_at=None)), (
+        "a Docker session's map lives while the session is open")
+    assert f"session {standing.pk} board" in _maps_live(SimpleNamespace())

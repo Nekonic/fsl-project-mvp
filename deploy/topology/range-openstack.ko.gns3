@@ -73,8 +73,8 @@
                 "drawing_id": "daffa5ca-65f4-5c0e-864d-efc51c1d5386",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"440\" height=\"180\"><rect width=\"440\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": 130,
+                "svg": "<svg width=\"500\" height=\"180\"><rect width=\"500\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": 70,
                 "y": 320,
                 "z": 0
             },
@@ -83,7 +83,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"68\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
-                "x": 140,
+                "x": 80,
                 "y": 466,
                 "z": 2
             }
@@ -582,8 +582,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "waf",
-                    "x": null,
-                    "y": -25
+                    "x": -33,
+                    "y": 20
                 },
                 "name": "waf",
                 "node_id": "42a52cee-03bb-525a-b4ba-d5a691e4a787",
@@ -842,8 +842,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "monitoring-sw",
-                    "x": null,
-                    "y": -25
+                    "x": -120,
+                    "y": 20
                 },
                 "name": "monitoring-sw",
                 "node_id": "ef8ac537-8592-5876-bf42-7ff342c668e5",
