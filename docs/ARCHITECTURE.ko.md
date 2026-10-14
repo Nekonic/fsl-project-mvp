@@ -256,12 +256,17 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   잇는다(각자 자기 syslog를 collector로 보낸다: gateway, `watches` 센서마다 그 호스트, `logs`가
   있는 호스트). Docker는 세션의 수집기 `fsl-filebeat`로, WAF와 Suricata의 로그 볼륨을 읽는다.
   자기 NIC가 없는 센서(Docker는 WAF 네임스페이스의 Suricata, OpenStack은 wargame 호스트
-  네트워크의 Suricata)는 노드로 그리지 않고, 그 NIC를 쓰는 호스트의 메모가 이름을 적는다. 그래서
-  떠 있는 노드가 없다. `test_gns3_topology.py`가 정확히 그 투영인지 확인한다. WAF와 사이트에는
-  학습자가 입력하는 도메인(`board.com`, `corp.com`, WAF 호스트의 선언 이름)이 붙는다. 범례는
-  없다: 짧은 제목, 구간마다 제목, 노드마다 쉬운 말 한 줄. 링크는 모두 수평이나 수직이고,
-  아니면 직각으로 꺾이는 GNS3 3.1 `flowchart` 링크(`link_style.link_type`)라서 서비스 구간과 관제
-  구간 스위치가 버스처럼 읽힌다. 심볼은
+  네트워크의 Suricata)는 노드로 그리지 않고 그 NIC를 쓰는 호스트에 접어 넣는다. 그래서
+  떠 있는 노드가 없다. `test_gns3_topology.py`가 정확히 그 투영인지 확인한다. 지도는 실습
+  토폴로지를 그리는 방식(Cisco NetAcad 실습 토폴로지, NSRC 워크숍 논리도)대로 그린다: 노드에는
+  호스트 이름만 붙고, 사이트에는 학습자가 입력하는 도메인(`board.com`, `corp.com`, WAF 호스트의
+  선언 이름)이 이름으로 붙으며(`topology.shown_as`가 레인지의 컨테이너 이름을 이 이름으로
+  옮기고, GNS3 2.2.61과 3.1.0a6은 점이 든 RFC 1123 이름을 불러올 때 그대로 둔다), 구간마다 상자
+  하나에 구간 이름만 캡션으로 붙고(컨테이너를 두른 상자에는 호스트 이름, 브리지에는 Docker
+  네트워크 이름), 제목·범례·메모는 없다. 링크는 모두 직선 하나(수평, 수직, 대각선)이고, 다른
+  링크나 노드를 가로지르지 않으며 두 링크가 선의 한 구간을 함께 쓰지 않는다(K2,3 때문에 세
+  호스트를 서비스 구간과 관제 구간 모두에 수평·수직선만으로 이을 수 없어, 엣지와 wargame 호스트는
+  `monitoring`에 대각선 하나씩으로 닿는다). 심볼은
   GNS3에 번들된 affinity 세트다(VM은 네모, 컨테이너는 동그라미; 공격자 빨강, 방어 초록, 사이트
   파랑, 로그 저장소와 스위치 회색, 인터넷은 지구본). wargame 호스트는 gns3-registry의 Ubuntu
   심볼을 쓰며, GNS3 이미지가 고정한 커밋에서 받아 `provision.py`가 올린다. 지도는 원점을
@@ -272,10 +277,9 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
 `corp-default`)에 붙는다. 시스템 지도에서 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
 센서는 NIC가 없고, 옆의 메모가 누구의 네트워크를 지켜보는지 말한다(Docker 프로젝트에서는
-점선이 `fsl-suricata`를 `fsl-waf`에 잇는다). 선언된 구간마다 그 스위치를 담은 제목 붙은
-사각형이 있고(Internet, Application estate, Management and monitoring), 컨테이너와 VM마다
-쉬운 말 메모가 붙는다(`attacker's machine (Kali)`, `web firewall (ModSecurity + CRS)`). GNS3
-3.1은 노드 라벨을 이름으로 바꾸므로 노드 이름은 호스트 이름 그대로 둔다.
+점선이 `fsl-suricata`를 `fsl-waf`에 잇는다). 시스템 지도에서는 선언된 구간마다 그 스위치를 담은
+제목 붙은 사각형이 있고(Internet, Application estate, Management and monitoring), 컨테이너와
+VM마다 쉬운 말 메모가 붙는다. GNS3 3.1은 노드 라벨을 이름으로 바꾼다.
 `platform/tests/test_gns3_topology.py`가 `declaration.yaml`, `compose.yaml`, `session.yaml`,
 wargame compose 파일에서 시스템 지도의 기대 노드와 링크를 유도해 비교하고
 GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을
@@ -287,17 +291,30 @@ GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.6
 
 학습자는 자기 레인지의 주소를 본다. `api/maps.py`는 학습자 지도에서 OpenStack 슬롯(`slot 1`,
 `slot 2`) 또는 Docker 세션(`session <id>`)마다, 언어마다 프로젝트 하나를 만든다
-(`topology.labelled`): 호스트 쪽 링크 끝마다 그 구간의 인터페이스 이름과 주소를 레인지에서 읽어
-붙이고(Kali와 엣지의 인터넷 쪽은 기본 출발지 주소 하나만; Docker 브리지의 wargame 호스트 쪽은
-학습자에게 뜻 없는 `br-` 이름이라 비우고, NIC가 관리 네트워크에 있는 `monitoring` 링크도
-비운다). 라벨은 링크가 나가는 쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 수평 링크는
-GNS3 상태 표시에 닿지 않게 선 위, 수직 링크는 선 오른쪽, 노드 왼쪽이면 `text-anchor: end`로 오른쪽
-정렬. 모든 id는
+(`topology.labelled`): 호스트 쪽 링크 끝마다 그 구간의 인터페이스 이름과 주소의 마지막 옥텟을
+레인지에서 읽어 붙이고(`ens3 .102`, `vtnet0 .1`; Kali와 엣지의 인터넷 쪽은 기본 출발지 주소
+하나만; Docker 브리지의 wargame 호스트 쪽은 지도에서 뜻 없는 `br-` 이름이라 비우고, NIC가 관리
+네트워크에 있는 `monitoring` 링크도 비운다), 구간 캡션마다 그 구간이 레인지에서 가진 네트워크를
+덧붙인다(`서비스 구간 10.30.0.0/24`, `board_default 172.18.0.0/16`; 스위치의 캡션은 그 스위치를
+담은 가장 작은 상자의 글자다, `topology.captions`). 관제 구간은 이름만 둔다. 라벨은 링크가 나가는
+쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 선 위에, 링크가 올라가면 선 아래에, GNS3 상태
+표시에 닿지 않게; 수직 링크는 선 오른쪽, 노드 왼쪽이면 `text-anchor: end`로 오른쪽 정렬. 모든 id는
 `uuid5(<학습자 지도 id>, "slot-<n>")`(또는 `session-<id>`), 이름에는 접미사를 붙이고
 `show_interface_labels`를 켠다. 인터페이스는 어댑터가 읽는다(`interfaces()`): OpenStack은 슬롯의
 호스트마다 그 호스트 자체에서 도는 runner로 `ip -o -4 addr`(OPNsense는 `ifconfig`)를, wargame
 호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크 id로 읽는다. Docker는
-세션 엔드포인트의 MAC을 컨테이너 안의 `/sys/class/net`과 맞춘다. `gns3.publish`는 GNS3 admin으로
+세션 엔드포인트의 MAC을 컨테이너 안의 `/sys/class/net`과 맞춘다. 같은 읽기에서 호스트와
+컨테이너마다 기본 경로(`/proc/net/route`, OPNsense는 `netstat -rn`)를 읽어 그 경로가 나가는
+인터페이스에 게이트웨이를 붙인다.
+
+지도에는 마지막 옥텟 말고는 주소를 쓰지 않는다. 토폴로지 창의 주소 표 보기
+(`GET /api/sessions/<id>/topology/addresses/`, `topology.addressing`)가 같은 읽기(`api/maps.py`가
+슬롯이나 세션마다 두고, 지도를 올릴 때 새로 읽는다)에서 지도 호스트마다 학습자 구간의
+인터페이스(장비, 인터페이스, 주소/프리픽스, 기본 게이트웨이)와 서비스를 보여 준다: WAF의 도메인마다
+포트 80(`deploy/waf/range.conf`와 세션 WAF가 듣는 포트), 사이트마다 데이터베이스 3306(MySQL
+기본값). 레인지를 읽지 못하면 빈 표와 이유를 `detail`에 돌려준다.
+
+`gns3.publish`는 GNS3 admin으로
 로그인해(비밀번호는 `FSL_GNS3_ADMIN_PASSWORD` 또는 `/run/fsl-gns3/admin-password`; GNS3 데이터
 디렉터리를 읽기 전용으로 붙이고, 파일은 Docker 소켓 그룹에 0640) 프로젝트를 지우고, URL의
 프로젝트 id를 그대로 가진 `project.gns3`로 portable 프로젝트를 가져와(GNS3는 스냅숏처럼 모든 id를
@@ -307,8 +324,9 @@ GNS3 상태 표시에 닿지 않게 선 위, 수직 링크는 선 오른쪽, 노
 올리지 못하면 엔드포인트는 학습자 지도를 내주고 이유를 `detail`에 쓴다.
 
 프로젝트마다 한국어 학습자를 위한 한국어 짝이 있다: `deploy/topology/range-docker.ko.gns3`와
-`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 그려진 글자(지도 제목, 구간 제목,
-노드 옆 메모)만 `docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름은 호스트 이름 그대로다.
+`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 구간 이름을 쓴 캡션만
+`docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름과, 호스트나 Docker 네트워크 이름을 쓴
+캡션은 기계가 아는 그대로다.
 GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프로젝트가 id를 함께 쓸 수 없다. 그래서
 짝의 모든 id는 `uuid5(<영어 id>, "ko")`이고 프로젝트 이름에는 한국어 접미사가 붙는다. 영어 파일이
 기준이다. 테스트가 영어 파일에서 한국어 파일의 구조를 다시 만들어 글자 말고 다른 차이가 있으면

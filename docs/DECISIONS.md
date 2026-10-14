@@ -3541,3 +3541,94 @@ views.
 
 Not done: the Docker learner map is rendered locally only (no Docker range
 runs live); `fsl-collector` stays off the map.
+
+## 2026-10-14 — The learner map drawn as lab topologies are: hostnames, short link labels, zone captions, an addressing table
+
+The user rejected the learner map: prose notes beside nodes ("Docker host;
+Suricata watches its estate NIC") and three monitoring links merged into one
+right-angled bus. Both substrates and both languages change; the system maps
+do not.
+
+References, read before drawing:
+
+- Cisco Networking Academy, *Lab – Troubleshooting Basic Single-Area OSPFv2
+  and OSPFv3*, Topology and Addressing Table: each device carries its hostname
+  (R1, PC-A), each link end its short interface name (G0/0, S0/0/1), nothing
+  else on the drawing; the addresses are in a separate Addressing Table
+  (Device, Interface, IP Address, Default Gateway, `N/A` for a router).
+- NSRC workshop logical network diagram: short hostnames, addresses at link
+  ends (a host's last octets, `0.241`), each segment labelled with its CIDR and
+  name (`10.10.0.0/24 Classroom backbone`), groups as boxes with a short
+  caption.
+
+What the maps are now:
+
+- **A node is its hostname.** Every note, the title and the legend are gone;
+  a drawing is a zone box or its caption. The sites are named `board.com` and
+  `corp.com`, the names learners type: RFC 1123 allows dots, and gns3-server
+  2.2.61 and 3.1.0a6 keep the name on load (`bin/check-topology`, and the live
+  server shows it). The range still calls them `board`/`corp-wp` (OpenStack)
+  and `fsl-wg-board`/`fsl-wg-corp-wp` (Docker); `topology.shown_as` maps those
+  to the domain from the declaration (the WAF host's `names`), and
+  `overlay`, `follow`, `facts`, `api/maps.py` and the interface read use it,
+  so the follow view and the overlay name the node the map draws.
+- **A link end is `<interface> .<last octet>`** (`ens3 .102`, `vtnet0 .1`,
+  `eth0 .3`); the zone caption carries the rest. A label sits above its line,
+  or below it when the link climbs, so a diagonal link never runs through it.
+- **A zone caption is the segment's name and the network the range holds
+  for it** (`Application estate 10.30.0.0/24`, `서비스 구간 10.30.0.0/24`,
+  `board_default 172.18.0.0/16`), added when the slot's or session's map is
+  generated, from the interfaces read (the default origin's network on the
+  internet side). The committed learner map holds the name alone, since the
+  network is the range's. The box round the containers names their host
+  (`fsl-wargame-host`), a container network's box the Docker network's name.
+  Monitoring keeps its name alone: it rides on the management network, which
+  the learner map does not show, and its links carry no address.
+- **Every link is one straight line, and no two share a stretch or cross.**
+  The old bus was GNS3 `flowchart` links, which overlap where they turn.
+  Joining three hosts to both `estate` and `monitoring` (K2,3) with level and
+  upright lines alone is impossible without overlap, so the WAF drops straight
+  to `monitoring` and the edge and the wargame host reach it on a diagonal
+  each; the wargame host fans to its two bridges on diagonals. The test
+  computes every link from the node centres: no crossing, no collinear
+  overlap at a shared node, no line within a symbol's width of another node.
+- **The addresses are in an Addressing table** beside the GNS3 map in the
+  Topology pane (`GET /api/sessions/<id>/topology/addresses/`): Device,
+  Interface, IP address / prefix, Default gateway (Cisco's columns, `N/A`
+  where the interface holds no default route), and Services (`board.com` and
+  `corp.com` on the WAF, port 80; each site's database, 3306). It comes from
+  the same range read as the map, kept per slot or session. The default
+  gateway is read, not assumed: the interface read now also prints
+  `/proc/net/route` (`netstat -rn` on OPNsense), and the gateway goes to the
+  interface the default route leaves by. The ports are constants pinned by a
+  test to `deploy/waf/range.conf`, the session WAF's `PORT` and the MySQL
+  images.
+
+Tests rewritten because the design changed (none weakened beyond that):
+`test_gns3_topology.py` — the Korean-words test lets a caption naming a host
+or network stay as the machine knows it; the RFC 1123 test accepts dotted
+names; the learner-map projection, the symbol test and the log store test map
+range names through `shown_as`; the sensor test is now
+`..._is_folded_into_the_node_whose_nic_it_uses` (no note names it); the
+right-angle test is now `test_every_learner_link_is_one_straight_line_...`;
+the domain test checks the node names and the services; the legend test is now
+`..._no_title_no_legend_and_no_note_only_a_caption_for_each_zone`. In
+`test_gns3_maps.py` the label texts are `<interface> .<octet>`, a slot map
+keeps the template's boxes (its captions gain a network), and a label on a
+climbing link sits below it. Follow and console tests name `board.com`. New:
+the no-crossing test, caption networks, route parsing, the addressing table,
+its endpoint and console view, and the port pins.
+
+Live (platform VM, OpenStack, both slots READY): deployed, slot 1 and 2 maps
+reloaded in both languages; the in-page check found no overlap on any of the
+four views. Slot 1: `fsl-waf ens3 .102`, wargame host `ens3 .63`; slot 2:
+`.177`, `.184`; captions `Internet 5.188.10.0/24`, `Application estate
+10.30.0.0/24`, `board_default 172.18.0.0/16`, `corp_default 172.19.0.0/16`.
+Session 416's Topology pane showed slot 1's map and its Addressing table in
+both languages; closed.
+
+Seen live, left as the range has it: Kali's default route leaves `ens3` by
+the edge's address on another origin's subnet (`1.128.0.1` on slot 1,
+`73.0.0.1` on slot 2), so the table shows `5.188.10.10/24` with that gateway;
+the edge holds no default route (`N/A`). Not done: the Docker learner map is
+rendered locally only (no Docker range runs live).

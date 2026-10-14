@@ -118,7 +118,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 셸, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 터미널 | 사람의 브라우저 |
 | 8002 | 블루 콘솔의 웹사이트 창: `/site/<세션 id>/<호스트>/`, 그 세션의 WAF로 넘김(OpenStack에서는 `mgmt`를 거쳐 그 슬롯의 WAF로) | 사람의 브라우저 안 iframe |
-| 3080 | `gns3`, GNS3 3.1의 API와 웹 UI: 레인지 토폴로지를 GNS3 프로젝트로 열어 두고 노드는 시작하지 않는다. 프로젝트마다 한국어 짝(`*.ko.gns3`, 메모만 한국어인 같은 지도)이 있다. 학습자 지도는 관리 구간과 플랫폼 없이 지키는 네트워크만 그리고, 슬롯(OpenStack)이나 세션(Docker)마다 링크 끝에 인터페이스와 주소를 붙인 그 레인지의 지도를 따로 올린다(전체 배선은 `deploy/topology/system/`, 학습자에게는 내주지 않음). 블루 콘솔의 토폴로지 창이 읽기 전용으로 로그인하는 `/static/web-ui/fsl-auditor.html`을 iframe으로 열고, 세션 레인지의 지도를 콘솔 표시 언어로 창에 맞춰 보여 준다. GNS3가 프로젝트를 열려면 필요해서 컨테이너는 `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓을 가진다(`docs/ARCHITECTURE.ko.md`의 토폴로지 절) | 사람의 브라우저 안 iframe, 그리고 `mgmt`를 거친 `platform/gns3.py` |
+| 3080 | `gns3`, GNS3 3.1의 API와 웹 UI: 레인지 토폴로지를 GNS3 프로젝트로 열어 두고 노드는 시작하지 않는다. 프로젝트마다 한국어 짝(`*.ko.gns3`, 구간 캡션만 한국어인 같은 지도)이 있다. 학습자 지도는 관리 구간과 플랫폼 없이 지키는 네트워크만 그리고, 슬롯(OpenStack)이나 세션(Docker)마다 링크 끝에 인터페이스와 주소의 마지막 옥텟을, 구간 캡션에 네트워크를 붙인 그 레인지의 지도를 따로 올리며 전체 주소는 창의 주소 표에 있다(전체 배선은 `deploy/topology/system/`, 학습자에게는 내주지 않음). 블루 콘솔의 토폴로지 창이 읽기 전용으로 로그인하는 `/static/web-ui/fsl-auditor.html`을 iframe으로 열고, 세션 레인지의 지도를 콘솔 표시 언어로 창에 맞춰 보여 준다. GNS3가 프로젝트를 열려면 필요해서 컨테이너는 `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓을 가진다(`docs/ARCHITECTURE.ko.md`의 토폴로지 절) | 사람의 브라우저 안 iframe, 그리고 `mgmt`를 거친 `platform/gns3.py` |
 | 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 엣지, WAF, wargame 호스트의 estate 센서 |
 | 9200 | Elasticsearch | 인수 테스트 |
 
