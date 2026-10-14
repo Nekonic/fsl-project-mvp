@@ -3106,7 +3106,8 @@ product_loc 22,385 -> 23,979, tests 1955 -> 2017 (bin/measure).
 ## 2026-10-13 — P5 built: scenarios 1.2-4.1, and the fixes before them
 
 Phase P5 of the scenario course design, built and run live on OpenStack
-(platform VM 192.168.0.210, both slots, sessions 314-327). `docs/ARCHITECTURE.md`,
+(platform VM 192.168.0.210, both slots, sessions 314-326 on 2026-10-13 and
+329-332 on 2026-10-14). `docs/ARCHITECTURE.md`,
 "Scenarios", has the descriptor fields and the table of the eleven scenarios.
 
 **Fixes first.**
@@ -3131,7 +3132,11 @@ Phase P5 of the scenario course design, built and run live on OpenStack
   `/proc/net/snmp` (its network namespace) around one stock sqlmap run: before,
   6,013 datagrams received and 445 receive-buffer errors (6.9% of that burst;
   21,709 since 2026-10-12); after, 0 errors over a stock run (6,597
-  datagrams) and a tamper run (8,102). Not yet proven: the cloud-init path on a
+  datagrams) and a tamper run (8,102). Measured again on 2026-10-14: the
+  collector had received 534,475 datagrams with 0 receive-buffer errors since
+  it was recreated (every P5 run), and 558,984 with 0 after sessions 329 and
+  330 ran sqlmap on both slots at once (24,509 datagrams in 10 minutes); the
+  host's own namespace also shows 0. Not yet proven: the cloud-init path on a
   rebuilt VM.
 
 **Rulings.**
@@ -3205,21 +3210,57 @@ Phase P5 of the scenario course design, built and run live on OpenStack
   `POST /api/range/configure/?slot=2`. Not fixed: a reset interrupted by a
   restart is not resumed at boot; deploy only when `/api/range/ready/` shows no
   slot resetting.
+- The Korean debriefs (screenshots, 2026-10-14): a scenario with two final
+  checks printed "Blocked during a final check" twice with nothing to tell
+  them apart (session 321); each line now names its check by number. The 4.1
+  debrief showed the blocked action as `comment-code`: the club profile's new
+  action had no string; a test now holds every declared customer action to a
+  label in both languages.
+- `wargames/board/traffic.yaml` held literal Hangul although its header said
+  `\u` escapes; the strings are escaped now, the parsed values unchanged.
+- A fresh review of the scenario docs against the code corrected the
+  README's final check (it named the availability rule for every class), the
+  traffic API's profiles and payload, what the session GET drops from a
+  worked scenario, `guidance` (true, not the id) and the board table's
+  origins.
 
-**Live runs.** One session per scenario, two final checks each: first with a
-wrong defence, then with a right one. Driven over the API
-(`scratchpad/p5/run.py`); verdicts were taken from the range's record
+**Live runs.** One session per scenario, normally two final checks: first
+with a wrong defence, then with a right one. Driven over the API (a script in
+the session's scratchpad); verdicts were taken from the range's record
 (`scenario_run._truths`), WAF exceptions from the rules and matched variables
-on the customers' records, signatures written by hand.
+on the customers' records, signatures written by hand. "First score" is the
+session's objectives lost, out of 3 (the board's accounts admin, jiwoo,
+minseo); every loss was noticed. Length is open to close.
 
-RESULTS_TABLE
+| Scenario | Wrong defence: session, check, verdict | First score | Right defence: session, check, verdict (fix named) | Length |
+|---|---|---|---|---|
+| 1.1 | 331 #1: every item judged customer; FAIL, 7 of 9 judged right | 0/3 | 332: every item judged right, the ones the window listed judged again during it; PASS, 13 of 13 (6 customers blocked, reported, not counted). 331 #2 failed 13 of 14: the script judged before the window opened and missed the item listed last | 10.9 min (331), 7.7 min (332) |
+| 1.2 | 317 #1: FAIL, 14 of 15 judged right | 3/3: the inherited exception lets sqlmap take the accounts | 317 #2: PASS | 14.7 min |
+| 1.3 | 325 #1: FAIL, 49 of 53 | 3/3 | 325 #2: PASS, the pattern judged too (after the window fix; 319 failed both, 74/86 and 148/152, which found it) | 27.7 min |
+| 2.1 | 308: no fix, FAIL, 156 customers blocked; 311: 949110 and 959100 removed, FAIL, 1 of 1 attacks took data | 0/3; 3/3 | 309: PASS (target); 310: PASS with 949110 removed (rule) | 6.8-7.3 min |
+| 2.2 | 316 #1: FAIL, 10 blocked | 0/3 | 316 #2: PASS (path_target) | 13.0 min |
+| 2.3 | 324 #1 (and 318 #1): thresholds 10,000/10,000, FAIL, the attack took data and the thresholds are above 5/4 | 3/3 | 330: thresholds 5/4 and seven exceptions, PASS (target; 324 #2 passed and was named threshold before that fix). 318 #2: thresholds lowered with exceptions missing, FAIL, 231 blocked | 23.8 min (324), 6.7 min (330) |
+| 3.1 | 329 #1 (and 320 #1): the broken rule, FAIL, sqlmap not detected | 0/3 (the WAF held it) | 329 #2: sid 9000101 changed to `http.uri`, PASS; the steps rules, buffer, fix and done passed live | 8.1 min |
+| 3.2 | 321 #1: a rule that also matched customers, FAIL, 30 customer requests alerted | 0/3 | 321 #2: PASS | 11.0 min |
+| 3.3 | 322 #1: FAIL, the tamper variant not detected | 0/3 | 322 #2: PASS | 11.6 min |
+| 3.4 | 323 #1: FAIL, the comment XSS not detected | 0/3 | 323 #2: PASS | 8.1 min |
+| 4.1 | 326 #1: FAIL, 22 customers blocked (the code questions) | 0/3 | 326 #2: five exceptions on `ARGS:body` under `/posts/`, PASS (target) | 18.0 min |
 
-Screenshots (headless Chromium, Korean): every scenario's briefing and one
-debrief per task class, in the session's scratchpad `p5/`.
+A detection or unknown scenario held every attack at the WAF throughout, so
+its first score stayed 0/3; only judgement (1.2, 1.3) and availability (2.1,
+2.3) runs lost the accounts, and only when the posture or the learner had let
+sqlmap through.
+
+Screenshots (headless Chromium, Korean, 1440x900): every scenario's
+briefing (opened from the strip of its closed session) and one debrief per
+task class (325, 316, 321, 326, taken after the two debrief fixes were
+deployed), in the session's scratchpad `p5/`.
 
 Not proven: a person driving the console end to end (the runs used the API);
-the Docker substrate; 4.2; the cloud-init sysctl on a rebuilt VM; the 3.1
-rules step passing live after its fix (SESSION_31_STEP); hints offered when
-idle in a P5 scenario (none of these runs idled with customers blocked).
+the Docker substrate; 4.2; the cloud-init sysctl on a rebuilt VM; hints
+offered when idle in a P5 scenario (none of these runs idled with customers
+blocked).
 
-Metrics: METRICS_LINE
+Metrics (bin/measure, 2026-10-14): core_loc 580, dependencies 6, services 10
+(unchanged), product_loc 23,979 -> 24,662, tests 2017 -> 2052. `bin/verify
+--fast`: 2310 unit and console tests passed.
