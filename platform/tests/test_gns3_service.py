@@ -1,13 +1,12 @@
 import importlib.util
 import json
-import os
 import pathlib
-import subprocess
 import sys
 import types
 
 import pytest
 
+import topology
 from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -30,17 +29,23 @@ def test_the_image_carries_what_gns3_3_1_needs_to_open_a_project():
         "an ethernet_switch needs uBridge >= 1.2.3 with its brctl module; Debian has no package"
     )
     assert "setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/ubridge" in dockerfile
+    assert "busybox-static" in dockerfile, (
+        "gns3-server copies a static busybox into every docker node it starts and refuses to start one without it"
+    )
 
-def test_the_gns3_server_gets_net_admin_a_tun_device_and_the_docker_socket_and_nothing_more():
+def test_the_gns3_server_gets_net_admin_a_tun_device_the_docker_socket_and_the_host_s_pids_and_nothing_more():
     gns3 = service()
 
     assert not gns3.get("privileged")
     assert gns3["cap_add"] == ["NET_ADMIN"], "uBridge makes a kernel bridge and TAPs per switch"
     assert gns3["devices"] == ["/dev/net/tun:/dev/net/tun"]
     assert "/var/run/docker.sock:/var/run/docker.sock" in gns3["volumes"], (
-        "a docker node is created, never started, on the host's daemon"
+        "a display node runs on the host's daemon"
     )
-    assert not gns3.get("network_mode") and not gns3.get("pid")
+    assert gns3["pid"] == "host", (
+        "uBridge moves a started docker node's interface into the namespace of the container's host pid"
+    )
+    assert not gns3.get("network_mode")
 
 def test_the_gns3_data_sits_at_the_same_path_on_the_host_because_the_host_daemon_mounts_it():
     gns3 = service()
@@ -57,48 +62,40 @@ def test_the_gns3_server_runs_as_gns3_in_the_socket_s_group_like_the_platform():
     assert "exec gosu gns3" in entrypoint
     assert entrypoint.index("usermod -aG") < entrypoint.index("exec gosu gns3") < entrypoint.index("gns3server --config")
 
-def test_the_docker_nodes_name_the_images_this_platform_runs_so_gns3_pulls_nothing():
+def test_the_display_nodes_run_the_one_image_provisioning_starts_and_no_image_tag_is_rewritten():
     gns3 = service()
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
+    provision = (GNS3 / "provision.py").read_text()
 
-    assert gns3["environment"]["FSL_IMAGE_TAG"] == "${FSL_IMAGE_TAG:-dev}"
-    rewrite = next(line.strip() for line in entrypoint.splitlines() if line.strip().startswith('sed "s#'))
-    rewrite = rewrite.split(' "$project"')[0]
-    done = subprocess.run(["sh", "-c", f'{rewrite} "$1"', "sh", str(TOPOLOGY / "range-docker.gns3")],
-                          env={"TAG": "c0ffee", "PATH": os.environ["PATH"]}, capture_output=True, text=True)
-    images = {node["name"]: node["properties"].get("image")
-              for node in json.loads(done.stdout)["topology"]["nodes"]}
+    assert "FSL_IMAGE_TAG" not in gns3["environment"] and "sed " not in entrypoint
+    assert f'DISPLAY_IMAGE = "{topology.DISPLAY_IMAGE}"' in provision
+    for path in TOPOLOGY.glob("*.gns3"):
+        images = {node["properties"].get("image") for node in json.loads(path.read_text())["topology"]["nodes"]
+                  if node["node_type"] == "docker"}
+        assert images == {topology.DISPLAY_IMAGE}, path.name
 
-    assert images["fsl-kali"] == "ghcr.io/nekonic/fsl-kali:c0ffee"
-    assert images["fsl-wg-board-db"].startswith("mysql@sha256:")
-    assert images["fsl-elasticsearch"] == "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
-    assert not [image for image in images.values() if image and image.endswith(":dev")]
-
-def test_the_gns3_server_is_published_like_the_platform_and_reads_the_projects_from_the_repo():
+def test_the_gns3_server_is_published_like_the_platform_and_holds_only_the_maps_the_platform_loads():
     gns3 = service()
 
     assert gns3["ports"] == ["${FSL_PUBLISH:-127.0.0.1}:3080:3080"]
-    assert "./deploy/topology:/topology:ro" in gns3["volumes"]
+    assert not [volume for volume in gns3["volumes"] if "topology" in volume], (
+        "a template draws every wargame; only a session's own map is loaded, by the platform"
+    )
     assert gns3["networks"] == ["mgmt"]
     assert composed.services()["platform"]["environment"]["FSL_GNS3_URL"] == "http://gns3:3080"
 
-def test_each_project_is_copied_into_its_own_directory_before_the_server_starts():
+def test_no_project_is_copied_in_before_the_server_starts_and_the_admin_password_is_set_first():
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
 
-    assert '"$project" > "$DATA/projects/$name/$name.gns3"' in entrypoint, (
-        "gns3-server refuses a .gns3 file that sits directly in the projects directory"
-    )
-    assert entrypoint.index('"$project" >') < entrypoint.index("gns3server --config")
+    assert ".gns3" not in entrypoint and "/topology" not in entrypoint
     assert "default_admin_password = $FSL_GNS3_ADMIN_PASSWORD" in entrypoint, (
         "the admin password only takes effect when the controller database is first made"
     )
+    assert entrypoint.index("default_admin_password") < entrypoint.index("gns3server --config")
 
-def test_every_map_and_its_korean_pair_is_copied_into_a_directory_of_its_own():
-    entrypoint = (GNS3 / "entrypoint.sh").read_text()
+def test_every_learner_template_and_its_korean_pair_is_a_file_of_its_own_the_platform_reads():
     copied = sorted(path.name for path in TOPOLOGY.glob("*.gns3"))
 
-    assert "for project in /topology/*.gns3; do" in entrypoint
-    assert 'name="$(basename "$project" .gns3)"' in entrypoint
     assert copied == ["range-docker.gns3", "range-docker.ko.gns3",
                       "range-openstack.gns3", "range-openstack.ko.gns3"]
     assert len({name.removesuffix(".gns3") for name in copied}) == len(copied)
@@ -135,7 +132,7 @@ def test_provisioning_opens_every_closed_project_as_admin_and_leaves_an_open_one
 
     def call(method, path, body=None, token=""):
         calls.append((method, path, token))
-        return projects if path == "/projects" else None
+        return projects if path == "/projects" else [] if path.endswith("/nodes") else None
 
     monkeypatch.setattr(provision, "call", call)
     monkeypatch.setattr(provision, "ready", lambda: None)
@@ -170,10 +167,28 @@ def test_the_system_maps_stay_off_the_learners_gns3_server():
     system = sorted(path.name for path in (TOPOLOGY / "system").glob("*.gns3"))
 
     assert system == ["range-docker.gns3", "range-openstack.gns3"]
-    assert "for project in /topology/*.gns3; do" in entrypoint, (
-        "the glob does not descend into system/, so the full wiring is never opened where learners read"
+    assert "/topology" not in entrypoint and "topology" not in " ".join(service()["volumes"]), (
+        "the server never sees the repo's maps, so the full wiring is never opened where learners read"
     )
-    assert "/topology/system" not in entrypoint
+
+def test_provisioning_starts_every_stopped_display_node_of_an_open_project_and_nothing_else(provision, monkeypatch):
+    calls = []
+    projects = [{"project_id": "a", "name": "range-openstack slot 1 board", "status": "opened"}]
+    listed = [{"node_id": "n1", "name": "waf", "status": "stopped", "properties": {"image": provision.DISPLAY_IMAGE}},
+              {"node_id": "n2", "name": "attacker", "status": "started", "properties": {"image": provision.DISPLAY_IMAGE}},
+              {"node_id": "n3", "name": "service-sw", "status": "started", "properties": {}},
+              {"node_id": "n4", "name": "fsl-kali", "status": "stopped", "properties": {"image": "kalilinux/kali"}}]
+
+    def call(method, path, body=None, token=""):
+        calls.append((method, path))
+        return projects if path == "/projects" else listed if path.endswith("/nodes") else None
+
+    monkeypatch.setattr(provision, "call", call)
+    provision.opened("token-of-admin")
+
+    assert [c for c in calls if c[0] == "POST"] == [("POST", "/projects/a/nodes/n1/start")], (
+        "a node of any other image, as an old map's real images, is never run by the map server"
+    )
 
 def test_the_read_only_page_closes_the_node_list_and_fits_the_map_through_the_web_ui_s_own_controls():
     page = (GNS3 / "auditor.html").read_text()

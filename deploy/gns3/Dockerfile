@@ -16,7 +16,7 @@ RUN mkdir -p /symbols \
 FROM python:3.13-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libmagic1 libpcap0.8t64 libcap2-bin gosu qemu-system-x86 \
+ && apt-get install -y --no-install-recommends libmagic1 libpcap0.8t64 libcap2-bin gosu qemu-system-x86 busybox-static \
  && rm -rf /var/lib/apt/lists/* \
  && pip install --no-cache-dir "gns3-server[ai-features]==3.1.0a6" \
  && useradd --system --create-home --uid 10002 gns3

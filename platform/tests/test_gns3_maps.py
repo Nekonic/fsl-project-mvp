@@ -10,7 +10,6 @@ from xml.etree import ElementTree
 from unittest.mock import patch
 
 import pytest
-import yaml
 from django.test import override_settings
 
 import gns3
@@ -19,6 +18,7 @@ from api import maps
 from range import declared, docker, interfaces, openstack
 from range.interfaces import Interface
 from range.ports import Node, Ran, RangeUnavailable, Segment, Shape
+from tests.test_gns3_topology import learner_of
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOPOLOGY = ROOT / "deploy" / "topology"
@@ -29,7 +29,7 @@ LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 SWITCH = "ethernet_switch"
 DEFAULT_ORIGIN = "5.188.10.0/24"
 LABEL = re.compile(r"[a-z][a-z0-9]* \.\d{1,3}")
-KOREAN_SUFFIX = json.loads(OPENSTACK_KO.read_text())["name"].removeprefix("fsl-range-openstack")
+KOREAN_SUFFIX = json.loads(OPENSTACK_KO.read_text())["name"].removeprefix("range-openstack")
 
 KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
 2: ens3    inet 73.0.0.10/24 scope global ens3\\       valid_lft forever preferred_lft forever
@@ -165,13 +165,11 @@ def test_a_docker_session_s_interfaces_are_named_by_matching_each_endpoint_s_mac
                      ("fsl-waf", "eth0", "172.30.0.3/24", "estate")}
     assert sorted(execs) == ["fsl-7-kali-1", "fsl-7-waf-1"], "a container off the learner's map is not read"
 
-def slot_map(number=2, path=OPENSTACK, found=None):
+def slot_map(number=2, path=OPENSTACK, found=None, wargame="board"):
     flavor = "openstack" if path in (OPENSTACK, OPENSTACK_KO) else ""
-    called = topology.shown_as(declared.read(flavor=flavor))
     found = found if found is not None else read_slot()
-    return topology.labelled(json.loads(path.read_text()),
-                             [dataclasses.replace(one, host=called.get(one.host, one.host)) for one in found],
-                             f"slot-{number}", f"slot {number}", DEFAULT_ORIGIN)
+    return topology.labelled(json.loads(path.read_text()), learner_of(declared.read(flavor=flavor), wargame), found,
+                             f"slot-{number}-{wargame}", f"slot {number} {wargame}")
 
 def labels(document):
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
@@ -182,45 +180,58 @@ def labels(document):
         shown[(other["name"], one["name"])] = link["nodes"][1]["label"]
     return shown
 
-def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_that_segment():
-    shown = {pair: label["text"] for pair, label in labels(slot_map()).items()}
+KOREAN_ORIGIN = [Interface("fsl-kali", "ens3", "175.192.0.13/24", "internet"),
+                 Interface("fsl-kali", "ens3", "175.192.0.12/24", "internet")]
 
-    assert shown[("fsl-kali", "internet")] == "ens3 .10", "the default origin's address, and only it"
-    assert shown[("fsl-edge", "internet")] == "vtnet0 .1"
-    assert shown[("fsl-edge", "estate")] == "vtnet1 .1"
-    assert shown[("fsl-waf", "estate")] == "ens3 .177"
-    assert shown[("fsl-wargame-host", "board-default")] == "", "the host's side of a Docker bridge carries no label"
-    assert shown[("board.com", "board-default")] == "eth0 .3"
-    assert shown[("corp-db", "corp-default")] == "eth0 .2"
-    assert all(text == "" for (one, _), text in shown.items() if one in {"internet", "estate", "board-default",
-                                                                          "corp-default", "monitoring"})
-    assert all(text == "" for (_, other), text in shown.items() if other == "monitoring")
+def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_that_segment():
+    shown = {pair: label["text"] for pair, label in labels(slot_map(found=read_slot() + KOREAN_ORIGIN)).items()}
+
+    assert shown[("attacker", "internet")] == "ens3 .10", "the default origin's address, and only it"
+    assert shown[("customers", "internet")] == "ens3 .12", "the customers' busiest origin, its first address"
+    assert shown[("firewall", "internet")] == "vtnet0 .1"
+    assert shown[("firewall", "service-sw")] == "vtnet1 .1"
+    assert shown[("waf", "service-sw")] == "ens3 .177"
+    assert shown[("board.com", "service-sw")] == "ens3 .184", "the WAF reaches the site at its host's address"
+    assert shown[("board.com", "board-db-sw")] == "eth0 .3", "the site's own container on the database's network"
+    assert shown[("board-db", "board-db-sw")] == "eth0 .2"
+    assert all(text == "" for (one, _), text in shown.items() if one in {"internet", "service-sw", "board-db-sw",
+                                                                          "monitoring-sw"})
+    assert all(text == "" for (_, other), text in shown.items() if other == "monitoring-sw")
     assert not [text for text in shown.values() if "10.31.0." in text], "no management address reaches the map"
 
-def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing():
+def test_customers_are_left_unlabelled_where_their_box_holds_no_address_on_their_origins():
+    korean_only = learner_of(declared.read(flavor="openstack"), "board")
+    found = [Interface("fsl-kali", "ens3", "5.188.10.10/24", "internet")]
+    shown = labels(topology.labelled(json.loads(OPENSTACK.read_text()), korean_only, found, "slot-1-board", "slot 1 board"))
+
+    assert shown[("customers", "internet")]["text"] == "", "never the attacker's own address"
+    assert shown[("attacker", "internet")]["text"] == "ens3 .10"
+
+def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing_of_its_wargame():
     english = json.loads(OPENSTACK.read_text())
+    template = topology.for_wargame(english, learner_of(declared.read(flavor="openstack"), "board"))
     one = slot_map(1, found=[Interface("fsl-waf", "ens3", "10.30.0.102/24", "estate")])
     two = slot_map(2)
     ids = lambda document: ({document["project_id"]} | {n["node_id"] for n in document["topology"]["nodes"]}
                             | {link["link_id"] for link in document["topology"]["links"]}
                             | {d["drawing_id"] for d in document["topology"]["drawings"]})
 
-    assert labels(one)[("fsl-waf", "estate")]["text"] == "ens3 .102"
-    assert labels(two)[("fsl-waf", "estate")]["text"] == "ens3 .177"
+    assert labels(one)[("waf", "service-sw")]["text"] == "ens3 .102"
+    assert labels(two)[("waf", "service-sw")]["text"] == "ens3 .177"
     assert not ids(one) & ids(two) and not ids(one) & ids(english) and not ids(two) & ids(english)
-    assert two["project_id"] == str(uuid.uuid5(uuid.UUID(english["project_id"]), "slot-2"))
-    assert one["name"] == "fsl-range-openstack slot 1" and two["show_interface_labels"] is True
+    assert two["project_id"] == str(uuid.uuid5(uuid.UUID(english["project_id"]), "slot-2-board"))
+    assert one["name"] == "range-openstack slot 1 board" and two["show_interface_labels"] is True
     assert [d["svg"] for d in two["topology"]["drawings"] if "<rect" in d["svg"]] == [
-        d["svg"] for d in english["topology"]["drawings"] if "<rect" in d["svg"]]
+        d["svg"] for d in template["topology"]["drawings"] if "<rect" in d["svg"]]
     assert [(n["name"], n["symbol"], n["x"], n["y"]) for n in two["topology"]["nodes"]] == [
-        (n["name"], n["symbol"], n["x"], n["y"]) for n in english["topology"]["nodes"]]
+        (n["name"], n["symbol"], n["x"], n["y"]) for n in template["topology"]["nodes"]]
 
 def test_the_korean_slot_map_keeps_its_language_in_the_name_and_differs_in_id_from_the_english_one():
     korean = slot_map(2, OPENSTACK_KO)
 
-    assert KOREAN_SUFFIX.startswith(" (") and korean["name"] == "fsl-range-openstack slot 2" + KOREAN_SUFFIX
+    assert KOREAN_SUFFIX.startswith(" (") and korean["name"] == "range-openstack slot 2 board" + KOREAN_SUFFIX
     assert korean["project_id"] != slot_map(2)["project_id"]
-    assert labels(korean)[("fsl-waf", "estate")]["text"] == "ens3 .177"
+    assert labels(korean)[("waf", "service-sw")]["text"] == "ens3 .177"
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_schemas(path):
@@ -245,8 +256,8 @@ def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_sc
 def test_a_label_sits_on_the_side_of_its_node_that_faces_the_link():
     shown = labels(slot_map())
 
-    assert shown[("fsl-kali", "internet")]["x"] > 30, "internet is right of Kali, so the label is too"
-    assert shown[("internet", "fsl-kali")]["x"] < 30
+    assert shown[("attacker", "internet")]["x"] > 30, "internet is right of the attacker, so the label is too"
+    assert shown[("internet", "attacker")]["x"] < 30
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_every_label_lies_level_clear_of_its_node_on_the_side_its_link_leaves(path):
@@ -300,43 +311,53 @@ class Served:
 def served(settings, monkeypatch):
     settings.FSL_TOPOLOGY = OPENSTACK
     settings.RANGE = declared.read(flavor="openstack")
+    settings.ATTACKER_ORIGIN_MODE = "snat"
     fake = Served()
     for name in ("publish", "status", "remove_except"):
         monkeypatch.setattr(gns3, name, getattr(fake, name))
     maps._loaded.clear()
-    maps._found.clear()
     return fake
 
 def test_a_slot_s_maps_are_loaded_in_both_languages_and_not_again_while_nothing_changed(served):
-    maps.publish("slot 2", read_slot)
-    maps.publish("slot 2", read_slot)
+    maps.publish("slot 2 board", read_slot)
+    maps.publish("slot 2 board", read_slot)
 
     assert [document["name"] for document in served.published] == [
-        "fsl-range-openstack slot 2", "fsl-range-openstack slot 2" + KOREAN_SUFFIX]
+        "range-openstack slot 2 board", "range-openstack slot 2 board" + KOREAN_SUFFIX]
     assert {document["project_id"] for document in served.published} == {
-        maps.project_id("slot 2", "en"), maps.project_id("slot 2", "ko")}
+        maps.project_id("slot 2 board", "en"), maps.project_id("slot 2 board", "ko")}
+
+def test_a_session_s_map_is_drawn_for_the_wargame_it_defends(served):
+    maps.publish("slot 1 corp", read_slot)
+    names = {node["name"] for node in served.published[0]["topology"]["nodes"]}
+
+    assert {"corp.com", "corp-db", "corp-db-sw"} <= names and not {"board.com", "board-db"} & names
+    assert "customers" not in names, "corp declares no customers"
+    assert maps.wargame_of("slot 1 corp") == "corp" and maps.learner("corp").hosts["fsl-kali"] == ("attacker",)
+    assert maps.learner("board").hosts["fsl-kali"] == ("attacker", "customers"), (
+        "on OpenStack the customers' program runs on the attacker's box")
 
 def test_a_changed_address_loads_the_slot_s_maps_again(served):
-    maps.publish("slot 2", read_slot)
-    maps.publish("slot 2", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
+    maps.publish("slot 2 board", read_slot)
+    maps.publish("slot 2 board", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
 
     assert len(served.published) == 4
-    assert labels(served.published[-2])[("fsl-waf", "estate")]["text"] == "ens3 .99"
+    assert labels(served.published[-2])[("waf", "service-sw")]["text"] == "ens3 .99"
 
 def test_tidying_keeps_only_the_maps_of_the_slots_or_sessions_still_standing(served):
-    maps.tidy(maps.SESSION, ["session 4"])
+    maps.tidy(maps.SESSION, ["session 4 board"])
 
-    kept = sorted({maps.project_id("session 4", language) for language in ("en", "ko")})
-    assert served.removed == [("fsl-range-openstack session ", kept)] * 2, (
+    kept = sorted({maps.project_id("session 4 board", language) for language in ("en", "ko")})
+    assert served.removed == [("range-openstack session ", kept)] * 2, (
         "both languages' maps share the base name, and a canonical map never matches the prefix"
     )
 
 def test_the_map_served_for_a_session_is_its_slot_s_project_once_gns3_holds_it_open(served, monkeypatch):
     monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": (kept or {}).get("project_id")})
 
-    shown = maps.served("slot 2", "ko", read_slot)
+    shown = maps.served("slot 2 board", "ko", read_slot)
 
-    assert shown["project_id"] == maps.project_id("slot 2", "ko")
+    assert shown["project_id"] == maps.project_id("slot 2 board", "ko")
     assert len(served.published) == 2, "a map GNS3 did not hold yet is loaded before it is served"
 
 def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_why(served, monkeypatch):
@@ -344,13 +365,15 @@ def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_
         raise gns3.Unavailable("GNS3 refused the admin sign-in")
 
     monkeypatch.setattr(gns3, "publish", refused)
-    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": "canonical", "detail": ""})
+    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {
+        "project_id": "canonical", "detail": "", "nodes": {node["name"] for node in kept["topology"]["nodes"]}})
 
-    shown = maps.served("slot 1", "en", read_slot)
+    shown = maps.served("slot 1 board", "en", read_slot)
 
     assert shown["project_id"] == "canonical" and "admin sign-in" in shown["detail"]
+    assert "board.com" in shown["nodes"] and "corp.com" not in shown["nodes"], "the fallback is the wargame's own map"
 
-def test_publishing_replaces_the_project_by_import_and_opens_it_as_admin(settings, tmp_path):
+def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_its_nodes(settings, tmp_path):
     settings.FSL_GNS3_URL = "http://gns3:3080"
     settings.FSL_GNS3_ADMIN_PASSWORD = ""
     secret = tmp_path / "admin-password"
@@ -374,7 +397,9 @@ def test_publishing_replaces_the_project_by_import_and_opens_it_as_admin(setting
     project_id = document["project_id"]
     assert [(method, path) for method, path, _ in calls] == [
         ("post", "/access/users/authenticate"), ("delete", f"/projects/{project_id}"),
-        ("post", f"/projects/{project_id}/import"), ("post", f"/projects/{project_id}/open")]
+        ("post", f"/projects/{project_id}/import"), ("post", f"/projects/{project_id}/open"),
+        ("post", f"/projects/{project_id}/nodes/start")], (
+        "every node is started, so GNS3 draws each link end green; the display containers only idle")
     assert calls[0][2]["json"] == {"username": "admin", "password": "s3cret"}
     archive = zipfile.ZipFile(io.BytesIO(calls[2][2]["data"]))
     assert json.loads(archive.read("project.gns3")) == document, (
@@ -395,132 +420,31 @@ def test_the_topology_endpoint_serves_the_session_s_own_map_when_gns3_runs(clien
 
     session_id = open_session(client)
     with override_settings(FSL_GNS3_URL="http://gns3:3080"), \
-         patch("api.views._map_key", return_value="session 9"), \
+         patch("api.views._map_key", return_value="session 9 board"), \
          patch.object(maps, "served", return_value={"project": {"name": "mine"}, "web_ui": None}) as asked:
         found = client.get(f"/api/topology/?language=ko&session={session_id}").json()
         refused = client.get("/api/topology/?session=x")
 
     assert found["project"] == {"name": "mine"}
-    assert asked.call_args.args[:2] == ("session 9", "ko")
+    assert asked.call_args.args[:2] == ("session 9 board", "ko")
     assert refused.status_code == 400
-
-PROC_ROUTE = """Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT
-ens3\t00000000\t01001E0A\t0003\t0\t0\t100\t00000000\t0\t0\t0
-ens3\t00001E0A\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0
-"""
-NETSTAT = """Routing tables
-
-Internet:
-Destination        Gateway            Flags     Netif Expire
-default            5.188.10.254       UGS      vtnet0
-10.30.0.0/24       link#2             U        vtnet1
-"""
-CONTAINER_ROUTE = "eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n"
-
-def test_the_default_route_is_read_from_proc_or_netstat_and_held_by_the_interface_it_leaves_by():
-    waf = interfaces.placed("fsl-waf", WAF_IP + PROC_ROUTE, [("10.30.0.0/24", "estate")])
-    edge = interfaces.placed("fsl-edge", EDGE_IFCONFIG + NETSTAT, [])
-
-    assert interfaces.routed(PROC_ROUTE) == {"ens3": "10.30.0.1"}
-    assert interfaces.routed(NETSTAT) == {"vtnet0": "5.188.10.254"}
-    assert {(one.name, one.gateway) for one in waf} == {("ens3", "10.30.0.1"), ("ens4", "")}
-    assert {one.gateway for one in edge if one.name == "vtnet0"} == {"5.188.10.254"}
-    assert interfaces.ROUTES in interfaces.LISTED and interfaces.ROUTES in interfaces.MACS
-    assert "-n cat /proc/net/route" in interfaces.CONTAINERS
 
 def caption_texts(document):
     return [ElementTree.fromstring(d["svg"])[0].text for d in document["topology"]["drawings"] if "<text" in d["svg"]]
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO], ids=["openstack", "openstack-ko"])
-def test_each_zone_caption_on_a_slot_s_map_carries_the_network_its_segment_holds_on_the_range(path):
-    template, drawn = json.loads(path.read_text()), slot_map(2, path)
-    networks = {"internet": DEFAULT_ORIGIN, "estate": "10.30.0.0/24",
-                "board-default": "172.18.0.0/16", "corp-default": "172.19.0.0/16"}
-    before = {segment: ElementTree.fromstring(d["svg"])[0].text for segment, d in topology.captions(template).items()}
-    after = {segment: ElementTree.fromstring(d["svg"])[0].text for segment, d in topology.captions(drawn).items()}
+def test_each_zone_caption_on_a_slot_s_map_carries_the_networks_its_links_are_labelled_in(path):
+    stack = declared.read(flavor="openstack")
+    template = topology.for_wargame(json.loads(path.read_text()), learner_of(stack, "board"))
+    drawn = slot_map(2, path, read_slot() + KOREAN_ORIGIN)
+    networks = {"internet": "175.192.0.0/24, 5.188.10.0/24", "service-sw": "10.30.0.0/24",
+                "board-db-sw": "172.18.0.0/16"}
+    before = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(template).items()}
+    after = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(drawn).items()}
 
-    assert set(after) == {*networks, "monitoring"}
-    assert after == {segment: f"{before[segment]} {networks[segment]}" if segment in networks else before[segment]
-                     for segment in before}
+    assert set(after) == {*networks, "monitoring-sw"}
+    assert after == {switch: f"{before[switch]} {networks[switch]}" if switch in networks else before[switch]
+                     for switch in before}
     assert not [text for text in caption_texts(drawn) if "10.31.0." in text], "no management network is named"
-    assert "fsl-wargame-host" in caption_texts(drawn), "the box around the containers names their host and nothing else"
-
-def routed_slot():
-    said = {"attacker": KALI_IP, "edge": EDGE_IFCONFIG + NETSTAT, "gateway": WAF_IP + PROC_ROUTE,
-            "wargames": HOST_IP + PROC_ROUTE}
-    adapter, _ = slot_adapter(said)
-    containers = HOST_CONTAINERS.replace("@container board-db", CONTAINER_ROUTE + "@container board-db")
-    original = adapter.runner
-
-    def runner(role):
-        run = original(role)
-        return lambda argv, **kwargs: Ran(0, containers) if role == "wargames" and argv[0] == "sudo" else run(argv, **kwargs)
-    adapter.runner = runner
-    return adapter.interfaces()
-
-def test_the_addressing_table_lists_each_device_s_interfaces_on_the_learner_s_segments_and_the_services(settings):
-    settings.RANGE = declared.read(flavor="openstack")
-    found = maps.shown(routed_slot())
-    table = topology.addressing(json.loads(OPENSTACK.read_text()), settings.RANGE, found, DEFAULT_ORIGIN)
-    rows = {(row["device"], row["interface"]): row for row in table["devices"]}
-
-    assert rows[("fsl-kali", "ens3")]["address"] == "5.188.10.10/24", "the default origin's address, as on the map"
-    assert rows[("fsl-waf", "ens3")] == {"device": "fsl-waf", "interface": "ens3", "address": "10.30.0.177/24",
-                                         "segment": "estate", "gateway": "10.30.0.1"}
-    assert rows[("fsl-edge", "vtnet0")]["gateway"] == "5.188.10.254" and rows[("fsl-edge", "vtnet1")]["gateway"] == ""
-    assert rows[("board.com", "eth0")] == {"device": "board.com", "interface": "eth0", "address": "172.18.0.3/16",
-                                           "segment": "board-default", "gateway": "172.18.0.1"}
-    assert ("fsl-wargame-host", "br-7cc6b1febc1d") in rows, "the containers' gateway is listed with its interface"
-    assert not [row for row in table["devices"] if row["address"].startswith(("10.31.", "172.17."))], (
-        "no management address and no bridge off the map")
-    devices = [row["device"] for row in table["devices"]]
-    assert devices == sorted(devices, key=[node["name"] for node in json.loads(OPENSTACK.read_text())["topology"]["nodes"]].index)
-    assert table["services"] == [
-        {"name": "board.com", "host": "fsl-waf", "port": 80}, {"name": "corp.com", "host": "fsl-waf", "port": 80},
-        {"name": "board-db", "host": "board-db", "port": 3306}, {"name": "corp-db", "host": "corp-db", "port": 3306}]
-
-def test_the_service_ports_are_the_ones_the_waf_and_the_databases_listen_on():
-    nginx = (ROOT / "deploy" / "waf" / "range.conf").read_text()
-    session = yaml.safe_load((ROOT / "session.yaml").read_text())
-    board = yaml.safe_load((ROOT / "wargames" / "board" / "compose.yaml").read_text())
-
-    assert re.findall(r"listen (\d+)", nginx) == [str(topology.SITE_PORT)] * 2
-    assert session["services"]["waf"]["environment"]["PORT"] == str(topology.SITE_PORT)
-    assert board["services"]["board-db"]["image"].startswith("mysql@")
-    assert (ROOT / "wargames" / "corp" / "db" / "Dockerfile").read_text().startswith("FROM mysql@")
-    assert topology.DATABASE_PORT == 3306, "MySQL's default port, which neither database changes"
-
-def test_a_slot_s_addressing_table_is_read_once_and_kept_with_its_map(served):
-    reads = []
-
-    def read():
-        reads.append(1)
-        return read_slot()
-
-    first = maps.addresses("slot 2", read)
-    maps.publish("slot 2", read)
-    again = maps.addresses("slot 2", lambda: [])
-
-    assert first == again and len(reads) == 2
-    assert {row["device"] for row in first["devices"]} >= {"fsl-kali", "fsl-edge", "fsl-waf", "board.com", "corp.com"}
-    maps.tidy(maps.SLOT, [])
-    assert "slot 2" not in maps._found
-
-@pytest.mark.django_db
-def test_the_addresses_endpoint_serves_the_session_s_table_and_says_why_when_the_range_cannot(client):
-    from tests.sessions import open_session
-
-    session_id = open_session(client)
-    table = {"devices": [{"device": "fsl-waf"}], "services": []}
-    with patch("api.views._map_key", return_value="slot 1"), patch.object(maps, "addresses", return_value=table):
-        found = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
-    with patch("api.views._map_key", return_value="slot 1"), \
-         patch.object(maps, "addresses", side_effect=RangeUnavailable("fsl-waf did not answer")):
-        refused = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
-    with patch("api.views._map_key", return_value=None):
-        none = client.get(f"/api/sessions/{session_id}/topology/addresses/").json()
-
-    assert found == {**table, "detail": ""}
-    assert refused == {"devices": [], "services": [], "detail": "fsl-waf did not answer"}
-    assert none["devices"] == [] and none["detail"]
-    assert client.get("/api/sessions/999999/topology/addresses/").status_code == 404
+    assert not [text for text in caption_texts(drawn) if "wargame" in text or "_default" in text], (
+        "no zone names a machine or a Docker network")

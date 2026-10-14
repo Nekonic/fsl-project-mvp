@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TOPOLOGY = ROOT / "deploy" / "topology"
 GENERATED = "generated"
 VERSIONS = ("2.2.61", "3.1.0a6")
+WARGAMES = ("board", "corp")
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "fsl" / "check-topology"
 
 LOAD = """
@@ -57,26 +58,40 @@ GENERATE = """
 import json, sys
 from pathlib import Path
 import topology
+from range import declared
 from range.interfaces import Interface
 
-def fixture_range(document):
+def fixture_range(document, learner):
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    real = {}
+    for host, names in learner.hosts.items():
+        for name in names:
+            real.setdefault(name, host)
+    segment = {switch: segment for segment, switch in learner.switches.items()}
     found = []
     for index, link in enumerate(document["topology"]["links"]):
         ends = [(by_id[end["node_id"]], end) for end in link["nodes"]]
         for (node, end), (other, _) in (ends, ends[::-1]):
-            found.append(Interface(node["name"], f"eth{end['adapter_number']}",
-                                   f"10.{index}.{end['adapter_number']}.2/24", other["name"]))
+            if node["name"] in real and other["name"] in segment:
+                found.append(Interface(real[node["name"]], f"eth{end['adapter_number']}",
+                                       f"10.{index}.{end['adapter_number']}.2/24", segment[other["name"]]))
     return found
 
 for source, written in zip(sys.argv[1::2], sys.argv[2::2]):
     document = json.loads(Path(source).read_text())
-    Path(written).write_text(json.dumps(topology.labelled(document, fixture_range(document), "slot-1", "slot 1")))
+    stack = declared.read(flavor="openstack" if "openstack" in source else "")
+    wargame = Path(written).stem.split(".")[0].rsplit("-", 1)[1]
+    learner = topology.learner(stack, wargame, stack.roles["attacker"], ("10.0.0.0/8",))
+    drawn = topology.for_wargame(document, learner)
+    Path(written).write_text(json.dumps(topology.labelled(document, learner, fixture_range(drawn, learner),
+                                                          f"slot-1-{wargame}", f"slot 1 {wargame}")))
 """
 
 def generated(into: Path) -> list[Path]:
-    sources = sorted(TOPOLOGY.glob("*.gns3"))
-    made = [into / GENERATED / source.name for source in sources]
+    templates = sorted(TOPOLOGY.glob("*.gns3"))
+    sources = [source for source in templates for _ in WARGAMES]
+    made = [into / GENERATED / source.name.replace(".", f"-{wargame}.", 1)
+            for source in templates for wargame in WARGAMES]
     made[0].parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(ROOT / ".venv" / "bin" / "python"), "-c", GENERATE,
                     *[str(path) for pair in zip(sources, made) for path in pair]],

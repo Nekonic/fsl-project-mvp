@@ -20,6 +20,7 @@ PROGRAM = Path("deploy") / "traffic" / "users.py"
 PULL_LIMIT = 1 << 20
 PULLING = threading.Lock()
 BLOCKED = 403
+REFUSED_BY_APP = "app"
 SHOWN_SOURCES = 40
 
 class NoTraffic(LookupError):
@@ -136,9 +137,9 @@ def counted(requests) -> dict:
     return requests.aggregate(
         sent=Count("id"),
         served=Count("id", filter=Q(status__gte=200, status__lt=400)),
-        blocked=Count("id", filter=Q(status=BLOCKED) & ~Q(refused_by="app")),
+        blocked=Count("id", filter=Q(status=BLOCKED) & ~Q(refused_by=REFUSED_BY_APP)),
         unanswered=Count("id", filter=Q(status=0)),
-        other=Count("id", filter=Q(status__gte=400) & ~(Q(status=BLOCKED) & ~Q(refused_by="app"))),
+        other=Count("id", filter=Q(status__gte=400) & ~(Q(status=BLOCKED) & ~Q(refused_by=REFUSED_BY_APP))),
     )
 
 def status(session) -> dict:
@@ -164,7 +165,7 @@ def status(session) -> dict:
         "by_action": {
             row["action"]: {"sent": row["sent"], "blocked": row["blocked"]}
             for row in requests.values("action").annotate(
-                sent=Count("id"), blocked=Count("id", filter=Q(status=BLOCKED) & ~Q(refused_by="app")),
+                sent=Count("id"), blocked=Count("id", filter=Q(status=BLOCKED) & ~Q(refused_by=REFUSED_BY_APP)),
             )
         },
     }
@@ -175,7 +176,7 @@ def alerted_markers(session) -> set[str]:
 
 def availability(session, alerted: set[str]) -> dict:
     requests = session.customer_requests.all()
-    blocked = requests.filter(status=BLOCKED).exclude(refused_by="app")
+    blocked = requests.filter(status=BLOCKED).exclude(refused_by=REFUSED_BY_APP)
     return {
         **counted(requests),
         "alerted": len(alerted),

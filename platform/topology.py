@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import uuid
+from dataclasses import dataclass
 from xml.etree import ElementTree
 
 from range.interfaces import BRIDGE_PREFIX
@@ -57,20 +58,92 @@ BLOCKING_RULE = "949110"
 UPSTREAM_FAILED = {502, 503, 504}
 TRANSIT = ("edge", "gateway", "wargames")
 SEEN_KEPT = 5
-LOG_STORE = "elasticsearch"
 CONSOLE = "console"
-SITE_PORT = 80
-DATABASE_PORT = 3306
 DATABASE_SUFFIX = "-db"
+SWITCH_SUFFIX = "-sw"
+BRIDGE_SUFFIX = "-default"
+LOG_STORE = "fsl-elasticsearch"
+ATTACKER = "attacker"
+CUSTOMERS = "customers"
+FIREWALL = "firewall"
+WAF = "waf"
+LOG_SERVER = "log-server"
+INTERNET = "internet"
+SERVICE = "service-sw"
+MONITORING = "monitoring-sw"
+DISPLAY_IMAGE = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+
+@dataclass(frozen=True)
+class Learner:
+    wargame: str
+    hosts: dict[str, tuple[str, ...]]
+    roles: dict[str, str]
+    switches: dict[str, str]
+    shared: frozenset[str]
+    sensors: dict[str, str]
+    hidden: frozenset[str]
+    prefers: dict[str, tuple[str, ...]]
+
+    def shown(self, real: str) -> str:
+        return (self.hosts.get(real) or (real,))[0]
 
 def domains(declared) -> dict[str, str]:
     gateway = declared.hosts.get(declared.roles.get("gateway", ""))
     return {name.split(".")[0]: name for name in (gateway.names if gateway else ())}
 
-def shown_as(declared) -> dict[str, str]:
-    return {name: domain for role, domain in domains(declared).items()
-            for name in (declared.compose.get(role, ""), declared.roles.get(role, ""))
-            if name and name not in declared.hosts}
+def _parts(wargame: str, domain: str) -> set[str]:
+    database = f"{wargame}{DATABASE_SUFFIX}"
+    return {domain, database, f"{database}{SWITCH_SUFFIX}"}
+
+def learner(declared, wargame: str, customers_from: str = "", customers_prefer: tuple[str, ...] = ()) -> Learner:
+    roles, compose = declared.roles, declared.compose
+    sites = domains(declared)
+    database = f"{wargame}{DATABASE_SUFFIX}"
+    hosts: dict[str, list[str]] = {}
+
+    def put(real, shown):
+        if real and shown not in hosts.setdefault(real, []):
+            hosts[real].append(shown)
+
+    put(roles.get("attacker", ""), ATTACKER)
+    if customers_prefer:
+        put(customers_from, CUSTOMERS)
+    put(roles.get("edge", ""), FIREWALL)
+    put(roles.get("gateway", ""), WAF)
+    for real in (compose.get(wargame, ""), roles.get(wargame, "")):
+        put(real, sites[wargame])
+    for real in (compose.get(database, ""), roles.get(database, "")):
+        if real not in hosts:
+            put(real, database)
+    put(LOG_STORE, LOG_SERVER)
+    for sensing, sensed in sorted(declared.watches.items()):
+        if roles.get(sensing) and roles[sensing] not in hosts and roles.get(sensed) in hosts:
+            put(roles[sensing], hosts[roles[sensed]][0])
+
+    others = {name for site in sites if site != wargame for name in (site, f"{site}{DATABASE_SUFFIX}")}
+    placed = {}
+    for role, real in roles.items():
+        shown = hosts.get(compose.get(role, "")) or hosts.get(real)
+        if role not in others and shown:
+            placed[role] = shown[0]
+    if customers_prefer:
+        placed[CUSTOMERS] = CUSTOMERS
+
+    switches = {origin.id: INTERNET for origin in declared.origins}
+    switches.update({origin.segment: INTERNET for origin in declared.origins})
+    switches[NAMED_ON] = SERVICE
+    shared = frozenset(switches.values())
+    switches[f"{wargame}{BRIDGE_SUFFIX}"] = f"{database}{SWITCH_SUFFIX}"
+
+    sensors = {roles[sensing]: (hosts.get(roles.get(sensed, "")) or ("",))[0]
+               for sensing, sensed in sorted(declared.watches.items()) if sensing in roles}
+    hidden = {name for site, domain in sites.items() if site != wargame for name in _parts(site, domain)}
+    if not customers_prefer:
+        hidden.add(CUSTOMERS)
+    first = next((origin.subnet for origin in declared.origins if origin.id == declared.default_origin), "")
+    prefers = {ATTACKER: (first,), CUSTOMERS: tuple(customers_prefer), "": (first,)}
+    return Learner(wargame=wargame, hosts={real: tuple(shown) for real, shown in hosts.items()}, roles=placed,
+                   switches=switches, shared=shared, sensors=sensors, hidden=frozenset(hidden), prefers=prefers)
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -84,20 +157,20 @@ def _wired(project) -> dict[str, set[str]]:
 def _kinds(project) -> dict[str, str]:
     return {node["name"]: node["node_type"] for node in project["topology"]["nodes"]}
 
-def overlay(project, described, declared, named=lambda name: name, beside=()) -> dict:
-    carried = {origin.id: origin.segment for origin in declared.origins}
-    called = shown_as(declared)
+def overlay(project, described, learner, beside=()) -> dict:
     seen: dict[str, dict[str, list[str]]] = {}
     for segment in described.segments:
+        on = learner.switches.get(segment.id, segment.id)
         for node in segment.nodes:
-            on = seen.setdefault(called.get(node.name, node.name), {}).setdefault(carried.get(segment.id, segment.id), [])
-            if node.address and node.address not in on:
-                on.append(node.address)
+            for shown in (learner.hosts.get(node.name) or (node.name,)):
+                held = seen.setdefault(shown, {}).setdefault(on, [])
+                if node.address and node.address not in held:
+                    held.append(node.address)
     nodes = {}
     for name, kind in [*_kinds(project).items(), *((host, "") for host in beside)]:
         if kind == SWITCH:
             continue
-        found = seen.get(name, seen.get(named(name)))
+        found = seen.get(name)
         nodes[name] = {"status": "running" if found is not None else "not reported",
                        "addresses": found or {}}
     return {"project_id": project["project_id"], "nodes": nodes}
@@ -187,10 +260,10 @@ def _step(path, near, name) -> None:
         path.append(None)
     path.append(name)
 
-def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, str]:
-    carried = {origin.id: origin.segment for origin in declared.origins}
-    gateway = declared.roles["gateway"]
-    transit = {declared.roles[role] for role in TRANSIT if role in declared.roles}
+def _walk(near, kinds, learner, nodes, sent, detections, goal) -> tuple[list, str]:
+    gateway = learner.roles["gateway"]
+    transit = {learner.roles[role] for role in TRANSIT if role in learner.roles}
+    named_on = learner.switches[NAMED_ON]
     sender = sent["sender"]
 
     def linked(one, other):
@@ -202,13 +275,14 @@ def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, s
     holder = holder or gateway
     source = next((d.src_ip for d in detections if d.src_ip), "") or sent.get("source") or ""
     owner, left_on = _held(nodes, source)
-    on = carried.get(sent.get("on") or "", sent.get("on") or "") or (left_on if owner == sender else "")
+    asked = sent.get("on") or ""
+    on = learner.switches.get(asked, asked) or (left_on if owner == sender else "")
     if not on and arrived and _addresses(nodes, sender, arrived):
         on = arrived
     if sent["kind"] == "browse" and not source:
         source = next(iter(_addresses(nodes, sender, on)), "")
     if not arrived and on and sent["kind"] != "browse" and holder == gateway:
-        arrived = on if _addresses(nodes, gateway, on) else NAMED_ON
+        arrived = on if _addresses(nodes, gateway, on) else named_on
 
     path = [sender]
     if sender in kinds:
@@ -222,14 +296,12 @@ def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, s
     else:
         path.append(holder)
     if holder == gateway:
-        upstream = declared.roles.get(sent.get("target", ""), "")
-        upstream = shown_as(declared).get(upstream, upstream)
-        _step(path, near, NAMED_ON if linked(gateway, NAMED_ON) and linked(upstream, NAMED_ON) else None)
+        upstream = learner.roles.get(sent.get("target", ""), "")
+        _step(path, near, named_on if linked(gateway, named_on) and linked(upstream, named_on) else None)
         _step(path, near, upstream or None)
         holder = upstream
     if holder and holder != goal:
-        shared = {segment.id for segment in declared.segments} | set(carried.values())
-        for name in _inner(near, kinds, shared, holder, goal)[1:] or [None, goal]:
+        for name in _inner(near, kinds, learner.shared, holder, goal)[1:] or [None, goal]:
             _step(path, near, name)
     return path, source
 
@@ -238,24 +310,25 @@ def _request_seen(event) -> dict:
             "method": _dig(event, "http", "http_method"), "url": _dig(event, "http", "url"),
             "status": _dig(event, "http", "status")}
 
-def follow(project, declared, nodes, sent, detections, named=lambda name: name, seen=()) -> dict:
+def follow(project, learner, nodes, sent, detections, named=lambda name: name, seen=()) -> dict:
     near, kinds = _wired(project), _kinds(project)
-    if sent["kind"] != "browse" and sent["sender"] not in kinds:
-        sent = dict(sent, sender=declared.roles["attacker"])
-    target = sent.get("target") or "board"
-    goal = _on_map(declared, kinds, target)
-    path, source = _walk(near, kinds, declared, nodes, dict(sent, target=target), detections, goal)
+    sender = learner.shown(sent["sender"])
+    if sent["kind"] != "browse" and sender not in kinds:
+        sender = learner.roles["attacker"]
+    target = sent.get("target") if sent.get("target") in learner.roles else learner.wargame
+    goal = learner.roles[target]
+    path, source = _walk(near, kinds, learner, nodes, dict(sent, sender=sender, target=target), detections, goal)
 
-    sensors = {declared.roles[sensing]: declared.roles.get(sensed, "")
-               for sensing, sensed in sorted(declared.watches.items()) if sensing in declared.roles}
-    watching = {watched: host for host, watched in sensors.items()}
+    watching: dict[str, str] = {}
+    for host, watched in sorted(learner.sensors.items()):
+        watching.setdefault(watched, host)
     heard: dict[str, list] = {}
     for detection in detections:
         if detection.source == "suricata":
-            heard.setdefault(_sensor_of(detection, sensors, named), []).append(detection)
+            heard.setdefault(_sensor_of(detection, learner.sensors, named), []).append(detection)
     saw: dict[str, list] = {}
     for event in seen:
-        saw.setdefault(_said_by(event, sensors, named), []).append(event)
+        saw.setdefault(_said_by(event, learner.sensors, named), []).append(event)
     rules = sorted({_rule_id(d) for d in detections if d.source == "modsecurity"} - {""})
     logged = any(d.source == "modsecurity" for d in detections)
     verdict = _verdict(sent, rules, logged)
@@ -279,12 +352,12 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
             hop["source"] = source or None
         if name in watching and watching[name] not in placed:
             alerts, requests = heard.get(watching[name], []), saw.get(watching[name], [])
-            hop.update(sensor=watching[name],
+            hop.update(sensor=name,
                        alerts=[{"signature": d.signature, "sid": _sid(d)} for d in alerts],
                        requests=len(requests), seen=[_request_seen(event) for event in requests[:SEEN_KEPT]])
             hop["evidence"] = hop["evidence"] or bool(alerts) or bool(requests)
             placed.add(watching[name])
-        if name == declared.roles["gateway"] and "verdict" not in placed:
+        if name == learner.roles["gateway"] and "verdict" not in placed:
             hop.update(verdict=verdict, rules=rules)
             hop["evidence"] = hop["evidence"] or verdict is not None
             placed.add("verdict")
@@ -293,32 +366,19 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
             hop["evidence"] = hop["evidence"] or reached is not None
         hops.append(hop)
 
-    elsewhere = [{"sensor": host or None, "signature": d.signature, "sid": _sid(d)}
+    elsewhere = [{"sensor": learner.sensors.get(host) or None, "signature": d.signature, "sid": _sid(d)}
                  for host, found in sorted(heard.items()) if host not in placed for d in found]
-    return {"source": sent["sender"] if sent["sender"] in kinds else CONSOLE, "address": source or None,
-            "target": goal,
-            "hops": hops, "elsewhere": elsewhere}
+    return {"source": sender if sender in kinds else CONSOLE, "address": source or None,
+            "target": goal, "hops": hops, "elsewhere": elsewhere}
 
-def _images(project) -> dict[str, str]:
-    return {node["name"]: str((node.get("properties") or {}).get("image") or "")
-            for node in project["topology"]["nodes"]}
-
-def _on_map(declared, kinds, role) -> str:
-    called = shown_as(declared)
-    service = called.get(declared.compose.get(role, ""), declared.compose.get(role, ""))
-    host = declared.roles.get(role, "")
-    return service if service in kinds else called.get(host, host)
-
-def facts(project, declared, scenario) -> dict[str, list[str]]:
+def facts(project, learner) -> dict[str, list[str]]:
     near, kinds = _wired(project), _kinds(project)
-    outside = {origin.segment for origin in declared.origins} & set(kinds)
-    entered = {name for segment in outside for name in near[segment] if kinds[name] != SWITCH}
-    transit = [declared.roles[role] for role in TRANSIT if declared.roles.get(role) in entered]
-    stores = sorted(name for name, image in _images(project).items() if LOG_STORE in image)
-    database = _on_map(declared, kinds, f"{scenario}-db")
+    entered = {name for name in near.get(INTERNET, ()) if kinds[name] != SWITCH}
+    transit = [learner.roles[role] for role in TRANSIT if learner.roles.get(role) in entered]
+    database = learner.roles.get(f"{learner.wargame}{DATABASE_SUFFIX}", "")
     return {
         "entry": transit[:1],
-        "logs": stores or [declared.roles["scorer"]],
+        "logs": [name for name in kinds if name == LOG_SERVER],
         "segment": sorted(name for name in near.get(database, ()) if kinds[name] == SWITCH),
     }
 
@@ -335,6 +395,7 @@ LABEL_DROP = 4
 LABEL_CLIMB = 22
 KOREAN_SUFFIX = " ("
 CAPTION_CHAR = 0.62
+NETWORKS_JOINED = ", "
 
 def renamed(value: str, salt: str) -> str:
     return str(uuid.uuid5(uuid.UUID(value), salt))
@@ -342,12 +403,13 @@ def renamed(value: str, salt: str) -> str:
 def _ip(one):
     return ipaddress.ip_interface(one.address).ip
 
-def _head(found, first):
-    return min(found, key=lambda one: (not first or _ip(one) not in ipaddress.ip_network(first), one.name, _ip(one)))
+def _rank(one, prefers) -> int:
+    return next((at for at, subnet in enumerate(prefers) if subnet and _ip(one) in ipaddress.ip_network(subnet)),
+                len(prefers))
 
-def _said(found, first) -> str:
-    head = _head(found, first)
-    return f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}"
+def _head(found, prefers, strict=False):
+    ranked = [one for one in found if not strict or _rank(one, prefers) < len(prefers)]
+    return min(ranked, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
 
 def leaving(node, other) -> tuple[int, int]:
     dx, dy = other["x"] - node["x"], other["y"] - node["y"]
@@ -383,10 +445,13 @@ def _smallest(x, y, zones):
     return min(holding, key=lambda zone: (_area(zone)[2] - _area(zone)[0]) * (_area(zone)[3] - _area(zone)[1]),
                default=None)
 
-def captions(document) -> dict[str, dict]:
+def _zones(document) -> tuple[list, list]:
     drawings = document["topology"]["drawings"]
-    zones = [drawing for drawing in drawings if _shape(drawing)[1].tag == "rect"]
-    texts = [drawing for drawing in drawings if _shape(drawing)[1].tag == "text"]
+    return ([drawing for drawing in drawings if _shape(drawing)[1].tag == "rect"],
+            [drawing for drawing in drawings if _shape(drawing)[1].tag == "text"])
+
+def captions(document) -> dict[str, dict]:
+    zones, texts = _zones(document)
     titled = {id(_smallest(text["x"], text["y"], zones)): text for text in texts}
     found = {}
     for node in document["topology"]["nodes"]:
@@ -396,22 +461,29 @@ def captions(document) -> dict[str, dict]:
                 found[node["name"]] = titled[id(zone)]
     return found
 
-def _networks(found, first) -> dict[str, str]:
-    held: dict[str, list] = {}
-    for one in found:
-        if one.segment:
-            held.setdefault(one.segment, []).append(one)
-    return {segment: str(ipaddress.ip_interface(_head(ones, first).address).network) for segment, ones in held.items()}
+def for_wargame(project, learner) -> dict:
+    document = json.loads(json.dumps(project))
+    topology = document["topology"]
+    gone = {node["node_id"] for node in topology["nodes"] if node["name"] in learner.hidden}
+    topology["nodes"] = [node for node in topology["nodes"] if node["node_id"] not in gone]
+    topology["links"] = [link for link in topology["links"] if not {end["node_id"] for end in link["nodes"]} & gone]
+    zones, texts = _zones(document)
+    kept = [zone for zone in zones if any(_within(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2,
+                                                  _area(zone)) for node in topology["nodes"])]
+    shown = {id(zone) for zone in kept} | {id(text) for text in texts if id(_smallest(text["x"], text["y"], zones))
+                                           in {id(zone) for zone in kept}}
+    topology["drawings"] = [drawing for drawing in topology["drawings"] if id(drawing) in shown]
+    return document
 
-def _captioned(drawing, network) -> None:
+def _captioned(drawing, networks) -> None:
     svg, text = _shape(drawing)
-    added = f" {network}"
+    added = " " + NETWORKS_JOINED.join(networks)
     text.text = (text.text or "") + added
     svg.set("width", str(round(float(svg.get("width")) + len(added) * float(text.get("font-size")) * CAPTION_CHAR)))
     drawing["svg"] = ElementTree.tostring(svg, encoding="unicode")
 
-def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
-    document = json.loads(json.dumps(project))
+def labelled(project, learner, found, salt: str, called: str) -> dict:
+    document = for_wargame(project, learner)
     document["project_id"] = renamed(document["project_id"], salt)
     base, korean, rest = document["name"].partition(KOREAN_SUFFIX)
     document["name"] = f"{base} {called}" + (korean + rest if korean else "")
@@ -419,22 +491,30 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
     held: dict[tuple[str, str], list] = {}
     for one in found:
-        if one.segment and not one.name.startswith(BRIDGE_PREFIX):
-            held.setdefault((one.host, one.segment), []).append(one)
+        switch = learner.switches.get(one.segment)
+        if switch and not one.name.startswith(BRIDGE_PREFIX):
+            for name in learner.hosts.get(one.host, ()):
+                held.setdefault((name, switch), []).append(one)
+    networks: dict[str, list[str]] = {}
     for link in document["topology"]["links"]:
         ends = [by_id[end["node_id"]] for end in link["nodes"]]
         for end, node, other in ((link["nodes"][0], ends[0], ends[1]), (link["nodes"][1], ends[1], ends[0])):
             switching = node["node_type"] == SWITCH
-            ours = held.get((node["name"], other["name"])) if not switching else None
-            text = _said(ours, first) if ours else ""
+            prefers = learner.prefers.get(node["name"], learner.prefers[""])
+            head = None if switching else _head(held.get((node["name"], other["name"]), []), prefers,
+                                                 strict=node["name"] == CUSTOMERS)
+            text = f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}" if head else ""
+            if head:
+                network = str(ipaddress.ip_interface(head.address).network)
+                if network not in networks.setdefault(other["name"], []):
+                    networks[other["name"]].append(network)
             x, y, anchor = _placed_label(node, other)
             end["label"] = {"text": text, "style": (SWITCH_LABEL_STYLE if switching else LABEL_STYLE) + anchor,
                             "x": x, "y": y, "rotation": 0}
         link["link_id"] = renamed(link["link_id"], salt)
-    networks = _networks(found, first)
-    for segment, caption in captions(document).items():
-        if segment in networks:
-            _captioned(caption, networks[segment])
+    for switch, caption in captions(document).items():
+        if networks.get(switch):
+            _captioned(caption, networks[switch])
     for node in document["topology"]["nodes"]:
         node["node_id"] = renamed(node["node_id"], salt)
     for link in document["topology"]["links"]:
@@ -443,25 +523,3 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     for drawing in document["topology"]["drawings"]:
         drawing["drawing_id"] = renamed(drawing["drawing_id"], salt)
     return document
-
-def addressing(project, declared, found, first: str = "") -> dict:
-    kinds = _kinds(project)
-    order = [name for name, kind in kinds.items() if kind != SWITCH]
-    held: dict[tuple[str, str, str], list] = {}
-    for one in found:
-        if kinds.get(one.host, SWITCH) != SWITCH and kinds.get(one.segment) == SWITCH:
-            held.setdefault((one.host, one.name, one.segment), []).append(one)
-    devices = []
-    for (host, name, segment), ones in sorted(held.items(), key=lambda item: (order.index(item[0][0]),
-                                                                          item[0][1].startswith(BRIDGE_PREFIX), item[0][1])):
-        head = _head(ones, first)
-        devices.append({"device": host, "interface": name, "address": head.address, "segment": segment,
-                        "gateway": next((one.gateway for one in ones if one.gateway), "")})
-    gateway = declared.roles.get("gateway", "")
-    services = [{"name": domain, "host": gateway, "port": SITE_PORT} for domain in domains(declared).values()]
-    for role in domains(declared):
-        database = f"{role}{DATABASE_SUFFIX}"
-        if database in declared.roles:
-            services.append({"name": declared.compose.get(database, database),
-                             "host": _on_map(declared, kinds, database), "port": DATABASE_PORT})
-    return {"devices": devices, "services": services}

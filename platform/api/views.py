@@ -584,7 +584,7 @@ def _range_fact(session, of):
         return [str(_result(session)["objectives"]["lost"])]
     if of == "excluded":
         return [str(entry["rule_id"]) for entry in _waf_in_force(session)["exclusions"]]
-    return topology.facts(gns3.local(), settings.RANGE, session.scenario)[of]
+    return topology.facts(maps.template(session.scenario), maps.learner(session.scenario))[of]
 
 def _request_fact(session, record, of):
     url = urlsplit(record["url"])
@@ -941,7 +941,7 @@ def range_topology(request):
     session = get_object_or_404(Session, pk=int(asked))
     key = _map_key(session)
     if key is None or not settings.FSL_GNS3_URL:
-        return _reply(gns3.project(language))
+        return _reply(gns3.project(language, maps.template(session.scenario, language)))
     return _reply(maps.served(key, language, _map_read(session)))
 
 def _map_key(session, adapter=None):
@@ -949,32 +949,22 @@ def _map_key(session, adapter=None):
     if not hasattr(adapter, "interfaces"):
         return None
     if _slotted(adapter):
-        return maps.called(maps.SLOT, _slot_of(session))
-    return maps.called(maps.SESSION, session.pk)
+        return maps.called(maps.SLOT, _slot_of(session), session.scenario)
+    return maps.called(maps.SESSION, session.pk, session.scenario)
 
 def _map_kind(adapter) -> str:
     return maps.SLOT if _slotted(adapter) else maps.SESSION
 
 def _maps_live(adapter) -> list[str]:
     if _slotted(adapter):
-        return [maps.called(maps.SLOT, number) for number in range(1, adapter.slots + 1)]
-    return [maps.called(maps.SESSION, pk) for pk in Session.objects.filter(ended_at=None).values_list("pk", flat=True)]
+        newest = (Session.objects.filter(_of_slot(number)).order_by("-pk").first()
+                  for number in range(1, adapter.slots + 1))
+        return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in newest if session]
+    return [maps.called(maps.SESSION, session.pk, session.scenario) for session in Session.objects.filter(ended_at=None)]
 
 def _map_read(session):
-    on_map = {node["name"] for node in gns3.local()["topology"]["nodes"]}
-    on_map |= {name for name, shown in topology.shown_as(settings.RANGE).items() if shown in on_map}
+    on_map = set(maps.learner(session.scenario).hosts)
     return lambda: _range(session).interfaces(on_map)
-
-@require_http_methods(["GET"])
-def session_addresses(request, session_id):
-    session = get_object_or_404(Session, pk=session_id)
-    key = _map_key(session)
-    if key is None:
-        return _reply({"devices": [], "services": [], "detail": "this range cannot list its interfaces"})
-    try:
-        return _reply({**maps.addresses(key, _map_read(session)), "detail": ""})
-    except RangeUnavailable as exc:
-        return _reply({"devices": [], "services": [], "detail": str(exc)[:300]})
 
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
@@ -987,9 +977,7 @@ def _maps_tidied(adapter):
                          name="fsl-map-tidy", daemon=True).start()
 
 def _drawn(session, described, beside=()):
-    number = _slot_of(session)
-    return topology.overlay(gns3.local(), described, settings.RANGE,
-                            lambda name: _named_in(number, name), beside)
+    return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario), beside)
 
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
@@ -1010,7 +998,7 @@ def session_topology(request, session_id):
             zone["alerts"] += 1
 
     return _reply({**shape, "unplaced": unplaced,
-                   "project": topology.shown(_drawn(session, described), gns3.local())})
+                   "project": topology.shown(_drawn(session, described), maps.template(session.scenario))})
 
 def _site_record(session, asked):
     try:
@@ -1022,14 +1010,19 @@ def _site_record(session, asked):
         raise Http404(f"session {session.pk} kept no request {wanted}")
     return record
 
-def _sent(session, record, case):
+def _sent(session, record, case, customer=None):
     roles = settings.RANGE.roles
     if record:
         host = record["url"].split("/")[2].split(".")[0]
         return {"kind": "browse", "sender": roles["scorer"], "to": record.get("to") or "",
                 "status": record.get("status"), "blocked": record.get("blocked"),
-                "target": host if host in roles else "board"}
-    target = session.scenario if session.scenario in roles else "board"
+                "target": host if host in roles else session.scenario}
+    target = session.scenario
+    if customer:
+        return {"kind": "customer", "sender": topology.CUSTOMERS, "on": customer.origin,
+                "source": customer.source_ip or "", "status": customer.status or None,
+                "blocked": customer.status == customers.BLOCKED and customer.refused_by != customers.REFUSED_BY_APP,
+                "target": target}
     if case:
         return {"kind": "case", "sender": roles["attacker"], "on": case.meta.get("launched_on") or "",
                 "source": case.meta.get("source_ip") or "", "status": case.meta.get("status") or None,
@@ -1039,19 +1032,24 @@ def _sent(session, record, case):
 @require_http_methods(["GET"])
 def session_follow(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
-    asked, fired = request.GET.get("request"), request.GET.get("case")
+    asked, fired, served = request.GET.get("request"), request.GET.get("case"), request.GET.get("customer")
     record = _site_record(session, asked) if asked is not None else None
-    case = None
+    case = customer = None
     if fired and record is None:
         case = session.cases.filter(case_id=fired).first()
         if case is None:
             raise Http404(f"session {session_id} recorded no case {fired}")
-    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else case.case_id if case else "")
+    if served and record is None and case is None:
+        customer = session.customer_requests.filter(marker=served).first()
+        if customer is None:
+            raise Http404(f"session {session_id} recorded no customer request {served}")
+    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else case.case_id if case
+                                           else customer.marker if customer else "")
     if not marker:
-        raise BadRequest('name a "marker", a Website pane "request" or a fired "case" to follow')
-    return _reply(_followed(session, record, case, marker))
+        raise BadRequest('name a "marker", a Website pane "request", a fired "case" or a "customer" request to follow')
+    return _reply(_followed(session, record, case, marker, customer))
 
-def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER):
+def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER, customer=None):
     try:
         _ingest(session, RECENT_ALERTS)
     except elastic.ElasticUnavailable:
@@ -1063,17 +1061,22 @@ def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER):
         seen = _sensed_for(session, record)
     elif case:
         seen = _sensed(session, case.started_at - FOLLOW_SLACK, case.ended_at + FOLLOW_SLACK, stored)
+    elif customer:
+        seen = _sensed(session, customer.sent_at - FOLLOW_SLACK, customer.sent_at + FOLLOW_SLACK, stored)
     else:
         seen = []
     detections = list(detections)
     nodes = _drawn(session, _range(session).describe(), beside=[settings.RANGE.roles["scorer"]])["nodes"]
     number = _slot_of(session)
-    followed = topology.follow(gns3.local(), settings.RANGE, nodes, _sent(session, record, case),
-                               detections, lambda name: _named_in(number, name), seen)
+    followed = topology.follow(maps.template(session.scenario), maps.learner(session.scenario), nodes,
+                               _sent(session, record, case, customer), detections, lambda name: _named_in(number, name),
+                               seen)
     return {
         "marker": marker,
         "request": {name: record[name] for name in site.SUMMARY} if record else None,
         "case": {"case_id": case.case_id, "name": case.name} if case else None,
+        "customer": {"marker": customer.marker, "action": customer.action, "origin": customer.origin}
+        if customer else None,
         "detections": len(detections),
         "sensed": len(seen),
         **followed,

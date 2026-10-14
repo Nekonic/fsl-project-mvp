@@ -88,6 +88,9 @@ def publish(document: dict) -> str:
         opened = requests.post(f"{_api()}/projects/{project_id}/open", headers=headers, json={},
                                timeout=IMPORT_TIMEOUT)
         opened.raise_for_status()
+        started = requests.post(f"{_api()}/projects/{project_id}/nodes/start", headers=headers, json={},
+                                timeout=IMPORT_TIMEOUT)
+        started.raise_for_status()
         return opened.json().get("status", "")
     except (requests.RequestException, ValueError) as exc:
         raise Unavailable(f"GNS3 did not load {document['name']}: {exc}"[:300]) from exc

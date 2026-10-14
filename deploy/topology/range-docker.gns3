@@ -3,7 +3,7 @@
     "auto_open": true,
     "drawing_grid_size": 25,
     "grid_size": 75,
-    "name": "fsl-range-docker",
+    "name": "range-docker",
     "project_id": "1b9040fc-efb8-5b83-9745-df8e32ae7d9b",
     "revision": 9,
     "scene_height": 1200,
@@ -16,73 +16,73 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "b0385541-676c-510b-81de-a082b2d5134a",
+                "drawing_id": "ebce4148-1e10-5523-9304-89ab2844678b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"400\" height=\"170\"><rect width=\"400\" height=\"170\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "svg": "<svg width=\"400\" height=\"360\"><rect width=\"400\" height=\"360\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
                 "x": -560,
-                "y": -100,
+                "y": -190,
                 "z": 0
             },
             {
-                "drawing_id": "9c74065f-8799-5c43-ac58-bace160bb601",
+                "drawing_id": "2e9509eb-3742-5390-9550-bb33360f988f",
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"72\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
                 "x": -550,
+                "y": -186,
+                "z": 2
+            },
+            {
+                "drawing_id": "01491f25-038a-52b4-833f-0252b530f537",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"440\" height=\"370\"><rect width=\"440\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 130,
+                "y": -100,
+                "z": 0
+            },
+            {
+                "drawing_id": "fb40c2d7-5d49-5de4-ac8c-c6d4501359ae",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"153\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
+                "x": 140,
                 "y": -96,
                 "z": 2
             },
             {
-                "drawing_id": "295681ac-737f-53da-86e6-10a09b505d7f",
+                "drawing_id": "511b3cd8-ea13-5b4a-b915-cff161a83822",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"720\" height=\"580\"><rect width=\"720\" height=\"580\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -90,
-                "y": -300,
-                "z": 0
-            },
-            {
-                "drawing_id": "2190eda5-8ed2-5af8-8857-2e9992e79db4",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"153\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
+                "svg": "<svg width=\"400\" height=\"180\"><rect width=\"400\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
                 "x": -80,
-                "y": -296,
-                "z": 2
-            },
-            {
-                "drawing_id": "0b4d4212-497a-53fe-8c1f-35c86958d082",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"720\" height=\"170\"><rect width=\"720\" height=\"170\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -90,
-                "y": 340,
+                "y": 320,
                 "z": 0
             },
             {
-                "drawing_id": "ffbe882e-0d3b-5064-86b1-9a84c9755b55",
+                "drawing_id": "85993fc0-a4c7-54bd-9a98-7abcb6d418e1",
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"89\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
-                "x": -80,
-                "y": 476,
+                "x": -70,
+                "y": 466,
                 "z": 2
             }
         ],
         "links": [
             {
                 "filters": {},
-                "link_id": "c914bb7f-ac9c-5687-b226-06a05a4eeb5e",
+                "link_id": "59600ffe-856f-5476-ba56-e69bdb2eaa55",
                 "nodes": [
                     {
                         "adapter_number": 0,
-                        "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
+                        "node_id": "3a826215-5db9-520f-a40b-c35315c5f68e",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                        "node_id": "a61541c0-ab65-5e79-ab81-7e7682104a2d",
                         "port_number": 0
                     }
                 ],
@@ -90,50 +90,16 @@
             },
             {
                 "filters": {},
-                "link_id": "69ba00c4-36c6-52a0-a845-a5d387485a93",
+                "link_id": "61e488c1-9435-5364-8e4a-744c67b8c6fc",
                 "nodes": [
                     {
                         "adapter_number": 0,
-                        "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                        "node_id": "bdafa0d3-a33e-5410-bad6-c8889c4807d2",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
-                        "port_number": 2
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
-                "link_id": "d3698831-740c-546f-8618-73e8964b69e9",
-                "nodes": [
-                    {
-                        "adapter_number": 1,
-                        "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
-                        "port_number": 0
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
-                "link_id": "b192f041-8a1c-5db4-b534-0ab6e860f2d6",
-                "nodes": [
-                    {
-                        "adapter_number": 0,
-                        "node_id": "7f1242d8-f697-59ea-8898-cdc438640eec",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "node_id": "a61541c0-ab65-5e79-ab81-7e7682104a2d",
                         "port_number": 1
                     }
                 ],
@@ -141,16 +107,16 @@
             },
             {
                 "filters": {},
-                "link_id": "5336ce50-e74c-5717-9699-796c0d60a29f",
+                "link_id": "c0111267-8c81-5050-bd8a-c3f01535020a",
                 "nodes": [
                     {
                         "adapter_number": 0,
-                        "node_id": "e6ef9639-d282-5b98-875c-92c95190f96b",
+                        "node_id": "5ccf1fdd-6a3a-503a-ac10-35e456a73e84",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "node_id": "a61541c0-ab65-5e79-ab81-7e7682104a2d",
                         "port_number": 2
                     }
                 ],
@@ -158,16 +124,67 @@
             },
             {
                 "filters": {},
-                "link_id": "fbb2f540-5c03-5c72-8954-eb6a6e79110a",
+                "link_id": "800c18b5-3b5d-57cd-ab3f-0a33389cd5f5",
                 "nodes": [
                     {
-                        "adapter_number": 0,
-                        "node_id": "3df55691-a25b-5fdb-83b5-c0d75aa90700",
+                        "adapter_number": 1,
+                        "node_id": "5ccf1fdd-6a3a-503a-ac10-35e456a73e84",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "77e2faaf-c95e-535d-ae69-3cec58bbf70e",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "357bc520-cc3e-5a3e-899c-f19d25accb61",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
+                        "port_number": 1
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "c3528b0d-3235-5bae-a0d4-c6a4aab438d1",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "94326552-7263-59c1-9138-b548184daf26",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
+                        "port_number": 2
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "6f3c0a03-5945-5984-9c63-dbb215d18c0e",
+                "nodes": [
+                    {
+                        "adapter_number": 0,
+                        "node_id": "7a5317c9-61d6-59df-80c9-016f4ace4f4f",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
                         "port_number": 3
                     }
                 ],
@@ -175,16 +192,16 @@
             },
             {
                 "filters": {},
-                "link_id": "a74c41c9-452c-5258-8782-9c694ab772d3",
+                "link_id": "fe2b0143-e559-5656-ac63-0efca6c1d9c9",
                 "nodes": [
                     {
                         "adapter_number": 0,
-                        "node_id": "74bf9f48-63f8-5dd3-9620-93e9e763e17e",
+                        "node_id": "f64d6fe8-2a1a-5fa9-bdf2-2d149e4cee5e",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                        "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
                         "port_number": 4
                     }
                 ],
@@ -192,16 +209,16 @@
             },
             {
                 "filters": {},
-                "link_id": "b60278d2-1977-50f0-a76b-a7e0023d9b53",
+                "link_id": "f40bb1b1-2ed6-5587-97dc-9a2ce9751866",
                 "nodes": [
                     {
-                        "adapter_number": 0,
-                        "node_id": "40eae1a4-1e9e-5bd4-aa91-e08b6f26d9b4",
+                        "adapter_number": 2,
+                        "node_id": "5ccf1fdd-6a3a-503a-ac10-35e456a73e84",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                        "node_id": "b3e7692c-33ec-52f1-b60e-af17176e7a91",
                         "port_number": 0
                     }
                 ],
@@ -209,16 +226,16 @@
             },
             {
                 "filters": {},
-                "link_id": "795d2929-32ab-5ef4-939d-1bff2b8b9b15",
+                "link_id": "cc94b89a-c04c-59f9-96e8-59dcefce4fe9",
                 "nodes": [
                     {
                         "adapter_number": 0,
-                        "node_id": "f349ab74-48c6-5fe0-a922-c421c3e10222",
+                        "node_id": "d898b2f7-3c8d-5e7e-817b-b3184149c678",
                         "port_number": 0
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                        "node_id": "b3e7692c-33ec-52f1-b60e-af17176e7a91",
                         "port_number": 1
                     }
                 ],
@@ -232,21 +249,46 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-kali",
+                    "text": "attacker",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-kali",
-                "node_id": "2cee15bb-1f1b-58b0-93fa-f47b789afefe",
+                "name": "attacker",
+                "node_id": "bdafa0d3-a33e-5410-bad6-c8889c4807d2",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-kali:dev"
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/red/scull.svg",
                 "x": -510,
-                "y": -30,
+                "y": 70,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "customers",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "customers",
+                "node_id": "3a826215-5db9-520f-a40b-c35315c5f68e",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
+                },
+                "symbol": ":/symbols/affinity/circle/gray/client.svg",
+                "x": -510,
+                "y": -130,
                 "z": 1
             },
             {
@@ -260,7 +302,7 @@
                     "y": -25
                 },
                 "name": "internet",
-                "node_id": "ee844961-a70a-5b66-837e-fde63221dda8",
+                "node_id": "a61541c0-ab65-5e79-ab81-7e7682104a2d",
                 "node_type": "ethernet_switch",
                 "properties": {
                     "ports_mapping": [
@@ -325,17 +367,18 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-waf",
+                    "text": "waf",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-waf",
-                "node_id": "093d0e8b-1e7b-5667-bdfb-c52f53707c2b",
+                "name": "waf",
+                "node_id": "5ccf1fdd-6a3a-503a-ac10-35e456a73e84",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
-                    "adapters": 2,
-                    "image": "owasp/modsecurity-crs@sha256:941c045ca601c4eb5b77863832be7b1e226c27687554767e7bb3f3f8c2442d05"
+                    "adapters": 3,
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/green/shield.svg",
                 "x": -30,
@@ -348,12 +391,12 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "estate",
-                    "x": 68,
-                    "y": 22
+                    "text": "service-sw",
+                    "x": null,
+                    "y": -25
                 },
-                "name": "estate",
-                "node_id": "262d462a-aebf-5807-bee3-5c0f5c3fc9af",
+                "name": "service-sw",
+                "node_id": "8da45b4f-f0f9-5c5c-b6c3-8830b516740a",
                 "node_type": "ethernet_switch",
                 "properties": {
                     "ports_mapping": [
@@ -423,39 +466,17 @@
                     "y": -25
                 },
                 "name": "board.com",
-                "node_id": "7f1242d8-f697-59ea-8898-cdc438640eec",
+                "node_id": "357bc520-cc3e-5a3e-899c-f19d25accb61",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-board:dev"
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 210,
-                "y": -230,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-wg-board-db",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "fsl-wg-board-db",
-                "node_id": "e6ef9639-d282-5b98-875c-92c95190f96b",
-                "node_type": "docker",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapters": 1,
-                    "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
-                },
-                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 490,
-                "y": -230,
+                "x": 450,
+                "y": -30,
                 "z": 1
             },
             {
@@ -465,18 +486,43 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp.com",
-                    "x": -6,
-                    "y": 66
+                    "x": null,
+                    "y": -25
                 },
                 "name": "corp.com",
-                "node_id": "3df55691-a25b-5fdb-83b5-c0d75aa90700",
+                "node_id": "94326552-7263-59c1-9138-b548184daf26",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-corp:dev"
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
+                "x": 450,
+                "y": -30,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "board-db",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "board-db",
+                "node_id": "7a5317c9-61d6-59df-80c9-016f4ace4f4f",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
+                },
+                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
                 "x": 210,
                 "y": 170,
                 "z": 1
@@ -487,20 +533,21 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-wg-corp-db",
-                    "x": -33,
-                    "y": 66
+                    "text": "corp-db",
+                    "x": null,
+                    "y": -25
                 },
-                "name": "fsl-wg-corp-db",
-                "node_id": "74bf9f48-63f8-5dd3-9620-93e9e763e17e",
+                "name": "corp-db",
+                "node_id": "f64d6fe8-2a1a-5fa9-bdf2-2d149e4cee5e",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-corp-db:dev"
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 490,
+                "x": 210,
                 "y": 170,
                 "z": 1
             },
@@ -510,35 +557,12 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-filebeat",
+                    "text": "monitoring-sw",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-filebeat",
-                "node_id": "40eae1a4-1e9e-5bd4-aa91-e08b6f26d9b4",
-                "node_type": "docker",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapters": 1,
-                    "image": "docker.elastic.co/beats/filebeat:8.15.0"
-                },
-                "symbol": ":/symbols/affinity/circle/gray/docker.svg",
-                "x": -30,
-                "y": 390,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "monitoring",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "monitoring",
-                "node_id": "f18736cd-83d3-5e4b-8365-03d0d787631f",
+                "name": "monitoring-sw",
+                "node_id": "b3e7692c-33ec-52f1-b60e-af17176e7a91",
                 "node_type": "ethernet_switch",
                 "properties": {
                     "ports_mapping": [
@@ -593,7 +617,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 210,
+                "x": -30,
                 "y": 390,
                 "z": 1
             },
@@ -603,20 +627,21 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-elasticsearch",
+                    "text": "log-server",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-elasticsearch",
-                "node_id": "f349ab74-48c6-5fe0-a922-c421c3e10222",
+                "name": "log-server",
+                "node_id": "d898b2f7-3c8d-5e7e-817b-b3184149c678",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
+                    "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                    "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": 450,
+                "x": 210,
                 "y": 390,
                 "z": 1
             }

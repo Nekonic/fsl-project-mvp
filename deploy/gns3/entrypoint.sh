@@ -3,7 +3,6 @@ set -eu
 
 DATA="${FSL_GNS3_DATA:-/var/lib/fsl-gns3}"
 HERE=/opt/fsl-gns3
-TAG="${FSL_IMAGE_TAG:-dev}"
 export FSL_GNS3_DATA="$DATA"
 mkdir -p "$DATA/projects" "$DATA/resources"
 
@@ -47,13 +46,6 @@ default_admin_username = admin
 default_admin_password = $FSL_GNS3_ADMIN_PASSWORD
 CONF
 chmod 600 "$DATA/gns3_server.conf"
-
-for project in /topology/*.gns3; do
-  name="$(basename "$project" .gns3)"
-  mkdir -p "$DATA/projects/$name"
-  rm -f "$DATA/projects/$name/$name.gns3".backup*
-  sed "s#\"\(ghcr.io/nekonic/[a-z0-9-]*\):dev\"#\"\1:$TAG\"#" "$project" > "$DATA/projects/$name/$name.gns3"
-done
 
 python "$HERE/provision.py" bootstrap
 chown -R gns3 "$DATA"
