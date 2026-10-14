@@ -38,7 +38,7 @@ function debriefCustomers(customers) {
     `${localized(`traffic.action.${action}`, action)} ${count}`).join(", ");
   return [
     t("scenario.debrief.customers.line", customers.sent, customers.served, customers.blocked),
-    ...customers.in_window.map((count) => t("scenario.debrief.customers.window", count)),
+    ...customers.in_window.map((count, n) => t("scenario.debrief.customers.window", n + 1, count)),
     actions ? t("scenario.debrief.customers.actions", actions) : "",
   ].filter(Boolean).map((line) => `<p>${esc(line)}</p>`).join("");
 }

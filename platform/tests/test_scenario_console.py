@@ -191,10 +191,21 @@ def test_the_debrief_opens_after_the_final_check_with_customers_and_the_attack_t
     assert english("scenario.fail.leaked", 1, 1) in result["verdict"]
     assert english("lesson.fix.rule") in result["verdict"]
     assert english("scenario.debrief.customers.line", 800, 700, 100) in result["body"]
-    assert english("scenario.debrief.customers.window", 0) in result["body"]
+    assert english("scenario.debrief.customers.window", 1, 0) in result["body"]
     assert result["rows"] == 2
     assert english("scenario.debrief.leaked", "admin, jiwoo") in result["body"]
     assert english("scenario.risk.rule") in result["body"]
+
+def test_the_debrief_numbers_the_blocked_customers_of_each_final_check(client):
+    judged = status(phase="passed", windows=2, completion={"state": "passed", "reasons": [], "fix": "target"})
+    told = {**DEBRIEF, "customers": {**DEBRIEF["customers"], "in_window": [10, 0]}}
+    seen = open_page(client, "/blue/1/", setup=serving(judged).replace(js(DEBRIEF), js(told)), scenario="""
+      return browser.text('scenario-debrief-body');
+    """)
+
+    assert seen["errors"] == []
+    assert english("scenario.debrief.customers.window", 1, 10) in seen["result"]
+    assert english("scenario.debrief.customers.window", 2, 0) in seen["result"]
 
 def test_the_home_page_offers_each_scenario_and_starts_it_on_its_briefing(client):
     catalogue = [{"id": "board", "name": "Community board", "description": "", "public_url": "http://board.com",
