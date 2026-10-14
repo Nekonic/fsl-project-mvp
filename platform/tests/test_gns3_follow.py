@@ -67,7 +67,7 @@ def test_on_openstack_the_website_pane_arrives_at_the_slot_s_waf_from_the_consol
 
     found = followed("openstack", openstack_nodes(), sent)
 
-    assert walked(found) == [None, "waf", "service-sw", "board.com"], (
+    assert walked(found) == [None, "waf", "sw1", "board.com"], (
         "the site proxy reaches the WAF over the training plumbing, which the learner's map leaves out"
     )
     hops = by_node(found)
@@ -92,7 +92,7 @@ def test_on_openstack_a_case_leaves_kali_with_its_origin_address_and_the_edge_ro
     found = followed("openstack", openstack_nodes(), sent, seen)
     hops = by_node(found)
 
-    assert walked(found) == ["attacker", "internet", "firewall", "service-sw", "waf", "service-sw", "board.com"]
+    assert walked(found) == ["attacker", "internet", "firewall", "sw1", "waf", "sw1", "board.com"]
     assert found["hops"][0]["source"] == "5.188.10.10" and found["source"] == "attacker"
     assert hops["firewall"]["sensor"] == "firewall"
     assert hops["firewall"]["alerts"] == [{"signature": "suricata saw it", "sid": 9000001}]
@@ -105,7 +105,7 @@ def test_a_case_with_no_alert_reaches_the_waf_by_the_name_the_range_serves_and_s
     found = followed("openstack", openstack_nodes(), sent)
     hops = by_node(found)
 
-    assert walked(found)[:5] == ["attacker", "internet", "firewall", "service-sw", "waf"], (
+    assert walked(found)[:5] == ["attacker", "internet", "firewall", "sw1", "waf"], (
         "board.com names the WAF's estate address on every range host, so the edge is the way to it"
     )
     assert found["hops"][0]["source"] is None, "an origin nobody recorded is unknown, not a guess"
@@ -133,7 +133,7 @@ def test_on_docker_a_website_request_arrives_at_the_waf_from_the_console_s_brows
 
     found = followed("", docker_nodes(), sent, seen)
 
-    assert walked(found) == [None, "waf", "service-sw", "board.com"]
+    assert walked(found) == [None, "waf", "sw1", "board.com"]
     assert found["hops"][0]["kind"] == "console" and found["hops"][0]["source"] == "172.30.0.9"
     waf = found["hops"][1]
     assert waf["verdict"] == "passed" and waf["rules"] == ["920272"]
@@ -149,7 +149,7 @@ def test_on_docker_a_case_starts_on_its_origin_network_where_the_waf_answers_to_
 
     found = followed("", docker_nodes(), sent, seen)
 
-    assert walked(found) == ["attacker", "internet", "waf", "service-sw", "board.com"], (
+    assert walked(found) == ["attacker", "internet", "waf", "sw1", "board.com"], (
         "no edge on Docker: the case box stands on the origin network with the WAF"
     )
     assert found["hops"][0]["source"] == "5.188.10.77", "the sensor saw the address the box really used"
@@ -413,7 +413,7 @@ def test_a_session_s_topology_shows_only_the_hosts_and_segments_on_the_learner_s
     with stub(), patch("api.views._range", return_value=SimpleNamespace(describe=lambda: described)):
         drawn = client.get(f"/api/sessions/{session_id}/topology/").json()["project"]
 
-    assert drawn["nodes"]["waf"]["addresses"] == {"service-sw": ["172.30.0.3"]}
+    assert drawn["nodes"]["waf"]["addresses"] == {"sw1": ["172.30.0.3"]}
     assert "fsl-platform" not in drawn["nodes"]
 
 def test_a_customer_request_starts_at_customers_on_its_origin_and_crosses_the_edge_to_the_waf():
@@ -422,7 +422,7 @@ def test_a_customer_request_starts_at_customers_on_its_origin_and_crosses_the_ed
 
     found = followed("openstack", openstack_nodes(), sent)
 
-    assert walked(found) == ["customers", "internet", "firewall", "service-sw", "waf", "service-sw", "board.com"]
+    assert walked(found) == ["customers", "internet", "firewall", "sw1", "waf", "sw1", "board.com"]
     assert found["source"] == "customers" and found["hops"][0]["source"] == "175.192.0.10"
     assert found["hops"][-1]["reached"] is True
 
@@ -440,7 +440,7 @@ def test_following_a_customer_request_reads_its_record_and_starts_at_customers(c
         missing = client.get(f"/api/sessions/{session.pk}/topology/follow/?customer=u99-1")
 
     assert shown["customer"] == {"marker": "u01-7", "action": "search", "origin": "us"}
-    assert walked(shown) == ["customers", "internet", "waf", "service-sw", "board.com"]
+    assert walked(shown) == ["customers", "internet", "waf", "sw1", "board.com"]
     assert shown["hops"][0]["source"] == "73.0.0.20"
     assert by_node(shown)["waf"]["verdict"] == "blocked" and shown["hops"][-1]["reached"] is False
     assert missing.status_code == 404

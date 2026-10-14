@@ -29,6 +29,20 @@ LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 SWITCH = "ethernet_switch"
 DEFAULT_ORIGIN = "5.188.10.0/24"
 LABEL = re.compile(r"[a-z][a-z0-9]* \.\d{1,3}")
+NIC = re.compile(r"[a-z][a-z0-9]*")
+PORT = re.compile(r"e\d+")
+SWITCH_NAME = re.compile(r"sw\d+|internet")
+PLATFORM_NIC = Interface("fsl-platform", "ens7", "10.31.0.238/24", "mgmt")
+DOCKER_FOUND = [Interface("fsl-kali", "eth0", "5.188.10.3/24", "internet"),
+                Interface("fsl-waf", "eth1", "5.188.10.4/24", "internet"),
+                Interface("fsl-waf", "eth0", "172.30.0.3/24", "estate"),
+                Interface("fsl-waf", "eth2", "172.31.0.3/24", "mgmt"),
+                Interface("fsl-wg-board", "eth0", "172.30.0.5/24", "estate"),
+                Interface("fsl-wg-board-db", "eth0", "172.30.0.6/24", "estate"),
+                Interface("fsl-wg-corp-wp", "eth0", "172.30.0.7/24", "estate"),
+                Interface("fsl-wg-corp-db", "eth0", "172.30.0.8/24", "estate"),
+                Interface("fsl-platform", "eth1", "172.31.0.4/24", "mgmt"),
+                Interface("fsl-elasticsearch", "eth0", "172.31.0.2/24", "mgmt")]
 KOREAN_SUFFIX = json.loads(OPENSTACK_KO.read_text())["name"].removeprefix("range-openstack")
 
 KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
@@ -189,15 +203,56 @@ def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_t
     assert shown[("attacker", "internet")] == "ens3 .10", "the default origin's address, and only it"
     assert shown[("customers", "internet")] == "ens3 .12", "the customers' busiest origin, its first address"
     assert shown[("firewall", "internet")] == "vtnet0 .1"
-    assert shown[("firewall", "service-sw")] == "vtnet1 .1"
-    assert shown[("waf", "service-sw")] == "ens3 .177"
-    assert shown[("board.com", "service-sw")] == "ens3 .184", "the WAF reaches the site at its host's address"
-    assert shown[("board.com", "board-db-sw")] == "eth0 .3", "the site's own container on the database's network"
-    assert shown[("board-db", "board-db-sw")] == "eth0 .2"
-    assert all(text == "" for (one, _), text in shown.items() if one in {"internet", "service-sw", "board-db-sw",
-                                                                          "monitoring-sw"})
-    assert all(text == "" for (_, other), text in shown.items() if other == "monitoring-sw")
+    assert shown[("firewall", "sw1")] == "vtnet1 .1"
+    assert shown[("waf", "sw1")] == "ens3 .177"
+    assert shown[("board.com", "sw1")] == "ens3 .184", "the WAF reaches the site at its host's address"
+    assert shown[("board.com", "sw2")] == "eth0 .3", "the site's own container on the database's network"
+    assert shown[("board-db", "sw2")] == "eth0 .2"
     assert not [text for text in shown.values() if "10.31.0." in text], "no management address reaches the map"
+
+def test_a_switch_end_names_its_port_and_a_monitoring_end_names_only_the_nic_on_the_management_network():
+    document = slot_map(found=read_slot() + [PLATFORM_NIC])
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    shown = {pair: label["text"] for pair, label in labels(document).items()}
+
+    for link in document["topology"]["links"]:
+        for end in link["nodes"]:
+            node = by_id[end["node_id"]]
+            if node["node_type"] == SWITCH:
+                assert end["label"]["text"] == f"e{end['port_number']}", (node["name"], end["port_number"])
+    assert shown[("internet", "attacker")] == "e1" and shown[("sw1", "firewall")] == "e0"
+    assert shown[("firewall", "sw3")] == "vtnet2"
+    assert shown[("waf", "sw3")] == "ens4"
+    assert shown[("board.com", "sw3")] == "ens4", "the site's host's own management NIC"
+    assert shown[("log-server", "sw3")] == "ens7", "the platform's NIC on the management network"
+    assert not [text for text in shown.values() if "10.31.0." in text or "172.31." in text]
+
+def test_the_log_server_end_names_the_log_store_s_own_nic_before_the_platform_s():
+    learner = learner_of(declared.read(), "board")
+    document = topology.labelled(json.loads(DOCKER.read_text()), learner, DOCKER_FOUND, "session-7-board",
+                                 "session 7 board")
+
+    assert labels(document)[("log-server", "sw3")]["text"] == "eth0"
+    assert labels(document)[("waf", "sw3")]["text"] == "eth2"
+
+@pytest.mark.parametrize("path, found", [(OPENSTACK, None), (OPENSTACK_KO, None), (DOCKER, DOCKER_FOUND)],
+                         ids=["openstack", "openstack-ko", "docker"])
+@pytest.mark.parametrize("wargame", ["board", "corp"])
+def test_every_link_of_a_learner_map_is_labelled_at_both_ends_and_every_switch_is_named_like_a_lab_switch(
+        path, found, wargame):
+    found = found if found is not None else read_slot() + [PLATFORM_NIC]
+    document = slot_map(2, path, found, wargame)
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    unread = {topology.CUSTOMERS} if path == DOCKER else set()
+
+    assert [node["name"] for node in by_id.values() if node["node_type"] == SWITCH
+            and not SWITCH_NAME.fullmatch(node["name"])] == []
+    for link in document["topology"]["links"]:
+        assert len(link["nodes"]) == 2
+        for end in link["nodes"]:
+            node = by_id[end["node_id"]]
+            if node["name"] not in unread:
+                assert end["label"]["text"], (node["name"], [by_id[e["node_id"]]["name"] for e in link["nodes"]])
 
 def test_customers_are_left_unlabelled_where_their_box_holds_no_address_on_their_origins():
     korean_only = learner_of(declared.read(flavor="openstack"), "board")
@@ -216,8 +271,8 @@ def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawi
                             | {link["link_id"] for link in document["topology"]["links"]}
                             | {d["drawing_id"] for d in document["topology"]["drawings"]})
 
-    assert labels(one)[("waf", "service-sw")]["text"] == "ens3 .102"
-    assert labels(two)[("waf", "service-sw")]["text"] == "ens3 .177"
+    assert labels(one)[("waf", "sw1")]["text"] == "ens3 .102"
+    assert labels(two)[("waf", "sw1")]["text"] == "ens3 .177"
     assert not ids(one) & ids(two) and not ids(one) & ids(english) and not ids(two) & ids(english)
     assert two["project_id"] == str(uuid.uuid5(uuid.UUID(english["project_id"]), "slot-2-board"))
     assert one["name"] == "range-openstack slot 1 board" and two["show_interface_labels"] is True
@@ -231,7 +286,7 @@ def test_the_korean_slot_map_keeps_its_language_in_the_name_and_differs_in_id_fr
 
     assert KOREAN_SUFFIX.startswith(" (") and korean["name"] == "range-openstack slot 2 board" + KOREAN_SUFFIX
     assert korean["project_id"] != slot_map(2)["project_id"]
-    assert labels(korean)[("waf", "service-sw")]["text"] == "ens3 .177"
+    assert labels(korean)[("waf", "sw1")]["text"] == "ens3 .177"
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_schemas(path):
@@ -269,17 +324,18 @@ def test_every_label_lies_level_clear_of_its_node_on_the_side_its_link_leaves(pa
         for end, node, other in ((link["nodes"][0], *ends), (link["nodes"][1], *ends[::-1])):
             label = end["label"]
             across, down = topology.leaving(node, other)
-            below = other["y"] < node["y"]
             assert label["rotation"] == 0
             if across > 0:
-                assert label["x"] > size and (label["y"] > size // 2) == below and topology.STARTS in label["style"]
+                assert label["x"] > size and topology.STARTS in label["style"]
             elif across < 0:
-                assert label["x"] < 0 and (label["y"] > size // 2) == below and topology.ENDS in label["style"]
+                assert label["x"] < 0 and topology.ENDS in label["style"]
             elif down > 0:
-                assert label["y"] > size and label["x"] > size // 2
-            else:
+                assert label["y"] > size
+            elif topology.named_above(node):
                 assert label["x"] > size and 0 <= label["y"] < size // 2 and topology.STARTS in label["style"], (
                     "a link that climbs leaves the space above the node to the node's own name")
+            else:
+                assert label["y"] + topology.GLYPH_BOTTOM <= 0, "a climbing link is labelled above a node named beside it"
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO, DOCKER], ids=["openstack", "openstack-ko", "docker"])
 def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
@@ -287,8 +343,20 @@ def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
                            Interface("fsl-waf", "eth2", "73.0.0.4/24", "internet")]
     texts = [label["text"] for label in labels(slot_map(2, path, found)).values()]
 
-    assert [text for text in texts if text and not LABEL.fullmatch(text)] == []
-    assert any(text for text in texts)
+    document = slot_map(2, path, found)
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    for link in document["topology"]["links"]:
+        ends = [by_id[end["node_id"]] for end in link["nodes"]]
+        for end, node, other in ((link["nodes"][0], *ends), (link["nodes"][1], *ends[::-1])):
+            text = end["label"]["text"]
+            if node["node_type"] == SWITCH:
+                assert PORT.fullmatch(text), text
+            elif other["name"] == topology.MONITORING:
+                assert not text or NIC.fullmatch(text), text
+            else:
+                assert not text or LABEL.fullmatch(text), text
+            assert not text.startswith(interfaces.BRIDGE_PREFIX)
+    assert any(LABEL.fullmatch(text) for text in texts)
 
 class Served:
     def __init__(self, opened=()):
@@ -332,7 +400,7 @@ def test_a_session_s_map_is_drawn_for_the_wargame_it_defends(served):
     maps.publish("slot 1 corp", read_slot)
     names = {node["name"] for node in served.published[0]["topology"]["nodes"]}
 
-    assert {"corp.com", "corp-db", "corp-db-sw"} <= names and not {"board.com", "board-db"} & names
+    assert {"corp.com", "corp-db", "sw2"} <= names and not {"board.com", "board-db"} & names
     assert "customers" not in names, "corp declares no customers"
     assert maps.wargame_of("slot 1 corp") == "corp" and maps.learner("corp").hosts["fsl-kali"] == ("attacker",)
     assert maps.learner("board").hosts["fsl-kali"] == ("attacker", "customers"), (
@@ -343,7 +411,7 @@ def test_a_changed_address_loads_the_slot_s_maps_again(served):
     maps.publish("slot 2 board", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
 
     assert len(served.published) == 4
-    assert labels(served.published[-2])[("waf", "service-sw")]["text"] == "ens3 .99"
+    assert labels(served.published[-2])[("waf", "sw1")]["text"] == "ens3 .99"
 
 def test_tidying_keeps_only_the_maps_of_the_slots_or_sessions_still_standing(served):
     maps.tidy(maps.SESSION, ["session 4 board"])
@@ -442,12 +510,12 @@ def test_each_zone_caption_on_a_slot_s_map_carries_the_networks_its_links_are_la
     stack = declared.read(flavor="openstack")
     template = topology.for_wargame(json.loads(path.read_text()), learner_of(stack, "board"))
     drawn = slot_map(2, path, read_slot() + KOREAN_ORIGIN)
-    networks = {"internet": "175.192.0.0/24, 5.188.10.0/24", "service-sw": "10.30.0.0/24",
-                "board-db-sw": "172.18.0.0/16"}
+    networks = {"internet": "175.192.0.0/24, 5.188.10.0/24", "sw1": "10.30.0.0/24",
+                "sw2": "172.18.0.0/16"}
     before = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(template).items()}
     after = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(drawn).items()}
 
-    assert set(after) == {*networks, "monitoring-sw"}
+    assert set(after) == {*networks, "sw3"}
     assert after == {switch: f"{before[switch]} {networks[switch]}" if switch in networks else before[switch]
                      for switch in before}
     assert not [text for text in caption_texts(drawn) if "10.31.0." in text], "no management network is named"
@@ -472,3 +540,27 @@ def test_a_slot_keeps_the_map_of_its_newest_session_and_a_docker_range_the_maps_
         f"session {session.pk} {session.scenario}" for session in Session.objects.filter(ended_at=None)), (
         "a Docker session's map lives while the session is open")
     assert f"session {standing.pk} board" in _maps_live(SimpleNamespace())
+
+def label_box(node, label):
+    width = len(label["text"]) * topology.LABEL_CHAR
+    left = label["x"] - (width if topology.ENDS in label["style"] else 0)
+    top = label["y"] + topology.GLYPH_TOP
+    return (node["x"] + left, node["y"] + top, node["x"] + left + width, node["y"] + label["y"] + topology.GLYPH_BOTTOM)
+
+def overlap(one, other):
+    return one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]
+
+@pytest.mark.parametrize("path, found", [(OPENSTACK, None), (OPENSTACK_KO, None), (DOCKER, DOCKER_FOUND)],
+                         ids=["openstack", "openstack-ko", "docker"])
+@pytest.mark.parametrize("wargame", ["board", "corp"])
+def test_no_two_link_labels_overlap_and_none_covers_a_node(path, found, wargame):
+    document = slot_map(2, path, found if found is not None else read_slot() + [PLATFORM_NIC], wargame)
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    size = topology.SYMBOL_SIZE
+    boxes = [(by_id[end["node_id"]]["name"], end["label"]["text"], label_box(by_id[end["node_id"]], end["label"]))
+             for link in document["topology"]["links"] for end in link["nodes"] if end["label"]["text"]]
+    symbols = [(node["x"], node["y"], node["x"] + size, node["y"] + size) for node in by_id.values()]
+
+    assert [(one[:2], other[:2]) for at, one in enumerate(boxes) for other in boxes[at + 1:]
+            if overlap(one[2], other[2])] == []
+    assert [one[:2] for one in boxes if any(overlap(one[2], symbol) for symbol in symbols)] == []

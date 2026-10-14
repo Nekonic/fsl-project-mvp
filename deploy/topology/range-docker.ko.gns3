@@ -391,11 +391,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "service-sw",
+                    "text": "sw1",
                     "x": null,
                     "y": -25
                 },
-                "name": "service-sw",
+                "name": "sw1",
                 "node_id": "2ade66f4-a4e9-5bd9-8348-96d7ebddfddb",
                 "node_type": "ethernet_switch",
                 "properties": {
@@ -557,11 +557,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "monitoring-sw",
-                    "x": -120,
+                    "text": "sw3",
+                    "x": -36,
                     "y": 20
                 },
-                "name": "monitoring-sw",
+                "name": "sw3",
                 "node_id": "e5006b94-c9c2-5c8d-a576-9fc078f7a1b1",
                 "node_type": "ethernet_switch",
                 "properties": {

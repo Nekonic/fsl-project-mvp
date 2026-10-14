@@ -102,8 +102,8 @@ def test_no_foundation_question_carries_a_fixed_answer():
                 assert "accept" not in check and check.get("of"), (taught["id"], shown["id"])
 
 @pytest.mark.parametrize("flavor, entry, logs, segment, wrong", [
-    ("docker", "waf", "log-server", "service-sw", "firewall"),
-    ("openstack", "firewall", "log-server", "board-db-sw", "waf"),
+    ("docker", "waf", "log-server", "sw1", "firewall"),
+    ("openstack", "firewall", "log-server", "sw2", "waf"),
 ])
 def test_the_range_questions_are_judged_against_the_substrate_s_own_topology(client, flavor, entry, logs, segment, wrong):
     session = opened("f1")
@@ -221,7 +221,7 @@ def test_the_range_facts_come_from_the_project_and_the_declaration():
     project = topology.for_wargame(json.loads(TOPOLOGIES["openstack"].read_text()), learner)
 
     assert topology.facts(project, learner) == {
-        "entry": ["firewall"], "logs": ["log-server"], "segment": ["corp-db-sw"]}
+        "entry": ["firewall"], "logs": ["log-server"], "segment": ["sw2"]}
 
 def test_a_pasted_table_or_plain_pairs_are_read_as_loot():
     assert lesson.pasted_rows("admin:hash-a\n| jiwoo | hash-b |", []) == [("admin", "hash-a"), ("jiwoo", "hash-b")]

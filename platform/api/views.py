@@ -963,7 +963,8 @@ def _maps_live(adapter) -> list[str]:
     return [maps.called(maps.SESSION, session.pk, session.scenario) for session in Session.objects.filter(ended_at=None)]
 
 def _map_read(session):
-    on_map = set(maps.learner(session.scenario).hosts)
+    drawn = maps.learner(session.scenario)
+    on_map = set(drawn.hosts) | set(drawn.logs_from)
     return lambda: _range(session).interfaces(on_map)
 
 def _map_begin(session, adapter):
