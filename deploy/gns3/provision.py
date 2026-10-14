@@ -16,6 +16,7 @@ SYMBOLS = HERE / "symbols"
 ADMIN = "admin"
 AUDITOR_ROLE = "Auditor"
 READY_WITHIN = 180
+DISPLAY_IMAGE = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
 DATA = Path(os.environ.get("FSL_GNS3_DATA") or "/var/lib/fsl-gns3")
 
 def admin_password() -> str:
@@ -80,12 +81,24 @@ def opened(token: str) -> None:
     for project in call("GET", "/projects", token=token):
         if project.get("status") == "opened":
             print(f"fsl-gns3: {project['name']} is open", flush=True)
+        else:
+            try:
+                call("POST", f"/projects/{project['project_id']}/open", {}, token)
+                print(f"fsl-gns3: opened {project['name']}", flush=True)
+            except urllib.error.HTTPError as refused:
+                print(f"fsl-gns3: {project['name']} stays closed: {refused.read().decode()[:400]}",
+                      file=sys.stderr, flush=True)
+                continue
+        started(token, project)
+
+def started(token: str, project: dict) -> None:
+    for node in call("GET", f"/projects/{project['project_id']}/nodes", token=token):
+        if node.get("status") == "started" or (node.get("properties") or {}).get("image") != DISPLAY_IMAGE:
             continue
         try:
-            call("POST", f"/projects/{project['project_id']}/open", {}, token)
-            print(f"fsl-gns3: opened {project['name']}", flush=True)
+            call("POST", f"/projects/{project['project_id']}/nodes/{node['node_id']}/start", {}, token)
         except urllib.error.HTTPError as refused:
-            print(f"fsl-gns3: {project['name']} stays closed: {refused.read().decode()[:400]}",
+            print(f"fsl-gns3: {project['name']} {node['name']} stays stopped: {refused.read().decode()[:400]}",
                   file=sys.stderr, flush=True)
 
 def bootstrap() -> None:

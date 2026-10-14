@@ -17,6 +17,7 @@ from api import site
 from api.models import Case, Detection, Session
 from range import declared
 from tests.browser import open_page
+from tests.test_gns3_topology import learner_of
 from tests.test_lesson_api import DUMPED, TRUTH
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
@@ -101,8 +102,8 @@ def test_no_foundation_question_carries_a_fixed_answer():
                 assert "accept" not in check and check.get("of"), (taught["id"], shown["id"])
 
 @pytest.mark.parametrize("flavor, entry, logs, segment, wrong", [
-    ("docker", "fsl-waf", "fsl-elasticsearch", "estate", "fsl-edge"),
-    ("openstack", "fsl-edge", "fsl-elasticsearch", "board-default", "fsl-waf"),
+    ("docker", "waf", "log-server", "service-sw", "firewall"),
+    ("openstack", "firewall", "log-server", "board-db-sw", "waf"),
 ])
 def test_the_range_questions_are_judged_against_the_substrate_s_own_topology(client, flavor, entry, logs, segment, wrong):
     session = opened("f1")
@@ -216,10 +217,11 @@ def test_a_foundation_that_could_not_be_judged_is_refused_at_discovery(settings,
 
 def test_the_range_facts_come_from_the_project_and_the_declaration():
     stack = declared.read(flavor="openstack")
-    project = json.loads(TOPOLOGIES["openstack"].read_text())
+    learner = learner_of(stack, "corp")
+    project = topology.for_wargame(json.loads(TOPOLOGIES["openstack"].read_text()), learner)
 
-    assert topology.facts(project, stack, "corp") == {
-        "entry": ["fsl-edge"], "logs": ["fsl-elasticsearch"], "segment": ["corp-default"]}
+    assert topology.facts(project, learner) == {
+        "entry": ["firewall"], "logs": ["log-server"], "segment": ["corp-db-sw"]}
 
 def test_a_pasted_table_or_plain_pairs_are_read_as_loot():
     assert lesson.pasted_rows("admin:hash-a\n| jiwoo | hash-b |", []) == [("admin", "hash-a"), ("jiwoo", "hash-b")]
