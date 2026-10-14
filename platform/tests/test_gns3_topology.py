@@ -711,3 +711,14 @@ def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_
     assert all(node["properties"]["adapters"] == sum(end["node_id"] == node["node_id"] for link in
                                                        project(drawn_in)["topology"]["links"] for end in link["nodes"])
                for node in hosts), "a display node has one adapter per link and no more"
+
+@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
+def test_a_node_a_link_reaches_from_straight_above_carries_its_name_beside_it_not_across_the_line(drawn_in, wargame):
+    learner, _, _ = projected(drawn_in, wargame)
+    for names, ((ax, ay), (bx, by)) in stretches(learner):
+        if abs(ax - bx) > STRAIGHT_WITHIN:
+            continue
+        below = nodes(learner)[names[0] if ay > by else names[1]]
+        label = below["label"]
+        assert label["x"] is not None and label["x"] < 0 and 0 <= label["y"] < topology.SYMBOL_SIZE, (
+            below["name"], label)

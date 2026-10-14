@@ -392,7 +392,6 @@ LABEL_RISE = 28
 LABEL_FALL = 4
 LABEL_SIDE = 9
 LABEL_DROP = 4
-LABEL_CLIMB = 22
 KOREAN_SUFFIX = " ("
 CAPTION_CHAR = 0.62
 NETWORKS_JOINED = ", "
@@ -427,7 +426,7 @@ def _placed_label(node, other) -> tuple[int, int, str]:
         return -LABEL_GAP, beside, ENDS
     if down > 0:
         return half + LABEL_SIDE, SYMBOL_SIZE + LABEL_DROP, STARTS
-    return half + LABEL_SIDE, -LABEL_CLIMB, STARTS
+    return SYMBOL_SIZE + LABEL_GAP, LABEL_FALL, STARTS
 
 def _shape(drawing) -> tuple[ElementTree.Element, ElementTree.Element]:
     svg = ElementTree.fromstring(drawing["svg"])

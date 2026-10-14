@@ -55,8 +55,8 @@
                 "drawing_id": "511b3cd8-ea13-5b4a-b915-cff161a83822",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"400\" height=\"180\"><rect width=\"400\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -80,
+                "svg": "<svg width=\"490\" height=\"180\"><rect width=\"490\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": -170,
                 "y": 320,
                 "z": 0
             },
@@ -65,7 +65,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"89\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
-                "x": -70,
+                "x": -160,
                 "y": 466,
                 "z": 2
             }
@@ -510,8 +510,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board-db",
-                    "x": null,
-                    "y": -25
+                    "x": -77,
+                    "y": 20
                 },
                 "name": "board-db",
                 "node_id": "7a5317c9-61d6-59df-80c9-016f4ace4f4f",
@@ -534,8 +534,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp-db",
-                    "x": null,
-                    "y": -25
+                    "x": -68,
+                    "y": 20
                 },
                 "name": "corp-db",
                 "node_id": "f64d6fe8-2a1a-5fa9-bdf2-2d149e4cee5e",
@@ -558,8 +558,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "monitoring-sw",
-                    "x": null,
-                    "y": -25
+                    "x": -120,
+                    "y": 20
                 },
                 "name": "monitoring-sw",
                 "node_id": "b3e7692c-33ec-52f1-b60e-af17176e7a91",

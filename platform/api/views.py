@@ -957,8 +957,8 @@ def _map_kind(adapter) -> str:
 
 def _maps_live(adapter) -> list[str]:
     if _slotted(adapter):
-        newest = (Session.objects.filter(_of_slot(number)).order_by("-pk").first()
-                  for number in range(1, adapter.slots + 1))
+        newest = (Session.objects.filter(Q(slot=number) | (Q(slot=None) if number == 1 else Q(pk__in=[])))
+                  .order_by("-pk").first() for number in range(1, adapter.slots + 1))
         return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in newest if session]
     return [maps.called(maps.SESSION, session.pk, session.scenario) for session in Session.objects.filter(ended_at=None)]
 
