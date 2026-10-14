@@ -17,7 +17,8 @@ done). On 2026-10-08 the user approved the next direction, a session-isolated
 learning MVP (backlog 0). Since 2026-10-13 its course is foundations F1-F6
 and eleven timed scenarios on live customer traffic, judged over a final
 check (`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`);
-the older lessons 0-5 and 7 remain until P6 removes them.
+P6 removed the older lessons 0-5 and 7 and the Lesson / Practice / Wargame rungs
+on 2026-10-14 (`docs/DECISIONS.md`).
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -34,8 +35,8 @@ terminal; an attack typed there between Start and Stop is attributed by time,
 source address and the proxy's marker. The blue console is a sidebar that
 frames the real tools (Kibana, a WAF terminal, and a Website pane: a site
 browser with a Network panel) and calls `/api/` for the session, the site's
-requests, lesson hints, verify, ingest and detections. The only rule editor is the Suricata one the IDS lessons
-and the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusion- and level-only. The session page's confirm-close calls
+requests, the steps and hints of a foundation or worked scenario, a scenario's status and triage, ingest and
+detections. The only rule editor is the Suricata one the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusions, level and anomaly thresholds. The session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
 calls `/ingest/` too, and `redteam/run.py` prints the curl.
 
@@ -686,7 +687,7 @@ Build order, compose first and OpenStack later: (1) split compose into a shared
 control plane and a per-session data plane (`docker compose -p fsl-<session>`);
 (2) build each target image once, tagged, referenced by `image:`; (3) discover
 scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
-(`board-easy`/`board-hard` are replaced by the lessons list in one
+(`board-easy`/`board-hard` are replaced by the units and scenarios of one
 `wargames/board/scenario.yaml`, D11 of 2026-10-13);
 (4) declaration roles name compose services, resolved per project; (5)
 `loot`/`effect` read the session's own target address; (6) a per-session index
@@ -694,10 +695,11 @@ scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
 only its own target and alerts. Status 2026-10-10: steps 1-8 built and
 live-verified (`bin/verify` all green on the acceptance VM 192.168.0.220,
-`docs/DECISIONS.md` 2026-10-10). Since 2026-10-13 the board's
-`scenario.yaml` carries the course (lessons 0-5 and 7, Package 2 of
-`docs/superpowers/specs/2026-10-13-blue-team-course-design.md`), which is
-what `board-easy`/`board-hard` were for (D11).
+`docs/DECISIONS.md` 2026-10-10). The board's `scenario.yaml` carries the
+course, foundations F1-F6 and scenarios 1.1-4.1
+(`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`),
+which is what `board-easy`/`board-hard` were for (D11 of the superseded
+2026-10-13 course design).
 
 To do, found by the 2026-10-08 doc review (open until checked off):
 
@@ -741,8 +743,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `board-normal-search-korean` and `board-normal-comment`; the Suricata
       rule editor and the paranoia level control in the lesson note;
       `docs/DECISIONS.md` 2026-10-13 "Package 2, built".
-- [ ] Package 2 live run: every new lesson on an OpenStack slot and on
-      docker. Unmeasured: the Kibana queries of the new click steps
+- [x] Package 2 live run: dropped, P6 removed those lessons (2026-10-14).
+      Was unmeasured: the Kibana queries of the new click steps
       (`url : *1=1*`, `url : *sort=posts_post.id*`), the Suricata marker
       link (`http.request_headers.value`), the answer rules 9000101 and
       9000102 against the sensors' Suricata (pcre and buffers as written,
@@ -762,8 +764,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       32 MiB receive buffer (`net.core.rmem_max` in the platform VM's
       cloud-init, Filebeat `read_buffer`); 0 receive-buffer errors live over
       every P5 run. Open: the cloud-init path on a rebuilt VM.
-- [ ] Scenario course P6: remove lessons 0-5 and 7 and the rungs; docs; a
-      live run.
+- [x] Scenario course P6 (2026-10-14): lessons 0-5 and 7, the rungs and
+      `Session.mode` removed; docs; a live run (`docs/DECISIONS.md`, "P6
+      built").
 - [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
       accepts `red: person`. Needs a second person to run live.
 - [ ] A range reset interrupted by a platform restart is not resumed at
@@ -773,9 +776,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       matches the request URI); measure.
 - [ ] The unexplained `test_corp_*` "no `_wpnonce`" error (once, passed on
       rerun).
-- [ ] Lesson 6 (corp: what a WAF cannot see) is not built: it needs a red
-      actor outside the lesson to make the option flip, and the corp replay
-      fixes (repeatable logins, reset before VERIFY).
+- [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
+      succeed but it has no customer traffic; it needs a generator for
+      WordPress (P3's shape) first.
 - [ ] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
       the three `test_corp_authz` tests, `test_board_loot` and
       `test_objectives` reach compose containers (`kali`, `corp-db`) the
@@ -798,7 +801,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       instead of fixed waits, edge configuration without a reboot.
 - [ ] Floating IP 192.168.0.220 is still allocated to `fsl-range` after
       `fsl-acceptance` was deleted; release it with the user's yes.
-- [ ] Review of the seven-step lesson text; awaits the user.
+- [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
       derived name is used. Awaits the user.
@@ -925,9 +928,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `http.uri` only (SQLi has both a URI rule 9000001 and a body rule
       9000002; XSS has no body rule). That case is ModSecurity-only. Decide
       whether to add a `http.request_body` XSS rule for symmetry (changes the
-      detection score) or leave it WAF-only by design (step 7). Since
-      2026-10-13 the `ids-body-xss` lesson has the learner write that rule;
-      the shipped baseline is unchanged.
+      detection score) or leave it WAF-only by design (step 7). Scenario
+      3.4 has the learner write that rule; the shipped baseline is unchanged.
 - [ ] `board-sqli-orderby-sqlmap` evades both engines on a clean exploit:
       boolean/time ORDER BY payloads carry no `--`/`union`/quote grammar, so
       Suricata sid 9000001 is fragile, and the dotted-column CVE payload has no

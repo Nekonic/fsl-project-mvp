@@ -1,6 +1,6 @@
 # Blue-team course: design
 
-Status: approved to build (2026-10-13, the user: "proceed as recommended").
+Status: superseded (2026-10-14) by `2026-10-13-scenario-course-and-topology-design.md`; its lessons and rungs were removed in P6 (`docs/DECISIONS.md`, 2026-10-14).
 Extends `2026-10-08-composable-isolated-learning-mvp-design.md`; where the two
 differ, this file and the 2026-10-13 entry in `docs/DECISIONS.md` win.
 Produced by six research agents (Dreamhack, KISA, HTB, TryHackMe, PortSwigger,

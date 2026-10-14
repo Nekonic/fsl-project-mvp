@@ -380,75 +380,35 @@ Korean.
 - **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
   "FSL alerts" columns and query narrowed to the session, a WAF terminal, and a
   Website pane (a site browser with a Network panel). It calls `/api/` for the
-  session, the site's requests, lesson hints, verify, ingest and detections. The
+  session, the site's requests, the steps and hints of a foundation or worked
+  scenario, a scenario's status and triage, ingest and detections. The
   result appears on the session page when the session closes: objectives lost
   first, then in plain sentences how many attacks were caught and benign
   requests passed.
 
-A session opened with `{"lesson": "waf-exclusion"}` (or `{"guidance": true}`,
-which takes the scenario's `default_lesson`) is the WAF
-lesson, at the defense the lesson declares (`minimal`): the board's WAF starts
-at CRS paranoia level 4, which blocks sqlmap and also the benign O'Brien
-search. The home page offers it three ways: Lesson (guided), Practice
-(`"mode": "self"`: no steps, hints or guide; the learner types every command)
-and Wargame (no guidance, the full defense). The lesson opens on its goal: a
-customer ticket whose WAF facts are read from the WAF, and the starting
-PASS/FAIL from the replay at open. The blue console walks a beginner through
-eight steps, each checked by the platform: search O'Brien in the Website pane and
-see the WAF's 403, find that request in Kibana with a ready-made filter, name
-the rule (920273), say what it caught (`ARGS:q`), add the rule exclusion with
-one button that runs the command in the session's WAF terminal (appending a
-rule with id 10100, from the range 10100-10199 kept for hand-written rules, to
-`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, reloading only if `nginx -t`
-passes and putting the previous file back if not), search again, run sqlmap
-once more to see it still held, and press Verify
-(`POST /api/sessions/<id>/verify/`). The platform judges every step
-(`POST /api/sessions/<id>/lesson/steps/<step>/check/`) and records each step
-reached, passed or skipped; the session payload carries no answer key, a
-step's command only once the step is reached, and a step's answer text only
-once its hints reach it. Each
-step has hints that end in "Do it for me" (`.../do/`, a server action);
-"Do it yourself" removes the filter and the button. Hint and "Do it for me"
-use is recorded on the session and shown beside PASS or FAIL. The lesson's
-own replays count in neither score, and a leak its VERIFY finds is
-diagnosed, not scored as a lost objective. Verify passes only when no sqlmap variant
-dumps a hash that matches the board's own accounts and every benign case is
-answered; beside the verdict it names how narrow the fix was (path-scoped
-target exclusion, target exclusion, whole rule removed, level lowered),
-without judging by it. After a PASS a debrief
-(`GET /api/sessions/<id>/lesson/debrief/`) shows the evidence, the change made
-to the WAF file, each case before and after, and the risk that remains. An agent tunes through `PUT /api/sessions/<id>/waf/`; `GET` reports
-what is in the WAF's file. The default, `{"defense": "full"}`, starts at
-paranoia level 1.
+A session opened with no guidance (`{"scenario": "board"}`, the home card's
+"Start wargame") is a plain wargame at the full defense, CRS paranoia level 1;
+`{"defense": "<name>"}` takes another posture the wargame declares (`minimal`
+is PL4). An agent tunes the WAF through `PUT /api/sessions/<id>/waf/`; `GET`
+reports what is in the WAF's file.
 
-That lesson is one of seven the board's `scenario.yaml` lists as a course, in
-recommended order: `console-tour` (send a request the WAF blocks, find its
-record in Kibana, name the rule), `read-the-block` (name the rule that blocked
-O'Brien and the parameter it fired on), `waf-exclusion`, `choose-the-level`
-(the highest paranoia level that serves every ordinary request, a Korean
-search included, and still holds sqlmap; PL2 as measured), `ids-signature`
-(a Suricata rule that alerts on both sqlmap `?sort=` variants and not on
-`?sort=-created_at`), `ids-body-xss` (alert on the comment XSS in the request
-body, not on an ordinary comment) and `assessment` (no guidance: the O'Brien
-and Korean searches served, sqlmap held). Answers about a block are read
-from the session's own records, not a key. The two IDS lessons complete on
-detection: every attack case draws a Suricata alert whose message names the
-attack and no ordinary case draws one; they report in the detection score
-only and mark no objective. Their note holds a Suricata rule editor over
-`/api/rules/` (validate shows Suricata's own error lines), and
-`choose-the-level` a paranoia level control over `/waf/`. Each lesson can be
-opened by its id: `{"lesson": "ids-signature"}`.
-
-Before those lessons the home page lists six foundations for learners new to
-networks, each opened by its id (`{"lesson": "f1"}` to `f6`): F1 reads the
-range's map in the Topology pane, F2 follows one Korean search hop by hop, F3
-reads its method, path, parameter and status code, F4 finds records in Kibana
-and tells the WAF's from the IDS's, F5 follows a blocked SQL injection and a
-sqlmap run from the Red console's Kali terminal, and F6 runs the same sqlmap
-against a WAF whose blocking rules are off (defense `missed`), hands in the
-dumped accounts and reads the loss in the first score. Every answer is read
+The home page lists six foundations for learners new to networks, each opened
+by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
+F1 reads the range's map in the Topology pane, F2 follows one Korean search hop
+by hop, F3 reads its method, path, parameter and status code, F4 finds records
+in Kibana and tells the WAF's from the IDS's, F5 follows a blocked SQL injection
+and a sqlmap run from the Red console's Kali terminal, and F6 runs the same
+sqlmap against a WAF whose blocking rules are off (defense `missed`), hands in
+the dumped accounts and reads the loss in the first score. Every answer is read
 from the learner's own records or the substrate's topology, never a fixed key;
 the learner's own sqlmap run counts in both scores like any other red action.
+The blue console's note walks the unit's steps, each checked by the platform
+(`POST /api/sessions/<id>/lesson/steps/<step>/check/`), and records each step
+reached, passed or skipped; the session payload carries no answer key, a step's
+command only once the step is reached, and a step's answer text only once its
+hints reach it. Each step has hints that end in "Do it for me" (`.../do/`, a
+server action); hint and "Do it for me" use is recorded on the session. The
+benign request a unit replays at open counts in neither score.
 
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
 attacker use the board while the learner defends with the real tools. Each

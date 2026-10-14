@@ -43,7 +43,7 @@ publish된 wargame 호스트의 관리망 주소로 board를 읽는다. `loot.gr
 `wargames/<id>/scenario.yaml`에서 찾는다(`platform/wargames.py`; 필드는 `name`,
 `description`, `image`, `public_url`, `objective_model`, `case_file`, 선택적으로
 콘솔의 시나리오 카드에 쓰는 `category`, `difficulty`(easy, medium, hard), `minutes`, 그리고
-`defense`와 `lessons`이며 뒤의 "WAF 레슨"에 설명한다). `image`는 아직 아무 코드도 읽지
+`defense`, `foundations`, `scenarios`이며 뒤의 "세션, WAF 튜닝, 단계 엔진"과 "시나리오"에 설명한다). `image`는 아직 아무 코드도 읽지
 않는다. 앱 이미지는 CI(`.github/workflows/images.yml`)가 빌드하고
 `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`로 pull하거나, 로컬에서 그 이름으로
 빌드한다. 세션은 그 이미지로 `--no-build` 기동한다. 플랫폼은 자기 `FSL_IMAGE_TAG`를
@@ -195,8 +195,8 @@ Neutron이 모두 직접 할당하며, 실제와 다른 서브넷을 선언하�
 `compose:` 절이 각 역할을 compose 서비스에 매핑하고, 어댑터는 세션 프로젝트에서 그
 `com.docker.compose.service` 라벨을 가진 컨테이너를 고른다. 두 곳은 이 조회를 거치지 않고
 세션의 WAF 컨테이너를 compose 이름 규칙으로 직접 지정한다: `platform/api/site.py`
-(`http://fsl-<id>-waf-1`, 사이트 프록시)와 `platform/api/views.py`(`fsl-<id>-waf`, 레슨의
-WAF 박스). 아래 예외 표에 적어 둔다. 각 구간은 `fsl.segment.id`를
+(`http://fsl-<id>-waf-1`, 사이트 프록시)와 `platform/api/views.py`(`fsl-<id>-waf`, 블루 콘솔이
+알려 주는 WAF 박스). 아래 예외 표에 적어 둔다. 각 구간은 `fsl.segment.id`를
 Docker 라벨이나 Neutron 태그로 가지며, 어댑터는 라벨이 붙은 네트워크만 가져온다. 같은
 구간 id라면 세션 소유 네트워크가 컨트롤 플레인 쪽보다 우선한다. 이름 매칭은 compose
 접두사와 오버라이드, Heat 스택 접미사, 유일하지 않은 Neutron 이름에서 깨졌다.
@@ -311,7 +311,7 @@ GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면
 949110이면 차단, 다른 상태 코드나 기록된 규칙이 있으면 통과, 아니면 알 수 없음)과 규칙 id는
 게이트웨이에 붙고, 대상은 WAF가 통과시키고 502-504가 아닌 응답이 왔을 때만 도달로 본다.
 
-따라가기는 먼저 최근 600초를 수집한다(블루 콘솔은 검증 뒤에만 수집하므로, 방금 막힌 요청은 그러지
+따라가기는 먼저 최근 600초를 수집한다(블루 콘솔은 스스로 수집하지 않으므로, 방금 막힌 요청은 그러지
 않으면 규칙이 보이지 않는다). 또 그 요청의 Suricata `http` 이벤트를 수집 경로로 읽는다
 (`elastic.fetch`, 전체 수집과 같은 페이지 나눔; 표시는 `elastic.suricata_marker`로 읽는다):
 웹사이트 창 요청은 그 시간 창 안의 browse 마커로, 이벤트에 마커가 없으면 같은 URL로; 실행한 케이스는
@@ -331,7 +331,7 @@ GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 learner를 만들고 프로젝트를 연다. 콘솔의 토폴로지 창은 `gns3.py`가 돌려준 포트와 경로의 웹 UI를 iframe으로 연다 |
-| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), 실습의 WAF 화면 단계 문구가 읽을 제외 파일과 audit 로그 경로를 알려 준다. 그 명령의 파일 경로와 reload는 `wargames.lesson`이 선언(`settings.FSL_WAF`)에서 채운다. 플랫폼은 어느 것도 읽지 않는다 |
+| CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), f6의 WAF 화면 단계가 읽을 예외 파일을 알려 준다. 그 명령(`cat {waf_rules}`)의 파일 경로는 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로 채운다. 플랫폼은 터미널을 조작하지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 wargame 호스트의 estate 센서 compose 서비스를 멈추고 다시 띄우며(OpenStack), 그 뒤 기준 규칙은 `suricata.py`를 거친다 |
 | 공격자 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽는다; 터미널 배선(`settings.py`, `nginx.conf`, `entrypoint.sh`)이 `fsl-kali`와 `fsl-<id>-kali-1`을 지정한다 |
@@ -415,7 +415,7 @@ sandbox allow-forms allow-scripts allow-same-origin`이 붙는다. 대상은 레
 브라우징은 세션 자신의 비밀값(`Session.browse_marker`, `browse-`와 무작위 16진수 32자리, 세션을 만들 때
 생성)으로 표시되고(브라우저가 보낸 `X-FSL-Case`는 기록기가 덮어씀), 요청은 플랫폼의 `edge` 주소에서
 나간다. 그 경보는 다른 경보처럼 수집·목록화되어 학습자가 Kibana와 `/detections/`에서 찾을 수 있지만,
-`/score/`는 레슨 자신의 재실행(시드, 검증, 확인, 재실행)처럼 그 세션의 비밀값이 붙은 탐지를 뺀다: 브라우징은 케이스가 아니므로
+`/score/`는 재실행(`views.REPLAY_MARKS`)처럼 그 세션의 비밀값이 붙은 탐지를 뺀다: 브라우징은 케이스가 아니므로
 정탐·오탐도, 귀속되지 않은 경보도 아니다. 손으로 보낸 `X-FSL-Case: browse`는 모르는 marker일 뿐이라
 점수에 들어가고, `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부한다. API는 비밀값을
 보여 주지 않는다: `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크 패널은 그 자리에
@@ -438,7 +438,7 @@ sandbox allow-forms allow-scripts allow-same-origin`이 붙는다. 대상은 레
 
 docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly threshold 5로 돌린다
 (`session.yaml`). Paranoia Level과 rule exclusion은 세션 자신의 것이며(`Session.waf`), 열 때
-시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("WAF 레슨"). `GET`은 10초 timeout으로
+시나리오의 defense로 쓰고 `/api/sessions/<id>/waf/`로 바꾼다("세션, WAF 튜닝, 단계 엔진"). `GET`은 10초 timeout으로
 파일을 읽으므로 폴링 하나가 서버 스레드를 그보다 오래 잡지 않는다. 모든 Suricata
 규칙은 `alert`이므로 레인지에서 차단하는 것은 WAF뿐이다. OpenStack의 WAF VM도 같은 방식으로
 차단한다(`deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본값 threshold 5, Paranoia Level 1).
@@ -487,7 +487,7 @@ Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만
 - 이벤트 시각이 창 밖인 경보는 버리고 `stale`로 센다;
 - 나중에 발견된 marker를 marker가 없던 저장 행에 기록한다;
 - `src_host`와 `dest_host`를 substrate의 구간 정보로 채우며, substrate에 닿을 수
-  없으면 비워 둔다. 수집과 `/detections/`는 레슨 폴링마다 `docker network ls`와 `inspect`를 돌리지
+  없으면 비워 둔다. 수집과 `/detections/`는 단계 폴링마다 `docker network ls`와 `inspect`를 돌리지
   않고 세션의 구간 정보를 30초 동안 재사용한다. `/top/`, `/map/`, `/topology/`는 매번 새로 읽는다.
 
 Elasticsearch는 저장과 색인 시점의 GeoIP 보강에 쓰이며, 그래서 Logstash가 없다. 쿼리
@@ -503,29 +503,31 @@ bind-mount 하며, `bin/fetch-geoip`가 이 디렉터리를 채우므로 `GeoLit
 (`platform/register_pipeline.py`, `kibana.py`처럼 백그라운드에서 돌므로 Elasticsearch가 뜨는 중에도
 플랫폼은 응답한다). waitress는 스레드 16개로 플랫폼을 서비스한다.
 
-## WAF 레슨
+## 세션, WAF 튜닝, 단계 엔진
 
-세션은 `POST /api/sessions/` `{scenario, guidance, lesson, mode, defense}`로 열고, 세션에
-저장된다(마이그레이션 0015, 0022, 0023). `defense`는 시나리오의 `defense` 항목 중 하나를
-고르고(기본값 `full`), `guidance`(기본값 꺼짐, `lesson`을 주면 켜짐)는 시나리오에 `lessons`가 있어야
-한다. 시나리오는 `scenario.yaml`에 `lessons:` 목록을 선언하고, 레슨마다 `id`, `order`와 선택적으로
-`level`(easy, medium, hard), `minutes`, `prerequisites`(같은 시나리오의 다른 레슨 id)를 두며 발견 시
-검증한다. 아직 단일 `lesson:`을 쓰는 descriptor는 거부한다. board에는 일곱 개가 있고 아래 "board의
-과정"에 나열한다. `lesson`(기본값은 시나리오의 `default_lesson`, 없으면 `order`가 가장 앞선 레슨; board의
-기본값은 `waf-exclusion`)은 `Session.lesson`에 남고 `lesson_id`로 보고된다. `mode`는
-`guided`(기본값, 또는 레슨 자신의 `mode`) 또는 `self`(`Session.mode`)이고, 워게임에서는 거부되며, 열린 레슨에서
-`PATCH /api/sessions/<id>/ {mode}`로 바꾼다. board는 `minimal`(CRS paranoia level 4, `local.rules`),
-`full`(paranoia level 1, 같은 `local.rules`), `ids`(paranoia level 1, `no-uri-sqli.rules`: sid 9000001을
-뺀 `local.rules`)를 선언한다. 레슨은 시작할 defense를 선언하고(`defense`,
-board 레슨은 `minimal`, 발견 시 시나리오의 `defense`와 대조), defense를 밝히지 않은 guidance 세션은
-그것을 쓴다. `GET /api/wargames/`는 시나리오마다 `lessons`를 `id`, `order`, `title`·`goal` 문자열 키,
-`minutes`, `level`, `defense`, `prerequisites`, 단계 수와 함께 나열하고, 첫 레슨의 `lesson_defense`,
-`lesson_text`, `lesson_steps`도 그대로 둔다. `GET /api/sessions/?ids=1,2`는 세션 목록을 주어진 id로
-좁힌다. 모든 기반에서 스택이
+세션은 `POST /api/sessions/` `{scenario, guidance, lesson, defense}`로 열고, 세션에 저장된다
+(마이그레이션 0015, 0022). `scenario`는 워게임(기본값 `board`)이나 시나리오 id를 가리키고, 시나리오로
+열 때는 `lesson`, `guidance`, `defense`를 거부한다("시나리오"). 워게임에서 `defense`는 그 워게임의
+`defense` 항목 중 하나를 고르고(기본값 `full`), `guidance`(기본값 꺼짐, `lesson`을 주면 켜짐)는
+워게임에 `foundations`가 있어야 하며, `guidance: false`와 함께 준 `lesson`은 거부한다.
+`{"lesson": "f1"}`부터 `"f6"`까지는 그 기초 단원을 열고, `{"guidance": true}`만 주면 `order`가 가장
+앞선 단원(f1)을 연다. 단원은 `Session.lesson`에 남고 `lesson_id`로 보고된다. defense를 밝히지 않은
+guidance 세션은 단원이 선언한 `defense`를 쓴다. 세션의 `kind`는 `scenario`, `lesson`(guidance), `wargame`
+중 하나다. 저장된 레슨 id가 더는 어떤 단원도 가리키지 않는 세션(이전 과정의 세션, `docs/DECISIONS.md`
+2026-10-14)은 `lesson: null`, `lesson_id: null`로 읽히고 kind는 `lesson`으로 남는다. 마이그레이션
+0026은 `Session.mode`를 지우고 `Session.result_cache`를 비웠으므로, 저장된 결과는 레슨 판정 없이 다시
+채점된다. 요청 본문의 `mode`는 무시한다. board는 `minimal`(CRS paranoia level 4, `local.rules`),
+`full`(paranoia level 1, 같은 `local.rules`), `ids`(paranoia level 1, `no-uri-sqli.rules`: sid
+9000001을 뺀 `local.rules`), `missed`("기초 F1-F6"), 그리고 시나리오 posture `level2`, `level3`,
+`inherited`, `untuned`, `broken-rule`, `spelled`("시나리오")를 선언한다. 단원마다 `defense`는 발견 시
+이것들과 대조하고, 어떤 단원이나 시나리오도 `minimal`에서 시작하지 않으므로
+`minimal`은 이름을 밝혀야만 쓴다. `GET /api/sessions/?ids=1,2`는
+세션 목록을 주어진 id로 좁힌다. 모든 기반에서 스택이
 뜬 뒤 여는 경로가 센서에 그 defense의 규칙 파일을, defense가 없으면 `local.rules`를
 넣고(`suricata.seed`), defense가 있을 때 CRS 튜닝을 쓴다(`crs.apply`). guidance 세션은 이어서
-lesson의 케이스를 한 번 재생하므로(`meta.seed`), 학습자가 들어왔을 때 ModSecurity와
-Suricata 기록이 이미 Kibana에 있다. slot이 있는(OpenStack) 레인지에서 규칙 파일이
+단원의 `cases`를 한 번 재생하므로(`meta.seed`, curl이 보고한 상태 코드, 403이면 `blocked`), 학습자가
+들어왔을 때 ModSecurity와 Suricata 기록이 이미 Kibana에 있다. worked 시나리오는 재생하지 않는다.
+slot이 있는(OpenStack) 레인지에서 규칙 파일이
 `local.rules`이면 센서 시드는 건너뛴다: 준비 확인이 모든 센서에 그 파일이 있을 때만 slot을
 내주었기 때문이다. slot마다 센서가 자기 규칙 파일을 가지므로(2026-10-13 측정: slot 1에 적용한 sid가
 slot 2에는 없었다) 다른 규칙 파일은 그 slot의 센서에만 들어간다. 열 때의 재생이
@@ -536,7 +538,7 @@ slot 2에는 없었다) 다른 규칙 파일은 그 slot의 센서에만 들어�
 `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 정하는 `SecAction`
 하나와, 항목마다 런타임 제외 하나(`ctl:ruleRemoveTargetById=<id>;<target>` 또는
 `ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
-<path>"`로 범위를 좁힘). 파일은 `runner("gateway")`로 그 세션의 WAF에 쓰고, `nginx -t
+<path>"`로 범위를 좁힘)이며 id는 10000~10020이다. 파일은 `runner("gateway")`로 그 세션의 WAF에 쓰고, `nginx -t
 && nginx -s reload`를 실행하며, nginx가 거부하면 이전 파일로 되돌린다. 재적재 전에 없던
 워커가 뜨면(`/proc`에서 부모 PID로 워커 PID를 읽음) 반환하므로, 새 연결은 새 튜닝을 만난다.
 이전 워커는 느린 요청을 마저 처리할 수 있다. 5초 안에 새 워커가 뜨지 않으면 재적재가 일어나지
@@ -548,212 +550,186 @@ slot 2에는 없었다) 다른 규칙 파일은 그 slot의 센서에만 들어�
 (1-100000)는 수준과 같은 `SecAction`에 `tx.inbound_anomaly_score_threshold`,
 `tx.outbound_anomaly_score_threshold`로 쓰고 다시 읽는다. `thresholds`를 뺀 `PUT`은
 적용 중인 값을 지키고, `"thresholds": null`은 지운다. `PUT /api/sessions/<id>/waf/`가 이를
-바꾸고(에이전트 경로), `GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽는다. `crs.read`는 Paranoia
-Level과 모든 `ctl:ruleRemove*` 줄을 파싱하므로(주석 줄은 건너뛰고 이어진 줄은 합침) WAF 터미널에서
-고친 내용도 알려 준다. 검증마다, 그리고 닫을 때 slot을 다시 짓기 전에 `crs.read`가 읽은 것을
-스냅샷으로 남긴다(`Session.waf_snapshots`, 마이그레이션 0021: `{at, run|closed, waf}`). 가장 최근
-것이 `Session.waf`이기도 하므로 닫힌 세션은 학습자의 마지막 설정을 파일까지 알려 준다(한 번도 읽지
-못했으면 `file: null`). 읽을 수 없는 WAF는 스냅샷을 남기지 않고 검증도 닫기도 막지 않는다. 학습자는
-WAF 터미널에서 튜닝한다. `controls: [paranoia]`를 선언한 레슨은 노트에 같은 `PUT`을 부르는 레벨 조절도 보인다.
+바꾸고(에이전트 경로. 콘솔 화면은 부르지 않는다), `GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽는다.
+`crs.read`는 Paranoia Level과 모든 `ctl:ruleRemove*` 줄을 파싱하므로(주석 줄은 건너뛰고 이어진 줄은
+합침) 학습자가 튜닝하는 WAF 터미널에서 고친 내용도 알려 준다. 시나리오 최종 점검마다(점검 시간을 판정할
+때), 그리고 닫을 때 slot을 다시 짓기 전에 `crs.read`가 읽은 것을 스냅샷으로 남긴다
+(`Session.waf_snapshots`, 마이그레이션 0021: `{at, scenario_window|closed, waf}`. 이전 과정의 세션에는
+검증 실행에서 남긴 `{at, run, waf}`도 있다). 가장 최근 것이 `Session.waf`이기도 하므로 닫힌 세션은
+학습자의 마지막 설정을 파일까지 알려 준다(한 번도 읽지 못했으면 `file: null`). 읽을 수 없는 WAF는
+스냅샷을 남기지 않고 어느 쪽도 막지 않는다.
 
-`POST /api/sessions/<id>/verify/`는 세션 레슨의 `cases`를 `/attacks/`와 같은
-경로로 재생하고 `meta.verify=<run>`과 `meta.mode`(실행할 때의 모드)를 붙이며, 그 실행만 판정한다. sqlmap 케이스는
-sqlmap이 덤프한 행(`redteam/tools.py`의 `dumped`)이 세션 스냅샷의 `(username, hash)`와
-맞으면(`loot.matched`) 유출이다. 유출은 진단에 보고되고 목표로 인정되지 않는다(판정 D7,
-2026-10-13): 학습자 자신의 확인은 잃은 목표가 아니다. 레드가 `/loot/`로 제출한 탈취물은 그대로
-인정된다. 막힘은 긍정적 증거가
-있을 때만이다: 맞는 행이 없고, sqlmap이 0으로 끝나 `[*] ending` 줄을 찍었으며 중단(트레이스백,
-사용자 중단, 존재하지 않는 호스트)이 없고, "all tested parameters do not appear to be
-injectable"이라는 sqlmap 자신의 결론이 있으며 덤프한 행이 하나도 없다
-(`tools.found_not_injectable`). 스냅샷 계정과 하나도 맞지 않는 덤프는 유출도 막힘도 아닌 판정
-불가다. 스냅샷이 없는 세션의 검증은 409로 답하고, 열 때 계정을 읽지 못한 docker board 세션은
-503으로 거부하고 닫는다. sqlmap이
-회복한 연결 오류는 결론을 무효로 하지 않는다. WAF 뒤에서 그것은 ModSecurity가 board의 500
-응답을 끊은 것이다(nginx "header already sent"). 결론 전에 sqlmap을 멈춘 연결 오류는 결론
-줄을 남기지 않으므로 판정 불가다. 그 밖은 판정 불가이며 검증에
-실패한다. sqlmap 케이스는 `--disable-hashing`으로 돌아, `--batch`가 수락하고 끝나지 않는
-pbkdf2 해시 크래킹을 하지 않고 덤프 칸에 원래 해시가 남는다. sqlmap이 보고한 403 횟수는 `meta.forbidden`에 남기고 판정에는 쓰지 않는다.
-정상 케이스는 curl이 2xx `http_code`를 보고하면 응답받은 것이다. 통과는 모든 공격이
-막히고 모든 정상 케이스가 응답받아야 한다(`platform/lesson.py`). 응답의 `diagnosis`
-키는 콘솔이 `strings.html`로 표시하며, TP/FP 라벨은 보여주지 않는다. 응답에는 실행 전에 남긴
-스냅샷 `waf`, `mode`, 그리고 그 스냅샷에서 읽은 학습자 조치의 종류 `fix`도 있다(`lesson.fix_class`,
-판정 D1): Paranoia Level이 레슨 posture보다 낮으면 `level`(레벨이 없는 파일은 CRS 기본값 1로 본다),
-아니면 posture에 없는 예외가 규칙 전체를 빼면 `rule`, 경로 없이 또는 레슨 `waf` 단계의 경로보다 넓은
-경로에서 대상을 빼면 `target`, 더한 예외가 모두 그 경로 안의 대상이면 `path_target`, 더한 것이 없으면
-null이다. 판정 옆에 알려 줄 뿐 판정을 바꾸지 않는다. `views.REPLAY_MARKS`(`seed`, `verify`, 단계 확인의 `check`, 검증 탭 재실행의
-`replay`) 중 하나가 붙은 케이스는 `/score/`(TP/FP/FN/TN, 그것이 일으킨 경보, 게임)와, corp의 효과
-관찰이 변화를 귀속시키는 창에서 빠진다. 검증 탭의 재실행은 `POST /attacks/ {case, lesson: true}`로,
-guidance 세션에서 lesson의 케이스만 받고 그 케이스를 검증처럼 판정해 `diagnosis`와 `replay` 행을
-답한다: 결과, sqlmap의 결론 줄(`tools.conclusions`: 주입 가능·불가 판정과 치명적 중단, 시각 제외, 최대
-넷), 선언된 명령, "판정에 쓰지 않음"이라고 적은 403 횟수, 그 케이스의 marker로 좁힌 Kibana `discover`
-링크(`kibana.marked`). board의 lesson은
-`board-sqli-orderby-sqlmap`, `board-sqli-orderby-sqlmap-tamper`와 정상 케이스 넷을
-재생한다. 그중 O'Brien 검색과, `sort` 인자를 과잉 차단하는 튜닝을 떨어뜨리는
-`board-normal-sort`(`?sort=-created_at`)가 있다.
+조치의 종류(`lesson.fix_class(waf, posture)`, 판정 D1)는 학습자가 세션의 선언된 posture에 대해 무엇을
+바꿨는지 이름 붙인다: Paranoia Level이 posture보다 낮으면 `level`(레벨이 없는 파일은 CRS 기본값 1로
+본다), 아니면 anomaly threshold가 posture보다 높으면 `threshold`(정하지 않았으면 CRS 기본값 inbound 5,
+outbound 4), 아니면 posture에 없는 예외가 규칙 전체를 빼면 `rule`, 경로 없이 대상을 빼면 `target`,
+더한 예외가 모두 경로 안에서 대상을 빼면 `path_target`, 더한 것이 없으면 null이다. 시나리오 최종 점검이
+판정 옆에 알려 주고(`result.fix`, `result.scenario.fix`) 판정을 바꾸지 않는다. `platform/lesson.py`에는
+이것과 함께 단계 답을 다루는 함수(`answered`, `rules_named`, `added_rules`, `pasted_rows`, `within`),
+도움 횟수, 그리고 시나리오 결과 보고가 보여 주는 더하고 뺀 예외와 파일 diff(`exclusions_changed`,
+`config_diff`)가 있다.
+
+`views.REPLAY_MARKS`(`seed`, `verify`, `check`, `replay`) 중 하나가 붙은 케이스는
+`/score/`(TP/FP/FN/TN, 그것이 일으킨 경보, 게임)와, corp의 효과 관찰이 변화를 귀속시키는 창에서 빠진다.
+지금 쓰는 것은 `seed`뿐이고, `verify`, `check`, `replay`는 이전 세션에 남은 재실행이 두 점수에서 계속
+빠지도록 목록에 남겨 둔다.
 
 콘솔은 화면 다섯 개이고, 모두 `/api/`에서 데이터를 가져온다(사용자가 승인한 정적 시안에 사용자 결정
 두 가지를 더했다. `docs/DECISIONS.md` 2026-10-11 콘솔 재설계). 색과 컴포넌트 클래스는
 `base.html`과 `platform/console/components.css`에 있고, `bin/build-css`가 `tailwind.css`에
 넣는다. 머리글에는 경로 표시, 레인지 상태, 언어 전환이 있다.
 
-- 메인(`/`): 진행 중인 세션과 그 종류(`lesson`/`wargame`), 레슨이 도달한 단계, 열기가 끝났는지
-  (`ready`, `Session.ready_at`에서. 그 전까지 "준비 중 n초 / 약 80초"). 시나리오 카드는
+- 메인(`/`): 진행 중인 세션과 그 종류(`scenario`/`lesson`/`wargame`), 기초 단원 세션이 도달한 단계,
+  열기가 끝났는지(`ready`, `Session.ready_at`에서. 그 전까지 "준비 중 n초 / 약 80초"). 워게임 카드는
   `scenario.yaml`의 category, difficulty, minutes와 `GET /api/wargames/`의 공격 케이스·정상
-  케이스·목표 수를 보여 주고, 카드 아래 레슨마다 목표, 난이도, 시간, 선수 레슨과 시작 버튼 셋을 둔다:
-  레슨(안내), 연습(`mode: self`), 워게임(안내 없이 full defense). 레슨마다 이 브라우저가 연 세션
-  (localStorage의 `fsl-opened-sessions`, 세션·블루 화면이 쓰고 최신순 최대 20개, `?ids=`로 읽음) 가운데
-  가장 새 실행을 단계 종류와 PASS/FAIL, 진행 중, 검증 없이 닫음으로 보여 준다. 판정 옆의 단계 종류는 여기서도
-  세션 화면에서도 마지막 검증이 돈 모드(`result.lesson.mode`)이고, 그 뒤에 바꾼 세션 모드가 아니다. 지난 세션은 `result`를 보여 준다: 마지막 검증의 PASS/FAIL,
-  아니면 빼앗긴 목표 수와 그중 알아채지 못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다
-  (`Session.result_cache`, migration 0018; 입력은 `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가
-  있는 행 수, 케이스와 목표의 마지막 id·행 수). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이
-  바뀐 세션만 다시 채점한다. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면
-  "열린 세션 닫기"가 열린 세션을 나열해 각각 `ingest/` 뒤 `close/`로 닫는다.
-  `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
-- 세션(`/session/<id>/`): 머리글 수치(레슨 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔 카드,
-  `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 레슨 판정과 마지막 진단, 조치의 종류,
-  통과했으면 결과 보고(아래), 그다음 주 점수
-  (모든 목표의 빼앗김 여부, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음 방어 판단을 평범한 문장으로
-  보여 준다: "공격 8건 중 7건을 잡았습니다 · 1건을 놓쳤습니다 (이름)", "정상 요청 4건 중 3건은 통과 ·
-  1건을 잘못 막았습니다 (O'Brien 검색)", 그리고 케이스 하나는 경보가 많아도 한 번으로 센다는 것.
-  TP/FP/FN/TN과 게임 balance는 API에 남고, 사람이 읽는 문구에는 나오지 않는다(`test_strings.py`).
-- 블루(`/blue/<id>/`): 레일(Kibana, WAF, 레드팀)과 창. WAF 창의 배너는 상자(`waf_box`,
+  케이스·목표 수를 보여 준다. 카드 아래에는 기초 묶음(단원마다 시간, 배우는 것, 시작 버튼. 시작은 단원이
+  선언한 defense로 `{scenario, guidance: true, lesson, defense}`를 보낸다), 시나리오 묶음("시나리오"),
+  그리고 평범한 "워게임 시작" 하나(`[data-wargame-start]`, `{scenario}`를 보냄: 안내 없이 `full`
+  defense)가 있다. 기초 단원과 시나리오마다 이 브라우저가 연 세션(localStorage의 `fsl-opened-sessions`,
+  세션·블루 화면이 쓰고 최신순 최대 20개, `?ids=`로 읽음) 가운데 가장 새 실행을 보여 준다: 기초는 진행
+  중 또는 닫힘, 시나리오는 PASS/FAIL, 진행 중, 최종 점검 없이 닫힘. 지난 세션은 `result`를 보여 준다:
+  시나리오의 마지막 최종 점검의 PASS/FAIL(`result.scenario`), 아니면 빼앗긴 목표 수와 그중 알아채지
+  못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다(`Session.result_cache`, migration 0018; 입력은
+  `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가 있는 행 수, 케이스와 목표의 마지막 id·행 수,
+  최종 점검마다의 판정). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이 바뀐 세션만 다시
+  채점한다. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면 "열린 세션 닫기"가 열린 세션을 나열해
+  각각 `ingest/` 뒤 `close/`로 닫는다. `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
+- 세션(`/session/<id>/`): 머리글 수치(guidance 세션이 도달한 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔
+  카드, `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 시나리오의 판정 배너와 결과
+  보고("시나리오"), 그다음 주 점수(모든 목표의 빼앗김 여부, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음
+  방어 판단을 평범한 문장으로 보여 준다: "공격 8건 중 7건을 잡았습니다 · 1건을 놓쳤습니다 (이름)",
+  "정상 요청 4건 중 3건은 통과 · 1건을 잘못 막았습니다 (O'Brien 검색)", 그리고 케이스 하나는 경보가
+  많아도 한 번으로 센다는 것. TP/FP/FN/TN과 게임 balance는 API에 남고, 사람이 읽는 문구에는 나오지
+  않는다(`test_strings.py`). 다시 열기는 같은 시나리오, 같은 단원(`lesson_id`가 있으면 `{scenario,
+  guidance: true, lesson, defense}`), 또는 같은 워게임을 연다.
+- 블루(`/blue/<id>/`): 레일(Kibana, 웹사이트, 토폴로지, judgement 시나리오의 판정 창, detection·unknown
+  시나리오의 IDS 규칙 창, WAF, 레드팀으로 가는 링크)과 창. WAF 창의 배너는 상자(`waf_box`,
   `fsl-<id>-waf`)와 CRS 규칙 폴더(`waf_rules`, `crs.EXCLUSIONS`에서 계산)만 보여 준다.
 - 레드(`/red/<id>/`): 위쪽에 목표(한국어 이름은 `objective.<key>`)와 "탈취한 해시 제출", 공격과
   정상으로 묶은 케이스와 마지막 실행 결과, 나머지는 Kali 터미널. 좁은 화면에서는 패널이 세로로
   쌓이고, 레드·블루 화면은 옆으로 스크롤되지 않는다.
 
-guidance 세션에서 레슨 노트는 창의 오른쪽 위에 떠 있고(사이트 툴바나 WAF 배너가 보이면 그 아래, 40 px에 8 px를 더한 위치), 기본은 알약 모양("레슨 노트 · 단계 n/N")으로
-접혀 있다. 펼치면 너비 360px에 탭 다섯 개가 있다: 단계(현재 단계, 이전/다음, 건너뛸 수 있는 전체 단계
-목록), 목표(요약, 완료 조건, 네 문단), 이론, 힌트, 검증. 목표 한 줄(`<lesson.text>.summary`)은 머리글
-아래, 탭 위에 고정된다. 학습자가 펼치거나 단계가 노트 안 컨트롤을
-가리킬 때만 펼쳐지고(그런 단계를 벗어나면 다시 접힘), 펼쳐져 있는 동안 탭은 단계를 따라간다(재생·검증은
-검증 탭, 나머지는 단계 탭). 이 브라우저가 세션의 블루 콘솔을 처음 열 때(`fsl-lesson-landed-<id>`)는
-노트가 목표 탭으로 펼쳐지고, 그 뒤로는 열 때마다 접힌 채로 시작하며, 탭만 보는 사람마다 localStorage
-(`fsl-lesson-note`)에, 보고 있는 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로
-"단계 n/N"을 보여 준다. 진행 자체는 세션의 것이다(`Session.lesson_steps`, 마이그레이션 0020): 단계마다
-`reached`, `passed`, `skipped`(시각), `hint`(보인 단계, 0-4), `done_for_me`를 남기고
-`GET /api/sessions/<id>/`와 모든 레슨 단계·힌트 응답의 `progress`로 알려 준다. 단계의 기록에는 얻은 것도
-실린다: 단계에 도달하면 `command`(연습 모드에서는 없음), 힌트 단계가 3(`lesson.ANSWER`)에 이르면 `answer`,
-통과하면 `line`이며 뒤의 둘은 `{en, ko}`이다. `POST /api/sessions/<id>/lesson/steps/<step>/
-{state: reached|skipped}`는 단계에 도달했음(alert 확인이 넘어야 할 가장 새 탐지 id도 정함) 또는
-통과하지 않고 떠났음을 남긴다. 콘솔은 통과하지 않은 단계에서 다음이나 목록으로 옮길 때 `skipped`를
-보내고, 이전이나 통과로 옮길 때는 보내지 않는다. 단계 목록은 `progress`가 통과라고 할 때만 ✓를 붙이고,
-통과하지 않고 떠난 단계는 빈 원과 "건너뜀"으로 표시하며, 위에 "N단계 중 n단계 통과"를 보인다. 이론 카드가
-`shows`로 가리키는 단계에는 popover에 그 카드를 여는 "왜?" 링크가 있다.
+guidance 세션(기초 단원이나 worked 시나리오)에서 노트는 창의 오른쪽 위에 떠 있고(사이트 툴바나 WAF
+배너가 보이면 그 아래, 40 px에 8 px를 더한 위치), 기본은 알약 모양("레슨 노트 · 단계 n/N")으로 접혀
+있다. 펼치면 너비 360px에 탭 네 개가 있다: 단계(현재 단계, 이전/다음, 건너뛸 수 있는 전체 단계 목록),
+목표(요약, 완료 조건(단계를 마치는 것, 또는 시나리오의 목표와 측정 방법), 네 문단), 이론, 힌트. 목표 한
+줄(`<text>.summary`)은 머리글 아래, 탭 위에 고정된다. 학습자가 펼칠 때만 펼쳐지고, 펼쳐진 채 다른 단계로
+가면 단계 탭을 보여 준다. 이 브라우저가 세션의 블루 콘솔을 처음 열 때
+(`fsl-lesson-landed-<id>`)는 노트가 목표 탭으로, 기초 단원이면 카드를 펼친 이론 탭으로 펼쳐지고, 그
+뒤로는 열 때마다 접힌 채로 시작하며, 탭만 보는 사람마다 localStorage(`fsl-lesson-note`)에, 보고 있는
+단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로 "단계 n/N"을 보여 준다. 진행 자체는
+세션의 것이다(`Session.lesson_steps`, 마이그레이션 0020): 단계마다 `reached`, `passed`,
+`skipped`(시각), `hint`(보인 단계, 0-4), `done_for_me`를 남기고 `GET /api/sessions/<id>/`와 모든 단계·힌트
+응답의 `progress`로 알려 준다. 단계의 기록에는 얻은 것도 실린다: 단계에 도달하면 `command`, 힌트 단계가
+3(`lesson.ANSWER`)에 이르면 `answer`, 통과하면 `line`이며 뒤의 둘은 `{en, ko}`이다. `POST
+/api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에 도달했음(`kali` 단계는 이때
+marker도 받음) 또는 통과하지 않고 떠났음을 남긴다. 콘솔은 통과하지 않은 단계에서 다음이나 목록으로 옮길
+때 `skipped`를 보내고, 이전이나 통과로 옮길 때는 보내지 않는다. 단계 목록은 `progress`가 통과라고 할
+때만 ✓를 붙이고, 통과하지 않고 떠난 단계는 빈 원과 "건너뜀"으로 표시하며, 위에 "N단계 중 n단계
+통과"를 보인다. 이론 카드가 `shows`로 가리키는 단계에는 popover에 그 카드를 여는 "왜?" 링크가 있다.
 
-목표 탭은 고객 문의로 시작한다(`<lesson.text>.ticket`). 둘째 줄은 `GET /waf/`에서 읽은 것(Paranoia
-Level과 예외 수)만 말한다. 그다음 요약, 그다음 출발점 판정이다: `GET /api/sessions/<id>/`의 `start`가
-seed 재생을 검증과 같은 규칙으로 판정한다(board에서는 PL4가 O'Brien 검색에서 실패하고, 그것이 유일한
-빨간 줄이다). 목표 탭에는 안내 레슨과 연습 사이의 전환도 있다. 연습(`mode: self`)에서는 응답에 단계 명령이
-없고, 힌트와 "대신 해 주기"는 409로 답하며, 콘솔은 단계·힌트 탭, 안내, "위치 보기"를 숨긴다. 목표, 이론,
-검증 탭은 남고 학습자가 모든 명령을 직접 입력한다.
+이론 탭에는 단원의 접힌 카드가 있다(`scenario.yaml`의 `theory`, 문구는
+`<text>.theory.<card>.title|body`). 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를 그
+단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(`hints`, 문구는 `<text>.hint.*`. worked 시나리오의
+목록은 비어 있다: 그 힌트는 시나리오가 제안한다). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로
+있고 복사 버튼이 있다.
 
-이론 탭에는 접힌 카드 다섯 장이 있다(`scenario.yaml`의 `lesson.theory`, 문구는
-`<lesson.text>.theory.<card>.title|body`): Paranoia Level, Anomaly Scoring(403에 949110과
-920273이 함께 찍히는 이유), 오탐(false positive)을 일으킨 규칙 찾기, PL 낮추기와 rule exclusion의 차이,
-`ctl:ruleRemoveTargetById` 한 줄 읽기. 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를
-그 단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(왜 920273인지, 왜 ARGS:q만인지, 왜 900번
-파일인지, `scenario.yaml`의 `lesson.hints`, 문구는 `<lesson.text>.hint.*`). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로 있고 복사 버튼이
-있다. 검증 탭은 케이스 하나를 다시 실행해 실행마다 `replay` 행(최근 다섯)을 Kibana 링크와 함께
-보여 주고, 검증을 돌린다. 판정은 PASS 또는 FAIL이고, 막았거나 통과한 케이스는 초록 ✓로, 실패한 진단은
-빨간 ✗로, 조치의 종류는 그 아래 회색으로 보여 준다. PASS 뒤에는 검증 탭에 결과 보고가 나온다. 노트에는
-예외 입력란이 없다. 레벨 조절과 Suricata 규칙 편집기는 그것을 선언한 레슨에만 나온다.
-
-결과 보고는 `GET /api/sessions/<id>/lesson/debrief/`(열렸든 닫혔든 레슨 세션)이고, Igloo/ASEC 보고서
-순서를 따른다: `overview`(마지막 검증의 판정, 실행 횟수, 모드와 조치 종류, 전체 중 통과한 단계, 힌트를
-쓴·건너뛴·대신 해 준 단계 수), `evidence`(marker가 seed나 마지막 검증 케이스인 세션 자신의 탐지 최대
-20개, 규칙·요청·단계·케이스. Elasticsearch는 읽지 않음), `change`(선언된 시작 posture와 마지막 검증
-스냅샷의 비교: 더하고 뺀 예외, 두 레벨, posture에 대해 `crs.rendered`가 쓰는 내용과 제외 파일의 줄 diff),
-`cases`(레슨 케이스마다 시작 시와 마지막 검증의 결과), `risk`(조치 종류가 정하는 문자열 키와, 레슨의 공격
-케이스만 다시 보냈다는 것). `at`에는 시작과 마지막 검증 시각이 에이전트용으로 있고 콘솔은 보여 주지 않는다.
-`debrief_script.html`이 검증 탭과 닫힌 세션 화면에 그린다.
-
-단계는 레슨 정의에 선언한다(`scenario.yaml`의 `lesson.steps`): `id`, `kind`가 `alert`, `click`,
-`answer`, `choice`, `waf`, `served`, `replay`, `verify`, `level`, `rules`, `detect` 중 하나인
-`check`(`wargames.CHECK_KINDS`, 발견 시 검증. `replay`는 레슨의 케이스와 `held`나 `served`인 `expect`를
-밝힌다. 뒤의 셋은 "board의 과정"에 설명한다),
-그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널 `command`. 세션 API는 `query`가 있는 단계에
-`discover` 링크를 더하고(`kibana.discover_path(..., narrowed)`), 확인은 `kind`만, 그리고 선택지의
-`options`와 alert·served 확인이 기다리는 `path`, replay의 `case`만 보인다: `accept` 목록과 정답 규칙은
-브라우저에 가지 않는다. 단계의 `command`는 `progress`가 그 단계에 도달했다고 남긴 뒤에만 응답에 있다.
-정답 문구(`<lesson.text>.answer.<step>`)와 통과 때 하는 말(`<lesson.text>.line.<step>`)은 Django가
-그리지 않는 `strings.html` 끝의 `{% comment %}` 구역에 있고, `console/strings.py`가 읽어 얻은 때에 단계의
+단계는 단원에 선언한다(`scenario.yaml`에서 기초 단원이나 worked 시나리오의 `steps`): `id`, `kind`가
+`click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage` 중 하나인
+`check`(`wargames.CHECK_KINDS`, 발견 시 검증), 그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널
+`command`. `command`의 `{waf_rules}`는 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로
+바꾼다. 세션 API는 `query`가 있는 단계에 `discover` 링크를 더하고(`kibana.discover_path(...,
+narrowed)`), 확인은 `kind`만, 그리고 선택지의 `options`, `sent` 단계의 `match`, `kali` 단계의 `case`만
+보인다: `accept` 목록, 정답 규칙, `rules` 단계의 `rule`(`views.SERVER_ONLY_STEP`)은 브라우저에 가지
+않는다. 단계의 `command`는 `progress`가 그 단계에 도달했다고 남긴 뒤에만 응답에 있다. 정답
+문구(`<text>.answer.<step>`)와 통과 때 하는 말(`<text>.line.<step>`)은 Django가 그리지 않는
+`strings.html` 끝의 `{% comment %}` 구역에 있고, `console/strings.py`가 읽어 얻은 때에 단계의
 `progress` 기록에 싣는다. 그래서 화면의 문자열 표에는 둘 다 없다. 이론·힌트 카드는 처음부터 화면에 있고
-일부는 답을 말한다(board 레슨의 카드는 920273과 `ARGS:q`를 말한다): 이론·힌트 탭이 주는 도움이다. board는 여덟 단계이고, 각 단계는
-그 확인으로 넘어간다. 이전/다음은 확인을 건너뛰는 길로 남는다:
+일부는 답을 말한다: 이론·힌트 탭이 주는 도움이다. 각 단계는 그 확인으로 넘어가고, 이전/다음은 확인을
+건너뛰는 길로 남는다.
 
-| 단계 | 어디서 | 확인 |
-|---|---|---|
-| search: 고객이 되어 O'Brien 검색 | 웹사이트 창 | `alert`: 플랫폼이 최근 600초를 수집하고, 단계의 `reached`보다 새로운, 세션의 브라우징 비밀값이 붙고 경로에 `O'Brien`이 든 기록이면 통과 |
-| find: Kibana에서 그 요청 찾기 | Kibana, 필터 버튼 `url : *Brien* and status : 403` | `click`: 그 행의 펼치기 버튼 |
-| rule: 막은 규칙 번호 | 답 입력란 | `answer`: `920273`. `949110`이면 "점수 합계 규칙" 안내 |
-| target: 무엇이 걸렸나 | 선택지 넷 | `choice`: `ARGS:q`(나머지는 주소, 쿠키, 헤더) |
-| exclude: 예외 적용 | WAF 터미널, "터미널에서 실행" | `waf`: WAF 파일에 920273 `ARGS:q` `/search/`가 있고, `meta.check`를 붙여 다시 보낸 O'Brien 케이스가 2xx(reload가 적용됨). 폴링은 파일 버전마다 한 번만 다시 보냄 |
-| retry: O'Brien 다시 검색 | 웹사이트 창 | `served`: 창에 O'Brien 검색이 보이면 같은 케이스를 `meta.check`를 붙여 다시 보내 2xx여야 함 |
-| sqlmap: sqlmap은 여전히 막히나 | popover의 "board-sqli-orderby-sqlmap 다시 실행" | `replay`: 누를 때만(약 15초, 폴링하지 않음) 케이스를 `meta.check`를 붙여 다시 보내 막혔으면 통과. 유출은 실패이고, 결론 없는 실행은 따로 그렇다고 말함(`lesson.check.inconclusive`). 응답에 `replay` 행이 있음 |
-| verify: 공격은 여전히 막히나 | 노트의 검증 탭 | `verify`: 검증 PASS |
+`answer`와 `choice`는 준 글자가 받는 값과 대소문자 없이 같으면 통과한다(`lesson.answered`. `known`에
+있는 값에는 따로 `<text>.wrong.<step>.<value>` 사유가 있다). 받는 값은 `accept` 목록이거나 `of:`로
+세션의 기록에서 읽는다("기초 F1-F6"). `of: rule`(`wargames.ANSWERS_OF`)은 그 요청의 `path`(학습자 자신의
+요청이면 `marker: browse`)를 받는다: 플랫폼은 최근 600초를 수집하고, 그 요청에 대한 세션의 ModSecurity
+탐지를 모아 CRS 합계 규칙(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 정답으로
+받는다(`lesson.rules_named`). 기록이 없으면 사유는 `lesson.check.unrecorded`다. `rules` 단계는 완료가
+`detected_by`인 단원(3.1)에 있고, 센서 파일(`GET /api/rules/`)에 posture의 규칙 파일에 없거나 내용이 다른
+sid가 생기면 통과하며(`lesson.added_rules`, `suppress.sids`) `added`로 답한다. `triage`(`judged:
+customer | attack | all`)는 학습자가 옳게 판정하면 통과한다("시나리오"). `click`은 콘솔의 말을 믿는다.
 
-모든 확인은 플랫폼이 판정한다: `POST /api/sessions/<id>/lesson/steps/<step>/check/`(답과 선택지는
-`{answer}`, 배경 폴링은 `{poll: true}`)가 `passed`를 남기고 `{passed, reason, hint, hints, progress}`로
-답한다(`waf` 확인은 `fix`, `replay` 확인은 `replay`도). `reason`은 값이 딸린 `strings.html` 키다. `click`은 콘솔의 말을 믿는다. 폴링이 아닌 실패한
-확인은 틀린 것으로 세고, 두 번이면 그 단계의 힌트 단계를 올리고 힌트를 기록한다.
+모든 확인은 플랫폼이 판정한다: `POST /api/sessions/<id>/lesson/steps/<step>/check/`(답, 선택지, 붙여 넣은
+표는 `{answer}`, 배경 폴링은 `{poll: true}`)가 `passed`를 남기고 `{passed, reason, hint, hints,
+progress}`로 답한다(`rules` 확인은 `added`, `kali` 확인은 `kali`, `loot` 확인은 `loot`도). `reason`은
+값이 딸린 `strings.html` 키다. 폴링이 아닌 실패한 확인은 틀린 것으로 세고, 두 번이면 그 단계의 힌트 단계를
+올리고 힌트를 기록한다. worked 시나리오에서는 대신 시나리오의 다음 힌트를 제안한다(`scenario_run.stuck`).
 
-확인은 저절로 돈다. 확인 버튼은 없다. `alert`와 `waf`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
-동안 5초마다(세션이 닫혔는지는 페이지가 30초마다 세션을 다시 읽어 안다), `served`는 웹사이트
-창에 그 단계의 경로가 보일 때 확인한다. popover의 상태 줄이 "확인 중…", 그다음 아직 빠진 것("아직 920273
-예외가 파일에 없습니다", "파일에는 있지만 불러오지 않았습니다"), 통과하면 "✓"와 찾은 것
-(`<lesson.text>.ok.<step>`)을 말한다. 1.2초 뒤 다음 단계로 넘어가 그 단계의 한 줄(`<lesson.text>.line.<step>`)을
-보이고, 마지막 단계에서는 "레슨을 마쳤습니다". 틀린 답은 무엇이 틀렸는지 말한다. 최근 수집(`within`)은 창의 가장 새 기록부터 읽고 잘림을 기록하지 않는다.
-검증 한 번만으로도 기록이 5000개를 넘기 때문이다.
+확인은 저절로 돈다. `kali` 단계의 "내 실행 확인" 버튼만 예외다. `sent`와 `triage`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
+동안 5초마다 확인한다(세션이 닫혔는지는 페이지가 30초마다 세션을 다시 읽어 안다). `sent`는 웹사이트 창에
+단계의 `match`와 맞는 경로가 보이고 1.5초 뒤에도 확인하고, `rules`는 규칙 편집기가 파일을 적용할 때
+확인한다. popover의 상태 줄이 "확인 중…", 그다음 아직 빠진 것(`<text>.fail.<step>`), 통과하면 "✓"와 찾은
+것(`<text>.ok.<step>`)을 말한다. 1.2초 뒤 다음 단계로 넘어가 그 단계의 한 줄을 보이고, 마지막
+단계에서는 "레슨을 마쳤습니다". 틀린 답은 무엇이 틀렸는지 말한다. 최근 수집(`within`)은 창의 가장 새
+기록부터 읽고 잘림을 기록하지 않는다. sqlmap 케이스 하나만으로도 기록이 5000개를 넘기 때문이다.
 
-터미널 단계의 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다. 손으로 쓰는 규칙은
-id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 최대 20개의 예외)을 쓰므로
-둘은 겹치지 않는다. 명령은 파일을 `.bak`으로 복사하고, 앞서 쓴 `"id:10100,` 줄을 빼고, id 10100으로
-예외를 덧붙이고, 파일 마지막 줄을 보여 준 뒤, `nginx -t`가 통과할 때만 `nginx -s reload`를 실행한다.
-통과하지 못하면 `.bak`을 되돌려 놓으므로 WAF가 nginx가 거부한 파일로 남지 않는다. 두 번 실행해도 한 줄만
-남는다. 명령은
-"명령 보기" 아래 접혀 있다. "터미널에서 실행"은 필요하면 WAF 창을 열고 ttyd의 `term`을 기다린 뒤
-`term.paste(command + "\n")`, 이어서 `term.input("\r")`을 부른다. bash는 bracketed paste의 줄바꿈을
-글자로 두기 때문이다.
+단계의 터미널 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다(f6의 명령은
+`cat {waf_rules}`). 명령은 "명령 보기" 아래 접혀 있다. "터미널에서 실행"은 필요하면 WAF 창을 열고
+ttyd의 `term`을 기다린 뒤 `term.paste(command + "\n")`, 이어서 `term.input("\r")`을 부른다. bash는
+bracketed paste의 줄바꿈을 글자로 두기 때문이다. `kali` 단계의 명령은 학습자가 레드팀 콘솔의 Kali
+터미널에 입력하고, 실행 버튼은 없다.
 
-도움은 단계마다 사다리를 오른다(화면의 `<lesson.text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔, "빨간 상자가 있는 곳을 보세요",
-정답, "대신 해 주기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸 오른다. 누를 때마다
-`POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를 올리고, 처음 것은
-`Session.hints`에 기록된다(migration 0017; 레슨에 없는 단계나 level은 400, 닫힌 세션은 409). 한 단계에서
-60초가 지나면 힌트 버튼은 "힌트가 있습니다"라고만 말하고, 학습자가 누르기 전에는 아무것도 기록하지
-않는다. "대신 해 주기"는 `POST /api/sessions/<id>/lesson/steps/<step>/do/`이며 `done_for_me`와 `hints`의
-`{step, level: "do"}`로 기록된다: 플랫폼이 답을 넣거나, 현재 Paranoia Level로 `crs.apply`를 거쳐 예외를
-더하거나, 케이스를 다시 보내거나, 클릭을 표시한 뒤 그 단계를 판정한다. 단계의 경로로 사이트 열기,
-걸러 낸 Kibana를 열고 첫 행의 펼치기 누르기, 검증 실행은 콘솔이 한다. 대신 해 준 단계는
-`GET /api/sessions/<id>/`의 `hints`와 `progress`로 단계 목록에 표시되고, `result.lesson.helped`(`["hint", "do"]` 중
-있는 것)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에 "힌트 사용" / "대신 해 주기 사용"이 붙는다.
+도움은 단계마다 사다리를 오른다(화면의 `<text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔,
+"빨간 상자가 있는 곳을 보세요", 정답, "대신 해 주기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
+오른다. 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를
+올리고, 처음 것은 `Session.hints`에 기록된다(migration 0017; guidance 세션이 아니거나 단원에 없는 단계나
+level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 버튼은 "힌트가 있습니다"라고만 말하고,
+학습자가 누르기 전에는 아무것도 기록하지 않는다. "대신 해 주기"는
+`POST /api/sessions/<id>/lesson/steps/<step>/do/`이며 `done_for_me`와 `hints`의 `{step, level: "do"}`로
+기록된다: 플랫폼이 `answer`·`choice`에는 첫 정답을 넣고, `rules` 단계에는 그 단계의 `rule`을 지금 규칙
+파일에 덧붙여 적용하고, `kali` 단계는 공격자 박스에서 케이스를 대신 실행하고, `loot` 단계는 그 실행의
+덤프로 인정하며, `click`, `sent`, `triage`는 판정만 한다. 콘솔은 `sent` 단계에서 그 경로로 사이트를 열고,
+`click` 단계에서 걸러 낸 Kibana를 열어 첫 행의 펼치기를 누르거나 단계가 밝힌 창을 연다. 대신 해 준 단계는
+`GET /api/sessions/<id>/`의 `hints`와 `progress`로 단계 목록에 표시되고,
+`result.scenario.helped`(`["hint", "do"]` 중 있는 것)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에
+"힌트 사용" / "대신 해 주기 사용"이 붙는다.
 
 "직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
-펼쳐 둔다: 학습자가 KQL을 쓰고 규칙을 직접 입력한다. 확인은 같다.
+펼쳐 둔다: 학습자가 KQL을 쓰고 명령을 직접 입력한다. 확인은 같다.
 
 각 단계가 가리키는 곳은 `scenario.yaml`에 있는 그 단계의 `point`이고(`panel`, 대체용 `first`가 붙을 수
-있는 `kibana`, 또는 `pane`; `opens`; `tab`), 그래서 콘솔은 board의 단계도 Kibana selector도 이름으로
-알지 않는다. 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는
-필요한 창을 밝힌다(`opens`: 사이트, Kibana, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는
-"왼쪽 웹사이트를 여세요"(또는 Kibana, WAF)만 말한다. 창이 보이면: 사이트 주소창, 같은 출처 Kibana 프레임의
-`data-test-subj`(`docTableExpandToggleColumn`, `field-rule`, `field-transaction.messages.details.data`와
-대체로 `field-rule`), WAF 창 전체, 노트의 검증 버튼. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다.
-현재 단계의 말과 이전/다음은 popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만
-보이고, popover를 닫은 뒤에만 "가이드 다시 보기"를 보인다. popover는 driver.js 방식이다: 대상에 화살표로 붙어 아래·위·왼쪽·오른쪽에 놓이고(주소창처럼 480 px보다 넓은 대상이면 그 오른쪽 끝 아래), 펼친
-노트와는 겹치지 않으며, 터미널 단계에서는 창 오른쪽 아래에 놓인다. 상자는 `pointer-events: none`이고
-매 애니메이션 프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 준다. 이론
-카드 다섯 장과 힌트(이유, 그다음 접힌 풀이)는 경로 밖, 노트에 남는다.
+있는 `kibana`, 또는 `pane`; `opens`), 그래서 콘솔은 어떤 단원의 단계도 Kibana selector도 이름으로
+알지 않는다. 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는 필요한 창을 밝힌다(`opens`: 사이트,
+Kibana, 토폴로지, 판정, IDS 규칙, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는 "왼쪽
+웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
+보기 전환, 토폴로지 창의 요청과 홉, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
+`data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`와 대체용 `first`로 행
+펼치기), 또는 창 전체. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다. 현재 단계의 말과 이전/다음은
+popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만 보이고, popover를 닫은
+뒤에만 "가이드 다시 보기"를 보인다. popover는 driver.js 방식이다: 대상에 화살표로 붙어
+아래·위·왼쪽·오른쪽에 놓이고(주소창처럼 480 px보다 넓은 대상이면 그 오른쪽 끝 아래), 펼친 노트와는 겹치지
+않으며, 터미널 단계에서는 창 오른쪽 아래에 놓인다. 상자는 `pointer-events: none`이고 매 애니메이션
+프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 준다. 이론과 힌트는 경로
+밖, 노트에 남는다.
+
+규칙 편집기(`#lesson-rules`, 판정 D3)는 블루 콘솔의 IDS 규칙 창에 있고, `rulesPane()`이 `detection`이나
+`unknown` 시나리오에서 그 창을 보인다. `GET /api/rules/?session=<id>`로 읽고, `POST /api/rules/validate/`로
+확인하고, 읽어 온 버전에 대해 `POST /api/rules/apply/`로 쓴다. 검사는 `errors`로 답한다: 거부한 모든 센서의
+출력에서 Suricata `Error`가 든 줄들이고, `output`은 그 줄이 가장 많은 거부 센서의 출력이다. OPNsense
+edge의 Suricata는 syslog로만 로그를 남기므로(템플릿에 console 출력이 없다) `-T` 출력에 오류 줄이 없고,
+wargame 호스트의 estate 센서가 그 줄을 출력한다.
 
 ### 기초 F1-F6
 
 `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의 P2 단계다. board의
-`scenario.yaml`은 `lessons:` 옆에 `foundations:` 목록을 선언하고, 레슨 목록처럼 검사한다(id는 두 목록에
-걸쳐 유일). `wargames.foundations()`가 목록을 주고, `wargames.lesson(lesson_id=...)`은 두 목록 어디서든
-단원을 찾아 기초에는 `group: foundations`를 붙인다. `wargames.lessons()`와 기본 레슨은 그대로다.
-`GET /api/wargames/`는 `foundations`(레슨 카드에 단원이 가르치는 것의 문자열 키 `learns`를 더한 것)를
-더하고, 메인 페이지는 "기초" 아래 맨 앞에 시간, 배우는 것, 시작 버튼(그 단원의 안내 세션)과 함께
-보여 준다. 기초 단원의 노트는 첫 방문에 설명 카드 하나(이론 탭, 펼친 채)로 연다.
+`scenario.yaml`은 `foundations:` 목록을 선언하고 발견 시 검사한다(id는 기초와 시나리오에 걸쳐 유일,
+`wargames.checked_groups`). 기초 단원이 가르치는 단원이고, worked 시나리오 1.1과 3.1은 같은 엔진에서
+단계를 돈다. `wargames.foundations()`가 `order` 순으로 목록을 주고, `wargames.lesson(lesson_id=...)`은
+기초 단원이나 단계가 있는 시나리오를 찾고 그 밖의 id는 거부하며, 기초에는 `group: foundations`를 붙인다.
+`GET /api/wargames/`는 `foundations`(`wargames._foundation_card`: `id`, `order`, `title`·`goal` 문자열
+키, `minutes`, `level`, `defense`, `prerequisites`, 단계 수, 단원이 가르치는 것의 문자열 키 `learns`)를
+나열하고, 메인 페이지는 "기초" 아래 맨 앞에 시간, 배우는 것, 시작 버튼(그 단원의 안내 세션)과 함께 보여
+준다. 모든 단원은 열 때 `board-normal-search`를 재생한다. 기초 단원의 노트는 첫 방문에 설명 카드 하나(이론
+탭, 펼친 채)로 연다.
 
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
@@ -767,7 +743,7 @@ id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 
 `missed`는 CRS paranoia level 1에 949110과 959100을 `ruleRemoveById`로 끄고 `local.rules`를 쓴다. 단원의
 질문에는 `accept` 목록이 없다.
 
-새 check 종류: `sent`는 세션의 웹사이트 창이 보관한 요청 중 디코딩한 URL이 단계의 `match` 정규식과 맞는
+학습자 자신의 행동을 따르는 check 종류 셋: `sent`는 세션의 웹사이트 창이 보관한 요청 중 디코딩한 URL이 단계의 `match` 정규식과 맞는
 것이 있으면 통과한다(콘솔은 창에 맞는 경로가 보이고 1.5초 뒤 확인하고, 폴링도 한다). `kali`는 케이스
 파일의 도구 케이스를 가리킨다. 단계에 닿으면 마커가 생기고, `command`는 시나리오 `public_url`에 대한
 케이스 argv에 `--headers=X-FSL-Case: <marker>`를 붙인 것이다(`tools.tool_argv`, 하네스 자체의 표시 방식).
@@ -776,67 +752,14 @@ id 10100~10199를 쓴다. `crs.rendered`는 10000~10020(paranoia `SecAction`과 
 프록시 라벨이 아니라 명령에 넣는 것은 레드팀 콘솔을 열면 라벨이 지워지기 때문이다. "대신 해 주기"는
 공격자 박스에서 케이스를 대신 실행한다(`meta.done_for_me`, 덤프는 `meta.dumped`). `loot`는 붙여 넣은
 표(`tools.dumped`, 또는 `name:hash`와 `| name | hash |` 줄)를 `POST /loot/`처럼 인정하고 kali 케이스에
-귀속한다. `_credit_loot`는 이제 일치한 계정을 귀속된 케이스에 남긴다(`meta.loot`).
+귀속한다. `_credit_loot`는 일치한 계정을 귀속된 케이스에 남긴다(`meta.loot`).
 
 답은 `of:`로 읽는다: 레인지 사실 `entry`, `logs`, `segment`, `lost`, `excluded`; `sent` 단계를 `about:`으로
 가리키는 `source`, `port`, `status`, `method`, `path`, `parameter`, `status_class`, `engine`,
 `sensor_source`, `waf_source`, `stopped_at`(그와 맞는 가장 최근 웹사이트 창 요청); `kali` 단계를
-가리키는 `requests`, `leaked`(`wargames.read_from_record`, 아니면 discovery에서 거부). 단계는 모든 기록에
+가리키는 `requests`, `leaked`; 또는 그 요청의 `path`와 함께 `rule`(위). 그 밖은
+`wargames.read_from_record`가 discovery에서 거부한다. 단계는 모든 기록에
 대한 Kibana 링크를 요청할 수 있다(`records: all`, `kibana.discover_path(..., everything=True)`).
-
-### board의 과정
-
-`wargames/board/scenario.yaml`은 `docs/superpowers/specs/2026-10-13-blue-team-course-design.md`(판정
-D1-D11)의 Package 2를 권장 경로 하나로 선언한다. 순서는 열려 있고 건너뛸 수 있다:
-
-| order | 레슨 | defense | 판정 | 풀 것 |
-|---|---|---|---|---|
-| 0 | `console-tour` | `full` | 단계 | WAF가 막는 요청을 보내고, 기록을 찾아, 규칙을 말하기 |
-| 1 | `read-the-block` | `minimal` | 단계 | O'Brien을 막은 규칙과 그 규칙이 걸린 파라미터 말하기 |
-| 2 | `waf-exclusion` | `minimal` | 검증 | 좁은 예외(위) |
-| 3 | `choose-the-level` | `minimal` | 검증과 레벨 | 예외 없이, 정상 요청을 모두 통과시키고 sqlmap 두 변형을 막는 가장 높은 Paranoia Level |
-| 4 | `ids-signature` | `ids` | 탐지(D2) | sqlmap `?sort=` 두 변형에는 경보, `?sort=-created_at`에는 경보 없는 Suricata 규칙 |
-| 5 | `ids-body-xss` | `full` | 탐지(D2) | 본문의 댓글 XSS에는 경보, 정상 댓글에는 경보 없음 |
-| 7 | `assessment` | `minimal` | 검증 | 안내 없이(`mode: self`, 단계 없음) O'Brien·한국어 검색 통과, sqlmap 두 변형 차단 |
-
-레슨 6(corp)은 만들지 않았다(`docs/STATE.md` backlog 0).
-
-단계에 `verify`가 없는 레슨은 단계만으로 판정한다: `POST /verify/`는 400으로 답하고 세션 응답은
-`verifies: false`라고 알려, 콘솔은 검증을 숨기고 목표에 "이 세션의 기록으로 답함"이라고 적는다. 단계가 없는
-레슨(평가)은 검증으로 판정한다.
-
-`answer` 확인은 `accept` 목록 대신 기록에서 정답을 읽을 수 있다: `of: rule` 또는 `of: target`과 그 요청의
-`path`(학습자 자신의 요청이면 `marker: browse`). 플랫폼은 최근 600초를 수집하고, 그 요청에 대한 세션의
-ModSecurity 탐지를 모아 CRS 합계 규칙(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId` 또는 각 규칙이
-걸린 변수(`details.match`의 "against variable" 뒤, 또는 `details.data`의 "found within X:"나 "X=";
-`lesson.read_from`)를 정답으로 받는다. 대소문자는 가리지 않는다. 기록이 없으면 사유는
-`lesson.check.unrecorded`이고, "대신 해 주기"는 첫 정답을 넣는다.
-
-`choose-the-level`은 `solved_at: {paranoia: 2}`(서버에만 둠)와 `controls: [paranoia]`를 선언한다. `level`
-단계는 동작 중인 WAF가 posture보다 낮은 레벨이고 posture에 없는 예외가 없을 때 통과한다
-(`lesson.level_refused`; 사유 `.unchanged`, `.excluded`). 대신 해 주기는 `solved_at`을 적용한다. 검증은 모든
-케이스가 통과하고, 스냅샷에 더한 예외가 없고, 레벨이 `solved_at`보다 낮지 않을 때 통과한다
-(`lesson.unsolved`: `lesson.diag.level_low`, `lesson.diag.excluded`). 모든 케이스를 통과하는 더 높은
-레벨도 통과다. `board-normal-search-korean`이 레슨에 있을 때 측정한 답이 PL2다(`docs/DECISIONS.md` 2026-10-13).
-
-`ids-signature`와 `ids-body-xss`는 `detected_by: suricata`와 `controls: [rules]`를 선언한다. 완료는
-탐지다(판정 D2): 검증은 케이스를 모두 보낸 뒤, 모든 공격 케이스에 그 출처의 탐지가 생기거나
-`FSL_LESSON_ALERT_WAIT`(30초, `FSL_LESSON_ALERT_POLL`마다 확인)가 끝날 때까지 세션의 탐지를 읽는다. 공격
-케이스는 경보 하나가 케이스의 `expect`를 언급하면 `detected`(`scoreboard.corroborated`, 같은 실행의 정상
-케이스에도 난 시그니처는 뺀다), 언급 없이 경보만 났으면 `uncorroborated`, 경보가 없으면 `missed`이고, 정상
-케이스는 `quiet` 또는 `alerted`다. 케이스 행마다 `verdict`(TP, FN, FP, TN)도 붙는다. PASS는 모든 공격이
-detected이고 모든 정상 케이스가 quiet일 때다. 재생은 `/score/`에 들어가지 않고 목표에도 표시하지 않으며,
-ModSecurity 탐지는 세지 않는다. `rules` 단계는 센서 파일(`GET /api/rules/`)에 posture의 규칙 파일에 없는
-sid가 생기면 통과한다(`suppress.sids`). 대신 해 주기는 단계의 `rule`(서버에만 둠)을 덧붙여 적용한다.
-`detect` 단계 `{case, expect: alert|quiet}`는 케이스를 `meta.check`로 표시해 보내고, 검증처럼 기다린 뒤(`quiet`는
-끝까지 기다린다) `detected` 행으로 답한다: 결과, 판정, 경보 시그니처, 그 표시가 붙은 경보로 좁힌 Kibana
-링크(`kibana.sensed`). 실패 사유는 `lesson.check.missed|uncorroborated|alerted`다.
-
-규칙 편집기(D3)는 `GET /api/rules/?session=<id>`로 읽고, `POST /api/rules/validate/`로 확인하고, 읽어 온
-버전에 대해 `POST /api/rules/apply/`로 쓴다. 검사는 `errors`로 답한다: 거부한 모든 센서의 출력에서
-Suricata `Error`가 든 줄들이고, `output`은 그 줄이 가장 많은 거부 센서의 출력이다. OPNsense edge의
-Suricata는 syslog로만 로그를 남기므로(템플릿에 console 출력이 없다) `-T` 출력에 오류 줄이 없고, wargame
-호스트의 estate 센서가 그 줄을 출력한다.
 
 ## 점수는 어떻게 계산되는가
 
@@ -1003,9 +926,9 @@ window)으로 판정한다. 설계는
 
 | 필드 | 뜻 |
 |---|---|
-| `id`, `order` | `1.1`, `2.1` 등. id는 기초·레슨과 한 이름 공간을 쓴다 |
+| `id`, `order` | `1.1`, `2.1` 등. id는 기초와 한 이름 공간을 쓴다 |
 | `task_class` | `judgement`, `availability`, `detection`, `unknown` |
-| `guidance` | `worked`(레슨 단계 엔진에서 도는 `steps`를 둘 수 있음), `faded`, `none` |
+| `guidance` | `worked`(단계 엔진에서 도는 `steps`를 둘 수 있음), `faded`, `none` |
 | `text`, `briefing` | 문자열 접두어. `briefing`은 `situation`, `goal`, `measured_by`를 문자열 키에 잇는다 |
 | `minutes`, `window_minutes` | 시나리오 길이와 최종 점검 시간 |
 | `defense` | wargame의 `defense:` 중 하나(CRS 수준, 예외, 기준값, Suricata 규칙 묶음) |
@@ -1021,7 +944,7 @@ window)으로 판정한다. 설계는
 `completion`을 빼고 `cases`를 비운다.
 
 **열기.** `POST /api/sessions/ {"scenario": "2.1"}`은 시나리오 id로 wargame을
-찾고, `lesson`, `guidance`, `defense`, `mode`는 거부하며, 다른 세션처럼 선언된
+찾고, `lesson`, `guidance`, `defense`는 거부하며, 다른 세션처럼 선언된
 태세를 적용한 뒤 `scenario_run.begin`이 고객을 시작하고
 `Session.scenario_state`(마이그레이션 0025, `Session.course_scenario` 옆)를 쓴다:
 공격마다 절대 시각으로 정한 일정, 점검 시간들, 판단, 힌트 제안, 본 WAF 버전.
@@ -1040,7 +963,11 @@ worked 시나리오는 `guidance`를 참으로, `lesson`을 자기 id로 두어 
   `meta.scheduled`로 표시하며(재전송 표시가 아니므로 두 점수 모두에 들어간다),
   sqlmap이 덤프한 행은 그 케이스로 귀속해 `views._credit_loot`에 넘긴다. 그래서
   첫 번째 점수는 board 자신의 계정과 맞을 때만 손실로 센다. 항목에는 `outcome`
-  held 또는 leaked가 남는다.
+  held 또는 leaked가 남는다. 케이스에는 sqlmap의 결론 줄과 403 횟수가 남고
+  (`meta.conclusions`, `meta.forbidden`, 판정에 쓰지 않음), `meta.blocked`는 403이거나,
+  덤프한 행 없이 정상 종료한 sqlmap 자신의 주입 불가 결론이 있을 때
+  (`tools.found_not_injectable`) 참이다. sqlmap 케이스는 해시 크래킹 제안을 거절하므로
+  (`--answers=crack=N`) 덤프 칸에는 `loot.matched`가 비교하는 원래 해시가 남는다.
 - `FSL_SCENARIO_OBSERVE`(15초)마다 고객 기록을 가져오고 최근 180초를
   ingest하며, `FSL_SCENARIO_WAF_POLL`(20초)마다 WAF 파일을 읽어 터미널에서 한
   변경을 알아챈다.
@@ -1061,7 +988,7 @@ worked 시나리오는 `guidance`를 참으로, `lesson`을 자기 id로 두어 
 아웃바운드 4로 돈다). `red: person`이면 그 안에서 사람이 보낸 악성 케이스 중 재전송이
 아닌 것도 일정의 공격처럼 판정한다. judgement 시나리오는 설계의 종류 표대로 판단만으로
 판정하므로, 그 점검 시간에 막힌 고객은 결과 옆에 알릴 뿐 실패로 세지 않는다. 결과는 그때 찍은 WAF 스냅숏에 `lesson.fix_class`를 적용해 조치를
-밝힌다(`level`, `threshold`, `rule`, `target`, `path_target`). 실패한 뒤 다시 열 수
+밝힌다(`level`, `threshold`, `rule`, `target`, `path_target`; "세션, WAF 튜닝, 단계 엔진"). 실패한 뒤 다시 열 수
 있다.
 
 **경보 판단**(`GET/POST /api/sessions/<id>/triage/`). 경보가 난 마커마다 항목
@@ -1087,8 +1014,14 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 쓰거나, 고객이 막히는 동안 5분째 WAF가 바뀌지 않으면 힌트를 제안한다(기록하지
 않는다). `POST .../scenario/hints/`가 다음 힌트를 열고 `Session.hints`에 기록한다.
 `GET .../scenario/debrief/`는(점검 시간이 판정되거나 세션이 닫히기 전에는 409라
-일정이 드러나지 않는다) 레슨 결과 보고와 같은 모양에 `customers`와 공격
-`timeline`을 더해 돌려주고, 콘솔은 둘 다 `debrief_script.html`로 그린다.
+일정이 드러나지 않는다) Igloo/ASEC 보고서 순서로 돌려준다: `overview`(마지막 최종 점검의 판정, 조치
+종류와 사유, 판정한 점검 수, 전체 중 통과한 단계, 쓴 힌트 수), `evidence`(예정된 공격에서 나온 세션
+자신의 탐지 최대 20개, 완료 조건이 탐지기를 밝히면 그 탐지기의 것, 규칙·요청·케이스. Elasticsearch는
+읽지 않음), `change`(선언된 posture와 마지막 WAF 스냅샷의 비교: 더하고 뺀 예외, 두 레벨, posture에 대해
+`crs.rendered`가 쓰는 내용과 예외 파일의 줄 diff), `cases`(예정된 케이스마다 판정한 점검 시간 전과 안의
+결과, held 또는 leaked), `risk`(조치 종류가 정하는 문자열 키), `customers`, 공격 `timeline`, `triage`.
+`at`에는 시작과 마지막 판정 시각이 에이전트용으로 있다. 콘솔은 `debrief_script.html`로 블루 콘솔과 닫힌
+세션 화면에 그린다.
 
 **콘솔.** 홈 페이지는 wargame마다 시나리오를 나열하고, 시작은 블루 콘솔을 상황
 설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보 난 요청, 빼앗긴 목표,
@@ -1097,7 +1030,7 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 코치 말풍선은 목록 위에 붙인다. detection과 unknown 시나리오는 IDS 룰 창(`/api/rules/`
 위의 룰 편집기)을 더한다. 카드는 때가 되면
 뜨고, 점검 시간이 판정되면 결과 보고가 열린다. worked 시나리오의 단계는 레슨 메모
-위에서 돌고, 그 점검 탭과 힌트 목록은 숨긴다.
+위에서 돌고, 힌트 목록은 비어 있다: 그 힌트는 시나리오가 제안한다.
 
 **board 위에서.** 시나리오 열한 개를 홈 페이지에 기초 다음, 과제 종류 순서로
 나열한다(`order`):
@@ -1433,8 +1366,8 @@ marker를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두
 - 차단(계획, 2026-10-08 스펙): WAF는 `SecRuleEngine On`으로 돌고, 블루팀은 CRS를
   튜닝(paranoia level, 규칙 제외)해 공격은 차단하고 정상 트래픽은 통과시킨다.
   Suricata는 탐지를 맡는다. 시작 상태는 2026-10-10에 측정했다(`docs/DECISIONS.md`):
-  PL1은 이미 게시판 SQLi를 차단하고 O'Brien을 통과시키므로, 학습은 O'Brien을 과차단하는
-  PL4에서 시작하고 학습자가 튜닝한다(PL 낮추기 또는 규칙 제외). 케이스의 차단 여부는 대상 시스템 쪽에서
+  PL1은 이미 게시판 SQLi를 차단하고 O'Brien을 통과시키므로, 과차단하도록 만든 posture는 그보다
+  높은 PL에서 시작하고(시나리오의 `level2`, `level3`) 학습자가 튜닝한다(PL 낮추기, threshold, 규칙 제외). 케이스의 차단 여부는 대상 시스템 쪽에서
   `meta["blocked"]`로 읽는다. pfSense GUI에서 Suricata drop 규칙을 전환하던 이전 계획은
   대체되었다.
 
