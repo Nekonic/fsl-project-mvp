@@ -12,6 +12,7 @@ API = "http://127.0.0.1:3080/v3"
 HERE = Path(__file__).resolve().parent
 WEB_UI = Path(gns3server.__file__).resolve().parent / "static" / "web-ui"
 BOOTSTRAP = "fsl-auditor.html"
+SYMBOLS = HERE / "symbols"
 ADMIN = "admin"
 AUDITOR_ROLE = "Auditor"
 READY_WITHIN = 180
@@ -27,11 +28,11 @@ def auditor() -> dict:
         "password": os.environ.get("FSL_GNS3_AUDITOR_PASSWORD") or "fsl-auditor",
     }
 
-def call(method: str, path: str, body=None, token: str = ""):
+def call(method: str, path: str, body=None, token: str = "", raw: bytes | None = None):
     request = urllib.request.Request(
         API + path, method=method,
-        data=None if body is None else json.dumps(body).encode(),
-        headers={"Content-Type": "application/json",
+        data=raw if raw is not None else None if body is None else json.dumps(body).encode(),
+        headers={"Content-Type": "application/octet-stream" if raw is not None else "application/json",
                  **({"Authorization": f"Bearer {token}"} if token else {})},
     )
     with urllib.request.urlopen(request, timeout=300) as answer:
@@ -70,6 +71,11 @@ def the_auditor(token: str) -> None:
                                      "allowed": True, "user_id": user_id, "role_id": role_id}, token)
     print(f"fsl-gns3: {wanted['username']} holds {AUDITOR_ROLE} on /", flush=True)
 
+def symbols(token: str) -> None:
+    for symbol in sorted(SYMBOLS.glob("*.svg")):
+        call("POST", f"/symbols/{symbol.name}/raw", token=token, raw=symbol.read_bytes())
+        print(f"fsl-gns3: symbol {symbol.name} uploaded", flush=True)
+
 def opened(token: str) -> None:
     for project in call("GET", "/projects", token=token):
         if project.get("status") == "opened":
@@ -90,6 +96,7 @@ def provision() -> None:
     ready()
     token = signed_in(ADMIN, admin_password())
     the_auditor(token)
+    symbols(token)
     opened(token)
 
 def api_key(name: str) -> None:
