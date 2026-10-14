@@ -3,10 +3,89 @@
 <head>
 <meta charset="utf-8">
 <title>GNS3</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: sans-serif; }
+  #said { margin: 16px; }
+  #map { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+</style>
 </head>
 <body>
 <p id="said">Signing in read-only...</p>
 <script>
+const MARGIN = 24;
+const ZOOM_STEP = 0.1;
+const SMALLEST = 0.3;
+const WAIT_MS = 20000;
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+function button(map, icon) {
+  return [...map.document.querySelectorAll("button")].find((found) => {
+    const shown = found.querySelector("mat-icon");
+    return shown && shown.textContent.trim() === icon;
+  });
+}
+
+async function drawn(map) {
+  const until = Date.now() + WAIT_MS;
+  let last = "";
+  while (Date.now() < until) {
+    const canvas = map.document.querySelector("svg.map g.canvas");
+    const nodes = canvas ? canvas.querySelectorAll("g.node").length : 0;
+    const box = canvas && nodes ? canvas.getBBox() : null;
+    const now = box ? [nodes, box.x, box.y, box.width, box.height].map(Math.round).join() : "";
+    if (now && now === last && button(map, "zoom_out") && button(map, "zoom_out_map")) return canvas;
+    last = now;
+    await sleep(400);
+  }
+  return null;
+}
+
+async function summaryClosed(map) {
+  const until = Date.now() + 5000;
+  while (Date.now() < until) {
+    if (map.document.querySelector("app-topology-summary") && button(map, "account_tree")) {
+      button(map, "account_tree").click();
+      return;
+    }
+    await sleep(250);
+  }
+}
+
+function visible(map) {
+  const bar = map.document.querySelector("#project-titlebar");
+  const left = button(map, "zoom_in").getBoundingClientRect().right;
+  const top = bar ? bar.getBoundingClientRect().bottom : 0;
+  return {left, top, width: map.innerWidth - left, height: map.innerHeight - top};
+}
+
+async function fitted(map, canvas) {
+  const room = visible(map);
+  const box = canvas.getBBox();
+  const wanted = Math.min(1, (room.width - 2 * MARGIN) / box.width, (room.height - 2 * MARGIN) / box.height);
+  const steps = Math.min(Math.ceil((1 - wanted) / ZOOM_STEP - 1e-9), Math.round((1 - SMALLEST) / ZOOM_STEP));
+  for (let step = 0; step < steps; step++) {
+    button(map, "zoom_out").click();
+    await sleep(60);
+  }
+  await sleep(300);
+  const now = canvas.getBoundingClientRect();
+  const dx = Math.round(room.left + room.width / 2 - (now.left + now.width / 2));
+  const dy = Math.round(room.top + room.height / 2 - (now.top + now.height / 2));
+  const svg = map.document.querySelector("svg.map");
+  const mouse = (type, target, moved) => target.dispatchEvent(new map.MouseEvent(type, {
+    bubbles: true, cancelable: true, view: map, button: 0, buttons: 1,
+    clientX: room.left + room.width / 2, clientY: room.top + room.height / 2, ...moved,
+  }));
+  button(map, "zoom_out_map").click();
+  await sleep(200);
+  mouse("mousedown", svg, {});
+  mouse("mousemove", svg, {movementX: dx, movementY: dy});
+  mouse("mouseup", map.document, {});
+  await sleep(100);
+  button(map, "zoom_out_map").click();
+}
+
 (async () => {
   const auditor = __FSL_AUDITOR__;
   const said = document.getElementById("said");
@@ -26,10 +105,26 @@
     protocol: location.protocol, authToken: token, username: auditor.username, tokenExpired: false,
   }));
   localStorage.setItem("controllerIds", "controller-1");
-  localStorage.setItem("showInterfaceLabels", "false");
+  localStorage.setItem("showInterfaceLabels", "true");
+  localStorage.setItem("integrateLinkLabelsToLinks", "false");
   const project = new URLSearchParams(location.search).get("project");
-  location.replace("/static/web-ui/controller/1/" +
-    (project ? "project/" + encodeURIComponent(project) : "projects"));
+  const opened = "/static/web-ui/controller/1/" + (project ? "project/" + encodeURIComponent(project) : "projects");
+  if (!project) {
+    location.replace(opened);
+    return;
+  }
+  const frame = document.createElement("iframe");
+  frame.id = "map";
+  frame.title = "GNS3";
+  frame.addEventListener("load", async () => {
+    const map = frame.contentWindow;
+    const canvas = await drawn(map);
+    await summaryClosed(map);
+    if (canvas) await fitted(map, canvas);
+  }, {once: true});
+  frame.src = opened;
+  said.remove();
+  document.body.append(frame);
 })();
 </script>
 </body>
