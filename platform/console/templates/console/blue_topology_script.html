@@ -48,6 +48,7 @@ function topologyHop(hop) {
       + `<div class="text-muted">${esc(t("topology.hop.unknown"))}</div></li>`;
   }
   const lines = [];
+  const named = hop.kind === "console" ? t("topology.hop.console") : hop.node;
   if ("source" in hop) lines.push(t("topology.hop.source", hop.source || t("topology.unknown")));
   if (hop.sensor) lines.push(t("topology.hop.alerts", hop.sensor, hop.alerts.length));
   if (hop.sensor && hop.requests) lines.push(t("topology.hop.saw", hop.sensor, hop.requests));
@@ -61,7 +62,7 @@ function topologyHop(hop) {
   if (hop.reached && hop.status) lines.push(t("topology.hop.status", hop.status));
   if ("reached" in hop && hop.reached === null) lines.push(t("topology.hop.reach_unknown"));
   if (hop.evidence === false) lines.push(t("topology.hop.no_record"));
-  return `<li data-hop="${esc(hop.kind)}"><span class="font-mono text-heading">${esc(hop.node)}</span>`
+  return `<li data-hop="${esc(hop.kind)}"><span class="font-mono text-heading">${esc(named)}</span>`
     + lines.map((line) => `<div class="text-muted">${esc(line)}</div>`).join("") + "</li>";
 }
 

@@ -52,6 +52,7 @@ UPSTREAM_FAILED = {502, 503, 504}
 TRANSIT = ("edge", "gateway", "wargames")
 SEEN_KEPT = 5
 LOG_STORE = "elasticsearch"
+CONSOLE = "console"
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -65,7 +66,7 @@ def _wired(project) -> dict[str, set[str]]:
 def _kinds(project) -> dict[str, str]:
     return {node["name"]: node["node_type"] for node in project["topology"]["nodes"]}
 
-def overlay(project, described, declared, named=lambda name: name) -> dict:
+def overlay(project, described, declared, named=lambda name: name, beside=()) -> dict:
     carried = {origin.id: origin.segment for origin in declared.origins}
     seen: dict[str, dict[str, list[str]]] = {}
     for segment in described.segments:
@@ -74,13 +75,19 @@ def overlay(project, described, declared, named=lambda name: name) -> dict:
             if node.address and node.address not in on:
                 on.append(node.address)
     nodes = {}
-    for name, kind in _kinds(project).items():
+    for name, kind in [*_kinds(project).items(), *((host, "") for host in beside)]:
         if kind == SWITCH:
             continue
         found = seen.get(name, seen.get(named(name)))
         nodes[name] = {"status": "running" if found is not None else "not reported",
                        "addresses": found or {}}
     return {"project_id": project["project_id"], "nodes": nodes}
+
+def shown(drawn, project) -> dict:
+    kinds = _kinds(project)
+    return {**drawn, "nodes": {
+        name: {**node, "addresses": {on: held for on, held in node["addresses"].items() if kinds.get(on) == SWITCH}}
+        for name, node in drawn["nodes"].items() if name in kinds}}
 
 def _inner(near, kinds, shared, start, goal) -> list[str]:
     came = {start: None}
@@ -185,13 +192,16 @@ def _walk(near, kinds, declared, nodes, sent, detections, goal) -> tuple[list, s
         arrived = on if _addresses(nodes, gateway, on) else NAMED_ON
 
     path = [sender]
-    _step(path, near, on or None)
-    if arrived != on:
-        if on and arrived:
-            routers = sorted(name for name in transit if linked(name, on) and linked(name, arrived))
-            _step(path, near, routers[0] if len(routers) == 1 else None)
-        _step(path, near, arrived or None)
-    _step(path, near, holder)
+    if sender in kinds:
+        _step(path, near, on or None)
+        if arrived != on:
+            if on and arrived:
+                routers = sorted(name for name in transit if linked(name, on) and linked(name, arrived))
+                _step(path, near, routers[0] if len(routers) == 1 else None)
+            _step(path, near, arrived or None)
+        _step(path, near, holder)
+    else:
+        path.append(holder)
     if holder == gateway:
         upstream = declared.roles.get(sent.get("target", ""), "")
         _step(path, near, NAMED_ON if linked(gateway, NAMED_ON) and linked(upstream, NAMED_ON) else None)
@@ -210,6 +220,8 @@ def _request_seen(event) -> dict:
 
 def follow(project, declared, nodes, sent, detections, named=lambda name: name, seen=()) -> dict:
     near, kinds = _wired(project), _kinds(project)
+    if sent["kind"] != "browse" and sent["sender"] not in kinds:
+        sent = dict(sent, sender=declared.roles["attacker"])
     target = sent.get("target") or "board"
     service = declared.compose.get(target, "")
     goal = service if service in kinds else declared.roles.get(target, "")
@@ -237,6 +249,9 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
         if name is None:
             hops.append({"node": None, "kind": "unknown"})
             continue
+        if name not in kinds:
+            hops.append({"node": None, "kind": CONSOLE, "evidence": True, "source": source or None})
+            continue
         if kinds.get(name) == SWITCH:
             hops.append({"node": name, "kind": "segment"})
             continue
@@ -261,7 +276,8 @@ def follow(project, declared, nodes, sent, detections, named=lambda name: name, 
 
     elsewhere = [{"sensor": host or None, "signature": d.signature, "sid": _sid(d)}
                  for host, found in sorted(heard.items()) if host not in placed for d in found]
-    return {"source": sent["sender"], "address": source or None, "target": goal,
+    return {"source": sent["sender"] if sent["sender"] in kinds else CONSOLE, "address": source or None,
+            "target": goal,
             "hops": hops, "elsewhere": elsewhere}
 
 def _images(project) -> dict[str, str]:

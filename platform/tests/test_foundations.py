@@ -102,7 +102,7 @@ def test_no_foundation_question_carries_a_fixed_answer():
 
 @pytest.mark.parametrize("flavor, entry, logs, segment, wrong", [
     ("docker", "fsl-waf", "fsl-elasticsearch", "estate", "fsl-edge"),
-    ("openstack", "fsl-edge", "fsl-platform", "board-default", "fsl-waf"),
+    ("openstack", "fsl-edge", "fsl-elasticsearch", "board-default", "fsl-waf"),
 ])
 def test_the_range_questions_are_judged_against_the_substrate_s_own_topology(client, flavor, entry, logs, segment, wrong):
     session = opened("f1")
@@ -219,7 +219,7 @@ def test_the_range_facts_come_from_the_project_and_the_declaration():
     project = json.loads(TOPOLOGIES["openstack"].read_text())
 
     assert topology.facts(project, stack, "corp") == {
-        "entry": ["fsl-edge"], "logs": ["fsl-platform"], "segment": ["corp-default"]}
+        "entry": ["fsl-edge"], "logs": ["fsl-elasticsearch"], "segment": ["corp-default"]}
 
 def test_a_pasted_table_or_plain_pairs_are_read_as_loot():
     assert lesson.pasted_rows("admin:hash-a\n| jiwoo | hash-b |", []) == [("admin", "hash-a"), ("jiwoo", "hash-b")]

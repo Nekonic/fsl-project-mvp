@@ -71,7 +71,7 @@ def test_the_docker_nodes_name_the_images_this_platform_runs_so_gns3_pulls_nothi
 
     assert images["fsl-kali"] == "ghcr.io/nekonic/fsl-kali:c0ffee"
     assert images["fsl-wg-board-db"].startswith("mysql@sha256:")
-    assert images["fsl-kibana"] == "docker.elastic.co/kibana/kibana:8.15.0"
+    assert images["fsl-elasticsearch"] == "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
     assert not [image for image in images.values() if image and image.endswith(":dev")]
 
 def test_the_gns3_server_is_published_like_the_platform_and_reads_the_projects_from_the_repo():
@@ -139,9 +139,35 @@ def test_provisioning_opens_every_closed_project_as_admin_and_leaves_an_open_one
     monkeypatch.setattr(provision, "signed_in", lambda username, password: f"token-of-{username}")
     monkeypatch.setattr(provision, "admin_password", lambda: "secret")
     monkeypatch.setattr(provision, "the_auditor", lambda token: calls.append(("auditor", token)))
+    monkeypatch.setattr(provision, "symbols", lambda token: calls.append(("symbols", token)))
 
     provision.provision()
 
     assert ("POST", "/projects/a/open", "token-of-admin") in calls
     assert not [c for c in calls if c[1] == "/projects/b/open"]
     assert calls.index(("auditor", "token-of-admin")) < calls.index(("POST", "/projects/a/open", "token-of-admin"))
+
+def test_provisioning_uploads_every_fetched_symbol_as_admin_before_it_opens_a_project(provision, monkeypatch, tmp_path):
+    (tmp_path / "ubuntu.svg").write_bytes(b"<svg/>")
+    (tmp_path / "ubuntu.txt").write_text("licence")
+    calls = []
+    monkeypatch.setattr(provision, "SYMBOLS", tmp_path)
+    monkeypatch.setattr(provision, "call", lambda method, path, body=None, token="", raw=None: calls.append(
+        (method, path, token, raw)))
+
+    provision.symbols("token-of-admin")
+
+    assert calls == [("POST", "/symbols/ubuntu.svg/raw", "token-of-admin", b"<svg/>")], (
+        "the licence text stays in the image beside the symbol; only the SVG is a symbol"
+    )
+    assert "COPY --from=ubridge /symbols /opt/fsl-gns3/symbols" in (GNS3 / "Dockerfile").read_text()
+
+def test_the_system_maps_stay_off_the_learners_gns3_server():
+    entrypoint = (GNS3 / "entrypoint.sh").read_text()
+    system = sorted(path.name for path in (TOPOLOGY / "system").glob("*.gns3"))
+
+    assert system == ["range-docker.gns3", "range-openstack.gns3"]
+    assert "for project in /topology/*.gns3; do" in entrypoint, (
+        "the glob does not descend into system/, so the full wiring is never opened where learners read"
+    )
+    assert "/topology/system" not in entrypoint
