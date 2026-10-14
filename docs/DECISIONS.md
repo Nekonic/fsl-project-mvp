@@ -3394,3 +3394,78 @@ only a refusal for want of room: `redteam/run.py` prints the platform's 409
 body beside the status (`raise_for_status` dropped it), so the suite tells
 "already open" or "resetting" from any other 409 and does not spin on a real
 failure. The old 2026-10-12 line above ("retries the open once") is superseded.
+
+## 2026-10-14 — The learner's GNS3 map: only the defended network, the range's own addresses, fitted
+
+The user read the learner's map and asked for interfaces and addresses on every
+link end, the domains learners type, real icons, a map that fits the window
+with the node list closed, an honest word about the red marks, and then (scope
+change) no management or control plane on it at all.
+
+- **Two maps per substrate.** The old files are now the system map
+  (`deploy/topology/system/`, English, new `uuid5(id, "system")` ids, full
+  declaration, for development and MCP; the GNS3 entrypoint's
+  `/topology/*.gns3` glob never loads it). The learner map keeps the old ids
+  and is the system map without `mgmt`, every host's mgmt link, the scorer,
+  the control-plane containers and a proxy host of its own, plus the log
+  store (`fsl-elasticsearch`) drawn unlinked, its note naming the WAF and the
+  sensors that send it records. The test checks that projection against the
+  declaration and compose. Not chosen: drawing record flows as dashed lines
+  (no cable carries them; a note says it plainly).
+- **The follow view walks the learner map.** A Website pane request starts at
+  a `console` hop (the learner's browser, with the address the WAF records)
+  and arrives straight at the WAF; a proxy-stamped marker is drawn from the
+  attacker; the session overlay lists only the map's hosts and segments. F1's
+  log store answer is `fsl-elasticsearch` on both substrates (was
+  `fsl-platform` on OpenStack); F1's theory no longer describes `mgmt`.
+- **A map per slot or session, from the range.** `interfaces()` on each
+  adapter (OpenStack: `ip -o -4 addr`/`ifconfig` on each slot host over its
+  own runner, `nsenter` into the wargame containers; Docker: MAC to
+  `/sys/class/net`), `topology.labelled` to label each host's link end, and
+  `api/maps.py` to load both languages at session open, after a slot's reset
+  and on demand from `GET /api/topology/?session=`. Reading Kali's interfaces
+  goes through the adapter's attacker runner, not `attacker.py`; it reads
+  only `ip addr`. The platform signs in to GNS3 as admin to import (the
+  password file is 0640 to the Docker socket's group; members are root on the
+  host already).
+- **Symbols.** The gns3-registry has no Kali, OPNsense, MySQL, WordPress,
+  nginx, Django, Suricata or Elasticsearch symbol (its `symbols/` and the
+  `kali-linux`, `opnsense`, `turnkey-wordpress`, `ubuntu-cloud` appliances
+  name none); vendor logos from elsewhere were not taken (trademarks, no
+  licence in the registry). Used: GNS3's bundled affinity set (ecceman/affinity,
+  The Unlicense; referenced, not copied) for role and VM-versus-container, and
+  the registry's `ubuntu.svg` for the Ubuntu wargame host (Canonical,
+  CC BY-SA 3.0, Canonical's trade mark policy; fetched by the GNS3 image from
+  gns3-registry commit fddde65, its `ubuntu.txt` kept beside it, uploaded by
+  `provision.py`; not vendored in this repo).
+- **Fit and the node list, within 3.1.0a6.** The web UI never reads the
+  project's `zoom`, fixes its origin once at the first draw
+  (`max(width/2, -min x + 30)`), and keeps the topology summary's visibility
+  as a constant. So `fsl-auditor.html` opens the project in a same-origin
+  frame, clicks the summary toggle, clicks zoom-out (0.1 a step) until the
+  drawing fits, and pans once in moving mode with a synthetic mousemove
+  (`movementX`/`movementY`; d3 never sees it, the moving directive does).
+  Measured: 1400x860 and the 1600x1000 console both open at 0.8, the drawing
+  inside the frame, summary closed.
+- **The legend** (both languages): the map shows how the range is wired, the
+  machines run in the range and not in GNS3, and the red link marks mean
+  stopped in GNS3.
+
+Live (platform VM, both slots READY): slot 1 and 2 maps loaded in both
+languages in 5-20 s each (first load slower while GNS3 creates the docker
+nodes); labels read from the range (slot 1 WAF `ens3 10.30.0.102/24`, slot 2
+`ens3 10.30.0.177/24`, Kali `ens3 5.188.10.10/24 (+99)`, edge `vtnet0
+5.188.10.1/24 (+29)`, wargame host bridges and each container's `eth0`).
+Session 382 (board, slot 1): `GET /api/topology/?language=ko&session=382`
+served `fsl-range-openstack slot 1` and the console's Topology pane framed it;
+closed. Cost: GNS3 now holds eight projects open (four learner maps, four
+slot maps); 58 GNS3 containers in state Created on the host (was 38), fsl-gns3
+285 MiB RSS idle, `/var/lib/fsl-gns3` 23 MB.
+
+Not done: the Docker substrate's per-session maps are unit-tested only (no
+Docker range runs live); on the wargame host's two diagonal links the bridge
+labels start under the host's icon; a platform restart forgets which maps it
+loaded, so a map is refreshed at the next open or reset, not at restart.
+
+Metrics (bin/verify --fast): core_loc 580, dependencies 6, services 10 (unchanged),
+product_loc 22,725 -> 24,295, tests 1983 -> 2013.
