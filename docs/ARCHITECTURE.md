@@ -283,10 +283,10 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   their Korean pairs: the company web-service network the learner defends, as
   a logical diagram drawn the way lab topologies are (Cisco NetAcad lab
   topology, NSRC workshop logical diagram): role hostnames, the interface and
-  last octet at each link end, each zone captioned with its network, nothing
+  its address with prefix at each link end, each zone captioned with its network, nothing
   else (no title, legend or note, no machine's own name, no `fsl-`, no
   management segment, no Docker bridge name). The nodes are `customers` and
-  `attacker` on the `internet` switch, the `firewall` (OpenStack's OPNsense
+  `kali` (the attacker's Kali box) on the `internet` switch, the `firewall` (OpenStack's OPNsense
   edge, whose Suricata is folded into it), `sw1` (the service segment) with the
   `waf` and the site (`board.com` or `corp.com`, the WAF host's declared
   names), on OpenStack `sw2` (the database segment) behind the site with its
@@ -305,7 +305,7 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   `topology.for_wargame` keeps the session's own, and a wargame that declares
   no customers (`corp`, no `traffic.yaml`) has no `customers` node.
   `topology.learner(declaration, wargame)` is the mapping from the range's
-  names to the map's: hosts (`fsl-kali` is `attacker` and, where customers run
+  names to the map's: hosts (`fsl-kali` is `kali` and, where customers run
   on it, `customers`; `fsl-edge` is `firewall`; the wargame host and its site
   container are the site; `fsl-elasticsearch` is `log-server`), roles,
   segments to switches (origins to `internet`, the estate to `sw1`, a
@@ -316,9 +316,12 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   line, level, upright or diagonal, none crossing another link or a node; a
   node a link reaches from straight above carries its name beside it. Symbols
   are GNS3's bundled affinity set, square where the real machine is a VM and
-  circle where it is a container (red attacker, gray client for customers,
-  green defence, blue sites, gray log server and switches, a globe for the
-  internet).
+  circle where it is a container (gray client for customers, green defence,
+  blue sites, gray log server and switches, a globe for the internet), and
+  for `kali` OffSec's Kali dragon (`kali.svg`: the press pack's
+  `kali-dragon-black.svg` at a pinned commit, checked by sha256 and given a
+  60x60 size when the GNS3 image is built, uploaded by `provision.py`; the
+  Topology pane says whose trademark it is).
 - **Every learner-map host is a display container.** GNS3 colours a link end
   by its node's status, so a stopped node draws every end red. Each host is a
   `docker` node of one pinned image (`busybox`, `topology.DISPLAY_IMAGE`) that
@@ -358,8 +361,8 @@ session's wargame (`slot 1 board`, `session <id> corp`) in each language
 (`topology.labelled`): every link is labelled at both ends, as a lab topology
 labels it. A switch's end (and the `internet` switch's) carries the port the
 link uses in short form (`Ethernet2` is `e2`). Every host's end is labelled with
-the real interface and the last octet of its address on that switch's segment
-(`ens3 .102`, `vtnet0 .1`), read from the range through `topology.learner`: the
+the real interface and its address with prefix on that switch's segment
+(`ens3 10.30.0.102/24`, `vtnet0 5.188.10.1/24`), read from the range through `topology.learner`: the
 attacker's address in the default origin, the customers' first address in
 their busiest origin (`traffic.yaml`'s weights, the default origin left out,
 as `attacker.customer_origins` does; no label where the box holds none, as on
@@ -380,8 +383,12 @@ name alone. A label lies level beside its node on the side its link leaves
 whichever side the node's other links leave more room, clear of where the
 line runs under the text; on a steep link below the node, or above it where
 the node's name is beside it, left or right of the line by the same rule
-(right of the node where its name is above); clear of GNS3's status mark,
-right-aligned with `text-anchor: end` on the left; every id is `uuid5(<learner id>,
+(right of the node where its name is above); clear of every line, GNS3's
+status mark (6 units round, 60 along the line from the node's centre in the
+3.1 web UI), a node's name, a zone's edge and its caption, with the text
+estimated at 7 units a character (the web UI renders `font-size: 10.0` at
+13.3 px); a shallow label goes to the other side of its line where it would
+touch its node's name; right-aligned with `text-anchor: end` on the left; every id is `uuid5(<learner id>,
 "slot-<n>-<wargame>")` (or `session-<id>-<wargame>`), the name gets the key,
 and `show_interface_labels` is on. The adapters read the interfaces
 (`interfaces()`): on OpenStack `ip -o -4 addr` (`ifconfig` on OPNsense) on
@@ -468,12 +475,12 @@ reported`. `GET /api/sessions/<id>/topology/follow/?request=<Website pane
 request id>` (or `?case=<case id>`, `?customer=<customer request marker>`, or
 `?marker=`) draws the path from facts only, on the map's names. The sender is
 what sent it: the platform's site proxy (scorer role) for a Website pane
-request, `attacker` for a fired case, `customers` for a customer request, the
+request, `kali` for a fired case, `customers` for a customer request, the
 proxy role for a bare marker. A sender not on the learner map is training
 plumbing: a Website pane request starts with a `console` hop (the learner's
 browser, with the address the WAF records for it) that arrives straight at the
 `waf`, never through `mgmt` or the platform, and a marker the proxy stamped is
-drawn from `attacker`. The session overlay lists only the map's hosts and their
+drawn from `kali`. The session overlay lists only the map's hosts and their
 addresses on the map's switches.
 The destination is the address the request reached: the site proxy records the
 WAF address its socket connected to; a case uses the address its alerts name,

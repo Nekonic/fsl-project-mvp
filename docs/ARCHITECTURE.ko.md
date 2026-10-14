@@ -250,9 +250,9 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   GNS3 서비스는 레포의 지도를 보지 않으므로 학습자에게는 보이지 않는다.
 - **학습자 지도** `deploy/topology/range-{docker,openstack}.gns3`와 한국어 짝: 학습자가 지키는
   회사 웹 서비스 네트워크를 실습 토폴로지를 그리는 방식(Cisco NetAcad 실습 토폴로지, NSRC 워크숍
-  논리도)의 논리도로 그린다: 역할 호스트 이름, 링크 끝마다 인터페이스와 마지막 옥텟, 구간마다
+  논리도)의 논리도로 그린다: 역할 호스트 이름, 링크 끝마다 인터페이스와 프리픽스를 붙인 주소, 구간마다
   네트워크 캡션, 그 밖에는 없다(제목·범례·메모, 기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지
-  이름 모두 없음). 노드는 `internet` 스위치의 `customers`와 `attacker`, `firewall`(OpenStack의
+  이름 모두 없음). 노드는 `internet` 스위치의 `customers`와 `kali`(공격자의 Kali 상자), `firewall`(OpenStack의
   OPNsense 엣지, 그 Suricata는 여기에 접어 넣음), `waf`와 사이트(`board.com` 또는 `corp.com`, WAF
   호스트의 선언 이름)가 붙는 `sw1`(서비스 구간), OpenStack에서는 사이트 뒤의 `sw2`(데이터베이스
   구간)와 데이터베이스(`board-db`), Docker에서는 `sw1`에 붙는 데이터베이스(Docker 레인지에는 엣지가
@@ -265,14 +265,16 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   사이트와 데이터베이스를 한자리에, 둘 다 하나의 `sw2`에 그리고,
   `topology.for_wargame`이 세션의 것만 남긴다. 고객을 선언하지 않은 워게임(`corp`, `traffic.yaml`
   없음)에는 `customers` 노드가 없다. `topology.learner(선언, 워게임)`이 레인지의 이름을 지도의
-  이름으로 옮긴다: 호스트(`fsl-kali`는 `attacker`이고, 고객 프로그램이 거기서 돌면 `customers`도;
+  이름으로 옮긴다: 호스트(`fsl-kali`는 `kali`이고, 고객 프로그램이 거기서 돌면 `customers`도;
   `fsl-edge`는 `firewall`; wargame 호스트와 사이트 컨테이너는 사이트; `fsl-elasticsearch`는
   `log-server`), 역할, 구간에서 스위치로(출발지는 `internet`, estate는 `sw1`, 워게임의 compose
   네트워크는 `sw2`; 관리 구간은 NIC 이름만 붙이도록 `sw3`), 센서마다 그 NIC를 쓰는 노드. overlay, 따라가기, 레슨의 레인지
   질문, 인터페이스 읽기가 모두 이것을 거친다. 링크는 모두 직선 하나(수평, 수직, 대각선)이고 다른 링크나
   노드를 가로지르지 않는다. 바로 위에서 링크가 들어오는 노드는 이름을 옆에 둔다. 심볼은 GNS3에 번들된
-  affinity 세트로, 실제 기계가 VM이면 네모, 컨테이너면 동그라미다(공격자 빨강, 고객은 회색
-  클라이언트, 방어 초록, 사이트 파랑, 로그 서버와 스위치 회색, 인터넷은 지구본).
+  affinity 세트로, 실제 기계가 VM이면 네모, 컨테이너면 동그라미다(고객은 회색 클라이언트, 방어
+  초록, 사이트 파랑, 로그 서버와 스위치 회색, 인터넷은 지구본). `kali`는 OffSec의 Kali 드래곤이다
+  (`kali.svg`: 프레스 팩의 `kali-dragon-black.svg`를 고정 커밋에서 받아 sha256으로 확인하고 GNS3
+  이미지를 빌드할 때 60x60 크기만 붙인 것, `provision.py`가 올린다. 토폴로지 창이 누구의 상표인지 밝힌다).
 - **학습자 지도의 호스트는 모두 표시용 컨테이너다.** GNS3는 링크 끝을 노드 상태로 칠하므로 멈춘
   노드는 끝이 모두 빨강이다. 호스트마다 고정한 이미지 하나(`busybox`, `topology.DISPLAY_IMAGE`)의
   `docker` 노드로, `sleep`만 돌고 콘솔은 없다. 실제 기계는 레인지에서 돌고 지도의 노드는 그것을
@@ -302,8 +304,8 @@ gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 �
 세션과 그 세션의 워게임마다(`slot 1 board`, `session <id> corp`), 언어마다 프로젝트 하나를 만든다
 (`topology.labelled`): 실습 토폴로지처럼 모든 링크의 양 끝에 라벨을 붙인다. 스위치 쪽 끝(`internet`
 스위치 포함)에는 링크가 쓰는 포트를 줄여 쓴다(`Ethernet2`는 `e2`). 호스트 쪽 링크 끝마다 그 스위치
-구간의 실제 인터페이스 이름과 주소의 마지막 옥텟을 `topology.learner`를 거쳐 레인지에서 읽어
-붙인다(`ens3 .102`, `vtnet0 .1`). 공격자는 기본
+구간의 실제 인터페이스 이름과 프리픽스를 붙인 주소를 `topology.learner`를 거쳐 레인지에서 읽어
+붙인다(`ens3 10.30.0.102/24`, `vtnet0 5.188.10.1/24`). 공격자는 기본
 출발지의 주소, 고객은 가장 많이 오는 출발지(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼
 기본 출발지는 뺀다)의 첫 주소(상자에 그런 주소가 없으면 비운다. 고객 상자가 고객과 함께 뜨는 Docker가
 그렇다), 사이트는 `sw1`에서는 호스트의 주소(WAF는 거기로 사이트에 닿는다), `sw2`에서는 사이트
@@ -317,7 +319,7 @@ gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 �
 링크가 나가는 쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 수평이나 완만한 링크는 노드의 다른
 링크가 더 여유를 남기는 쪽으로 선 위나 아래에, 글자 밑을 지나는 선에 닿지 않게; 가파른 링크는 노드
 아래, 또는 이름이 옆에 있는 노드라면 위에, 같은 규칙으로 선의 왼쪽이나 오른쪽에(이름이 위에 있는
-노드는 노드 오른쪽); GNS3 상태 표시에 닿지 않게, 왼쪽이면 `text-anchor: end`로 오른쪽 정렬. 모든 id는 `uuid5(<학습자 지도 id>, "slot-<n>-<워게임>")`(또는 `session-<id>-<워게임>`),
+노드는 노드 오른쪽); 모든 선, GNS3 상태 표시(3.1 웹 UI에서 노드 중심에서 선을 따라 60, 반지름 6), 노드 이름, 구간 테두리와 캡션에 닿지 않게(글자는 한 자에 7로 어림잡는다. 웹 UI는 `font-size: 10.0`을 13.3px로 그린다), 완만한 링크의 라벨이 자기 노드 이름에 닿으면 선의 반대쪽으로, 왼쪽이면 `text-anchor: end`로 오른쪽 정렬. 모든 id는 `uuid5(<학습자 지도 id>, "slot-<n>-<워게임>")`(또는 `session-<id>-<워게임>`),
 이름에는 키를 붙이고 `show_interface_labels`를 켠다. 인터페이스는 어댑터가 읽는다(`interfaces()`):
 OpenStack은 슬롯의 호스트마다 그 호스트 자체에서 도는 runner로 `ip -o -4 addr`(OPNsense는
 `ifconfig`)를, wargame 호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크
@@ -379,9 +381,9 @@ uBridge가 시작한 노드의 인터페이스를 컨테이너의 호스트 pid 
 reported`. `GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는 `?case=<케이스
 id>`, `?customer=<고객 요청 마커>`, `?marker=`)는 사실만으로 지도의 이름으로 경로를 그린다. 보낸 쪽은
 실제로 보낸 것이다: 웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는
-`attacker`, 고객 요청은 `customers`, 마커만 있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용
+`kali`, 고객 요청은 `customers`, 마커만 있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용
 배관이다: 웹사이트 창 요청은 `console` 홉(학습자의 브라우저, WAF가 기록한 그 주소)에서 시작해 `mgmt`나
-플랫폼을 거치지 않고 바로 `waf`에 닿고, proxy가 표시한 마커는 `attacker`에서 그린다. 세션 overlay는
+플랫폼을 거치지 않고 바로 `waf`에 닿고, proxy가 표시한 마커는 `kali`에서 그린다. 세션 overlay는
 지도에 있는 호스트와 지도에 있는 스위치의 주소만 싣는다. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
 기록하고, 케이스는 경보에 적힌 주소를, 없으면 레인지가 내주는 이름(케이스가 출발한 구간의
 게이트웨이 주소, 없으면 모든 레인지 호스트의 `/etc/hosts`대로 estate의 주소)을 쓴다. 보낸

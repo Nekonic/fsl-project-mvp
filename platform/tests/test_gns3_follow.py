@@ -92,8 +92,8 @@ def test_on_openstack_a_case_leaves_kali_with_its_origin_address_and_the_edge_ro
     found = followed("openstack", openstack_nodes(), sent, seen)
     hops = by_node(found)
 
-    assert walked(found) == ["attacker", "internet", "firewall", "sw1", "waf", "sw1", "board.com"]
-    assert found["hops"][0]["source"] == "5.188.10.10" and found["source"] == "attacker"
+    assert walked(found) == ["kali", "internet", "firewall", "sw1", "waf", "sw1", "board.com"]
+    assert found["hops"][0]["source"] == "5.188.10.10" and found["source"] == "kali"
     assert hops["firewall"]["sensor"] == "firewall"
     assert hops["firewall"]["alerts"] == [{"signature": "suricata saw it", "sid": 9000001}]
     assert hops["waf"]["verdict"] == "blocked" and hops["waf"]["rules"] == ["942100", "949110"]
@@ -105,7 +105,7 @@ def test_a_case_with_no_alert_reaches_the_waf_by_the_name_the_range_serves_and_s
     found = followed("openstack", openstack_nodes(), sent)
     hops = by_node(found)
 
-    assert walked(found)[:5] == ["attacker", "internet", "firewall", "sw1", "waf"], (
+    assert walked(found)[:5] == ["kali", "internet", "firewall", "sw1", "waf"], (
         "board.com names the WAF's estate address on every range host, so the edge is the way to it"
     )
     assert found["hops"][0]["source"] is None, "an origin nobody recorded is unknown, not a guess"
@@ -149,7 +149,7 @@ def test_on_docker_a_case_starts_on_its_origin_network_where_the_waf_answers_to_
 
     found = followed("", docker_nodes(), sent, seen)
 
-    assert walked(found) == ["attacker", "internet", "waf", "sw1", "board.com"], (
+    assert walked(found) == ["kali", "internet", "waf", "sw1", "board.com"], (
         "no edge on Docker: the case box stands on the origin network with the WAF"
     )
     assert found["hops"][0]["source"] == "5.188.10.77", "the sensor saw the address the box really used"
@@ -290,7 +290,7 @@ def test_following_a_fired_case_reads_its_launch_record_and_the_alerts_that_carr
         missing = client.get(f"/api/sessions/{session_id}/topology/follow/?case=c-2")
 
     assert followed["case"] == {"case_id": "c-1", "name": "board-normal-search"}
-    assert followed["source"] == "attacker" and followed["detections"] == 1
+    assert followed["source"] == "kali" and followed["detections"] == 1
     assert followed["hops"][0]["source"] == "5.188.10.77"
     assert followed["hops"][-1]["reached"] is True and followed["hops"][-1]["status"] == 200
     assert missing.status_code == 404
@@ -397,7 +397,7 @@ def test_on_docker_a_marker_the_proxy_stamped_is_drawn_from_the_attacker_because
 
     found = followed("", docker_nodes(), sent)
 
-    assert walked(found)[0] == "attacker" and found["source"] == "attacker"
+    assert walked(found)[0] == "kali" and found["source"] == "kali"
     assert "fsl-proxy" not in by_node(found)
 
 @pytest.mark.django_db

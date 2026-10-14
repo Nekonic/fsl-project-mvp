@@ -19,7 +19,7 @@ HOPS = [
     {"node": "board.com", "kind": "host", "evidence": True, "status": None, "reached": False},
 ]
 CASE_HOPS = [
-    {"node": "attacker", "kind": "host", "evidence": True, "source": None},
+    {"node": "kali", "kind": "host", "evidence": True, "source": None},
     {"node": "internet", "kind": "segment"},
     {"node": None, "kind": "unknown"},
     {"node": "waf", "kind": "host", "evidence": False, "sensor": "waf", "alerts": [],
@@ -35,7 +35,7 @@ browser.serve((request) => {{
     project: {js(PROJECT)}, web_ui: {js(web_ui)}}}}};
   if (request.route === "/api/sessions/1/topology/") return {{body: {{segments: [], project: {{nodes: {{
     "waf": {{status: "running", addresses: {{"sw1": ["172.30.0.3"]}}}},
-    "attacker": {{status: "not reported", addresses: {{}}}}}}}}}}}};
+    "kali": {{status: "not reported", addresses: {{}}}}}}}}}}}};
   if (request.route === "/api/sessions/1/site/requests/") return {{body: [
     {{id: 7, method: "GET", url: "http://board.com/search/?q=%ED%95%9C", status: 403, blocked: true}}]}};
   if (request.route === "/api/sessions/1/cases/") return {{body: [
@@ -136,3 +136,18 @@ def test_the_map_tab_reads_network_map_and_nothing_a_learner_reads_names_the_map
     assert "GNS3" not in seen["result"]["pane"]
     assert [line for line in shown if "GNS3" in line or "fsl-" in line] == []
     assert "topology/addresses" not in (pathlib.Path(__file__).resolve().parents[1] / "fsl/urls.py").read_text()
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_the_map_that_shows_kali_s_dragon_says_whose_trademark_it_is(client, language):
+    from tests.test_strings import tables
+    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
+    seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
+      await browser.click('[data-pane="topology"]');
+      return browser.text('topology-trademark');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == tables()[language]["topology.trademark"]
+    assert "KALI LINUX™" in seen["result"] and "OffSec" in seen["result"]
+    assert english("topology.trademark") == "KALI LINUX™ is a trademark of OffSec."

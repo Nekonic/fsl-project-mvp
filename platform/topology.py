@@ -65,7 +65,7 @@ CONSOLE = "console"
 DATABASE_SUFFIX = "-db"
 BRIDGE_SUFFIX = "-default"
 LOG_STORE = "fsl-elasticsearch"
-ATTACKER = "attacker"
+ATTACKER = "kali"
 CUSTOMERS = "customers"
 FIREWALL = "firewall"
 WAF = "waf"
@@ -396,11 +396,15 @@ ENDS = "text-anchor: end;"
 SYMBOL_SIZE = 60
 LABEL_GAP = 6
 LABEL_RISE = 28
-LABEL_FALL = 4
-LABEL_ASIDE = 8
+LABEL_FALL = 6
+LABEL_ASIDE = 10
 LABEL_BELOW = 64
 LABEL_ABOVE = -60
-LABEL_CHAR = 6
+LABEL_CHAR = 7
+NAME_CHAR = 9
+LABEL_CLEAR = 3
+STATUS_MARK_ALONG = 60
+STATUS_MARK_RADIUS = 6
 GLYPH_TOP = 4
 GLYPH_BOTTOM = 18
 PORT_NAME = re.compile(r"(?P<kind>[A-Za-z])[A-Za-z]*(?P<number>\d+)")
@@ -443,20 +447,40 @@ def _roomier(sides, others):
 def named_above(node) -> bool:
     return (node.get("label") or {}).get("x") is None
 
+def _box(x, y, anchor, width) -> tuple[float, float, float, float]:
+    left = x - width if anchor == ENDS else x
+    return left, y + GLYPH_TOP, left + width, y + GLYPH_BOTTOM
+
+def name_box(node) -> tuple[float, float, float, float]:
+    label = node.get("label") or {}
+    width = len(label.get("text") or "") * NAME_CHAR
+    x = (SYMBOL_SIZE - width) / 2 if label.get("x") is None else label["x"]
+    return _box(x, label.get("y") or 0, STARTS, width)
+
+def _covers(one, other) -> bool:
+    return (one[0] - LABEL_CLEAR < other[2] and other[0] < one[2] + LABEL_CLEAR
+            and one[1] - LABEL_CLEAR < other[3] and other[1] < one[3] + LABEL_CLEAR)
+
 def _placed_label(node, other, others, text) -> tuple[int, int, str]:
     half = SYMBOL_SIZE // 2
     dx, dy = other["x"] - node["x"], other["y"] - node["y"]
     if abs(dx) >= abs(dy):
         near = half + LABEL_GAP
-        crossed = [half + dy / abs(dx) * reach for reach in (near, near + len(text) * LABEL_CHAR)]
+        mark = STATUS_MARK_ALONG * abs(dx) / math.hypot(dx, dy) + STATUS_MARK_RADIUS
+        crossed = [half + dy / abs(dx) * reach for reach in (near, max(near + len(text) * LABEL_CHAR, mark))]
         under, over = (0, 1), (0, -1)
-        side = _roomier((under, over) if dy < 0 else (over, under), others)
-        y = round(min(crossed) - LABEL_RISE if side == over else max(crossed) + LABEL_FALL)
-        return (SYMBOL_SIZE + LABEL_GAP, y, STARTS) if dx > 0 else (-LABEL_GAP, y, ENDS)
+        first = _roomier((under, over) if dy < 0 else (over, under), others)
+        placed = []
+        for side in (first, under if first == over else over):
+            y = round(min(crossed) - LABEL_RISE if side == over else max(crossed) + LABEL_FALL)
+            placed.append((SYMBOL_SIZE + LABEL_GAP, y, STARTS) if dx > 0 else (-LABEL_GAP, y, ENDS))
+        return next((one for one in placed if not _covers(_box(*one, len(text) * LABEL_CHAR), name_box(node))),
+                    placed[0])
     if dy < 0 and named_above(node):
         return SYMBOL_SIZE + LABEL_GAP, LABEL_FALL, STARTS
     top = LABEL_BELOW if dy > 0 else LABEL_ABOVE
-    crossed = [half + dx / dy * (y - half) for y in (top + GLYPH_TOP, top + GLYPH_BOTTOM)]
+    crossed = [half + dx / dy * (y - half)
+               for y in (top + GLYPH_TOP - STATUS_MARK_RADIUS, top + GLYPH_BOTTOM + STATUS_MARK_RADIUS)]
     if _roomier(((1, 0), (-1, 0)), others) == (1, 0):
         return round(max(crossed) + LABEL_ASIDE), top, STARTS
     return round(min(crossed) - LABEL_ASIDE), top, ENDS
@@ -563,7 +587,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
             if switching:
                 text = port_label(node, end["port_number"])
             elif head:
-                text = f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}"
+                text = f"{head.name} {head.address}"
             else:
                 text = bare.get((node["name"], other["name"]), "")
             if head:
