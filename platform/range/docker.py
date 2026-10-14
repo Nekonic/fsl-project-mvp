@@ -9,6 +9,7 @@ import threading
 import time
 from dataclasses import replace
 
+from range import interfaces
 from range.declared import Declaration
 from range.ports import (
     Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute, reported,
@@ -278,6 +279,28 @@ class Docker:
                 )
             found.append(Sensor(name=name, watches=host))
         return tuple(found)
+
+    def interfaces(self, hosts=None) -> list[interfaces.Interface]:
+        networks, session = self._networks()
+        carried = {origin.id: origin.segment for origin in self.declared.origins}
+        attached: dict[str, tuple[str, list]] = {}
+        for network in networks:
+            segment_id = (network.get("Labels") or {}).get(SEGMENT_LABEL, "")
+            for entry in (network.get("Containers") or {}).values():
+                node = self._node_name(entry["Name"], session)
+                if hosts is not None and node not in hosts:
+                    continue
+                attached.setdefault(node, (entry["Name"], []))[1].append(
+                    (entry.get("MacAddress", ""), entry.get("IPv4Address", ""),
+                     carried.get(segment_id, segment_id)))
+        found = []
+        for node, (container, ends) in sorted(attached.items()):
+            try:
+                said = self._read(["exec", container, "sh", "-c", interfaces.MACS])
+            except RangeUnavailable:
+                continue
+            found += interfaces.by_mac(said, ends, node)
+        return found
 
     def _modes(self, names: list[str]) -> dict[str, str]:
         modes = {}

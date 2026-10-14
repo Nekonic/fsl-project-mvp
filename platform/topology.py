@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import ipaddress
+import json
+import math
+import uuid
+
 from range.slot import NAMED_ON
 
 def shape(described, declared=None) -> dict:
@@ -300,3 +305,67 @@ def facts(project, declared, scenario) -> dict[str, list[str]]:
         "logs": stores or [declared.roles["scorer"]],
         "segment": sorted(name for name in near.get(database, ()) if kinds[name] == SWITCH),
     }
+
+LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #1b4f8a;fill-opacity: 1.0;"
+SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #5b6770;fill-opacity: 1.0;"
+SYMBOL_SIZE = 60
+LABEL_REACH = 46
+LABEL_CHAR = 5.0
+KOREAN_SUFFIX = " ("
+
+def renamed(value: str, salt: str) -> str:
+    return str(uuid.uuid5(uuid.UUID(value), salt))
+
+def _said(found, first) -> str:
+    ordered = sorted(found, key=lambda one: (not first or ipaddress.ip_interface(one.address).ip
+                                              not in ipaddress.ip_network(first), one.name,
+                                              ipaddress.ip_interface(one.address).ip))
+    head = ordered[0]
+    more = len(ordered) - 1
+    return f"{head.name} {head.address}" + (f" (+{more})" if more else "")
+
+def _placed_label(text, node, other) -> tuple[int, int]:
+    half = SYMBOL_SIZE / 2
+    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    x = half + ux * LABEL_REACH
+    y = half + uy * LABEL_REACH + 3
+    width = len(text) * LABEL_CHAR
+    if ux < -0.35:
+        x -= width
+    elif abs(ux) <= 0.35:
+        x -= width / 2
+    if uy < -0.35:
+        y -= 4
+    return round(x), round(y)
+
+def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
+    document = json.loads(json.dumps(project))
+    document["project_id"] = renamed(document["project_id"], salt)
+    base, korean, rest = document["name"].partition(KOREAN_SUFFIX)
+    document["name"] = f"{base} {called}" + (korean + rest if korean else "")
+    document["show_interface_labels"] = True
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    held: dict[tuple[str, str], list] = {}
+    for one in found:
+        if one.segment:
+            held.setdefault((one.host, one.segment), []).append(one)
+    for link in document["topology"]["links"]:
+        ends = [by_id[end["node_id"]] for end in link["nodes"]]
+        for end, node, other in ((link["nodes"][0], ends[0], ends[1]), (link["nodes"][1], ends[1], ends[0])):
+            switching = node["node_type"] == SWITCH
+            ours = held.get((node["name"], other["name"])) if not switching else None
+            text = _said(ours, first) if ours else ""
+            x, y = _placed_label(text, node, other)
+            end["label"] = {"text": text, "style": SWITCH_LABEL_STYLE if switching else LABEL_STYLE,
+                            "x": x, "y": y, "rotation": 0}
+        link["link_id"] = renamed(link["link_id"], salt)
+    for node in document["topology"]["nodes"]:
+        node["node_id"] = renamed(node["node_id"], salt)
+    for link in document["topology"]["links"]:
+        for end in link["nodes"]:
+            end["node_id"] = renamed(end["node_id"], salt)
+    for drawing in document["topology"]["drawings"]:
+        drawing["drawing_id"] = renamed(drawing["drawing_id"], salt)
+    return document

@@ -128,6 +128,9 @@ FSL_GNS3_URL = os.environ.get("FSL_GNS3_URL", "")
 FSL_GNS3_USER = os.environ.get("FSL_GNS3_AUDITOR_USER") or "learner"
 FSL_GNS3_PASSWORD = os.environ.get("FSL_GNS3_AUDITOR_PASSWORD") or "fsl-auditor"
 FSL_GNS3_WEB_PORT = int(os.environ.get("FSL_GNS3_WEB_PORT") or 3080)
+FSL_GNS3_ADMIN_USER = os.environ.get("FSL_GNS3_ADMIN_USER") or "admin"
+FSL_GNS3_ADMIN_PASSWORD = os.environ.get("FSL_GNS3_ADMIN_PASSWORD", "")
+FSL_GNS3_ADMIN_PASSWORD_FILE = Path(os.environ.get("FSL_GNS3_ADMIN_PASSWORD_FILE") or "/run/fsl-gns3/admin-password")
 
 FSL_SUBSTRATE_OPTIONS = dict(
     {

@@ -113,8 +113,8 @@ def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(
     chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
     seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
       await browser.click('[data-pane="topology"]');
-      return browser.requests.filter((r) => r.route === '/api/topology/').map((r) => r.query.language);
+      return browser.requests.filter((r) => r.route === '/api/topology/').map((r) => [r.query.language, r.query.session]);
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == [language]
+    assert seen["result"] == [[language, "1"]], "the pane asks for the map of its own session's range"

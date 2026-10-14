@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOPOLOGY = ROOT / "deploy" / "topology"
+GENERATED = "generated"
 VERSIONS = ("2.2.61", "3.1.0a6")
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "fsl" / "check-topology"
 
@@ -51,6 +53,36 @@ def venv(version: str, python: str) -> Path:
     (home / ".installed").write_text(version)
     return interpreter
 
+GENERATE = """
+import json, sys
+from pathlib import Path
+import topology
+from range.interfaces import Interface
+
+def fixture_range(document):
+    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+    found = []
+    for index, link in enumerate(document["topology"]["links"]):
+        ends = [(by_id[end["node_id"]], end) for end in link["nodes"]]
+        for (node, end), (other, _) in (ends, ends[::-1]):
+            found.append(Interface(node["name"], f"eth{end['adapter_number']}",
+                                   f"10.{index}.{end['adapter_number']}.2/24", other["name"]))
+    return found
+
+for source, written in zip(sys.argv[1::2], sys.argv[2::2]):
+    document = json.loads(Path(source).read_text())
+    Path(written).write_text(json.dumps(topology.labelled(document, fixture_range(document), "slot-1", "slot 1")))
+"""
+
+def generated(into: Path) -> list[Path]:
+    sources = sorted(TOPOLOGY.glob("*.gns3"))
+    made = [into / GENERATED / source.name for source in sources]
+    made[0].parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([str(ROOT / ".venv" / "bin" / "python"), "-c", GENERATE,
+                    *[str(path) for pair in zip(sources, made) for path in pair]],
+                   cwd=ROOT / "platform", check=True, env={**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings"})
+    return made
+
 def check(interpreter: Path, project: Path) -> bool:
     with tempfile.TemporaryDirectory() as scratch:
         copy = Path(scratch) / project.stem / project.name
@@ -62,7 +94,8 @@ def check(interpreter: Path, project: Path) -> bool:
         )
     failed = (done.stderr or "").strip().splitlines()[-1:] or [f"exit {done.returncode}"]
     said = done.stdout.strip() if done.returncode == 0 else failed[0]
-    print(f"  {project.relative_to(TOPOLOGY)}: {'ok' if done.returncode == 0 else 'FAILED'}: {said}")
+    shown = project.relative_to(TOPOLOGY) if project.is_relative_to(TOPOLOGY) else f"{GENERATED}/{project.name}"
+    print(f"  {shown}: {'ok' if done.returncode == 0 else 'FAILED'}: {said}")
     return done.returncode == 0
 
 def main() -> int:
@@ -75,6 +108,8 @@ def main() -> int:
         print(f"check-topology: no .gns3 file in {TOPOLOGY}")
         return 1
     passed = True
+    scratch = tempfile.TemporaryDirectory()
+    projects += generated(Path(scratch.name))
     for version in args.version or VERSIONS:
         try:
             interpreter = venv(version, args.python)
