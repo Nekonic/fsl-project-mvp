@@ -37,8 +37,8 @@
                 "drawing_id": "b7f598f2-9f7a-5b0a-9c37-16eda8913da8",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"440\" height=\"370\"><rect width=\"440\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": 130,
+                "svg": "<svg width=\"520\" height=\"370\"><rect width=\"520\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"520\" stroke=\"#2e6da4\"/></svg>",
+                "x": 220,
                 "y": -100,
                 "z": 0
             },
@@ -47,7 +47,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"81\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
-                "x": 140,
+                "x": 230,
                 "y": -96,
                 "z": 2
             },
@@ -55,8 +55,8 @@
                 "drawing_id": "5860ec5a-8df4-5c77-b274-9e0b7db2cf10",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"400\" height=\"200\"><rect width=\"400\" height=\"200\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
-                "x": 620,
+                "svg": "<svg width=\"410\" height=\"200\"><rect width=\"410\" height=\"200\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"410\" stroke=\"#4a6fa5\"/></svg>",
+                "x": 760,
                 "y": -100,
                 "z": 0
             },
@@ -65,7 +65,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"98\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ub0b4\ubd80 DB \uad6c\uac04</text></svg>",
-                "x": 630,
+                "x": 770,
                 "y": -96,
                 "z": 2
             },
@@ -73,8 +73,8 @@
                 "drawing_id": "daffa5ca-65f4-5c0e-864d-efc51c1d5386",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"500\" height=\"180\"><rect width=\"500\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": 70,
+                "svg": "<svg width=\"530\" height=\"180\"><rect width=\"530\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"530\" stroke=\"#5b6770\"/></svg>",
+                "x": 130,
                 "y": 320,
                 "z": 0
             },
@@ -83,7 +83,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"68\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
-                "x": 80,
+                "x": 140,
                 "y": 466,
                 "z": 2
             }
@@ -369,11 +369,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "attacker",
+                    "text": "kali",
                     "x": null,
                     "y": -25
                 },
-                "name": "attacker",
+                "name": "kali",
                 "node_id": "ef98af2d-9fc3-51ec-b8a9-19f5fc968ed4",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -382,7 +382,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/square/red/scull.svg",
+                "symbol": "kali.svg",
                 "x": -510,
                 "y": 70,
                 "z": 1
@@ -501,7 +501,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/square/green/firewall.svg",
-                "x": -30,
+                "x": 0,
                 "y": -30,
                 "z": 1
             },
@@ -571,7 +571,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 210,
+                "x": 270,
                 "y": -30,
                 "z": 1
             },
@@ -595,7 +595,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/square/green/shield.svg",
-                "x": 210,
+                "x": 270,
                 "y": 170,
                 "z": 1
             },
@@ -619,7 +619,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 450,
+                "x": 540,
                 "y": -30,
                 "z": 1
             },
@@ -643,7 +643,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 450,
+                "x": 540,
                 "y": -30,
                 "z": 1
             },
@@ -713,7 +713,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 690,
+                "x": 800,
                 "y": -30,
                 "z": 1
             },
@@ -737,7 +737,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 930,
+                "x": 1060,
                 "y": -30,
                 "z": 1
             },
@@ -761,7 +761,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 930,
+                "x": 1060,
                 "y": -30,
                 "z": 1
             },
@@ -831,7 +831,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 210,
+                "x": 270,
                 "y": 390,
                 "z": 1
             },
@@ -855,7 +855,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": 450,
+                "x": 540,
                 "y": 390,
                 "z": 1
             }

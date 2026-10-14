@@ -37,8 +37,8 @@
                 "drawing_id": "01491f25-038a-52b4-833f-0252b530f537",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"440\" height=\"370\"><rect width=\"440\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": 130,
+                "svg": "<svg width=\"520\" height=\"370\"><rect width=\"520\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"520\" stroke=\"#2e6da4\"/></svg>",
+                "x": 220,
                 "y": -100,
                 "z": 0
             },
@@ -47,7 +47,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"153\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Application estate</text></svg>",
-                "x": 140,
+                "x": 230,
                 "y": -96,
                 "z": 2
             },
@@ -55,8 +55,8 @@
                 "drawing_id": "511b3cd8-ea13-5b4a-b915-cff161a83822",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"490\" height=\"180\"><rect width=\"490\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -170,
+                "svg": "<svg width=\"530\" height=\"180\"><rect width=\"530\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"530\" stroke=\"#5b6770\"/></svg>",
+                "x": -140,
                 "y": 320,
                 "z": 0
             },
@@ -65,7 +65,7 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"89\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
-                "x": -160,
+                "x": -130,
                 "y": 466,
                 "z": 2
             }
@@ -249,11 +249,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "attacker",
+                    "text": "kali",
                     "x": null,
                     "y": -25
                 },
-                "name": "attacker",
+                "name": "kali",
                 "node_id": "bdafa0d3-a33e-5410-bad6-c8889c4807d2",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",
@@ -262,7 +262,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/red/scull.svg",
+                "symbol": "kali.svg",
                 "x": -510,
                 "y": 70,
                 "z": 1
@@ -381,7 +381,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/green/shield.svg",
-                "x": -30,
+                "x": 0,
                 "y": -30,
                 "z": 1
             },
@@ -451,7 +451,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 210,
+                "x": 270,
                 "y": -30,
                 "z": 1
             },
@@ -475,7 +475,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 450,
+                "x": 540,
                 "y": -30,
                 "z": 1
             },
@@ -499,7 +499,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/server.svg",
-                "x": 450,
+                "x": 540,
                 "y": -30,
                 "z": 1
             },
@@ -523,7 +523,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 210,
+                "x": 270,
                 "y": 170,
                 "z": 1
             },
@@ -547,7 +547,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/blue/storage.svg",
-                "x": 210,
+                "x": 270,
                 "y": 170,
                 "z": 1
             },
@@ -617,7 +617,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": -30,
+                "x": 0,
                 "y": 390,
                 "z": 1
             },
@@ -641,7 +641,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
-                "x": 210,
+                "x": 270,
                 "y": 390,
                 "z": 1
             }

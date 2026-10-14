@@ -26,6 +26,7 @@ FLAVORS = {DOCKER: "", DOCKER_KO: "", OPENSTACK: "openstack", OPENSTACK_KO: "ope
 EVERY_MAP = [*PAIRS, *PAIRS.values(), SYSTEM_DOCKER, SYSTEM_OPENSTACK]
 BUNDLED_SYMBOL = re.compile(r"^:/symbols/affinity/(square|circle)/(blue|gray|green|red)/[a-z0-9_]+\.svg$")
 DOCKERFILE = ROOT / "deploy" / "gns3" / "Dockerfile"
+KALI_SYMBOL = "kali.svg"
 KOREAN_NAME = re.compile(r" \([\uac00-\ud7a3]+\)")
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
@@ -666,7 +667,7 @@ def test_a_learner_map_draws_no_title_no_legend_and_no_note_only_a_caption_for_e
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_fetches(drawn_in):
     dockerfile = DOCKERFILE.read_text()
-    fetched = re.search(r"for name in ([^;]+); do", dockerfile)[1].split()
+    fetched = re.search(r"for name in ([^;]+); do", dockerfile)[1].split() + re.findall(r"> /symbols/(\S+)", dockerfile)
     assert "GNS3/gns3-registry/${REGISTRY}/symbols/${name}" in dockerfile
     for node in project(drawn_in)["topology"]["nodes"]:
         symbol = node["symbol"]
@@ -683,7 +684,7 @@ def test_a_symbol_tells_a_vm_from_a_container_and_the_defence_from_the_sites(dra
             machine.setdefault(name, real)
 
     for name, node in drawn.items():
-        if node["node_type"] == SWITCH:
+        if node["node_type"] == SWITCH or name == topology.ATTACKER:
             continue
         vm = bool(FLAVORS[drawn_in]) and machine[name] in stack.hosts
         assert ("/square/" if vm else "/circle/") in node["symbol"], (name, machine[name])
@@ -691,7 +692,7 @@ def test_a_symbol_tells_a_vm_from_a_container_and_the_defence_from_the_sites(dra
     def symbol(role):
         return drawn[shown.roles[role]]["symbol"]
 
-    assert symbol("attacker").endswith("/red/scull.svg")
+    assert shown.roles["attacker"] == topology.ATTACKER == "kali" and symbol("attacker") == KALI_SYMBOL
     assert symbol("gateway").endswith("/green/shield.svg")
     assert "edge" not in stack.roles or symbol("edge").endswith("/green/firewall.svg")
     assert symbol(wargame).endswith("/blue/server.svg")
@@ -722,3 +723,19 @@ def test_a_node_a_link_reaches_from_straight_above_carries_its_name_beside_it_no
         label = below["label"]
         assert label["x"] is not None and label["x"] < 0 and 0 <= label["y"] < topology.SYMBOL_SIZE, (
             below["name"], label)
+
+def test_the_kali_symbol_is_offsec_s_own_dragon_fetched_at_a_pinned_commit_checked_by_digest_and_only_scaled():
+    dockerfile = DOCKERFILE.read_text()
+    commit = re.search(r"^ARG KALI_PRESS_PACK=([0-9a-f]{40})$", dockerfile, re.M)
+    digest = re.search(r"^ARG KALI_DRAGON_SHA256=([0-9a-f]{64})$", dockerfile, re.M)
+    size = topology.SYMBOL_SIZE
+
+    assert commit and digest
+    assert ("https://gitlab.com/kalilinux/documentation/press-pack/-/raw/${KALI_PRESS_PACK}"
+            "/Kali/Logomark/kali-dragon-black.svg") in dockerfile
+    assert 'echo "${KALI_DRAGON_SHA256}  /tmp/kali-dragon-black.svg" | sha256sum -c -' in dockerfile
+    assert f"sed 's/^<svg /<svg width=\"{size}\" height=\"{size}\" /' /tmp/kali-dragon-black.svg > /symbols/{KALI_SYMBOL}" in dockerfile
+    assert "KALI LINUX is a trademark of OffSec." in dockerfile and "> /symbols/kali.txt" in dockerfile
+    for drawn_in in LEARNER_MAPS:
+        kali = [node for node in project(drawn_in)["topology"]["nodes"] if node["name"] == topology.ATTACKER]
+        assert [(node["symbol"], node["label"]["text"]) for node in kali] == [(KALI_SYMBOL, "kali")], drawn_in
