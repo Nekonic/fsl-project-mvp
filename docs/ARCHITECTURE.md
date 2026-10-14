@@ -1236,13 +1236,17 @@ API (`platform/api/customers.py`, `views.session_traffic`):
 
 - `PUT /api/sessions/<id>/traffic/ {rate, profile}` starts the customers or
   changes a running generator's rate and profile (same personas). `rate` is
-  requests per second, default 1, at most 50; `profile` is `community`
-  (default) or `plain` (no unusual searches). 404 for a wargame with no
+  requests per second, default 1, at most 50; `profile` is one of the
+  wargame's declared profiles: on the board `community` (default), `plain`
+  (no unusual searches), `readers` (`plain` without comments) and `club`
+  (`community` plus code questions in comments). 404 for a wargame with no
   `traffic.yaml`, 409 for a closed session, 503 when the box or the origins are
   not there.
-- `GET` reads the new records first, then returns `running`, `rate`,
-  `profile`, the counts above, `sources` (origin, address, requests) and
-  `by_action`.
+- `GET` reads the new records first, then returns `declared`, `profiles`,
+  `running`, `rate`, `profile`, `started_at`, `stopped_at`, `error`, the
+  counts `sent`, `served`, `blocked` (403 from the defence, not the app),
+  `unanswered` and `other`, `sources` (origin, address, requests) and
+  `by_action` (sent and blocked per action).
 - `DELETE` stops it and reads what it sent last. Closing the session does the
   same before the slot is rebuilt; if the box is unreachable the close goes on
   and the error is kept in `traffic.error`.
@@ -1280,14 +1284,14 @@ judges it over a final verification window. The design is
 | `defense` | a posture of the wargame's `defense:` map (CRS level, exclusions, thresholds; Suricata ruleset) |
 | `traffic` | `{profile, rate}` for the customers (`traffic.yaml`) |
 | `red` | `schedule` (the default) or `person`: a person uses the red console and the scenario may declare no attacks |
-| `attacks` | `[{at, case, origin}]`: seconds after open, a malicious case, an origin; hidden from the learner |
+| `attacks` | `[{at, case, origin}]`: seconds after open (within `minutes`), a malicious case, an optional origin; hidden from the learner |
 | `completion` | per class: judgement `{judged: all}`, optionally `pattern: judged`; availability `{served: all, held: all}`, optionally `thresholds: {inbound, outbound}`; unknown `{served: all, held: all}`; detection `{detected_by: suricata}` |
 | `cards` | `[{id, when}]`, `when` one of `start`, `alert`, `blocked`, `window` |
 | `hints` | hint ids, offered one at a time |
 
 `GET /api/wargames/` lists each scenario's card (`wargames.scenario_card`)
-without `attacks`; `GET /api/sessions/<id>/` drops `attacks` and the cases
-from a worked scenario's steps.
+without `attacks`; `GET /api/sessions/<id>/` drops `attacks` and
+`completion` from a worked scenario's `lesson` and empties its `cases`.
 
 **Opening.** `POST /api/sessions/ {"scenario": "2.1"}` resolves the wargame
 from the scenario id, refuses `lesson`, `guidance`, `defense` and `mode`, takes
@@ -1295,7 +1299,7 @@ the declared posture as any session does, then `scenario_run.begin` starts the
 customers and writes `Session.scenario_state` (migration 0025, beside
 `Session.course_scenario`): the schedule with each attack's absolute due time,
 the windows, the verdicts, the hint offer and the WAF versions seen. A worked
-scenario sets `guidance` and `lesson` to its id, so its steps run on
+scenario sets `guidance` true and `lesson` to its id, so its steps run on
 `/lesson/steps/` without seeding replays. Customers that cannot start close
 the session with 503.
 
@@ -1392,13 +1396,13 @@ after the foundations (`order`):
 | 1.1 | A quiet shift | judgement, worked | `level2`: PL2 | `community` 2/s | sqlmap at 150 s (`ru`) |
 | 1.2 | An inherited exception | judgement, faded | `inherited`: PL2, 949110 and 959100 removed | `community` 2/s | sqlmap at 120 s, a search injection at 300 s (`ru`) |
 | 1.3 | A busy evening | judgement, none; judges the pattern too | `inherited` | `community` 4/s | eight cases from 90 to 660 s, all from `kr`: sqlmap stock and tamper, search, union and sign-in injections, two XSS, path traversal |
-| 2.1 | Korean searches blocked | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s |
-| 2.2 | Tags and links blocked | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s |
-| 2.3 | Lowering the threshold | availability, none; final check at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s |
-| 3.1 | A rule that never fires | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s |
-| 3.2 | The sort attack the IDS misses | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s |
-| 3.3 | The same attack, spelled differently | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s |
-| 3.4 | XSS in a comment | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s |
+| 2.1 | Korean searches blocked | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s (`ru`) |
+| 2.2 | Tags and links blocked | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s (`ru`) |
+| 2.3 | Lowering the threshold | availability, none; final check at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s (`ru`) |
+| 3.1 | A rule that never fires | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s (`ru`) |
+| 3.2 | The sort attack the IDS misses | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s (`ru`) |
+| 3.3 | The same attack, spelled differently | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s (`ru`) |
+| 3.4 | XSS in a comment | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s (`ru`) |
 | 4.1 | An evening on your own | unknown, none (no cards, no hints) | `full` | `club` 2/s (adds code questions in comments) | `board-sqli-orderby-sqlmap-versioned` at 300 s, sqlmap at 600 s (`us`) |
 
 At PL3 a Korean search is refused by 920272 and 942460 on `ARGS:q` (and 920272
