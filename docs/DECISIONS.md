@@ -3632,3 +3632,110 @@ the edge's address on another origin's subnet (`1.128.0.1` on slot 1,
 `73.0.0.1` on slot 2), so the table shows `5.188.10.10/24` with that gateway;
 the edge holds no default route (`N/A`). Not done: the Docker learner map is
 rendered locally only (no Docker range runs live).
+
+## 2026-10-15 — The learner map is the company network the learner defends, named by role, one map per wargame
+
+The user's verdict on the lab-style map: it still showed the training
+platform (the `fsl-wargame-host` box, the `board_default`/`corp_default`
+Docker bridges, every `fsl-` name), not the system the learner learns; the
+link ends were all red; board and corp appeared together though a session
+defends one wargame. Rebuilt as a logical diagram of the company web-service
+network (Cisco NetAcad lab topology, NSRC logical diagram):
+
+- **Nodes by role.** `customers` and `attacker` on `internet`; `firewall`
+  (the OPNsense edge; its Suricata is folded in); `service-sw` with `waf` and
+  the site (`board.com` or `corp.com`); on OpenStack `board-db-sw` behind the
+  site with `board-db`, on Docker the database on `service-sw` (the Docker
+  range has no edge and puts sites and databases on the estate); and
+  `monitoring-sw` with `log-server`. The infrastructure rename is deferred by
+  the user (STATE backlog); the real hosts keep their names and
+  `topology.learner` maps them to the map's (hosts, roles, segments to
+  switches, sensors to the node whose NIC they use). The overlay, the follow
+  view, the f1 range questions (now `firewall`/`waf`, `log-server`,
+  `board-db-sw`/`service-sw`) and the interface read go through it.
+- **Labels are the real range's.** Attacker: its default-origin address
+  (`ens3 .10` of 5.188.10.0/24). Customers: the first address of the box the
+  customers run on in their busiest origin by `traffic.yaml` weight, the
+  default origin left out as `attacker.customer_origins` does (`ens3 .10` of
+  175.192.0.0/24 on both slots); unlabelled where the box holds none (Docker,
+  whose customers' box starts with the customers). The site on `service-sw`
+  carries the sites' host address (`ens3 .63` slot 1, `.184` slot 2: the WAF
+  reaches `board.com` and `corp.com` there), on the database switch the site
+  container's (`eth0 .3`). Zone captions carry the networks of the labels on
+  their switch (`인터넷 175.192.0.0/24, 5.188.10.0/24`).
+- **Log links are where records really go.** OpenStack: firewall, waf and the
+  site, because the estate sensor runs on the sites' host and ships its
+  eve.json (`logs:` in the declaration); the board app (gunicorn on :8000)
+  ships nothing of its own, and the nginx in the logs is the WAF. Docker: the
+  WAF alone (the session shipper reads the WAF's audit log and the Suricata
+  volume, Suricata running in the WAF's namespace).
+- **One map per wargame.** A template per substrate draws both wargames'
+  site, database and database switch in one place; `topology.for_wargame`
+  keeps the session's. Maps are keyed `slot <n> <wargame>` / `session <id>
+  <wargame>`; a slot keeps its newest session's map. `corp` declares no
+  customers, so its map has none. The templates are no longer copied into
+  the GNS3 server (they draw every wargame); the old `fsl-range-*` projects
+  and their 22 never-started `GNS3.*` containers were deleted from the
+  platform VM by hand.
+- **Every link end green.** GNS3 colours an end by its node's status. Each
+  host is a `docker` node of `busybox@sha256:73aaf090…` (1.36.1, 2.2 MB) that
+  only runs `sleep`, no console; the switches were already started.
+  `gns3.publish` starts a map's nodes after opening it, turns `auto_close`
+  off first (an import is made with it on whatever the file says, and a map
+  closed when the learner's frame went away and stopped its nodes), and
+  `provision.py` starts the display nodes (that image only) of every project it
+  opens. The display nodes are display only: the real machines run in the
+  range. What starting needed, measured on the VM: `busybox-static` in the
+  GNS3 image (GNS3 refuses to start a docker node without it) and `pid:
+  host` (uBridge moves the node's interface into the namespace of the
+  container's host pid; without it the start failed).
+- **Cost, measured on the platform VM** with slot 1 board and slot 2 corp in
+  both languages: 26 display containers; their processes and runc shims 115
+  MB PSS, their uBridge processes 12 MB PSS (43 uBridge processes in all,
+  19 MB); `fsl-gns3` 293 MiB. About 5 MB a node, 63 MB a board map pair.
+- **Removed: the addressing table** (its tab, en/ko strings, `GET
+  /api/sessions/<id>/topology/addresses/`, `topology.addressing`, the
+  default-route read in `range/interfaces.py`). The Topology pane's tab reads
+  Network map / 네트워크 구성도; no word a learner reads names GNS3 (the f1
+  lesson text now names the hosts by role).
+- **A customer request can be followed** (`?customer=<marker>`), starting at
+  `customers`; the console's picker does not list them yet (STATE backlog).
+
+Tests: 2027 before, 2033 after. Removed with the addressing table (6):
+`test_the_addressing_table_lists_each_device_s_interfaces_on_the_learner_s_segments_and_the_services`,
+`test_the_service_ports_are_the_ones_the_waf_and_the_databases_listen_on`,
+`test_a_slot_s_addressing_table_is_read_once_and_kept_with_its_map`,
+`test_the_addresses_endpoint_serves_the_session_s_table_and_says_why_when_the_range_cannot`,
+`test_the_default_route_is_read_from_proc_or_netstat_and_held_by_the_interface_it_leaves_by`
+(`test_gns3_maps.py`) and
+`test_the_addressing_table_lists_each_device_s_interfaces_and_the_services_beside_the_map`
+(`test_topology_console.py`). Added (12): a wargame's map shows only its own
+site; no two nodes stand on each other; display nodes are one pinned idle
+image; a node reached from straight above carries its name beside it;
+customers unlabelled without an address on their origins; a session's map is
+drawn for its wargame; a slot keeps its newest session's map; provisioning
+starts only display nodes; a customer request's path (topology and API); a
+corp case ends at `corp.com`; the Network map tab and no GNS3/`fsl-` in the
+pane's strings. Rewritten because the design changed: in
+`test_gns3_topology.py` the learner projection (now against the declaration
+through `topology.learner`, per wargame), the switches test, the zone-title
+test, the no-platform-word test (now also no `fsl-`, wargame host, `_default`),
+the log test (log sources instead of management adapters, since the display
+nodes' adapters mean nothing), the sensor-folding test, the geometry and
+caption tests (run on every wargame's projection), the domain test (no
+services table) and the symbol test (square or circle by the real machine,
+since every node is now a container); in `test_gns3_maps.py` node and switch
+names, the slot key with its wargame, the publish call list (adds `auto_close`
+off and the node start), a climbing link's label beside the node; in
+`test_gns3_follow.py` hop names (`waf`, `service-sw`, `firewall`,
+`board.com`; the estate sensor's hop is the site) and a sensor-records test
+whose request has no status, so the site hop's evidence comes from records
+alone; in `test_gns3_service.py` `pid: host`, no template copied in and no
+image tag rewritten; `test_foundations.py`'s expected answers.
+
+Live (platform VM, OpenStack): sessions 436 (board, slot 1) and 437 (corp,
+slot 2); both maps in both languages loaded, every node `started`, every link
+end green; the console pane showed slot 1's map under Network map /
+네트워크 구성도; both closed. Session 434 and 435 failed to open on the first
+deploy (`_maps_live` used the suppression query's `session__slot`); fixed and
+tested before the run above.

@@ -767,6 +767,19 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Scenario course P6 (2026-10-14): lessons 0-5 and 7, the rungs and
       `Session.mode` removed; docs; a live run (`docs/DECISIONS.md`, "P6
       built").
+- [x] The learner map as the company network the learner defends (2026-10-15):
+      role names, one map per wargame, every display node started, the
+      addressing table removed (`docs/DECISIONS.md`, 2026-10-15).
+- [ ] Rename the infrastructure's `fsl-` names (deferred by the user,
+      2026-10-15): hosts, containers, VMs and networks (`fsl-kali`,
+      `fsl-waf`, `fsl-edge`, `fsl-wargame-host`, `fsl-platform`, `fsl_mgmt`,
+      `fsl-auditor.html`, ...). `fsl-` is not a real name; the learner map no
+      longer shows it (`topology.learner` maps the range's names to role
+      names), but the system maps, the console's terminals and Kibana's
+      `log.syslog.hostname` still do.
+- [ ] The console's follow picker lists Website pane requests and fired
+      cases; a customer request is followed by `?customer=<marker>` through
+      the API only.
 - [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
       accepts `red: person`. Needs a second person to run live.
 - [ ] A range reset interrupted by a platform restart is not resumed at
