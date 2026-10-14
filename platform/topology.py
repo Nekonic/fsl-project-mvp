@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import ipaddress
 import json
-import math
 import uuid
 
+from range.interfaces import BRIDGE_PREFIX
 from range.slot import NAMED_ON
 
 def shape(described, declared=None) -> dict:
@@ -308,39 +308,41 @@ def facts(project, declared, scenario) -> dict[str, list[str]]:
 
 LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #1b4f8a;fill-opacity: 1.0;"
 SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 9.0;fill: #5b6770;fill-opacity: 1.0;"
+STARTS = "text-anchor: start;"
+ENDS = "text-anchor: end;"
 SYMBOL_SIZE = 60
-LABEL_REACH = 40
-LABEL_CHAR = 5.2
 LABEL_GAP = 6
-LABEL_ABOVE = 15
-LABEL_BELOW = 12
-ALONG = 0.5
+LABEL_RISE = 28
+LABEL_SIDE = 9
+LABEL_DROP = 4
+LABEL_CLIMB = 22
 KOREAN_SUFFIX = " ("
 
 def renamed(value: str, salt: str) -> str:
     return str(uuid.uuid5(uuid.UUID(value), salt))
 
 def _said(found, first) -> str:
-    ordered = sorted(found, key=lambda one: (not first or ipaddress.ip_interface(one.address).ip
-                                              not in ipaddress.ip_network(first), one.name,
-                                              ipaddress.ip_interface(one.address).ip))
-    head = ordered[0]
-    more = len(ordered) - 1
-    return f"{head.name} {head.address}" + (f" (+{more})" if more else "")
+    head = min(found, key=lambda one: (not first or ipaddress.ip_interface(one.address).ip
+                                       not in ipaddress.ip_network(first), one.name,
+                                       ipaddress.ip_interface(one.address).ip))
+    return f"{head.name} {head.address}"
 
-def _placed_label(text, node, other) -> tuple[int, int, int]:
-    half = SYMBOL_SIZE / 2
+def leaving(node, other) -> tuple[int, int]:
     dx, dy = other["x"] - node["x"], other["y"] - node["y"]
-    length = math.hypot(dx, dy) or 1
-    ux, uy = dx / length, dy / length
-    x, y = half + ux * LABEL_REACH, half + uy * LABEL_REACH
-    width = len(text) * LABEL_CHAR
-    if abs(ux) <= ALONG:
-        return round(x + LABEL_GAP), round(y + LABEL_BELOW if uy > 0 else y), 0
-    tx, ty = (ux, uy) if ux > 0 else (-ux, -uy)
-    if ux < 0:
-        x, y = x + ux * width, y + uy * width
-    return round(x + ty * LABEL_ABOVE), round(y - tx * LABEL_ABOVE), round(math.degrees(math.atan2(ty, tx)))
+    if abs(dx) >= abs(dy):
+        return (1 if dx > 0 else -1), 0
+    return 0, (1 if dy > 0 else -1)
+
+def _placed_label(node, other) -> tuple[int, int, str]:
+    half = SYMBOL_SIZE // 2
+    across, down = leaving(node, other)
+    if across > 0:
+        return SYMBOL_SIZE + LABEL_GAP, half - LABEL_RISE, STARTS
+    if across < 0:
+        return -LABEL_GAP, half - LABEL_RISE, ENDS
+    if down > 0:
+        return half + LABEL_SIDE, SYMBOL_SIZE + LABEL_DROP, STARTS
+    return half + LABEL_SIDE, -LABEL_CLIMB, STARTS
 
 def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     document = json.loads(json.dumps(project))
@@ -351,7 +353,7 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
     held: dict[tuple[str, str], list] = {}
     for one in found:
-        if one.segment:
+        if one.segment and not one.name.startswith(BRIDGE_PREFIX):
             held.setdefault((one.host, one.segment), []).append(one)
     for link in document["topology"]["links"]:
         ends = [by_id[end["node_id"]] for end in link["nodes"]]
@@ -359,9 +361,9 @@ def labelled(project, found, salt: str, called: str, first: str = "") -> dict:
             switching = node["node_type"] == SWITCH
             ours = held.get((node["name"], other["name"])) if not switching else None
             text = _said(ours, first) if ours else ""
-            x, y, rotation = _placed_label(text, node, other)
-            end["label"] = {"text": text, "style": SWITCH_LABEL_STYLE if switching else LABEL_STYLE,
-                            "x": x, "y": y, "rotation": rotation}
+            x, y, anchor = _placed_label(node, other)
+            end["label"] = {"text": text, "style": (SWITCH_LABEL_STYLE if switching else LABEL_STYLE) + anchor,
+                            "x": x, "y": y, "rotation": 0}
         link["link_id"] = renamed(link["link_id"], salt)
     for node in document["topology"]["nodes"]:
         node["node_id"] = renamed(node["node_id"], salt)
