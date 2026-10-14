@@ -271,9 +271,31 @@ What is left before the adapter can drive a range is listed in
 
 ## The topology
 
-The range's topology is two GNS3 project files, `deploy/topology/range-docker.gns3`
-and `deploy/topology/range-openstack.gns3`, `revision` 9 so GNS3 2.2 opens them
-and 3.x upgrades them on load. Segments are `ethernet_switch` nodes; Docker
+The range's topology is GNS3 project files, `revision` 9 so GNS3 2.2 opens them
+and 3.x upgrades them on load. Two kinds, per substrate:
+
+- **The system map**, `deploy/topology/system/range-{docker,openstack}.gns3`:
+  the full wiring of the declaration (the management segment, `fsl-platform`,
+  the control-plane containers, the stamping proxy). English only, for
+  development and GNS3's MCP; the GNS3 service's glob never reaches the
+  directory, so learners are never offered it.
+- **The learner map**, `deploy/topology/range-{docker,openstack}.gns3` and
+  their Korean pairs: the network the learner defends, as a company's network
+  would look. It is the system map without `mgmt`, every host's link to it,
+  the scorer, the control-plane containers and a proxy host of its own, plus
+  the log store (`fsl-elasticsearch`, compose's image) drawn unlinked with a
+  note naming the WAF and the sensors that send it records.
+  `test_gns3_topology.py` checks it as exactly that projection. The WAF and
+  the sites carry the domains learners type (`board.com`, `corp.com`, the WAF
+  host's declared names); a legend says the machines run in the range, not in
+  GNS3, so GNS3's red link marks mean stopped in GNS3. Symbols are GNS3's
+  bundled affinity set (square for a VM, circle for a container; red attacker,
+  green defence, blue sites, gray log store and switches, a globe for the
+  internet), and the wargame host wears the gns3-registry Ubuntu symbol, which
+  the GNS3 image fetches at a pinned commit and `provision.py` uploads. Each
+  map is centred on the origin.
+
+Segments are `ethernet_switch` nodes; Docker
 containers are `docker` nodes carrying their real images; OpenStack VMs are
 `qemu` nodes with no disk image (the OPNsense edge has three NICs in vtnet
 order); the wargame host's containers hang off a switch per compose project
@@ -284,13 +306,41 @@ network it watches (in the Docker project a dashed line joins `fsl-suricata` to
 (Internet, Application estate, Management and monitoring), and each container
 or VM has a plain-words note (`attacker's machine (Kali)`, `web firewall
 (ModSecurity + CRS)`); node names stay the host names, because GNS3 3.1 makes a
-node's label its name. The learner's sign-in page hides port labels.
+node's label its name.
 `platform/tests/test_gns3_topology.py`
-derives the expected nodes and links from `declaration.yaml`, `compose.yaml`,
+derives the system maps' expected nodes and links from `declaration.yaml`, `compose.yaml`,
 `session.yaml` and the wargame compose files and checks GNS3's structural
 rules. `bin/check-topology` installs gns3-server 2.2.61 and 3.1.0a6 into venvs
 under `~/.cache/fsl/check-topology` and runs each release's `load_topology` on a
-copy of each file.
+copy of each file, on a range map generated from each learner map with a
+fixture range, and checks every bundled symbol a node names exists in that
+release.
+
+### A range's own map
+
+The learner sees the addresses of their own range. `api/maps.py` derives, from
+the learner map, one project per OpenStack slot (`slot 1`, `slot 2`) or Docker
+session (`session <id>`) in each language (`topology.labelled`): every host's
+link end is labelled with the interface and its address on that segment, read
+from the range (the default origin's address first, `(+N)` for the rest, as
+on Kali's and the edge's internet side); every id is `uuid5(<learner id>,
+"slot-<n>")` (or `session-<id>`), the name gets the suffix, and
+`show_interface_labels` is on. The adapters read the interfaces
+(`interfaces()`): on OpenStack `ip -o -4 addr` (`ifconfig` on OPNsense) on
+each slot host over a runner that runs on the host itself, and on the wargame
+host the compose containers' addresses through `nsenter` and the bridges by
+Docker network id; on Docker each session endpoint's MAC is matched to
+`/sys/class/net` inside its container. `gns3.publish` signs in as GNS3's admin
+(the password from `FSL_GNS3_ADMIN_PASSWORD` or `/run/fsl-gns3/admin-password`,
+the GNS3 data directory mounted read-only; the file is 0640 to the Docker
+socket's group), deletes the project, imports it as a portable project whose
+`project.gns3` keeps the URL's project id (GNS3 then keeps every id, as for a
+snapshot) and opens it. A map is loaded at session open, after a slot's reset,
+and when the Topology pane asks (`GET /api/topology/?language=&session=`) and
+GNS3 does not hold it open; an unchanged map is not loaded again; the maps of a
+slot or session no longer standing are deleted. Generated maps are never
+committed. If GNS3 cannot load one, the endpoint serves the learner map and
+says why in `detail`.
 
 Each project has a Korean pair for Korean learners,
 `deploy/topology/range-docker.ko.gns3` and `range-openstack.ko.gns3`: the same
@@ -312,7 +362,13 @@ built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
 `fsl-auditor`, also handed to the platform), and writes
 `/static/web-ui/fsl-auditor.html`, which signs in as the learner and stores the
 token where the bundled web UI reads its controller (`controller-1`,
-`controllerIds` in `localStorage`). For development MCP use (`/v3/mcp/`), `docker
+`controllerIds` in `localStorage`), with `showInterfaceLabels` on and
+`integrateLinkLabelsToLinks` off so each link end's label is drawn where the
+project puts it. It opens the project in a same-origin frame and, once the map
+is drawn, closes the topology summary (its visibility is a constant in the
+3.1.0a6 bundle), zooms out with the web UI's own button (0.1 a step; the web UI
+never reads the project's `zoom`) until the drawing fits, and centres it with
+one mousemove in moving mode (the web UI pans by `movementX`/`movementY`). For development MCP use (`/v3/mcp/`), `docker
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP.
 
@@ -333,11 +389,11 @@ socket's group at start as `fsl` does in the platform. `GET /api/topology/`
 offers the web UI (`web_ui`) only while GNS3 reports the project `opened`;
 otherwise the console's Topology pane draws the same file itself.
 
-`GET /api/topology/?language=en|ko` returns the substrate's project drawn in
-that language from GNS3 (`platform/gns3.py`) or the repo's file (`en` when
+`GET /api/topology/?language=en|ko` returns the substrate's learner map drawn in
+that language (with `&session=<id>`, that session's range map, above) from GNS3 (`platform/gns3.py`) or the repo's file (`en` when
 absent, 400 for another); the console sends its own language, and `web_ui`
 deep-links the GNS3 web UI to that project's id. The overlay and the follow
-view below read the English file: the pair has the same node names and links,
+view below read the English learner map: the pair has the same node names and links,
 so a hop is the same on either map, and the pane draws the project it was
 served. `GET /api/sessions/<id>/topology/`
 adds `project.nodes`: each host node's addresses per declared segment from the
@@ -346,6 +402,12 @@ same range read, `running` or `not reported`. `GET
 `?case=<case id>`, or `?marker=`) draws the path from facts only. The sender is
 what sent it: the platform's site proxy (scorer role) for a Website pane
 request, the attacker box for a fired case, the proxy role for a bare marker.
+A sender not on the learner map is training plumbing: a Website pane request
+starts with a `console` hop (the learner's browser, with the address the WAF
+records for it) that arrives straight at the WAF, never through `mgmt` or the
+platform, and a marker the proxy stamped is drawn from the attacker. The
+session overlay lists only the map's hosts and their addresses on the map's
+segments.
 The destination is the address the request reached: the site proxy records the
 WAF address its socket connected to; a case uses the address its alerts name,
 else the name the range serves (the gateway's address on the segment the case
@@ -934,7 +996,7 @@ first visit.
 
 | unit | defense | the learner | answers read from |
 |---|---|---|---|
-| f1 My range | `full` | opens the Topology pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image, else the scorer's host (fsl-platform on OpenStack, where Elasticsearch runs in the platform's compose); the switch the scenario's database node is linked to (`board-default`, `estate`) |
+| f1 My range | `full` | opens the Topology pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image (fsl-elasticsearch on both substrates; on OpenStack it runs in the platform's compose and the learner map draws it as the log store); the switch the scenario's database node is linked to (`board-default`, `estate`) |
 | f2 Follow one request | `full` | searches in Korean in the Website pane, follows it in the Topology pane | the learner's own Website pane request: the follow walk's source address, the URL's port and the http records' destination ports, the status |
 | f3 HTTP | `full` | the same request's method, path, parameter, status class | the same request record |
 | f4 Reading logs | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |

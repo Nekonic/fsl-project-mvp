@@ -242,9 +242,25 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 
 ## 토폴로지
 
-레인지 토폴로지는 GNS3 프로젝트 파일 두 개다: `deploy/topology/range-docker.gns3`와
-`deploy/topology/range-openstack.gns3`. `revision` 9라서 GNS3 2.2가 열고 3.x는 불러올 때
-올린다. 구간은 `ethernet_switch` 노드, Docker 컨테이너는 실제 이미지를 가진 `docker`
+레인지 토폴로지는 GNS3 프로젝트 파일이다. `revision` 9라서 GNS3 2.2가 열고 3.x는 불러올 때
+올린다. substrate마다 두 종류가 있다:
+
+- **시스템 지도** `deploy/topology/system/range-{docker,openstack}.gns3`: 선언의 전체 배선(관리
+  구간, `fsl-platform`, 컨트롤 플레인 컨테이너, 표시 프록시). 영어만 있고 개발과 GNS3 MCP용이다.
+  GNS3 서비스의 glob이 이 디렉터리에 닿지 않으므로 학습자에게는 보이지 않는다.
+- **학습자 지도** `deploy/topology/range-{docker,openstack}.gns3`와 한국어 짝: 학습자가 지키는
+  네트워크를 회사 네트워크처럼 보여 준다. 시스템 지도에서 `mgmt`, 모든 호스트의 `mgmt` 링크,
+  scorer, 컨트롤 플레인 컨테이너, 따로 선 proxy 호스트를 뺀 것에 로그 저장소(`fsl-elasticsearch`,
+  compose의 이미지)를 링크 없이 더하고, 기록을 보내는 WAF와 센서 이름을 옆 메모에 적는다.
+  `test_gns3_topology.py`가 정확히 그 투영인지 확인한다. WAF와 사이트에는 학습자가 입력하는
+  도메인(`board.com`, `corp.com`, WAF 호스트의 선언 이름)이 붙고, 범례는 장비가 GNS3가 아니라
+  레인지에서 동작하므로 GNS3의 빨간 링크 표시는 GNS3에서 꺼져 있다는 뜻이라고 말한다. 심볼은
+  GNS3에 번들된 affinity 세트다(VM은 네모, 컨테이너는 동그라미; 공격자 빨강, 방어 초록, 사이트
+  파랑, 로그 저장소와 스위치 회색, 인터넷은 지구본). wargame 호스트는 gns3-registry의 Ubuntu
+  심볼을 쓰며, GNS3 이미지가 고정한 커밋에서 받아 `provision.py`가 올린다. 지도는 원점을
+  가운데로 놓는다.
+
+구간은 `ethernet_switch` 노드, Docker 컨테이너는 실제 이미지를 가진 `docker`
 노드, OpenStack VM은 디스크 이미지 없는 `qemu` 노드(OPNsense 엣지는 vtnet 순서대로 NIC
 셋)다. wargame 호스트의 컨테이너는 compose 프로젝트마다 스위치 하나(`board-default`,
 `corp-default`)에 붙는다. 다른 컨테이너의 네트워크 네임스페이스나 호스트 네트워크를 쓰는
@@ -252,12 +268,32 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
 점선이 `fsl-suricata`를 `fsl-waf`에 잇는다). 선언된 구간마다 그 스위치를 담은 제목 붙은
 사각형이 있고(Internet, Application estate, Management and monitoring), 컨테이너와 VM마다
 쉬운 말 메모가 붙는다(`attacker's machine (Kali)`, `web firewall (ModSecurity + CRS)`). GNS3
-3.1은 노드 라벨을 이름으로 바꾸므로 노드 이름은 호스트 이름 그대로 둔다. 학습자 로그인 페이지는
-포트 라벨을 숨긴다. `platform/tests/test_gns3_topology.py`가 `declaration.yaml`,
-`compose.yaml`, `session.yaml`, wargame compose 파일에서 기대 노드와 링크를 유도해 비교하고
+3.1은 노드 라벨을 이름으로 바꾸므로 노드 이름은 호스트 이름 그대로 둔다.
+`platform/tests/test_gns3_topology.py`가 `declaration.yaml`, `compose.yaml`, `session.yaml`,
+wargame compose 파일에서 시스템 지도의 기대 노드와 링크를 유도해 비교하고
 GNS3의 구조 규칙을 확인한다. `bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을
 `~/.cache/fsl/check-topology` 아래 venv에 설치하고 각 버전의 `load_topology`를 각 파일의
-사본에 돌린다.
+사본과, 학습자 지도마다 가짜 레인지로 만든 레인지 지도에 돌리며, 노드가 쓰는 번들 심볼이 그
+버전에 있는지 확인한다.
+
+### 내 레인지의 지도
+
+학습자는 자기 레인지의 주소를 본다. `api/maps.py`는 학습자 지도에서 OpenStack 슬롯(`slot 1`,
+`slot 2`) 또는 Docker 세션(`session <id>`)마다, 언어마다 프로젝트 하나를 만든다
+(`topology.labelled`): 호스트 쪽 링크 끝마다 그 구간의 인터페이스 이름과 주소를 레인지에서 읽어
+붙이고(기본 출발지 주소가 먼저, 나머지는 `(+N)`; Kali와 엣지의 인터넷 쪽처럼), 모든 id는
+`uuid5(<학습자 지도 id>, "slot-<n>")`(또는 `session-<id>`), 이름에는 접미사를 붙이고
+`show_interface_labels`를 켠다. 인터페이스는 어댑터가 읽는다(`interfaces()`): OpenStack은 슬롯의
+호스트마다 그 호스트 자체에서 도는 runner로 `ip -o -4 addr`(OPNsense는 `ifconfig`)를, wargame
+호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크 id로 읽는다. Docker는
+세션 엔드포인트의 MAC을 컨테이너 안의 `/sys/class/net`과 맞춘다. `gns3.publish`는 GNS3 admin으로
+로그인해(비밀번호는 `FSL_GNS3_ADMIN_PASSWORD` 또는 `/run/fsl-gns3/admin-password`; GNS3 데이터
+디렉터리를 읽기 전용으로 붙이고, 파일은 Docker 소켓 그룹에 0640) 프로젝트를 지우고, URL의
+프로젝트 id를 그대로 가진 `project.gns3`로 portable 프로젝트를 가져와(GNS3는 스냅숏처럼 모든 id를
+유지한다) 연다. 지도는 세션을 열 때, 슬롯 초기화가 끝난 뒤, 그리고 토폴로지 창이 물었는데
+(`GET /api/topology/?language=&session=`) GNS3가 열어 두지 않았을 때 올린다. 바뀌지 않은 지도는
+다시 올리지 않고, 더는 없는 슬롯이나 세션의 지도는 지운다. 만든 지도는 커밋하지 않는다. GNS3가
+올리지 못하면 엔드포인트는 학습자 지도를 내주고 이유를 `detail`에 쓴다.
 
 프로젝트마다 한국어 학습자를 위한 한국어 짝이 있다: `deploy/topology/range-docker.ko.gns3`와
 `range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 그려진 글자(지도 제목, 구간 제목,
@@ -274,7 +310,11 @@ GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프�
 learner 사용자에게 `/`에 대한 내장 Auditor 역할을 주고(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값
 `fsl-auditor`, 플랫폼에도 전달), `/static/web-ui/fsl-auditor.html`을 쓴다. 이 페이지는
 learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localStorage`의 `controller-1`,
-`controllerIds`)에 토큰을 둔다. 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
+`controllerIds`)에 토큰을 두고, 링크 끝 라벨을 프로젝트가 정한 자리에 그리도록
+`showInterfaceLabels`를 켜고 `integrateLinkLabelsToLinks`를 끈다. 프로젝트는 같은 출처의 프레임 안에서
+열고, 지도가 그려지면 토폴로지 요약 창을 닫고(3.1.0a6 번들에서 이 창의 표시 여부는 상수다), 그림이
+들어갈 때까지 웹 UI의 축소 버튼(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않는다)을 누르고,
+이동 모드에서 mousemove 한 번으로 가운데로 옮긴다(웹 UI는 `movementX`/`movementY`만큼 옮긴다). 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
 /opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다.
 
 GNS3는 모든 노드를 compute에 만들어야만 프로젝트를 열고, 읽기 전용 사용자는 프로젝트를 열 수
@@ -290,16 +330,20 @@ capability를 준 uBridge 1.2.3과 `CAP_NET_ADMIN`, `/dev/net/tun`(3.1은 스위
 그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고할 때만 웹 UI(`web_ui`)를
 내주고, 아니면 콘솔의 토폴로지 창이 같은 파일을 직접 그린다.
 
-`GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 프로젝트를
+`GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 학습자 지도를(`&session=<id>`가
+있으면 위의 그 세션 레인지 지도를)
 GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면 `en`, 다른 값이면 400). 콘솔은
 자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로 연다. 아래의 오버레이와
-따라가기는 영어 파일을 읽는다: 짝은 노드 이름과 링크가 같아서 홉은 어느 지도에서나 같고, 창은
+따라가기는 영어 학습자 지도를 읽는다: 짝은 노드 이름과 링크가 같아서 홉은 어느 지도에서나 같고, 창은
 받은 프로젝트를 그린다. `GET /api/sessions/<id>/topology/`는 `project.nodes`를 더한다: 같은 레인지
 읽기에서 얻은 호스트 노드별 선언 구간 주소와 `running` 또는 `not reported`.
 `GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는
 `?case=<케이스 id>`, `?marker=`)는 사실만으로 경로를 그린다. 보낸 쪽은 실제로 보낸 것이다:
 웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는 공격자 박스, 마커만
-있으면 proxy 역할. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
+있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용 배관이다: 웹사이트 창 요청은 `console` 홉
+(학습자의 브라우저, WAF가 기록한 그 주소)에서 시작해 `mgmt`나 플랫폼을 거치지 않고 바로 WAF에 닿고,
+proxy가 표시한 마커는 공격자에서 그린다. 세션 overlay는 지도에 있는 호스트와 지도에 있는 구간의
+주소만 싣는다. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
 기록하고, 케이스는 경보에 적힌 주소를, 없으면 레인지가 내주는 이름(케이스가 출발한 구간의
 게이트웨이 주소, 없으면 모든 레인지 호스트의 `/etc/hosts`대로 estate의 주소)을 쓴다. 보낸
 쪽은 케이스를 띄운 구간(`launched_on`으로 기록) 또는 목적지와 같이 붙은 구간으로 나가고, 구간이
@@ -733,7 +777,7 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
-| f1 내 레인지 | `full` | 토폴로지 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드, 없으면 scorer 호스트(OpenStack은 플랫폼 compose에서 Elasticsearch가 도는 fsl-platform), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
+| f1 내 레인지 | `full` | 토폴로지 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
 | f2 요청 하나 따라가기 | `full` | 웹사이트 창에서 한국어로 검색하고 토폴로지 창에서 따라간다 | 학습자 자신의 웹사이트 창 요청: 따라가기의 출발지 주소, URL의 포트와 http 기록의 목적지 포트, 상태 코드 |
 | f3 HTTP | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
 | f4 로그 읽기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
