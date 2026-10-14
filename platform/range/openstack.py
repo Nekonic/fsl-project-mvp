@@ -76,6 +76,7 @@ SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = "fsl.segment.id"
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
+OWN_LISTED_TIMEOUT = 60
 GATEWAY_ROLE = "gateway"
 BUILD_GROUP = "fsl-build"
 SENSOR_ROLE = "sensor"
@@ -603,7 +604,19 @@ class OpenStack:
                 found += interfaces.placed(host, own, subnets_here)
             except RangeUnavailable:
                 continue
+        scorer = self.declared.host(SCORER_ROLE)
+        if hosts is not None and scorer in hosts:
+            found += interfaces.placed(scorer, self._own_listed(), subnets)
         return found
+
+    @staticmethod
+    def _own_listed() -> str:
+        try:
+            done = subprocess.run(interfaces.on_this_host(interfaces.LISTED), capture_output=True, text=True,
+                                  timeout=OWN_LISTED_TIMEOUT)
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return done.stdout if done.returncode == 0 else ""
 
     def _container(self, role: str, host: str) -> str:
         entry = self.declared.hosts.get(host)

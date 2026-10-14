@@ -15,7 +15,7 @@ HOPS = [
     {"node": None, "kind": "console", "evidence": True, "source": "172.30.0.9"},
     {"node": "waf", "kind": "host", "evidence": True, "sensor": "waf", "alerts": [],
      "verdict": "blocked", "rules": ["920272", "949110"]},
-    {"node": "service-sw", "kind": "segment"},
+    {"node": "sw1", "kind": "segment"},
     {"node": "board.com", "kind": "host", "evidence": True, "status": None, "reached": False},
 ]
 CASE_HOPS = [
@@ -24,7 +24,7 @@ CASE_HOPS = [
     {"node": None, "kind": "unknown"},
     {"node": "waf", "kind": "host", "evidence": False, "sensor": "waf", "alerts": [],
      "verdict": None, "rules": []},
-    {"node": "service-sw", "kind": "segment"},
+    {"node": "sw1", "kind": "segment"},
     {"node": "board.com", "kind": "host", "evidence": False, "status": None, "reached": None},
 ]
 
@@ -34,7 +34,7 @@ browser.serve((request) => {{
   if (request.route === "/api/topology/") return {{body: {{source: "gns3", status: "", detail: "",
     project: {js(PROJECT)}, web_ui: {js(web_ui)}}}}};
   if (request.route === "/api/sessions/1/topology/") return {{body: {{segments: [], project: {{nodes: {{
-    "waf": {{status: "running", addresses: {{"service-sw": ["172.30.0.3"]}}}},
+    "waf": {{status: "running", addresses: {{"sw1": ["172.30.0.3"]}}}},
     "attacker": {{status: "not reported", addresses: {{}}}}}}}}}}}};
   if (request.route === "/api/sessions/1/site/requests/") return {{body: [
     {{id: 7, method: "GET", url: "http://board.com/search/?q=%ED%95%9C", status: 403, blocked: true}}]}};

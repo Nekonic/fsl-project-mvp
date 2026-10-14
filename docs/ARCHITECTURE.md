@@ -287,25 +287,30 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   else (no title, legend or note, no machine's own name, no `fsl-`, no
   management segment, no Docker bridge name). The nodes are `customers` and
   `attacker` on the `internet` switch, the `firewall` (OpenStack's OPNsense
-  edge, whose Suricata is folded into it), `service-sw` with the `waf` and the
-  site (`board.com` or `corp.com`, the WAF host's declared names), on OpenStack
-  a database switch (`board-db-sw`) behind the site with its database
-  (`board-db`), on Docker the database on `service-sw` (the Docker range has no
-  edge and puts the sites and their databases on the estate, so its map does
-  too), and `monitoring-sw` linking the `log-server` (Elasticsearch) to the
+  edge, whose Suricata is folded into it), `sw1` (the service segment) with the
+  `waf` and the site (`board.com` or `corp.com`, the WAF host's declared
+  names), on OpenStack `sw2` (the database segment) behind the site with its
+  database (`board-db`), on Docker the database on `sw1` (the Docker range has
+  no edge and puts the sites and their databases on the estate, so its map
+  does too, and has no `sw2`), and `sw3` (monitoring) linking the `log-server`
+  (Elasticsearch) to the
   hosts whose records reach it: on OpenStack the firewall, the WAF and the
   site (the estate sensor runs on the sites' host and ships its own eve.json),
   on Docker the WAF alone (the session shipper reads the WAF's audit log and
-  the volume of Suricata, which runs in the WAF's namespace). A template
-  draws both wargames' site, database and database switch in one place;
+  the volume of Suricata, which runs in the WAF's namespace). Switches are
+  numbered as lab topologies number them (`sw1`, `sw2`, `sw3`, NSRC's `sw1`),
+  in a fixed order: service, database, monitoring; the zone captions say
+  which segment each is. A template draws both wargames' site and database in
+  one place, both on the one `sw2`;
   `topology.for_wargame` keeps the session's own, and a wargame that declares
   no customers (`corp`, no `traffic.yaml`) has no `customers` node.
   `topology.learner(declaration, wargame)` is the mapping from the range's
   names to the map's: hosts (`fsl-kali` is `attacker` and, where customers run
   on it, `customers`; `fsl-edge` is `firewall`; the wargame host and its site
   container are the site; `fsl-elasticsearch` is `log-server`), roles,
-  segments to switches (origins to `internet`, the estate to `service-sw`, a
-  wargame's compose network to its database switch) and each sensor to the
+  segments to switches (origins to `internet`, the estate to `sw1`, a
+  wargame's compose network to `sw2`; the management segment to `sw3` for the
+  NIC name alone) and each sensor to the
   node whose NIC it uses; the overlay, the follow view, the lesson's range
   questions and the interface read go through it. Every link is one straight
   line, level, upright or diagonal, none crossing another link or a node; a
@@ -350,30 +355,41 @@ checks every bundled symbol a node names exists in that release.
 The learner sees the addresses of their own range. `api/maps.py` derives, from
 the learner map, one project per OpenStack slot or Docker session and the
 session's wargame (`slot 1 board`, `session <id> corp`) in each language
-(`topology.labelled`): every host's link end is labelled with the real
-interface and the last octet of its address on that switch's segment (`ens3
-.102`, `vtnet0 .1`), read from the range through `topology.learner`: the
+(`topology.labelled`): every link is labelled at both ends, as a lab topology
+labels it. A switch's end (and the `internet` switch's) carries the port the
+link uses in short form (`Ethernet2` is `e2`). Every host's end is labelled with
+the real interface and the last octet of its address on that switch's segment
+(`ens3 .102`, `vtnet0 .1`), read from the range through `topology.learner`: the
 attacker's address in the default origin, the customers' first address in
 their busiest origin (`traffic.yaml`'s weights, the default origin left out,
 as `attacker.customer_origins` does; no label where the box holds none, as on
 Docker, whose customers' box starts with the customers), the site's host
-address on `service-sw` (the WAF reaches the site there) and the site
-container's on the database switch; nothing on a switch's own end, a Docker
-bridge (`br-`) or a `monitoring-sw` link, whose NIC is on the management
-network. Each zone caption gains the networks of the labels on its switch
+address on `sw1` (the WAF reaches the site there) and the site container's on
+`sw2` (a dual-homed server, one label at each of its own link ends). A `sw3`
+end carries the NIC name alone (`ens4`, `vtnet2`), because its address is on
+the management network the learner does not see; the `log-server`'s is the log
+store's own NIC where it has one on that network (Docker) and otherwise the
+platform VM's (OpenStack, `ens7`). No label names a Docker bridge (`br-`). The
+one end that can stay blank is Docker's `customers`, whose box runs only while
+the customers do. Each zone caption gains the networks of the labels on its switch
 (`Internet 175.192.0.0/24, 5.188.10.0/24`, `Application estate
 10.30.0.0/24`, `Internal DB 172.18.0.0/16`; the caption of a switch is the
 text in the smallest box holding it, `topology.captions`); Monitoring keeps its
 name alone. A label lies level beside its node on the side its link leaves
-(`topology.leaving`), above the line or below it when the link climbs, clear of
-GNS3's status mark, right of a node a link leaves upward, right-aligned with
-`text-anchor: end` on a node's left; every id is `uuid5(<learner id>,
+(`topology.leaving`): on a level or shallow link above or below the line on
+whichever side the node's other links leave more room, clear of where the
+line runs under the text; on a steep link below the node, or above it where
+the node's name is beside it, left or right of the line by the same rule
+(right of the node where its name is above); clear of GNS3's status mark,
+right-aligned with `text-anchor: end` on the left; every id is `uuid5(<learner id>,
 "slot-<n>-<wargame>")` (or `session-<id>-<wargame>`), the name gets the key,
 and `show_interface_labels` is on. The adapters read the interfaces
 (`interfaces()`): on OpenStack `ip -o -4 addr` (`ifconfig` on OPNsense) on
 each slot host over a runner that runs on the host itself, and on the wargame
 host the compose containers' addresses through `nsenter` and the bridges by
-Docker network id; on Docker each session endpoint's MAC is matched to
+Docker network id, and the platform VM's own NICs with the same `ip` in a
+`busybox` container on the host network (`interfaces.on_this_host`; the
+platform takes no SSH); on Docker each session endpoint's MAC is matched to
 `/sys/class/net` inside its container.
 
 `gns3.publish` signs in as GNS3's admin (the password from

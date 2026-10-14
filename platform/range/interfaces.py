@@ -15,6 +15,7 @@ CONTAINERS = (
     "  nsenter -t \"$2\" -n ip -o -4 addr show\n"
     "done"
 )
+BUSYBOX = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
 MACS = 'for i in /sys/class/net/*; do echo "${i##*/} $(cat "$i/address")"; done'
 IP_LINE = re.compile(r"^\d+:\s+(?P<name>[^\s@]+)(?:@\S+)?\s+inet\s+(?P<address>\d+\.\d+\.\d+\.\d+/\d+)")
 IFCONFIG_NAME = re.compile(r"^(?P<name>[A-Za-z0-9_.]+):\s+flags=")
@@ -29,6 +30,9 @@ class Interface:
     name: str
     address: str
     segment: str = ""
+
+def on_this_host(command: str) -> list[str]:
+    return ["docker", "run", "--rm", "--network", "host", BUSYBOX, "sh", "-c", command]
 
 def listed(output: str) -> list[tuple[str, str]]:
     found, current = [], ""

@@ -487,7 +487,7 @@ def test_the_learner_map_is_the_declared_range_named_by_role_and_wired_as_the_sy
                 topology.MONITORING, domain, database}
     expected |= {topology.FIREWALL} if "edge" in stack.roles else set()
     expected |= {topology.CUSTOMERS} if customers_prefer(stack, wargame) else set()
-    expected |= {f"{database}{topology.SWITCH_SUFFIX}"} if f"{wargame}{topology.BRIDGE_SUFFIX}" in nodes(system) else set()
+    expected |= {topology.DATABASE_SWITCH} if f"{wargame}{topology.BRIDGE_SUFFIX}" in nodes(system) else set()
     real = {(shown_as, shown.switches[segment]) for host, segments in wiring(system).items()
             for shown_as in shown.hosts.get(host, ()) for segment in segments if segment in shown.switches}
 

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
+import re
 import uuid
 from dataclasses import dataclass
 from xml.etree import ElementTree
 
-from range.interfaces import BRIDGE_PREFIX
+from range.fabric import MANAGEMENT
+from range.interfaces import BRIDGE_PREFIX, BUSYBOX
 from range.slot import NAMED_ON
 
 def shape(described, declared=None) -> dict:
@@ -60,7 +63,6 @@ TRANSIT = ("edge", "gateway", "wargames")
 SEEN_KEPT = 5
 CONSOLE = "console"
 DATABASE_SUFFIX = "-db"
-SWITCH_SUFFIX = "-sw"
 BRIDGE_SUFFIX = "-default"
 LOG_STORE = "fsl-elasticsearch"
 ATTACKER = "attacker"
@@ -69,9 +71,11 @@ FIREWALL = "firewall"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
-SERVICE = "service-sw"
-MONITORING = "monitoring-sw"
-DISPLAY_IMAGE = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+SERVICE = "sw1"
+DATABASE_SWITCH = "sw2"
+MONITORING = "sw3"
+SCORER = "scorer"
+DISPLAY_IMAGE = BUSYBOX
 
 @dataclass(frozen=True)
 class Learner:
@@ -83,6 +87,8 @@ class Learner:
     sensors: dict[str, str]
     hidden: frozenset[str]
     prefers: dict[str, tuple[str, ...]]
+    unaddressed: dict[str, str]
+    logs_from: tuple[str, ...]
 
     def shown(self, real: str) -> str:
         return (self.hosts.get(real) or (real,))[0]
@@ -92,8 +98,7 @@ def domains(declared) -> dict[str, str]:
     return {name.split(".")[0]: name for name in (gateway.names if gateway else ())}
 
 def _parts(wargame: str, domain: str) -> set[str]:
-    database = f"{wargame}{DATABASE_SUFFIX}"
-    return {domain, database, f"{database}{SWITCH_SUFFIX}"}
+    return {domain, f"{wargame}{DATABASE_SUFFIX}"}
 
 def learner(declared, wargame: str, customers_from: str = "", customers_prefer: tuple[str, ...] = ()) -> Learner:
     roles, compose = declared.roles, declared.compose
@@ -133,7 +138,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     switches.update({origin.segment: INTERNET for origin in declared.origins})
     switches[NAMED_ON] = SERVICE
     shared = frozenset(switches.values())
-    switches[f"{wargame}{BRIDGE_SUFFIX}"] = f"{database}{SWITCH_SUFFIX}"
+    switches[f"{wargame}{BRIDGE_SUFFIX}"] = DATABASE_SWITCH
 
     sensors = {roles[sensing]: (hosts.get(roles.get(sensed, "")) or ("",))[0]
                for sensing, sensed in sorted(declared.watches.items()) if sensing in roles}
@@ -142,8 +147,10 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
         hidden.add(CUSTOMERS)
     first = next((origin.subnet for origin in declared.origins if origin.id == declared.default_origin), "")
     prefers = {ATTACKER: (first,), CUSTOMERS: tuple(customers_prefer), "": (first,)}
+    logs_from = tuple(dict.fromkeys(filter(None, (LOG_STORE, roles.get(SCORER, "")))))
     return Learner(wargame=wargame, hosts={real: tuple(shown) for real, shown in hosts.items()}, roles=placed,
-                   switches=switches, shared=shared, sensors=sensors, hidden=frozenset(hidden), prefers=prefers)
+                   switches=switches, shared=shared, sensors=sensors, hidden=frozenset(hidden), prefers=prefers,
+                   unaddressed={MANAGEMENT: MONITORING}, logs_from=logs_from)
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -390,8 +397,13 @@ SYMBOL_SIZE = 60
 LABEL_GAP = 6
 LABEL_RISE = 28
 LABEL_FALL = 4
-LABEL_SIDE = 9
-LABEL_DROP = 4
+LABEL_ASIDE = 8
+LABEL_BELOW = 64
+LABEL_ABOVE = -24
+LABEL_CHAR = 6
+GLYPH_TOP = 4
+GLYPH_BOTTOM = 18
+PORT_NAME = re.compile(r"(?P<kind>[A-Za-z])[A-Za-z]*(?P<number>\d+)")
 KOREAN_SUFFIX = " ("
 CAPTION_CHAR = 0.62
 NETWORKS_JOINED = ", "
@@ -416,17 +428,57 @@ def leaving(node, other) -> tuple[int, int]:
         return (1 if dx > 0 else -1), 0
     return 0, (1 if dy > 0 else -1)
 
-def _placed_label(node, other) -> tuple[int, int, str]:
+def heading(node, other) -> tuple[float, float]:
+    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
+    length = math.hypot(dx, dy) or 1.0
+    return dx / length, dy / length
+
+def _apart(one, other) -> float:
+    return math.acos(max(-1.0, min(1.0, one[0] * other[0] + one[1] * other[1])))
+
+def _roomier(sides, others):
+    room = [min((_apart(side, other) for other in others), default=math.pi) for side in sides]
+    return sides[1] if room[1] > room[0] else sides[0]
+
+def named_above(node) -> bool:
+    return (node.get("label") or {}).get("x") is None
+
+def _placed_label(node, other, others, text) -> tuple[int, int, str]:
     half = SYMBOL_SIZE // 2
-    across, down = leaving(node, other)
-    beside = half + LABEL_FALL if other["y"] < node["y"] else half - LABEL_RISE
-    if across > 0:
-        return SYMBOL_SIZE + LABEL_GAP, beside, STARTS
-    if across < 0:
-        return -LABEL_GAP, beside, ENDS
-    if down > 0:
-        return half + LABEL_SIDE, SYMBOL_SIZE + LABEL_DROP, STARTS
-    return SYMBOL_SIZE + LABEL_GAP, LABEL_FALL, STARTS
+    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
+    if abs(dx) >= abs(dy):
+        near = half + LABEL_GAP
+        crossed = [half + dy / abs(dx) * reach for reach in (near, near + len(text) * LABEL_CHAR)]
+        under, over = (0, 1), (0, -1)
+        side = _roomier((under, over) if dy < 0 else (over, under), others)
+        y = round(min(crossed) - LABEL_RISE if side == over else max(crossed) + LABEL_FALL)
+        return (SYMBOL_SIZE + LABEL_GAP, y, STARTS) if dx > 0 else (-LABEL_GAP, y, ENDS)
+    if dy < 0 and named_above(node):
+        return SYMBOL_SIZE + LABEL_GAP, LABEL_FALL, STARTS
+    top = LABEL_BELOW if dy > 0 else LABEL_ABOVE
+    crossed = [half + dx / dy * (y - half) for y in (top + GLYPH_TOP, top + GLYPH_BOTTOM)]
+    if _roomier(((1, 0), (-1, 0)), others) == (1, 0):
+        return round(max(crossed) + LABEL_ASIDE), top, STARTS
+    return round(min(crossed) - LABEL_ASIDE), top, ENDS
+
+def port_label(node, number: int) -> str:
+    named = next((port["name"] for port in (node.get("properties") or {}).get("ports_mapping") or ()
+                  if port["port_number"] == number), "")
+    found = PORT_NAME.fullmatch(named)
+    return f"{found['kind'].lower()}{found['number']}" if found else ""
+
+def _nic_only(learner, found) -> dict[tuple[str, str], str]:
+    ranked: dict[tuple[str, str], list] = {}
+    for one in found:
+        switch = learner.unaddressed.get(one.segment)
+        if not switch or one.name.startswith(BRIDGE_PREFIX):
+            continue
+        logging = one.host in learner.logs_from
+        names = learner.hosts.get(one.host) or ((LOG_SERVER,) if logging else ())
+        rank = learner.logs_from.index(one.host) if logging else 0
+        for name in names:
+            ranked.setdefault((name, switch), []).append((rank, one.name))
+    return {pair: min(held)[1] for pair, held in ranked.items()}
 
 def _shape(drawing) -> tuple[ElementTree.Element, ElementTree.Element]:
     svg = ElementTree.fromstring(drawing["svg"])
@@ -494,6 +546,12 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
         if switch and not one.name.startswith(BRIDGE_PREFIX):
             for name in learner.hosts.get(one.host, ()):
                 held.setdefault((name, switch), []).append(one)
+    bare = _nic_only(learner, found)
+    toward: dict[str, list[tuple[str, tuple[float, float]]]] = {}
+    for link in document["topology"]["links"]:
+        one, other = (by_id[end["node_id"]] for end in link["nodes"])
+        toward.setdefault(one["node_id"], []).append((link["link_id"], heading(one, other)))
+        toward.setdefault(other["node_id"], []).append((link["link_id"], heading(other, one)))
     networks: dict[str, list[str]] = {}
     for link in document["topology"]["links"]:
         ends = [by_id[end["node_id"]] for end in link["nodes"]]
@@ -502,12 +560,18 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
             prefers = learner.prefers.get(node["name"], learner.prefers[""])
             head = None if switching else _head(held.get((node["name"], other["name"]), []), prefers,
                                                  strict=node["name"] == CUSTOMERS)
-            text = f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}" if head else ""
+            if switching:
+                text = port_label(node, end["port_number"])
+            elif head:
+                text = f"{head.name} .{str(_ip(head)).rsplit('.', 1)[1]}"
+            else:
+                text = bare.get((node["name"], other["name"]), "")
             if head:
                 network = str(ipaddress.ip_interface(head.address).network)
                 if network not in networks.setdefault(other["name"], []):
                     networks[other["name"]].append(network)
-            x, y, anchor = _placed_label(node, other)
+            others = [way for linked, way in toward[node["node_id"]] if linked != link["link_id"]]
+            x, y, anchor = _placed_label(node, other, others, text)
             end["label"] = {"text": text, "style": (SWITCH_LABEL_STYLE if switching else LABEL_STYLE) + anchor,
                             "x": x, "y": y, "rotation": 0}
         link["link_id"] = renamed(link["link_id"], salt)

@@ -236,8 +236,8 @@
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "eaf12299-321e-5358-ad94-7c6cb281e82c",
-                        "port_number": 0
+                        "node_id": "59180116-44db-59c4-aee9-979341752c97",
+                        "port_number": 2
                     }
                 ],
                 "suspend": false
@@ -270,8 +270,8 @@
                     },
                     {
                         "adapter_number": 0,
-                        "node_id": "eaf12299-321e-5358-ad94-7c6cb281e82c",
-                        "port_number": 1
+                        "node_id": "59180116-44db-59c4-aee9-979341752c97",
+                        "port_number": 3
                     }
                 ],
                 "suspend": false
@@ -511,11 +511,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "service-sw",
+                    "text": "sw1",
                     "x": null,
                     "y": -25
                 },
-                "name": "service-sw",
+                "name": "sw1",
                 "node_id": "6ada1b77-bbbc-5231-a378-4d08a7dab0b8",
                 "node_type": "ethernet_switch",
                 "properties": {
@@ -653,82 +653,12 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "board-db-sw",
+                    "text": "sw2",
                     "x": null,
                     "y": -25
                 },
-                "name": "board-db-sw",
+                "name": "sw2",
                 "node_id": "59180116-44db-59c4-aee9-979341752c97",
-                "node_type": "ethernet_switch",
-                "properties": {
-                    "ports_mapping": [
-                        {
-                            "name": "Ethernet0",
-                            "port_number": 0,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet1",
-                            "port_number": 1,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet2",
-                            "port_number": 2,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet3",
-                            "port_number": 3,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet4",
-                            "port_number": 4,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet5",
-                            "port_number": 5,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet6",
-                            "port_number": 6,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet7",
-                            "port_number": 7,
-                            "type": "access",
-                            "vlan": 1
-                        }
-                    ]
-                },
-                "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 690,
-                "y": -30,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "corp-db-sw",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "corp-db-sw",
-                "node_id": "eaf12299-321e-5358-ad94-7c6cb281e82c",
                 "node_type": "ethernet_switch",
                 "properties": {
                     "ports_mapping": [
@@ -841,11 +771,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "monitoring-sw",
-                    "x": -120,
+                    "text": "sw3",
+                    "x": -36,
                     "y": 20
                 },
-                "name": "monitoring-sw",
+                "name": "sw3",
                 "node_id": "ef8ac537-8592-5876-bf42-7ff342c668e5",
                 "node_type": "ethernet_switch",
                 "properties": {
