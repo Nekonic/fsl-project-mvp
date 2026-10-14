@@ -1,14 +1,5 @@
-const OUTCOME_WORDS = {
-  held: "lesson.check.held", served: "lesson.check.served", blocked: "outcome.blocked",
-  leaked: "outcome.leaked", inconclusive: "outcome.inconclusive",
-  detected: "outcome.detected", quiet: "outcome.quiet", missed: "outcome.missed",
-  uncorroborated: "outcome.uncorroborated", alerted: "outcome.alerted",
-};
-const DEBRIEF_TONE = {
-  held: "ok", served: "ok", leaked: "red", blocked: "red", inconclusive: "warn",
-  detected: "ok", quiet: "ok", missed: "red", uncorroborated: "warn", alerted: "red",
-};
-const PASSING = ["held", "served", "detected", "quiet"];
+const OUTCOME_WORDS = { held: "lesson.check.held", leaked: "outcome.leaked" };
+const DEBRIEF_TONE = { held: "ok", leaked: "red" };
 
 function debriefSection(name, inner, heading = `lesson.debrief.${name}`) {
   return `<section class="flex flex-col gap-1.5" data-debrief="${name}">
@@ -63,13 +54,10 @@ function debriefTimeline(timeline) {
 
 function renderDebrief(container, told) {
   const overview = told.overview;
-  const ran = told.scenario ? t("scenario.debrief.overview", overview.verified)
-    : t("lesson.debrief.overview.line", overview.verified);
   const facts = [
-    ran + (overview.mode === "self" ? ` · ${t("kind.practice")}` : ""),
+    t("scenario.debrief.overview", overview.verified),
     overview.steps.total ? t("lesson.steps.passed", overview.steps.passed, overview.steps.total) : "",
-    told.scenario ? t("scenario.debrief.help", overview.help.hints)
-      : t("lesson.debrief.help", overview.help.hints, overview.help.skipped, overview.help.done_for_me),
+    t("scenario.debrief.help", overview.help.hints),
     overview.fix ? t(`lesson.fix.${overview.fix}`) : "",
   ].filter(Boolean);
   const evidence = told.evidence.length ? `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
@@ -77,28 +65,23 @@ function renderDebrief(container, told) {
       localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>`
     : `<p class="text-muted">${esc(t("lesson.debrief.evidence.none"))}</p>`;
   const cases = `<table class="w-full text-[12px]"><thead><tr class="text-left text-muted">
-      <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t(told.scenario ? "scenario.debrief.before" : "lesson.debrief.before"))}</th>
-      <th class="font-normal">${esc(t(told.scenario ? "scenario.debrief.after" : "lesson.debrief.after"))}</th></tr></thead><tbody>${told.cases.map((row) =>
+      <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t("scenario.debrief.before"))}</th>
+      <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${told.cases.map((row) =>
     `<tr data-case="${esc(row.name)}"><td class="py-1 pr-2">${esc(localized(`case.${row.name}`, row.name))}</td>
       <td>${debriefOutcome(row.before)}</td><td>${debriefOutcome(row.after)}</td></tr>`).join("")}</tbody></table>`;
   container.innerHTML = `<h3 class="font-semibold text-heading">${esc(t("lesson.debrief.heading"))}</h3>` + [
     debriefSection("overview", facts.map((line) => `<p>${esc(line)}</p>`).join("")),
-    ...(told.customers ? [debriefSection("customers", debriefCustomers(told.customers))] : []),
-    ...(told.timeline ? [debriefSection("timeline", debriefTimeline(told.timeline))] : []),
+    debriefSection("customers", debriefCustomers(told.customers)),
+    debriefSection("timeline", debriefTimeline(told.timeline)),
     ...(told.task_class === "judgement" ? [debriefSection("triage", `<p>${esc(t("scenario.debrief.triage.line",
       told.triage.right, told.triage.items, told.triage.first_try))}</p>`)] : []),
-    debriefSection("evidence", evidence, told.scenario ? "scenario.debrief.evidence" : "lesson.debrief.evidence"),
+    debriefSection("evidence", evidence, "scenario.debrief.evidence"),
     debriefSection("change", debriefChange(told.change)),
     debriefSection("cases", cases),
     debriefSection("risk", `<ul class="list-disc pl-4 space-y-1">${told.risk.map(([key, values]) =>
       `<li>${esc(t(key, ...values))}</li>`).join("")}</ul>`),
   ].join("");
   container.classList.remove("hidden");
-}
-
-async function showDebrief(container) {
-  const told = await api(`/api/sessions/${sessionId()}/lesson/debrief/`);
-  if (told.ok && told.body.overview && told.body.overview.passed) renderDebrief(container, told.body);
 }
 
 async function showScenarioDebrief(container) {

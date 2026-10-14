@@ -68,30 +68,6 @@ async function runInTerminal(text) {
   return true;
 }
 
-async function replay() {
-  const name = field("lesson-case").value;
-  const status = field("lesson-replay-status");
-  status.textContent = t("lesson.replay.running", name);
-  const fired = await post(lessonPath("attacks/"), { case: name, lesson: true }, PATIENCE_FOR_RANGE_WORK);
-  const found = fired.ok && Array.isArray(fired.body.diagnosis) ? fired.body.diagnosis : [];
-  status.textContent = fired.ok
-    ? [t("lesson.replay.done", name), ...found.map(([key, values]) => t(key, ...values))].join(" ")
-    : t("lesson.replay.failed", detail(fired));
-  if (fired.ok && fired.body.replay) showReplay(field("lesson-replay-rows"), fired.body.replay);
-}
-
-
-function replayRow(row) {
-  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-replay="${esc(row.name)}">
-    <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
-      ${debriefOutcome(row.outcome)}
-      ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
-    ${row.command ? `<pre class="code" data-command>${esc(row.command)}</pre>` : ""}
-    ${(row.conclusions || []).map((line) => `<p class="font-mono text-body" data-conclusion>${esc(line)}</p>`).join("")}
-    ${row.command ? `<p class="text-muted" data-forbidden>${esc(t("lesson.replay.forbidden", row.forbidden || 0))}</p>` : ""}
-  </li>`;
-}
-
 function kaliRow(row) {
   const counted = Object.entries(row.sensors || {}).map(([sensor, count]) => `${sensor || "-"} ${count}`).join(" · ");
   return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-kali="${esc(row.name)}">
@@ -104,17 +80,7 @@ function kaliRow(row) {
 const REPLAYS_SHOWN = 5;
 const replayed = new Map();
 
-function detectRow(row) {
-  const said = (row.signatures || []).length ? t("lesson.detect.alerts", row.signatures.join(" · ")) : t("lesson.detect.none");
-  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-detected="${esc(row.name)}">
-    <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
-      ${debriefOutcome(row.outcome)}<span class="font-mono text-faint" data-verdict>${esc(row.verdict)}</span>
-      ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
-    <p class="text-muted" data-alerts>${esc(said)}</p>
-  </li>`;
-}
-
-function showReplay(list, row, render = replayRow) {
+function showReplay(list, row, render) {
   const rows = [row, ...(replayed.get(list) || [])].slice(0, REPLAYS_SHOWN);
   replayed.set(list, rows);
   list.innerHTML = rows.map(render).join("");
@@ -125,49 +91,8 @@ function showReplay(list, row, render = replayRow) {
   }));
 }
 
-const verified = [];
-
-async function verifyLesson() {
-  const box = field("lesson-result");
-  const verdict = field("lesson-verdict");
-  box.classList.remove("hidden", "border-danger-soft", "border-success-soft");
-  verdict.className = "px-3 py-2.5 rounded-t-lg flex items-center gap-2 font-semibold bg-subdued text-muted";
-  verdict.textContent = t("lesson.verify.running");
-  field("lesson-passed").innerHTML = "";
-  field("lesson-diagnosis").innerHTML = "";
-  const began = Date.now();
-  const checked = await post(lessonPath("verify/"), {}, PATIENCE_FOR_RANGE_WORK);
-  if (!checked.ok) {
-    verdict.textContent = t("lesson.verify.failed", detail(checked));
-    return;
-  }
-  const passed = Boolean(checked.body.passed);
-  verified.forEach((heard) => heard(passed));
-  const failing = (checked.body.diagnosis || []).filter(([key]) => key !== "lesson.diag.blocked_ratio");
-  box.classList.add(passed ? "border-success-soft" : "border-danger-soft");
-  const tone = passed ? "bg-success-soft text-success" : "bg-danger-soft text-danger";
-  verdict.className = `px-3 py-2.5 rounded-t-lg flex flex-wrap items-center gap-2 font-semibold ${tone}`;
-  verdict.innerHTML = `<span class="badge ${passed ? "badge-pass" : "badge-fail"}">${passed ? "PASS" : "FAIL"}</span>
-    <span>${esc(passed ? t("lesson.verify.pass") : t("lesson.verify.failing", Math.max(1, failing.length)))}</span>
-    <span class="ml-auto text-[12px] text-muted font-normal">${esc(clock(new Date()))}</span>`;
-  field("lesson-passed").innerHTML = (checked.body.cases || [])
-    .filter((row) => PASSING.includes(row.outcome))
-    .map((row) => `<li class="flex gap-2 text-success"><span class="font-bold">✓</span><span><b>${
-      esc(caseLabel(row.name))}</b> — ${esc(t(`lesson.check.${row.outcome}`))}</span></li>`)
-    .join("");
-  field("lesson-diagnosis").innerHTML = failing.map(([key, values]) =>
-    `<li class="flex gap-2 rounded-md bg-danger-soft text-danger p-2"><span class="font-bold">✗</span><span>${
-      esc(t(key, ...values))}</span></li>`).join("");
-  field("lesson-fix").textContent = checked.body.fix ? `${t(`lesson.fix.${checked.body.fix}`)} ${t("lesson.fix.note")}` : "";
-  field("lesson-fix").classList.toggle("hidden", !checked.body.fix);
-  if (!passed) return;
-  await post(lessonPath("ingest/"), { within: Math.ceil((Date.now() - began) / 1000) + 60 }, PATIENCE_FOR_RANGE_WORK);
-  showDebrief(field("lesson-debrief"));
-}
-
 const NOTE_KEY = "fsl-lesson-note";
 let note = { open: false, tab: "steps" };
-let openedByStep = false;
 
 function readNote() {
   try {
@@ -206,7 +131,6 @@ function setNote(change) {
   placeNote();
 }
 
-const GUIDE_ONLY_TABS = ["steps", "hint"];
 const LANDED_KEY = (id) => `fsl-lesson-landed-${id}`;
 let landedOnGoal = false;
 
@@ -220,31 +144,21 @@ function firstOpen() {
   }
 }
 
-function noteControls(practice, landing = "goal") {
+function noteControls(landing = "goal") {
   note = { ...note, ...readNote() };
+  if (!["steps", "goal", "theory", "hint"].includes(note.tab)) note.tab = "steps";
   landedOnGoal = firstOpen();
   if (landedOnGoal) note = { ...note, open: true, tab: landing };
-  if (practice) {
-    GUIDE_ONLY_TABS.forEach((name) => document.querySelector(`#lesson-tabs [data-tab="${name}"]`).classList.add("hidden"));
-    if (GUIDE_ONLY_TABS.includes(note.tab)) note.tab = "goal";
-    field("note-pill-text").textContent = t("kind.practice");
-  }
   field("lesson-collapse").textContent = t("lesson.note.collapse");
-  field("lesson-collapse").addEventListener("click", () => {
-    openedByStep = false;
-    setNote({ open: false });
-  });
-  field("note-pill").addEventListener("click", () => {
-    openedByStep = false;
-    setNote({ open: true });
-  });
+  field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
+  field("note-pill").addEventListener("click", () => setNote({ open: true }));
   document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
     tab.addEventListener("click", () => setNote({ tab: tab.dataset.tab })));
   placeNote();
 }
 
-const AUTOMATIC = ["alert", "waf", "served", "level", "rules", "sent", "triage"];
-const POLLED = ["alert", "waf", "level", "sent", "triage"];
+const AUTOMATIC = ["rules", "sent", "triage"];
+const POLLED = ["sent", "triage"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
 const refreshers = [];
@@ -434,7 +348,7 @@ function coach(prefix, declared) {
   let commandShown = false;
   let finished = false;
   let shownOnce = false;
-  const fixes = new Map();
+  const saidOnPass = new Map();
   const used = (session && Array.isArray(session.hints) ? session.hints : []);
   const helped = new Set(used.filter((hint) => hint.level === "do").map((hint) => hint.step));
   let progress = {};
@@ -498,17 +412,8 @@ function coach(prefix, declared) {
       button.addEventListener("click", () => jump(Number(button.dataset.step))));
   }
 
-  function followStep(step) {
-    const tab = step.tab || "steps";
-    if (step.tab && !note.open) {
-      openedByStep = true;
-      setNote({ open: true, tab });
-    } else if (!step.tab && openedByStep) {
-      openedByStep = false;
-      setNote({ open: false, tab });
-    } else if (note.open && note.tab !== tab) {
-      setNote({ tab });
-    }
+  function followStep() {
+    if (note.open && note.tab !== "steps") setNote({ tab: "steps" });
   }
 
   function helpLines(step) {
@@ -579,12 +484,6 @@ function coach(prefix, declared) {
       html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off"
         class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[12.5px]"
         placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, t("lesson.answer.placeholder")))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
-    } else if (kind === "detect") {
-      html = `<button data-act="detect" class="self-start btn btn-sm btn-blue">${
-        esc(t("lesson.detect.check", caseLabel(check().case)))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
-    } else if (kind === "replay") {
-      html = `<button data-act="replay" class="self-start btn btn-sm btn-blue">${
-        esc(t("lesson.replay.check", caseLabel(check().case)))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
     } else if (kind === "kali") {
       html = `<button data-act="kali" class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.kali.check"))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
@@ -621,7 +520,7 @@ function coach(prefix, declared) {
         answer(pasted.querySelector('[data-act="value"]').value);
       });
     }
-    const again = act.querySelector('[data-act="replay"], [data-act="detect"], [data-act="kali"]');
+    const again = act.querySelector('[data-act="kali"]');
     if (again) again.addEventListener("click", () => run(step, true));
   }
 
@@ -643,7 +542,7 @@ function coach(prefix, declared) {
 
   function show(follow) {
     const step = steps[at];
-    if (follow) followStep(step);
+    if (follow) followStep();
     keepLessonStep(sessionId(), at + 1);
     field("note-pill-text").textContent = t("lesson.note.pill", at + 1, steps.length);
     field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
@@ -739,16 +638,11 @@ function coach(prefix, declared) {
     say(line, line ? "ok" : "");
     show(follow);
     reach(steps[at]);
-    countAlerts();
-  }
-
-  function countAlerts() {
-    if (check().kind === "alert") run(steps[at], false);
   }
 
   function pass(step) {
     if (steps[at] !== step || passing) return;
-    const line = [spoken(recordOf(step).line), fixes.get(step.id)].filter(Boolean).join(" ");
+    const line = [spoken(recordOf(step).line), saidOnPass.get(step.id)].filter(Boolean).join(" ");
     status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
     if (at === steps.length - 1) {
       finished = true;
@@ -774,12 +668,9 @@ function coach(prefix, declared) {
 
   function settle(step, verdict, loud) {
     if (!verdict || steps[at] !== step) return;
-    if (verdict.fix) fixes.set(step.id, `${t(`lesson.fix.${verdict.fix}`)} ${t("lesson.fix.note")}`);
     const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
-    if (verdict.replay && rows) showReplay(rows, verdict.replay);
-    if (verdict.detected && rows) showReplay(rows, verdict.detected, detectRow);
     if (verdict.kali && rows) showReplay(rows, verdict.kali, kaliRow);
-    if (verdict.loot && verdict.loot.matched.length) fixes.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
+    if (verdict.loot && verdict.loot.matched.length) saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
     if (verdict.passed) {
       pass(step);
       return;
@@ -853,7 +744,6 @@ function coach(prefix, declared) {
   }
 
   const SHOWN_BY_THE_CONSOLE = {
-    alert: (step) => openSite(step.site),
     sent: (step) => openSite(step.site),
     click: (step) => {
       if (!step.kibana) {
@@ -873,10 +763,6 @@ function coach(prefix, declared) {
     status(t("lesson.status.checking"));
     const verdict = await judged(step, {}, "do/");
     refreshers.forEach((refresh) => refresh(step.check.kind));
-    if (step.check.kind === "verify") {
-      field("lesson-verify").click();
-      return;
-    }
     settle(step, verdict, false);
   }
 
@@ -913,13 +799,9 @@ function coach(prefix, declared) {
 
   site.heard.push((path) => {
     const step = steps[at];
-    if (step.check.kind === "sent") {
-      if (new RegExp(step.check.match).test(readable(path))) setTimeout(() => run(step, false), SENT_SETTLES_MS);
-      return;
+    if (step.check.kind === "sent" && new RegExp(step.check.match).test(readable(path))) {
+      setTimeout(() => run(step, false), SENT_SETTLES_MS);
     }
-    if (!step.check.path || !readable(path).includes(step.check.path)) return;
-    if (step.check.kind === "served") run(step, true);
-    if (step.check.kind === "alert") setTimeout(() => run(step, false), POLL_SECONDS * 1000);
   });
 
   setInterval(() => {
@@ -929,11 +811,6 @@ function coach(prefix, declared) {
     const kind = check().kind;
     if (POLLED.includes(kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
   }, 1000);
-
-  verified.push(() => {
-    const step = steps[at];
-    if (step.check.kind === "verify") run(step, true);
-  });
 
   changed.push((what) => {
     const step = steps[at];
@@ -967,7 +844,6 @@ function coach(prefix, declared) {
   level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
   show(!landedOnGoal);
   reach(steps[at]);
-  countAlerts();
   requestAnimationFrame(tick);
   return (id) => go(steps.findIndex((step) => step.id === id), false);
 }
@@ -991,48 +867,6 @@ function folded(list, prefix, kind, ids, extra) {
     body.classList.toggle("flex", opened);
     toggle.setAttribute("aria-expanded", String(opened));
   }));
-}
-
-function caseRows(cases) {
-  return (cases || []).map((row) => {
-    const good = PASSING.includes(row.outcome);
-    return `<li class="flex gap-2 ${good ? "text-success" : "rounded-md bg-danger-soft text-danger p-1.5"}" data-outcome="${esc(row.outcome)}">
-      <span class="font-bold">${good ? "✓" : "✗"}</span><span><b>${esc(caseLabel(row.name))}</b> — ${
-        esc(t(OUTCOME_WORDS[row.outcome] || "outcome.inconclusive"))}</span></li>`;
-  }).join("");
-}
-
-async function opening(taught) {
-  field("lesson-ticket-text").textContent = localized(`${taught.text}.ticket`, "");
-  field("lesson-ticket").classList.toggle("hidden", !field("lesson-ticket-text").textContent);
-  const start = session.start;
-  if (start) {
-    field("lesson-start").classList.remove("hidden");
-    field("lesson-start").classList.add(start.passed ? "border-success-soft" : "border-danger-soft");
-    field("lesson-start-verdict").classList.add(...(start.passed ? ["bg-success-soft", "text-success"] : ["bg-danger-soft", "text-danger"]));
-    field("lesson-start-verdict").innerHTML = `<span class="badge ${start.passed ? "badge-pass" : "badge-fail"}">${
-      start.passed ? "PASS" : "FAIL"}</span><span>${esc(t("lesson.start.heading"))}</span>`;
-    field("lesson-start-cases").innerHTML = caseRows(start.cases);
-  }
-  const waf = await api(lessonPath("waf/"));
-  if (!waf.ok || !Number.isInteger(waf.body.paranoia)) return;
-  field("lesson-ticket-waf").textContent = t("lesson.ticket.waf", waf.body.paranoia, (waf.body.exclusions || []).length);
-  field("lesson-ticket-waf").classList.remove("hidden");
-}
-
-function modeControl(practice) {
-  const button = field("lesson-mode");
-  button.textContent = t(practice ? "lesson.mode.to_guided" : "lesson.mode.to_self");
-  field("lesson-mode-note").textContent = t(practice ? "lesson.mode.self" : "lesson.mode.guided");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    const changed = await api(lessonPath(""), {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: practice ? "guided" : "self" }),
-    });
-    if (changed.ok) location.reload();
-    else button.disabled = false;
-  });
 }
 
 function theory(prefix, listed, coachTo) {
@@ -1063,51 +897,13 @@ function hints(prefix, listed, steps) {
   place();
 }
 
-function doneWhen(taught) {
-  const controls = taught.controls || [];
-  const lines = taught.detected_by ? ["lesson.goal.done.detected", "lesson.goal.done.quiet"]
-    : taught.verifies === false ? ["lesson.goal.done.steps"]
-      : ["lesson.goal.done.attacks", "lesson.goal.done.benign", ...(controls.includes("paranoia") ? ["lesson.goal.done.level"] : [])];
-  field("lesson-done").innerHTML = lines.map((key) => `<li>${esc(t(key))}</li>`).join("");
-  field("lesson-verify-section").classList.toggle("hidden", taught.verifies === false);
+function doneWhen() {
+  field("lesson-done").innerHTML = `<li>${esc(t("lesson.goal.done.steps"))}</li>`;
 }
-
-const LEVELS = [1, 2, 3, 4];
 
 function shownSection(id) {
   field(id).classList.remove("hidden");
   field(id).classList.add("flex");
-}
-
-async function readLevel() {
-  const read = await api(lessonPath("waf/"));
-  if (read.ok && Number.isInteger(read.body.paranoia)) field("lesson-level-pick").value = String(read.body.paranoia);
-  return read;
-}
-
-async function applyLevel() {
-  const status = field("lesson-level-status");
-  status.textContent = t("lesson.status.checking");
-  const standing = await api(lessonPath("waf/"));
-  if (!standing.ok) {
-    status.textContent = t("lesson.level.failed", detail(standing));
-    return;
-  }
-  const put = await api(lessonPath("waf/"), {
-    method: "PUT", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paranoia: Number(field("lesson-level-pick").value), exclusions: standing.body.exclusions || [] }),
-  }, PATIENCE_FOR_RANGE_WORK);
-  status.textContent = put.ok ? t("lesson.level.applied", put.body.paranoia) : t("lesson.level.failed", detail(put));
-  if (put.ok) changed.forEach((heard) => heard("level"));
-}
-
-function levelControl() {
-  shownSection("lesson-level");
-  field("lesson-level-pick").innerHTML = LEVELS.map((level) =>
-    `<option value="${level}">${esc(t("lesson.level.option", level))}</option>`).join("");
-  field("lesson-level-apply").addEventListener("click", applyLevel);
-  refreshers.push((kind) => { if (kind === "level") readLevel(); });
-  readLevel();
 }
 
 let rulesVersion = "";
@@ -1174,10 +970,4 @@ function rulesEditor() {
   field("lesson-rules-apply").addEventListener("click", applyRules);
   refreshers.push((kind) => { if (kind === "rules") loadRules(); });
   loadRules();
-}
-
-function lessonControls(taught) {
-  const controls = taught.controls || [];
-  if (controls.includes("paranoia")) levelControl();
-  if (controls.includes("rules")) rulesEditor();
 }

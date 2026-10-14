@@ -70,41 +70,11 @@
     const wargame = scenarioOf(id);
     return localized(`wargame.${id}.name`, wargame ? wargame.name : id);
   };
-  const kindBadge = (session) => badge(t(`kind.${kindOf(session)}`), session.kind === "lesson" ? "blue" : "neutral");
+  const kindBadge = (session) => badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral");
   const lessonOf = (session) => {
     const wargame = scenarioOf(session.scenario);
-    return wargame && session.lesson_id ? (wargame.lessons || []).find((taught) => taught.id === session.lesson_id) : null;
+    return wargame && session.lesson_id ? (wargame.foundations || []).find((taught) => taught.id === session.lesson_id) : null;
   };
-
-  function lessonBlock(wargame, taught) {
-    const id = esc(wargame.id);
-    const needs = (taught.prerequisites || []).map((other) => {
-      const before = (wargame.lessons || []).find((listed) => listed.id === other);
-      return before ? t(before.title) : other;
-    });
-    const facts = [
-      taught.level ? t(`difficulty.${taught.level}`) : "",
-      taught.minutes ? t("main.minutes", taught.minutes) : "",
-      needs.length ? t("main.lesson.needs", needs.join(", ")) : t("main.lesson.needs_none"),
-    ].filter(Boolean);
-    const rung = (mode, tone) => `<button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
-        data-mode="${mode}" data-defense="${esc(taught.defense || "")}" class="start btn ${tone} w-full">${esc(t(`main.rung.${mode}`))}</button>`;
-    return `
-      <div class="pt-4 mt-4 border-t border-line-subdued" data-lesson-card="${esc(taught.id)}">
-        <h4 class="font-semibold text-heading">${esc(t(taught.title))}</h4>
-        <p class="text-body mt-1 leading-relaxed">${esc(t(taught.goal))}</p>
-        <p class="text-[12px] text-muted mt-1.5">${esc(facts.join(" · "))}</p>
-        <div class="grid grid-cols-3 gap-2 mt-3">
-          ${taught.steps === 0 ? `<span></span>` : rung("guided", "btn-blue")}
-          ${rung("self", "btn-ghost")}
-          <button data-wargame="${id}" data-rung="wargame" class="start btn btn-ghost w-full">${esc(t("main.rung.wargame"))}</button>
-        </div>
-        <div class="grid grid-cols-3 gap-2 mt-1.5 text-[12px] text-muted">
-          <p>${esc(t("main.rung.guided.note"))}</p><p>${esc(t("main.rung.self.note"))}</p><p>${esc(t("main.rung.wargame.note"))}</p>
-        </div>
-        <p class="hidden text-[12px] mt-2" data-last="${id}/${esc(taught.id)}"></p>
-      </div>`;
-  }
 
   function foundationsBlock(wargame) {
     const id = esc(wargame.id);
@@ -116,7 +86,7 @@
           ${taught.minutes ? `<span class="text-[12px] text-muted shrink-0">${esc(t("main.minutes", taught.minutes))}</span>` : ""}
         </div>
         <p class="text-body leading-relaxed"><span class="text-muted">${esc(t("main.foundation.learns"))}</span> ${esc(t(taught.learns))}</p>
-        <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}" data-mode="guided"
+        <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
           data-defense="${esc(taught.defense || "")}" class="start self-start btn btn-sm btn-blue">${esc(t("main.foundation.start"))}</button>
         <p class="hidden text-[12px]" data-last="${id}/${esc(taught.id)}"></p>
       </li>`).join("");
@@ -170,18 +140,12 @@
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
         ${scenariosBlock(wargame)}
-        ${(wargame.lessons || []).length ? wargame.lessons.map((taught) => lessonBlock(wargame, taught)).join("") : `
-        <p class="text-[12px] mt-1 text-faint">${esc(t("main.no_lesson"))}</p>
-        <div class="grid grid-cols-2 gap-3 mt-auto pt-4">
-          <div class="pt-4 border-t border-line-subdued">
-            <button class="btn btn-ghost w-full" disabled>${esc(t("main.start_lesson"))}</button>
-            <p class="text-[12px] mt-1.5 text-faint">${esc(t("main.no_lesson.note"))}</p>
-          </div>
-          <div class="pt-4 border-t border-line-subdued">
+        <div class="mt-auto pt-4">
+          <div class="pt-4 border-t border-line-subdued" data-wargame-start="${id}">
             <button data-wargame="${id}" class="start btn btn-ghost w-full">${esc(t("main.start"))}</button>
             <p class="text-[12px] text-muted mt-1.5">${esc(t("main.start.note"))}</p>
           </div>
-        </div>`}
+        </div>
         <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
              data-failure="${id}">
           <div class="flex flex-wrap items-start gap-2">
@@ -225,7 +189,7 @@
         : verdict ? badge(verdict.passed ? "PASS" : "FAIL", verdict.passed ? "ok-strong" : "red-strong")
           : esc(t("main.last.unverified"));
       line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
-        esc(t("main.last", last.id, t(`kind.${kindOf(last)}`)))}</a> ${state}`;
+        esc(t("main.last", last.id, t(`kind.${last.kind}`)))}</a> ${state}`;
       line.classList.remove("hidden");
     });
     document.querySelectorAll("[data-last]").forEach((line) => {
@@ -233,12 +197,9 @@
       const last = read.body.filter((session) => session.scenario === scenario && session.lesson_id === taught)
         .sort((a, b) => b.id - a.id)[0];
       if (!last) return;
-      const verdict = last.result && last.result.lesson;
-      const state = !last.ended_at ? esc(t("main.last.open"))
-        : verdict ? badge(verdict.passed ? "PASS" : "FAIL", verdict.passed ? "ok-strong" : "red-strong")
-          : esc(t("main.last.unverified"));
+      const state = esc(t(last.ended_at ? "state.closed" : "main.last.open"));
       line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
-        esc(t("main.last", last.id, t(`kind.${kindOf(last)}`)))}</a> ${state}`;
+        esc(t("main.last", last.id, t(`kind.${last.kind}`)))}</a> ${state}`;
       line.classList.remove("hidden");
     });
   }
@@ -261,9 +222,7 @@
     card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
     const ticking = opening(button);
     const defense = button.dataset.defense ? { defense: button.dataset.defense } : {};
-    const practice = button.dataset.mode === "self" ? { mode: "self" } : {};
-    const settings = button.dataset.lesson
-      ? { guidance: true, lesson: button.dataset.lessonId, ...practice, ...defense } : {};
+    const settings = button.dataset.lesson ? { guidance: true, lesson: button.dataset.lessonId, ...defense } : {};
     const asked = button.dataset.course ? { scenario: button.dataset.course }
       : { scenario: button.dataset.wargame, ...settings };
     const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
@@ -328,7 +287,7 @@
   function runningRow(session) {
     const taught = session.kind === "lesson" ? lessonOf(session) : null;
     const lessonTitle = taught ? ` · ${localized(taught.title, "")}` : "";
-    const steps = taught && taught.steps && session.mode !== "self"
+    const steps = taught && taught.steps
       ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id), taught.steps))}</span>` : "";
     return `
       <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-subdued">
@@ -350,14 +309,9 @@
 
   function resultCell(session) {
     const result = session.result || {};
-    const judged = result.scenario || result.lesson;
-    if (result.scenario) {
+    const judged = result.scenario;
+    if (judged) {
       return (judged.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong")) + (judged.helped || []).map((kind) =>
-        ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
-    }
-    if (result.lesson) {
-      const verdict = result.lesson.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong");
-      return verdict + (result.lesson.helped || []).map((kind) =>
         ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;

@@ -65,7 +65,6 @@ def test_the_foundations_come_first_on_the_home_card_with_what_each_teaches_and_
     assert [card["id"] for card in board["foundations"]] == ["f1", "f2", "f3", "f4", "f5", "f6"]
     assert all(card["learns"] == f"{card['title'].rsplit('.', 1)[0]}.learns" and card["minutes"]
                for card in board["foundations"])
-    assert [card["id"] for card in board["lessons"]][0] == "console-tour", "the existing lessons keep working"
     assert (started["lesson_id"], started["defense"]) == ("f6", "missed")
     assert fired == ["board-normal-search"], "only the benign case is seeded; the learner runs sqlmap"
 
@@ -241,12 +240,10 @@ FOUNDED = """
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [
-      {id: "board", name: "Board", description: "", cases: 1, lesson: true, lesson_defense: "minimal",
+      {id: "board", name: "Board", description: "", cases: 1,
        foundations: [{id: "f1", order: 1, title: "lesson.range.title", goal: "lesson.range.summary",
                       learns: "lesson.range.learns", minutes: 10, level: "easy", defense: "full",
-                      prerequisites: [], steps: 4}],
-       lessons: [{id: "waf-exclusion", order: 1, title: "lesson.board.title", goal: "lesson.board.summary",
-                  minutes: 40, level: "easy", defense: "minimal", prerequisites: [], steps: 8}]},
+                      prerequisites: [], steps: 4}]},
     ]};
   }
   if (request.route === "/api/sessions/" && request.method === "POST") return {status: 201, body: {id: 9}};
@@ -254,7 +251,7 @@ browser.serve((request) => {
 });
 """
 
-def test_the_home_page_lists_the_foundations_before_the_lessons_and_starts_one_guided(client):
+def test_the_home_page_lists_the_foundations_and_starts_one_guided(client):
     seen = open_page(client, "/", setup=FOUNDED, scenario="""
       const order = [...document.querySelectorAll('[data-foundation], [data-lesson-card]')]
         .map((found) => found.dataset.foundation || found.dataset.lessonCard);
@@ -264,7 +261,7 @@ def test_the_home_page_lists_the_foundations_before_the_lessons_and_starts_one_g
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["order"] == ["f1", "waf-exclusion"]
+    assert seen["result"]["order"] == ["f1"], "no older lesson card is left beside the foundations"
     assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}]
 
 def test_the_kali_step_offers_its_command_for_the_red_console_and_shows_what_the_sensor_counted(client):
@@ -279,9 +276,9 @@ localStorage.setItem('fsl-lesson-step-1', '5');
 const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false, command: COMMAND}};
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: true, mode: "guided", hints: [], progress, ended_at: null, discover: "/kibana/",
+    return {body: {id: 1, guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
                    site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
-                   lesson: {text: "lesson.attack", group: "foundations", verifies: false, cases: ["board-normal-search"],
+                   lesson: {text: "lesson.attack", group: "foundations", cases: ["board-normal-search"],
                             steps: STEPS.map((step) => step.id === "sqlmap" ? {...step, command: COMMAND} : step),
                             theory: [{id: "attack", shows: "stopped"}], hints: ["why_total", "why_count"]}}};
   }

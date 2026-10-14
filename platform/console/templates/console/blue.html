@@ -191,9 +191,6 @@
 
 {% include "console/blue_scenario_script.html" %}
 
-  field("lesson-replay").addEventListener("click", replay);
-  field("lesson-verify").addEventListener("click", verifyLesson);
-
   (async () => {
     const read = await api(lessonPath(""));
     session = read.ok ? read.body : null;
@@ -223,18 +220,11 @@
     field("lesson-goal-line").textContent = t(`${taught.text}.summary`);
     field("lesson-steps").innerHTML = PARAGRAPHS.map((step) =>
       `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
-    field("lesson-case").innerHTML = taught.cases.map((name) =>
-      `<option value="${esc(name)}">${esc(name)}</option>`).join("");
-    const practice = session.mode === "self";
-    noteControls(practice, taught.group === "foundations" ? "theory" : "goal");
-    doneWhen(taught);
+    noteControls(taught.group === "foundations" ? "theory" : "goal");
+    doneWhen();
     if (session.course_scenario) scenarioNote();
-    lessonControls(taught);
-    opening(taught);
-    if (session.result && session.result.lesson && session.result.lesson.passed) showDebrief(field("lesson-debrief"));
-    modeControl(practice);
     hints(taught.text, session.course_scenario ? [] : taught.hints, declared);
-    theory(taught.text, taught.theory, declared.length && !practice ? coach(taught.text, declared) : null);
+    theory(taught.text, taught.theory, declared.length ? coach(taught.text, declared) : null);
     if (taught.group === "foundations") openFirstCard();
   })();
 </script>

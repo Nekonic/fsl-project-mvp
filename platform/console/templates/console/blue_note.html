@@ -14,7 +14,6 @@
     <button class="tab" data-tab="goal" data-t="lesson.tab.goal"></button>
     <button class="tab" data-tab="theory" data-t="lesson.tab.theory"></button>
     <button class="tab" data-tab="hint" data-t="lesson.tab.hint"></button>
-    <button class="tab" data-tab="check" data-t="lesson.tab.check"></button>
   </div>
   <div id="lesson-body" class="flex-1 min-h-0 overflow-y-auto p-4 text-[13px] leading-relaxed">
     <div data-pane-of="steps" class="flex flex-col gap-3">
@@ -28,31 +27,12 @@
     </div>
 
     <div data-pane-of="goal" class="hidden flex-col gap-3">
-      <div id="lesson-ticket" class="hidden rounded-lg border border-line p-3">
-        <div class="flex items-center gap-2">
-          <span data-t="lesson.ticket.kind" class="badge badge-blue"></span>
-          <span data-t="lesson.ticket.from" class="text-[12px] text-muted"></span>
-        </div>
-        <p id="lesson-ticket-text" class="mt-2 text-heading"></p>
-        <p id="lesson-ticket-waf" class="hidden mt-1 text-[12px] text-muted"></p>
-      </div>
       <p id="lesson-goal" class="text-heading"></p>
-      <div id="lesson-start" class="hidden rounded-lg border">
-        <div id="lesson-start-verdict" class="px-3 py-2 rounded-t-lg flex flex-wrap items-center gap-2 font-semibold"></div>
-        <ul id="lesson-start-cases" class="p-3 space-y-2 text-[12.5px]"></ul>
-      </div>
       <div class="rounded-lg bg-subdued p-3">
         <div data-t="lesson.goal.done" class="label mb-1"></div>
-        <ul id="lesson-done" class="list-disc pl-4 space-y-0.5">
-          <li data-t="lesson.goal.done.attacks"></li>
-          <li data-t="lesson.goal.done.benign"></li>
-        </ul>
+        <ul id="lesson-done" class="list-disc pl-4 space-y-0.5"></ul>
       </div>
       <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
-      <div class="flex flex-wrap items-center gap-2 border-t border-line-subdued pt-3 text-[12px] text-muted">
-        <span id="lesson-mode-note" class="flex-1 min-w-0"></span>
-        <button id="lesson-mode" class="btn btn-sm btn-ghost shrink-0"></button>
-      </div>
     </div>
 
     <div data-pane-of="theory" class="hidden flex-col gap-2">
@@ -73,48 +53,6 @@
           <button id="lesson-answer-copy" data-t="lesson.copy" class="absolute top-2 right-5 btn btn-sm btn-code"></button>
         </div>
       </div>
-    </div>
-
-    <div data-pane-of="check" class="hidden flex-col gap-4">
-      <section id="lesson-level" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
-        <h3 data-t="lesson.level.heading" class="font-semibold text-heading"></h3>
-        <p data-t="lesson.level.note" class="text-muted text-[12px]"></p>
-        <div class="flex gap-2">
-          <select id="lesson-level-pick" class="flex-1 border border-line rounded-md px-2 h-8 bg-panel text-[12px]"></select>
-          <button id="lesson-level-apply" data-t="lesson.level.apply" class="btn btn-sm btn-blue shrink-0"></button>
-        </div>
-        <p id="lesson-level-status" class="text-muted text-[12px]"></p>
-      </section>
-      <section id="lesson-rules" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
-        <h3 data-t="lesson.rules.heading" class="font-semibold text-heading"></h3>
-        <p data-t="lesson.rules.note" class="text-muted text-[12px]"></p>
-        <div id="lesson-rules-box"></div>
-        <div class="flex gap-2">
-          <button id="lesson-rules-validate" data-t="lesson.rules.validate" class="btn btn-sm btn-ghost"></button>
-          <button id="lesson-rules-apply" data-t="lesson.rules.apply" class="btn btn-sm btn-blue"></button>
-        </div>
-        <p id="lesson-rules-status" class="text-muted text-[12px]"></p>
-        <pre id="lesson-rules-errors" class="hidden code text-[11px] whitespace-pre-wrap"></pre>
-      </section>
-      <section class="flex flex-col gap-2">
-        <h3 data-t="lesson.replay.heading" class="font-semibold text-heading"></h3>
-        <select id="lesson-case" class="border border-line rounded-md px-2 h-8 bg-panel text-[12px] font-mono"></select>
-        <button id="lesson-replay" data-t="lesson.replay.button" class="self-start btn btn-sm btn-ghost"></button>
-        <p id="lesson-replay-status" class="text-muted text-[12px]"></p>
-        <ul id="lesson-replay-rows" class="flex flex-col gap-2"></ul>
-      </section>
-      <section id="lesson-verify-section" class="flex flex-col gap-2 border-t border-line-subdued pt-4">
-        <h3 data-t="lesson.verify.heading" class="font-semibold text-heading"></h3>
-        <p data-t="lesson.verify.intro" class="text-muted"></p>
-        <button id="lesson-verify" data-t="lesson.verify.button" class="btn btn-blue w-full"></button>
-        <div id="lesson-result" class="hidden rounded-lg border">
-          <div id="lesson-verdict" class="px-3 py-2.5 rounded-t-lg flex items-center gap-2 font-semibold"></div>
-          <ul id="lesson-passed" class="px-3 pt-3 space-y-2"></ul>
-          <ul id="lesson-diagnosis" class="p-3 space-y-2"></ul>
-          <p id="lesson-fix" class="hidden px-3 pb-3 text-[12px] text-muted"></p>
-        </div>
-        <div id="lesson-debrief" class="hidden flex-col gap-3 border-t border-line-subdued pt-4 text-[12.5px]"></div>
-      </section>
     </div>
   </div>
 </aside>

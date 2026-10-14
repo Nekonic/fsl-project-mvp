@@ -291,14 +291,12 @@ function scenarioNote() {
   if (!scenario) return;
   field("lesson-done").innerHTML = [scenario.briefing.goal, scenario.briefing.measured_by]
     .map((key) => `<li>${esc(t(key))}</li>`).join("");
-  document.querySelector('#lesson-tabs [data-tab="check"]').classList.add("hidden");
 }
 
 const EDITS_RULES = ["detection", "unknown"];
 
 function rulesPane() {
   document.querySelector('.pane-tab[data-pane="rules"]').classList.remove("hidden");
-  field("rules-pane-body").appendChild(field("lesson-rules"));
   rulesEditor();
   field("lesson-rules-text").setAttribute("rows", "18");
 }

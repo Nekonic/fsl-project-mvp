@@ -10,36 +10,46 @@ from tests.browser import english, open_page
 
 pytestmark = pytest.mark.django_db
 
-STEPS = wargames.lesson("board")["steps"]
-SHOWN = [views._shown_step(None, dict(step, query=None)) | {k: v for k, v in step.items() if k == "query"} for step in STEPS]
-IDS = [step["id"] for step in STEPS]
-COMMAND = {step["id"]: step.get("command", "") for step in STEPS}
-
-DEBRIEF = {
-    "lesson": "waf-exclusion", "title": "lesson.board.title",
-    "overview": {"passed": True, "verified": 2, "mode": "guided", "fix": "path_target",
-                 "steps": {"passed": 7, "total": 8}, "help": {"hints": 1, "skipped": 1, "done_for_me": 0}},
-    "evidence": [{"id": 4, "source": "modsecurity", "signature": "920273", "method": "GET",
-                  "path": "/search/?q=O%27Brien", "phase": "seed", "case": "board-normal-search-with-apostrophe",
-                  "timestamp": "2026-10-13T09:01:02+00:00"}],
-    "change": {"before": {"paranoia": 4, "exclusions": []}, "after": {"paranoia": 4, "exclusions": []},
-               "added": [], "removed": [], "diff": ["+SecRule REQUEST_FILENAME \"@beginsWith /search/\" \"id:10100\""]},
-    "cases": [{"name": "board-normal-search-with-apostrophe", "malicious": False, "before": "blocked", "after": "served"}],
-    "risk": [["lesson.risk.path_target", []], ["lesson.risk.replayed", [2]]],
-    "at": {"opened": "2026-10-13T09:00:00+00:00", "verified": "2026-10-13T09:30:00+00:00"},
+UNIT = "f4"
+RIGHT = {
+    "engine": "suricata", "verdict": "403", "address": "172.30.0.1", "meaning": "2xx",
+    "stopped": "waf", "rule": "942100", "requests": "2065", "excluded": "942100", "leaked": "admin", "lost": "1",
 }
+
+def taught(unit=UNIT):
+    return wargames.lesson("board", lesson_id=unit)
+
+def steps_of(unit=UNIT):
+    return taught(unit)["steps"]
+
+def ids(unit=UNIT):
+    return [step["id"] for step in steps_of(unit)]
+
+def commands(unit=UNIT):
+    return {step["id"]: step["command"] for step in steps_of(unit) if step.get("command")}
+
+def shown(unit):
+    return [
+        {key: value for key, value in views._shown_step(None, dict(step, query=None)).items() if key != "command"}
+        | ({"query": step["query"], "discover": f"/kibana/app/discover#/?narrowed={step['id']}"} if step.get("query") else {})
+        for step in steps_of(unit)
+    ]
+
+STEPS = steps_of()
+IDS = ids()
 
 GUIDED = """
 localStorage.setItem('fsl-lesson-landed-1', 'true');
-const range = {detections: [], waf: {paranoia: 4, exclusions: [], version: "v1"}, status: 403, passed: false, puts: [], used: [],
-               ended_at: null, progress: {}, fired: [], checked: [], states: []};
+const range = {sent: [], passed: false, used: [], ended_at: null, progress: {}, checked: [], states: []};
+const TEXT = TEXT_JSON;
 const FULL = FULL_JSON;
+const RIGHT = RIGHT_JSON;
 const WITHHELD = WITHHELD_JSON;
 const COMMANDS = COMMANDS_JSON;
 const revealed = () => Object.fromEntries(Object.entries(range.progress).map(([id, kept]) => [id, {...kept,
   ...(kept.hint >= 3 ? {answer: WITHHELD[id].answer} : {}), ...(kept.passed ? {line: WITHHELD[id].line} : {}),
-  ...(kept.reached && COMMANDS[id] && (range.mode || "guided") !== "self" ? {command: COMMANDS[id]} : {})}]));
-const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, done_for_me: false, wrong: 0, after: 0, tried: null, passed: null, skipped: null});
+  ...(kept.reached && COMMANDS[id] ? {command: COMMANDS[id]} : {})}]));
+const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, done_for_me: false, wrong: 0, passed: null, skipped: null});
 const used = (entry) => { if (!range.used.some((one) => one.step === entry.step && one.level === entry.level)) range.used.push(entry); };
 const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: revealed()});
 const passing = (id) => { own(id).passed = own(id).passed || "now"; return stepState(id, {passed: true, reason: null}); };
@@ -54,42 +64,18 @@ const failing = (id, poll, key, values) => {
 };
 const judge = (id, body) => {
   const check = FULL[id];
-  const fail = `lesson.board.fail.${id}`;
+  const fail = `${TEXT}.fail.${id}`;
   if (check.kind === "click") return passing(id);
   if (check.kind === "answer" || check.kind === "choice") {
     const given = String(body.answer || "").trim();
-    if (check.accept.includes(given)) return passing(id);
-    return failing(id, false, (check.known || []).includes(given) ? `lesson.board.wrong.${id}.${given}` : "lesson.check.wrong");
+    if (given === RIGHT[id]) return passing(id);
+    return failing(id, false, (check.known || []).includes(given) ? `${TEXT}.wrong.${id}.${given}` : "lesson.check.wrong");
   }
-  if (check.kind === "alert") {
+  if (check.kind === "sent") {
     range.checked.push(body);
-    const found = range.detections.some((row) => row.id > own(id).after && row.marker === check.marker
-      && decodeURIComponent(row.path).includes(check.path));
-    return found ? passing(id) : failing(id, body.poll, fail);
+    return range.sent.some((path) => new RegExp(check.match).test(path)) ? passing(id) : failing(id, body.poll, fail);
   }
-  if (check.kind === "waf") {
-    const there = range.waf.exclusions.some((entry) => entry.rule_id === check.rule_id && entry.target === check.target
-      && entry.path === check.path);
-    if (!there) return failing(id, body.poll, fail);
-    if (body.poll && own(id).tried === range.waf.version) return failing(id, true, `${fail}.reload`);
-    own(id).tried = range.waf.version;
-    range.fired.push(check.case);
-    return range.status === 200 ? passing(id) : failing(id, body.poll, `${fail}.reload`);
-  }
-  if (check.kind === "replay") {
-    range.fired.push(check.case);
-    const outcome = range.replayOutcome || "held";
-    const replay = {name: check.case, outcome, conclusions: ["[CRITICAL] all tested parameters do not appear to be injectable"],
-                    command: "sqlmap -u {target}/?sort=posts_post.id*", forbidden: 2065, status: 0, discover: "/kibana/app/discover#/?marker"};
-    if (outcome === "held") return {...passing(id), replay};
-    const inconclusive = outcome === "inconclusive";
-    return {...failing(id, false, inconclusive ? "lesson.check.inconclusive" : fail, inconclusive ? [check.case] : []), replay};
-  }
-  if (check.kind === "served") {
-    range.fired.push(check.case);
-    return range.status === 200 ? passing(id) : failing(id, body.poll, fail, [range.status]);
-  }
-  return range.passed ? passing(id) : failing(id, body.poll, "lesson.board.fail.verify");
+  return range.passed ? passing(id) : failing(id, body.poll, fail);
 };
 browser.serve((request) => {
   const parts = request.route.split("/");
@@ -97,10 +83,7 @@ browser.serve((request) => {
   if (stepped && !stepped[2]) {
     const id = stepped[1];
     range.states.push([id, request.body.state]);
-    if (request.body.state === "reached") {
-      own(id).after = Math.max(0, ...range.detections.map((row) => row.id));
-      own(id).reached = own(id).reached || "now";
-    }
+    if (request.body.state === "reached") own(id).reached = own(id).reached || "now";
     else if (!own(id).passed) own(id).skipped = "now";
     return {body: stepState(id, {})};
   }
@@ -110,70 +93,42 @@ browser.serve((request) => {
     own(id).done_for_me = true;
     used({step: id, level: "do"});
     const check = FULL[id];
-    if (check.kind === "answer" || check.kind === "choice") return {body: judge(id, {answer: check.accept[0]})};
-    if (check.kind === "waf") {
-      const tuning = {paranoia: range.waf.paranoia, exclusions: [...range.waf.exclusions,
-        {rule_id: check.rule_id, target: check.target, path: check.path}]};
-      range.puts.push(tuning);
-      range.waf = {...tuning, version: "v-do"};
-      return {body: judge(id, {})};
-    }
-    if (check.kind === "click" || check.kind === "served") return {body: judge(id, {})};
-    return {body: stepState(id, {passed: false, reason: null})};
-  }
-  if (request.route === "/api/sessions/1/" && request.method === "PATCH") {
-    range.patched = request.body;
-    return {body: {id: 1, mode: request.body.mode}};
+    if (check.kind === "answer" || check.kind === "choice") return {body: judge(id, {answer: RIGHT[id]})};
+    if (check.kind === "click" || check.kind === "sent") return {body: judge(id, {})};
+    return {body: passing(id)};
   }
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, mode: range.mode || "guided", start: range.start || null, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
-      text: "lesson.board",
-      cases: ["board-sqli-orderby-sqlmap", "board-normal-search-with-apostrophe"],
+      text: TEXT, group: "foundations", cases: CASES_JSON,
       steps: STEPS_JSON, theory: THEORY_JSON, hints: HINTS_JSON,
     } : null}};
   }
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
-  if (request.route === "/api/sessions/1/lesson/debrief/") return {body: DEBRIEF_JSON};
   if (request.route === "/api/sessions/1/lesson/hints/") {
     used(request.body);
     if (request.body.level === "hint") own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
     else own(request.body.step).done_for_me = true;
     return {body: stepState(request.body.step, {})};
   }
-  if (request.route === "/api/sessions/1/detections/") {
-    return {body: range.detections.filter((row) => row.id > Number(request.query.after || 0))};
-  }
-  if (request.route === "/api/sessions/1/waf/" && request.method === "GET") return {body: range.waf};
-  if (request.route === "/api/sessions/1/waf/" && request.method === "PUT") {
-    range.puts.push(request.body);
-    range.waf = {...request.body, version: "v2"};
-    return {body: range.waf};
-  }
-  if (request.route === "/api/sessions/1/attacks/") return {status: 201, body: {meta: {status: range.status}, diagnosis: range.diagnosis, replay: range.replay}};
-  if (request.route === "/api/sessions/1/verify/") {
-    return {body: {passed: range.passed, run: "r", fix: range.fix || null, cases: [
-      {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
-      {name: "board-normal-search-with-apostrophe", malicious: false, outcome: range.passed ? "served" : "blocked"},
-    ], diagnosis: range.passed ? [["lesson.diag.blocked_ratio", [1, 1]]] : [
-      ["lesson.diag.blocked_ratio", [1, 1]],
-      ["lesson.diag.benign_blocked", ["board-normal-search-with-apostrophe", 403]],
-    ]}};
-  }
   return {status: 404, body: {detail: "not served"}};
 });
-""".replace("THEORY_JSON", json.dumps(wargames.lesson("board")["theory"])).replace(
-    "HINTS_JSON", json.dumps(wargames.lesson("board")["hints"])).replace("STEPS_JSON", json.dumps([
-    {key: value for key, value in step.items() if key != "command"}
-    | ({"discover": "/kibana/app/discover#/?narrowed=brien"} if step.get("query") else {}) for step in SHOWN
-])).replace("FULL_JSON", json.dumps({step["id"]: step["check"] for step in STEPS})).replace(
-    "WITHHELD_JSON", json.dumps({step_id: {part: strings.both(f"lesson.board.{part}.{step_id}") for part in ("answer", "line")}
-                                 for step_id in IDS})).replace(
-    "COMMANDS_JSON", json.dumps({step_id: command for step_id, command in COMMAND.items() if command})).replace("DEBRIEF_JSON", json.dumps(DEBRIEF))
+"""
 
-def guided(guidance):
-    return GUIDED.replace("GUIDANCE", "true" if guidance else "false")
+def guided(guidance=True, unit=UNIT):
+    lesson = taught(unit)
+    return GUIDED.replace("GUIDANCE", "true" if guidance else "false").replace(
+        "TEXT_JSON", json.dumps(lesson["text"])).replace(
+        "CASES_JSON", json.dumps(lesson["cases"])).replace(
+        "THEORY_JSON", json.dumps(lesson["theory"])).replace(
+        "HINTS_JSON", json.dumps(lesson["hints"])).replace(
+        "STEPS_JSON", json.dumps(shown(unit))).replace(
+        "FULL_JSON", json.dumps({step["id"]: step["check"] for step in lesson["steps"]})).replace(
+        "RIGHT_JSON", json.dumps(RIGHT)).replace(
+        "WITHHELD_JSON", json.dumps({step_id: {part: strings.both(f"{lesson['text']}.{part}.{step_id}")
+                                               for part in ("answer", "line")} for step_id in ids(unit)})).replace(
+        "COMMANDS_JSON", json.dumps(commands(unit)))
 
 def test_a_guided_session_shows_the_note_as_a_pill_and_an_unguided_one_shows_nothing(client):
     shown = open_page(client, "/blue/1/", setup=guided(True), scenario="""
@@ -196,7 +151,7 @@ def test_a_guided_session_shows_the_note_as_a_pill_and_an_unguided_one_shows_not
         "the note starts folded to a pill so the tool keeps the screen"
     )
     assert shown["result"]["pillText"] == english("lesson.note.pill", 1, len(STEPS))
-    assert english("lesson.board.read") in shown["result"]["paragraphs"]
+    assert english("lesson.logs.read") in shown["result"]["paragraphs"]
     assert shown["result"]["frame"] == "/kibana/app/discover#/", "Kibana stays the pane under the note"
     assert (plain["result"]["note"], plain["result"]["pill"]) == (True, True)
     assert "/api/sessions/1/waf/" not in plain["result"]["routes"]
@@ -216,7 +171,7 @@ def test_the_pill_opens_the_note_and_fold_returns_it_to_the_pill_and_both_are_re
     assert seen["result"]["folded"] == {"note": False, "pill": True, "kept": {"tab": "steps"}}
     assert seen["result"]["label"] == english("lesson.note.collapse")
 
-def test_the_note_has_steps_goal_theory_hints_and_check_tabs_and_shows_one_at_a_time(client):
+def test_the_note_has_steps_goal_theory_and_hints_tabs_and_shows_one_at_a_time(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
       await browser.click('note-pill');
       const shown = () => [...document.querySelectorAll('[data-pane-of]')]
@@ -228,7 +183,7 @@ def test_the_note_has_steps_goal_theory_hints_and_check_tabs_and_shows_one_at_a_
       return {tabs, first, hint, kept: JSON.parse(localStorage.getItem('fsl-lesson-note')).tab};
     """)
 
-    assert seen["result"]["tabs"] == ["steps", "goal", "theory", "hint", "check"]
+    assert seen["result"]["tabs"] == ["steps", "goal", "theory", "hint"]
     assert seen["result"]["first"] == ["steps"]
     assert seen["result"]["hint"] == {"shown": ["hint"], "selected": "true"}
     assert seen["result"]["kept"] == "hint"
@@ -255,82 +210,41 @@ def test_the_note_floats_over_the_pane_in_the_empty_part_of_kibana_s_header_and_
     assert {"absolute", "top-2", "right-28"} <= set(pill), pill
 
 def test_the_hints_tab_holds_reasoning_and_folds_the_full_solution_until_asked(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
+    command = commands("f6")["excluded"]
+    seen = open_page(client, "/blue/1/", setup=guided(True, "f6") + """
+      localStorage.setItem('fsl-lesson-step-1', '2');
+    """, scenario=f"""
       const hidden = () => browser.element('lesson-answer-box').classList.contains('hidden');
       const cards = [...browser.element('lesson-hints').querySelectorAll('[data-card]')].map((c) => c.dataset.card);
       const folded = hidden();
       await browser.click('lesson-answer-toggle');
       const unreached = browser.text('lesson-answer');
-      await browser.click('[data-step="4"]');
+      await browser.click('[data-step="{ids("f6").index("excluded")}"]');
       await browser.wait(16);
-      return {cards, folded, opened: !hidden(), unreached, answer: browser.text('lesson-answer'),
+      return {{cards, folded, opened: !hidden(), unreached, answer: browser.text('lesson-answer'),
               hints: browser.text('lesson-hints'),
               form: ['lesson-paranoia', 'lesson-exclusions', 'lesson-save'].map((id) => document.getElementById(id)),
-              writes: browser.requests.filter((r) => r.method !== 'GET' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)};
+              writes: browser.requests.filter((r) => r.method !== 'GET' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)}};
     """)
 
-    assert seen["result"]["cards"] == ["why_rule", "why_target", "why_file"]
-    assert english("lesson.board.hint.why_rule.title") in seen["result"]["hints"]
-    assert "nginx" not in seen["result"]["hints"], "a hint says why, the steps say what to type"
+    assert seen["result"]["cards"] == ["why_leak"]
+    assert english("lesson.miss.hint.why_leak.title") in seen["result"]["hints"]
+    assert command not in seen["result"]["hints"], "a hint says why, the steps say what to type"
     assert seen["result"]["folded"] is True and seen["result"]["opened"] is True
-    assert "920273" not in seen["result"]["unreached"], "a step's command reaches the browser once the step is reached"
-    assert "ctl:ruleRemoveTargetById=920273;ARGS:q" in seen["result"]["answer"]
-    assert "if nginx -t 2>&1 && nginx -s reload 2>&1; then echo reloaded;" in seen["result"]["answer"]
-    assert seen["result"]["form"] == [None, None, None], "the tuning is done in the WAF terminal"
+    assert command not in seen["result"]["unreached"], "a step's command reaches the browser once the step is reached"
+    assert seen["result"]["answer"] == command
+    assert seen["result"]["form"] == [None, None, None], "the WAF is read in the WAF terminal"
     assert seen["result"]["writes"] == []
-
-def test_verify_shows_pass_or_fail_with_passing_lines_in_green_and_failing_lines_in_red(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
-      await browser.click('lesson-verify');
-      const passed = browser.element('lesson-passed');
-      const failing = browser.element('lesson-diagnosis');
-      return {verdict: browser.text('lesson-verdict'), passed: passed.textContent, failing: failing.textContent,
-              green: passed.querySelectorAll('.text-success').length,
-              red: failing.querySelectorAll('.text-danger').length,
-              asked: browser.requests.filter((r) => r.method === 'POST' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => r.route)};
-    """)
-    result = seen["result"]
-
-    assert result["asked"] == ["/api/sessions/1/verify/"]
-    assert "FAIL" in result["verdict"] and english("lesson.verify.failing", 1) in result["verdict"]
-    assert "✓" in result["passed"] and english("lesson.check.held") in result["passed"]
-    assert result["green"] == 1 and result["red"] == 1
-    assert english("lesson.diag.benign_blocked", "board-normal-search-with-apostrophe", 403) in result["failing"]
-    assert "✗" in result["failing"] and english("lesson.diag.blocked_ratio", 1, 1) not in result["failing"]
-    assert not re.search(r"\b(TP|FP|FN|TN)\b", result["passed"] + result["failing"]), (
-        "the learner is told what happened, not the scoreboard's labels"
-    )
-
-def test_replay_fires_the_chosen_lesson_case_through_the_attacks_api(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
-      await browser.force('lesson-case', 'board-normal-search-with-apostrophe');
-      await browser.click('lesson-replay');
-      return browser.requests.filter((r) => r.method === 'POST' && !r.route.startsWith('/api/sessions/1/lesson/steps/')).map((r) => [r.route, r.body]);
-    """)
-
-    assert seen["result"] == [[
-        "/api/sessions/1/attacks/", {"case": "board-normal-search-with-apostrophe", "lesson": True},
-    ]], "marked as the lesson's own replay, so neither score counts it"
-
-def test_a_lesson_replay_that_leaked_says_so_beside_the_run(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + """
-      range.diagnosis = [["lesson.diag.leaked", ["board-sqli-orderby-sqlmap", 3, 3]]];
-    """, scenario="""
-      await browser.force('lesson-case', 'board-sqli-orderby-sqlmap');
-      await browser.click('lesson-replay');
-      return browser.text('lesson-replay-status');
-    """)
-
-    assert english("lesson.diag.leaked", "board-sqli-orderby-sqlmap", 3, 3) in seen["result"]
 
 CATALOGUE_DECLARING = """
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [
-      {id: "board", name: "Board", description: "", cases: 1, lesson: true, lesson_defense: DECLARED,
-       lessons: [{id: "waf-exclusion", order: 1, title: "lesson.board.title", goal: "lesson.board.summary",
-                  minutes: 40, level: "easy", defense: DECLARED, prerequisites: [], steps: 8}]},
-      {id: "corp", name: "Corp", description: "", cases: 1, lesson: false},
+      {id: "board", name: "Board", description: "", cases: 1,
+       foundations: [{id: "f1", order: 1, title: "lesson.range.title", goal: "lesson.range.summary",
+                      learns: "lesson.range.learns", minutes: 10, level: "easy", defense: DECLARED,
+                      prerequisites: [], steps: 4}]},
+      {id: "corp", name: "Corp", description: "", cases: 1, foundations: []},
     ]};
   }
   if (request.route === "/api/sessions/" && request.method === "POST") return {status: 201, body: {id: 9}};
@@ -340,7 +254,7 @@ browser.serve((request) => {
 
 CATALOGUE = CATALOGUE_DECLARING.replace("DECLARED", '"minimal"')
 
-def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_guided_minimal_session(client):
+def test_only_a_wargame_with_foundations_offers_one_and_it_opens_a_guided_session_on_its_defense(client):
     seen = open_page(client, "/", setup=CATALOGUE, scenario="""
       const lessons = [...document.querySelectorAll('[data-lesson]')].map((b) => b.dataset.wargame);
       await browser.click('[data-lesson="true"]');
@@ -348,16 +262,16 @@ def test_only_a_scenario_with_a_lesson_offers_to_start_as_one_and_it_opens_a_gui
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["lessons"] == ["board", "board"], "the lesson and practice rungs of the one lesson"
-    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "minimal"}]
+    assert seen["result"]["lessons"] == ["board"], "corp declares no foundation"
+    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f1", "defense": "minimal"}]
 
-def test_start_as_lesson_sends_the_defense_the_lesson_declares_not_a_fixed_one(client):
+def test_starting_a_foundation_sends_the_defense_it_declares_not_a_fixed_one(client):
     seen = open_page(client, "/", setup=CATALOGUE_DECLARING.replace("DECLARED", '"full"'), scenario="""
       await browser.click('[data-lesson="true"]');
       return browser.requests.filter((r) => r.method === 'POST').map((r) => r.body);
     """)
 
-    assert seen["result"] == [{"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "full"}]
+    assert seen["result"] == [{"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}]
 
 def test_the_goal_line_is_pinned_above_the_tabs_whichever_tab_is_open(client):
     seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
@@ -367,20 +281,19 @@ def test_the_goal_line_is_pinned_above_the_tabs_whichever_tab_is_open(client):
     """)
     page = client.get("/blue/1/").content.decode()
 
-    assert seen["result"] == {"text": english("lesson.board.summary"), "hidden": False}
+    assert seen["result"] == {"text": english("lesson.logs.summary"), "hidden": False}
     assert page.index('id="lesson-goal-line"') < page.index('id="lesson-tabs"') < page.index('data-pane-of="steps"'), (
         "the goal sits above the tabs, outside every tab's pane"
     )
-    assert "is not injectable" in english("lesson.board.summary") and "O'Brien" in english("lesson.board.summary")
 
-def test_the_catalogue_says_which_scenario_carries_a_lesson(client):
-    listed = {w["id"]: w["lesson"] for w in client.get("/api/wargames/").json()}
+def test_the_catalogue_says_which_wargame_carries_foundations(client):
+    listed = {w["id"]: [unit["id"] for unit in w["foundations"]] for w in client.get("/api/wargames/").json()}
 
-    assert listed == {"board": True, "corp": False}
+    assert listed == {"board": ["f1", "f2", "f3", "f4", "f5", "f6"], "corp": []}
 
 EXPAND = '[data-test-subj="docTableExpandToggleColumn"]'
 
-COACHED = GUIDED.replace("GUIDANCE", "GUIDED_FLAG") + """
+COACHED = """
 Object.getPrototypeOf(document.body).getBoundingClientRect =
   () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
 const pane = browser.element('pane-frame');
@@ -391,27 +304,32 @@ pane.contentDocument = {
   querySelector: (selector) => (present.has(selector) ? table : null),
   addEventListener() {},
 };
-browser.element('lesson-verify').getBoundingClientRect =
-  () => ({left: 1100, top: 300, right: 1180, bottom: 330, width: 80, height: 30});
 """
 
-def coached(guidance=True):
-    return COACHED.replace("GUIDED_FLAG", "true" if guidance else "false")
+def coached(guidance=True, unit=UNIT):
+    return guided(guidance, unit) + COACHED
 
-def at(step):
-    return IDS.index(step)
+def at(step, unit=UNIT):
+    return ids(unit).index(step)
 
-def to(step):
-    return f"await browser.click('[data-step=\"{at(step)}\"]');"
+def to(step, unit=UNIT):
+    return f"await browser.click('[data-step=\"{at(step, unit)}\"]');"
 
 def hints(times):
     return "for (let i = 0; i < %d; i += 1) await browser.click('coach-pop-hint');" % times
 
-def test_the_lesson_is_eight_steps_each_checked_by_the_platform():
-    assert IDS == ["search", "find", "rule", "target", "exclude", "retry", "sqlmap", "verify"]
-    assert [step["check"]["kind"] for step in STEPS] == [
-        "alert", "click", "answer", "choice", "waf", "served", "replay", "verify",
-    ]
+SUBMIT = """
+      const submit = async (value) => {
+        document.querySelector('#coach-pop-act [data-act="value"]').value = value;
+        document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({type: 'submit', preventDefault() {}});
+        await browser.settle();
+        return browser.text('coach-pop-said');
+      };
+"""
+
+def test_the_logs_foundation_is_six_steps_each_checked_by_the_platform():
+    assert IDS == ["search", "engine", "probe", "find", "verdict", "address"]
+    assert [step["check"]["kind"] for step in STEPS] == ["sent", "choice", "sent", "click", "answer", "answer"]
 
 def test_the_coach_boxes_its_target_as_soon_as_the_step_shows_it(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -430,7 +348,7 @@ def test_the_coach_boxes_its_target_as_soon_as_the_step_shows_it(client):
     assert seen["result"]["shown"] == {
         "hidden": False, "left": "206px", "top": "66px", "width": "108px", "layer": "30", "events": "none",
     }, "the box sits over the element, offset by where the Kibana pane is, and never takes a click"
-    assert english("lesson.board.nudge.find") in seen["result"]["help"]
+    assert english("lesson.logs.nudge.find") in seen["result"]["help"]
     assert english("lesson.hint.point") in seen["result"]["help"]
 
 def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(client):
@@ -448,8 +366,8 @@ def test_the_popover_names_the_step_says_what_to_do_and_shows_the_progress(clien
     """)
 
     assert seen["result"] == {
-        "hidden": False, "count": f"1 / {len(STEPS)}", "title": english("lesson.board.label.search"),
-        "text": english("lesson.open.site"), "command": True, "status": english("lesson.board.fail.search"),
+        "hidden": False, "count": f"1 / {len(STEPS)}", "title": english("lesson.logs.label.search"),
+        "text": english("lesson.open.site"), "command": True, "status": english("lesson.status.auto"),
         "checkButton": None, "dots": len(STEPS), "lit": 1,
         "buttons": [english("lesson.coach.back"), english("lesson.coach.next")], "back": True,
     }, "checks run by themselves: a status line, no Check button"
@@ -471,18 +389,20 @@ def test_the_popover_sits_below_its_target_or_above_it_when_there_is_no_room(cli
     assert seen["result"]["roomy"] == {"top": "124px", "arrowTop": "-6px", "arrow": False}
     assert seen["result"]["cramped"] == {"top": "536px", "arrowBottom": "-6px"}
 
-def test_the_coach_walks_on_to_the_lesson_note_s_own_controls_and_opens_the_check_tab(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("verify")}
+def test_the_coach_points_at_a_console_control_above_the_note_s_layer_and_leaves_the_note_folded(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f1") + """
+      document.querySelector('.pane-tab[data-pane="topology"]').getBoundingClientRect =
+        () => ({left: 8, top: 120, right: 52, bottom: 164, width: 44, height: 44});
+    """, scenario="""
       await browser.wait(16);
       const box = browser.element('coach-box');
-      return {{text: browser.text('coach-pop-text'), left: box.style.left, layer: box.style.zIndex,
-              note: browser.element('lesson').classList.contains('hidden'),
-              check: document.querySelector('[data-pane-of="check"]').classList.contains('hidden')}};
+      return {text: browser.text('coach-pop-text'), left: box.style.left, layer: box.style.zIndex,
+              target: box.dataset.target, note: browser.element('lesson').classList.contains('hidden')};
     """)
 
     assert seen["result"] == {
-        "text": english("lesson.board.coach.verify"), "left": "1096px", "layer": "9999", "note": False, "check": False,
+        "text": english("lesson.range.coach.map"), "left": "4px", "layer": "9999",
+        "target": '.pane-tab[data-pane="topology"]', "note": True,
     }
 
 def test_the_coach_says_where_to_look_when_the_element_never_appears(client):
@@ -529,10 +449,10 @@ def test_a_click_step_passes_when_the_learner_opens_the_highlighted_row(client):
     """)
 
     assert seen["result"]["heard"] == 1, "the guide listens in the Kibana document in the capture phase"
-    assert seen["result"]["missed"] == english("lesson.board.label.find"), "a click elsewhere does not advance"
-    assert seen["result"]["after"] == english("lesson.board.label.rule")
-    assert seen["result"]["said"] == english("lesson.board.line.find"), "the step's line greets the next step"
-    assert seen["result"]["status"] == "✓ " + english("lesson.board.ok.find"), "the pass is said before moving on"
+    assert seen["result"]["missed"] == english("lesson.logs.label.find"), "a click elsewhere does not advance"
+    assert seen["result"]["after"] == english("lesson.logs.label.verdict")
+    assert seen["result"]["said"] == english("lesson.logs.line.find"), "the step's line greets the next step"
+    assert seen["result"]["status"] == "✓ " + english("lesson.logs.ok.find"), "the pass is said before moving on"
 
 def test_the_find_step_offers_a_ready_made_filter_that_opens_kibana_narrowed_to_the_request(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
@@ -546,8 +466,8 @@ def test_the_find_step_offers_a_ready_made_filter_that_opens_kibana_narrowed_to_
               kibana: document.querySelector('[data-pane="elk"]').getAttribute('aria-selected')}};
     """)
 
-    assert seen["result"] == {"label": english("lesson.board.chip.find"),
-                              "src": "/kibana/app/discover#/?narrowed=brien", "kibana": "true"}
+    assert seen["result"] == {"label": english("lesson.logs.chip.find"),
+                              "src": "/kibana/app/discover#/?narrowed=find", "kibana": "true"}
 
 def test_the_steps_tab_lists_the_steps_with_the_current_one_marked_and_leaves_the_words_to_the_popover(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
@@ -566,35 +486,35 @@ def test_the_steps_tab_lists_the_steps_with_the_current_one_marked_and_leaves_th
     assert (result["listed"], result["done"]) == (len(STEPS), True), "a step left unpassed is hollow, not ticked"
     assert english("lesson.skipped") in result["skipped"]
     assert result["count"] == english("lesson.steps.passed", 0, len(STEPS))
-    assert english("lesson.board.label.find") in result["current"]
+    assert english("lesson.logs.label.engine") in result["current"]
     assert english("lesson.status.current") in result["current"]
     assert result["repeated"] is False, "the instruction is said once, in the popover"
     assert (result["buttons"], result["shown"]) == (1, True), "no Back or Next of its own; Show the guide only once closed"
 
 def test_a_step_in_the_list_jumps_the_guide_there(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("exclude")}
+      {to("probe")}
       return browser.text('coach-pop-title');
     """)
 
-    assert seen["result"] == english("lesson.board.label.exclude")
+    assert seen["result"] == english("lesson.logs.label.probe")
 
 def test_the_step_reached_is_kept_per_session_and_resumed_on_the_next_visit(client):
     seen = open_page(client, "/blue/1/", setup=coached() + f"""
-      localStorage.setItem('fsl-lesson-step-1', '{at("exclude") + 1}');
+      localStorage.setItem('fsl-lesson-step-1', '{at("probe") + 1}');
     """, scenario="""
       const resumed = browser.text('coach-pop-title');
       await browser.click('coach-pop-next');
       return {resumed, kept: localStorage.getItem('fsl-lesson-step-1')};
     """)
 
-    assert seen["result"] == {"resumed": english("lesson.board.label.exclude"), "kept": str(at("exclude") + 2)}
+    assert seen["result"] == {"resumed": english("lesson.logs.label.probe"), "kept": str(at("probe") + 2)}
 
 def test_next_and_a_jump_in_the_list_record_a_step_left_unpassed_as_skipped_and_back_does_not(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5"), scenario=f"""
       await browser.click('coach-pop-next');
-      {to("rule")}
-      document.querySelector('#coach-pop-act [data-act="value"]').value = '920273';
+      {to("stopped", "f5")}
+      document.querySelector('#coach-pop-act [data-act="value"]').value = 'waf';
       document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
       await browser.settle();
       await browser.wait(1500);
@@ -605,17 +525,17 @@ def test_next_and_a_jump_in_the_list_record_a_step_left_unpassed_as_skipped_and_
     """)
 
     assert seen["result"] == [
-        ["search", "reached"], ["search", "skipped"], ["find", "reached"], ["find", "skipped"], ["rule", "reached"],
-        ["target", "reached"], ["target", "skipped"], ["exclude", "reached"], ["target", "reached"],
+        ["attack", "reached"], ["attack", "skipped"], ["follow", "reached"], ["follow", "skipped"], ["stopped", "reached"],
+        ["rule", "reached"], ["rule", "skipped"], ["sqlmap", "reached"], ["rule", "reached"],
     ], "a passed step moves on without a skip; Back is not a skip"
 
 def test_the_hint_level_a_step_reached_is_resumed_from_the_session(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + "own('rule').hint = 1;", scenario=f"""
-      {to("rule")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5") + "own('rule').hint = 1;", scenario=f"""
+      {to("rule", "f5")}
       return browser.text('coach-pop-help');
     """)
 
-    assert seen["result"] == english("lesson.board.nudge.rule"), "the level comes from the session, not from this browser"
+    assert seen["result"] == english("lesson.attack.nudge.rule"), "the level comes from the session, not from this browser"
 
 def test_closing_the_popover_hides_the_guide_until_the_steps_tab_brings_it_back(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
@@ -631,35 +551,32 @@ def test_closing_the_popover_hides_the_guide_until_the_steps_tab_brings_it_back(
 
     assert seen["result"] == {"closed": [True, False], "back": [False, True]}
 
-def test_a_guided_note_teaches_with_folded_theory_cards_that_open_on_a_click(client):
+def test_a_foundation_note_opens_its_theory_card_from_the_start_and_folds_it_on_a_click(client):
     shown = open_page(client, "/blue/1/", setup=guided(True), scenario="""
-      const cards = [...browser.element('lesson-theory').querySelectorAll('[data-card]')];
-      const folded = cards.map((card) => browser.element('lesson-theory')
-        .querySelector(`[data-card-body="${card.dataset.card}"]`).classList.contains('hidden'));
-      await browser.click('[data-card="scoring"]');
-      const body = browser.element('lesson-theory').querySelector('[data-card-body="scoring"]');
-      return {ids: cards.map((card) => card.dataset.card), folded, opened: !body.classList.contains('hidden'),
+      const theory = browser.element('lesson-theory');
+      const cards = [...theory.querySelectorAll('[data-card]')];
+      const body = theory.querySelector('[data-card-body="records"]');
+      const first = {open: !body.classList.contains('hidden'), expanded: cards[0].getAttribute('aria-expanded')};
+      await browser.click('[data-card="records"]');
+      return {ids: cards.map((card) => card.dataset.card), first, folded: body.classList.contains('hidden'),
               text: body.textContent};
     """)
 
     assert shown["errors"] == []
-    assert shown["result"]["ids"] == ["paranoia", "scoring", "culprit", "fixes", "anatomy"]
-    assert all(shown["result"]["folded"]), "theory stays out of the path until it is asked for"
-    assert shown["result"]["opened"] is True
-    assert english("lesson.board.theory.scoring.body") in shown["result"]["text"]
+    assert shown["result"]["ids"] == ["records"]
+    assert shown["result"]["first"] == {"open": True, "expanded": "true"}, "a foundation teaches its idea first"
+    assert shown["result"]["folded"] is True
+    assert english("lesson.logs.theory.records.body").split("\n")[0] in shown["result"]["text"]
 
 def test_a_theory_card_points_the_coach_at_what_it_talks_about(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
-      await browser.click('[data-card="anatomy"]');
-      await browser.click('[data-shows="exclude"]');
-      const anatomy = browser.text('coach-pop-title');
-      await browser.click('[data-card="culprit"]');
-      await browser.click('[data-shows="rule"]');
-      return {anatomy, culprit: browser.text('coach-pop-title')};
+      const before = browser.text('coach-pop-title');
+      await browser.click('[data-shows="engine"]');
+      return {before, records: browser.text('coach-pop-title')};
     """)
 
     assert seen["result"] == {
-        "anatomy": english("lesson.board.label.exclude"), "culprit": english("lesson.board.label.rule"),
+        "before": english("lesson.logs.label.search"), "records": english("lesson.logs.label.engine"),
     }
 
 def test_the_site_step_points_at_the_website_rail_until_the_site_is_open_then_at_its_address_bar(client):
@@ -682,9 +599,9 @@ def test_the_site_step_points_at_the_website_rail_until_the_site_is_open_then_at
     assert seen["result"] == {"rail": "4px", "bar": "296px"}
 
 def test_the_terminal_step_folds_its_command_under_show_command_and_runs_it_with_one_button(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6"), scenario=f"""
       await browser.click('[data-pane="waf"]');
-      {to("exclude")}
+      {to("excluded", "f6")}
       await browser.wait(16);
       const folded = {{code: browser.element('coach-pop-code-box').classList.contains('hidden'),
                       view: browser.text('coach-pop-view'), run: browser.text('coach-pop-run'),
@@ -700,23 +617,23 @@ def test_the_terminal_step_folds_its_command_under_show_command_and_runs_it_with
     assert seen["errors"] == []
     assert result["folded"] == {
         "code": True, "view": english("lesson.command.show"), "run": english("lesson.run"),
-        "does": english("lesson.board.does.exclude"), "wide": True, "popLeft": "644px", "popTop": "434px",
+        "does": english("lesson.miss.does.excluded"), "wide": True, "popLeft": "644px", "popTop": "434px",
     }, "the popover sits in the pane's bottom right corner, clear of the terminal output"
-    assert result["code"] == COMMAND["exclude"] and result["shown"] is True
+    assert result["code"] == commands("f6")["excluded"] and result["shown"] is True
     assert result["view"] == english("lesson.command.hide")
 
 def test_the_copy_button_puts_the_step_s_command_on_the_clipboard(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + """
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + """
       const copied = [];
       navigator.clipboard = {writeText: async (text) => { copied.push(text); }};
     """, scenario=f"""
-      {to("exclude")}
+      {to("excluded", "f6")}
       await browser.click('coach-pop-view');
       await browser.click('coach-pop-copy');
       return {{copied, said: browser.text('coach-pop-copy')}};
     """)
 
-    assert seen["result"] == {"copied": [COMMAND["exclude"]], "said": english("lesson.copied")}
+    assert seen["result"] == {"copied": [commands("f6")["excluded"]], "said": english("lesson.copied")}
 
 def test_kibana_s_first_visit_callouts_are_marked_seen_before_the_pane_loads(client):
     seen = open_page(client, "/blue/1/", setup=coached(False), scenario="""
@@ -747,29 +664,32 @@ def test_nothing_on_the_page_is_dimmed_while_a_step_is_shown(client):
 
     assert seen["result"] == [False] * len(STEPS)
 
-def test_a_popover_for_a_note_control_sits_beside_the_note_not_over_it(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + NOTE_OPEN_AT + """
-      browser.element('lesson-verify').getBoundingClientRect =
+def test_a_popover_for_a_control_under_the_open_note_sits_beside_the_note_not_over_it(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5") + NOTE_OPEN_AT + """
+      browser.element('topology-hops').getBoundingClientRect =
         () => ({left: 640, top: 300, right: 720, bottom: 330, width: 80, height: 30});
     """, scenario=f"""
-      {to("verify")}
+      await browser.click('note-pill');
+      await browser.click('[data-pane="topology"]');
+      {to("stopped", "f5")}
       await browser.wait(16);
       const pop = browser.element('coach-pop');
       const arrow = browser.element('coach-pop-arrow');
       return {{left: parseFloat(pop.style.left), note: !browser.element('lesson').classList.contains('hidden'),
+              target: browser.element('coach-box').dataset.target,
               arrow: arrow.classList.contains('hidden'), arrowRight: arrow.style.right}};
     """)
     result = seen["result"]
 
-    assert result["note"] is True
+    assert result["note"] is True and result["target"] == "#topology-hops"
     assert result["left"] + 340 <= 620, f"the popover overlaps the note: {result}"
     assert (result["arrow"], result["arrowRight"]) == (False, "-6px")
 
 def test_a_terminal_popover_moves_left_of_an_open_note(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + NOTE_OPEN_AT, scenario=f"""
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + NOTE_OPEN_AT, scenario=f"""
       await browser.click('note-pill');
       await browser.click('[data-pane="waf"]');
-      {to("exclude")}
+      {to("excluded", "f6")}
       await browser.wait(16);
       const pop = browser.element('coach-pop').style;
       return {{left: parseFloat(pop.left), top: parseFloat(pop.top), box: browser.element('coach-box').style.zIndex}};
@@ -780,32 +700,16 @@ def test_a_terminal_popover_moves_left_of_an_open_note(client):
     assert result["left"] >= 200 and result["top"] == 434
     assert int(result["box"]) < 35
 
-def test_the_note_opens_for_a_step_on_its_own_control_and_folds_again_when_the_step_moves_back(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      const folded = () => browser.element('lesson').classList.contains('hidden');
-      const start = folded();
-      {to("verify")}
-      const atVerify = {{folded: folded(), check: document.querySelector('[data-tab="check"]').getAttribute('aria-selected')}};
-      await browser.click('coach-pop-back');
-      return {{start, atVerify, back: folded()}};
-    """)
-
-    assert seen["result"] == {"start": True, "atVerify": {"folded": False, "check": "true"}, "back": True}
-
 def test_an_open_note_s_tab_follows_the_step(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       await browser.click('note-pill');
       await browser.click('[data-tab="hint"]');
-      {to("rule")}
-      const rule = document.querySelector('.tab[aria-selected="true"]').dataset.tab;
-      {to("verify")}
-      const verify = document.querySelector('.tab[aria-selected="true"]').dataset.tab;
-      await browser.click('coach-pop-back');
-      return {{rule, verify, retry: document.querySelector('.tab[aria-selected="true"]').dataset.tab,
+      {to("engine")}
+      return {{engine: document.querySelector('.tab[aria-selected="true"]').dataset.tab,
               open: !browser.element('lesson').classList.contains('hidden')}};
     """)
 
-    assert seen["result"] == {"rule": "steps", "verify": "check", "retry": "steps", "open": True}
+    assert seen["result"] == {"engine": "steps", "open": True}
 
 INSECURE = """
 const selected = [];
@@ -814,17 +718,17 @@ document.execCommand = (command) => command === 'copy' && selected.length > 0;
 """
 
 def test_copy_falls_back_to_a_selection_when_the_page_is_not_a_secure_context(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + INSECURE, scenario=f"""
-      {to("exclude")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + INSECURE, scenario=f"""
+      {to("excluded", "f6")}
       await browser.click('coach-pop-copy');
       return {{selected, said: browser.text('coach-pop-copy'), left: document.querySelectorAll('textarea').length}};
     """)
 
-    assert seen["result"] == {"selected": [COMMAND["exclude"]], "said": english("lesson.copied"), "left": 0}
+    assert seen["result"] == {"selected": [commands("f6")["excluded"]], "said": english("lesson.copied"), "left": 0}
 
 def test_copy_says_it_failed_when_neither_way_works(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("exclude")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6"), scenario=f"""
+      {to("excluded", "f6")}
       await browser.click('coach-pop-copy');
       return browser.text('coach-pop-copy');
     """)
@@ -838,21 +742,21 @@ pane.contentWindow = {term: {paste: (text) => pasted.push(text), input: (text) =
 """
 
 def test_run_in_terminal_pastes_the_command_with_a_newline_so_it_runs(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + WAF_TERMINAL, scenario=f"""
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + WAF_TERMINAL, scenario=f"""
       await browser.click('[data-pane="waf"]');
-      {to("exclude")}
+      {to("excluded", "f6")}
       await browser.click('coach-pop-run');
       return {{pasted, entered, said: browser.text('coach-pop-typed')}};
     """)
     result = seen["result"]
 
-    assert result["pasted"] == [COMMAND["exclude"] + "\n"], "one paste, ending in a newline"
+    assert result["pasted"] == [commands("f6")["excluded"] + "\n"], "one paste, ending in a newline"
     assert result["entered"] == ["\r"], "Enter as well, since bash keeps a bracketed paste's newline as text"
     assert result["said"] == english("lesson.ran")
 
 def test_run_in_terminal_opens_the_waf_terminal_first_when_another_pane_is_shown(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + WAF_TERMINAL, scenario=f"""
-      {to("exclude")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + WAF_TERMINAL, scenario=f"""
+      {to("excluded", "f6")}
       await browser.click('coach-pop-run');
       return {{pasted: pasted.length, waf: document.querySelector('[data-pane="waf"]').getAttribute('aria-selected'),
               src: browser.element('pane-frame').getAttribute('src')}};
@@ -860,33 +764,28 @@ def test_run_in_terminal_opens_the_waf_terminal_first_when_another_pane_is_shown
 
     assert seen["result"] == {"pasted": 1, "waf": "true", "src": "/vm-terminal/fsl-waf/"}
 
-def test_the_alert_check_passes_on_a_new_blocked_o_brien_search_from_the_site_browser_only(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + """
-      range.detections.push({id: 1, marker: 'browse', path: "/search/?q=O%27Brien"});
-    """, scenario="""
+def test_the_sent_check_polls_and_passes_once_the_platform_has_the_learner_s_own_matching_request(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
       const poll = async () => { for (let i = 0; i < 5; i += 1) await browser.wait(1000); };
       await poll();
-      const earlier = browser.text('coach-pop-title');
-      range.detections.push({id: 4, marker: 'case-uuid', path: "/search/?q=O%27Brien"});
-      await poll();
-      const fromACase = browser.text('coach-pop-title');
-      range.detections.push({id: 5, marker: 'browse', path: "/search/?q=release"});
+      const nothing = browser.text('coach-pop-title');
+      range.sent.push("/search/?q=release");
       await poll();
       const otherSearch = browser.text('coach-pop-title');
-      range.detections.push({id: 6, marker: 'browse', path: "/search/?q=O%27Brien"});
+      range.sent.push("/search/?q=서울 맛집");
       await poll();
       await browser.wait(1500);
-      return {earlier, fromACase, otherSearch, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
+      return {nothing, otherSearch, after: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
               polls: range.checked.length > 0 && range.checked.every((body) => body.poll === true),
-              read: browser.requests.filter((r) => r.route.endsWith('/ingest/') || r.route.includes('/detections/')).length};
+              wrong: range.used.length,
+              read: browser.requests.filter((r) => r.route.includes('/detections/') || r.route.includes('/site/requests/')).length};
     """)
     result = seen["result"]
 
-    assert result["earlier"] == english("lesson.board.label.search"), "an alert from before the step is not new"
-    assert result["fromACase"] == result["otherSearch"] == english("lesson.board.label.search")
-    assert result["after"] == english("lesson.board.label.find")
-    assert result["said"] == english("lesson.board.line.search")
-    assert result["polls"] is True, "a poll that finds nothing is not a wrong answer"
+    assert result["nothing"] == result["otherSearch"] == english("lesson.logs.label.search")
+    assert result["after"] == english("lesson.logs.label.engine")
+    assert result["said"] == english("lesson.logs.line.search")
+    assert result["polls"] is True and result["wrong"] == 0, "a poll that finds nothing is not a wrong answer"
     assert result["read"] == 0, "the platform reads the records and judges; the page only asks"
 
 def test_a_check_that_has_not_passed_yet_says_specifically_what_is_missing_in_its_status_line(client):
@@ -894,105 +793,81 @@ def test_a_check_that_has_not_passed_yet_says_specifically_what_is_missing_in_it
       const poll = async () => {{ for (let i = 0; i < 5; i += 1) await browser.wait(1000); }};
       await poll();
       const search = browser.text('coach-pop-status');
-      await browser.click('[data-pane="waf"]');
-      {to("exclude")}
+      {to("probe")}
       const fresh = browser.text('coach-pop-status');
       await poll();
-      const exclude = browser.text('coach-pop-status');
-      range.waf = {{paranoia: 4, version: "v3", exclusions: [{{rule_id: 920273, target: "ARGS:q", path: "/search/"}}]}};
-      await poll();
-      return {{search, fresh, exclude, reload: browser.text('coach-pop-status'), title: browser.text('coach-pop-title')}};
+      return {{search, fresh, probe: browser.text('coach-pop-status'), title: browser.text('coach-pop-title')}};
     """)
     result = seen["result"]
 
-    assert result["search"] == english("lesson.board.fail.search")
+    assert result["search"] == english("lesson.logs.fail.search")
     assert result["fresh"] == english("lesson.status.auto")
-    assert result["exclude"] == english("lesson.board.fail.exclude")
-    assert result["reload"] == english("lesson.board.fail.exclude.reload"), "the file has it, the WAF still blocks"
-    assert result["title"] == english("lesson.board.label.exclude")
+    assert result["probe"] == english("lesson.logs.fail.probe")
+    assert result["title"] == english("lesson.logs.label.probe")
 
-def test_the_waf_check_passes_once_the_file_holds_the_exclusion_and_the_o_brien_search_gets_through(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("exclude")}
-      range.waf = {{paranoia: 4, version: "v3", exclusions: [{{rule_id: 920273, target: "ARGS:q", path: "/search/"}}]}};
-      range.status = 200;
-      for (let i = 0; i < 5; i += 1) await browser.wait(1000);
-      await browser.wait(1500);
-      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), fired: range.fired,
-              sent: browser.requests.filter((r) => r.route === '/api/sessions/1/attacks/').length}};
-    """)
-
-    assert seen["result"] == {
-        "title": english("lesson.board.label.retry"), "said": english("lesson.board.line.exclude"),
-        "fired": ["board-normal-search-with-apostrophe"], "sent": 0,
-    }, "the platform replays the O'Brien search for the check; the page sends no attack of its own"
-
-def test_the_answer_check_explains_949110_and_accepts_920273(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("rule")}
-      const submit = async (value) => {{
-        document.querySelector('#coach-pop-act [data-act="value"]').value = value;
-        document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
-        await browser.settle();
-        return browser.text('coach-pop-said');
-      }};
+def test_the_answer_check_explains_949110_and_accepts_the_rule_that_matched(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5"), scenario=f"""
+      {to("rule", "f5")}
+      {SUBMIT}
       const known = await submit('949110');
       const other = await submit('1234');
-      await submit(' 920273 ');
+      await submit(' {RIGHT["rule"]} ');
       await browser.wait(1500);
       return {{known, other, title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said')}};
     """)
 
     assert seen["result"] == {
-        "known": english("lesson.board.wrong.rule.949110"), "other": english("lesson.check.wrong"),
-        "title": english("lesson.board.label.target"), "said": english("lesson.board.line.rule"),
+        "known": english("lesson.attack.wrong.rule.949110"), "other": english("lesson.check.wrong"),
+        "title": english("lesson.attack.label.sqlmap"), "said": english("lesson.attack.line.rule"),
     }
 
-def test_the_choice_check_offers_the_four_fields_and_takes_only_the_search_field(client):
+def test_the_choice_check_offers_its_options_and_takes_only_the_right_one(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("target")}
+      {to("engine")}
       const options = [...document.querySelectorAll('#coach-pop-act [data-act="choose"]')];
       const labels = options.map((o) => o.textContent);
-      document.querySelector('#coach-pop-act [data-value="REQUEST_URI"]').click();
+      document.querySelector('#coach-pop-act [data-value="modsecurity"]').click();
       await browser.settle();
       const wrong = browser.text('coach-pop-title');
-      document.querySelector('#coach-pop-act [data-value="ARGS:q"]').click();
+      document.querySelector('#coach-pop-act [data-value="suricata"]').click();
       await browser.settle();
       await browser.wait(1500);
       return {{labels, wrong, after: browser.text('coach-pop-title')}};
     """)
 
     assert seen["result"]["labels"] == [
-        english("lesson.board.option.target.ARGS:q"), english("lesson.board.option.target.REQUEST_URI"),
-        english("lesson.board.option.target.REQUEST_COOKIES"), english("lesson.board.option.target.REQUEST_HEADERS"),
+        english("lesson.logs.option.engine.modsecurity"), english("lesson.logs.option.engine.suricata"),
     ]
-    assert seen["result"]["wrong"] == english("lesson.board.label.target")
-    assert seen["result"]["after"] == english("lesson.board.label.exclude")
+    assert seen["result"]["wrong"] == english("lesson.logs.label.engine")
+    assert seen["result"]["after"] == english("lesson.logs.label.probe")
 
-def test_the_served_check_runs_when_the_site_shows_the_o_brien_search_again(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("retry")}
+def test_the_sent_check_runs_when_the_site_shows_a_matching_request(client):
+    seen = open_page(client, "/blue/1/", setup=coached(), scenario="""
       await browser.click('[data-pane="site"]');
-      dispatchEvent({{type: 'message', data: {{fslSite: "/site/1/board.com/search/?q=O%27Brien"}}}});
-      await browser.settle();
-      const blocked = [browser.text('coach-pop-title'), browser.text('coach-pop-status')];
-      range.status = 200;
-      dispatchEvent({{type: 'message', data: {{fslSite: "/site/1/board.com/search/?q=O%27Brien"}}}});
+      const checks = () => browser.requests.filter((r) => r.route.endsWith('/search/check/')).length;
+      dispatchEvent({type: 'message', data: {fslSite: "/site/1/board.com/search/?q=release"}});
       await browser.settle();
       await browser.wait(1500);
-      return {{blocked, after: browser.text('coach-pop-title')}};
+      const other = {checks: checks(), title: browser.text('coach-pop-title')};
+      range.sent.push("/search/?q=서울");
+      dispatchEvent({type: 'message', data: {fslSite: "/site/1/board.com/search/?q=%EC%84%9C%EC%9A%B8"}});
+      await browser.settle();
+      await browser.wait(1500);
+      const korean = checks();
+      await browser.wait(1500);
+      return {other, korean, after: browser.text('coach-pop-title')};
     """)
 
-    assert seen["result"]["blocked"] == [english("lesson.board.label.retry"), english("lesson.board.fail.retry", 403)]
-    assert seen["result"]["after"] == english("lesson.board.label.sqlmap")
+    assert seen["result"]["other"] == {"checks": 0, "title": english("lesson.logs.label.search")}
+    assert seen["result"]["korean"] == 1
+    assert seen["result"]["after"] == english("lesson.logs.label.engine")
 
-def test_the_verify_step_finishes_the_lesson_only_on_pass(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("verify")}
-      await browser.click('lesson-verify');
-      const failed = browser.text('coach-pop-said');
-      range.passed = true;
-      await browser.click('lesson-verify');
+def test_the_last_step_finishes_the_lesson_only_once_it_passes(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6"), scenario=f"""
+      {to("lost", "f6")}
+      {SUBMIT}
+      const failed = await submit('7');
+      await submit('{RIGHT["lost"]}');
       const list = [...browser.element('lesson-step-list').querySelectorAll('[data-step]')];
       return {{failed, said: browser.text('coach-pop-said'), text: browser.text('coach-pop-text'),
               allDone: list.at(-1).textContent.includes('✓') && !list.slice(0, -1).some((item) => item.textContent.includes('✓')),
@@ -1000,13 +875,13 @@ def test_the_verify_step_finishes_the_lesson_only_on_pass(client):
     """)
 
     assert seen["result"] == {
-        "failed": english("lesson.board.fail.verify"), "said": english("lesson.board.line.verify"),
+        "failed": english("lesson.check.wrong"), "said": english("lesson.miss.line.lost"),
         "text": english("lesson.done"), "allDone": True, "hint": True,
     }
 
 def test_a_minute_on_a_step_offers_a_hint_without_recording_one_and_each_press_climbs(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("rule")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5"), scenario=f"""
+      {to("rule", "f5")}
       const state = () => ({{help: browser.text('coach-pop-help'), button: browser.text('coach-pop-hint'),
                             doIt: !browser.element('coach-pop-do').classList.contains('hidden')}});
       const start = state();
@@ -1025,67 +900,66 @@ def test_a_minute_on_a_step_offers_a_hint_without_recording_one_and_each_press_c
     assert result["start"] == {"help": "", "button": english("lesson.hint.more"), "doIt": False}
     assert result["offered"] == {"help": "", "button": english("lesson.hint.available"), "doIt": False}
     assert result["recorded"] == 0, "the timer only offers a hint; the learner has not asked for one"
-    assert result["one"] == {"help": english("lesson.board.nudge.rule"), "button": english("lesson.hint.more"), "doIt": False}
-    assert english("lesson.board.answer.rule") in result["three"]["help"] and not result["three"]["doIt"]
+    assert result["one"] == {"help": english("lesson.attack.nudge.rule"), "button": english("lesson.hint.more"), "doIt": False}
+    assert english("lesson.attack.answer.rule") in result["three"]["help"] and not result["three"]["doIt"]
     assert result["four"]["doIt"] is True
     assert (result["used"], result["level"]) == ([{"step": "rule", "level": "hint"}], 4)
 
 def test_two_wrong_answers_raise_the_hint_a_level(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("target")}
-      document.querySelector('#coach-pop-act [data-value="REQUEST_COOKIES"]').click();
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f3"), scenario=f"""
+      {to("meaning", "f3")}
+      document.querySelector('#coach-pop-act [data-value="3xx"]').click();
       await browser.settle();
       const once = browser.text('coach-pop-help');
-      document.querySelector('#coach-pop-act [data-value="REQUEST_HEADERS"]').click();
+      document.querySelector('#coach-pop-act [data-value="5xx"]').click();
       await browser.settle();
       return {{once, twice: browser.text('coach-pop-help')}};
     """)
 
-    assert seen["result"] == {"once": "", "twice": english("lesson.board.nudge.target")}
+    assert seen["result"] == {"once": "", "twice": english("lesson.http.nudge.meaning")}
 
 def test_do_it_for_me_performs_the_step_and_records_that_help_was_used(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("rule")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f5"), scenario=f"""
+      {to("rule", "f5")}
       {hints(4)}
       await browser.click('coach-pop-do');
       await browser.wait(1500);
       return {{title: browser.text('coach-pop-title'), recorded: range.used,
-              marked: browser.element('lesson-step-list').querySelector('[data-step="{at("rule")}"]').textContent}};
+              marked: browser.element('lesson-step-list').querySelector('[data-step="{at("rule", "f5")}"]').textContent}};
     """)
     result = seen["result"]
 
-    assert result["title"] == english("lesson.board.label.target")
+    assert result["title"] == english("lesson.attack.label.sqlmap")
     assert result["recorded"] == [{"step": "rule", "level": "hint"}, {"step": "rule", "level": "do"}], (
         "help is recorded on the session through the API, once per step and kind"
     )
     assert english("lesson.helped") in result["marked"]
 
-def test_do_it_for_me_on_the_terminal_step_has_the_platform_add_the_exclusion_and_types_nothing(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + WAF_TERMINAL, scenario=f"""
-      {to("exclude")}
+def test_do_it_for_me_on_the_terminal_step_has_the_platform_answer_and_types_nothing(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + WAF_TERMINAL, scenario=f"""
+      await browser.click('[data-pane="waf"]');
+      {to("excluded", "f6")}
       {hints(4)}
       await browser.click('coach-pop-do');
-      return {{pasted, puts: range.puts, asked: browser.requests.filter((r) => r.route.endsWith('/do/')).map((r) => r.route)}};
+      return {{pasted, entered, asked: browser.requests.filter((r) => r.route.endsWith('/do/')).map((r) => r.route)}};
     """)
 
-    assert seen["result"] == {"pasted": [], "puts": [{"paranoia": 4, "exclusions": [
-        {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}],
-        "asked": ["/api/sessions/1/lesson/steps/exclude/do/"]}, "the agent path: the platform adds it through the WAF API"
+    assert seen["result"] == {"pasted": [], "entered": [], "asked": ["/api/sessions/1/lesson/steps/excluded/do/"]}, (
+        "the agent path: the platform answers from its own records; nothing is typed into the WAF terminal"
+    )
 
 def test_do_it_for_me_on_the_terminal_step_moves_on_once_the_platform_s_check_passes(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("exclude")}
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6"), scenario=f"""
+      {to("excluded", "f6")}
       {hints(4)}
-      range.status = 200;
       await browser.click('coach-pop-do');
       await browser.wait(1500);
-      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'), fired: range.fired,
-              marked: browser.element('lesson-step-list').querySelector('[data-step="{at("exclude")}"]').textContent}};
+      return {{title: browser.text('coach-pop-title'), said: browser.text('coach-pop-said'),
+              marked: browser.element('lesson-step-list').querySelector('[data-step="{at("excluded", "f6")}"]').textContent}};
     """)
 
-    assert seen["result"]["title"] == english("lesson.board.label.retry")
-    assert seen["result"]["said"] == english("lesson.board.line.exclude")
-    assert seen["result"]["fired"] == ["board-normal-search-with-apostrophe"]
+    assert seen["result"]["title"] == english("lesson.miss.label.sqlmap")
+    assert seen["result"]["said"] == english("lesson.miss.line.excluded")
     assert english("lesson.helped") in seen["result"]["marked"]
 
 def test_do_it_for_me_on_the_first_step_opens_the_search_in_the_site_browser(client):
@@ -1096,30 +970,36 @@ def test_do_it_for_me_on_the_first_step_opens_the_search_in_the_site_browser(cli
               site: document.querySelector('[data-pane="site"]').getAttribute('aria-selected')}};
     """)
 
-    assert seen["result"] == {"src": "http://console.test:8002/site/1/board.com/search/?q=O'Brien", "site": "true"}
+    assert seen["result"] == {"src": "http://console.test:8002/site/1/board.com/" + STEPS[0]["site"][1:], "site": "true"}
 
 def test_the_do_it_yourself_path_drops_the_ready_made_filter_and_the_run_button(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+    stretched = """
       browser.element('lesson-stretch').checked = true;
-      browser.element('lesson-stretch').dispatchEvent({{type: 'change'}});
+      browser.element('lesson-stretch').dispatchEvent({type: 'change'});
+    """
+    filtered = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
+      {stretched}
       {to("find")}
-      const chip = document.querySelector('#coach-pop-act [data-act="chip"]');
-      {to("exclude")}
-      return {{chip: chip === null, run: browser.element('coach-pop-run').classList.contains('hidden'),
+      return document.querySelector('#coach-pop-act [data-act="chip"]') === null;
+    """)
+    typed = open_page(client, "/blue/1/", setup=coached(unit="f6"), scenario=f"""
+      {stretched}
+      {to("excluded", "f6")}
+      return {{run: browser.element('coach-pop-run').classList.contains('hidden'),
               code: !browser.element('coach-pop-code-box').classList.contains('hidden'),
               said: browser.text('coach-pop-typed'), kept: localStorage.getItem('fsl-lesson-stretch')}};
     """)
 
-    assert seen["result"] == {"chip": True, "run": True, "code": True,
-                              "said": english("lesson.stretch.type"), "kept": "true"}
+    assert filtered["result"] is True
+    assert typed["result"] == {"run": True, "code": True, "said": english("lesson.stretch.type"), "kept": "true"}
 
 EVERYWHERE = """
 document.querySelectorAll('.pane-tab').forEach((tab, index) => {
   tab.getBoundingClientRect = () => ({left: 8, top: 60 + 50 * index, right: 52, bottom: 104 + 50 * index, width: 44, height: 44});
 });
 browser.element('site-address').getBoundingClientRect = () => ({left: 300, top: 60, right: 1300, bottom: 88, width: 1000, height: 28});
-['[data-test-subj="docTableExpandToggleColumn"]', '[data-test-subj="field-rule"]',
- '[data-test-subj="field-transaction.messages.details.data"]'].forEach((selector) => present.add(selector));
+['[data-test-subj="docTableExpandToggleColumn"]', '[data-test-subj="field-status"]',
+ '[data-test-subj="field-source_ip"]'].forEach((selector) => present.add(selector));
 """
 
 def test_every_step_draws_its_box_on_something_the_console_can_reach_in_both_modes(client):
@@ -1134,7 +1014,7 @@ def test_every_step_draws_its_box_on_something_the_console_can_reach_in_both_mod
           await browser.wait(16);
           const box = browser.element('coach-box');
           const first = {{drawn: !box.classList.contains('hidden'), target: box.dataset.target}};
-          const opens = {{0: 'site', 1: 'elk', 2: 'elk', 3: 'elk', 4: 'waf', 5: 'site'}}[index];
+          const opens = {{0: 'site', 1: 'elk', 2: 'site', 3: 'elk', 4: 'elk', 5: 'elk'}}[index];
           if (opens) await browser.click(`[data-pane="${{opens}}"]`);
           await browser.wait(16);
           visited.push({{stretch, index, first, then: {{drawn: !box.classList.contains('hidden'), target: box.dataset.target}}}});
@@ -1143,9 +1023,9 @@ def test_every_step_draws_its_box_on_something_the_console_can_reach_in_both_mod
       return visited;
     """)
     expected = {
-        "search": "#site-address", "find": '[data-test-subj="docTableExpandToggleColumn"]',
-        "rule": '[data-test-subj="field-rule"]', "target": '[data-test-subj="field-transaction.messages.details.data"]',
-        "exclude": "pane", "retry": "#site-address", "sqlmap": "pane", "verify": "#lesson-verify",
+        "search": "#site-address", "engine": "pane", "probe": "#site-address",
+        "find": '[data-test-subj="docTableExpandToggleColumn"]', "verdict": '[data-test-subj="field-status"]',
+        "address": '[data-test-subj="field-source_ip"]',
     }
 
     assert seen["errors"] == []
@@ -1166,8 +1046,8 @@ def test_the_first_step_says_open_the_website_then_points_at_the_address_bar_wit
     """)
 
     assert seen["result"]["closed"] == {"text": english("lesson.open.site"), "target": '.pane-tab[data-pane="site"]'}
-    assert seen["result"]["open"] == {"text": english("lesson.board.coach.search"), "target": "#site-address"}
-    assert "http://board.com/search/?q=O'Brien" in english("lesson.board.coach.search")
+    assert seen["result"]["open"] == {"text": english("lesson.logs.coach.search"), "target": "#site-address"}
+    assert "http://board.com/search/?q=" in english("lesson.logs.coach.search")
 
 def test_a_popover_for_the_wide_address_bar_sits_just_below_its_right_end(client):
     seen = open_page(client, "/blue/1/", setup=coached() + EVERYWHERE, scenario="""
@@ -1329,68 +1209,28 @@ def test_an_open_session_s_lesson_and_network_panel_keep_polling(client):
 
     assert "/api/sessions/1/lesson/steps/search/check/" in seen["result"] and "/api/sessions/1/site/requests/" in seen["result"]
 
-def test_the_home_card_shows_the_lesson_s_goal_level_time_and_prerequisites_and_starts_each_rung(client):
+def test_the_home_card_shows_each_foundation_s_title_what_it_teaches_and_its_time_and_starts_it_or_the_wargame(client):
     posted = []
-    for rung in ('[data-mode="guided"]', '[data-mode="self"]', '[data-rung="wargame"]'):
+    for button in ('[data-lesson-id="f1"]', '[data-wargame-start="board"] button'):
         seen = open_page(client, "/", setup=CATALOGUE, scenario=f"""
-          const card = browser.text('[data-lesson-card="waf-exclusion"]');
-          await browser.click('{rung}');
+          const card = browser.text('[data-foundation="f1"]');
+          await browser.click('{button}');
           return {{card, posted: browser.requests.filter((r) => r.method === 'POST').map((r) => r.body)}};
         """)
         assert seen["errors"] == []
         posted += seen["result"]["posted"]
     card = seen["result"]["card"]
 
-    for shown in (english("lesson.board.title"), english("lesson.board.summary"), english("difficulty.easy"),
-                  english("main.minutes", 40), english("main.lesson.needs_none"),
-                  english("main.rung.guided"), english("main.rung.self"), english("main.rung.wargame")):
+    for shown in (english("lesson.range.title"), english("lesson.range.learns"), english("main.minutes", 10),
+                  english("main.foundation.start")):
         assert shown in card, shown
     assert posted == [
-        {"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "defense": "minimal"},
-        {"scenario": "board", "guidance": True, "lesson": "waf-exclusion", "mode": "self", "defense": "minimal"},
+        {"scenario": "board", "guidance": True, "lesson": "f1", "defense": "minimal"},
         {"scenario": "board"},
-    ], "lesson and practice run the same lesson; the wargame rung runs without guidance on the full defense"
+    ], "a foundation runs guided on the defense it declares; the wargame runs without guidance on the full defense"
 
-def test_practice_hides_the_steps_the_hints_and_the_coach_and_keeps_the_goal_and_check_tabs(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + """
-      range.mode = "self";
-    """, scenario="""
-      await browser.click('note-pill');
-      const tabs = [...document.querySelectorAll('#lesson-tabs .tab')]
-        .filter((tab) => !tab.classList.contains('hidden')).map((tab) => tab.dataset.tab);
-      const shown = [...document.querySelectorAll('[data-pane-of]')]
-        .filter((pane) => !pane.classList.contains('hidden')).map((pane) => pane.dataset.paneOf);
-      return {tabs, shown, pop: browser.element('coach-pop').classList.contains('hidden'),
-              why: document.querySelectorAll('#lesson-theory [data-shows]').length,
-              note: browser.text('lesson-mode-note'),
-              stepped: browser.requests.filter((r) => r.route.includes('/lesson/steps/')).length};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["tabs"] == ["goal", "theory", "check"]
-    assert seen["result"]["shown"] == ["goal"]
-    assert seen["result"]["pop"] is True and seen["result"]["stepped"] == 0, "no coach walks a practice run"
-    assert seen["result"]["why"] == 0
-    assert seen["result"]["note"] == english("lesson.mode.self")
-
-def test_the_mode_switch_patches_the_session_s_mode(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True), scenario="""
-      await browser.click('lesson-mode');
-      return {patched: range.patched, label: browser.text('lesson-mode')};
-    """)
-
-    assert seen["result"] == {"patched": {"mode": "self"}, "label": english("lesson.mode.to_self")}
-
-FIRST_VISIT = """
-localStorage.removeItem('fsl-lesson-landed-1');
-range.start = {passed: false, diagnosis: [], cases: [
-  {name: "board-sqli-orderby-sqlmap", malicious: true, outcome: "held"},
-  {name: "board-normal-search-with-apostrophe", malicious: false, outcome: "blocked"},
-]};
-"""
-
-def test_the_first_open_lands_on_the_goal_tab_and_a_later_one_starts_folded(client):
-    first = open_page(client, "/blue/1/", setup=guided(True) + FIRST_VISIT, scenario="""
+def test_the_first_open_of_a_foundation_lands_on_the_theory_tab_and_a_later_one_starts_folded(client):
+    first = open_page(client, "/blue/1/", setup=guided(True) + "localStorage.removeItem('fsl-lesson-landed-1');", scenario="""
       const shown = [...document.querySelectorAll('[data-pane-of]')]
         .filter((pane) => !pane.classList.contains('hidden')).map((pane) => pane.dataset.paneOf);
       return {open: !browser.element('lesson').classList.contains('hidden'), shown,
@@ -1401,31 +1241,16 @@ def test_the_first_open_lands_on_the_goal_tab_and_a_later_one_starts_folded(clie
     """)
 
     assert first["errors"] == []
-    assert first["result"] == {"open": True, "shown": ["goal"], "landed": "true"}
+    assert first["result"] == {"open": True, "shown": ["theory"], "landed": "true"}
     assert later["result"] is True
-
-def test_the_goal_tab_opens_with_a_ticket_whose_facts_come_from_the_waf_and_the_starting_verdict(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + FIRST_VISIT, scenario="""
-      const red = [...browser.element('lesson-start-cases').querySelectorAll('[data-outcome]')]
-        .filter((row) => row.classList.contains('text-danger')).map((row) => row.textContent);
-      return {ticket: browser.text('lesson-ticket-text'), waf: browser.text('lesson-ticket-waf'),
-              verdict: browser.text('lesson-start-verdict'), red,
-              asked: browser.requests.filter((r) => r.route === '/api/sessions/1/waf/').length};
-    """)
-    result = seen["result"]
-
-    assert result["ticket"] == english("lesson.board.ticket")
-    assert result["waf"] == english("lesson.ticket.waf", 4, 0) and result["asked"] >= 1
-    assert "FAIL" in result["verdict"] and english("lesson.start.heading") in result["verdict"]
-    assert result["red"] == [f"✗ {english('case.board-normal-search-with-apostrophe')} — {english('outcome.blocked')}"]
 
 def test_why_on_a_step_opens_the_theory_card_that_explains_it(client):
     seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
       const first = browser.element('coach-pop-why').classList.contains('hidden');
-      {to("find")}
+      {to("engine")}
       const shown = !browser.element('coach-pop-why').classList.contains('hidden');
       await browser.click('coach-pop-why');
-      const card = document.querySelector('#lesson-theory [data-card="scoring"]');
+      const card = document.querySelector('#lesson-theory [data-card="records"]');
       return {{first, shown, tab: JSON.parse(localStorage.getItem('fsl-lesson-note')).tab,
               open: !browser.element('lesson').classList.contains('hidden'),
               expanded: card.getAttribute('aria-expanded')}};
@@ -1433,141 +1258,22 @@ def test_why_on_a_step_opens_the_theory_card_that_explains_it(client):
 
     assert seen["result"] == {"first": True, "shown": True, "tab": "theory", "open": True, "expanded": "true"}
 
-def test_the_regression_step_replays_sqlmap_only_when_pressed_and_shows_its_conclusion(client):
-    seen = open_page(client, "/blue/1/", setup=coached(), scenario=f"""
-      {to("sqlmap")}
-      await browser.wait(6000);
-      const before = range.fired.length;
-      const button = browser.text('[data-act="replay"]');
-      await browser.click('[data-act="replay"]');
-      return {{before, button, fired: range.fired, rows: browser.text('[data-act="rows"]'), said: browser.text('coach-pop-said')}};
-    """)
-    result = seen["result"]
-
-    assert seen["errors"] == []
-    assert result["before"] == 0, "the replay takes about 15 seconds, so it runs on a press, never on a poll"
-    assert result["button"] == english("lesson.replay.check", "board-sqli-orderby-sqlmap")
-    assert result["fired"] == ["board-sqli-orderby-sqlmap"]
-    assert "all tested parameters do not appear to be injectable" in result["rows"]
-
-def test_an_inconclusive_regression_replay_gets_its_own_message(client):
-    seen = open_page(client, "/blue/1/", setup=coached() + "range.replayOutcome = 'inconclusive';", scenario=f"""
-      {to("sqlmap")}
-      await browser.click('[data-act="replay"]');
-      return browser.text('coach-pop-status');
-    """)
-
-    assert seen["result"] == english("lesson.check.inconclusive", "board-sqli-orderby-sqlmap")
-
-def test_a_replay_row_shows_the_conclusion_the_command_the_403s_as_not_judged_and_a_kibana_link(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + """
-      range.replay = {name: "board-sqli-orderby-sqlmap", outcome: "held", forbidden: 2065, status: 0,
-                      conclusions: ["[CRITICAL] all tested parameters do not appear to be injectable"],
-                      command: "sqlmap -u {target}/?sort=posts_post.id*", discover: "/kibana/app/discover#/?marker=abc"};
-    """, scenario="""
-      await browser.force('lesson-case', 'board-sqli-orderby-sqlmap');
-      await browser.click('lesson-replay');
-      const row = document.querySelector('#lesson-replay-rows [data-replay]');
-      const shown = {conclusion: row.querySelector('[data-conclusion]').textContent,
-                     command: row.querySelector('[data-command]').textContent,
-                     forbidden: row.querySelector('[data-forbidden]').textContent};
-      await browser.click('#lesson-replay-rows [data-discover]');
-      return {...shown, frame: browser.element('pane-frame').getAttribute('src')};
-    """)
-
-    assert seen["result"] == {
-        "conclusion": "[CRITICAL] all tested parameters do not appear to be injectable",
-        "command": "sqlmap -u {target}/?sort=posts_post.id*",
-        "forbidden": english("lesson.replay.forbidden", 2065),
-        "frame": "/kibana/app/discover#/?marker=abc",
-    }
-
-def test_verify_names_the_kind_of_fix_beside_the_verdict_without_counting_it_as_a_failure(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true; range.fix = 'level';", scenario="""
-      await browser.click('lesson-verify');
-      return {verdict: browser.text('lesson-verdict'), fix: browser.text('lesson-fix'),
-              failing: browser.element('lesson-diagnosis').querySelectorAll('li').length};
-    """)
-
-    assert "PASS" in seen["result"]["verdict"] and seen["result"]["failing"] == 0
-    assert seen["result"]["fix"] == f"{english('lesson.fix.level')} {english('lesson.fix.note')}"
-
-def test_a_pass_opens_the_debrief_in_the_check_tab_in_the_order_overview_evidence_change_cases_risk(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
-      const before = browser.element('lesson-debrief').classList.contains('hidden');
-      await browser.click('lesson-verify');
-      const box = browser.element('lesson-debrief');
-      return {before, hidden: box.classList.contains('hidden'), text: box.textContent,
-              order: [...box.querySelectorAll('[data-debrief]')].map((part) => part.dataset.debrief),
-              diff: box.querySelector('[data-diff]').textContent,
-              row: box.querySelector('[data-case]').textContent};
-    """)
-    result = seen["result"]
-
-    assert seen["errors"] == []
-    assert (result["before"], result["hidden"]) == (True, False)
-    assert result["order"] == ["overview", "evidence", "change", "cases", "risk"]
-    assert english("lesson.debrief.overview.line", 2) in result["text"]
-    assert english("lesson.debrief.help", 1, 1, 0) in result["text"]
-    assert "920273 · GET /search/?q=O%27Brien · " + english("lesson.debrief.phase.seed") in result["text"]
-    assert result["diff"].startswith("+SecRule")
-    assert english("outcome.blocked") in result["row"] and english("lesson.check.served") in result["row"]
-    assert english("lesson.risk.path_target") in result["text"]
-    assert "09:01" not in result["text"] and "09:30" not in result["text"], "times stay in the API"
-
-def test_a_pass_reads_the_verify_run_s_alerts_into_the_session_before_the_debrief_lists_them(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
-      await browser.click('lesson-verify');
-      const asked = browser.requests.map((r) => r.method + " " + r.route);
-      const ingest = browser.requests.find((r) => r.route === "/api/sessions/1/ingest/");
-      return {after: asked.slice(asked.indexOf("POST /api/sessions/1/verify/")), within: ingest && ingest.body.within};
-    """)
-    result = seen["result"]
-
-    assert seen["errors"] == []
-    assert result["after"][:3] == ["POST /api/sessions/1/verify/", "POST /api/sessions/1/ingest/",
-                                   "GET /api/sessions/1/lesson/debrief/"], (
-        "the debrief's evidence is the session's own records, and nothing had read the VERIFY run's "
-        "alerts into them, so the evidence log after a PASS was empty"
-    )
-    assert 60 <= result["within"] <= 120
-
-def test_a_fail_reads_no_alerts_and_shows_no_debrief(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = false;", scenario="""
-      await browser.click('lesson-verify');
-      return browser.requests.map((r) => r.route);
-    """)
-
-    assert "/api/sessions/1/ingest/" not in seen["result"]
-    assert "/api/sessions/1/lesson/debrief/" not in seen["result"]
-
-def test_a_long_request_path_in_the_debrief_s_evidence_wraps_inside_the_note(client):
-    seen = open_page(client, "/blue/1/", setup=guided(True) + "range.passed = true;", scenario="""
-      await browser.click('lesson-verify');
-      return [...browser.element('lesson-debrief').querySelectorAll('[data-evidence]')].map((row) => row.className);
-    """)
-
-    assert seen["result"] and all("break-all" in name for name in seen["result"]), (
-        "a sqlmap request path has no spaces; unwrapped it ran past the note and the score page "
-        "scrolled sideways (1,773 px wide at a 1,440 px window, live 2026-10-13)"
-    )
-
 MINE = CATALOGUE.replace('  if (request.route === "/api/sessions/" && request.method === "POST")', """  if (request.route === "/api/sessions/" && request.query.ids) {
     seen.ids = request.query.ids;
     return {body: [
-      {id: 12, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "self", ended_at: "2026-10-13T10:00:00Z",
-       result: {objectives: {lost: 0, undetected: 0, total: 3}, lesson: {passed: true, verified: 1}}},
-      {id: 9, scenario: "board", kind: "lesson", lesson_id: "waf-exclusion", mode: "guided", ended_at: "2026-10-12T10:00:00Z",
-       result: {objectives: {lost: 0, undetected: 0, total: 3}, lesson: {passed: false, verified: 2}}},
+      {id: 12, scenario: "board", kind: "lesson", lesson_id: "f1", ended_at: "2026-10-13T10:00:00Z",
+       result: {objectives: {lost: 0, undetected: 0, total: 3}, scenario: null}},
+      {id: 9, scenario: "board", kind: "lesson", lesson_id: "f1", ended_at: "2026-10-12T10:00:00Z",
+       result: {objectives: {lost: 0, undetected: 0, total: 3}, scenario: null}},
     ]};
   }
   if (request.route === "/api/sessions/" && request.method === "POST")""")
 
-def test_the_home_page_shows_each_lesson_s_last_result_from_the_sessions_this_browser_opened(client):
+def test_the_home_page_shows_each_foundation_s_last_session_from_the_sessions_this_browser_opened(client):
     seen = open_page(client, "/", setup="const seen = {};\nlocalStorage.setItem('fsl-opened-sessions', '[12, 9]');\n" + MINE,
                      scenario="""
       await browser.settle();
-      const line = document.querySelector('[data-last="board/waf-exclusion"]');
+      const line = document.querySelector('[data-last="board/f1"]');
       return {ids: seen.ids, hidden: line.classList.contains('hidden'), text: line.textContent,
               href: line.querySelector('a').getAttribute('href')};
     """)
@@ -1575,24 +1281,8 @@ def test_the_home_page_shows_each_lesson_s_last_result_from_the_sessions_this_br
     assert seen["errors"] == []
     assert seen["result"]["ids"] == "12,9"
     assert seen["result"]["hidden"] is False and seen["result"]["href"] == "/session/12/"
-    assert english("main.last", 12, english("kind.practice")) in seen["result"]["text"] and "PASS" in seen["result"]["text"]
-
-@pytest.mark.parametrize("now, earned, kind", [("guided", "self", "kind.practice"), ("self", "guided", "kind.lesson")])
-def test_the_home_page_labels_a_last_result_by_the_mode_its_verdict_was_earned_in(client, now, earned, kind):
-    switched = MINE.replace(
-        'mode: "self", ended_at: "2026-10-13T10:00:00Z",', f'mode: "{now}", ended_at: "2026-10-13T10:00:00Z",'
-    ).replace("lesson: {passed: true, verified: 1}}", f'lesson: {{passed: true, verified: 1, mode: "{earned}"}}}}')
-    assert switched.count(f'mode: "{earned}"}}') == 1
-    seen = open_page(client, "/", setup="const seen = {};\nlocalStorage.setItem('fsl-opened-sessions', '[12, 9]');\n" + switched,
-                     scenario="""
-      await browser.settle();
-      return document.querySelector('[data-last="board/waf-exclusion"]').textContent;
-    """)
-
-    assert seen["errors"] == []
-    assert english("main.last", 12, english(kind)) in seen["result"], (
-        "the label beside a verdict names the mode the VERIFY ran in, not the mode the session was switched to after"
-    )
+    assert english("main.last", 12, english("kind.lesson")) in seen["result"]["text"]
+    assert english("state.closed") in seen["result"]["text"]
 
 def test_a_browser_with_no_remembered_session_asks_for_none_and_storage_that_throws_breaks_nothing(client):
     seen = open_page(client, "/", setup="const seen = {};\n" + MINE + """
@@ -1600,7 +1290,7 @@ def test_a_browser_with_no_remembered_session_asks_for_none_and_storage_that_thr
                                                                 setItem() { throw new Error('blocked'); }}});
     """, scenario="""
       await browser.settle();
-      return {ids: seen.ids || null, hidden: document.querySelector('[data-last="board/waf-exclusion"]').classList.contains('hidden')};
+      return {ids: seen.ids || null, hidden: document.querySelector('[data-last="board/f1"]').classList.contains('hidden')};
     """)
 
     assert seen["errors"] == []
