@@ -1,12 +1,13 @@
 # The board's customers: a Korean community whose readers browse, search,
 # sign in and comment for as long as a session runs. Korean text is written as
-# \u escapes (CLAUDE.md keeps Korean out of repo files other than three).
+# \u escapes (CLAUDE.md keeps Korean out of repo files other than four).
 #
 # Searches and comments go through the board's own forms. Sign-in and comments
 # are form posts that carry the page's CSRF token, as a browser sends them; a
 # JSON post is refused by Django's CSRF check (403, measured 2026-10-13).
-# The unusual searches are ones real readers type and CRS refuses from
-# paranoia level 2 (measured 2026-10-13). The code comments are a security
+# The unusual searches are ones real readers type; at paranoia level 2 CRS
+# refuses the markup (941320) and the link (931130) and serves C++ & C#
+# (measured 2026-10-13). The code comments are a security
 # club's questions about SQL and templates; CRS refuses them at paranoia level
 # 1 (942100, 942190, 941100, 941110, 941160 on ARGS:body, measured 2026-10-13).
 
@@ -24,13 +25,13 @@ agents:
   - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0"
 searches:
   korean:
-    - "서울 맛집 추천"
-    - "점심 메뉴 추천"
-    - "주말 스터디"
-    - "노트북 추천"
-    - "강남역 카페"
-    - "공지"
-    - "스터디 모집"
+    - "\uc11c\uc6b8 \ub9db\uc9d1 \ucd94\ucc9c"
+    - "\uc810\uc2ec \uba54\ub274 \ucd94\ucc9c"
+    - "\uc8fc\ub9d0 \uc2a4\ud130\ub514"
+    - "\ub178\ud2b8\ubd81 \ucd94\ucc9c"
+    - "\uac15\ub0a8\uc5ed \uce74\ud398"
+    - "\uacf5\uc9c0"
+    - "\uc2a4\ud130\ub514 \ubaa8\uc9d1"
   english:
     - "study group"
     - "lunch"
@@ -38,16 +39,16 @@ searches:
     - "weekend meetup"
     - "notice"
   unusual:
-    - "<b>공지</b>"
+    - "<b>\uacf5\uc9c0</b>"
     - "https://www.youtube.com/watch?v=jNQXAC9IVRw"
     - "C++ & C#"
 comments:
   korean:
-    - "좋은 정보 감사합니다"
-    - "저도 참여하고 싶어요"
-    - "혹시 몇 시에 모이나요?"
-    - "여기 가봤는데 괜찮았어요"
-    - "공지 확인했습니다"
+    - "\uc88b\uc740 \uc815\ubcf4 \uac10\uc0ac\ud569\ub2c8\ub2e4"
+    - "\uc800\ub3c4 \ucc38\uc5ec\ud558\uace0 \uc2f6\uc5b4\uc694"
+    - "\ud639\uc2dc \uba87 \uc2dc\uc5d0 \ubaa8\uc774\ub098\uc694?"
+    - "\uc5ec\uae30 \uac00\ubd24\ub294\ub370 \uad1c\ucc2e\uc558\uc5b4\uc694"
+    - "\uacf5\uc9c0 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4"
   english:
     - "Thanks for sharing!"
     - "Count me in for Saturday."
