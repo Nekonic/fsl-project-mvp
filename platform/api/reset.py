@@ -37,12 +37,12 @@ def claim(slot: int) -> bool:
 def release(slot: int) -> None:
     _set(slot, IDLE, "")
 
-def begin(adapter, turn, rebuilt=None, claimed=False):
+def begin(adapter, turn, rebuilt=None, claimed=False, then=None):
     slot = getattr(adapter, "slot", 1)
     if not claimed and not claim(slot):
         return None
     worker = threading.Thread(
-        target=_reset, args=(adapter, turn, rebuilt), name=f"fsl-range-reset-{slot}", daemon=True
+        target=_reset, args=(adapter, turn, rebuilt, then), name=f"fsl-range-reset-{slot}", daemon=True
     )
     worker.start()
     return worker
@@ -51,7 +51,7 @@ def _set(slot: int, state: str, reason: str) -> None:
     with _guard:
         _of(slot).update(state=state, reason=reason)
 
-def _reset(adapter, turn, rebuilt) -> None:
+def _reset(adapter, turn, rebuilt, then=None) -> None:
     slot = getattr(adapter, "slot", 1)
     deadline = time.monotonic() + RESET_WAIT
     servers = None if rebuilt is None else {server for _, server in rebuilt}
@@ -71,6 +71,8 @@ def _reset(adapter, turn, rebuilt) -> None:
         _set(slot, FAILED, str(exc) or type(exc).__name__)
     else:
         _set(slot, IDLE, "")
+        if then is not None:
+            then()
 
 def _holding(turn, step):
     with turn:

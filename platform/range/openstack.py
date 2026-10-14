@@ -15,7 +15,7 @@ import requests
 from dataclasses import dataclass, field, replace
 
 from range import cloud as configured
-from range import fabric, images, opnsense, slot, waf, wargame_host
+from range import fabric, images, interfaces, opnsense, slot, waf, wargame_host
 from range.declared import Declaration
 from rules import suricata
 from range.ports import (
@@ -577,6 +577,33 @@ class OpenStack:
             return ran
 
         return run
+
+    def interfaces(self, hosts=None) -> list[interfaces.Interface]:
+        origins = {origin.id: origin.segment for origin in self.declared.origins}
+        subnets = [(segment.subnet, origins.get(segment.id, segment.id)) for segment in self.describe().segments]
+        found = []
+        for host, entry in sorted(self.declared.hosts.items()):
+            if hosts is not None and host not in hosts:
+                continue
+            role = next((role for role, named in sorted(self.declared.roles.items())
+                         if named == host and not self._container(role, host)), "")
+            if not role:
+                continue
+            try:
+                run = self.runner(role)
+                own = run(["sh", "-c", interfaces.LISTED], timeout=30).output
+                if entry.wargames:
+                    bridges, inside = interfaces.containers(
+                        own, run(["sudo", "sh", "-c", interfaces.CONTAINERS], timeout=60).output)
+                    for service, said in sorted(inside.items()):
+                        found += interfaces.placed(service, said, bridges)
+                    subnets_here = subnets + bridges
+                else:
+                    subnets_here = subnets
+                found += interfaces.placed(host, own, subnets_here)
+            except RangeUnavailable:
+                continue
+        return found
 
     def _container(self, role: str, host: str) -> str:
         entry = self.declared.hosts.get(host)

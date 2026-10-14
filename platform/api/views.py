@@ -35,7 +35,7 @@ import suppress
 import topology
 import wargames
 import traffic
-from api import customers, effect, loot, reset, scenario_run, site
+from api import customers, effect, loot, maps, reset, scenario_run, site
 from api.refusals import Conflict
 from console import strings
 from api.models import (
@@ -269,6 +269,7 @@ def sessions(request):
             _seed_logs(session)
         session.ready_at = timezone.now()
         session.save(update_fields=["ready_at"])
+        _map_begin(session, adapter)
         if played:
             scenario_run.begin(session, adapter, posture)
     except (harness.ToolUnavailable, loot.GroundTruthUnavailable, traffic.NoOrigin, RangeUnavailable) as exc:
@@ -932,7 +933,46 @@ def range_topology(request):
     language = request.GET.get("language") or gns3.ENGLISH
     if language not in strings.LANGUAGES:
         raise BadRequest(f'"language" is one of {", ".join(strings.LANGUAGES)}, got {language!r}')
-    return _reply(gns3.project(language))
+    asked = request.GET.get("session")
+    if asked is None:
+        return _reply(gns3.project(language))
+    if not asked.isdigit():
+        raise BadRequest(f'"session" must be a session id, got {asked!r}')
+    session = get_object_or_404(Session, pk=int(asked))
+    key = _map_key(session)
+    if key is None or not settings.FSL_GNS3_URL:
+        return _reply(gns3.project(language))
+    return _reply(maps.served(key, language, _map_read(session)))
+
+def _map_key(session, adapter=None):
+    adapter = adapter or substrate()
+    if not hasattr(adapter, "interfaces"):
+        return None
+    if _slotted(adapter):
+        return maps.called(maps.SLOT, _slot_of(session))
+    return maps.called(maps.SESSION, session.pk)
+
+def _map_kind(adapter) -> str:
+    return maps.SLOT if _slotted(adapter) else maps.SESSION
+
+def _maps_live(adapter) -> list[str]:
+    if _slotted(adapter):
+        return [maps.called(maps.SLOT, number) for number in range(1, adapter.slots + 1)]
+    return [maps.called(maps.SESSION, pk) for pk in Session.objects.filter(ended_at=None).values_list("pk", flat=True)]
+
+def _map_read(session):
+    on_map = {node["name"] for node in gns3.local()["topology"]["nodes"]}
+    return lambda: _range(session).interfaces(on_map)
+
+def _map_begin(session, adapter):
+    key = _map_key(session, adapter)
+    if key is not None and settings.FSL_GNS3_URL:
+        maps.begin(key, _map_read(session), _map_kind(adapter), _maps_live(adapter))
+
+def _maps_tidied(adapter):
+    if settings.FSL_GNS3_URL and hasattr(adapter, "interfaces") and not _slotted(adapter):
+        threading.Thread(target=maps.tidied, args=(_map_kind(adapter), _maps_live(adapter)),
+                         name="fsl-map-tidy", daemon=True).start()
 
 def _drawn(session, described, beside=()):
     number = _slot_of(session)
@@ -1468,6 +1508,7 @@ def close_session(request, session_id):
             _refuse_closed(session)
     session.ended_at = closed_at
     site.forget(session.pk)
+    _maps_tidied(adapter)
     reply = _shape(session, SESSION_FIELDS)
 
     begun = None
@@ -1499,7 +1540,8 @@ def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
     if not hasattr(adapter, "configure_slot"):
         return None
     _lifted_by_the_rebuild(closed_at, _slot_of(session))
-    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True)
+    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True,
+                                   then=lambda: _map_begin(session, adapter))
 
 def _lifted_by_the_rebuild(rebuilt_at, number=1):
     Suppression.objects.filter(

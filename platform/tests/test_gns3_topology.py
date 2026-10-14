@@ -455,11 +455,15 @@ def test_the_waf_and_each_site_show_the_domain_learners_type(drawn_in):
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_a_learner_map_says_in_plain_words_that_gns3_never_starts_the_machines(drawn_in):
     learner = project(drawn_in)
-    texts = [shape["text"] for shape in drawn_shapes(learner) if shape["kind"] == "text"]
+    texts = [shape["text"] for shape in drawn_shapes(learner)]
+    english = [shape["text"] for shape in drawn_shapes(english_of(learner))]
     korean = learner["project_id"] != english_of(learner)["project_id"]
+    legend = [position for position, said in enumerate(english)
+              if "GNS3" in said and ("not in GNS3" in said or "red" in said)]
 
-    assert [said for said in texts if "GNS3" in said and ("레인지" if korean else "range") in said]
-    assert [said for said in texts if ("빨간" if korean else "red") in said and "GNS3" in said]
+    assert len(legend) == 2, "one line says where the machines run, one what the red marks mean"
+    for position in legend:
+        assert "GNS3" in texts[position] and bool(HANGUL.search(texts[position])) == korean
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_fetches(drawn_in):
