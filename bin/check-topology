@@ -23,11 +23,17 @@ except ImportError:
     print("libmagic is not installed here; magic is stubbed, which loading a topology never calls", file=sys.stderr)
 from gns3server.version import __version__
 from gns3server.controller.topology import load_topology
+import gns3server, os
 path = sys.argv[1]
 before = json.load(open(path))["revision"]
 loaded = load_topology(path)
 nodes = loaded["topology"]["nodes"]
 links = loaded["topology"]["links"]
+bundled = os.path.join(os.path.dirname(gns3server.__file__), "symbols")
+missing = sorted({n["symbol"] for n in nodes if n["symbol"].startswith(":/symbols/")
+                  and not os.path.isfile(os.path.join(bundled, n["symbol"].removeprefix(":/symbols/")))})
+if missing:
+    sys.exit(f"symbols this release does not bundle: {', '.join(missing)}")
 print(f"gns3-server {__version__}: loaded revision {before} as {loaded['revision']}, "
       f"{len(nodes)} nodes, {len(links)} links, names "
       f"{'kept' if [n['name'] for n in nodes] == [n['name'] for n in json.load(open(sys.argv[2]))['topology']['nodes']] else 'CHANGED'}")
@@ -56,7 +62,7 @@ def check(interpreter: Path, project: Path) -> bool:
         )
     failed = (done.stderr or "").strip().splitlines()[-1:] or [f"exit {done.returncode}"]
     said = done.stdout.strip() if done.returncode == 0 else failed[0]
-    print(f"  {project.name}: {'ok' if done.returncode == 0 else 'FAILED'}: {said}")
+    print(f"  {project.relative_to(TOPOLOGY)}: {'ok' if done.returncode == 0 else 'FAILED'}: {said}")
     return done.returncode == 0
 
 def main() -> int:
@@ -64,7 +70,7 @@ def main() -> int:
     parser.add_argument("--python", default=os.environ.get("FSL_CHECK_PYTHON", "python3"))
     parser.add_argument("--version", action="append", choices=VERSIONS)
     args = parser.parse_args()
-    projects = sorted(TOPOLOGY.glob("*.gns3"))
+    projects = sorted(TOPOLOGY.glob("*.gns3")) + sorted((TOPOLOGY / "system").glob("*.gns3"))
     if not projects:
         print(f"check-topology: no .gns3 file in {TOPOLOGY}")
         return 1

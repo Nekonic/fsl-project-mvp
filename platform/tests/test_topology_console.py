@@ -12,8 +12,7 @@ PROJECT = json.loads(
     (pathlib.Path(__file__).resolve().parents[2] / "deploy/topology/range-docker.gns3").read_text()
 )
 HOPS = [
-    {"node": "fsl-platform", "kind": "host", "evidence": True, "source": "172.30.0.9"},
-    {"node": "estate", "kind": "segment"},
+    {"node": None, "kind": "console", "evidence": True, "source": "172.30.0.9"},
     {"node": "fsl-waf", "kind": "host", "evidence": True, "sensor": "fsl-suricata", "alerts": [],
      "verdict": "blocked", "rules": ["920272", "949110"]},
     {"node": "estate", "kind": "segment"},
@@ -83,7 +82,10 @@ def test_without_gns3_the_pane_draws_the_project_and_follows_a_chosen_request(cl
     assert result["said"] == english("topology.no_web_ui")
     assert result["follows"] == ["7"]
     assert 'data-node="fsl-wg-corp-db"' in result["svg"], "every node of the file is drawn"
-    assert result["svg"].count('data-path="true"') == 3, "the three links the request crossed are marked"
+    assert result["svg"].count('data-path="true"') == 2, "the two links the request crossed are marked"
+    assert english("topology.hop.console") in result["hops"], "the console's browser is named, not the platform"
+    assert english("topology.hop.source", "172.30.0.9") in result["hops"]
+    assert "fsl-platform" not in result["hops"] and 'data-node="mgmt"' not in result["svg"]
     assert english("topology.hop.blocked", "920272, 949110") in result["hops"]
     assert english("topology.hop.not_reached") in result["hops"]
 

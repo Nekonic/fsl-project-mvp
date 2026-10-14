@@ -934,10 +934,10 @@ def range_topology(request):
         raise BadRequest(f'"language" is one of {", ".join(strings.LANGUAGES)}, got {language!r}')
     return _reply(gns3.project(language))
 
-def _drawn(session, described):
+def _drawn(session, described, beside=()):
     number = _slot_of(session)
     return topology.overlay(gns3.local(), described, settings.RANGE,
-                            lambda name: _named_in(number, name))
+                            lambda name: _named_in(number, name), beside)
 
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
@@ -957,7 +957,8 @@ def session_topology(request, session_id):
         else:
             zone["alerts"] += 1
 
-    return _reply({**shape, "unplaced": unplaced, "project": _drawn(session, described)})
+    return _reply({**shape, "unplaced": unplaced,
+                   "project": topology.shown(_drawn(session, described), gns3.local())})
 
 def _site_record(session, asked):
     try:
@@ -1013,7 +1014,7 @@ def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER):
     else:
         seen = []
     detections = list(detections)
-    nodes = _drawn(session, _range(session).describe())["nodes"]
+    nodes = _drawn(session, _range(session).describe(), beside=[settings.RANGE.roles["scorer"]])["nodes"]
     number = _slot_of(session)
     followed = topology.follow(gns3.local(), settings.RANGE, nodes, _sent(session, record, case),
                                detections, lambda name: _named_in(number, name), seen)

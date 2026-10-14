@@ -3,7 +3,7 @@
     "auto_open": true,
     "drawing_grid_size": 25,
     "grid_size": 75,
-    "name": "fsl-range-openstack (한국어)",
+    "name": "fsl-range-openstack (\ud55c\uad6d\uc5b4)",
     "project_id": "25cb1eb9-1eb0-5746-b02a-c29bc08107c3",
     "revision": 9,
     "scene_height": 1200,
@@ -16,192 +16,219 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "012a84fb-bec9-50b6-8833-f06a64e917b1",
+                "drawing_id": "75733f95-d654-54d8-9585-6f70953391b8",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"550\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl 사이버 레인지 (OpenStack): 슬롯 하나의 VM과 워게임 호스트 안의 컨테이너</text></svg>",
-                "x": -780,
-                "y": -390,
-                "z": 2
-            },
-            {
-                "drawing_id": "50ff6204-8d01-5267-bc50-b9b0da8382c7",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"460\" height=\"320\"><rect width=\"460\" height=\"320\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -780,
-                "y": -160,
+                "svg": "<svg width=\"340\" height=\"460\"><rect width=\"340\" height=\"460\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -756,
+                "y": -360,
                 "z": 0
             },
             {
-                "drawing_id": "99bdc919-e7d5-5b22-9675-2c80c738a4db",
+                "drawing_id": "5c8277dc-1056-515a-a48a-fb12132cd8cc",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"65\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">인터넷</text></svg>",
-                "x": -770,
-                "y": -155,
-                "z": 2
-            },
-            {
-                "drawing_id": "2cb7f670-3aba-5499-8f43-ad4d982eb387",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"1310\" height=\"620\"><rect width=\"1310\" height=\"620\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -290,
-                "y": -310,
+                "svg": "<svg width=\"1090\" height=\"600\"><rect width=\"1090\" height=\"600\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -406,
+                "y": -360,
                 "z": 0
             },
             {
-                "drawing_id": "44619df8-f33a-5c50-a4c0-0a3d896dbc1f",
+                "drawing_id": "691bc955-3b04-543b-8241-f0e5e6818c73",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"104\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">서비스 구간</text></svg>",
-                "x": -280,
-                "y": -305,
-                "z": 2
-            },
-            {
-                "drawing_id": "3bde41b1-f27c-5b20-b189-b90225e5d97a",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"780\" height=\"540\"><rect width=\"780\" height=\"540\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
-                "x": 220,
-                "y": -270,
+                "svg": "<svg width=\"655\" height=\"545\"><rect width=\"655\" height=\"545\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\" stroke-dasharray=\"6 3\"/></svg>",
+                "x": 19,
+                "y": -325,
                 "z": 0
             },
             {
-                "drawing_id": "5d92d793-59e2-5c90-8de2-10a8f4c136b0",
+                "drawing_id": "6dd9029a-159a-5d22-8477-277334910d6c",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"322\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">fsl-wargame-host 안: docker compose 프로젝트 board, corp</text></svg>",
-                "x": 520,
-                "y": 245,
+                "svg": "<svg width=\"511\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl \uc0ac\uc774\ubc84 \ub808\uc778\uc9c0 (OpenStack): \ub0b4\uac00 \uc9c0\ud0a4\ub294 \ub124\ud2b8\uc6cc\ud06c (\uc2ac\ub86f \ud558\ub098)</text></svg>",
+                "x": -756,
+                "y": -420,
                 "z": 2
             },
             {
-                "drawing_id": "fd926894-2fb0-5c41-9cb8-dca92a82280b",
+                "drawing_id": "a1755db3-4597-5e95-9317-d1a533e3d9c3",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"740\" height=\"300\"><rect width=\"740\" height=\"300\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -290,
-                "y": 330,
-                "z": 0
-            },
-            {
-                "drawing_id": "7d1fc14d-3437-5aba-a40b-b29e379eea49",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"129\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">관리·관제 구간</text></svg>",
-                "x": 150,
-                "y": 335,
+                "svg": "<svg width=\"58\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137</text></svg>",
+                "x": -746,
+                "y": -355,
                 "z": 2
             },
             {
-                "drawing_id": "ab11f7b0-ab86-53f9-9735-6de244fc6239",
+                "drawing_id": "81610647-c3fc-5b93-9006-be6dda25b9d6",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"131\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">공격자 PC (Kali VM)</text></svg>",
-                "x": -770,
-                "y": -55,
+                "svg": "<svg width=\"159\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uace0\uac1d\uacfc \uacf5\uaca9\uc790\uac00 \uc5ec\uae30\uc11c \ub4e4\uc5b4\uc634</text></svg>",
+                "x": -746,
+                "y": 70,
                 "z": 2
             },
             {
-                "drawing_id": "7756a475-fa22-5903-8e22-d34d67a5eeca",
+                "drawing_id": "7ceb6f59-8594-522f-8f12-0909487af7b8",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"290\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">경계 방화벽 (OPNsense), 인터넷 쪽(WAN) Suricata</text></svg>",
-                "x": -282,
-                "y": -75,
+                "svg": "<svg width=\"102\" height=\"36\"><text font-family=\"Noto Sans\" font-size=\"15.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
+                "x": -396,
+                "y": -355,
                 "z": 2
             },
             {
-                "drawing_id": "003f62d4-dcea-5db3-905f-3e850d3edc3f",
+                "drawing_id": "32001330-acbe-595a-b51c-13a7a4b13f59",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"321\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">vtnet0 인터넷(wan), vtnet1 서비스(lan), vtnet2 관리(opt1)</text></svg>",
-                "x": -282,
-                "y": -57,
+                "svg": "<svg width=\"339\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">fsl-wargame-host \uc548: docker compose \ud504\ub85c\uc81d\ud2b8 board, corp</text></svg>",
+                "x": 29,
+                "y": 195,
                 "z": 2
             },
             {
-                "drawing_id": "9531479f-d053-5974-8a24-64eafae24e3b",
+                "drawing_id": "ede86caf-0850-5d3b-a47d-b5c80afbb4f5",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"209\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">웹 방화벽 VM (ModSecurity + CRS)</text></svg>",
-                "x": -230,
-                "y": -200,
+                "svg": "<svg width=\"129\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uacf5\uaca9\uc790 PC (Kali VM)</text></svg>",
+                "x": -746,
+                "y": 0,
                 "z": 2
             },
             {
-                "drawing_id": "bd4a9a7b-b0c3-533b-a3dd-26189d4de9a5",
+                "drawing_id": "e05d4b7a-7b64-5f0b-a419-5b1fd2ce1c92",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"142\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">워게임 호스트 (Docker)</text></svg>",
-                "x": 225,
-                "y": -50,
+                "svg": "<svg width=\"307\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uacbd\uacc4 \ubc29\ud654\ubcbd (OPNsense), \uc778\ud130\ub137 \ucabd(WAN) Suricata</text></svg>",
+                "x": -401,
+                "y": 0,
                 "z": 2
             },
             {
-                "drawing_id": "1ab57512-4b1d-516d-a129-b15df75db9e6",
+                "drawing_id": "14c2b97c-2ce1-55a0-af85-7a45dd7b2085",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"153\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">네트워크 IDS (Suricata)</text></svg>",
-                "x": 320,
-                "y": -190,
+                "svg": "<svg width=\"227\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">vtnet0 \uc778\ud130\ub137(wan), vtnet1 \uc11c\ube44\uc2a4(lan)</text></svg>",
+                "x": -401,
+                "y": 18,
                 "z": 2
             },
             {
-                "drawing_id": "d9a6f017-70e7-57f5-930b-9a771ffe5754",
+                "drawing_id": "d0be0e95-024b-5cd4-abe8-5a344f3ed5d0",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"247\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">호스트 네트워크: 호스트의 서비스 구간 NIC를 감시</text></svg>",
-                "x": 320,
-                "y": -173,
+                "svg": "<svg width=\"215\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uc6f9 \ubc29\ud654\ubcbd VM (ModSecurity + CRS)</text></svg>",
+                "x": -71,
+                "y": -250,
                 "z": 2
             },
             {
-                "drawing_id": "3acb2c0f-f882-5c4b-87b6-84dcb65d8636",
+                "drawing_id": "d75dcd16-aae8-50c9-9e7b-e8eebf960d52",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"96\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">게시판 웹사이트</text></svg>",
-                "x": 825,
-                "y": -160,
+                "svg": "<svg width=\"186\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#2e6da4\" fill-opacity=\"1.0\">board.com, corp.com \uc694\uccad\uc744 \ubc1b\uc74c</text></svg>",
+                "x": -71,
+                "y": -232,
                 "z": 2
             },
             {
-                "drawing_id": "64fb52db-7372-5156-8994-775ca2a1b179",
+                "drawing_id": "541054cd-a370-5bca-94df-04e727d52539",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"166\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">게시판 데이터베이스 (MySQL)</text></svg>",
-                "x": 825,
-                "y": -40,
+                "svg": "<svg width=\"143\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uc6cc\uac8c\uc784 \ud638\uc2a4\ud2b8 (Docker)</text></svg>",
+                "x": 29,
+                "y": 0,
                 "z": 2
             },
             {
-                "drawing_id": "fecc5915-4c5c-5565-af16-8313a1663ce4",
+                "drawing_id": "e69a1835-0c3f-5bea-988f-4889ee34c567",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"161\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">회사 웹사이트 (WordPress)</text></svg>",
-                "x": 825,
-                "y": 80,
+                "svg": "<svg width=\"154\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ub124\ud2b8\uc6cc\ud06c IDS (Suricata)</text></svg>",
+                "x": 119,
+                "y": -250,
                 "z": 2
             },
             {
-                "drawing_id": "2fdf171a-e6f0-5df3-bd9a-4e5c8665d9e6",
+                "drawing_id": "cd50e066-d1cc-5ff7-955b-5a2f5bda371a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"156\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">회사 데이터베이스 (MySQL)</text></svg>",
-                "x": 825,
-                "y": 200,
+                "svg": "<svg width=\"264\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ud638\uc2a4\ud2b8 \ub124\ud2b8\uc6cc\ud06c: \ud638\uc2a4\ud2b8\uc758 \uc11c\ube44\uc2a4 \uad6c\uac04 NIC\ub97c \uac10\uc2dc</text></svg>",
+                "x": 119,
+                "y": -232,
                 "z": 2
             },
             {
-                "drawing_id": "d567e2b3-7908-58f9-bcd4-93b14c69eb80",
+                "drawing_id": "bc197856-4b1e-58c0-9a79-e430cbb2f33d",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"319\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">훈련장 플랫폼: 콘솔, 채점, 로그 저장소 (Elasticsearch)</text></svg>",
-                "x": 65,
-                "y": 545,
+                "svg": "<svg width=\"168\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uac8c\uc2dc\ud310 \uc6f9\uc0ac\uc774\ud2b8: board.com</text></svg>",
+                "x": 479,
+                "y": -240,
+                "z": 2
+            },
+            {
+                "drawing_id": "cab8a731-1e99-5b32-bba5-20c57a149dfe",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"171\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\uac8c\uc2dc\ud310 \ub370\uc774\ud130\ubca0\uc774\uc2a4 (MySQL)</text></svg>",
+                "x": 479,
+                "y": -115,
+                "z": 2
+            },
+            {
+                "drawing_id": "c99a1d72-b66a-510d-be5b-00a5e7f03e48",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"231\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ud68c\uc0ac \uc6f9\uc0ac\uc774\ud2b8 (WordPress): corp.com</text></svg>",
+                "x": 479,
+                "y": 15,
+                "z": 2
+            },
+            {
+                "drawing_id": "752b022b-4108-5b97-9dd1-c324ce4907d2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"159\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ud68c\uc0ac \ub370\uc774\ud130\ubca0\uc774\uc2a4 (MySQL)</text></svg>",
+                "x": 479,
+                "y": 140,
+                "z": 2
+            },
+            {
+                "drawing_id": "b74fed6c-ef9e-539e-81ff-87c5d95b9136",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"500\" height=\"24\"><text font-family=\"Noto Sans\" font-size=\"10.0\" fill=\"#000000\" fill-opacity=\"1.0\">\ub85c\uadf8 \uc800\uc7a5\uc18c (Elasticsearch): fsl-waf, fsl-edge, suricata\uac00 \uae30\ub85d\uc744 \uc5ec\uae30\ub85c \ubcf4\ub0c4</text></svg>",
+                "x": -261,
+                "y": 280,
+                "z": 2
+            },
+            {
+                "drawing_id": "13e12626-4baa-5192-bbae-9fe22cef6d84",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"233\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">\ub124\ubaa8 \uc544\uc774\ucf58: VM, \ub3d9\uadf8\ub77c\ubbf8 \uc544\uc774\ucf58: \ucee8\ud14c\uc774\ub108</text></svg>",
+                "x": -756,
+                "y": 360,
+                "z": 2
+            },
+            {
+                "drawing_id": "11db3254-e537-541d-a486-c69f1a4a2dfe",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"530\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uc774 \uc9c0\ub3c4\ub294 \ub808\uc778\uc9c0\uac00 \uc5b4\ub5bb\uac8c \uc5f0\uacb0\ub418\uc5b4 \uc788\ub294\uc9c0 \ubcf4\uc5ec \uc90d\ub2c8\ub2e4. \uc7a5\ube44\ub294 GNS3\uac00 \uc544\ub2c8\ub77c \ub808\uc778\uc9c0\uc5d0\uc11c \ub3d9\uc791\ud569\ub2c8\ub2e4.</text></svg>",
+                "x": -756,
+                "y": 380,
+                "z": 2
+            },
+            {
+                "drawing_id": "0e7d5cb0-05c4-559f-aaca-4ed800cd35cd",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"614\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#5b6770\" fill-opacity=\"1.0\">GNS3\ub294 \uc7a5\ube44\ub97c \ucf1c\uc9c0 \uc54a\uc73c\ubbc0\ub85c, \ub9c1\ud06c \ub05d\uc758 \ube68\uac04 \ud45c\uc2dc\ub294 GNS3\uc5d0\uc11c \uaebc\uc838 \uc788\ub2e4\ub294 \ub73b\uc774\uc9c0 \ub808\uc778\uc9c0\uc5d0\uc11c \uba48\ucdc4\ub2e4\ub294 \ub73b\uc774 \uc544\ub2d9\ub2c8\ub2e4.</text></svg>",
+                "x": -756,
+                "y": 398,
                 "z": 2
             }
         ],
@@ -218,23 +245,6 @@
                     {
                         "adapter_number": 0,
                         "node_id": "67976b87-e558-5beb-a96d-3c8aaff085df",
-                        "port_number": 0
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
-                "link_id": "84e6dd05-6228-5475-9820-7fdb7a36f6b0",
-                "nodes": [
-                    {
-                        "adapter_number": 1,
-                        "node_id": "3b38a24c-ef52-59b0-8adc-da92de5370e8",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
                         "port_number": 0
                     }
                 ],
@@ -276,23 +286,6 @@
             },
             {
                 "filters": {},
-                "link_id": "c7be35ed-89a1-5c1d-b2bf-bd5c13b12a45",
-                "nodes": [
-                    {
-                        "adapter_number": 2,
-                        "node_id": "492a1986-b8da-50bd-9c4c-e1b7a854790d",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
-                        "port_number": 1
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
                 "link_id": "da960ac9-7de6-5418-a6f8-f99b5f7e56e9",
                 "nodes": [
                     {
@@ -310,23 +303,6 @@
             },
             {
                 "filters": {},
-                "link_id": "7d6418ae-3566-578b-961a-25dc84350787",
-                "nodes": [
-                    {
-                        "adapter_number": 1,
-                        "node_id": "f2fb34fe-9f52-5d07-8c28-9cbd3537522f",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
-                        "port_number": 2
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
                 "link_id": "fdba93f0-55b9-5c6a-beda-750357a2d931",
                 "nodes": [
                     {
@@ -338,23 +314,6 @@
                         "adapter_number": 0,
                         "node_id": "eb22ecee-0583-571e-919f-5818d290cee7",
                         "port_number": 2
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
-                "link_id": "82d016cc-ff4e-56ed-b564-e42ec0244c6f",
-                "nodes": [
-                    {
-                        "adapter_number": 1,
-                        "node_id": "a546c5fb-a636-535e-b54f-323f8353f885",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
-                        "port_number": 3
                     }
                 ],
                 "suspend": false
@@ -460,23 +419,6 @@
                     }
                 ],
                 "suspend": false
-            },
-            {
-                "filters": {},
-                "link_id": "f5c8c12e-a234-50b2-898c-fdabeaa587d5",
-                "nodes": [
-                    {
-                        "adapter_number": 0,
-                        "node_id": "e280d963-ae35-582d-8674-5fceec2a46d7",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
-                        "port_number": 4
-                    }
-                ],
-                "suspend": false
             }
         ],
         "nodes": [
@@ -545,9 +487,9 @@
                         }
                     ]
                 },
-                "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": -480,
-                "y": 0,
+                "symbol": ":/symbols/affinity/square/gray/globe.svg",
+                "x": -516,
+                "y": -70,
                 "z": 1
             },
             {
@@ -615,79 +557,9 @@
                         }
                     ]
                 },
-                "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": 0,
-                "y": 0,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "mgmt",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "mgmt",
-                "node_id": "0e2f58e9-9054-5e1e-a04d-34851f05c757",
-                "node_type": "ethernet_switch",
-                "properties": {
-                    "ports_mapping": [
-                        {
-                            "name": "Ethernet0",
-                            "port_number": 0,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet1",
-                            "port_number": 1,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet2",
-                            "port_number": 2,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet3",
-                            "port_number": 3,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet4",
-                            "port_number": 4,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet5",
-                            "port_number": 5,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet6",
-                            "port_number": 6,
-                            "type": "access",
-                            "vlan": 1
-                        },
-                        {
-                            "name": "Ethernet7",
-                            "port_number": 7,
-                            "type": "access",
-                            "vlan": 1
-                        }
-                    ]
-                },
-                "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": 0,
-                "y": 380,
+                "symbol": ":/symbols/affinity/square/gray/switch.svg",
+                "x": -136,
+                "y": -70,
                 "z": 1
             },
             {
@@ -710,9 +582,9 @@
                     "hda_disk_image": "",
                     "platform": "x86_64"
                 },
-                "symbol": ":/symbols/classic/computer.svg",
-                "x": -720,
-                "y": 0,
+                "symbol": ":/symbols/affinity/square/red/scull.svg",
+                "x": -696,
+                "y": -70,
                 "z": 1
             },
             {
@@ -735,9 +607,9 @@
                     "hda_disk_image": "",
                     "platform": "x86_64"
                 },
-                "symbol": ":/symbols/classic/firewall.svg",
-                "x": -220,
-                "y": 0,
+                "symbol": ":/symbols/affinity/square/green/firewall.svg",
+                "x": -326,
+                "y": -70,
                 "z": 1
             },
             {
@@ -760,9 +632,9 @@
                     "hda_disk_image": "",
                     "platform": "x86_64"
                 },
-                "symbol": ":/symbols/classic/firewall.svg",
-                "x": 0,
-                "y": -220,
+                "symbol": ":/symbols/affinity/square/green/shield.svg",
+                "x": -136,
+                "y": -260,
                 "z": 1
             },
             {
@@ -785,34 +657,9 @@
                     "hda_disk_image": "",
                     "platform": "x86_64"
                 },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 260,
-                "y": 0,
-                "z": 1
-            },
-            {
-                "compute_id": "local",
-                "console_type": "none",
-                "label": {
-                    "rotation": 0,
-                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-platform",
-                    "x": null,
-                    "y": -25
-                },
-                "name": "fsl-platform",
-                "node_id": "e280d963-ae35-582d-8674-5fceec2a46d7",
-                "node_type": "qemu",
-                "port_name_format": "eth{0}",
-                "properties": {
-                    "adapter_type": "virtio-net-pci",
-                    "adapters": 1,
-                    "hda_disk_image": "",
-                    "platform": "x86_64"
-                },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 0,
-                "y": 520,
+                "symbol": "ubuntu.svg",
+                "x": 54,
+                "y": -70,
                 "z": 1
             },
             {
@@ -880,9 +727,9 @@
                         }
                     ]
                 },
-                "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": 520,
-                "y": -110,
+                "symbol": ":/symbols/affinity/square/gray/switch.svg",
+                "x": 244,
+                "y": -170,
                 "z": 1
             },
             {
@@ -950,9 +797,9 @@
                         }
                     ]
                 },
-                "symbol": ":/symbols/classic/ethernet_switch.svg",
-                "x": 520,
-                "y": 110,
+                "symbol": ":/symbols/affinity/square/gray/switch.svg",
+                "x": 244,
+                "y": 30,
                 "z": 1
             },
             {
@@ -973,9 +820,9 @@
                     "adapters": 1,
                     "image": "ghcr.io/nekonic/fsl-board:dev"
                 },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 760,
-                "y": -180,
+                "symbol": ":/symbols/affinity/circle/blue/server.svg",
+                "x": 414,
+                "y": -260,
                 "z": 1
             },
             {
@@ -996,9 +843,9 @@
                     "adapters": 1,
                     "image": "mysql@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d"
                 },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 760,
-                "y": -60,
+                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
+                "x": 414,
+                "y": -135,
                 "z": 1
             },
             {
@@ -1019,9 +866,9 @@
                     "adapters": 1,
                     "image": "ghcr.io/nekonic/fsl-corp:dev"
                 },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 760,
-                "y": 60,
+                "symbol": ":/symbols/affinity/circle/blue/server.svg",
+                "x": 414,
+                "y": -5,
                 "z": 1
             },
             {
@@ -1042,9 +889,9 @@
                     "adapters": 1,
                     "image": "ghcr.io/nekonic/fsl-corp-db:dev"
                 },
-                "symbol": ":/symbols/classic/server.svg",
-                "x": 760,
-                "y": 180,
+                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
+                "x": 414,
+                "y": 120,
                 "z": 1
             },
             {
@@ -1065,9 +912,32 @@
                     "adapters": 0,
                     "image": "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
                 },
-                "symbol": ":/symbols/classic/ids.svg",
-                "x": 260,
-                "y": -200,
+                "symbol": ":/symbols/affinity/circle/green/inspect.svg",
+                "x": 54,
+                "y": -260,
+                "z": 1
+            },
+            {
+                "compute_id": "local",
+                "console_type": "none",
+                "label": {
+                    "rotation": 0,
+                    "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                    "text": "fsl-elasticsearch",
+                    "x": null,
+                    "y": -25
+                },
+                "name": "fsl-elasticsearch",
+                "node_id": "41ef53c0-7177-5f81-9c17-0b1cd7c6d7b1",
+                "node_type": "docker",
+                "port_name_format": "eth{0}",
+                "properties": {
+                    "adapters": 1,
+                    "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.0"
+                },
+                "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
+                "x": -326,
+                "y": 260,
                 "z": 1
             }
         ]
