@@ -3988,3 +3988,22 @@ zoom, and the in-page check over the rendered SVG found no label touching a
 line, a mark, a name, a node image, a zone edge or a caption (nearest label
 to a mark 2.6 px). Both sessions were closed and both slots returned to
 READY.
+
+## 2026-10-15 — The learner's network map is view-only
+
+The Topology pane framed the whole GNS3 editor: back to projects, add node,
+start/stop, project and map settings, the drawing tools, context menus and
+consoles. The Auditor role refuses every write on the server, but the learner
+still saw and could press controls that only fail, so the map read as a tool to
+edit rather than a picture of the network. The read-only page
+(`deploy/gns3/auditor.html`, same origin as the web UI) now injects a stylesheet
+that hides that chrome and takes pointer events off the drawing, and swallows
+every trusted click, double-click, context menu, key and drop, and every press
+but a left press on the empty map. Moving mode stays on, so a drag pans and the
+wheel zooms; a Fit to view button in the pane resets and refits. The selectors
+come from the gns3-web-ui bundle in gns3-server 3.1.0a6 and were checked on the
+live web UI; a newer web UI may rename them, so the test pins the list.
+Not used: GNS3's lock action, which fixes items in place but leaves every other
+control of the editor, and the web UI's internal `readonly` flag, reachable
+only through Angular internals, not the DOM.
+
