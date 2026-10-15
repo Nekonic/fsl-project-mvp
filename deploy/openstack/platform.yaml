@@ -7,6 +7,8 @@ description: >
   (bin/platform-rebuild); the API password and the range ssh key are added
   over ssh. With floating_ip_id set the stack only associates that floating
   IP, so deleting the stack disassociates it and leaves it in the project.
+  chrony keeps its clock and serves it over NTP to the range's management
+  network, which has no other time source.
 
 parameters:
   keystone:
@@ -48,6 +50,8 @@ parameters:
   role_flavors:
     type: string
   subnets:
+    type: string
+  management:
     type: string
   range_mtu:
     type: string
@@ -147,6 +151,7 @@ resources:
             "%build_flavor%": {get_param: build_flavor}
             "%role_flavors%": {get_param: role_flavors}
             "%subnets%": {get_param: subnets}
+            "%management%": {get_param: management}
             "%range_mtu%": {get_param: range_mtu}
             "%opnsense%": {get_param: opnsense}
             "%slots%": {get_param: slots}
@@ -160,11 +165,15 @@ resources:
           template: |
             #cloud-config
             package_update: true
-            packages: [docker.io, docker-compose-v2, git, python3-venv, nodejs]
+            packages: [docker.io, docker-compose-v2, git, python3-venv, nodejs, chrony]
             swap:
               filename: /swapfile
               size: 4G
             write_files:
+              - path: /etc/chrony/conf.d/fsl-range.conf
+                content: |
+                  allow %management%
+                  local stratum 10
               - path: /etc/sysctl.d/90-fsl-syslog.conf
                 content: |
                   net.core.rmem_max = 33554432

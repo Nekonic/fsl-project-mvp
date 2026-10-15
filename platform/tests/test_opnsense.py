@@ -55,6 +55,30 @@ def test_the_configured_edge_holds_its_management_address_statically_not_by_dhcp
     assert root.findtext("interfaces/opt1/subnet") == "24"
 
 
+def test_the_configured_edge_keeps_time_by_the_platform_on_management_alone():
+    wanted = opnsense.settings(_segments(), COLLECTOR, INSIDE, 1450, KEY, management="10.31.0.230",
+                               clock="10.31.0.195")
+    root = ElementTree.fromstring(opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted))
+
+    assert root.findtext("system/timeservers") == "10.31.0.195", (
+        "the range has no Internet; the edge's sensor stamps every alert by its own clock"
+    )
+    assert root.findtext("ntpd/iburst") == "10.31.0.195"
+    assert root.findtext("ntpd/interface") == "opt1", (
+        "ntpd answers on every address it listens on; bound to management, only the "
+        "platform reaches it, past fsl-mgmt"
+    )
+
+
+def test_an_edge_given_no_time_server_runs_no_ntpd():
+    root = _rendered()
+
+    assert root.find("system/timeservers") is None and root.find("ntpd") is None, (
+        "OPNsense starts ntpd only when system/timeservers is set; the image's build-time "
+        "config has no platform to name"
+    )
+
+
 def test_the_lan_holds_the_estate_gateway_so_the_estate_routes_through_the_edge():
     assert _wanted()["lan"] == {"id": "estate", "address": "10.30.0.1", "bits": "24"}
 

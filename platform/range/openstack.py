@@ -15,7 +15,7 @@ import requests
 from dataclasses import dataclass, field, replace
 
 from range import cloud as configured
-from range import fabric, images, interfaces, opnsense, slot, waf, wargame_host
+from range import clock, fabric, images, interfaces, opnsense, slot, waf, wargame_host
 from range.declared import Declaration
 from rules import suricata
 from range.ports import (
@@ -780,6 +780,9 @@ class OpenStack:
                     "security_group_id": named[name], "direction": "ingress",
                     "ethertype": "IPv4", "remote_group_id": named[fabric.REACH_GROUP],
                 }})
+        if plan.ntp:
+            self.get(self._call(CREATE_RULE), {"security_group_rule": fabric.ntp_rule(
+                named[fabric.REACH_GROUP], named[fabric.MANAGEMENT_GROUP])})
         if plan.reach:
             self._attach(carriers[fabric.MANAGEMENT], named[fabric.REACH_GROUP])
         self._shape = None
@@ -1238,8 +1241,8 @@ class OpenStack:
 
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
         self.describe()
-        return alongside([self.configure_edge], [self.configure_waf], [self.open_collector],
-                         self._wargame_chain())
+        first = (slot.edge_of(self.declared), self.declared.host(GATEWAY_ROLE))
+        return alongside(*self._chains([*first, *self.declared.hosts]), [self.open_collector])
 
     def reset_in_place(self) -> list[tuple[str, tuple[str, ...]]]:
         self.describe()
@@ -1252,14 +1255,36 @@ class OpenStack:
     def configure_rebuilt(self, hosts) -> list[tuple[str, tuple[str, ...]]]:
         self._shape = None
         self.describe()
-        chains = {slot.edge_of(self.declared): [self.configure_edge],
-                  self.declared.host(GATEWAY_ROLE): [self.configure_waf]}
+        return alongside(*self._chains(hosts))
+
+    def _chains(self, hosts) -> list[list]:
+        edge = slot.edge_of(self.declared)
+        chains = {host: [partial(self.keep_time, host)]
+                  for host in self.declared.hosts if host != edge and self._own_role(host)}
+        chains[edge] = [self.configure_edge]
+        gateway = self.declared.host(GATEWAY_ROLE)
+        chains[gateway] = [*(chains.get(gateway, []) if gateway != edge else []), self.configure_waf]
         if wargame_host.ROLE in self.declared.roles:
             chains[self.declared.host(wargame_host.ROLE)] = self._wargame_chain()
-        return alongside(*[chains[host] for host in dict.fromkeys(hosts) if host in chains])
+        return [chains[host] for host in dict.fromkeys(hosts) if host in chains]
+
+    def _own_role(self, host: str) -> str:
+        return next((role for role, filled in sorted(self.declared.roles.items())
+                     if filled == host and not self._container(role, host)), "")
+
+    def keep_time(self, host: str) -> tuple[str, tuple[str, ...]]:
+        role = self._own_role(host)
+        server = self.address(SCORER_ROLE)
+        ran = self.runner(role)(clock.command(server), stdin=clock.timesyncd(server),
+                                timeout=clock.FIRST_ANSWER + 60)
+        if not ran.ok:
+            raise Drifted(f"{host} did not take {server} as its time source "
+                          f"(exit {ran.exit_code}): {ran.output[-1000:]}")
+        return host, (f"keeps time by {server}",)
 
     def _wargame_chain(self) -> list:
-        chain = [self.start_wargames] if wargame_host.ROLE in self.declared.roles else []
+        chain = ([partial(self.keep_time, self.declared.host(wargame_host.ROLE)), self.start_wargames]
+                 if wargame_host.ROLE in self.declared.roles else [])
         chain += [partial(self.start_sensor, role, host) for role, host in self._hosted_sensors()]
         chain += [partial(self.forward_logs, host)
                   for host, entry in sorted(self.declared.hosts.items())
@@ -1305,8 +1330,7 @@ class OpenStack:
         return host, (f"senses {slot.NAMED_ON} at {address}", f"loaded {entry.rules}")
 
     def forward_logs(self, host: str) -> tuple[str, tuple[str, ...]]:
-        role = next(role for role, filled in sorted(self.declared.roles.items())
-                    if filled == host and not self._container(role, host))
+        role = self._own_role(host)
         collector = self._collector()
         for tag, path in sorted(self.declared.hosts[host].logs.items()):
             ran = self.runner(role)(
@@ -1333,7 +1357,8 @@ class OpenStack:
                                    front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
                                                        slot.NAMED_ON),
                                    hostname=slot.named(slot.edge_of(self.declared), self.slot)
-                                   if self.slot > 1 else "")
+                                   if self.slot > 1 else "",
+                                   clock=self.address(SCORER_ROLE))
         return (wanted, collector, opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
                 (source / opnsense.INCLUDE).read_text(), (source / opnsense.RULES).read_text())
 

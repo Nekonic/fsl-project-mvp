@@ -34,6 +34,7 @@ REBOOTING = "fsl-edge rebooting"
 RESET = "fsl-edge reset"
 DRIFTED = "fsl-edge drifted"
 INTERFACES = ("wan", "lan", "opt1")
+MANAGEMENT_INTERFACE = "opt1"
 NAMESPACE = uuid.UUID("6f1c7e3a-5d0b-4c8e-9a51-2b7d4e0f9c11")
 LEVELS = "info,notice,warn,err,crit,alert,emerg"
 FRONT_PORT = "80"
@@ -49,7 +50,7 @@ def _gateway(segment: Segment) -> dict:
 
 def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
              inside: dict[str, str], mtu: int, public_key: str, management: str = "",
-             front: str = "", hostname: str = "") -> dict:
+             front: str = "", hostname: str = "", clock: str = "") -> dict:
     origins = [segment for segment in segments if segment.outside]
     unrouted = [segment.id for segment in origins if not segment.gateway]
     if unrouted:
@@ -76,6 +77,8 @@ def settings(segments: tuple[Segment, ...], collector: tuple[str, int],
         wanted["front"] = front
     if hostname:
         wanted["hostname"] = hostname
+    if clock:
+        wanted["clock"] = clock
     return wanted
 
 
@@ -128,7 +131,7 @@ def render(template: str, wanted: dict) -> str:
     for interface in INTERFACES:
         _set(root, f"interfaces/{interface}/mtu", str(wanted["mtu"]))
     for interface, held in (("wan", wanted.get("wan")), ("lan", wanted.get("lan")),
-                            ("opt1", wanted.get("mgmt"))):
+                            (MANAGEMENT_INTERFACE, wanted.get("mgmt"))):
         if held:
             _set(root, f"interfaces/{interface}/ipaddr", held["address"])
             _set(root, f"interfaces/{interface}/subnet", held["bits"])
@@ -140,6 +143,11 @@ def render(template: str, wanted: dict) -> str:
         _destination(root.find("OPNsense/Syslog/destinations"), wanted["collector"])
     if wanted.get("front"):
         _front_only(root, wanted["front"])
+    if wanted.get("clock"):
+        _set(root, "system/timeservers", wanted["clock"])
+        _set(root, "ntpd/iburst", wanted["clock"])
+        if wanted.get("mgmt"):
+            _set(root, "ntpd/interface", MANAGEMENT_INTERFACE)
     ElementTree.indent(root)
     return '<?xml version="1.0"?>\n' + ElementTree.tostring(root, encoding="unicode") + "\n"
 

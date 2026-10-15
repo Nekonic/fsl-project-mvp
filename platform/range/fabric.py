@@ -16,6 +16,7 @@ REACH_GROUP = "fsl-reach"
 MANAGEMENT_GROUP = "fsl-mgmt"
 GROUPS = (RANGE_GROUP, REACH_GROUP, MANAGEMENT_GROUP)
 COLLECTOR_PORT = 5140
+NTP_PORT = 123
 
 @dataclass(frozen=True)
 class Subnet:
@@ -37,6 +38,7 @@ class Plan:
     keypair: bool = False
     groups: tuple[str, ...] = ()
     reach: bool = False
+    ntp: bool = False
     present: tuple[str, ...] = ()
     drifted: tuple[str, ...] = ()
     leftovers: tuple[str, ...] = ()
@@ -44,7 +46,7 @@ class Plan:
     @property
     def clean(self) -> bool:
         return not (self.networks or self.subnets or self.keypair or self.groups
-                    or self.reach or self.drifted)
+                    or self.reach or self.ntp or self.drifted)
 
 def suffixed(name: str, slot: int = 1) -> str:
     return name if slot == 1 else f"{name}-{slot}"
@@ -211,6 +213,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
         keypair=key is None,
         groups=tuple(name for name, found in named.items() if not found),
         reach=not reached,
+        ntp=not _serves_time(named[REACH_GROUP], named[MANAGEMENT_GROUP]),
         present=tuple(present),
         drifted=tuple(dict.fromkeys(drifted)),
         leftovers=tuple(leftovers),
@@ -229,6 +232,18 @@ def teardown(declaration: Declaration, networks: list, subnets: list,
 
 def group_of(segment: str) -> str:
     return MANAGEMENT_GROUP if segment == MANAGEMENT else RANGE_GROUP
+
+def ntp_rule(reach: str, management: str) -> dict:
+    return {"security_group_id": reach, "direction": "ingress", "ethertype": "IPv4",
+            "protocol": "udp", "port_range_min": NTP_PORT, "port_range_max": NTP_PORT,
+            "remote_group_id": management}
+
+def _serves_time(reach: list[dict], management: list[dict]) -> bool:
+    if len(reach) != 1 or len(management) != 1:
+        return False
+    wanted = ntp_rule(reach[0]["id"], management[0]["id"])
+    return any(all(rule.get(key) == value for key, value in wanted.items())
+               for rule in reach[0].get("security_group_rules") or [])
 
 def _collector_rule(rule: dict) -> bool:
     return (rule.get("direction") == "ingress" and rule.get("protocol") == "udp"

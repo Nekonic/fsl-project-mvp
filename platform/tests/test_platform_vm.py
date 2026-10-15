@@ -306,3 +306,16 @@ def test_without_an_address_in_cloud_yaml_the_stack_allocates_its_own_floating_i
 
 def test_no_parameter_shares_a_name_with_a_resource_because_heat_refuses_the_template():
     assert not set(template()["parameters"]) & set(template()["resources"])
+
+def test_the_platform_vm_serves_ntp_to_the_range_management_network_alone():
+    config = cloud_config()
+    [served] = [entry for entry in config["write_files"]
+                if entry["path"].startswith("/etc/chrony/conf.d/")]
+
+    assert "chrony" in config["packages"]
+    assert served["path"].endswith(".conf"), "chrony reads only *.conf from its confdir"
+    assert served["content"].splitlines() == ["allow %management%", "local stratum 10"], (
+        "the range has no Internet, so the platform is its clock; it keeps serving its own "
+        "time when it loses its upstream, because the scorer compares against it"
+    )
+    assert example().heat_parameters()["management"] == example().inside["mgmt"] == "10.31.0.0/24"
