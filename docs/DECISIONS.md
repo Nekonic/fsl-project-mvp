@@ -4079,3 +4079,46 @@ zone's caption is its name alone (`Internet`, and its Korean pair), without the 
 networks. Every other host end keeps `<interface> <address>/<prefix>`, a switch
 end its port (`e1`), a monitoring end its NIC, and the other zones their
 networks. Approved by the user.
+
+## 2026-10-15 — The platform VM is the range's time source
+
+Measured cause first (the rebuild entry above): the range has no Internet
+and no NTP server, the wargame hosts ran 6.2 and 7.0 s behind the platform
+VM, and corp's binlog credits fell before their case windows
+(`scoreboard.CLOCK_SKEW`, 100 ms). Widening the slack would hide it; the
+hosts now keep the platform's time.
+
+- **Server.** The platform VM has the Internet and real time. Its cloud-init
+  installs chrony (it replaces `systemd-timesyncd`) with
+  `/etc/chrony/conf.d/fsl-range.conf`: `allow <network.mgmt>` (a new Heat
+  parameter, `management`) and `local stratum 10`, so the range follows the
+  platform's clock even if the platform loses its upstream; the scorer
+  compares against that clock, not true time. No `cmdallow`: chronyc stays on
+  loopback.
+- **The way in.** `fsl-reach` takes udp 123 from members of `fsl-mgmt`
+  (`remote_group_id`), and nothing else new. `fabric.plan` reports a standing
+  `fsl-reach` without that rule as `ntp`, and `ensure_fabric` adds it, so an
+  existing range converges at the next `bin/cloud up`. The 2026-10-12 fence
+  is otherwise unchanged: `fsl-mgmt` still admits only `fsl-reach`, so no
+  range host reaches another over `mgmt`, and a range host reaches the
+  platform only on udp 123 (and 5140 for the declared log senders). Kali is
+  a member of `fsl-mgmt`, so the attacker's shell can query the platform's
+  NTP; `docs/THREAT-MODEL.md` says so.
+- **Clients.** The Ubuntu hosts (Kali, the WAF, the wargame host) already
+  run `systemd-timesyncd`; `range/clock.py` writes
+  `/etc/systemd/timesyncd.conf.d/60-fsl.conf` (`NTP=<platform mgmt>`),
+  restarts it and waits up to 30 s for the platform's first answer, or the
+  step fails. `keep_time()` starts every Ubuntu host's chain in
+  `configure_slot()` and `configure_rebuilt()`, and the wargame chain (so
+  also the in-place reset), before the wargames start. Kali had no configure
+  step; it is rebuilt at every reset and now gets this one. The platform's
+  `mgmt` address changes when the platform VM is rebuilt, which is why the
+  configure path writes it, not the host images. Not chosen: chrony on the
+  hosts, which would need every host image rebuilt for a client the image
+  already has. The edge: the rendered `config.xml` sets
+  `system/timeservers` to the platform (OPNsense starts ntpd only when it is
+  set, `plugins.inc.d/ntpd.inc` `ntpd_enabled()`), `ntpd/iburst`, and
+  `ntpd/interface` `opt1`, so ntpd listens only on management. The first
+  in-place reset after this change finds the config drifted and reinstalls
+  and reboots the edge, as for any config change.
+- **Docker.** Every container reads the host kernel's clock; nothing changes.

@@ -243,7 +243,7 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 |---|---|---|
 | `fsl-platform` | Heat stack | tcp 22, tcp 8000, tcp 8002, tcp 3080, icmp in |
 | `fsl-range` | fabric | all IPv4 in; on every range port off `mgmt` (anti-spoofing stays on) |
-| `fsl-reach` | fabric | nothing in, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
+| `fsl-reach` | fabric | nothing in but udp 123 (NTP) from members of `fsl-mgmt`, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
 | `fsl-mgmt` | fabric | all IPv4 in from members of `fsl-reach` (the platform's `mgmt` port) only; on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
 | `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
 
@@ -253,6 +253,26 @@ stack made before 2026-10-13 lacks the rule; add it by hand:
 
 ```bash
 openstack security group rule create --protocol tcp --dst-port 8002 fsl-platform
+```
+
+The range has no Internet, so it has no time source but the platform: the
+platform VM runs chrony (cloud-init, `allow <network.mgmt>` and `local stratum
+10`, so it keeps serving its own clock if it loses its upstream), and every
+range host keeps time by the platform's `mgmt` address. The Ubuntu hosts
+(Kali, the WAF, the wargame host) get a `systemd-timesyncd` drop-in
+(`/etc/systemd/timesyncd.conf.d/60-fsl.conf`, `NTP=<platform mgmt>`) at every
+configure and reset, and the step waits for the first answer; the edge's
+rendered `config.xml` names the platform in `system/timeservers` with ntpd
+bound to `opt1`. A rebuilt platform VM has a new `mgmt` address, which the
+hosts take at the next reset or `configure/`. A range made before 2026-10-15
+gets the udp 123 rule at the next `bin/cloud up` (`POST /api/range/fabric/`
+plans it as `ntp`). A platform VM booted before then lacks chrony; run what
+cloud-init runs:
+
+```bash
+sudo install -d /etc/chrony/conf.d
+printf 'allow 10.31.0.0/24\nlocal stratum 10\n' | sudo tee /etc/chrony/conf.d/fsl-range.conf
+sudo apt-get -y install chrony
 ```
 
 3080 is the GNS3 server (`compose.yaml` `gns3`), whose web UI the blue
@@ -636,10 +656,10 @@ and the wargame host in place"):
 
 | VM | Reset at close | Why |
 |---|---|---|
-| `fsl-kali` | Nova rebuild from its image, then nothing to configure | the red team's root shell; anything outside config can carry over |
-| `fsl-waf` | Nova rebuild, then `configure_waf()` (audit-log forwarding) | the blue team's shell (`vm-terminal.sh fsl-waf`) |
+| `fsl-kali` | Nova rebuild from its image, then its time source (the platform over `mgmt`) | the red team's root shell; anything outside config can carry over |
+| `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | the blue team's shell (`vm-terminal.sh fsl-waf`) |
 | `fsl-edge` | in place: baseline `fsl.rules` written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` checked by sha256; pf states of every range subnet dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | the session can change only `fsl.rules`, and only the platform reaches its GUI and ssh (`fsl-mgmt`) |
-| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then the usual `up -d --wait --pull never`, the sensor, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
+| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then its time source, the usual `up -d --wait --pull never`, the sensor, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
 
 OPNsense rewrites `config.xml` on its first boot after an install
 (migrations add uuids, defaults and `persisted_at` stamps), so the edge's file

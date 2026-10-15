@@ -90,6 +90,14 @@ delete, node and drawing create, image pull, user create: 403, measured
 2026-10-13); it can read the host's Docker image list
 (`GET /v3/computes/local/docker/images`).
 
+**On OpenStack the platform answers NTP to every range host, Kali included.**
+`fsl-mgmt` fences each range host's `mgmt` port so only the platform reaches
+it; the one way back is udp 123 to the platform's `mgmt` port, from members of
+`fsl-mgmt`, answered by chrony (`allow` that subnet, no `cmdallow`, so its
+command port stays on loopback). The attacker's shell can read the platform's
+time and send it NTP packets; it reaches nothing else on the platform from
+`mgmt`.
+
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.
 

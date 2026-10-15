@@ -1661,13 +1661,24 @@ edge, the WAF, Kali and the wargame host.
 
 The fabric also makes three security groups: `fsl-range`, which every range
 port off `mgmt` joins and which lets any IPv4 in (the WAF defends the range,
-not Neutron; anti-spoofing stays on); `fsl-reach`, which lets nothing in; and
-`fsl-mgmt`, which every range host's `mgmt` port joins and which lets in only
-members of `fsl-reach`. The platform attaches itself to `mgmt` through a port
-in `fsl-reach`, found by its own server id (`FSL_OPENSTACK_PLATFORM`, written
-at boot), so it can ssh to every host while no host can open a connection to
-it, and Kali's `mgmt` port reaches no other host. The runner reaches a host
-at its `mgmt` address unless the caller names a segment.
+not Neutron; anti-spoofing stays on); `fsl-reach`, which lets in only NTP
+(udp 123) from members of `fsl-mgmt`; and `fsl-mgmt`, which every range
+host's `mgmt` port joins and which lets in only members of `fsl-reach`. The
+platform attaches itself to `mgmt` through a port in `fsl-reach`, found by its
+own server id (`FSL_OPENSTACK_PLATFORM`, written at boot), so it can ssh to
+every host while no host can open a connection to it but NTP, and Kali's
+`mgmt` port reaches no other host. The runner reaches a host at its `mgmt`
+address unless the caller names a segment.
+
+The range has no Internet and so no time source of its own, and the scorer
+compares target and sensor times with case windows on the platform's clock.
+The platform VM runs chrony (cloud-init: `allow <network.mgmt>`, `local
+stratum 10`), and every range host keeps time by the platform's `mgmt`
+address: `range/clock.py` writes a `systemd-timesyncd` drop-in on the Ubuntu
+hosts and waits for the first answer (`keep_time()`, in every host's configure
+chain and before the wargames start), and the edge's rendered `config.xml`
+names it in `system/timeservers` with ntpd bound to `opt1`. On docker every
+container reads the host kernel's clock, so nothing is needed there.
 
 The slot is the set of range hosts, managed through `/api/range/slot/` and
 planned by `range/slot.py`. Each host has a port per declared segment, named
@@ -1758,14 +1769,16 @@ baseline `fsl.rules` back, the installed files checked by sha256 against the
 hash the edge recorded after its last install and boot, range pf states
 dropped, filter reloaded, Suricata restarted; on any mismatch it falls back
 to `configure_edge()`'s install and reboot), the collector's security group,
-and the wargame host (cleared, then wargames, sensor and log forwarding, in
-that order). The other polls `plan_slot()` until each rebuilt VM has been seen
-out of ACTIVE and back to ACTIVE, then runs `configure_rebuilt()` (the WAF's
-log forwarding) from a fresh read of the cloud. Both retry while a VM does not
+and the wargame host (cleared, then its time source, wargames, sensor and log
+forwarding, in that order). The other polls `plan_slot()` until each rebuilt VM has been seen
+out of ACTIVE and back to ACTIVE, then runs `configure_rebuilt()` (each
+rebuilt host's time source, and the WAF's log forwarding) from a fresh read
+of the cloud. Both retry while a VM does not
 answer ssh (up to 30 minutes) and the first failure fails the reset.
 `configure_slot()` (the manual configure) runs every host's steps side by
-side, one thread per host: the edge (configure and reboot), the WAF, the
-collector's security group, and the wargame host; it waits for all of them
+side, one thread per host: the edge (configure and reboot), the WAF, Kali,
+the wargame host, and the collector's security group; every Ubuntu host's
+chain starts with its time source; it waits for all of them
 and fails with the first failure in that order. The close answers at once; the reset
 state (idle, running, failed and why) is held in the platform process.
 `POST /api/range/configure/` stays the manual retry and clears a failed reset.

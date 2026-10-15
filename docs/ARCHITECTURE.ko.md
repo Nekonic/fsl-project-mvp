@@ -1310,12 +1310,20 @@ publish한다. `daemon.json`은 Docker 브리지에 테넌트 MTU를 준다. 인
 
 fabric은 보안 그룹을 셋 만든다: `mgmt` 밖의 모든 레인지 포트가 속하고 모든 IPv4를
 허용하는 `fsl-range`(레인지를 지키는 것은 Neutron이 아니라 WAF다; anti-spoofing은 유지),
-아무것도 허용하지 않는 `fsl-reach`, 그리고 모든 레인지 호스트의 `mgmt` 포트가 속하고
-`fsl-reach` 구성원만 허용하는 `fsl-mgmt`. 플랫폼은 자신의 서버 id(부팅 시 쓰는
-`FSL_OPENSTACK_PLATFORM`)로 찾은 `fsl-reach`의 포트로 `mgmt`에 붙으므로, 모든 호스트로
-ssh할 수 있지만 어떤 호스트도 플랫폼으로 연결을 열 수 없고, Kali의 `mgmt` 포트는 다른
-호스트에 닿지 않는다. runner는 호출자가 구간을 지정하지 않으면 호스트의 `mgmt` 주소로
-접근한다.
+`fsl-mgmt` 구성원의 NTP(udp 123)만 허용하는 `fsl-reach`, 그리고 모든 레인지 호스트의
+`mgmt` 포트가 속하고 `fsl-reach` 구성원만 허용하는 `fsl-mgmt`. 플랫폼은 자신의 서버
+id(부팅 시 쓰는 `FSL_OPENSTACK_PLATFORM`)로 찾은 `fsl-reach`의 포트로 `mgmt`에 붙으므로,
+모든 호스트로 ssh할 수 있지만 어떤 호스트도 NTP 말고는 플랫폼으로 연결을 열 수 없고,
+Kali의 `mgmt` 포트는 다른 호스트에 닿지 않는다. runner는 호출자가 구간을 지정하지 않으면
+호스트의 `mgmt` 주소로 접근한다.
+
+레인지에는 인터넷이 없어 자체 시간 출처가 없고, 채점기는 대상과 센서의 시각을 플랫폼
+시계의 케이스 구간과 비교한다. 플랫폼 VM은 chrony를 돌리고(cloud-init: `allow
+<network.mgmt>`, `local stratum 10`), 모든 레인지 호스트는 플랫폼의 `mgmt` 주소로 시간을
+맞춘다: `range/clock.py`가 Ubuntu 호스트에 `systemd-timesyncd` drop-in을 쓰고 첫 응답을
+기다리며(`keep_time()`, 호스트마다 configure 체인에, wargame 시작 전에), 엣지의 렌더된
+`config.xml`은 `system/timeservers`에 플랫폼을 적고 ntpd를 `opt1`에 묶는다. docker에서는
+모든 컨테이너가 호스트 커널의 시계를 읽으므로 따로 할 일이 없다.
 
 slot은 레인지 호스트의 집합으로, `/api/range/slot/`로 관리하고 `range/slot.py`가
 계획한다. 각 호스트는 선언된 구간마다 `<host>.<segment>` 이름의 포트를 가지며,
@@ -1385,12 +1393,12 @@ rsyslog가 `eve.json`을 `suricata` 태그로 수집기에 보내고(`range/waf.
 `fsl.rules`를 되돌리고, 설치된 파일을 엣지가 마지막 설치·부팅 뒤 기록한 해시와 sha256으로
 비교하고, 레인지 pf 상태를 지우고, 필터를 다시 읽히고, Suricata를 재시작한다. 하나라도
 다르면 `configure_edge()`의 설치와 재부팅으로 넘어간다), 수집기 보안 그룹, wargame
-호스트(비우기, 그다음 wargame, 센서, 로그 전달 순서). 다른 쪽은 재구축한 VM 각각이 ACTIVE를
+호스트(비우기, 그다음 시간 출처, wargame, 센서, 로그 전달 순서). 다른 쪽은 재구축한 VM 각각이 ACTIVE를
 벗어났다가 다시 ACTIVE가 되는 것을 `plan_slot()`으로 확인한 뒤, 클라우드를 새로 읽어
-`configure_rebuilt()`(WAF의 로그 전달)를 실행한다. 둘 다 VM이 ssh에 답하지 않는 동안
+`configure_rebuilt()`(재구축한 호스트마다 시간 출처, 그리고 WAF의 로그 전달)를 실행한다. 둘 다 VM이 ssh에 답하지 않는 동안
 재시도하고(최대 30분), 첫 실패가 초기화를 실패시킨다. `configure_slot()`(수동 configure)은
-호스트마다 스레드 하나로 단계를 나란히 돌린다: 엣지(설정과 재부팅), WAF, 수집기 보안 그룹,
-wargame 호스트. 모두 끝나기를 기다린 뒤 그 순서에서 첫 실패로 실패한다. close는 바로 응답하고, 초기화
+호스트마다 스레드 하나로 단계를 나란히 돌린다: 엣지(설정과 재부팅), WAF, Kali, wargame
+호스트, 수집기 보안 그룹. Ubuntu 호스트의 체인은 모두 시간 출처로 시작한다. 모두 끝나기를 기다린 뒤 그 순서에서 첫 실패로 실패한다. close는 바로 응답하고, 초기화
 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 들고 있다.
 `POST /api/range/configure/`는 수동 재시도로 남고, 실패한 초기화 상태를 지운다.
 
