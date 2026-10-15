@@ -777,6 +777,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       longer shows it (`topology.learner` maps the range's names to role
       names), but the system maps, the console's terminals and Kibana's
       `log.syslog.hostname` still do.
+- [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
+      on the service segment beside the sites, and the learner map draws it
+      so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda
+      calls its two-arm proxy the "Most secure deployment choice since
+      backend servers are completely isolated." Two-arm needs the sites on
+      a segment of their own behind the WAF: a range change on both
+      substrates, not scheduled.
 - [ ] The console's follow picker lists Website pane requests and fired
       cases; a customer request is followed by `?customer=<marker>` through
       the API only.

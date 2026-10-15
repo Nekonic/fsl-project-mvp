@@ -1,6 +1,8 @@
+import importlib.util
 import json
 import pathlib
 import re
+import tempfile
 import uuid
 from xml.etree import ElementTree
 
@@ -26,7 +28,9 @@ FLAVORS = {DOCKER: "", DOCKER_KO: "", OPENSTACK: "openstack", OPENSTACK_KO: "ope
 EVERY_MAP = [*PAIRS, *PAIRS.values(), SYSTEM_DOCKER, SYSTEM_OPENSTACK]
 BUNDLED_SYMBOL = re.compile(r"^:/symbols/affinity/(square|circle)/(blue|gray|green|red)/[a-z0-9_]+\.svg$")
 DOCKERFILE = ROOT / "deploy" / "gns3" / "Dockerfile"
-KALI_SYMBOL = "kali.svg"
+KALI_SYMBOL = "host-kali.svg"
+SYMBOLS_BUILDER = ROOT / "deploy" / "gns3" / "symbols.py"
+FAKE_DRAGON = '<svg viewBox="0 0 135.47 135.47" xmlns="http://www.w3.org/2000/svg"><path d="m71 36s-10 0-27 4z"/></svg>'
 KOREAN_NAME = re.compile(r" \([\uac00-\ud7a3]+\)")
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
@@ -42,6 +46,26 @@ GNS3_2_2_TOP_LEVEL = {
 GNS3_2_2_TOPOLOGY = {"computes", "drawings", "links", "nodes"}
 SWITCH = "ethernet_switch"
 STRAIGHT_WITHIN = 6
+
+def symbols_module():
+    spec = importlib.util.spec_from_file_location("fsl_gns3_symbols", SYMBOLS_BUILDER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+def framed_hosts():
+    module = symbols_module()
+    return [module.named(name) for name in module.GLYPHS] + [module.KALI]
+
+def fake_built(module):
+    with tempfile.TemporaryDirectory() as bundled:
+        for name, colour in module.GLYPHS.items():
+            path = pathlib.Path(bundled) / colour / f"{name}.svg"
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd">'
+                            f'<path d="M0 0" style="fill:#fffefe"/><path d="M1 1" style="fill:{module.COLOURS[colour]}"/>'
+                            f'<path d="M100 100h{len(name)}" style="fill:{module.COLOURS[colour]}"/></svg>')
+        return module.built(pathlib.Path(bundled), FAKE_DRAGON, "abc123")
 
 def project(path):
     return json.loads(path.read_text())
@@ -665,40 +689,64 @@ def test_a_learner_map_draws_no_title_no_legend_and_no_note_only_a_caption_for_e
     assert set(topology.captions(learner)) == switches
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_fetches(drawn_in):
+def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_builds(drawn_in):
     dockerfile = DOCKERFILE.read_text()
-    fetched = re.search(r"for name in ([^;]+); do", dockerfile)[1].split() + re.findall(r"> /symbols/(\S+)", dockerfile)
-    assert "GNS3/gns3-registry/${REGISTRY}/symbols/${name}" in dockerfile
+    built = {f"{name}.svg" for name in framed_hosts()}
+    assert "RUN python /opt/fsl-gns3/symbols.py " in dockerfile and "symbols.py /opt/fsl-gns3/" in dockerfile
     for node in project(drawn_in)["topology"]["nodes"]:
         symbol = node["symbol"]
-        assert BUNDLED_SYMBOL.match(symbol) or (
-            symbol in fetched and symbol.removesuffix(".svg") + ".txt" in fetched), (node["name"], symbol)
+        host = node["node_type"] != SWITCH and node["name"] != topology.INTERNET
+        assert (symbol in built) if host else BUNDLED_SYMBOL.match(symbol), (node["name"], symbol)
 
 @pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_a_symbol_tells_a_vm_from_a_container_and_the_defence_from_the_sites(drawn_in, wargame):
+def test_every_host_is_one_framed_symbol_whose_colour_tells_the_attacker_the_defence_the_sites_and_the_rest(drawn_in, wargame):
     learner, shown, stack = projected(drawn_in, wargame)
     drawn = nodes(learner)
-    machine = {}
-    for real, names in shown.hosts.items():
-        for name in names:
-            machine.setdefault(name, real)
-
-    for name, node in drawn.items():
-        if node["node_type"] == SWITCH or name == topology.ATTACKER:
-            continue
-        vm = bool(FLAVORS[drawn_in]) and machine[name] in stack.hosts
-        assert ("/square/" if vm else "/circle/") in node["symbol"], (name, machine[name])
 
     def symbol(role):
         return drawn[shown.roles[role]]["symbol"]
 
+    hosts = {name: node["symbol"] for name, node in drawn.items()
+             if node["node_type"] != SWITCH and name != topology.INTERNET}
+    assert set(hosts.values()) <= {f"{name}.svg" for name in framed_hosts()}, hosts
     assert shown.roles["attacker"] == topology.ATTACKER == "kali" and symbol("attacker") == KALI_SYMBOL
-    assert symbol("gateway").endswith("/green/shield.svg")
-    assert "edge" not in stack.roles or symbol("edge").endswith("/green/firewall.svg")
-    assert symbol(wargame).endswith("/blue/server.svg")
-    assert symbol(f"{wargame}{topology.DATABASE_SUFFIX}").endswith("/blue/storage.svg")
-    assert drawn[topology.LOG_SERVER]["symbol"].endswith("/gray/statistics.svg")
-    assert topology.CUSTOMERS not in drawn or drawn[topology.CUSTOMERS]["symbol"].endswith("/gray/client.svg")
+    assert symbol("gateway") == "host-shield.svg"
+    assert "edge" not in stack.roles or symbol("edge") == "host-firewall.svg"
+    assert symbol(wargame) == "host-server.svg"
+    assert symbol(f"{wargame}{topology.DATABASE_SUFFIX}") == "host-storage.svg"
+    assert drawn[topology.LOG_SERVER]["symbol"] == "host-statistics.svg"
+    assert topology.CUSTOMERS not in drawn or drawn[topology.CUSTOMERS]["symbol"] == "host-client.svg"
+    colours = symbols_module().GLYPHS | {"kali": symbols_module().KALI_COLOUR}
+    assert (colours["kali"], colours["shield"], colours["firewall"], colours["server"], colours["storage"],
+            colours["statistics"], colours["client"]) == ("red", "green", "green", "blue", "blue", "gray", "gray")
+
+def test_every_framed_host_symbol_is_one_frame_of_one_size_and_line_weight_around_its_glyph():
+    module = symbols_module()
+    made = {name: ElementTree.fromstring(text) for name, text in fake_built(module).items() if name.endswith(".svg")}
+    frames = set()
+
+    assert set(made) == {f"{name}.svg" for name in framed_hosts()}
+    for name, svg in made.items():
+        frame = svg[0]
+        assert (svg.get("width"), svg.get("height"), svg.get("viewBox")) == (
+            str(topology.SYMBOL_SIZE), str(topology.SYMBOL_SIZE), "0 0 300 300"), name
+        assert frame.tag.endswith("rect") and len(svg) == 2, name
+        frames.add(tuple(sorted((key, value) for key, value in frame.attrib.items() if key != "stroke")))
+        assert frame.get("stroke") in module.COLOURS.values()
+    assert len(frames) == 1, frames
+    assert dict(next(iter(frames)))["stroke-width"] == "16"
+
+def test_a_framed_glyph_is_the_bundled_affinity_glyph_without_its_own_paper_and_frame():
+    module = symbols_module()
+    bundled = ('<svg width="60" height="60" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd">'
+               '<path d="M0 0" style="fill:#fffefe"/><path d="M1 1" style="fill:#2d67b9"/>'
+               '<path d="M150 50h10" style="fill:#2d67b9"/></svg>')
+    glyph = ElementTree.fromstring(module.framed("blue", module.glyph(bundled, "blue")))[1]
+
+    assert glyph.get("style") == "fill-rule:evenodd"
+    assert [part.get("d") for part in glyph] == ["M150 50h10"]
+    with pytest.raises(SystemExit):
+        module.glyph(bundled.replace("fill:#fffefe", "fill:#000000"), "blue")
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_that_only_idles(drawn_in):
@@ -724,21 +772,31 @@ def test_a_node_a_link_reaches_from_straight_above_carries_its_name_beside_it_no
         assert label["x"] is not None and label["x"] < 0 and 0 <= label["y"] < topology.SYMBOL_SIZE, (
             below["name"], label)
 
-def test_the_kali_symbol_is_offsec_s_own_dragon_fetched_at_a_pinned_commit_checked_by_digest_and_only_scaled():
+def test_the_kali_symbol_is_offsec_s_own_dragon_fetched_at_a_pinned_commit_checked_by_digest_and_framed_unmodified():
     dockerfile = DOCKERFILE.read_text()
     commit = re.search(r"^ARG KALI_PRESS_PACK=([0-9a-f]{40})$", dockerfile, re.M)
     digest = re.search(r"^ARG KALI_DRAGON_SHA256=([0-9a-f]{64})$", dockerfile, re.M)
-    size = topology.SYMBOL_SIZE
+    module = symbols_module()
+    made = fake_built(module)
+    kali = ElementTree.fromstring(made[KALI_SYMBOL])
+    mark = kali[1]
 
     assert commit and digest
     assert ("https://gitlab.com/kalilinux/documentation/press-pack/-/raw/${KALI_PRESS_PACK}"
             "/Kali/Logomark/kali-dragon-black.svg") in dockerfile
-    assert 'echo "${KALI_DRAGON_SHA256}  /tmp/kali-dragon-black.svg" | sha256sum -c -' in dockerfile
-    assert f"sed 's/^<svg /<svg width=\"{size}\" height=\"{size}\" /' /tmp/kali-dragon-black.svg > /symbols/{KALI_SYMBOL}" in dockerfile
-    assert "KALI LINUX is a trademark of OffSec." in dockerfile and "> /symbols/kali.txt" in dockerfile
+    assert 'echo "${KALI_DRAGON_SHA256}  /dragon/kali-dragon-black.svg" | sha256sum -c -' in dockerfile
+    assert ('RUN python /opt/fsl-gns3/symbols.py /opt/fsl-gns3/kali-dragon-black.svg "${KALI_PRESS_PACK}" '
+            "/opt/fsl-gns3/symbols") in dockerfile
+    assert "kali-dragon" not in " ".join(path.name for path in DOCKERFILE.parent.iterdir()), "fetched, not vendored"
+    assert kali[0].get("stroke") == module.COLOURS["red"]
+    assert ElementTree.tostring(mark) == ElementTree.tostring(ElementTree.fromstring(FAKE_DRAGON.replace(
+        "<svg ", '<svg x="24" y="24" width="252" height="252" ', 1))), "the mark only placed and sized"
+    assert 0 < int(mark.get("x")) and int(mark.get("x")) + int(mark.get("width")) < 300 - 16
+    assert made["host-kali.txt"].startswith("KALI LINUX\u2122 is a trademark of OffSec.")
+    assert "unmodified" in made["host-kali.txt"] and "abc123" in made["host-kali.txt"]
     for drawn_in in LEARNER_MAPS:
-        kali = [node for node in project(drawn_in)["topology"]["nodes"] if node["name"] == topology.ATTACKER]
-        assert [(node["symbol"], node["label"]["text"]) for node in kali] == [(KALI_SYMBOL, "kali")], drawn_in
+        kali_nodes = [node for node in project(drawn_in)["topology"]["nodes"] if node["name"] == topology.ATTACKER]
+        assert [(node["symbol"], node["label"]["text"]) for node in kali_nodes] == [(KALI_SYMBOL, "kali")], drawn_in
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_zone_of_a_learner_map_is_a_thin_outline_over_a_faint_fill(drawn_in):
