@@ -1360,14 +1360,10 @@ binary log via a substrate runner, proven end to end against the live stack.
   was not found; the output was truncated. It recurred on 2026-10-01 as two
   acceptance failures (one case of ten detected) that passed when rerun.
 - `test_declaration.py` compares two files, never the running range.
-- The range hosts keep their own time: the range has no Internet and no NTP
-  source, so their clocks drift from the platform VM's (wargame hosts 6.2 and
-  7.0 s behind on 2026-10-15, `NTPSynchronized=no`). corp's credits match a
-  binlog time on the target's clock to a case window on the platform's with
-  100 ms of slack (`scoreboard.CLOCK_SKEW`), so with this drift the three
-  binlog acceptance tests fail (`test_corp_authz` x2,
-  `test_corp_observe_live`). Fix: an NTP source for the range on the
-  platform side (e.g. the edge), or read the target's clock offset.
+- The range keeps time by the platform VM alone (chrony, `local stratum 10`):
+  if the platform VM loses its upstream, the range follows the platform's
+  clock, which is what scoring compares against, not true time. A host whose
+  time source does not answer within 30 s fails its configure step.
 - A slot host booted again on its own (its server deleted, then POST)
   takes a new `estate` address the others' `/etc/hosts` does not have; take
   the whole slot down and up instead.
