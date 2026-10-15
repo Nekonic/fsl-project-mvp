@@ -70,6 +70,45 @@ def test_the_topology_pane_frames_the_gns3_web_ui_through_its_read_only_sign_in(
     assert seen["result"]["frame"] == "http://console.test:3080/static/web-ui/fsl-auditor.html?project=p"
     assert seen["result"]["frameShown"] == "block" and seen["result"]["mapShown"] == "none"
 
+def test_the_topology_item_opens_on_the_map_and_following_a_request_is_the_second_tab(client):
+    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    seen = open_page(client, "/blue/1/", setup=serving(web_ui), scenario="""
+      await browser.click('[data-pane="topology"]');
+      const opened = {map: browser.element('topology-gns3').getAttribute('aria-selected'),
+                      follow: browser.element('topology-follow').getAttribute('aria-selected'),
+                      frame: browser.element('topology-frame').style.display,
+                      fit: browser.element('topology-fit').style.display,
+                      fitSays: browser.text('topology-fit'),
+                      request: browser.element('topology-request').style.display};
+      await browser.click('#topology-follow');
+      const followed = {map: browser.element('topology-gns3').getAttribute('aria-selected'),
+                        frame: browser.element('topology-frame').style.display,
+                        fit: browser.element('topology-fit').style.display};
+      await browser.click('#topology-fit');
+      return {opened, followed};
+    """)
+    template = (pathlib.Path(__file__).resolve().parents[1] / "console/templates/console/blue_topology.html").read_text()
+
+    assert seen["errors"] == []
+    assert template.index('id="topology-gns3"') < template.index('id="topology-follow"')
+    assert seen["result"]["opened"] == {"map": "true", "follow": "false", "frame": "block", "fit": "",
+                                        "fitSays": english("topology.fit"), "request": "none"}
+    assert seen["result"]["followed"] == {"map": "false", "frame": "none", "fit": "none"}
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_the_fit_button_of_the_map_reads_in_the_console_s_language(client, language):
+    from tests.test_strings import tables
+    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
+    seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
+      await browser.click('[data-pane="topology"]');
+      return browser.text('topology-fit');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == tables()[language]["topology.fit"] != ""
+    assert "GNS3" not in seen["result"]
+
 def test_without_gns3_the_pane_draws_the_project_and_follows_a_chosen_request(client):
     seen = open_page(client, "/blue/1/", setup=serving(None), scenario="""
       await browser.click('[data-pane="topology"]');

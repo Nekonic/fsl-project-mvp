@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>GNS3</title>
+<title>Network map</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; font-family: sans-serif; }
   #said { margin: 16px; }
@@ -17,7 +17,36 @@ const ZOOM_STEP = 0.1;
 const SMALLEST = 0.3;
 const WAIT_MS = 20000;
 
+const VIEW_ONLY = `
+  #project-titlebar, #project-toolbar, app-project-map-menu, app-nodes-menu, app-template,
+  app-context-menu, app-context-console-menu, app-topology-summary, app-notification-center,
+  app-console-wrapper, app-web-console-inline, app-ai-chat, app-log-console, .inline-taskbar,
+  .project-notifications, .cdk-overlay-container, mat-dialog-container { display: none !important; }
+  svg.map * { pointer-events: none !important; }
+  svg.map { cursor: grab; }
+  svg.map:active { cursor: grabbing; }
+`;
+const BLOCKED = ["contextmenu", "dblclick", "click", "auxclick", "keydown", "keypress", "keyup",
+  "dragstart", "dragover", "drop", "touchstart", "paste", "cut", "copy"];
+
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+function viewOnly(map) {
+  const style = map.document.createElement("style");
+  style.id = "fsl-view-only";
+  style.textContent = VIEW_ONLY;
+  map.document.head.append(style);
+  const refused = (event) => {
+    if (!event.isTrusted) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  BLOCKED.forEach((type) => map.addEventListener(type, refused, {capture: true, passive: false}));
+  map.addEventListener("mousedown", (event) => {
+    const panning = event.button === 0 && event.target instanceof map.Element && event.target.matches("svg.map");
+    if (!panning) refused(event);
+  }, {capture: true, passive: false});
+}
 
 function button(map, icon) {
   return [...map.document.querySelectorAll("button")].find((found) => {
@@ -52,15 +81,10 @@ async function summaryClosed(map) {
   }
 }
 
-function visible(map) {
-  const bar = map.document.querySelector("#project-titlebar");
-  const left = button(map, "zoom_in").getBoundingClientRect().right;
-  const top = bar ? bar.getBoundingClientRect().bottom : 0;
-  return {left, top, width: map.innerWidth - left, height: map.innerHeight - top};
-}
-
 async function fitted(map, canvas) {
-  const room = visible(map);
+  const room = {left: 0, top: 0, width: map.innerWidth, height: map.innerHeight};
+  button(map, "adjust").click();
+  await sleep(200);
   const box = canvas.getBBox();
   const wanted = Math.min(1, (room.width - 2 * MARGIN) / box.width, (room.height - 2 * MARGIN) / box.height);
   const steps = Math.min(Math.ceil((1 - wanted) / ZOOM_STEP - 1e-9), Math.round((1 - SMALLEST) / ZOOM_STEP));
@@ -77,13 +101,9 @@ async function fitted(map, canvas) {
     bubbles: true, cancelable: true, view: map, button: 0, buttons: 1,
     clientX: room.left + room.width / 2, clientY: room.top + room.height / 2, ...moved,
   }));
-  button(map, "zoom_out_map").click();
-  await sleep(200);
   mouse("mousedown", svg, {});
   mouse("mousemove", svg, {movementX: dx, movementY: dy});
   mouse("mouseup", map.document, {});
-  await sleep(100);
-  button(map, "zoom_out_map").click();
 }
 
 (async () => {
@@ -96,7 +116,7 @@ async function fitted(map, canvas) {
     body: JSON.stringify(auditor),
   });
   if (!answer.ok) {
-    said.textContent = "GNS3 refused the read-only sign-in (" + answer.status + ").";
+    said.textContent = "The map server refused the read-only sign-in (" + answer.status + ").";
     return;
   }
   const token = (await answer.json()).access_token;
@@ -115,12 +135,19 @@ async function fitted(map, canvas) {
   }
   const frame = document.createElement("iframe");
   frame.id = "map";
-  frame.title = "GNS3";
+  frame.title = "Network map";
   frame.addEventListener("load", async () => {
     const map = frame.contentWindow;
+    viewOnly(map);
     const canvas = await drawn(map);
     await summaryClosed(map);
-    if (canvas) await fitted(map, canvas);
+    if (!canvas) return;
+    button(map, "zoom_out_map").click();
+    await sleep(200);
+    await fitted(map, canvas);
+    window.addEventListener("message", (event) => {
+      if (event.data === "fsl-fit") fitted(map, canvas);
+    });
   }, {once: true});
   frame.src = opened;
   said.remove();

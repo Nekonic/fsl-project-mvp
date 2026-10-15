@@ -436,11 +436,22 @@ built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
 token where the bundled web UI reads its controller (`controller-1`,
 `controllerIds` in `localStorage`), with `showInterfaceLabels` on and
 `integrateLinkLabelsToLinks` off so each link end's label is drawn where the
-project puts it. It opens the project in a same-origin frame and, once the map
-is drawn, closes the topology summary (its visibility is a constant in the
-3.1.0a6 bundle), zooms out with the web UI's own button (0.1 a step; the web UI
-never reads the project's `zoom`) until the drawing fits, and centres it with
-one mousemove in moving mode (the web UI pans by `movementX`/`movementY`). For development MCP use (`/v3/mcp/`), `docker
+project puts it. It opens the project in a same-origin frame and makes it
+view-only before the map draws: a stylesheet hides every piece of editing
+chrome (the title bar, the tool column, context menus, the topology summary,
+dialogs and the Angular CDK overlay) and takes pointer events off everything
+inside `svg.map`, and capture-phase listeners on the frame's window swallow every
+trusted click, double-click, context menu, key and drop, and every mousedown
+but a left press on `svg.map` itself. The page's own synthetic events are not
+trusted, so its clicks on the hidden controls still land. Once the map is
+drawn it closes the topology summary (its visibility is a constant in the
+3.1.0a6 bundle), turns the web UI's moving mode on for good (a drag on the map
+pans, the wheel zooms), resets the zoom, zooms out with the web UI's own button
+(0.1 a step; the web UI never reads the project's `zoom`) until the drawing
+fits, and centres it with one mousemove (the web UI pans by
+`movementX`/`movementY`). The pane's Fit to view button posts `fsl-fit` to the
+frame, which runs the same reset and fit. The Auditor role still refuses every
+write on the server. For development MCP use (`/v3/mcp/`), `docker
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP. The console's tab for it reads
 Network map (네트워크 구성도); no word a learner reads names GNS3.

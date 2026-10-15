@@ -354,9 +354,16 @@ GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프�
 learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localStorage`의 `controller-1`,
 `controllerIds`)에 토큰을 두고, 링크 끝 라벨을 프로젝트가 정한 자리에 그리도록
 `showInterfaceLabels`를 켜고 `integrateLinkLabelsToLinks`를 끈다. 프로젝트는 같은 출처의 프레임 안에서
-열고, 지도가 그려지면 토폴로지 요약 창을 닫고(3.1.0a6 번들에서 이 창의 표시 여부는 상수다), 그림이
-들어갈 때까지 웹 UI의 축소 버튼(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않는다)을 누르고,
-이동 모드에서 mousemove 한 번으로 가운데로 옮긴다(웹 UI는 `movementX`/`movementY`만큼 옮긴다). 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
+열고, 지도가 그려지기 전에 보기 전용으로 만든다. 스타일시트가 편집 화면 요소(제목 표시줄, 도구 열,
+컨텍스트 메뉴, 토폴로지 요약 창, 대화 상자, Angular CDK 오버레이)를 모두 숨기고 `svg.map` 안의 모든
+요소에서 포인터 이벤트를 뺀다. 프레임 window의 캡처 단계 리스너는 신뢰된(trusted) 클릭, 더블클릭,
+컨텍스트 메뉴, 키 입력, 드롭과 `svg.map` 자체를 왼쪽 버튼으로 누른 경우를 뺀 모든 mousedown을 삼킨다.
+페이지가 직접 만든 합성 이벤트는 신뢰되지 않으므로 숨긴 컨트롤을 누르는 페이지 자신의 클릭은 그대로
+닿는다. 지도가 그려지면 토폴로지 요약 창을 닫고(3.1.0a6 번들에서 이 창의 표시 여부는 상수다), 웹 UI의
+이동 모드를 켜 둔 채로 두고(지도를 끌면 이동, 휠로 확대·축소), 확대 비율을 초기화한 뒤 그림이 들어갈
+때까지 웹 UI의 축소 버튼(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않는다)을 누르고, mousemove 한
+번으로 가운데로 옮긴다(웹 UI는 `movementX`/`movementY`만큼 옮긴다). 창의 화면에 맞추기 버튼은 프레임에
+`fsl-fit`을 보내 같은 초기화와 맞춤을 다시 한다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부한다. 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
 /opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다. 콘솔의
 탭 이름은 네트워크 구성도(Network map)이고, 학습자가 읽는 어떤 말도 GNS3를 이름으로 쓰지 않는다.
 

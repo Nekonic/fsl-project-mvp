@@ -204,6 +204,31 @@ def test_the_read_only_page_closes_the_node_list_and_fits_the_map_through_the_we
         "a project opens inside a same-origin frame the page can steer; the project list opens as before"
     )
 
+def test_the_read_only_page_leaves_the_learner_only_the_rendered_map_to_pan_and_zoom():
+    page = (GNS3 / "auditor.html").read_text()
+    hidden = page[page.index("const VIEW_ONLY"):page.index("const BLOCKED")]
+    blocked = page[page.index("const BLOCKED"):page.index("const sleep")]
+
+    for chrome in ["#project-titlebar", "#project-toolbar", "app-project-map-menu", "app-context-menu",
+                   "app-context-console-menu", "app-topology-summary", ".cdk-overlay-container",
+                   "mat-dialog-container"]:
+        assert chrome in hidden, f"{chrome} is editing chrome a learner never sees"
+    assert "display: none !important" in hidden
+    assert "svg.map * { pointer-events: none !important; }" in hidden, (
+        "a press on a node, a link or a label lands on the map itself, so it pans instead of dragging"
+    )
+    for event in ["contextmenu", "dblclick", "click", "keydown", "keyup", "drop", "touchstart"]:
+        assert f'"{event}"' in blocked
+    assert "if (!event.isTrusted) return;" in page, "the page's own clicks on the hidden controls still reach them"
+    assert "event.stopImmediatePropagation()" in page and "{capture: true, passive: false}" in page
+    assert 'event.button === 0 && event.target instanceof map.Element && event.target.matches("svg.map")' in page
+    assert page.index("viewOnly(map);") < page.index("await drawn(map)"), "the chrome is hidden before the map draws"
+    assert page.count('button(map, "zoom_out_map").click()') == 1, (
+        "the moving mode stays on, so a drag on the empty map pans and the wheel zooms"
+    )
+    assert 'button(map, "adjust").click()' in page and 'event.data === "fsl-fit"' in page
+    assert "GNS3" not in page
+
 def test_the_platform_reads_the_gns3_admin_password_it_needs_to_load_a_range_s_own_map():
     platform = composed.services()["platform"]
     entrypoint = (GNS3 / "entrypoint.sh").read_text()

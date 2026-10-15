@@ -103,11 +103,17 @@ async function topologyRequests() {
   if ([...rows, ...cases].some(([value]) => value === kept)) field("topology-request").value = kept;
 }
 
+function topologyFit() {
+  const frame = field("topology-frame");
+  if (frame.contentWindow && frame.src) frame.contentWindow.postMessage("fsl-fit", new URL(frame.src).origin);
+}
+
 function topologyView(which) {
   const gns3 = which === "gns3" && topo.web;
   field("topology-gns3").setAttribute("aria-selected", String(Boolean(gns3)));
   field("topology-follow").setAttribute("aria-selected", String(!gns3));
   field("topology-request").style.display = gns3 ? "none" : "";
+  field("topology-fit").style.display = gns3 ? "" : "none";
   field("topology-map").style.display = gns3 ? "none" : "flex";
   field("topology-frame").style.display = gns3 ? "block" : "none";
   if (gns3 && !field("topology-frame").src) {
@@ -137,6 +143,7 @@ async function topologyOpen() {
     field("topology-said").title = project.body.detail || "";
     field("topology-gns3").addEventListener("click", () => topologyView("gns3"));
     field("topology-follow").addEventListener("click", () => topologyView("follow"));
+    field("topology-fit").addEventListener("click", topologyFit);
     field("topology-request").addEventListener("change", topologyFollow);
   }
   await topologyRequests();
