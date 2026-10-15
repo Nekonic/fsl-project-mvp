@@ -34,7 +34,7 @@ hand, the stock Ubuntu 24.04 cloud image.
 | `cloud.yaml`: every cloud-specific value, validated | done (this cloud, 2026-10-11) | §4 |
 | Platform images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
-| `bin/platform-rebuild`: lossless replace (store + range key carried over), driven by `cloud.yaml` | built; the store and key carry-over not checked live | §5 |
+| `bin/platform-rebuild`: lossless replace (store + range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
 | `bin/cloud up|down` | done (2026-10-11); `up` after `down` starts with an empty store | §5 |
 | Fabric via `POST /api/range/fabric/` | done | §6 |
 | Golden images built on the cloud via `POST /api/range/images/` | done | §6 |
@@ -501,8 +501,68 @@ keeps the range key (`keys.range`, taken once from the running platform),
 backs up the store with `bin/backup`, deletes and recreates the stack, appends
 the password, writes the kept key to `/data/ssh/id_ed25519`, restores the
 store, and waits for `/api/sessions/`. With the key carried over, the fabric's
-`fsl-platform` keypair stays valid and the slot need not be torn down. Not
-yet run against the cloud.
+`fsl-platform` keypair stays valid and the slot need not be torn down.
+
+`bin/backup` snapshots the store with SQLite's backup API into a temporary
+file inside the platform container and streams it over ssh in 1 MiB chunks;
+it gives up only after 600 s with no data. The store is copied back with
+`scp` and put in place while the platform is stopped.
+
+**An unpushed commit (`--sideload NAME=TARBALL`).** Both `bin/platform-rebuild`
+and `bin/cloud up` take it, once per image. The VM clones `platform.ref` (a
+pushed commit, whose images GHCR has) and starts it as usual; the rebuild then
+copies this checkout's HEAD as a git bundle, checks it out in `/opt/fsl`,
+`docker load`s each tarball and tags its image with the cloned commit
+(`FSL_IMAGE_TAG` in `/opt/fsl/.env`), stops the platform for the restore, and
+starts every service (HEAD's compose file may add some). `FSL_IMAGE_TAG` stays
+the cloned commit because the range's image builders pull the wargames'
+images from GHCR at that tag: a tag GHCR does not have would fail the
+`fsl-wargame-host` build. Before anything is deleted it refuses an unknown
+name, a name given twice, a missing tarball, a tarball without exactly one
+`ghcr.io/nekonic/fsl-NAME:<commit>`, and any image whose build context in
+`.github/workflows/images.yml` differs between the commit it was built from
+(the tarball's tag, or the cloned commit for a pulled image) and HEAD. Build a
+tarball on any x86_64 Docker host from a clean export of the commit:
+
+```bash
+git archive $C platform | tar -x -C ctx
+docker build --platform linux/amd64 -t ghcr.io/nekonic/fsl-platform:$C ctx/platform
+docker save -o fsl-platform-$C.tar ghcr.io/nekonic/fsl-platform:$C
+.venv/bin/python bin/cloud up --replace --sideload platform=fsl-platform-$C.tar
+```
+
+A sideloaded VM that reboots runs `fsl-platform.service` again, whose
+`compose pull` can replace the sideloaded images with GHCR's for the same tag;
+push and rebuild rather than reboot it. MicroK8s calls importing images from
+`.tar` archives without a registry "Image side-loading"
+(https://canonical.com/microk8s/docs/sideload).
+
+**Runs 2026-10-15**, `bin/cloud up --replace --sideload platform=...
+--sideload gns3=...` over `dev` = 8f9acb0, untouched, both exit 0; both slots
+READY and no session open before each. Run 1 ran HEAD d20b35e from the
+previous platform VM; run 2 ran HEAD 412e379 (the backup fix found by run 1's
+`bin/verify`) from run 1's VM. The platform image was built from each HEAD,
+the gns3 image from 1814e5c, whose `deploy/gns3` is the same.
+
+| Stage | Run 1 | Run 2 | Evidence |
+|---|---|---|---|
+| Refusal checks, GHCR, bundle | 15 s | 13 s | 5 images public at 8f9acb0; contexts equal |
+| Backup (`bin/backup` over ssh) | 12 min 8 s | 7 min 50 s | 5,957,828,608 bytes, integrity_check ok; 1,878,072 detections |
+| Stack delete, create | 10 s, 23 s | 10 s, 22 s | reserved floating IP 192.168.0.210 re-associated |
+| Server created to ssh | 21 s | about 20 s | |
+| cloud-init, `fsl-platform.service` at 8f9acb0 | 2 min | 2 min | done, no errors; `python3-venv` 3.12.3, `nodejs` 18.19.1; `/etc/sysctl.d/90-fsl-syslog.conf` applied (`net.core.rmem_max = 33554432`) |
+| HEAD bundle, two tarballs loaded | 2 min 29 s | 1 min 4 s | 111 MB and 241 MB; the containers run images labelled with HEAD and 1814e5c |
+| Password, range key | 1 s | 1 s | key fingerprint unchanged |
+| Store upload (`scp`) | 30 min 41 s | 14 min 39 s | 3.1 and 6.8 MB/s |
+| Restore, `compose up -d`, API | 1 min 3 s | 1 min 4 s | migrate: no migrations to apply (the store was already at 0026); 0020-0026 `[X]` |
+| Fabric, images, slot, configure, ready | 5 min 14 s | 46 s | no drift; run 1 rebuilt `fsl-wargame-host` for the new tag (3 min 43 s); both slots READY on the same servers |
+| Total | 54 min 33 s | 28 min 18 s | |
+
+Security group `fsl-platform`: 22, 8000, 8002, 3080 and ICMP. After each run a
+board session (497, 514) opened in about 5 s, its Topology pane drew the
+learner map from `fsl-gns3` with every link end green, and its close reset the
+slot to READY within 2 minutes. The old VM's Elasticsearch data does not move
+(only the store does).
 
 ## 6. The range (substrate openstack)
 

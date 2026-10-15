@@ -246,7 +246,8 @@ is absent (`--replace` replaces a standing one through `bin/platform-rebuild`),
 waits for the API, then calls the platform's own range API in order: fabric,
 images until clean, slot, configure, and waits until `/api/range/ready/` says
 ready. It stops at the first drift, failed image, blocked slot or refused
-configuration and says why. Neither command has been run against a cloud yet.
+configuration and says why. Both ran on the test cloud; `up --replace`
+last on 2026-10-15 (`docs/OPENSTACK.md` §5.3).
 
 `bin/platform-rebuild` alone creates or replaces only the platform VM:
 
@@ -274,6 +275,18 @@ absent, it is copied once from the running platform, and the script refuses
 when there is none. Because the key survives, the range's VMs and the
 `fsl-platform` keypair keep trusting the new platform, and the range can stand
 through a platform replace.
+
+To run a commit that is not pushed yet, both commands take `--sideload
+NAME=TARBALL` (repeatable), a `docker save` tarball of one image built from
+this checkout. The VM still clones `ref` and pulls every image at its commit;
+the rebuild then checks this checkout's HEAD out from a git bundle and
+`docker load`s each tarball, tagging its image as the cloned commit's, the tag
+compose and the range's image builders use. Before deleting anything it
+refuses a tarball that does not hold one `ghcr.io/nekonic/fsl-NAME:<commit>`,
+and any image whose build context (`.github/workflows/images.yml`) differs
+between the commit it came from and HEAD. A sideloaded VM that reboots can pull
+the cloned commit's images from GHCR over the sideloaded ones; push and
+rebuild instead of rebooting it.
 
 The stack's `address` output is the floating IP. The console is at
 `http://ADDRESS:8000/` and does not ask for a login. 9200 stays
@@ -494,8 +507,10 @@ the control plane's three volumes.
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-It uses SQLite's online backup API, checks the copy with `PRAGMA
-integrity_check`, and keeps nothing if either step fails. To reach a platform
+It uses SQLite's online backup API into a temporary file beside the
+platform, streams that file back in 1 MiB chunks (a store of gigabytes takes
+minutes over ssh; only 600 s with no data is given up on), checks the copy
+with `PRAGMA integrity_check`, and keeps nothing if any step fails. To reach a platform
 that is not in Docker, set `FSL_PLATFORM_EXEC` to a command that runs
 `python -` with the platform's settings importable.
 

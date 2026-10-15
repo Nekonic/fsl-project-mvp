@@ -4007,3 +4007,64 @@ Not used: GNS3's lock action, which fixes items in place but leaves every other
 control of the editor, and the web UI's internal `readonly` flag, reachable
 only through Angular internals, not the DOM.
 
+
+## 2026-10-15 — The platform VM's rebuild runs an unpushed commit with sideloaded images; run live twice
+
+`bin/cloud up --replace` had never run against the cloud, and the commit to
+prove it with (local `dev`, 136 commits past `origin/dev` = 8f9acb0) was not
+on GitHub or GHCR. The user approved building the changed images locally and
+moving them over ssh, with no push and no GHCR write.
+
+- **`--sideload NAME=TARBALL`** on `bin/platform-rebuild` and `bin/cloud`. The
+  VM still clones `platform.ref` and pulls every image at that commit; the
+  rebuild then checks this checkout's HEAD out from a git bundle,
+  `docker load`s each tarball and tags its image with the cloned commit,
+  restores the store, and starts every service. MicroK8s names importing
+  images from `.tar` archives without a registry "Image side-loading"
+  (https://canonical.com/microk8s/docs/sideload).
+- **The tag stays the cloned commit.** `FSL_IMAGE_TAG` is also the tag the
+  `fsl-wargame-host` builder pulls board, corp and corp-db at from GHCR, and
+  it is in that image's bundle digest. Tagging the VM with HEAD would plan a
+  host image whose images GHCR does not have, and its build would fail. With
+  the cloned commit the builder pulled 8f9acb0's (their contexts equal
+  HEAD's) and run 1 rebuilt the host image in 3 min 43 s. Cost: the tag on
+  that VM names two images GHCR holds differently, and a reboot's `compose
+  pull` can replace them; push and rebuild instead.
+- **Refused before anything is deleted:** an unknown or repeated name, a
+  missing tarball, a tarball without exactly one
+  `ghcr.io/nekonic/fsl-NAME:<commit>`, and any image, pulled or sideloaded,
+  whose build context in `images.yml` differs between its source commit and
+  HEAD. That last check caught the first attempt: the platform tarball was
+  built from 1814e5c and the rebuild's own tests in `platform/tests` had
+  changed the context.
+- **`bin/backup` streams.** The store on the test range is 5.96 GB (1.88 M
+  detection rows). The snapshot was an in-memory copy plus its
+  serialization (about 12 GB on an 8 GB VM) inside a 120 s limit for the
+  whole transfer, so the rebuild would have stopped at "no backup". It now
+  goes through SQLite's backup API into a temporary file in the platform
+  container and streams in 1 MiB chunks, giving up after 600 s of silence.
+  Run 1's `bin/verify` on Linux then failed
+  `test_nothing_is_named_like_a_backup_until_it_has_passed_the_check`:
+  closing stdin raised `BrokenPipeError` when the command (the tests' `cat`)
+  had already exited; the hand-over now ignores it, as `communicate` did.
+- **Runs.** Run 1 (HEAD d20b35e, 54 min 33 s) and run 2 (HEAD 412e379, the
+  fix, 28 min 18 s) both exit 0 untouched; the stage table is in
+  `docs/OPENSTACK.md` §5.3. Both kept the range key (same fingerprint), the
+  slots' servers and both slots READY; cloud-init installed `python3-venv`
+  and `nodejs` and applied `90-fsl-syslog.conf`; the group has 8000, 8002 and
+  3080; the store restored at 0026 with nothing left to migrate; `fsl-gns3`
+  served the learner map to a board session's Topology pane. The store's
+  transfer is most of the time (backup 8-12 min, upload 15-31 min).
+- **`bin/verify` on run 2's VM**: unit and API tests 2450 passed; acceptance
+  71 passed, 3 failed, 71 skipped in 947 s; ratchet holds (core_loc 580,
+  tests 2056). The three failures are corp's binlog credits
+  (`test_corp_authz` rogue admin and content overwrite,
+  `test_corp_observe_live`): the change happened on the target and nothing
+  was credited. Measured cause: both wargame hosts' clocks run 6.2 and 7.0 s
+  behind the platform VM's, and `NTPSynchronized` is `no` on them (the range
+  has no Internet). `_effect_window` matches a binlog time, written by the
+  target's clock, to a case window on the platform's clock with 100 ms of
+  slack (`scoreboard.CLOCK_SKEW`), so every change falls before its window.
+  Run 1's verify had one of the three, the 2026-10-15 run before it one
+  ("a possible flake"); the skew grows with the hosts' uptime. Not fixed
+  here: it is the range's timekeeping, not the rebuild (backlog).

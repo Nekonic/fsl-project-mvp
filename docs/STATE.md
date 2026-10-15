@@ -379,7 +379,8 @@ geolocated TW.
   pipeline itself, so a fresh host needs no build argument and no manual PUT.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
-  `bin/backup` copies the store live; restore (README) has never been run.
+  `bin/backup` copies the store live; `bin/platform-rebuild` restored a 6 GB
+  store on a new VM twice on 2026-10-15 (`docs/OPENSTACK.md` §5.3).
 - **Published ports.** By default 8000 (platform), 9200
   (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
   cloud-init sets `FSL_PUBLISH` to the VM's address, so 8000 opens to
@@ -1359,9 +1360,14 @@ binary log via a substrate runner, proven end to end against the live stack.
   was not found; the output was truncated. It recurred on 2026-10-01 as two
   acceptance failures (one case of ten detected) that passed when rerun.
 - `test_declaration.py` compares two files, never the running range.
-- The platform VM (192.168.0.210) has no node, so the 12 console-behaviour
-  tests and `test_the_report_survives_a_real_interpreter` fail there; they
-  pass locally (2026-10-10).
+- The range hosts keep their own time: the range has no Internet and no NTP
+  source, so their clocks drift from the platform VM's (wargame hosts 6.2 and
+  7.0 s behind on 2026-10-15, `NTPSynchronized=no`). corp's credits match a
+  binlog time on the target's clock to a case window on the platform's with
+  100 ms of slack (`scoreboard.CLOCK_SKEW`), so with this drift the three
+  binlog acceptance tests fail (`test_corp_authz` x2,
+  `test_corp_observe_live`). Fix: an NTP source for the range on the
+  platform side (e.g. the edge), or read the target's clock offset.
 - A slot host booted again on its own (its server deleted, then POST)
   takes a new `estate` address the others' `/etc/hosts` does not have; take
   the whole slot down and up instead.
