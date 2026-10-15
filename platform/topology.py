@@ -71,6 +71,7 @@ FIREWALL = "firewall"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
+ADDRESS_VARIES = frozenset({ATTACKER, CUSTOMERS})
 SERVICE = "sw1"
 DATABASE_SWITCH = "sw2"
 MONITORING = "sw3"
@@ -595,7 +596,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
             if switching:
                 text = port_label(node, end["port_number"])
             elif head:
-                text = f"{head.name} {head.address}"
+                text = head.name if node["name"] in ADDRESS_VARIES else f"{head.name} {head.address}"
             else:
                 text = bare.get((node["name"], other["name"]), "")
             if head:
@@ -608,7 +609,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
                             "x": x, "y": y, "rotation": 0}
         link["link_id"] = renamed(link["link_id"], salt)
     for switch, caption in captions(document).items():
-        if networks.get(switch):
+        if switch != INTERNET and networks.get(switch):
             _captioned(caption, networks[switch])
     for node in document["topology"]["nodes"]:
         node["node_id"] = renamed(node["node_id"], salt)

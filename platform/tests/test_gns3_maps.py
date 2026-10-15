@@ -200,8 +200,8 @@ KOREAN_ORIGIN = [Interface("fsl-kali", "ens3", "175.192.0.13/24", "internet"),
 def test_every_link_end_of_a_slot_s_map_names_the_interface_and_its_address_on_that_segment():
     shown = {pair: label["text"] for pair, label in labels(slot_map(found=read_slot() + KOREAN_ORIGIN)).items()}
 
-    assert shown[("kali", "internet")] == "ens3 5.188.10.10/24", "the default origin's address, and only it"
-    assert shown[("customers", "internet")] == "ens3 175.192.0.12/24", "the customers' busiest origin, its first address"
+    assert shown[("kali", "internet")] == "ens3"
+    assert shown[("customers", "internet")] == "ens3"
     assert shown[("firewall", "internet")] == "vtnet0 5.188.10.1/24"
     assert shown[("firewall", "sw1")] == "vtnet1 10.30.0.1/24"
     assert shown[("waf", "sw1")] == "ens3 10.30.0.177/24"
@@ -254,13 +254,27 @@ def test_every_link_of_a_learner_map_is_labelled_at_both_ends_and_every_switch_i
             if node["name"] not in unread:
                 assert end["label"]["text"], (node["name"], [by_id[e["node_id"]]["name"] for e in link["nodes"]])
 
+@pytest.mark.parametrize("path, found", [(OPENSTACK, None), (OPENSTACK_KO, None), (DOCKER, DOCKER_FOUND)],
+                         ids=["openstack", "openstack-ko", "docker"])
+def test_the_attacker_and_customer_ends_name_only_the_interface_because_their_source_address_changes_per_origin(
+        path, found):
+    found = found if found is not None else read_slot() + KOREAN_ORIGIN
+    shown = {pair: label["text"] for pair, label in labels(slot_map(2, path, found)).items()}
+    ends = {pair: text for pair, text in shown.items() if pair[0] in topology.ADDRESS_VARIES}
+
+    assert (topology.ATTACKER, topology.INTERNET) in ends
+    assert [text for text in ends.values() if text and not NIC.fullmatch(text)] == []
+    assert ends[(topology.ATTACKER, topology.INTERNET)] in {"ens3", "eth0"}
+    assert [text for pair, text in shown.items() if pair[0] not in topology.ADDRESS_VARIES
+            and pair[1] != topology.MONITORING and LABEL.fullmatch(text)] != []
+
 def test_customers_are_left_unlabelled_where_their_box_holds_no_address_on_their_origins():
     korean_only = learner_of(declared.read(flavor="openstack"), "board")
     found = [Interface("fsl-kali", "ens3", "5.188.10.10/24", "internet")]
     shown = labels(topology.labelled(json.loads(OPENSTACK.read_text()), korean_only, found, "slot-1-board", "slot 1 board"))
 
-    assert shown[("customers", "internet")]["text"] == "", "never the attacker's own address"
-    assert shown[("kali", "internet")]["text"] == "ens3 5.188.10.10/24"
+    assert shown[("customers", "internet")]["text"] == "", "never the attacker's own interface"
+    assert shown[("kali", "internet")]["text"] == "ens3"
 
 def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing_of_its_wargame():
     english = json.loads(OPENSTACK.read_text())
@@ -351,7 +365,7 @@ def test_a_label_shows_one_address_and_never_a_docker_bridge_name(path):
             text = end["label"]["text"]
             if node["node_type"] == SWITCH:
                 assert PORT.fullmatch(text), text
-            elif other["name"] == topology.MONITORING:
+            elif other["name"] == topology.MONITORING or node["name"] in topology.ADDRESS_VARIES:
                 assert not text or NIC.fullmatch(text), text
             else:
                 assert not text or LABEL.fullmatch(text), text
@@ -506,16 +520,16 @@ def caption_texts(document):
     return [ElementTree.fromstring(d["svg"])[0].text for d in document["topology"]["drawings"] if "<text" in d["svg"]]
 
 @pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO], ids=["openstack", "openstack-ko"])
-def test_each_zone_caption_on_a_slot_s_map_carries_the_networks_its_links_are_labelled_in(path):
+def test_each_zone_caption_on_a_slot_s_map_carries_the_networks_its_links_are_labelled_in_except_the_internet_s(path):
     stack = declared.read(flavor="openstack")
     template = topology.for_wargame(json.loads(path.read_text()), learner_of(stack, "board"))
     drawn = slot_map(2, path, read_slot() + KOREAN_ORIGIN)
-    networks = {"internet": "175.192.0.0/24, 5.188.10.0/24", "sw1": "10.30.0.0/24",
-                "sw2": "172.18.0.0/16"}
+    networks = {"sw1": "10.30.0.0/24", "sw2": "172.18.0.0/16"}
     before = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(template).items()}
     after = {switch: ElementTree.fromstring(d["svg"])[0].text for switch, d in topology.captions(drawn).items()}
 
-    assert set(after) == {*networks, "sw3"}
+    assert set(after) == {*networks, topology.INTERNET, "sw3"}
+    assert after[topology.INTERNET] == before[topology.INTERNET] in {"Internet", "\uc778\ud130\ub137"}
     assert after == {switch: f"{before[switch]} {networks[switch]}" if switch in networks else before[switch]
                      for switch in before}
     assert not [text for text in caption_texts(drawn) if "10.31.0." in text], "no management network is named"
