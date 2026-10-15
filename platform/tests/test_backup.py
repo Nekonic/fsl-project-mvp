@@ -387,3 +387,16 @@ def test_a_store_that_keeps_arriving_is_kept_however_long_the_whole_takes(
         "a store of gigabytes takes minutes to cross ssh; only silence is given up on"
     )
     assert dump(backup.module.BACKUPS / backup.kept()[0]) == dump(store)
+
+
+def test_a_way_in_that_answers_without_reading_the_program_is_still_heard(backup):
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    stdin = os.fdopen(write_end, "wb")
+
+    backup.module.hand_over(stdin, b"program" * 10000)
+
+    assert stdin.closed, (
+        "a command that answers from elsewhere and never reads the program, like the "
+        "tests' cat, must not turn the backup into a broken pipe; its output decides"
+    )

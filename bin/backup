@@ -9,7 +9,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
-from contextlib import closing
+from contextlib import closing, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,8 +71,7 @@ def fetch(out):
             f"(default: {PLATFORM_EXEC})"
         )
     with running:
-        running.stdin.write(program.encode())
-        running.stdin.close()
+        hand_over(running.stdin, program.encode())
         said = drain(running, out, way_in)
     if running.returncode != 0:
         said = said.decode(errors="replace").strip() or "(nothing on stderr)"
@@ -80,6 +79,13 @@ def fetch(out):
             f"backup: no snapshot; {way_in!r} exited {running.returncode}:\n{said}"
         )
     return out.tell()
+
+
+def hand_over(stdin, program):
+    with suppress(BrokenPipeError):
+        stdin.write(program)
+    with suppress(BrokenPipeError):
+        stdin.close()
 
 
 def drain(running, out, way_in):
