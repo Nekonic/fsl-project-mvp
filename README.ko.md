@@ -137,7 +137,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 .venv/bin/python bin/cloud down      # 저장소 백업, 키 보관, 레인지와 스택 제거
 ```
 
-`up`은 플랫폼의 Heat 스택(`deploy/openstack/platform.yaml`)이 없으면 만들고(`--replace`는 서 있는 스택을 `bin/platform-rebuild`로 교체한다), API를 기다린 뒤 플랫폼 자신의 레인지 API를 차례로 부른다: fabric, clean이 될 때까지 images, slot, configure. 그리고 `/api/range/ready/`가 ready라고 할 때까지 기다린다. 처음 만나는 drift, 실패한 이미지, 막힌 slot, 거부된 configure에서 멈추고 이유를 말한다. 두 명령 모두 아직 클라우드에서 실행해 보지 않았다.
+`up`은 플랫폼의 Heat 스택(`deploy/openstack/platform.yaml`)이 없으면 만들고(`--replace`는 서 있는 스택을 `bin/platform-rebuild`로 교체한다), API를 기다린 뒤 플랫폼 자신의 레인지 API를 차례로 부른다: fabric, clean이 될 때까지 images, slot, configure. 그리고 `/api/range/ready/`가 ready라고 할 때까지 기다린다. 처음 만나는 drift, 실패한 이미지, 막힌 slot, 거부된 configure에서 멈추고 이유를 말한다. 두 명령 모두 테스트 클라우드에서 실행했고, `up --replace`는 2026-10-15에 마지막으로 실행했다(`docs/OPENSTACK.md` §5.3).
 
 `bin/platform-rebuild`만 쓰면 플랫폼 VM만 만들거나 교체한다.
 
@@ -148,6 +148,8 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `cloud.yaml`의 모든 파라미터로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다.
 
 새 VM은 `ref`를 clone하고, 그 체크아웃의 커밋으로 태그된 이미지를 pull해서 시작한다. cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 쓴다. 비밀 두 가지는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다: 비밀번호와 플랫폼의 레인지 ssh 키. VM이 ssh에 응답하고 cloud-init이 끝나면 `bin/platform-rebuild`가 `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙이고, 레인지 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 쓰고, 백업한 저장소를 복원하고(교체일 때), 플랫폼 컨테이너를 다시 만든다. 레인지 키는 운영자 컴퓨터의 `keys.range`(모드 0600)에 있다. 이 파일이 없으면 서 있는 플랫폼에서 한 번 복사해 오고, 서 있는 플랫폼도 없으면 거부한다. 키가 유지되므로 레인지 VM들과 키페어 `fsl-platform`은 새 플랫폼을 계속 신뢰하고, 플랫폼을 교체하는 동안 레인지는 그대로 서 있을 수 있다.
+
+아직 push하지 않은 커밋을 띄우려면 두 명령 모두 `--sideload NAME=TARBALL`(여러 번 지정 가능)을 받는다. 이 체크아웃에서 빌드한 이미지 하나를 `docker save`한 tarball이다. 새 VM은 그대로 `ref`를 clone하고 그 커밋의 이미지를 모두 pull한다. 그다음 rebuild가 이 체크아웃의 HEAD를 git bundle로 보내 checkout하고, tarball마다 `docker load`한 뒤 그 이미지를 clone한 커밋의 태그로 붙인다. compose와 레인지의 이미지 빌더가 쓰는 태그다. 무엇이든 지우기 전에, `ghcr.io/nekonic/fsl-NAME:<commit>`을 하나만 담지 않은 tarball과, 이미지가 나온 커밋과 HEAD 사이에 빌드 컨텍스트(`.github/workflows/images.yml`)가 다른 이미지를 거부한다. sideload한 VM이 재부팅하면 clone한 커밋의 이미지를 GHCR에서 다시 pull해 sideload한 이미지를 덮을 수 있으므로, 재부팅 대신 push하고 rebuild한다.
 
 스택의 `address` 출력값이 floating IP다. 콘솔은 `http://ADDRESS:8000/`에 있으며 로그인을 묻지 않는다. 9200은 VM의 loopback에만 있고, 5140/udp는 VM의 모든 주소에서 받는다.
 
@@ -237,7 +239,7 @@ bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-SQLite의 온라인 백업 API를 쓰고, 복사본을 `PRAGMA integrity_check`로 검사하며, 어느 단계든 실패하면 아무것도 남기지 않는다. Docker 안에 있지 않은 플랫폼에 닿으려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을 `FSL_PLATFORM_EXEC`에 지정한다.
+SQLite의 온라인 백업 API로 플랫폼 옆 임시 파일에 복사한 뒤 그 파일을 1 MiB씩 스트리밍해 가져오고(수 GB 저장소는 ssh로 몇 분 걸린다; 데이터가 600초 동안 오지 않을 때만 포기한다), 복사본을 `PRAGMA integrity_check`로 검사하며, 어느 단계든 실패하면 아무것도 남기지 않는다. Docker 안에 있지 않은 플랫폼에 닿으려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을 `FSL_PLATFORM_EXEC`에 지정한다.
 
 복원은 플랫폼을 멈춘 상태에서 수동으로 한다.
 

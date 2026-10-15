@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-14 (after P6). Written for a session that has the cloud
+Updated: 2026-10-15 (after the rebuild run). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -24,28 +24,37 @@ Updated: 2026-10-14 (after P6). Written for a session that has the cloud
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
-- The platform VM runs this branch's platform image (P6 included, 0026
-  applied), built on the VM; store backups in `/opt/fsl/backups/`
-  (`*-pre-course/`, `db-20261014-pre-p6.sqlite3`). P6 live: home page, old
-  session 250, F2 and 2.1 with the narrow fix (`docs/DECISIONS.md`, "P6
-  built"). The UDP
-  receive-buffer sysctl was applied there by hand (the same file cloud-init
-  now writes).
+- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 by
+  `bin/cloud up --replace --sideload` (`docs/OPENSTACK.md` §5.3,
+  `docs/DECISIONS.md` 2026-10-15 "The platform VM's rebuild runs an unpushed
+  commit"): it runs this branch's HEAD 412e379 with the platform image built
+  from it and the gns3 image from 1814e5c, tagged 8f9acb0
+  (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
+  `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
+  images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
+  runs' store backups are in the main checkout's `backups/` on the operator's
+  machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
+  `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`).
+- `bin/verify` there: unit 2450 passed; acceptance 71 passed, 3 failed (corp's
+  binlog credits, the range hosts' clock drift, `docs/STATE.md` Known gaps).
 
 ## Waiting for the user
 
 1. Gate 2: push this branch to `dev` (fast-forward).
-2. After the push: the images workflow, then `bin/cloud up --replace` run
-   untouched. It proves what cannot run before the images exist on GHCR: the
-   8002 rule and the `python3-venv`/`nodejs` packages from the Heat template,
-   the store restore under the new migrations, the GNS3 service from its
-   GHCR image, and the syslog sysctl from cloud-init on a rebuilt VM.
+2. After the push: the images workflow, then `bin/cloud up --replace`
+   without `--sideload`. Proven already by the sideloaded runs: the Heat
+   template (8002, 3080, `python3-venv`, `nodejs`, the syslog sysctl), the
+   store backup and restore, the range key, `fsl-gns3`. Left for that run:
+   the GHCR images of the new commit, and the `fsl-wargame-host` image
+   rebuilt for its tag.
 3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
 4. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
    publishing the OPNsense image.
 
 ## Next, in order
 
+0. The range hosts' clocks: give the range an NTP source (or read the
+   target's clock offset) so corp's binlog credits match their windows.
 1. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live.
 2. A corp scenario: corp's CVEs succeed but it has no customer
