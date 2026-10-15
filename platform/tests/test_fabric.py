@@ -25,7 +25,8 @@ def built():
     return networks, subnets, keypairs
 
 GROUPS = [{"id": "sg-range", "name": fabric.RANGE_GROUP},
-          {"id": "sg-reach", "name": fabric.REACH_GROUP},
+          {"id": "sg-reach", "name": fabric.REACH_GROUP,
+           "security_group_rules": [dict(fabric.ntp_rule("sg-reach", "sg-mgmt"), id="rule-ntp")]},
           {"id": "sg-mgmt", "name": fabric.MANAGEMENT_GROUP}]
 
 def planned(networks=(), subnets=(), keypairs=(), groups=GROUPS, reached=True):
@@ -63,6 +64,24 @@ def test_a_complete_project_needs_nothing():
 
     assert plan.clean and not plan.leftovers, plan
     assert len(plan.present) == 32
+
+def test_a_reach_group_without_the_time_rule_needs_it():
+    reach = dict(GROUPS[1], security_group_rules=[])
+
+    plan = planned(*built(), groups=[GROUPS[0], reach, GROUPS[2]])
+
+    assert plan.ntp and not plan.clean, (
+        "the range hosts have no Internet; the platform is their only NTP server"
+    )
+
+def test_time_open_to_any_address_is_not_the_time_rule():
+    rule = dict(fabric.ntp_rule("sg-reach", "sg-mgmt"), remote_group_id=None,
+                remote_ip_prefix="0.0.0.0/0", id="rule-any")
+    reach = dict(GROUPS[1], security_group_rules=[rule])
+
+    assert planned(*built(), groups=[GROUPS[0], reach, GROUPS[2]]).ntp, (
+        "the platform's management port answers NTP to members of fsl-mgmt alone"
+    )
 
 def test_a_subnet_on_its_cidr_but_with_dhcp_on_is_drift_not_a_second_subnet():
     networks, subnets, keypairs = built()

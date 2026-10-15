@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from range import cloud, declared, openstack, opnsense, wargame_host
+from range import clock, cloud, declared, openstack, opnsense, wargame_host
 from range.ports import Drifted, Node, Ran, RangeUnavailable, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -25,8 +25,9 @@ def _shape():
     estate = Segment(id="estate", name="Estate", subnet="10.30.0.0/24", gateway="10.30.0.1",
                      nodes=(Node("fsl-waf", "10.30.0.198"), Node("fsl-wargame-host", "10.30.0.63")))
     mgmt = Segment(id="mgmt", name="Management", subnet="10.31.0.0/24",
-                   nodes=(Node("fsl-edge", "10.31.0.63"), Node("fsl-platform", "10.31.0.195"),
-                          Node("fsl-waf", "10.31.0.198"), Node("fsl-wargame-host", "10.31.0.107")))
+                   nodes=(Node("fsl-edge", "10.31.0.63"), Node("fsl-kali", "10.31.0.180"),
+                          Node("fsl-platform", "10.31.0.195"), Node("fsl-waf", "10.31.0.198"),
+                          Node("fsl-wargame-host", "10.31.0.107")))
     return Shape(segments=origins + (estate, mgmt), sensors=())
 
 class Edge:
@@ -102,7 +103,8 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
     (role, argv, stdin), *after = edge.calls
     assert role == "edge" and argv == opnsense.command()
     wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
-                               management=_adapter(Edge()).address("edge"), front="10.30.0.198")
+                               management=_adapter(Edge()).address("edge"), front="10.30.0.198",
+                               clock="10.31.0.195")
     assert wanted["mgmt"]["address"]
     assert stdin == opnsense.playback(
         opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted),
@@ -155,10 +157,11 @@ def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collecto
     done = _adapter(edge, groups).configure_slot()
 
     assert [host for host, _ in done] == [
-        "fsl-edge", "fsl-waf", "fsl-platform", "fsl-wargame-host", "fsl-wargame-host",
-        "fsl-wargame-host",
+        "fsl-edge", "fsl-waf", "fsl-waf", "fsl-kali", "fsl-wargame-host", "fsl-wargame-host",
+        "fsl-wargame-host", "fsl-wargame-host", "fsl-platform",
     ]
-    assert [argv for role, argv, _ in edge.calls if role == "wargames"][:2] == [
+    assert [argv for role, argv, _ in edge.calls
+            if role == "wargames" and argv != clock.command("10.31.0.195")][:2] == [
         wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
     ], "a rebuilt wargame host holds the images and no containers; configure starts them"
     heard = {r["remote_ip_prefix"] for r in groups.group["security_group_rules"]}
@@ -237,7 +240,8 @@ def test_the_waf_is_told_to_forward_its_audit_log_to_the_platform_on_management(
     edge = Edge()
     _adapter(edge).configure_slot()
 
-    (role, argv, stdin), = [call for call in edge.calls if call[0] == "gateway"]
+    (role, argv, stdin), = [call for call in edge.calls
+                            if call[0] == "gateway" and call[1] == waf.command()]
     audit = waf.audit_log((ROOT / waf.MODSECURITY).read_text())
     assert argv == waf.command()
     assert stdin == waf.forwarding(audit, "10.31.0.195", 5140)
@@ -393,7 +397,8 @@ def test_the_in_place_reset_compares_every_installed_file_by_its_hash():
 
     stdin = edge.calls[0][2]
     wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
-                               management=_adapter(Edge()).address("edge"), front="10.30.0.198")
+                               management=_adapter(Edge()).address("edge"), front="10.30.0.198",
+                               clock="10.31.0.195")
     config = opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted)
     for content in (config, (ROOT / opnsense.INCLUDE).read_text(), (ROOT / opnsense.RULES).read_text()):
         assert opnsense.fingerprint(content) in stdin
@@ -447,7 +452,10 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
     cleared = wargame_host.cleared(OS.hosts["fsl-wargame-host"].wargames,
                                    ("/var/log/suricata/eve.json",), True)
     assert on_the_host[0] == (cleared, None)
-    assert [argv for argv, _ in on_the_host[1:3]] == [
+    assert on_the_host[1] == (clock.command("10.31.0.195"), clock.timesyncd("10.31.0.195")), (
+        "a rebuilt platform has a new management address, so every reset points the host at it"
+    )
+    assert [argv for argv, _ in on_the_host[2:4]] == [
         wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
     ]
     assert wargame_host.sensor_up("10.30.0.63") in [argv for argv, _ in on_the_host]
@@ -463,8 +471,10 @@ def test_the_rebuilt_vms_are_configured_by_their_own_steps_only():
 
     done = adapter.configure_rebuilt(["fsl-kali", "fsl-waf"])
 
-    assert [host for host, _ in done] == ["fsl-waf"]
-    assert {role for role, _, _ in edge.calls} == {"gateway"}
+    assert [host for host, _ in done] == ["fsl-kali", "fsl-waf", "fsl-waf"]
+    assert {role for role, _, _ in edge.calls} == {"attacker", "gateway"}, (
+        "a rebuilt Kali comes back from its image keeping time by nothing"
+    )
 
 class Nova:
     def __init__(self):
@@ -516,3 +526,73 @@ def test_the_rebuilt_vms_are_configured_from_a_fresh_read_of_the_cloud():
         "the shape read while Nova rebuilt the WAF carries its old launch time, so ssh "
         "checked the rebuilt VM's new host key against the old one and never got in"
     )
+
+def test_every_linux_host_in_the_slot_keeps_time_by_the_platform_on_management():
+    edge = Edge()
+
+    done = _adapter(edge).configure_slot()
+
+    told = {role: stdin for role, argv, stdin in edge.calls if argv == clock.command("10.31.0.195")}
+    assert told == {role: clock.timesyncd("10.31.0.195") for role in ("attacker", "gateway", "wargames")}, (
+        "the range has no Internet; a host left on its own clock drifts seconds a day, and "
+        "corp's binlog credits match the target's clock to a case window on the platform's"
+    )
+    assert ("fsl-kali", ("keeps time by 10.31.0.195",)) in done
+    assert "NTP=10.31.0.195\n" in clock.timesyncd("10.31.0.195")
+
+def test_the_wargame_host_takes_the_platforms_time_before_its_wargames_start():
+    edge = Edge()
+
+    _adapter(edge).configure_slot()
+
+    on_the_host = [argv for role, argv, _ in edge.calls if role == "wargames"]
+    assert on_the_host.index(clock.command("10.31.0.195")) < on_the_host.index(wargame_host.up("board")), (
+        "a step of the clock under a running database moves its binlog times mid-session"
+    )
+
+def test_a_host_that_hears_no_time_from_the_platform_is_drift():
+    class Unanswered(Edge):
+        def __call__(self, role, segment_id=""):
+            inner = super().__call__(role, segment_id)
+            def run(argv, stdin=None, timeout=60.0):
+                if role == "attacker" and argv == clock.command("10.31.0.195"):
+                    return Ran(1, "no answer from 10.31.0.195 in 30s")
+                return inner(argv, stdin, timeout)
+            return run
+
+    with pytest.raises(Drifted, match="fsl-kali did not take 10.31.0.195 as its time source"):
+        _adapter(Unanswered()).configure_slot()
+
+def test_the_edge_takes_the_platforms_time_through_its_config():
+    edge = Edge()
+
+    _adapter(edge).configure_edge()
+
+    staged = edge.calls[0][2]
+    assert "<timeservers>10.31.0.195</timeservers>" in staged
+
+def _timesyncd_answering(tmp_path, server, message):
+    import os
+    import subprocess
+
+    for name, body in {
+        "sudo": 'exec "$@"', "install": "exit 0", "tee": "cat >/dev/null", "systemctl": "exit 0",
+        "sleep": "exit 0",
+        "timedatectl": f'case "$3" in ServerAddress) echo {server};; NTPMessage) echo "{message}";; esac',
+    }.items():
+        stub = tmp_path / name
+        stub.write_text(f"#!/bin/sh\n{body}\n")
+        stub.chmod(0o755)
+    return subprocess.run(clock.command("10.31.0.195"), input=clock.timesyncd("10.31.0.195"),
+                          capture_output=True, text=True,
+                          env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"})
+
+def test_the_time_step_returns_once_the_platform_has_answered(tmp_path):
+    assert _timesyncd_answering(tmp_path, "10.31.0.195", "{ Leap=0, Stratum=3 }").returncode == 0
+
+def test_the_time_step_fails_when_no_answer_came_or_another_server_answered(tmp_path):
+    silent = _timesyncd_answering(tmp_path, "10.31.0.195", "")
+    elsewhere = _timesyncd_answering(tmp_path, "185.125.190.58", "{ Leap=0, Stratum=2 }")
+
+    assert silent.returncode == 1 and "no answer from 10.31.0.195" in silent.stderr
+    assert elsewhere.returncode == 1, "a host still on its old server has not taken the platform's time"

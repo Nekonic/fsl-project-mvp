@@ -32,7 +32,11 @@ class Neutron:
             if resource == "os-keypairs":
                 return {"keypairs": [{"keypair": k} for k in self.keypairs]}
             if resource == "v2.0/security-groups":
-                return {"security_groups": self.groups}
+                return {"security_groups": [
+                    dict(group, security_group_rules=[
+                        rule for rule in self.rules if rule["security_group_id"] == group["id"]])
+                    for group in self.groups
+                ]}
         if verb == "POST" and resource == "v2.0/networks":
             created = dict(body["network"], id=f"net-{next(self.ids)}", tags=[])
             self.networks.append(created)
@@ -103,18 +107,34 @@ def platform(cloud, tmp_path):
 def network_of(cloud, segment):
     return next(n for n in cloud.networks if f"{fabric.TAG}={segment}" in n["tags"])
 
-def test_the_range_group_lets_anything_in_and_the_reach_group_nothing(cloud, adapter):
+def test_the_range_group_lets_anything_in_and_the_reach_group_only_ntp_from_management(cloud, adapter):
     adapter.ensure_fabric()
 
     groups = {g["name"]: g["id"] for g in cloud.groups}
     assert set(groups) == {fabric.RANGE_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP}
     assert [r for r in cloud.rules if r["security_group_id"] != groups[fabric.MANAGEMENT_GROUP]] == [
-        {"security_group_id": groups[fabric.RANGE_GROUP], "direction": "ingress", "ethertype": "IPv4"}
+        {"security_group_id": groups[fabric.RANGE_GROUP], "direction": "ingress", "ethertype": "IPv4"},
+        {"security_group_id": groups[fabric.REACH_GROUP], "direction": "ingress", "ethertype": "IPv4",
+         "protocol": "udp", "port_range_min": 123, "port_range_max": 123,
+         "remote_group_id": groups[fabric.MANAGEMENT_GROUP]},
     ], (
         "a new group lets everything out and nothing in; the range's hosts "
         "are defended by the WAF, not by Neutron, and the platform's port on "
-        "management must take nothing a range host starts"
+        "management takes nothing a range host starts but NTP from a management port"
     )
+
+def test_a_standing_reach_group_without_the_time_rule_gets_it_once(cloud, adapter):
+    adapter.ensure_fabric()
+    groups = {g["name"]: g["id"] for g in cloud.groups}
+    cloud.rules[:] = [r for r in cloud.rules if r.get("port_range_min") != fabric.NTP_PORT]
+
+    first = adapter.ensure_fabric()
+    second = adapter.ensure_fabric()
+
+    assert first.ntp and not first.groups and not second.ntp
+    assert [r for r in cloud.rules if r.get("port_range_min") == fabric.NTP_PORT] == [
+        fabric.ntp_rule(groups[fabric.REACH_GROUP], groups[fabric.MANAGEMENT_GROUP])
+    ], "an existing range converges at the next bin/cloud up, as the management fence did"
 
 def test_a_host_on_management_takes_connections_from_the_platform_alone(cloud, adapter):
     adapter.ensure_fabric()

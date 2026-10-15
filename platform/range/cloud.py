@@ -105,6 +105,7 @@ class Cloud:
             "repository": self.repository, "ref": self.ref,
             "range_flavor": self.flavors["range"], "build_flavor": self.flavors["builder"],
             "role_flavors": joined(self.role_flavors), "subnets": joined(self.inside),
+            "management": self.inside["mgmt"],
             "range_mtu": str(self.mtu), "opnsense": joined(self.opnsense.pairs()),
             "slots": str(self.slots),
         }

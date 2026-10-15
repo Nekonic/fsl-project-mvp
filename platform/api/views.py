@@ -2177,6 +2177,7 @@ def _fabric_plan(plan):
         "keypair": plan.keypair,
         "groups": list(plan.groups),
         "reach": plan.reach,
+        "ntp": plan.ntp,
         "present": list(plan.present),
         "drifted": list(plan.drifted),
         "leftovers": list(plan.leftovers),
