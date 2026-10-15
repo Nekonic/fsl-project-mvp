@@ -382,7 +382,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": "kali.svg",
+                "symbol": "host-kali.svg",
                 "x": -510,
                 "y": 70,
                 "z": 1
@@ -406,7 +406,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/square/gray/client.svg",
+                "symbol": "host-client.svg",
                 "x": -510,
                 "y": -130,
                 "z": 1
@@ -500,7 +500,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/square/green/firewall.svg",
+                "symbol": "host-firewall.svg",
                 "x": 0,
                 "y": -30,
                 "z": 1
@@ -594,7 +594,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/square/green/shield.svg",
+                "symbol": "host-shield.svg",
                 "x": 270,
                 "y": 170,
                 "z": 1
@@ -618,7 +618,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/blue/server.svg",
+                "symbol": "host-server.svg",
                 "x": 540,
                 "y": -30,
                 "z": 1
@@ -642,7 +642,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/blue/server.svg",
+                "symbol": "host-server.svg",
                 "x": 540,
                 "y": -30,
                 "z": 1
@@ -736,7 +736,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
+                "symbol": "host-storage.svg",
                 "x": 1060,
                 "y": -30,
                 "z": 1
@@ -760,7 +760,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/blue/storage.svg",
+                "symbol": "host-storage.svg",
                 "x": 1060,
                 "y": -30,
                 "z": 1
@@ -854,7 +854,7 @@
                     "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                     "start_command": "sleep 2147483647"
                 },
-                "symbol": ":/symbols/affinity/circle/gray/statistics.svg",
+                "symbol": "host-statistics.svg",
                 "x": 540,
                 "y": 390,
                 "z": 1

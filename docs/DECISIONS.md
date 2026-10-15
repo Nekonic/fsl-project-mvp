@@ -3905,3 +3905,72 @@ it had one failure, `test_a_live_content_overwrite_is_credited_from_the_targets_
 path this change does not touch; it passed on the rerun and is left as a
 possible flake to watch.
 
+## 2026-10-15 — Every learner-map host is one framed symbol; the WAF stays one-arm
+
+The user approved two things: one frame for every host on the learner map,
+and the WAF drawn where the range wires it.
+
+- **One frame, one size, one line weight.** The square-for-a-VM,
+  circle-for-a-container cue of 2026-10-14 told the learner nothing they act
+  on, and the dragon had already broken it. Microsoft's Well-Architected
+  guide (https://learn.microsoft.com/en-us/azure/well-architected/architect-role/design-diagrams,
+  "Maintain consistency"): "Use standardized colors, casing, icons, icon
+  sizes, line weights, line types, arrow heads, and border styles for
+  similar elements." AWS's Architecture Icons guidelines
+  (https://aws.amazon.com/architecture/icons/, the guidelines in the icon
+  package, quoted by the user; the page itself does not carry the line):
+  "Use icons at their predefined size, color and format in diagrams."
+  GNS3's own affinity squares do not meet it: the green ones draw a
+  16-unit ring, the blue and gray ones a traced outline of another weight.
+- **What is built.** `deploy/gns3/symbols.py` runs when the GNS3 image is
+  built and writes `host-client`, `host-firewall`, `host-shield`,
+  `host-server`, `host-storage`, `host-statistics` and `host-kali` (`.svg`,
+  60x60, viewBox 300): one `rect` (x/y 8, 284 square, `rx` 22, stroke 16,
+  paper `#fffefe`) whose stroke alone differs, red `#e3292e` for the
+  attacker, green `#109e00` for the firewall and the WAF, blue `#2d67b9`
+  for the sites and their databases, gray `#4d4d4d` for customers and the
+  log server (affinity's own colours). Inside it, the glyph of the bundled
+  affinity square symbol of that colour (`affinity/square/<colour>/<glyph>.svg`
+  in the installed gns3-server, The Unlicense), with the symbol's paper and
+  frame paths dropped and its root style kept; the build fails if a bundled
+  symbol stops being paper, frame, glyph. `provision.py` uploads them as
+  before; the four learner templates name them. Switches and the internet
+  keep the bundled `square/gray/switch.svg` and `globe.svg`. The system
+  maps are not touched.
+- **The dragon, framed and not modified.** OffSec's policy says "Please do
+  not modify the marks." (https://www.kali.org/docs/policy/trademark/). The
+  press-pack file (commit 360c018b, sha256 `083264e7…`) is still fetched at
+  build and checked by digest, then placed whole as a nested `<svg>` with
+  only `x`, `y`, `width` and `height` 24, 24, 252, 252 inside the red frame:
+  its paths and viewBox are byte-for-byte the press pack's, and the frame is
+  a separate shape around it. `host-kali.txt` states "KALI LINUX™ is a
+  trademark of OffSec.", the source, the commit and the placement. Not
+  vendored.
+- **The WAF stays one-arm.** The range wires the WAF on the service segment
+  beside the site (one NIC on `sw1` and one on monitoring): the sites'
+  names are the WAF's (`declaration.yaml`, `fsl-waf` `names`), and it
+  proxies to the site on the same segment, which stays reachable on that
+  segment without it. The map draws exactly that. Fortinet
+  documents this as a deployment
+  (https://help.fortinet.com/fweb/581/Content/FortiWeb/fortiweb-admin/planning_topology.htm,
+  found through search; the host did not resolve from here): "Deploy
+  FortiWeb in a one-arm topology where FortiWeb receives only HTTP/HTTPS
+  from the FortiGate VIP/port forwarding". Barracuda recommends the
+  opposite as its default
+  (https://documentation.campus.barracuda.com/wiki/spaces/BWAFv76/pages/2720191/Choosing+Your+Deployment+Mode):
+  "This configuration is recommended because it provides the best security
+  and can utilize all traffic acceleration features." and "Most secure
+  deployment choice since backend servers are completely isolated." Two-arm
+  would put the sites on a segment of their own behind the WAF, a range
+  change on both substrates; kept as an option in `docs/STATE.md`, not
+  built. No range or layout change here.
+
+Tests: rewritten because the design changed (`test_gns3_topology.py`): the
+symbol source test (a host must name a `host-*.svg` the image builds;
+switches and the internet a bundled affinity square), the VM-versus-container
+test (now: each role's symbol and its frame colour), and the Kali test (the
+dragon fetched to `/dragon/`, digest-checked, built by `symbols.py`, placed
+unmodified, `host-kali.svg`). Added (2): every built host symbol is one
+frame with only its stroke colour differing, 60x60, stroke 16; a framed
+glyph is the bundled glyph without its own paper and frame, and a bundled
+symbol of another shape fails the build.

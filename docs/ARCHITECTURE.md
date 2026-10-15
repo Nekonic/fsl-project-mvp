@@ -314,14 +314,16 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   node whose NIC it uses; the overlay, the follow view, the lesson's range
   questions and the interface read go through it. Every link is one straight
   line, level, upright or diagonal, none crossing another link or a node; a
-  node a link reaches from straight above carries its name beside it. Symbols
-  are GNS3's bundled affinity set, square where the real machine is a VM and
-  circle where it is a container (gray client for customers, green defence,
-  blue sites, gray log server and switches, a globe for the internet), and
-  for `kali` OffSec's Kali dragon (`kali.svg`: the press pack's
-  `kali-dragon-black.svg` at a pinned commit, checked by sha256 and given a
-  60x60 size when the GNS3 image is built, uploaded by `provision.py`; the
-  Topology pane says whose trademark it is).
+  node a link reaches from straight above carries its name beside it. Every
+  host is one square frame of one size and line weight (`host-*.svg`, built
+  by `deploy/gns3/symbols.py` when the GNS3 image is built and uploaded by
+  `provision.py`): GNS3's bundled affinity glyph inside, the frame red for
+  the attacker, green for the defence, blue for the sites, gray for
+  customers and the log server; switches and the internet keep GNS3's
+  bundled square switch and globe. `kali`'s frame holds OffSec's Kali dragon
+  (the press pack's `kali-dragon-black.svg` at a pinned commit, checked by
+  sha256, placed unmodified inside the frame; `host-kali.txt` and the
+  Topology pane say whose trademark it is).
 - **Every learner-map host is a display container.** GNS3 colours a link end
   by its node's status, so a stopped node draws every end red. Each host is a
   `docker` node of one pinned image (`busybox`, `topology.DISPLAY_IMAGE`) that
