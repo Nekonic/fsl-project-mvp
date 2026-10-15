@@ -1,7 +1,9 @@
 import importlib.util
+import json
 import re
 import subprocess
 import sys
+import tarfile
 from argparse import Namespace
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -350,3 +352,150 @@ def test_the_store_restore_runs_exactly_the_platform_image(tmp_path):
         f"the restore runs docker run with {resolved}: Compose 2.40 lists the images platform "
         f"depends on too, so anything but the platform image alone breaks bin/cloud up --replace"
     )
+
+
+HEAD = "1" * 40
+BASE = "2" * 40
+
+
+def cloud_command():
+    loader = SourceFileLoader("fsl_cloud_command", str(ROOT / "bin/cloud"))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("fsl_cloud_command", loader))
+    loader.exec_module(module)
+    return module
+
+
+def saved(tmp_path, name, *tags):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps([{"Config": "blobs/sha256/x", "RepoTags": list(tags), "Layers": []}]))
+    tarball = tmp_path / name
+    with tarfile.open(tarball, "w") as archive:
+        archive.add(manifest, arcname="manifest.json")
+    return tarball
+
+
+def test_both_commands_take_images_to_sideload_by_name():
+    pairs = ["--sideload", "platform=/x/platform.tar", "--sideload", "gns3=/x/gns3.tar"]
+
+    assert rebuild().arguments(pairs).sideload == ["platform=/x/platform.tar", "gns3=/x/gns3.tar"]
+    assert cloud_command().arguments(["up", "--replace", *pairs]).sideload == [
+        "platform=/x/platform.tar", "gns3=/x/gns3.tar"]
+    assert rebuild().arguments([]).sideload == []
+
+
+def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_path):
+    module = rebuild()
+    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}")
+    asked = []
+
+    tarballs = module.sideloaded([f"gns3={tarball}"])
+    module.refuse_unless_published(BASE, lambda name, tag: asked.append((name, tag)), sideloaded=tarballs)
+
+    assert tarballs == {"gns3": module.Tarball(tarball, HEAD)}
+    assert asked == [(name, BASE) for name in module.IMAGES if name != "gns3"]
+
+
+@pytest.mark.parametrize("pair, said", [
+    ("gns3={missing}", "does not exist, so nothing was deleted"),
+    ("waf={tarball}", "NAME one of"),
+    ("gns3", "NAME one of"),
+    ("gns3={wrong}", "holds no single ghcr.io/nekonic/fsl-gns3:<commit>"),
+    ("gns3={two}", "holds no single ghcr.io/nekonic/fsl-gns3:<commit>"),
+    ("gns3={unreadable}", "not a docker save tarball"),
+])
+def test_the_rebuild_refuses_a_sideload_it_cannot_run_before_deleting_anything(tmp_path, pair, said):
+    module = rebuild()
+    paths = {
+        "missing": tmp_path / "absent.tar",
+        "tarball": saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}"),
+        "wrong": saved(tmp_path, "platform.tar", f"ghcr.io/nekonic/fsl-platform:{HEAD}",
+                       "ghcr.io/nekonic/fsl-gns3:dev"),
+        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}",
+                     f"ghcr.io/nekonic/fsl-gns3:{BASE}"),
+        "unreadable": tmp_path / "plain.tar",
+    }
+    paths["unreadable"].write_text("not a tar")
+
+    with pytest.raises(module.Refused, match=said):
+        module.sideloaded([pair.format(**paths)])
+
+
+def test_the_rebuild_refuses_a_sideload_naming_an_image_twice(tmp_path):
+    module = rebuild()
+    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}")
+
+    with pytest.raises(module.Refused, match="names gns3 twice"):
+        module.sideloaded([f"gns3={tarball}", f"gns3={tarball}"])
+
+
+class ChangedContexts:
+    def __init__(self, changed, broken=False):
+        self.changed, self.broken, self.compared = changed, broken, []
+
+    def __call__(self, argv, stdin=None, check=True):
+        source, context = argv[-4], argv[-1]
+        self.compared.append((source, context))
+        code = 128 if self.broken else 1 if (source, context) in self.changed else 0
+        return subprocess.CompletedProcess(argv, code, b"", b"")
+
+
+def test_every_image_must_be_built_from_what_head_holds():
+    module = rebuild()
+    built = "3" * 40
+    git = ChangedContexts({(BASE, "platform"), (BASE, "deploy/gns3")})
+    platform = {"platform": module.Tarball(Path("p.tar"), built)}
+
+    with pytest.raises(module.Refused, match=rf"sideload them:\n  gns3: deploy/gns3 differs between {BASE} and HEAD$"):
+        module.refuse_unless_unchanged(BASE, HEAD, platform, git)
+    assert (built, "platform") in git.compared and (BASE, "deploy/kali") in git.compared
+    module.refuse_unless_unchanged(
+        BASE, HEAD, {**platform, "gns3": module.Tarball(Path("g.tar"), built)}, git)
+    with pytest.raises(module.Refused, match=f"platform: platform differs between {built} and HEAD"):
+        module.refuse_unless_unchanged(BASE, HEAD, platform, ChangedContexts({(built, "platform")}))
+    assert set(module.build_contexts()) == set(module.IMAGES)
+
+
+def test_a_commit_missing_here_stops_the_sideload():
+    module = rebuild()
+
+    with pytest.raises(module.Refused, match="git fetch it first"):
+        module.refuse_unless_unchanged(BASE, HEAD, {}, ChangedContexts(set(), broken=True))
+
+
+def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tmp_path):
+    module = rebuild()
+    store = tmp_path / "store.sqlite3"
+    store.write_bytes(b"")
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    bundle = tmp_path / f"fsl-{HEAD}.bundle"
+    built = "3" * 40
+    sideload = module.Sideload(HEAD, bundle, {"gns3": module.Tarball(tmp_path / "gns3.tar", built)})
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, store, sideload)
+
+    ran = platform.ran
+    checkout = next(i for i, command in enumerate(ran) if f"checkout -q --detach {HEAD}" in command)
+    assert f"fetch -q /tmp/{bundle.name} HEAD" in ran[checkout]
+    [load] = [command for command in ran if "docker load" in command]
+    assert f"/tmp/gns3.tar" in load
+    assert (f"docker tag ghcr.io/nekonic/fsl-gns3:{built} ghcr.io/nekonic/fsl-gns3:"
+            "$(sed -n 's/^FSL_IMAGE_TAG=//p' /opt/fsl/.env)") in load
+    restore = next(i for i, command in enumerate(ran) if "docker run" in command)
+    assert checkout < ran.index(load) < restore
+    assert ran[-1] == "cd /opt/fsl && sudo docker compose -f /opt/fsl/compose.yaml up -d", (
+        "HEAD's compose file may add services, so every service starts, not only the platform"
+    )
+
+
+def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_platform(tmp_path):
+    module = rebuild()
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, None)
+
+    assert not [command for command in platform.ran if "docker load" in command or "git " in command]
+    assert platform.ran[-1].endswith("up -d platform")

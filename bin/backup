@@ -3,9 +3,12 @@
 import argparse
 import inspect
 import os
+import selectors
 import shlex
+import shutil
 import sqlite3
 import subprocess
+import tempfile
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BACKUPS = ROOT / "backups"
 PLATFORM_EXEC = "docker exec -i fsl-platform python -"
-TIMEOUT = 120
+TIMEOUT = 600
+CHUNK = 1 << 20
 
 TABLES = (
     ("sessions", "api_session"),
@@ -26,35 +30,39 @@ TABLES = (
 )
 
 IMPORTS = """
-import os, sqlite3, sys
+import os, shutil, sqlite3, sys, tempfile
 from pathlib import Path
 """
 
 WRITE_THE_STORE = """
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 from django.conf import settings
-sys.stdout.buffer.write(snapshot(settings.DATABASES["default"]["NAME"]))
+snapshot(settings.DATABASES["default"]["NAME"], sys.stdout.buffer)
 """
 
 
-def snapshot(path):
+def snapshot(path, out):
     source = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=rw", uri=True)
-    copy = sqlite3.connect(":memory:")
-    try:
-        source.backup(copy)
-        return copy.serialize()
-    finally:
-        copy.close()
-        source.close()
+    with tempfile.TemporaryDirectory() as scratch:
+        taken = Path(scratch) / "snapshot.sqlite3"
+        copy = sqlite3.connect(taken)
+        try:
+            source.backup(copy)
+        finally:
+            copy.close()
+            source.close()
+        with open(taken, "rb") as image:
+            shutil.copyfileobj(image, out, 1 << 20)
+    out.flush()
 
 
-def fetch():
+def fetch(out):
     way_in = os.environ.get("FSL_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
     command = shlex.split(way_in)
     program = IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
     try:
-        done = subprocess.run(
-            command, input=program.encode(), capture_output=True, timeout=TIMEOUT,
+        running = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
     except OSError as error:
         raise SystemExit(
@@ -62,17 +70,41 @@ def fetch():
             f"is the command that runs python in the platform's environment "
             f"(default: {PLATFORM_EXEC})"
         )
-    except subprocess.TimeoutExpired:
+    with running:
+        running.stdin.write(program.encode())
+        running.stdin.close()
+        said = drain(running, out, way_in)
+    if running.returncode != 0:
+        said = said.decode(errors="replace").strip() or "(nothing on stderr)"
         raise SystemExit(
-            f"backup: no snapshot from {way_in!r} within {TIMEOUT}s; "
-            f"something may be holding the store locked"
+            f"backup: no snapshot; {way_in!r} exited {running.returncode}:\n{said}"
         )
-    if done.returncode != 0:
-        said = done.stderr.decode(errors="replace").strip() or "(nothing on stderr)"
-        raise SystemExit(
-            f"backup: no snapshot; {way_in!r} exited {done.returncode}:\n{said}"
-        )
-    return done.stdout
+    return out.tell()
+
+
+def drain(running, out, way_in):
+    said = bytearray()
+    watching = selectors.DefaultSelector()
+    watching.register(running.stdout, selectors.EVENT_READ, out)
+    watching.register(running.stderr, selectors.EVENT_READ, said)
+    while watching.get_map():
+        ready = watching.select(TIMEOUT)
+        if not ready:
+            running.kill()
+            raise SystemExit(
+                f"backup: nothing from {way_in!r} for {TIMEOUT}s; "
+                f"something may be holding the store locked"
+            )
+        for key, _ in ready:
+            chunk = os.read(key.fileobj.fileno(), CHUNK)
+            if not chunk:
+                watching.unregister(key.fileobj)
+            elif key.data is said:
+                said += chunk
+            else:
+                out.write(chunk)
+    running.wait()
+    return bytes(said)
 
 
 def check(path):
@@ -100,21 +132,21 @@ def check(path):
         raise SystemExit(f"backup: the snapshot is not the platform's store: {error}")
 
 
-def keep(image):
+def keep():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     BACKUPS.mkdir(parents=True, exist_ok=True)
     partial = BACKUPS / f"db-{stamp}.partial"
     kept = BACKUPS / f"db-{stamp}.sqlite3"
     try:
         with open(partial, "wb") as out:
-            out.write(image)
+            size = fetch(out)
             out.flush()
             os.fsync(out.fileno())
         rows = check(partial)
         os.replace(partial, kept)
     finally:
         partial.unlink(missing_ok=True)
-    return kept, rows
+    return kept, size, rows
 
 
 def main():
@@ -124,11 +156,10 @@ def main():
                     f"(default: {PLATFORM_EXEC}).",
     ).parse_args()
 
-    image = fetch()
-    kept, rows = keep(image)
+    kept, size, rows = keep()
 
     print(kept)
-    print(f"  {len(image)} bytes, integrity_check ok")
+    print(f"  {size} bytes, integrity_check ok")
     for label, table in TABLES:
         count = "absent" if rows[table] is None else rows[table]
         print(f"  {label:<14} {count:>8}")

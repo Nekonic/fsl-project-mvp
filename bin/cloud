@@ -51,6 +51,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
     parser.add_argument("--replace", action="store_true",
                         help="up: replace a standing platform VM, keeping its store and range key")
+    rebuild.add_sideload(parser)
     return parser.parse_args(argv)
 
 
@@ -154,7 +155,7 @@ def up(args: argparse.Namespace) -> str:
     os.environ.update(environment)
     address = rebuild.working_address(cloud.stack)
     if address is None or args.replace:
-        address = rebuild.rebuild(cloud, environment)
+        address = rebuild.rebuild(cloud, environment, args.sideload)
     else:
         rebuild.wait_for_api(address)
     converge(Platform(address))

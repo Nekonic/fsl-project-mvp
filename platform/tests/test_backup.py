@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import os
 import re
 import shlex
@@ -67,6 +68,12 @@ def made_store(path):
     return path
 
 
+def snapshot_of(module, store):
+    image = io.BytesIO()
+    module.snapshot(str(store), image)
+    return image.getvalue()
+
+
 def opened(image):
     db = sqlite3.connect(":memory:")
     db.deserialize(image)
@@ -103,12 +110,12 @@ def test_a_writer_holding_a_transaction_open_is_neither_waited_for_nor_copied(
     writer.execute("BEGIN IMMEDIATE")
     writer.execute("INSERT INTO api_session (note) VALUES ('not committed')")
 
-    image = backup.module.snapshot(str(store))
+    image = snapshot_of(backup.module, store)
 
     writer.execute("COMMIT")
     writer.close()
     assert opened(image).execute("SELECT count(*) FROM api_session").fetchone() == (3,)
-    assert opened(backup.module.snapshot(str(store))).execute(
+    assert opened(snapshot_of(backup.module, store)).execute(
         "SELECT count(*) FROM api_session"
     ).fetchone() == (4,), "the snapshot left a lock behind and the platform's next write waited on it"
 
@@ -130,7 +137,7 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
 
     taken = {}
     taking = threading.Thread(
-        target=lambda: taken.update(image=backup.module.snapshot(str(store))),
+        target=lambda: taken.update(image=snapshot_of(backup.module, store)),
         daemon=True,
     )
     taking.start()
@@ -350,7 +357,7 @@ def test_a_store_kept_in_wal_mode_is_checked_without_litter_beside_the_backup(
         db.execute("PRAGMA journal_mode = WAL")
         db.execute("INSERT INTO api_session (note) VALUES ('after the switch')")
         db.commit()
-    answering(monkeypatch, tmp_path, backup.module.snapshot(str(store)))
+    answering(monkeypatch, tmp_path, snapshot_of(backup.module, store))
 
     printed = backup()
 
@@ -359,3 +366,24 @@ def test_a_store_kept_in_wal_mode_is_checked_without_litter_beside_the_backup(
         f"opening the check read-write on a WAL image leaves its -wal and -shm "
         f"behind: {backup.kept()}"
     )
+
+
+def test_a_store_that_keeps_arriving_is_kept_however_long_the_whole_takes(
+    backup, monkeypatch, tmp_path
+):
+    store = made_store(tmp_path / "db.sqlite3")
+    size = store.stat().st_size
+    monkeypatch.setattr(backup.module, "TIMEOUT", 0.5)
+    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([
+        "sh", "-c",
+        f"for skip in 0 1 2 3; do sleep 0.3; dd if={shlex.quote(str(store))} bs={size // 4} "
+        f"skip=$skip count=1 2>/dev/null; done; "
+        f"dd if={shlex.quote(str(store))} bs={size // 4} skip=4 2>/dev/null",
+    ]))
+
+    printed = backup()
+
+    assert f"{size} bytes" in printed, (
+        "a store of gigabytes takes minutes to cross ssh; only silence is given up on"
+    )
+    assert dump(backup.module.BACKUPS / backup.kept()[0]) == dump(store)

@@ -12,15 +12,18 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
 CLOUD = ROOT / "deploy/openstack/cloud.yaml"
+WORKFLOW = ROOT / ".github/workflows/images.yml"
 LOADER = ROOT / "platform/range/cloud.py"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
 CHECKOUT = "/opt/fsl"
@@ -54,7 +57,19 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--cloud", type=Path, default=CLOUD,
                         help="the cloud settings file (default deploy/openstack/cloud.yaml)")
     parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
+    add_sideload(parser)
     return parser.parse_args(argv)
+
+
+def add_sideload(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--sideload", action="append", default=[], metavar="NAME=TARBALL",
+        help="run this checkout's HEAD, unpushed: the VM clones the ref, checks HEAD out from a "
+             "git bundle and docker-loads this image from a docker save tarball holding "
+             f"{REGISTRY}/{OWNER}/fsl-NAME:<commit it was built from>, tagged as the ref's commit; "
+             "every image not named is pulled from GHCR at the ref's commit. Each image's build "
+             "context must be HEAD's. Repeatable",
+    )
 
 
 def settings_module():
@@ -114,8 +129,8 @@ def published(name: str, tag: str) -> str | None:
         return f"{REGISTRY}/{repository}: {error}"
 
 
-def refuse_unless_published(tag: str, lookup=published) -> None:
-    missing = [said for said in (lookup(name, tag) for name in IMAGES) if said]
+def refuse_unless_published(tag: str, lookup=published, sideloaded=()) -> None:
+    missing = [said for said in (lookup(name, tag) for name in IMAGES if name not in sideloaded) if said]
     if missing:
         raise Refused(
             "platform-rebuild: the new VM pulls the images built for " + tag
@@ -131,6 +146,79 @@ def run(argv: list[str], stdin: bytes | None = None, check: bool = True) -> subp
         said = done.stderr.decode(errors="replace").strip()
         raise Refused(f"platform-rebuild: {argv[0]} exited {done.returncode}: {said[-400:]}")
     return done
+
+
+def image_tags(tarball: Path) -> set[str]:
+    try:
+        with tarfile.open(tarball) as archive:
+            manifest = archive.extractfile("manifest.json")
+            return {tag for image in json.load(manifest) for tag in image.get("RepoTags") or ()}
+    except (OSError, KeyError, tarfile.TarError, ValueError) as unreadable:
+        raise Refused(f"platform-rebuild: {tarball} is not a docker save tarball: {unreadable}") from unreadable
+
+
+class Tarball(NamedTuple):
+    path: Path
+    built_from: str
+
+
+def sideloaded(pairs: list[str], tags_of=image_tags) -> dict[str, Tarball]:
+    tarballs: dict[str, Tarball] = {}
+    for pair in pairs:
+        name, _, path = pair.partition("=")
+        if name not in IMAGES or not path:
+            raise Refused(f"platform-rebuild: --sideload {pair!r} is not NAME=TARBALL with NAME one of {', '.join(IMAGES)}")
+        if name in tarballs:
+            raise Refused(f"platform-rebuild: --sideload names {name} twice")
+        tarball = Path(path).expanduser()
+        if not tarball.is_file():
+            raise Refused(f"platform-rebuild: --sideload {name}: {tarball} does not exist, so nothing was deleted")
+        image = f"{REGISTRY}/{OWNER}/fsl-{name}:"
+        commits = sorted(tag[len(image):] for tag in tags_of(tarball)
+                         if tag.startswith(image) and re.fullmatch(r"[0-9a-f]{40}", tag[len(image):]))
+        if len(commits) != 1:
+            raise Refused(f"platform-rebuild: --sideload {name}: {tarball} holds no single {image}<commit>, "
+                          f"the commit it was built from")
+        tarballs[name] = Tarball(tarball, commits[0])
+    return tarballs
+
+
+def head_commit(run=run) -> str:
+    return run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).stdout.decode().strip()
+
+
+def build_contexts() -> dict[str, str]:
+    import yaml
+    matrix = yaml.safe_load(WORKFLOW.read_text())["jobs"]["image"]["strategy"]["matrix"]["include"]
+    return {entry["name"]: entry["context"] for entry in matrix}
+
+
+def refuse_unless_unchanged(base: str, commit: str, tarballs: dict[str, Tarball], run=run) -> None:
+    changed = []
+    for name, context in build_contexts().items():
+        source = tarballs[name].built_from if name in tarballs else base
+        done = run(["git", "-C", str(ROOT), "diff", "--quiet", source, commit, "--", context], check=False)
+        if done.returncode > 1:
+            raise Refused(f"platform-rebuild: cannot compare {source} with HEAD here; git fetch it first")
+        if done.returncode:
+            changed.append(f"{name}: {context} differs between {source} and HEAD")
+    if changed:
+        raise Refused(
+            "platform-rebuild: these images were not built from what HEAD holds; build them "
+            "from HEAD and sideload them:\n  " + "\n  ".join(changed)
+        )
+
+
+def head_bundle(commit: str, scratch: Path) -> Path:
+    bundle = scratch / f"fsl-{commit}.bundle"
+    run(["git", "-C", str(ROOT), "bundle", "create", str(bundle), "HEAD"])
+    return bundle
+
+
+class Sideload(NamedTuple):
+    commit: str
+    bundle: Path
+    tarballs: dict[str, Tarball]
 
 
 def address_of(stack: str, run=run) -> str | None:
@@ -273,9 +361,24 @@ def replace_stack(cloud, existed: bool) -> str:
     return address
 
 
-def hand_over(new: Host, password: str, range_key: Path, store: Path | None) -> None:
+def side_load(new: Host, sideload: Sideload) -> None:
+    new.copy(sideload.bundle, f"/tmp/{sideload.bundle.name}")
+    new.ssh(f"git -C {CHECKOUT} fetch -q /tmp/{sideload.bundle.name} HEAD "
+            f"&& git -C {CHECKOUT} checkout -q --detach {sideload.commit} && rm /tmp/{sideload.bundle.name}")
+    for name, tarball in sideload.tarballs.items():
+        image = f"{REGISTRY}/{OWNER}/fsl-{name}"
+        new.copy(tarball.path, f"/tmp/{tarball.path.name}")
+        new.ssh(f"sudo docker load -q -i /tmp/{tarball.path.name} && rm /tmp/{tarball.path.name} "
+                f"&& sudo docker tag {image}:{tarball.built_from} "
+                f"{image}:$(sed -n 's/^FSL_IMAGE_TAG=//p' {CHECKOUT}/.env)")
+
+
+def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
+              sideload: Sideload | None = None) -> None:
     compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
     new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform")
+    if sideload is not None:
+        side_load(new, sideload)
     new.ssh(f"cat >> {CHECKOUT}/openstack.env", f"FSL_OPENSTACK_PASSWORD={password}\n".encode())
     new.ssh(
         "sudo docker exec -i -u fsl fsl-platform sh -c "
@@ -292,7 +395,7 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None) -> 
             "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
-    new.ssh(f"cd {CHECKOUT} && {compose} up -d platform")
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d" + ("" if sideload else " platform"))
 
 
 def wait_for_api(address: str) -> None:
@@ -311,12 +414,19 @@ def wait_for_api(address: str) -> None:
         time.sleep(10)
 
 
-def rebuild(cloud, environment: dict[str, str]) -> str:
+def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) -> str:
     os.environ.update(environment)
-    refuse_unless_published(commit_of(cloud.repository, cloud.ref))
+    base = commit_of(cloud.repository, cloud.ref)
     range_key = Path(cloud.range_key).expanduser()
     identity = Path(cloud.operator_key_file).expanduser()
     with tempfile.TemporaryDirectory() as scratch:
+        sideload = None
+        if sideload_pairs:
+            commit = head_commit()
+            tarballs = sideloaded(list(sideload_pairs))
+            refuse_unless_unchanged(base, commit, tarballs)
+            sideload = Sideload(commit, head_bundle(commit, Path(scratch)), tarballs)
+        refuse_unless_published(base, sideloaded=sideload.tarballs if sideload else ())
         known_hosts = Path(scratch) / "known_hosts"
         status = stack_status(cloud.stack)
         refuse_if_busy(cloud.stack, status)
@@ -328,14 +438,15 @@ def rebuild(cloud, environment: dict[str, str]) -> str:
         address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)
         new.wait()
-        hand_over(new, environment["OS_PASSWORD"], range_key, store)
+        hand_over(new, environment["OS_PASSWORD"], range_key, store, sideload)
         wait_for_api(address)
     return address
 
 
 def main(argv: list[str]) -> int:
-    cloud, environment = load(arguments(argv))
-    address = rebuild(cloud, environment)
+    args = arguments(argv)
+    cloud, environment = load(args)
+    address = rebuild(cloud, environment, args.sideload)
     print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
     return 0
 
