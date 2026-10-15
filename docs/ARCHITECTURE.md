@@ -283,7 +283,9 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   their Korean pairs: the company web-service network the learner defends, as
   a logical diagram drawn the way lab topologies are (Cisco NetAcad lab
   topology, NSRC workshop logical diagram): role hostnames, the interface and
-  its address with prefix at each link end, each zone captioned with its network, nothing
+  its address with prefix at each link end (the interface alone at `kali` and
+  `customers`), each zone captioned with its network (the Internet with its
+  name alone), nothing
   else (no title, legend or note, no machine's own name, no `fsl-`, no
   management segment, no Docker bridge name). The nodes are `customers` and
   `kali` (the attacker's Kali box) on the `internet` switch, the `firewall` (OpenStack's OPNsense
@@ -365,10 +367,12 @@ labels it. A switch's end (and the `internet` switch's) carries the port the
 link uses in short form (`Ethernet2` is `e2`). Every host's end is labelled with
 the real interface and its address with prefix on that switch's segment
 (`ens3 10.30.0.102/24`, `vtnet0 5.188.10.1/24`), read from the range through `topology.learner`: the
-attacker's address in the default origin, the customers' first address in
-their busiest origin (`traffic.yaml`'s weights, the default origin left out,
-as `attacker.customer_origins` does; no label where the box holds none, as on
-Docker, whose customers' box starts with the customers), the site's host
+attacker's interface in the default origin and the customers' in their busiest
+origin (`traffic.yaml`'s weights, the default origin left out, as
+`attacker.customer_origins` does; no label where the box holds none, as on
+Docker, whose customers' box starts with the customers), each without its
+address (`topology.ADDRESS_VARIES`), because their source address changes with
+the origin of every request (origin SNAT, several origins), the site's host
 address on `sw1` (the WAF reaches the site there) and the site container's on
 `sw2` (a dual-homed server, one label at each of its own link ends). A `sw3`
 end carries the NIC name alone (`ens4`, `vtnet2`), because its address is on
@@ -377,10 +381,9 @@ store's own NIC where it has one on that network (Docker) and otherwise the
 platform VM's (OpenStack, `ens7`). No label names a Docker bridge (`br-`). The
 one end that can stay blank is Docker's `customers`, whose box runs only while
 the customers do. Each zone caption gains the networks of the labels on its switch
-(`Internet 175.192.0.0/24, 5.188.10.0/24`, `Application estate
-10.30.0.0/24`, `Internal DB 172.18.0.0/16`; the caption of a switch is the
-text in the smallest box holding it, `topology.captions`); Monitoring keeps its
-name alone. A label lies level beside its node on the side its link leaves
+(`Application estate 10.30.0.0/24`, `Internal DB 172.18.0.0/16`; the caption
+of a switch is the text in the smallest box holding it, `topology.captions`);
+Internet and Monitoring keep their name alone. A label lies level beside its node on the side its link leaves
 (`topology.leaving`): on a level or shallow link above or below the line on
 whichever side the node's other links leave more room, clear of where the
 line runs under the text; on a steep link below the node, or above it where

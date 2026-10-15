@@ -4068,3 +4068,14 @@ moving them over ssh, with no push and no GHCR write.
   Run 1's verify had one of the three, the 2026-10-15 run before it one
   ("a possible flake"); the skew grows with the hosts' uptime. Not fixed
   here: it is the range's timekeeping, not the rebuild (backlog).
+## 2026-10-15 — The learner map leaves the address off `kali`, `customers` and the Internet caption
+
+The attacker's source address changes with every attack (origin SNAT picks the
+country), and the customers come from several origins, so one address at their
+link ends showed a single origin as if it were the only one. Their ends now
+read the interface alone (`ens3`), the same interface chosen as before (the
+default origin for `kali`, the busiest for `customers`), and the Internet
+zone's caption is its name alone (`Internet`, and its Korean pair), without the origin
+networks. Every other host end keeps `<interface> <address>/<prefix>`, a switch
+end its port (`e1`), a monitoring end its NIC, and the other zones their
+networks. Approved by the user.
