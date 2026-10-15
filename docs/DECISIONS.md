@@ -3974,3 +3974,17 @@ unmodified, `host-kali.svg`). Added (2): every built host symbol is one
 frame with only its stroke colour differing, 60x60, stroke 16; a framed
 glyph is the bundled glyph without its own paper and frame, and a bundled
 symbol of another shape fails the build.
+
+Live (platform VM, OpenStack): both slots READY and idle before the
+restart; `platform` and `gns3` rebuilt from this commit (the dragon stage
+printed `/dragon/kali-dragon-black.svg: OK`, `symbols.py` printed `built`
+for the seven symbols and `host-kali.txt`, the global `KALI_PRESS_PACK`
+reached the final stage) and restarted; `provision.py` logged `symbol
+host-*.svg uploaded` for all seven. Sessions 494 (board, slot 1) and 495
+(corp, slot 2), both languages: every host node (`customers`, `kali`,
+`firewall`, `waf`, the site, its database, `log-server`) draws its framed
+symbol, every node image is 60x60 in the project and 42x42 px at the fitted
+zoom, and the in-page check over the rendered SVG found no label touching a
+line, a mark, a name, a node image, a zone edge or a caption (nearest label
+to a mark 2.6 px). Both sessions were closed and both slots returned to
+READY.
