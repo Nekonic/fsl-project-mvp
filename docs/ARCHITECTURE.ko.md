@@ -772,7 +772,7 @@ level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 
 Kibana, 토폴로지, 판정, IDS 규칙, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는 "왼쪽
 웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
 보기 전환, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
-`data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule`과 대체용 `first`로 행
+`data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`와 대체용 `first`로 행
 펼치기), 또는 창 전체. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다. 현재 단계의 말과 이전/다음은
 popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만 보이고, popover를 닫은
 뒤에만 "가이드 다시 보기"를 보인다. popover는 driver.js 방식이다: 대상에 화살표로 붙어

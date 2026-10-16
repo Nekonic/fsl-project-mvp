@@ -1005,7 +1005,7 @@ box is on its rail button and the popover says only "Open Website on the
 left" (or the pane named). Once it is shown: a console element (`panel`: the
 site's address bar, the site's developer toggle, the Judge list, the rule
 editor, I'm done), a `data-test-subj` in the same-origin Kibana frame
-(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule`
+(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`
 with the row toggle as `first`), or the pane as a whole.
 Nothing is ever looked up inside the site frame, which is another origin. The
 popover is the one place for the current step's words and Back/Next; the
