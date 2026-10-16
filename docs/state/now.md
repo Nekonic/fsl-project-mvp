@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-16 (after the follow view's live run). Written for a session that has the cloud
+Updated: 2026-10-16 (after the test audit's live run). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -26,10 +26,10 @@ Updated: 2026-10-16 (after the follow view's live run). Written for a session th
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
-- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and three
+- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and four
   times on 2026-10-16 by `bin/cloud up --replace --sideload` (`docs/OPENSTACK.md`
   §5.3, `docs/DECISIONS.md` 2026-10-15 "The platform VM's rebuild runs an
-  unpushed commit"): it runs 470b1bb with the platform image built from it
+  unpushed commit"): it runs ee2e5b9 with the platform image built from it
   and the gns3 image from 1814e5c, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
@@ -37,8 +37,9 @@ Updated: 2026-10-16 (after the follow view's live run). Written for a session th
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
   `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); the
-  2026-10-16 runs' three are in this worktree's `backups/`
-  (`db-20261016T112259Z`, `T121617Z`, `T124957Z`, 5.96 GB each).
+  2026-10-16 runs' four are in this worktree's `backups/`
+  (`db-20261016T112259Z`, `T121617Z`, `T124957Z`, 5.96 GB each;
+  `T143237Z`, 6.02 GB).
 - The range keeps the platform VM's time over NTP (c4ee8d7, `docs/DECISIONS.md`
   2026-10-15 "The platform VM is the range's time source"). `bin/verify` there
   after it: unit passed; acceptance 74 passed, 0 failed in 765 s.
@@ -48,8 +49,9 @@ Updated: 2026-10-16 (after the follow view's live run). Written for a session th
   (`docs/DECISIONS.md` 2026-10-16 "The follow view is removed").
 - The test audit (2026-10-16, `docs/DECISIONS.md` "Test audit"): test
   functions 2,061 -> 1,051, unit cases 2,459 -> 1,458; the test count is
-  reported, not gated. Acceptance edits await the next full `bin/verify` on
-  the VM.
+  reported, not gated. Proven live on ee2e5b9 (deployed by the sideloaded
+  rebuild in 27 min 37 s): `bin/verify` on the VM unit 1458 passed; acceptance
+  45 passed, 0 failed, 0 errors, 30 skipped in 728 s; 876 s in all.
 
 ## Waiting for the user
 
