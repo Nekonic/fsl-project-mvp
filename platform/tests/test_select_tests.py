@@ -249,13 +249,13 @@ def test_the_changed_files_are_the_commits_since_the_base_and_the_uncommitted_on
     assert committed == {"platform/topology.py": "M"}
 
 
-def test_a_docs_only_change_still_runs_the_ratchet(repo, tmp_path):
+def verify_a_docs_change(repo, baseline):
     root = repo({
         **SMALL,
         "compose.yaml": "services:\n  web:\n    image: nginx:1.27\n",
         "metrics.json": json.dumps({
             "core_loc": 0, "product_loc": 0, "dependencies": 0,
-            "services": 1, "wargame_services": 0, "tests": 99,
+            "services": 1, "wargame_services": 0, "tests": 4, **baseline,
         }) + "\n",
     })
     for script in ("verify", "measure", "select-tests"):
@@ -269,13 +269,26 @@ def test_a_docs_only_change_still_runs_the_ratchet(repo, tmp_path):
     base = git(root, "rev-parse", "HEAD").decode().strip()
     write(root, {"README.md": "# range, documented\n"})
 
-    done = subprocess.run(
+    return subprocess.run(
         [str(root / "bin/verify"), "--changed", base],
         capture_output=True, text=True, timeout=120,
         env={**os.environ, "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin"},
     )
 
+
+def test_a_docs_only_change_still_runs_the_ratchet(repo):
+    done = verify_a_docs_change(repo, {"services": 0})
+
     assert "docs only — no tests" in done.stdout, done.stdout + done.stderr
-    assert "the test suite got smaller" in done.stdout and done.returncode == 1, (
+    assert "grows a gated number" in done.stdout and done.returncode == 1, (
         f"a docs-only change skipped the tests but must not skip the ratchet:\n{done.stdout}"
+    )
+
+
+def test_a_falling_test_count_is_reported_and_passes(repo):
+    done = verify_a_docs_change(repo, {"tests": 99})
+
+    assert "tests: 99 -> 4" in done.stdout, done.stdout + done.stderr
+    assert done.returncode == 0, (
+        f"the test count is reported, not gated (DECISIONS 2026-10-16):\n{done.stdout}"
     )

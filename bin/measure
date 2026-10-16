@@ -43,7 +43,6 @@ BLOCK_VALUE = re.compile(r"[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?")
 
 METRICS = ("core_loc", "product_loc", "dependencies", "services", "wargame_services", "tests")
 GATED = ("core_loc", "dependencies", "services")
-FLOOR = ("tests",)
 
 def tracked_files() -> list[str]:
     listed = subprocess.run(
@@ -238,12 +237,7 @@ def main() -> int:
                 continue
             was = baseline.get(name, now)
             arrow = "=" if now == was else ("v" if now < was else "^")
-            if name in GATED:
-                gate = ""
-            elif name in FLOOR:
-                gate = "   (floor)"
-            else:
-                gate = "   (not gated)"
+            gate = "" if name in GATED else "   (not gated)"
             print(f"{name:<16} {now:>6}  {arrow} baseline {was}{gate}")
 
     if args.files:

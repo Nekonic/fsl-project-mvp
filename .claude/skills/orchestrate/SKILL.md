@@ -104,8 +104,9 @@ two facts are what make a green run mean something. Protect them:
 
 - Treat the tests and the benign cases as read-only. If a change seems to need
   a test deleted or weakened, that is a finding to raise, not a step to take.
-  The `tests` floor and the benign-case rule exist because deleting them is the
-  cheapest way to fake a pass.
+  The benign-case rule exists because deleting them is the cheapest way to
+  fake a pass. The `tests` count is reported, not gated: a test no one can
+  justify may go, and the commit says why.
 - A green `bin/verify` is necessary, not sufficient: roughly half of
   test-passing agent PRs still fail human review on quality or breakage. The
   gate-2 review is where that is caught.
