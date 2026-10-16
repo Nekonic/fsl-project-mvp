@@ -6,16 +6,16 @@ change touches the measured numbers or the substrate seams.
 ## The ratchet numbers
 
 `bin/measure` prints them; `metrics.json` holds the baseline; `bin/verify`
-refuses a change that grows a gated number or shrinks the floor.
+refuses a change that grows a gated number.
 
 | number | ratchet | what it counts |
 |---|---|---|
 | `core_loc` | down only | the surviving hypothesis: `platform/scoring/`, `platform/ingest/`, `platform/rules/`, `redteam/harness.py` |
 | `dependencies` | down only | direct pip packages |
 | `services` | down only | the platform's own compose services |
-| `tests` | up only | module-level `test_*` functions in `test_*.py` |
 | `product_loc` | reported | the disposable shell: UI, API surface, compose, deploy |
 | `wargame_services` | reported | a wargame's own compose services |
+| `tests` | reported | module-level `test_*` functions in `test_*.py` |
 
 The split follows what the repo is for. `core_loc` is what would be worth
 carrying to the production repo, so it stays small and keeps shrinking.
@@ -31,8 +31,33 @@ when you do it, the reason goes in `DECISIONS.md`.
 
 Gaming to watch for, because the number alone will not show it: logic moved
 into an uncounted path to drop `core_loc`; lines joined to the same end; a test
-deleted and another renamed to hold the floor. The number can be honest only if
-the change behind it is.
+weakened or deleted to make a change pass. The test count is reported, not
+gated (`DECISIONS.md`, 2026-10-16), so a removed test is justified in its
+commit. The number can be honest only if the change behind it is.
+
+## The verify modes
+
+| command | runs | when |
+|---|---|---|
+| `bin/verify --changed [BASE]` | the unit test files the change reaches, then the ratchet | by default while working |
+| `bin/verify --changed [BASE] --live` | the same, plus the acceptance modules the change reaches, on the live range | a range-facing change, before it is pushed |
+| `bin/verify --fast` | every unit test; prints the metrics without gating them | before a commit that touches shared code |
+| `bin/verify` | every unit test, all of acceptance on the live range, the ratchet | range-facing logic changed, and before a push |
+
+`BASE` is the merge-base with `dev` by default, plus uncommitted and untracked
+files; `A..B` takes only the commits between. `bin/select-tests [BASE]` prints
+the selection without running it. A test file is selected when it imports a
+changed module (directly or through others, with `platform/` or `test/` as the
+working directory), requests a URL whose view module reaches it, or names or
+globs the changed file; reading a Python file as text does not pull in what it
+imports. Docs (`*.md`, `docs/`, `.claude/`, `metrics.json`) select nothing.
+The unit `conftest.py`, `pytest.ini`, `requirements.txt` and `fsl/settings.py`
+run the whole unit suite, and so does any changed file no test reaches. A
+range-facing change (`platform/` outside `tests/` and `console/`,
+`wargames/`, `redteam/`, `deploy/`, `test/`, the compose files) that no
+acceptance test names needs all of acceptance. Because `api/views.py` imports
+most of `platform/`, a change there still selects most of the API tests; a
+change to `bin/`, `deploy/`, a template or a test selects a handful.
 
 ## The substrate seams
 

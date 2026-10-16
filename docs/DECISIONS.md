@@ -4194,3 +4194,66 @@ answer.
   101 s; acceptance 74 passed, 0 failed, 0 errors, 71 skipped in 730 s across
   4 processes; ratchet holds (core_loc 580, tests 2045); 936 s in all. The
   rebuilt VM has no `.venv`; it was made by hand before the run.
+
+## 2026-10-16 — bin/verify runs only what a change touches
+
+Every check ran the whole unit suite (`--fast`, about 94 s, 2,457 cases) or
+that plus acceptance on the live range (13–19 min, both slots), whatever the
+change was. `bin/verify --changed [BASE]` now runs only the unit test files the
+change reaches, and the ratchet; `--live` adds the acceptance modules it
+reaches. Full and `--fast` behave as before.
+
+- **Selection** (`bin/select-tests`, stdlib only). The changed files are
+  `git diff --name-status BASE` plus untracked files (BASE defaults to the
+  merge-base with `dev`; `A..B` takes commits only). A static graph of the
+  repo links each file to what it runs — Python imports resolved with
+  `platform/` or `test/` as the working directory, `pytest_plugins`, dotted
+  module names in tests (`mock.patch` targets), the view module each URL a
+  test requests resolves to through `fsl/urls.py`, the test conftest — and to
+  what it reads: files named by repo path, path tail or basename, and files a
+  test globs. A test file is selected when it reaches a changed file; reading a
+  Python file as text (a seam check reading `views.py`) does not pull in what
+  that file imports. A per-file reason is printed.
+- **Safety.** Docs (`*.md`, `docs/`, `.claude/`, `metrics.json`) select
+  nothing. The unit `conftest.py`, `pytest.ini`, `requirements.txt` and
+  `fsl/settings.py` run the whole unit suite; so does any changed file that
+  no test reaches. A range-facing change no acceptance test names needs all
+  of acceptance. The ratchet runs in every `--changed` run, a docs-only one
+  included (a test holds it).
+- **Measured** on this tree, unit tests only, wall time of the whole command:
+
+  | change | unit files | cases | wall |
+  |---|---|---|---|
+  | `--fast` (everything) | 146 | 2,457 | 94 s |
+  | docs only (`1a97877`) | 0 | 0 | 1 s |
+  | `bin/backup` fix (`412e379`) | 6 | 99 | 7 s |
+  | follow view removal (`2535f30`, views, topology, templates) | 95 | 1,711 | 46 s |
+  | learner map UI (`1814e5c`, templates, GNS3 page) | 86 | 1,586 | 47 s |
+  | range NTP (`c4ee8d7`, `range/`, OpenStack tests) | 106 | 1,988 | 92 s |
+
+  `api/views.py` imports most of `platform/` and most API tests request one
+  of its URLs, so a change to any module it imports still selects most of the
+  API tests; the saving is large for `bin/`, `deploy/`, test, stylesheet and
+  docs changes and about half for console or view changes. Splitting
+  `views.py` would sharpen it; not done here.
+- **Tests** 2044 -> 2059 (14 for the selector, one for `bin/acceptance --only`).
+
+## 2026-10-16 — The test count is reported, not gated
+
+- **Ruling** (the user, 2026-10-16): remove the rule that `tests` may only
+  rise. `bin/measure` still counts and prints it, marked `(not gated)` like
+  `product_loc` and `wargame_services`; `bin/verify` no longer refuses a
+  smaller count and lists it under `smaller:` instead.
+- **Why.** The floor rewarded keeping tests that no longer earn their place:
+  every removal needed `metrics.json` lowered by hand and a ruling, so
+  restatements of constants and pins on implementation details stayed. A test
+  audit is exactly removing the ones no one can justify; the commit that
+  removes a test says why.
+- **What still gates.** `core_loc`, `dependencies` and `services` may only
+  fall, unchanged.
+- **What still protects the hypothesis.** The benign cases in
+  `redteam/cases/` stay, and TP > 0 and TN > 0 stay in "What must not break";
+  neither depended on the count.
+- **Tests.** The `--changed` ratchet test now regresses on a grown
+  `services`; a new test holds that a falling test count passes and is
+  reported.
