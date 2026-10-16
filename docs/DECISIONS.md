@@ -4125,6 +4125,5 @@ hosts now keep the platform's time.
 - **Result.** `bin/verify` on the platform VM after the change: acceptance
   74 passed, 0 failed, 0 errors, 71 skipped in 765 s (corp's three binlog
   credits pass; before, 71 passed and 3 failed in 947-1,149 s); no
-  regression. The per-host offsets (`chronyc tracking` on the platform,
-  `timedatectl timesync-status` on the hosts) are not yet recorded: the run
-  that would have read them stopped after configuring both slots.
+  regression. The offsets are not measured separately: a host more than
+  100 ms off would fail those credits again.
