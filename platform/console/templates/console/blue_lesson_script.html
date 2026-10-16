@@ -674,7 +674,10 @@ function coach(prefix, declared) {
   function settle(step, verdict, loud) {
     if (!verdict || steps[at] !== step) return;
     const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
-    if (verdict.kali && rows) showReplay(rows, verdict.kali, kaliRow);
+    if (verdict.kali && rows) {
+      showReplay(rows, verdict.kali, kaliRow);
+      last = "";
+    }
     if (verdict.loot && verdict.loot.matched.length) saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
     if (verdict.passed) {
       pass(step);
