@@ -54,8 +54,8 @@ Updated: 2026-10-15 (after the rebuild run). Written for a session that has the 
 
 ## Next, in order
 
-0. Record the per-host NTP offsets in that entry (the VM is reachable only
-   from the lab network); capture the learner map after f0bce06.
+0. Capture the learner map after f0bce06 (the VM is reachable only from the
+   lab network).
 1. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live.
 2. A corp scenario: corp's CVEs succeed but it has no customer
