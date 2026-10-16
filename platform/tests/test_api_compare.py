@@ -40,13 +40,6 @@ def scored_session(client):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return session_id
 
-def test_clearing_the_label_stops_the_stamping(client):
-    with patch("api.views.attacker.set_label") as labelled:
-        response = client.post_json("/api/attacker/label/", {"case_id": None})
-
-    assert response.status_code == 200
-    assert labelled.call_args.args[0] is None
-
 def test_by_default_a_case_is_scored_by_the_strategy_it_declares(client, scored_session):
     scored = client.get(f"/api/sessions/{scored_session}/score/").json()
 

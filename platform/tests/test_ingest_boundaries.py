@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from api.models import Detection, Session, Suppression
+from api.models import Detection, Suppression
 from range.ports import Ran
 from rules import suricata
 
@@ -156,17 +156,6 @@ def test_rules_from_an_editor_that_never_loaded_them_are_refused(client):
     )
     assert "nothing" in blind.json()["detail"]
     assert sensor.rules == RULE + RULE.replace("9000901", "9000902")
-
-
-@pytest.mark.django_db
-def test_a_caller_that_sends_no_base_still_applies_without_the_check(client):
-    sensor = Sensor(RULE)
-
-    with patch("api.views.substrate", return_value=sensor):
-        applied = client.post_json("/api/rules/apply/", {"content": "mine\n"})
-
-    assert applied.status_code == 200, applied.content
-    assert sensor.rules == "mine\n"
 
 
 @pytest.mark.django_db

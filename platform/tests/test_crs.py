@@ -25,51 +25,6 @@ class Gateway:
             return Ran(0, "")
         return Ran(0, self.file)
 
-def test_the_paranoia_level_is_set_for_blocking_and_detection_alike():
-    rendered = crs.rendered(crs.checked({"paranoia": 3}))
-
-    assert rendered == (
-        'SecAction "id:10000,phase:1,pass,nolog,'
-        'setvar:tx.blocking_paranoia_level=3,setvar:tx.detection_paranoia_level=3"\n'
-    )
-
-def test_an_exclusion_scoped_to_a_path_removes_one_target_from_one_rule():
-    rendered = crs.rendered(crs.checked({
-        "paranoia": 4,
-        "exclusions": [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}],
-    }))
-
-    assert rendered.splitlines()[1] == (
-        'SecRule REQUEST_FILENAME "@beginsWith /search/" '
-        '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"'
-    )
-
-def test_an_exclusion_with_no_target_or_path_removes_the_rule_everywhere():
-    rendered = crs.rendered(crs.checked({"paranoia": 4, "exclusions": [{"rule_id": 920273}]}))
-
-    assert rendered.splitlines()[1] == 'SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveById=920273"'
-
-@pytest.mark.parametrize("tuning", [
-    None,
-    {"paranoia": 0},
-    {"paranoia": 5},
-    {"paranoia": "4"},
-    {"paranoia": True},
-    {"paranoia": 1, "exclusions": "920273"},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273}] * 21},
-    {"paranoia": 1, "exclusions": [{"rule_id": 1}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": "920273"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:q\"\nSecRuleEngine Off"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "TX:anomaly"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:q;ARGS:p"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "/search/\" \"id:1,ctl:ruleEngine=Off"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "/search/\n"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "search"}]},
-    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:ı"}]},
-])
-def test_tuning_that_would_write_anything_but_a_level_and_exclusions_is_refused(tuning):
-    with pytest.raises(crs.TuningRefused):
-        crs.checked(tuning)
 
 def test_applying_writes_the_exclusion_file_and_reloads_nginx():
     gateway = Gateway()
@@ -153,12 +108,6 @@ def test_on_openstack_tuning_writes_where_the_waf_vm_reads_and_reloads_it_with_s
     assert calls[-1].startswith("m=$(cat /run/nginx.pid)"), "the VM's nginx keeps its pid in /run"
     assert "sudo systemctl reload nginx" in calls[-2]
 
-def test_on_docker_tuning_keeps_the_container_paths_and_reload():
-    from django.conf import settings
-
-    assert settings.FSL_WAF == crs.Layout()
-    assert crs.Layout() == (crs.EXCLUSIONS, "nginx -t 2>&1 && nginx -s reload 2>&1", "/tmp/nginx.pid")
-
 KOREAN_SEARCH_AT_PL3 = {
     "paranoia": 3,
     "exclusions": [
@@ -168,66 +117,63 @@ KOREAN_SEARCH_AT_PL3 = {
     ],
     "thresholds": {"inbound": 10000, "outbound": 10000},
 }
+BODY_UNDER_COMMENTS = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_BODY", "path": "/posts/"}]}
 
-def test_the_raw_request_uri_can_be_removed_from_one_rule_under_one_path():
-    rendered = crs.rendered(crs.checked(KOREAN_SEARCH_AT_PL3))
+@pytest.mark.parametrize("tuning, line, directive", [
+    ({"paranoia": 3}, 0,
+     'SecAction "id:10000,phase:1,pass,nolog,'
+     'setvar:tx.blocking_paranoia_level=3,setvar:tx.detection_paranoia_level=3"'),
+    ({"paranoia": 1, "thresholds": {"outbound": 8, "inbound": 12}}, 0,
+     'SecAction "id:10000,phase:1,pass,nolog,'
+     'setvar:tx.blocking_paranoia_level=1,setvar:tx.detection_paranoia_level=1,'
+     'setvar:tx.inbound_anomaly_score_threshold=12,setvar:tx.outbound_anomaly_score_threshold=8"'),
+    ({"paranoia": 4, "exclusions": [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}, 1,
+     'SecRule REQUEST_FILENAME "@beginsWith /search/" '
+     '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q"'),
+    ({"paranoia": 4, "exclusions": [{"rule_id": 920273}]}, 1,
+     'SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveById=920273"'),
+    (KOREAN_SEARCH_AT_PL3, 1,
+     'SecRule REQUEST_FILENAME "@beginsWith /search/" '
+     '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_URI_RAW"'),
+    (BODY_UNDER_COMMENTS, 1,
+     'SecRule REQUEST_FILENAME "@beginsWith /posts/" '
+     '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_BODY"'),
+], ids=["paranoia", "thresholds", "target-under-path", "rule-everywhere", "raw-uri", "whole-body"])
+def test_a_tuning_is_written_as_the_modsecurity_directive_crs_reads(tuning, line, directive):
+    assert crs.rendered(crs.checked(tuning)).splitlines()[line] == directive
 
-    assert rendered.splitlines()[1] == (
-        'SecRule REQUEST_FILENAME "@beginsWith /search/" '
-        '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_URI_RAW"'
-    )
+@pytest.mark.parametrize("tuning", [
+    KOREAN_SEARCH_AT_PL3, BODY_UNDER_COMMENTS, {"paranoia": 2, "exclusions": [{"rule_id": 949110}]},
+], ids=["raw-uri-and-thresholds", "whole-body", "no-thresholds"])
+def test_a_written_tuning_reads_back_as_written(tuning):
+    checked = crs.checked(tuning)
 
-def test_anomaly_thresholds_are_set_beside_the_paranoia_level():
-    rendered = crs.rendered(crs.checked({"paranoia": 1, "thresholds": {"outbound": 8, "inbound": 12}}))
+    assert crs.parsed(crs.rendered(checked)) == checked
 
-    assert rendered == (
-        'SecAction "id:10000,phase:1,pass,nolog,'
-        'setvar:tx.blocking_paranoia_level=1,setvar:tx.detection_paranoia_level=1,'
-        'setvar:tx.inbound_anomaly_score_threshold=12,setvar:tx.outbound_anomaly_score_threshold=8"\n'
-    )
-
-def test_a_tuning_with_the_raw_uri_and_thresholds_reads_back_as_written():
-    tuning = crs.checked(KOREAN_SEARCH_AT_PL3)
-
-    assert crs.parsed(crs.rendered(tuning)) == tuning
-
-def test_a_tuning_without_thresholds_reads_back_without_them():
-    tuning = crs.checked({"paranoia": 2, "exclusions": [{"rule_id": 949110}]})
-
-    assert crs.parsed(crs.rendered(tuning)) == tuning
-    assert "thresholds" not in tuning
-
-@pytest.mark.parametrize("thresholds", [
-    "10000",
-    {"inbound": 0},
-    {"inbound": 100001},
-    {"inbound": "5"},
-    {"inbound": True},
-    {"critical": 5},
-    {"inbound": 5.5},
+@pytest.mark.parametrize("tuning", [
+    None,
+    {"paranoia": 0},
+    {"paranoia": 5},
+    {"paranoia": "4"},
+    {"paranoia": True},
+    {"paranoia": 1, "exclusions": "920273"},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273}] * 21},
+    {"paranoia": 1, "exclusions": [{"rule_id": 1}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": "920273"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:q\"\nSecRuleEngine Off"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "TX:anomaly"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:q;ARGS:p"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "/search/\" \"id:1,ctl:ruleEngine=Off"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "/search/\n"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "search"}]},
+    {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:ı"}]},
+    *({"paranoia": 1, "exclusions": [{"rule_id": 920272, "target": target}]}
+      for target in ("REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY:x",
+                     "REQUEST_BODYX", "REQUEST_BODY_LENGTH")),
+    *({"paranoia": 1, "thresholds": thresholds}
+      for thresholds in ("10000", {"inbound": 0}, {"inbound": 100001}, {"inbound": "5"},
+                         {"inbound": True}, {"critical": 5}, {"inbound": 5.5})),
 ])
-def test_a_threshold_outside_an_anomaly_score_is_refused(thresholds):
+def test_tuning_that_would_write_anything_but_a_level_exclusions_and_thresholds_is_refused(tuning):
     with pytest.raises(crs.TuningRefused):
-        crs.checked({"paranoia": 1, "thresholds": thresholds})
-
-def test_the_whole_request_body_can_be_removed_from_one_rule_under_the_comment_path():
-    tuning = crs.checked({"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_BODY", "path": "/posts/"}]})
-
-    assert crs.rendered(tuning).splitlines()[1] == (
-        'SecRule REQUEST_FILENAME "@beginsWith /posts/" '
-        '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_BODY"'
-    )
-    assert crs.parsed(crs.rendered(tuning)) == tuning
-
-@pytest.mark.parametrize("target", ["REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY:x",
-                                    "REQUEST_BODYX", "REQUEST_BODY_LENGTH"])
-def test_only_the_raw_uri_and_the_whole_body_themselves_join_the_targets(target):
-    with pytest.raises(crs.TuningRefused):
-        crs.checked({"paranoia": 1, "exclusions": [{"rule_id": 920272, "target": target}]})
-
-def test_applying_thresholds_writes_them_and_reads_them_back():
-    gateway = Gateway()
-
-    crs.apply(KOREAN_SEARCH_AT_PL3, gateway)
-
-    assert crs.read(gateway)["thresholds"] == {"inbound": 10000, "outbound": 10000}
+        crs.checked(tuning)

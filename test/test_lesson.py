@@ -1,5 +1,3 @@
-import time
-
 import pytest
 import requests
 
@@ -37,13 +35,9 @@ def minimal(stack_is_up):
 
 @pytest.fixture(scope="module")
 def guided_beside_minimal(minimal):
-    began = time.monotonic()
     first = _open(defense="minimal", guidance=True, lesson="f1")
-    seen = {"took": time.monotonic() - began}
+    seen = {}
     try:
-        seen["cases"] = requests.get(f"{PLATFORM_URL}/api/sessions/{first}/cases/", timeout=60).json()
-        seen["lesson"] = requests.get(f"{PLATFORM_URL}/api/sessions/{first}/", timeout=60).json()["lesson"]
-
         second = minimal
         _tune(second, {"paranoia": 4})
         _tune(first, {"paranoia": 1})
@@ -78,13 +72,3 @@ def test_two_sessions_tune_their_own_waf_and_their_own_sensor(guided_beside_mini
         "paranoia level 1 in the first session and 4 in the second should serve and "
         f"block the O'Brien search respectively; got {served} and {refused}"
     )
-
-
-def test_a_foundation_session_opens_with_its_logs_already_there(guided_beside_minimal):
-    cases = guided_beside_minimal["cases"]
-    lesson = guided_beside_minimal["lesson"]
-
-    assert lesson["id"] == "f1"
-    assert sorted(case["name"] for case in cases) == sorted(lesson["cases"])
-    assert all(case["meta"].get("seed") for case in cases)
-    print(f"guided open took {guided_beside_minimal['took']:.0f} s")

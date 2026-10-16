@@ -108,13 +108,6 @@ def reader(spy):
         password="secret",
     )
 
-def test_it_authenticates_before_it_asks_anything(cloud):
-    reader(cloud)(f"GET http://127.0.0.1:{cloud.port}/v2.0/networks")
-
-    assert cloud.tokens == 1
-    path, headers = cloud.seen[0]
-    assert headers.get("X-Auth-Token") == "tok1", headers
-
 def test_it_says_which_compute_microversion_it_was_written_against(cloud):
     reader(cloud)(f"GET http://127.0.0.1:{cloud.port}/servers/detail")
 
@@ -146,21 +139,6 @@ def test_a_401_that_survives_a_fresh_token_is_reported_not_looped(cloud):
         ask(f"GET http://127.0.0.1:{cloud.port}/v2.0/networks")
 
     assert cloud.tokens == 2, cloud.tokens
-
-def test_anything_else_the_cloud_refuses_is_named(cloud):
-    with pytest.raises(RangeUnavailable, match="404"):
-        reader(cloud)(f"GET http://127.0.0.1:{cloud.port}/nope")
-
-def test_a_cloud_that_is_not_there_is_unavailable_not_a_crash():
-    ask = openstack.http_reader(
-        openstack.Cloud(keystone="http://127.0.0.1:1", neutron="http://127.0.0.1:1",
-                        nova="http://127.0.0.1:1", project="fsl",
-                        user="fsl", ssh_user="fsl", ssh_key="/k"),
-        password="secret",
-    )
-
-    with pytest.raises(RangeUnavailable):
-        ask("GET http://127.0.0.1:1/v2.0/networks")
 
 def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach():
     from range import declared
@@ -290,97 +268,19 @@ def keystone():
     yield spy
     server.shutdown()
 
-def test_the_endpoints_come_from_the_token_not_from_configuration(keystone):
+@pytest.mark.parametrize("interface, neutron, nova", [
+    ("public", "http://example.com:9696", "http://example.com/compute/v2.1"),
+    ("admin", "http://admin.example.com:9696", "http://admin.example.com/compute/v2.1"),
+])
+def test_the_endpoints_come_from_the_token_not_from_configuration(keystone, interface, neutron, nova):
     found = openstack.discover(
         keystone=f"http://127.0.0.1:{keystone.port}",
-        user="fsl", password="secret", project="fsl",
-        ssh_user="fsl", ssh_key="/keys/fsl",
+        user="range-operator", password="secret", project="fsl",
+        ssh_user="debian", ssh_key="/keys/fsl", interface=interface,
     )
 
-    assert found.neutron == "http://example.com:9696"
-    assert found.nova == "http://example.com/compute/v2.1"
-
-def test_it_takes_the_interface_and_region_it_was_asked_for(keystone):
-    found = openstack.discover(
-        keystone=f"http://127.0.0.1:{keystone.port}",
-        user="fsl", password="secret", project="fsl",
-        ssh_user="fsl", ssh_key="/keys/fsl",
-        interface="admin",
-    )
-
-    assert (found.neutron, found.nova) == (
-        "http://admin.example.com:9696",
-        "http://admin.example.com/compute/v2.1",
-    ), (
-        "a catalogue carries public, admin and internal endpoints for the same "
-        "service, and a platform on a management network wants a different one "
-        "than a browser does"
-    )
-
-def test_a_service_the_catalogue_does_not_carry_is_named(keystone):
-    with pytest.raises(RangeUnavailable) as raised:
-        openstack.discover(
-            keystone=f"http://127.0.0.1:{keystone.port}",
-            user="fsl", password="secret", project="fsl",
-            ssh_user="fsl", ssh_key="/k", region="RegionThree",
-        )
-
-    assert "network" in str(raised.value) and "RegionThree" in str(raised.value), (
-        f"the deployment has to be told which service is missing from which "
-        f"region, not handed an empty URL: {raised.value}"
-    )
-
-def test_the_keystone_url_is_the_only_address_a_deployment_must_know(keystone):
-    import inspect
-
-    signature = inspect.signature(openstack.discover)
-
-    assert "neutron" not in signature.parameters
-    assert "nova" not in signature.parameters
-
-
-def test_a_token_with_life_left_is_not_thrown_away(keystone):
-    from datetime import datetime, timedelta, timezone
-
-    later = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime(
-        "%Y-%m-%dT%H:%M:%S.%fZ"
-    )
-    CATALOG["token"]["expires_at"] = later
-    try:
-        base = f"http://127.0.0.1:{keystone.port}"
-        ask = openstack.http_reader(
-            openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
-            password="secret",
-        )
-        for _ in range(4):
-            ask(f"{base}/v2.0/networks")
-    finally:
-        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
-
-    assert keystone.tokens == 1, (
-        f"{keystone.tokens} tokens for four calls - re-authenticating on every "
-        f"request puts a Keystone round trip in front of every read"
-    )
-
-def test_a_token_with_no_expiry_is_used_until_it_is_refused(keystone):
-    CATALOG["token"].pop("expires_at", None)
-    try:
-        base = f"http://127.0.0.1:{keystone.port}"
-        ask = openstack.http_reader(
-            openstack.Cloud(keystone=base, neutron=base, nova=base,
-                            project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k"),
-            password="secret",
-        )
-        ask(f"{base}/v2.0/networks")
-        ask(f"{base}/v2.0/networks")
-    finally:
-        CATALOG["token"]["expires_at"] = "2015-11-07T02:58:43.578887Z"
-
-    assert keystone.tokens == 1, (
-        "a response without expires_at made the adapter re-authenticate every "
-        "time rather than fall back to the 401 it already handles"
-    )
+    assert (found.neutron, found.nova) == (neutron, nova)
+    assert (found.user, found.ssh_user) == ("range-operator", "debian")
 
 def test_the_cloud_is_read_as_the_keystone_user_not_the_ssh_login(cloud):
     base = f"http://127.0.0.1:{cloud.port}"
@@ -395,26 +295,6 @@ def test_the_cloud_is_read_as_the_keystone_user_not_the_ssh_login(cloud):
     assert cloud.logins == ["range-operator"], (
         f"the account a platform signs in to Keystone with and the login on "
         f"an instance's image are two different people: {cloud.logins}"
-    )
-
-def test_discovery_remembers_who_it_signed_in_as(keystone):
-    found = openstack.discover(
-        keystone=f"http://127.0.0.1:{keystone.port}",
-        user="range-operator", password="secret", project="fsl",
-        ssh_user="debian", ssh_key="/k",
-    )
-
-    assert (found.user, found.ssh_user) == ("range-operator", "debian")
-
-def test_a_refused_sign_in_is_named_rather_than_blamed_on_a_missing_header(cloud):
-    cloud.refuse_logins = True
-
-    with pytest.raises(RangeUnavailable) as raised:
-        reader(cloud)(f"http://127.0.0.1:{cloud.port}/v2.0/networks")
-
-    assert "401" in str(raised.value) and "disabled" in str(raised.value), (
-        f"Keystone said why it refused and the operator was told only that "
-        f"no token header came back: {raised.value}"
     )
 
 def test_a_write_sends_its_verb_its_body_and_the_token_and_reads_the_answer(cloud):
@@ -433,14 +313,6 @@ def test_a_delete_answered_with_no_body_is_done(cloud):
 
     assert reader(cloud)(f"DELETE http://127.0.0.1:{cloud.port}/v2.0/subnets/sub-1") == {}
     assert cloud.written[0][:2] == ("DELETE", "/v2.0/subnets/sub-1")
-
-def test_a_write_refused_for_its_token_is_signed_in_again_and_sent_once_more(cloud):
-    cloud.write_answers = [(401, {"error": {"message": "token expired"}}), (200, {"tags": ["x"]})]
-
-    answered = reader(cloud)(f"PUT http://127.0.0.1:{cloud.port}/v2.0/networks/n/tags", {"tags": ["x"]})
-
-    assert answered == {"tags": ["x"]}
-    assert cloud.tokens == 2 and len(cloud.written) == 2
 
 def test_a_refused_write_names_its_address_and_answer(cloud):
     cloud.write_answers = [(409, {"NeutronError": {"message": "overlaps with another subnet"}})]

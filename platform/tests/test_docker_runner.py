@@ -42,20 +42,14 @@ def test_output_that_is_not_utf8_does_not_crash_the_runner(docker_that):
     )
 
 
-def test_a_command_that_outlives_its_timeout_is_named_as_such(docker_that):
-    substrate = docker_that("sleep 5\n")
-
-    with pytest.raises(RangeUnavailable, match="did not finish within 1s"):
-        substrate.runner("sensor")(["true"], timeout=1)
-
-
-def test_a_tool_that_outlives_its_timeout_is_named_as_such(docker_that):
-    substrate = docker_that(
-        'case "$1" in network) echo fsl_edge fsl edge ;; *) sleep 5 ;; esac\n'
-    )
-
-    with pytest.raises(RangeUnavailable, match="did not finish within 1s"):
-        substrate.launcher("edge")("fsl-kali", ["sqlmap"], timeout=1)
+@pytest.mark.parametrize("script, call", [
+    ("sleep 5\n", lambda substrate: substrate.runner("sensor")(["true"], timeout=0.2)),
+    ('case "$1" in network) echo fsl_edge fsl edge ;; *) sleep 5 ;; esac\n',
+     lambda substrate: substrate.launcher("edge")("fsl-kali", ["sqlmap"], timeout=0.2)),
+], ids=["runner", "launcher"])
+def test_a_command_that_outlives_its_timeout_is_named_as_such(docker_that, script, call):
+    with pytest.raises(RangeUnavailable, match="did not finish within"):
+        call(docker_that(script))
 
 
 def test_a_command_that_fails_is_a_command_that_ran(docker_that):
@@ -66,29 +60,13 @@ def test_a_command_that_fails_is_a_command_that_ran(docker_that):
     assert (ran.exit_code, ran.output) == (1, "no such file\n"), ran
 
 
-def test_input_reaches_the_command(docker_that):
-    ran = docker_that(RUNS_WHAT_IT_IS_GIVEN).runner("sensor")(
-        ["cat"], stdin="alert http any\n"
-    )
+@pytest.mark.parametrize("said, named", [
+    ("Error response from daemon: container 92e9bf6c is not running", "is not running"),
+    ("Cannot connect to the Docker daemon at unix:///x/docker.sock. Is the docker daemon running?",
+     "Cannot connect"),
+], ids=["container-stopped", "daemon-gone"])
+def test_a_docker_that_cannot_run_the_command_is_unavailable_not_a_failed_command(docker_that, said, named):
+    substrate = docker_that(f"echo '{said}' >&2\nexit 1\n")
 
-    assert ran.output == "alert http any\n", ran
-
-
-def test_a_container_that_is_stopped_is_unavailable_not_a_failed_command(docker_that):
-    substrate = docker_that(
-        "echo 'Error response from daemon: container 92e9bf6c is not running' >&2\n"
-        "exit 1\n"
-    )
-
-    with pytest.raises(RangeUnavailable, match="is not running"):
-        substrate.runner("sensor")(["cat", "/var/log/wiki-reads.log"])
-
-
-def test_a_daemon_that_is_not_there_is_unavailable_not_a_failed_command(docker_that):
-    substrate = docker_that(
-        "echo 'Cannot connect to the Docker daemon at unix:///x/docker.sock. "
-        "Is the docker daemon running?' >&2\nexit 1\n"
-    )
-
-    with pytest.raises(RangeUnavailable, match="Cannot connect"):
+    with pytest.raises(RangeUnavailable, match=named):
         substrate.runner("sensor")(["cat", "/etc/suricata/rules/local.rules"])

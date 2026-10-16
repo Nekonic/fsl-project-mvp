@@ -37,28 +37,6 @@ def session_with(alerts_matching_no_case, benign_cases=2, benign_that_alerted=0)
         )
     return session
 
-def test_the_score_says_how_much_evidence_it_could_not_place(client):
-    session = session_with(alerts_matching_no_case=7)
-
-    totals = client.get(f"/api/sessions/{session.id}/score/").json()
-
-    assert totals["unattributed"] == 7, (
-        "seven alerts belonged to no case and the score reported only the "
-        "three case decisions it could make. An operator reading fp=0 cannot "
-        "see that the sensor fired seven times"
-    )
-
-def test_the_false_positive_denominator_is_on_screen(client):
-    session = session_with(alerts_matching_no_case=0, benign_cases=3)
-
-    totals = client.get(f"/api/sessions/{session.id}/score/").json()
-
-    assert totals["benign_cases"] == 3, (
-        "false_positive_rate = fp/(fp+tn) has a denominator equal to the "
-        "number of benign cases - three here, six in the shipped file - so it "
-        "has a granularity of 0.33 and is printed to two decimals"
-    )
-
 def test_the_false_positive_rate_is_over_benign_cases_not_attacks(client):
     session = session_with(
         alerts_matching_no_case=0, benign_cases=3, benign_that_alerted=1

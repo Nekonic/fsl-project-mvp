@@ -64,19 +64,24 @@ def stub(described=SHAPE, error=None):
 def origins(described=SHAPE):
     return attacker.origins(described)
 
-def test_every_declared_network_is_an_origin():
-    assert {o["id"] for o in origins()} == {"ru", "hk", "br"}
+def test_every_declared_network_is_an_origin_in_a_stable_order_with_the_default_marked():
+    listed = origins()
+
+    assert [o["id"] for o in listed] == ["br", "hk", "ru"], "rotation depends on a stable order"
+    assert [o["id"] for o in listed if o["default"]] == ["ru"]
 
 def test_an_origin_carries_both_addresses_the_terminal_can_leave_by():
-    edge = next(o for o in origins() if o["id"] == "ru")
+    found = {o["id"]: o for o in origins()}
 
-    assert edge["source_ip"] == "5.188.10.7"
-    assert edge["direct_ip"] == "5.188.10.2"
-
-def test_an_origin_the_attacker_box_cannot_reach_says_so():
-    hk = next(o for o in origins() if o["id"] == "hk")
-
-    assert hk["direct_ip"] == ""
+    assert (found["ru"]["source_ip"], found["ru"]["direct_ip"]) == ("5.188.10.7", "5.188.10.2")
+    assert (found["hk"]["source_ip"], found["hk"]["direct_ip"]) == ("103.152.220.7", ""), (
+        "an origin the attacker box cannot reach says so")
+    assert (found["hk"]["label"], found["hk"]["subnet"]) == ("Hong Kong", "103.152.220.0/24")
+    assert found["hk"]["target_url"] == "http://103.152.220.9", (
+        "the address was a name assembled out of the origin id - 'waf-' plus "
+        "'hk' - which only resolves because compose was asked to put that "
+        "alias on that network. Neutron hands out no aliases"
+    )
 
 def test_a_missing_attacker_box_does_not_lose_the_origins():
     without_kali = Shape(
@@ -91,23 +96,9 @@ def test_a_missing_attacker_box_does_not_lose_the_origins():
         "ru", "hk", "br",
     }
 
-def test_an_origin_carries_the_address_the_attack_will_come_from():
-    found = {o["id"]: o["source_ip"] for o in origins()}
-
-    assert found["hk"] == "103.152.220.7"
-    assert found["ru"] == "5.188.10.7"
-
-def test_an_attack_leaves_for_an_address_the_range_gave():
-    hk = next(o for o in origins() if o["id"] == "hk")
-
-    assert hk["target_url"] == "http://103.152.220.9", (
-        "the address was a name assembled out of the origin id - 'waf-' plus "
-        "'hk' - which only resolves because compose was asked to put that "
-        "alias on that network. Neutron hands out no aliases"
-    )
-
-def test_an_origin_with_no_way_in_is_not_offered():
-    stranded = replace(HK, nodes=(Node(PROXY, "103.152.220.7"),))
+@pytest.mark.parametrize("missing", [WAF, PROXY])
+def test_an_origin_with_no_way_in_is_not_offered(missing):
+    stranded = replace(HK, nodes=tuple(n for n in HK.nodes if n.name != missing))
 
     listed = attacker.origins(Shape(segments=(EDGE, stranded), sensors=()))
 
@@ -116,53 +107,14 @@ def test_an_origin_with_no_way_in_is_not_offered():
         "and an attack fired from it would have gone nowhere"
     )
 
-def test_no_name_is_assembled_from_an_origin_id_anywhere():
-    for source in (
-        pathlib.Path(attacker.__file__),
-        pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/proxy/stamp.py",
-    ):
-        assert "waf-" not in source.read_text(), (
-            f"{source.name} builds a hostname by pasting 'waf-' in front of an "
-            f"origin id, so the range has to be told to answer to it"
-        )
-
-def test_the_label_is_the_stack_s_own_description():
-    hk = next(o for o in origins() if o["id"] == "hk")
-
-    assert hk["label"] == "Hong Kong"
-    assert hk["subnet"] == "103.152.220.0/24"
-
-def test_origins_are_in_a_stable_order_because_rotation_depends_on_it():
-    assert [o["id"] for o in origins()] == sorted(o["id"] for o in origins())
-
-def test_the_default_origin_is_the_one_the_terminal_already_used():
-    assert [o["id"] for o in origins() if o["default"]] == ["ru"]
-
-def test_a_segment_that_carries_no_origin_is_not_a_place_to_attack_from():
-    assert "estate" not in {o["id"] for o in origins()}
-
-def test_a_network_the_attacker_is_not_on_is_not_an_origin():
-    elsewhere = Shape(
-        segments=tuple(
-            replace(s, nodes=tuple(n for n in s.nodes if n.name != PROXY))
-            if s.id == "br" else s
-            for s in SHAPE.segments
-        ),
-        sensors=(),
-    )
-
-    assert {o["id"] for o in origins(elsewhere)} == {"ru", "hk"}
-
 def test_an_attacker_box_on_nothing_at_all_is_an_error_not_an_empty_list():
     nowhere = Shape(
         segments=(replace(EDGE, nodes=(Node(KALI, "5.188.10.2"),)),), sensors=(),
     )
 
-    with pytest.raises(AttackerUnavailable):
+    with pytest.raises(AttackerUnavailable) as raised:
         origins(nowhere)
-
-def test_an_attacker_box_that_cannot_be_reached_is_a_range_that_cannot_be_read():
-    assert issubclass(AttackerUnavailable, RangeUnavailable)
+    assert isinstance(raised.value, RangeUnavailable), "the views answer 503 for a range that cannot be read"
 
 def test_finding_an_origin_never_names_the_substrate():
     source = pathlib.Path(attacker.__file__).read_text()
@@ -172,13 +124,6 @@ def test_finding_an_origin_never_names_the_substrate():
 
 def test_the_default_origin_answers_when_none_was_asked_for():
     assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.7"
-
-def test_a_chosen_origin_answers_with_its_own_address():
-    assert attacker.find(SHAPE, "hk")["source_ip"] == "103.152.220.7"
-
-def test_an_unknown_origin_is_refused_rather_than_falling_back():
-    with pytest.raises(attacker.UnknownOrigin):
-        attacker.find(SHAPE, "edge-antarctica")
 
 pytestmark = pytest.mark.django_db
 
@@ -207,15 +152,6 @@ def _fire(client, session_id, payload):
 def session_id(client):
     return client.post_json("/api/sessions/", {}).json()["id"]
 
-def test_the_console_can_ask_where_it_may_attack_from(client):
-    with stub(), patch("api.views.attacker.origins", return_value=PLACES):
-        response = client.get("/api/origins/")
-
-    assert response.status_code == 200
-    assert [o["id"] for o in response.json()["origins"]] == [
-        "ru", "br", "hk",
-    ]
-
 def test_the_origins_of_a_named_session_are_read_from_its_own_stack(client, session_id):
     asked = []
 
@@ -227,6 +163,7 @@ def test_the_origins_of_a_named_session_are_read_from_its_own_stack(client, sess
         response = client.get("/api/origins/", {"session": session_id})
 
     assert response.status_code == 200, response.content
+    assert [o["id"] for o in response.json()["origins"]] == ["br", "hk", "ru"]
     assert asked == [session_id], (
         "the origins came from whichever session is newest, which under two open "
         "sessions is not always the one that asked"
@@ -255,39 +192,19 @@ def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
 
     assert response.status_code == 201
     assert fired.call_args.args[2] == "http://103.152.220.9:8080"
+    assert response.json()["meta"]["origin"] == "hk"
 
-def test_the_origin_is_recorded_but_not_an_address(client, session_id):
-    response, _ = _fire(
-        client, session_id, {"case": "board-sqli-login-bypass", "origin": "hk"}
-    )
-    meta = response.json()["meta"]
-
-    assert meta["origin"] == "hk"
-    assert meta["target_url"] == "http://103.152.220.9:8080"
-    assert "source_ip" not in meta
-
-def test_an_attack_wears_the_origin_before_firing(client, session_id):
+@pytest.mark.parametrize("payload, worn_ids", [
+    ({"case": "board-sqli-login-bypass", "origin": "hk"}, ["hk"]),
+    ({"case": "board-sqli-login-bypass"}, []),
+])
+def test_an_attack_wears_the_origin_before_firing(client, session_id, payload, worn_ids):
     with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
             patch("api.views.harness.fire"), \
             patch("api.views.attacker.wear_origin") as worn:
-        client.post_json(
-            f"/api/sessions/{session_id}/attacks/",
-            {"case": "board-sqli-login-bypass", "origin": "hk"},
-        )
+        client.post_json(f"/api/sessions/{session_id}/attacks/", payload)
 
-    assert worn.call_count == 1
-    assert worn.call_args.args[0]["id"] == "hk"
-
-def test_an_attack_with_no_origin_wears_nothing(client, session_id):
-    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
-            patch("api.views.harness.fire"), \
-            patch("api.views.attacker.wear_origin") as worn:
-        client.post_json(
-            f"/api/sessions/{session_id}/attacks/",
-            {"case": "board-sqli-login-bypass"},
-        )
-
-    assert worn.call_count == 0
+    assert [call.args[0]["id"] for call in worn.call_args_list] == worn_ids
 
 def test_rotation_moves_on_with_every_attack(client, session_id):
     seen = []
@@ -448,7 +365,6 @@ def test_on_openstack_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
     assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"
 
 def test_on_openstack_an_origin_the_attacker_has_no_address_on_is_not_offered(settings):
-    from dataclasses import replace
     settings.RANGE = _openstack_range()
     settings.ATTACKER_SOURCE_CONTAINER = KALI
     settings.ATTACKER_CONTAINER = KALI

@@ -1,5 +1,6 @@
 import ipaddress
-import pathlib
+
+import pytest
 
 from range import cloud, declared, fabric
 
@@ -65,39 +66,31 @@ def test_a_complete_project_needs_nothing():
     assert plan.clean and not plan.leftovers, plan
     assert len(plan.present) == 32
 
-def test_a_reach_group_without_the_time_rule_needs_it():
-    reach = dict(GROUPS[1], security_group_rules=[])
+@pytest.mark.parametrize("rules", [
+    [],
+    [dict(fabric.ntp_rule("sg-reach", "sg-mgmt"), remote_group_id=None, remote_ip_prefix="0.0.0.0/0", id="rule-any")],
+], ids=["missing", "open-to-any-address"])
+def test_a_reach_group_without_the_time_rule_for_management_alone_needs_it(rules):
+    reach = dict(GROUPS[1], security_group_rules=rules)
 
     plan = planned(*built(), groups=[GROUPS[0], reach, GROUPS[2]])
 
     assert plan.ntp and not plan.clean, (
-        "the range hosts have no Internet; the platform is their only NTP server"
+        "the range hosts have no Internet; the platform is their only NTP server, "
+        "and its management port answers NTP to members of fsl-mgmt alone"
     )
 
-def test_time_open_to_any_address_is_not_the_time_rule():
-    rule = dict(fabric.ntp_rule("sg-reach", "sg-mgmt"), remote_group_id=None,
-                remote_ip_prefix="0.0.0.0/0", id="rule-any")
-    reach = dict(GROUPS[1], security_group_rules=[rule])
-
-    assert planned(*built(), groups=[GROUPS[0], reach, GROUPS[2]]).ntp, (
-        "the platform's management port answers NTP to members of fsl-mgmt alone"
-    )
-
-def test_a_subnet_on_its_cidr_but_with_dhcp_on_is_drift_not_a_second_subnet():
-    networks, subnets, keypairs = built()
-    subnets[0] = dict(subnets[0], enable_dhcp=True)
-
-    plan = planned(networks, subnets, keypairs)
-
-    assert not plan.subnets
-    assert plan.drifted == (f"subnet {subnets[0]['name']} {subnets[0]['cidr']}: dhcp is on, declared off",)
-
-def test_a_network_the_declaration_no_longer_names_is_a_leftover():
+def test_a_network_or_subnet_the_declaration_no_longer_names_is_a_leftover():
     networks, subnets, keypairs = built()
     networks.append({"id": "net-edge", "name": "fsl-edge", "tags": [f"{fabric.TAG}=edge"]})
+    subnets.append({
+        "id": "sub-kp", "network_id": "net-internet", "name": "fsl-kp",
+        "cidr": "175.45.176.0/24", "enable_dhcp": False, "gateway_ip": "175.45.176.1",
+    })
 
     assert planned(networks, subnets, keypairs).leftovers == (
         "network fsl-edge carries fsl.segment.id=edge, which the declaration does not name",
+        "subnet fsl-kp 175.45.176.0/24 on fsl-internet is declared by nothing",
     )
 
 def test_a_network_left_untagged_by_a_failed_create_is_a_leftover_not_a_duplicate():
@@ -117,17 +110,6 @@ def test_two_networks_carrying_one_tag_are_drift():
 
     assert planned(networks, subnets, keypairs).drifted == (
         "networks fsl-estate and fsl-estate-2 both carry fsl.segment.id=estate",
-    )
-
-def test_a_subnet_no_origin_declares_is_a_leftover():
-    networks, subnets, keypairs = built()
-    subnets.append({
-        "id": "sub-kp", "network_id": "net-internet", "name": "fsl-kp",
-        "cidr": "175.45.176.0/24", "enable_dhcp": False, "gateway_ip": "175.45.176.1",
-    })
-
-    assert planned(networks, subnets, keypairs).leftovers == (
-        "subnet fsl-kp 175.45.176.0/24 on fsl-internet is declared by nothing",
     )
 
 def test_a_keypair_of_that_name_with_another_key_is_drift():
@@ -155,15 +137,17 @@ def test_the_inside_networks_overlap_nothing_the_platform_vm_already_routes():
         "would take the route away"
     )
 
-def test_teardown_removes_subnets_before_networks_and_only_what_it_owns():
+def test_teardown_removes_subnets_then_networks_then_the_range_groups_and_only_what_it_owns():
     networks, subnets, keypairs = built()
     networks.append({"id": "net-other", "name": "tenant-scratch", "tags": []})
 
-    steps = fabric.teardown(DECLARED, networks, subnets, keypairs)
+    steps = fabric.teardown(DECLARED, networks, subnets, keypairs,
+                            GROUPS + [{"id": "sg-default", "name": "default"}])
     kinds = [kind for kind, _ in steps]
 
-    assert kinds == ["subnet"] * 32 + ["network"] * 3 + ["keypair"]
+    assert kinds == ["subnet"] * 32 + ["network"] * 3 + ["keypair"] + ["group"] * 3
     assert ("network", "net-other") not in steps
+    assert steps[-3:] == [("group", "sg-mgmt"), ("group", "sg-reach"), ("group", "sg-range")]
 
 def test_a_project_without_the_range_groups_gets_all_of_them():
     plan = planned(*built(), groups=())
@@ -180,20 +164,6 @@ def test_two_groups_of_one_name_are_drift():
     plan = planned(*built(), groups=GROUPS + [{"id": "sg-twin", "name": fabric.RANGE_GROUP}])
 
     assert plan.drifted == (f"2 security groups are called {fabric.RANGE_GROUP}",)
-
-def test_teardown_removes_the_range_groups_last():
-    networks, subnets, keypairs = built()
-
-    steps = fabric.teardown(DECLARED, networks, subnets, keypairs,
-                            GROUPS + [{"id": "sg-default", "name": "default"}])
-
-    assert steps[-3:] == [("group", "sg-mgmt"), ("group", "sg-reach"), ("group", "sg-range")]
-
-def test_the_planner_touches_no_cloud_and_no_disk():
-    source = pathlib.Path(fabric.__file__).read_text()
-
-    assert not [word for word in ("requests", "urllib", "subprocess", "open(") if word in source]
-
 
 def _rule(prefix, ident, port=fabric.COLLECTOR_PORT):
     return {"id": ident, "direction": "ingress", "ethertype": "IPv4", "protocol": "udp",
@@ -214,7 +184,3 @@ def test_the_collector_hears_each_sender_and_nothing_else():
                        "remote_ip_prefix": "10.31.0.198/32"}]
     assert delete == ["r-stale"], "a rule for another port is not the collector's to remove"
 
-def test_a_collector_already_hearing_its_senders_changes_nothing():
-    group = {"id": "sg-reach", "security_group_rules": [_rule("10.31.0.63/32", "r-edge")]}
-
-    assert fabric.hearing(group, ["10.31.0.63"]) == ([], [])

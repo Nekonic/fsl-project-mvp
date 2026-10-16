@@ -45,10 +45,10 @@ argument goes to pytest.
   (`FSL_MAX_SESSIONS`), OpenStack the range's slot count (`compute.slots`,
   two on the test cloud since 2026-10-12). With N = 1 one
   worker runs every session module in the order `pytest test/` would.
-- **Idle.** `test_fabric`, `test_geoip_durable`, `test_origin_placement` and
-  `test_waf_geolocation` read only the platform's fabric answer,
-  Elasticsearch and repo files, so they run in a process of their own beside
-  the workers, without waiting out a range reset. Everything that runs a
+- **Idle.** `test_geoip_durable`, `test_origin_placement` and
+  `test_waf_geolocation` read only Elasticsearch and repo files, so they run
+  in a process of their own beside the workers, without waiting out a range
+  reset. Everything that runs a
   command on a range host needs the range standing and stays in a worker.
 - **Balanced.** For N > 1 the modules that share a session-scoped fixture
   (from `shared_sessions.py` or `conftest.py`, read statically) are one group

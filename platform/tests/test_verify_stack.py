@@ -1,12 +1,7 @@
-import http.server
-import json
 import os
-import shlex
 import shutil
 import stat
 import subprocess
-import sys
-import threading
 from pathlib import Path
 
 import pytest
@@ -53,145 +48,21 @@ def verify_against(tmp_path, checkout):
     return run
 
 
-def test_a_stack_brought_up_from_another_checkout_is_not_restarted(
-    tmp_path, verify_against
-):
+@pytest.mark.parametrize("owner", ["elsewhere", "this checkout"])
+def test_only_a_stack_brought_up_from_this_checkout_is_restarted(tmp_path, checkout, verify_against, owner):
     elsewhere = tmp_path / "someone-elses-worktree"
     elsewhere.mkdir()
+    brought_up = checkout if owner == "this checkout" else elsewhere
 
-    done, docker = verify_against(f'echo "{elsewhere}"')
+    done, docker = verify_against(f'echo "{brought_up}"')
 
-    assert RESTART not in docker, (
+    assert (RESTART in docker) == (brought_up == checkout), (
         f"compose project fsl belongs to whichever checkout last ran up, so "
-        f"this restarted {elsewhere} and acceptance would test that tree's "
-        f"code while saying it tested this one. docker was called with:\n{docker}"
+        f"restarting another tree's stack makes acceptance test that tree's "
+        f"code while saying it tested this one. docker was called with:\n{docker}\n{done.stdout}"
     )
-    assert done.returncode == 1 and str(elsewhere) in done.stdout, done.stdout
-
-
-def test_a_platform_that_is_not_there_is_named_not_restarted(verify_against):
-    done, docker = verify_against(
-        "echo 'Error: No such object: fsl-platform' >&2; exit 1"
-    )
-
-    assert RESTART not in docker, docker
-    assert done.returncode == 1 and "fsl-platform" in done.stdout, done.stdout
-
-
-def test_a_stack_brought_up_from_this_checkout_is_restarted(
-    checkout, verify_against
-):
-    done, docker = verify_against(f'echo "{checkout}"')
-
-    assert RESTART in docker, (
-        f"the guard refused the checkout that owns the stack:\n{done.stdout}"
-    )
-
-
-def test_a_measure_that_crashes_is_reported_as_a_crash_not_a_regression(
-    tmp_path, checkout
-):
-    executable(
-        checkout / ".venv/bin/python",
-        '[ "$1" = - ] || exit 0\n'
-        'script="$(cat)"\n'
-        'case "$script" in *bin/measure*) ;; *) exit 0 ;; esac\n'
-        f'printf "%s\\n" "$script" | exec {shlex.quote(sys.executable)} -\n',
-    )
-    executable(
-        checkout / "bin/measure",
-        "echo 'Traceback (most recent call last):' >&2\n"
-        "echo \"FileNotFoundError: No such file: 'platform/gone.py'\" >&2\n"
-        "exit 1\n",
-    )
-    (checkout / "metrics.json").write_text(
-        '{"core_loc": 1, "dependencies": 1, "services": 1, "tests": 1}\n'
-    )
-    executable(tmp_path / "tools/curl", "exit 0\n")
-    executable(
-        tmp_path / "tools/docker",
-        f'case "$1" in inspect) echo "{checkout}" ;; *) exit 0 ;; esac\n',
-    )
-
-    done = subprocess.run(
-        [str(checkout / "bin/verify")],
-        capture_output=True, text=True, timeout=60,
-        env={**os.environ, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"},
-    )
-
-    assert "measure crashed" in done.stdout, done.stdout
-    assert "platform/gone.py" in done.stdout, done.stdout
-    assert "metrics regressed" not in done.stdout, (
-        f"measure itself failed, so nothing was compared; calling that a "
-        f"regression sends the reader looking for a number that grew:\n"
-        f"{done.stdout}"
-    )
-
-
-@pytest.fixture
-def sensor_refusing():
-    refusal = {"ok": False, "output": 'E: detect-parse: no terminating ";" found at line 3'}
-
-    class Refusing(http.server.BaseHTTPRequestHandler):
-        def do_POST(self):
-            self.rfile.read(int(self.headers["Content-Length"]))
-            body = json.dumps(refusal).encode()
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    server = http.server.HTTPServer(("127.0.0.1", 0), Refusing)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield server.server_address[1], refusal["output"]
-    server.shutdown()
-
-
-def test_a_rule_file_the_sensor_refuses_is_reported_with_the_sensors_reason(
-    tmp_path, checkout, sensor_refusing
-):
-    port, reason = sensor_refusing
-    rules = checkout / "deploy/suricata/rules/local.rules"
-    rules.parent.mkdir(parents=True)
-    rules.write_text('alert http any any -> any any (msg:"x"; sid:1\n')
-    executable(
-        checkout / ".venv/bin/python",
-        '[ "$1" = - ] || exit 0\n'
-        'script="$(cat)"\n'
-        'case "$script" in *api/rules/validate*) ;; *) exit 0 ;; esac\n'
-        f'printf "%s\\n" "$script" | exec {shlex.quote(sys.executable)} -\n',
-    )
-    executable(tmp_path / "tools/curl", "exit 0\n")
-    executable(
-        tmp_path / "tools/docker",
-        f'case "$1" in inspect) echo "{checkout}" ;; *) exit 0 ;; esac\n',
-    )
-    unproxied = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
-
-    done = subprocess.run(
-        [str(checkout / "bin/verify")],
-        capture_output=True, text=True, timeout=60,
-        env={
-            **unproxied,
-            "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin",
-            "TMPDIR": str(tmp_path),
-            "FSL_PLATFORM_URL": f"http://127.0.0.1:{port}",
-        },
-    )
-
-    said = done.stdout + done.stderr
-    assert reason in said, (
-        f"the sensor said why it refused the rule file and verify threw that "
-        f"away:\n{said}"
-    )
-    assert "bind-mounted files were replaced" not in said, (
-        f"a rule the sensor cannot parse was blamed on the bind mounts, and "
-        f"the fix offered was a recreate that leaves the rule broken:\n{said}"
-    )
+    if brought_up == elsewhere:
+        assert done.returncode == 1 and str(elsewhere) in done.stdout, done.stdout
 
 
 def test_a_fast_check_whose_measure_refuses_does_not_pass(checkout):
@@ -215,12 +86,3 @@ def test_a_fast_check_whose_measure_refuses_does_not_pass(checkout):
         f"session's work is thrown away every time:\n{done.stdout}"
     )
     assert "measure" in done.stdout, done.stdout
-
-
-def test_the_readiness_probe_after_a_restart_asks_the_cheap_open_list():
-    script = (ROOT / "bin/verify").read_text()
-    probes = [line for line in script.splitlines() if "curl" in line and "/api/sessions/" in line]
-
-    assert probes and all('/api/sessions/?state=open"' in line for line in probes), (
-        "the full list scores closed sessions; the probe proves only that the platform answers"
-    )

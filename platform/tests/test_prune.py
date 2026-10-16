@@ -62,19 +62,6 @@ def an_acceptance_run(prune):
     }
 
 
-def test_only_the_closed_sessions_of_the_run_are_chosen(prune, an_acceptance_run):
-    namespace = {}
-    exec(prune.module.script(ids=an_acceptance_run["run"]), namespace)
-
-    chosen = set(namespace["doomed"].values_list("id", flat=True))
-
-    assert chosen == an_acceptance_run["run_closed"], (
-        f"one acceptance run makes about 20 sessions, so keeping the newest 20 "
-        f"deleted every session a person had made, open ones included. Chosen "
-        f"{sorted(chosen)}, operators were {sorted(an_acceptance_run['operators'])}"
-    )
-
-
 def test_what_verify_runs_leaves_the_operators_and_every_open_session(
     prune, an_acceptance_run, tmp_path
 ):
@@ -114,13 +101,3 @@ def test_a_session_a_person_opened_during_the_run_is_not_the_run_s(prune, tmp_pa
         f"a session opened by a person while acceptance ran has an id above "
         f"the run's bound, so 'newer than the run' deleted it: left {sorted(left)}"
     )
-
-
-def test_a_listed_session_still_open_is_not_deleted(prune, tmp_path):
-    run = made(4, still_open=1)
-    listed = tmp_path / "sessions"
-    listed.write_text("".join(f"{session_id}\n" for session_id in run))
-
-    prune("--ids", str(listed), "--apply")
-
-    assert set(Session.objects.values_list("id", flat=True)) == {run[0]}

@@ -4,7 +4,6 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-import wargames
 from api.models import Objective, Session
 
 pytestmark = pytest.mark.django_db
@@ -42,40 +41,20 @@ def rows_for(*names):
     return [{"username": n, "hash": TRUTH[n]} for n in names]
 
 
-def test_a_whole_dump_credits_partial_admin_and_full(client):
+@pytest.mark.parametrize("names, credited", [
+    (("admin", "jiwoo", "minseo"), {"board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"}),
+    (("admin",), {"board-auth-user-partial", "board-auth-user-admin"}),
+    (("jiwoo",), {"board-auth-user-partial"}),
+], ids=["whole-dump", "admin-hash", "one-non-admin-row"])
+def test_rows_that_match_the_snapshot_credit_their_tiers(client, names, credited):
     session_id = start(client)
     fire_exfil(client, session_id)
 
-    response = submit(client, session_id, rows_for("admin", "jiwoo", "minseo"))
+    response = submit(client, session_id, rows_for(*names))
 
     assert response.status_code == 200, response.content
-    assert set(response.json()["credited"]) == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    }
-    assert response.json()["coverage"] == 1.0
-    assert {o.key for o in Objective.objects.filter(session_id=session_id)} == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    }
-
-
-def test_one_non_admin_row_fires_only_partial(client):
-    session_id = start(client)
-    fire_exfil(client, session_id)
-
-    response = submit(client, session_id, rows_for("jiwoo"))
-
-    assert response.json()["credited"] == ["board-auth-user-partial"]
-
-
-def test_the_admin_hash_fires_partial_and_admin(client):
-    session_id = start(client)
-    fire_exfil(client, session_id)
-
-    response = submit(client, session_id, rows_for("admin"))
-
-    assert set(response.json()["credited"]) == {
-        "board-auth-user-partial", "board-auth-user-admin"
-    }
+    assert set(response.json()["credited"]) == credited
+    assert {o.key for o in Objective.objects.filter(session_id=session_id)} == credited
 
 
 def test_fabricated_and_plaintext_loot_credits_nothing(client):
@@ -126,19 +105,12 @@ def test_a_closed_session_refuses_loot(client):
 
 
 def test_a_non_loot_wargame_refuses_loot(client):
-    detect = {
-        "id": "detect",
-        "name": "Detection only",
-        "description": "A wargame that keeps no objectives.",
-        "case_file": "board.yaml",
-        "public_url": "http://board.com",
-        "objective_model": "none",
-    }
-    with patch.dict(wargames.WARGAMES, {"detect": detect}):
-        session_id = client.post_json("/api/sessions/", {"scenario": "detect"}).json()["id"]
-        response = submit(client, session_id, rows_for("admin"))
+    session_id = client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
+
+    response = submit(client, session_id, rows_for("admin"))
 
     assert response.status_code == 400
+    assert not Objective.objects.filter(session_id=session_id).exists()
 
 
 def test_the_case_id_windows_the_objective_to_the_exfil_case(client):

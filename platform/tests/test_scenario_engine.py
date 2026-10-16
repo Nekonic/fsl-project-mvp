@@ -23,11 +23,6 @@ DUMPED = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
 HELD = (FIXTURES / "sqlmap-not-injectable.out").read_text()
 SQLMAP = "board-sqli-orderby-sqlmap"
 
-def declared(**changed):
-    one = copy.deepcopy(wargames.scenario_run("2.1"))
-    one.update(changed)
-    return one
-
 def known():
     return {case["name"]: case["malicious"] for case in wargames.cases("board")}
 
@@ -98,55 +93,37 @@ def alert(session, marker, source="modsecurity", rule="920272", at=None, src="17
 
 COURSE = ["1.1", "1.2", "1.3", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "3.4", "4.1"]
 
-def test_the_board_declares_its_scenarios_in_task_class_order():
-    assert [one["id"] for one in wargames.scenarios("board")] == COURSE
-    assert [one["task_class"] for one in wargames.scenarios("board")] == [
-        "judgement"] * 3 + ["availability"] * 3 + ["detection"] * 4 + ["unknown"]
-    assert wargames.scenario_owner("2.1") == "board"
-    assert wargames.scenario_owner("9.9") is None
-
-@pytest.mark.parametrize("changed, said", [
-    ({"task_class": "speed"}, "task_class"),
-    ({"guidance": "half"}, "guidance"),
-    ({"minutes": 4, "window_minutes": 4}, "window"),
-    ({"defense": "none-such"}, "defense"),
-    ({"traffic": {"profile": "nobody", "rate": 1}}, "profile"),
-    ({"traffic": {"profile": "readers", "rate": 99}}, "rate"),
-    ({"attacks": [{"at": 1200, "case": SQLMAP}]}, "at"),
-    ({"attacks": [{"at": 10, "case": "board-normal-search"}]}, "malicious"),
-    ({"attacks": []}, "attacks"),
-    ({"completion": {"judged": "all"}}, "completion"),
-    ({"cards": [{"id": "x", "when": "later"}]}, "cards"),
-    ({"hints": ["a", "a"]}, "hints"),
-    ({"briefing": {"situation": "x", "goal": "y"}}, "briefing"),
-    ({"steps": [{"id": "s", "check": {"kind": "click"}}]}, "worked"),
+@pytest.mark.parametrize("base, changed, said", [
+    ("2.1", {"task_class": "speed"}, "task_class"),
+    ("2.1", {"guidance": "half"}, "guidance"),
+    ("2.1", {"minutes": 4, "window_minutes": 4}, "window"),
+    ("2.1", {"defense": "none-such"}, "defense"),
+    ("2.1", {"traffic": {"profile": "nobody", "rate": 1}}, "profile"),
+    ("2.1", {"traffic": {"profile": "readers", "rate": 99}}, "rate"),
+    ("2.1", {"attacks": [{"at": 1200, "case": SQLMAP}]}, "at"),
+    ("2.1", {"attacks": [{"at": 10, "case": "board-normal-search"}]}, "malicious"),
+    ("2.1", {"attacks": []}, "attacks"),
+    ("2.1", {"completion": {"judged": "all"}}, "completion"),
+    ("2.1", {"completion": {"served": "all"}}, "completion"),
+    ("1.1", {"completion": {}}, "completion"),
+    ("2.1", {"cards": [{"id": "x", "when": "later"}]}, "cards"),
+    ("2.1", {"hints": ["a", "a"]}, "hints"),
+    ("2.1", {"briefing": {"situation": "x", "goal": "y"}}, "briefing"),
+    ("2.1", {"steps": [{"id": "s", "check": {"kind": "click"}}]}, "worked"),
 ])
-def test_a_scenario_that_breaks_the_descriptor_is_refused(changed, said):
-    with pytest.raises(wargames.InvalidCatalogue, match=said):
-        checked(declared(**changed))
-
-def test_a_judgement_scenario_must_ask_for_every_item_judged():
-    one = copy.deepcopy(wargames.scenario_run("1.1"))
+def test_a_scenario_that_breaks_the_descriptor_is_refused(base, changed, said):
+    one = copy.deepcopy(wargames.scenario_run(base))
     checked(one)
-    with pytest.raises(wargames.InvalidCatalogue, match="completion"):
-        checked(dict(one, completion={}))
-
-def test_a_triage_step_names_what_it_waits_for():
-    one = copy.deepcopy(wargames.scenario_run("1.1"))
-    one["steps"][1]["check"] = {"kind": "triage", "judged": "most"}
-    with pytest.raises(wargames.InvalidCatalogue, match="judged"):
-        checked(one)
+    with pytest.raises(wargames.InvalidCatalogue, match=said):
+        checked(dict(one, **changed))
 
 def test_the_catalogue_shows_each_scenario_without_its_attack_schedule(client):
     listed = client.get("/api/wargames/").json()
     board = next(wargame for wargame in listed if wargame["id"] == "board")
 
-    assert [one["id"] for one in board["scenarios"]] == COURSE
+    assert board["scenarios"]
     shown = json.dumps(board["scenarios"])
     assert "attacks" not in shown and SQLMAP not in shown and '"at"' not in shown
-    assert board["scenarios"][1] | {} == board["scenarios"][1]
-    assert {key: board["scenarios"][0][key] for key in ("task_class", "guidance", "minutes")} == {
-        "task_class": "judgement", "guidance": "worked", "minutes": 15}
 
 def test_opening_a_scenario_takes_its_posture_starts_customers_and_schedules_its_attacks(client):
     started = []
@@ -179,8 +156,6 @@ def test_a_worked_scenario_opens_on_the_step_engine_without_seeding_replays(clie
         answer = client.post_json("/api/sessions/", {"scenario": "1.1"})
 
     detail = client.get(f"/api/sessions/{answer.json()['id']}/").json()
-    assert detail["lesson"]["id"] == "1.1"
-    assert [step["id"] for step in detail["lesson"]["steps"]] == ["open", "customer", "attack", "all", "done"]
     assert detail["lesson"]["cases"] == [] and "attacks" not in detail["lesson"]
     assert SQLMAP not in json.dumps(detail), "the session's own page names no scheduled attack"
 
@@ -205,14 +180,6 @@ def test_an_attack_fires_only_once_it_is_due():
     entry = session.scenario_state["schedule"][0]
     assert (entry["state"], entry["outcome"]) == ("fired", "held")
 
-def test_a_scheduled_attack_is_the_red_team_s_attempt_not_a_replay():
-    session = opened()
-    run_at(session, 240)
-
-    case = Case.objects.get(session=session)
-    assert case.malicious and case.meta["scheduled"] == "2.1"
-    assert not any(case.meta.get(mark) for mark in ("seed", "verify", "check", "replay"))
-
 def test_the_schedule_survives_a_restart_and_resumes_an_interrupted_attack():
     session = opened()
     state = session.scenario_state
@@ -232,6 +199,8 @@ def test_a_dump_from_a_scheduled_attack_is_credited_as_loot_and_counts_in_the_fi
     entry = session.scenario_state["schedule"][0]
     assert entry["outcome"] == "leaked" and entry["leaked"] == sorted(TRUTH)
     case = Case.objects.get(session=session)
+    assert case.malicious and case.meta["scheduled"] == "2.1"
+    assert not any(case.meta.get(mark) for mark in ("seed", "verify", "check", "replay"))
     assert case.meta["loot"] == sorted(TRUTH)
     assert Objective.objects.filter(session=session).count() > 0
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
@@ -295,14 +264,6 @@ def test_the_window_fires_every_attack_variant_at_least_once_inside_it():
     assert (added["case"], added["in_window"], added["state"]) == (SQLMAP, True, "due")
     assert scenarios.at(added["due"]) == begun + timedelta(minutes=2)
 
-def test_an_attack_already_due_inside_the_window_is_not_doubled():
-    session = opened()
-    begun = scenarios.at(session.scenario_state["opened_at"]) + timedelta(seconds=60)
-    scenario_run.start_window(session, "learner", begun)
-
-    session.refresh_from_db()
-    assert len(session.scenario_state["schedule"]) == 1
-
 def test_the_window_starts_by_itself_at_its_scheduled_time():
     session = opened()
     run_at(session, 16 * 60)
@@ -362,12 +323,6 @@ def test_the_window_waits_for_its_attacks_before_it_is_judged():
         scenario_run.tick(scenarios.at(window["ends_at"]) + timedelta(seconds=5))
     session.refresh_from_db()
     assert session.scenario_state["windows"][-1]["result"] is None
-
-def test_a_failed_window_can_be_followed_by_another(client):
-    session = opened()
-    window_judged(session, blocked_inside=1)
-
-    assert client.post_json(f"/api/sessions/{session.pk}/scenario/verify-window/").status_code == 201
 
 def test_a_judgement_window_needs_every_earlier_item_judged_right():
     session = opened("1.1")
@@ -437,20 +392,6 @@ def test_a_verdict_is_judged_against_the_record_and_success_against_the_target(c
     kept = session.scenario_state["triage"][items["none"]]
     assert (kept["tries"], kept["first_right"], kept["right"]) == (2, False, True)
 
-@pytest.mark.parametrize("body", [
-    {"verdict": "attack"},
-    {"verdict": "maybe", "succeeded": False},
-    {"verdict": "customer", "item": "no-such-item"},
-])
-def test_a_verdict_that_cannot_be_judged_is_refused(client, body):
-    session = opened("1.1")
-    marker = str(uuid.uuid4())
-    customer(session, timezone.now(), status=403, marker=marker)
-    alert(session, marker)
-    item = client.get(f"/api/sessions/{session.pk}/triage/").json()["items"][0]["item"]
-
-    assert client.post_json(f"/api/sessions/{session.pk}/triage/", {"item": item, **body}).status_code == 400
-
 def test_a_triage_step_passes_on_the_learner_s_right_verdicts(client):
     session = opened("1.1", guidance=True, lesson="1.1")
     marker = str(uuid.uuid4())
@@ -463,77 +404,6 @@ def test_a_triage_step_passes_on_the_learner_s_right_verdicts(client):
     assert check("customer") is False
     judging(client, session, item, "customer")
     assert (check("customer"), check("attack"), check("all")) == (True, False, True)
-
-def test_a_verdict_wrong_twice_on_one_item_offers_a_hint_without_recording_one(client):
-    session = opened("1.1")
-    marker = str(uuid.uuid4())
-    customer(session, timezone.now(), status=403, marker=marker)
-    alert(session, marker)
-    item = client.get(f"/api/sessions/{session.pk}/triage/").json()["items"][0]["item"]
-
-    judging(client, session, item, "attack", False)
-    assert client.get(f"/api/sessions/{session.pk}/scenario/").json()["hints"]["offer"] is None
-    judging(client, session, item, "attack", True)
-
-    status = client.get(f"/api/sessions/{session.pk}/scenario/").json()
-    assert status["hints"]["offer"]["reason"] == "triage"
-    session.refresh_from_db()
-    assert session.hints == [], "an offered hint is recorded only when it is opened"
-
-def test_a_failing_step_check_twice_offers_a_hint_in_a_scenario_instead_of_recording_it(client):
-    session = opened("1.1", guidance=True, lesson="1.1")
-    for _ in range(2):
-        client.post_json(f"/api/sessions/{session.pk}/lesson/steps/all/check/", {})
-
-    session.refresh_from_db()
-    assert session.scenario_state["offer"]["reason"] == "check"
-    assert session.hints == []
-    assert session.lesson_steps["all"].get("hint", 0) == 0
-
-def test_the_same_waf_change_applied_again_offers_a_hint(client):
-    from tests.test_lesson_api import Stand
-
-    session = opened(waf={"paranoia": 3, "exclusions": []})
-    tuning = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "ARGS:q", "path": "/search/"}]}
-    with patch("range.docker.Docker.runner", Stand().runner()):
-        client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(tuning), content_type="application/json")
-        session.refresh_from_db()
-        assert session.scenario_state["offer"] is None
-        client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(tuning), content_type="application/json")
-
-    session.refresh_from_db()
-    assert session.scenario_state["offer"]["reason"] == "waf"
-    assert len(session.scenario_state["waf"]) == 2
-
-def test_five_minutes_without_a_change_while_customers_are_blocked_offers_a_hint():
-    session = opened()
-    now = timezone.now()
-    later = scenarios.at(session.scenario_state["last_change"]) + timedelta(minutes=5, seconds=1)
-    customer(session, later - timedelta(minutes=1), status=403)
-
-    posture = {"file": crs.rendered(crs.checked(wargames.defense("board", "level3")["waf"]))}
-    with patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
-            patch("api.views._ingest", lambda session, within=None: {}), \
-            patch("api.views._waf_read", lambda session: posture):
-        scenario_run._observe(session, now + timedelta(minutes=4))
-        session.refresh_from_db()
-        assert session.scenario_state["offer"] is None
-        scenario_run._observe(session, later)
-
-    session.refresh_from_db()
-    assert session.scenario_state["offer"]["reason"] == "idle"
-
-def test_quiet_customers_never_count_as_stuck():
-    session = opened()
-    later = scenarios.at(session.scenario_state["last_change"]) + timedelta(minutes=9)
-
-    with patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
-            patch("api.views._ingest", lambda session, within=None: {}), \
-            patch("api.views._waf_read", lambda session: {"file": ""}):
-        scenario_run._observe(session, later)
-
-    session.refresh_from_db()
-    assert session.scenario_state["offer"] is None
 
 def test_opening_a_hint_records_it_and_clears_the_offer(client):
     session = opened()
@@ -601,18 +471,6 @@ def test_a_put_without_thresholds_keeps_the_thresholds_in_force(client):
     assert (read["paranoia"], read["thresholds"]) == (2, {"inbound": 10000, "outbound": 10000})
     assert "thresholds" not in cleared
 
-def test_the_raw_uri_exclusion_reads_back_through_the_api(client):
-    from tests.test_lesson_api import Stand
-
-    session = Session.objects.create(scenario="board", baseline=dict(TRUTH))
-    tuning = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_URI_RAW", "path": "/search/"}]}
-    with patch("range.docker.Docker.runner", Stand().runner()):
-        client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(tuning), content_type="application/json")
-        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
-
-    assert read["exclusions"] == tuning["exclusions"]
-    assert read["file"] == crs.rendered(tuning)
-
 def test_the_score_reads_customer_records_before_it_sets_their_alerts_apart(client):
     session = Session.objects.create(scenario="board", baseline=dict(TRUTH), traffic={"running": True})
     pulled = []
@@ -655,7 +513,3 @@ def test_a_judgement_window_is_judged_on_the_verdicts_and_reports_blocked_custom
 
     assert result["passed"] is True, result
     assert result["customers_blocked"] == 2
-
-def test_an_availability_scenario_must_ask_for_customers_served_and_attacks_held():
-    with pytest.raises(wargames.InvalidCatalogue, match="completion"):
-        checked(declared(completion={"served": "all"}))

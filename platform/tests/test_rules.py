@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from range.declared import Declaration
-from range.ports import EXIT_MARK, Ran, RangeUnavailable, reporting
+from range.ports import EXIT_MARK, Ran, RangeUnavailable
 from rules.suricata import RuleApplyError
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
@@ -25,22 +25,6 @@ class Sensor:
             if needle in " ".join(argv):
                 return reply
         return Ran(0, "")
-
-def test_the_docker_runner_execs_in_the_sensor_container():
-    from range.docker import Docker
-
-    substrate = Docker(Declaration(roles={"sensor": "fsl-suricata"}))
-    run = substrate.runner("sensor")
-
-    with patch("range.docker.subprocess.run") as ran:
-        ran.return_value.returncode = 0
-        ran.return_value.stdout = "ok"
-        ran.return_value.stderr = f"{EXIT_MARK}0\n"
-        run(["suricata", "-T", "-S", "/x"])
-
-    argv = ran.call_args.args[0]
-    assert argv[:3] == ["docker", "exec", "fsl-suricata"], argv
-    assert argv[3:] == reporting(["suricata", "-T", "-S", "/x"]), argv
 
 def test_writing_through_the_substrate_opens_stdin():
     from range.docker import Docker
@@ -68,21 +52,6 @@ def test_a_missing_sensor_is_unavailable_not_a_failed_command():
         with pytest.raises(RangeUnavailable):
             run(["cat", "/x"])
 
-def test_a_role_no_host_fills_is_refused_before_anything_runs():
-    from range.docker import Docker
-
-    with pytest.raises(RangeUnavailable, match="sensor"):
-        Docker(Declaration()).runner("sensor")
-
-def test_the_rule_paths_are_the_sensors_own():
-    from rules import suricata
-
-    sensor = Sensor(replies={"reload-rules": Ran(0, '{"message":"done","return":"OK"}')})
-    suricata.apply(GOOD_RULE, sensor, RELOAD)
-
-    written = [argv for argv, stdin in sensor.calls if argv[:2] == ["sh", "-c"]]
-    assert written and all("/var/lib/suricata/rules/" in " ".join(a) for a in written), written
-
 def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
 
@@ -95,15 +64,11 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
     assert response.json()["ok"] is True
     assert RuleSet.objects.count() == 0
 
-def test_validate_endpoint_reports_failure_as_400_with_output(client):
-    with patch(
-        "api.views.suricata.validate",
-        return_value=Ran(1, "Error parsing signature"),
-    ):
-        response = client.post_json("/api/rules/validate/", {"content": "x"})
+    with patch("api.views.suricata.validate", return_value=Ran(1, "Error parsing signature")):
+        refused = client.post_json("/api/rules/validate/", {"content": "x"})
 
-    assert response.status_code == 400
-    assert "Error parsing signature" in response.json()["output"]
+    assert refused.status_code == 400
+    assert "Error parsing signature" in refused.json()["output"]
 
 def test_apply_endpoint_stores_and_marks_applied(client):
     from api.models import RuleSet
@@ -117,15 +82,12 @@ def test_apply_endpoint_stores_and_marks_applied(client):
     assert stored.content == GOOD_RULE
     assert stored.applied_at is not None
 
-def test_apply_endpoint_returns_400_and_stores_nothing_on_failure(client):
-    from api.models import RuleSet
-
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad rule")):
-        response = client.post_json("/api/rules/apply/", {"content": "x"})
+        refused = client.post_json("/api/rules/apply/", {"content": "x"})
 
-    assert response.status_code == 400
-    assert "bad rule" in response.json()["detail"]
-    assert RuleSet.objects.count() == 0
+    assert refused.status_code == 400
+    assert "bad rule" in refused.json()["detail"]
+    assert RuleSet.objects.count() == 1
 
 def test_rules_endpoint_returns_current_file_content(client):
     with patch("api.views.suricata.current", return_value=GOOD_RULE):

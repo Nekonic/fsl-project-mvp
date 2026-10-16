@@ -67,7 +67,7 @@ openstack. On docker the sensor is a Suricata container.
 
 APIs the platform calls (`platform/range/openstack.py`): Keystone v3 (password
 auth in the configured domain), Nova (servers, keypairs, flavors,
-`os-interface`, rebuild, `os-getVNCConsole`, console log), Neutron (networks
+`os-interface`, rebuild, console log), Neutron (networks
 with tags, subnets, ports with fixed IPs and `allowed_address_pairs`, security
 groups), Glance v2 (images: list, create a record, delete; the edge's builder
 uploads the image data with `PUT /v2/images/{id}/file`). The operator also

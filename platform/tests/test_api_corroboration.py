@@ -81,10 +81,6 @@ def test_an_attack_nobody_saw_is_missed_not_caught_for_the_wrong_reason(client, 
         "here reports it twice, once as missed and once as found"
     )
 
-def test_the_expectation_is_reported_so_the_judgement_can_be_checked(client, session_id):
-    s = scored(client, session_id, "FSL path traversal attempt")
-
-    assert s["per_case"][0]["expect"] == "traversal"
 
 def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
     case_id = "22222222-2222-4222-8222-222222222222"

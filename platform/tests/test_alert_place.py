@@ -1,8 +1,6 @@
 from datetime import timedelta
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from range.ports import RangeUnavailable
@@ -79,20 +77,6 @@ def test_a_waf_alert_is_placed_by_what_the_sensor_saw_of_the_same_address(client
     )
     assert placed(waf) == (source["zone"], source["outside"], source["country"], source["city"])
 
-def test_an_address_is_placed_where_it_is_and_nowhere_it_is_not(client):
-    session = recorded(
-        ("172.30.0.2", "suricata", {}),
-        ("10.9.9.9", "suricata", {}),
-    )
-
-    with stub():
-        rows = {row["src_ip"]: placed(row) for row in listed(client, session)}
-
-    assert rows == {
-        "172.30.0.2": ("Application estate", False, "", ""),
-        "10.9.9.9": ("", False, "", ""),
-    }
-
 def test_an_alert_is_listed_with_its_place_while_the_range_cannot_be_read(client):
     session = recorded((QUIET, "suricata", MOSCOW))
 
@@ -102,17 +86,4 @@ def test_an_alert_is_listed_with_its_place_while_the_range_cannot_be_read(client
     assert placed(row) == ("", False, "Russia", "Moscow"), (
         "the range could not be read, which leaves the zone unknown and says "
         "nothing about the place the pipeline already put on the alert"
-    )
-
-def test_placing_a_page_of_alerts_is_one_query_however_many_addresses_it_holds(client):
-    session = busiest_and_one_more()
-    last = max(row["id"] for row in listed(client, session))
-
-    def asked(after):
-        with stub(), CaptureQueriesContext(connection) as queries:
-            listed(client, session, after)
-        return len(queries)
-
-    assert asked(after=0) - asked(after=last) == 1, (
-        "each of the 26 addresses in the page was looked up on its own"
     )

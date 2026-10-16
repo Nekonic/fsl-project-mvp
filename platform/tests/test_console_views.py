@@ -7,24 +7,10 @@ from django.test import Client
 pytestmark = pytest.mark.django_db
 
 PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
-PAGES_WITH_DATA = ["/", "/session/1/", "/red/1/"]
 
 @pytest.fixture
 def client():
     return Client()
-
-@pytest.mark.parametrize("path", PAGES)
-def test_page_renders(client, path):
-    response = client.get(path)
-
-    assert response.status_code == 200
-
-@pytest.mark.parametrize("path", PAGES_WITH_DATA)
-def test_page_fetches_its_data_from_the_api(client, path):
-    body = client.get(path).content.decode()
-
-    assert "/api/" in body
-    assert "fetch(" in body
 
 def test_pages_do_not_query_the_database(client):
     from django.db import connection
@@ -37,58 +23,20 @@ def test_pages_do_not_query_the_database(client):
     assert len(queries) == 0
 
 
-def body(client, path):
-    return client.get(path).content.decode()
-
-def test_the_blue_console_frames_the_real_tools(client):
-    page = body(client, "/blue/1/")
-
-    for marker in ('data-pane="elk"', 'data-pane="waf"',
-                   'id="pane-frame"'):
-        assert marker in page, marker
-
-def test_the_overview_says_nothing_about_how_the_range_is_built(client):
-    page = body(client, "/blue/1/")
-
-    for invented in ("ways in", "unwatched", "crosses"):
-        assert invented not in page, invented
-
-def test_there_is_no_second_address_for_the_same_console(client):
-    assert client.get("/board/1/").status_code == 404
-
-def test_the_console_fills_the_screen_rather_than_scrolling_as_a_page(client):
-    page = body(client, "/blue/1/")
-
-    assert "h-screen" in page and "overflow-hidden" in page
-
-def test_a_template_comment_never_reaches_the_browser(client):
-    for path in PAGES:
-        page = body(client, path)
-        assert "{#" not in page and "#}" not in page, path
-
-
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
-
-def strings():
-    from tests.test_strings import tables
-    return tables()
 
 TEMPLATES = sorted(path.name for path in CONSOLE.glob("*.html") if path.name != "strings.html")
 
-@pytest.mark.parametrize("name", TEMPLATES)
-def test_no_caller_reads_a_body_it_has_not_checked(name):
-    source = (CONSOLE / name).read_text()
-    offenders = [
-        source.count("\n", 0, position) + 1
-        for position in range(len(source))
-        if source.startswith("const { body } = await api(", position)
-    ]
+def body(client, path):
+    response = client.get(path)
+    assert response.status_code == 200, path
+    return response.content.decode()
 
-    assert not offenders, (
-        f"{name}:{offenders} destructures body without ok. With the stack down "
-        "api() returns an error object, so body.map/slice/filter throws and the "
-        "screen goes blank instead of saying what happened"
-    )
+@pytest.mark.parametrize("name", sorted(path.name for path in CONSOLE.glob("*.html")))
+def test_no_template_carries_a_comment(name):
+    source = (CONSOLE / name).read_text()
+
+    assert "{#" not in source and "<!--" not in source, name
 
 UNTRUSTED = (
     ".signature", ".path", ".description", ".reason", ".src_ip", ".dest",
@@ -124,17 +72,6 @@ def test_no_untrusted_value_is_written_into_markup_unescaped(name):
         offenders.append(f"{name}:{line + 1}  ${{{expression.strip()[:70]}}}")
 
     assert not offenders, "unescaped into markup:\n" + "\n".join(offenders)
-
-@pytest.mark.parametrize("path", PAGES)
-def test_no_script_block_is_closed_early_by_its_own_text(client, path):
-    body = client.get(path).content.decode()
-    opened = body.count("<script")
-    closed = body.count("</script>")
-
-    assert opened == closed, (
-        f"{path}: {opened} script elements opened, {closed} closed - "
-        f"something wrote a closing tag where it is not one"
-    )
 
 @pytest.mark.parametrize("path", PAGES)
 def test_every_element_the_script_reaches_for_is_on_the_page(client, path):

@@ -71,25 +71,9 @@ def ready(labelled_session):
     score_when_ready(labelled_session, until=lambda totals: totals["tp"] > 0)
     return labelled_session
 
-def test_the_proxy_marked_free_form_traffic(ready, case_id):
-    detections = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{ready}/detections/", timeout=30
-    ).json()
-
-    assert any(detection["marker"] == case_id for detection in detections), (
-        "no alert carried this window's marker, so the proxy did not stamp the window"
-    )
-
 def test_both_strategies_find_the_same_attack(ready):
     by_marker = _scored(ready, "marker")
     by_window = _scored(ready, "window")
 
     assert by_marker["tp"] == 1, "the marker path missed a window it had stamped"
     assert by_window["tp"] == 1, "the window path missed traffic from its own source"
-
-def test_the_two_strategies_are_reported_separately(ready):
-    by_marker = _scored(ready, "marker")
-    by_window = _scored(ready, "window")
-
-    assert by_marker["per_case"][0]["detection_ids"]
-    assert by_window["per_case"][0]["detection_ids"]

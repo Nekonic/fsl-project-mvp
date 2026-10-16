@@ -36,65 +36,47 @@ def ids():
     ):
         yield fake
 
-def test_silencing_a_rule_comments_it_out_and_reloads(client, ids):
+def test_silencing_a_rule_comments_it_out_reloads_and_names_the_session(client, ids, a_session_is_open):
     response = client.post_json("/api/rules/suppressions/", {"sid": 9000001})
+    listed = client.get("/api/rules/suppressions/").json()["suppressions"]
 
     assert response.status_code == 201
     assert response.json()["sid"] == 9000001
     assert ids.applied, "the IDS was never told"
     assert '#alert http any any -> any any (msg:"FSL SQLi attempt - URI"' in ids.content
     assert 'alert http any any -> any any (msg:"FSL XSS' in ids.content
-
-def test_a_suppression_carries_a_deadline(client, ids):
-    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
-
-    assert created["expires_at"] > created["created_at"]
-    assert created["restored_at"] is None
-
-def test_a_suppression_names_the_session_whose_sensor_it_silenced(client, ids, a_session_is_open):
-    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
-    listed = client.get("/api/rules/suppressions/").json()["suppressions"]
-
-    assert created["session_id"] == a_session_is_open.pk
     assert [s["session_id"] for s in listed] == [a_session_is_open.pk], (
         "a suppression that does not say which session it silenced cannot be told "
         "apart from one an earlier run left behind"
     )
 
-def test_a_suppression_lasts_as_long_as_was_asked(client, ids):
-    from django.utils.dateparse import parse_datetime
+@pytest.mark.parametrize("sid, status", [(4242, 404), ("all of them", 400)])
+def test_a_sid_that_names_no_rule_changes_nothing(client, ids, sid, status):
+    response = client.post_json("/api/rules/suppressions/", {"sid": sid})
 
-    created = client.post_json(
-        "/api/rules/suppressions/", {"sid": 9000001, "minutes": 7}
-    ).json()
-
-    lasts = parse_datetime(created["expires_at"]) - parse_datetime(created["created_at"])
-    assert abs(lasts - timedelta(minutes=7)) < timedelta(seconds=5), lasts
-
-def test_silencing_a_rule_that_does_not_exist_changes_nothing(client, ids):
-    response = client.post_json("/api/rules/suppressions/", {"sid": 4242})
-
-    assert response.status_code == 404
+    assert response.status_code == status
     assert not ids.applied
     assert client.get("/api/rules/suppressions/").json()["suppressions"] == []
 
-def test_a_sid_that_is_not_a_number_is_rejected(client, ids):
-    response = client.post_json("/api/rules/suppressions/", {"sid": "all of them"})
-
-    assert response.status_code == 400
-    assert not ids.applied
-
-def test_a_rule_file_the_ids_refuses_is_not_recorded(client, ids):
+def test_the_record_follows_what_the_ids_took(client, ids):
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad config")):
-        response = client.post_json("/api/rules/suppressions/", {"sid": 9000001})
-
-    assert response.status_code == 400
+        refused = client.post_json("/api/rules/suppressions/", {"sid": 9000001})
+    assert refused.status_code == 400
     assert client.get("/api/rules/suppressions/").json()["suppressions"] == []
 
-def test_an_expired_suppression_puts_the_rule_back(client, ids):
+    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
+    with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad config")):
+        response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
+
+    assert response.status_code == 400
+    assert [s["sid"] for s in client.get("/api/rules/suppressions/").json()["suppressions"]] == [9000001]
+
+def test_a_suppression_holds_until_it_expires_and_then_puts_the_rule_back(client, ids):
     created = client.post_json(
         "/api/rules/suppressions/", {"sid": 9000001, "minutes": 30}
     ).json()
+    live = client.get("/api/rules/suppressions/").json()
+    assert [s["sid"] for s in live["suppressions"]] == [9000001] and live["restored"] == []
     assert "#alert" in ids.content
 
     from api.models import Suppression
@@ -107,24 +89,6 @@ def test_an_expired_suppression_puts_the_rule_back(client, ids):
     assert listed["suppressions"] == [], "an expired suppression is still listed"
     assert [r["sid"] for r in listed["restored"]] == [9000001]
     assert ids.content == RULES, "the rule file did not come back byte for byte"
-
-def test_a_live_suppression_is_not_lifted_early(client, ids):
-    client.post_json("/api/rules/suppressions/", {"sid": 9000001, "minutes": 60})
-
-    listed = client.get("/api/rules/suppressions/").json()
-
-    assert [s["sid"] for s in listed["suppressions"]] == [9000001]
-    assert listed["restored"] == []
-    assert "#alert" in ids.content
-
-def test_a_suppression_can_be_lifted_by_hand(client, ids):
-    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
-
-    response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
-
-    assert response.status_code == 200
-    assert response.json()["restored_at"] is not None
-    assert ids.content == RULES
 
 REWORDED = 'alert http any any -> any any (msg:"FSL SQLi attempt - URI, reworded"; sid:9000001; rev:1;)\n'
 
@@ -146,6 +110,23 @@ def the_replacement_alone_carries_the_sid(content):
         "it: two active rules with one sid and rev, which suricata -T refuses as "
         "a duplicate signature on every try"
     )
+
+@pytest.mark.parametrize("replaced", [False, True])
+def test_a_suppression_can_be_lifted_by_hand_even_after_its_rule_was_replaced(client, ids, replaced):
+    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
+    if replaced:
+        ids.content += REWORDED
+
+    with refuses_a_duplicate_signature(ids):
+        response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
+
+    assert response.status_code == 200, response.content
+    assert response.json()["restored_at"] is not None
+    if replaced:
+        assert "superseded" in response.json()["detail"]
+        the_replacement_alone_carries_the_sid(ids.content)
+    else:
+        assert ids.content == RULES
 
 def test_a_lift_whose_rule_was_replaced_meanwhile_is_done_once_and_says_so(client, ids):
     from api.models import Suppression
@@ -169,24 +150,3 @@ def test_a_lift_whose_rule_was_replaced_meanwhile_is_done_once_and_says_so(clien
     )
     the_replacement_alone_carries_the_sid(ids.content)
     assert "FSL XSS attempt" in ids.content
-
-def test_a_suppression_lifted_by_hand_after_its_rule_was_replaced_says_so(client, ids):
-    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
-    ids.content += REWORDED
-
-    with refuses_a_duplicate_signature(ids):
-        response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
-
-    assert response.status_code == 200, response.content
-    assert response.json()["restored_at"] is not None
-    assert "superseded" in response.json()["detail"]
-    the_replacement_alone_carries_the_sid(ids.content)
-
-def test_a_suppression_that_cannot_be_lifted_stays_on_the_books(client, ids):
-    created = client.post_json("/api/rules/suppressions/", {"sid": 9000001}).json()
-
-    with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad config")):
-        response = client.post_json(f"/api/rules/suppressions/{created['id']}/restore/")
-
-    assert response.status_code == 400
-    assert [s["sid"] for s in client.get("/api/rules/suppressions/").json()["suppressions"]] == [9000001]

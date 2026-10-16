@@ -1,8 +1,6 @@
-import importlib.util
 import json
 import pathlib
 import re
-import tempfile
 import uuid
 from xml.etree import ElementTree
 
@@ -26,11 +24,6 @@ SYSTEMS = {DOCKER: SYSTEM_DOCKER, DOCKER_KO: SYSTEM_DOCKER, OPENSTACK: SYSTEM_OP
            OPENSTACK_KO: SYSTEM_OPENSTACK}
 FLAVORS = {DOCKER: "", DOCKER_KO: "", OPENSTACK: "openstack", OPENSTACK_KO: "openstack"}
 EVERY_MAP = [*PAIRS, *PAIRS.values(), SYSTEM_DOCKER, SYSTEM_OPENSTACK]
-BUNDLED_SYMBOL = re.compile(r"^:/symbols/affinity/(square|circle)/(blue|gray|green|red)/[a-z0-9_]+\.svg$")
-DOCKERFILE = ROOT / "deploy" / "gns3" / "Dockerfile"
-KALI_SYMBOL = "host-kali.svg"
-SYMBOLS_BUILDER = ROOT / "deploy" / "gns3" / "symbols.py"
-FAKE_DRAGON = '<svg viewBox="0 0 135.47 135.47" xmlns="http://www.w3.org/2000/svg"><path d="m71 36s-10 0-27 4z"/></svg>'
 KOREAN_NAME = re.compile(r" \([\uac00-\ud7a3]+\)")
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
@@ -45,28 +38,6 @@ GNS3_2_2_TOP_LEVEL = {
 }
 GNS3_2_2_TOPOLOGY = {"computes", "drawings", "links", "nodes"}
 SWITCH = "ethernet_switch"
-STRAIGHT_WITHIN = 6
-
-def symbols_module():
-    spec = importlib.util.spec_from_file_location("fsl_gns3_symbols", SYMBOLS_BUILDER)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-def framed_hosts():
-    module = symbols_module()
-    return [module.named(name) for name in module.GLYPHS] + [module.KALI]
-
-def fake_built(module):
-    with tempfile.TemporaryDirectory() as bundled:
-        for name, colour in module.GLYPHS.items():
-            path = pathlib.Path(bundled) / colour / f"{name}.svg"
-            path.parent.mkdir(exist_ok=True)
-            path.write_text('<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd">'
-                            f'<path d="M0 0" style="fill:#fffefe"/><path d="M1 1" style="fill:{module.COLOURS[colour]}"/>'
-                            f'<path d="M100 100h{len(name)}" style="fill:{module.COLOURS[colour]}"/></svg>')
-        return module.built(pathlib.Path(bundled), FAKE_DRAGON, "abc123")
-
 def project(path):
     return json.loads(path.read_text())
 
@@ -225,6 +196,7 @@ def test_no_two_projects_share_an_id_because_the_gns3_compute_keeps_nodes_by_id_
         ids += [link["link_id"] for link in document["topology"]["links"]]
         ids += [drawing["drawing_id"] for drawing in document["topology"]["drawings"]]
 
+    assert all(str(uuid.UUID(value)) == value for value in ids)
     assert len(ids) == len(set(ids))
     assert len({project(path)["name"] for path in EVERY_MAP}) == 6
 
@@ -235,16 +207,6 @@ def test_both_projects_are_revision_9_so_gns3_2_2_opens_them_and_3_upgrades_them
     assert set(gns3) <= GNS3_2_2_TOP_LEVEL, sorted(set(gns3) - GNS3_2_2_TOP_LEVEL)
     assert set(gns3["topology"]) == GNS3_2_2_TOPOLOGY
     assert gns3["topology"]["computes"] == []
-
-def test_every_id_in_a_project_is_a_uuid_and_unique(any_map):
-    gns3 = any_map
-    ids = [gns3["project_id"]]
-    ids += [node["node_id"] for node in gns3["topology"]["nodes"]]
-    ids += [link["link_id"] for link in gns3["topology"]["links"]]
-    ids += [drawing["drawing_id"] for drawing in gns3["topology"]["drawings"]]
-
-    assert all(str(uuid.UUID(value)) == value for value in ids)
-    assert len(ids) == len(set(ids))
 
 def test_every_node_name_is_an_rfc1123_hostname_so_gns3_3_keeps_it(any_map):
     gns3 = any_map
@@ -315,11 +277,6 @@ def test_the_docker_system_map_is_the_compose_stack_one_container_per_service():
         assert wired.get(name, set()) == want["segments"], name
         assert drawn[name]["properties"]["adapters"] == len(want["segments"]), name
 
-def test_every_host_a_docker_role_names_is_a_node_of_the_docker_system_map():
-    drawn = nodes(project(SYSTEM_DOCKER))
-
-    assert set(declared.read().roles.values()) <= set(drawn)
-
 def test_the_openstack_system_map_is_the_declared_hosts_and_the_wargame_hosts_containers():
     gns3 = project(SYSTEM_OPENSTACK)
     stack, expected = openstack_expected()
@@ -340,23 +297,6 @@ def test_the_openstack_system_map_is_the_declared_hosts_and_the_wargame_hosts_co
     for host, entry in stack.hosts.items():
         assert wired[host] & declared_segments == set(entry.segments), host
 
-def test_the_edge_is_a_vm_with_three_nics_in_the_order_opnsense_assigns_them():
-    gns3 = project(SYSTEM_OPENSTACK)
-    edge = nodes(gns3)[declared.read(flavor="openstack").roles["edge"]]
-    by_id = {node["node_id"]: node["name"] for node in gns3["topology"]["nodes"]}
-    order = {}
-    for link in gns3["topology"]["links"]:
-        ends = {end["node_id"]: end for end in link["nodes"]}
-        if edge["node_id"] in ends:
-            other, = [by_id[node_id] for node_id in ends if node_id != edge["node_id"]]
-            order[ends[edge["node_id"]]["adapter_number"]] = other
-
-    assert edge["node_type"] == "qemu"
-    assert edge["properties"]["adapters"] == 3
-    assert [order[n] for n in sorted(order)] == list(
-        declared.read(flavor="openstack").hosts["fsl-edge"].segments
-    )
-
 def drawn_shapes(document):
     shapes = []
     for drawing in document["topology"]["drawings"]:
@@ -367,54 +307,6 @@ def drawn_shapes(document):
                        "width": float(svg.get("width")), "height": float(svg.get("height")),
                        "text": shape.text or "", "font": shape.get("font-family")})
     return shapes
-
-def inside(x, y, box):
-    return box["x"] <= x <= box["x"] + box["width"] and box["y"] <= y <= box["y"] + box["height"]
-
-def test_every_drawing_is_one_shape_both_gns3_releases_draw_in_a_font_the_web_ui_has(any_map):
-    gns3 = any_map
-    texts = [shape for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
-
-    assert texts
-    assert {shape["font"] for shape in texts} == {"Noto Sans"}
-
-def test_each_declared_segment_is_a_titled_zone_holding_its_switch(any_map):
-    gns3 = any_map
-    entries = [entry for entry in yaml.safe_load(declared.DECLARATION.read_text())["segments"]
-               if is_system(gns3) or entry["id"] in defended_ids()]
-    shapes = drawn_shapes(gns3)
-    english = [shape["text"] for shape in drawn_shapes(english_of(gns3))]
-    zones = [shape for shape in shapes if shape["kind"] == "rect"]
-    switches = nodes(gns3)
-    called = ({} if is_system(gns3) else
-              learner_of(declared.read(flavor=flavor_of(gns3)), WARGAMES[0]).switches)
-    for entry in entries:
-        titles = [shape for shape, said in zip(shapes, english)
-                  if shape["kind"] == "text" and said.startswith(entry["name"])]
-        assert len(titles) == 1, entry["name"]
-        switch = switches[called.get(entry["id"], entry["id"])]
-        holding = [zone for zone in zones if inside(titles[0]["x"], titles[0]["y"], zone)
-                   and inside(switch["x"] + 25, switch["y"] + 25, zone)]
-        assert holding, f"{entry['name']}: no zone holds both its title and the {switch['name']} switch"
-
-@pytest.fixture(params=[SYSTEM_DOCKER, SYSTEM_OPENSTACK], ids=["system-docker", "system-openstack"])
-def system_map(request):
-    return project(request.param)
-
-def test_a_node_with_no_nic_says_whose_network_it_watches_next_to_it(system_map):
-    gns3 = system_map
-    linked = {end["node_id"] for link in gns3["topology"]["links"] for end in link["nodes"]}
-    names = set(nodes(gns3))
-    english = [shape["text"] for shape in drawn_shapes(english_of(gns3))]
-    texts = [dict(shape, text=said) for shape, said in zip(drawn_shapes(gns3), english) if shape["kind"] == "text"]
-    unlinked = [node for node in gns3["topology"]["nodes"] if node["node_id"] not in linked]
-
-    assert unlinked
-    for node in unlinked:
-        near = [shape["text"] for shape in texts
-                if abs(shape["x"] - node["x"]) < 250 and abs(shape["y"] - node["y"]) < 150]
-        assert [said for said in near if "host network" in said or any(
-            name in said for name in names - {node["name"]})], (node["name"], near)
 
 LEARNER_MAPS = [DOCKER, DOCKER_KO, OPENSTACK, OPENSTACK_KO]
 LEARNER_IDS = ["docker", "docker-ko", "openstack", "openstack-ko"]
@@ -454,9 +346,6 @@ def ends(document):
     return {frozenset((by_id[end["node_id"]]["name"], end["adapter_number"], end["port_number"])
                       for end in link["nodes"]) for link in document["topology"]["links"]}
 
-def sensor_node(stack, drawn, role):
-    return stack.compose.get(role) if stack.compose.get(role) in drawn else stack.roles[role]
-
 def network_mode(stack, flavor, role):
     services = yaml.safe_load(SENSOR_COMPOSE.read_text())["services"] if flavor else composed.services()
     return (services.get(stack.compose.get(role, "")) or {}).get("network_mode", "")
@@ -467,9 +356,6 @@ def nic_owner(stack, flavor, role):
         shared = mode.removeprefix("service:")
         return next(stack.roles[other] for other, service in stack.compose.items() if service == shared)
     return stack.roles[role]
-
-def own_nic(system, name):
-    return name in nodes(system) and nodes(system)[name]["properties"].get("adapters", 0) > 0
 
 def log_sources(stack, flavor):
     if flavor:
@@ -559,196 +445,6 @@ def test_the_log_server_sits_on_the_monitoring_switch_with_exactly_the_hosts_who
         "on Docker the shipper reads the WAF's audit log and the sensor in the WAF's namespace, nothing of the site")
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_monitoring_is_a_titled_zone_holding_its_switch_and_the_log_store(drawn_in):
-    learner = project(drawn_in)
-    shapes = drawn_shapes(learner)
-    english = [shape["text"] for shape in drawn_shapes(english_of(learner))]
-    zones = [shape for shape in shapes if shape["kind"] == "rect"]
-    titles = [shape for shape, said in zip(shapes, english) if shape["kind"] == "text" and said == "Monitoring"]
-
-    assert len(titles) == 1
-    for name in (topology.MONITORING, topology.LOG_SERVER):
-        node = nodes(learner)[name]
-        assert [zone for zone in zones if inside(titles[0]["x"], titles[0]["y"], zone)
-                and inside(node["x"] + 30, node["y"] + 30, zone)], name
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_no_node_on_a_learner_map_floats(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    linked = {end["node_id"] for link in learner["topology"]["links"] for end in link["nodes"]}
-
-    assert [node["name"] for node in learner["topology"]["nodes"] if node["node_id"] not in linked] == []
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_a_sensor_with_no_nic_of_its_own_is_folded_into_the_node_whose_nic_it_uses(drawn_in, wargame):
-    learner, shown, stack = projected(drawn_in, wargame)
-    flavor = FLAVORS[drawn_in]
-    system = project(SYSTEMS[drawn_in])
-    folded = [role for role in stack.watches if not own_nic(system, sensor_node(stack, nodes(system), role))]
-
-    assert folded, "every learner map folds at least one host-network sensor into its host"
-    for role in stack.watches:
-        owner = shown.shown(nic_owner(stack, flavor, role))
-        assert owner in nodes(learner) and nodes(learner)[owner]["label"]["text"] == owner, (role, owner)
-        assert shown.sensors[stack.roles[role]] == shown.shown(stack.roles[stack.watches[role]]), role
-        assert sensor_node(stack, nodes(system), role) not in nodes(learner), role
-
-def centre(node):
-    return node["x"] + topology.SYMBOL_SIZE / 2, node["y"] + topology.SYMBOL_SIZE / 2
-
-def stretches(document):
-    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
-    return [(tuple(by_id[end["node_id"]]["name"] for end in link["nodes"]),
-             tuple(centre(by_id[end["node_id"]]) for end in link["nodes"])) for link in document["topology"]["links"]]
-
-def turn(a, b, c):
-    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-
-def crossing(one, other):
-    (a, b), (c, d) = one, other
-    return turn(a, b, c) * turn(a, b, d) < 0 and turn(c, d, a) * turn(c, d, b) < 0
-
-def overlapping(one, other, shared):
-    (a, b), (c, d) = one, other
-    away = lambda start, end: (end[0] - start[0], end[1] - start[1])
-    first, second = (away(a, b) if a == shared else away(b, a)), (away(c, d) if c == shared else away(d, c))
-    return turn((0, 0), first, second) == 0 and first[0] * second[0] + first[1] * second[1] > 0
-
-def clearance(point, line):
-    (ax, ay), (bx, by) = line
-    length = (bx - ax) ** 2 + (by - ay) ** 2
-    along = max(0, min(1, ((point[0] - ax) * (bx - ax) + (point[1] - ay) * (by - ay)) / length))
-    return ((ax + along * (bx - ax) - point[0]) ** 2 + (ay + along * (by - ay) - point[1]) ** 2) ** 0.5
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_every_learner_link_is_one_straight_line_level_upright_or_a_single_diagonal(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    diagonal = [names for names, ((ax, ay), (bx, by)) in stretches(learner)
-                if abs(ax - bx) > STRAIGHT_WITHIN and abs(ay - by) > STRAIGHT_WITHIN]
-
-    assert [link for link in learner["topology"]["links"] if (link.get("link_style") or {}).get("link_type")] == []
-    assert len(diagonal) <= len(learner["topology"]["links"]) // 2, diagonal
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_no_two_learner_links_cross_or_share_a_stretch_of_line_and_none_runs_through_a_node(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    drawn = stretches(learner)
-    centres = {node["name"]: centre(node) for node in learner["topology"]["nodes"]}
-    for at, (names, line) in enumerate(drawn):
-        for other_names, other in drawn[at + 1:]:
-            shared = set(names) & set(other_names)
-            if shared:
-                assert not overlapping(line, other, centres[shared.pop()]), (names, other_names)
-            else:
-                assert not crossing(line, other), (names, other_names)
-        for name, point in centres.items():
-            if name not in names:
-                assert clearance(point, line) > topology.SYMBOL_SIZE, (names, name)
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_no_two_nodes_of_a_wargame_s_map_stand_on_each_other(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    centres = [centre(node) for node in learner["topology"]["nodes"]]
-
-    assert [(one, other) for at, one in enumerate(centres) for other in centres[at + 1:]
-            if abs(one[0] - other[0]) < 2 * topology.SYMBOL_SIZE and abs(one[1] - other[1]) < topology.SYMBOL_SIZE] == []
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_the_waf_and_each_site_show_the_domain_learners_type(drawn_in, wargame):
-    learner, shown, stack = projected(drawn_in, wargame)
-    domain = topology.domains(stack)[wargame]
-    gateway = declared.read().hosts[declared.read().roles["gateway"]]
-
-    assert {name.split(".")[0] for name in gateway.names} == set(WARGAMES) == {"board", "corp"}
-    assert domain in gateway.names and shown.roles[wargame] == domain
-    assert nodes(learner)[domain]["label"]["text"] == domain
-    assert shown.roles["gateway"] == topology.WAF and nodes(learner)[topology.WAF]["label"]["text"] == topology.WAF
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_a_learner_map_draws_no_title_no_legend_and_no_note_only_a_caption_for_each_zone(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    english_map, _, _ = projected(next(path for path in LEARNER_MAPS if FLAVORS[path] == FLAVORS[drawn_in]
-                                       and PAIRS.get(path)), wargame)
-    shapes = drawn_shapes(learner)
-    english = [shape["text"] for shape in drawn_shapes(english_map) if shape["kind"] == "text"]
-    zones = [shape for shape in shapes if shape["kind"] == "rect"]
-    texts = [shape for shape in shapes if shape["kind"] == "text"]
-    switches = {name for name, node in nodes(learner).items() if node["node_type"] == SWITCH}
-    captions = {entry["name"] for entry in yaml.safe_load(declared.DECLARATION.read_text())["segments"]
-                if entry["id"] in defended_ids()} | {"Monitoring", "Internal DB"}
-
-    assert len(texts) == len(zones)
-    for text in texts:
-        holding = [zone for zone in zones if inside(text["x"], text["y"], zone)]
-        assert holding, text["text"]
-        smallest = min(holding, key=lambda zone: zone["width"] * zone["height"])
-        assert [other for other in texts if other is not text and inside(other["x"], other["y"], smallest)
-                and min((zone for zone in zones if inside(other["x"], other["y"], zone)),
-                        key=lambda zone: zone["width"] * zone["height"]) is smallest] == []
-    assert set(english) <= captions, sorted(set(english) - captions)
-    assert set(topology.captions(learner)) == switches
-
-@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_every_symbol_is_one_gns3_bundles_or_one_the_gns3_image_builds(drawn_in):
-    dockerfile = DOCKERFILE.read_text()
-    built = {f"{name}.svg" for name in framed_hosts()}
-    assert "RUN python /opt/fsl-gns3/symbols.py " in dockerfile and "symbols.py /opt/fsl-gns3/" in dockerfile
-    for node in project(drawn_in)["topology"]["nodes"]:
-        symbol = node["symbol"]
-        host = node["node_type"] != SWITCH and node["name"] != topology.INTERNET
-        assert (symbol in built) if host else BUNDLED_SYMBOL.match(symbol), (node["name"], symbol)
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_every_host_is_one_framed_symbol_whose_colour_tells_the_attacker_the_defence_the_sites_and_the_rest(drawn_in, wargame):
-    learner, shown, stack = projected(drawn_in, wargame)
-    drawn = nodes(learner)
-
-    def symbol(role):
-        return drawn[shown.roles[role]]["symbol"]
-
-    hosts = {name: node["symbol"] for name, node in drawn.items()
-             if node["node_type"] != SWITCH and name != topology.INTERNET}
-    assert set(hosts.values()) <= {f"{name}.svg" for name in framed_hosts()}, hosts
-    assert shown.roles["attacker"] == topology.ATTACKER == "kali" and symbol("attacker") == KALI_SYMBOL
-    assert symbol("gateway") == "host-shield.svg"
-    assert "edge" not in stack.roles or symbol("edge") == "host-firewall.svg"
-    assert symbol(wargame) == "host-server.svg"
-    assert symbol(f"{wargame}{topology.DATABASE_SUFFIX}") == "host-storage.svg"
-    assert drawn[topology.LOG_SERVER]["symbol"] == "host-statistics.svg"
-    assert topology.CUSTOMERS not in drawn or drawn[topology.CUSTOMERS]["symbol"] == "host-client.svg"
-    colours = symbols_module().GLYPHS | {"kali": symbols_module().KALI_COLOUR}
-    assert (colours["kali"], colours["shield"], colours["firewall"], colours["server"], colours["storage"],
-            colours["statistics"], colours["client"]) == ("red", "green", "green", "blue", "blue", "gray", "gray")
-
-def test_every_framed_host_symbol_is_one_frame_of_one_size_and_line_weight_around_its_glyph():
-    module = symbols_module()
-    made = {name: ElementTree.fromstring(text) for name, text in fake_built(module).items() if name.endswith(".svg")}
-    frames = set()
-
-    assert set(made) == {f"{name}.svg" for name in framed_hosts()}
-    for name, svg in made.items():
-        frame = svg[0]
-        assert (svg.get("width"), svg.get("height"), svg.get("viewBox")) == (
-            str(topology.SYMBOL_SIZE), str(topology.SYMBOL_SIZE), "0 0 300 300"), name
-        assert frame.tag.endswith("rect") and len(svg) == 2, name
-        frames.add(tuple(sorted((key, value) for key, value in frame.attrib.items() if key != "stroke")))
-        assert frame.get("stroke") in module.COLOURS.values()
-    assert len(frames) == 1, frames
-    assert dict(next(iter(frames)))["stroke-width"] == "16"
-
-def test_a_framed_glyph_is_the_bundled_affinity_glyph_without_its_own_paper_and_frame():
-    module = symbols_module()
-    bundled = ('<svg width="60" height="60" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd">'
-               '<path d="M0 0" style="fill:#fffefe"/><path d="M1 1" style="fill:#2d67b9"/>'
-               '<path d="M150 50h10" style="fill:#2d67b9"/></svg>')
-    glyph = ElementTree.fromstring(module.framed("blue", module.glyph(bundled, "blue")))[1]
-
-    assert glyph.get("style") == "fill-rule:evenodd"
-    assert [part.get("d") for part in glyph] == ["M150 50h10"]
-    with pytest.raises(SystemExit):
-        module.glyph(bundled.replace("fill:#fffefe", "fill:#000000"), "blue")
-
-@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_that_only_idles(drawn_in):
     hosts = [node for node in project(drawn_in)["topology"]["nodes"] if node["node_type"] != SWITCH]
 
@@ -760,50 +456,3 @@ def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_
     assert all(node["properties"]["adapters"] == sum(end["node_id"] == node["node_id"] for link in
                                                        project(drawn_in)["topology"]["links"] for end in link["nodes"])
                for node in hosts), "a display node has one adapter per link and no more"
-
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_a_node_a_link_reaches_from_straight_above_carries_its_name_beside_it_not_across_the_line(drawn_in, wargame):
-    learner, _, _ = projected(drawn_in, wargame)
-    for names, ((ax, ay), (bx, by)) in stretches(learner):
-        if abs(ax - bx) > STRAIGHT_WITHIN:
-            continue
-        below = nodes(learner)[names[0] if ay > by else names[1]]
-        label = below["label"]
-        assert label["x"] is not None and label["x"] < 0 and 0 <= label["y"] < topology.SYMBOL_SIZE, (
-            below["name"], label)
-
-def test_the_kali_symbol_is_offsec_s_own_dragon_fetched_at_a_pinned_commit_checked_by_digest_and_framed_unmodified():
-    dockerfile = DOCKERFILE.read_text()
-    commit = re.search(r"^ARG KALI_PRESS_PACK=([0-9a-f]{40})$", dockerfile, re.M)
-    digest = re.search(r"^ARG KALI_DRAGON_SHA256=([0-9a-f]{64})$", dockerfile, re.M)
-    module = symbols_module()
-    made = fake_built(module)
-    kali = ElementTree.fromstring(made[KALI_SYMBOL])
-    mark = kali[1]
-
-    assert commit and digest
-    assert ("https://gitlab.com/kalilinux/documentation/press-pack/-/raw/${KALI_PRESS_PACK}"
-            "/Kali/Logomark/kali-dragon-black.svg") in dockerfile
-    assert 'echo "${KALI_DRAGON_SHA256}  /dragon/kali-dragon-black.svg" | sha256sum -c -' in dockerfile
-    assert ('RUN python /opt/fsl-gns3/symbols.py /opt/fsl-gns3/kali-dragon-black.svg "${KALI_PRESS_PACK}" '
-            "/opt/fsl-gns3/symbols") in dockerfile
-    assert "kali-dragon" not in " ".join(path.name for path in DOCKERFILE.parent.iterdir()), "fetched, not vendored"
-    assert kali[0].get("stroke") == module.COLOURS["red"]
-    assert ElementTree.tostring(mark) == ElementTree.tostring(ElementTree.fromstring(FAKE_DRAGON.replace(
-        "<svg ", '<svg x="24" y="24" width="252" height="252" ', 1))), "the mark only placed and sized"
-    assert 0 < int(mark.get("x")) and int(mark.get("x")) + int(mark.get("width")) < 300 - 16
-    assert made["host-kali.txt"].startswith("KALI LINUX\u2122 is a trademark of OffSec.")
-    assert "unmodified" in made["host-kali.txt"] and "abc123" in made["host-kali.txt"]
-    for drawn_in in LEARNER_MAPS:
-        kali_nodes = [node for node in project(drawn_in)["topology"]["nodes"] if node["name"] == topology.ATTACKER]
-        assert [(node["symbol"], node["label"]["text"]) for node in kali_nodes] == [(KALI_SYMBOL, "kali")], drawn_in
-
-@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
-def test_every_zone_of_a_learner_map_is_a_thin_outline_over_a_faint_fill(drawn_in):
-    zones = [ElementTree.fromstring(drawing["svg"]) for drawing in project(drawn_in)["topology"]["drawings"]]
-    boxes = [(svg, svg[0]) for svg in zones if svg[0].tag == "rect"]
-
-    assert boxes
-    for svg, box in boxes:
-        assert box.get("stroke-width") == "2" and box.get("fill-opacity") == "0.06", ElementTree.tostring(svg)
-        assert (box.get("width"), box.get("height")) == (svg.get("width"), svg.get("height"))

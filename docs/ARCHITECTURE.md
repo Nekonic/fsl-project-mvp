@@ -1694,8 +1694,6 @@ single Internet port holds the ~100 per-country addresses (the slot's
 `bootcmd` adds them to the NIC) and `/usr/local/sbin/fsl-origin` SNATs the
 box's outgoing source per country, so every tool leaves as the chosen country.
 The marker-adding proxy and the ttyd terminal run on the Kali box.
-`GET /api/range/console/<host>/` returns the Nova console URL of the server
-filling that host.
 
 `rebuild_slot()` (`POST /api/range/slot/rebuild/`) rebuilds
 every standing slot VM from its golden image, keeping each server's id,

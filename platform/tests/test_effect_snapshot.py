@@ -37,18 +37,16 @@ def test_snapshot_reads_admins_options_and_published_posts_from_the_container():
     assert all(argv[-1].lstrip().upper().startswith("SELECT") for argv in run.calls)
 
 
-def test_snapshot_refuses_when_the_container_exits_nonzero():
-    def run(argv, stdin=None, timeout=60.0):
-        return Ran(exit_code=1, output="ERROR 2002 (HY000): Can't connect")
-
-    with pytest.raises(effect.StateUnavailable):
-        effect.snapshot(run)
+def _refused(argv, stdin=None, timeout=60.0):
+    return Ran(exit_code=1, output="ERROR 2002 (HY000): Can't connect")
 
 
-def test_snapshot_refuses_when_the_range_is_down():
-    def run(argv, stdin=None, timeout=60.0):
-        raise RangeUnavailable("fsl-wg-corp-db never reported")
+def _down(argv, stdin=None, timeout=60.0):
+    raise RangeUnavailable("fsl-wg-corp-db never reported")
 
+
+@pytest.mark.parametrize("run", [_refused, _down], ids=["exits-nonzero", "range-down"])
+def test_snapshot_refuses_when_the_target_state_cannot_be_read(run):
     with pytest.raises(effect.StateUnavailable):
         effect.snapshot(run)
 

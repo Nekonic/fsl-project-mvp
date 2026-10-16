@@ -22,7 +22,6 @@ DURATIONS = TESTS / "durations.json"
 UNMEASURED_SECONDS = 10.0
 
 IDLE = (
-    "test_fabric",
     "test_geoip_durable",
     "test_origin_placement",
     "test_waf_geolocation",
@@ -34,8 +33,6 @@ SOLO = (
 STANDING_STACK = (
     "test_attacker_reach",
     "test_board_exfil",
-    "test_corp_cve_content_write",
-    "test_corp_site",
     "test_event_time",
     "test_judge_isolation",
     "test_segmentation",

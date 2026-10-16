@@ -52,12 +52,3 @@ def test_an_attack_on_one_session_draws_no_alert_in_the_other(two_sessions):
     assert not requests.get(
         f"{PLATFORM_URL}/api/sessions/{second}/cases/", timeout=60
     ).json(), f"session {first}'s case was recorded on session {second}"
-
-
-def test_an_attack_on_one_session_takes_nothing_from_the_other(two_sessions):
-    _, second, _ = two_sessions
-    taken = requests.get(f"{PLATFORM_URL}/api/sessions/{second}/objectives/", timeout=60).json()
-    score = requests.get(f"{PLATFORM_URL}/api/sessions/{second}/score/", timeout=60).json()
-
-    assert taken == [], f"session {second} lost objectives it was never attacked for: {taken}"
-    assert score["tp"] == 0 and score["fn"] == 0, score

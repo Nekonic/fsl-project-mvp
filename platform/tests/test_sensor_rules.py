@@ -24,13 +24,6 @@ def test_no_experiment_is_left_behind_in_the_shipped_rule_set():
         f"tests and hand experiments, and they are in the file the stack "
         f"ships. A rule left behind here changes every score after it"
     )
-
-def test_every_shipped_rule_has_a_distinct_sid():
-    sids = [
-        re.search(r"sid:(\d+)", line).group(1)
-        for line in live_rules() if re.search(r"sid:(\d+)", line)
-    ]
-
     assert len(sids) == len(set(sids)), f"duplicate sids: {sids}"
 
 def test_the_port_variable_names_ports_the_sensor_can_observe():

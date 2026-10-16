@@ -81,14 +81,6 @@ def test_a_tracked_file_missing_from_disk_is_skipped_not_a_crash(repo):
     )
 
 
-def test_names_with_spaces_or_non_ascii_letters_are_counted(repo):
-    write(repo, "platform/scoring/two words.py", "a = 1\n")
-    write(repo, "platform/scoring/caf\u00e9.py", "a = 1\nb = 2\n")
-    git(repo, "add", ".")
-
-    assert measured(repo)["core_loc"] == 3
-
-
 def test_a_symlink_is_not_counted_as_what_it_points_at(repo):
     write(repo, "platform/scoring/real.py", "a = 1\nb = 2\n")
     write(repo, "platform/ingest/elastic.py", "c = 3\n")
@@ -211,12 +203,6 @@ def test_this_repo_s_services_split_platform_from_wargame(measure, monkeypatch):
     )
 
 
-def test_services_are_read_from_the_file_compose_would_pick(measure, tmp_path):
-    (tmp_path / "docker-compose.yml").write_text(COMPOSE)
-
-    assert measure.services() == 1
-
-
 @pytest.mark.parametrize(
     "name",
     [
@@ -273,16 +259,6 @@ def test_an_include_measure_cannot_follow_is_refused(measure, tmp_path, text, na
         measure.services()
 
 
-def test_a_service_defined_twice_across_files_is_refused(measure, tmp_path):
-    (tmp_path / "compose.yaml").write_text(
-        "include:\n  - more.yaml\nservices:\n  web:\n    image: a:1\n"
-    )
-    (tmp_path / "more.yaml").write_text("services:\n  web:\n    image: b:1\n")
-
-    with pytest.raises(SystemExit, match="web"):
-        measure.services()
-
-
 UNCOUNTABLE = {
     "services merged in": (
         "x-more: &more\n  db:\n    image: b:1\n"
@@ -334,9 +310,3 @@ def test_the_session_stack_s_own_services_are_gated_with_the_control_plane(measu
     assert measure.wargame_services() == 1
 
 
-def test_a_service_in_both_the_control_plane_and_the_session_stack_is_refused(measure, tmp_path):
-    (tmp_path / "compose.yaml").write_text("services:\n  waf:\n    image: a:1\n")
-    (tmp_path / "session.yaml").write_text("services:\n  waf:\n    image: a:1\n")
-
-    with pytest.raises(SystemExit, match="waf"):
-        measure.services()

@@ -50,16 +50,6 @@ def test_core_never_names_the_substrate():
         "core must not import the port"
     )
 
-def test_a_rule_set_that_suricata_accepts_validates():
-    outcome = suricata.validate(RULE, Sensor())
-
-    assert outcome.ok
-
-def test_a_rule_set_suricata_rejects_reports_what_it_said():
-    outcome = suricata.validate(RULE, Sensor(fails_on="-T"))
-
-    assert not outcome.ok
-    assert "bad rule" in outcome.output
 
 def test_applying_a_bad_rule_set_does_not_touch_the_live_rules():
     sensor = Sensor(fails_on="-T")
@@ -88,21 +78,6 @@ def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
     with pytest.raises(RangeUnavailable):
         suricata.validate(RULE, Sensor(unreachable_on="-T"))
 
-def test_the_rules_come_back_the_way_they_went_in():
-    sensor = Sensor()
-    suricata.apply(RULE, sensor, RELOAD)
-
-    assert suricata.current(sensor) == RULE
-
-def test_how_the_sensor_is_reloaded_is_not_hard_coded_to_a_container():
-    import pathlib
-
-    source = pathlib.Path(suricata.__file__).read_text()
-
-    assert '"1"' not in source, (
-        "kill -USR2 1 is only right because Suricata is a container's "
-        "entrypoint. On an instance it is a service and the pid is not 1"
-    )
 
 @pytest.mark.django_db
 def test_the_reload_command_comes_from_configuration(client, settings):
@@ -130,16 +105,6 @@ def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
         f"tested whatever that file held when the self-test started, so two "
         f"requests at once could approve each other's rules: {sensor.calls}"
     )
-
-def test_a_rule_file_that_cannot_be_read_is_not_served_as_the_rules():
-    class Unreadable(Sensor):
-        def __call__(self, argv, stdin=None, timeout=60.0):
-            if argv[0] == "cat":
-                return Ran(1, "cat: can't open '/var/lib/suricata/rules/local.rules': Permission denied")
-            return super().__call__(argv, stdin, timeout)
-
-    with pytest.raises(suricata.RulesUnreadable, match="Permission denied"):
-        suricata.current(Unreadable())
 
 
 def test_a_write_that_fails_is_reported_as_a_rule_apply_error():

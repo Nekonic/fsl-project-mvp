@@ -16,25 +16,16 @@ def closed(client):
     client.post_json(f"/api/sessions/{session_id}/close/")
     return session_id
 
-def test_a_closed_session_takes_no_more_cases(client, closed):
-    response = client.post_json(f"/api/sessions/{closed}/cases/", CASE)
+@pytest.mark.parametrize("write, payload", [
+    ("cases/", CASE), ("attacks/", {"case": "sqli-login-bypass"}), ("objectives/", None),
+])
+def test_a_closed_session_takes_no_more_writes(client, closed, write, payload):
+    response = client.post_json(f"/api/sessions/{closed}/{write}", payload)
 
     assert response.status_code == 409, (
-        "a case recorded after the session closed is scored against a window "
-        "the alert ingest no longer covers, so it can only ever be a miss"
+        "a write after close lands outside the window the alert ingest covers, so a case "
+        "can only ever be a miss and an attack reaches a stack being torn down"
     )
-
-def test_a_closed_session_fires_no_more_attacks(client, closed):
-    response = client.post_json(
-        f"/api/sessions/{closed}/attacks/", {"case": "sqli-login-bypass"}
-    )
-
-    assert response.status_code == 409
-
-def test_a_closed_session_claims_no_more_objectives(client, closed):
-    response = client.post_json(f"/api/sessions/{closed}/objectives/")
-
-    assert response.status_code == 409
 
 def test_a_closed_session_can_still_be_read(client, closed):
     assert client.get(f"/api/sessions/{closed}/").status_code == 200
@@ -58,28 +49,16 @@ def test_a_running_session_is_never_hidden_by_finished_ones(client):
         f"{SESSION_PAGE + 10} finished ones, so there is no way back to it"
     )
 
-def test_asking_for_open_sessions_excludes_the_finished_ones(client):
+def test_asking_for_open_or_finished_sessions_lists_only_those(client):
     closed_id = client.post_json("/api/sessions/", {}).json()["id"]
     client.post_json(f"/api/sessions/{closed_id}/close/")
     open_id = client.post_json("/api/sessions/", {}).json()["id"]
 
-    listed = [s["id"] for s in client.get("/api/sessions/?state=open").json()]
-
-    assert open_id in listed
-    assert closed_id not in listed
-
-def test_asking_for_finished_sessions_excludes_the_running_ones(client):
-    closed_id = client.post_json("/api/sessions/", {}).json()["id"]
-    client.post_json(f"/api/sessions/{closed_id}/close/")
-    open_id = client.post_json("/api/sessions/", {}).json()["id"]
-
-    listed = [s["id"] for s in client.get("/api/sessions/?state=closed").json()]
-
-    assert closed_id in listed
-    assert open_id not in listed
+    assert [s["id"] for s in client.get("/api/sessions/?state=open").json()] == [open_id]
+    assert [s["id"] for s in client.get("/api/sessions/?state=closed").json()] == [closed_id]
 
 
-def test_the_newest_sessions_are_the_ones_returned(client):
+def test_the_newest_sessions_are_the_ones_returned_up_to_the_limit_asked(client):
     made = []
     for _ in range(SESSION_PAGE + 3):
         made.append(client.post_json("/api/sessions/", {}).json()["id"])
@@ -88,13 +67,7 @@ def test_the_newest_sessions_are_the_ones_returned(client):
     listed = [s["id"] for s in client.get("/api/sessions/").json()]
 
     assert listed == sorted(made, reverse=True)[:SESSION_PAGE]
-
-def test_asking_for_fewer_sessions_returns_fewer(client):
-    for _ in range(4):
-        opened = client.post_json("/api/sessions/", {}).json()["id"]
-        client.post_json(f"/api/sessions/{opened}/close/")
-
-    assert len(client.get("/api/sessions/?limit=2").json()) == 2
+    assert [s["id"] for s in client.get("/api/sessions/?limit=2").json()] == listed[:2]
 
 @pytest.mark.parametrize("scenario", ["nope", ["x"], 3])
 def test_a_session_for_a_wargame_that_does_not_exist_is_refused(client, scenario):
@@ -108,14 +81,6 @@ def test_a_session_for_a_wargame_that_does_not_exist_is_refused(client, scenario
         f"against no expectations at all"
     )
     assert not Session.objects.exists()
-
-def test_create_session_returns_id_and_start_time(client):
-    response = client.post_json("/api/sessions/", {"scenario": "board"})
-
-    assert response.status_code == 201
-    assert response.json()["id"]
-    assert response.json()["started_at"]
-    assert response.json()["ended_at"] is None
 
 def test_record_case_then_read_it_back(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
@@ -155,39 +120,3 @@ def test_case_rejects_unknown_correlation_strategy(client):
 
     assert response.status_code == 400
     assert "correlation" in response.json()
-
-def test_closing_session_sets_end_time(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
-
-    response = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert response.status_code == 200
-    assert response.json()["ended_at"] is not None
-
-def test_cases_for_missing_session_are_404(client):
-    response = client.get("/api/sessions/9999/cases/")
-
-    assert response.status_code == 404
-
-def test_case_model_converts_to_scoring_record(client):
-    from api.models import Case
-    from scoring.types import CaseRecord
-
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
-    client.post_json(f"/api/sessions/{session_id}/cases/", {
-            "case_id": "33333333-3333-4333-8333-333333333333",
-            "name": "n",
-            "malicious": False,
-            "correlation": "window",
-            "source_ip": "10.0.0.1",
-            "started_at": "2026-09-18T12:00:00Z",
-            "ended_at": "2026-09-18T12:00:03Z",
-        },
-    )
-
-    record = Case.objects.get().to_record()
-
-    assert isinstance(record, CaseRecord)
-    assert record.correlation == "window"
-    assert record.source_ip == "10.0.0.1"
-    assert record.malicious is False

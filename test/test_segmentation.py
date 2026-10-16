@@ -1,8 +1,5 @@
-import pytest
-import requests
 
-from conftest import PLATFORM_URL
-from range import ATTACKER, GATEWAY, run, segments
+from range import ATTACKER, run, segments
 
 BOARD = "board"
 TARGET_INSIDE = "http://board:8000/"
@@ -39,24 +36,3 @@ def test_the_attacker_and_the_target_share_no_segment(stack_is_up):
         f"attacker and target both sit on {sorted(attacker & target)}, so "
         f"nothing but hostnames stands between them"
     )
-
-def test_the_waf_is_the_only_way_across(stack_is_up):
-    attacker = segments(ATTACKER)
-    target = segments(BOARD)
-    waf = segments(GATEWAY)
-
-    assert attacker & waf, "the WAF is not reachable from the attacker's segment"
-    assert target & waf, "the WAF cannot reach the target's segment"
-
-def test_the_attacker_comes_from_somewhere_the_map_can_place(standing_stack):
-    source_ip = requests.get(
-        f"{PLATFORM_URL}/api/attacker/", params={"session": standing_stack}, timeout=60
-    ).json()["source_ip"]
-
-    located = requests.post(
-        "http://localhost:9200/_ingest/pipeline/fsl-geoip/_simulate",
-        json={"docs": [{"_source": {"src_ip": source_ip}}]}, timeout=60,
-    ).json()["docs"][0]["doc"]["_source"]
-
-    assert "src_geo" in located, f"{source_ip} geolocates to nothing"
-    assert located["src_geo"]["location"]["lat"]

@@ -43,29 +43,14 @@ def _submit(client, session_id, names, case_id=None):
     return client.post_json(f"/api/sessions/{session_id}/loot/", body)
 
 
-def test_the_catalogue_lists_what_can_be_taken(client):
-    by_key = {o["key"]: o for o in client.get("/api/wargames/board/objectives/").json()}
-
-    assert set(by_key) == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    }
-    for tier in by_key.values():
-        assert tier["name"] and tier["category"]
-        assert isinstance(tier["difficulty"], int)
-        assert tier["solved"] is False and tier["solved_at"] is None
-
-
 def test_an_objective_taken_during_the_session_is_recorded(client):
     session_id = _start(client)
     _fire_exfil(client, session_id)
 
     _submit(client, session_id, ["admin"])
 
-    taken = client.get(f"/api/sessions/{session_id}/objectives/").json()
-    admin = next(o for o in taken if o["key"] == "board-auth-user-admin")
-    assert admin["name"] == "Board admin account"
-    assert admin["category"] == "Credential Access"
-    assert admin["difficulty"] == 4
+    taken = set(Objective.objects.filter(session_id=session_id).values_list("key", flat=True))
+    assert "board-auth-user-admin" in taken and "board-auth-user-full" not in taken
 
 
 def test_loot_from_another_sessions_snapshot_credits_nothing(client):
@@ -99,22 +84,6 @@ def test_a_board_opened_blind_refuses_loot_with_409(client):
 
     assert response.status_code == 409
     assert not Objective.objects.filter(session_id=session_id).exists()
-
-
-def test_a_blind_board_session_still_records_a_case(client):
-    session_id = _blind(client)
-    now = timezone.now()
-
-    created = client.post_json(f"/api/sessions/{session_id}/cases/", {
-        "case_id": EXFIL_CASE, "name": "board-sqli-search", "malicious": True,
-        "correlation": "marker", "started_at": now.isoformat(),
-        "ended_at": (now + timedelta(seconds=2)).isoformat(),
-    })
-
-    assert created.status_code == 201
-    assert client.get(
-        f"/api/sessions/{session_id}/cases/"
-    ).json()[0]["name"] == "board-sqli-search"
 
 
 def test_the_case_end_is_the_recorded_solve_time(client):

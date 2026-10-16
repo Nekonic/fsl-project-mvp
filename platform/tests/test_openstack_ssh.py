@@ -5,8 +5,6 @@ import shutil
 import signal
 import socket
 import subprocess
-import tempfile
-import threading
 import time
 from dataclasses import replace
 
@@ -161,22 +159,6 @@ def attacker(host):
     return adapter(host).runner("attacker")
 
 
-def test_the_runner_reaches_a_host_as_its_own_ssh_user_when_it_declares_one():
-    from range.declared import Declaration, Host
-
-    decl = Declaration(
-        roles={"edge": "fsl-pf", "attacker": "fsl-kali"},
-        hosts={"fsl-pf": Host(image="img", ssh_user="root", segments=("mgmt",)),
-               "fsl-kali": Host(setup="s.sh", segments=("mgmt",))},
-    )
-    cloud = openstack.Cloud(keystone="k", neutron="n", nova="v", project="p",
-                            user="u", ssh_user="ubuntu", ssh_key="/k")
-    adp = openstack.OpenStack(decl, cloud, get=None)
-
-    assert adp._ssh_user("fsl-pf") == "root", "the OPNsense edge is reached as root, with its shell set to sh"
-    assert adp._ssh_user("fsl-kali") == "ubuntu", "the default cloud user otherwise"
-
-
 def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
     ran = attacker(host)(["printf", "%s\\n", "a b", "c;d", "$HOME"])
 
@@ -203,48 +185,26 @@ def test_an_argument_that_looks_like_an_option_stays_on_the_host(host):
     )
 
 
-def test_the_exit_code_is_the_command_s(host):
-    ran = attacker(host)(["sh", "-c", "exit 3"])
+@pytest.mark.parametrize("script, exit_code, output", [
+    ("exit 3", 3, ""),
+    ("echo tried >&2; exit 255", 255, "tried\n"),
+    ("kill -9 $$", 128 + signal.SIGKILL, None),
+])
+def test_the_exit_code_is_the_command_s_as_docker_exec_reports_it(host, script, exit_code, output):
+    ran = attacker(host)(["sh", "-c", script])
 
-    assert ran.exit_code == 3, ran
-
-
-def test_a_command_that_itself_exits_255_ran(host):
-    ran = attacker(host)(["sh", "-c", "echo tried >&2; exit 255"])
-
-    assert (ran.exit_code, ran.output) == (255, "tried\n"), (
-        "ssh exits 255 both when it fails and when the command does, so the "
-        "exit status alone cannot say which. sqlmap exits 255 on any "
-        "unhandled exception; that is a tool that ran, not a range that is "
-        f"down: {ran}"
+    assert (ran.exit_code, ran.output if output is not None else None) == (exit_code, output), (
+        "ssh exits 255 both when it fails and when the command does; sqlmap "
+        f"exits 255 on any unhandled exception, a tool that ran: {ran}"
     )
 
 
-def test_a_command_killed_by_a_signal_ran(host):
-    ran = attacker(host)(["sh", "-c", "kill -9 $$"])
+def test_a_host_met_for_the_first_time_takes_the_input_and_returns_only_the_command_s_output(host):
+    ran = attacker(host)(["sh", "-c", "cat; printf 'a\\377b'"], stdin="alert http any\n")
 
-    assert ran.exit_code == 128 + signal.SIGKILL, (
-        f"docker exec reports a killed command as 137; over ssh it arrived "
-        f"as {ran}"
-    )
-
-
-def test_output_that_is_not_utf8_does_not_crash_the_runner(host):
-    ran = attacker(host)(["printf", "a\\377b"])
-
-    assert ran.output == "a\ufffdb", ran
-
-
-def test_a_host_met_for_the_first_time_is_reached(host):
-    ran = attacker(host)(["true"])
-
-    assert ran.exit_code == 0, (
-        f"every instance on a fresh cloud has a host key nobody has seen, "
-        f"and BatchMode alone refuses all of them: {ran.output!r}"
-    )
-    assert ran.output == "", (
-        f"what ssh says about itself is not the command's output: "
-        f"{ran.output!r}"
+    assert (ran.exit_code, ran.output) == (0, "alert http any\na\ufffdb"), (
+        "every instance on a fresh cloud has a host key nobody has seen, what ssh "
+        f"says about itself is not output, and bytes that are not UTF-8 must not raise: {ran}"
     )
 
 
@@ -259,266 +219,26 @@ def test_another_machine_at_an_instance_s_address_is_refused(host):
 
     another_key_answers(host)
 
-    with pytest.raises(RangeUnavailable) as raised:
+    with pytest.raises(RangeUnavailable, match="Host key verification failed"):
         adapter(host).runner("attacker")(["true"])
 
-    assert "REMOTE HOST IDENTIFICATION HAS CHANGED" in str(raised.value)
-    assert "Host key verification failed" in str(raised.value), (
-        f"Nova says the same instance has stood there since the same boot, "
-        f"so a different key is someone else answering at its address: "
-        f"{raised.value}"
-    )
 
-
-def test_a_rebuilt_instance_is_reached_again(host):
+@pytest.mark.parametrize("generation", [
+    dict(launched_at="2026-09-23T11:30:00.000000"),
+    dict(server_id="kali-2"),
+])
+def test_a_rebuilt_instance_or_a_new_one_on_an_old_address_is_reached_again(host, generation):
     assert attacker(host)(["true"]).exit_code == 0
 
     another_key_answers(host)
-    rebuilt = adapter(host, launched_at="2026-09-23T11:30:00.000000")
 
-    assert rebuilt.runner("attacker")(["true"]).exit_code == 0, (
+    assert adapter(host, **generation).runner("attacker")(["true"]).exit_code == 0, (
         "a rebuild recreates the root disk and cloud-init makes new host keys, "
         "so every rebuild on a range that is rebuilt constantly locked the "
         "platform out of that role until someone edited known_hosts by hand"
     )
 
 
-def test_a_new_instance_given_an_old_address_is_reached(host):
-    assert attacker(host)(["true"]).exit_code == 0
-
-    another_key_answers(host)
-    replaced = adapter(host, server_id="kali-2")
-
-    assert replaced.runner("attacker")(["true"]).exit_code == 0, (
-        "Neutron hands a fixed address to the next instance, and that instance "
-        "is not an impostor of the last one"
-    )
-
-
-def test_a_reboot_is_not_a_rebuild(host):
-    assert attacker(host)(["true"]).exit_code == 0
-
-    another_key_answers(host)
-
-    with pytest.raises(RangeUnavailable):
-        adapter(host, launched_at=FIRST_BOOT).runner("attacker")(["true"])
-
-
-@pytest.mark.parametrize("named", [
-    "~/deploy/ssh_config",
-    "{home}/deploy dir/ssh_config",
-    '{home}/the "range" at 100% [${HOME}] back\\slash/ssh_config',
-])
-def test_a_deployment_config_is_read_whatever_its_path_holds(host, monkeypatch, named):
-    monkeypatch.setenv("HOME", str(host["home"]))
-    named = named.replace("{home}", str(host["home"]))
-    placed = pathlib.Path(named).expanduser()
-    placed.parent.mkdir()
-    (host["home"] / "ssh_config").rename(placed)
-
-    run = adapter(host, ssh_config=named).runner("attacker")
-
-    assert run(["true"]).exit_code == 0, (
-        f"the deployment's ssh config holds the port this host answers on, "
-        f"and {named!r} was not the file ssh was told to include"
-    )
-
-
-def test_a_deployment_s_bastion_is_not_given_the_instance_s_key(host, tmp_path):
-    bastion_port = free_port()
-    bastion = start_sshd(tmp_path, bastion_port, keygen(tmp_path / "bastion"))
-    try:
-        (host["home"] / "ssh_config").write_text(
-            f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
-            f"Host jump\n"
-            f"  HostName 127.0.0.1\n"
-            f"  Port {bastion_port}\n"
-            f"  User {pwd.getpwuid(os.getuid()).pw_name}\n"
-            f"  IdentityFile {host['key']}\n"
-            f"  IdentitiesOnly yes\n"
-            f"  BatchMode yes\n"
-            f"Host 127.0.0.1\n"
-            f"  Port {host['port']}\n"
-            f"  ProxyJump jump\n"
-        )
-        run = attacker(host)
-
-        first = run(["true"])
-        assert (first.exit_code, first.output) == (0, ""), (
-            f"the jump host's own ssh wrote into the command's output: {first}"
-        )
-        assert run(["true"]).exit_code == 0, (
-            "the jump host's key was filed under the instance's alias, so the "
-            "second connection took the bastion for an impostor"
-        )
-    finally:
-        for pid in descendants(bastion.pid):
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        bastion.kill()
-        bastion.wait()
-
-
-def test_why_a_bastion_could_not_be_reached_is_named(host):
-    closed = free_port()
-    (host["home"] / "ssh_config").write_text(
-        f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
-        f"Host jump\n"
-        f"  HostName 127.0.0.1\n"
-        f"  Port {closed}\n"
-        f"Host 127.0.0.1\n"
-        f"  Port {host['port']}\n"
-        f"  ProxyJump jump\n"
-    )
-
-    with pytest.raises(RangeUnavailable) as raised:
-        attacker(host)(["true"])
-
-    assert f"port {closed}: Connection refused" in str(raised.value), (
-        f"ssh runs the jump host's connection as a second ssh that does not "
-        f"write to the first one's log, so its reason was thrown away: "
-        f"{raised.value}"
-    )
-
-
-def test_a_refused_login_is_named(host):
-    (host["home"] / "authorized_keys").write_text("")
-
-    with pytest.raises(RangeUnavailable, match="Permission denied"):
-        attacker(host)(["true"])
-
-
-def test_input_that_was_given_arrives(host):
-    ran = attacker(host)(["cat"], stdin="alert http any\n")
-
-    assert ran.output == "alert http any\n", ran
-
-
-def test_a_command_given_no_input_reads_none_of_the_platform_s(host):
-    read_end, write_end = os.pipe()
-    os.write(write_end, b"the platform's own stdin\n")
-    os.close(write_end)
-    saved = os.dup(0)
-    os.dup2(read_end, 0)
-    try:
-        ran = attacker(host)(["cat"], timeout=10)
-    finally:
-        os.dup2(saved, 0)
-        os.close(saved)
-        os.close(read_end)
-
-    assert ran.output == "", (
-        f"a command started with no input read whatever the platform's own "
-        f"stdin held: {ran.output!r}"
-    )
-
-
-def test_keys_in_an_agent_do_not_crowd_out_the_configured_one(host, monkeypatch):
-    socket_path = pathlib.Path(tempfile.mkdtemp(prefix="fsl-agent-")) / "s"
-    agent = subprocess.Popen(
-        ["ssh-agent", "-D", "-a", str(socket_path)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    try:
-        deadline = time.monotonic() + 5
-        while not socket_path.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        monkeypatch.setenv("SSH_AUTH_SOCK", str(socket_path))
-        for n in range(6):
-            subprocess.run(
-                ["ssh-add", "-q", str(keygen(host["home"] / f"unrelated-{n}"))],
-                check=True, env=dict(os.environ, SSH_AUTH_SOCK=str(socket_path)),
-            )
-
-        ran = attacker(host)(["true"])
-    finally:
-        agent.kill()
-        agent.wait()
-        shutil.rmtree(socket_path.parent, ignore_errors=True)
-
-    assert ran.exit_code == 0, (
-        "an agent holding six other keys offered all of them first, and sshd "
-        "stops listening after MaxAuthTries (default 6)"
-    )
-
-
 def test_a_command_that_outlives_its_timeout_is_named_as_such(host):
     with pytest.raises(RangeUnavailable, match="did not finish within 1s"):
         attacker(host)(["sleep", "5"], timeout=1)
-
-
-def test_a_connection_lost_mid_command_is_not_a_command_that_ran(
-    host, monkeypatch
-):
-    monkeypatch.setattr(openstack, "SERVER_ALIVE_INTERVAL", 1)
-    monkeypatch.setattr(openstack, "SERVER_ALIVE_COUNT_MAX", 1)
-    outcome = {}
-
-    def fire():
-        try:
-            outcome["ran"] = attacker(host)(["sleep", "20"], timeout=15)
-        except RangeUnavailable as exc:
-            outcome["refused"] = exc
-
-    started = time.monotonic()
-    firing = threading.Thread(target=fire)
-    firing.start()
-    deadline = time.monotonic() + 5
-    while not descendants(host["daemon"].pid) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    time.sleep(0.5)
-    for pid in descendants(host["daemon"].pid):
-        os.kill(pid, signal.SIGSTOP)
-    firing.join(20)
-    waited = time.monotonic() - started
-
-    assert "refused" in outcome, (
-        f"a host that stopped answering mid-command was reported as a "
-        f"command that ran: {outcome}"
-    )
-    assert "did not finish within" not in str(outcome["refused"])
-    assert waited < 10, (
-        f"a silent host held the call for {waited:.0f}s; without keepalives "
-        f"ssh waits for the whole timeout, which is 600s for a tool"
-    )
-
-
-def test_a_host_that_never_answers_is_given_up_before_the_tool_s_timeout(
-    host, monkeypatch
-):
-    assert openstack.CONNECT_TIMEOUT < 60, (
-        "the connect timeout is longer than the runner's own default, so it "
-        "bounds nothing"
-    )
-    silent = socket.socket()
-    silent.bind(("127.0.0.1", 0))
-    silent.listen()
-    host["home"].joinpath("ssh_config").write_text(
-        f"Port {silent.getsockname()[1]}\n"
-        f"UserKnownHostsFile {host['home'] / 'known_hosts'}\n"
-    )
-    monkeypatch.setattr(openstack, "CONNECT_TIMEOUT", 1)
-    accepted = []
-    threading.Thread(
-        target=lambda: accepted.append(silent.accept()), daemon=True
-    ).start()
-
-    started = time.monotonic()
-    try:
-        with pytest.raises(RangeUnavailable):
-            adapter(host).launcher(declared.read().segments[0].id)(
-                declared.read().roles["attacker"], ["true"], timeout=30
-            )
-    finally:
-        silent.close()
-        for connection, _ in accepted:
-            connection.close()
-    waited = time.monotonic() - started
-
-    assert waited < 10, (
-        f"reaching the attacker took {waited:.0f}s to fail. The launcher's "
-        f"timeout is how long sqlmap may run, not how long a host that "
-        f"accepted the connection and said nothing may hold the console"
-    )

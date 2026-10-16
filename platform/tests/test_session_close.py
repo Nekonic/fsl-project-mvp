@@ -56,7 +56,6 @@ def test_a_closed_session_cannot_be_closed_again(client, session_id):
         f"sessions' traffic"
     )
     assert Session.objects.get(pk=session_id).ended_at == closed_at
-    assert client.get(f"/api/sessions/{session_id}/objectives/").json() == []
 
 
 def test_closing_credits_nothing_new_and_keeps_what_was_submitted(client, session_id):
@@ -72,14 +71,6 @@ def test_closing_credits_nothing_new_and_keeps_what_was_submitted(client, sessio
         "loot is taken only through POST /loot/; a close that credited anything "
         "on its own would score the red team for what it never proved it took"
     )
-
-
-def test_a_close_reply_has_nothing_to_confess(client, session_id):
-    closed = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert closed.status_code == 200, closed.content
-    assert closed.json()["ended_at"] is not None
-    assert "unobserved" not in closed.json()
 
 
 def test_an_attack_that_was_running_when_the_session_closed_is_still_in_its_window(client, session_id):
@@ -140,14 +131,6 @@ class Rebuilds:
         if self.fail is not None:
             raise self.fail
         return [("fsl-waf", "srv-1"), ("fsl-wg-board", "srv-2")]
-
-
-def test_closing_on_the_compose_range_does_not_rebuild(client, session_id):
-    response = client.post_json(f"/api/sessions/{session_id}/close/")
-
-    assert response.status_code == 200, response.content
-    assert response.json()["ended_at"] is not None
-    assert "rebuilding" not in response.json() and "rebuild" not in response.json()
 
 
 def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
@@ -225,30 +208,26 @@ def test_closing_on_the_cloud_lifts_the_suppressions_the_rebuild_wiped(client, s
         "but the suppression stayed on the books, so readiness refused every "
         "new session until it expired"
     )
-    restored = client.post_json(f"/api/rules/suppressions/{record.pk}/restore/")
-    assert restored.status_code == 200, restored.content
-    assert "already restored" in restored.json()["detail"]
 
 
-def test_a_failed_rebuild_keeps_the_suppression_on_the_books(client, session_id):
+def _failed_rebuild():
     from range.ports import Drifted
 
-    record = _silenced(session_id)
-    found = RebuildsAndConfigures(fail=Drifted("fsl-waf is not standing"))
+    return RebuildsAndConfigures(fail=Drifted("fsl-waf is not standing"))
 
-    with patch("api.views.substrate", lambda: found), patch("api.views.reset.begin"):
+
+@pytest.mark.parametrize("found", [_failed_rebuild, None], ids=["cloud-rebuild-failed", "compose"])
+def test_a_close_that_rebuilt_nothing_keeps_the_suppression_on_the_books(client, session_id, found):
+    record = _silenced(session_id)
+
+    if found is None:
         client.post_json(f"/api/sessions/{session_id}/close/")
+    else:
+        adapter = found()
+        with patch("api.views.substrate", lambda: adapter), patch("api.views.reset.begin"):
+            client.post_json(f"/api/sessions/{session_id}/close/")
 
     record.refresh_from_db()
     assert record.restored_at is None, (
         "nothing was rebuilt, so the sensor still runs with the rule commented out"
     )
-
-
-def test_closing_on_the_compose_range_leaves_the_suppression_to_its_own_sensor(client, session_id):
-    record = _silenced(session_id)
-
-    client.post_json(f"/api/sessions/{session_id}/close/")
-
-    record.refresh_from_db()
-    assert record.restored_at is None

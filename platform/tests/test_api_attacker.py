@@ -2,7 +2,6 @@ from unittest.mock import patch
 
 import pytest
 
-from attacker import AttackerUnavailable
 from range.ports import Ran, Shape
 
 pytestmark = pytest.mark.django_db
@@ -35,16 +34,6 @@ def test_attacker_reports_the_address_alerts_will_carry(client):
     assert response.status_code == 200
     assert response.json()["source_ip"] == "172.20.0.7"
     assert response.json()["terminal_url"]
-
-def test_attacker_that_is_not_running_is_503_not_a_guess(client):
-    with stub(), patch(
-        "api.views.attacker.origins",
-        side_effect=AttackerUnavailable("no such container: fsl-kali"),
-    ):
-        response = client.get("/api/attacker/")
-
-    assert response.status_code == 503
-    assert "fsl-kali" in response.json()["detail"]
 
 @pytest.mark.parametrize("path, body", [
     ("/api/attacker/label/", {"case_id": "c0ffee"}),

@@ -21,9 +21,6 @@ def test_a_fast_detection_scores_higher_speed_than_a_slow_one():
 
     assert fast > slow
     assert 0.0 <= slow < fast <= 1.0
-
-
-def test_an_undetected_attack_scores_zero_speed():
     assert game.speed([attempt("a", True, "initial-compromise", None)]) == 0.0
 
 
@@ -35,6 +32,9 @@ def test_coverage_is_detected_stages_over_attacked_stages():
     ]
 
     assert game.coverage(attempts) == 2 / 3
+    assert game.coverage([attempt("a", True, "initial-compromise", None),
+                          attempt("b", True, "initial-compromise", 5)]) == 1.0, (
+        "coverage dedups by stage: one detected attempt covers the stage")
 
 
 def test_benign_traffic_is_not_counted_in_coverage_or_speed():
@@ -45,13 +45,6 @@ def test_benign_traffic_is_not_counted_in_coverage_or_speed():
 
     assert game.coverage(attempts) == 1.0
     assert game.speed(attempts) == 1.0
-
-
-def test_accuracy_falls_when_benign_traffic_raises_alerts():
-    clean = game.accuracy(tp=3, fp=0, fn=0, tn=3)
-    noisy = game.accuracy(tp=3, fp=3, fn=0, tn=0)
-
-    assert clean > noisy
 
 
 def test_an_undetected_objective_is_worth_more_to_the_attacker():
@@ -95,12 +88,6 @@ def test_a_strong_defence_ends_ahead_and_a_breached_one_behind():
     assert strong.balance > 0 > weak.balance
 
 
-def test_response_is_absent_until_something_is_blocked():
-    attempts = [attempt("a", True, "initial-compromise", 5)]
-
-    assert game.response(attempts) is None
-
-
 def test_blocking_an_attack_raises_response_and_blocking_a_benign_lowers_it():
     stopped = game.response([attempt("a", True, "initial-compromise", 5, blocked=True)])
     collateral = game.response([
@@ -110,36 +97,6 @@ def test_blocking_an_attack_raises_response_and_blocking_a_benign_lowers_it():
 
     assert stopped == 1.0
     assert collateral < stopped
-
-
-def test_blocking_the_attack_lifts_the_defender_balance():
-    taken = [game.Taken(key="x", difficulty=4, detected=True)]
-
-    passed = game.settle(
-        [attempt("a", True, "initial-compromise", 60)], taken, tp=1, fp=0, fn=0, tn=1
-    )
-    blocked = game.settle(
-        [attempt("a", True, "initial-compromise", 60, blocked=True)],
-        taken, tp=1, fp=0, fn=0, tn=1,
-    )
-
-    assert blocked.response == 1.0
-    assert passed.response is None
-    assert blocked.balance > passed.balance
-
-
-def test_the_pillars_are_reported_beside_the_balance():
-    settled = game.settle(
-        [attempt("a", True, "initial-compromise", 5)],
-        [game.Taken(key="x", difficulty=4, detected=True)],
-        tp=1, fp=0, fn=0, tn=1,
-    )
-
-    assert (settled.speed, settled.accuracy, settled.coverage) == (1.0, 1.0, 1.0)
-    assert settled.response is None
-    assert settled.weights == game.WEIGHTS
-    assert settled.attacker == 4 * game.DETECTED_TAKE
-    assert settled.balance == settled.defender - settled.attacker
 
 
 def test_an_absent_response_pillar_redistributes_its_weight_not_scores_it_zero():
@@ -155,18 +112,5 @@ def test_an_absent_response_pillar_redistributes_its_weight_not_scores_it_zero()
         "quality 1.0 and defender 4.0; scoring the absent response as 0.0 would "
         "give quality 0.75 and defender 3.0"
     )
-
-
-def test_accuracy_is_floored_at_zero_when_noise_outweighs_recall():
-    assert game.accuracy(tp=1, fp=3, fn=1, tn=1) == 0.0
-
-
-def test_a_stage_attacked_twice_is_covered_when_either_attempt_is_seen():
-    attempts = [
-        attempt("a", True, "initial-compromise", None),
-        attempt("b", True, "initial-compromise", 5),
-    ]
-    assert game.coverage(attempts) == 1.0, (
-        "coverage dedups by stage: one detected attempt covers the stage even "
-        "when another attempt at the same stage went unseen"
-    )
+    assert settled.attacker == 4 * game.DETECTED_TAKE
+    assert settled.balance == settled.defender - settled.attacker

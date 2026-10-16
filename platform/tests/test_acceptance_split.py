@@ -36,7 +36,7 @@ def test_every_module_runs_in_exactly_one_process(workers):
 
 @pytest.mark.parametrize("workers", [1, 2, 3])
 def test_a_run_limited_to_some_modules_plans_those_and_no_others(workers):
-    only = {"test_board", "test_lesson", "test_fabric"}
+    only = {"test_board", "test_lesson", "test_geoip_durable"}
     together, after = split.plan(workers, only=only)
 
     ran = [module for process in together + after for module in process.modules]
@@ -71,14 +71,6 @@ def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
     )
 
 
-def test_one_worker_runs_the_session_modules_in_the_order_pytest_would():
-    together, after = split.plan(1)
-    worker = next(process for process in together if process.role == "worker")
-
-    assert worker.modules == [m for m in split.modules() if m not in split.IDLE]
-    assert after == []
-
-
 @pytest.mark.parametrize("workers", [2, 3])
 def test_the_modules_that_hold_two_sessions_run_alone_after_the_rest(workers):
     together, after = split.plan(workers)
@@ -105,41 +97,6 @@ def test_the_idle_modules_ask_for_no_session_and_touch_no_host():
             assert touch not in source, (
                 f"{module} runs while a range reset is in progress, and it {touch!r}"
             )
-
-
-def test_the_heaviest_group_is_placed_first_and_the_load_evened_out():
-    placed = split.balanced([["a"], ["b"], ["c"], ["d"]], {"a": 10, "b": 9, "c": 2, "d": 1}, 2)
-
-    assert sorted((p.modules, p.estimate) for p in placed) == [(["a", "d"], 11), (["b", "c"], 11)]
-
-
-def test_a_bonded_group_is_never_split_across_workers():
-    placed = split.balanced([["a", "b", "c"], ["d"]], {"a": 5, "b": 5, "c": 5, "d": 1}, 3)
-
-    assert sorted(p.modules for p in placed) == [["a", "b", "c"], ["d"]]
-
-
-def test_an_unmeasured_module_still_weighs_something():
-    placed = split.balanced([["new"], ["old"]], {"old": 1}, 1)
-
-    assert placed[0].estimate == split.UNMEASURED_SECONDS + 1
-
-
-def test_the_summary_adds_every_process_report():
-    first = split.totals_of(
-        '<testsuites><testsuite tests="5" failures="1" errors="0" skipped="2" time="9">'
-        '<testcase classname="test_board" name="a" time="3"/>'
-        '<testcase classname="test_board" name="b" time="4"/></testsuite></testsuites>'
-    )
-    second = split.totals_of(
-        '<testsuite tests="3" failures="0" errors="1" skipped="0" time="2">'
-        '<testcase classname="test_map" name="c" time="2"/></testsuite>'
-    )
-    merged = first.add(second)
-
-    assert (merged.passed, merged.failed, merged.errors, merged.skipped) == (4, 1, 1, 2)
-    assert merged.per_module == {"test_board": 7.0, "test_map": 2.0}
-    assert merged.line(60, 3) == "4 passed, 1 failed, 1 errors, 2 skipped in 60s across 3 processes"
 
 
 def test_the_worker_count_is_what_the_range_lets_open_at_once(monkeypatch):
@@ -192,9 +149,6 @@ def test_an_open_refused_for_room_is_retried_once_there_is_room():
                              lambda: made_room.append(1) or True, attempts=5)
 
     assert result == "201" and len(made_room) == 2
-
-
-def test_retrying_stops_when_no_room_comes_or_the_attempts_run_out():
     assert opening.retried(lambda: "409", lambda said: True, lambda: False, attempts=5) == "409"
     tries = []
     opening.retried(lambda: tries.append(1) or "409", lambda said: True, lambda: True, attempts=3)

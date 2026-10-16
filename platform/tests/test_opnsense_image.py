@@ -6,7 +6,6 @@ import pathlib
 import socket
 import tarfile
 import threading
-import time
 import xml.etree.ElementTree as ElementTree
 from urllib.parse import parse_qs, urlsplit
 
@@ -41,11 +40,6 @@ def members(bundle):
 
 def line(text):
     return next(i for i, entry in enumerate(BUILD.splitlines()) if text in entry)
-
-
-def test_the_edge_is_built_by_a_script_and_uploads_its_own_disk():
-    assert EDGE.setup == "deploy/opnsense/build.sh" and not EDGE.image
-    assert EDGE.uploads == opnsense.UPLOADS
 
 
 def test_the_image_is_named_by_release_and_rebuilt_when_the_release_changes():
@@ -85,31 +79,12 @@ def test_the_image_keeps_the_serial_console_and_its_login_prompt_after_the_impor
     )
 
 
-def test_a_generated_file_may_not_shadow_one_from_the_repo():
-    with pytest.raises(Exception, match="both a repo file and a generated one"):
-        images.bundle(ROOT, "fsl-edge", EDGE.setup, EDGE.files,
-                      generated={"deploy/opnsense/config.xml": b"x"})
-
-
-def test_the_builder_installs_every_tool_it_uses_on_the_stock_ubuntu_image():
-    installed = BUILD[BUILD.index("$APT install"):BUILD.index("rm -rf")].split()
-
-    for package in ("curl", "bzip2", "openssl", "qemu-utils", "qemu-system-x86",
-                    "dosfstools", "mtools", "fdisk", "python3", "ca-certificates"):
-        assert package in installed, package
-    assert line("$APT install") < line("curl -fsSLo")
-
-
 def test_the_download_is_checked_before_anything_is_unpacked_or_booted():
     assert line('sha256sum -c -') < line("bunzip2")
     assert line("PUBKEY_SHA256") < line("openssl dgst -sha256 -verify")
+    assert '-signature image.sig "$NANO"' in BUILD
     assert line("openssl dgst -sha256 -verify") < line("importer.py")
     assert "set -eu" in BUILD.splitlines()[0], "a failed check must stop the build"
-
-
-def test_the_signature_is_checked_on_the_unpacked_image_as_the_release_notes_say():
-    assert line("bunzip2") < line("openssl base64 -d")
-    assert '-signature image.sig "$NANO"' in BUILD
 
 
 def test_the_disk_is_converted_to_qcow2_where_the_builder_serves_it():
@@ -170,19 +145,9 @@ def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn():
     )
 
 
-def test_the_importer_gives_up_with_what_the_console_said():
-    module = importer()
-    ours, theirs = socket.socketpair()
-    ours.settimeout(0.1)
-    theirs.sendall(b"Mounting filesystems...\n")
-
-    with pytest.raises(SystemExit, match="Mounting filesystems"):
-        module.awaited(ours, b"login:", time.monotonic() + 0.5, bytearray())
-
-
 def test_the_importer_presses_the_power_button_until_qemu_exits():
     module = importer()
-    module.PRESS_EVERY = 0.2
+    module.PRESS_EVERY = 0
     console, _ = socket.socketpair()
     monitor, pressed = socket.socketpair()
 
@@ -298,7 +263,7 @@ def served(tmp_path, monkeypatch):
     disk = tmp_path / images.DISK
     disk.write_bytes(b"QFI\xfb" + bytes(range(256)) * 64)
     server = ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(tmp_path)))
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
     monkeypatch.setattr(images, "SERVE_PORT", server.server_port)
     yield disk
     server.shutdown()
@@ -450,26 +415,3 @@ def test_an_old_edge_image_a_server_still_boots_from_is_kept_until_it_is_rebuilt
 
     glance.servers[0]["image"] = {"id": "img-new"}
     assert [ident for _, ident, _ in adapter(glance).plan_images().leftovers] == ["img-old"]
-
-
-def test_the_edge_image_needs_the_fabric_key_and_the_release_settings():
-    from range.ports import RangeUnavailable
-
-    glance = Glance()
-    keyless = adapter(glance)
-    keyless._public_key = lambda make=False: ""
-    with pytest.raises(RangeUnavailable, match="build the fabric first"):
-        keyless.plan_images()
-
-    bare = openstack.OpenStack(edge_only(), SPEC, get=glance,
-                               build=openstack.Build(source=str(ROOT), mtu=1450))
-    with pytest.raises(RangeUnavailable, match="FSL_OPNSENSE"):
-        bare.plan_images()
-
-
-def test_a_host_that_uploads_an_image_needs_the_script_that_makes_it():
-    from range.declared import Declaration, Host
-
-    with pytest.raises(ValueError, match="no setup script to make it"):
-        Declaration(roles={"edge": "fsl-x"},
-                    hosts={"fsl-x": Host(image="img", uploads="opnsense")}).check()

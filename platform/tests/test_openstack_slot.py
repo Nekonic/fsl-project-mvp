@@ -155,24 +155,6 @@ def edge_declaration():
         default_origin="ru",
     )
 
-def test_the_prebuilt_edge_boots_from_its_image_with_no_cloud_init(tmp_path):
-    (tmp_path / "waf").mkdir()
-    (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
-    decl = edge_declaration()
-    cloud = Cloud(decl, source=tmp_path)
-    build = openstack.Build(source=str(tmp_path), base_image="ubuntu-24.04", inside=INSIDE,
-                            flavor="m1.small", network="net-platform", platform="srv-platform")
-
-    openstack.OpenStack(decl, SPEC, get=cloud, build=build).ensure_slot()
-
-    pf = cloud.booted("fsl-pf")
-    assert pf["imageRef"] == "img-fsl-pf"
-    assert "user_data" not in pf or not pf["user_data"], (
-        "OPNsense is FreeBSD and runs no cloud-init; a Linux cloud-config would "
-        "be ignored at best and the platform configures it over ssh instead"
-    )
-    assert cloud.booted("fsl-waf")["user_data"], "the Linux hosts still learn names"
-
 def test_the_edge_forwarding_ports_may_carry_any_source_so_it_can_route_un_natted(tmp_path):
     (tmp_path / "waf").mkdir()
     (tmp_path / "waf" / "setup.sh").write_text("set -eu\n")
@@ -215,15 +197,11 @@ def test_every_host_boots_from_its_own_image_on_its_own_ports(cloud):
         )
         assert server["key_name"] == fabric.KEYPAIR
 
-def test_every_range_port_off_management_is_in_the_range_group(cloud):
+def test_every_management_port_is_fenced_to_the_platform_and_every_other_port_is_in_the_range_group(cloud):
     adapter(cloud).ensure_slot()
 
     assert {tuple(p["security_groups"]) for p in cloud.ports
             if not p["name"].endswith(".mgmt")} == {("sg-range",)}
-
-def test_every_management_port_takes_connections_from_the_platform_alone(cloud):
-    adapter(cloud).ensure_slot()
-
     assert {tuple(p["security_groups"]) for p in cloud.ports
             if p["name"].endswith(".mgmt")} == {("sg-mgmt",)}, (
         "Kali has a management port; in the range group it reaches the edge's "
@@ -243,26 +221,6 @@ def test_a_management_port_made_before_the_fence_is_moved_into_it(cloud):
         ("PUT", f"v2.0/ports/{host['id']}", {"port": {"security_groups": ["sg-mgmt"]}})
     ]
 
-def test_every_host_is_told_where_the_others_are_on_the_estate(cloud):
-    adapter(cloud).ensure_slot()
-
-    wargames = cloud.port(f"{WARGAME_HOST}.estate")["fixed_ips"][0]["ip_address"]
-    names = DECLARED.hosts[WARGAME_HOST].names
-    assert "board" in names
-    for host in DECLARED.hosts:
-        [written] = [f for f in cloud.config(host)["write_files"] if f["path"] == "/etc/hosts"]
-        assert f"{wargames} {' '.join(names)}\n" in written["content"]
-
-def test_the_gateway_adds_every_origin_gateway_to_its_internet_nic(cloud):
-    adapter(cloud).ensure_slot()
-
-    gateway = DECLARED.roles["gateway"]
-    port = cloud.port(f"{gateway}.internet")
-    script = cloud.config(gateway)["bootcmd"][0][-1]
-    assert port["mac_address"] in script
-    for origin in DECLARED.origins:
-        assert f"{origin.subnet.replace('0/24', '1')}/24" in script
-
 def test_a_slot_standing_writes_nothing_the_second_time(cloud):
     adapter(cloud).ensure_slot()
     written = [c for c in cloud.calls if c[0] != "GET"]
@@ -271,13 +229,6 @@ def test_a_slot_standing_writes_nothing_the_second_time(cloud):
 
     assert [c for c in cloud.calls if c[0] != "GET"] == written
     assert plan.clean and len(plan.standing) == len(DECLARED.hosts)
-
-def test_a_slot_whose_images_are_not_ready_is_refused_before_anything_is_written(cloud):
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wargame-host"]
-
-    with pytest.raises(Drifted, match="fsl-wargame-host"):
-        adapter(cloud).ensure_slot()
-    assert [c for c in cloud.calls if c[0] != "GET"] == []
 
 def test_rebuilding_the_slot_resets_every_vm_to_its_golden_image(cloud):
     adapter(cloud).ensure_slot()
@@ -297,15 +248,6 @@ def test_rebuilding_the_slot_resets_every_vm_to_its_golden_image(cloud):
                if verb == "POST" and path.endswith("/action")]
     assert len(actions) == len(DECLARED.hosts)
     assert all("rebuild" in a and a["rebuild"]["imageRef"] for a in actions)
-
-def test_a_slot_not_fully_standing_is_not_rebuilt(cloud):
-    adapter(cloud).ensure_slot()
-    cloud.servers.pop()
-
-    with pytest.raises(Drifted):
-        adapter(cloud).rebuild_slot()
-
-    assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == []
 
 def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(cloud):
     adapter(cloud).ensure_slot()
@@ -329,19 +271,3 @@ def test_taking_the_slot_down_removes_its_servers_and_the_ports_it_made(cloud):
     assert cloud.servers == []
     assert [p["id"] for p in cloud.ports] == ["port-platform"]
     assert {kind for kind, _ in removed} == {"server", "port"}
-
-def test_the_slot_calls_send_the_documented_api_fields():
-    reference = {
-        openstack.CREATE_PORT: "https://docs.openstack.org/api-ref/network/v2/#create-port",
-        openstack.DELETE_PORT: "https://docs.openstack.org/api-ref/network/v2/#delete-port",
-        openstack.ATTACH: "https://docs.openstack.org/api-ref/compute/#create-interface",
-        openstack.SECURITY_GROUPS: "https://docs.openstack.org/api-ref/network/v2/#list-security-groups",
-        openstack.CREATE_RULE: "https://docs.openstack.org/api-ref/network/v2/#create-security-group-rule",
-        openstack.ACTION: "https://docs.openstack.org/api-ref/compute/#rebuild-server-rebuild-action",
-    }
-    source = pathlib.Path(openstack.__file__).read_text()
-
-    for field in ('"fixed_ips"', '"mac_address"', '"security_groups"', '"key_name"',
-                  '"interfaceAttachment"', '"port_id"', '"device_id"', '"direction"',
-                  '"rebuild"', '"imageRef"'):
-        assert field in source, f"{field} is read or sent and checked against {reference}"

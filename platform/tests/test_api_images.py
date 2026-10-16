@@ -34,13 +34,7 @@ def built():
     with patch("api.views.substrate", lambda: found):
         yield found
 
-def test_the_docker_range_builds_no_images(client):
-    response = client.get(URL)
-
-    assert response.status_code == 409, response.content
-    assert "compose" in response.json()["detail"]
-
-def test_reading_the_images_says_each_ones_state_and_why_it_failed(client, built):
+def test_reading_the_images_changes_nothing_and_only_a_post_or_delete_acts_on_them(client, built):
     answer = client.get(URL).json()
 
     assert answer["images"][0] == {
@@ -51,17 +45,10 @@ def test_reading_the_images_says_each_ones_state_and_why_it_failed(client, built
     assert answer["leftovers"] == [{
         "kind": "image", "id": "img-old", "why": "image fsl-wiki was built from bundle d0",
     }]
-    assert answer["clean"] is False and built.ensured == 0
+    assert (built.ensured, built.cleaned) == (0, 0)
 
-def test_moving_the_builds_on_is_a_post(client, built):
-    response = client.post_json(URL)
-
-    assert response.status_code == 200 and built.ensured == 1
-
-def test_clearing_failures_and_leftovers_is_a_delete_and_says_what_went(client, built):
-    response = client.delete(URL)
-
-    assert response.status_code == 200 and built.cleaned == 1
-    assert response.json()["removed"] == [
+    assert client.post_json(URL).status_code == 200
+    assert client.delete(URL).json()["removed"] == [
         {"kind": "image", "id": "img-old"}, {"kind": "server", "id": "srv-2"},
     ]
+    assert (built.ensured, built.cleaned) == (1, 1)

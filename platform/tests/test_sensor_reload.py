@@ -55,58 +55,30 @@ def test_the_shipped_sensor_opens_the_socket_it_is_reloaded_through():
         "uptime against the live sensor, No such file or directory"
     )
 
-def test_an_ok_reply_leaves_the_new_rules_in_place():
-    sensor = Sensor(Ran(0, RELOADED))
+@pytest.mark.parametrize("reply", [RELOADED, '{"message": "done", "return": "OK"}\n'], ids=["rust", "python"])
+def test_an_ok_reply_from_either_suricatasc_leaves_the_new_rules_in_place(reply):
+    sensor = Sensor(Ran(0, reply))
 
     suricata.apply(AFTER, sensor, RELOAD)
 
     assert sensor.reloads == 1
     assert suricata.current(sensor) == AFTER
 
-def test_a_nok_reply_is_a_failed_reload_although_suricatasc_exits_0():
-    sensor = Sensor(Ran(0, BUSY))
+@pytest.mark.parametrize("answer, said", [
+    (Ran(0, BUSY), "Reload already in progress"),
+    (Ran(1, NO_SOCKET), "Unable to connect socket"),
+    (Ran(0, ""), "rolled back"),
+], ids=["nok-exit-0", "no-socket", "no-reply"])
+def test_a_reload_the_sensor_did_not_confirm_fails_and_writes_the_old_rules_back(answer, said):
+    sensor = Sensor(answer)
 
-    with pytest.raises(suricata.RuleApplyError, match="Reload already in progress"):
+    with pytest.raises(suricata.RuleApplyError, match=said):
         suricata.apply(AFTER, sensor, RELOAD)
 
-    assert suricata.current(sensor) == BEFORE, (
-        "the Rust suricatasc of Suricata 8 prints a NOK reply and exits 0, "
-        "so an exit status alone reported this refused reload as done"
+    assert sensor.writes == [AFTER, BEFORE], (
+        "the Rust suricatasc of Suricata 8 prints a NOK reply and exits 0, and a signal "
+        "exits 0 whether or not anything reloaded; only the sensor's own reply says the rules loaded"
     )
-
-def test_a_socket_that_cannot_be_reached_is_a_failed_reload():
-    sensor = Sensor(Ran(1, NO_SOCKET))
-
-    with pytest.raises(suricata.RuleApplyError, match="Unable to connect socket"):
-        suricata.apply(AFTER, sensor, RELOAD)
-
-    assert suricata.current(sensor) == BEFORE
-
-def test_a_reload_that_answers_nothing_is_not_taken_for_one():
-    sensor = Sensor(Ran(0, ""))
-
-    with pytest.raises(suricata.RuleApplyError, match="rolled back"):
-        suricata.apply(AFTER, sensor, RELOAD)
-
-    assert suricata.current(sensor) == BEFORE, (
-        "a signal exits 0 whether or not anything reloaded; only the "
-        "sensor's own reply says the rules loaded"
-    )
-
-def test_a_refused_reload_writes_back_the_rules_it_replaced():
-    sensor = Sensor(Ran(0, BUSY))
-
-    with pytest.raises(suricata.RuleApplyError, match="rolled back"):
-        suricata.apply(AFTER, sensor, RELOAD)
-
-    assert sensor.writes == [AFTER, BEFORE]
-
-def test_the_reply_of_the_python_client_suricata_7_ships_is_understood():
-    sensor = Sensor(Ran(0, '{"message": "done", "return": "OK"}\n'))
-
-    suricata.apply(AFTER, sensor, RELOAD)
-
-    assert suricata.current(sensor) == AFTER
 
 def test_the_rules_go_to_the_path_the_sensor_reads_and_roll_back_there():
     edge_rules = "/usr/local/etc/suricata/rules/fsl.rules"

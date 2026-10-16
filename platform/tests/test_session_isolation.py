@@ -104,11 +104,6 @@ def test_a_role_runs_in_its_own_session_s_container():
     )
 
 
-def test_without_a_session_the_newest_stack_answers():
-    with patch("range.docker.subprocess.run", Range()):
-        assert session_range(None)._container("gateway") == "fsl-7-waf-1"
-
-
 def test_a_role_with_no_running_container_in_the_session_is_unavailable():
     with patch("range.docker.subprocess.run", Range()), \
             pytest.raises(RangeUnavailable, match="fsl-9"):
@@ -126,13 +121,6 @@ def test_a_session_s_containers_carry_their_declared_host_names():
         "name the declaration gives it, not by its per-session container name"
     )
     assert [(s.name, s.watches) for s in shape.sensors] == [("fsl-suricata", "fsl-waf")]
-
-
-def test_only_the_session_s_own_estate_is_part_of_its_range():
-    with patch("range.docker.subprocess.run", Range()):
-        estate = next(s for s in session_range(3).segments() if s.id == "estate")
-
-    assert estate.network == "fsl-3_estate"
 
 
 def test_an_estate_left_by_an_older_control_plane_is_not_a_second_estate():
@@ -534,7 +522,6 @@ def test_a_write_with_no_session_open_is_refused(client):
     answer = client.post_json("/api/rules/apply/", {"content": ""})
 
     assert answer.status_code == 409
-    assert "no session is open" in answer.json()["detail"]
 
 
 @pytest.mark.django_db

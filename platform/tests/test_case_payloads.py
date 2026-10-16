@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -14,7 +15,7 @@ def _request_specs():
                 yield path.name, case.get("name"), spec
 
 
-def test_every_request_case_uses_only_keys_the_harness_sends():
+def test_every_request_case_is_one_the_harness_can_send_as_written():
     offenders = [
         (file, name, sorted(set(spec) - ALLOWED_REQUEST_KEYS))
         for file, name, spec in _request_specs()
@@ -22,9 +23,6 @@ def test_every_request_case_uses_only_keys_the_harness_sends():
     ]
     assert offenders == [], offenders
 
-
-def test_prefetch_specs_name_a_page_and_a_capturing_pattern():
-    import re
     for file, name, spec in _request_specs():
         pre = spec.get("prefetch")
         if not pre:

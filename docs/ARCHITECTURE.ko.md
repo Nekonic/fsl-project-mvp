@@ -1343,7 +1343,6 @@ Elasticsearch로 간다. Kali 이미지 하나가 모든 출발지를 맡는다:
 포트 하나가 국가별 약 100개 주소를 갖고(slot의 `bootcmd`가 NIC에 추가)
 `/usr/local/sbin/fsl-origin`이 나가는 출발지 주소를 국가별로 SNAT하므로, 모든 도구가
 선택된 국가에서 나간다. marker를 붙이는 프록시와 ttyd 터미널은 Kali 박스에서 돈다.
-`GET /api/range/console/<host>/`는 그 호스트를 맡은 서버의 Nova 콘솔 URL을 반환한다.
 
 `rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 상주 slot VM 전부를 각자의
 골든 이미지로 재구축하되 서버 id, flavour, 포트, 고정 IP는 유지한다.

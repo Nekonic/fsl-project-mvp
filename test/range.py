@@ -18,12 +18,8 @@ SESSION_PROJECT = re.compile(r"fsl-(\d+)")
 
 ATTACKER = "attacker"
 BOARD = "board"
-BOARD_DB = "board-db"
 SENSOR = "sensor"
-GATEWAY = "gateway"
 SCORER = "scorer"
-
-ROLES = (ATTACKER, BOARD, BOARD_DB, SENSOR, GATEWAY)
 
 EXIT_MARK = "fsl.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")

@@ -63,32 +63,6 @@ def dispatch(monkeypatch):
 
     return install
 
-def test_a_role_with_no_host_is_a_clear_error(dispatch):
-    fake = dispatch()
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable) as raised:
-        substrate.run("forensics", ["true"])
-
-    assert "forensics" in str(raised.value)
-    assert seam.ATTACKER in str(raised.value)
-    assert not fake.commands, (
-        "an unfillable role reached the substrate, so the error would come "
-        "back as whatever the substrate says about a missing host"
-    )
-
-def test_every_operation_refuses_a_role_with_no_host(dispatch):
-    dispatch()
-    substrate = seam.Docker()
-
-    for call in (
-        lambda: substrate.run("forensics", ["true"]),
-        lambda: substrate.segments("forensics"),
-        lambda: substrate.recreate("forensics"),
-    ):
-        with pytest.raises(seam.RangeUnavailable):
-            call()
-
 def finished(code, stderr=""):
     return f"{stderr}{seam.EXIT_MARK}{code}\n"
 
@@ -102,91 +76,28 @@ def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch):
     assert ran.exit_code == 1
     assert "not found" in ran.stderr
 
-def test_a_command_that_ran_and_passed_keeps_its_two_streams_apart(dispatch):
-    dispatch(returncode=0, stdout="5.188.10.4 \n", stderr=finished(0, "warning"))
-    substrate = seam.Docker()
-
-    ran = substrate.run(seam.ATTACKER, ["sh", "-c", "hostname -I"])
-
-    assert ran.ok
-    assert ran.stdout.split() == ["5.188.10.4"]
-    assert ran.stderr == "warning"
-    assert ran.output == "5.188.10.4 \nwarning"
-
-def test_a_command_that_could_not_be_dispatched_is_not_a_failed_command(dispatch):
-    dispatch(raises=FileNotFoundError("docker"))
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable):
-        substrate.run(seam.ATTACKER, ["true"])
-
-def test_a_host_that_is_not_running_is_not_a_failed_command(dispatch):
-    dispatch(returncode=1, stderr="Error: No such container: fsl-kali")
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable) as raised:
-        substrate.run(seam.ATTACKER, ["true"])
-
-    assert seam.ATTACKER in str(raised.value)
-
-def test_a_command_that_never_finished_is_not_a_failed_command(dispatch):
-    dispatch(raises=subprocess.TimeoutExpired(cmd="docker", timeout=8))
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable):
-        substrate.run(seam.ATTACKER, ["sleep", "99"])
-
-def test_a_command_is_dispatched_to_the_host_filling_the_role(dispatch):
-    fake = dispatch(stderr=finished(0))
-    substrate = seam.Docker()
-
-    substrate.run(seam.SENSOR, ["tail", "-5", "/var/log/suricata/eve.json"])
-
-    assert fake.commands == [[
-        "docker", "exec", "fsl-7-suricata-1",
-        *seam.through_shell(["tail", "-5", "/var/log/suricata/eve.json"]),
-    ]], "without a session named, the newest session's stack answers"
-
-def test_a_command_reaches_the_session_it_names(dispatch):
+def test_a_command_reaches_the_session_it_names_and_otherwise_the_newest(dispatch):
     fake = dispatch(stderr=finished(0))
 
     seam.Docker().run(seam.ATTACKER, ["true"], session=3)
+    seam.Docker().run(seam.SENSOR, ["true"])
 
     assert fake.commands[0][:3] == ["docker", "exec", "fsl-3-kali-1"]
     assert fake.looked_up[0][2:4] == ["--filter", "label=com.docker.compose.service=kali"]
+    assert fake.commands[1][:3] == ["docker", "exec", "fsl-7-suricata-1"]
 
-def test_the_scorer_is_reached_by_its_control_plane_name(dispatch):
-    fake = dispatch(stderr=finished(0))
+@pytest.mark.parametrize("failure", [
+    {"returncode": 1, "stderr": "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
+                                "Is the docker daemon running?\n"},
+    {"returncode": 1, "stderr": "Error: No such container: fsl-kali"},
+    {"raises": FileNotFoundError("docker")},
+    {"raises": subprocess.TimeoutExpired(cmd="docker", timeout=8)},
+], ids=["daemon-down", "host-not-running", "not-dispatched", "never-finished"])
+def test_a_command_the_substrate_could_not_run_is_an_outage_not_a_failed_command(dispatch, failure):
+    dispatch(**failure)
 
-    seam.Docker().run(seam.SCORER, ["true"])
-
-    assert fake.commands[0][:3] == ["docker", "exec", "fsl-platform"]
-    assert not fake.looked_up
-
-def test_a_daemon_that_cannot_be_reached_is_not_a_failed_command(dispatch):
-    dispatch(returncode=1, stderr=(
-        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
-        "Is the docker daemon running?\n"
-    ))
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable) as raised:
-        substrate.run(seam.ATTACKER, ["curl", "http://board.com/"])
-
-    assert seam.ATTACKER in str(raised.value), raised.value
-    assert "Cannot connect" in str(raised.value), (
-        "docker's own exit status of 1 was taken for the command's, so an "
-        "assertion that the attacker cannot reach the target passed with no "
-        "daemon to run anything"
-    )
-
-def test_the_exit_status_is_the_one_the_host_reported(dispatch):
-    dispatch(returncode=0, stdout="", stderr=finished(127, "sh: 1: nmap: not found\n"))
-    substrate = seam.Docker()
-
-    ran = substrate.run(seam.ATTACKER, ["nmap", "--version"])
-
-    assert (ran.exit_code, ran.stderr) == (127, "sh: 1: nmap: not found\n")
+    with pytest.raises(seam.RangeUnavailable):
+        seam.Docker().run(seam.ATTACKER, ["curl", "http://board.com/"])
 
 def run_here(wrapped, interpreter):
     done = subprocess.run(
@@ -207,12 +118,6 @@ def test_the_report_survives_a_real_interpreter():
     _, missing = run_here(seam.through_shell(["/nonexistent/fsl-tool", "--flag"]), "/bin/sh")
     assert missing is not None and missing[0] == 127, missing
 
-def test_the_segments_a_role_sits_on_come_back_as_names(dispatch):
-    dispatch(stdout=json.dumps({"fsl_edge": {}, "fsl_estate": {}}))
-    substrate = seam.Docker()
-
-    assert substrate.segments(seam.GATEWAY) == frozenset({"fsl_edge", "fsl_estate"})
-
 def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
     dispatch(stdout=json.dumps({"fsl_edge": {}}))
     substrate = seam.Docker()
@@ -223,31 +128,15 @@ def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
     assert (attacker, target) == (frozenset({"fsl_edge"}), frozenset({"fsl_estate"}))
     assert not attacker & target
 
-def test_segments_of_a_host_that_is_not_there_is_an_outage(dispatch):
-    dispatch(returncode=1, stderr="Error: No such object: fsl-wg-board")
-    substrate = seam.Docker()
+@pytest.mark.parametrize("failure", [
+    {"returncode": 1, "stderr": "Error: No such object: fsl-wg-board"},
+    {"returncode": 0, "stdout": "<null>"},
+], ids=["host-missing", "not-a-list"])
+def test_segments_the_substrate_could_not_list_are_an_outage(dispatch, failure):
+    dispatch(**failure)
 
     with pytest.raises(seam.RangeUnavailable):
-        substrate.segments(seam.BOARD)
-
-def test_a_segment_list_that_is_not_a_list_is_an_outage(dispatch):
-    dispatch(returncode=0, stdout="<null>")
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable):
-        substrate.segments(seam.BOARD)
-
-def test_recreating_a_role_takes_the_host_away_and_brings_it_back(dispatch):
-    fake = dispatch(stdout="fsl-7\n")
-    substrate = seam.Docker()
-
-    substrate.recreate(seam.BOARD)
-
-    assert fake.commands[0][:3] == ["docker", "inspect", "fsl-7-board-1"]
-    assert fake.commands[1:] == [
-        ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "rm", "-sf", "board"],
-        ["docker", "compose", "-p", "fsl-7", "-f", "session.yaml", "up", "-d", "board"],
-    ]
+        seam.Docker().segments(seam.BOARD)
 
 def test_a_host_no_session_stack_holds_is_not_recreated_into_a_guessed_one(dispatch):
     fake = dispatch(stdout="\n")
@@ -271,11 +160,6 @@ def test_a_recreate_that_did_not_take_the_host_away_does_not_bring_it_back(dispa
     assert len(fake.commands) == 1, (
         "the host was never removed and the seam reported it recreated anyway"
     )
-
-def test_the_roles_are_named_by_what_they_do_in_the_exercise():
-    for role in seam.ROLES:
-        assert "fsl" not in role and "docker" not in role, role
-        assert role in seam.DOCKER_HOSTS
 
 def test_nothing_substrate_specific_crosses_the_seam():
     source = SEAM_PATH.read_text()

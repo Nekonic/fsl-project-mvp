@@ -4257,3 +4257,59 @@ reaches. Full and `--fast` behave as before.
 - **Tests.** The `--changed` ratchet test now regresses on a grown
   `services`; a new test holds that a falling test count passes and is
   reported.
+
+## 2026-10-16 — Test audit: every test states its need or goes
+
+The user: there are far too many tests (2,061 module-level test functions,
+34k lines); for every test an agent must say why it is needed, and if it
+cannot, the test goes; tests that should change, change.
+
+- **The bar.** A test stays only if removing it would let a real defect ship
+  that no kept test catches, and the defect matters to one of six needs: an
+  invariant in CLAUDE.md "What must not break"; scoring (both scores,
+  attribution, `expect`/`corroborated`, one case counts once); session
+  isolation and the range's fences; a contract other code or the console
+  relies on; a regression that happened (commit or entry cited); the
+  ratchet, measure and verify tooling. Deleted: copy, markup, CSS and layout
+  pins; duplicates (the strongest kept); constants and trivial getters;
+  mock-was-called checks; removed features; unit re-tests of what acceptance
+  proves for the same failure; anything whose need does not fit one line.
+  Changed: source greps that could test behaviour (the deliberate source
+  rules stay), over-mocked or slow tests, near-identical bodies merged into
+  one parametrized test, assertions trimmed to the need.
+- **How.** Eight agents, one per group of files, each wrote a verdict per
+  test with a one-line reason; the verdict tables (2,059 rows: 820 kept, 333
+  changed, 906 deleted) were working files and are not in the repo. Of the
+  deletions about 160 were merges into a parametrized sibling, about 210
+  pinned copy, markup or display, about 170 duplicated another test, about
+  140 pinned a constant or schema, 13 tested dead code.
+- **Numbers.** Test functions 2,061 -> 1,051; unit cases 2,459 -> 1,458
+  (`bin/verify --fast` 93 s -> 49 s here); test lines 34,163 -> 23,362; test
+  files 185 -> 165 (15 unit, 5 acceptance: `test_corp_cve_option_flip`,
+  `test_corp_cve_rogue_admin`, `test_corp_site`, `test_fabric`,
+  `test_corp_cve_content_write`).
+- **Cross-group cleanup.** `test/test_corp_site.py` (one duplicate left) and
+  `test/test_fabric.py` (a duplicate of `test_api_fabric.py`) are deleted
+  and gone from `bin/acceptance`'s lists, `test/conftest.py` and the split
+  test; `test_corp_cve_content_write.py`'s helpers moved into
+  `test_corp_authz.py`, which already held the live content-overwrite test;
+  `test/durations.json` drops the five modules. Where two groups each
+  deleted a test in favour of the other's, one was restored, merged where
+  they overlapped: the topology picture places each alert on the segment it
+  arrived on, marks the outside, counts the unplaced, and counts every alert
+  against one address named by its zone (two unit tests in
+  `platform/tests/test_topology.py`); `harness.run` opens a session of its
+  scenario, records each case in it and closes (`test_harness.py`); the fix
+  is named by how narrow it is (`test_lesson_steps.py`, parametrized). An
+  unknown origin is still refused through `attacker.find` by
+  `test_origins.py::test_an_origin_that_does_not_exist_is_refused`.
+  Helpers nothing imports any more are removed (`ROLES`, `BOARD_DB`,
+  `GATEWAY` in `test/range.py`).
+- **The noVNC console endpoint is removed.** Its tests went as dead code, and
+  nothing calls it (no template, script, nginx or compose reference since the
+  pfSense pane went, 2026-10-08), so `GET /api/range/console/<host>/`,
+  `OpenStack.console()` and the last test of it in `test_range_slots.py` go
+  too; this reverses "kept but unused" above.
+- **Not yet proven live.** Acceptance edits were mechanical (deleted tests,
+  removed imports, merged asserts); the next full `bin/verify` on the VM
+  proves them. The unit suite passes here.

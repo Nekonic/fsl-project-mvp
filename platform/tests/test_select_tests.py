@@ -1,5 +1,4 @@
 import importlib.util
-import io
 import json
 import os
 import shutil
@@ -80,11 +79,8 @@ def test_a_docs_only_change_selects_no_test(repo):
     root = repo(SMALL)
 
     chosen = selector.select(root, {"README.md": "M", "docs/STATE.md": "M", "metrics.json": "M"})
-    said = io.StringIO()
-    selector.report(chosen, root, said)
 
-    assert chosen.docs_only and chosen.unit_kind == "none" and chosen.acceptance_kind == "none"
-    assert "docs only — no tests" in said.getvalue(), said.getvalue()
+    assert chosen.docs_only
     assert selector.plan_lines(chosen) == ["unit none", "acceptance none"]
 
 
@@ -98,16 +94,6 @@ def test_a_module_change_selects_the_test_files_that_import_it(repo):
         "it; test_scoreboard reaches neither"
     )
     assert chosen.unit_kind == "some"
-
-
-def test_the_reason_for_a_test_reached_through_another_module_names_the_path(repo):
-    root = repo(SMALL)
-
-    chosen = selector.select(root, {"platform/topology.py": "M"})
-
-    assert chosen.unit["platform/tests/test_views.py"] == [
-        "imports platform/api/views.py > platform/topology.py"
-    ]
 
 
 def test_a_template_change_selects_the_tests_naming_that_template(repo):
@@ -167,11 +153,8 @@ def test_a_file_no_test_reaches_falls_back_to_the_whole_unit_suite(repo):
     root = repo({**SMALL, "deploy/nginx/extra.conf": "server {}\n"})
 
     chosen = selector.select(root, {"deploy/nginx/extra.conf": "M"})
-    said = io.StringIO()
-    selector.report(chosen, root, said)
 
-    assert chosen.unit_kind == "full" and chosen.unmapped == ["deploy/nginx/extra.conf"]
-    assert "no test reaches it" in said.getvalue()
+    assert chosen.unmapped == ["deploy/nginx/extra.conf"]
     assert selector.plan_lines(chosen)[0] == "unit full"
 
 
