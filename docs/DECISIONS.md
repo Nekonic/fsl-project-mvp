@@ -4161,3 +4161,46 @@ answer.
   pane tests and two judging tests (`stopped` from the record, every
   pointed-at control exists on the blue console) replace them. `core_loc`
   is unchanged (580); `product_loc` 24562 -> 24091.
+
+## 2026-10-16 — bin/verify runs only what a change touches
+
+Every check ran the whole unit suite (`--fast`, about 94 s, 2,457 cases) or
+that plus acceptance on the live range (13–19 min, both slots), whatever the
+change was. `bin/verify --changed [BASE]` now runs only the unit test files the
+change reaches, and the ratchet; `--live` adds the acceptance modules it
+reaches. Full and `--fast` behave as before.
+
+- **Selection** (`bin/select-tests`, stdlib only). The changed files are
+  `git diff --name-status BASE` plus untracked files (BASE defaults to the
+  merge-base with `dev`; `A..B` takes commits only). A static graph of the
+  repo links each file to what it runs — Python imports resolved with
+  `platform/` or `test/` as the working directory, `pytest_plugins`, dotted
+  module names in tests (`mock.patch` targets), the view module each URL a
+  test requests resolves to through `fsl/urls.py`, the test conftest — and to
+  what it reads: files named by repo path, path tail or basename, and files a
+  test globs. A test file is selected when it reaches a changed file; reading a
+  Python file as text (a seam check reading `views.py`) does not pull in what
+  that file imports. A per-file reason is printed.
+- **Safety.** Docs (`*.md`, `docs/`, `.claude/`, `metrics.json`) select
+  nothing. The unit `conftest.py`, `pytest.ini`, `requirements.txt` and
+  `fsl/settings.py` run the whole unit suite; so does any changed file that
+  no test reaches. A range-facing change no acceptance test names needs all
+  of acceptance. The ratchet runs in every `--changed` run, a docs-only one
+  included (a test holds it).
+- **Measured** on this tree, unit tests only, wall time of the whole command:
+
+  | change | unit files | cases | wall |
+  |---|---|---|---|
+  | `--fast` (everything) | 146 | 2,457 | 94 s |
+  | docs only (`1a97877`) | 0 | 0 | 1 s |
+  | `bin/backup` fix (`412e379`) | 6 | 99 | 7 s |
+  | follow view removal (`2535f30`, views, topology, templates) | 95 | 1,711 | 46 s |
+  | learner map UI (`1814e5c`, templates, GNS3 page) | 86 | 1,586 | 47 s |
+  | range NTP (`c4ee8d7`, `range/`, OpenStack tests) | 106 | 1,988 | 92 s |
+
+  `api/views.py` imports most of `platform/` and most API tests request one
+  of its URLs, so a change to any module it imports still selects most of the
+  API tests; the saving is large for `bin/`, `deploy/`, test, stylesheet and
+  docs changes and about half for console or view changes. Splitting
+  `views.py` would sharpen it; not done here.
+- **Tests** 2044 -> 2059 (14 for the selector, one for `bin/acceptance --only`).
