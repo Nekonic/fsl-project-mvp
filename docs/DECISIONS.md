@@ -4310,6 +4310,13 @@ cannot, the test goes; tests that should change, change.
   pfSense pane went, 2026-10-08), so `GET /api/range/console/<host>/`,
   `OpenStack.console()` and the last test of it in `test_range_slots.py` go
   too; this reverses "kept but unused" above.
-- **Not yet proven live.** Acceptance edits were mechanical (deleted tests,
-  removed imports, merged asserts); the next full `bin/verify` on the VM
-  proves them. The unit suite passes here.
+- **Proven live 2026-10-16** (OpenStack, platform VM 192.168.0.210). Acceptance
+  edits were mechanical (deleted tests, removed imports, merged asserts).
+  Deployed by `bin/cloud up --replace --sideload platform=... --sideload
+  gns3=...` (`docs/OPENSTACK.md` §5.3), the platform image built on the VM
+  from ee2e5b9 and the gns3 image from 1814e5c: exit 0 in 27 min 37 s (about
+  10 min of store backup, 6.02 GB), both slots READY. `bin/verify` there
+  (`FSL_PLATFORM_URL=http://192.168.0.210:8000`, the `.venv` made by hand
+  again): unit 1458 passed in 49 s; acceptance 45 passed, 0 failed, 0 errors,
+  30 skipped in 728 s across 4 processes (75 collected); ratchet holds
+  (core_loc 580, tests 1051); 876 s in all. No test needed a fix.
