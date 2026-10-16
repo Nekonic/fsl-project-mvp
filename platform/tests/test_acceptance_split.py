@@ -34,6 +34,18 @@ def test_every_module_runs_in_exactly_one_process(workers):
     )
 
 
+@pytest.mark.parametrize("workers", [1, 2, 3])
+def test_a_run_limited_to_some_modules_plans_those_and_no_others(workers):
+    only = {"test_board", "test_lesson", "test_fabric"}
+    together, after = split.plan(workers, only=only)
+
+    ran = [module for process in together + after for module in process.modules]
+
+    assert sorted(ran) == sorted(only), (
+        f"bin/verify --changed --live asked for {sorted(only)} and the split planned {sorted(ran)}"
+    )
+
+
 @pytest.mark.parametrize("workers", [2, 3, 4])
 def test_modules_sharing_a_session_fixture_run_in_one_process(workers):
     where = {module: process.name for process in processes(workers) for module in process.modules}

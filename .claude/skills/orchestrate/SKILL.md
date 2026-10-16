@@ -39,12 +39,15 @@ session, and you do not make the user say "continue".
    with what you changed (see "Docs match the code"). This is part of the work,
    not a later chore.
 
-5. **Verify with evidence.** The gate for every change is the unit and API
-   tests (`bin/verify --fast`, per `DECISIONS.md` 2026-10-05); `--fast` prints
+5. **Verify with evidence.** While working, run `bin/verify --changed`: only
+   the unit tests the change reaches, and the ratchet (`reference.md` has the
+   modes). Before a commit that touches shared code, the unit and API tests
+   (`bin/verify --fast`, per `DECISIONS.md` 2026-10-05); `--fast` prints
    the metrics without gating them, so compare `bin/measure` against
    `metrics.json` by hand. A change to the live stack (compose, the range,
    session isolation) is also run against the acceptance suite on the OpenStack
-   deployment before it is pushed. Acceptance is not the only live path: list
+   deployment before it is pushed; `--changed` lists the acceptance modules the
+   change needs, and `--changed --live` runs only those. Acceptance is not the only live path: list
    every path the change can affect — `bin/cloud up --replace` (backup, new VM,
    store restore), `bin/cloud down`/`up`, a slot reset — and run each one end to
    end, untouched, before the push; a step finished by hand does not count, and
@@ -101,8 +104,9 @@ two facts are what make a green run mean something. Protect them:
 
 - Treat the tests and the benign cases as read-only. If a change seems to need
   a test deleted or weakened, that is a finding to raise, not a step to take.
-  The `tests` floor and the benign-case rule exist because deleting them is the
-  cheapest way to fake a pass.
+  The benign-case rule exists because deleting them is the cheapest way to
+  fake a pass. The `tests` count is reported, not gated: a test no one can
+  justify may go, and the commit says why.
 - A green `bin/verify` is necessary, not sufficient: roughly half of
   test-passing agent PRs still fail human review on quality or breakage. The
   gate-2 review is where that is caught.
