@@ -4375,3 +4375,25 @@ make retention adjustable by config and set it to the minimum for now.
   pruned yet, so it is still about 6 GB (minus free pages); the new VM prunes
   at its first start, and every backup after it carries about an hour of
   closed sessions plus the open ones.
+- **Proven live 2026-10-16** (OpenStack, platform VM 192.168.0.210), before
+  the push, by `bin/cloud up --replace --sideload platform=... --sideload
+  gns3=...` with the platform image built from 6234510 and the gns3 image
+  from 1814e5c: exit 0 in 30 min 5 s, both slots READY. Its backup of the old
+  VM (already `VACUUM INTO`) was 5,929,553,920 bytes against a 6,018,662,400
+  byte store, 144 sessions and 1,905,655 detections, in about 14 min, and
+  `backups/` dropped the previous 6 GB copy (keep 1). The new VM pruned at
+  its first start: 144 closed sessions -> 0 (no session was open; detections
+  1,905,655 -> 0) in about 1 min 45 s. The store file stays 5,929,553,920
+  bytes, 1,447,562 of its 1,447,645 pages free, because SQLite does not
+  shrink a file without `VACUUM`; the next `bin/backup` was 335,872 bytes in
+  0.8 s, and `backups/` again kept only it. During that first prune one tick
+  of the scenario engine logged `database is locked` and the next tick ran;
+  no other error. `bin/verify` there (`FSL_PLATFORM_URL=http://192.168.0.210:8000`,
+  the `.venv` made by hand): unit 1462 passed in 49 s; acceptance 45 passed,
+  0 failed, 0 errors, 30 skipped in 692 s across 4 processes; ratchet holds
+  (core_loc 580, tests 1055); 838 s in all. No test needed a fix. The
+  `PytestUnhandledThreadExceptionWarning` in the unit run is a test artifact:
+  an `fsl-scenarios` thread left running past its test calls
+  `close_old_connections()` in its `finally`, which pytest-django refuses
+  ("Database access not allowed"); the platform's own log has no such
+  exception.

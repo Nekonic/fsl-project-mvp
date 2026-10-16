@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-16 (store retention set by config, not deployed). Written for a session that has the cloud
+Updated: 2026-10-16 (store retention set by config, proven live on 6234510). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -26,20 +26,20 @@ Updated: 2026-10-16 (store retention set by config, not deployed). Written for a
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
-- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and four
+- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
   times on 2026-10-16 by `bin/cloud up --replace --sideload` (`docs/OPENSTACK.md`
   §5.3, `docs/DECISIONS.md` 2026-10-15 "The platform VM's rebuild runs an
-  unpushed commit"): it runs ee2e5b9 with the platform image built from it
+  unpushed commit"): it runs 6234510 with the platform image built from it
   and the gns3 image from 1814e5c, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
   images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
-  `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); the
-  2026-10-16 runs' four are in this worktree's `backups/`
-  (`db-20261016T112259Z`, `T121617Z`, `T124957Z`, 5.96 GB each;
-  `T143237Z`, 6.02 GB).
+  `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); this
+  worktree's `backups/` keeps one (`backups.keep`), the 336 KB
+  `db-20261016T170220Z.sqlite3` taken after the retention run; the 6 GB
+  2026-10-16 copies are gone.
 - The range keeps the platform VM's time over NTP (c4ee8d7, `docs/DECISIONS.md`
   2026-10-15 "The platform VM is the range's time source"). `bin/verify` there
   after it: unit passed; acceptance 74 passed, 0 failed in 765 s.
@@ -52,6 +52,13 @@ Updated: 2026-10-16 (store retention set by config, not deployed). Written for a
   reported, not gated. Proven live on ee2e5b9 (deployed by the sideloaded
   rebuild in 27 min 37 s): `bin/verify` on the VM unit 1458 passed; acceptance
   45 passed, 0 failed, 0 errors, 30 skipped in 728 s; 876 s in all.
+- Store retention (`docs/DECISIONS.md` 2026-10-16 "Retention is set by
+  config") is live on the VM since the sideloaded rebuild to 6234510 (30 min
+  5 s; its backup 5.93 GB in about 14 min): the first start deleted all 144
+  closed sessions (1.9 M detections) in about 1 min 45 s, none was open; the
+  store file stays 5.93 GB of free pages (no `VACUUM`), and the next backup
+  was 336 KB in 0.8 s. `bin/verify` there: unit 1462 passed; acceptance 45
+  passed, 0 failed, 30 skipped in 692 s; 838 s in all.
 
 ## Waiting for the user
 
@@ -62,11 +69,8 @@ Updated: 2026-10-16 (store retention set by config, not deployed). Written for a
    store backup and restore, the range key, `fsl-gns3`. Left for that run:
    the GHCR images of the new commit, and the `fsl-wargame-host` image
    rebuilt for its tag.
-   The VM also gets store retention at that deploy (`docs/DECISIONS.md`
-   2026-10-16 "Retention is set by config"): closed sessions older than
-   `FSL_RETAIN_CLOSED_MINUTES` (60) are deleted at the new VM's first start;
-   that run's backup is still about 6 GB, later ones small, and `backups/`
-   keeps only the newest (`backups.keep`, 1).
+   Store retention is already pruned on the running VM, so that run's
+   backup is small.
 3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
 4. The `/api/rules/suppressions/` rename, publishing the OPNsense image.
 
