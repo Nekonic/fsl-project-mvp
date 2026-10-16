@@ -189,7 +189,7 @@ def down(args: argparse.Namespace) -> None:
         old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
                            Path(cloud.operator_key_file).expanduser())
         rebuild.keep_range_key(Path(cloud.range_key).expanduser(), old)
-        rebuild.back_up(old)
+        rebuild.back_up(old, cloud.backups_keep)
     take_down(Platform(address), cloud.stack, rebuild.run)
     print("the platform and the range are gone; Glance keeps the images")
 

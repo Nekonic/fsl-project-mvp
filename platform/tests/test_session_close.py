@@ -2,9 +2,10 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.utils import timezone
 
-from api.models import Objective, Session
+from api.models import Detection, Objective, Session
 from range.ports import Ran
 
 def a_waf_with_an_empty_file(role, segment_id=""):
@@ -231,3 +232,20 @@ def test_a_close_that_rebuilt_nothing_keeps_the_suppression_on_the_books(client,
     assert record.restored_at is None, (
         "nothing was rebuilt, so the sensor still runs with the rule commented out"
     )
+
+
+def test_closing_deletes_only_sessions_closed_longer_ago_than_the_retention_with_their_detections(client, session_id):
+    now = timezone.now()
+    kept_for = timedelta(minutes=settings.RETAIN_CLOSED_MINUTES)
+    expired = Session.objects.create(scenario="board", baseline=[], ended_at=now - kept_for - timedelta(minutes=1))
+    recent = Session.objects.create(scenario="board", baseline=[], ended_at=now - kept_for + timedelta(minutes=1))
+    for session in (expired, recent):
+        Detection.objects.create(session=session, detection_id="d", source="suricata", signature="s", timestamp=now)
+
+    assert client.post_json(f"/api/sessions/{session_id}/close/").status_code == 200
+
+    assert set(Session.objects.values_list("pk", flat=True)) == {session_id, recent.pk}, (
+        "the store grew to 6 GB of closed sessions; one closed past FSL_RETAIN_CLOSED_MINUTES goes, "
+        "while the one just closed and one still inside the retention must stay for their score and debrief"
+    )
+    assert list(Detection.objects.values_list("session", flat=True)) == [recent.pk]

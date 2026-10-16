@@ -523,9 +523,16 @@ the password, writes the kept key to `/data/ssh/id_ed25519`, restores the
 store, and waits for `/api/sessions/`. With the key carried over, the fabric's
 `fsl-platform` keypair stays valid and the slot need not be torn down.
 
-`bin/backup` snapshots the store with SQLite's backup API into a temporary
-file inside the platform container and streams it over ssh in 1 MiB chunks;
-it gives up only after 600 s with no data. The store is copied back with
+`bin/backup` writes a compacted copy of the store with SQLite's `VACUUM INTO`
+into a temporary file inside the platform container and streams it over ssh
+in 1 MiB chunks; it gives up only after 600 s with no data. Once the copy
+passes `integrity_check`, older `backups/db-<UTC time>.sqlite3` files beyond
+`backups.keep` in `cloud.yaml` (default 1, the new one included) are removed;
+`bin/cloud down` does the same. The new VM holds one copy, the one it was
+restored from, in `/opt/fsl/backups`. The store itself stays small: the
+platform deletes closed sessions older than `FSL_RETAIN_CLOSED_MINUTES`
+(default 60, `compose.yaml`), so a backup carries about an hour of closed
+sessions plus the open ones. The store is copied back with
 `scp` and put in place while the platform is stopped.
 
 **An unpushed commit (`--sideload NAME=TARBALL`).** Both `bin/platform-rebuild`

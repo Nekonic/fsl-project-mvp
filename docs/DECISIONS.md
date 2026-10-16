@@ -4320,3 +4320,58 @@ cannot, the test goes; tests that should change, change.
   again): unit 1458 passed in 49 s; acceptance 45 passed, 0 failed, 0 errors,
   30 skipped in 728 s across 4 processes (75 collected); ratchet holds
   (core_loc 580, tests 1051); 876 s in all. No test needed a fix.
+
+## 2026-10-16 — Retention is set by config, at its minimum
+
+The platform store on the test range reached 6.02 GB, 97% of it
+`api_detection` (1.9 M Suricata and WAF records over 144 sessions, nearly all
+from tests and live runs). Every rebuild and `bin/cloud down` copied the
+whole store to the operator's machine (about 10 of a rebuild's 25 min), six
+6 GB copies piled up in `backups/`, and the big store slows ingest. The user:
+make retention adjustable by config and set it to the minimum for now.
+
+- **`FSL_RETAIN_CLOSED_MINUTES`** (default 60; `platform/fsl/settings.py`,
+  set in `compose.yaml`'s platform environment, so the Docker range and the
+  OpenStack platform VM take the same value; an operator overrides it in
+  `/opt/fsl/.env`). A session closed longer ago than that is deleted with its
+  cases, detections, customer requests and objectives (all `CASCADE`);
+  suppressions are kept with their session cleared (`SET_NULL`), so a rule
+  still commented out keeps its record to restore. Open sessions are never
+  touched. `platform/api/retention.py` runs at start (a thread in
+  `fsl/wsgi.py`, beside the scenario resume) and at the end of every close,
+  one session per transaction so a large first prune does not hold the
+  store's write lock for long. Nothing in `scoring/`, `ingest/` or `rules/`
+  changed.
+- **What reads a closed session, and why 60 minutes.** A closed session is
+  read right after its close by: ingest and score (`POST .../ingest/`, `GET
+  .../score/`; the harness and acceptance's `score_when_ready` poll for up to
+  150 s), the stack that outlives it while Filebeat ships its last alerts
+  (`STACK_OUTLIVES_ITS_SESSION`, 3 min, read from the session table), the
+  learner's score and debrief in the console (`/scenario/debrief/` opens once
+  the session is closed), the closed-session list and comparison
+  (`?state=closed`, `?ids=`), and acceptance's session-scoped fixtures, which
+  close a session and read it back during the run (the longest run measured
+  was 947 s). `bin/verify` then removes the run's own sessions with `bin/prune
+  --ids`, which ignores ids already gone. The acceptance criterion
+  `test_criterion_2_redteam_run_produces_a_closed_session` the task named no
+  longer exists (the test audit removed it). `bin/measure` and `metrics.json`
+  read no sessions. The longest of these is acceptance at about 16 min, so 60
+  min keeps every flow with four times the margin and is the minimum chosen;
+  the cost is that the console's list of past sessions shows only the last
+  hour.
+- **Backups.** `bin/backup` writes the snapshot with `VACUUM INTO` instead of
+  the backup API, so the free pages pruned sessions leave are not shipped; it
+  still writes a temporary file in the platform container and streams it in
+  1 MiB chunks (2026-10-15 "`bin/backup` streams"). After the new copy passes
+  `integrity_check` it removes older `db-<UTC stamp>.sqlite3` files beyond
+  `--keep` (default 1, the new one included); a file named otherwise (such as
+  `db-20261014-pre-p6.sqlite3`) is never removed. `cloud.yaml` gains an
+  optional `backups: {keep: 1}`, read by `bin/platform-rebuild` and `bin/cloud
+  down`; a `cloud.yaml` without it parses and keeps one. On the VM the code
+  keeps one copy in `/opt/fsl/backups`, the store it was restored from; every
+  rebuild makes a new VM.
+- **The next rebuild.** The VM gets this at the post-push `bin/cloud up
+  --replace`. That backup is taken from the running VM, whose store is not
+  pruned yet, so it is still about 6 GB (minus free pages); the new VM prunes
+  at its first start, and every backup after it carries about an hour of
+  closed sessions plus the open ones.

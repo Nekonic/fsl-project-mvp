@@ -31,7 +31,7 @@ bind mount가 호스트에서 풀리게 하고, `FSL_SESSION`은 세션 id로 �
 돈다: 세션을 열면 끝난 지 3분이 넘은 세션의 `fsl-<n>` 프로젝트만 `down -v`하고(먼저 그 `estate`에서
 빠진다), 어느 것을 내릴지는 잠금 하나 아래에서 정하므로 동시에 열리는 두 세션이 서로의 새 스택을 내리지 않는다. docker는 세션을 최대 `FSL_MAX_SESSIONS`개(기본 2, `platform/fsl/settings.py`)까지
 열고 그 이상은 409로 답한다. OpenStack은 레인지 slot마다 하나를 연다. 세션을 닫아도
-그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남고, 그동안 Filebeat가 마지막 경보를 보낸다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
+그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남고, 그동안 Filebeat가 마지막 경보를 보낸다. 저장소는 닫힌 세션을 `FSL_RETAIN_CLOSED_MINUTES`분(기본 60) 동안 두고, `platform/api/retention.py`가 시작할 때(`fsl/wsgi.py`)와 세션을 닫을 때마다 그보다 오래된 닫힌 세션을 거기 딸린 모든 것과 함께 지운다. OpenStack substrate에는 `open_session`이 없다. 그 레인지는 Nova VM이라
 세션 스택이 뜨지 않는다. wargame은 VM 하나, `fsl-wargame-host`에서 같은 GHCR 컨테이너로
 돈다. 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`, 즉 board의 8000 포트가
 publish된 wargame 호스트의 관리망 주소로 board를 읽는다. `loot.ground_truth`가

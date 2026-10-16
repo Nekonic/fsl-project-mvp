@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-16 (after the test audit's live run). Written for a session that has the cloud
+Updated: 2026-10-16 (store retention set by config, not deployed). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -62,6 +62,11 @@ Updated: 2026-10-16 (after the test audit's live run). Written for a session tha
    store backup and restore, the range key, `fsl-gns3`. Left for that run:
    the GHCR images of the new commit, and the `fsl-wargame-host` image
    rebuilt for its tag.
+   The VM also gets store retention at that deploy (`docs/DECISIONS.md`
+   2026-10-16 "Retention is set by config"): closed sessions older than
+   `FSL_RETAIN_CLOSED_MINUTES` (60) are deleted at the new VM's first start;
+   that run's backup is still about 6 GB, later ones small, and `backups/`
+   keeps only the newest (`backups.keep`, 1).
 3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
 4. The `/api/rules/suppressions/` rename, publishing the OPNsense image.
 

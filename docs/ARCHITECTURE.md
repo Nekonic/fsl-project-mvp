@@ -38,7 +38,10 @@ minutes ago (leaving their `estate` first), deciding which under one lock so
 two opens at once cannot take down each other's new stack. Docker opens at most `FSL_MAX_SESSIONS` sessions (default 2,
 `platform/fsl/settings.py`) and answers 409 past that; OpenStack opens one per range slot.
 Closing a session leaves its stack until an open at least three minutes
-later, while its Filebeat ships the last alerts. The OpenStack substrate has
+later, while its Filebeat ships the last alerts. The store keeps a closed
+session for `FSL_RETAIN_CLOSED_MINUTES` (default 60); `platform/api/retention.py`
+deletes older closed sessions, with everything that belongs to them, at start
+(`fsl/wsgi.py`) and after each close. The OpenStack substrate has
 no `open_session`: its range is the Nova VMs, so no session stack starts; the
 wargames run on one VM, `fsl-wargame-host`, as the same GHCR containers. Its
 readiness probe and session baseline read the board through the adapter's

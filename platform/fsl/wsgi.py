@@ -20,4 +20,10 @@ def resume_scenarios():
 
     scenario_run.resume()
 
+def prune_closed_sessions():
+    from api import retention
+
+    retention.prune_quietly()
+
 threading.Thread(target=resume_scenarios, name="fsl-scenarios-resume", daemon=True).start()
+threading.Thread(target=prune_closed_sessions, name="fsl-retention", daemon=True).start()

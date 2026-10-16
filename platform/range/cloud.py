@@ -16,6 +16,7 @@ COMPOSE = ROOT / "compose.yaml"
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 OPNSENSE_FAMILY = "fsl-opnsense-"
 INSIDE = ("estate", "mgmt")
+OPTIONAL_SECTIONS = ("backups",)
 FIXED_FLAVORS = ("platform", "builder", "range")
 REQUIRED_FLAVORS = (*FIXED_FLAVORS, "edge")
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
@@ -77,6 +78,7 @@ class Cloud:
     inside: dict[str, str] = field(default_factory=dict)
     flavors: dict[str, str] = field(default_factory=dict)
     slots: int = 1
+    backups_keep: int = 1
 
     @property
     def role_flavors(self) -> dict[str, str]:
@@ -233,6 +235,12 @@ def _slots(value) -> str | None:
     return None
 
 
+def _keep(value) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return "must be a whole number of backups, 1 or more: the one just taken is always kept"
+    return None
+
+
 def _environment(value) -> str | None:
     return None if isinstance(value, str) and ENVIRONMENT.fullmatch(value) else "must be an environment variable name"
 
@@ -257,6 +265,7 @@ SCHEMA = {
         "image_sha256": (_sha256, True), "pubkey_sha256": (_sha256, True),
     },
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
+    "backups": {"keep": (_keep, False)},
 }
 
 
@@ -267,6 +276,8 @@ def _complaints(document) -> list[str]:
             for section in document if section not in SCHEMA]
     for section, keys in SCHEMA.items():
         entries = document.get(section)
+        if entries is None and section in OPTIONAL_SECTIONS:
+            continue
         if not isinstance(entries, dict):
             said.append(f"{section}: missing, or not a mapping")
             continue
@@ -345,6 +356,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         raise Invalid(f"{source} is not usable:\n  " + "\n  ".join(said))
     identity, network, compute = document["identity"], document["network"], document["compute"]
     keys, platform = document["keys"], document["platform"]
+    backups = document.get("backups") or {}
     return Cloud(
         keystone=identity["keystone"].rstrip("/"), region=identity["region"],
         interface=identity["interface"], domain=identity["domain"],
@@ -363,6 +375,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         range_key=keys["range"],
         opnsense=OPNsense(**document["opnsense"]),
         stack=platform["stack"], repository=platform["repository"], ref=platform["ref"],
+        backups_keep=backups.get("keep") or 1,
     )
 
 

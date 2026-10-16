@@ -3,6 +3,7 @@
 import argparse
 import inspect
 import os
+import re
 import selectors
 import shlex
 import shutil
@@ -18,6 +19,7 @@ BACKUPS = ROOT / "backups"
 PLATFORM_EXEC = "docker exec -i fsl-platform python -"
 TIMEOUT = 600
 CHUNK = 1 << 20
+STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
 
 TABLES = (
     ("sessions", "api_session"),
@@ -45,11 +47,9 @@ def snapshot(path, out):
     source = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=rw", uri=True)
     with tempfile.TemporaryDirectory() as scratch:
         taken = Path(scratch) / "snapshot.sqlite3"
-        copy = sqlite3.connect(taken)
         try:
-            source.backup(copy)
+            source.execute("VACUUM INTO ?", (str(taken),))
         finally:
-            copy.close()
             source.close()
         with open(taken, "rb") as image:
             shutil.copyfileobj(image, out, 1 << 20)
@@ -155,20 +155,37 @@ def keep():
     return kept, size, rows
 
 
+def thin(kept, newest):
+    older = sorted(path for path in kept.parent.iterdir() if STAMPED.fullmatch(path.name) and path != kept)
+    gone = older[:max(0, len(older) - newest + 1)]
+    for path in gone:
+        path.unlink()
+    return gone
+
+
 def main():
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Snapshot the platform's store into backups/ while it keeps "
-                    "serving. FSL_PLATFORM_EXEC chooses how to reach the platform "
-                    f"(default: {PLATFORM_EXEC}).",
-    ).parse_args()
+                    "serving, compacted, then remove the older db-<UTC stamp>.sqlite3 "
+                    "files beyond --keep. FSL_PLATFORM_EXEC chooses how to reach the "
+                    f"platform (default: {PLATFORM_EXEC}).",
+    )
+    parser.add_argument("--keep", type=int, default=1,
+                        help="how many backups to leave in backups/, this one included (default 1)")
+    args = parser.parse_args()
+    if args.keep < 1:
+        parser.error("--keep must be at least 1: the backup just taken is always kept")
 
     kept, size, rows = keep()
+    gone = thin(kept, args.keep)
 
     print(kept)
     print(f"  {size} bytes, integrity_check ok")
     for label, table in TABLES:
         count = "absent" if rows[table] is None else rows[table]
         print(f"  {label:<14} {count:>8}")
+    for path in gone:
+        print(f"  removed {path.name}, older than the newest {args.keep}")
 
 
 if __name__ == "__main__":

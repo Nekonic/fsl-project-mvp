@@ -45,7 +45,7 @@ flowchart TB
 
 ### 스택 내부
 
-레드팀은 블루팀의 WAF와 IDS를 거쳐 워게임을 공격한다. 센서의 경보는 Elasticsearch로 간다. 플랫폼은 그 경보와 대상 시스템 자신의 기록(ground truth)으로 점수를 매긴다. 공격자가 제출한 탈취 데이터는 대상의 데이터와 대조한다. 스택은 compose 파일 둘로 나뉜다. `compose.yaml`은 컨트롤 플레인으로 하나만 오래 떠 있다: 플랫폼, Elasticsearch, Kibana, 그리고 OpenStack 레인지의 syslog만 받는 Filebeat인 `collector`. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata, Filebeat, Kali, 프록시, 그리고 이 파일이 include하는 `wargames/` 아래 워게임 폴더. 세션을 열면(`POST /api/sessions/`) `session.yaml`이 compose 프로젝트 `fsl-<세션 id>`로 뜨고, 모든 서비스가 healthy가 될 때까지 기다린 뒤 플랫폼이 그 세션 자신의 대상에서 baseline을 읽는다. 세션은 동시에 여럿 돈다: 스택마다 자기 `estate` 네트워크와 자기 Elasticsearch 인덱스(`fsl-logs-<세션 id>-*`)를 가지며, 새 세션을 열면 닫힌 지 3분이 넘은 세션의 스택만 내린다. 막 닫힌 세션의 Filebeat가 채점에 쓰일 경보를 아직 보내고 있을 수 있기 때문이다. 동시에 열 수 있는 세션은 `FSL_MAX_SESSIONS`개(기본 2)까지이고, 그 이상은 409로 답한다. 스택 하나가 약 1.5 GB를 쓰기 때문이다. 세션을 닫아도 그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남는다. 새 워게임에는 `compose.yaml`, `scenario.yaml`, `objectives.yaml`을 담은 폴더, `redteam/cases/` 아래 케이스 파일, `session.yaml`의 `include:` 한 줄이 필요하다. `platform/wargames.py`가 `scenario.yaml`로 워게임을 찾는다. 워게임은 둘이다: 게시판(`loot_verified`)과 WordPress 사이트 corp(`effect_observed`).
+레드팀은 블루팀의 WAF와 IDS를 거쳐 워게임을 공격한다. 센서의 경보는 Elasticsearch로 간다. 플랫폼은 그 경보와 대상 시스템 자신의 기록(ground truth)으로 점수를 매긴다. 공격자가 제출한 탈취 데이터는 대상의 데이터와 대조한다. 스택은 compose 파일 둘로 나뉜다. `compose.yaml`은 컨트롤 플레인으로 하나만 오래 떠 있다: 플랫폼, Elasticsearch, Kibana, 그리고 OpenStack 레인지의 syslog만 받는 Filebeat인 `collector`. `session.yaml`은 세션 하나의 데이터 플레인이다: WAF, Suricata, Filebeat, Kali, 프록시, 그리고 이 파일이 include하는 `wargames/` 아래 워게임 폴더. 세션을 열면(`POST /api/sessions/`) `session.yaml`이 compose 프로젝트 `fsl-<세션 id>`로 뜨고, 모든 서비스가 healthy가 될 때까지 기다린 뒤 플랫폼이 그 세션 자신의 대상에서 baseline을 읽는다. 세션은 동시에 여럿 돈다: 스택마다 자기 `estate` 네트워크와 자기 Elasticsearch 인덱스(`fsl-logs-<세션 id>-*`)를 가지며, 새 세션을 열면 닫힌 지 3분이 넘은 세션의 스택만 내린다. 막 닫힌 세션의 Filebeat가 채점에 쓰일 경보를 아직 보내고 있을 수 있기 때문이다. 동시에 열 수 있는 세션은 `FSL_MAX_SESSIONS`개(기본 2)까지이고, 그 이상은 409로 답한다. 스택 하나가 약 1.5 GB를 쓰기 때문이다. 세션을 닫아도 그 스택은 3분 이상 지난 뒤 다른 세션이 열릴 때까지 남는다. 닫힌 세션은 점수와 디브리핑을 읽을 수 있도록 `FSL_RETAIN_CLOSED_MINUTES`분(기본 60, `compose.yaml`에서 설정) 동안 저장소에 남고, 그 뒤에는 플랫폼이 시작할 때와 세션이 닫힐 때마다 그 세션을 시나리오, 탐지, 고객 요청, 목표와 함께 지운다. 열린 세션은 지우지 않는다. 새 워게임에는 `compose.yaml`, `scenario.yaml`, `objectives.yaml`을 담은 폴더, `redteam/cases/` 아래 케이스 파일, `session.yaml`의 `include:` 한 줄이 필요하다. `platform/wargames.py`가 `scenario.yaml`로 워게임을 찾는다. 워게임은 둘이다: 게시판(`loot_verified`)과 WordPress 사이트 corp(`effect_observed`).
 
 ```mermaid
 flowchart LR
@@ -145,7 +145,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 .venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
-무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `cloud.yaml`의 모든 파라미터로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다.
+무엇이든 지우기 전에 ref의 커밋용 이미지 여섯 개를 ghcr.io에서 인증 없이 pull할 수 있는지 확인하고, 레인지 키(아래)를 보관하고, 저장소를 백업한다(ssh 너머로 `bin/backup`). 그다음 스택을 지우고 `cloud.yaml`의 모든 파라미터로 다시 만들고, `/api/sessions/`가 응답할 때까지 기다린다. `cloud.yaml`의 `backups.keep`(기본 1)은 `bin/platform-rebuild`와 `bin/cloud down`이 `backups/`에 남기는 저장소 백업의 수다.
 
 새 VM은 `ref`를 clone하고, 그 체크아웃의 커밋으로 태그된 이미지를 pull해서 시작한다. cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 쓴다. 비밀 두 가지는 스택에 넣지 않는다. Nova의 메타데이터 서비스가 user data를 VM의 모든 프로세스와 컨테이너에 내주기 때문이다: 비밀번호와 플랫폼의 레인지 ssh 키. VM이 ssh에 응답하고 cloud-init이 끝나면 `bin/platform-rebuild`가 `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙이고, 레인지 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 쓰고, 백업한 저장소를 복원하고(교체일 때), 플랫폼 컨테이너를 다시 만든다. 레인지 키는 운영자 컴퓨터의 `keys.range`(모드 0600)에 있다. 이 파일이 없으면 서 있는 플랫폼에서 한 번 복사해 오고, 서 있는 플랫폼도 없으면 거부한다. 키가 유지되므로 레인지 VM들과 키페어 `fsl-platform`은 새 플랫폼을 계속 신뢰하고, 플랫폼을 교체하는 동안 레인지는 그대로 서 있을 수 있다.
 
@@ -242,7 +242,7 @@ bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-SQLite의 온라인 백업 API로 플랫폼 옆 임시 파일에 복사한 뒤 그 파일을 1 MiB씩 스트리밍해 가져오고(수 GB 저장소는 ssh로 몇 분 걸린다; 데이터가 600초 동안 오지 않을 때만 포기한다), 복사본을 `PRAGMA integrity_check`로 검사하며, 어느 단계든 실패하면 아무것도 남기지 않는다. Docker 안에 있지 않은 플랫폼에 닿으려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을 `FSL_PLATFORM_EXEC`에 지정한다.
+SQLite의 `VACUUM INTO`로 플랫폼 옆 임시 파일에 압축한 사본을 쓴 뒤(지운 세션이 차지하던 공간은 옮기지 않는다) 그 파일을 1 MiB씩 스트리밍해 가져오고(수 GB 저장소는 ssh로 몇 분 걸린다; 데이터가 600초 동안 오지 않을 때만 포기한다), 복사본을 `PRAGMA integrity_check`로 검사하며, 어느 단계든 실패하면 아무것도 남기지 않는다. 새 사본이 검사를 통과하면 `--keep`(기본 1, 새 사본 포함)을 넘는 이전 `db-<UTC time>.sqlite3` 파일을 지운다. 이름이 다른 파일은 남긴다. Docker 안에 있지 않은 플랫폼에 닿으려면, 플랫폼 설정을 import할 수 있는 상태로 `python -`을 실행하는 명령을 `FSL_PLATFORM_EXEC`에 지정한다.
 
 복원은 플랫폼을 멈춘 상태에서 수동으로 한다.
 
