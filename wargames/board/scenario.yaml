@@ -403,7 +403,7 @@ foundations:
         point: {panel: "#site-dev-toggle", opens: site}
         check: {kind: answer, of: stopped_at, about: attack}
       - id: rule
-        point: {kibana: '[data-test-subj="field-rule"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        point: {kibana: '[data-test-subj="field-rule_id"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
         query: "url : *search* and status : 403"
         check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
       - id: sqlmap
