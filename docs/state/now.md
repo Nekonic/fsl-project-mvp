@@ -35,8 +35,9 @@ Updated: 2026-10-15 (after the rebuild run). Written for a session that has the 
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
   `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`).
-- `bin/verify` there: unit 2450 passed; acceptance 71 passed, 3 failed (corp's
-  binlog credits, the range hosts' clock drift, `docs/STATE.md` Known gaps).
+- The range keeps the platform VM's time over NTP (c4ee8d7, `docs/DECISIONS.md`
+  2026-10-15 "The platform VM is the range's time source"). `bin/verify` there
+  after it: unit passed; acceptance 74 passed, 0 failed in 765 s.
 
 ## Waiting for the user
 
@@ -53,8 +54,8 @@ Updated: 2026-10-15 (after the rebuild run). Written for a session that has the 
 
 ## Next, in order
 
-0. The range hosts' clocks: give the range an NTP source (or read the
-   target's clock offset) so corp's binlog credits match their windows.
+0. Record the per-host NTP offsets in that entry (the VM is reachable only
+   from the lab network); capture the learner map after f0bce06.
 1. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live.
 2. A corp scenario: corp's CVEs succeed but it has no customer
