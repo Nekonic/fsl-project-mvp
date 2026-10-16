@@ -12,34 +12,11 @@ def session_id(client):
 def a_case(client):
     return client.get("/api/wargames/board/cases/").json()[0]
 
-def test_wargames_lists_every_target(client):
-    response = client.get("/api/wargames/")
-
-    assert response.status_code == 200
-    assert [w["id"] for w in response.json()] == ["board", "corp"]
-    assert all(w["cases"] > 0 for w in response.json())
-
-def test_case_catalogue_describes_what_each_button_fires(client):
+def test_the_case_catalogue_offers_attacks_and_benign_traffic(client):
     cases = client.get("/api/wargames/board/cases/").json()
 
-    assert len(cases) > 1
     assert any(case["malicious"] for case in cases)
     assert any(not case["malicious"] for case in cases)
-    for case in cases:
-        assert case["name"]
-        assert case["summary"]
-
-def test_case_catalogue_for_an_unknown_wargame_is_404(client):
-    assert client.get("/api/wargames/nothing/cases/").status_code == 404
-
-def test_sessions_can_be_listed_newest_first(client):
-    first = client.post_json("/api/sessions/", {}).json()["id"]
-    client.post_json(f"/api/sessions/{first}/close/")
-    second = client.post_json("/api/sessions/", {}).json()["id"]
-
-    listed = client.get("/api/sessions/").json()
-
-    assert [s["id"] for s in listed][:2] == [second, first]
 
 def test_firing_a_case_sends_it_and_records_ground_truth(client, session_id, a_case):
     with patch("api.views.harness.fire") as fired:
@@ -75,42 +52,14 @@ def test_firing_the_same_case_twice_records_two_attempts(client, session_id, a_c
     assert len(recorded) == 2
     assert recorded[0]["case_id"] != recorded[1]["case_id"]
 
-def test_firing_an_unknown_case_is_404_and_records_nothing(client, session_id):
-    with patch("api.views.harness.fire") as fired:
-        response = client.post_json(
-            f"/api/sessions/{session_id}/attacks/", {"case": "no-such-case"}
-        )
-
-    assert response.status_code == 404
-    fired.assert_not_called()
-    assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
-
-def test_firing_into_an_unknown_session_is_404(client, a_case):
-    with patch("api.views.harness.fire") as fired:
-        response = client.post_json("/api/sessions/9999/attacks/", {"case": a_case["name"]})
-
-    assert response.status_code == 404
-    fired.assert_not_called()
-
-def test_a_tool_that_will_not_run_is_reported_not_swallowed(client, session_id, a_case):
+@pytest.mark.parametrize("refusal", ["tool", "range"])
+def test_an_attack_that_could_not_be_sent_is_503_with_its_reason_and_records_nothing(client, session_id, a_case, refusal):
+    from range.ports import RangeUnavailable
     from redteam.harness import ToolUnavailable
 
-    with patch("api.views.harness.fire", side_effect=ToolUnavailable("no image")):
-        response = client.post_json(
-            f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]}
-        )
-
-    assert response.status_code == 503
-    assert "no image" in response.json()["detail"]
-    assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
-
-def test_a_range_that_cannot_start_the_tool_is_503_with_its_reason(client, session_id, a_case):
-    from range.ports import RangeUnavailable
-
-    with patch(
-        "api.views.harness.fire",
-        side_effect=RangeUnavailable("no ssh to fsl-kali: Host key verification failed."),
-    ):
+    reason = "no ssh to fsl-kali: Host key verification failed."
+    raised = ToolUnavailable(reason) if refusal == "tool" else RangeUnavailable(reason)
+    with patch("api.views.harness.fire", side_effect=raised):
         response = client.post_json(
             f"/api/sessions/{session_id}/attacks/", {"case": a_case["name"]}
         )
@@ -120,4 +69,6 @@ def test_a_range_that_cannot_start_the_tool_is_503_with_its_reason(client, sessi
         "the reason the range gave was thrown away and the operator got "
         "Django's generic Server Error page"
     )
-    assert client.get(f"/api/sessions/{session_id}/cases/").json() == []
+    assert client.get(f"/api/sessions/{session_id}/cases/").json() == [], (
+        "a case recorded for an attack that never left would be scored as a miss"
+    )

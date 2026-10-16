@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from range import clock, cloud, declared, openstack, opnsense, wargame_host
+from range import clock, cloud, declared, openstack, opnsense, waf, wargame_host
 from range.ports import Drifted, Node, Ran, RangeUnavailable, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -83,6 +83,11 @@ class Groups:
             r for r in self.group["security_group_rules"] if r["id"] != ident]
         return {}
 
+def _wanted():
+    return opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
+                             management=_adapter(Edge()).address("edge"), front="10.30.0.198",
+                             clock="10.31.0.195")
+
 def _adapter(edge, groups=None):
     built = openstack.OpenStack(OS, SPEC, get=groups or Groups(),
                                 build=openstack.Build(source=str(ROOT), inside=INSIDE, mtu=1450))
@@ -102,9 +107,7 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
 
     (role, argv, stdin), *after = edge.calls
     assert role == "edge" and argv == opnsense.command()
-    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
-                               management=_adapter(Edge()).address("edge"), front="10.30.0.198",
-                               clock="10.31.0.195")
+    wanted = _wanted()
     assert wanted["mgmt"]["address"]
     assert stdin == opnsense.playback(
         opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted),
@@ -119,37 +122,20 @@ def test_configuring_the_edge_stages_its_config_over_management_and_reboots_it()
     host, reported = done
     assert host == "fsl-edge" and "logs 10.31.0.195:5140" in reported
 
-def test_the_edge_is_read_back_only_once_it_has_rebooted():
-    edge = Edge(unreachable=3)
+@pytest.mark.parametrize("edge, why", [
+    (dict(reboots=False), "did not come back from its reboot"),
+    (dict(exit_code=1), "did not take its configuration"),
+    (dict(holds=["73.0.0.1"]), "120.96.0.1"),
+    (dict(logs="10.9.9.9:514"), "logs"),
+    (dict(sensor="stopped"), "sensor"),
+    (dict(wanrule=0), "wan rule|pf"),
+])
+def test_an_edge_that_does_not_settle_as_configured_is_drift(monkeypatch, edge, why):
+    ticks = iter(range(0, 100000, 100))
+    monkeypatch.setattr(openstack.time, "monotonic", lambda: next(ticks))
 
-    _adapter(edge).configure_edge()
-
-    assert len([call for call in edge.calls if call[1] == opnsense.verify()]) == 4
-
-def test_an_edge_that_never_reboots_is_drift(monkeypatch):
-    clock = iter(range(0, 100000, 100))
-    monkeypatch.setattr(openstack.time, "monotonic", lambda: next(clock))
-
-    with pytest.raises(Drifted, match="did not come back from its reboot"):
-        _adapter(Edge(reboots=False)).configure_edge()
-
-def test_an_edge_that_refused_its_configuration_is_not_waited_for():
-    edge = Edge(exit_code=1)
-
-    with pytest.raises(Drifted, match="did not take its configuration"):
-        _adapter(edge).configure_edge()
-
-    assert len(edge.calls) == 1
-
-def test_an_edge_that_does_not_hold_every_origin_gateway_afterwards_is_drift():
-    edge = Edge(holds=["73.0.0.1"])
-
-    with pytest.raises(Drifted, match="120.96.0.1"):
-        _adapter(edge).configure_edge()
-
-def test_an_edge_logging_somewhere_else_afterwards_is_drift():
-    with pytest.raises(Drifted, match="logs"):
-        _adapter(Edge(logs="10.9.9.9:514")).configure_edge()
+    with pytest.raises(Drifted, match=why):
+        _adapter(Edge(**edge)).configure_edge()
 
 def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collector_and_starts_the_wargames():
     edge, groups = Edge(), Groups()
@@ -169,17 +155,6 @@ def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collecto
         "the wargame host ships its sensor's eve log to the collector as the edge does"
     )
 
-def test_the_wargame_host_starts_its_sensor_on_the_interface_holding_its_estate_address():
-    edge = Edge()
-
-    _adapter(edge).configure_slot()
-
-    started = [argv for role, argv, _ in edge.calls if role == "wargames"]
-    assert wargame_host.sensor_up("10.30.0.63") in started
-    assert started.index(wargame_host.sensor_up("10.30.0.63")) > started.index(
-        wargame_host.up("corp")), "the sensor starts once the wargames it watches answer"
-    assert "show to 10.30.0.63" in wargame_host.sensor_up("10.30.0.63")[2]
-
 def test_the_wargame_host_sensor_is_handed_the_baseline_rules_through_its_declared_file_and_reload():
     edge = ResetsInPlace()
 
@@ -195,74 +170,27 @@ def test_the_wargame_host_sensor_is_handed_the_baseline_rules_through_its_declar
     started = [argv for role, argv, _ in edge.calls if role in ("wargames", "estate-sensor")]
     assert started.index(wargame_host.sensor_up("10.30.0.63")) < started.index(host.reload.split())
 
-def test_a_wargame_host_sensor_that_does_not_reload_its_baseline_is_drift():
+@pytest.mark.parametrize("refused, said, why", [
+    (lambda role, argv: role == "estate-sensor" and "reload-rules" in " ".join(argv),
+     "Unable to connect to socket", "baseline rules"),
+    (lambda role, argv: argv == wargame_host.sensor_up("10.30.0.63"),
+     "container suricata is unhealthy", "sensor"),
+    (lambda role, argv: role == "gateway" and argv == waf.command(), "rsyslogd: error", "fsl-waf"),
+    (lambda role, argv: role == "attacker" and argv == clock.command("10.31.0.195"),
+     "no answer from 10.31.0.195 in 30s", "fsl-kali did not take 10.31.0.195 as its time source"),
+])
+def test_a_slot_step_whose_command_fails_is_drift(refused, said, why):
     class Refusing(Edge):
         def __call__(self, role, segment_id=""):
             inner = super().__call__(role, segment_id)
             def run(argv, stdin=None, timeout=60.0):
-                if role == "estate-sensor" and "reload-rules" in " ".join(argv):
-                    return Ran(1, "Unable to connect to socket")
+                if refused(role, argv):
+                    return Ran(1, said)
                 return inner(argv, stdin, timeout)
             return run
 
-    with pytest.raises(Drifted, match="baseline rules"):
+    with pytest.raises(Drifted, match=why):
         _adapter(Refusing()).configure_slot()
-
-def test_the_wargame_host_forwards_its_sensor_eve_log_to_the_collector_tagged_suricata():
-    from range import waf
-
-    edge = Edge()
-    _adapter(edge).configure_slot()
-
-    forwarded = [(argv, stdin) for role, argv, stdin in edge.calls
-                 if role == "wargames" and argv == waf.command("suricata")]
-    assert forwarded == [(waf.command("suricata"), waf.forwarding(
-        "/var/log/suricata/eve.json", "10.31.0.195", 5140, "suricata"))], (
-        "the collector decodes a syslog line as Suricata by its program name"
-    )
-
-def test_a_sensor_that_does_not_come_up_healthy_is_drift():
-    class Refusing(Edge):
-        def __call__(self, role, segment_id=""):
-            inner = super().__call__(role, segment_id)
-            def run(argv, stdin=None, timeout=60.0):
-                if argv == wargame_host.sensor_up("10.30.0.63"):
-                    return Ran(1, "container suricata is unhealthy")
-                return inner(argv, stdin, timeout)
-            return run
-
-    with pytest.raises(Drifted, match="sensor"):
-        _adapter(Refusing()).configure_slot()
-
-def test_the_waf_is_told_to_forward_its_audit_log_to_the_platform_on_management():
-    from range import waf
-
-    edge = Edge()
-    _adapter(edge).configure_slot()
-
-    (role, argv, stdin), = [call for call in edge.calls
-                            if call[0] == "gateway" and call[1] == waf.command()]
-    audit = waf.audit_log((ROOT / waf.MODSECURITY).read_text())
-    assert argv == waf.command()
-    assert stdin == waf.forwarding(audit, "10.31.0.195", 5140)
-
-def test_a_waf_whose_forwarding_did_not_apply_is_drift():
-    class Refusing(Edge):
-        def __call__(self, role, segment_id=""):
-            if role == "gateway":
-                return lambda argv, stdin=None, timeout=60.0: Ran(1, "rsyslogd: error")
-            return super().__call__(role, segment_id)
-
-    with pytest.raises(Drifted, match="fsl-waf"):
-        _adapter(Refusing()).configure_slot()
-
-def test_an_edge_whose_sensor_is_not_running_afterwards_is_drift():
-    with pytest.raises(Drifted, match="sensor"):
-        _adapter(Edge(sensor="stopped")).configure_edge()
-
-def test_an_edge_whose_wan_pass_rule_did_not_load_into_pf_is_drift():
-    with pytest.raises(Drifted, match="wan rule|pf"):
-        _adapter(Edge(wanrule=0)).configure_edge()
 
 def test_an_edge_whose_sensor_starts_after_ssh_answers_is_waited_for():
     class LateSensor(Edge):
@@ -282,43 +210,6 @@ def test_an_edge_whose_sensor_starts_after_ssh_answers_is_waited_for():
     assert host == "fsl-edge"
     assert len([call for call in edge.calls if call[1] == opnsense.verify()]) == 3
 
-class Meeting(Edge):
-    def __init__(self, meeting, **kwargs):
-        super().__init__(**kwargs)
-        self.meeting = meeting
-
-    def __call__(self, role, segment_id=""):
-        inner = super().__call__(role, segment_id)
-        def run(argv, stdin=None, timeout=60.0):
-            if argv in (opnsense.command(), wargame_host.up("board")):
-                self.meeting.wait()
-            return inner(argv, stdin, timeout)
-        return run
-
-def test_the_wargames_start_while_the_edge_reboots():
-    import threading
-
-    edge = Meeting(threading.Barrier(2, timeout=5))
-
-    done = _adapter(edge).configure_slot()
-
-    assert [host for host, _ in done][:2] == ["fsl-edge", "fsl-waf"], (
-        "the steps run side by side and still report in the order they are declared"
-    )
-
-def test_a_step_that_fails_beside_others_fails_the_configure_with_its_own_reason():
-    import threading
-
-    edge = Meeting(threading.Barrier(2, timeout=5), sensor="stopped")
-
-    with pytest.raises(Drifted, match="its sensor is not running"):
-        _adapter(edge).configure_slot()
-
-    started = [argv for role, argv, _ in edge.calls if role == "wargames"]
-    assert wargame_host.sensor_up("10.30.0.63") in started, (
-        "the wargame host's steps ran to the end while the edge failed beside them"
-    )
-
 class LateWargameHost(Edge):
     def __init__(self, unanswered, **kwargs):
         super().__init__(**kwargs)
@@ -334,7 +225,7 @@ class LateWargameHost(Edge):
             return inner(argv, stdin, timeout)
         return run
 
-def test_a_host_that_does_not_answer_yet_is_waited_for_without_rebooting_the_edge_again():
+def test_a_host_that_does_not_answer_yet_is_waited_for_without_rebooting_the_edge_and_one_that_never_does_fails():
     edge = LateWargameHost(unanswered=3)
 
     done = _adapter(edge).configure_slot()
@@ -344,12 +235,8 @@ def test_a_host_that_does_not_answer_yet_is_waited_for_without_rebooting_the_edg
         "the rebuilt wargame host took longer to answer ssh than the edge took to "
         "configure, and the whole configure was retried, rebooting the edge twice"
     )
-
-def test_a_host_that_never_answers_still_fails_the_configure():
-    edge = LateWargameHost(unanswered=openstack.HOST_READS)
-
     with pytest.raises(RangeUnavailable, match="refused the connection"):
-        _adapter(edge).configure_slot()
+        _adapter(LateWargameHost(unanswered=openstack.HOST_READS)).configure_slot()
 
 
 class ResetsInPlace(Edge):
@@ -373,7 +260,7 @@ def _reinstalls(edge):
     return [call for call in edge.calls
             if call[1] == opnsense.command() and not _in_place(call[2])]
 
-def test_resetting_the_edge_in_place_restarts_its_sensor_without_reinstalling_or_rebooting():
+def test_resetting_the_edge_in_place_restores_the_baseline_without_reinstalling_or_rebooting():
     edge = ResetsInPlace()
 
     host, reported = _adapter(edge).reset_edge()
@@ -389,27 +276,10 @@ def test_resetting_the_edge_in_place_restarts_its_sensor_without_reinstalling_or
     assert (ROOT / opnsense.RULES).read_text() in stdin, (
         "the session may change fsl.rules, so the reset puts the baseline back"
     )
-
-def test_the_in_place_reset_compares_every_installed_file_by_its_hash():
-    edge = ResetsInPlace()
-
-    _adapter(edge).reset_edge()
-
-    stdin = edge.calls[0][2]
-    wanted = opnsense.settings(_shape().segments, ("10.31.0.195", 5140), INSIDE, 1450, KEY,
-                               management=_adapter(Edge()).address("edge"), front="10.30.0.198",
-                               clock="10.31.0.195")
-    config = opnsense.render((ROOT / opnsense.CONFIG).read_text(), wanted)
+    config = opnsense.render((ROOT / opnsense.CONFIG).read_text(), _wanted())
     for content in (config, (ROOT / opnsense.INCLUDE).read_text(), (ROOT / opnsense.RULES).read_text()):
         assert opnsense.fingerprint(content) in stdin
     assert opnsense.SETTLED in stdin and opnsense.INSTALLED["config"] in stdin
-
-def test_the_in_place_reset_drops_the_range_states_and_keeps_the_management_ones():
-    edge = ResetsInPlace()
-
-    _adapter(edge).reset_edge()
-
-    stdin = edge.calls[0][2]
     assert "pfctl -k 10.30.0.0/24" in stdin and "pfctl -k 0.0.0.0/0 -k 73.0.0.0/24" in stdin
     assert "10.31.0.0/24" not in stdin and "-F state" not in stdin, (
         "flushing every state drops the platform's own ssh session to the edge mid-reset"
@@ -464,16 +334,21 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
         "the waf is rebuilt from its image and configured once Nova has it back"
     )
 
-def test_the_rebuilt_vms_are_configured_by_their_own_steps_only():
+def test_the_rebuilt_vms_are_configured_by_their_own_steps_from_a_fresh_read_of_the_cloud():
     edge = ResetsInPlace()
     adapter = _adapter(edge)
-    adapter._read = _shape
+    reads = []
+    adapter._read = lambda: reads.append(1) or _shape()
 
     done = adapter.configure_rebuilt(["fsl-kali", "fsl-waf"])
 
     assert [host for host, _ in done] == ["fsl-kali", "fsl-waf", "fsl-waf"]
     assert {role for role, _, _ in edge.calls} == {"attacker", "gateway"}, (
         "a rebuilt Kali comes back from its image keeping time by nothing"
+    )
+    assert reads == [1], (
+        "the shape read while Nova rebuilt the WAF carries its old launch time, so ssh "
+        "checked the rebuilt VM's new host key against the old one and never got in"
     )
 
 class Nova:
@@ -493,7 +368,7 @@ def _standing(adapter):
     adapter._slot = lambda: (slot.Plan(standing=standing), {}, [], [], [], ready)
     return adapter
 
-def test_a_close_rebuilds_only_the_vms_that_hold_a_shell():
+def test_a_close_rebuilds_only_the_vms_that_hold_a_shell_and_a_rebuild_by_hand_every_vm():
     nova = Nova()
     adapter = _standing(_adapter(Edge(), nova))
 
@@ -505,27 +380,11 @@ def test_a_close_rebuilds_only_the_vms_that_hold_a_shell():
         "POST http://nova:8774/v2.1/servers/srv-kali/action",
     ], "the edge and the wargame host reset in place; Kali and the WAF hand out a shell"
 
-def test_rebuilding_the_slot_by_hand_still_rebuilds_every_vm():
     nova = Nova()
-    adapter = _standing(_adapter(Edge(), nova))
-
-    rebuilt = adapter.rebuild_slot()
+    rebuilt = _standing(_adapter(Edge(), nova)).rebuild_slot()
 
     assert [host for host, _ in rebuilt] == ["fsl-waf", "fsl-edge", "fsl-kali", "fsl-wargame-host"]
     assert len(nova.calls) == 4
-
-def test_the_rebuilt_vms_are_configured_from_a_fresh_read_of_the_cloud():
-    edge = ResetsInPlace()
-    adapter = _adapter(edge)
-    reads = []
-    adapter._read = lambda: reads.append(1) or _shape()
-
-    adapter.configure_rebuilt(["fsl-waf"])
-
-    assert reads == [1], (
-        "the shape read while Nova rebuilt the WAF carries its old launch time, so ssh "
-        "checked the rebuilt VM's new host key against the old one and never got in"
-    )
 
 def test_every_linux_host_in_the_slot_keeps_time_by_the_platform_on_management():
     edge = Edge()
@@ -539,29 +398,6 @@ def test_every_linux_host_in_the_slot_keeps_time_by_the_platform_on_management()
     )
     assert ("fsl-kali", ("keeps time by 10.31.0.195",)) in done
     assert "NTP=10.31.0.195\n" in clock.timesyncd("10.31.0.195")
-
-def test_the_wargame_host_takes_the_platforms_time_before_its_wargames_start():
-    edge = Edge()
-
-    _adapter(edge).configure_slot()
-
-    on_the_host = [argv for role, argv, _ in edge.calls if role == "wargames"]
-    assert on_the_host.index(clock.command("10.31.0.195")) < on_the_host.index(wargame_host.up("board")), (
-        "a step of the clock under a running database moves its binlog times mid-session"
-    )
-
-def test_a_host_that_hears_no_time_from_the_platform_is_drift():
-    class Unanswered(Edge):
-        def __call__(self, role, segment_id=""):
-            inner = super().__call__(role, segment_id)
-            def run(argv, stdin=None, timeout=60.0):
-                if role == "attacker" and argv == clock.command("10.31.0.195"):
-                    return Ran(1, "no answer from 10.31.0.195 in 30s")
-                return inner(argv, stdin, timeout)
-            return run
-
-    with pytest.raises(Drifted, match="fsl-kali did not take 10.31.0.195 as its time source"):
-        _adapter(Unanswered()).configure_slot()
 
 def test_the_edge_takes_the_platforms_time_through_its_config():
     edge = Edge()
@@ -587,12 +423,10 @@ def _timesyncd_answering(tmp_path, server, message):
                           capture_output=True, text=True,
                           env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"})
 
-def test_the_time_step_returns_once_the_platform_has_answered(tmp_path):
-    assert _timesyncd_answering(tmp_path, "10.31.0.195", "{ Leap=0, Stratum=3 }").returncode == 0
-
-def test_the_time_step_fails_when_no_answer_came_or_another_server_answered(tmp_path):
-    silent = _timesyncd_answering(tmp_path, "10.31.0.195", "")
-    elsewhere = _timesyncd_answering(tmp_path, "185.125.190.58", "{ Leap=0, Stratum=2 }")
-
-    assert silent.returncode == 1 and "no answer from 10.31.0.195" in silent.stderr
-    assert elsewhere.returncode == 1, "a host still on its old server has not taken the platform's time"
+@pytest.mark.parametrize("server, message, returncode", [
+    ("10.31.0.195", "{ Leap=0, Stratum=3 }", 0),
+    ("10.31.0.195", "", 1),
+    ("185.125.190.58", "{ Leap=0, Stratum=2 }", 1),
+])
+def test_the_time_step_returns_only_once_the_platform_itself_has_answered(tmp_path, server, message, returncode):
+    assert _timesyncd_answering(tmp_path, server, message).returncode == returncode

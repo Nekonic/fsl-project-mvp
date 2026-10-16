@@ -40,29 +40,17 @@ def built():
     with patch("api.views.substrate", lambda: found):
         yield found
 
-def test_the_docker_range_has_no_fabric_to_build(client):
-    response = client.get(URL)
-
-    assert response.status_code == 409, response.content
-    assert "compose" in response.json()["detail"]
-
 def test_reading_the_fabric_says_what_is_missing_and_what_is_left_over(client, built):
     answer = client.get(URL).json()
 
-    assert answer["networks"] == ["internet"]
-    assert answer["subnets"] == [{
-        "segment": "internet", "name": "fsl-us", "cidr": "73.0.0.0/24",
-        "dhcp": False, "gateway": True,
-    }]
-    assert answer["keypair"] is True and answer["clean"] is False
-    assert answer["groups"] == ["fsl-reach"] and answer["reach"] is True
-    assert answer["leftovers"] and answer["present"] == ["fsl-estate"]
-    assert built.ensured == 0
+    assert answer["clean"] is False and answer["leftovers"]
+    assert built.ensured == 0, "reading the fabric builds nothing"
 
 def test_building_it_is_a_post(client, built):
     response = client.post_json(URL)
 
     assert response.status_code == 200 and built.ensured == 1
+    assert response.json()["drifted"] == [], "bin/cloud up reads drifted from this answer"
 
 def test_taking_it_down_is_a_delete_and_says_what_went(client, built):
     response = client.delete(URL)

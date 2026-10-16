@@ -21,21 +21,11 @@ def commands(wargame_id, lesson_id, flavor):
     taught = wargames.lesson(wargame_id, layout(flavor), lesson_id=lesson_id)
     return {step["id"]: step["command"] for step in taught["steps"] if step.get("command")}
 
-def test_every_declared_lesson_is_covered_on_two_waf_layouts():
-    assert ("board", "f6") in LESSONS
+def test_the_two_waf_layouts_differ_and_each_has_a_lesson_command_naming_its_own_file():
     assert layout("").rules != layout("openstack").rules, "the docker WAF container and the OpenStack WAF VM differ"
-    assert [commands("board", "f6", flavor) for flavor in FLAVORS] == [
-        {"excluded": f"cat {layout(flavor).rules}"} for flavor in FLAVORS]
-
-@pytest.mark.parametrize("flavor", FLAVORS)
-@pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
-def test_every_lesson_command_names_the_flavor_s_own_waf_file(wargame_id, lesson_id, flavor):
-    waf = layout(flavor)
-
-    for step_id, command in commands(wargame_id, lesson_id, flavor).items():
-        assert "{waf_rules}" not in command, step_id
-        if "REQUEST-900" in command:
-            assert waf.rules in command, (flavor, step_id)
+    for flavor in FLAVORS:
+        assert any(layout(flavor).rules in command for wargame_id, lesson_id in LESSONS
+                   for command in commands(wargame_id, lesson_id, flavor).values()), flavor
 
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)

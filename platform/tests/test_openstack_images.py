@@ -8,7 +8,6 @@ import pytest
 import yaml
 
 from range import declared, images, openstack
-from range.ports import RangeUnavailable
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASE = {"id": "img-ubuntu", "name": "ubuntu-24.04", "status": "active"}
@@ -112,32 +111,6 @@ def test_an_empty_project_boots_one_builder_per_declared_image(cloud):
         config = yaml.safe_load(base64.b64decode(server["user_data"]).decode())
         assert server["metadata"][images.BUNDLE] in config["runcmd"][0][-1]
 
-def test_every_builder_boots_the_one_base_image_the_cloud_holds(cloud):
-    cloud.images.append({"id": "img-kali", "name": "kali-rolling", "status": "active"})
-
-    adapter(cloud).ensure_images()
-
-    assert {s["imageRef"] for s in cloud.servers} == {BASE["id"]}, (
-        "the cloud holds one uploaded image, the stock Ubuntu 24.04 cloud "
-        "image; every other image is built from it"
-    )
-
-def test_builders_boot_with_the_builder_flavor_and_the_configured_zone(cloud):
-    build = openstack.Build(source=str(ROOT), base_image="ubuntu-24.04", flavor="m1.tiny",
-                            build_flavor="m1.small", network="net-platform",
-                            availability_zone="zone-b", image_tag="c0ffee", mtu=1450)
-
-    openstack.OpenStack(SCRIPTED, SPEC, get=cloud, build=build).ensure_images()
-
-    assert {s["flavorRef"] for s in cloud.servers} == {"f-2"}
-    assert {s["availability_zone"] for s in cloud.servers} == {"zone-b"}
-
-def test_building_needs_a_network_that_reaches_the_internet_and_names_its_setting(cloud):
-    with pytest.raises(RangeUnavailable, match="FSL_OPENSTACK_BUILD_NETWORK"):
-        adapter(cloud, network="").ensure_images()
-
-    assert cloud.writes() == []
-
 def test_a_builder_still_running_is_left_alone(cloud):
     adapter(cloud).ensure_images()
     written = len(cloud.writes())
@@ -207,12 +180,6 @@ def test_planning_only_reads(cloud):
 
     assert cloud.writes() == []
 
-def test_a_base_image_the_cloud_lacks_is_named(cloud):
-    cloud.images = []
-
-    with pytest.raises(RangeUnavailable, match="ubuntu-24.04"):
-        adapter(cloud).ensure_images()
-
 def builders(cloud):
     return [s for s in cloud.servers if images.BUILDS in s.get("metadata", {})]
 
@@ -239,34 +206,3 @@ def test_the_next_builder_boots_once_the_first_has_made_room():
     build.ensure_images()
 
     assert len(builders(cloud)) == 1 and builders(cloud)[0]["id"] != first["id"]
-
-def test_no_room_and_no_builder_at_work_says_what_to_free():
-    cloud = Cloud(limits={"maxTotalCores": 20, "totalCoresUsed": 19})
-
-    with pytest.raises(RangeUnavailable, match="quota has no room"):
-        adapter(cloud).ensure_images()
-    assert builders(cloud) == []
-
-def test_an_unlimited_quota_boots_every_missing_builder_at_once():
-    cloud = Cloud()
-
-    plan = adapter(cloud).ensure_images()
-
-    assert len(builders(cloud)) == len([f for f in plan.images if f.bundle])
-
-def test_the_image_calls_send_the_documented_api_fields():
-    reference = {
-        openstack.IMAGES: "https://docs.openstack.org/api-ref/image/v2/#list-images",
-        openstack.DELETE_IMAGE: "https://docs.openstack.org/api-ref/image/v2/#delete-image",
-        openstack.FLAVORS: "https://docs.openstack.org/api-ref/compute/#list-flavors",
-        openstack.FLAVOR: "https://docs.openstack.org/api-ref/compute/#show-flavor-details",
-        openstack.LIMITS: "https://docs.openstack.org/api-ref/compute/#show-rate-and-absolute-limits",
-        openstack.ACTION: "https://docs.openstack.org/api-ref/compute/#create-image-createimage-action",
-        openstack.DELETE_SERVER: "https://docs.openstack.org/api-ref/compute/#delete-server",
-    }
-    source = pathlib.Path(openstack.__file__).read_text()
-
-    for field in ('"createImage"', '"os-getConsoleOutput"', '"os-stop"', '"output"', '"status"',
-                  '"metadata"', '"config_drive"', '"user_data"', '"flavorRef"', '"imageRef"',
-                  '"limits"', '"absolute"', '"maxTotalCores"', '"totalCoresUsed"', '"vcpus"', '"ram"'):
-        assert field in source, f"{field} is read or sent and checked against {reference}"

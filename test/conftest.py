@@ -29,7 +29,7 @@ BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("FSL_WORKERS") 
 COMPOSE_RANGE_ONLY = {
     "test_attacker_box", "test_board_exfil", "test_concurrent_sessions",
     "test_event_time",
-    "test_fabric", "test_front_door", "test_judge_isolation",
+    "test_front_door", "test_judge_isolation",
     "test_operator_log", "test_ready", "test_segmentation",
     "test_strategy_comparison", "test_terminal", "test_topology",
     "test_window_correlation",

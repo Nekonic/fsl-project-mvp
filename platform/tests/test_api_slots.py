@@ -251,6 +251,8 @@ def test_a_rule_change_on_one_slot_does_not_wait_for_another_slot_s_reset(client
 
 
 def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
+    reset._of(1).update(state=reset.FAILED, reason="edge gone")
+    reset._of(2).update(state=reset.FAILED, reason="edge gone")
     one = client.get("/api/range/slot/?slot=2").json()
     every = client.post_json("/api/range/slot/").json()
     configured = client.post_json("/api/range/configure/?slot=2").json()
@@ -258,6 +260,8 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
     assert one["slot"] == 2 and [s["host"] for s in one["standing"]] == ["fsl-waf-2", "fsl-platform"]
     assert sorted(cloud.ensured) == [1, 2] and [s["slot"] for s in every["slots"]] == [1, 2]
     assert cloud.configured == [2] and configured["configured"][0]["host"] == "fsl-waf-2"
+    assert (reset.standing(1)["state"], reset.standing(2)["state"]) == (reset.FAILED, reset.IDLE), (
+        "configuring a slot by hand clears that slot's failed reset and no other")
     assert client.get("/api/range/slot/?slot=3").status_code == 400
 
 
@@ -273,17 +277,14 @@ def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, set
     assert read == ["fsl-logs-slot2-*"]
 
 
-def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot():
-    import subprocess
-    import os
-    said = subprocess.run(
-        [os.sys.executable, "-c", "import django; django.setup(); from django.conf import settings; "
-                                  "print(settings.ELASTIC_SESSION_INDEX)"],
-        capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1],
-        env={**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings",
-             "FSL_SUBSTRATE": "range.openstack.connect", "PYTHONPATH": ".."},
-    )
-    assert said.stdout.strip() == "fsl-logs-slot{slot}-*", said.stderr[-300:]
+def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot(monkeypatch):
+    import runpy
+
+    monkeypatch.setenv("FSL_SUBSTRATE", "range.openstack.connect")
+    monkeypatch.delenv("ELASTIC_SESSION_INDEX", raising=False)
+    said = runpy.run_path(str(Path(__file__).resolve().parents[1] / "fsl" / "settings.py"))
+
+    assert said["ELASTIC_SESSION_INDEX"] == "fsl-logs-slot{slot}-*"
 
 
 def test_run_on_role_runs_on_the_slot_the_named_session_holds(client, cloud, monkeypatch):
@@ -305,13 +306,3 @@ def test_requests_from_any_slot_s_hosts_are_refused(cloud, monkeypatch):
     monkeypatch.setattr(reachability, "_cached", (0.0, frozenset()))
 
     assert {"10.31.1.9", "10.31.2.9"} <= reachability.scored_hosts()
-
-
-def test_a_reset_s_state_is_kept_per_slot():
-    with patch.dict(reset._states, clear=True):
-        reset._of(2).update(state=reset.FAILED, reason="edge gone")
-
-        assert reset.standing(1)["state"] == reset.IDLE
-        assert reset.standing(2) == {"state": reset.FAILED, "reason": "edge gone"}
-        reset.configured_by_hand(2)
-        assert reset.standing(2)["state"] == reset.IDLE

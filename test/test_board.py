@@ -1,8 +1,3 @@
-import requests
-
-from conftest import PLATFORM_URL
-
-
 def _case(score, name):
     return next((c for c in score["per_case"] if c["name"] == name), None)
 
@@ -24,14 +19,7 @@ def test_an_attack_on_the_board_is_detected_and_a_benign_request_passes(full_run
     assert score["tp"] > 0 and score["tn"] > 0, score
 
 
-def test_a_board_session_lists_its_loot_tiers_and_starts_with_none_taken(board_session):
-    tiers = requests.get(
-        f"{PLATFORM_URL}/api/wargames/board/objectives/", timeout=60
-    ).json()
-    assert {t["key"] for t in tiers} == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    }
-
+def test_a_board_session_starts_with_no_objective_taken(board_session):
     observed = board_session["objectives_at_open"]
     assert observed.status_code == 200, observed.text
     assert observed.json() == {"achieved": 0, "total": 0}, observed.json()

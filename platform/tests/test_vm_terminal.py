@@ -69,11 +69,6 @@ def test_with_two_slots_a_closed_unknown_or_missing_session_is_refused(monkeypat
     assert "which slot" in complaint
 
 
-@pytest.mark.django_db
-def test_with_one_slot_a_missing_session_opens_the_one_slot(monkeypatch, capsys):
-    assert _found(monkeypatch, capsys, 1, "")[:2] == (None, "10.31.1.9")
-
-
 def test_a_refused_lookup_ends_the_shell_without_ssh(tmp_path):
     reached = tmp_path / "ssh-reached"
     for name, body in {

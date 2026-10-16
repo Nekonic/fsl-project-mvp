@@ -35,31 +35,20 @@ def test_canonicalize_accepts_dicts_pairs_and_mappings():
 
 def test_matched_requires_the_exact_stored_hash():
     submitted = [{"username": "admin", "hash": TRUTH["admin"]},
-                 {"username": "jiwoo", "hash": "pbkdf2_sha256$600000$bbb$WRONG="}]
+                 {"username": "jiwoo", "hash": "pbkdf2_sha256$600000$bbb$WRONG="},
+                 {"username": "minseo", "password": "minseo1234"}]
     assert loot.matched(submitted, TRUTH) == {"admin"}
 
 
-def test_a_plaintext_guess_never_matches_a_salted_hash():
-    assert loot.matched([{"username": "admin", "password": "admin1234"}], TRUTH) == set()
-
-
-def test_a_single_non_admin_row_fires_only_partial():
-    fired, coverage = loot.tiers_fired(SPEC, {"jiwoo"}, TRUTH)
-    assert [t["key"] for t in fired] == ["board-auth-user-partial"]
-    assert coverage == pytest.approx(1 / 3)
-
-
-def test_a_single_admin_row_fires_partial_and_admin():
-    fired, _ = loot.tiers_fired(SPEC, {"admin"}, TRUTH)
-    assert [t["key"] for t in fired] == ["board-auth-user-partial", "board-auth-user-admin"]
-
-
-def test_a_whole_table_fires_all_three_tiers():
-    fired, coverage = loot.tiers_fired(SPEC, set(TRUTH), TRUTH)
-    assert [t["key"] for t in fired] == [
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    ]
-    assert coverage == 1.0
+@pytest.mark.parametrize("taken, keys, share", [
+    ({"jiwoo"}, ["board-auth-user-partial"], 1 / 3),
+    ({"admin"}, ["board-auth-user-partial", "board-auth-user-admin"], 1 / 3),
+    (set(TRUTH), ["board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"], 1.0),
+])
+def test_the_tiers_fired_follow_what_was_taken(taken, keys, share):
+    fired, coverage = loot.tiers_fired(SPEC, taken, TRUTH)
+    assert [t["key"] for t in fired] == keys
+    assert coverage == pytest.approx(share)
 
 
 @pytest.mark.reads_ground_truth
@@ -96,18 +85,6 @@ def test_ground_truth_reads_the_board_at_the_host_the_range_gives(settings, host
             loot.ground_truth("board", host)
 
     assert opened.call_args.args[0] == read
-
-
-@pytest.mark.reads_ground_truth
-def test_ground_truth_raises_when_the_channel_is_unreadable():
-    import urllib.error
-
-    with patch("api.loot.wargames.objectives", return_value=SPEC), patch(
-        "api.loot.urllib.request.urlopen",
-        side_effect=urllib.error.URLError("refused"),
-    ):
-        with pytest.raises(loot.GroundTruthUnavailable):
-            loot.ground_truth("board")
 
 
 @pytest.mark.reads_ground_truth

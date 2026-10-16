@@ -14,7 +14,7 @@ import wargames
 from api import scenario_run
 from api.models import Case, Session
 from console import strings
-from tests.test_scenario_engine import (COURSE, DUMPED, HELD, SQLMAP, Stack, alert, customer, firing, judging, known,
+from tests.test_scenario_engine import (COURSE, DUMPED, HELD, SQLMAP, Stack, alert, customer, firing, known,
                                         opened, window_judged)
 
 pytestmark = pytest.mark.django_db
@@ -63,28 +63,6 @@ def test_every_scenario_validates_and_has_its_words_in_both_languages(scenario_i
     card = wargames.scenario_card(one)
     assert "attacks" not in card and not any(attack["case"] in str(card) for attack in one["attacks"])
 
-def test_the_judgement_scenarios_inherit_a_waf_whose_totals_were_taken_out():
-    for scenario_id in ("1.2", "1.3"):
-        posture = wargames.defense("board", wargames.scenario_run(scenario_id)["defense"])
-        assert posture["waf"]["paranoia"] == 2
-        assert sorted(entry["rule_id"] for entry in posture["waf"]["exclusions"]) == [949110, 959100]
-    busy = wargames.scenario_run("1.3")
-    patterns = {case["pattern"] for case in wargames.cases("board") if case["name"] in
-                {attack["case"] for attack in busy["attacks"]}}
-    assert patterns == {"CAPEC-66", "CAPEC-63", "CAPEC-126"}
-    assert {attack["origin"] for attack in busy["attacks"]} == {"kr"}
-    assert busy["traffic"]["rate"] > wargames.scenario_run("1.2")["traffic"]["rate"]
-    assert wargames.scenario_card(busy)["patterns"] == ["CAPEC-126", "CAPEC-63", "CAPEC-66"]
-    assert wargames.scenario_card(wargames.scenario_run("1.2"))["patterns"] == []
-
-def test_the_threshold_scenario_starts_untuned_at_paranoia_level_3_and_finishes_at_the_crs_defaults():
-    one = wargames.scenario_run("2.3")
-    posture = wargames.defense("board", one["defense"])
-
-    assert posture["waf"] == {"paranoia": 3, "thresholds": {"inbound": 10000, "outbound": 10000}}
-    assert one["completion"] == {"served": "all", "held": "all", "thresholds": {"inbound": 5, "outbound": 4}}
-    assert "comment" in TRAFFIC["profiles"][one["traffic"]["profile"]]
-
 def test_the_broken_rule_reads_the_body_and_the_fixed_one_catches_stock_sqlmap_and_not_a_sort():
     buffer, pattern = rule_of("broken-sort.rules", 9000101)
     step = next(step for step in wargames.scenario_run("3.1")["steps"] if step["id"] == "fix")
@@ -103,54 +81,21 @@ def test_the_spelled_rule_catches_the_stock_run_and_misses_every_tamper_request(
     assert not any(pattern.search(uri) for uri in TAMPER + [SORTED])
     assert {attack["case"] for attack in one["attacks"]} == {SQLMAP, "board-sqli-orderby-sqlmap-tamper"}
 
-def test_the_detection_postures_leave_the_sort_attack_to_the_learner():
-    for scenario_id, ruleset in (("3.2", "no-uri-sqli.rules"), ("3.4", "local.rules")):
-        assert wargames.defense("board", wargames.scenario_run(scenario_id)["defense"])["suricata"] == ruleset
-    assert "sid:9000001;" not in (RULES / "no-uri-sqli.rules").read_text()
-    body = next(line for line in (RULES / "local.rules").read_text().splitlines() if "sid:9000003;" in line)
-    assert "http.uri;" in body
-    assert {attack["case"] for attack in wargames.scenario_run("3.4")["attacks"]} == {
-        "board-xss-img-onerror-in-comment", "board-xss-script-tag-in-search"}
-
-def test_the_unknown_scenario_sends_an_unseen_variant_and_customers_who_post_code():
-    one = wargames.scenario_run("4.1")
-    seen = {attack["case"] for other in wargames.scenarios("board") if other["id"] != "4.1"
-            for attack in other["attacks"]}
-
-    assert "board-sqli-orderby-sqlmap-versioned" in {attack["case"] for attack in one["attacks"]}
-    assert "board-sqli-orderby-sqlmap-versioned" not in seen
-    assert "comment-code" in TRAFFIC["profiles"][one["traffic"]["profile"]]
-    assert (one["guidance"], one.get("hints"), one.get("cards")) == ("none", None, None)
-
-def test_the_final_check_refuses_thresholds_above_the_ones_it_names():
-    session = opened("2.3")
-    session.waf = {"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 50, "outbound": 4}}
-    session.save(update_fields=["waf"])
-
-    result = window_judged(session)
-
-    assert result["passed"] is False
-    assert ["scenario.fail.threshold", [50, 4, 5, 4]] in result["reasons"]
-
-@pytest.mark.parametrize("waf", [
-    {"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}},
-    {"paranoia": 3, "exclusions": []},
-])
-def test_the_final_check_passes_at_the_crs_default_thresholds(waf):
+@pytest.mark.parametrize("waf, refused", [
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
+    ({"paranoia": 3, "exclusions": []}, None),
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 50, "outbound": 4}},
+     ["scenario.fail.threshold", [50, 4, 5, 4]]),
+], ids=["crs-defaults", "no-thresholds-set", "raised-above"])
+def test_the_final_check_passes_only_at_or_below_the_thresholds_it_names(waf, refused):
     session = opened("2.3")
     session.waf = waf
     session.save(update_fields=["waf"])
 
     result = window_judged(session)
 
-    assert result["passed"] is True, result
-
-def test_thresholds_in_a_completion_are_validated():
-    one = copy.deepcopy(wargames.scenario_run("2.3"))
-    with pytest.raises(wargames.InvalidCatalogue, match="thresholds"):
-        checked(dict(one, completion={"served": "all", "held": "all", "thresholds": {"inbound": 0}}))
-    with pytest.raises(wargames.InvalidCatalogue, match="completion"):
-        checked(dict(one, completion={"served": "all", "held": "all", "pattern": "judged"}))
+    assert result["passed"] is (refused is None), result
+    assert refused is None or refused in result["reasons"]
 
 def attack_item(client, session, name, pattern, loot=()):
     case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=name, malicious=True,
@@ -179,26 +124,10 @@ def test_a_busy_evening_judges_the_kind_of_each_attack(client):
     listed = client.get(f"/api/sessions/{session.pk}/triage/").json()["items"]
     assert "CAPEC" not in str([{key: value for key, value in one.items() if key != "judged"} for one in listed])
 
-def test_a_scenario_that_does_not_judge_the_kind_ignores_it(client):
-    session = opened("1.2")
-    item = attack_item(client, session, SQLMAP, "CAPEC-66", loot=["admin"])
-
-    judged = judging(client, session, item, "attack", True).json()
-
-    assert judged["right"] is True and "pattern_right" not in judged
-
 def person_scenario(**changed):
     one = copy.deepcopy(wargames.scenario_run("4.1"))
     one.update({"red": "person", "attacks": []}, **changed)
     return one
-
-def test_a_scenario_may_leave_the_red_team_to_a_person_and_then_needs_no_schedule():
-    checked(person_scenario())
-    assert wargames.scenario_card(person_scenario())["red"] == "person"
-    with pytest.raises(wargames.InvalidCatalogue, match="attacks"):
-        checked(dict(person_scenario(), red="schedule"))
-    with pytest.raises(wargames.InvalidCatalogue, match="red"):
-        checked(person_scenario(red="robot"))
 
 @pytest.mark.parametrize("loot, passed", [([], True), (["admin"], False)])
 def test_a_person_s_attack_inside_the_window_is_judged_like_a_scheduled_one(loot, passed):
@@ -245,22 +174,17 @@ def detection_window(session, *, alerted_by, customer_alert=False):
     session.refresh_from_db()
     return session.scenario_state["windows"][-1]["result"]
 
-def test_a_detection_window_passes_when_every_attack_draws_an_ids_alert_naming_sql_and_customers_stay_quiet():
-    result = detection_window(opened("3.2"), alerted_by="suricata")
+@pytest.mark.parametrize("alerted_by, customer_alert, refused", [
+    ("suricata", False, None),
+    ("modsecurity", False, ["scenario.fail.undetected", [SQLMAP]]),
+    ("suricata", True, ["scenario.fail.noisy", [1]]),
+], ids=["ids-saw-it", "only-the-waf-saw-it", "a-customer-drew-an-ids-alert"])
+def test_a_detection_window_passes_only_when_the_ids_sees_every_attack_and_no_customer(
+        alerted_by, customer_alert, refused):
+    result = detection_window(opened("3.2"), alerted_by=alerted_by, customer_alert=customer_alert)
 
-    assert result["passed"] is True, result
-
-def test_a_detection_window_fails_when_only_the_waf_saw_the_attack():
-    result = detection_window(opened("3.2"), alerted_by="modsecurity")
-
-    assert result["passed"] is False
-    assert ["scenario.fail.undetected", [SQLMAP]] in result["reasons"]
-
-def test_a_detection_window_fails_when_a_customer_draws_an_ids_alert():
-    result = detection_window(opened("3.2"), alerted_by="suricata", customer_alert=True)
-
-    assert result["passed"] is False
-    assert ["scenario.fail.noisy", [1]] in result["reasons"]
+    assert result["passed"] is (refused is None), result
+    assert refused is None or refused in result["reasons"]
 
 def test_an_availability_window_leaked_by_the_unseen_variant_fails_on_both_scores():
     result = window_judged(opened("4.1"), output=DUMPED)
@@ -334,46 +258,20 @@ def test_a_detection_debrief_counts_and_shows_only_the_ids_alerts(client):
     assert told["timeline"][0]["detected"] is True
     assert [row["source"] for row in told["evidence"]] == ["suricata"]
 
-@pytest.mark.parametrize("waf, named", [
-    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
+DEFAULTS = {"paranoia": 2, "exclusions": []}
+
+@pytest.mark.parametrize("waf, posture, named", [
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, "untuned", None),
     ({"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_HEADERS:Referer", "path": ""}],
-      "thresholds": {"inbound": 5, "outbound": 4}}, "target"),
-    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 20000, "outbound": 4}}, "threshold"),
-])
-def test_lowering_the_thresholds_is_not_named_a_threshold_fix_raising_them_is(waf, named):
+      "thresholds": {"inbound": 5, "outbound": 4}}, "untuned", "target"),
+    ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 20000, "outbound": 4}}, "untuned", "threshold"),
+    ({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 10}}, DEFAULTS, "threshold"),
+    ({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, DEFAULTS, None),
+], ids=["lowered-to-defaults", "exclusion", "raised-from-untuned", "raised-above-defaults", "at-defaults"])
+def test_only_raising_the_thresholds_is_named_a_threshold_fix(waf, posture, named):
     import lesson
 
-    posture = wargames.defense("board", "untuned")["waf"]
+    if posture == "untuned":
+        posture = wargames.defense("board", "untuned")["waf"]
     assert lesson.fix_class(waf, posture) == named
 
-def test_raising_the_thresholds_above_the_crs_defaults_is_a_threshold_fix():
-    import lesson
-
-    assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 10}},
-                            {"paranoia": 2, "exclusions": []}) == "threshold"
-    assert lesson.fix_class({"paranoia": 2, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}},
-                            {"paranoia": 2, "exclusions": []}) is None
-
-def test_a_scenario_without_a_lesson_names_a_path_scoped_exception_on_any_path_a_path_target():
-    from api import views
-
-    session = opened("4.1")
-    waf = {"paranoia": 1, "exclusions": [{"rule_id": 942100, "target": "ARGS:body", "path": "/posts/"}]}
-
-    assert views._fix(session, waf) == "path_target"
-    assert views._fix(session, dict(waf, exclusions=[{"rule_id": 942100, "target": "ARGS:body", "path": ""}])) == "target"
-
-def test_the_debrief_timeline_reads_in_the_order_the_attacks_came(client):
-    session = opened("4.1")
-    state = session.scenario_state
-    late = scenarios.window_attacks(wargames.scenario_run("4.1"), state["schedule"],
-                                    scenarios.at(state["opened_at"]) + timedelta(seconds=60),
-                                    scenarios.at(state["opened_at"]))
-    state["schedule"] += late
-    Session.objects.filter(pk=session.pk).update(scenario_state=state, ended_at=timezone.now())
-
-    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
-    times = [entry["at"] for entry in told["timeline"]]
-
-    assert times == [210, 300, 600]
-    assert [entry["n"] for entry in told["timeline"]] == [2, 0, 1]

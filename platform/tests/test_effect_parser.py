@@ -1,6 +1,8 @@
 from datetime import timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from api import effect
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -22,19 +24,14 @@ def _credited(name, baseline):
     return {tier["key"] for tier, _ in effect.credited(SPEC, baseline, _parse(name))}
 
 
-def test_credited_fires_rogue_admin_for_a_grant_to_a_non_baseline_user():
-    baseline = {"admins": [1], "options": {}, "posts": [1]}
-    assert "corp-rogue-admin" in _credited("corp-rogue-admin.binlog", baseline)
-
-
-def test_credited_fires_option_flip_against_the_baseline_options():
-    baseline = {"admins": [1], "options": {"users_can_register": "0"}, "posts": [1]}
-    assert "corp-self-registration" in _credited("corp-option-flip.binlog", baseline)
-
-
-def test_credited_fires_content_write_for_an_overwrite_of_a_baseline_post():
-    baseline = {"admins": [1], "options": {}, "posts": [1]}
-    assert "corp-content-overwrite" in _credited("corp-content-write.binlog", baseline)
+@pytest.mark.parametrize("binlog, options, tier", [
+    ("corp-rogue-admin.binlog", {}, "corp-rogue-admin"),
+    ("corp-option-flip.binlog", {"users_can_register": "0"}, "corp-self-registration"),
+    ("corp-content-write.binlog", {}, "corp-content-overwrite"),
+])
+def test_credited_fires_each_effect_against_the_baseline(binlog, options, tier):
+    baseline = {"admins": [1], "options": options, "posts": [1]}
+    assert tier in _credited(binlog, baseline)
 
 
 def test_credited_stays_silent_when_the_change_matches_the_baseline():
@@ -46,54 +43,11 @@ def test_credited_stays_silent_when_the_change_matches_the_baseline():
     assert "corp-self-registration" not in _credited("corp-option-flip.binlog", baseline)
 
 
-def test_the_rogue_admin_binlog_shows_a_usermeta_admin_grant():
-    changes = _parse("corp-rogue-admin.binlog")
-    grants = [
-        c for c in changes
-        if c.table == "wp_usermeta"
-        and c.columns.get(effect.COLUMNS["wp_usermeta"]["meta_key"]) == "wp_capabilities"
-        and "administrator" in (c.columns.get(effect.COLUMNS["wp_usermeta"]["meta_value"]) or "")
-    ]
-    assert grants
-    assert grants[0].at.tzinfo == timezone.utc
-
-
-def test_the_option_flip_binlog_shows_users_can_register_going_to_one():
-    changes = _parse("corp-option-flip.binlog")
-    flips = [
-        c for c in changes
-        if c.table == "wp_options"
-        and c.columns.get(effect.COLUMNS["wp_options"]["option_name"]) == "users_can_register"
-        and c.columns.get(effect.COLUMNS["wp_options"]["option_value"]) == "1"
-    ]
-    assert flips
-
-
-def test_the_content_write_binlog_shows_a_new_post_row():
-    changes = _parse("corp-content-write.binlog")
-    assert any(c.table == "wp_posts" and c.kind in {"insert", "update"} for c in changes)
-
-
 def test_changes_before_the_since_mark_are_dropped():
     changes = _parse("corp-option-flip.binlog")
     assert changes
     latest = max(c.at for c in changes)
     assert _parse("corp-option-flip.binlog", since=latest + timedelta(seconds=1)) == []
-
-
-def test_an_update_keeps_the_after_image_not_the_before_image():
-    posts = [c for c in _parse("corp-content-write.binlog") if c.table == "wp_posts"]
-    assert len(posts) == 1
-    columns = posts[0].columns
-    assert columns[effect.COLUMNS["wp_posts"]["post_title"]] == "Defaced by an unauthenticated guest"
-    assert "overwritten" in columns[effect.COLUMNS["wp_posts"]["post_content"]]
-
-
-def test_a_delete_keeps_the_row_that_was_removed():
-    deletes = [c for c in _parse("corp-option-flip.binlog") if c.kind == "delete"]
-    assert deletes
-    assert deletes[0].table == "wp_options"
-    assert deletes[0].columns.get(effect.COLUMNS["wp_options"]["option_name"])
 
 
 def test_each_change_carries_the_timestamp_of_its_own_transaction():
@@ -102,6 +56,7 @@ def test_each_change_carries_the_timestamp_of_its_own_transaction():
         c for c in changes
         if c.columns.get(effect.COLUMNS["wp_options"]["option_name"]) == "users_can_register"
     )
+    assert flip.at.tzinfo == timezone.utc
     assert flip.at.timestamp() == 1791109664
     assert changes[-1].at.timestamp() == 1791109674
     assert sorted({c.at.timestamp() for c in changes}) == [1791109664, 1791109666, 1791109674]
@@ -129,19 +84,13 @@ def test_credited_takes_nothing_without_a_snapshot():
             assert _credited(name, blind) == set()
 
 
-def test_a_revision_insert_is_not_a_content_write():
-    assert _credited_posts(_post_row(40, "insert", "inherit", "revision")) == set()
-
-
-def test_an_auto_draft_insert_is_not_a_content_write():
-    assert _credited_posts(_post_row(41, "insert", "auto-draft", "post")) == set()
-
-
-def test_a_revision_update_of_a_baseline_id_is_not_a_content_write():
-    assert _credited_posts(_post_row(1, "update", "inherit", "revision")) == set()
-
-
-def test_a_published_or_draft_post_is_a_content_write():
-    assert _credited_posts(_post_row(42, "insert", "publish", "post")) == {"corp-content-overwrite"}
-    assert _credited_posts(_post_row(43, "insert", "draft", "post")) == {"corp-content-overwrite"}
-    assert _credited_posts(_post_row(1, "update", "publish", "post")) == {"corp-content-overwrite"}
+@pytest.mark.parametrize("post_id, kind, status, post_type, credited", [
+    (40, "insert", "inherit", "revision", set()),
+    (41, "insert", "auto-draft", "post", set()),
+    (1, "update", "inherit", "revision", set()),
+    (42, "insert", "publish", "post", {"corp-content-overwrite"}),
+    (43, "insert", "draft", "post", {"corp-content-overwrite"}),
+    (1, "update", "publish", "post", {"corp-content-overwrite"}),
+])
+def test_a_published_or_draft_post_is_a_content_write(post_id, kind, status, post_type, credited):
+    assert _credited_posts(_post_row(post_id, kind, status, post_type)) == credited

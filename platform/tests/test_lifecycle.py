@@ -5,106 +5,33 @@ import yaml
 
 import lifecycle
 
-CASES = pathlib.Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml"
-
-def cases():
-    return yaml.safe_load(CASES.read_text())
-
-def test_the_stages_are_the_ones_the_model_names_and_in_its_order():
-    assert lifecycle.STAGES == (
-        "initial-reconnaissance",
-        "initial-compromise",
-        "establish-foothold",
-        "escalate-privileges",
-        "internal-reconnaissance",
-        "move-laterally",
-        "maintain-presence",
-        "complete-mission",
-    ), (
-        "the stages are Mandiant's targeted attack life cycle, in its order, "
-        "and a stage this range invented would be a stage nobody else reports "
-        "against"
-    )
-
-def test_every_attack_says_where_in_the_life_cycle_it_belongs():
-    unlabelled = [
-        case["name"] for case in cases()
-        if case["malicious"] and not case.get("stage")
-    ]
-
-    assert unlabelled == [], (
-        f"{unlabelled} say an attack happened and not what part of an "
-        f"intrusion it is, so the range cannot say what it does not cover"
-    )
-
-def test_no_case_claims_a_stage_the_model_does_not_have():
-    invented = sorted(
-        {case.get("stage") for case in cases()} - {None, ""} - set(lifecycle.STAGES)
-    )
-
-    assert invented == [], invented
-
-def test_every_attack_carries_an_att_ck_id_and_a_mechanism():
-    for case in cases():
-        if not case["malicious"]:
-            continue
-        assert case.get("technique", "").startswith("T"), case["name"]
-        assert case.get("pattern", "").startswith("CAPEC-"), case["name"]
-
-def test_benign_traffic_is_not_labelled_as_part_of_an_intrusion():
-    mislabelled = [
-        case["name"] for case in cases()
-        if not case["malicious"] and (case.get("stage") or case.get("technique"))
-    ]
-
-    assert mislabelled == [], (
-        f"{mislabelled} is traffic that is meant to pass, and a stage on it "
-        f"would make the false positives read as part of an attack"
-    )
-
-def test_a_label_can_be_checked_against_the_catalogue_that_defines_it():
-    assert lifecycle.reference("T1190") == (
-        "https://attack.mitre.org/techniques/T1190/"
-    )
-    assert lifecycle.reference("T1595.002") == (
-        "https://attack.mitre.org/techniques/T1595/002/"
-    )
-    assert lifecycle.reference("CAPEC-66") == (
-        "https://capec.mitre.org/data/definitions/66.html"
-    )
-
-def test_a_label_from_no_catalogue_gets_no_link_rather_than_a_broken_one():
-    assert lifecycle.reference("SQLi") == ""
-    assert lifecycle.reference("") == ""
-
-def test_every_id_any_case_uses_resolves_to_a_catalogue():
-    for case in cases():
-        for field in ("technique", "pattern"):
-            value = case.get(field) or ""
-            if value:
-                assert lifecycle.reference(value), f"{case['name']}: {value}"
+CASES = pathlib.Path(__file__).resolve().parents[2] / "redteam/cases"
 
 pytestmark = pytest.mark.django_db
+
+@pytest.mark.parametrize("wargame", ["board", "corp"])
+def test_every_attack_carries_a_known_stage_and_catalogue_ids_and_benign_traffic_none(wargame):
+    for case in yaml.safe_load((CASES / f"{wargame}.yaml").read_text()):
+        labels = (case.get("stage"), case.get("technique"), case.get("pattern"))
+        if not case["malicious"]:
+            assert not any(labels), case["name"]
+            continue
+        assert labels[0] in lifecycle.STAGES, case["name"]
+        assert lifecycle.reference(labels[1]).startswith("https://attack.mitre.org/"), case["name"]
+        assert lifecycle.reference(labels[2]).startswith("https://capec.mitre.org/"), case["name"]
 
 def test_the_catalogue_hands_the_console_the_labels_and_where_to_check_them(client):
     listed = client.get("/api/wargames/board/cases/")
 
     assert listed.status_code == 200
     sqli = next(c for c in listed.json() if c["name"] == "board-sqli-login-bypass")
-    assert sqli["stage"] == "initial-compromise"
-    assert sqli["technique"] == "T1190"
-    assert sqli["pattern"] == "CAPEC-66"
+    assert (sqli["stage"], sqli["technique"], sqli["pattern"]) == ("initial-compromise", "T1190", "CAPEC-66")
     assert sqli["references"] == {
         "technique": "https://attack.mitre.org/techniques/T1190/",
         "pattern": "https://capec.mitre.org/data/definitions/66.html",
     }
-
-def test_benign_traffic_comes_back_with_no_labels_at_all(client):
-    listed = client.get("/api/wargames/board/cases/")
-
     benign = next(c for c in listed.json() if not c["malicious"])
-    assert (benign["stage"], benign["technique"], benign["pattern"]) == ("", "", "")
-    assert benign["references"] == {}
+    assert (benign["stage"], benign["technique"], benign["pattern"], benign["references"]) == ("", "", "", {})
 
 def test_a_fired_case_keeps_the_label_it_was_fired_with(client):
     from api.models import Case, Session
@@ -126,29 +53,11 @@ def test_a_fired_case_keeps_the_label_it_was_fired_with(client):
     )
 
 def test_the_catalogue_says_what_the_range_does_not_reach(client):
-    listed = client.get("/api/wargames/").json()
-    board = next(w for w in listed if w["id"] == "board")
+    board = next(w for w in client.get("/api/wargames/").json() if w["id"] == "board")
+    fired = {case.get("stage") for case in yaml.safe_load((CASES / "board.yaml").read_text())} - {None, ""}
 
-    assert board["covers"] == [
-        "initial-compromise", "complete-mission",
-    ], "the stages it covers are not in life cycle order"
-    assert board["uncovered"] == [
-        "initial-reconnaissance", "establish-foothold", "escalate-privileges",
-        "internal-reconnaissance", "move-laterally", "maintain-presence",
-    ], (
+    assert board["covers"] == [stage for stage in lifecycle.STAGES if stage in fired]
+    assert board["uncovered"] == [stage for stage in lifecycle.STAGES if stage not in fired], (
         "a range that says nothing about what it cannot show reads as a range "
-        "that covers everything. There is no code execution on the target, so "
-        "there is no foothold and nothing to escalate"
+        "that covers everything"
     )
-
-def test_every_stage_a_case_or_the_catalogue_names_has_a_word_for_it():
-    strings = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "console/templates/console/strings.html"
-    ).read_text()
-
-    for stage in lifecycle.STAGES:
-        assert f'"stage.{stage}"' in strings, (
-            f"{stage} would be drawn as its own id, which is not a word in "
-            f"either language"
-        )

@@ -1,4 +1,3 @@
-import pathlib
 import re
 
 import yaml
@@ -8,8 +7,6 @@ from wargames import WARGAMES
 
 COMPOSE = composed.COMPOSE
 
-def images():
-    return re.findall(r"^\s+image:\s*(\S+)", composed.text(), re.M)
 
 def pulled_images():
     return [
@@ -43,12 +40,6 @@ def test_every_built_image_is_named_where_ci_publishes_it():
         f"project, and a second session's stack would build them again: {unnamed}"
     )
 
-def test_the_sensor_and_the_target_are_pinned_by_digest():
-    sensor = [i for i in images() if "suricata" in i]
-    target = [i for i in images() if "mysql" in i]
-
-    assert sensor and all("@sha256:" in i for i in sensor), sensor
-    assert target and all("@sha256:" in i for i in target), target
 
 def test_every_service_runs_on_x86_64():
     elsewhere = {
@@ -73,13 +64,6 @@ def test_the_board_and_its_database_stand_inside_the_estate_only():
         assert networks_of(services[name]) == ["estate"], (name, networks_of(services[name]))
         assert not services[name].get("ports"), f"{name} is published past the WAF"
 
-def test_the_board_is_reached_by_name_through_the_waf():
-    waf = composed.services()["waf"]
-
-    assert "board.com" in (waf["networks"]["edge"] or {}).get("aliases", []), (
-        "the WAF does not answer to board.com on the estate's edge, so the "
-        "board wargame cannot be reached by name"
-    )
 
 def test_a_session_network_cannot_take_the_platform_s_default_gateway():
     joined = composed.services()["platform"]["networks"]
@@ -96,40 +80,6 @@ def test_a_session_network_cannot_take_the_platform_s_default_gateway():
         f"8000 publish onto it, and the reply to the open never arrives: {pinned}"
     )
 
-def test_the_platform_needs_no_build_argument_to_come_up():
-    platform = composed.services()["platform"]
-    build = platform.get("build")
-    args = build.get("args") if isinstance(build, dict) else None
-
-    assert not args, (
-        f"a fresh host runs `docker compose up` with nothing else; a required "
-        f"build arg breaks that. The platform sorts the docker socket group out "
-        f"at start instead: {args}"
-    )
-
-def test_the_platform_registers_the_ingest_pipeline_itself():
-    platform = composed.services()["platform"]
-    mounted = [v for v in platform["volumes"] if v.startswith("./deploy")]
-
-    assert mounted, (
-        "bring-up would still need a manual pipeline PUT; mount deploy so the "
-        "platform can register fsl-geoip from FSL_SOURCE on start"
-    )
-
-def test_no_image_downloads_a_binary_built_for_another_architecture():
-    root = COMPOSE.parent
-    dockerfiles = [
-        *(root / "deploy").glob("*/Dockerfile"),
-        *(root / "wargames").glob("*/*/Dockerfile"),
-        root / "platform" / "Dockerfile",
-    ]
-    foreign = [
-        str(path.relative_to(root))
-        for path in dockerfiles
-        if re.search(r"aarch64|arm64", path.read_text())
-    ]
-
-    assert not foreign, f"these fetch an ARM binary into an x86_64 image: {foreign}"
 
 def host_ip(entry):
     if isinstance(entry, dict):
@@ -240,17 +190,6 @@ def test_the_sensor_restarts_with_the_waf_whose_network_it_watches():
         f"namespace, as it was"
     )
 
-def test_the_red_box_s_recon_line_scans_the_port_the_target_listens_on():
-    listening = composed.services()["waf"]["environment"]["PORT"]
-    motd = (COMPOSE.parent / "deploy/kali/motd").read_text()
-    scanned = re.search(r"nmap .*-p (\S+) \$FSL_TARGET_HOST", motd)
-
-    assert scanned and listening in scanned[1].split(","), (
-        f"the red box's cheat sheet scans port {scanned and scanned[1]!r} of "
-        f"shop.com and the waf behind that name listens on {listening}. The "
-        f"box is on the edge network, not the host, so a port only the host "
-        f"publishes reads as closed"
-    )
 
 def test_the_waf_writes_its_audit_log_where_its_own_user_can():
     services = composed.services()

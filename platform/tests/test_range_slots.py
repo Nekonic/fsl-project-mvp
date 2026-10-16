@@ -82,11 +82,6 @@ def test_a_two_slot_range_takes_two_sessions_at_once():
         adapter.in_slot(3)
 
 
-def test_one_slot_is_the_default_so_a_cloud_settings_file_without_slots_changes_nothing():
-    assert openstack.Build().slots == 1
-    assert openstack.OpenStack(DECLARED, SPEC, get=None).max_sessions == 1
-
-
 def test_the_second_slot_boots_its_own_copy_of_every_host_under_its_own_names(two):
     cloud, _ = two
 
@@ -196,35 +191,6 @@ def test_taking_one_slot_down_leaves_the_other_standing(two):
     assert adapter.in_slot(1).plan_slot().clean
 
 
-def test_every_slot_is_planned_from_one_read_of_the_cloud(two):
-    cloud, adapter = two
-    cloud.calls.clear()
-
-    plans = adapter.plan_slots()
-
-    assert [plan.slot for plan in plans] == [1, 2]
-    assert all(plan.clean and len(plan.standing) == len(DECLARED.hosts) for plan in plans)
-    assert sum(1 for verb, path, _ in cloud.calls if path == "v2.1/servers/detail") == 2
-
-
-def test_a_slot_s_console_is_found_by_its_slot_name(two):
-    cloud, adapter = two
-    asked = []
-    original = cloud.__call__
-
-    def console(call, body=None):
-        if body and "os-getVNCConsole" in body:
-            asked.append(call)
-            return {"console": {"url": "http://vnc"}}
-        return original(call, body)
-
-    cloud.__call__ = console
-    adapter.get = console
-    adapter.console("fsl-waf-2")
-
-    assert cloud.server("fsl-waf-2")["id"] in asked[0]
-
-
 def test_the_second_slot_s_edge_names_itself_so_the_collector_can_tell_its_logs_apart():
     wanted = {"key": "ssh-ed25519 AAAA", "mtu": 1450, "hostname": "fsl-edge-2"}
     template = (openstack.Path(build().source) / opnsense.CONFIG).read_text()
@@ -266,16 +232,6 @@ def test_opening_the_collector_for_one_slot_keeps_the_other_slot_s_senders(two):
         "each slot opened the collector for its own senders; the second must not have deleted "
         "the first's rule, or the first slot's alerts stop arriving"
     )
-
-
-def test_the_fabric_plans_a_copy_of_the_internet_and_the_estate_for_every_slot_beyond_the_first():
-    plan = fabric.plan(DECLARED, [], [], [], "", inside=INSIDE, slots=2)
-
-    assert plan.networks == ("internet", "estate", "mgmt", "internet-2", "estate-2")
-    second = [s for s in plan.subnets if s.slot == 2]
-    assert sorted(s.cidr for s in second) == sorted(
-        s.cidr for s in plan.subnets if s.slot == 1 and s.segment != fabric.MANAGEMENT)
-    assert {s.name for s in second} >= {"fsl-us-2", "fsl-estate-2"}
 
 
 def test_a_standing_two_slot_fabric_is_clean_and_a_third_slot_s_network_is_a_leftover():

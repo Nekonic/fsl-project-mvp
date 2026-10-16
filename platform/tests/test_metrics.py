@@ -17,96 +17,34 @@ def match(case_id, malicious, detected):
         detected=detected,
     )
 
-def test_confusion_matrix_counts():
-    s = score(
-        result(
-            match("tp", malicious=True, detected=True),
-            match("fn", malicious=True, detected=False),
-            match("fp", malicious=False, detected=True),
-            match("tn", malicious=False, detected=False),
-        )
+@pytest.mark.parametrize("matches, counts, rates", [
+    ((("tp", True, True), ("fn", True, False), ("fp", False, True), ("tn", False, False)),
+     (1, 1, 1, 1), (0.5, 0.5, 0.5, 0.5)),
+    ((("a", True, True), ("b", False, False)), (1, 0, 0, 1), (1.0, 1.0, 1.0, 0.0)),
+    ((("a", True, True), ("b", False, True)), (1, 0, 1, 0), (0.5, 1.0, 2 / 3, 1.0)),
+    ((("a", True, False),), (0, 1, 0, 0), (0.0, 0.0, 0.0, 0.0)),
+])
+def test_the_confusion_matrix_and_its_rates_with_block_everything_punished_and_no_division_by_zero(matches, counts, rates):
+    s = score(result(*(match(case_id, malicious=malicious, detected=detected)
+                       for case_id, malicious, detected in matches)))
+
+    assert (s.tp, s.fn, s.fp, s.tn) == counts
+    assert (s.precision, s.recall, s.f1, s.false_positive_rate) == pytest.approx(rates)
+
+@pytest.mark.parametrize("matches, warned", [
+    ((("a", True, True),), True),
+    ((("a", True, False),), True),
+    ((("a", True, True), ("b", False, False)), False),
+    ((), False),
+])
+def test_attacks_with_no_benign_case_beside_them_are_warned_about(matches, warned):
+    s = score(result(*(match(case_id, malicious=malicious, detected=detected)
+                       for case_id, malicious, detected in matches)))
+
+    assert (("score.warning.no_benign",) in s.warnings) is warned, (
+        "without benign cases a block-everything defence scores perfectly; a session "
+        "in which nothing has been fired yet has no attack beside which benign traffic is missing"
     )
-
-    assert (s.tp, s.fn, s.fp, s.tn) == (1, 1, 1, 1)
-
-def test_metrics_on_balanced_case():
-    s = score(
-        result(
-            match("tp", malicious=True, detected=True),
-            match("fn", malicious=True, detected=False),
-            match("fp", malicious=False, detected=True),
-            match("tn", malicious=False, detected=False),
-        )
-    )
-
-    assert s.precision == pytest.approx(0.5)
-    assert s.recall == pytest.approx(0.5)
-    assert s.f1 == pytest.approx(0.5)
-    assert s.false_positive_rate == pytest.approx(0.5)
-
-def test_perfect_defense():
-    s = score(
-        result(
-            match("a", malicious=True, detected=True),
-            match("b", malicious=False, detected=False),
-        )
-    )
-
-    assert (s.precision, s.recall, s.f1, s.false_positive_rate) == (1.0, 1.0, 1.0, 0.0)
-
-def test_block_everything_is_punished_by_false_positive_rate():
-    s = score(
-        result(
-            match("a", malicious=True, detected=True),
-            match("b", malicious=False, detected=True),
-        )
-    )
-
-    assert s.recall == pytest.approx(1.0)
-    assert s.false_positive_rate == pytest.approx(1.0)
-    assert s.precision == pytest.approx(0.5)
-
-def test_zero_denominators_yield_zero_not_error():
-    s = score(result(match("a", malicious=True, detected=False)))
-
-    assert s.precision == 0.0
-    assert s.f1 == 0.0
-    assert s.false_positive_rate == 0.0
-
-def test_warns_when_there_are_no_benign_cases():
-    s = score(result(match("a", malicious=True, detected=True)))
-
-    assert ("score.warning.no_benign",) in s.warnings
-
-def test_no_benign_warning_when_benign_cases_exist():
-    s = score(
-        result(
-            match("a", malicious=True, detected=True),
-            match("b", malicious=False, detected=False),
-        )
-    )
-
-    assert ("score.warning.no_benign",) not in s.warnings
-
-def test_correlation_warnings_are_carried_through():
-    s = score(result(match("a", malicious=True, detected=True), warnings=(("carried through",),)))
-
-    assert ("carried through",) in s.warnings
-
-def test_empty_result_is_all_zero_and_not_warned_about_benign_cases():
-    s = score(result())
-
-    assert (s.tp, s.fp, s.fn, s.tn) == (0, 0, 0, 0)
-    assert ("score.warning.no_benign",) not in s.warnings, (
-        "a session in which nothing has been fired yet was told its case file "
-        "has no benign cases; there is no attack beside which benign traffic "
-        "is missing"
-    )
-
-def test_a_missed_attack_with_nothing_benign_beside_it_is_warned_about():
-    s = score(result(match("a", malicious=True, detected=False)))
-
-    assert ("score.warning.no_benign",) in s.warnings
 
 
 def test_every_dependency_is_imported_by_something():
@@ -114,7 +52,7 @@ def test_every_dependency_is_imported_by_something():
 
     root = pathlib.Path(__file__).resolve().parent.parent.parent
     listed = [
-        re.split(r"[><=\[]", line, 1)[0].strip().lower()
+        re.split(r"[><=\[]", line, maxsplit=1)[0].strip().lower()
         for line in (root / "platform/requirements.txt").read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]

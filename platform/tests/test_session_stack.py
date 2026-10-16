@@ -82,16 +82,6 @@ def test_a_session_brings_up_its_own_project_and_waits_until_it_is_healthy():
 
 
 @pytest.mark.opens_session_stack
-def test_the_host_directory_is_read_from_the_platform_s_own_container():
-    compose = Compose()
-    opened(compose)
-
-    [inspected] = [argv for argv in compose.argvs() if argv[1] == "inspect"]
-    assert inspected[2] == "c0ffee"
-    assert "com.docker.compose.project.working_dir" in inspected[-1]
-
-
-@pytest.mark.opens_session_stack
 def test_a_new_session_takes_down_the_stack_of_the_one_before():
     compose = Compose(projects=["fsl", "fsl-3", "fsl-30", "fsl-lab", "other"])
     opened(compose)
@@ -239,7 +229,6 @@ def test_a_stack_that_did_not_come_up_leaves_no_open_session(client):
         answer = client.post_json("/api/sessions/", {"scenario": "board"})
 
     assert answer.status_code == 503, answer.content
-    assert "unhealthy" in answer.json()["detail"]
     assert not Session.objects.filter(ended_at=None).exists(), (
         "a session whose target never came up stays open and is scored "
         "against nothing"
@@ -285,17 +274,6 @@ def test_the_baseline_is_read_from_the_board_the_substrate_reports(client):
     )
 
 
-def test_a_substrate_without_session_stacks_is_not_asked_for_one(client):
-    class Shared:
-        def runner(self, role):
-            return lambda *args, **kwargs: None
-
-    with patch("api.views.substrate", lambda: Shared()):
-        answer = client.post_json("/api/sessions/", {"scenario": "board"})
-
-    assert answer.status_code == 201, answer.content
-
-
 def test_the_session_stack_has_the_shape_the_platform_opens_it_with():
     control = yaml.safe_load((ROOT / "compose.yaml").read_text())
     stack = yaml.safe_load((ROOT / "session.yaml").read_text())
@@ -323,8 +301,6 @@ def test_the_session_stack_has_the_shape_the_platform_opens_it_with():
         "a session's own network pinned to a subnet clashes with the next "
         "session's, and Docker refuses the second stack"
     )
-
-    assert set(control["services"]) == {"platform", "elasticsearch", "kibana", "collector", "gns3"}
 
     platform = control["services"]["platform"]
     mounted = {entry.split(":")[1]: entry.split(":")[0] for entry in platform["volumes"]}

@@ -2,7 +2,6 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from django.utils import timezone
 
 from api.models import Session
 from tests.test_api_corroboration import T0, alert

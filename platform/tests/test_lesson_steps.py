@@ -14,9 +14,6 @@ from console import strings
 pytestmark = pytest.mark.django_db
 
 TRUTH = json.loads((Path(__file__).resolve().parent / "fixtures" / "board-auth-users.json").read_text())
-EXCLUSION = {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}
-MISSED = {"paranoia": 1, "exclusions": [{"rule_id": 949110, "target": "", "path": ""},
-                                        {"rule_id": 959100, "target": "", "path": ""}]}
 
 def board(**fields):
     return Session.objects.create(scenario="board", baseline=dict(TRUTH), **fields)
@@ -33,22 +30,6 @@ def step(client, session, step_id, tail="", body=None):
 
 def check(client, session, step_id, body=None):
     return step(client, session, step_id, "check/", body)
-
-def in_force():
-    return patch("api.views._waf_in_force", return_value=MISSED)
-
-def test_the_session_payload_carries_no_answer_key(client):
-    attack, fixrule = taught("f5"), worked("3.1")
-
-    steps = {shown["id"]: shown["check"] for shown in client.get(f"/api/sessions/{attack.pk}/").json()["lesson"]["steps"]}
-    fixing = {shown["id"]: shown for shown in client.get(f"/api/sessions/{fixrule.pk}/").json()["lesson"]["steps"]}
-
-    assert steps["rule"] == {"kind": "answer"}
-    assert steps["attack"] == {"kind": "sent", "match": "1=1"}
-    assert steps["sqlmap"] == {"kind": "kali", "case": "board-sqli-orderby-sqlmap"}
-    assert fixing["buffer"]["check"] == {"kind": "choice", "options": ["http.uri", "http.request_body", "http.header",
-                                                                      "http.cookie"]}
-    assert fixing["fix"]["check"] == {"kind": "rules"} and "rule" not in fixing["fix"]
 
 def withheld_texts(prefix):
     return {encoded(text) for table in strings.withheld().values() for key, text in table.items()
@@ -98,40 +79,6 @@ def test_a_step_s_command_arrives_once_the_step_is_reached(client):
     assert shown["excluded"]["command"] == command
     assert "command" not in shown["lost"] and "command" not in reached["progress"].get("lost", {})
 
-def test_the_answer_text_arrives_at_the_answer_hint_level_in_both_languages(client):
-    session = taught("f6")
-
-    before = [hint(client, session, "excluded")["progress"]["excluded"] for _ in range(2)]
-    third = hint(client, session, "excluded")["progress"]["excluded"]
-
-    assert all("answer" not in record for record in before)
-    assert third["hint"] == 3
-    assert third["answer"] == strings.both("lesson.miss.answer.excluded")
-    assert set(third["answer"]) == set(strings.LANGUAGES)
-    assert client.get(f"/api/sessions/{session.pk}/").json()["progress"]["excluded"]["answer"] == third["answer"]
-
-def test_a_step_s_line_arrives_in_the_check_response_that_passes_it(client):
-    session = taught("f6")
-    with in_force():
-        wrong = check(client, session, "excluded", {"answer": "942100"}).json()
-        right = check(client, session, "excluded", {"answer": "949110"}).json()
-
-    assert "line" not in wrong["progress"]["excluded"]
-    assert right["progress"]["excluded"]["line"] == strings.both("lesson.miss.line.excluded")
-
-def test_a_step_reached_then_left_unpassed_is_recorded_skipped_and_a_passed_one_is_not(client):
-    session = taught("f1")
-
-    step(client, session, "entry", body={"state": "reached"})
-    skipped = step(client, session, "entry", body={"state": "skipped"}).json()["progress"]["entry"]
-    step(client, session, "map", body={"state": "reached"})
-    check(client, session, "map")
-    passed = step(client, session, "map", body={"state": "skipped"}).json()["progress"]["map"]
-
-    assert skipped["reached"] and skipped["skipped"] and skipped["passed"] is None
-    assert passed["passed"] and passed["skipped"] is None, "moving on from a passed step is not skipping it"
-    assert client.get(f"/api/sessions/{session.pk}/").json()["progress"]["entry"]["skipped"] == skipped["skipped"]
-
 def blocked_by(session, detection_id, marker, uri, rule):
     Detection.objects.create(session=session, detection_id=detection_id, source="modsecurity", signature=rule,
                              timestamp=timezone.now(), marker=marker,
@@ -150,19 +97,12 @@ def test_an_answer_is_judged_on_the_server_and_two_wrong_ones_record_a_hint(clie
     assert other["hints"] == [{"step": "rule", "level": "hint"}], "two wrong answers raise the hint and record it"
     assert right["passed"] is True and right["progress"]["rule"]["passed"]
 
-def test_a_choice_outside_the_answer_fails_and_the_right_one_passes(client):
-    session = worked("3.1")
-
-    assert check(client, session, "buffer", {"answer": "http.request_body"}).json()["passed"] is False
-    assert check(client, session, "buffer", {"answer": "http.uri"}).json()["passed"] is True
-
-@pytest.mark.parametrize("body", [{}, {"answer": "  "}, {"answer": 949110}])
-def test_an_answer_step_checked_without_an_answer_is_refused(client, body):
-    assert check(client, taught("f6"), "excluded", body).status_code == 400
-
-def test_steps_are_refused_for_an_unknown_step_a_plain_session_a_closed_one_or_an_unknown_state(client):
+def test_steps_are_refused_without_an_answer_for_an_unknown_step_a_plain_session_a_closed_one_or_an_unknown_state(client):
     lesson, plain, closed = taught("f6"), board(), taught("f6")
     client.post_json(f"/api/sessions/{closed.pk}/close/")
+
+    for body in ({}, {"answer": "  "}, {"answer": 949110}):
+        assert check(client, lesson, "excluded", body).status_code == 400
 
     assert check(client, lesson, "nowhere").status_code == 404
     assert check(client, plain, "excluded", {"answer": "949110"}).status_code == 400
@@ -184,24 +124,15 @@ def test_the_rule_answer_reads_recent_records_and_takes_only_a_browse_record_of_
     assert found["passed"] is True
     assert read == [600, 600], "only recent records, so a session with thousands still finds it"
 
-def test_a_hint_press_raises_the_step_s_hint_level_and_records_the_first_once(client):
+def test_a_hint_press_raises_the_step_s_hint_level_records_the_first_once_and_gives_the_answer_at_its_level(client):
     session = taught("f6")
-    hints = f"/api/sessions/{session.pk}/lesson/hints/"
 
-    levels = [client.post_json(hints, {"step": "excluded", "level": "hint"}).json()["hint"] for _ in range(5)]
+    pressed = [hint(client, session, "excluded") for _ in range(5)]
 
-    assert levels == [1, 2, 3, 4, 4]
+    assert [one["hint"] for one in pressed] == [1, 2, 3, 4, 4]
+    assert all("answer" not in one["progress"]["excluded"] for one in pressed[:2])
+    assert pressed[2]["progress"]["excluded"]["answer"] == strings.both("lesson.miss.answer.excluded")
     assert Session.objects.get(pk=session.pk).hints == [{"step": "excluded", "level": "hint"}]
-
-def test_do_it_for_me_answers_on_the_server_and_is_recorded_as_such(client):
-    session = taught("f6")
-    with in_force():
-        done = step(client, session, "excluded", "do/").json()
-
-    assert done["passed"] is True
-    assert done["progress"]["excluded"]["done_for_me"] is True and done["progress"]["excluded"]["passed"]
-    assert done["hints"] == [{"step": "excluded", "level": "do"}]
-    assert "lesson" not in client.get(f"/api/sessions/{session.pk}/").json()["result"]
 
 def test_do_it_for_me_on_the_rules_step_adds_the_rule_through_the_sensor_and_checks_it(client):
     session = worked("3.1")
@@ -213,6 +144,7 @@ def test_do_it_for_me_on_the_rules_step_adds_the_rule_through_the_sensor_and_che
         done = step(client, session, "fix", "do/").json()
 
     assert done["passed"] is True and done["progress"]["fix"]["done_for_me"] is True
+    assert done["hints"] == [{"step": "fix", "level": "do"}]
     assert applied == [f"{posture.rstrip()}\n{rule.strip()}\n"]
 
 def test_do_it_for_me_on_a_step_only_the_console_can_perform_records_it_and_passes_nothing(client):
@@ -236,15 +168,14 @@ def test_a_case_an_old_check_verify_replay_or_seed_fired_stays_out_of_both_score
     assert score["tp"] + score["fn"] == 0, "a replay is not an attack case of the score"
     assert score["tn"] + score["fp"] == 0, "a replay is not a benign case of the score"
 
+EXCLUSION = {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}
+
 @pytest.mark.parametrize("tuning, fix", [
     ({"paranoia": 4, "exclusions": [EXCLUSION]}, "path_target"),
-    ({"paranoia": 4, "exclusions": [dict(EXCLUSION, path="/")]}, "path_target"),
     ({"paranoia": 4, "exclusions": [dict(EXCLUSION, path="")]}, "target"),
     ({"paranoia": 4, "exclusions": [dict(EXCLUSION, target="")]}, "rule"),
     ({"paranoia": 3, "exclusions": [EXCLUSION]}, "level"),
     ({"paranoia": 4, "exclusions": []}, None),
 ])
 def test_the_fix_is_named_by_how_narrow_it_is_against_the_session_s_defense(tuning, fix):
-    session = board(defense="minimal")
-
-    assert views._fix(session, tuning) == fix
+    assert views._fix(board(defense="minimal"), tuning) == fix

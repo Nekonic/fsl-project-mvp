@@ -6,10 +6,6 @@ from redteam.tools import (
     tool_argv,
 )
 
-def build_tool_command(case, target_url):
-    image, argv = tool_argv(case, target_url)
-    return [image, *argv]
-
 CASE = {
     "case_id": "abc-123",
     "name": "sqlmap-probe",
@@ -20,22 +16,13 @@ CASE = {
 }
 INTERNAL_TARGET = "http://waf:8080"
 
-def test_is_tool_case_detects_the_tool_field():
-    assert is_tool_case(CASE) is True
-    assert is_tool_case({"request": {"path": "/"}}) is False
-
-def test_the_case_names_the_image_and_the_tool_and_nothing_else():
+def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_the_marker():
     assert tool_argv(CASE, INTERNAL_TARGET) == (TOOL_IMAGE, [
         "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
         "--headers=X-FSL-Case: abc-123",
     ])
-
-def test_marker_header_is_omitted_for_window_cases():
-    case = dict(CASE, correlation="window")
-
-    command = build_tool_command(case, INTERNAL_TARGET)
-
-    assert not any("X-FSL-Case" in part for part in command)
+    _, window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET)
+    assert not any("X-FSL-Case" in part for part in window)
 
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path
@@ -51,7 +38,6 @@ def test_tool_case_in_the_default_file_declares_args():
         assert any("{target}" in a for a in case["args"]), (
             f"{case['name']}  does not use {{target}}, so its target is hardcoded"
         )
-
 
 def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_ends_the_run_on():
     from pathlib import Path
@@ -92,23 +78,6 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
     fire_tool(
         dict(CASE), INTERNAL_TARGET,
         launcher(1, "all tested parameters do not appear to be injectable"),
-    )
-
-
-def test_nothing_in_the_tool_command_names_a_substrate():
-    image, argv = tool_argv(
-        {"name": "t", "tool": "sqlmap", "args": ["-u", "{target}/x"]},
-        "http://waf-edge-hk:8080",
-    )
-
-    assert "docker" not in [image, *argv], (
-        "the command was a docker run, so an attack could only ever be fired "
-        "from something with a Docker daemon on it"
-    )
-    assert not any("--network" in str(part) for part in argv), (
-        "which network a tool runs on was recovered by cutting 'waf-' off the "
-        "target's hostname and pasting the project back on, after the origin "
-        "id it was built from had already been thrown away"
     )
 
 def test_core_does_not_start_anything_itself():

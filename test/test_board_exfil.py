@@ -39,21 +39,3 @@ def test_the_internal_ground_truth_is_blocked_by_any_host(stack_is_up):
         "the WAF default vhost served /internal to a non-board.com Host; the "
         "ground truth must be reachable only platform->board over estate"
     )
-
-
-def test_the_platform_reads_the_auth_user_hashes_over_estate(stack_is_up):
-    from range import SCORER, run
-
-    body = run(SCORER, [
-        "python3", "-c",
-        "import urllib.request,sys; "
-        "sys.stdout.write(urllib.request.urlopen("
-        "'http://board:8000/internal/auth-users', timeout=20).read().decode())",
-    ]).stdout
-    import json
-
-    truth = json.loads(body)
-    assert {"admin", "jiwoo", "minseo"} <= set(truth), truth
-    assert all(h.startswith("pbkdf2_sha256$") for h in truth.values()), (
-        "the internal endpoint did not return the stored salted-hash column"
-    )

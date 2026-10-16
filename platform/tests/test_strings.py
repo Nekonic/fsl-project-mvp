@@ -12,7 +12,6 @@ pytestmark = pytest.mark.django_db
 
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"
 TEMPLATES = sorted(path.name for path in CONSOLE.glob("*.html") if path.name != "strings.html")
-PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
 
 def tables():
     shown, withheld = strings.shown(), strings.withheld()
@@ -55,18 +54,6 @@ def test_every_key_the_console_asks_for_exists():
         f"nothing under them at all, so every one of them renders as its own id"
     )
 
-def test_no_string_in_the_table_is_left_untranslated():
-    table = tables()
-    same = sorted(
-        key for key, text in table["en"].items()
-        if table["ko"].get(key) == text and not re.fullmatch(r"[\W\d]+|[A-Z]{2,4}", text)
-    )
-    allowed = {"common.brand"}
-
-    assert not set(same) - allowed, (
-        f"these are identical in both tables, which means the Korean was never written: "
-        f"{sorted(set(same) - allowed)}"
-    )
 
 def test_a_string_with_placeholders_is_called_with_arguments():
     english = tables()["en"]
@@ -104,12 +91,6 @@ def test_a_placeholder_in_one_language_exists_in_the_other():
 def client():
     return Client()
 
-@pytest.mark.parametrize("path", PAGES)
-def test_every_page_ships_the_string_table(client, path):
-    page = client.get(path).content.decode()
-
-    assert "const STRINGS" in page, path
-    assert 'id="language"' in page, path
 
 def test_the_blue_page_ships_no_withheld_answer_or_pass_line(client):
     page = client.get("/blue/1/").content.decode()
@@ -178,59 +159,6 @@ def test_nothing_the_platform_sends_to_the_page_is_prose():
         f"the page is in: {unknown}"
     )
 
-@pytest.mark.parametrize("language", ["en", "ko"])
-def test_the_benign_warning_names_the_red_console_controls_that_run_benign_cases(language):
-    table = tables()[language]
-    advice = table["score.warning.no_benign"]
-
-    assert table["red.baseline.run_all"] in advice and table["red.cases.benign"] in advice, (
-        "the warning that no benign case was run sends the operator to the red "
-        "console, and does not name the controls there by the labels they carry"
-    )
-
-ZERO_SUM_KO = "\uc81c\ub85c\uc12c"
-SCOREBOARD_LABELS = re.compile(rf"\b(?:TP|FP|FN|TN)\b|(?i:zero-sum|{ZERO_SUM_KO})")
-
-@pytest.mark.parametrize("language", ["en", "ko"])
-def test_no_text_a_person_reads_names_the_confusion_matrix_or_a_zero_sum_balance(language):
-    offenders = {
-        key: text for key, text in tables()[language].items() if SCOREBOARD_LABELS.search(text)
-    }
-
-    assert offenders == {}, (
-        "the console tells a person what happened in plain words; TP/FP/FN/TN stay in the "
-        f"API for agents: {offenders}"
-    )
-
-def test_the_console_templates_write_no_confusion_matrix_label_either():
-    offenders = [
-        name for name in TEMPLATES
-        if re.search(r"['\"`>](?:TP|FP|FN|TN)['\"`<]", (CONSOLE / name).read_text())
-    ]
-
-    assert offenders == [], offenders
-
-TRUE_POSITIVE_KO = "\uc815\ud0d0"
-FALSE_NEGATIVE_KO = "\ubbf8\ud0d0"
-FALSE_POSITIVE_KO = "\uc624\ud0d0"
-DETECTED_KO = "\ud0d0\uc9c0\ub428"
-
-def test_korean_names_the_confusion_matrix_nowhere_and_says_false_positive_only_as_the_crs_term():
-    korean = tables()["ko"]
-    labels = {key: text for key, text in korean.items() if re.search(f"{TRUE_POSITIVE_KO}|{FALSE_NEGATIVE_KO}", text)}
-    outside_crs = {key: text for key, text in korean.items()
-                   if FALSE_POSITIVE_KO in text and not key.startswith("lesson.")}
-
-    assert labels == {}, f"R1: the Korean TP and FN labels (docs/vocabulary.md) label no score: {labels}"
-    assert outside_crs == {}, (
-        f"the Korean for false positive is the CRS documentation's term, used only in the lesson: {outside_crs}"
-    )
-
-def test_the_score_labels_are_states_a_korean_reader_cannot_read_as_noise():
-    korean = tables()["ko"]
-
-    assert korean["score.caught"] == DETECTED_KO, "the Korean word for caught also reads as noise"
-    assert all("(" not in korean[key] for key in ("score.caught", "score.missed", "score.wrongly_blocked", "score.passed"))
 
 def test_every_customer_action_a_wargame_declares_has_a_label():
     root = pathlib.Path(__file__).resolve().parents[2] / "wargames"

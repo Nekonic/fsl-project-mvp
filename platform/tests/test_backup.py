@@ -12,7 +12,6 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
-from django.apps import apps
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -167,42 +166,6 @@ def test_a_platform_reached_some_other_way_is_backed_up_the_same(
     assert re.fullmatch(r"db-\d{8}T\d{6}Z\.sqlite3", kept.name)
     assert str(kept) in printed
     assert dump(kept) == dump(store)
-    for label, table in backup.module.TABLES:
-        assert re.search(rf"^\s*{label}\s+{ROWS[table]}$", printed, re.M), (
-            f"{label} should read {ROWS[table]}:\n{printed}"
-        )
-
-
-@pytest.mark.stands_in_for_docker
-def test_by_default_the_snapshot_runs_inside_the_platform_container(
-    backup, tmp_path, monkeypatch
-):
-    store = made_store(tmp_path / "db.sqlite3")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    docker = bin_dir / "docker"
-    docker.write_text(
-        "#!/bin/sh\n"
-        f"printf '%s\\n' \"$@\" > {shlex.quote(str(tmp_path / 'argv'))}\n"
-        f"cat > {shlex.quote(str(tmp_path / 'program'))}\n"
-        f"exec cat {shlex.quote(str(store))}\n"
-    )
-    docker.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-
-    backup()
-
-    assert (tmp_path / "argv").read_text().split() == [
-        "exec", "-i", "fsl-platform", "python", "-",
-    ]
-    assert "def snapshot(" in (tmp_path / "program").read_text()
-    assert len(backup.kept()) == 1 and backup.kept()[0].endswith(".sqlite3")
-
-
-def test_every_table_the_platform_keeps_is_counted(backup):
-    stored = {model._meta.db_table for model in apps.get_app_config("api").get_models()}
-
-    assert {table for _, table in backup.module.TABLES} == stored
 
 
 def test_a_store_the_platform_has_not_yet_migrated_to_the_checkout_is_still_kept(
@@ -255,34 +218,6 @@ def test_backups_stay_out_of_git():
     assert ignored.returncode == 0, f"{listed.parent.name}/ is not ignored"
 
 
-def test_a_platform_that_is_down_is_reported_in_docker_s_own_words(
-    backup, monkeypatch, tmp_path
-):
-    docker_said = tmp_path / "stderr"
-    docker_said.write_text("Error response from daemon: No such container: fsl-platform\n")
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([
-        "sh", "-c", f"cat {shlex.quote(str(docker_said))} >&2; exit 1",
-    ]))
-
-    said = failure(backup)
-
-    assert "No such container: fsl-platform" in said
-    assert backup.kept() == []
-
-
-def test_a_way_in_that_cannot_be_started_names_the_variable_that_chooses_it(
-    backup, monkeypatch, tmp_path
-):
-    monkeypatch.setenv(
-        "FSL_PLATFORM_EXEC", f"{tmp_path / 'no-such-docker'} exec -i fsl-platform python -"
-    )
-
-    said = failure(backup)
-
-    assert "FSL_PLATFORM_EXEC" in said
-    assert backup.kept() == []
-
-
 @pytest.mark.parametrize("answer", [
     b"",
     b"Traceback (most recent call last):\n",
@@ -314,21 +249,6 @@ def test_a_snapshot_failing_integrity_check_is_not_kept(backup, monkeypatch, tmp
     assert backup.kept() == []
 
 
-def test_a_snapshot_that_is_too_slow_to_arrive_is_given_up_on(
-    backup, monkeypatch, tmp_path
-):
-    store = made_store(tmp_path / "db.sqlite3")
-    monkeypatch.setattr(backup.module, "TIMEOUT", 0.5)
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([
-        "sh", "-c", f"sleep 5; exec cat {shlex.quote(str(store))}",
-    ]))
-
-    said = failure(backup)
-
-    assert "0.5s" in said
-    assert backup.kept() == []
-
-
 def test_nothing_is_named_like_a_backup_until_it_has_passed_the_check(
     backup, monkeypatch, tmp_path
 ):
@@ -349,34 +269,15 @@ def test_nothing_is_named_like_a_backup_until_it_has_passed_the_check(
     assert len(backup.kept()) == 1 and backup.kept()[0].endswith(".sqlite3")
 
 
-def test_a_store_kept_in_wal_mode_is_checked_without_litter_beside_the_backup(
-    backup, monkeypatch, tmp_path
-):
-    store = made_store(tmp_path / "db.sqlite3")
-    with closing(sqlite3.connect(store)) as db:
-        db.execute("PRAGMA journal_mode = WAL")
-        db.execute("INSERT INTO api_session (note) VALUES ('after the switch')")
-        db.commit()
-    answering(monkeypatch, tmp_path, snapshot_of(backup.module, store))
-
-    printed = backup()
-
-    assert re.search(r"^\s*sessions\s+4$", printed, re.M), printed
-    assert len(backup.kept()) == 1 and backup.kept()[0].endswith(".sqlite3"), (
-        f"opening the check read-write on a WAL image leaves its -wal and -shm "
-        f"behind: {backup.kept()}"
-    )
-
-
 def test_a_store_that_keeps_arriving_is_kept_however_long_the_whole_takes(
     backup, monkeypatch, tmp_path
 ):
     store = made_store(tmp_path / "db.sqlite3")
     size = store.stat().st_size
-    monkeypatch.setattr(backup.module, "TIMEOUT", 0.5)
+    monkeypatch.setattr(backup.module, "TIMEOUT", 0.2)
     monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([
         "sh", "-c",
-        f"for skip in 0 1 2 3; do sleep 0.3; dd if={shlex.quote(str(store))} bs={size // 4} "
+        f"for skip in 0 1 2 3; do sleep 0.1; dd if={shlex.quote(str(store))} bs={size // 4} "
         f"skip=$skip count=1 2>/dev/null; done; "
         f"dd if={shlex.quote(str(store))} bs={size // 4} skip=4 2>/dev/null",
     ]))

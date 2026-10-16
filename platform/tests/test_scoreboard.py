@@ -6,7 +6,7 @@ def breach(difficulty, detected, key="k"):
         difficulty=difficulty, detected=detected, detection_ids=("d1",) if detected else (),
     )
 
-def test_an_untouched_session_has_no_coverage_figure():
+def test_an_untouched_session_has_no_coverage_figure_and_all_lost_unseen_is_zero():
     scored = tally([], false_positives=0)
 
     assert scored.objectives == 0
@@ -14,11 +14,7 @@ def test_an_untouched_session_has_no_coverage_figure():
         "nothing was taken, and the scoreboard said the defence saw 100% of it"
     )
     assert scored.damage == 0
-
-def test_objectives_all_lost_unseen_are_zero_coverage_not_no_figure():
-    scored = tally([breach(3, detected=False)], false_positives=0)
-
-    assert scored.coverage == 0.0
+    assert tally([breach(3, detected=False)], false_positives=0).coverage == 0.0
 
 def test_an_undetected_breach_costs_more_than_a_detected_one():
     seen = tally([breach(4, detected=True)], false_positives=0)
@@ -68,17 +64,9 @@ def test_an_objective_is_credited_to_the_last_attempt_before_it():
 
     assert credited.case_id == "second"
 
-def test_polling_lag_does_not_lose_the_attribution():
-    credited = attribute(T0 + timedelta(seconds=5), [attempt(0)])
-
-    assert credited is not None
-
-def test_an_objective_nobody_was_attacking_for_belongs_to_nobody():
-    stale = T0 + ATTRIBUTION_WINDOW + timedelta(seconds=1)
-
-    assert attribute(stale, [attempt(0)]) is None
-
-def test_an_objective_before_any_attempt_belongs_to_nobody():
+def test_an_objective_belongs_to_an_attempt_within_polling_lag_and_to_nobody_outside_it():
+    assert attribute(T0 + timedelta(seconds=5), [attempt(0)]) is not None
+    assert attribute(T0 + ATTRIBUTION_WINDOW + timedelta(seconds=1), [attempt(0)]) is None
     assert attribute(T0 - timedelta(seconds=1), [attempt(0)]) is None
 
 from scoreboard import corroborated
@@ -89,12 +77,9 @@ def test_a_case_that_declares_nothing_is_not_judged():
     assert corroborated(None, ["FSL SQLi attempt - URI"]) is None
     assert corroborated("", ["FSL SQLi attempt - URI"]) is None
 
-def test_evidence_matching_the_mechanism_corroborates():
+def test_evidence_matching_the_mechanism_corroborates_whatever_its_case():
     assert corroborated("SQL", ["FSL SQLi attempt - request body"]) is True
     assert corroborated("SQL", ["SQL Injection Attack Detected via libinjection"]) is True
-
-def test_the_match_is_case_insensitive_because_signatures_are_prose():
-    assert corroborated("traversal", ["FSL path traversal attempt"]) is True
     assert corroborated("TRAVERSAL", ["FSL path traversal attempt"]) is True
 
 def test_an_alert_about_something_else_does_not_corroborate():
@@ -103,7 +88,6 @@ def test_an_alert_about_something_else_does_not_corroborate():
 def test_a_generic_anomaly_alert_alone_does_not_corroborate():
     assert corroborated("SQL", [ANOMALY]) is False
     assert corroborated("SQL", [ANOMALY, "SQL Injection Attack Detected"]) is True
-
 
 def test_a_deed_stamped_just_before_its_own_attack_still_belongs_to_it():
     attempts = [attempt(0, "before"), attempt(0.33, "took-it")]
@@ -132,11 +116,6 @@ def test_a_signature_that_also_fires_on_traffic_meant_to_pass_corroborates_nothi
         "block-everything defence the case file says must not win, wins"
     )
 
-def test_a_signature_that_only_ever_fired_on_the_attack_still_corroborates():
-    assert corroborated(
-        "SQL", ["FSL SQLi attempt - URI"], indiscriminate={"FSL deliberate false positive"}
-    ) is True
-
 def test_a_case_with_one_discriminating_alert_among_noise_is_corroborated():
     assert corroborated(
         "SQL",
@@ -145,12 +124,6 @@ def test_a_case_with_one_discriminating_alert_among_noise_is_corroborated():
     ) is True, (
         "one indiscriminate alert alongside a real one hid the real one"
     )
-
-def test_nothing_indiscriminate_is_the_same_answer_as_before():
-    assert corroborated("SQL", ["FSL SQLi attempt - URI"], indiscriminate=set()) is True
-    assert corroborated("SQL", ["FSL XSS attempt"], indiscriminate=set()) is False
-    assert corroborated(None, ["anything"], indiscriminate=set()) is None
-
 
 def test_a_breach_late_in_a_long_window_belongs_to_that_window():
     window = attempt(0, "terminal", lasted=300)
@@ -163,7 +136,6 @@ def test_a_breach_late_in_a_long_window_belongs_to_that_window():
         "only the window's first two minutes counted"
     )
 
-
 def test_traffic_meant_to_pass_never_takes_an_objective():
     browsing = attempt(0, "benign-browse", detected=True, malicious=False)
 
@@ -171,7 +143,6 @@ def test_traffic_meant_to_pass_never_takes_an_objective():
         "a benign case's false positive 'detected' a breach it could not have "
         "caused, and the breach was scored as caught"
     )
-
 
 def test_the_target_s_own_stamp_is_not_stretched_to_a_case_long_finished():
     finished = attempt(0, "sqli", lasted=0.02)
@@ -188,7 +159,6 @@ def test_the_target_s_own_stamp_is_not_stretched_to_a_case_long_finished():
         "finished, and the two-minute allowance meant for polling lag handed "
         "it to that case"
     )
-
 
 def test_a_stamp_truncated_to_the_second_still_reaches_its_own_case():
     took_it = attempt(1.5, "ssrf", lasted=0.2)

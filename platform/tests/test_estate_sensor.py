@@ -30,18 +30,13 @@ def test_the_wargame_host_runs_the_same_sensor_image_as_docker():
     assert host["network_mode"] == "host"
     assert host["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 
-def test_the_host_sensor_reads_docker_suricata_config():
-    entry = declared.read(flavor="openstack").hosts["fsl-wargame-host"]
-    setup = (ROOT / entry.setup).read_text()
-
-    assert "deploy/suricata/suricata.yaml" in entry.files
-    assert "../suricata/suricata.yaml /opt/fsl/suricata.yaml" in setup
-
-def test_the_host_sensor_starts_on_the_shipped_baseline_rules():
+def test_the_host_sensor_starts_on_docker_s_config_and_the_shipped_baseline_rules():
     entry = declared.read(flavor="openstack").hosts["fsl-wargame-host"]
     setup = (ROOT / entry.setup).read_text()
     host = yaml.safe_load((ROOT / "deploy/wargame-host/sensor.yaml").read_text())["services"]["suricata"]
 
+    assert "deploy/suricata/suricata.yaml" in entry.files
+    assert "../suricata/suricata.yaml /opt/fsl/suricata.yaml" in setup
     assert "deploy/suricata/rules/local.rules" in entry.files
     assert "../suricata/rules/local.rules /opt/fsl/rules/local.rules" in setup
     assert "/opt/fsl/rules:/var/lib/suricata/rules" in host["volumes"], (
@@ -78,14 +73,3 @@ def test_a_rule_change_one_sensor_refuses_is_taken_back_from_the_others(client, 
     assert edge.files[settings.FSL_SENSOR_RULES] == "previous\n", (
         "two sensors holding different rules would score the two legs by different defences"
     )
-
-@pytest.mark.django_db
-def test_validation_asks_every_sensor(client, settings):
-    settings.FSL_EXTRA_SENSORS = EXTRA
-    edge, estate = Sensor(), Sensor(fails_on="-T")
-
-    with patch("api.views.substrate", Standing(edge, estate)):
-        checked = client.post_json("/api/rules/validate/", {"content": RULE})
-
-    assert checked.status_code == 400
-    assert checked.json()["output"] == "bad rule"

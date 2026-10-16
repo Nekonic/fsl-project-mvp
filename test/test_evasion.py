@@ -17,14 +17,10 @@ def _engines(fired, name):
         by_id[d]["source"] for d in _case(fired, name)["detection_ids"] if d in by_id
     }
 
-def test_both_encodings_are_detected_by_the_stack(fired):
+def test_both_encodings_are_detected_and_each_engine_sees_the_attack_not_one_shape(fired):
     assert _case(fired, CONTROL)["verdict"] == "TP"
     assert _case(fired, SECOND_SHAPE)["verdict"] == "TP"
-
-def test_the_control_is_caught_by_both_engines(fired):
     assert {"suricata", "modsecurity"} <= _engines(fired, CONTROL)
-
-def test_the_ids_catches_the_plus_encoding_too(fired):
     assert "suricata" in _engines(fired, SECOND_SHAPE), (
         f"only {sorted(_engines(fired, SECOND_SHAPE))} caught the union-select "
         f"injection - the IDS rules match one SQLi shape rather than the attack, "

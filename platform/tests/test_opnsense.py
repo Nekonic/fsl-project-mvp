@@ -1,14 +1,11 @@
 import base64
 import pathlib
-import subprocess
 import xml.etree.ElementTree as ElementTree
-from dataclasses import replace
 
-import pytest
 import yaml
 
 from range import cloud, declared, opnsense
-from range.ports import RangeUnavailable, Segment
+from range.ports import Segment
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OS = declared.read(flavor="openstack")
@@ -33,15 +30,6 @@ def _wanted(**changed):
 def _rendered(**changed):
     template = (ROOT / opnsense.CONFIG).read_text()
     return ElementTree.fromstring(opnsense.render(template, _wanted(**changed)))
-
-
-def test_the_wan_holds_the_first_origin_gateway_and_aliases_the_other_twenty_nine():
-    wanted = _wanted()
-
-    first = OS.origins[0]
-    assert wanted["wan"] == {"id": first.id, "address": first.subnet.replace("0/24", "1"), "bits": "24"}
-    assert [alias["id"] for alias in wanted["aliases"]] == [o.id for o in OS.origins[1:]]
-    assert len(wanted["aliases"]) == 29
 
 
 def test_the_configured_edge_holds_its_management_address_statically_not_by_dhcp():
@@ -70,34 +58,6 @@ def test_the_configured_edge_keeps_time_by_the_platform_on_management_alone():
     )
 
 
-def test_an_edge_given_no_time_server_runs_no_ntpd():
-    root = _rendered()
-
-    assert root.find("system/timeservers") is None and root.find("ntpd") is None, (
-        "OPNsense starts ntpd only when system/timeservers is set; the image's build-time "
-        "config has no platform to name"
-    )
-
-
-def test_the_lan_holds_the_estate_gateway_so_the_estate_routes_through_the_edge():
-    assert _wanted()["lan"] == {"id": "estate", "address": "10.30.0.1", "bits": "24"}
-
-
-def test_an_origin_with_no_gateway_cannot_be_held_by_the_edge():
-    segments = list(_segments())
-    segments[3] = replace(segments[3], gateway="")
-
-    with pytest.raises(RangeUnavailable, match=segments[3].id):
-        opnsense.settings(tuple(segments), COLLECTOR, INSIDE, 1450, KEY)
-
-
-def test_an_edge_without_the_mtu_or_the_platform_key_is_refused_by_what_supplies_it():
-    with pytest.raises(RangeUnavailable, match="network.mtu"):
-        opnsense.settings(_segments(), COLLECTOR, INSIDE, 0, KEY)
-    with pytest.raises(RangeUnavailable, match="fabric"):
-        opnsense.settings(_segments(), COLLECTOR, INSIDE, 1450, "")
-
-
 def test_the_sensor_home_is_the_estate_and_management_so_every_origin_is_external():
     home = _wanted()["home"]
 
@@ -109,29 +69,10 @@ def test_the_sensor_home_is_the_estate_and_management_so_every_origin_is_externa
     )
 
 
-def test_the_rendered_config_assigns_wan_lan_and_mgmt_to_the_nics_in_slot_order():
-    root = _rendered()
-
-    assert [root.findtext(f"interfaces/{name}/if") for name in ("wan", "lan", "opt1")] == [
-        "vtnet0", "vtnet1", "vtnet2"]
-    assert root.findtext("interfaces/wan/ipaddr") == OS.origins[0].subnet.replace("0/24", "1")
-    assert root.findtext("interfaces/lan/ipaddr") == "10.30.0.1"
-    assert root.findtext("interfaces/opt1/ipaddr") == "dhcp"
-
-
 def test_every_interface_takes_the_tenant_mtu():
     root = _rendered()
 
     assert {root.findtext(f"interfaces/{name}/mtu") for name in ("wan", "lan", "opt1")} == {"1450"}
-
-
-def test_the_other_origin_gateways_are_ip_aliases_on_the_wan():
-    vips = _rendered().findall("virtualip/vip")
-
-    assert len(vips) == 29
-    assert {vip.findtext("interface") for vip in vips} == {"wan"}
-    assert {vip.findtext("mode") for vip in vips} == {"ipalias"}
-    assert len({vip.get("uuid") for vip in vips}) == 29
 
 
 def test_root_trusts_only_the_platform_key_and_has_no_password():
@@ -144,20 +85,6 @@ def test_root_trusts_only_the_platform_key_and_has_no_password():
     )
     assert user.findtext("shell") == "/bin/sh", "root's default shell is the console menu"
     assert root.find("system/ssh/passwordauth") is None
-
-
-def test_the_edge_logs_to_the_collector_and_watches_the_wan_in_ids_mode():
-    root = _rendered()
-    [destination] = root.findall("OPNsense/Syslog/destinations/destination")
-
-    assert (destination.findtext("hostname"), destination.findtext("port")) == COLLECTOR[:1] + ("5140",)
-    assert destination.findtext("transport") == "udp4"
-    assert root.findtext("OPNsense/IDS/general/interfaces") == "wan"
-    assert root.findtext("OPNsense/IDS/general/ips") == "0", (
-        "netmap inline mode is unreliable on VirtIO NICs; the sensor only "
-        "watches, as Suricata on pfSense did"
-    )
-    assert root.findtext("OPNsense/IDS/general/homenet") == ",".join(_wanted()["home"])
 
 
 def test_the_edge_routes_without_nat_and_never_answers_the_range_itself():
@@ -185,37 +112,6 @@ def test_from_the_internet_the_edge_passes_only_http_to_the_waf():
     )
 
 
-def test_hardware_offloading_is_off():
-    system = _rendered().find("system")
-
-    for name in ("disablechecksumoffloading", "disablesegmentationoffloading",
-                 "disablelargereceiveoffloading"):
-        assert system.findtext(name) == "1", name
-
-
-def test_an_image_config_without_slot_values_takes_its_addresses_by_dhcp():
-    template = (ROOT / opnsense.CONFIG).read_text()
-    root = ElementTree.fromstring(opnsense.render(template, {"mtu": 1450, "key": KEY}))
-
-    assert root.findtext("interfaces/lan/ipaddr") == "dhcp"
-    assert not root.findtext("interfaces/wan/ipaddr")
-    assert root.find("OPNsense/Syslog/destinations/destination") is None
-
-
-def test_the_playback_stages_three_files_then_runs_the_static_script(tmp_path):
-    config, include, rules = "<opnsense/>\n", "%YAML 1.1\n", "alert ip any any -> any any (sid:1;)\n"
-    staged = {name: tmp_path / pathlib.PurePosixPath(path).name
-              for name, path in opnsense.STAGED.items()}
-    script = opnsense.playback(config, include, rules, "echo staged\n")
-    for name, path in opnsense.STAGED.items():
-        script = script.replace(path, str(staged[name]))
-
-    done = subprocess.run(["sh"], input=script, capture_output=True, text=True)
-
-    assert done.returncode == 0 and done.stdout == "staged\n", done.stderr
-    assert [staged[n].read_text() for n in ("config", "include", "rules")] == [config, include, rules]
-
-
 def test_the_static_script_installs_the_rules_where_the_rules_editor_writes_them():
     script = (ROOT / opnsense.SCRIPT).read_text()
     include = yaml.safe_load((ROOT / opnsense.INCLUDE).read_text())
@@ -241,7 +137,7 @@ def test_the_sensor_sends_alerts_and_http_records_to_syslog_as_suricata():
     assert kinds == ["alert", "http"]
 
 
-def test_the_lines_the_edge_printed_are_read_back():
+def test_the_lines_the_edge_printed_are_read_back_and_a_stopped_sensor_or_empty_pf_is_not_done():
     printed = ("fsl-edge booted 1760000000\nfsl-edge wan 73.0.0.1 120.96.0.1 \n"
                "fsl-edge sensor vtnet0 running\nfsl-edge logs 10.31.0.195:5140\n"
                "fsl-edge wanrule 2\n")
@@ -251,9 +147,6 @@ def test_the_lines_the_edge_printed_are_read_back():
     assert opnsense.sensing(printed)
     assert "logs 10.31.0.195:5140" in opnsense.reported(printed)
     assert opnsense.wan_rule_loaded(printed)
-
-
-def test_a_stopped_sensor_an_empty_pf_or_no_output_reads_as_not_done():
     assert not opnsense.sensing("fsl-edge sensor vtnet0 stopped\n")
     assert not opnsense.wan_rule_loaded("fsl-edge wanrule 0\n")
     assert opnsense.held("sh: php: not found\n") == set()

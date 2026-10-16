@@ -2217,11 +2217,6 @@ def range_configure(request):
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
 
-@require_http_methods(["GET"])
-def range_console(request, host):
-    adapter = _built_by_the_cloud(substrate(), "console", "a console is")
-    return _reply({"url": adapter.console(host)})
-
 def _ground_truth_readable(adapter) -> bool:
     try:
         _ground_truth(adapter, "board")

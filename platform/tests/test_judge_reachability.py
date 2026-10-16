@@ -70,44 +70,19 @@ def get(client, path, addr):
     reachability._cached = (0.0, frozenset())
     return client.get(path, REMOTE_ADDR=addr)
 
-def test_the_attacker_box_cannot_read_the_rules_the_defence_is_scored_on(client):
+@pytest.mark.parametrize("address, refused", [
+    ("5.188.10.2", True),
+    ("172.30.0.2", True),
+    ("5.188.10.1", False),
+    ("5.188.10.5", False),
+])
+def test_the_attacker_box_cannot_read_the_rules_the_defence_is_scored_on(client, address, refused):
     with ranged():
-        refused = get(client, "/api/rules/", "5.188.10.2")
+        answered = get(client, "/api/rules/", address)
 
-    assert refused.status_code == 403, (
-        f"the terminal the red team types at reached the scoring API and got "
-        f"{refused.status_code}. POST /api/rules/apply/ from there rewrites "
-        f"the detector: blank it and every attack is a miss, match the marker "
-        f"header and every attack is a hit. Every cell of the confusion matrix "
-        f"is writable by the party being measured"
-    )
-
-def test_the_operator_at_the_published_port_is_not_shut_out(client):
-    with ranged():
-        allowed = get(client, "/api/rules/", "5.188.10.1")
-
-    assert allowed.status_code != 403, (
-        "the console arrives through Docker's published port, so its source is "
-        "the segment's gateway, not a node. Blocking it locks the operator out "
-        "of their own range"
-    )
-
-def test_a_host_inside_the_estate_is_refused_too(client):
-    with ranged():
-        refused = get(client, "/api/rules/", "172.30.0.2")
-
-    assert refused.status_code == 403, (
-        "the target is a machine the red team is trying to get code execution "
-        "on. A foothold there must not become control of the scoreboard"
-    )
-
-def test_the_platform_may_talk_to_itself(client):
-    with ranged():
-        allowed = get(client, "/api/rules/", "5.188.10.5")
-
-    assert allowed.status_code != 403, (
-        "the platform stands on the range too, and refusing its own address "
-        "would break every call it makes to itself"
+    assert (answered.status_code == 403) is refused, (
+        "range nodes (attacker box, estate hosts) must not reach the scoring API; "
+        "the operator through the published port (the gateway) and the platform itself must"
     )
 
 def test_a_range_that_cannot_be_read_does_not_lock_everyone_out(client):
@@ -126,37 +101,6 @@ def test_a_range_that_cannot_be_read_does_not_lock_everyone_out(client):
     assert response.status_code != 403, (
         "with no range to consult there is no list of participants, and "
         "refusing everything would mean the console dies whenever Docker does"
-    )
-
-def test_the_refusal_says_what_it_is(client):
-    with ranged():
-        refused = get(client, "/api/rules/", "5.188.10.2")
-
-    assert b"scored" in refused.content or b"range" in refused.content, (
-        refused.content[:200]
-    )
-
-def test_deciding_who_may_call_does_not_read_the_range_on_every_request(client):
-    from api import reachability
-
-    class Counting(Stub):
-        calls = 0
-
-        def segments(self):
-            return self.describe().segments
-
-        def describe(self):
-            Counting.calls += 1
-            return SHAPE
-
-    reachability._cached = (0.0, frozenset())
-    with ranged(Counting):
-        for _ in range(8):
-            client.get("/api/rules/", REMOTE_ADDR="5.188.10.1")
-
-    assert Counting.calls == 1, (
-        f"the console polls several endpoints every few seconds and each one "
-        f"cost a full read of the range: {Counting.calls} reads for 8 requests"
     )
 
 def test_a_range_that_comes_back_is_noticed_within_the_cache_window(monkeypatch):

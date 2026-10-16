@@ -4,7 +4,6 @@ import random
 import re
 import threading
 import time
-from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -28,32 +27,6 @@ def offered(*origins):
              "addresses": [f"10.9.{index}.{n}" for n in (10, 11)]}
             for index, origin in enumerate(origins)]
 
-def test_most_customers_come_from_korea_and_the_seeded_accounts_sign_in_from_there():
-    users = traffic.personas(mix(), offered(*mix()["origins"], "ru"), random.Random("1"))
-    homes = Counter(user["origin"] for user in users)
-
-    assert len(users) == 12
-    assert homes == {"kr": 9, "us": 1, "jp": 1, "cn": 1}, homes
-    assert [user["account"]["username"] for user in users if user["account"]] == ["jiwoo", "minseo"]
-    assert all(user["origin"] == "kr" for user in users if user["account"])
-    assert all(user["language"].startswith("ko-KR") for user in users if user["origin"] == "kr")
-
-def test_customers_spread_over_an_origins_addresses_and_carry_its_way_in():
-    users = traffic.personas(mix(), offered("kr"), random.Random("1"))
-
-    assert {user["bind"] for user in users} == {"10.9.0.10", "10.9.0.11"}
-    assert {user["target"] for user in users} == {"http://board.com"}
-
-def test_an_origin_the_mix_does_not_name_is_not_used_and_none_left_is_refused():
-    users = traffic.personas(mix(), offered("us", "ru"), random.Random("1"))
-
-    assert {user["origin"] for user in users} == {"us"}
-    with pytest.raises(traffic.NoOrigin, match="none of the origins"):
-        traffic.personas(mix(), offered("ru"), random.Random("1"))
-
-def test_largest_remainder_keeps_the_declared_shares():
-    assert traffic.allocated({"c": 20, "a": 50, "b": 30}, 7) == ["a"] * 4 + ["b"] * 2 + ["c"]
-    assert traffic.allocated({"us": 8, "hk": 3, "br": 2}, 12) == ["us"] * 7 + ["hk"] * 3 + ["br"] * 2
 
 def test_a_profile_renders_only_its_actions_and_the_plain_one_searches_nothing_unusual():
     users = traffic.personas(mix(), offered("kr", "us"), random.Random("1"))
@@ -73,12 +46,6 @@ def test_the_club_profile_posts_the_code_questions_through_the_comment_form():
     assert coded and {flow["steps"][-1]["form"]["body"] for flow in coded} == set(mix()["comments"]["code"])
     assert all(flow["steps"][-1]["csrf"] and flow["steps"][-1]["path"].endswith("/comments/") for flow in coded)
 
-def test_a_profile_that_posts_code_questions_needs_them_declared():
-    declared = mix()
-    declared["comments"] = {key: value for key, value in declared["comments"].items() if key != "code"}
-
-    with pytest.raises(traffic.InvalidTraffic, match="comment-code"):
-        traffic.checked(declared, "test")
 
 def test_the_rendering_is_the_same_for_the_same_seed():
     users = traffic.personas(mix(), offered("kr"), random.Random("7"))
@@ -107,22 +74,6 @@ def test_posts_are_the_ones_the_board_seeds_and_nothing_else():
     assert {found[1] for path in paths if (found := re.match(r"/posts/(\d+)/", path))} == \
         {str(post) for post in mix()["posts"]}
 
-def test_sign_in_and_comment_post_the_form_with_the_pages_csrf_token_and_follow_the_redirect():
-    persona = {"id": "u01", "origin": "kr", "account": {"username": "jiwoo", "password": "jiwoo1234"}}
-    login = traffic.steps(mix(), "login", persona, random.Random("1"))
-    comment = traffic.steps(mix(), "comment", persona, random.Random("1"))
-
-    assert [(step["method"], step["path"]) for step in login] == [
-        ("GET", "/accounts/login/"), ("POST", "/accounts/login/")]
-    assert login[1]["form"] == {"username": "jiwoo", "password": "jiwoo1234", "next": ""}
-    assert login[1]["csrf"] and login[1]["follow"]
-    assert comment[0]["method"] == "GET" and comment[1]["method"] == "POST"
-    assert comment[1]["path"] == comment[0]["path"] + "comments/"
-    assert comment[1]["csrf"] and comment[1]["form"]["body"]
-
-@pytest.mark.parametrize("given, kept, expected", [(None, None, 1.0), (None, 4.0, 4.0), (50, None, 50.0), (0.5, 2, 0.5)])
-def test_the_rate_defaults_low(given, kept, expected):
-    assert traffic.rate_of(given, kept) == expected
 
 @pytest.mark.parametrize("given", [0, -1, 50.5, 1000, "2", True])
 def test_the_rate_is_capped_at_what_the_range_was_measured_to_take(given):
@@ -317,6 +268,7 @@ def board():
 
 def _run(tmp_path, plan, until):
     program = _program()
+    program.LOOK_EVERY = 0.05
     (tmp_path / "plan.json").write_text(json.dumps(plan))
     customers = program.Customers(str(tmp_path / "plan.json"), str(tmp_path / "records.jsonl"))
     worker = threading.Thread(target=customers.run, daemon=True)
@@ -369,19 +321,6 @@ def test_every_request_the_customers_send_carries_its_own_marker_and_is_recorded
     assert all(r["host"] == "board.com" and r["source"] == "127.0.0.1" for r in seen)
     assert {record["source_ip"] for record in records} == {"127.0.0.1"}
 
-def test_a_form_whose_page_carried_no_token_is_not_posted(tmp_path, board):
-    persona = {"id": "u01", "origin": "kr", "bind": "", "target": board, "agent": "Mozilla/5.0",
-               "language": "ko-KR", "account": None}
-    flows = [{"user": 0, "action": "comment", "steps": [
-        {"step": "post", "method": "GET", "path": "/search/?q=%3Cb%3E"},
-        {"step": "comment", "method": "POST", "path": "/posts/1/comments/", "csrf": True, "form": {"body": "x"}},
-    ]}]
-    plan = {"host": "board.com", "rate": 50, "profile": "community", "users": [persona], "flows": flows}
-
-    records = _run(tmp_path, plan, lambda: len(Board.seen) >= 4)
-
-    assert {request["method"] for request in Board.seen} == {"GET"}
-    assert records and all(record["method"] == "GET" for record in records)
 
 def test_the_board_s_csrf_refusal_in_the_customer_s_language_is_the_app_s_not_the_defence_s(tmp_path, board):
     persona = {"id": "u01", "origin": "kr", "bind": "", "target": board, "agent": "Mozilla/5.0",

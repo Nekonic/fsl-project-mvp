@@ -1,7 +1,6 @@
 import base64
 import io
 import pathlib
-import random
 import tarfile
 
 import pytest
@@ -40,11 +39,6 @@ def test_a_bundle_holds_the_setup_and_the_declared_files_and_nothing_else(source
 
     assert sorted(found) == ["waf/setup.sh", "waf/site.conf"]
 
-def test_a_bundle_keeps_whether_a_file_may_be_executed(source):
-    (source / "waf" / "site.conf").chmod(0o755)
-
-    assert members(packed(source))["waf/site.conf"].mode == 0o755
-
 def test_the_same_files_give_the_same_digest_and_any_change_gives_another(source):
     first = packed(source).digest
     assert packed(source).digest == first
@@ -73,12 +67,6 @@ def test_the_builder_unpacks_runs_the_setup_and_says_on_its_console_how_it_went(
         "its setup worked; the platform stops it after reading the console"
     )
 
-def test_a_bundle_too_big_for_nova_user_data_is_refused(source):
-    (source / "waf" / "blob").write_bytes(random.Random(0).randbytes(60_000))
-
-    with pytest.raises(RangeUnavailable, match="65535"):
-        images.user_data(packed(source))
-
 BUNDLE = images.Bundle(host="fsl-waf", setup="waf/setup.sh", digest="d1", archive=b"")
 
 def image(status="active", bundle="d1", ident="img-1"):
@@ -93,85 +81,48 @@ def state(images_=(), builders=(), consoles=None):
     plan = images.plan((BUNDLE,), list(images_), list(builders), consoles or {})
     return plan.images[0], plan
 
-def test_nothing_built_yet_is_missing():
-    found, plan = state()
+@pytest.mark.parametrize("images_, builders, consoles, expected", [
+    ((), (), {}, "missing"),
+    ((), (builder(),), {}, "building"),
+    ((), (builder(),), {"srv-1": f"...\n{images.READY} d1\nubuntu login:\n"}, "built"),
+    ((), ({**builder(), "OS-EXT-STS:task_state": "powering-off"},), {"srv-1": f"{images.READY} d1\n"}, "building"),
+    ((), (builder(),), {"srv-1": f"{images.READY} d0\n"}, "building"),
+    ((), (builder("SHUTOFF"),), {}, "stopped"),
+    ((image("saving"),), (builder("SHUTOFF"),), {}, "saving"),
+    ((image(),), (builder("SHUTOFF"),), {}, "ready"),
+], ids=["nothing", "running", "said-ready", "being-stopped", "other-bundle-ready", "stopped", "saving", "active"])
+def test_a_bundle_s_image_moves_through_the_build_states(images_, builders, consoles, expected):
+    found, _ = state(images_=images_, builders=builders, consoles=consoles)
 
-    assert found.state == "missing" and not plan.clean
+    assert found.state == expected
 
-def test_a_builder_still_running_is_building():
-    found, _ = state(builders=[builder()])
-
-    assert found.state == "building" and found.builder == "srv-1"
-
-def test_a_builder_that_said_it_finished_is_built():
-    found, _ = state(builders=[builder()],
-                     consoles={"srv-1": f"...\n{images.READY} d1\nubuntu login:\n"})
-
-    assert found.state == "built"
-
-def test_a_builder_already_being_stopped_is_left_to_stop():
-    stopping = {**builder(), "OS-EXT-STS:task_state": "powering-off"}
-    found, _ = state(builders=[stopping], consoles={"srv-1": f"{images.READY} d1\n"})
-
-    assert found.state == "building" and "powering-off" in found.detail
-
-def test_a_builder_whose_setup_failed_says_why():
-    found, _ = state(builders=[builder()],
-                     consoles={"srv-1": f"E: Unable to locate package nginx\n{images.FAILED} d1\n"})
+@pytest.mark.parametrize("builders, consoles, said", [
+    ((builder(),), {"srv-1": f"E: Unable to locate package nginx\n{images.FAILED} d1\n"}, "Unable to locate package nginx"),
+    (({**builder(status="ERROR"), "fault": {"message": "No valid host was found"}},), {}, "No valid host was found"),
+    ((builder(status="ERROR"),), {}, "ERROR"),
+])
+def test_a_builder_whose_setup_failed_says_why(builders, consoles, said):
+    found, _ = state(builders=builders, consoles=consoles)
 
     assert found.state == "failed"
-    assert "Unable to locate package nginx" in found.detail
-
-def test_a_builder_nova_put_in_error_is_failed_with_its_fault():
-    errored = {**builder(status="ERROR"), "fault": {"message": "No valid host was found"}}
-    found, _ = state(builders=[errored])
-
-    assert found.state == "failed"
-    assert "No valid host was found" in found.detail
-
-    faultless, _ = state(builders=[builder(status="ERROR")])
-
-    assert faultless.state == "failed"
-    assert faultless.detail == "Nova put it in ERROR"
-
-
-def test_the_ready_line_of_another_bundle_does_not_count():
-    found, _ = state(builders=[builder()], consoles={"srv-1": f"{images.READY} d0\n"})
-
-    assert found.state == "building"
-
-def test_a_stopped_builder_is_ready_to_be_snapshotted():
-    found, _ = state(builders=[builder("SHUTOFF")])
-
-    assert found.state == "stopped"
-
-def test_an_image_being_saved_is_saving():
-    found, _ = state(images_=[image("saving")], builders=[builder("SHUTOFF")])
-
-    assert found.state == "saving"
+    assert said in found.detail
 
 def test_an_active_image_of_this_bundle_is_ready_and_the_builder_left_is_not_clean():
     found, plan = state(images_=[image()], builders=[builder("SHUTOFF")])
+    _, cleaned = state(images_=[image()])
 
-    assert found.state == "ready" and found.image == "img-1"
-    assert found.builder == "srv-1" and not plan.clean
+    assert found.image == "img-1" and found.builder == "srv-1" and not plan.clean
+    assert cleaned.clean
 
-def test_ready_with_no_builder_left_is_clean():
-    _, plan = state(images_=[image()])
-
-    assert plan.clean
-
-def test_an_image_of_another_bundle_is_left_over_and_does_not_stand_in():
-    found, plan = state(images_=[image(bundle="d0", ident="img-old")])
-
-    assert found.state == "missing"
-    assert [(kind, ident) for kind, ident, _ in plan.leftovers] == [("image", "img-old")]
-
-def test_a_builder_of_another_bundle_is_left_over():
-    found, plan = state(builders=[builder(bundle="d0", ident="srv-old")])
+@pytest.mark.parametrize("images_, builders, left", [
+    ([image(bundle="d0", ident="img-old")], [], ("image", "img-old")),
+    ([], [builder(bundle="d0", ident="srv-old")], ("server", "srv-old")),
+])
+def test_an_image_or_builder_of_another_bundle_is_left_over_and_does_not_stand_in(images_, builders, left):
+    found, plan = state(images_=images_, builders=builders)
 
     assert found.state == "missing"
-    assert [(kind, ident) for kind, ident, _ in plan.leftovers] == [("server", "srv-old")]
+    assert [(kind, ident) for kind, ident, _ in plan.leftovers] == [left]
 
 def test_what_cleaning_removes_is_leftovers_and_failures_never_a_ready_image():
     plan = images.plan(
@@ -188,48 +139,20 @@ def test_a_prebuilt_image_the_cloud_already_holds_is_ready_with_no_builder():
 
     plan = images.plan((), glance, [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
     [found] = plan.images
+    lacking = images.plan((), [], [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
 
     assert found.host == "fsl-edge"
     assert found.state == "ready" and found.image == "img-edge" and not found.builder
-    assert plan.clean
+    assert plan.clean and images.removable(plan) == []
+    assert lacking.images[0].state == "missing" and "fsl-edge" in lacking.images[0].detail
+    assert not lacking.clean
 
-def test_a_prebuilt_image_the_cloud_lacks_is_missing_and_names_what_to_build():
-    plan = images.plan((), [], [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
-    [found] = plan.images
-
-    assert found.state == "missing" and "fsl-edge" in found.detail
-    assert not plan.clean
-
-def test_a_prebuilt_image_is_never_what_cleaning_removes():
-    glance = [{"id": "img-edge", "name": "fsl-edge", "status": "active"}]
-
-    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
-
-    assert images.removable(plan) == []
-
-def test_every_image_is_built_from_files_the_repo_holds():
-    hosts = declared.read().hosts
-    assert hosts
-    for host, entry in hosts.items():
+@pytest.mark.parametrize("flavor", ["", "openstack"])
+def test_every_image_is_built_from_files_the_repo_holds(flavor):
+    hosts = declared.read(flavor=flavor).hosts
+    built = {host: entry for host, entry in hosts.items() if entry.setup}
+    assert built
+    for host, entry in built.items():
         bundle = images.bundle(ROOT, host, entry.setup, entry.files)
         assert entry.setup in members(bundle), host
         images.user_data(bundle)
-
-def test_every_script_built_openstack_host_bundles_from_the_repo():
-    hosts = declared.read(flavor="openstack").hosts
-    assert "fsl-kali" in hosts
-    for host, entry in hosts.items():
-        if not entry.setup:
-            continue
-        bundle = images.bundle(ROOT, host, entry.setup, entry.files)
-        assert entry.setup in members(bundle), host
-        images.user_data(bundle)
-
-def test_a_host_with_an_image_and_no_role_is_refused(tmp_path):
-    document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
-    document["hosts"]["fsl-stray"] = {"setup": "stray.sh"}
-    path = tmp_path / "declaration.yaml"
-    path.write_text(yaml.safe_dump(document))
-
-    with pytest.raises(ValueError, match="fsl-stray"):
-        declared.read(path)

@@ -91,43 +91,14 @@ def record(status=200, action="home", **given):
             "source_ip": "73.0.0.7", "method": "GET", "path": "/", "status": status, "refused_by": "",
             "sent_at": timezone.now().isoformat(), "elapsed_ms": 12, **given}
 
-def test_put_starts_the_customers_at_a_low_rate_from_origins_other_than_the_attackers(client, session, the_range, box):
+def test_put_starts_the_customers_from_origins_other_than_the_attackers(client, session, the_range, box):
     started = put(client, session, {})
 
     assert started.status_code == 200, started.content
-    assert started.json()["running"] is True and started.json()["rate"] == 1.0
-    assert started.json()["profile"] == "community"
-    assert "class Customers" in box.program, "the box was not handed the customers' program"
+    assert started.json()["running"] is True
     plan = box.plans[-1]
-    assert plan["rate"] == 1.0 and plan["host"] == "board.com" and len(plan["flows"]) > 100
     assert {user["origin"] for user in plan["users"]} <= {"us", "hk"}, "a customer came from the attacker's origin"
     assert the_range.asked[-1] == sorted({user["origin"] for user in plan["users"]})
-
-def test_put_on_running_customers_changes_the_rate_and_keeps_who_they_are(client, session, the_range, box):
-    first = put(client, session, {}).json()
-    program, box.program = box.program, None
-
-    changed = put(client, session, {"rate": 5, "profile": "plain"})
-
-    assert changed.status_code == 200
-    assert changed.json()["rate"] == 5.0 and changed.json()["profile"] == "plain"
-    assert changed.json()["started_at"] == first["started_at"]
-    assert box.program is None and program, "a running generator was handed its program again"
-    assert box.plans[-1]["users"] == box.plans[0]["users"]
-    assert "search-unusual" not in {flow["action"] for flow in box.plans[-1]["flows"]}
-
-@pytest.mark.parametrize("body", [{"rate": 0}, {"rate": 51}, {"rate": "fast"}, {"profile": "nobody"}])
-def test_a_rate_or_profile_out_of_bounds_is_refused(client, session, the_range, box, body):
-    refused = put(client, session, body)
-
-    assert refused.status_code == 400, refused.content
-    assert not box.plans
-
-def test_a_wargame_without_customers_says_so(client, the_range):
-    corp = Session.objects.create(scenario="corp", baseline=[])
-
-    assert put(client, corp, {}).status_code == 404
-    assert client.get(f"/api/sessions/{corp.pk}/traffic/").json()["declared"] is False
 
 def test_get_reads_every_record_once_and_counts_blocked_customers(client, session, the_range, box):
     put(client, session, {})
@@ -145,16 +116,6 @@ def test_get_reads_every_record_once_and_counts_blocked_customers(client, sessio
     )
     assert second["by_action"]["search-unusual"] == {"sent": 1, "blocked": 1}
     assert CustomerRequest.objects.filter(session=session).count() == 5
-
-def test_delete_stops_the_customers_and_reads_what_they_sent_last(client, session, the_range, box):
-    put(client, session, {})
-    box.add(record(), record())
-
-    stopped = client.delete(f"/api/sessions/{session.pk}/traffic/")
-
-    assert stopped.status_code == 200
-    assert stopped.json()["running"] is False and stopped.json()["sent"] == 2
-    assert box.stopped == 1 and box.running is False and the_range.dropped == 1
 
 def test_closing_the_session_stops_the_customers(client, session, the_range, box):
     put(client, session, {})

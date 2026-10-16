@@ -3,8 +3,6 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from ingest.elastic import normalize
-
 pytestmark = pytest.mark.django_db
 
 
@@ -29,14 +27,7 @@ def ingested(client, record):
     return session_id
 
 
-def test_a_waf_alert_keeps_the_request_it_judged():
-    [detection] = normalize("waf1", waf_record())
-
-    assert detection["raw"]["request"]["uri"] == "/rest/user/login"
-    assert detection["raw"]["host_ip"] == "5.188.10.4"
-
-
-def test_a_waf_alert_is_listed_with_its_path_method_and_destination(client):
+def test_a_waf_alert_is_listed_and_counted_with_its_path_method_and_destination(client):
     session_id = ingested(client, waf_record())
 
     [listed] = client.get(f"/api/sessions/{session_id}/detections/").json()
@@ -48,11 +39,6 @@ def test_a_waf_alert_is_listed_with_its_path_method_and_destination(client):
         f"did, and the KPI beside them counted both: {listed}"
     )
 
-
-def test_the_top_tables_count_what_only_the_waf_caught(client):
-    session_id = ingested(client, waf_record())
-
     top = client.get(f"/api/sessions/{session_id}/top/").json()
-
     assert [p["path"] for p in top["paths"]] == ["/rest/user/login"]
     assert [(d["dest_ip"], d["dest_port"]) for d in top["destinations"]] == [("5.188.10.4", 80)]

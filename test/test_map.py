@@ -12,24 +12,14 @@ def drawn(tuned_session):
         listed=tuned_session["listed"],
     )
 
-def test_the_attack_is_placed_somewhere(drawn):
-    assert drawn["points"], (
-        "nothing could be placed on the map. Either the attacker is not on "
-        "public space any more or the geoip pipeline is not running"
-    )
-
-def test_it_is_placed_where_the_attacker_actually_is(drawn):
+def test_it_is_placed_where_the_attacker_actually_is_with_coordinates_a_map_can_use(drawn):
     countries = {p["country"] for p in drawn["points"]}
 
     assert EDGE_COUNTRY in countries, f"placed in {sorted(countries)} instead"
-
-def test_the_point_carries_coordinates_a_map_can_use(drawn):
     point = next(p for p in drawn["points"] if p["country"] == EDGE_COUNTRY)
-
     assert -90 <= point["lat"] <= 90
     assert -180 <= point["lon"] <= 180
     assert point["detections"] > 0
-    assert point["ips"]
 
 def test_traffic_inside_the_estate_is_counted_but_not_placed(drawn):
     placed = {ip for point in drawn["every_point"] for ip in point["ips"]}

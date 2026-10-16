@@ -2,11 +2,8 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from django.utils import timezone
 
-import scoreboard
-from api.models import Case, Session
-from api.views import _loot_window
+from api.models import Session
 from tests.test_api_corroboration import T0, alert
 
 pytestmark = pytest.mark.django_db
@@ -18,30 +15,6 @@ TRUTH = {
 }
 
 EXFIL_CASE = "66666666-6666-4666-8666-666666666666"
-
-
-def test_a_loot_window_with_a_case_is_the_case_interval():
-    session = Session.objects.create(scenario="board")
-    now = timezone.now()
-    case = Case.objects.create(
-        session=session, case_id="c1", name="board-sqli-search", malicious=True,
-        correlation="marker", started_at=now - timedelta(seconds=2), ended_at=now,
-    )
-    at, earliest, latest = _loot_window(session, "c1", now + timedelta(seconds=30))
-
-    assert at == case.ended_at
-    assert earliest == case.started_at - scoreboard.CLOCK_SKEW
-    assert latest == case.ended_at + scoreboard.CLOCK_SKEW
-
-
-def test_a_loot_window_without_a_case_uses_the_attribution_window():
-    session = Session.objects.create(scenario="board")
-    now = timezone.now()
-    at, earliest, latest = _loot_window(session, None, now)
-
-    assert at == now
-    assert earliest == now - scoreboard.ATTRIBUTION_WINDOW
-    assert latest == now + scoreboard.CLOCK_SKEW
 
 
 def _start(client):

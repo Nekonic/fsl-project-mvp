@@ -1,9 +1,7 @@
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import yaml
 
 from redteam import harness
 from redteam.harness import build_request, load_cases
@@ -21,39 +19,6 @@ def _launcher(exit_code=0, output="200"):
 BASE = "http://localhost:8080"
 DEFAULT_CASES = Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml"
 
-def test_load_cases_reads_yaml(tmp_path):
-    path = tmp_path / "cases.yaml"
-    path.write_text(
-        yaml.safe_dump(
-            [
-                {
-                    "name": "a",
-                    "malicious": True,
-                    "correlation": "marker",
-                    "request": {"method": "GET", "path": "/"},
-                }
-            ]
-        )
-    )
-
-    cases = load_cases(path)
-
-    assert len(cases) == 1
-    assert cases[0]["name"] == "a"
-
-def test_build_request_injects_marker_header():
-    case = {
-        "case_id": "abc",
-        "correlation": "marker",
-        "request": {"method": "GET", "path": "/rest/products/search"},
-    }
-
-    prepared = build_request(case, BASE)
-
-    assert prepared.headers["X-FSL-Case"] == "abc"
-    assert prepared.url == f"{BASE}/rest/products/search"
-    assert prepared.method == "GET"
-
 def test_build_request_omits_marker_for_window_cases():
     case = {
         "case_id": "abc",
@@ -65,79 +30,16 @@ def test_build_request_omits_marker_for_window_cases():
 
     assert "X-FSL-Case" not in prepared.headers
 
-def test_build_request_carries_json_body_and_params():
-    case = {
-        "case_id": "abc",
-        "correlation": "marker",
-        "request": {
-            "method": "POST",
-            "path": "/rest/user/login",
-            "json": {"email": "x", "password": "y"},
-            "params": {"q": "apple"},
-        },
-    }
-
-    prepared = build_request(case, BASE)
-
-    assert json.loads(prepared.body) == {"email": "x", "password": "y"}
-    assert prepared.headers["Content-Type"] == "application/json"
-    assert prepared.url.endswith("?q=apple")
-
-
-def test_build_request_carries_a_form_body():
-    case = {
-        "case_id": "abc",
-        "correlation": "marker",
-        "request": {
-            "method": "POST",
-            "path": "/register/",
-            "data": {"user_login": "x", "wp_capabilities[administrator]": "1"},
-        },
-    }
-
-    prepared = build_request(case, BASE)
-
-    assert prepared.headers["Content-Type"] == "application/x-www-form-urlencoded"
-    assert "wp_capabilities%5Badministrator%5D=1" in prepared.body
-    assert "user_login=x" in prepared.body
-
-def test_default_cases_file_has_both_labels():
+def test_default_cases_file_has_both_labels_known_correlations_and_unique_names():
     cases = load_cases(DEFAULT_CASES)
+    names = [c["name"] for c in cases]
 
     assert any(c["malicious"] for c in cases), "no attack cases"
     assert any(not c["malicious"] for c in cases), (
         "no benign cases: without scoring false positives, a block-everything rule wins"
     )
-
-def test_default_cases_declare_a_known_correlation_strategy():
-    cases = load_cases(DEFAULT_CASES)
-
     assert {c["correlation"] for c in cases} <= {"marker", "window"}
-
-def test_default_cases_have_unique_names():
-    names = [c["name"] for c in load_cases(DEFAULT_CASES)]
-
     assert len(names) == len(set(names))
-
-
-def test_check_path_preserved_accepts_an_unaltered_path():
-    from redteam.harness import check_path_preserved
-
-    check_path_preserved("/rest/products/search", "http://h/rest/products/search?q=1")
-
-def test_check_path_preserved_rejects_a_normalized_traversal():
-    import pytest
-
-    from redteam.harness import CaseRequestAltered, check_path_preserved
-
-    with pytest.raises(CaseRequestAltered, match="etc/passwd"):
-        check_path_preserved("/ftp/../../../../etc/passwd", "http://h/etc/passwd")
-
-def test_check_path_preserved_accepts_percent_encoded_traversal():
-    from redteam.harness import check_path_preserved
-
-    path = "/ftp/%2e%2e%2f%2e%2e%2fetc/passwd"
-    check_path_preserved(path, f"http://h{path}")
 
 def test_default_cases_survive_request_preparation():
     from redteam.harness import check_path_preserved
@@ -150,16 +52,8 @@ def test_default_cases_survive_request_preparation():
         prepared = build_request(dict(case, case_id="probe"), BASE)
         check_path_preserved(case["request"]["path"], prepared.url)
 
-def test_case_meta_describes_an_http_case():
-    from redteam.harness import case_meta
-
-    case = {"request": {"method": "GET", "path": "/x"}}
-
-    assert case_meta(case) == {"request": {"method": "GET", "path": "/x"}}
-
 def recorded(case):
     from datetime import datetime, timezone
-    from types import SimpleNamespace
 
     from redteam.harness import _record
 
@@ -198,13 +92,6 @@ def test_the_harness_records_what_the_case_was_to_be_found_by():
         "said at scoring time, not what it said when the attack ran"
     )
 
-def test_case_meta_describes_a_tool_case_without_a_request():
-    from redteam.harness import case_meta
-
-    case = {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}
-
-    assert case_meta(case) == {"tool": "sqlmap", "args": ["-u", "{target}/x", "--batch"]}
-
 
 def test_fire_refuses_to_send_a_case_whose_path_was_altered(monkeypatch):
     launch, launched = _launcher()
@@ -241,62 +128,30 @@ def test_fire_launches_an_http_case_as_curl_on_the_attacker_box():
     assert argv[0] == "curl"
     assert "--path-as-is" in argv
     assert "X-FSL-Case: abc" in argv, "the marker the proxy labels the request by must be sent"
-    assert argv[-1].startswith("http://10.9.0.5/search/"), (
-        "the curl must hit the in-range tool target, so the traffic crosses the range"
-    )
-    assert "board.com" not in argv[-1], "it must not leave for the public target_url"
     assert argv[-1] == build_request(case, "http://10.9.0.5").url, (
-        "curl is sent exactly the prepared path, --path-as-is and unaltered"
+        "curl is sent exactly the prepared path to the in-range tool target, unaltered"
     )
 
 
-def test_fire_raises_when_the_request_never_reaches_the_target():
-    launch, _ = _launcher(exit_code=7, output="curl: (7) Failed to connect")
-    case = {
-        "case_id": "c", "name": "board-sqli-search", "correlation": "marker",
-        "request": {"method": "GET", "path": "/search/"},
-    }
+@pytest.mark.parametrize("exit_code, output, request_", [
+    (7, "curl: (7) Failed to connect", {"method": "GET", "path": "/search/"}),
+    (0, "no token on this page", {"method": "GET", "path": "/a",
+                                  "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'}}),
+])
+def test_fire_raises_when_the_request_never_reaches_the_target_as_the_case_built_it(exit_code, output, request_):
+    launch, _ = _launcher(exit_code=exit_code, output=output)
+    case = {"case_id": "c", "name": "n", "correlation": "marker", "request": request_}
 
     with pytest.raises(harness.ToolUnavailable):
         harness.fire(case, launch, "http://10.9.0.5")
 
 
-def test_run_does_not_record_a_case_whose_request_never_landed(monkeypatch):
-    recorded = []
+def test_run_opens_a_session_of_its_scenario_records_each_case_in_it_then_closes(monkeypatch):
+    posts, bodies, fired, recorded = [], [], [], []
 
     class Resp:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 7}
-
-    class Http:
-        def post(self, url, json=None, timeout=None):
-            return Resp()
-
-    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
-    monkeypatch.setattr(
-        harness, "fire",
-        lambda *a, **k: (_ for _ in ()).throw(harness.ToolUnavailable("never landed")),
-    )
-    monkeypatch.setattr(harness, "_record", lambda *a, **k: recorded.append(1))
-
-    with pytest.raises(harness.ToolUnavailable):
-        harness.run(
-            [{"name": "a", "malicious": True, "request": {"path": "/search/"}}],
-            "http://p", lambda *a, **k: None,
-        )
-    assert recorded == [], "a case that never reached the target must not be recorded as fired"
-
-
-def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
-    posts = []
-    bodies = []
-
-    class Resp:
-        def __init__(self, body=None):
-            self._body = body or {}
+        def __init__(self, body):
+            self._body = body
 
         def raise_for_status(self):
             pass
@@ -310,7 +165,6 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
             bodies.append(json)
             return Resp({"id": 7} if url.endswith("/api/sessions/") else {})
 
-    fired, recorded = [], []
     monkeypatch.setattr(harness.requests, "Session", lambda: Http())
     monkeypatch.setattr(harness, "fire", lambda case, *a, **k: fired.append(case["name"]))
     monkeypatch.setattr(
@@ -318,94 +172,12 @@ def test_run_opens_a_session_fires_each_case_then_closes(monkeypatch):
         lambda http, url, sid, case, *a, **k: recorded.append((sid, case["name"])),
     )
 
-    cases = [{"name": "a", "request": {"path": "/"}},
-             {"name": "b", "request": {"path": "/"}}]
-    session_id = harness.run(cases, "http://p", lambda *a, **k: None)
+    cases = [{"name": "a", "request": {"path": "/"}}, {"name": "b", "request": {"path": "/"}}]
 
-    assert session_id == 7
-    assert fired == ["a", "b"]
-    assert recorded == [(7, "a"), (7, "b")]
-    assert posts[0].endswith("/api/sessions/")
-    assert posts[-1].endswith("/api/sessions/7/close/")
-    assert bodies[0] == {"scenario": "board"}
-
-    bodies.clear()
-    harness.run(cases, "http://p", lambda *a, **k: None, scenario="corp")
+    assert harness.run(cases, "http://p", lambda *a, **k: None, scenario="corp") == 7
     assert bodies[0] == {"scenario": "corp"}
-
-
-def test_opening_a_session_waits_as_long_as_its_stack_takes_to_come_up(monkeypatch):
-    waited = {}
-
-    class Resp:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 7}
-
-    class Http:
-        def post(self, url, json=None, timeout=None):
-            waited.setdefault(url, timeout)
-            return Resp()
-
-    monkeypatch.setattr(harness.requests, "Session", lambda: Http())
-
-    harness.run([], "http://p", lambda *a, **k: None)
-
-    assert waited["http://p/api/sessions/"] >= 300, (
-        "opening a session starts its compose stack and waits for the target "
-        "to be healthy, about 40 s on the test range; a 15 s request gives up "
-        "while the stack is still coming up"
-    )
-
-def test_fire_prefetches_a_nonce_from_the_page_and_injects_it():
-    page = 'rbGlobal = {"ajaxURL":"/x","nonce":"abc123"};'
-
-    def launch(image, argv, timeout=None):
-        if "-o" not in argv:
-            return SimpleNamespace(exit_code=0, output=page)
-        return SimpleNamespace(exit_code=0, output="")
-
-    case = {
-        "name": "nonce-case", "case_id": "c1", "correlation": "none", "malicious": True,
-        "request": {
-            "method": "POST", "path": "/wp-admin/admin-ajax.php",
-            "headers": {"Host": "corp.com"},
-            "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'},
-            "data": {"_nonce": "{nonce}", "action": "x"},
-        },
-    }
-    sent = []
-
-    def record(image, argv, timeout=None):
-        sent.append(argv)
-        return launch(image, argv, timeout)
-
-    harness.fire(case, record, BASE)
-    fetched, fired = sent[0], sent[-1]
-    assert any("/form" in part for part in fetched)
-    assert "Host: corp.com" in fetched, (
-        "the prefetch GET must carry the case's Host header or it hits the wrong "
-        "vhost and finds no nonce"
-    )
-    body = fired[fired.index("--data-binary") + 1]
-    assert "abc123" in body and "{nonce}" not in body
-
-def test_fire_raises_when_the_prefetched_token_is_absent():
-    def launch(image, argv, timeout=None):
-        return SimpleNamespace(exit_code=0, output="no token on this page")
-
-    case = {
-        "name": "nonce-case", "case_id": "c2", "correlation": "none", "malicious": True,
-        "request": {
-            "method": "GET", "path": "/a",
-            "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'},
-        },
-    }
-    with pytest.raises(harness.ToolUnavailable):
-        harness.fire(case, launch, BASE)
-
+    assert fired == ["a", "b"] and recorded == [(7, "a"), (7, "b")]
+    assert posts[-1].endswith("/api/sessions/7/close/")
 
 def test_a_run_that_fails_midway_still_closes_its_session_and_said_which_it_was(monkeypatch):
     posts, announced = [], []

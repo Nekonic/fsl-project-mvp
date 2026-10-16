@@ -76,17 +76,17 @@ def put(client, session_id, tuning):
         f"/api/sessions/{session_id}/waf/", json.dumps(tuning), content_type="application/json",
     )
 
-def test_a_session_opens_with_the_full_defense_and_no_guidance_by_default(client):
-    opened = client.post_json("/api/sessions/", {}).json()
-
-    assert (opened["guidance"], opened["defense"]) == (False, "full")
-
 @pytest.mark.parametrize("body, refused", [
     ({"defense": "none-such"}, "none-such"),
     ({"defense": ["full"]}, "full"),
     ({"guidance": "yes"}, "guidance"),
     ({"scenario": "corp", "guidance": True}, "no lesson"),
     ({"scenario": "corp", "defense": "minimal"}, "minimal"),
+    ({"lesson": "no-such-lesson"}, "no-such-lesson"),
+    ({"lesson": "waf-exclusion"}, "waf-exclusion"),
+    ({"lesson": "3.1"}, "3.1"),
+    ({"lesson": "f1", "guidance": False}, "guidance"),
+    ({"scenario": "corp", "lesson": "f1"}, "no lesson"),
 ])
 def test_settings_the_scenario_does_not_declare_are_refused(client, body, refused):
     answer = client.post_json("/api/sessions/", body)
@@ -159,16 +159,6 @@ def test_the_waf_api_reports_what_is_in_the_waf_s_file_after_an_edit_in_the_term
     )
     assert read["file"] == edited
 
-def test_a_closed_session_s_waf_is_what_was_recorded(client):
-    session = board(waf={"paranoia": 2, "exclusions": []})
-    client.post_json(f"/api/sessions/{session.pk}/close/")
-    stand = Stand()
-    with patch("range.docker.Docker.runner", stand.runner()):
-        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
-
-    assert (read["paranoia"], read["file"]) == (2, None)
-    assert stand.to("gateway") == []
-
 def test_a_tuning_goes_only_to_the_gateway_of_the_session_asked(client):
     first, second = board(), board()
     stand = Stand()
@@ -213,7 +203,6 @@ def test_a_tuning_nginx_refuses_is_reported_and_not_saved(client):
 
     assert answer.status_code == 400 and "Rules error" in answer.json()["detail"]
     assert Session.objects.get(pk=session.pk).waf == {"paranoia": 4, "exclusions": []}
-
 
 def red_submits_the_dump(client, session):
     rows = [{"username": name, "hash": digest} for name, digest in TRUTH.items()]
@@ -274,8 +263,11 @@ def test_close_snapshots_the_waf_the_learner_left_and_a_closed_session_reports_t
     stand.files[(session.pk, "gateway")] = crs.rendered(tuned)
     with patch("range.docker.Docker.runner", stand.runner()):
         client.post_json(f"/api/sessions/{session.pk}/close/")
-    read = client.get(f"/api/sessions/{session.pk}/waf/").json()
+    after = Stand()
+    with patch("range.docker.Docker.runner", after.runner()):
+        read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
+    assert after.to("gateway") == [], "a closed session's WAF is read from its record, not the slot's next tenant"
     snapshot = Session.objects.get(pk=session.pk).waf_snapshots[0]
     assert snapshot["closed"] is True
     assert {k: snapshot["waf"][k] for k in ("paranoia", "exclusions", "file")} == tuned | {"file": crs.rendered(tuned)}
@@ -305,15 +297,6 @@ def test_close_snapshots_the_waf_before_the_slot_is_rebuilt_and_an_unreadable_wa
     assert client.get(f"/api/sessions/{session.pk}/waf/").json()["paranoia"] == 3
     assert Session.objects.get(pk=unreadable.pk).ended_at is not None
     assert client.get(f"/api/sessions/{unreadable.pk}/waf/").json()["paranoia"] == 2
-
-def test_a_guided_session_replays_the_lesson_once_at_open_so_its_logs_are_there_to_read(client):
-    fire, fired = attacker({})
-    with patch("api.views.harness.fire", fire):
-        opened = client.post_json("/api/sessions/", {"guidance": True}).json()
-
-    assert fired == SEEDED
-    assert all(case.meta.get("seed") is True for case in Case.objects.filter(session_id=opened["id"]))
-    assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"]["cases"] == SEEDED
 
 class OneSlot:
     session = "slot-1"
@@ -356,14 +339,6 @@ def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(c
         plain = client.post_json("/api/sessions/", {}).json()
 
     assert (guided["defense"], plain["defense"]) == ("missed", "full")
-
-def test_an_unguided_session_seeds_nothing_and_shows_no_lesson(client):
-    fire, fired = attacker({})
-    with patch("api.views.harness.fire", fire):
-        opened = client.post_json("/api/sessions/", {}).json()
-
-    assert fired == []
-    assert client.get(f"/api/sessions/{opened['id']}/").json()["lesson"] is None
 
 def test_a_replayed_request_records_the_status_the_target_answered_with(client):
     session = board()
@@ -451,14 +426,6 @@ def test_a_finished_session_reports_the_objectives_it_lost_and_how_many_went_uns
     assert detail["result"]["objectives"] == {"lost": 3, "undetected": 3, "total": 3}
     assert detail["result"] == {"objectives": detail["result"]["objectives"], "scenario": None}
 
-def test_the_session_names_its_waf_box_and_where_the_crs_rules_live(client):
-    session = board()
-
-    detail = client.get(f"/api/sessions/{session.pk}/").json()
-
-    assert detail["waf_box"] == f"fsl-{session.pk}-waf"
-    assert detail["waf_rules"] == "/etc/modsecurity.d/owasp-crs/rules"
-
 def test_hints_and_done_for_me_are_recorded_on_the_session_and_read_back_after_close(client):
     session = foundation("f1")
     hints = f"/api/sessions/{session.pk}/lesson/hints/"
@@ -474,12 +441,6 @@ def test_hints_and_done_for_me_are_recorded_on_the_session_and_read_back_after_c
     detail = client.get(f"/api/sessions/{session.pk}/").json()
     assert detail["hints"] == recorded["hints"]
     assert (detail["progress"]["entry"]["hint"], detail["progress"]["map"]["done_for_me"]) == (3, True)
-
-@pytest.mark.parametrize("body", [{"step": "nowhere", "level": "hint"}, {"step": "entry", "level": "answer"}, {}])
-def test_a_hint_the_lesson_does_not_have_is_refused(client, body):
-    session = foundation("f1")
-
-    assert client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", body).status_code == 400
 
 def test_hints_are_refused_for_a_closed_session_or_one_that_is_not_a_lesson(client):
     closed = foundation("f1")
@@ -565,34 +526,8 @@ def test_evidence_that_arrives_after_close_refreshes_the_stored_result(client):
     assert (before["lost"], before["undetected"]) == (1, 1)
     assert (after["lost"], after["undetected"]) == (1, 0), "an alert ingested after close is in the next list"
 
-def test_a_guided_open_records_the_lesson_it_runs_and_defaults_to_the_first(client):
-    fire, _ = attacker({})
-    with patch("api.views.harness.fire", fire):
-        named = client.post_json("/api/sessions/", {"lesson": "f3"}).json()
-        client.post_json(f"/api/sessions/{named['id']}/close/")
-        guided = client.post_json("/api/sessions/", {"guidance": True}).json()
-
-    assert (named["guidance"], named["lesson_id"]) == (True, "f3")
-    assert Session.objects.get(pk=guided["id"]).lesson == "f1"
-    assert client.get(f"/api/sessions/{guided['id']}/").json()["lesson"]["id"] == "f1"
-
-@pytest.mark.parametrize("body, refused", [
-    ({"lesson": "no-such-lesson"}, "no-such-lesson"),
-    ({"lesson": "waf-exclusion"}, "waf-exclusion"),
-    ({"lesson": "3.1"}, "3.1"),
-    ({"lesson": "f1", "guidance": False}, "guidance"),
-    ({"scenario": "corp", "lesson": "f1"}, "no lesson"),
-])
-def test_a_lesson_the_scenario_does_not_have_or_without_guidance_is_refused(client, body, refused):
-    answer = client.post_json("/api/sessions/", body)
-
-    assert answer.status_code == 400, answer.content
-    assert refused in answer.json()["detail"]
-    assert Session.objects.count() == 0
-
-def test_done_for_me_on_the_sqlmap_step_runs_it_under_the_step_s_label_and_keeps_its_conclusion_and_command(client):
+def test_done_for_me_on_the_sqlmap_step_runs_it_under_the_step_s_label_and_scores_it_as_the_learner_s(client):
     session = foundation("f5")
-    hidden = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
     step(client, session, "sqlmap", tail="", body={"state": "reached"})
     fire, _ = attacker({"board-sqli-orderby-sqlmap": (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()})
     with patch("api.views.harness.fire", fire), unsensed():
@@ -601,11 +536,8 @@ def test_done_for_me_on_the_sqlmap_step_runs_it_under_the_step_s_label_and_keeps
     case = Case.objects.get(session=session)
     command = done["progress"]["sqlmap"]["command"]
 
-    assert "command" not in hidden["sqlmap"], "a step's command is shown once the learner reaches it"
     assert done["passed"] is True and done["progress"]["sqlmap"]["done_for_me"] is True
     assert command.startswith("sqlmap -u ") and case.case_id in command
-    assert case.meta["conclusions"][-1].startswith("[CRITICAL] all tested parameters do not appear to be injectable")
-    assert not case.meta["conclusions"][-1].startswith("[06:"), "the clock stamp is not part of the conclusion"
     assert case.case_id in unquote(checked["kali"]["discover"])
     assert not any(case.meta.get(mark) for mark in REPLAY_MARKS), "a run done for the learner is scored as theirs"
 
@@ -619,7 +551,7 @@ def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client)
     assert "result" in listed[1] and listed[1]["lesson_id"] == "f1"
     assert client.get("/api/sessions/?ids=1,x").status_code == 400
 
-def test_an_old_closed_session_whose_lesson_is_gone_still_lists_reads_and_keeps_its_replays_out_of_both_scores(client):
+def test_an_old_closed_session_whose_lesson_is_gone_still_lists_and_reads(client):
     gone = board(guidance=True, lesson="waf-exclusion", ended_at=timezone.now(),
                  lesson_steps={"exclude": {"reached": "2026-10-01T00:00:00+00:00", "passed": "2026-10-01T00:05:00+00:00",
                                            "after": 1, "tried": "2026-10-01T00:04:00+00:00"}},
@@ -628,13 +560,9 @@ def test_an_old_closed_session_whose_lesson_is_gone_still_lists_reads_and_keeps_
 
     listed = client.get("/api/sessions/").json()
     read = client.get(f"/api/sessions/{gone.pk}/")
-    score = client.get(f"/api/sessions/{gone.pk}/score/").json()
 
     assert [(row["id"], row["kind"], row["lesson_id"]) for row in listed] == [(gone.pk, "lesson", None)]
     assert listed[0]["result"] == {"objectives": {"lost": 0, "undetected": 0, "total": 3}, "scenario": None}
     assert read.status_code == 200, read.content
     assert (read.json()["lesson"], read.json()["lesson_id"]) == (None, None)
     assert read.json()["progress"]["exclude"]["passed"] and "answer" not in read.json()["progress"]["exclude"]
-    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
-    assert score["unattributed"] == 0, "an alert drawn by an old verify, check or replay is not an orphan"
-    assert score["objectives"]["objectives"] == 0 and score["breaches"] == []

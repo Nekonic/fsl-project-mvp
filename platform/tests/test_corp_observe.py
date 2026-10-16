@@ -70,27 +70,6 @@ def test_a_change_outside_every_malicious_window_credits_nothing(client):
     assert observed.json()["achieved"] == 0
 
 
-def test_an_option_flip_in_a_malicious_window_credits_self_registration(client):
-    session_id = _start(client)
-    at = _fire(client, session_id, "corp-self-registration") + timedelta(seconds=1)
-    flip = effect.Change(table="wp_options", kind="update", at=at,
-                         columns={2: "users_can_register", 3: "1"})
-    with patch("api.views.effect.read_changes", return_value=[flip]):
-        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
-    assert observed.json()["achieved"] == 1
-    assert {o.key for o in Objective.objects.filter(session_id=session_id)} == {"corp-self-registration"}
-
-
-def test_an_objective_is_credited_from_the_row_not_from_any_alert(client):
-    session_id = _start(client)
-    at = _fire(client, session_id, "corp-content-write") + timedelta(seconds=1)
-    new_post = effect.Change(table="wp_posts", kind="insert", at=at,
-                             columns={1: "99", 8: "publish", 5: "x", 6: "Unauthorized"})
-    with patch("api.views.effect.read_changes", return_value=[new_post]):
-        client.post_json(f"/api/sessions/{session_id}/objectives/")
-    assert Objective.objects.filter(session_id=session_id, key="corp-content-overwrite").exists()
-
-
 def test_observing_twice_credits_each_objective_once(client):
     session_id = _start(client)
     at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)

@@ -134,8 +134,7 @@ The scripted cases in `redteam/cases/corp.yaml` are detection probes only
 (each real exploit needs a per-page nonce the harness cannot bake statically,
 so they cannot be scripted into a repeatable crediting case); the real
 objective credit is proven by the live two-step acceptance tests
-(`test/test_corp_authz.py`, `test_corp_observe_live.py`,
-`test_corp_cve_content_write.py`): fetch a fresh nonce, then exploit, inside a
+(`test/test_corp_authz.py`, `test_corp_observe_live.py`): fetch a fresh nonce, then exploit, inside a
 recorded session window, then `POST /objectives/` reads the credit from the
 committed binlog rows.
 

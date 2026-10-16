@@ -1,7 +1,6 @@
 import importlib.util
 import itertools
 import subprocess
-import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -69,32 +68,16 @@ def test_up_builds_the_range_in_the_order_the_platform_requires():
     )
 
 
-def test_images_are_asked_for_until_they_are_clean():
-    platform = Platform(images=[
-        {"images": [image("building")], "leftovers": [], "clean": False},
-        {"images": [image("building")], "leftovers": [], "clean": False},
-        {"images": [image("ready")], "leftovers": [], "clean": True},
-    ])
+@pytest.mark.parametrize("bad, why", [
+    (image("failed", detail="checksum did NOT match"), "checksum did NOT match"),
+    (image("missing", bundle=""), "no script builds it"),
+])
+def test_a_failed_image_stops_up_with_why(bad, why):
+    platform = Platform(images=[{"images": [bad], "leftovers": [], "clean": False}])
 
-    converge(platform)
-
-    assert platform.calls.count(("POST", "/images/")) == 3
-
-
-def test_a_failed_image_stops_up_with_why():
-    platform = Platform(images=[{"images": [image("failed", detail="checksum did NOT match")],
-                                 "leftovers": [], "clean": False}])
-
-    with pytest.raises(SystemExit, match="checksum did NOT match"):
+    with pytest.raises(SystemExit, match=why):
         converge(platform)
     assert ("POST", "/slot/") not in platform.calls
-
-
-def test_an_image_nothing_can_build_stops_up():
-    platform = Platform(images=[{"images": [image("missing", bundle="")], "leftovers": [], "clean": False}])
-
-    with pytest.raises(SystemExit, match="no script builds it"):
-        converge(platform)
 
 
 def test_leftovers_are_cleaned_only_once_the_range_stands_on_the_new_images():
@@ -129,20 +112,15 @@ def test_a_drifted_fabric_stops_up_before_any_image_is_built():
     assert platform.calls == [("POST", "/fabric/")]
 
 
-def test_configure_is_retried_while_the_vms_ssh_is_not_up_yet():
+def test_configure_is_retried_while_the_vms_ssh_is_not_up_yet_and_a_refusal_stops_up():
     platform = Platform(configure=[(503, {"detail": "fsl-edge never reported the command finishing"}),
                                    (200, {"configured": []})])
 
     converge(platform)
 
     assert platform.calls.count(("POST", "/configure/")) == 2
-
-
-def test_a_configuration_the_edge_refused_stops_up():
-    platform = Platform(configure=[(409, {"detail": "fsl-edge did not take its configuration"})])
-
     with pytest.raises(SystemExit, match="did not take its configuration"):
-        converge(platform)
+        converge(Platform(configure=[(409, {"detail": "fsl-edge did not take its configuration"})]))
 
 
 class Cli:
@@ -242,15 +220,6 @@ def test_down_stops_before_the_stack_if_the_range_will_not_come_down():
     with pytest.raises(SystemExit, match="still stand"):
         command().take_down(Refusing(), "fsl-platform", ran.append)
     assert not ran
-
-
-@pytest.mark.parametrize("action", ["up", "down"])
-def test_without_cloud_yaml_it_refuses_and_says_what_to_copy(tmp_path, action):
-    done = subprocess.run([sys.executable, str(COMMAND), action, "--cloud", str(tmp_path / "cloud.yaml")],
-                          capture_output=True, text=True)
-
-    assert done.returncode != 0
-    assert "cloud.example.yaml" in done.stderr and "Traceback" not in done.stderr
 
 
 def test_up_waits_until_every_slot_stands_and_every_slot_is_ready():

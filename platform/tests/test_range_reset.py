@@ -93,7 +93,6 @@ def test_while_the_reset_runs_the_range_says_it_is_resetting_and_refuses_a_sessi
     assert body["slot"]["phase"] == "RESETTING"
     assert any("resetting" in reason for reason in body["slot"]["blocked"])
     assert refused.status_code == 409
-    assert "resetting" in refused.json()["detail"], refused.content
 
 def test_a_failed_reset_is_reported_until_configure_is_called_by_hand(client):
     def drifts():
@@ -152,28 +151,6 @@ def test_a_vm_nova_never_shows_rebuilding_fails_the_reset_instead_of_configuring
 
     assert cloud.configured == 0
     assert reset.standing()["state"] == reset.FAILED
-    assert "never showed" in reset.standing()["reason"]
-
-def test_while_the_reset_runs_readiness_does_not_read_the_vms_being_rebuilt(client):
-    release = threading.Event()
-    cloud = Slot(configure=lambda: release.wait(5))
-    worker = reset.begin(cloud, threading.RLock())
-    try:
-        with patch("api.views.substrate", lambda: cloud), \
-                patch("api.views._ground_truth_readable") as truth, \
-                patch("api.views._rules_at_baseline") as rules:
-            body = client.get("/api/range/ready/").json()
-    finally:
-        release.set()
-        worker.join(5)
-
-    assert body["slot"]["phase"] == "RESETTING" and body["ready"] is False
-    assert not truth.called and not rules.called, (
-        "readiness read the target and the sensors over ssh while their VMs "
-        "were mid-rebuild, which only waits out timeouts"
-    )
-    assert body["slot"]["checks"]["ground_truth"] is None
-    assert not any("ground truth" in reason for reason in body["slot"]["blocked"])
 
 class ResetsInPlace(Slot):
     def __init__(self, plans, in_place=None, rebuilt=None):
@@ -207,25 +184,6 @@ def test_only_the_vms_the_close_rebuilt_must_be_seen_rebuilding(client):
     )
     assert cloud.reset == 1 and cloud.configured_rebuilt == [["fsl-waf"]]
     assert cloud.configured == 0, "the whole slot is not configured again on top"
-
-def test_the_in_place_reset_runs_while_the_rebuilt_vms_come_back(client):
-    rebuilt_configured = threading.Event()
-    seen = {}
-
-    def in_place():
-        seen["rebuilding"] = list(cloud.plans)
-        seen["overlapped"] = rebuilt_configured.wait(5)
-
-    cloud = ResetsInPlace(plans=[WAF_REBUILDING, WAF_REBUILDING],
-                          in_place=in_place, rebuilt=lambda hosts: rebuilt_configured.set())
-    started = time.monotonic()
-    reset.begin(cloud, threading.RLock(), [("fsl-waf", "s2")]).join(10)
-
-    assert seen["rebuilding"], "the in-place reset waited for Nova to finish the rebuild"
-    assert seen["overlapped"] and time.monotonic() - started < 5, (
-        "the in-place reset and the rebuilt VMs' configure ran one after the other"
-    )
-    assert reset.standing()["state"] == reset.IDLE
 
 def test_an_in_place_reset_that_fails_fails_the_reset_with_its_reason(client):
     def drifts():

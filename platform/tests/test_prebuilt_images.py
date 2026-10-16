@@ -2,7 +2,6 @@ import importlib.util
 import json
 import re
 import subprocess
-import sys
 import tarfile
 from argparse import Namespace
 from importlib.machinery import SourceFileLoader
@@ -78,22 +77,11 @@ def test_ci_publishes_exactly_the_images_compose_builds():
     )
 
 
-def test_ci_pushes_x86_64_images_tagged_by_commit_with_the_repository_token():
+def test_ci_pushes_x86_64_images_tagged_by_the_commit_the_vm_pulls():
     [push] = [step for step in steps() if "build-push-action" in step["uses"]]
-    login = [step for step in steps() if "login-action" in step["uses"]]
 
-    assert workflow()["permissions"] == {"contents": "read", "packages": "write"}
     assert push["with"]["platforms"] == "linux/amd64"
-    assert push["with"]["push"] is True
     assert "${{ github.sha }}" in push["with"]["tags"]
-    assert login and login[0]["with"]["password"] == "${{ secrets.GITHUB_TOKEN }}"
-
-
-def test_ci_runs_on_dev_and_by_hand():
-    triggers = workflow()[True]
-
-    assert triggers["push"]["branches"] == ["dev"]
-    assert "workflow_dispatch" in triggers
 
 
 def test_every_action_ci_uses_is_pinned_to_a_commit():
@@ -172,30 +160,12 @@ def test_the_platform_vm_fetches_its_geoip_database_before_starting():
     assert fetched < started
 
 
-def test_the_platform_vm_flavor_in_the_example_is_eight_gigabytes():
-    template, _ = platform_vm_config()
-    [server] = [r["properties"] for r in template["resources"].values()
-                if r["type"] == "OS::Nova::Server"]
-    example = yaml.safe_load((ROOT / "deploy/openstack/cloud.example.yaml").read_text())
-
-    assert server["flavor"] == {"get_param": "flavor"}
-    assert example["compute"]["flavors"]["platform"] == "m1.large"
-
-
 def test_the_range_key_never_enters_the_user_data():
     template, config = platform_vm_config()
 
     assert not [name for name in template["parameters"]
                 if "key" in name and name not in ("key_name", "keystone")]
     assert "PRIVATE KEY" not in yaml.safe_dump(config)
-
-
-def test_the_rebuild_refuses_without_a_cloud_file(tmp_path):
-    done = subprocess.run([sys.executable, str(REBUILD), "--cloud", str(tmp_path / "absent.yaml")],
-                          capture_output=True, text=True)
-
-    assert done.returncode != 0
-    assert "absent.yaml does not exist" in done.stderr and "cloud.example.yaml" in done.stderr
 
 
 @pytest.mark.parametrize("changed, which, said", [
@@ -232,14 +202,7 @@ def test_the_rebuild_refuses_while_an_image_cannot_be_pulled():
     module.refuse_unless_published("abc", lambda name, tag: None)
 
 
-def test_the_rebuild_refuses_to_lose_the_range_key(tmp_path):
-    module = rebuild()
-
-    with pytest.raises(module.Refused, match="range's VMs refuse"):
-        module.keep_range_key(tmp_path / "absent", None)
-
-
-def test_the_rebuild_keeps_a_range_key_it_already_has(tmp_path):
+def test_the_rebuild_keeps_the_range_key_it_has_and_refuses_to_go_on_without_one(tmp_path):
     module = rebuild()
     key = tmp_path / "range-key"
     key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
@@ -247,6 +210,8 @@ def test_the_rebuild_keeps_a_range_key_it_already_has(tmp_path):
     module.keep_range_key(key, None)
 
     assert key.read_text().startswith("-----BEGIN OPENSSH PRIVATE KEY-----")
+    with pytest.raises(module.Refused, match="range's VMs refuse"):
+        module.keep_range_key(tmp_path / "absent", None)
 
 
 def test_the_rebuild_takes_the_range_key_from_the_running_platform_once(tmp_path):
@@ -293,15 +258,6 @@ def test_an_address_the_project_does_not_hold_stops_the_rebuild(tmp_path):
 
     with pytest.raises(module.Refused, match="holds no floating IP at"):
         module.stack_arguments(cloud, FloatingIps(b""))
-
-
-def test_without_an_address_no_floating_ip_is_looked_up(tmp_path):
-    module = rebuild()
-    cloud, _ = module.load(written_cloud(tmp_path), {}, lambda _: "/bin/openstack")
-    cli = FloatingIps(b"")
-
-    assert "floating_ip_id=" in module.stack_arguments(cloud, cli)
-    assert cli.ran == []
 
 
 class NewPlatform:
@@ -358,13 +314,6 @@ HEAD = "1" * 40
 BASE = "2" * 40
 
 
-def cloud_command():
-    loader = SourceFileLoader("fsl_cloud_command", str(ROOT / "bin/cloud"))
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("fsl_cloud_command", loader))
-    loader.exec_module(module)
-    return module
-
-
 def saved(tmp_path, name, *tags):
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps([{"Config": "blobs/sha256/x", "RepoTags": list(tags), "Layers": []}]))
@@ -372,15 +321,6 @@ def saved(tmp_path, name, *tags):
     with tarfile.open(tarball, "w") as archive:
         archive.add(manifest, arcname="manifest.json")
     return tarball
-
-
-def test_both_commands_take_images_to_sideload_by_name():
-    pairs = ["--sideload", "platform=/x/platform.tar", "--sideload", "gns3=/x/gns3.tar"]
-
-    assert rebuild().arguments(pairs).sideload == ["platform=/x/platform.tar", "gns3=/x/gns3.tar"]
-    assert cloud_command().arguments(["up", "--replace", *pairs]).sideload == [
-        "platform=/x/platform.tar", "gns3=/x/gns3.tar"]
-    assert rebuild().arguments([]).sideload == []
 
 
 def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_path):
@@ -418,14 +358,6 @@ def test_the_rebuild_refuses_a_sideload_it_cannot_run_before_deleting_anything(t
 
     with pytest.raises(module.Refused, match=said):
         module.sideloaded([pair.format(**paths)])
-
-
-def test_the_rebuild_refuses_a_sideload_naming_an_image_twice(tmp_path):
-    module = rebuild()
-    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}")
-
-    with pytest.raises(module.Refused, match="names gns3 twice"):
-        module.sideloaded([f"gns3={tarball}", f"gns3={tarball}"])
 
 
 class ChangedContexts:

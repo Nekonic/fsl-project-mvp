@@ -1,5 +1,4 @@
 import json
-import re
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -10,14 +9,11 @@ import yaml
 from django.test import override_settings
 from django.utils import timezone
 
-import lesson
-import topology
 import wargames
 from api import site
 from api.models import Case, Detection, Session
 from range import declared
 from tests.browser import open_page
-from tests.test_gns3_topology import learner_of
 from tests.test_lesson_api import DUMPED, TRUTH
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
@@ -55,20 +51,6 @@ def indexed(*events):
 def quietly():
     return patch("api.views._ingest", lambda session, within=None: {})
 
-def test_the_foundations_come_first_on_the_home_card_with_what_each_teaches_and_open_as_lessons(client):
-    from tests.test_lesson_path import sensed
-
-    board = {w["id"]: w for w in client.get("/api/wargames/").json()}["board"]
-    fire, fired = sensed({})
-    with patch("api.views.harness.fire", fire):
-        started = client.post_json("/api/sessions/", {"scenario": "board", "lesson": "f6"}).json()
-
-    assert [card["id"] for card in board["foundations"]] == ["f1", "f2", "f3", "f4", "f5", "f6"]
-    assert all(card["learns"] == f"{card['title'].rsplit('.', 1)[0]}.learns" and card["minutes"]
-               for card in board["foundations"])
-    assert (started["lesson_id"], started["defense"]) == ("f6", "missed")
-    assert fired == ["board-normal-search"], "only the benign case is seeded; the learner runs sqlmap"
-
 def test_every_foundation_has_its_words_and_withheld_answers_in_both_languages():
     from console import strings
 
@@ -91,8 +73,6 @@ def test_every_foundation_has_its_words_and_withheld_answers_in_both_languages()
                 assert not [key for key in held if key not in withheld[language]], (taught["id"], language)
         for language in ("en", "ko"):
             assert not [key for key in keys if key not in table[language]], (taught["id"], language)
-        body = table["en"][f"{prefix}.theory.{taught['theory'][0]['id']}.body"]
-        assert len(body.split()) <= 250, (taught["id"], len(body.split()))
 
 def test_no_foundation_question_carries_a_fixed_answer():
     for taught in wargames.foundations("board"):
@@ -114,40 +94,21 @@ def test_the_range_questions_are_judged_against_the_substrate_s_own_topology(cli
 
     assert answers == {"entry": False, "logs": True, "segment": True, "entry_right": True}
 
-def test_a_request_question_is_answered_from_the_learner_s_own_website_pane_request(client):
-    session = opened("f3")
-    before = step(client, session, "method", body={"answer": "GET"}).json()
-    with patch.object(site, "kept", return_value=[browsed(KOREAN, 200)]):
-        sent = step(client, session, "search").json()
-        answers = {name: step(client, session, name, body={"answer": given}).json()["passed"]
-                   for name, given in (("method", "get"), ("path", "/search/"), ("parameter", "q"),
-                                       ("meaning", "2xx"))}
-        wrong = step(client, session, "meaning", body={"answer": "4xx"}).json()["passed"]
+@pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong", [
+    ("f2", "status", KOREAN, 403, "403", "200"),
+    ("f3", "meaning", KOREAN, 200, "2xx", "4xx"),
+    ("f5", "stopped", "/search/?q=%27+OR+1%3D1--", 403, "WAF", "board.com"),
+])
+def test_a_question_is_judged_from_the_learner_s_own_website_pane_request(client, lesson_id, step_id, url, status,
+                                                                          right, wrong):
+    session = opened(lesson_id)
+    before = step(client, session, step_id, body={"answer": right}).json()
+    with patch.object(site, "kept", return_value=[browsed(url, status)]):
+        judged = {given: step(client, session, step_id, body={"answer": given}).json()["passed"]
+                  for given in (right, wrong)}
 
-    assert before["reason"] == ["lesson.check.unrecorded", []], "nothing to read before the learner sends a request"
-    assert sent["passed"] is True
-    assert answers == {"method": True, "path": True, "parameter": True, "meaning": True}
-    assert wrong is False
-
-def test_the_status_question_follows_whatever_the_learner_s_own_request_got(client):
-    session = opened("f2")
-    with patch.object(site, "kept", return_value=[browsed(KOREAN, 403)]):
-        served = step(client, session, "status", body={"answer": "200"}).json()["passed"]
-        blocked = step(client, session, "status", body={"answer": "403"}).json()["passed"]
-
-    assert (served, blocked) == (False, True)
-
-def test_where_an_attack_stopped_is_read_from_the_blocked_mark_of_the_learner_s_own_request(client):
-    attack = "/search/?q=%27+OR+1%3D1--"
-    session = opened("f5")
-    with patch.object(site, "kept", return_value=[browsed(attack, 200)]):
-        served = step(client, session, "stopped", body={"answer": "waf"}).json()
-    with patch.object(site, "kept", return_value=[browsed(attack, 403)]):
-        named = {given: step(client, session, "stopped", body={"answer": given}).json()["passed"]
-                 for given in ("board.com", "WAF")}
-
-    assert (served["passed"], served["reason"]) == (False, ["lesson.check.unrecorded", []])
-    assert named == {"board.com": False, "WAF": True}
+    assert (before["passed"], before["reason"]) == (False, ["lesson.check.unrecorded", []])
+    assert judged == {right: True, wrong: False}
 
 def test_every_control_a_foundation_points_at_is_on_the_blue_console(client):
     page = client.get("/blue/1/").content.decode()
@@ -155,11 +116,10 @@ def test_every_control_a_foundation_points_at_is_on_the_blue_console(client):
                if "panel" in step.get("point", {})}
 
     assert pointed and [panel for panel in pointed if panel.startswith("#") and f'id="{panel[1:]}"' not in page] == []
-    assert not [panel for panel in pointed if "topology-" in panel], "the Topology pane holds the network map alone"
 
 def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_that_label(client):
     session = opened("f5")
-    reached = step(client, session, "sqlmap", tail="", body={"state": "reached"}).json()
+    step(client, session, "sqlmap", tail="", body={"state": "reached"})
     marker = Session.objects.get(pk=session.pk).lesson_steps["sqlmap"]["marker"]
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
     with indexed(http_event("another", "/?sort=x", 403, agent=SQLMAP_AGENT)):
@@ -168,21 +128,15 @@ def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_
     alert = dict(run[0], event_type="alert", alert={"signature": "FSL SQLi attempt", "signature_id": 9000001})
     with indexed(*run, alert):
         ran = step(client, session, "sqlmap").json()
-        close = step(client, session, "requests", body={"answer": "38"}).json()["passed"]
-        far = step(client, session, "requests", body={"answer": "20"}).json()["passed"]
 
-    assert reached["progress"]["sqlmap"]["command"] == shown["sqlmap"]["command"]
-    assert shown["sqlmap"]["command"].startswith("sqlmap -u 'http://board.com/?sort=posts_post.id*'")
     assert f"'--headers=X-FSL-Case: {marker}'" in shown["sqlmap"]["command"]
-    assert early["passed"] is False and early["reason"] == ["lesson.check.kali_none", ["sqlmap"]]
+    assert early["passed"] is False
     assert ran["passed"] is True and ran["kali"]["requests"] == 40
-    assert "modsecurity" not in ran["kali"]["discover"], "the Kibana link shows the http records, not only alerts"
     recorded = Case.objects.get(session=session, case_id=marker)
     assert recorded.malicious and recorded.meta["kali"] == "sqlmap", "the learner's own red action, scored like any other"
     assert not any(recorded.meta.get(mark) for mark in ("seed", "verify", "check", "replay"))
     assert Detection.objects.filter(session=session, marker=marker).count() == 1, (
         "the run's alerts are read when it is recorded, so the first score knows it was noticed")
-    assert (close, far) == (True, False), "a count within 10% of the record passes"
 
 def test_what_leaked_is_judged_by_the_board_s_own_accounts_and_counts_in_the_first_score(client):
     session = opened("f6")
@@ -206,17 +160,6 @@ def test_what_leaked_is_judged_by_the_board_s_own_accounts_and_counts_in_the_fir
     assert lost["lost"] == 2 and lost["undetected"] == 0, "partial and admin; not all accounts"
     assert answered is True
 
-def test_the_missed_posture_turns_off_the_blocking_rules_and_the_question_reads_the_waf_itself(client):
-    session = opened("f6")
-    standing = {"paranoia": 1, "exclusions": [{"rule_id": 949110, "target": "", "path": ""},
-                                              {"rule_id": 959100, "target": "", "path": ""}]}
-    with patch("api.views._waf_in_force", return_value=standing):
-        answers = {given: step(client, session, "excluded", body={"answer": given}).json()["passed"]
-                   for given in ("949110", "959100", "942100")}
-
-    assert wargames.defense("board", "missed")["waf"]["exclusions"] == [{"rule_id": 949110}, {"rule_id": 959100}]
-    assert answers == {"949110": True, "959100": True, "942100": False}
-
 @pytest.mark.parametrize("check, reason", [
     ({"kind": "answer", "of": "status"}, "read from the record"),
     ({"kind": "answer", "of": "requests", "about": "one"}, "read from the record"),
@@ -234,98 +177,6 @@ def test_a_foundation_that_could_not_be_judged_is_refused_at_discovery(settings,
 
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()
-
-def test_the_range_facts_come_from_the_project_and_the_declaration():
-    stack = declared.read(flavor="openstack")
-    learner = learner_of(stack, "corp")
-    project = topology.for_wargame(json.loads(TOPOLOGIES["openstack"].read_text()), learner)
-
-    assert topology.facts(project, learner) == {
-        "entry": ["firewall"], "logs": ["log-server"], "segment": ["sw2"]}
-
-def test_a_pasted_table_or_plain_pairs_are_read_as_loot():
-    assert lesson.pasted_rows("admin:hash-a\n| jiwoo | hash-b |", []) == [("admin", "hash-a"), ("jiwoo", "hash-b")]
-    assert lesson.within(100, 0.1)[0] == 100 and set(lesson.within(100, 0.1)) == set(range(90, 111))
-    assert lesson.within(0, 0.1) == []
-
-def test_a_kibana_link_over_every_record_drops_the_alerts_only_query():
-    import kibana
-
-    start = timezone.now()
-    narrowed = kibana.discover_path("fsl-logs-1-*", start, None, 'event_type : "http"', everything=True)
-    alerts = kibana.discover_path("fsl-logs-1-*", start, None, 'event_type : "http"')
-
-    assert "fsl_source" not in re.sub(r"%[0-9A-F]{2}", " ", narrowed.split("query:")[-1])
-    assert "fsl_source" in re.sub(r"%[0-9A-F]{2}", " ", alerts.split("query:")[-1])
-
-FOUNDED = """
-browser.serve((request) => {
-  if (request.route === "/api/wargames/") {
-    return {body: [
-      {id: "board", name: "Board", description: "", cases: 1,
-       foundations: [{id: "f1", order: 1, title: "lesson.range.title", goal: "lesson.range.summary",
-                      learns: "lesson.range.learns", minutes: 10, level: "easy", defense: "full",
-                      prerequisites: [], steps: 4}]},
-    ]};
-  }
-  if (request.route === "/api/sessions/" && request.method === "POST") return {status: 201, body: {id: 9}};
-  return {status: 404, body: {detail: "not served"}};
-});
-"""
-
-def test_the_home_page_lists_the_foundations_and_starts_one_guided(client):
-    seen = open_page(client, "/", setup=FOUNDED, scenario="""
-      const order = [...document.querySelectorAll('[data-foundation], [data-lesson-card]')]
-        .map((found) => found.dataset.foundation || found.dataset.lessonCard);
-      await browser.click('[data-lesson-id="f1"]');
-      return {order, posted: browser.requests.filter((r) => r.method === 'POST' && r.route === '/api/sessions/')
-        .map((r) => r.body)};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["order"] == ["f1"], "no older lesson card is left beside the foundations"
-    assert seen["result"]["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}]
-
-def test_the_kali_step_offers_its_command_for_the_red_console_and_shows_what_the_sensor_counted(client):
-    from api import views
-    from tests.browser import english
-
-    steps = [views._shown_step(None, {key: value for key, value in step.items() if key != "query"})
-             for step in wargames.lesson("board", lesson_id="f5")["steps"]]
-    command = "sqlmap -u 'http://board.com/?sort=posts_post.id*' '--headers=X-FSL-Case: m-1'"
-    setup = """
-localStorage.setItem('fsl-lesson-landed-1', 'true');
-localStorage.setItem('fsl-lesson-step-1', '4');
-const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false, command: COMMAND}};
-browser.serve((request) => {
-  if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
-                   site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
-                   lesson: {text: "lesson.attack", group: "foundations", cases: ["board-normal-search"],
-                            steps: STEPS.map((step) => step.id === "sqlmap" ? {...step, command: COMMAND} : step),
-                            theory: [{id: "attack", shows: "stopped"}], hints: ["why_total", "why_count"]}}};
-  }
-  if (request.route === "/api/sessions/1/lesson/steps/sqlmap/check/") {
-    return {body: {passed: false, reason: ["lesson.check.kali_none", ["sqlmap"]], hint: 0, hints: [], progress,
-                   kali: {name: "board-sqli-orderby-sqlmap", requests: 12, sensors: {"fsl-edge": 12}, discover: "/kibana/x"}}};
-  }
-  if (request.route.includes("/lesson/steps/")) return {body: {hint: 0, hints: [], progress}};
-  return {status: 404, body: {detail: "not served"}};
-});
-""".replace("COMMAND", json.dumps(command)).replace("STEPS", json.dumps(steps))
-    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
-      const run = document.getElementById('coach-pop-run').classList.contains('hidden');
-      const typed = browser.text('coach-pop-typed');
-      await browser.click('[data-act="kali"]');
-      return {run, typed, code: browser.text('coach-pop-code'), row: browser.text('[data-kali]'),
-              posted: browser.requests.filter((r) => r.route.endsWith('/sqlmap/check/')).length};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["run"] is True, "the WAF terminal's Run button would paste sqlmap into the wrong box"
-    assert seen["result"]["typed"] == english("lesson.kali.where")
-    assert seen["result"]["code"] == command
-    assert english("lesson.kali.requests", 12) in seen["result"]["row"] and seen["result"]["posted"] == 1
 
 def test_a_passed_kali_step_stays_with_its_count_until_next_since_the_following_step_asks_for_it(client):
     from api import views

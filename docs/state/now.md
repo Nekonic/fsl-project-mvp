@@ -46,6 +46,10 @@ Updated: 2026-10-16 (after the follow view's live run). Written for a session th
   step passed through the real panes; `bin/verify` there after it: unit 2441
   passed; acceptance 74 passed, 0 failed, 71 skipped in 730 s; ratchet holds
   (`docs/DECISIONS.md` 2026-10-16 "The follow view is removed").
+- The test audit (2026-10-16, `docs/DECISIONS.md` "Test audit"): test
+  functions 2,061 -> 1,051, unit cases 2,459 -> 1,458; the test count is
+  reported, not gated. Acceptance edits await the next full `bin/verify` on
+  the VM.
 
 ## Waiting for the user
 
@@ -57,8 +61,7 @@ Updated: 2026-10-16 (after the follow view's live run). Written for a session th
    the GHCR images of the new commit, and the `fsl-wargame-host` image
    rebuilt for its tag.
 3. Release the leftover floating IP 192.168.0.220 in `fsl-range`.
-4. Test audit (2026-10-10 list), the `/api/rules/suppressions/` rename,
-   publishing the OPNsense image.
+4. The `/api/rules/suppressions/` rename, publishing the OPNsense image.
 
 ## Next, in order
 
