@@ -326,3 +326,39 @@ browser.serve((request) => {
     assert seen["result"]["typed"] == english("lesson.kali.where")
     assert seen["result"]["code"] == command
     assert english("lesson.kali.requests", 12) in seen["result"]["row"] and seen["result"]["posted"] == 1
+
+def test_a_passed_kali_step_stays_with_its_count_until_next_since_the_following_step_asks_for_it(client):
+    from api import views
+
+    steps = [views._shown_step(None, {key: value for key, value in step.items() if key != "query"})
+             for step in wargames.lesson("board", lesson_id="f5")["steps"]]
+    setup = """
+localStorage.setItem('fsl-lesson-landed-1', 'true');
+localStorage.setItem('fsl-lesson-step-1', '4');
+const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false}};
+browser.element('pane-frame').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
+                   site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
+                   lesson: {text: "lesson.attack", group: "foundations", cases: ["board-normal-search"], steps: STEPS,
+                            theory: [{id: "attack", shows: "stopped"}], hints: ["why_total", "why_count"]}}};
+  }
+  if (request.route === "/api/sessions/1/lesson/steps/sqlmap/check/") {
+    return {body: {passed: true, reason: null, hint: 0, hints: [], progress: {sqlmap: {reached: "now", passed: "now", hint: 0}},
+                   kali: {name: "board-sqli-orderby-sqlmap", requests: 1896, sensors: {"fsl-edge": 1896}, discover: "/kibana/x"}}};
+  }
+  if (request.route.includes("/lesson/steps/")) return {body: {hint: 0, hints: [], progress}};
+  return {status: 404, body: {detail: "not served"}};
+});
+""".replace("STEPS", json.dumps(steps))
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      await browser.click('[data-act="kali"]');
+      await browser.wait(3000);
+      return {count: browser.text('coach-pop-count'), row: browser.text('[data-kali]'),
+              next: !browser.element('coach-pop-next').disabled};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["count"] == "4 / 5", "the requests step asks for the count this row shows"
+    assert "1896" in seen["result"]["row"] and seen["result"]["next"] is True

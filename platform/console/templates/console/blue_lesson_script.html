@@ -159,6 +159,7 @@ function noteControls(landing = "goal") {
 
 const AUTOMATIC = ["rules", "sent", "triage"];
 const POLLED = ["sent", "triage"];
+const READ_BEFORE_MOVING_ON = ["kali"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
 const refreshers = [];
@@ -649,6 +650,10 @@ function coach(prefix, declared) {
       say(line, "ok");
       show(false);
       status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
+      return;
+    }
+    if (READ_BEFORE_MOVING_ON.includes(step.check.kind)) {
+      say(line, "ok");
       return;
     }
     passing = true;
