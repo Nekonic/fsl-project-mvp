@@ -218,9 +218,12 @@ docker compose exec platform \
 ## 검증
 
 ```bash
+bin/verify --changed  # only the unit tests the change reaches, and the ratchet
 bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
+
+`--changed`는 `dev`와의 merge-base(또는 지정한 커밋이나 `A..B`)와 비교해, 바뀐 파일마다 어떤 테스트에 닿는지와 그 이유를 출력한다. `bin/select-tests`는 아무것도 실행하지 않고 그 결과만 출력한다. `--live`를 함께 주면 변경이 닿는 acceptance 모듈도 실행한다(`bin/acceptance --only`).
 
 전체 실행은 플랫폼을 재시작하고 대상 시스템, 규칙, 공격자의 출발지를 초기화하므로, 누군가 쓰고 있는 스택에는 돌려서는 안 된다. 세션은 그 실행이 직접 만든 것만 지운다. acceptance 단계는 `bin/acceptance`다: 레인지가 동시에 열 수 있는 세션 수(`GET /api/range/ready/`의 `max_sessions`)만큼 pytest 프로세스를 띄우고, Elasticsearch만 읽는 검사용 프로세스를 하나 더 띄운다. `bin/acceptance --plan`이 나눈 결과를 출력하고, `test/README.md`가 설명한다. 플랫폼이 localhost에서 듣지 않는 경우(OpenStack 플랫폼 VM)에는 그 호스트에서 `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하며, 플랫폼이 compose가 아닌 substrate를 보고하면 compose 레인지를 다루는 테스트는 skip된다. `bin/prune`은 세션을 수동으로 지우고, `--apply` 없이 실행하면 dry run이다.
 
