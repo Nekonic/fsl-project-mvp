@@ -37,7 +37,9 @@ modules and the two corp exploit checks.
 pytest processes over disjoint sets of modules and prints one summary line
 with the totals of all of them (from each process's JUnit report).
 `bin/acceptance --plan` prints the split without running it;
-`--workers N` overrides the count, and any other argument goes to pytest.
+`--workers N` overrides the count, `--only test_a,test_b` limits the run to
+those modules (what `bin/verify --changed --live` passes), and any other
+argument goes to pytest.
 
 - **Workers.** N is `max_sessions` from `GET /api/range/ready/`: docker 2
   (`FSL_MAX_SESSIONS`), OpenStack the range's slot count (`compute.slots`,

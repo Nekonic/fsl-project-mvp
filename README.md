@@ -468,9 +468,15 @@ For corp: `--cases redteam/cases/corp.yaml`.
 ## Checking it
 
 ```bash
+bin/verify --changed  # only the unit tests the change reaches, and the ratchet
 bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
+
+`--changed` diffs against the merge-base with `dev` (or a commit, or `A..B`)
+and prints which tests each changed file reaches and why; `bin/select-tests`
+prints that without running anything. With `--live` it also runs the
+acceptance modules the change reaches (`bin/acceptance --only`).
 
 The full run restarts the platform and resets the target, the rules and the
 attacker's origin, so do not run it against a stack someone is using. It
