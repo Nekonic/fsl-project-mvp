@@ -268,7 +268,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   이름으로 옮긴다: 호스트(`fsl-kali`는 `kali`이고, 고객 프로그램이 거기서 돌면 `customers`도;
   `fsl-edge`는 `firewall`; wargame 호스트와 사이트 컨테이너는 사이트; `fsl-elasticsearch`는
   `log-server`), 역할, 구간에서 스위치로(출발지는 `internet`, estate는 `sw1`, 워게임의 compose
-  네트워크는 `sw2`; 관리 구간은 NIC 이름만 붙이도록 `sw3`), 센서마다 그 NIC를 쓰는 노드. overlay, 따라가기, 레슨의 레인지
+  네트워크는 `sw2`; 관리 구간은 NIC 이름만 붙이도록 `sw3`), 센서마다 그 NIC를 쓰는 노드. overlay, 레슨의 레인지
   질문, 인터페이스 읽기가 모두 이것을 거친다. 링크는 모두 직선 하나(수평, 수직, 대각선)이고 다른 링크나
   노드를 가로지르지 않는다. 바로 위에서 링크가 들어오는 노드는 이름을 옆에 둔다. 호스트는 모두 크기와 선 굵기가 같은 네모 틀 하나다(`host-*.svg`,
   GNS3 이미지를 빌드할 때 `deploy/gns3/symbols.py`가 만들고 `provision.py`가 올린다). 틀 안은 GNS3에
@@ -379,42 +379,18 @@ uBridge가 시작한 노드의 인터페이스를 컨테이너의 호스트 pid 
 시스템 지도의 `qemu` 노드를 위해 남긴다. 호스트 데몬은 컨테이너의 바인드 마운트를 호스트에서 찾으므로
 데이터 디렉터리는 양쪽에서 같은 경로다(`/var/lib/fsl-gns3`). 서버는 `gns3` 사용자로 돌고, 플랫폼의
 `fsl`처럼 시작할 때 소켓의 그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로
-보고할 때만 웹 UI(`web_ui`)를 내주고, 아니면 콘솔의 토폴로지 창이 같은 지도를 직접 그린다.
+보고할 때만 웹 UI(`web_ui`)를 내주고, 아니면 콘솔의 토폴로지 창은 지도가 열려 있지 않다고 알린다.
 
 `GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 학습자 지도를(`&session=<id>`가
 있으면 위의 그 세션 워게임의 지도를) GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면
 `en`, 다른 값이면 400). 콘솔은 자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로
-연다. 아래의 오버레이와 따라가기는 세션 워게임의 영어 지도를 읽는다: 짝은 노드 이름과 링크가 같아서
-홉은 어느 지도에서나 같고, 창은 받은 프로젝트를 그린다. `GET /api/sessions/<id>/topology/`는
+연다. 토폴로지 창은 이 지도 하나다: 프레임에 넣은 GNS3 웹 UI와 화면 맞추기 버튼. `GET
+/api/sessions/<id>/topology/`는 세션 워게임의 영어 지도를 읽고(짝은 노드 이름과 링크가 같다)
 `project.nodes`를 더한다: 같은 레인지 읽기에서 얻은 호스트 노드별 스위치 주소와 `running` 또는 `not
-reported`. `GET /api/sessions/<id>/topology/follow/?request=<웹사이트 창 요청 id>`(또는 `?case=<케이스
-id>`, `?customer=<고객 요청 마커>`, `?marker=`)는 사실만으로 지도의 이름으로 경로를 그린다. 보낸 쪽은
-실제로 보낸 것이다: 웹사이트 창 요청은 플랫폼의 사이트 프록시(scorer 역할), 실행한 케이스는
-`kali`, 고객 요청은 `customers`, 마커만 있으면 proxy 역할. 학습자 지도에 없는 보낸 쪽은 훈련용
-배관이다: 웹사이트 창 요청은 `console` 홉(학습자의 브라우저, WAF가 기록한 그 주소)에서 시작해 `mgmt`나
-플랫폼을 거치지 않고 바로 `waf`에 닿고, proxy가 표시한 마커는 `kali`에서 그린다. 세션 overlay는
-지도에 있는 호스트와 지도에 있는 스위치의 주소만 싣는다. 목적지는 요청이 닿은 주소다: 사이트 프록시는 소켓이 연결된 WAF 주소를
-기록하고, 케이스는 경보에 적힌 주소를, 없으면 레인지가 내주는 이름(케이스가 출발한 구간의
-게이트웨이 주소, 없으면 모든 레인지 호스트의 `/etc/hosts`대로 estate의 주소)을 쓴다. 보낸
-쪽은 케이스를 띄운 구간(`launched_on`으로 기록) 또는 목적지와 같이 붙은 구간으로 나가고, 구간이
-바뀌면 두 구간에 모두 링크된 엣지·게이트웨이·wargame 호스트 하나를 지나며, 게이트웨이는 estate로
-대상에 닿는다. 어떤 사실로도 정해지지 않는 구간은 추측한 링크가 아니라 `unknown` 홉이다. 호스트
-홉마다 이 요청의 기록이 있는지(`evidence`)를 말한다: suricata 경보는 그 센서가 지켜보는 노드에
-붙고(`firewall`, 사이트 호스트의 estate 센서는 사이트, Docker는 `waf`), 센서는 경보의 syslog hostname으로 가른다(`fsl-edge`와 `fsl-wargame-host`, 슬롯 접미사
-포함). 경로 위에 없는 센서의 경보는 `elsewhere`로 돌려준다. WAF 판정(403이거나 CRS 차단 평가
-949110이면 차단, 다른 상태 코드나 기록된 규칙이 있으면 통과, 아니면 알 수 없음)과 규칙 id는
-게이트웨이에 붙고, 대상은 WAF가 통과시키고 502-504가 아닌 응답이 왔을 때만 도달로 본다.
-
-따라가기는 먼저 최근 600초를 수집한다(블루 콘솔은 스스로 수집하지 않으므로, 방금 막힌 요청은 그러지
-않으면 규칙이 보이지 않는다). 또 그 요청의 Suricata `http` 이벤트를 수집 경로로 읽는다
-(`elastic.fetch`, 전체 수집과 같은 페이지 나눔; 표시는 `elastic.suricata_marker`로 읽는다):
-웹사이트 창 요청은 그 시간 창 안의 browse 마커로, 이벤트에 마커가 없으면 같은 URL로; 실행한 케이스는
-그 시간 창 안의 케이스 id로, 고객 요청은 보낸 시각 앞뒤의 그 마커로. 센서 홉은 `requests`(그 센서가 이 요청을 기록한 http 기록 수)와 앞의
-다섯 개를 `seen`(출발지, 목적지와 포트, 메서드, URL, 상태 코드)으로 싣고, http 기록도 증거다. 경보가
-하나도 없던 요청도 센서를 지나간 것으로 보인다. http 이벤트는 `Detection` 행이 되지 않으므로 어느
-점수에도 들어가지 않는다. overlay는 레인지가 보고하는 이름으로 호스트를 놓는다. OpenStack은 슬롯의
-서버를 선언 이름(`slot.known_as`)으로 보고하고, syslog 기록에 실리는 VM 자체의 hostname만 슬롯 접미사를
-가진다.
+reported`. 세션 overlay는 지도에 있는 호스트와 지도에 있는 스위치의 주소만 싣는다. overlay는 레인지가
+보고하는 이름으로 호스트를 놓는다. OpenStack은 슬롯의 서버를 선언 이름(`slot.known_as`)으로 보고하고,
+syslog 기록에 실리는 VM 자체의 hostname만 슬롯 접미사를 가진다. 요청 하나의 경로를 지도에 그리던
+따라가기 화면은 2026-10-16에 없앴다(`docs/DECISIONS.md`).
 
 ## 격리 경계(isolation seams)
 
@@ -795,8 +771,8 @@ level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 
 알지 않는다. 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는 필요한 창을 밝힌다(`opens`: 사이트,
 Kibana, 토폴로지, 판정, IDS 규칙, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는 "왼쪽
 웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
-보기 전환, 토폴로지 창의 요청과 홉, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
-`data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`와 대체용 `first`로 행
+보기 전환, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
+`data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule`과 대체용 `first`로 행
 펼치기), 또는 창 전체. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다. 현재 단계의 말과 이전/다음은
 popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만 보이고, popover를 닫은
 뒤에만 "가이드 다시 보기"를 보인다. popover는 driver.js 방식이다: 대상에 화살표로 붙어
@@ -828,10 +804,10 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
 | f1 내 레인지 | `full` | 토폴로지 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
-| f2 요청 하나 따라가기 | `full` | 웹사이트 창에서 한국어로 검색하고 토폴로지 창에서 따라간다 | 학습자 자신의 웹사이트 창 요청: 따라가기의 출발지 주소, URL의 포트와 http 기록의 목적지 포트, 상태 코드 |
+| f2 요청 하나의 경로 | `full` | 네트워크 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
 | f3 HTTP | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
 | f4 로그 읽기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
-| f5 공격 따라가기 | `full` | `' OR 1=1--`를 보내 따라가서 막은 호스트와 알아본 룰을 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 따라가기의 차단 홉, 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
+| f5 공격 하나 읽기 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
 | f6 놓치면 무엇을 잃나 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
 
 `missed`는 CRS paranoia level 1에 949110과 959100을 `ruleRemoveById`로 끄고 `local.rules`를 쓴다. 단원의
@@ -849,7 +825,7 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 귀속한다. `_credit_loot`는 일치한 계정을 귀속된 케이스에 남긴다(`meta.loot`).
 
 답은 `of:`로 읽는다: 레인지 사실 `entry`, `logs`, `segment`, `lost`, `excluded`; `sent` 단계를 `about:`으로
-가리키는 `source`, `port`, `status`, `method`, `path`, `parameter`, `status_class`, `engine`,
+가리키는 `status`, `method`, `path`, `parameter`, `status_class`, `engine`,
 `sensor_source`, `waf_source`, `stopped_at`(그와 맞는 가장 최근 웹사이트 창 요청); `kali` 단계를
 가리키는 `requests`, `leaked`; 또는 그 요청의 `path`와 함께 `rule`(위). 그 밖은
 `wargames.read_from_record`가 discovery에서 거부한다. 단계는 모든 기록에

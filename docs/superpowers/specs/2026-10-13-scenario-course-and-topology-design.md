@@ -60,10 +60,10 @@ range, a question answered from the learner's own records.
 | Unit | The learner | Checked from |
 |---|---|---|
 | F1 My range | reads the topology: users, attacker, edge, WAF, web server, DB, log server | topology |
-| F2 Follow one request | searches in Korean in the Website pane and follows it hop by hop | own request: source IP, port, status |
+| F2 The path of one request | reads the hops on the network map; searches in Korean in the Website pane and reads the status code in its developer tools (the follow view it first followed the request in was removed 2026-10-16 by the user) | own request: status |
 | F3 HTTP | URL, parameter, method, status code on that request | own request |
 | F4 Reading logs | finds the request in Kibana, reads its fields | own detections |
-| F5 Follow an attack | sends `' OR 1=1` and runs sqlmap; finds where it stopped | own detections |
+| F5 Read one attack | sends `' OR 1=1` and runs sqlmap; finds where it stopped (developer tools) and the rule (Kibana) | own request and detections |
 | F6 What a miss costs | the same attack with the rule off: accounts leak, the first score says lost | target ground truth |
 
 ### Scenarios
@@ -99,8 +99,9 @@ O'Brien stays a benign regression case only.
   its own port; nodes are never started (no KVM, no privilege, no docker
   socket). Learners see its web UI in the blue console read-only (the
   built-in Auditor role). The request-path overlay (Packet Tracer's
-  simulation mode as precedent) is drawn by the console from the same file
-  (`GET /v3/projects/{id}/gns3file`) and the session's detections.
+  simulation mode as precedent), drawn by the console from the same file and
+  the session's detections, was built as the follow view and removed on
+  2026-10-16 by the user; the Topology pane is the map alone.
 - GNS3's MCP service (3.1) is for development only; it is not exposed to
   learners.
 

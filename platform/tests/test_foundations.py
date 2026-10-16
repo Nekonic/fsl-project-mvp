@@ -38,7 +38,7 @@ def step(client, session, step_id, tail="check/", body=None):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
 
 def browsed(url, status, request_id=1, ms=40):
-    return {"id": request_id, "at": time.time(), "method": "GET", "url": f"http://board.com{url}", "to": "10.31.0.44",
+    return {"id": request_id, "at": time.time(), "method": "GET", "url": f"http://board.com{url}",
             "status": status, "blocked": status == 403, "ms": ms}
 
 def http_event(marker, url, status, host="fsl-wargame-host", agent="Mozilla/5.0", **fields):
@@ -136,6 +136,26 @@ def test_the_status_question_follows_whatever_the_learner_s_own_request_got(clie
         blocked = step(client, session, "status", body={"answer": "403"}).json()["passed"]
 
     assert (served, blocked) == (False, True)
+
+def test_where_an_attack_stopped_is_read_from_the_blocked_mark_of_the_learner_s_own_request(client):
+    attack = "/search/?q=%27+OR+1%3D1--"
+    session = opened("f5")
+    with patch.object(site, "kept", return_value=[browsed(attack, 200)]):
+        served = step(client, session, "stopped", body={"answer": "waf"}).json()
+    with patch.object(site, "kept", return_value=[browsed(attack, 403)]):
+        named = {given: step(client, session, "stopped", body={"answer": given}).json()["passed"]
+                 for given in ("board.com", "WAF")}
+
+    assert (served["passed"], served["reason"]) == (False, ["lesson.check.unrecorded", []])
+    assert named == {"board.com": False, "WAF": True}
+
+def test_every_control_a_foundation_points_at_is_on_the_blue_console(client):
+    page = client.get("/blue/1/").content.decode()
+    pointed = {step["point"]["panel"] for taught in wargames.foundations("board") for step in taught["steps"]
+               if "panel" in step.get("point", {})}
+
+    assert pointed and [panel for panel in pointed if panel.startswith("#") and f'id="{panel[1:]}"' not in page] == []
+    assert not [panel for panel in pointed if "topology-" in panel], "the Topology pane holds the network map alone"
 
 def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_that_label(client):
     session = opened("f5")
@@ -270,11 +290,12 @@ def test_the_kali_step_offers_its_command_for_the_red_console_and_shows_what_the
     from api import views
     from tests.browser import english
 
-    steps = [views._shown_step(None, step) for step in wargames.lesson("board", lesson_id="f5")["steps"]]
+    steps = [views._shown_step(None, {key: value for key, value in step.items() if key != "query"})
+             for step in wargames.lesson("board", lesson_id="f5")["steps"]]
     command = "sqlmap -u 'http://board.com/?sort=posts_post.id*' '--headers=X-FSL-Case: m-1'"
     setup = """
 localStorage.setItem('fsl-lesson-landed-1', 'true');
-localStorage.setItem('fsl-lesson-step-1', '5');
+localStorage.setItem('fsl-lesson-step-1', '4');
 const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false, command: COMMAND}};
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {

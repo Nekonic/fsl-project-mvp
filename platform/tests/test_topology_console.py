@@ -11,38 +11,11 @@ pytestmark = pytest.mark.django_db
 PROJECT = json.loads(
     (pathlib.Path(__file__).resolve().parents[2] / "deploy/topology/range-docker.gns3").read_text()
 )
-HOPS = [
-    {"node": None, "kind": "console", "evidence": True, "source": "172.30.0.9"},
-    {"node": "waf", "kind": "host", "evidence": True, "sensor": "waf", "alerts": [],
-     "verdict": "blocked", "rules": ["920272", "949110"]},
-    {"node": "sw1", "kind": "segment"},
-    {"node": "board.com", "kind": "host", "evidence": True, "status": None, "reached": False},
-]
-CASE_HOPS = [
-    {"node": "kali", "kind": "host", "evidence": True, "source": None},
-    {"node": "internet", "kind": "segment"},
-    {"node": None, "kind": "unknown"},
-    {"node": "waf", "kind": "host", "evidence": False, "sensor": "waf", "alerts": [],
-     "verdict": None, "rules": []},
-    {"node": "sw1", "kind": "segment"},
-    {"node": "board.com", "kind": "host", "evidence": False, "status": None, "reached": None},
-]
-
 def serving(web_ui):
     return f"""
 browser.serve((request) => {{
   if (request.route === "/api/topology/") return {{body: {{source: "gns3", status: "", detail: "",
     project: {js(PROJECT)}, web_ui: {js(web_ui)}}}}};
-  if (request.route === "/api/sessions/1/topology/") return {{body: {{segments: [], project: {{nodes: {{
-    "waf": {{status: "running", addresses: {{"sw1": ["172.30.0.3"]}}}},
-    "kali": {{status: "not reported", addresses: {{}}}}}}}}}}}};
-  if (request.route === "/api/sessions/1/site/requests/") return {{body: [
-    {{id: 7, method: "GET", url: "http://board.com/search/?q=%ED%95%9C", status: 403, blocked: true}}]}};
-  if (request.route === "/api/sessions/1/cases/") return {{body: [
-    {{case_id: "c-1", name: "board-normal-search", meta: {{status: 200}}}}]}};
-  if (request.route === "/api/sessions/1/topology/follow/") return {{body: request.query.case
-    ? {{hops: {js(CASE_HOPS)}, elsewhere: [{{sensor: null, signature: "x", sid: 1}}]}}
-    : {{hops: {js(HOPS)}, elsewhere: []}}}};
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
 """
@@ -51,12 +24,9 @@ READ = """
 return {
   frame: browser.element('topology-frame').getAttribute('src'),
   frameShown: browser.element('topology-frame').style.display,
-  mapShown: browser.element('topology-map').style.display,
   said: browser.text('topology-said'),
-  svg: browser.element('topology-svg').innerHTML,
-  hops: browser.text('topology-hops'),
-  follows: browser.requests.filter((r) => r.route.endsWith('/topology/follow/')).map((r) => r.query.request || `case ${r.query.case}`),
-  offered: [...browser.element('topology-request').querySelectorAll('option')].map((o) => o.value),
+  asked: browser.requests.map((r) => r.route).filter((route) => route.includes('topology')),
+  pane: browser.element('topology').innerHTML,
 };
 """
 
@@ -68,32 +38,25 @@ def test_the_topology_pane_frames_the_gns3_web_ui_through_its_read_only_sign_in(
 
     assert seen["errors"] == []
     assert seen["result"]["frame"] == "http://console.test:3080/static/web-ui/fsl-auditor.html?project=p"
-    assert seen["result"]["frameShown"] == "block" and seen["result"]["mapShown"] == "none"
+    assert seen["result"]["frameShown"] == "block"
 
-def test_the_topology_item_opens_on_the_map_and_following_a_request_is_the_second_tab(client):
+def test_the_topology_pane_is_the_network_map_alone_with_its_fit_button(client):
     web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
     seen = open_page(client, "/blue/1/", setup=serving(web_ui), scenario="""
       await browser.click('[data-pane="topology"]');
       const opened = {map: browser.element('topology-gns3').getAttribute('aria-selected'),
-                      follow: browser.element('topology-follow').getAttribute('aria-selected'),
                       frame: browser.element('topology-frame').style.display,
                       fit: browser.element('topology-fit').style.display,
                       fitSays: browser.text('topology-fit'),
-                      request: browser.element('topology-request').style.display};
-      await browser.click('#topology-follow');
-      const followed = {map: browser.element('topology-gns3').getAttribute('aria-selected'),
-                        frame: browser.element('topology-frame').style.display,
-                        fit: browser.element('topology-fit').style.display};
+                      tabs: browser.element('topology').querySelectorAll('.tab').length};
       await browser.click('#topology-fit');
-      return {opened, followed};
+      return opened;
     """)
     template = (pathlib.Path(__file__).resolve().parents[1] / "console/templates/console/blue_topology.html").read_text()
 
     assert seen["errors"] == []
-    assert template.index('id="topology-gns3"') < template.index('id="topology-follow"')
-    assert seen["result"]["opened"] == {"map": "true", "follow": "false", "frame": "block", "fit": "",
-                                        "fitSays": english("topology.fit"), "request": "none"}
-    assert seen["result"]["followed"] == {"map": "false", "frame": "none", "fit": "none"}
+    assert seen["result"] == {"map": "true", "frame": "block", "fit": "", "fitSays": english("topology.fit"), "tabs": 1}
+    assert "topology-follow" not in template and "topology-request" not in template
 
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_the_fit_button_of_the_map_reads_in_the_console_s_language(client, language):
@@ -109,42 +72,17 @@ def test_the_fit_button_of_the_map_reads_in_the_console_s_language(client, langu
     assert seen["result"] == tables()[language]["topology.fit"] != ""
     assert "GNS3" not in seen["result"]
 
-def test_without_gns3_the_pane_draws_the_project_and_follows_a_chosen_request(client):
+def test_without_gns3_the_pane_says_the_map_is_not_open_and_frames_nothing(client):
     seen = open_page(client, "/blue/1/", setup=serving(None), scenario="""
       await browser.click('[data-pane="topology"]');
-      await browser.choose('topology-request', 'request:7');
     """ + READ)
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["frame"] is None and result["mapShown"] == "flex"
+    assert result["frame"] is None and result["frameShown"] == "none"
     assert result["said"] == english("topology.no_web_ui")
-    assert result["follows"] == ["7"]
-    assert 'data-node="log-server"' in result["svg"], "every node of the file is drawn"
-    assert result["svg"].count('data-path="true"') == 2, "the two links the request crossed are marked"
-    assert english("topology.hop.console") in result["hops"], "the console's browser is named, not the platform"
-    assert english("topology.hop.source", "172.30.0.9") in result["hops"]
-    assert "fsl-platform" not in result["hops"] and 'data-node="mgmt"' not in result["svg"]
-    assert english("topology.hop.blocked", "920272, 949110") in result["hops"]
-    assert english("topology.hop.not_reached") in result["hops"]
-
-def test_a_case_fired_from_kali_is_offered_and_an_unrecorded_stretch_is_said_rather_than_drawn(client):
-    seen = open_page(client, "/blue/1/", setup=serving(None), scenario="""
-      await browser.click('[data-pane="topology"]');
-      await browser.choose('topology-request', 'case:c-1');
-    """ + READ)
-    result = seen["result"]
-
-    assert seen["errors"] == []
-    assert result["offered"] == ["", "request:7", "case:c-1"]
-    assert result["follows"] == ["case c-1"]
-    assert result["svg"].count('data-path="true"') == 3, "no link is drawn across the unknown stretch"
-    assert result["svg"].count('data-recorded="false"') == 2, "a hop with no record is drawn hollow"
-    for said in (english("topology.hop.source", english("topology.unknown")), english("topology.hop.unknown"),
-                 english("topology.hop.alerts", "waf", 0), english("topology.hop.verdict_unknown"),
-                 english("topology.hop.reach_unknown"), english("topology.hop.no_record"),
-                 english("topology.elsewhere", 1)):
-        assert said in result["hops"]
+    assert result["asked"] == ["/api/topology/"], "the pane reads the map and nothing that follows a request"
+    assert "topology-svg" not in result["pane"] and "topology-hops" not in result["pane"]
 
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(client, language):

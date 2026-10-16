@@ -57,11 +57,7 @@ def shape(described, declared=None) -> dict:
     }
 
 SWITCH = "ethernet_switch"
-BLOCKING_RULE = "949110"
-UPSTREAM_FAILED = {502, 503, 504}
 TRANSIT = ("edge", "gateway", "wargames")
-SEEN_KEPT = 5
-CONSOLE = "console"
 DATABASE_SUFFIX = "-db"
 BRIDGE_SUFFIX = "-default"
 LOG_STORE = "fsl-elasticsearch"
@@ -165,7 +161,7 @@ def _wired(project) -> dict[str, set[str]]:
 def _kinds(project) -> dict[str, str]:
     return {node["name"]: node["node_type"] for node in project["topology"]["nodes"]}
 
-def overlay(project, described, learner, beside=()) -> dict:
+def overlay(project, described, learner) -> dict:
     seen: dict[str, dict[str, list[str]]] = {}
     for segment in described.segments:
         on = learner.switches.get(segment.id, segment.id)
@@ -175,7 +171,7 @@ def overlay(project, described, learner, beside=()) -> dict:
                 if node.address and node.address not in held:
                     held.append(node.address)
     nodes = {}
-    for name, kind in [*_kinds(project).items(), *((host, "") for host in beside)]:
+    for name, kind in _kinds(project).items():
         if kind == SWITCH:
             continue
         found = seen.get(name)
@@ -188,196 +184,6 @@ def shown(drawn, project) -> dict:
     return {**drawn, "nodes": {
         name: {**node, "addresses": {on: held for on, held in node["addresses"].items() if kinds.get(on) == SWITCH}}
         for name, node in drawn["nodes"].items() if name in kinds}}
-
-def _inner(near, kinds, shared, start, goal) -> list[str]:
-    came = {start: None}
-    frontier = [start]
-    while frontier:
-        reached = []
-        for name in frontier:
-            if name == goal:
-                path = [name]
-                while came[path[-1]] is not None:
-                    path.append(came[path[-1]])
-                return path[::-1]
-            for other in sorted(near[name]):
-                if other in came or other in shared or (other != goal and kinds[other] != SWITCH):
-                    continue
-                came[other] = name
-                reached.append(other)
-        frontier = reached
-    return []
-
-def _dig(found, *keys):
-    for key in keys:
-        found = found.get(key) if isinstance(found, dict) else None
-    return found
-
-def _raw(detection, *keys):
-    return _dig(detection.raw or {}, *keys)
-
-def _rule_id(detection) -> str:
-    return str(_raw(detection, "details", "ruleId") or "")
-
-def _sid(detection):
-    return _raw(detection, "alert", "signature_id")
-
-def _status_seen(detections):
-    return next((_raw(d, "http", "status") for d in detections if _raw(d, "http", "status")), None)
-
-def _held(nodes, address) -> tuple[str, str]:
-    for name, node in nodes.items():
-        for segment, addresses in node["addresses"].items():
-            if address and address in addresses:
-                return name, segment
-    return "", ""
-
-def _addresses(nodes, name, segment) -> list[str]:
-    return ((nodes.get(name) or {}).get("addresses") or {}).get(segment) or []
-
-def _sensor_of(detection, sensors, named) -> str:
-    return _said_by(detection.raw or {}, sensors, named)
-
-def _said_by(raw, sensors, named) -> str:
-    said = str(_dig(raw, "log", "syslog", "hostname") or "")
-    if said:
-        return next((host for host in sensors if named(host) == said.split(".")[0]), "")
-    return next(iter(sensors)) if len(sensors) == 1 else ""
-
-def _verdict(sent, rules, logged) -> str | None:
-    if sent.get("blocked") or BLOCKING_RULE in rules:
-        return "blocked"
-    if sent.get("status") or logged:
-        return "passed"
-    return None
-
-def _reached(verdict, status) -> bool | None:
-    if verdict == "blocked":
-        return False
-    if verdict == "passed" and status and status not in UPSTREAM_FAILED:
-        return True
-    return None
-
-def _step(path, near, name) -> None:
-    last = path[-1]
-    if name is None:
-        if last is not None:
-            path.append(None)
-        return
-    if last is not None and name not in near.get(last, ()):
-        path.append(None)
-    path.append(name)
-
-def _walk(near, kinds, learner, nodes, sent, detections, goal) -> tuple[list, str]:
-    gateway = learner.roles["gateway"]
-    transit = {learner.roles[role] for role in TRANSIT if role in learner.roles}
-    named_on = learner.switches[NAMED_ON]
-    sender = sent["sender"]
-
-    def linked(one, other):
-        return bool(one and other) and other in near.get(one, ())
-
-    to = (sent.get("to") or next((str(found) for d in detections
-                                  for found in (_raw(d, "dest_ip"), _raw(d, "host_ip")) if found), ""))
-    holder, arrived = _held(nodes, to)
-    holder = holder or gateway
-    source = next((d.src_ip for d in detections if d.src_ip), "") or sent.get("source") or ""
-    owner, left_on = _held(nodes, source)
-    asked = sent.get("on") or ""
-    on = learner.switches.get(asked, asked) or (left_on if owner == sender else "")
-    if not on and arrived and _addresses(nodes, sender, arrived):
-        on = arrived
-    if sent["kind"] == "browse" and not source:
-        source = next(iter(_addresses(nodes, sender, on)), "")
-    if not arrived and on and sent["kind"] != "browse" and holder == gateway:
-        arrived = on if _addresses(nodes, gateway, on) else named_on
-
-    path = [sender]
-    if sender in kinds:
-        _step(path, near, on or None)
-        if arrived != on:
-            if on and arrived:
-                routers = sorted(name for name in transit if linked(name, on) and linked(name, arrived))
-                _step(path, near, routers[0] if len(routers) == 1 else None)
-            _step(path, near, arrived or None)
-        _step(path, near, holder)
-    else:
-        path.append(holder)
-    if holder == gateway:
-        upstream = learner.roles.get(sent.get("target", ""), "")
-        _step(path, near, named_on if linked(gateway, named_on) and linked(upstream, named_on) else None)
-        _step(path, near, upstream or None)
-        holder = upstream
-    if holder and holder != goal:
-        for name in _inner(near, kinds, learner.shared, holder, goal)[1:] or [None, goal]:
-            _step(path, near, name)
-    return path, source
-
-def _request_seen(event) -> dict:
-    return {"src_ip": event.get("src_ip"), "dest_ip": event.get("dest_ip"), "dest_port": event.get("dest_port"),
-            "method": _dig(event, "http", "http_method"), "url": _dig(event, "http", "url"),
-            "status": _dig(event, "http", "status")}
-
-def follow(project, learner, nodes, sent, detections, named=lambda name: name, seen=()) -> dict:
-    near, kinds = _wired(project), _kinds(project)
-    sender = learner.shown(sent["sender"])
-    if sent["kind"] != "browse" and sender not in kinds:
-        sender = learner.roles["attacker"]
-    target = sent.get("target") if sent.get("target") in learner.roles else learner.wargame
-    goal = learner.roles[target]
-    path, source = _walk(near, kinds, learner, nodes, dict(sent, sender=sender, target=target), detections, goal)
-
-    watching: dict[str, str] = {}
-    for host, watched in sorted(learner.sensors.items()):
-        watching.setdefault(watched, host)
-    heard: dict[str, list] = {}
-    for detection in detections:
-        if detection.source == "suricata":
-            heard.setdefault(_sensor_of(detection, learner.sensors, named), []).append(detection)
-    saw: dict[str, list] = {}
-    for event in seen:
-        saw.setdefault(_said_by(event, learner.sensors, named), []).append(event)
-    rules = sorted({_rule_id(d) for d in detections if d.source == "modsecurity"} - {""})
-    logged = any(d.source == "modsecurity" for d in detections)
-    verdict = _verdict(sent, rules, logged)
-    status = (sent.get("status") or _status_seen([d for d in detections if d.source == "suricata"])
-              or next((_dig(event, "http", "status") for event in seen if _dig(event, "http", "status")), None))
-    reached = _reached(verdict, status)
-
-    hops, placed = [], set()
-    for position, name in enumerate(path):
-        if name is None:
-            hops.append({"node": None, "kind": "unknown"})
-            continue
-        if name not in kinds:
-            hops.append({"node": None, "kind": CONSOLE, "evidence": True, "source": source or None})
-            continue
-        if kinds.get(name) == SWITCH:
-            hops.append({"node": name, "kind": "segment"})
-            continue
-        hop = {"node": name, "kind": "host", "evidence": position == 0}
-        if position == 0:
-            hop["source"] = source or None
-        if name in watching and watching[name] not in placed:
-            alerts, requests = heard.get(watching[name], []), saw.get(watching[name], [])
-            hop.update(sensor=name,
-                       alerts=[{"signature": d.signature, "sid": _sid(d)} for d in alerts],
-                       requests=len(requests), seen=[_request_seen(event) for event in requests[:SEEN_KEPT]])
-            hop["evidence"] = hop["evidence"] or bool(alerts) or bool(requests)
-            placed.add(watching[name])
-        if name == learner.roles["gateway"] and "verdict" not in placed:
-            hop.update(verdict=verdict, rules=rules)
-            hop["evidence"] = hop["evidence"] or verdict is not None
-            placed.add("verdict")
-        if position == len(path) - 1:
-            hop.update(status=status if reached else None, reached=reached)
-            hop["evidence"] = hop["evidence"] or reached is not None
-        hops.append(hop)
-
-    elsewhere = [{"sensor": learner.sensors.get(host) or None, "signature": d.signature, "sid": _sid(d)}
-                 for host, found in sorted(heard.items()) if host not in placed for d in found]
-    return {"source": sender if sender in kinds else CONSOLE, "address": source or None,
-            "target": goal, "hops": hops, "elsewhere": elsewhere}
 
 def facts(project, learner) -> dict[str, list[str]]:
     near, kinds = _wired(project), _kinds(project)

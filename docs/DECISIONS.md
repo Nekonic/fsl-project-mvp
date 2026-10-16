@@ -4127,3 +4127,37 @@ hosts now keep the platform's time.
   credits pass; before, 71 passed and 3 failed in 947-1,149 s); no
   regression. The offsets are not measured separately: a host more than
   100 ms off would fail those credits again.
+
+## 2026-10-16 — The follow view is removed
+
+The user's ruling: the blue console's "Follow a request" view goes completely,
+and the Topology pane keeps only the GNS3 network map. Nothing new replaces
+it; a lesson step stays only where a pane that already exists shows its
+answer.
+
+- **Removed.** `GET /api/sessions/<id>/topology/follow/` (`session_follow`,
+  `_followed`, `_sent`, `_site_record`); `topology.follow` and everything only
+  it used (the walk, the hop evidence, the verdict and reach rules); the
+  pane's Follow tab, request picker, drawn SVG map and hop list, and its
+  strings in both languages; the Website pane recorder's `to` (the WAF
+  address its socket reached, read only by the follow walk); the answer facts
+  `source` and `port`; `platform/tests/test_gns3_follow.py`. Without the GNS3
+  web UI the pane now says the map is not open instead of drawing it.
+- **F2** (`lesson.follow`, now "The path of one request"): `search`, then
+  `status`, read in the Website pane's developer tools (the existing Status
+  column). The `follow`, `source` and `port` steps are gone: no existing pane
+  shows the learner's source address or the destination port, and F4's
+  `address` step already asks for a source address from a WAF record. The
+  theory explains hops on the network map; the hint points at the Status
+  column.
+- **F5** (`lesson.attack`, now "Read one attack"): `attack`, `stopped`,
+  `rule`, `sqlmap`, `requests`. `stopped` is read from the developer tools'
+  "blocked by the WAF" badge and judged from the request record's own
+  `blocked` mark (the map's gateway node, `waf`); `rule` is read in Kibana
+  (`url : *search* and status : 403`, the row's `rule` field) and judged, as
+  before, from the session's own ModSecurity detections. Both are judged on
+  the server from the session's records, never from the browser.
+- **Tests** 2069 -> 2044: the 26 follow tests and three pane tests go; two
+  pane tests and two judging tests (`stopped` from the record, every
+  pointed-at control exists on the blue console) replace them. `core_loc`
+  is unchanged (580); `product_loc` 24562 -> 24091.

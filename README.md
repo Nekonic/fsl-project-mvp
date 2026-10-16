@@ -407,10 +407,12 @@ reports what is in the WAF's file.
 
 The home page lists six foundations for learners new to networks, each opened
 by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
-F1 reads the range's map in the Topology pane, F2 follows one Korean search hop
-by hop, F3 reads its method, path, parameter and status code, F4 finds records
-in Kibana and tells the WAF's from the IDS's, F5 follows a blocked SQL injection
-and a sqlmap run from the Red console's Kali terminal, and F6 runs the same
+F1 reads the range's map in the Topology pane, F2 reads the hops a request
+passes through on that map and one Korean search's status code in the Website
+pane's developer tools, F3 reads its method, path, parameter and status code,
+F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
+blocked SQL injection was stopped and which rule recognised it, and counts a
+sqlmap run from the Red console's Kali terminal, and F6 runs the same
 sqlmap against a WAF whose blocking rules are off (defense `missed`), hands in
 the dumped accounts and reads the loss in the first score. Every answer is read
 from the learner's own records or the substrate's topology, never a fixed key;
