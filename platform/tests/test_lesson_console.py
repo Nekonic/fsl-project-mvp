@@ -512,7 +512,6 @@ def test_the_step_reached_is_kept_per_session_and_resumed_on_the_next_visit(clie
 
 def test_next_and_a_jump_in_the_list_record_a_step_left_unpassed_as_skipped_and_back_does_not(client):
     seen = open_page(client, "/blue/1/", setup=coached(unit="f5"), scenario=f"""
-      await browser.click('coach-pop-next');
       {to("stopped", "f5")}
       document.querySelector('#coach-pop-act [data-act="value"]').value = 'waf';
       document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
@@ -525,8 +524,8 @@ def test_next_and_a_jump_in_the_list_record_a_step_left_unpassed_as_skipped_and_
     """)
 
     assert seen["result"] == [
-        ["attack", "reached"], ["attack", "skipped"], ["follow", "reached"], ["follow", "skipped"], ["stopped", "reached"],
-        ["rule", "reached"], ["rule", "skipped"], ["sqlmap", "reached"], ["rule", "reached"],
+        ["attack", "reached"], ["attack", "skipped"], ["stopped", "reached"], ["rule", "reached"], ["rule", "skipped"],
+        ["sqlmap", "reached"], ["rule", "reached"],
     ], "a passed step moves on without a skip; Back is not a skip"
 
 def test_the_hint_level_a_step_reached_is_resumed_from_the_session(client):
@@ -666,11 +665,11 @@ def test_nothing_on_the_page_is_dimmed_while_a_step_is_shown(client):
 
 def test_a_popover_for_a_control_under_the_open_note_sits_beside_the_note_not_over_it(client):
     seen = open_page(client, "/blue/1/", setup=coached(unit="f5") + NOTE_OPEN_AT + """
-      browser.element('topology-hops').getBoundingClientRect =
+      browser.element('site-dev-toggle').getBoundingClientRect =
         () => ({left: 640, top: 300, right: 720, bottom: 330, width: 80, height: 30});
     """, scenario=f"""
       await browser.click('note-pill');
-      await browser.click('[data-pane="topology"]');
+      await browser.click('[data-pane="site"]');
       {to("stopped", "f5")}
       await browser.wait(16);
       const pop = browser.element('coach-pop');
@@ -681,7 +680,7 @@ def test_a_popover_for_a_control_under_the_open_note_sits_beside_the_note_not_ov
     """)
     result = seen["result"]
 
-    assert result["note"] is True and result["target"] == "#topology-hops"
+    assert result["note"] is True and result["target"] == "#site-dev-toggle"
     assert result["left"] + 340 <= 620, f"the popover overlaps the note: {result}"
     assert (result["arrow"], result["arrowRight"]) == (False, "-6px")
 

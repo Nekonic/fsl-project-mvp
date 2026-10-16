@@ -37,8 +37,8 @@ REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule",)
 RANGE_FACTS = ("entry", "logs", "segment", "lost", "excluded")
-REQUEST_FACTS = ("source", "port", "status", "method", "path", "parameter", "status_class", "engine",
-                 "sensor_source", "waf_source", "stopped_at")
+REQUEST_FACTS = ("status", "method", "path", "parameter", "status_class", "engine", "sensor_source", "waf_source",
+                 "stopped_at")
 KALI_FACTS = ("requests", "leaked")
 DETECTORS = ("suricata",)
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)

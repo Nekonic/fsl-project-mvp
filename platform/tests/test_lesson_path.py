@@ -98,7 +98,7 @@ def test_the_rule_is_read_from_the_learner_s_own_blocked_request_and_the_total_i
 def test_the_parameter_is_read_from_the_record_of_the_request_not_from_an_answer_key(client):
     session = taught("f3")
     sent = {"id": 1, "at": time.time(), "method": "GET", "url": f"http://board.com/search/?q={quote_plus(KOREAN)}",
-            "to": "10.31.0.44", "status": 200, "blocked": False, "ms": 40}
+            "status": 200, "blocked": False, "ms": 40}
     with patch("api.site.kept", return_value=[sent]):
         wrong = step(client, session, "parameter", body={"answer": "REQUEST_URI"}).json()
         right = step(client, session, "parameter", body={"answer": "Q"}).json()

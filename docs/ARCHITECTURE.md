@@ -313,7 +313,7 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   segments to switches (origins to `internet`, the estate to `sw1`, a
   wargame's compose network to `sw2`; the management segment to `sw3` for the
   NIC name alone) and each sensor to the
-  node whose NIC it uses; the overlay, the follow view, the lesson's range
+  node whose NIC it uses; the overlay, the lesson's range
   questions and the interface read go through it. Every link is one straight
   line, level, upright or diagonal, none crossing another link or a node; a
   node a link reaches from straight above carries its name beside it. Every
@@ -476,61 +476,22 @@ the data directory is the same path on both sides (`/var/lib/fsl-gns3`). The
 server runs as the user `gns3`, which joins the socket's group at start as
 `fsl` does in the platform. `GET /api/topology/` offers the web UI (`web_ui`)
 only while GNS3 reports the project `opened`; otherwise the console's Topology
-pane draws the same map itself.
+pane says the map is not open.
 
 `GET /api/topology/?language=en|ko` returns the substrate's learner map drawn in
 that language (with `&session=<id>`, that session's map for its wargame, above)
 from GNS3 (`platform/gns3.py`) or the repo's file (`en` when absent, 400 for
 another); the console sends its own language, and `web_ui` deep-links the GNS3
-web UI to that project's id. The overlay and the follow view below read the
-English map of the session's wargame: the pair has the same node names and
-links, so a hop is the same on either map, and the pane draws the project it
-was served. `GET /api/sessions/<id>/topology/` adds `project.nodes`: each host
-node's addresses per switch from the same range read, `running` or `not
-reported`. `GET /api/sessions/<id>/topology/follow/?request=<Website pane
-request id>` (or `?case=<case id>`, `?customer=<customer request marker>`, or
-`?marker=`) draws the path from facts only, on the map's names. The sender is
-what sent it: the platform's site proxy (scorer role) for a Website pane
-request, `kali` for a fired case, `customers` for a customer request, the
-proxy role for a bare marker. A sender not on the learner map is training
-plumbing: a Website pane request starts with a `console` hop (the learner's
-browser, with the address the WAF records for it) that arrives straight at the
-`waf`, never through `mgmt` or the platform, and a marker the proxy stamped is
-drawn from `kali`. The session overlay lists only the map's hosts and their
-addresses on the map's switches.
-The destination is the address the request reached: the site proxy records the
-WAF address its socket connected to; a case uses the address its alerts name,
-else the name the range serves (the gateway's address on the segment the case
-started on, or else on the estate, as every range host's `/etc/hosts` has it).
-The sender leaves on the segment the case was launched on (recorded as
-`launched_on`) or on the segment it shares with the destination; a segment
-change crosses the one edge, gateway or wargame host linked to both, and the
-gateway reaches the target over the estate. A stretch no fact settles is an
-`unknown` hop, never a guessed link. Each host hop says whether a record of the
-request is there (`evidence`): a suricata alert is placed on the node its
-sensor watches (`firewall`, the site for the estate sensor on the sites' host,
-`waf` on Docker), the sensor told apart by the syslog hostname the alert
-carries (`fsl-edge` versus `fsl-wargame-host`, slot-suffixed), and an alert from no
-sensor on the path is returned under `elsewhere`; the WAF's verdict (blocked on
-403 or CRS's blocking evaluation 949110, passed on any other status or a
-logged rule, else unknown) and rule ids sit on the gateway; the target is
-reached only when the WAF passed it and answered something other than 502-504.
-
-Follow first ingests the last 600 s (the blue console does not ingest on
-its own, so a request blocked a moment ago would show no rule otherwise). It
-also reads the Suricata `http` events of the request through the ingest path
-(`elastic.fetch`, the same paging as the full ingest; `elastic.suricata_marker`
-reads their marker): a Website pane request's by its browse marker in its time
-window, or by the same URL when the event has no marker; a fired case's by its
-case id in its window; a customer request's by its marker around the time it
-was sent. A sensor hop carries `requests` (how many http records
-that sensor wrote of it) and the first five as `seen` (source, destination and
-port, method, URL, status), and an http record is evidence: a request no rule
-alerted on is still shown passing the sensor. The http events never become
-`Detection` rows, so neither score sees them. The overlay places hosts by the
-names the range reports them under; OpenStack reports a slot's servers by their
-declared names (`slot.known_as`), and only the VM's own hostname, which the
-syslog records carry, has the slot suffix.
+web UI to that project's id. The Topology pane is that map alone: the framed
+GNS3 web UI and its fit button. `GET /api/sessions/<id>/topology/` reads the
+English map of the session's wargame (the pair has the same node names and
+links) and adds `project.nodes`: each host node's addresses per switch from the
+same range read, `running` or `not reported`; the session overlay lists only the
+map's hosts and their addresses on the map's switches. The overlay places hosts
+by the names the range reports them under; OpenStack reports a slot's servers by
+their declared names (`slot.known_as`), and only the VM's own hostname, which the
+syslog records carry, has the slot suffix. The follow view that drew one
+request's path on the map was removed on 2026-10-16 (`docs/DECISIONS.md`).
 
 ## Isolation seams
 
@@ -1042,10 +1003,10 @@ from the start of every step. A step names the pane it needs (`opens`: site,
 Kibana, topology, triage, rules or WAF); while that pane is not shown, the
 box is on its rail button and the popover says only "Open Website on the
 left" (or the pane named). Once it is shown: a console element (`panel`: the
-site's address bar, the site's developer toggle, the Topology pane's request
-and hops, the Judge list, the rule editor, I'm done), a `data-test-subj` in
-the same-origin Kibana frame (`docTableExpandToggleColumn`, `field-status`,
-`field-source_ip` with the row toggle as `first`), or the pane as a whole.
+site's address bar, the site's developer toggle, the Judge list, the rule
+editor, I'm done), a `data-test-subj` in the same-origin Kibana frame
+(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule`
+with the row toggle as `first`), or the pane as a whole.
 Nothing is ever looked up inside the site frame, which is another origin. The
 popover is the one place for the current step's words and Back/Next; the
 note's Steps tab lists the steps with the current one marked "in progress"
@@ -1089,10 +1050,10 @@ first visit.
 | unit | defense | the learner | answers read from |
 |---|---|---|---|
 | f1 My range | `full` | opens the Topology pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image (fsl-elasticsearch on both substrates; on OpenStack it runs in the platform's compose and the learner map draws it as the log store); the switch the scenario's database node is linked to (`board-default`, `estate`) |
-| f2 Follow one request | `full` | searches in Korean in the Website pane, follows it in the Topology pane | the learner's own Website pane request: the follow walk's source address, the URL's port and the http records' destination ports, the status |
+| f2 The path of one request | `full` | reads the hops on the network map, searches in Korean in the Website pane and reads the status code in its developer tools | the learner's own Website pane request: the status |
 | f3 HTTP | `full` | the same request's method, path, parameter, status class | the same request record |
 | f4 Reading logs | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
-| f5 Follow an attack | `full` | sends `' OR 1=1--`, follows it, names the host that stopped it and the rule that recognised it; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the follow walk's blocking hop, the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
+| f5 Read one attack | `full` | sends `' OR 1=1--`, names the host that stopped it from the developer tools' blocked badge and the rule that recognised it from its WAF record in Kibana; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the request record's blocked mark (the map's gateway, `waf`), the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
 | f6 What a miss costs | `missed` | reads the WAF's exclusion file, runs the same sqlmap, pastes the dumped table, says how many accounts leaked and how many objectives the first score counts lost | the WAF file in force, the loot matched against the session's snapshot, `result.objectives.lost` |
 
 `missed` is CRS paranoia level 1 with `ruleRemoveById` 949110 and 959100 and
@@ -1116,9 +1077,8 @@ does, attributed to the kali case; `_credit_loot` keeps the matched
 accounts on the case it was attributed to (`meta.loot`).
 
 An answer reads `of:` one of `entry`, `logs`, `segment`, `lost`, `excluded`
-(range facts), one of `source`, `port`, `status`, `method`, `path`,
-`parameter`, `status_class`, `engine`, `sensor_source`, `waf_source`,
-`stopped_at` with `about:` a `sent` step (the latest Website pane request
+(range facts), one of `status`, `method`, `path`, `parameter`,
+`status_class`, `engine`, `sensor_source`, `waf_source`, `stopped_at` with `about:` a `sent` step (the latest Website pane request
 matching it), `requests` or `leaked` with `about:` a `kali` step, or `rule`
 with the request's `path` (above); `wargames.read_from_record` refuses
 anything else at discovery. A step may ask

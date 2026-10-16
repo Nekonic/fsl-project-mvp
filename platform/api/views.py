@@ -85,7 +85,7 @@ SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
-FOLLOW_SLACK = timedelta(seconds=5)
+RECORD_SLACK = timedelta(seconds=5)
 STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
 _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
@@ -592,17 +592,10 @@ def _request_fact(session, record, of):
         return {"status": [str(record["status"])], "status_class": [f"{record['status'] // 100}xx"],
                 "method": [record["method"]], "path": list(dict.fromkeys([url.path, url.path.rstrip("/") or "/"])),
                 "parameter": sorted(parse_qs(url.query, keep_blank_values=True))}[of]
-    if of in ("source", "stopped_at"):
-        followed = _followed(session, record=record)
-        if of == "source":
-            return [followed["address"]] if followed["address"] else []
-        return [hop["node"] for hop in followed["hops"] if hop.get("verdict") == "blocked"]
-    if of in ("port", "sensor_source"):
-        events = _sensed_for(session, record)
-        if of == "sensor_source":
-            return sorted({str(event["src_ip"]) for event in events if event.get("src_ip")})
-        return list(dict.fromkeys([str(url.port or 80), *(str(event["dest_port"]) for event in events
-                                                           if event.get("dest_port"))]))
+    if of == "stopped_at":
+        return [maps.learner(session.scenario).roles["gateway"]] if record.get("blocked") else []
+    if of == "sensor_source":
+        return sorted({str(event["src_ip"]) for event in _sensed_for(session, record) if event.get("src_ip")})
     _ingest(session, RECENT_ALERTS)
     recorded = list(_browsed(session, record))
     if of == "waf_source":
@@ -612,7 +605,7 @@ def _request_fact(session, record, of):
 
 def _window_of(record):
     start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
-    return start - FOLLOW_SLACK, start + timedelta(milliseconds=record.get("ms") or 0) + FOLLOW_SLACK
+    return start - RECORD_SLACK, start + timedelta(milliseconds=record.get("ms") or 0) + RECORD_SLACK
 
 def _browsed(session, record):
     start, end = _window_of(record)
@@ -652,7 +645,7 @@ def _kali_check(session, step, kept, failed):
     case = wargames.find_case(session.scenario, step["check"]["case"])
     recorded = session.cases.filter(case_id=marker).first()
     reached = parse_datetime(kept.get("reached") or "") or session.started_at
-    events = _sensed(session, reached - FOLLOW_SLACK, timezone.now() + FOLLOW_SLACK, marker)
+    events = _sensed(session, reached - RECORD_SLACK, timezone.now() + RECORD_SLACK, marker)
     ran = [event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
     count, by_sensor = _counted(events)
     shown = {"kali": {"name": case["name"], "requests": count, "sensors": by_sensor,
@@ -688,7 +681,7 @@ def _kali_fact(session, step_id, of):
         return []
     if of == "leaked":
         return [str(len(recorded.meta["loot"]))] if "loot" in recorded.meta else []
-    count, _ = _counted(_sensed(session, recorded.started_at - FOLLOW_SLACK, timezone.now(), recorded.case_id))
+    count, _ = _counted(_sensed(session, recorded.started_at - RECORD_SLACK, timezone.now(), recorded.case_id))
     return [str(found) for found in lesson.within(count, COUNT_TOLERANCE)]
 
 def _loot_check(session, check, given, failed):
@@ -977,8 +970,8 @@ def _maps_tidied(adapter):
         threading.Thread(target=maps.tidied, args=(_map_kind(adapter), _maps_live(adapter)),
                          name="fsl-map-tidy", daemon=True).start()
 
-def _drawn(session, described, beside=()):
-    return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario), beside)
+def _drawn(session, described):
+    return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario))
 
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
@@ -1000,88 +993,6 @@ def session_topology(request, session_id):
 
     return _reply({**shape, "unplaced": unplaced,
                    "project": topology.shown(_drawn(session, described), maps.template(session.scenario))})
-
-def _site_record(session, asked):
-    try:
-        wanted = int(asked, 10)
-    except ValueError:
-        raise BadRequest(f'"request" must be a Website pane request id, got {asked!r}')
-    record = next((kept for kept in site.kept(session.pk) if kept["id"] == wanted), None)
-    if record is None:
-        raise Http404(f"session {session.pk} kept no request {wanted}")
-    return record
-
-def _sent(session, record, case, customer=None):
-    roles = settings.RANGE.roles
-    if record:
-        host = record["url"].split("/")[2].split(".")[0]
-        return {"kind": "browse", "sender": roles["scorer"], "to": record.get("to") or "",
-                "status": record.get("status"), "blocked": record.get("blocked"),
-                "target": host if host in roles else session.scenario}
-    target = session.scenario
-    if customer:
-        return {"kind": "customer", "sender": topology.CUSTOMERS, "on": customer.origin,
-                "source": customer.source_ip or "", "status": customer.status or None,
-                "blocked": customer.status == customers.BLOCKED and customer.refused_by != customers.REFUSED_BY_APP,
-                "target": target}
-    if case:
-        return {"kind": "case", "sender": roles["attacker"], "on": case.meta.get("launched_on") or "",
-                "source": case.meta.get("source_ip") or "", "status": case.meta.get("status") or None,
-                "blocked": case.meta.get("blocked"), "target": target}
-    return {"kind": "marker", "sender": roles["proxy"], "target": target}
-
-@require_http_methods(["GET"])
-def session_follow(request, session_id):
-    session = get_object_or_404(Session, pk=session_id)
-    asked, fired, served = request.GET.get("request"), request.GET.get("case"), request.GET.get("customer")
-    record = _site_record(session, asked) if asked is not None else None
-    case = customer = None
-    if fired and record is None:
-        case = session.cases.filter(case_id=fired).first()
-        if case is None:
-            raise Http404(f"session {session_id} recorded no case {fired}")
-    if served and record is None and case is None:
-        customer = session.customer_requests.filter(marker=served).first()
-        if customer is None:
-            raise Http404(f"session {session_id} recorded no customer request {served}")
-    marker = request.GET.get("marker") or (SITE_BROWSER_MARKER if record else case.case_id if case
-                                           else customer.marker if customer else "")
-    if not marker:
-        raise BadRequest('name a "marker", a Website pane "request", a fired "case" or a "customer" request to follow')
-    return _reply(_followed(session, record, case, marker, customer))
-
-def _followed(session, record=None, case=None, marker=SITE_BROWSER_MARKER, customer=None):
-    try:
-        _ingest(session, RECENT_ALERTS)
-    except elastic.ElasticUnavailable:
-        pass
-    stored = session.browse_marker if marker == SITE_BROWSER_MARKER else marker
-    detections = session.detections.filter(marker=stored)
-    if record:
-        detections = _browsed(session, record)
-        seen = _sensed_for(session, record)
-    elif case:
-        seen = _sensed(session, case.started_at - FOLLOW_SLACK, case.ended_at + FOLLOW_SLACK, stored)
-    elif customer:
-        seen = _sensed(session, customer.sent_at - FOLLOW_SLACK, customer.sent_at + FOLLOW_SLACK, stored)
-    else:
-        seen = []
-    detections = list(detections)
-    nodes = _drawn(session, _range(session).describe(), beside=[settings.RANGE.roles["scorer"]])["nodes"]
-    number = _slot_of(session)
-    followed = topology.follow(maps.template(session.scenario), maps.learner(session.scenario), nodes,
-                               _sent(session, record, case, customer), detections, lambda name: _named_in(number, name),
-                               seen)
-    return {
-        "marker": marker,
-        "request": {name: record[name] for name in site.SUMMARY} if record else None,
-        "case": {"case_id": case.case_id, "name": case.name} if case else None,
-        "customer": {"marker": customer.marker, "action": customer.action, "origin": customer.origin}
-        if customer else None,
-        "detections": len(detections),
-        "sensed": len(seen),
-        **followed,
-    }
 
 @require_http_methods(["GET"])
 def origins(request):

@@ -785,9 +785,6 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       backend servers are completely isolated." Two-arm needs the sites on
       a segment of their own behind the WAF: a range change on both
       substrates, not scheduled.
-- [ ] The console's follow picker lists Website pane requests and fired
-      cases; a customer request is followed by `?customer=<marker>` through
-      the API only.
 - [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
       accepts `red: person`. Needs a second person to run live.
 - [ ] A range reset interrupted by a platform restart is not resumed at

@@ -24,7 +24,6 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/map/", views.session_map),
     path("api/sessions/<int:session_id>/top/", views.session_top),
     path("api/sessions/<int:session_id>/topology/", views.session_topology),
-    path("api/sessions/<int:session_id>/topology/follow/", views.session_follow),
     path("api/sessions/<int:session_id>/score/", views.session_score),
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/traffic/", views.session_traffic),

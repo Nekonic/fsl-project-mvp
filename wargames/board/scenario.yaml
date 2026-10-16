@@ -310,24 +310,15 @@ foundations:
     defense: full
     cases: [board-normal-search]
     theory:
-      - {id: path, shows: follow}
-    hints: [why_source]
+      - {id: path, shows: status}
+    hints: [why_status]
     steps:
       - id: search
         site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: '[\uAC00-\uD7A3]'}
-      - id: follow
-        point: {panel: "#topology-request", opens: topology}
-        check: {kind: click}
-      - id: source
-        point: {panel: "#topology-hops", opens: topology}
-        check: {kind: answer, of: source, about: search}
-      - id: port
-        point: {panel: "#topology-hops", opens: topology}
-        check: {kind: answer, of: port, about: search}
       - id: status
-        point: {panel: "#topology-hops", opens: topology}
+        point: {panel: "#site-dev-toggle", opens: site}
         check: {kind: answer, of: status, about: search}
   - id: f3
     order: 3
@@ -408,14 +399,12 @@ foundations:
         site: "/search/?q=' OR 1=1--"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: "1=1"}
-      - id: follow
-        point: {panel: "#topology-request", opens: topology}
-        check: {kind: click}
       - id: stopped
-        point: {panel: "#topology-hops", opens: topology}
+        point: {panel: "#site-dev-toggle", opens: site}
         check: {kind: answer, of: stopped_at, about: attack}
       - id: rule
-        point: {panel: "#topology-hops", opens: topology}
+        point: {kibana: '[data-test-subj="field-rule"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        query: "url : *search* and status : 403"
         check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
       - id: sqlmap
         point: {pane: true}
