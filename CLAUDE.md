@@ -131,6 +131,11 @@ them all; `reference.md` beside the `orchestrate` skill has the full table.
 escape hatch. A small, obviously-correct change that justifies a gated +1 may
 just be made and recorded, not staged as a decision.
 
+Run only what a change needs: `bin/verify --changed` (the tests the change
+reaches, and the ratchet) by default while working; `--fast` before a commit
+that touches shared code; the full `bin/verify` with acceptance only when
+range-facing logic changed, and before a push.
+
 ## Gotchas
 
 - `platform/` is not a package — `platform` is a stdlib name; never add
