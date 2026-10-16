@@ -4154,10 +4154,43 @@ answer.
   `rule`, `sqlmap`, `requests`. `stopped` is read from the developer tools'
   "blocked by the WAF" badge and judged from the request record's own
   `blocked` mark (the map's gateway node, `waf`); `rule` is read in Kibana
-  (`url : *search* and status : 403`, the row's `rule` field) and judged, as
+  (`url : *search* and status : 403`, the row's `rule_id` field) and judged, as
   before, from the session's own ModSecurity detections. Both are judged on
   the server from the session's records, never from the browser.
 - **Tests** 2069 -> 2044: the 26 follow tests and three pane tests go; two
   pane tests and two judging tests (`stopped` from the record, every
   pointed-at control exists on the blue console) replace them. `core_loc`
   is unchanged (580); `product_loc` 24562 -> 24091.
+- **Run live 2026-10-16** (OpenStack, platform VM 192.168.0.210), deployed
+  three times by `bin/cloud up --replace --sideload platform=... --sideload
+  gns3=...` (`docs/OPENSTACK.md` §5.3), each with the platform image built on
+  the VM from HEAD and the gns3 image from 1814e5c: 2535f30 in 25 min 55 s,
+  3a7238d in 24 min 55 s, 470b1bb in 24 min 47 s (each about 10 min of store
+  backup, 5.96 GB; all exit 0, both slots READY). A learner in Korean, headless
+  Playwright, real panes only. F2 passed `search` and `status` (200 read in
+  the developer tools' Status column) on every build (sessions 549, 551,
+  553). F5 on 2535f30 (session 550) found two faults, fixed: the `rule` field
+  holds the rule messages (`[Inbound Anomaly Score Exceeded (Total Score: 5),
+  SQL Injection Attack Detected via libinjection]`) and `rule_id` the numbers
+  (`[942100, 949110]`), so the step now points at and names `rule_id`
+  (ce24871); and the sqlmap step's row with the sensor count left 1.2 s after
+  the check passed, while the next step asks for that count, so a passed
+  Kali step now stays until Next (3a7238d). On 3a7238d (session 552) that row
+  pushed Next below a 1000-pixel viewport, because the popover was placed
+  before the row was drawn; it is now placed again (470b1bb). On 470b1bb
+  (session 554) every step passed: `attack`; `stopped` (403 with the "blocked by the
+  WAF" badge in the developer tools, answered `waf`); `rule` (942100); `sqlmap` (41 s from the
+  Kali terminal); `requests` (1903, the row's count). The two assumptions:
+  the filter `url : *search* and status : 403` finds exactly the `' OR 1=1--`
+  record (1 document, `/search/?q=%27%20OR%201=1--`, 403); and
+  `[data-test-subj="field-rule_id"]` is Discover's field-list entry, not the
+  expanded row (whose fields are `tableDocViewRow-<field>-value`, 25 to a
+  page; `rule_id` is on a later page). The entry's Top values show 942100 and
+  949110, and the row's grid shows `rule_id` too, so the step is answerable;
+  F4's `field-status` and `field-source_ip` point at the same list.
+- **`bin/verify` on 470b1bb** (on the VM, `FSL_PLATFORM_URL=http://192.168.0.210:8000`
+  as §7 says; the platform publishes 8000 on the VM's address, so the default
+  localhost failed the stack stage of a first attempt): unit 2441 passed in
+  101 s; acceptance 74 passed, 0 failed, 0 errors, 71 skipped in 730 s across
+  4 processes; ratchet holds (core_loc 580, tests 2045); 936 s in all. The
+  rebuilt VM has no `.venv`; it was made by hand before the run.

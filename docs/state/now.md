@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-15 (after the rebuild run). Written for a session that has the cloud
+Updated: 2026-10-16 (after the follow view's live run). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -20,24 +20,32 @@ Updated: 2026-10-15 (after the rebuild run). Written for a session that has the 
   fixes the live runs forced, and P6: the older course (lessons 0-5 and 7,
   VERIFY, the lesson debrief, the Lesson / Practice / Wargame rungs,
   `Session.mode`) removed, migration 0026, tests 2052 -> 1981 (71 deleted,
-  121 retargeted).
+  121 retargeted); and the follow view removed with F2 and F5 retargeted
+  (2026-10-16), plus the three fixes its live run forced (F5 reads
+  `rule_id`; a passed Kali step keeps its count; the popover is placed again).
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
-- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 by
-  `bin/cloud up --replace --sideload` (`docs/OPENSTACK.md` §5.3,
-  `docs/DECISIONS.md` 2026-10-15 "The platform VM's rebuild runs an unpushed
-  commit"): it runs this branch's HEAD 412e379 with the platform image built
-  from it and the gns3 image from 1814e5c, tagged 8f9acb0
+- The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and three
+  times on 2026-10-16 by `bin/cloud up --replace --sideload` (`docs/OPENSTACK.md`
+  §5.3, `docs/DECISIONS.md` 2026-10-15 "The platform VM's rebuild runs an
+  unpushed commit"): it runs 470b1bb with the platform image built from it
+  and the gns3 image from 1814e5c, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
   images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
-  `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`).
+  `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); the
+  2026-10-16 runs' three are in this worktree's `backups/`
+  (`db-20261016T112259Z`, `T121617Z`, `T124957Z`, 5.96 GB each).
 - The range keeps the platform VM's time over NTP (c4ee8d7, `docs/DECISIONS.md`
   2026-10-15 "The platform VM is the range's time source"). `bin/verify` there
   after it: unit passed; acceptance 74 passed, 0 failed in 765 s.
+- F2 and F5 were walked live in Korean on 470b1bb (sessions 553, 554), every
+  step passed through the real panes; `bin/verify` there after it: unit 2441
+  passed; acceptance 74 passed, 0 failed, 71 skipped in 730 s; ratchet holds
+  (`docs/DECISIONS.md` 2026-10-16 "The follow view is removed").
 
 ## Waiting for the user
 
