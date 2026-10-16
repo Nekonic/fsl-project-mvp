@@ -136,6 +136,7 @@ services:
       FSL_GNS3_URL: "http://gns3:3080"
       FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
       FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
+      FSL_RETAIN_CLOSED_MINUTES: "${FSL_RETAIN_CLOSED_MINUTES:-60}"
     env_file:
       - path: ./openstack.env
         required: false

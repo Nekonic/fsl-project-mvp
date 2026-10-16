@@ -57,3 +57,12 @@ def test_the_settings_survive_the_trip_through_heat_and_the_environment():
     assert cloud.pairs(carried["subnets"]) == found.inside
     assert cloud.pairs(carried["role_flavors"]) == found.role_flavors
     assert carried["slots"] == "2"
+
+
+def test_a_cloud_yaml_written_before_the_backups_section_still_parses_and_keeps_one_backup():
+    document = copy.deepcopy(DOCUMENT)
+    del document["backups"]
+
+    assert cloud.parse(document).backups_keep == 1, (
+        "every cloud.yaml in use predates backups.keep; refusing it would stop bin/cloud before anything runs"
+    )

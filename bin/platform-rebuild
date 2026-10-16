@@ -318,10 +318,11 @@ def keep_range_key(key: Path, old: Host | None) -> None:
     print(f"kept the platform's range key at {key}")
 
 
-def back_up(old: Host) -> Path:
+def back_up(old: Host, keep: int = 1) -> Path:
     environ = {**os.environ, "FSL_PLATFORM_EXEC": shlex.join(
         ["ssh", *old.options, old.target, "sudo docker exec -i fsl-platform python -"])}
-    done = subprocess.run([str(ROOT / "bin/backup")], env=environ, capture_output=True, text=True)
+    done = subprocess.run([str(ROOT / "bin/backup"), "--keep", str(keep)],
+                          env=environ, capture_output=True, text=True)
     if done.returncode != 0:
         raise Refused(f"platform-rebuild: no backup, so nothing was deleted: {done.stderr.strip()}")
     print(done.stdout, end="")
@@ -433,7 +434,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         old_address = None if failed(status) else address_of(cloud.stack)
         old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
         keep_range_key(range_key, old)
-        store = back_up(old) if old else None
+        store = back_up(old, cloud.backups_keep) if old else None
         known_hosts.unlink(missing_ok=True)
         address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)

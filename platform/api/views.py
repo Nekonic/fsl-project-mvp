@@ -35,7 +35,7 @@ import suppress
 import topology
 import wargames
 import traffic
-from api import customers, effect, loot, maps, reset, scenario_run, site
+from api import customers, effect, loot, maps, reset, retention, scenario_run, site
 from api.refusals import Conflict
 from console import strings
 from api.models import (
@@ -1449,6 +1449,7 @@ def close_session(request, session_id):
     finally:
         if claimed and begun is None:
             reset.release(number)
+    retention.prune_quietly()
     return _reply(reply)
 
 def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):

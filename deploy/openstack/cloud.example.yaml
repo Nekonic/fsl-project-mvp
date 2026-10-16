@@ -49,3 +49,6 @@ platform:
   stack: fsl-platform
   repository: https://github.com/Nekonic/fsl-project-mvp.git
   ref: dev                              # only pushed commits are cloned
+
+backups:
+  keep: 1                               # store backups left in backups/ after each rebuild or down, the new one included

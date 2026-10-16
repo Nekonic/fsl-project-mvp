@@ -301,3 +301,35 @@ def test_a_way_in_that_answers_without_reading_the_program_is_still_heard(backup
         "a command that answers from elsewhere and never reads the program, like the "
         "tests' cat, must not turn the backup into a broken pipe; its output decides"
     )
+
+
+def test_a_new_backup_leaves_the_newest_keep_and_any_backup_named_by_hand(backup, monkeypatch, tmp_path):
+    answering(monkeypatch, tmp_path, made_store(tmp_path / "db.sqlite3").read_bytes())
+    backups = backup.module.BACKUPS
+    backups.mkdir()
+    for name in ("db-20261001T000000Z.sqlite3", "db-20261002T000000Z.sqlite3", "db-20261014-pre-p6.sqlite3"):
+        (backups / name).write_bytes(b"older")
+    monkeypatch.setattr(sys, "argv", ["backup", "--keep", "2"])
+
+    backup.module.main()
+
+    left = backup.kept()
+    assert "db-20261002T000000Z.sqlite3" in left and "db-20261014-pre-p6.sqlite3" in left and len(left) == 3, (
+        f"six 6 GB copies piled up locally; --keep 2 leaves the new one and the newest older one, "
+        f"and never a backup someone named by hand: {left}"
+    )
+
+
+def test_the_snapshot_leaves_the_space_of_deleted_rows_behind(backup, tmp_path):
+    store = made_store(tmp_path / "db.sqlite3")
+    with closing(sqlite3.connect(store)) as db:
+        db.executemany("INSERT INTO api_detection (note) VALUES (?)", [("x" * 1000,)] * 2000)
+        db.commit()
+        db.execute("DELETE FROM api_detection")
+        db.commit()
+
+    image = snapshot_of(backup.module, store)
+
+    assert len(image) < store.stat().st_size / 10, (
+        "pruned sessions leave free pages in the store; shipping them made every rebuild copy 6 GB"
+    )

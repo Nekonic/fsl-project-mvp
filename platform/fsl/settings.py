@@ -99,6 +99,7 @@ CANARY_POLL = float(os.environ.get("FSL_CANARY_POLL", "3"))
 SCENARIO_TICK = float(os.environ.get("FSL_SCENARIO_TICK", "2"))
 SCENARIO_OBSERVE = float(os.environ.get("FSL_SCENARIO_OBSERVE", "15"))
 SCENARIO_WAF_POLL = float(os.environ.get("FSL_SCENARIO_WAF_POLL", "20"))
+RETAIN_CLOSED_MINUTES = int(os.environ.get("FSL_RETAIN_CLOSED_MINUTES") or 60)
 SENSOR_HOST = RANGE.hosts.get(RANGE.roles.get("sensor", ""))
 FSL_SENSOR_RULES = (
     os.environ.get("FSL_SENSOR_RULES")

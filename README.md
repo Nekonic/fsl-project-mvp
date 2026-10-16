@@ -74,7 +74,11 @@ shipping the alerts it is scored on.
 At most `FSL_MAX_SESSIONS` sessions (default 2) are open at once; one more
 answers 409, because each stack holds about 1.5 GB.
 Closing a session leaves its stack standing until an open at least three
-minutes later. A new wargame needs its folder with its `compose.yaml`,
+minutes later. A closed session is kept in the store for
+`FSL_RETAIN_CLOSED_MINUTES` (default 60, set in `compose.yaml`), long enough to
+read its score and debrief; after that the platform deletes it with its
+cases, detections, customer requests and objectives, at start and whenever a
+session closes. Open sessions are never deleted. A new wargame needs its folder with its `compose.yaml`,
 `scenario.yaml` and `objectives.yaml`, a case file under `redteam/cases/`, and
 one more `include:` line in `session.yaml`; `platform/wargames.py` discovers it
 from `scenario.yaml`. There are two wargames: the board (`loot_verified`) and corp,
@@ -259,7 +263,8 @@ Before deleting anything it checks that the six images for the ref's commit
 can be pulled anonymously from ghcr.io, keeps the range key (below) and backs
 the store up (`bin/backup` over ssh). It then deletes the stack, creates it
 again with every parameter from `cloud.yaml`, and waits until `/api/sessions/`
-answers.
+answers. `backups.keep` in `cloud.yaml` (default 1) is how many store backups
+`bin/platform-rebuild` and `bin/cloud down` leave in `backups/`.
 
 The new VM clones `ref`, pulls the images tagged with that checkout's commit,
 and starts; cloud-init writes the cloud's values into
@@ -515,10 +520,12 @@ the control plane's three volumes.
 bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-It uses SQLite's online backup API into a temporary file beside the
-platform, streams that file back in 1 MiB chunks (a store of gigabytes takes
+It writes a compacted copy with SQLite's `VACUUM INTO` into a temporary file
+beside the platform (the space of deleted sessions is left behind), streams that file back in 1 MiB chunks (a store of gigabytes takes
 minutes over ssh; only 600 s with no data is given up on), checks the copy
-with `PRAGMA integrity_check`, and keeps nothing if any step fails. To reach a platform
+with `PRAGMA integrity_check`, and keeps nothing if any step fails. Once the new copy has passed, older
+`db-<UTC time>.sqlite3` files beyond `--keep` (default 1, the new one
+included) are removed; files named otherwise are left. To reach a platform
 that is not in Docker, set `FSL_PLATFORM_EXEC` to a command that runs
 `python -` with the platform's settings importable.
 
