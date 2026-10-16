@@ -7,11 +7,26 @@ cd "$ROOT"
 
 PY="$ROOT/.venv/bin/python"
 FAST=0
+CHANGED=0
+LIVE=0
+BASE=""
 PLATFORM="${FSL_PLATFORM_URL:-http://localhost:8000}"
 export FSL_PLATFORM_URL="$PLATFORM"
 FAILED=0
 
-[ "${1:-}" = "--fast" ] && FAST=1
+case "${1:-}" in
+  --fast) FAST=1 ;;
+  --changed)
+    CHANGED=1
+    shift
+    for argument in "$@"; do
+      case "$argument" in
+        --live) LIVE=1 ;;
+        *) BASE="$argument" ;;
+      esac
+    done
+    ;;
+esac
 
 section() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 fail()    { printf '\033[31mFAIL\033[0m %s\n' "$1"; FAILED=1; }
@@ -29,8 +44,29 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
+if [ "$CHANGED" = 1 ]; then
+  section "selection"
+  PLAN="$(mktemp)"
+  if ! "$PY" bin/select-tests ${BASE:+"$BASE"} --plan "$PLAN"; then
+    fail "bin/select-tests crashed - run bin/verify --fast instead"
+    exit 1
+  fi
+  unit_kind="$(sed -n 's/^unit //p' "$PLAN")"
+  unit_files="$(sed -n 's/^unit-file //p' "$PLAN")"
+  acceptance_kind="$(sed -n 's/^acceptance //p' "$PLAN")"
+  acceptance_modules="$(sed -n 's/^acceptance-module //p' "$PLAN" | paste -sd, -)"
+fi
+
 section "unit + API tests"
-if (cd platform && "$PY" -m pytest tests -q -p no:cacheprovider); then
+if [ "$CHANGED" = 1 ] && [ "$unit_kind" = none ]; then
+  ok "no unit test reaches the change"
+elif [ "$CHANGED" = 1 ] && [ "$unit_kind" = some ]; then
+  if (cd platform && "$PY" -m pytest $unit_files -q -p no:cacheprovider); then
+    ok "platform/tests, the files the change reaches"
+  else
+    fail "platform/tests, the files the change reaches"
+  fi
+elif (cd platform && "$PY" -m pytest tests -q -p no:cacheprovider); then
   ok "platform/tests"
 else
   fail "platform/tests"
@@ -43,6 +79,8 @@ if [ "$FAST" = 1 ]; then
   exit "$FAILED"
 fi
 
+live_acceptance() {
+only="$1"
 section "stack"
 owner="$(docker inspect fsl-platform --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
 if [ -z "$owner" ]; then
@@ -184,7 +222,7 @@ else
 fi
 
 section "acceptance (live stack)"
-if "$PY" bin/acceptance; then
+if "$PY" bin/acceptance ${only:+--only "$only"}; then
   ok "test/"
 else
   fail "test/"
@@ -195,6 +233,17 @@ if pruned="$(./bin/prune --ids "$FSL_ACCEPTANCE_SESSIONS" --apply 2>&1)"; then
   ok "$(printf '%s\n' "$pruned" | head -1) - only sessions this run made"
 else
   printf '     could not prune the sessions this run made; their ids are in %s\n' "$FSL_ACCEPTANCE_SESSIONS"
+fi
+}
+
+if [ "$CHANGED" = 0 ]; then
+  live_acceptance ""
+elif [ "$acceptance_kind" != none ] && [ "$LIVE" = 1 ]; then
+  live_acceptance "$acceptance_modules"
+elif [ "$acceptance_kind" != none ]; then
+  section "acceptance (not run)"
+  echo "the change reaches the range; the acceptance tests it needs are listed above."
+  echo "run them with: bin/verify --changed${BASE:+ $BASE} --live"
 fi
 
 section "ratchet"
@@ -259,7 +308,9 @@ else
 fi
 
 section "result"
-if [ "$FAILED" = 0 ]; then
+if [ "$FAILED" = 0 ] && [ "$CHANGED" = 1 ]; then
+  printf '\033[32mthe tests the change reaches are green\033[0m — bin/verify --fast before a commit that touches shared code\n'
+elif [ "$FAILED" = 0 ]; then
   printf '\033[32mall green\033[0m — safe to commit\n'
 else
   printf '\033[31msomething failed\033[0m — do not commit\n'

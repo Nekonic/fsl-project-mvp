@@ -184,9 +184,10 @@ def balanced(groups: list[list[str]], durations: dict[str, float], workers: int)
     return [process for process in processes if process.modules]
 
 
-def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None = None) -> tuple[list[Process], list[Process]]:
+def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None = None,
+         only: set[str] | None = None) -> tuple[list[Process], list[Process]]:
     durations = durations if durations is not None else measured_durations()
-    every = modules(tests)
+    every = [module for module in modules(tests) if not only or module in only]
     idle = [module for module in every if module in IDLE]
     alongside = [Process("idle", "idle", idle, seconds(idle, durations))] if idle else []
     if workers <= 1:
@@ -195,7 +196,7 @@ def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None =
     solo = [module for module in every if module in SOLO]
     sharing = {module: shared | ({"a standing stack"} if module in STANDING_STACK else set())
                for module, shared in shared_by_module(tests).items()
-               if module not in IDLE and module not in SOLO}
+               if module in every and module not in IDLE and module not in SOLO}
     parallel = balanced(bonded(sharing), durations, workers)
     after = [Process("solo", "solo", solo, seconds(solo, durations))] if solo else []
     return alongside + parallel, after
@@ -297,10 +298,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=int(os.environ.get("FSL_WORKERS") or 0))
     parser.add_argument("--plan", action="store_true", help="print the split and run nothing")
     parser.add_argument("--save-durations", action="store_true")
+    parser.add_argument("--only", default="", help="comma-separated test modules to run instead of all")
     args, extra = parser.parse_known_args(argv)
     platform = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
     workers = args.workers or workers_the_range_allows(platform)
-    together, after = plan(workers)
+    together, after = plan(workers, only=set(filter(None, args.only.split(","))))
 
     print(f"{workers} {'worker' if workers == 1 else 'workers'} "
           f"(max_sessions at {platform}/api/range/ready/)")
