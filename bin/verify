@@ -272,12 +272,10 @@ if not baseline_path.exists():
 baseline = json.loads(baseline_path.read_text())
 
 GATED = ("core_loc", "dependencies", "services")
-FLOOR = ("tests",)
 
 moved = {k: (baseline[k], v) for k, v in current.items() if v != baseline.get(k, v)}
 worse = {k: m for k, m in moved.items() if k in GATED and m[1] > m[0]}
-shrunk = {k: m for k, m in moved.items() if k in FLOOR and m[1] < m[0]}
-better = {k: m for k, m in moved.items() if k not in FLOOR and m[1] < m[0]}
+smaller = {k: m for k, m in moved.items() if m[1] < m[0]}
 
 def show(heading, found, *advice):
     print(heading)
@@ -289,15 +287,10 @@ if worse:
     show("\nthis change grows a gated number:", worse,
          "\nThat is not an improvement. Either shrink it back, or if the growth",
          "is genuinely necessary, edit metrics.json by hand.")
-if shrunk:
-    show("\nthe test suite got smaller:", shrunk,
-         "\nA deleted test is cheaper than the change it was hiding, and it",
-         "leaves every other number in this run looking fine. If a test was",
-         "genuinely wrong, lower the floor in metrics.json by hand.")
-if better and not (worse or shrunk):
-    show("\nsmaller:", better, "\nRecord it: bin/measure --save")
+if smaller and not worse:
+    show("\nsmaller:", smaller, "\nRecord it: bin/measure --save")
 
-sys.exit(1 if worse or shrunk else 0)
+sys.exit(1 if worse else 0)
 PY
 then
   ok "no regression"

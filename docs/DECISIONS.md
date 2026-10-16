@@ -4204,3 +4204,23 @@ reaches. Full and `--fast` behave as before.
   docs changes and about half for console or view changes. Splitting
   `views.py` would sharpen it; not done here.
 - **Tests** 2044 -> 2059 (14 for the selector, one for `bin/acceptance --only`).
+
+## 2026-10-16 — The test count is reported, not gated
+
+- **Ruling** (the user, 2026-10-16): remove the rule that `tests` may only
+  rise. `bin/measure` still counts and prints it, marked `(not gated)` like
+  `product_loc` and `wargame_services`; `bin/verify` no longer refuses a
+  smaller count and lists it under `smaller:` instead.
+- **Why.** The floor rewarded keeping tests that no longer earn their place:
+  every removal needed `metrics.json` lowered by hand and a ruling, so
+  restatements of constants and pins on implementation details stayed. A test
+  audit is exactly removing the ones no one can justify; the commit that
+  removes a test says why.
+- **What still gates.** `core_loc`, `dependencies` and `services` may only
+  fall, unchanged.
+- **What still protects the hypothesis.** The benign cases in
+  `redteam/cases/` stay, and TP > 0 and TN > 0 stay in "What must not break";
+  neither depended on the count.
+- **Tests.** The `--changed` ratchet test now regresses on a grown
+  `services`; a new test holds that a falling test count passes and is
+  reported.

@@ -116,7 +116,7 @@ def test_only_tests_pytest_would_collect_are_counted(repo):
 
     assert measured(repo)["tests"] == 2, (
         "a def test_ in a file pytest never collects, or inside a string, runs "
-        "nothing, and counting it lets a real test go without the floor noticing"
+        "nothing, and counting it reports a test that does not exist"
     )
 
 
@@ -131,7 +131,7 @@ def test_two_tests_with_one_name_in_a_module_are_refused(repo):
 
     assert done.returncode != 0, (
         f"the second test_same replaces the first, so pytest runs one test "
-        f"and the floor counted two:\n{done.stdout}"
+        f"and measure counted two:\n{done.stdout}"
     )
     assert "test/test_twice.py" in done.stderr, done.stderr
     assert "test_same" in done.stderr, done.stderr

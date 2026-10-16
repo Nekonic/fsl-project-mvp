@@ -121,11 +121,11 @@ alert that does not mention the attack's mechanism is reported
 
 ## The ratchet
 
-`bin/verify` refuses a change that grows a gated number or shrinks the floor.
+`bin/verify` refuses a change that grows a gated number.
 `core_loc` (`scoring/`, `ingest/`, `rules/`, `redteam/harness.py`),
-`dependencies` and `services` may only fall. `product_loc` and
-`wargame_services` are reported, not gated. `tests` (module-level `test_*` functions in
-`test_*.py`, as `bin/measure` counts them) may only rise — deleting a test is the cheapest way to pass. `bin/measure` prints
+`dependencies` and `services` may only fall. `product_loc`,
+`wargame_services` and `tests` (module-level `test_*` functions in `test_*.py`,
+as `bin/measure` counts them) are reported, not gated. `bin/measure` prints
 them all; `reference.md` beside the `orchestrate` skill has the full table.
 `metrics.json` holds the record; editing it by hand is a last resort, not an
 escape hatch. A small, obviously-correct change that justifies a gated +1 may
