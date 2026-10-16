@@ -337,6 +337,8 @@ localStorage.setItem('fsl-lesson-landed-1', 'true');
 localStorage.setItem('fsl-lesson-step-1', '4');
 const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false}};
 browser.element('pane-frame').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
+Object.defineProperty(browser.element('coach-pop'), 'offsetHeight',
+  {get: () => 300 + 400 * browser.element('coach-pop').querySelectorAll('[data-kali]').length});
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
     return {body: {id: 1, guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
@@ -353,12 +355,15 @@ browser.serve((request) => {
 });
 """.replace("STEPS", json.dumps(steps))
     seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      await browser.wait(100);
       await browser.click('[data-act="kali"]');
       await browser.wait(3000);
+      const pop = browser.element('coach-pop');
       return {count: browser.text('coach-pop-count'), row: browser.text('[data-kali]'),
-              next: !browser.element('coach-pop-next').disabled};
+              next: !browser.element('coach-pop-next').disabled, bottom: parseFloat(pop.style.top) + pop.offsetHeight};
     """)
 
     assert seen["errors"] == []
     assert seen["result"]["count"] == "4 / 5", "the requests step asks for the count this row shows"
     assert "1896" in seen["result"]["row"] and seen["result"]["next"] is True
+    assert seen["result"]["bottom"] <= 900 - 12, "the row made the popover taller; Next must stay on screen"
