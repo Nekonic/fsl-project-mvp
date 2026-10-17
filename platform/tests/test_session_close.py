@@ -249,3 +249,27 @@ def test_closing_deletes_only_sessions_closed_longer_ago_than_the_retention_with
         "while the one just closed and one still inside the retention must stay for their score and debrief"
     )
     assert list(Detection.objects.values_list("session", flat=True)) == [recent.pk]
+
+
+def test_an_expired_session_s_detections_go_in_transactions_no_larger_than_the_batch(monkeypatch):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from api import retention
+
+    now = timezone.now()
+    expired = Session.objects.create(scenario="board", baseline=[], ended_at=now - timedelta(days=1))
+    Detection.objects.bulk_create(
+        Detection(session=expired, detection_id=f"d{n}", source="suricata", signature="s", timestamp=now)
+        for n in range(5))
+    monkeypatch.setattr(retention, "ROWS_PER_TRANSACTION", 2)
+
+    with CaptureQueriesContext(connection) as ran:
+        assert retention.prune(now) == 1
+
+    deletes = [query["sql"] for query in ran
+               if query["sql"].startswith('DELETE FROM "api_detection" WHERE "api_detection"."id" IN')]
+    assert len(deletes) == 3 and not Detection.objects.exists(), (
+        "one session's 1.9 M-row cascade in a single transaction held the store's write lock past the "
+        "30 s busy timeout, and the scenario engine's tick failed with 'database is locked'"
+    )
