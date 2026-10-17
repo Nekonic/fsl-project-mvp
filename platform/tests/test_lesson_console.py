@@ -284,6 +284,27 @@ def test_run_in_terminal_opens_the_waf_pane_and_runs_the_step_s_command_there(cl
     assert (result["pasted"], result["entered"]) == ([commands("f6")["excluded"] + "\n"], ["\r"])
     assert result["said"] == english("lesson.ran")
 
+LOGGING_IN = """
+const shown = ["Welcome to Ubuntu"];
+const buffer = {get length() { return shown.length; }, getLine: (row) => ({translateToString: () => shown[row]})};
+pane.contentWindow.term.buffer = {active: buffer};
+"""
+
+def test_run_in_terminal_waits_for_the_shell_prompt_of_a_terminal_still_logging_in(client):
+    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + WAF_TERMINAL + LOGGING_IN, scenario=f"""
+      {to("excluded", "f6")}
+      await browser.click('coach-pop-run');
+      await browser.wait(3000);
+      const early = pasted.length;
+      shown.push("ubuntu@fsl-waf:~$ ");
+      await browser.wait(1000);
+      return {{early, pasted}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["early"] == 0, "a paste before the ssh login's prompt is lost"
+    assert seen["result"]["pasted"] == [commands("f6")["excluded"] + "\n"]
+
 HIDDEN_WHEN_CLOSED = """
 const shown = pane.getBoundingClientRect;
 const none = () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
