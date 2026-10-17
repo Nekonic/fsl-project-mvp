@@ -118,6 +118,10 @@ class Customers:
             if self.plan is not None and not self.stopping.is_set():
                 self.staff()
             self.stopping.wait(LOOK_EVERY)
+        for worker in self.workers:
+            worker.join(TIMEOUT + 1)
+        with self.lock:
+            self.out.close()
 
     def work(self, index):
         while not self.stopping.is_set() and index < self.wanted():
@@ -220,6 +224,8 @@ class Customers:
     def record(self, record):
         line = json.dumps(record, ensure_ascii=True, separators=(",", ":")) + "\n"
         with self.lock:
+            if self.out.closed:
+                return
             self.out.write(line)
             self.out.flush()
 
@@ -228,8 +234,6 @@ def main(plan_path, records_path):
     customers = Customers(plan_path, records_path)
     signal.signal(signal.SIGTERM, lambda *_: customers.stopping.set())
     customers.run()
-    for worker in customers.workers:
-        worker.join(TIMEOUT + 1)
 
 
 if __name__ == "__main__":

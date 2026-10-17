@@ -94,7 +94,8 @@ def discover_path(index, start, end, narrowed=None, everything=False):
 def main():
     base = os.environ.get("KIBANA_URL", f"http://kibana:5601{BASE_PATH}")
     try:
-        ndjson = open(OBJECTS, "rb").read()
+        with open(OBJECTS, "rb") as objects:
+            ndjson = objects.read()
     except OSError as exc:
         print(f"no saved objects at {OBJECTS}: {exc}", flush=True)
         return
@@ -111,8 +112,9 @@ def bring_up(base, ndjson, send, pause):
         except Refused as exc:
             return f"kibana: {exc}"
         except urllib.error.HTTPError as exc:
-            if exc.code not in NOT_READY:
-                return f"kibana answered {exc.code} to {exc.url}: {exc.read()[:500].decode('utf-8', 'replace')}"
+            with exc:
+                if exc.code not in NOT_READY:
+                    return f"kibana answered {exc.code} to {exc.url}: {exc.read()[:500].decode('utf-8', 'replace')}"
             last = f"Kibana still answered {exc.code}, not ready"
         except (urllib.error.URLError, OSError, ValueError):
             last = "could not reach Kibana"

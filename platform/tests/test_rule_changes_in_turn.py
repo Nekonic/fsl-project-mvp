@@ -38,7 +38,13 @@ def test_two_suppressions_at_once_both_take_effect(client):
     sensor = SlowSensor(TWO_RULES)
 
     def silence(sid):
-        client.post_json("/api/rules/suppressions/", {"sid": sid, "minutes": 5})
+        from django.db import connection
+
+        try:
+            client.post_json("/api/rules/suppressions/", {"sid": sid, "minutes": 5})
+        finally:
+            if connection.connection is not None:
+                connection.connection.close()
 
     with patch("api.views.substrate", return_value=sensor):
         both = [threading.Thread(target=silence, args=(sid,)) for sid in (9000901, 9000902)]
