@@ -44,7 +44,7 @@ def test_every_lesson_command_runs_against_the_flavor_s_file(tmp_path, wargame_i
 def test_every_lesson_renders_its_steps_for_a_session_on_either_flavor(client, wargame_id, lesson_id, flavor):
     declared = wargames.lesson(wargame_id, lesson_id=lesson_id)["steps"]
     session = Session.objects.create(scenario=wargame_id, baseline={}, guidance=True, lesson=lesson_id,
-                                     lesson_steps={step["id"]: {"reached": "2026-10-13T09:00:00+00:00"} for step in declared})
+                                     lesson_steps={lesson_id: {step["id"]: {"reached": "2026-10-13T09:00:00+00:00"} for step in declared}})
 
     with override_settings(FSL_WAF=layout(flavor)):
         shown = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]

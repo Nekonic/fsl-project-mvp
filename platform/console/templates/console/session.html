@@ -167,7 +167,7 @@
     parts.push(closed ? t("session.span", began, ended, took) : t("session.since", began, took));
     field("session-line").textContent = parts.filter(Boolean).join(" · ");
     const figures = [];
-    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(t("main.step", lessonStep(id), lessonSteps()))));
+    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))));
     if (total) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
     if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
     field("session-figures").innerHTML = figures.join("");
@@ -178,7 +178,7 @@
     field("blue-tiles").innerHTML = [
       tile("Kibana", t("session.tile.logs")),
       tile(t("session.tile.waf"), t("session.tile.waf_does")),
-      lesson ? tile(t("session.tile.note"), t("main.step", lessonStep(id), lessonSteps()))
+      lesson ? tile(t("session.tile.note"), t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))
         : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
     ].join("");
     field("blue-foot").textContent = Number.isInteger(paranoia) ? t("session.blue.posture", paranoia) : "";

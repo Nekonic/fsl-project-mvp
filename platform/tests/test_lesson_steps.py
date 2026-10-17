@@ -94,7 +94,7 @@ def test_an_answer_is_judged_on_the_server_and_two_wrong_ones_record_a_hint(clie
 
     assert (known["passed"], known["reason"]) == (False, ["lesson.attack.wrong.rule.949110", []])
     assert (other["passed"], other["reason"], other["hint"]) == (False, ["lesson.check.wrong", []], 1)
-    assert other["hints"] == [{"step": "rule", "level": "hint"}], "two wrong answers raise the hint and record it"
+    assert other["hints"] == [{"lesson": "f5", "step": "rule", "level": "hint"}], "two wrong answers raise the hint and record it"
     assert right["passed"] is True and right["progress"]["rule"]["passed"]
 
 def test_steps_are_refused_without_an_answer_for_an_unknown_step_a_plain_session_a_closed_one_or_an_unknown_state(client):
@@ -132,7 +132,7 @@ def test_a_hint_press_raises_the_step_s_hint_level_records_the_first_once_and_gi
     assert [one["hint"] for one in pressed] == [1, 2, 3, 4, 4]
     assert all("answer" not in one["progress"]["excluded"] for one in pressed[:2])
     assert pressed[2]["progress"]["excluded"]["answer"] == strings.both("lesson.miss.answer.excluded")
-    assert Session.objects.get(pk=session.pk).hints == [{"step": "excluded", "level": "hint"}]
+    assert Session.objects.get(pk=session.pk).hints == [{"lesson": "f6", "step": "excluded", "level": "hint"}]
 
 @pytest.mark.parametrize("mark", views.REPLAY_MARKS)
 def test_a_case_an_old_check_verify_replay_or_seed_fired_stays_out_of_both_scores(client, mark):

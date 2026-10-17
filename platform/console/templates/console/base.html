@@ -141,20 +141,20 @@
     const secondsSince = (instant) =>
       Math.max(0, Math.round((Date.now() - new Date(instant)) / 1000));
 
-    const LESSON_STEP_KEY = (id) => `fsl-lesson-step-${id}`;
+    const LESSON_STEP_KEY = (id, lesson) => `fsl-lesson-step-${id}-${lesson}`;
 
-    function lessonStep(id) {
+    function lessonStep(id, lesson) {
       try {
-        const kept = Number(localStorage.getItem(LESSON_STEP_KEY(id)));
+        const kept = Number(localStorage.getItem(LESSON_STEP_KEY(id, lesson)));
         return Number.isInteger(kept) && kept > 0 ? kept : 1;
       } catch (error) {
         return 1;
       }
     }
 
-    function keepLessonStep(id, step) {
+    function keepLessonStep(id, lesson, step) {
       try {
-        localStorage.setItem(LESSON_STEP_KEY(id), String(step));
+        localStorage.setItem(LESSON_STEP_KEY(id, lesson), String(step));
       } catch (error) {
         return;
       }

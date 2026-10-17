@@ -51,6 +51,9 @@ def exclusions_changed(before: list, after: list) -> dict:
     return {"added": [entry for entry in after if entry not in before],
             "removed": [entry for entry in before if entry not in after]}
 
+def records(lesson_steps: dict | None, lesson_id: str) -> dict:
+    return (lesson_steps or {}).get(lesson_id) or {}
+
 def help_counts(steps: dict) -> dict:
     kept = list(steps.values())
     return {
