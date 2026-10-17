@@ -39,7 +39,7 @@ hand, the stock Ubuntu 24.04 cloud image.
 | Fabric via `POST /api/range/fabric/` | done | §6 |
 | Golden images built on the cloud via `POST /api/range/images/` | done | §6 |
 | `fsl-kali` built on Ubuntu (no second base image) | done (2026-10-11, every tool present) | §6 |
-| `fsl-wargame-host`: every wargame (board, corp) as its GHCR containers on one host image, no image per wargame | built 2026-10-11; not run on a cloud | §3.6, §6 |
+| `fsl-wargame-host`: every wargame (board, corp) as its GHCR containers on one host image, no image per wargame | done (built 2026-10-11, runs every slot's board and corp since; a sideloaded board reaches it, 2026-10-18) | §3.6, §6 |
 | `fsl-opnsense-<version>` built by an Ubuntu builder from the official nano image | done (26.7, 2026-10-11) | §3.6 |
 | OPNsense edge configured over mgmt ssh (`configure/`) | done (2026-10-11; survival of an OPNsense update not checked) | §6 |
 | Slot + configure via `/api/range/slot/`, `/api/range/configure/` | done (OPNsense edge; automatic after a close, §6.1) | §6 |
@@ -248,7 +248,9 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 | `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
 
 8002 is the blue console's Website pane on both substrates; on openstack the
-platform proxies it to the session's slot's WAF over `mgmt`. A platform
+platform sends each request over an ssh stream to the slot's Kali (over
+`mgmt`), which sends it from a customers address through the edge to the WAF
+(`docs/ARCHITECTURE.md`, the Website pane's egress). A platform
 stack made before 2026-10-13 lacks the rule; add it by hand:
 
 ```bash
@@ -341,7 +343,14 @@ range has none. The images are the ones the docker substrate runs
 so they must be public and exist for the tag (`FSL_IMAGE_TAG`, the platform
 checkout's commit, from `/opt/fsl/.env`). The tag is in the bundle's digest,
 so a platform on a new commit plans a new host image. A tag that moves (`dev`)
-does not: rebuild by deleting the image.
+does not: rebuild by deleting the image. A wargame image sideloaded onto the
+platform (§5.3) is not on GHCR: the bundle then also holds a generated
+`loaded` file (`<image> <image id> <url>` per line, so the id is in the
+digest), and after the pulls the setup fetches each image from the platform
+(`GET /api/range/images/sideloaded/<name>/` with `Host: localhost`, which
+Django's allowed hosts take, a `docker save` stream, retried 5 times), `docker load`s it, refuses unless its id equals the platform's, and
+prunes the GHCR copy. The builder reaches the platform's 8000 on the build
+network (`fsl-platform` security group, `FSL_PUBLISH` the fixed IP).
 
 **The OPNsense image [one-click].** `fsl-edge` declares `setup:
 deploy/opnsense/build.sh` and `uploads: opnsense`. On `POST
@@ -551,7 +560,33 @@ bind-mounted into a running container, such as `filebeat.yml`, keeps the cloned
 commit's copy until the container is recreated). `FSL_IMAGE_TAG` stays
 the cloned commit because the range's image builders pull the wargames'
 images from GHCR at that tag: a tag GHCR does not have would fail the
-`fsl-wargame-host` build. Before anything is deleted it refuses an unknown
+`fsl-wargame-host` build. A sideloaded wargame image (`board`, `corp`,
+`corp-db`) reaches the range from the platform instead: the rebuild writes
+`FSL_SIDELOADED=<names>` beside the password in `/opt/fsl/openstack.env`
+(a later rebuild without `--sideload` makes a VM without it), the platform
+adds the image's id to the `fsl-wargame-host` bundle, and the builder, after
+pulling GHCR's copy at the cloned tag, loads the sideloaded one from `GET
+/api/range/images/sideloaded/<name>/` (`platform/api/sideloaded.py`, §3.6).
+A new board is therefore a new `fsl-wargame-host` image, built when the
+range's images are next planned (`bin/cloud up` does it; about 4 to 5
+minutes). A slot that was standing before keeps the wargame host it booted,
+old board included, because a close resets that host in place (§6.1); with
+no session open, rebuild every slot and configure it again:
+
+```bash
+P=http://ADDRESS:8000/api/range
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/rebuild/
+curl -s $P/ready/          # until no slot is REBUILDING
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # retry on 503 until ssh is up
+curl -s $P/ready/          # every slot READY
+```
+
+Open: the reset does not yet notice that a wargame host booted from an image
+other than the ready one; until it does, a deploy that changes a wargame
+image needs the slot rebuild above (`docs/DECISIONS.md` 2026-10-18,
+"Foundations rebuilt as integrated attack and defence lessons"). `sudo
+docker exec fsl-platform env | grep FSL_SIDELOADED` on the VM shows the
+names. Before anything is deleted it refuses an unknown
 name, a name given twice, a missing tarball, a tarball without exactly one
 `ghcr.io/nekonic/fsl-NAME:<commit>`, and any image whose build context in
 `.github/workflows/images.yml` differs between the commit it was built from
@@ -564,6 +599,10 @@ docker build --platform linux/amd64 -t ghcr.io/nekonic/fsl-platform:$C ctx/platf
 docker save -o fsl-platform-$C.tar ghcr.io/nekonic/fsl-platform:$C
 .venv/bin/python bin/cloud up --replace --sideload platform=fsl-platform-$C.tar
 ```
+
+A changed board goes the same way (`git archive $C wargames/board/app`,
+`docker build ... ctx/wargames/board/app`, `--sideload board=fsl-board-$C.tar`);
+the refusal names every image whose build context differs from HEAD.
 
 A sideloaded VM that reboots runs `fsl-platform.service` again, whose
 `compose pull` can replace the sideloaded images with GHCR's for the same tag;

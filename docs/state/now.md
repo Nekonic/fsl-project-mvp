@@ -4,8 +4,10 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-18 (the red console is Kali and a browser, the blue
-console carries Kali for practice, proven live on 51b28dd; before it,
+Updated: 2026-10-18 (foundations F1-F6 rebuilt as attack and defence
+lessons, 3aa49a5, live review pending; before it, the red console is Kali
+and a browser, the blue console carries Kali for practice, proven live on
+51b28dd; before it,
 foundations F1-F6 in one session, proven live on 26c1c80; before that, Korean-first learner text, its review and its live
 sweep, at 6b72876). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
@@ -31,7 +33,8 @@ sweep, at 6b72876). Written for a session that has the cloud
   Korean-first learner text (6e3a2f0), its review (16e951d), the docs sweep
   and the Korean line-break fix its live sweep forced (6b72876); then the
   foundations in one session (74ce337, a9bab72) and the two Run in terminal
-  fixes its live run forced (c7a69c5, 26c1c80).
+  fixes its live run forced (c7a69c5, 26c1c80); the red console as Kali and a
+  browser (to 51b28dd); the foundations rebuilt (3aa49a5).
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
@@ -144,8 +147,20 @@ sweep, at 6b72876). Written for a session that has the cloud
   no changed-key warning. P0: `/internal/auth-users` is not reachable from
   Kali or the Website pane (WAF `location` 404, `fsl-mgmt` group); nothing
   changed there. Proven live on 51b28dd; the terminal-related acceptance
-  modules 10 passed. The lesson redesign (integrated attack and defence
-  lessons) waits for the user's approval.
+  modules 10 passed.
+
+- Foundations rebuilt as attack and defence lessons (2026-10-18, 3aa49a5,
+  `docs/DECISIONS.md` "Foundations rebuilt as integrated attack and defence
+  lessons"): F1 map, F2 DevTools, F3 Kibana (both legs of the reverse
+  proxy), F4 XSS and an IDS rule (`xss-gap`), F5 sqlmap on `sort`, F6 an
+  over-broad exception (`overbroad`, `OWASP_CRS` on `ARGS:sort`); one
+  highlighted element per step, the note docked as a column, nudge, hint,
+  Skip, a solo last step; the Website pane leaves from the customers side;
+  a per-session Kibana view; seed replays scored as benign; a sideloaded
+  board reaches the wargame host. In flight: the deploy (platform, kali,
+  board sideloaded; the slot rebuild so the standing slots take the new
+  board) and the live review of F1-F6 in one session (pending live
+  review).
 
 ## Waiting for the user
 

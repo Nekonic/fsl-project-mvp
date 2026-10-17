@@ -5102,3 +5102,197 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   the proxy, and through the Website pane's proxy; every other address `000`.
   Every session the runs opened (878-881, 886, and the acceptance run's) is
   closed.
+
+## 2026-10-18 — Foundations rebuilt as integrated attack and defence lessons
+
+- **Rulings** (the user, 2026-10-18, on the instructor, purple-team and UX
+  reviews of F1-F6):
+  1. A highlight points at the one element that holds the value to read,
+     never at a whole pane; the note and its callout never cover it.
+  2. Every search is typed in the board's own search box; the address bar
+     only where the step says so (F2's missing post, F5's `)`).
+  3. The developer tools look and read like Chrome's Network panel; no "WAF
+     blocked" badge.
+  4. Nothing internal reaches the learner: `fsl-`, `_index`, slot, the
+     `X-FSL-Case` header, markers, case ids.
+  5. No answer-giving chips or buttons: the learner writes the KQL; no
+     answer in a theory card, a button label or the previous step's pass
+     line.
+  6. Every lesson's last step is solo: no highlight, no hint, only Skip.
+  7. Help is a ladder per step: nudge, then hint, then Skip. Foundations
+     have no answer rung.
+  8. The learner types every attack and every WAF command; no prepared
+     attack button, no "Run in terminal".
+  9. Each lesson opens on the pane its first step uses.
+  10. The units are called lessons in Korean too; Korean-first practitioner wording
+      (`ko-style-guide`), plain titles.
+  11. Kept: lessons back to back in one session; two scores, the target
+      decides, benign cases stay.
+- **Lead decisions on the spec's open points.** No step runs on one
+  substrate only: F3 reads the two legs of one search by their destination
+  (the request arriving at `waf`, and the one `waf` sends on to
+  `board.com`, nginx's upstream), which both ranges record (docker's one
+  Suricata in the WAF's namespace sees both legs; on OpenStack the edge
+  sensor sees the first and the estate sensor the second). The `fsl-` host
+  rename stays deferred (`docs/STATE.md` backlog 0). The red console as Kali
+  and a browser, and the blue console's Kali pane, were built the same day
+  (the entry above). Lessons stay in one session.
+- **The lessons** (`wargames/board/scenario.yaml`; text ids `lesson.map`,
+  `lesson.http`, `lesson.logs`, `lesson.xss`, `lesson.sqli`, `lesson.miss`;
+  every one seeds `board-normal-search`):
+
+  | Lesson | Defense, opens on | Steps | The learner |
+  |---|---|---|---|
+  | F1 Reading the network map | `full`, Map | 6 | reads board.com's Services address from its link label, board-db's subnet from its zone caption, the name of kali's network, picks in order the hosts a customer's search passes (`customers > firewall > waf > board.com` on OpenStack, `customers > waf > board.com` on docker), names the host that collects the logs; solo: board-db's address |
+  | F2 Reading HTTP requests in DevTools | `full`, Website | 7 | searches with the search box; reads method, parameter, path and status in the Network panel, the parameter behind the board's new sort control; solo: the status of a post that does not exist (404) |
+  | F3 Finding your requests in Kibana | `full`, Website | 7 | searches a word of letters and digits, writes KQL for it; the source IP of the event arriving at board.com (waf's address), the map host that uses it, the source IP of the same search arriving at waf (a customers address), its X-Forwarded-For; whether the WAF logged the search (no); solo: how many of their searches arrived at waf |
+  | F4 Blocking an XSS request and writing an IDS rule | `xss-gap`, Website | 11 | `<script>alert(1)</script>`: 403, one 941 rule, Total Score 20; the mixed-case probe: 403 too; no IDS alert for either; writes a rule for `<script` in the URI, reads its sid from its alert, sees the mixed case slip past, adds `nocase`; solo: replays the mixed case (alerts) and an ordinary search (2xx, no alert) |
+  | F5 Analysing SQL injection on the sort parameter | `full`, Website | 9 | reads the sort value; `?sort=...)`: 500, no WAF rule detected it; types sqlmap in the Kali pane, reads its verdict (not injectable), the run's source IP and 913100, the rule that named the scanner; reruns with `--random-agent`; solo: one rule that still blocked it |
+  | F6 Finding the attack an over-broad exception let through | `overbroad`, WAF | 8 | greps the exclusion file for the parameter left out (`sort`); dumps the accounts with sqlmap and pastes the table; no alert from either engine; the attack's source in the edge's http events; the penalty total in the objectives card (22 = 2 x (2 + 4 + 5) when all three are lost undetected); deletes the exception and reloads nginx; solo: replays the dump (blocked, no loot) and sorts once (2xx, not logged) |
+
+- **What the range showed before the build** (confirm-on-range, OpenStack
+  slot 1, session 887, platform 51b28dd), and what changed for it:
+
+  | Item | Found | Changed |
+  |---|---|---|
+  | Website pane at the sensors (CR-3, CR-6) | the pane went platform -> WAF `mgmt` address: no edge event, the WAF's X-Forwarded-For the platform's `mgmt` address (not on the map), no Suricata event for a blocked probe | the pane leaves from the customers side (PC-2); F3 and F4 depend on it |
+  | `http.uri; content:"<script"` (CR-6) | matches the browser's `%3Cscript%3E`, misses `%3CScRiPt%3E`, `nocase` fixes it | none; F4 as designed |
+  | XSS at PL1 (CR-5) | 941100, 941110, 941160, 941390, 949110; Total Score 20 for both cases | F4 accepts any of the four 941 ids; the score is 20 (four rules x 5) |
+  | `?sort=title)` (CR-7) | 500, and ModSecurity writes a record for it (5xx is a relevant status) with an empty `messages` list | F5 asks whether a WAF rule detected it (`waf_detected`), not whether it is in the WAF log; a record with no `messages` is not a detection (ingest already drops it) |
+  | sqlmap on `sort` (CR-8, CR-9) | 913100 in every default-UA record, absent with `--random-agent`, 942xxx still block; sqlmap's `<host>/log` empty when nothing is injectable | none; `sqlmap_found` reads that log, and F5's commands add `--flush-session` (a second run answers from sqlmap's cache otherwise) |
+  | Over-broad exclusion (CR-10) | `ruleRemoveTargetByTag=attack-sqli;ARGS:sort` alone: the dump is blocked by 933160 (`attack-injection-php`); `OWASP_CRS;ARGS:sort` dumps all 3 accounts; sqlmap's WAF-detection probe trips 9000003, 9000004 and one CRS rule | `overbroad` excludes `OWASP_CRS` on `ARGS:sort`; F6's dump adds `--skip-waf`, or the run counts detected and the penalty is 11, not 22; F6 asks about alerts, not records (each 500 is a record with no rule) |
+  | Seed replay (CR-12) | recorded once per unit with `meta.seed`, then dropped from scoring with the replays: TN 0 and "no benign" on every closed course | a benign seed counts as a benign case (TN >= 1); `no_benign` and `no_marker` are not shown in lesson sessions |
+  | Learner map (CR-13) | the monitoring network has no address or subnet on the map | F1's `log_ip` became `log_host`: the host's name (management addresses stay off the map) |
+  | Stamp proxy (CR-11) | every request typed in the Kali pane carried the label; alert events carry no headers (correlated through the http event) | none; no address-and-time fallback |
+  | Kibana DOM (CR-4) | Kibana 8.15.0, not 8.8; flyout rows `tableDocViewRow-<field>-value`, virtualised | the `kibana` locators use the flyout's field filter to bring a row into view |
+  | WAF terminal (CR-14) | `nano`, NOPASSWD `sudo`; reload `sudo nginx -t && sudo systemctl reload nginx` | F6's edit step is `{sudo}nano {waf_rules} && {waf_reload}` |
+
+- **Platform changes as landed** (spec numbering):
+  - PC-1 `/internal/auth-users`: no change; already 404 at the WAF (the P0
+    probe in the entry above).
+  - PC-2 the Website pane leaves from the customers side. On OpenStack
+    `site.py` opens an ssh stdio stream to Kali (`OpenStack.opened`, new)
+    running `attacker.as_customer`: a small Python bridge bound to a customers
+    address, as the `fsl-users` account that Kali's origin SNAT leaves alone,
+    to the WAF's estate address on port 80, so the request crosses the edge.
+    On docker the platform binds its own address on the customers network
+    and connects to the WAF's address there. The origin is the customers
+    origin the scenario weights most. The marker stays on the wire; the stamp
+    proxy now sets `X-FSL-Case` only when the request has none.
+  - PC-3 highlight: the pane dimmed, a ring on the target, a one-line
+    callout beside it (`<text>.callout.<step>`, `.then` for a two-phase
+    point). Locators `panel`, `map` (node, link, label, zone, answered by
+    `deploy/gns3/auditor.html`), `site` (the script nginx injects answers
+    `fslLocate` from its parent console only), `dev` (`data-coach`),
+    `kibana` (`doc`, `hits`, `query`, `sidebar`), `term` (a row of the
+    xterm buffer). `point: {pane: true}` is gone.
+  - PC-4 the note is a column beside the pane (340 px, 300 px at 1280 or
+    less, a 44 px strip folded, a bottom panel below 1024 px): the step card
+    on top, the theory card under it, the objectives card in F6, scenario
+    cards and hints in the same column. A pass is said on the passed step;
+    silent polls write nothing; the map refits on every open and resize.
+  - PC-5 each lesson opens on its first step's pane; a step on another pane
+    shows an "Open <pane>" button; every pane a step opens has
+    `lesson.open.<pane>` in both languages.
+  - PC-6 Kibana: `kibana.py` imports a data view per session, "Session
+    logs" (`session-<pattern>`), when the session opens (`KIBANA_URL`, now in
+    `compose.yaml`): the shared runtime fields plus `event.module`,
+    `observer.name` (map names: `firewall`, `board.com`, `waf`) and
+    `request_headers` (one `Name: value` per header, `X-FSL-Case` left out);
+    `sourceFilters` hide `_index`, `fsl_*`, `*X-FSL-Case*`, `log.*`,
+    `message`, `agent.*`, `ecs.*`, `host*`, `input.*`, `error.*`,
+    `http.request_headers*`, and `_index` leaves `metaFields`; a filter
+    `event.module: exists` hides the range hosts' own syslog lines. A lesson
+    opens it with an empty query from the lesson's start; scenarios keep the
+    alert query. Suricata `msg` lost the "FSL " prefix; every served rule
+    file has a neutral header.
+  - PC-7 DevTools as Chrome's Network panel: columns Name, Status, Type,
+    Initiator, Size, Time; tabs Headers, Payload, Preview, Response; General
+    (Request URL, Request Method, Status Code with its text, Remote Address,
+    Referrer Policy), then Response and Request Headers with a raw view;
+    Query String Parameters decoded, with source and URL-encoded views;
+    clear, filter, Preserve log, type chips, F12 (also inside the site
+    frame). The record drops the marker and rewrites `Referer`/`Origin` to
+    `http://board.com/...`. Korean labels checked against Chrome's
+    `ko.json`, English in Chrome's en-US casing. Not done: the side-by-side
+    screenshot with real Chrome (the live review).
+  - PC-8 terminals: docker prompts `kali` and `waf` too (Kali image PS1,
+    `waf-terminal.sh` rc file); `~/.hushlogin` not needed (a command session
+    prints no banner); reaching a Kali step writes its marker to the stamp
+    proxy's `/label/active`, cleared on a lesson switch and at close, so the
+    command has no `--headers`; no Run or copy button on any lesson step; the
+    Kali row keeps only "Open Kibana at this run's time".
+  - PC-9 session page: `per_case` rows carry `lesson`, `step` and `seed`;
+    runs read "Lesson n · step m", cases by name, never by id; the course
+    summary lists every lesson taken (`course` in the session detail);
+    restart starts the first lesson with its defence; "about 94" gone; the
+    catalogue's range controls only with `?operator`; foundations are called
+    lessons in Korean too (`main.group.foundations`).
+  - PC-10 postures `xss-gap` (PL1, `no-xss.rules`) and `overbroad` (PL1,
+    `{tag: OWASP_CRS, target: "ARGS:sort"}`, `no-uri-sqli.rules`);
+    `rules/crs.py` renders, parses and validates `tag`
+    (`ctl:ruleRemoveTargetByTag`), core_loc 580 -> 584, recorded in
+    `metrics.json`; `missed` removed; `lesson.fix_class` needed no change (a
+    tag exclusion has a target and no path).
+  - PC-11 map: the request path left to right in the four `.gns3` files,
+    "IDS" beside `firewall` and `board.com` (OpenStack) and `waf` (docker);
+    `topology.for_wargame` keeps a text that lies in no zone; "Loading the
+    map..." until the auditor posts `fslMap: drawn`; the lone Map tab gone.
+  - PC-12 board: a sort select (newest, oldest, title) on the post list
+    sending `GET /?sort=`; the search button does not wrap. The board image
+    is rebuilt.
+  - PC-13 ladder: nudge, hint, Skip in foundations (`lesson.SKIP_OFFERED_IN_FOUNDATIONS`);
+    worked scenarios keep the answer rung; `ok.<step>` sits in the withheld
+    table and is served on pass; a test holds that no pass line names an
+    option a later step of its lesson offers. "Do it yourself" only in F4
+    and F6, ungraded.
+  - PC-14 checks: kinds `waf_changed` and `replay`; `answer` with
+    `form: order`, `wrong_if`, an inline `match` and `leg`; `rules` with
+    `needs: nocase`; `kali` with `ua: any`. Facts: range `address`,
+    `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`,
+    `lost_points`; request `param_value`, `sensor_source` by leg,
+    `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`,
+    `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`; Kali
+    `sqlmap_found` (`attacker.sqlmap_found` reads sqlmap's log on the box),
+    `kali_source`, `alerted_by`.
+  - PC-15 Website pane: another host shows Chrome's "This site can't be
+    reached"; reload turns into stop while loading, with a thin progress bar.
+  - PC-16 case `board-sqli-orderby-sqlmap-random-agent`: the stock orderby
+    case with `--random-agent` and the dump options.
+- **A sideloaded wargame image reaches the range.** The new board (PC-12)
+  must run on the OpenStack wargame host before it is pushed. `--sideload`
+  now also writes `FSL_SIDELOADED=<names>` beside the password in
+  `/opt/fsl/openstack.env`; the platform finds each wargame service whose
+  image is exactly `ghcr.io/nekonic/fsl-<name>:<FSL_IMAGE_TAG>` (only
+  `board`, `corp`, `corp-db` can match) and adds a generated bundle file,
+  `deploy/wargame-host/loaded` (`<image> <image id> <url>`), so the image id
+  is in the bundle digest and a new board is a new `fsl-wargame-host`. The
+  builder pulls from GHCR as before, then fetches each image from `GET
+  /api/range/images/sideloaded/<name>/` (`platform/api/sideloaded.py`,
+  `docker save` on the platform; 404 unless the name is sideloaded and a
+  declared wargame runs it), `docker load`s it and refuses unless the id
+  matches. With nothing sideloaded for a wargame the bundle is unchanged.
+  **Open:** a slot standing before the deploy keeps its old wargame host,
+  since a close resets that host in place; `POST /api/range/slot/rebuild/`
+  then `/configure/` brings the new one (`docs/OPENSTACK.md` §5.3). Making
+  the reset Nova-rebuild a wargame host booted from an image other than the
+  ready one is range logic in `openstack.py`, not done.
+- **Removed.** Facts `entry`, `segment`, `lost`, `excluded`,
+  `status_class`, `engine`, `waf_source`, `stopped_at`, `requests`,
+  `leaked`, with `COUNT_TOLERANCE` and `lesson.within`; posture `missed`;
+  step `query` chips and the per-step Kibana link; the answer rung in
+  foundations; the note's Goal and Hints tabs and the Solution list with its
+  copy button; "Run in terminal" and "Show command"; the Network panel's WAF badge and View
+  source; the old text ids `lesson.range`, `lesson.follow`, `lesson.attack`
+  and every foundation's `answer.*`, `line.*` and `fail.*` keys, with
+  `lesson.answer.*`, `lesson.run.*`, `lesson.command.*`, `lesson.goal.*`,
+  `lesson.replay.*`. Tests: 26 functions removed or replaced (among them the
+  two Run in terminal tests, the seed kept out of both scores, the hint that
+  gives the answer, the proxy to `fsl-<id>-waf-1`), 74 added; 1066 -> 1114.
+- **The seams.** `api/site.py` no longer names the WAF container
+  (`fsl-<id>-waf-1`); it reaches Kali only through `attacker.py` and the
+  substrate's `opened`. The sqlmap log read is in `attacker.py`, the data
+  view in `kibana.py`, the tag exclusion in `rules/crs.py`. Metrics:
+  core_loc 580 -> 584, product_loc 23996 -> 25625, dependencies 6 and
+  services 10 unchanged.
+- **Proven live:** (filled after the live review)

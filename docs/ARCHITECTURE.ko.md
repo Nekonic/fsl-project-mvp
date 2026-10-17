@@ -212,10 +212,10 @@ edge, sensor, proxy 역할); 센서가 감시하는 호스트; 기본 출발지;
 
 구간은 라벨로 찾습니다. Docker에서는 어댑터가 호스트도 라벨로 찾습니다.
 `declaration.yaml`의 `compose:` 절이 각 역할을 compose 서비스에 대응시키고, 어댑터는 세션
-프로젝트에서 그 `com.docker.compose.service` 라벨을 가진 컨테이너를 고릅니다. 한 곳은 이
-조회를 거치지 않고 compose 이름 규칙으로 세션의 WAF 컨테이너를 직접 지정합니다:
-`platform/api/site.py`(`http://fsl-<id>-waf-1`, 사이트 프록시)이며, 아래 예외 표에 기록해
-두었습니다. 각 구간은 `fsl.segment.id`를 Docker 라벨이나 Neutron 태그로 가지며,
+프로젝트에서 그 `com.docker.compose.service` 라벨을 가진 컨테이너를 고릅니다. 이제
+플랫폼 코드에서 compose 이름 규칙으로 컨테이너를 지정하는 곳은 없습니다(사이트 프록시가
+2026-10-18까지 `http://fsl-<id>-waf-1`로 지정했습니다). 사용자의 쉘을 여는 WAF 터미널
+스크립트만 그렇게 하며, 아래 예외 표에 기록해 두었습니다. 각 구간은 `fsl.segment.id`를 Docker 라벨이나 Neutron 태그로 가지며,
 어댑터는 라벨이 붙은 네트워크만 가져옵니다. 구간 id가 같으면 세션이 소유한 네트워크가
 컨트롤 플레인 네트워크보다 우선합니다. 이름으로 매칭하는 방식은 compose 접두사와
 오버라이드, Heat 스택 접미사, 유일하지 않은 Neutron 이름 때문에 깨졌습니다. OpenStack에서는
@@ -272,8 +272,12 @@ compose는 substrate와 관계없이 Docker 소켓을 플랫폼에 마운트하�
   방어하는 회사 웹 서비스 네트워크를, 실습 토폴로지를 그리는 방식(Cisco NetAcad lab
   topology, NSRC 워크숍 logical diagram)의 논리 구성도로 그립니다. 역할 호스트 이름, 링크
   끝마다 인터페이스와 프리픽스를 붙인 주소(`kali`와 `customers`는 인터페이스만), 영역마다 그
-  네트워크를 적은 캡션(인터넷은 이름만)만 있고, 그 밖에는 아무것도 없습니다(제목, 범례, 메모,
-  기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지 이름 모두 없음). 노드는 다음과 같습니다.
+  네트워크를 적은 캡션(인터넷은 이름만), Suricata가 도는 호스트 옆의 "IDS" 글자(OpenStack은
+  `firewall`과 사이트, Docker는 `waf`)만 있고, 그 밖에는 아무것도 없습니다(제목, 범례, 메모,
+  기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지 이름 모두 없음). 요청 경로는 왼쪽에서
+  오른쪽으로 인터넷 영역, `firewall`, 서비스망 영역(`waf`, 사이트), DB망 영역, 관제망 영역
+  순서로 놓입니다. `topology.for_wargame`은 두 영역 사이에 있는 firewall의 "IDS"처럼 어느
+  영역에도 속하지 않는 글자도 남깁니다. 노드는 다음과 같습니다.
   `internet` 스위치의 `customers`와 `kali`(공격자의 Kali 박스), `firewall`(OpenStack의
   OPNsense 에지로, 에지의 Suricata를 이 노드에 합쳐 그림), `waf`와 사이트(`board.com` 또는
   `corp.com`, WAF 호스트의 선언된 이름)가 붙는 `sw1`(서비스 구간), OpenStack에서는 사이트
@@ -415,7 +419,10 @@ mousedown도 삼킵니다. 페이지가 직접 만든 합성 이벤트는 신뢰
 웹 UI 자체의 축소 버튼을 누르고(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않습니다),
 mousemove 한 번으로 그림을 가운데로 옮깁니다(웹 UI는 `movementX`/`movementY`만큼
 이동합니다). 창의 "화면에 맞추기" 버튼은 프레임에 `fsl-fit`을 보내 같은 초기화와 맞춤을
-실행합니다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다. 개발용
+실행합니다. 콘솔은 창을 열 때와 크기가 바뀔 때마다 이 메시지를 보내고, 페이지가 첫 맞춤
+뒤에 `{fslMap: "drawn"}`을 보낼 때까지 불러오는 중이라고 표시합니다. 페이지는
+코치의 `{fslLocate}`에 노드, 링크, 링크 끝 라벨(Auditor 토큰으로
+`/v3/projects/<id>/nodes`와 `/links`를 한 번 읽어 앎), 영역의 창 안 사각형으로 답합니다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다. 개발용
 MCP(`/v3/mcp/`)를 쓰려면 `docker exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key
 <name>`으로 API 키를 출력하세요. 콘솔에는 MCP를 노출하는 곳이 없습니다. 콘솔의 해당 탭
 이름은 구성도(`blue.pane.topology`, 영어로는 Map)이며, 학습자가 읽는 문구 어디에도 GNS3라는 이름은 나오지 않습니다.
@@ -462,10 +469,10 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 합니다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 프로젝트를 엽니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사용자에게 `fsl-<id>-waf-1`의 쉘을 열어 줍니다(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM의 ssh 쉘을 엽니다). f6의 WAF 창 단계는 사용자가 읽을 예외 파일을 알려 주며, 그 명령(`cat {waf_rules}`)은 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
-| 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 찾음 | `platform/api/site.py`가 `http://fsl-<id>-waf-1`을 compose 이름 규칙으로 만듭니다 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사용자에게 `fsl-<id>-waf-1`의 쉘을 열어 줍니다(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM의 ssh 쉘을 엽니다). f6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 주며, `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.FSL_WAF`)으로 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
+| 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 찾음 | Python 코드에는 없음. `waf-terminal.sh`가 `fsl-<id>-waf-1`을 지정합니다(위 행) |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 에지의 Suricata를 설정하고 재시작합니다(OpenStack). `declaration.yaml`의 각 센서 호스트(에지, 그리고 `estate-sensor`를 맡는 워게임 호스트)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 워게임 호스트의 estate 센서 compose 서비스를 멈췄다가 다시 시작하며(OpenStack), 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
-| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽습니다. 터미널 연결 설정(`settings.py`, `nginx.conf`, `entrypoint.sh`)에 `fsl-kali`와 `fsl-<id>-kali-1`이 적혀 있습니다 |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽습니다. 터미널 연결 설정(`settings.py`, `nginx.conf`, `entrypoint.sh`)에 `fsl-kali`와 `fsl-<id>-kali-1`이 적혀 있습니다. 예외가 아닌 것: 웹사이트 창(`platform/api/site.py`)은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(OpenStack에서는 ssh stdio 스트림)만 거쳐 박스에 닿습니다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. OpenStack에서도 같은 컨테이너에 접근합니다. `loot.py`는 워게임 호스트의 publish된 포트로 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner를 거칩니다 |
 
 ## 요청의 출처
@@ -478,11 +485,11 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | 콘솔 케이스, 도구 | 일회용 `fsl-kali` 컨테이너 | 그 컨테이너, 선택한 출발지에서 | sqlmap `--headers=` |
 | CLI 실행, HTTP | 플랫폼, `redteam/run.py` | 플랫폼, `edge`에서(`board.com`이 해석되는 네트워크) | harness가 추가 |
 | CLI 실행, 도구 | 일회용 `fsl-kali` 컨테이너, `launcher(<선언된 기본 출발지>)`에서 | 그 컨테이너 | sqlmap `--headers=` |
-| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 플랫폼, `edge`에서(OpenStack에서는 `mgmt`에서) | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
+| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소: OpenStack에서는 Kali가 가진 주소로, `fsl-users` 계정으로 보내 에지를 지남. docker에서는 고객 네트워크에 있는 플랫폼 자신의 주소 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
 | 고객 | `deploy/traffic/users.py`, `fsl-<id>-users` 안에서(docker) 또는 Kali VM의 `fsl-users`로(OpenStack) | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
-프록시는 `mitmdump` 스크립트입니다. `/label/active`의 값으로 `X-FSL-Case`를
-설정하고, `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
+프록시는 `mitmdump` 스크립트입니다. `X-FSL-Case`가 없는 요청에 `/label/active`의
+값으로 그 헤더를 설정하고, `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
 주소로 전달합니다. 두 파일은 플랫폼이 `docker exec`로 씁니다. TLS 가로채기를
 하지 않으므로 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다.
 `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
@@ -518,20 +525,23 @@ nginx가 경로에서 세션을 꺼내고 클라이언트가 보낸 쿼리는 �
 WAF 이미지에는 자체 ttyd가 없습니다. 이 경로도 같은 `auth_request /terminal-allowed`로
 보호합니다. OpenStack에서는 이 창이 `/vm-terminal/fsl-waf/?arg=<세션 id>`를 띄웁니다.
 
-블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다. 뒤로, 앞으로, 새로 고침,
-전체 URL(`http://board.com/<경로>`)을 보여 주고 http에는 Chrome처럼 "주의 요함"
-표시를 붙이며 URL이나 경로를 입력하고 Enter를 누를 수 있는 주소창, iframe 안의
-페이지, "개발자 도구" 토글로 구성됩니다. 대상 시스템은 외부에 공개되지 않으므로
+블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다. 뒤로, 앞으로, 새로 고침(페이지를
+불러오는 동안에는 중지 버튼과 얇은 진행 막대), 전체 URL(`http://board.com/<경로>`)을
+보여 주고 http에는 Chrome처럼 "주의 요함" 표시를 붙이며 URL이나 경로를 입력하고
+Enter를 누를 수 있는 주소창, iframe 안의 페이지, "개발자 도구" 토글(F12로도 열리며,
+페이지 안에서 눌러도 됩니다)로 구성됩니다. 다른 호스트의 주소를 넣으면 Chrome의
+"사이트에 연결할 수 없음" 페이지가 나옵니다. 대상 시스템은 외부에 공개되지 않으므로
 8002의 nginx가 터미널과 같은 `auth_request /terminal-allowed` 뒤에서
 `/site/<세션>/<호스트>/<경로>`를 플랫폼의 기록기(`/site-proxy/<세션>/<호스트>/`,
 `platform/api/site.py`, 정확한 경로와 쿼리는 `X-Site-Uri`에 담음)로 넘깁니다.
-기록기는 이를 그 세션의 WAF(`fsl-<id>-waf-1:80`, 공유 `edge` 네트워크로 연결)에
-`Host: <호스트>`를 붙여 보내며, 리다이렉트는 따라가지 않고 압축도 요청하지 않습니다.
-넘기는 헤더는 `Accept`, `Accept-Language`, `Content-Type`, `User-Agent`, `Referer`,
-`Origin`뿐입니다. `X-Forwarded-For`는 넘기지 않으므로 대상 시스템과 그 audit log에는
-학습자의 LAN 주소가 아니라 플랫폼 주소가 남습니다. 존재하지 않는 세션에는 404를,
-닫힌 세션에는 409를 WAF를 호출하지 않고 응답합니다. WAF가 연결 3초, 읽기 20초 안에
-응답하지 않으면 내부 호스트 이름이 들어가지 않은 평문 한 문장으로 502를 응답합니다.
+기록기는 이를 훈련 환경의 고객 쪽에서(아래) `Host: <호스트>`를 붙여 보내며,
+리다이렉트는 따라가지 않고 압축도 요청하지 않습니다. 넘기는 헤더는 `Accept`,
+`Accept-Language`, `Content-Type`, `User-Agent`, `Referer`, `Origin`뿐이고, 뒤의 두
+헤더는 `http://<호스트>/`의 브라우저가 보낼 값으로 고쳐 씁니다(`as_browsed`).
+`X-Forwarded-For`는 넘기지 않으므로 WAF가 고객 주소를 붙이고, 대상 시스템에는 학습자의
+LAN 주소가 남지 않습니다. 존재하지 않는 세션에는 404를, 닫힌 세션에는 409를 WAF를
+호출하지 않고 응답합니다. 요청 대상으로 쓸 수 없는 경로에는 400을, 연결 3초·읽기
+20초 안에 응답이 없으면 502("board.com did not answer")를 응답합니다.
 페이지는 도착하는 대로 브라우저에 스트리밍합니다. 8000의 nginx는 `/site-proxy/`에
 404를 응답하고, 플랫폼의 POST 동일 출처 검사는 이 경로를 건너뛰므로 대상 시스템의
 폼도 제출할 수 있습니다. 모든 페이지는 WAF가 판정합니다. 차단되면 WAF 자체의 403
@@ -546,8 +556,26 @@ WAF 이미지에는 자체 ttyd가 없습니다. 이 경로도 같은 `auth_requ
 플랫폼 호스트(8002번 포트)에서 실행되고 쿠키는 포트별로 분리되지 않으므로,
 `document.cookie`로 8000의 콘솔이 보낼 쿠키를 설정할 수 있습니다. 현재 콘솔은 쿠키를
 쓰지 않지만, 나중에 쿠키를 추가하면 이 방법으로 접근할 수 있게 됩니다. nginx는
-`</body>` 앞에 `location.pathname + search`를 부모 창에 post하는 스크립트를 붙입니다.
-페이지 안에서 링크를 눌렀을 때 주소창과 방문 기록이 따라가는 것은 이 스크립트 덕분입니다.
+`</body>` 앞에 스크립트를 하나 붙입니다. 이 스크립트는 `location.pathname + search`를
+부모 창에 post하고(페이지 안에서 링크를 눌렀을 때 주소창과 방문 기록이 따라가는 것은
+이 덕분입니다), F12를 부모 창으로 넘기고, 코치의 `{fslLocate: <selector>}`에 그 요소의
+사각형으로 답합니다(스크롤과 크기 변경 때도 다시). 답하는 대상은 출처가 콘솔 호스트인
+부모 창의 메시지뿐이며, 스크립트가 따로 요청을 보내지는 않습니다.
+
+웹사이트 창의 출구(`site.found_egress`, 세션마다 한 번)는 고객 주소입니다. 그래서 창의
+요청은 고객과 같은 경로를 거치고, 센서도 고객 요청과 똑같이 봅니다. 출발지는
+`attacker.customer_origins` 가운데 시나리오의 고객 트래픽이 가장 큰 비중을 둔
+출발지(`customers.declared`, 없으면 id 순으로 첫 번째)입니다. OpenStack
+(`ATTACKER_ORIGIN_MODE=snat`)에서는 기록기가 Kali로 ssh stdio 스트림을
+열고(`OpenStack.opened`) 거기서 `attacker.as_customer`를 실행합니다. 이것은 Python
+브리지로, Kali의 출발지 SNAT가 건드리지 않는 `fsl-users` 계정으로 돌고(그 슬롯에서
+고객 트래픽을 한 번도 돌리지 않았다면 계정과 예외 규칙을 만듭니다), 그 출발지의 첫 주소에
+바인드해 WAF의 `estate` 주소 80번 포트로 연결합니다. 요청은 에지를 지나고(DNAT), 에지
+센서는 요청이 `waf`에 도착하는 것을, estate 센서는 `waf`가 `X-Forwarded-For`에 고객
+주소를 담아 `board.com`으로 보내는 것을 봅니다. docker에서는 플랫폼이 그 고객
+네트워크에 있는 자신의 주소에 바인드해 그 네트워크의 WAF 주소로 연결하며, WAF의
+네임스페이스에 있는 Suricata가 두 구간을 모두 봅니다. 컨테이너 이름이나 `mgmt` 주소는
+쓰지 않습니다.
 
 이 경로는 콘솔의 8000과 출처가 다른 별도 포트 8002에서 서비스하며, 모든 응답에
 `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`을
@@ -555,29 +583,32 @@ WAF 이미지에는 자체 ttyd가 없습니다. 이 경로도 같은 `auth_requ
 스크립트가 콘솔과 그 API를 읽고 조작할 수 있습니다. `allow-same-origin` 없는
 sandbox(불투명 출처)라면 8000 하나로도 이를 막을 수 있지만, Chromium 기반 내장
 브라우저는 그런 프레임을 거부합니다(Claude 데스크톱 브라우저에서
-`ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 모든 substrate에서 8002입니다. docker에서는
-프록시가 세션의 WAF 컨테이너(`fsl-<id>-waf-1`)를 이름으로 지정하고, OpenStack에서는
-세션마다 한 번 substrate에 그 슬롯의 `mgmt` 게이트웨이 주소를 묻습니다. 플랫폼 포트는
-`fsl-mgmt`를 거쳐 이 주소에 연결됩니다. 세션 API는 `site: {port, path}` 또는
-`null`을 주며, 이 값이 없으면 콘솔은 창을 숨깁니다. 플랫폼 템플릿의 security group이
-8002를 엽니다(`docs/OPENSTACK.md` §3.5).
+`ERR_BLOCKED_BY_CLIENT`). `SITE_PORT`는 모든 substrate에서 8002입니다. 세션 API는
+`site: {port, path}` 또는 `null`을 주며, 이 값이 없으면 콘솔은 창을 숨깁니다. 플랫폼
+템플릿의 security group이 8002를 엽니다(`docs/OPENSTACK.md` §3.5).
 
-기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 보관합니다(재시작하면
-사라집니다). 메서드, `http://<호스트><경로>`, 상태 코드, WAF 차단 여부(403), 소요 시간,
-요청·응답 헤더, 그리고 각각 64 KB로 자른 본문입니다(응답은 스트리밍하면서 앞 64 KB만
-남깁니다). 세션이 닫히면 그 세션의 요청을 지웁니다.
-`GET /api/sessions/<id>/site/requests/?after=<id>`가 목록을, `.../site/requests/<id>/`가
-요청 하나의 전체 내용을 줍니다. 개발자 도구 패널은 페이지 아래에 붙어 있고(위쪽
-가장자리를 끌어 높이를 조절합니다), 패널이 열려 있고 탭이 보이며 세션이 열려 있는
-동안 2초마다 목록을 가져옵니다(닫힌 세션은 409를 응답하고 폴링이 멈춥니다). 목록에는
-메서드, URL, 상태 코드(403은 빨간색과 "WAF 차단"), 시간이 나옵니다. 행을 선택하면
-양쪽 헤더, 요청 본문, 응답 본문이 앞 2000자까지 "더 보기"와 함께 나옵니다.
-"소스 보기"는 주소창에 있는 페이지의 기록된 본문을 보여 줍니다. 패널에는 쿠키를
-보관하지 않는다는 안내가 있습니다.
+기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 보관하고(재시작하면 사라집니다)
+세션이 닫히면 지웁니다. 메서드, `http://<호스트><경로>`, 상태 코드와 그 문구, 유형과
+분류(`Sec-Fetch-Dest`, 없으면 content type으로 정함), 개시자, 전송 크기, 시간, 출구
+주소, 원격 주소, 페이지가 정한 리퍼러 정책, 마커를 뺀 보낸 그대로의 요청 헤더,
+`Set-Cookie`를 뺀 응답 헤더, 그리고 각각 64 KB로 자른 본문입니다(응답은 스트리밍하면서
+앞 64 KB만 남깁니다). `GET /api/sessions/<id>/site/requests/?after=<id>`가 목록을,
+`.../site/requests/<id>/`가 요청 하나의 전체 내용을 줍니다. 개발자 도구 패널은 Chrome의
+네트워크 패널입니다. 페이지 아래에 붙어 있고(위쪽 가장자리를 끌어 높이를 조절합니다),
+패널이 열려 있고 탭이 보이며 세션이 열려 있는 동안 2초마다 목록을 가져옵니다(닫힌
+세션은 409를 응답하고 폴링이 멈춥니다). 열은 이름(경로의 마지막 부분과 쿼리, 마우스를
+올리면 전체 URL), 상태(4xx와 5xx는 빨간색), 유형, 개시자, 크기, 시간입니다. 도구 모음에는
+지우기, 필터, 로그 보관(끄면 페이지를 이동할 때 목록을 지움), 유형 칩(모두, Fetch/XHR,
+문서, CSS, JS, 이미지)이 있습니다. 행을 선택하면 헤더(일반: 요청 URL, 요청 메서드, 상태
+코드, 원격 주소, 리퍼러 정책. 그다음 응답 헤더와 요청 헤더, 각각 원본 헤더 보기), 페이로드
+(디코딩한 쿼리 문자열 매개변수와 소스 보기·인코딩된 URL 보기, 폼 본문), 미리보기, 응답
+탭이 나옵니다. 행, 탭, 줄에는 코치를 위한 `data-coach`가 붙어 있습니다. 한국어 라벨은
+Chrome 자체의 문구(`front_end/core/i18n/locales/ko.json`)이고 영어는 Chrome en-US의
+표기를 따릅니다. 패널 어디에도 "WAF"라는 말은 없습니다.
 
 브라우징 요청에는 세션 자신의 비밀값(`Session.browse_marker`, `browse-`와 무작위
 16진수 32자리, 세션을 만들 때 생성)이 마커로 붙고(브라우저가 보낸 `X-FSL-Case`는
-기록기가 덮어씁니다), 요청은 플랫폼의 `edge` 주소에서 발생합니다. 이 요청의 경보도
+기록기가 덮어씁니다), 요청은 고객 주소에서 나갑니다(위). 이 요청의 경보도
 다른 경보와 똑같이 수집되고 목록에 나오므로 학습자는 Kibana와 `/detections/`에서
 찾을 수 있습니다. 그러나 `/score/`는 재실행(`views.REPLAY_MARKS`)을 빼는 것과 같은
 방식으로 그 세션의 비밀값이 붙은 탐지 기록을 뺍니다. 브라우징은 케이스가 아니므로
@@ -703,7 +734,7 @@ Elasticsearch가 아직 올라오는 중에도 플랫폼은 서비스합니다).
 `Session.result_cache`를 비웠으므로, 저장된 결과는 레슨 판정 없이 다시 채점됩니다.
 요청 본문의 `mode`는 무시합니다. board는 `minimal`(CRS paranoia level 4,
 `local.rules`), `full`(paranoia level 1, 같은 `local.rules`), `ids`(paranoia level 1,
-`no-uri-sqli.rules`: sid 9000001을 뺀 `local.rules`), `missed`("기초 레슨 F1-F6"),
+`no-uri-sqli.rules`: sid 9000001을 뺀 `local.rules`), `xss-gap`과 `overbroad`("기초 레슨 F1-F6"),
 그리고 시나리오용 방어 설정 `level2`, `level3`, `inherited`, `untuned`, `broken-rule`,
 `spelled`("시나리오")를 선언합니다. 레슨마다 `defense`는 discovery 시점에 이 목록과
 대조합니다. 어떤 레슨이나 시나리오도 `minimal`에서 시작하지 않으므로 `minimal`은
@@ -723,15 +754,16 @@ defense의 룰 파일을, defense가 없으면 `local.rules`를 넣고(`suricata
 `platform/rules/crs.py`는 설정을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로
 생성합니다. 이 파일은 `crs-setup.conf` 다음, 룰보다 먼저 로드되는 CRS hook입니다.
 내용은 `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 설정하는
-`SecAction` 하나와, 항목마다 런타임 예외 규칙 하나(`ctl:ruleRemoveTargetById=<id>;<target>`
-또는 `ctl:ruleRemoveById=<id>`, 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
+`SecAction` 하나와, 항목마다 런타임 예외 규칙 하나(`ctl:ruleRemoveTargetById=<id>;<target>`,
+`ctl:ruleRemoveById=<id>`, 또는 CRS `tag`와 target을 지정한 항목이면
+`ctl:ruleRemoveTargetByTag=<tag>;<target>`(예: `OWASP_CRS`), 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith
 <path>"`로 범위를 좁힘)이며, id는 10000~10020을 씁니다. 파일은 `runner("gateway")`로
 세션의 WAF에 쓰고, `nginx -t && nginx -s reload`를 실행하며, nginx가 거부하면 이전
 파일로 되돌립니다. reload 전에 없던 워커가 올라오면 반환하므로(워커 PID는 `/proc`에서
 부모 PID로 찾습니다) 새 연결에는 새 설정이 적용됩니다. 이전 워커는 느린 요청을 마저
 처리할 수 있습니다. 5초 안에 새 워커가 나타나지 않으면 reload가 일어나지 않은
 것이므로, 이전 파일로 되돌리고 다시 reload한 뒤 요청을 거부합니다. 입력은 무엇이든
-쓰기 전에 검증합니다. paranoia는 1-4, 룰 id는 900000-999999, target은 `ARGS`,
+쓰기 전에 검증합니다. paranoia는 1-4, 룰 id는 900000-999999(또는 영문자·`_`·`-`로 된 tag와 target), target은 `ARGS`,
 `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`(선택적으로
 `:이름`을 붙임) 또는 `REQUEST_URI_RAW`(PL3에서는 한글 검색어가 이 대상에서도 920272에
 매칭됩니다), 경로는 `[A-Za-z0-9_./-]`, 항목은 최대 20개입니다. 선택 항목인
@@ -765,7 +797,9 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
 
 `views.REPLAY_MARKS`(`seed`, `verify`, `check`, `replay`) 중 하나가 마커로 붙은 케이스는
 `/score/`(TP/FP/FN/TN, 그 케이스가 일으킨 경보, 게임)에서 빠지고, corp의 효과 관찰이
-변화를 귀속시키는 시간 구간에서도 빠집니다. 지금도 쓰는 것은 `seed`뿐이며, `verify`,
+변화를 귀속시키는 시간 구간에서도 빠집니다. 단, 정상 `seed` 케이스는 예외입니다. 레슨의
+seed 재실행은 정상 케이스로 채점하므로(2026-10-18) 레슨 세션에는 TN이 생깁니다. 지금도
+쓰는 것은 `seed`뿐이며, `verify`,
 `check`, `replay`는 이전 세션에 남은 재실행이 두 점수 모두에서 계속 빠질 수 있게 목록에
 남겨 둡니다.
 
@@ -794,7 +828,8 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
   목록은 세션마다 집계값 세 개만 읽고, 늦은 수집처럼 입력이 바뀐 세션만 다시 채점합니다.
   시작이 거부되면 누른 버튼 아래에 그 사실을 표시합니다. 409이면 "열린 세션 종료"가 열린
   세션을 나열하고, 각각 `ingest/` 다음 `close/`로 닫습니다. `GET /api/range/ready/`가
-  `max_sessions`를 알려 줍니다.
+  `max_sessions`를 알려 줍니다. 훈련 환경 관리 항목(경보 수집 확인, 열린 세션 수,
+  훈련 환경 상태, 워게임 카드의 개수)은 `?operator`일 때만 보입니다.
 - 세션(`/session/<id>/`): 머리글 수치(가이드 세션이 진행 중인 단계, 빼앗긴 목표, 대상
   시스템), 블루팀 콘솔 카드와 워게임 세션에서만 레드팀 콘솔 카드(Kali 터미널, 웹사이트,
   목표), `GET /api/sessions/<id>/cases/`의 최근 케이스. 세션이
@@ -803,11 +838,15 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
   문장으로 보여 줍니다. "공격 8건 중 7건 탐지 · 1건 미탐 (이름)", "정상 요청 4건 중 3건
   통과 · 1건 잘못 차단 (O'Brien 검색)", 그리고 케이스 하나는 경보가 몇 건이든 한 번으로
   센다는 문장입니다. TP/FP/FN/TN과 게임 밸런스는 API에만 있고, 사람이 읽는 문구에는
-  나오지 않습니다(`test_strings.py`). "같은 시나리오 다시 시작"(레슨에서는 "같은 레슨 다시
+  나오지 않습니다(`test_strings.py`). 레슨 세션의 화면은 실행마다 케이스 이름으로,
+  Kali 실행은 "레슨 n · m단계"로 부르며(`per_case[].lesson`, `.step`, `.seed`) 케이스
+  id는 쓰지 않습니다. 레슨 카드에는 들은 레슨마다 통과한 단계와 건너뛴 단계가 나옵니다.
+  "같은 시나리오 다시 시작"(레슨에서는 "같은 레슨 다시
   시작")은 같은 시나리오, 같은 레슨(`lesson_id`가 있으면
   `{scenario, guidance: true, lesson, defense}`), 또는 같은 워게임을 다시 엽니다.
 - 블루팀(`/blue/<id>/`): 왼쪽 메뉴(Kibana, 웹사이트, 구성도, `judgement` 시나리오의
-  경보, `detection`·`unknown` 시나리오의 IDS 룰, WAF, 그 아래 구분선과 Kali)와 창.
+  경보, `detection`·`unknown` 시나리오나 그 창을 쓰는 단계가 있는 레슨(F4)의 IDS 룰, WAF,
+  그 아래 구분선과 Kali)와 창.
   Kali는 세션의 `kind`가 `lesson`이나 `scenario`일 때만 보입니다. `wargame` 세션에서는
   사람이 레드팀 콘솔에서 공격하므로 방어자에게 공격자의 쉘을 주지 않습니다. Kali 창은
   한 번만 불러오는 별도 프레임이어서, 다른 창으로 옮겨도 실행 중인 sqlmap이 끊기지
@@ -820,154 +859,137 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
   출발지 선택이 없습니다(2026-10-18). 화면 폭이 좁으면 메뉴가 창 위로 쌓이며,
   레드팀·블루팀 화면은 가로로 스크롤되지 않습니다.
 
-가이드 세션(기초 레슨이나 단계형 시나리오)에서 레슨 노트는 창의 오른쪽 위에 떠
-있습니다(사이트 툴바나 WAF 배너가 보이면 그 아래, 40 px에 8 px를 더한 위치). 기본은
-알약 모양("레슨 노트 · 단계 n/N")으로 접혀 있고, 펼치면 너비 360 px에 탭 네 개가
-있습니다. 단계(현재 단계, 이전/다음, 바로 이동할 수 있는 전체 단계 목록), 목표(요약,
-완료 조건, 즉 단계 목록 또는 시나리오의 목표와 측정 방법, 그리고 네 문단), 이론,
-힌트입니다. 목표 한 줄(`<text>.summary`)은 머리글 아래, 탭 위에 고정됩니다. 노트는
-학습자가 펼칠 때만 펼쳐지며, 펼친 상태에서 다른 단계로 이동하면 단계 탭을 보여 줍니다.
-브라우저가 세션의 블루팀 콘솔에서 한 레슨을 처음 열 때(`fsl-lesson-landed-<id>-<lesson>`)는
-노트가 목표 탭으로 펼쳐지고, 기초 레슨이면 카드가 펼쳐진 이론 탭으로 펼쳐집니다. 그
-뒤로는 화면을 불러올 때마다 접힌 상태로 시작합니다. 사용자별로 localStorage에 남는
-것은 탭(`fsl-lesson-note`)과 보고 있던 단계(`fsl-lesson-step-<id>-<lesson>`)뿐이며,
-메인과 세션 화면은 이 값을 읽어 "단계 n/N"을 표시합니다. 진행 상황 자체는 세션에
-레슨별로 저장합니다(`Session.lesson_steps[<lesson>][<step>]`, 마이그레이션 0020과
-0027). 단계마다 `reached`, `passed`, `skipped`(시각), `hint`(보여 준 힌트 단계, 0-4)를
-남기고, 세션의 현재 레슨 것을 `GET /api/sessions/<id>/`와 모든 단계·힌트 응답의
-`progress`로 보고합니다. 단계 기록에는 그 단계에서 얻은 것도
-실립니다. 단계에 진입하면 `command`, 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`,
-통과하면 `line`이며, 뒤의 둘은 `{en, ko}` 형태입니다.
+가이드 세션(기초 레슨이나 단계형 시나리오)에서 레슨 노트는 창 옆의 열이며, 창을 덮지
+않습니다. 너비는 340 px(1280 px 이하에서는 300 px)이고, 접으면 44 px 띠("단계 n/N")가
+되며, 1024 px 미만에서는 창 아래의 패널이 됩니다. 위에서부터 단계 카드(단계 n/N, 단계
+제목, 할 일, 단계에 진입한 뒤 입력할 명령, 단계의 창이 보이지 않을 때 "<창> 열기" 버튼,
+질문과 입력란, 상태 줄, 도움말, 건너뛰기, 이전, 다음), 이론 카드(레슨을 처음 열 때
+펼쳐지고(`fsl-lesson-landed-<id>-<lesson>`), 그 뒤로는 사용자가 둔 대로), F6의 목표
+카드(`lesson_objectives`: 레슨을 시작한 뒤 빼앗긴 목표마다 난이도, 탐지 여부, 감점(난이도
+×1 또는 ×2)과 합계), 단계형 시나리오의 카드와 힌트, F4와 F6의 채점하지 않는 "직접 해
+보기" 카드, 그리고 접힌 단계 목록이 있습니다. 단계 목록은 `progress`가 통과라고 할 때만
+체크 표시를 하고, 통과하지 않고 넘어간 단계는 "건너뜀"으로 표시하며, "N단계 중 n단계
+통과"를 보여 줍니다. 접힘 상태는 사용자별로 남고(`fsl-lesson-note`), 보고 있던 단계는
+`fsl-lesson-step-<id>-<lesson>`에 남아 메인과 세션 화면이 이 값을 읽어 "단계 n/N"을
+표시합니다. 진행 상황 자체는 세션에 레슨별로 저장합니다(`Session.lesson_steps[<lesson>][<step>]`,
+마이그레이션 0020과 0027). 단계마다 `reached`, `passed`, `skipped`(시각), `hint`(보여
+준 힌트 단계)를 남기고, 세션의 현재 레슨 것을 `GET /api/sessions/<id>/`와 모든
+단계·힌트 응답의 `progress`로 보고합니다. 단계 기록에는 그 단계에서 얻은 것도 실립니다.
+단계에 진입하면 `command`, 통과하면 `ok`(통과할 때 보여 주는 문장, `{en, ko}`), 단계형
+시나리오에서는 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`입니다.
 `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에
-진입했음(`kali` 단계는 이때 마커도 받습니다) 또는 통과하지 않고 넘어갔음을 기록합니다.
-콘솔은 통과하지 않은 단계에서 다음을 누르거나 목록으로 이동할 때 `skipped`를 보내고,
-이전을 누르거나 통과했을 때는 보내지 않습니다. 단계 목록은 `progress`가 통과라고 할
-때만 체크 표시를 하고, 통과하지 않고 넘어간 단계는 빈 원과 "건너뜀"으로 표시하며, 목록
-위에 "N단계 중 n단계 통과"를 보여 줍니다. 이론 카드가 `shows`로 가리키는 단계는
-팝오버에 그 카드를 여는 "설명 보기" 링크가 붙습니다.
-
-이론 탭에는 레슨의 접힌 카드가 있습니다(`scenario.yaml`의 `theory`, 문구는
-`<text>.theory.<card>.title|body`). 화면의 요소를 가리키는 카드에는 "화면에서 위치
-보기"가 있어 가이드를 그 단계로 옮깁니다. 힌트 탭은 추론 과정만 담아 하나씩 접어
-둡니다(`hints`, 문구는 `<text>.hint.*`. 단계형 시나리오의 목록은 비어 있는데, 그 힌트는
-시나리오가 제안하기 때문입니다). 그 아래에는 접힌 풀이가 있고, 모든 단계의 명령이
-순서대로 복사 버튼과 함께 들어 있습니다.
+진입했음 또는 통과하지 않고 넘어갔음을 기록합니다. check가 Kali 케이스를 가리키는
+단계에 진입하면 마커를 받고, 플랫폼이 그 마커를 스탬프 프록시의 `/label/active`에
+씁니다. 콘솔은 통과하지 않은 단계에서 다음을 누르거나 목록으로 이동할 때 `skipped`를
+보내고, 이전을 누르거나 통과했을 때는 보내지 않습니다. 통과 문장은 통과한 단계에
+보여 주고, 다음 단계는 깨끗한 카드로 시작합니다.
 
 단계는 레슨에 선언합니다(`scenario.yaml`에서 기초 레슨이나 단계형 시나리오의 `steps`).
-`id`, `kind`가 `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage` 중
-하나인 `check`(`wargames.CHECK_KINDS`, discovery 시점에 검증), 그리고 단계에 따라
-Kibana `query`나 터미널 `command`를 둡니다. `command`의 `{waf_rules}`는
-`wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로 바꿉니다. 세션 API는
-`query`가 있는 단계에 `discover` 링크를 더하고(`kibana.discover_path(..., narrowed)`),
-check는 `kind`만 보여 주며, 그 외에는 choice의 `options`, `sent` 단계의 `match`,
-`kali` 단계의 `case`만 보여 줍니다. `accept` 목록이나 정답 규칙은 브라우저로 가지
-않습니다. 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어갑니다.
-정답 문구(`<text>.answer.<step>`)와 통과할 때 보여 주는 문장(`<text>.line.<step>`)은
+`id`, `kind`가 `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage`,
+`waf_changed`, `replay` 중 하나인 `check`(`wargames.CHECK_KINDS`, discovery 시점에 검증),
+`point`, 그리고 학습자가 입력할 터미널 `command`를 둡니다. `command`의 `{waf_rules}`,
+`{waf_reload}`, `{sudo}`는 `wargames.lesson`이 선언된 WAF 구성(`settings.FSL_WAF`)으로
+채웁니다. 기초 레슨의 단계에는 Kibana `query`가 없습니다. 세션 API는 check의 `kind`와
+`form`, `options`(`form: order`이면 학습자 구성도의 스위치가 아닌 모든 호스트), 단계 자신의
+`match` 또는 `about`으로 가리키는 단계의 `match`, 그리고 기초 레슨 마지막 단계의 `solo`만
+보여 줍니다. `accept` 목록이나 정답 규칙은 브라우저로 가지 않습니다. 단계의 `command`는
+`progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어가며, 입력할 문구일 뿐 실행하거나
+복사하는 버튼은 없습니다. 통과 문장(`<text>.ok.<step>`)과 단계형 시나리오의 정답은
 `strings.html` 끝의 `{% comment %}` 구역에 있어 Django가 렌더링하지 않습니다.
 `console/strings.py`가 이를 읽고, 학습자가 얻은 시점에 단계의 `progress` 기록에
-실으므로 화면의 문자열 표에는 둘 다 없습니다. 이론 카드와 힌트 카드는 처음부터 화면에
-있고 일부는 답을 알려 줍니다. 이것이 이론 탭과 힌트 탭이 주는 도움입니다. 각 단계는
-check를 통과하면 넘어가며, 이전/다음은 check를 거치지 않고 이동하는 방법으로 남아
-있습니다.
+싣습니다. 각 단계는 check를 통과하면 넘어가며, 이전/다음은 check를 거치지 않고
+이동하는 방법으로 남아 있습니다.
 
-`answer`나 `choice`는 입력한 텍스트가 허용 값 중 하나와 대소문자 구분 없이 같으면
-통과합니다(`lesson.answered`. `known`에 있는 값에는 따로
-`<text>.wrong.<step>.<value>` 사유가 있습니다). 허용 값은 `accept` 목록이거나 `of:`로
-세션의 기록에서 읽습니다("기초 레슨 F1-F6"). `of: rule`(`wargames.ANSWERS_OF`)은 요청의
-`path`를 받고, 학습자 자신의 요청이면 `marker: browse`도 받습니다. 플랫폼은 최근
-600초를 수집하고, 그 요청에 대한 세션의 ModSecurity 탐지 기록을 모은 뒤 CRS 합계 룰
-(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용 값으로 받습니다
-(`lesson.rules_named`). 기록된 것이 없으면 사유는 `lesson.check.unrecorded`입니다.
-`rules` 단계는 완료 조건이 `detected_by`인 레슨(3.1)에 있으며, 센서의 룰 파일
-(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면
-통과하고(`lesson.added_rules`, `suppress.sids`) `added`로 응답합니다. `triage`
+`answer`나 `choice`는 입력한 텍스트가 허용 값 중 하나와 대소문자·공백 구분 없이 같으면
+통과합니다(`lesson.answered`). `form: order`는 입력한 순서대로의 호스트(공백, 쉼표, `>`,
+`→`로 나눔)를 비교하며, 호스트는 맞고 순서만 틀리면 `<text>.wrong.<step>.order`라고
+알려 줍니다. `wrong_if` 규칙의 `match`가 답에 맞으면 `<text>.wrong.<step>.<says>`를,
+`known`에 있는 값에는 `<text>.wrong.<step>.<value>`를 보여 줍니다. 허용 값은 `accept`
+목록이거나 `of:`로 세션의 기록에서 읽습니다("기초 레슨 F1-F6"). `of: rule`
+(`wargames.ANSWERS_OF`)은 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`를,
+Kali 단계의 실행이면 `marker: step:<id>`를 받고, 룰 `family`로 좁힐 수 있습니다.
+플랫폼은 최근 600초를 수집하고, 그 요청이나 실행에 대한 세션의 ModSecurity 탐지 기록을
+모은 뒤 CRS 합계 룰(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용
+값으로 받습니다(`lesson.rules_named`). 기록된 것이 없으면 사유는
+`lesson.check.unrecorded`입니다. `rules` 단계는 센서의 룰 파일(`GET /api/rules/`)에
+방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과하고
+(`lesson.added_rules`, `suppress.sids`) `added`로 응답합니다. `needs: nocase`이면 그 룰에
+`nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`). `triage`
 (`judged: customer | attack | all`)는 학습자가 옳게 판정하면 통과합니다("시나리오").
-`click`은 콘솔이 보내는 대로 인정합니다.
+`waf_changed`(`removed_target`)는 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤
+예외도 더는 가리키지 않으면 통과합니다. `replay`는 `after`로 지정한 단계를 통과한 뒤에
+보낸 공격(`sent` 정규식이나 `kali` 케이스)이 `expect`(학습자가 추가한 sid의 경보, 또는
+실행이 차단되어 탐지 기록에 949110이 있고 탈취 데이터가 인정되지 않음)를 만족하고, 같은
+시각 이후의 정상 요청이 자기 `expect`(`status_class`, 추가한 sid의 경보 없음, 또는 WAF
+기록 없음)를 만족하면 통과합니다. 사유는 빠진 쪽을 알려 줍니다
+(`lesson.check.replay_attack`, `lesson.check.replay_benign`). `click`은 콘솔이 보내는
+대로 인정합니다.
 
 모든 check는 플랫폼이 판정합니다.
 `POST /api/sessions/<id>/lesson/steps/<step>/check/`(답, 선택지, 붙여 넣은 표는
 `{answer}`, 백그라운드 폴링은 `{poll: true}`)가 `passed`를 기록하고
-`{passed, reason, hint, hints, progress}`로 응답합니다(`rules` check는 `added`, `kali`
-check는 `kali`, `loot` check는 `loot`도 함께 응답합니다). `reason`은 값이 딸린
+`{passed, reason, hint, hints, progress}`로 응답합니다(`rules` check는 `added`, `kali`와
+`replay` check는 `kali`, `loot` check는 `loot`도 함께 응답합니다). `reason`은 값이 딸린
 `strings.html` 키입니다. 폴링이 아닌 check가 실패하면 오답으로 세고, 오답이 두 번이면
-그 단계의 힌트 단계를 올리고 힌트를 기록합니다. 단계형 시나리오에서는 그 대신
-시나리오의 다음 힌트를 제안합니다(`scenario_run.stuck`).
+단계의 힌트 단계를 올리고 힌트를 기록하며, 단계형 시나리오에서는 시나리오의 다음 힌트를
+제안합니다(`scenario_run.stuck`).
 
-check는 자동으로 실행되며, `kali` 단계의 "실행 결과 확인" 버튼만 예외입니다. `sent`와
-`triage`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 폴링합니다(세션이
-닫혔는지는 화면이 30초마다 세션을 다시 읽어 알아챕니다). `sent`는 웹사이트 창에 단계의
-`match`와 맞는 경로가 나타나고 1.5초 뒤에도 실행되고, `rules`는 룰 편집기가 파일을 적용할
-때 실행됩니다. 팝오버의 상태 줄은 "확인 중…", 그다음 아직 빠진 것(`<text>.fail.<step>`)을
-보여 주고, 통과하면 "✓"와 찾은 것(`<text>.ok.<step>`)을 보여 줍니다. 1.2초 뒤 가이드가
-다음 단계로 넘어가며 통과한 단계의 한 줄을 보여 줍니다. `kali` 단계도 마찬가지이며,
-그다음 단계가 Kali 단계의 결과 행(센서별로 기록한 요청 수와 Kibana 링크)을 보여
-줍니다. 화면을 다시 불러온 뒤에는 Kali check를 폴링해 다시 읽으므로, F5의 다음
-단계가 그 수를 묻는 동안 숫자가 화면에 남아 있습니다. 마지막 단계에서 기초 레슨은
-"레슨을 완료했습니다. 다음 레슨: <제목>"을 보여 주고 다음 레슨으로 넘어가며("한
-세션에서 F1부터 F6까지"), 단계형 시나리오는 "레슨을 완료했습니다."를 보여 줍니다. 틀린 답에는 무엇이 틀렸는지 알려 줍니다. 최근 수집
-(`within`)은 조회 기간의 가장 새로운 기록부터 읽고 잘림을 기록하지 않습니다. sqlmap
-케이스 하나만으로도 기록이 5000건을 넘기 때문입니다.
+check는 스스로 실행됩니다. `sent`, `triage`, `kali`, `replay`, `waf_changed`는 단계가
+보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 조용히 폴링합니다(화면은 닫힌 것을
+알아채려고 30초마다 세션을 다시 읽습니다). 폴링은 상태 줄에 아무것도 쓰지 않습니다.
+`sent`는 웹사이트 창에 단계의 `match`에 맞는 경로가 나타나고 1.5초 뒤에도 실행되고,
+`rules`는 룰 편집기가 파일을 적용할 때 실행됩니다. 통과하면 통과한 단계에 `ok` 문장을
+보여 주고 1.5초 뒤 다음 단계로 넘어갑니다. Kali 단계 다음 단계에는 그 단계의 행이
+나옵니다. 케이스 이름과 "Kibana에서 이 실행 시간대 열기"(실행 시간대, 빈 쿼리. 요청 수와
+센서 이름은 없음)이며, 다시 불러오면 Kali check를 폴링해 다시 읽습니다. 마지막 단계에서
+기초 레슨은 "레슨을 완료했습니다. 다음 레슨: <제목>"을 보여 주고 넘어가며("한 세션,
+F1부터 F6까지"), F6 뒤에는 카드에 들은 레슨을 나열하고 버튼으로 세션을 닫습니다.
+단계형 시나리오는 "레슨을 완료했습니다"라고 합니다. 오답이면 무엇이 틀렸는지 알려
+줍니다. 최근 수집(`within`)은 구간의 최신 기록부터 읽고 잘림을 기록하지 않습니다.
+sqlmap 케이스 하나가 5000건 넘는 기록을 남기기 때문입니다.
 
-단계의 터미널 명령은 절대 경로만 씁니다. 다시 연 ttyd는 새 쉘에서 시작하기
-때문입니다(f6의 명령은 `cat {waf_rules}`). 명령 텍스트는 "명령 보기" 아래에 접혀
-있습니다. "터미널에서 실행"은 필요하면 WAF 창을 열고, ttyd의 `term`과 쉘 프롬프트(마지막
-줄이 `$`나 `#`로 끝남, 최대 30초)를 기다린 뒤 `term.paste(command + "\n")`, 이어서 `term.input("\r")`을 호출합니다. bash는 bracketed
-paste의 줄바꿈을 텍스트로 남겨 두기 때문입니다. OpenStack의 WAF 창은 ssh 로그인이라
-프롬프트가 `term`보다 10초쯤 늦게 나오고, 그 전에 붙여 넣은 명령은 사라집니다. `kali` 단계의 명령은 학습자가 Kali
-창에 직접 입력합니다. 이 단계가 Kali 창을 열어 주며(`point: {pane: true, opens: kali}`),
-실행 버튼은 없습니다.
+도움은 단계마다 사다리를 오릅니다. "힌트 보기"를 누르거나 오답·실패한 check가 두 번이면
+한 칸 오릅니다. 기초 레슨에서는 넛지(`<text>.nudge.<step>`, 어디를 볼지), 그다음
+힌트(`<text>.hint.<step>`, 어떻게 읽는지. 정답은 말하지 않음), 그다음
+건너뛰기(`lesson.SKIP_OFFERED_IN_FOUNDATIONS`, 3)입니다. 단계형 시나리오는 건너뛰기 전에
+정답 단계를 유지합니다(`lesson.ANSWER`, `lesson.SKIP_OFFERED`). 누를 때마다
+`POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 단계의 `hint` 단계를
+올리고, 처음 한 번은 레슨과 함께 `Session.hints`에 기록합니다(`{lesson, step, level}`.
+마이그레이션 0017과 0027. 가이드 세션이 아니거나 레슨에 없는 단계·단계값이면 400, 닫힌
+세션이면 409). 한 단계에 60초가 지나면 버튼만 "새 힌트 보기"로 바뀌고, 학습자가 누르기
+전에는 아무것도 기록하지 않습니다. 기초 레슨의 마지막 단계는 혼자 푸는 단계입니다.
+강조 표시, 넛지, 힌트가 없고 처음부터 건너뛰기만 있습니다. 건너뛰기는
+`POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`와 다음 단계 진입이며,
+마지막 단계에서는 건너뜀을 기록하고 기초 레슨이면 통과했을 때처럼 다음 레슨으로,
+단계형 시나리오면 단계를 닫습니다. 학습자 대신 입력하거나, 실행하거나, 적용하거나,
+인정하는 것은 없습니다. 그래서 건너뛴 단계의 기록을 읽는 뒤 단계(보내지 않은 요청에
+대한 답, 실행하지 않은 공격의 탈취 데이터)는 학습자가 그 단계를 하거나 함께 건너뛸
+때까지 답할 수 없습니다. `result.scenario.helped`(`["hint"]` 또는 없음)는 메인 화면과
+닫힌 세션 화면의 PASS나 FAIL 옆에 "힌트 사용"을 붙입니다.
 
-도움은 단계마다 힌트 단계를 따라 올라갑니다(`<text>.nudge.<step>`은 화면에서,
-정답은 단계의 `progress.answer`에서 가져옵니다). 첫 귀띔(nudge), "빨간 상자로 표시한
-곳을 확인해 보세요.", 정답, "건너뛰기" 순서입니다. "힌트 보기" 버튼을 누르거나 오답 또는
-check 실패가 두 번 쌓이면 한 단계 올라갑니다. 누를 때마다
-`POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`
-레벨을 올리고, 첫 번째 것은 레슨과 함께 `Session.hints`에 기록됩니다(`{lesson, step,
-level}`, 마이그레이션 0017과 0027. 가이드
-세션이 아니거나 레슨에 없는 단계·레벨이면 400, 닫힌 세션이면 409). 한 단계에서 60초가
-지나면 버튼이 "새 힌트 보기"로 바뀔 뿐이며, 학습자가 누르기 전에는 아무것도 기록하지
-않습니다. "건너뛰기"(`lesson.SKIP_OFFERED`, 힌트 단계의 마지막 칸)는 다음과 같습니다.
-`POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`를 보내고 다음 단계에
-진입하며, 마지막 단계에서는 건너뜀을 기록한 뒤 기초 레슨이면 통과했을 때처럼 다음
-레슨으로 넘어가고, 단계형 시나리오면 팝오버를 닫습니다. 플랫폼이 학습자를
-위해 자동으로 입력하거나 실행하거나 적용하거나 통과로 인정하는 것은 없습니다. 그래서
-건너뛴 단계의 기록을 읽는 뒤 단계(보내지 않은 요청에 대한 답, 하지 않은 실행의 탈취
-데이터)는 학습자가 그 단계를 하거나 그 단계도 건너뛸 때까지 답할 수 없습니다. 건너뛴
-단계는 `progress`를 보고 단계 목록에 표시되며, `result.scenario.helped`(`["hint"]` 또는
-없음)에 따라 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에 "힌트 사용"이 붙습니다.
-
-"직접 해 보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)를 켜면 필터 버튼과 실행
-버튼이 사라지고 명령이 펼쳐집니다. 학습자가 KQL을 직접 쓰고 명령을 직접 입력합니다.
-check는 같습니다. 필터 버튼은 단계의 `discover` 링크를 Kibana 프레임에 열고, 같은
-링크에서 다시 누르면 프레임을 새로 고칩니다(`showInKibana`). 같은 주소로 이동하는 것은
-fragment 이동이라 Discover가 데이터를 다시 가져오지 않고, WAF 기록은 요청 후 약 6초가
-지나야 검색되기 때문입니다.
-
-각 단계가 가리키는 위치는 `scenario.yaml`에 있는 그 단계의 `point`입니다(`panel`,
-대체용 `first`를 붙일 수 있는 `kibana`, 또는 `pane`; `opens`). 그래서 콘솔 코드에는
-특정 레슨의 단계도 Kibana selector도 들어 있지 않으며, 빨간 상자는 모든 단계에서
-처음부터 그려집니다. 단계는 필요한 창을 지정합니다(`opens`: site, Kibana, topology,
-triage, rules, WAF). 그 창이 보이지 않는 동안 상자는 왼쪽 메뉴의 버튼에 있고, 팝오버는
-"왼쪽 메뉴에서 웹사이트를 여세요."(또는 해당 창 이름)만 보여 줍니다. 창이 보이면 상자는
-콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자 도구 토글, 경보 목록, 룰 편집기, 최종
-점검 시작 버튼), 같은 출처 Kibana 프레임 안의 `data-test-subj`
-(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`, 그리고
-`first`로 지정한 행 펼치기 토글), 또는 창 전체(`#pane-body`, 어느 창이 열려 있든 창이
-그려지는 영역: Kibana와 WAF 프레임, 사이트 프레임, GNS3 구성도, 판정 목록, 룰 편집기)를
-가리킵니다. `kibana`와 `first`는 유일한 같은 출처 프레임인 Kibana 프레임에서만 찾으므로,
-이를 쓰는 단계는 `opens: elk`를 지정합니다. 사이트 프레임과 GNS3 웹 UI 프레임은 각각
-다른 출처(자기 포트)이므로 그 안은 찾지 않으며, 그 창의 단계는 창 전체를 가리킵니다.
+레슨은 첫 단계가 지정한 창(`opens`)으로 열리고, 콘솔은 어느 레슨의 단계나 선택자도
+이름으로 알지 않습니다. 단계가 가리키는 곳은 `scenario.yaml`의 `point`이며, 로케이터
+하나와 필요한 창 `opens`로 이루어집니다. 로케이터는 `panel`(콘솔 요소: 사이트 주소창,
+룰 편집기, 목표 합계), `map`(`node`, `link`, `label: [host, switch]`, `zone`. 서버가
+`{switch:<host>}`를 풀어 줍니다. `deploy/gns3/auditor.html`이 `postMessage`로
+`{fslLocate}`에 사각형으로 답하고, 처음 화면 맞춤이 끝나면 `{fslMap: "drawn"}`을
+보냅니다), `site`(출처가 다른 사이트 프레임 안의 선택자, nginx가 붙인 스크립트가
+답함), `dev`(개발자 도구의 `data-coach` 이름: 토글, 맞는 행, 탭, 줄), `kibana`(출처가 같은
+Kibana 프레임 안: `query`, `hits`(대체 대상 `discoverNoResults`), 문서 플라이아웃에서 필드
+행을 가리키는 `doc: <field>`(플라이아웃의 필드 필터로 행을 화면에 불러옴),
+`sidebar: <field>`), `term`(`{pane: kali | waf, match}`: xterm 버퍼에서 맞는 줄)입니다.
+두 단계 로케이터는 첫 대상을 `until: sent`까지 가리킨 뒤 `then`을 가리킵니다(정렬
+선택 상자, 그다음 페이로드의 줄). 강조 표시는 창만 어둡게 하고(`pointer-events: none`),
+대상에 기본 색 테두리를 두르고, 그 옆에 한 줄 콜아웃(`<text>.callout.<step>`, 두 번째
+대상에는 `.callout.<step>.then`)을 붙입니다. 콜아웃은 창 안에서 뒤집거나 밀어 대상,
+왼쪽 메뉴, 툴바, 노트를 덮지 않습니다. 로케이터가 있는 단계의 힌트는 "표시한 곳을 확인해
+보세요."라고 합니다. 단계의 창이 보이지 않으면 단계 카드에 "<창> 열기" 버튼
+(`lesson.open.<pane>`)이 나오고, 약 2초 동안 대상을 찾지 못하면 카드가 어디를 볼지
+알려 줍니다(`lesson.coach.missing`). 구성도는 창을 열 때마다, 크기가 바뀔 때마다 화면에
+맞춥니다.
 `test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`이
-모든 기초 레슨과 단계형 시나리오의 모든 `point`를 렌더링된 콘솔에 맞춰 검사합니다.
-현재 단계의 설명과 이전/다음은 팝오버 한 곳에만 있습니다. 레슨 노트의 단계 탭은 단계
-목록을 보여 주면서 현재 단계에 "진행 중"과 상태를 표시하고, 팝오버를 닫은 뒤에만
-"가이드 다시 보기"를 보여 줍니다. 팝오버는 driver.js 방식입니다. 대상에 화살표로
-붙어 대상의 아래, 위, 왼쪽, 오른쪽에 놓이며(주소창처럼 480 px보다 넓은 대상이면 그
-오른쪽 끝 아래), 펼친 레슨 노트와는 겹치지 않고, 터미널 단계에서는 창의 오른쪽 아래에
-놓입니다. 상자는 `pointer-events: none`이며 애니메이션 프레임마다 위치를 다시 잡습니다.
-약 2초 동안 대상이 없으면 팝오버가 어디를 봐야 하는지 알려 주고 그 단계가 쓰는 창의
-이름을 보여 줍니다(`lesson.coach.missing`, `{0}`은 그 창의 왼쪽 메뉴 이름). 이론과
-힌트는 이 흐름 밖에, 레슨 노트 안에 남아 있습니다.
+모든 기초 레슨과 단계형 시나리오 단계의 `point`가 렌더링된 콘솔에서 찾아지는지
+확인합니다.
 
 룰 편집기(`#lesson-rules`, 결정 D3)는 블루팀 콘솔의 IDS 룰 창에 있으며, `rulesPane()`이
 `detection`이나 `unknown` 유형의 시나리오에서 이 창을 보여 줍니다.
@@ -981,79 +1003,92 @@ triage, rules, WAF). 그 창이 보이지 않는 동안 상자는 왼쪽 메뉴�
 ### 기초 레슨 F1-F6
 
 `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의
-P2 단계입니다. board의 `scenario.yaml`은 `foundations:` 목록을 선언하고, 이 목록은
-discovery 시점에 검사합니다(id는 기초 레슨과 시나리오 전체에서 유일해야 함,
-`wargames.checked_groups`). 가르치는 레슨은 기초 레슨이고, 단계형 시나리오 1.1과
-3.1도 같은 엔진에서 단계를 실행합니다. `wargames.foundations()`는 기초 레슨을
-`order` 순으로 나열합니다. `wargames.lesson(lesson_id=...)`은 기초 레슨이나 단계가
-있는 시나리오를 찾고, 그 밖의 id는 거부하며, 기초 레슨에는 `group: foundations`를
-붙입니다. `GET /api/wargames/`는 `foundations`를 나열합니다
-(`wargames._foundation_card`: `id`, `order`, `title`과 `goal` 문자열 키, `minutes`,
-`level`, `defense`, `prerequisites`, 단계 수, 그리고 레슨이 가르치는 내용의 문자열
-키인 `learns`). 메인 페이지는 기초 레슨을 "기초" 아래 맨 앞에 소요 시간, 학습 내용,
-시작 버튼(해당 레슨을 안내와 함께 엽니다)과 함께 보여 줍니다. 모든 레슨은 열 때
-`board-normal-search`를 시드로 재생합니다. 첫 방문 때 기초 레슨의 레슨 노트는 그
-레슨의 하나뿐인 설명 카드(이론, 펼친 상태)에 놓입니다.
+P2 단계이며, 2026-10-18에 공격과 방어를 함께 다루는 레슨으로 다시 만들었습니다
+(`docs/DECISIONS.md`, "Foundations rebuilt as integrated attack and defence lessons").
+board의 `scenario.yaml`은 `foundations:` 목록을 선언하고, 이 목록은 discovery 시점에
+검사합니다(id는 기초 레슨과 시나리오 전체에서 유일해야 함, `wargames.checked_groups`).
+가르치는 레슨은 기초 레슨이고, 단계형 시나리오 1.1과 3.1도 같은 엔진에서 단계를
+실행합니다. `wargames.foundations()`는 기초 레슨을 `order` 순으로 나열합니다.
+`wargames.lesson(lesson_id=...)`은 기초 레슨이나 단계가 있는 시나리오를 찾고, 그 밖의
+id는 거부하며, 기초 레슨에는 `group: foundations`를 붙입니다. `GET /api/wargames/`는
+`foundations`를 나열합니다(`wargames._foundation_card`: `id`, `order`, `title`과 `goal`
+문자열 키, `minutes`, `level`, `defense`, `prerequisites`, 단계 수, `step_ids`, 그리고
+레슨이 가르치는 내용의 문자열 키인 `learns`). 메인 페이지는 기초 레슨을 레슨으로 맨
+앞에 소요 시간, 학습 내용, 시작 버튼(해당 레슨을 안내와 함께 엽니다)과 함께 보여
+줍니다. 모든 레슨은 열 때 `board-normal-search`를 시드로 재생합니다. 이 시드는 정상
+케이스로 두 번째 점수에 들어가므로(`views._replayed`가 정상 `meta.seed` 케이스를 남김)
+닫힌 레슨 세션에는 TN이 생기고, 레슨 세션에서는 `no_benign`과 `no_marker`를 보여 주지
+않습니다.
 
-| 레슨 | defense | 학습자가 하는 일 | 답을 읽는 곳 |
+| 레슨 | defense, 여는 창 | 학습자가 하는 일 | 답을 읽는 곳 |
 |---|---|---|---|
-| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객 요청을 가장 먼저 받는 호스트, 로그를 저장하는 호스트, 데이터베이스가 연결된 스위치를 답합니다 | 세션 워게임에 대한 substrate의 학습자용 구성도와 선언(`topology.facts`, `topology.learner`를 거쳐 구성도에 표시되는 이름으로): `internet` 스위치에 링크된 첫 `edge`, `gateway` 또는 `wargames` 호스트(OpenStack은 `firewall`, Docker는 `waf`), `log-server` 노드, 워게임의 데이터베이스 노드가 링크된 스위치(OpenStack은 `sw2`, Docker는 `sw1`) |
-| f2 웹 요청 보내고 상태 코드 확인하기 | `full` | 웹사이트 창에서 한국어로 검색하고, 개발자 도구에서 상태 코드를 읽습니다(구성도상의 홉은 이론 탭에서 설명하며, 이를 확인하는 단계는 없습니다) | 학습자가 웹사이트 창에서 보낸 요청: 상태 코드 |
-| f3 HTTP 요청 읽기 | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
-| f4 Kibana에서 로그 찾기 | `full` | Kibana에서 한국어 검색 요청을 찾고(경보만이 아니라 모든 기록에서) 어느 엔진이 기록했는지 답합니다. `<script>alert(1)</script>`를 보내고 WAF의 기록을 찾아 `status`와 `source_ip`를 읽습니다 | 요청을 기록한 엔진(http 기록, 탐지 기록), 요청의 상태 코드, WAF 탐지 기록의 `src_ip` |
-| f5 SQL 인젝션 공격 로그 분석 | `full` | `' OR 1=1--`를 보내고, 요청을 막은 호스트는 개발자 도구의 차단 배지로, 요청을 탐지한 룰은 Kibana의 WAF 기록으로 찾아 답합니다. Kali 창에서 sqlmap을 실행하고 보낸 요청 수를 답합니다(센서마다 구성도 이름으로 답하며, `fsl-edge`는 `firewall`) | 요청 기록의 차단 표시(구성도의 게이트웨이, `waf`), 요청의 ModSecurity 규칙 ID(949110은 따로 설명), 실행 마커가 붙은 센서의 http 기록(10% 이내) |
-| f6 계정 유출 확인 | `missed` | WAF의 예외 파일을 읽고, 같은 sqlmap을 실행하고, 덤프한 테이블을 붙여 넣은 뒤, 유출된 계정 수와 첫 번째 점수가 잃은 것으로 센 목표 수를 답합니다 | 적용 중인 WAF 파일, 세션 스냅샷과 대조한 탈취 데이터, `result.objectives.lost` |
+| f1 구성도 읽기(`lesson.map`) | `full`, 구성도 | board.com의 서비스망 주소, board-db의 서브넷, kali가 연결된 망의 이름을 읽고, 고객의 검색 요청이 거치는 호스트를 순서대로 고르고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계: board-db의 주소 | 세션의 학습자용 구성도(`topology.learner`를 거친 `topology.facts`): 링크 라벨의 주소(`address`, 프리픽스 길이는 있어도 없어도 됨), 영역의 서브넷(`subnet`), 두 언어의 영역 캡션(`zone_of`), `customers` 다음 구성도에 있는 경유 역할, 그다음 사이트(`path`: OpenStack은 `customers > firewall > waf > board.com`, Docker는 `customers > waf > board.com`), `log-server` 노드(`logs`) |
+| f2 개발자 도구로 HTTP 요청 읽기(`lesson.http`) | `full`, 웹사이트 | 게시판 검색창으로 검색하고, 네트워크 패널에서 메서드, 파라미터, 경로, 상태 코드를 읽은 뒤 게시판 정렬 기능이 쓰는 파라미터를 찾습니다. 혼자 푸는 단계: 없는 게시글의 상태 코드 | 학습자가 웹사이트 창에서 보낸 요청 기록: `method`, `parameter`, `path`(답에 호스트나 쿼리가 들어가면 `wrong_if`가 알려 줌), `status` |
+| f3 Kibana에서 내 요청 찾기(`lesson.logs`) | `full`, 웹사이트 | 영문자와 숫자로 된 단어를 검색하고 그 단어로 KQL을 씁니다. board.com에 도착한 이벤트의 출발지 IP, 구성도에서 그 주소를 쓰는 호스트, 같은 검색이 waf에 도착한 이벤트의 출발지 IP, 그 X-Forwarded-For, WAF 로그에 남았는지를 답합니다. 혼자 푸는 단계: 내 검색 중 waf에 도착한 건수 | 기록에 대한 센서의 http 이벤트(`sensor_source`, `forwarded_for`)를 구간으로 나눔: `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). 그래서 두 구간을 모두 보는 센서 하나도 검색을 한 번씩만 셉니다. `host_of`는 그 주소를 쓰는 구성도 호스트, `waf_logged`는 WAF 자체의 기록, `hits`는 레슨(또는 세션) 시작 뒤 `/search/` 아래 브라우징 마커가 붙은 inbound 이벤트 수 |
+| f4 XSS 요청 차단과 IDS 룰 작성(`lesson.xss`) | `xss-gap`, 웹사이트 | `<script>alert(1)</script>`의 상태 코드, 탐지한 룰 하나, Total Score, 대소문자를 섞은 요청의 상태 코드, 두 요청에 IDS 경보가 있었는지를 답하고, URI의 `<script`를 잡는 룰을 써서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. 혼자 푸는 단계: 대소문자를 섞은 요청과 일반 검색을 다시 보냄 | `status`, `rule`(요청의 ModSecurity 룰 id, 949110 제외), `anomaly_total`(949110의 `Total Score: N`), `alerted`, `alerted_sid`, `alerted_sid_present`(기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조), `needs: nocase`가 붙은 `rules`, `replay` |
+| f5 sort 파라미터 SQL Injection 분석(`lesson.sqli`) | `full`, 웹사이트 | sort 값을 읽고, 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행의 출발지 IP, 스캐너를 알아본 룰을 읽고, `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계: 그래도 차단한 룰 하나 | `param_value`, `status`, `waf_detected`(요청의 ModSecurity 탐지 기록. 500은 룰 없이 기록되며 탐지가 아님), `sqlmap_found`(`attacker.sqlmap_found`가 박스의 `<home>/.local/share/sqlmap/output/<host>/log`를 읽어 `Parameter:` 줄이 있는지 봄), `kali_source`(실행의 ModSecurity `src_ip`), `marker: step:<id>`와 `family: "913"`이 붙은 `rule`, 그다음 `known: [949110, 913100]` |
+| f6 넓은 예외 처리로 놓친 공격 확인하기(`lesson.miss`) | `overbroad`, WAF | 예외 파일을 grep해 빠진 파라미터를 찾고, sqlmap으로 계정을 덤프해 표를 붙여 넣고, 어느 엔진이 경보를 냈는지, inbound http 이벤트에서 공격의 출발지, 목표 카드의 감점 합계를 답한 뒤, 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계: 덤프를 다시 실행하고 정렬을 한 번 바꿈 | `excluded_target`(적용 중인 WAF 파일: `ARGS:sort` 또는 `sort`), 세션 스냅샷과 대조한 `loot`, `alerted_by`(실행의 탐지 기록으로 없음, IDS만, 웹방화벽만, 둘 다), `from: http`가 붙은 `kali_source`, `lost_points`(레슨 시작 뒤 빼앗긴 목표마다 난이도 ×1 또는 ×2), `waf_changed`, `replay`(실행이 차단되고 탈취 데이터 없음, 일반 정렬은 2xx에 WAF 기록 없음) |
 
-`missed`는 CRS paranoia level 1에 `ruleRemoveById` 949110과 959100, 그리고
-`local.rules`입니다. 레슨 질문 중 `accept` 목록을 가진 것은 없습니다.
+방어 설정: `xss-gap`은 CRS paranoia level 1에 `no-xss.rules`(sid 9000003을 뺀
+`local.rules`)입니다. `overbroad`는 level 1에 예외 하나, `{tag: OWASP_CRS, target:
+"ARGS:sort"}`(`SecAction
+"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS:sort"`: 모든 CRS
+룰이 `sort`를 검사하지 않음)와 `no-uri-sqli.rules`입니다. F6의 sqlmap 명령에는
+`--skip-waf`가 붙습니다. 그러지 않으면 sqlmap이 WAF를 확인하려고 보내는 요청 하나가 IDS
+9000003, 9000004와 CRS 룰 하나에 걸려 실행이 탐지된 것으로 셉니다. 어떤 레슨 질문에도
+`accept` 목록은 없습니다.
 
-한 세션에서 F1부터 F6까지. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`는
+한 세션, F1부터 F6까지. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`는
 열려 있는 가이드 세션을 그 자리에서 다른 기초 레슨으로 옮깁니다. 그 레슨이 선언한
 방어 설정이 `Session.defense`와 다르면 레슨의 CRS 설정을 쓰고(`PUT /waf/`처럼
 `crs.apply`), 센서 룰 파일은 방어 설정의 룰 파일이 바뀔 때만 다시 넣습니다. 그다음
 `Session.lesson`과 `Session.defense`를 바꾸고, `Session.lessons`에 `{id,
 started_at}`를 덧붙인 뒤(마이그레이션 0027. 기초 레슨을 열 때 첫 항목을 씁니다),
-세션을 열 때처럼 레슨의 `cases`를 재생하고 세션 상세를 응답합니다. 닫힌 세션,
-시나리오 세션, 가이드가 없는 세션은 409로, 기초 레슨이 아닌 id는 400으로
-거부합니다. 상세에는 `lessons`와 `next_lesson`(`order` 순서로 다음 기초 레슨의
-`{id, text}`, 없으면 null)이 실립니다. 콘솔은 다음 레슨만 제안합니다. 기초 레슨의
-마지막 단계를 통과하거나 건너뛰면 코치가 "레슨을 완료했습니다. 다음 레슨: <제목>"과
-"다음 레슨" 버튼을 보여 주고, 2초 뒤 전환을 요청한 다음 화면을 다시 불러와 새 레슨을
-엽니다. F6 뒤에는 "기초 레슨을 모두 마쳤습니다."를 보여 주고, 수집한 뒤
-`POST /close/`로 세션을 종료하고 세션 화면을 엽니다. 레슨 사이에는 아무것도
-초기화하지 않습니다. 게시판의 목표 계층은 유출만 다루므로(세션을 열 때 찍은
-스냅샷과 탈취 데이터를 대조) 레슨이 정답 데이터를 바꾸지 않고, 방어 설정을 바꾸는
-것은 F6뿐이며 그 자리에서 적용하기 때문입니다.
+스탬프 프록시의 라벨을 지우고, 세션을 열 때처럼 레슨의 `cases`를 재생하고 세션 상세를
+응답합니다. 닫힌 세션, 시나리오 세션, 가이드가 없는 세션은 409로, 기초 레슨이 아닌 id는
+400으로 거부합니다. 상세에는 `lessons`, `next_lesson`(`order` 순서로 다음 기초 레슨의
+`{id, text}`, 없으면 null), `course`(들은 레슨마다 `[{id, steps, passed, skipped,
+hints}]`)가 실립니다. 콘솔은 다음 레슨만 제안합니다. 기초 레슨의 마지막 단계를
+통과하거나 건너뛰면 카드가 "레슨을 완료했습니다. 다음 레슨: <제목>"과 "다음 레슨" 버튼을
+보여 주고, 2초 뒤 전환을 요청한 다음 화면을 다시 불러와 새 레슨을 엽니다. F6 뒤에는
+들은 레슨을 나열하고, 그 버튼이 수집한 뒤 `POST /close/`로 세션을 종료하고 세션 화면을
+엽니다. 세션 화면의 레슨 카드는 레슨마다 통과한 단계와 건너뛴 단계를 보여 주고, Kali
+실행마다 "레슨 n · m단계"라고 붙입니다. 다시 시작하면 첫 레슨을 그 레슨의 방어 설정으로
+엽니다. 레슨 사이에는 아무것도 초기화하지 않습니다. 게시판의 목표 계층은 유출만
+다루므로(세션을 열 때 찍은 스냅샷과 탈취 데이터를 대조) 레슨이 정답 데이터를 바꾸지
+않기 때문입니다. F4와 F6이 방어 설정을 그 자리에서 바꾸고, F5가 `full`로 되돌립니다.
 
 레슨은 시작한 뒤에 일어난 일만 판정합니다(`views._lesson_started`, 항목이 둘 이상일
 때 `Session.lessons`의 마지막 항목). `sent` check는 그 뒤 웹사이트 창에서 보낸
 요청만, `rule` 답은 그 뒤 ModSecurity 기록만 셉니다. `kali` check는 단계의
-`reached`와 레슨 시작 중 늦은 시각부터 센서를 읽고, `of: lost`는 그 뒤에 빼앗긴
-목표만 세며, 단계의 Kibana 링크(`query`와 Kali 결과 행의 링크)도 그 시각부터
-엽니다. 단계 기록은 레슨마다 따로 두므로 F2의 `search` 통과가 F3의 `search`를
-통과시키지 않습니다.
+`reached`와 레슨 시작 중 늦은 시각부터 센서를 읽고, `lost_points`는 그 뒤에 빼앗긴
+목표만 세며, Kibana 링크도 그 시각부터 엽니다. 단계 기록은 레슨마다 따로 두므로 F2의
+`search` 통과가 F3의 `search`를 통과시키지 않습니다.
 
-학습자 자신의 행동을 따라가는 점검 종류는 세 가지입니다. `sent`는 세션의 웹사이트 창이 보관한 요청 중
-디코딩한 URL이 단계의 `match` 정규식과 일치하는 요청이 있으면 통과합니다(콘솔은
-창에 일치하는 경로가 표시되고 1.5초 뒤에 확인하며, 폴링도 합니다). `kali`는 케이스
-파일의 도구 케이스를 지정합니다. 학습자가 해당 단계에 들어서면 마커가 생성되고, 단계의
-`command`는 시나리오의 `public_url`에 대한 케이스 argv 끝에
-`--headers=X-FSL-Case: <marker>`를 붙인 것입니다(`tools.tool_argv`, 하네스 자체의
-표시 방식). 센서의 http 기록에 마커와 도구의 user agent가 함께 있으면 통과하고, 이
-실행을 일반 악성 케이스로 기록한 뒤(`meta.kali`, 재생 표시 없음. 그래서 다른 레드팀
-행동처럼 두 점수에 모두 들어갑니다) 세션을 수집(ingest)합니다. 마커를 프록시 라벨이
-아니라 명령에 넣는 이유는 프록시 라벨은 하네스가 자기 실행 구간 앞뒤로 설정하고 지우기 때문입니다. `loot`는 붙여 넣은 테이블(`tools.dumped`,
-또는 `name:hash` 줄과 `| name | hash |` 줄)을 받아 `POST /loot/`와 같은 방식으로
-인정하고 kali 케이스에 귀속합니다. `_credit_loot`는 일치한 계정을 귀속된 케이스에
+학습자 자신의 행동을 따라가는 점검 종류는 세 가지입니다. `sent`는 세션의 웹사이트 창이
+보관한 요청 중 디코딩한 경로와 쿼리가 단계의 `match` 정규식과 일치하는 요청이 있으면
+통과합니다. `kali`는 케이스 파일의 도구 케이스를 지정합니다. 학습자가 해당 단계에
+들어서면 마커가 생성되고, 플랫폼이 그 마커를 스탬프 프록시의 `/label/active`에 씁니다
+(레슨을 바꿀 때와 세션을 닫을 때 지움). 그래서 학습자가 Kali 창에 입력한 명령은 Kali의
+`http_proxy`를 거치며 마커가 붙어 나갑니다. 단계의 `command`는 입력할 문구일 뿐입니다.
+센서의 http 기록에 마커와 도구의 user agent가 함께 있으면(`ua: any`이면 user agent는
+상관없음, `--random-agent`용) 통과하고, 이 실행을 일반 악성 케이스로 기록한 뒤
+(`meta.kali`와 `meta.lesson`, 재생 표시 없음. 그래서 다른 레드팀 행동처럼 두 점수에 모두
+들어갑니다) 세션을 수집(ingest)합니다. 학습자가 `http_proxy`를 지우면 마커 없이 요청이
+나가 단계를 통과하지 못합니다. `loot`는 붙여 넣은 테이블(`tools.dumped`, 또는
+`name:hash` 줄과 `| name | hash |` 줄)을 받아 `POST /loot/`와 같은 방식으로 인정하고
+kali 케이스에 귀속합니다. `_credit_loot`는 일치한 계정을 귀속된 케이스에
 남깁니다(`meta.loot`).
 
-답은 `of:`로 다음 중 하나를 읽습니다. 훈련 환경 사실인 `entry`, `logs`, `segment`,
-`lost`, `excluded`; `about:`이 `sent` 단계를 가리키는 `status`, `method`, `path`,
-`parameter`, `status_class`, `engine`, `sensor_source`, `waf_source`, `stopped_at`(그 단계와 일치하는 가장 최근
-웹사이트 창 요청); `about:`이 `kali` 단계를 가리키는 `requests` 또는 `leaked`; 또는
-요청의 `path`(위)와 함께 쓰는 `rule`. 그 밖의 값은 `wargames.read_from_record`가
-discovery 시점에 거부합니다. 단계는 모든 기록에 대한 Kibana 링크를 요청할 수
-있습니다(`records: all`, `kibana.discover_path(..., everything=True)`).
+답은 `of:`로 다음 중 하나를 읽습니다. 훈련 환경 사실(`address`, `subnet`, `zone_of`,
+`path`, `logs`, `host_of`, `excluded_target`, `lost_points`), `about:`이 `match`가 있는
+단계를 가리키거나 단계 자신의 `match`가 있는 요청 사실(`status`, `method`, `path`,
+`parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`,
+`waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`,
+`hits`. 그 단계와 일치하는 가장 최근 웹사이트 창 기록), `about:`이 `kali` 단계를
+가리키는 Kali 사실(`sqlmap_found`, `kali_source`, `alerted_by`), 또는 요청의 `path`나
+`step:` 마커와 함께 쓰는 `rule`(위). 그 밖의 값은 `wargames.read_from_record`가
+discovery 시점에 거부합니다.
 
 ## 점수 계산 방식
 
@@ -1340,8 +1375,8 @@ Elasticsearch는 읽지 않음), `change`(선언된 방어 설정과 마지막 W
 **콘솔.** 홈 페이지는 워게임마다 시나리오를 나열하고, 시작을 누르면 블루팀 콘솔이 상황
 설명 화면으로 열립니다. 창 위의 띠에는 남은 시간, 분당 차단된 고객과 경보가 발생한 요청,
 잃은 목표, 힌트 제안, 최종 점검 시작 버튼이 표시됩니다. judgement 시나리오에는 경보 창이 추가되며,
-이 창은 목록을 가리지 않습니다. 레슨 노트의 열은 비워 두고, 카드와 연 힌트, 창 안을
-가리키는 코치 말풍선은 목록 위에 붙입니다. detection 또는 unknown 시나리오에는 IDS 룰
+이 창은 목록을 가리지 않습니다. 카드와 연 힌트는 창 옆의 레슨 노트 열에 있고, 강조
+표시의 콜아웃은 창 안에 머뭅니다. detection 또는 unknown 시나리오에는 IDS 룰
 창(`/api/rules/`를 쓰는 룰 편집기)이 추가됩니다. 카드는 정해진 때가 되면 나타나고, 구간이 판정되면 결과 보고가 열립니다. 단계형
 시나리오의 단계는 레슨 노트에서 실행되며 힌트 목록은 비어 있습니다. 힌트는 시나리오의 힌트
 제안으로 받습니다.
@@ -1400,10 +1435,23 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   field로 Suricata/ModSecurity 필드 쌍을 각각 한 열로 합칩니다: `rule`, `rule_id`,
   `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색, "FSL overview"
   대시보드입니다. `defaultRoute`는 그 검색으로 설정합니다. data view가 있어야 Kibana의
-  Welcome 화면이 나오지 않습니다. `GET /api/sessions/<id>/`는 `discover`를 담습니다.
-  이는 `fsl-logs` data view 위의 저장되지 않은 Discover 상태로, 경보 검색의 열·쿼리·
-  정렬을 쓰며 docker에서는 세션 인덱스(`_index : fsl-logs-<id>-*`)로, 그리고 세션의
-  시간 범위로 좁힙니다. ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가
+  Welcome 화면이 나오지 않습니다. Kibana의 `metaFields`에서 `_index`도 뺍니다. 세션을
+  열 때 `kibana.py`는 그 세션만의 data view를 가져옵니다(`ensure_session_view`.
+  `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함). id는 `session-<pattern>`이고 세션의
+  인덱스 패턴 위에 있으며, 패턴이 아니라 이름 "Session logs"로 보입니다. 공유 runtime
+  field에 `event.module`(`suricata` 또는 `modsecurity`), `observer.name`(센서의 구성도
+  이름: OpenStack은 `firewall`과 `board.com`, docker와 모든 ModSecurity 기록은 `waf`.
+  슬롯 접미사는 뗌), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-FSL-Case`는
+  뺌)를 더합니다. `sourceFilters`는 `_index`, `fsl_*`, `*X-FSL-Case*`, `log.*`,
+  `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`,
+  `http.request_headers*`를 숨깁니다(KQL로는 여전히 검색됨). 가져오기가 거부되면 로그만
+  남기고 세션은 그대로 진행합니다. `GET /api/sessions/<id>/`는 `discover`를 담습니다.
+  이는 그 data view 위의 저장되지 않은 Discover 상태로, 현재 레슨의 시작부터,
+  `event.module, observer.name, event_type, source_ip, destination, url, status,
+  rule_id, rule` 열과 `event.module: exists` 필터(훈련 환경 호스트 자체의 syslog 줄을
+  숨김)를 씁니다. 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
+  `KIBANA_URL`이 없으면 공유 `fsl-logs` data view에 경보 검색의 열과 쿼리를 쓰고 세션
+  인덱스(`_index : fsl-logs-<id>-*`)와 시간 범위로 좁힙니다. ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가
   아닙니다. 그런 형태에는 Kibana가 "Unsaved changes" 배지를 붙입니다. 창이 로드되기 전에
   블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를
   이미 본 것으로 표시합니다(`discover:docExplorerUpdateCalloutClosed`,
@@ -1540,6 +1588,20 @@ publish합니다. `daemon.json`은 Docker 브리지에 테넌트 네트워크의
 없습니다. 태그가 번들의 digest에 들어가므로, 새 태그로 올라간 플랫폼은 새 호스트 이미지를
 계획합니다. 워게임이 늘어도 이미지 수는 그대로입니다: 베이스, 에지 방화벽, WAF, Kali, 워게임
 호스트.
+
+플랫폼에 사이드로드한 워게임 이미지(`FSL_SIDELOADED`, `bin/platform-rebuild --sideload`에
+준 이름, `docs/OPENSTACK.md` §5.3)는 GHCR을 거치지 않고 워게임 호스트에 닿습니다.
+`wargame_host.sideloaded_images`가 이미지가 정확히
+`ghcr.io/nekonic/fsl-<name>:<FSL_IMAGE_TAG>`인 서비스를 찾고, 플랫폼이 자기 docker에서
+그 이미지 id를 읽어, 번들에 생성 파일 `deploy/wargame-host/loaded`(줄마다 `<image>
+<image id> <url>`)를 더합니다. 그래서 id가 번들 digest에 들어갑니다. `setup.sh`는
+이전처럼 GHCR에서 pull한 다음 `<url>`마다 `GET /api/range/images/sideloaded/<name>/`
+(`platform/api/sideloaded.py`. 그 이미지의 `docker save`를 스트리밍하며, 사이드로드하지
+않았거나 선언된 워게임이 쓰지 않는 이름, 그리고 docker에서는 404)을 받아 `docker load`하고,
+로드한 이미지의 id가 플랫폼의 id와 다르면 거부하며, GHCR 사본을 정리합니다. 워게임에
+사이드로드한 이미지가 없으면 아무것도 바뀌지 않습니다. 새 이미지가 준비되기 전부터 서 있던
+슬롯은 닫을 때 워게임 호스트를 그 자리에서 리셋하므로, `POST /api/range/slot/rebuild/`
+전까지 이전 워게임 호스트를 그대로 씁니다.
 
 fabric은 보안 그룹 세 개도 만듭니다. `fsl-range`는 `mgmt`가 아닌 모든 훈련 환경 포트가 속하며
 모든 IPv4 유입을 허용합니다(훈련 환경을 방어하는 것은 Neutron이 아니라 WAF이며, anti-spoofing은

@@ -113,9 +113,9 @@ alert that does not mention the attack's mechanism is reported
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF
   (on OpenStack the WAF pane is `vm-terminal.sh fsl-waf`) and foundation F6's
-  step text reads the exclusion file, with the path `wargames.lesson` fills in
-  from the declaration; `api/site.py` names the WAF container by the compose
-  convention instead of the label lookup. `docs/ARCHITECTURE.md` keeps the table.
+  step commands name the exclusion file and the nginx reload, which
+  `wargames.lesson` fills in from the declaration. `docs/ARCHITECTURE.md` keeps
+  the table.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.

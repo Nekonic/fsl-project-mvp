@@ -57,8 +57,9 @@ The course runs in three stages (the user, 2026-10-18; `docs/DECISIONS.md`
 
 1. Integrated attack and defence lessons: the learner attacks from Kali and
    defends from the same blue console (Kali is a pane below a divider in its
-   left menu). Today these are the foundations F1-F6 below; a redesign of the
-   lessons around attack and defence together is pending the user's approval.
+   left menu). These are the foundations F1-F6 below, rebuilt on 2026-10-18
+   around attack and defence together (`docs/DECISIONS.md`, "Foundations
+   rebuilt as integrated attack and defence lessons").
 2. Free practice: the scenarios 1.1-4.1 below, with the automated attacker
    (the scenario engine's schedule); Kali stays in the blue console.
 3. Wargame, person against person: the red player uses the red console (Kali
@@ -67,17 +68,21 @@ The course runs in three stages (the user, 2026-10-18; `docs/DECISIONS.md`
 
 ### Foundations (F1-F6), on the range
 
-Each unit: one short explanation, a hands-on step on the learner's own
-range, a question answered from the learner's own records.
+Each unit: one or two short explanations, hands-on steps on the learner's own
+range where the learner attacks (the Website pane, the Kali pane) and reads or
+changes the defence (the map, Kibana, the IDS rules, the WAF shell), each
+question answered from the learner's own records or the session's map. Each
+lesson opens on its first step's pane and ends on a step done alone; help is a
+nudge, a hint, then Skip.
 
-| Unit | The learner | Checked from |
-|---|---|---|
-| F1 Reading the practice network's map | reads the Map: users, attacker, edge, WAF, web server, DB, log server | topology |
-| F2 Sending a web request and reading its status code | steps `search`, `status`: searches in Korean in the Website pane and reads the status code in its developer tools; no step checks the hops (the request-path view and its `follow`, `source` and `port` steps were removed 2026-10-16, `docs/DECISIONS.md`) | own request: status |
-| F3 Reading an HTTP request | URL, parameter, method, status code on that request | own request |
-| F4 Finding logs in Kibana | finds the request in Kibana, reads its fields | own detections |
-| F5 Analysing an SQL injection in the logs | steps `attack`, `stopped`, `rule`, `sqlmap`, `requests`: sends `' OR 1=1` and runs sqlmap; reads where it stopped in the developer tools (judged from the request record's `blocked` mark) and the rule in Kibana (`rule_id`), then sqlmap's request count | own request and detections |
-| F6 Confirming an account leak | the same attack with the rule off: accounts leak, the first score says lost | target ground truth |
+| Unit | Defense | The learner | Checked from |
+|---|---|---|---|
+| F1 Reading the network map | `full` | reads board.com's address, board-db's subnet and the name of kali's network on the map; picks in order the hosts a customer's search passes; names the log host; alone: board-db's address | the learner map |
+| F2 Reading HTTP requests in DevTools | `full` | searches with the board's search box; reads method, parameter, path and status code in a Chrome-like Network panel; finds the `sort` parameter behind the board's sort control; alone: the status of a missing post | own requests |
+| F3 Finding your requests in Kibana | `full` | writes KQL for its own search; reads the source IP of both legs through the reverse proxy, the map host behind the inner one and X-Forwarded-For; says whether the WAF logged it; alone: how many of its searches arrived at the WAF | own requests at the sensors and the WAF |
+| F4 Blocking an XSS request and writing an IDS rule | `xss-gap` (no XSS signature in the IDS) | sends `<script>alert(1)</script>`: 403, a 941 rule, the anomaly score; sees no IDS alert; writes a rule, bypasses it with letter case, adds `nocase`; alone: replays the bypass and an ordinary search | own requests, detections and IDS alerts |
+| F5 Analysing SQL injection on the sort parameter | `full` | breaks `sort` into a 500 no WAF rule detected; runs sqlmap from Kali, reads its verdict, its source IP and 913100; reruns with `--random-agent`; alone: a rule that still blocked it | own requests, sqlmap's log, the run's detections |
+| F6 Finding the attack an over-broad exception let through | `overbroad` (CRS skips `sort`) | finds the exception, dumps the accounts with sqlmap, sees no alert and the penalty doubled for each objective lost undetected, removes the exception; alone: replays the dump (blocked) and an ordinary sort (served) | the WAF file, target ground truth, the run's detections |
 
 ### Scenarios
 
