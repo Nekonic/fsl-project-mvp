@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Network map</title>
+<title>Map</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; font-family: sans-serif; }
   #said { margin: 16px; }
@@ -127,6 +127,7 @@ async function fitted(map, canvas) {
   localStorage.setItem("controllerIds", "controller-1");
   localStorage.setItem("showInterfaceLabels", "true");
   localStorage.setItem("integrateLinkLabelsToLinks", "false");
+  localStorage.setItem("statistics_command", "false");
   const project = new URLSearchParams(location.search).get("project");
   const opened = "/static/web-ui/controller/1/" + (project ? "project/" + encodeURIComponent(project) : "projects");
   if (!project) {
@@ -135,7 +136,7 @@ async function fitted(map, canvas) {
   }
   const frame = document.createElement("iframe");
   frame.id = "map";
-  frame.title = "Network map";
+  frame.title = "Map";
   frame.addEventListener("load", async () => {
     const map = frame.contentWindow;
     viewOnly(map);

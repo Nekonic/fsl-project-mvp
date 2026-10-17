@@ -89,6 +89,14 @@ def test_learners_sign_in_as_a_read_only_auditor_through_the_bundled_web_ui_s_ow
     assert 'localStorage.setItem("controllerIds", "controller-1")' in page
     assert 'location: "bundled"' in page and "authToken: token" in page
 
+def test_the_bundled_web_ui_sends_no_usage_statistics_from_the_learner_s_browser():
+    page = (GNS3 / "auditor.html").read_text()
+
+    assert 'localStorage.setItem("statistics_command", "false")' in page, (
+        "GNS3's web UI loads Google Analytics on a first visit unless statistics_command is false; "
+        "the Map pane sent a beacon to google-analytics.com from every learner's browser"
+    )
+
 @pytest.fixture
 def provision(monkeypatch, tmp_path):
     stub = types.ModuleType("gns3server")
