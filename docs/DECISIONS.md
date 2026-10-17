@@ -4622,3 +4622,56 @@ ratchet holds (core_loc 580, tests 1055); 1,131 s in all. The range was
 shared with another session's live walks this day; acceptance ran only
 while no other session was open.
 
+
+## 2026-10-17 — Learner text is plain: titles say what the learner does
+
+The user reviewed every learner-facing string (936 keys in
+`strings.html`, en and ko, the 58 withheld ones included) and ruled:
+
+- No drama or mission framing. A title says what the learner does: "A quiet
+  shift" is "Telling customer requests from attacks", "My range" is "Reading
+  the practice network's map", "An evening on your own" is "Combined
+  exercise". A situation states the configuration and the traffic, not a
+  story (no inherited admin, no colleague, no evening).
+- No unexplained jargon. Where the field names the thing, its name is used:
+  false positive, anomaly threshold; in Korean the terms of
+  `docs/vocabulary.md` (rule, target), which the table had mixed.
+- "Range" is not a learner word: it becomes "the practice network", or "the
+  platform" where the sentence meant the platform (Korean likewise).
+- The topology pane has one name, Map (Korean likewise one word): the rail
+  button (`blue.pane.topology`), its tab (`topology.view.map`) and every
+  lesson sentence; "network map", "topology" and "map" variants go.
+- A label says what it does: "I'm done" is "Start final check", the Judge rail
+  button is "Alerts", "Validate" is "Check rules", "Why?" is "Explanation",
+  "Hint" is "Show a hint", "Show me where" is "Show it on screen", "Open" on a
+  card is "Expand", "Go to the range" is "Start"; every sentence naming one of
+  them follows. The left rail is "the left menu", the strip "the status bar at
+  the top".
+- Red team stages: the Korean for `stage.maintain-presence` and
+  `stage.complete-mission` now reads as keeping access and reaching the
+  objective; en keeps Mandiant's "Maintain presence" and "Complete mission".
+- The brand (`common.brand`) is unchanged for now; the user renames it later.
+
+Counts: 194 keys changed (345 en and ko values), 2 deleted
+(`session.blue.blurb`, `session.red.blurb`, with their two `<p>` and the two
+lines that filled them in `session.html`), 18 added (`case.<id>` labels for
+every case in `redteam/cases/` that had none). The session page's activity
+list and case table and the red console's case list now show the label (the
+red console keeps the id under it, since the operator's commands carry it);
+the debrief and lesson rows already looked labels up. The do-for-me strings
+(`lesson.do`, `result.helped.do`) and the coach's not-found fallback are left
+as they were; another branch removes the feature. Outside the table: the
+English learner maps' zone caption "Application estate" is "Services" (the
+Korean pair already said services segment), the two `scenario.yaml`
+descriptions match the new en wargame descriptions, and README, ARCHITECTURE
+(en and ko) and OPENSTACK quote the new titles and buttons.
+
+Two errors found in the review and fixed with it: F1's hint and withheld
+answer said to leave out `attacker` and `customers` on the internet switch,
+but the map's node is `kali`; and `lesson.kali.where` sent the learner to Red
+at the top right, where it sits only in the phone layout; on a desktop the
+link is at the bottom of the left menu. The withheld answer for F1's map step
+had become the same sentence as the step's coach text, which
+`test_strings.py` refuses (an answer must not ship in the page); it now names
+the button ("Press the Map button in the left menu"). One console test
+expected a missed case named by its id; it now expects the label.
