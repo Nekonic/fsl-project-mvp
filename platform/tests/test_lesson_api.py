@@ -406,7 +406,7 @@ def test_hints_are_recorded_on_the_session_and_read_back_after_close_and_do_is_n
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     assert refused.status_code == 400
-    assert third["hints"] == [{"step": "entry", "level": "hint"}]
+    assert third["hints"] == [{"lesson": "f1", "step": "entry", "level": "hint"}]
     assert "answer" not in second["progress"]["entry"], "the answer is withheld until the third hint"
     assert third["progress"]["entry"]["answer"]
     detail = client.get(f"/api/sessions/{session.pk}/").json()
@@ -509,8 +509,8 @@ def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client)
 
 def test_an_old_closed_session_whose_lesson_is_gone_still_lists_and_reads(client):
     gone = board(guidance=True, lesson="waf-exclusion", ended_at=timezone.now(),
-                 lesson_steps={"exclude": {"reached": "2026-10-01T00:00:00+00:00", "passed": "2026-10-01T00:05:00+00:00",
-                                           "after": 1, "tried": "2026-10-01T00:04:00+00:00"}},
+                 lesson_steps={"waf-exclusion": {"exclude": {"reached": "2026-10-01T00:00:00+00:00", "passed": "2026-10-01T00:05:00+00:00",
+                                           "after": 1, "tried": "2026-10-01T00:04:00+00:00"}}},
                  hints=[{"step": "rule", "level": "hint"}])
     old_replays(gone)
 
@@ -522,3 +522,56 @@ def test_an_old_closed_session_whose_lesson_is_gone_still_lists_and_reads(client
     assert read.status_code == 200, read.content
     assert (read.json()["lesson"], read.json()["lesson_id"]) == (None, None)
     assert read.json()["progress"]["exclude"]["passed"] and "answer" not in read.json()["progress"]["exclude"]
+
+def switch(client, session, lesson_id):
+    return client.post_json(f"/api/sessions/{session.pk}/lesson/", {"lesson": lesson_id})
+
+def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defense_and_seeding_its_logs(client):
+    session = foundation("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
+    stand = Stand()
+    fire, fired = attacker({})
+    with patch("range.docker.Docker.runner", stand.runner()), patch("api.views.harness.fire", fire):
+        moved = switch(client, session, "f6")
+
+    assert moved.status_code == 200, moved.content
+    body = moved.json()
+    session.refresh_from_db()
+    written = [call for call in stand.to("gateway") if call[3] is not None]
+    assert (body["lesson_id"], body["defense"], body["next_lesson"]) == ("f6", "missed", None)
+    assert [taken["id"] for taken in body["lessons"]] == ["f5", "f6"]
+    assert written and "ruleRemoveById=949110" in written[0][3], "F6's leaking WAF is applied to the open session"
+    assert [entry["rule_id"] for entry in session.waf["exclusions"]] == [949110, 959100]
+    assert stand.to("sensor") == [], "F5 and F6 run the same IDS rules"
+    assert fired == SEEDED and all(case.meta.get("seed") for case in session.cases.all())
+    assert session.ended_at is None
+
+def test_a_lesson_switch_is_refused_for_a_closed_scenario_or_unguided_session_and_an_unknown_lesson(client):
+    closed, scenario, plain, guided = foundation("f1"), board(guidance=True, lesson="1.1", course_scenario="1.1"), board(), foundation("f1")
+    client.post_json(f"/api/sessions/{closed.pk}/close/")
+
+    refused = [switch(client, one, "f2").status_code for one in (closed, scenario, plain)]
+    unknown = switch(client, guided, "3.1")
+
+    assert refused == [409, 409, 409]
+    assert unknown.status_code == 400 and "3.1" in unknown.json()["detail"]
+    assert Session.objects.get(pk=guided.pk).lesson == "f1"
+
+def test_records_kept_before_lessons_chained_are_moved_under_the_session_s_lesson():
+    import importlib
+
+    from django.apps import apps
+
+    migration = importlib.import_module("api.migrations.0027_session_lessons")
+    old = foundation("f5", lesson_steps={"rule": {"passed": "x"}}, hints=[{"step": "rule", "level": "hint"}])
+    scenario = board(guidance=True, lesson="1.1", course_scenario="1.1", lesson_steps={"open": {"passed": "x"}},
+                     hints=[{"hint": "find", "level": "hint"}])
+
+    migration.records_kept_per_lesson(apps, None)
+
+    old.refresh_from_db()
+    scenario.refresh_from_db()
+    assert old.lesson_steps == {"f5": {"rule": {"passed": "x"}}}
+    assert old.hints == [{"step": "rule", "level": "hint", "lesson": "f5"}]
+    assert old.lessons == [{"id": "f5", "started_at": old.started_at.isoformat()}]
+    assert (scenario.lesson_steps, scenario.hints, scenario.lessons) == (
+        {"1.1": {"open": {"passed": "x"}}}, [{"hint": "find", "level": "hint"}], [])

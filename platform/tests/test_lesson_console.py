@@ -35,8 +35,9 @@ def shown(unit):
     ]
 
 GUIDED = """
-localStorage.setItem('fsl-lesson-landed-1', 'true');
-const range = {sent: [], passed: false, used: [], ended_at: null, progress: {}, checked: [], states: []};
+localStorage.setItem('fsl-lesson-landed-1-UNIT_ID', 'true');
+const range = {sent: [], passed: false, used: [], ended_at: null, progress: {}, checked: [], states: [], moved: [], reloaded: 0};
+location.reload = () => { range.reloaded += 1; };
 const TEXT = TEXT_JSON;
 const FULL = FULL_JSON;
 const RIGHT = RIGHT_JSON;
@@ -85,7 +86,7 @@ browser.serve((request) => {
   }
   if (stepped && stepped[2] === "check/") return {body: judge(stepped[1], request.body)};
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, lesson_id: "UNIT_ID", next_lesson: NEXT_JSON, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: TEXT, group: "foundations", cases: CASES_JSON,
@@ -93,6 +94,14 @@ browser.serve((request) => {
     } : null}};
   }
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
+  if (request.route === "/api/sessions/1/lesson/") {
+    range.moved.push(request.body);
+    return {body: {id: 1}};
+  }
+  if (request.route === "/api/sessions/1/close/") {
+    range.ended_at = "now";
+    return {body: {id: 1}};
+  }
   if (request.route === "/api/sessions/1/lesson/hints/") {
     used(request.body);
     own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
@@ -104,7 +113,11 @@ browser.serve((request) => {
 
 def guided(guidance=True, unit=UNIT):
     lesson = taught(unit)
+    known = [one["id"] for one in wargames.foundations("board")]
+    following = known[known.index(unit) + 1] if unit in known[:-1] else None
     return GUIDED.replace("GUIDANCE", "true" if guidance else "false").replace(
+        "UNIT_ID", unit).replace(
+        "NEXT_JSON", json.dumps({"id": following, "text": taught(following)["text"]} if following else None)).replace(
         "TEXT_JSON", json.dumps(lesson["text"])).replace(
         "CASES_JSON", json.dumps(lesson["cases"])).replace(
         "THEORY_JSON", json.dumps(lesson["theory"])).replace(
@@ -316,3 +329,31 @@ def test_only_an_open_session_s_lesson_and_network_panel_keep_polling(client):
         "nothing keeps asking the platform about a session that has closed"
     )
     assert {"/api/sessions/1/lesson/steps/search/check/", "/api/sessions/1/site/requests/"} <= set(polled(""))
+
+@pytest.mark.parametrize("unit, last, following", [("f5", "requests", "f6"), ("f6", "lost", None)])
+def test_a_finished_foundation_starts_the_next_lesson_in_the_same_session_and_the_last_one_closes_it(
+        client, unit, last, following):
+    seen = open_page(client, "/blue/1/", setup=coached(unit=unit), scenario=f"""
+      {to(last, unit)}
+      document.querySelector('#coach-pop-act [data-act="value"]').value = '{RIGHT[last]}';
+      document.querySelector('#coach-pop-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
+      await browser.settle();
+      const said = browser.text('coach-pop-text');
+      const button = Boolean(document.querySelector('#coach-pop-act [data-act="next-lesson"]'));
+      const early = range.moved.length + browser.requests.filter((r) => r.route.endsWith('/close/')).length;
+      await browser.wait(2500);
+      return {{said, button, early, moved: range.moved, reloaded: range.reloaded, href: location.href,
+               closed: browser.requests.filter((r) => r.route.endsWith('/close/')).length}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["early"] == 0, "the learner reads the line before the next lesson starts"
+    if following:
+        assert result["said"] == english("lesson.next.ready", english(f"{taught(following)['text']}.title"))
+        assert result["button"] is True
+        assert (result["moved"], result["reloaded"], result["closed"]) == ([{"lesson": following}], 1, 0)
+    else:
+        assert result["said"] == english("lesson.course.done")
+        assert (result["moved"], result["closed"]) == ([], 1)
+        assert result["href"].endswith("/session/1/")

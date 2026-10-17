@@ -1,5 +1,6 @@
 const PARAGRAPHS = ["read", "write", "replay", "verify"];
 const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
+const lessonId = () => (session && session.lesson_id) || "";
 const caseLabel = (name) => localized(`case.${name}`, name);
 
 function copyThroughSelection(text) {
@@ -137,13 +138,13 @@ function setNote(change) {
   placeNote();
 }
 
-const LANDED_KEY = (id) => `fsl-lesson-landed-${id}`;
+const LANDED_KEY = (id, lesson) => `fsl-lesson-landed-${id}-${lesson}`;
 let landedOnGoal = false;
 
 function firstOpen() {
   try {
-    if (localStorage.getItem(LANDED_KEY(sessionId()))) return false;
-    localStorage.setItem(LANDED_KEY(sessionId()), "true");
+    if (localStorage.getItem(LANDED_KEY(sessionId(), lessonId()))) return false;
+    localStorage.setItem(LANDED_KEY(sessionId(), lessonId()), "true");
     return true;
   } catch (error) {
     return false;
@@ -165,12 +166,12 @@ function noteControls(landing = "goal") {
 
 const AUTOMATIC = ["rules", "sent", "triage"];
 const POLLED = ["sent", "triage"];
-const READ_BEFORE_MOVING_ON = ["kali"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
 const commandsArrived = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1200;
+const NEXT_LESSON_MS = 2000;
 const WIDE = 480;
 const HELP_AFTER_SECONDS = 60;
 const POINT = 2;
@@ -343,7 +344,7 @@ function coach(prefix, declared) {
   const pop = field("coach-pop");
   Object.assign(box.style, { pointerEvents: "none" });
   pop.style.zIndex = "10000";
-  let at = Math.min(steps.length, lessonStep(sessionId())) - 1;
+  let at = Math.min(steps.length, lessonStep(sessionId(), lessonId())) - 1;
   const explained = new Map(cards(session && session.lesson ? session.lesson.theory : [])
     .filter((card) => card.shows).map((card) => [card.shows, card.id]));
   let last = "";
@@ -360,7 +361,12 @@ function coach(prefix, declared) {
   let commandShown = false;
   let finished = false;
   let shownOnce = false;
+  let moving = false;
   const saidOnPass = new Map();
+  const carried = new Map();
+  const recalled = new Set();
+  const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
+  const nextLesson = foundation ? session.next_lesson : null;
   let progress = {};
   let stretch = kept(STRETCH_KEY, false) === true;
   const check = () => steps[at].check || {};
@@ -494,7 +500,8 @@ function coach(prefix, declared) {
         placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, t("lesson.answer.placeholder")))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
     } else if (kind === "kali") {
       html = `<button data-act="kali" class="self-start btn btn-sm btn-blue">${
-        esc(t("lesson.kali.check"))}</button><ul data-act="rows" class="flex flex-col gap-2"></ul>`;
+        esc(t("lesson.kali.check"))}</button><ul data-act="rows" class="flex flex-col gap-2">${
+        carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
     } else if (kind === "loot") {
       html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
         class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight"
@@ -507,6 +514,13 @@ function coach(prefix, declared) {
     }
     if (kind !== "click" && step.discover && !stretch) {
       html = `<button data-act="chip" class="self-start btn btn-sm btn-ghost font-mono">${esc(t(`${prefix}.chip.${step.id}`))}</button>${html}`;
+    }
+    const before = steps[at - 1];
+    if (before && before.check.kind === "kali" && carried.has(before.id)) {
+      html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id))}</ul>`;
+    }
+    if (finished && nextLesson) {
+      html = `<button data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`;
     }
     act.innerHTML = html;
     act.classList.toggle("hidden", !html);
@@ -530,6 +544,55 @@ function coach(prefix, declared) {
     }
     const again = act.querySelector('[data-act="kali"]');
     if (again) again.addEventListener("click", () => run(step, true));
+    act.querySelectorAll('[data-act="carried"] [data-discover], [data-act="rows"] [data-discover]').forEach((link) =>
+      link.addEventListener("click", () => showInKibana(link.dataset.discover)));
+    const onwards = act.querySelector('[data-act="next-lesson"]');
+    if (onwards) onwards.addEventListener("click", moveOn);
+    if (before && before.check.kind === "kali" && recordOf(before).passed && !carried.has(before.id)
+      && !recalled.has(before.id)) recall(before, step);
+  }
+
+  async function recall(kali, step) {
+    recalled.add(kali.id);
+    const verdict = await judged(kali, { poll: true });
+    if (!verdict || !verdict.kali || carried.has(kali.id)) return;
+    carried.set(kali.id, verdict.kali);
+    if (steps[at] === step) {
+      action();
+      last = "";
+    }
+  }
+
+  function finish() {
+    finished = true;
+    show(false);
+    if (foundation) setTimeout(moveOn, NEXT_LESSON_MS);
+  }
+
+  async function moveOn() {
+    if (moving || sessionClosed()) return;
+    moving = true;
+    status(t(nextLesson ? "lesson.next.preparing" : "main.closing"));
+    if (nextLesson) {
+      const moved = await post(lessonPath("lesson/"), { lesson: nextLesson.id }, PATIENCE_FOR_RANGE_WORK);
+      if (moved.ok) {
+        location.reload();
+        return;
+      }
+      moving = false;
+      status("");
+      say(t("lesson.next.failed", detail(moved)), "fail");
+      return;
+    }
+    await post(lessonPath("ingest/"));
+    const closed = await post(lessonPath("close/"), {}, PATIENCE_FOR_RANGE_WORK);
+    if (closed.ok) {
+      location.href = `/session/${sessionId()}/`;
+      return;
+    }
+    moving = false;
+    status("");
+    say(t("session.close.failed", detail(closed)), "fail");
   }
 
   function command() {
@@ -551,7 +614,7 @@ function coach(prefix, declared) {
   function show(follow) {
     const step = steps[at];
     if (follow) followStep();
-    keepLessonStep(sessionId(), at + 1);
+    keepLessonStep(sessionId(), lessonId(), at + 1);
     field("note-pill-text").textContent = t("lesson.note.pill", at + 1, steps.length);
     field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
     field("coach-pop-count").textContent = `${at + 1} / ${steps.length}`;
@@ -577,8 +640,13 @@ function coach(prefix, declared) {
     const step = steps[at];
     const where = whereOf(step);
     shownPending = where.pending || "";
-    field("coach-pop-text").textContent = finished ? t("lesson.done")
+    field("coach-pop-text").textContent = finished ? finishedText()
       : where.pending ? t(`lesson.open.${where.pending}`) : t(`${prefix}.coach.${step.id}`);
+  }
+
+  function finishedText() {
+    if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
+    return t(foundation ? "lesson.course.done" : "lesson.done");
   }
 
   function status(text) {
@@ -654,14 +722,9 @@ function coach(prefix, declared) {
     const line = [spoken(recordOf(step).line), saidOnPass.get(step.id)].filter(Boolean).join(" ");
     status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
     if (at === steps.length - 1) {
-      finished = true;
       say(line, "ok");
-      show(false);
+      finish();
       status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
-      return;
-    }
-    if (READ_BEFORE_MOVING_ON.includes(step.check.kind)) {
-      say(line, "ok");
       return;
     }
     passing = true;
@@ -682,6 +745,7 @@ function coach(prefix, declared) {
   function settle(step, verdict, loud) {
     if (!verdict || steps[at] !== step) return;
     const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
+    if (verdict.kali) carried.set(step.id, verdict.kali);
     if (verdict.kali && rows) {
       showReplay(rows, verdict.kali, kaliRow);
       last = "";
@@ -722,6 +786,10 @@ function coach(prefix, declared) {
       return;
     }
     if (!recordOf(step).passed) post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+    if (foundation) {
+      finish();
+      return;
+    }
     dismissed = true;
     show();
   }

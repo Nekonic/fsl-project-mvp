@@ -12,10 +12,10 @@ from django.utils import timezone
 
 import wargames
 from api import site
-from api.models import Case, Detection, Session
+from api.models import Case, Detection, Objective, Session
 from range import declared
 from tests.browser import open_page
-from tests.test_lesson_api import DUMPED, TRUTH
+from tests.test_lesson_api import DUMPED, TRUTH, Stand, attacker
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
 
@@ -138,7 +138,7 @@ def test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_co
 def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_that_label(client):
     session = opened("f5")
     step(client, session, "sqlmap", tail="", body={"state": "reached"})
-    marker = Session.objects.get(pk=session.pk).lesson_steps["sqlmap"]["marker"]
+    marker = Session.objects.get(pk=session.pk).lesson_steps["f5"]["sqlmap"]["marker"]
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
     with indexed(http_event("another", "/?sort=x", 403, agent=SQLMAP_AGENT)):
         early = step(client, session, "sqlmap").json()
@@ -159,7 +159,7 @@ def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_
 def test_what_leaked_is_judged_by_the_board_s_own_accounts_and_counts_in_the_first_score(client):
     session = opened("f6")
     marker = "kali-run"
-    Session.objects.filter(pk=session.pk).update(lesson_steps={"sqlmap": {"marker": marker, "passed": "x"}})
+    Session.objects.filter(pk=session.pk).update(lesson_steps={"f6": {"sqlmap": {"marker": marker, "passed": "x"}}})
     Case.objects.create(session=session, case_id=marker, name="board-sqli-orderby-sqlmap", malicious=True,
                         correlation="marker", started_at=timezone.now() - timedelta(minutes=3),
                         ended_at=timezone.now(), meta={"kali": "sqlmap"})
@@ -196,21 +196,21 @@ def test_a_foundation_that_could_not_be_judged_is_refused_at_discovery(settings,
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()
 
-def test_a_passed_kali_step_stays_with_its_count_until_next_since_the_following_step_asks_for_it(client):
+def test_a_passed_kali_step_moves_on_by_itself_and_the_next_step_shows_the_count_it_asks_for(client):
     from api import views
 
     steps = [views._shown_step(None, {key: value for key, value in step.items() if key != "query"})
              for step in wargames.lesson("board", lesson_id="f5")["steps"]]
     setup = """
-localStorage.setItem('fsl-lesson-landed-1', 'true');
-localStorage.setItem('fsl-lesson-step-1', '4');
+localStorage.setItem('fsl-lesson-landed-1-f5', 'true');
+localStorage.setItem('fsl-lesson-step-1-f5', '4');
 const progress = {sqlmap: {reached: "now", hint: 0}};
 browser.element('pane-body').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
 Object.defineProperty(browser.element('coach-pop'), 'offsetHeight',
   {get: () => 300 + 400 * browser.element('coach-pop').querySelectorAll('[data-kali]').length});
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
+    return {body: {id: 1, lesson_id: "f5", guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
                    site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
                    lesson: {text: "lesson.attack", group: "foundations", cases: ["board-normal-search"], steps: STEPS,
                             theory: [{id: "attack", shows: "stopped"}], hints: ["why_total", "why_count"]}}};
@@ -228,11 +228,42 @@ browser.serve((request) => {
       await browser.click('[data-act="kali"]');
       await browser.wait(3000);
       const pop = browser.element('coach-pop');
-      return {count: browser.text('coach-pop-count'), row: browser.text('[data-kali]'),
-              next: !browser.element('coach-pop-next').disabled, bottom: parseFloat(pop.style.top) + pop.offsetHeight};
+      return {count: browser.text('coach-pop-count'), row: browser.text('[data-act="carried"] [data-kali]'),
+              form: Boolean(browser.element('coach-pop-act').querySelector('[data-act="answer"]')),
+              bottom: parseFloat(pop.style.top) + pop.offsetHeight};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["count"] == "4 / 5", "the requests step asks for the count this row shows"
-    assert "1896" in seen["result"]["row"] and seen["result"]["next"] is True
+    assert seen["result"]["count"] == "5 / 5", "a passed Kali step moves on like every other step"
+    assert "1896" in seen["result"]["row"] and seen["result"]["form"], "the requests step shows the count it asks for"
     assert seen["result"]["bottom"] <= 900 - 12, "the row made the popover taller; Next must stay on screen"
+
+def test_after_a_switch_a_lesson_judges_only_what_the_learner_did_since_it_started(client):
+    session = opened("f2", lessons=[{"id": "f2", "started_at": timezone.now().isoformat()}])
+    earlier = browsed(KOREAN, 200)
+    with patch.object(site, "kept", return_value=[earlier]):
+        passed_in_f2 = step(client, session, "search").json()["passed"]
+    with patch("api.views.harness.fire", attacker({})[0]):
+        client.post_json(f"/api/sessions/{session.pk}/lesson/", {"lesson": "f3"})
+    with patch.object(site, "kept", return_value=[earlier]):
+        before = step(client, session, "search").json()
+    with patch.object(site, "kept", return_value=[earlier, dict(browsed(KOREAN, 200, request_id=2), at=time.time() + 1)]):
+        after = step(client, session, "search").json()
+
+    assert passed_in_f2 is True
+    assert before["passed"] is False, "F2's search was made before F3 started"
+    assert after["passed"] is True
+    assert set(Session.objects.get(pk=session.pk).lesson_steps) == {"f2", "f3"}
+
+def test_f6_counts_only_the_objectives_lost_since_it_started(client):
+    session = opened("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
+    Objective.objects.create(session=session, key="partial", name="partial", achieved_at=timezone.now() - timedelta(minutes=1))
+    with patch("range.docker.Docker.runner", Stand().runner()), patch("api.views.harness.fire", attacker({})[0]):
+        client.post_json(f"/api/sessions/{session.pk}/lesson/", {"lesson": "f6"})
+    with quietly():
+        none_yet = {given: step(client, session, "lost", body={"answer": given}).json()["passed"] for given in ("0", "1")}
+        Objective.objects.create(session=session, key="admin", name="admin", achieved_at=timezone.now() + timedelta(seconds=1))
+        one = step(client, session, "lost", body={"answer": "1"}).json()["passed"]
+
+    assert none_yet == {"0": True, "1": False}, "F5's loss is not F6's"
+    assert one is True

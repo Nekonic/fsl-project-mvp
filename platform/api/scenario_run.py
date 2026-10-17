@@ -546,7 +546,8 @@ def debrief(session) -> dict:
     timeline.sort(key=lambda entry: entry["at"])
     before = {entry["case"]: entry["outcome"] for entry in timeline if not entry["in_window"] and entry["outcome"]}
     after = {entry["case"]: entry["outcome"] for entry in timeline if entry["in_window"] and entry["outcome"]}
-    help_steps = lesson.help_counts(session.lesson_steps) if session.lesson_steps else {"hints": 0, "skipped": 0}
+    records = lesson.records(session.lesson_steps, session.lesson)
+    help_steps = lesson.help_counts(records) if records else {"hints": 0, "skipped": 0}
     steps = {step["id"] for step in declared.get("steps") or []}
     triage = state["triage"]
     waf = next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")), None)
@@ -558,7 +559,7 @@ def debrief(session) -> dict:
         "overview": {
             "passed": last["passed"] if last else None, "verified": len(judged),
             "fix": last["fix"] if last else None, "reasons": last["reasons"] if last else [],
-            "steps": {"passed": sum(1 for step_id, kept in session.lesson_steps.items()
+            "steps": {"passed": sum(1 for step_id, kept in records.items()
                                     if step_id in steps and kept.get("passed")), "total": len(steps)},
             "help": dict(help_steps, hints=help_steps["hints"] + len(state["hints"])),
         },
