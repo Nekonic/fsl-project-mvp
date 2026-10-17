@@ -4675,3 +4675,38 @@ had become the same sentence as the step's coach text, which
 `test_strings.py` refuses (an answer must not ship in the page); it now names
 the button ("Press the Map button in the left menu"). One console test
 expected a missed case named by its id; it now expects the label.
+
+**Proven live 2026-10-17** (OpenStack, platform VM 192.168.0.210). HEAD
+321f0c0 deployed by `bin/cloud up --replace --sideload` (platform image built
+on the VM from it, kali from 1fd5be3, gns3 from 1efa522) in 9 min 33 s;
+`bin/verify` there: unit 1474 passed; acceptance 70 passed, 0 failed, 0
+errors, 0 skipped in 1009 s. A headless sweep (Playwright, Chromium, ko and
+en) of the home page and catalogue, the session page, every blue pane, the
+red console, every step of F1-F6 and the coach steps of 1.1 and 3.1 found
+three faults, fixed: while both slots reset, the home page listed the
+readiness API's English operator reason ("the range is resetting ...") in
+the Korean console too; it now shows `range.resetting` (75ef719). nginx
+still logged `[warn]` temporary-file buffering for Kibana, the terminals and
+the website, since `proxy_max_temp_file_size 0` was set on the API location
+only; it is set for every location, with a 1 MB request body buffer
+(a55dc74). The Map pane's GNS3 web UI loaded Google Analytics on a first
+visit and sent its beacons from the learner's browser; the read-only sign-in
+page sets the web UI's `statistics_command` to `false`, and its titles say
+Map, not Network map (9674d0e, the gns3 image rebuilt). Redeployed 9674d0e
+(platform and gns3 images from it, kali from 1fd5be3) in 9 min 26 s;
+`bin/verify`: unit 1476 passed; acceptance 70 passed, 0 failed, 0 errors, 0
+skipped in 987 s; ratchet holds (core_loc 580, tests 1057). The sweep again:
+72 of 72 step views boxed; Skip on six steps offered as 건너뛰기, recorded
+skipped and not passed, the coach on the next step, 6 of 6; no learner-visible
+text (page text, titles, placeholders, labels; 4 briefings, 72 step views, 16
+page views) holds 레인지, range, 레일, 지도, 토폴로지, 대신 해 주기, "왜?", their
+English or the deleted blurbs, the brand aside; the page's string table
+matches the 191 shipped keys of the approved review table except the Korean
+`main.title` (kept by the merge), the two stage names without the review's
+"[check]" marks, and `common.brand` (unchanged by this ruling); the console
+shows only the third-party messages of "Errors swept before the push" and the
+WAF's 403 to the learner's own probes; the platform log holds no ERROR,
+Traceback or `[warn]`, only the expected 409, 400 and 404. The gns3 log held
+1,397 `Invalid token` errors, every one a WebSocket with `token=null` from a
+Firefox on the operator's machine holding a Map page opened before the
+redeploy; none came from the sweep's sessions (777-840, all closed).

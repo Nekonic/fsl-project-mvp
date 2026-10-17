@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-17 (the coach finds every step's target; Skip replaces Do it for me; live on e331372). Written for a session that has the cloud
+Updated: 2026-10-17 (learner text is plain; HEAD proven live on 9674d0e). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -27,18 +27,18 @@ Updated: 2026-10-17 (the coach finds every step's target; Skip replaces Do it fo
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
-  times on 2026-10-16 and seven times on 2026-10-17 by `bin/cloud up --replace
+  times on 2026-10-16 and ten times on 2026-10-17 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs e331372 with the
-  platform image built from it and the gns3 image from 1efa522, tagged 8f9acb0
+  platform VM's rebuild runs an unpushed commit"): it runs 9674d0e with the
+  platform and gns3 images built from it and the kali image from 1fd5be3, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
   images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
   `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); this
-  worktree's `backups/` keeps one (`backups.keep`), the 418 KB
-  `db-20261017T070210Z.sqlite3` taken by the last rebuild; the 6 GB
+  worktree's `backups/` keeps one (`backups.keep`), the 471 KB
+  `db-20261017T125516Z.sqlite3` taken by the last rebuild; the 6 GB
   2026-10-16 copies are gone.
 - The range keeps the platform VM's time over NTP (c4ee8d7, `docs/DECISIONS.md`
   2026-10-15 "The platform VM is the range's time source"). `bin/verify` there
@@ -83,6 +83,15 @@ Updated: 2026-10-17 (the coach finds every step's target; Skip replaces Do it fo
   operator log (fixed in `deploy/kali/setup.sh`). Deployed 1fd5be3 by the
   sideloaded rebuild (platform, kali, gns3); `bin/verify` there on b324ba5:
   unit 1474 passed; acceptance 70 passed, 0 failed, 0 skipped in 997 s.
+
+- Learner text is plain (2026-10-17, `docs/DECISIONS.md` "Learner text is
+  plain"), proven live: deployed 9674d0e by the sideloaded rebuild (platform
+  and gns3 from it, kali from 1fd5be3) in 9 min 26 s; `bin/verify` there:
+  unit 1476 passed; acceptance 70 passed, 0 failed, 0 errors, 0 skipped in
+  987 s. The ko/en sweep: 72 of 72 coach step views boxed, Skip 6 of 6, no
+  forbidden learner word, console third-party only, platform log clean. Its
+  first pass on 321f0c0 found and fixed the home page's English reset reason,
+  nginx's temporary-file warnings and the Map pane's Google Analytics.
 
 ## Waiting for the user
 
