@@ -225,8 +225,12 @@ def split_output(output: str) -> tuple[str, str]:
     stdout, found, stderr = output.partition(f"\n{STDOUT_END}\n")
     return (stdout, stderr) if found else (output, "")
 
+def as_the_terminal(argv: list[str]) -> list[str]:
+    return ["bash", "-lc", shlex.join(argv)]
+
 class ThroughPlatform:
     substrate = "openstack"
+    in_the_terminal = {ATTACKER}
 
     def __init__(self, scorer=None):
         self.scorer = scorer or Docker()
@@ -237,10 +241,11 @@ class ThroughPlatform:
             return self.scorer.run(role, argv, timeout=timeout)
         if session is None:
             session = _default_session()
+        argv = as_the_terminal(list(argv)) if role in self.in_the_terminal else list(argv)
         done = self.scorer._dispatch(
             ["docker", "exec", self.scorer._host(SCORER).node,
              "python", "manage.py", "run_on_role", role,
-             json.dumps(stdout_apart(list(argv))), "--timeout", str(timeout),
+             json.dumps(stdout_apart(argv)), "--timeout", str(timeout),
              *(["--session", str(session)] if session is not None else [])],
             timeout + 60,
         )

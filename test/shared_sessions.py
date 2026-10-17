@@ -12,7 +12,7 @@ from conftest import (
     PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
     score_when_ready, seen_by_both_engines, target_code,
 )
-from range import ATTACKER, BOARD, SENSOR, missing, run, substrate
+from range import ATTACKER, BOARD, missing, run, substrate
 
 CONTROL = "board-sqli-search"
 UNION = "board-sqli-union-search"
@@ -112,33 +112,29 @@ def auth_users_of(session_id):
     return json.loads(body)
 
 
-def alerts_mentioning(token, lines=400, session=None):
-    out = run(SENSOR, ["sh", "-c", f"tail -{lines} /var/log/suricata/eve.json"],
-              session=session)
-    found = []
-    for line in out.stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if event.get("event_type") == "alert" and token in json.dumps(event.get("http", {})):
-            found.append(event)
-    return found
+def alerts_mentioning(token, session, wait=90):
+    deadline = time.time() + wait
+    while True:
+        requests.post(f"{PLATFORM_URL}/api/sessions/{session}/ingest/", timeout=120)
+        found = [d for d in detections_of(session)
+                 if d["source"] == "suricata" and token in (d.get("path") or "")]
+        if found or time.time() >= deadline:
+            return [requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"]
+                    for d in found]
+        time.sleep(3)
 
 
-def probed(session=None):
+def probed(session):
     token = f"zz{uuid.uuid4().hex[:10]}"
     from_attacker(f"/search/?q=%27%20OR%201%3D1--%20{token}", session=session)
-    time.sleep(4)
-    return alerts_mentioning(token, session=session)
+    return alerts_mentioning(token, session)
 
 
-def attack_from_the_shell(token, session=None):
+def attack_from_the_shell(token, session):
     payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
     run(ATTACKER, ["sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"'],
         session=session)
-    time.sleep(5)
-    return alerts_mentioning(token, lines=300, session=session)
+    return alerts_mentioning(token, session)
 
 
 def typed(command, session_id):
@@ -344,6 +340,7 @@ def terminal_session(stack_is_up):
         seen["box_addresses"] = run(
             ATTACKER, ["sh", "-c", "hostname -I"], session=session_id
         ).stdout.split()
+        seen["front"] = probed(session_id)
 
         marker = str(uuid.uuid4())
         label = f"{PLATFORM_URL}/api/attacker/label/"

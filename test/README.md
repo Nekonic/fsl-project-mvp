@@ -27,7 +27,8 @@ topology, evasion, strategy honesty, the board attack and the before-silencing
 check; `rules_session` the four rule tests; `board_session` loot, objectives,
 score reveal, the empty-objectives check and the canary; `origins_session`
 origins, rotation and the tool case; `tuned_session` the map and the inside
-leg past the WAF; `terminal_session` the operator log and the attacker box; the corp
+leg past the WAF; `terminal_session` the operator log, the attacker box and the front
+door probe; the corp
 rogue-admin and option-flip exploits one session each for the two corp scoring
 modules and the two corp exploit checks.
 
@@ -73,7 +74,11 @@ check of a compose-only mechanism was deleted rather than skipped (2026-10-17).
 `conftest.py` asks `/api/range/ready/` which one the platform drives; on openstack,
 `range.py` runs a role's command through the platform container's own range
 adapter (`manage.py run_on_role --session <id>`, so it reaches the slot that
-session holds) instead of `docker exec` into a compose container. Beside
+session holds) instead of `docker exec` into a compose container, and runs
+the attacker's in a login shell, as the terminal's ssh login gets it (the
+proxy and `FSL_TARGET`, which compose sets on the Kali container). Alerts are
+read through the platform's API (`/api/sessions/<id>/detections/`), not from
+a sensor's log file. Beside
 another worker on OpenStack the per-test wait for a range reset is skipped:
 every call reaches a slot its worker holds, and the other slot's reset does
 not touch it.
