@@ -1354,8 +1354,8 @@ wargame 호스트의 제자리 초기화(`clear_wargames()`)는 wargame마다, �
 `docker compose down -v`를 실행하고, 센서의 eve 로그와 rsyslog의 imfile 상태를 지워서, 이미지만 남고 컨테이너나 볼륨은 없게 한다. configure의 마지막 단계 `start_wargames()`가 `wargames` 역할로
 wargame마다 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait
 --pull never`를 실행하므로, 세션마다 새로 시드된 대상에서 시작한다. 그다음 estate
-센서를 띄운다: docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`을
-`deploy/wargame-host/sensor.yaml`로 host 네트워킹으로 띄우고, 호스트의 estate 주소를 가진
+센서를 띄운다: docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`(띄울 때마다
+플랫폼의 사본을 호스트에 쓴다)을 `deploy/wargame-host/sensor.yaml`로 host 네트워킹으로 띄우고, 호스트의 estate 주소를 가진
 인터페이스를 본다. 그래서 docker의 센서 하나가 WAF 네임스페이스에서 보는 WAF→대상 구간을
 본다. 센서가 응답하면 `start_sensor()`가 호스트 항목이 정한 규칙 파일과 reload로
 `rules/suricata.py`를 거쳐 기준선 규칙을 시드한다. 역할 `estate-sensor`는 compose 서비스 `suricata`에 매핑되어 runner가 그 안에서

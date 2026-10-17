@@ -1711,7 +1711,8 @@ the sensor's eve log and rsyslog's imfile state, leaving the images and no conta
 -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for each
 wargame through the `wargames` role, so every session starts on freshly
 seeded targets. Then it starts the estate sensor: docker's Suricata image and
-`deploy/suricata/suricata.yaml`, from `deploy/wargame-host/sensor.yaml` with
+`deploy/suricata/suricata.yaml`, which each start writes to the host from the
+platform's copy, from `deploy/wargame-host/sensor.yaml` with
 host networking, on the interface holding the host's estate address, so it
 sees the WAF-to-target leg docker's one sensor sees from the WAF's namespace;
 once it answers, `start_sensor()` seeds the baseline rules through

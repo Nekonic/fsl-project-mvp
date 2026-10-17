@@ -328,7 +328,11 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
     assert [argv for argv, _ in on_the_host[2:4]] == [
         wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
     ]
-    assert wargame_host.sensor_up("10.30.0.63") in [argv for argv, _ in on_the_host]
+    assert (wargame_host.sensor_up("10.30.0.63"), (ROOT / wargame_host.SENSOR_CONFIG_SOURCE).read_text()) in (
+        on_the_host), (
+        "the wargame host stays standing across resets, so its sensor config comes with each start; "
+        "a config baked into its image reached no slot built before the change"
+    )
     assert {host for host, _ in done} == {"fsl-edge", "fsl-platform", "fsl-wargame-host"}
     assert not [role for role, _, _ in edge.calls if role == "gateway"], (
         "the waf is rebuilt from its image and configured once Nova has it back"

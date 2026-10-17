@@ -18,6 +18,8 @@ TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks")
 UP_TIMEOUT = 900.0
 SENSOR = "/opt/fsl/sensor.yaml"
+SENSOR_CONFIG = "/opt/fsl/suricata.yaml"
+SENSOR_CONFIG_SOURCE = "deploy/suricata/suricata.yaml"
 SENSOR_PROJECT = "sensor"
 SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
@@ -72,7 +74,8 @@ def inside(container: str, argv: list[str], reads_input: bool) -> list[str]:
 
 def sensor_up(address: str) -> list[str]:
     interface = f"$(ip -o -4 addr show to {address} | awk '{{print $2}}')"
-    return ["sh", "-c", f'sudo env {SENSOR_INTERFACE}="{interface}" docker compose '
+    return ["sh", "-c", f"sudo tee {SENSOR_CONFIG} >/dev/null && "
+                        f'sudo env {SENSOR_INTERFACE}="{interface}" docker compose '
                         f"-p {SENSOR_PROJECT} -f {SENSOR} up -d --wait --pull never"]
 
 def cleared(wargames, logs, sensed: bool) -> list[str]:
