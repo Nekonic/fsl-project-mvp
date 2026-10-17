@@ -303,35 +303,54 @@ def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_
     settings.FSL_GNS3_ADMIN_PASSWORD_FILE = secret
     document = slot_map(2)
     calls = []
+    project_id = document["project_id"]
 
     def answer(method):
         def reply(url, **kwargs):
             calls.append((method, url.split("/v3")[1], kwargs))
             body = {"access_token": "t"} if url.endswith("/authenticate") else {"status": "opened"}
-            return SimpleNamespace(status_code=404 if method == "delete" else 200, json=lambda: body,
-                                   raise_for_status=lambda: None)
+            if method == "get":
+                body = [{"project_id": project_id, "status": "opened"}]
+            return SimpleNamespace(status_code=200, json=lambda: body, raise_for_status=lambda: None)
         return reply
 
     with patch("gns3.requests.post", side_effect=answer("post")), \
+         patch("gns3.requests.get", side_effect=answer("get")), \
          patch("gns3.requests.put", side_effect=answer("put")), \
          patch("gns3.requests.delete", side_effect=answer("delete")):
         assert gns3.publish(document) == "opened"
 
-    project_id = document["project_id"]
     assert [(method, path) for method, path, _ in calls] == [
-        ("post", "/access/users/authenticate"), ("delete", f"/projects/{project_id}"),
+        ("post", "/access/users/authenticate"), ("get", "/projects"), ("delete", f"/projects/{project_id}"),
         ("post", f"/projects/{project_id}/import"), ("put", f"/projects/{project_id}"),
         ("post", f"/projects/{project_id}/open"), ("post", f"/projects/{project_id}/nodes/start")], (
         "every node is started, so GNS3 draws each link end green; the display containers only idle")
-    assert calls[3][2]["json"] == {"auto_close": False}, (
+    assert calls[4][2]["json"] == {"auto_close": False}, (
         "an import is made with auto_close on whatever the file says, and a project closed when the last web "
         "client left stops its nodes")
     assert calls[0][2]["json"] == {"username": "admin", "password": "s3cret"}
-    archive = zipfile.ZipFile(io.BytesIO(calls[2][2]["data"]))
+    archive = zipfile.ZipFile(io.BytesIO(calls[3][2]["data"]))
     assert json.loads(archive.read("project.gns3")) == document, (
         "an import whose project.gns3 keeps the URL's project id keeps every id, as GNS3 restores a snapshot"
     )
 
+
+def test_a_project_gns3_does_not_hold_is_imported_without_a_delete(settings):
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.FSL_GNS3_ADMIN_PASSWORD = "s3cret"
+    listed = SimpleNamespace(raise_for_status=lambda: None, json=lambda: [{"project_id": "another"}])
+    answered = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"status": "opened"})
+
+    with patch("gns3._signed", return_value={}), \
+         patch("gns3.requests.get", return_value=listed), \
+         patch("gns3.requests.post", return_value=answered), \
+         patch("gns3.requests.put", return_value=answered), \
+         patch("gns3.requests.delete") as deleted:
+        gns3.publish(slot_map(1))
+
+    assert not deleted.called, (
+        "GNS3 logs every 404 at ERROR, so a DELETE of a project it never held wrote one error per first load"
+    )
 
 @pytest.mark.django_db
 def test_the_topology_endpoint_serves_the_session_s_own_map_when_gns3_runs(client):
