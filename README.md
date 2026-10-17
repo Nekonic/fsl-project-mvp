@@ -432,6 +432,12 @@ hints reach it. Each step has hints that end in "Skip", which records the step
 skipped and moves on, performing nothing for the learner; hint use is
 recorded on the session. The
 benign request a unit replays at open counts in neither score.
+The six run back to back in one session: when a unit's last step passes, the
+coach names the next unit and, 2 s later or on "Next lesson", starts it in
+the same session (`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`, which
+applies that unit's defense in place and replays its benign request), so
+the range is not reset between units; each unit judges only what happened
+since it started. After F6 the console closes the session.
 
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
 attacker use the board while the learner defends with the real tools. Each

@@ -116,6 +116,14 @@ sweep, at 6b72876; before it, learner text is plain, proven live on
   captions drawn without overlap, console third-party only, platform log
   clean. No acceptance ran (drawing text and strings only).
 
+- Foundations in one session (2026-10-18, `docs/DECISIONS.md` "Foundations
+  run back to back in one session"): `POST /api/sessions/<id>/lesson/` moves
+  an open foundation session to the next unit in place (F6's posture
+  applied in place, its seed replayed), step records and hints per lesson
+  (migration 0027), every check windowed from the unit's start; the console
+  starts the next unit 2 s after the last step and closes the session after
+  F6; a passed Kali step moves on and the next step shows its row.
+
 ## Waiting for the user
 
 1. Gate 2: push `ko-first` to `dev` (fast-forward).
