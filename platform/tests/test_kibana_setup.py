@@ -189,7 +189,8 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
         {"id": "f1", "started_at": (began - timedelta(minutes=10)).isoformat()},
         {"id": "f2", "started_at": began.isoformat()}])
 
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"):
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
+            patch.dict(kibana.VIEWS, {"fsl-logs-slot1-*": (True, 0.0)}):
         link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
 
     assert "dataViewId:'session-fsl-logs-slot1'" in link
@@ -197,6 +198,20 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
     assert "from:'2026-10-18T08:59:55+00:00'" in link
     assert "columns:!(event.module,observer.name,event_type,source_ip,destination,url,status,rule_id,rule)" in link
     assert "exists:(field:event.module)" in link, "the range VMs' own system log lines are not the session's events"
+
+
+@pytest.mark.django_db
+def test_a_session_view_kibana_refused_links_the_shared_view_narrowed_to_the_session_not_a_view_that_does_not_exist(
+        client, settings):
+    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f1")
+
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.dict(kibana.VIEWS, {}, clear=True), \
+            patch.object(kibana, "ensure_session_view", return_value=None):
+        link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
+
+    assert "session-fsl-logs-slot1" not in link
+    assert "_index : fsl-logs-slot1-*" in link
 
 
 def http_error(code, body=b""):

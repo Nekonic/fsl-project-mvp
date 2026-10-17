@@ -31,6 +31,8 @@ MARKER_HEADER = "x-fsl-case"
 ATTEMPTS = 60
 NOT_READY = (502, 503, 504)
 PAUSE = 5
+VIEW_RETRY = 60
+VIEWS = {}
 
 
 class Refused(Exception):
@@ -208,6 +210,14 @@ def ensure_session_view(pattern, sensors, waf, send=None):
     except (Refused, OSError, ValueError, KeyError) as exc:
         print(f"kibana: no session data view for {pattern}: {exc}", flush=True)
         return None
+
+
+def session_view_ready(pattern, sensors, waf, send=None, now=time.monotonic, again=False):
+    made, at = VIEWS.get(pattern, (False, None))
+    if again or not made and (at is None or now() - at >= VIEW_RETRY):
+        made = ensure_session_view(pattern, sensors, waf, send) is not None
+        VIEWS[pattern] = (made, now())
+    return made
 
 
 def main():
