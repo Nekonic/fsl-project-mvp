@@ -44,6 +44,10 @@ af-packet:
     cluster-id: 95
     cluster-type: cluster_flow
     defrag: yes
+  - interface: default
+    cluster-id: 94
+    cluster-type: cluster_flow
+    defrag: yes
 
 default-rule-path: /var/lib/suricata/rules
 rule-files:
