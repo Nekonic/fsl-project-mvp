@@ -255,8 +255,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   `customers`는 인터페이스만), 구간마다 네트워크 캡션(인터넷은 이름만), 그 밖에는 없다(제목·범례·메모, 기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지
   이름 모두 없음). 노드는 `internet` 스위치의 `customers`와 `kali`(공격자의 Kali 상자), `firewall`(OpenStack의
   OPNsense 엣지, 그 Suricata는 여기에 접어 넣음), `waf`와 사이트(`board.com` 또는 `corp.com`, WAF
-  호스트의 선언 이름)가 붙는 `sw1`(서비스 구간), OpenStack에서는 사이트 뒤의 `sw2`(데이터베이스
-  구간)와 데이터베이스(`board-db`), Docker에서는 `sw1`에 붙는 데이터베이스(Docker 레인지에는 엣지가
+  호스트의 선언 이름)가 붙는 `sw1`(서비스망), OpenStack에서는 사이트 뒤의 `sw2`(내부 DB망)와 데이터베이스(`board-db`), Docker에서는 `sw1`에 붙는 데이터베이스(Docker 레인지에는 엣지가
   없고 사이트와 데이터베이스가 estate에 있으므로 지도도 그렇고 `sw2`가 없다), 그리고
   `log-server`(Elasticsearch)를 기록이 실제로 닿는 호스트와 잇는 `sw3`(관제)다. OpenStack은
   방화벽, WAF, 사이트(estate 센서가 사이트의 호스트에서 돌며 자기 eve.json을 보낸다), Docker는
@@ -316,9 +315,9 @@ gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 �
 붙인다(`ens4`, `vtnet2`). 그 주소는 학습자가 보지 않는 관리 네트워크에 있기 때문이다. `log-server`의
 끝은 로그 저장소가 그 네트워크에 자기 NIC를 가지면 그것(Docker), 아니면 플랫폼 VM의 것(OpenStack,
 `ens7`)이다. 어떤 라벨도 Docker 브리지(`br-`) 이름을 쓰지 않는다. 비어 있을 수 있는 끝은 Docker의
-`customers` 하나로, 그 상자는 고객이 도는 동안만 떠 있다. 구간 캡션마다 그 스위치에 붙은 라벨의 네트워크를 덧붙인다(`서비스 구간 10.30.0.0/24`,
-`내부 DB 구간 172.18.0.0/16`; 스위치의 캡션은 그 스위치를 담은 가장 작은 상자의 글자다,
-`topology.captions`). 인터넷과 관제 구간은 이름만 둔다. 라벨은
+`customers` 하나로, 그 상자는 고객이 도는 동안만 떠 있다. 망 캡션마다 그 스위치에 붙은 라벨의 네트워크를 덧붙인다(`서비스망 10.30.0.0/24`,
+`내부 DB망 172.18.0.0/16`; 스위치의 캡션은 그 스위치를 담은 가장 작은 상자의 글자다,
+`topology.captions`). 인터넷과 관제망은 이름만 둔다. 라벨은
 링크가 나가는 쪽(`topology.leaving`) 노드 옆에 수평으로 놓인다: 수평이나 완만한 링크는 노드의 다른
 링크가 더 여유를 남기는 쪽으로 선 위나 아래에, 글자 밑을 지나는 선에 닿지 않게; 가파른 링크는 노드
 아래, 또는 이름이 옆에 있는 노드라면 위에, 같은 규칙으로 선의 왼쪽이나 오른쪽에(이름이 위에 있는
@@ -341,7 +340,7 @@ id로 읽고, 플랫폼 VM 자신의 NIC는 같은 `ip`를 호스트 네트워�
 올리지 못하면 엔드포인트는 세션 워게임의 학습자 지도를 파일에서 내주고 이유를 `detail`에 쓴다.
 
 프로젝트마다 한국어 학습자를 위한 한국어 짝이 있다: `deploy/topology/range-docker.ko.gns3`와
-`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 구간 캡션만
+`range-openstack.ko.gns3`. 노드, 링크, 포트, 위치는 같고 망 캡션만
 `docs/vocabulary.md`의 용어로 쓴 한국어다. 노드 이름은 역할 이름 그대로다.
 GNS3의 compute는 노드를 노드 id만으로 구분하므로 열린 두 프로젝트가 id를 함께 쓸 수 없다. 그래서
 짝의 모든 id는 `uuid5(<영어 id>, "ko")`이고 프로젝트 이름에는 한국어 접미사가 붙는다. 영어 파일이
@@ -441,7 +440,7 @@ WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않는다.
 `docker exec -it fsl-<id>-waf-1 bash`를 실행한다. WAF 이미지에는 ttyd가 없다. 같은
 `auth_request /terminal-allowed`가 막는다. OpenStack에서는 `/vm-terminal/fsl-waf/?arg=<세션 id>`를 띄운다.
 
-블루 콘솔의 웹사이트 창은 콘솔 안의 브라우저다: 뒤로, 앞으로, 새로고침, http에는 Chrome처럼 "주의 요함"
+블루 콘솔의 웹사이트 창은 콘솔 안의 브라우저다: 뒤로, 앞으로, 새로 고침, http에는 Chrome처럼 "주의 요함"
 표시를 붙이고 전체 URL(`http://board.com/<경로>`)을 보여 주며 URL이나 경로와 Enter를 받는 주소창, iframe
 안의 페이지, "개발자 도구" 토글. 대상 시스템은 공개되지 않으므로 8002의 nginx가 터미널과 같은
 `auth_request /terminal-allowed` 뒤에서 `/site/<세션>/<호스트>/<경로>`를 플랫폼의 기록기
@@ -663,13 +662,13 @@ outbound 4), 아니면 posture에 없는 예외가 규칙 전체를 빼면 `rule
   못한 수. 결과는 한 번 채점해 그 입력과 함께 저장한다(`Session.result_cache`, migration 0018; 입력은
   `ended_at`, 힌트 수, 탐지의 마지막 id·행 수·marker가 있는 행 수, 케이스와 목표의 마지막 id·행 수,
   최종 점검마다의 판정). 목록은 세션마다 집계 셋만 읽고, 늦은 수집처럼 입력이 바뀐 세션만 다시
-  채점한다. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면 "열린 세션 닫기"가 열린 세션을 나열해
+  채점한다. 시작이 거부되면 누른 버튼 아래에 이유를 쓰고, 409면 "열린 세션 종료"가 열린 세션을 나열해
   각각 `ingest/` 뒤 `close/`로 닫는다. `GET /api/range/ready/`가 `max_sessions`를 알려 준다.
 - 세션(`/session/<id>/`): 머리글 수치(guidance 세션이 도달한 단계, 빼앗긴 목표, 타깃), 블루·레드 콘솔
   카드, `GET /api/sessions/<id>/cases/`의 최근 케이스. 종료 후에는 시나리오의 판정 배너와 결과
   보고("시나리오"), 그다음 주 점수(모든 목표의 빼앗김 여부, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음
-  방어 판단을 평범한 문장으로 보여 준다: "공격 8건 중 7건을 잡았습니다 · 1건을 놓쳤습니다 (이름)",
-  "정상 요청 4건 중 3건은 통과 · 1건을 잘못 막았습니다 (O'Brien 검색)", 그리고 케이스 하나는 경보가
+  방어 판단을 평범한 문장으로 보여 준다: "공격 8건 중 7건 탐지 · 1건 미탐 (이름)",
+  "정상 요청 4건 중 3건 통과 · 1건 잘못 차단 (O'Brien 검색)", 그리고 케이스 하나는 경보가
   많아도 한 번으로 센다는 것. TP/FP/FN/TN과 게임 balance는 API에 남고, 사람이 읽는 문구에는 나오지
   않는다(`test_strings.py`). 다시 열기는 같은 시나리오, 같은 단원(`lesson_id`가 있으면 `{scenario,
   guidance: true, lesson, defense}`), 또는 같은 워게임을 연다.
@@ -740,7 +739,7 @@ progress}`로 답한다(`rules` 확인은 `added`, `kali` 확인은 `kali`, `loo
 단계의 `match`와 맞는 경로가 보이고 1.5초 뒤에도 확인하고, `rules`는 규칙 편집기가 파일을 적용할 때
 확인한다. popover의 상태 줄이 "확인 중…", 그다음 아직 빠진 것(`<text>.fail.<step>`), 통과하면 "✓"와 찾은
 것(`<text>.ok.<step>`)을 말한다. 1.2초 뒤 다음 단계로 넘어가 그 단계의 한 줄을 보이고, 마지막
-단계에서는 "레슨을 마쳤습니다". 틀린 답은 무엇이 틀렸는지 말한다. 최근 수집(`within`)은 창의 가장 새
+단계에서는 "레슨을 완료했습니다". 틀린 답은 무엇이 틀렸는지 말한다. 최근 수집(`within`)은 창의 가장 새
 기록부터 읽고 잘림을 기록하지 않는다. sqlmap 케이스 하나만으로도 기록이 5000개를 넘기 때문이다.
 
 단계의 터미널 명령은 절대 경로만 쓴다. 다시 연 ttyd는 새 셸에서 시작하기 때문이다(f6의 명령은
@@ -750,7 +749,7 @@ bracketed paste의 줄바꿈을 글자로 두기 때문이다. `kali` 단계의 
 터미널에 입력하고, 실행 버튼은 없다.
 
 도움은 단계마다 사다리를 오른다(화면의 `<text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔,
-"빨간 상자가 있는 곳을 보세요", 정답, "건너뛰기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
+"빨간 상자로 표시한 곳을 보세요", 정답, "건너뛰기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
 오른다. 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를
 올리고, 처음 것은 `Session.hints`에 기록된다(migration 0017; guidance 세션이 아니거나 단원에 없는 단계나
 level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 버튼은 "힌트가 있습니다"라고만 말하고,
@@ -762,7 +761,7 @@ loot)는 학습자가 그 단계를 하거나 함께 건너뛸 때까지 답할 
 표시되고, `result.scenario.helped`(`["hint"]` 또는 없음)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에
 "힌트 사용"이 붙는다.
 
-"직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
+"직접 해 보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
 펼쳐 둔다: 학습자가 KQL을 쓰고 명령을 직접 입력한다. 확인은 같다.
 필터 버튼은 단계의 `discover` 링크를 Kibana 프레임에 열고, 같은 링크에서 다시 누르면 프레임을 새로
 고친다(`showInKibana`): 같은 주소는 fragment 이동이라 Discover가 다시 가져오지 않고, WAF 기록은 요청 뒤
@@ -810,12 +809,12 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
-| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
-| f2 웹 요청의 경로 | `full` | 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
+| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객 요청을 처음 받는 호스트, 로그를 저장하는 호스트, 데이터베이스가 연결된 스위치를 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
+| f2 웹 요청 경로 따라가기 | `full` | 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
 | f3 HTTP 요청 읽기 | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
 | f4 Kibana에서 로그 찾기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
-| f5 SQL 인젝션 공격 확인 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
-| f6 계정 유출 확인 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
+| f5 SQL 인젝션 공격 로그 분석 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
+| f6 계정 유출 확인 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫 번째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
 
 `missed`는 CRS paranoia level 1에 949110과 959100을 `ruleRemoveById`로 끄고 `local.rules`를 쓴다. 단원의
 질문에는 `accept` 목록이 없다.
@@ -929,7 +928,7 @@ FP다. 가중치와 체류 시간은 v1 기본값이다
 `other`(그 밖의 4xx·5xx), `alerted`(어떤 경보가 그 마커를 가진 고객 요청),
 `blocked_actions`. 요청 하나는 한 번 세며 케이스가 아니다. 그래서 `per_case`와
 TP/FP/FN/TN은 그대로이고, 고객 요청이 일으킨 경보는 `unattributed`에 세지 않는다.
-콘솔의 두 번째 점수는 케이스 문장 옆에 "막힌 고객 요청: M건 중 N건"이라고 쓴다.
+콘솔의 두 번째 점수는 케이스 문장 옆에 "차단된 고객 요청: M건 중 N건"이라고 쓴다.
 
 score 엔드포인트는 읽기 전용이며 이력을 보관하지 않는다.
 
@@ -969,7 +968,7 @@ API(`platform/api/customers.py`, `views.session_traffic`):
   생성기의 속도와 프로필을 바꾼다(페르소나는 그대로). `rate`는 초당 요청 수,
   기본 1, 최대 50. `profile`은 워게임이 선언한 프로필 중 하나다. board에는
   `community`(기본), `plain`(특이한 검색 없음), `readers`(댓글을 뺀 `plain`),
-  `club`(`community`에 댓글 속 코드 질문을 더함)이 있다.
+  `club`(`community`에 코드 질문 댓글을 더함)이 있다.
   `traffic.yaml`이 없는 워게임은 404, 닫힌 세션은 409, 박스나 출발지가 없으면 503.
 - `GET`은 새 기록을 먼저 읽고 `declared`, `profiles`, `running`, `rate`,
   `profile`, `started_at`, `stopped_at`, `error`, 수 `sent`, `served`,
@@ -1100,7 +1099,7 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 세션 화면에 그린다.
 
 **콘솔.** 홈 페이지는 wargame마다 시나리오를 나열하고, 시작은 블루 콘솔을 상황
-설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보 난 요청, 빼앗긴 목표,
+설명부터 연다. 창 위의 띠가 남은 시간, 분당 고객 차단, 분당 경보 요청, 빼앗긴 목표,
 힌트 제안, 최종 점검 시작을 보인다. judgement 시나리오는 경보 창을 더하고, 경보 창은
 목록을 가리지 않는다: 레슨 메모의 열을 비워 두고, 카드와 연 힌트, 창 안을 가리키는
 코치 말풍선은 목록 위에 붙인다. detection과 unknown 시나리오는 IDS 룰 창(`/api/rules/`
