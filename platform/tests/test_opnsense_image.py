@@ -115,9 +115,11 @@ def importer():
     return module
 
 
-def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn():
+def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn(request):
     module = importer()
     ours, theirs = socket.socketpair()
+    request.addfinalizer(ours.close)
+    request.addfinalizer(theirs.close)
     ours.settimeout(1)
     printed = (b"Press any key to start the configuration importer: ...",
                b"Select device to import from (e.g. ada0) or leave blank to exit: ",
@@ -145,11 +147,13 @@ def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn():
     )
 
 
-def test_the_importer_presses_the_power_button_until_qemu_exits():
+def test_the_importer_presses_the_power_button_until_qemu_exits(request):
     module = importer()
     module.PRESS_EVERY = 0
-    console, _ = socket.socketpair()
+    console, unheard = socket.socketpair()
     monitor, pressed = socket.socketpair()
+    for each in (console, unheard, monitor, pressed):
+        request.addfinalizer(each.close)
 
     class Qemu:
         polls = itertools.chain([None] * 6, itertools.repeat(0))
@@ -267,6 +271,7 @@ def served(tmp_path, monkeypatch):
     monkeypatch.setattr(images, "SERVE_PORT", server.server_port)
     yield disk
     server.shutdown()
+    server.server_close()
 
 
 def finished(glance, disk, sha=None):

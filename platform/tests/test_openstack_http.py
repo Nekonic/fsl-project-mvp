@@ -99,6 +99,7 @@ def cloud():
     spy.port = server.server_port
     yield spy
     server.shutdown()
+    server.server_close()
 
 def reader(spy):
     base = f"http://127.0.0.1:{spy.port}"
@@ -204,6 +205,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
         ).describe()
     finally:
         server.shutdown()
+        server.server_close()
 
     edge = shape.segments[0]
     assert (edge.id, edge.subnet, edge.gateway) == ("ru", "5.188.10.0/24", "5.188.10.1")
@@ -267,6 +269,7 @@ def keystone():
     spy.port = server.server_port
     yield spy
     server.shutdown()
+    server.server_close()
 
 @pytest.mark.parametrize("interface, neutron, nova", [
     ("public", "http://example.com:9696", "http://example.com/compute/v2.1"),
@@ -354,6 +357,7 @@ def glance():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_port}"
     server.shutdown()
+    server.server_close()
 
 
 def uploader(base):
@@ -407,6 +411,7 @@ def test_a_pulled_disk_is_written_whole_and_hashed(tmp_path):
             openstack.pull(f"http://127.0.0.1:{server.server_port}/gone.qcow2", tmp_path / "gone")
     finally:
         server.shutdown()
+        server.server_close()
 
     assert got == hashlib.sha256(content).hexdigest()
     assert (tmp_path / "pulled").read_bytes() == content

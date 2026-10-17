@@ -46,10 +46,11 @@ def start_sshd(home: pathlib.Path, port: int, host_key: pathlib.Path):
         f"PidFile {home / 'sshd.pid'}\n"
     )
     said = home / f"sshd-{host_key.name}.log"
-    daemon = subprocess.Popen(
-        [SSHD, "-D", "-e", "-f", str(config)],
-        stdout=subprocess.DEVNULL, stderr=said.open("w"),
-    )
+    with said.open("w") as log:
+        daemon = subprocess.Popen(
+            [SSHD, "-D", "-e", "-f", str(config)],
+            stdout=subprocess.DEVNULL, stderr=log,
+        )
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and daemon.poll() is None:
         with socket.socket() as probe:

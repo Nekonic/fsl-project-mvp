@@ -116,6 +116,7 @@ def cloud():
     yield fake
     openstack.forget()
     server.shutdown()
+    server.server_close()
 
 
 def options(cloud, **overrides):

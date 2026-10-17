@@ -73,11 +73,11 @@ def snapshot_of(module, store):
     return image.getvalue()
 
 
-def opened(image):
-    db = sqlite3.connect(":memory:")
-    db.deserialize(image)
-    assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
-    return db
+def read(image, query):
+    with closing(sqlite3.connect(":memory:")) as db:
+        db.deserialize(image)
+        assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+        return db.execute(query).fetchall()
 
 
 def dump(path):
@@ -113,10 +113,9 @@ def test_a_writer_holding_a_transaction_open_is_neither_waited_for_nor_copied(
 
     writer.execute("COMMIT")
     writer.close()
-    assert opened(image).execute("SELECT count(*) FROM api_session").fetchone() == (3,)
-    assert opened(snapshot_of(backup.module, store)).execute(
-        "SELECT count(*) FROM api_session"
-    ).fetchone() == (4,), "the snapshot left a lock behind and the platform's next write waited on it"
+    assert read(image, "SELECT count(*) FROM api_session") == [(3,)]
+    assert read(snapshot_of(backup.module, store), "SELECT count(*) FROM api_session") == [(4,)], (
+        "the snapshot left a lock behind and the platform's next write waited on it")
 
 
 def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_done(
@@ -147,9 +146,8 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
     taking.join(10)
 
     assert waited, "the writer had already spilled into the file, so a copy made now is half its work"
-    assert opened(taken["image"]).execute(
-        "SELECT scenario, count(*) FROM api_session GROUP BY scenario"
-    ).fetchall() == [("committed", 3000)]
+    assert read(taken["image"], "SELECT scenario, count(*) FROM api_session GROUP BY scenario") == [
+        ("committed", 3000)]
 
 
 def test_a_platform_reached_some_other_way_is_backed_up_the_same(
