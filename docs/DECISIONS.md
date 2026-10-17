@@ -1813,7 +1813,8 @@ Open, recorded in `docs/STATE.md`: the corp wargame has no host on the
 OpenStack range (no declaration entry, no golden-image setup, `fsl-waf` does
 not name `corp.com`), so its live tests fail there with that cause; and
 `COMPOSE_RANGE_ONLY` in `test/conftest.py` still skips 20 modules on
-openstack, which this ruling does not allow.
+openstack, which this ruling does not allow. Closed 2026-10-17: see "No
+acceptance test is skipped on OpenStack".
 
 ## 2026-10-11 — One wargame host image runs every wargame as its GHCR containers
 
@@ -4557,3 +4558,67 @@ steps boxed on Topology, F4 find in Korean boxed after one more press of the
 filter (the reload), Skip 6 of 6 as above, no popover over the rail, no
 `database is locked` and no 500 in the platform log; every session the sweeps
 opened (657-686) closed.
+
+## 2026-10-17 — No acceptance test is skipped on OpenStack
+
+The user: docker-only tests should have been deleted; under the 2026-10-11
+ruling no acceptance test may be docker-only or skipped on openstack. The last
+run still skipped 30 tests in 13 modules through `COMPOSE_RANGE_ONLY`. Each
+was judged with the test audit's bar (2026-10-16): it runs on both substrates
+through the existing seams (`test/range.py`, the platform API), or it goes
+because it checks a compose-only mechanism or repeats a test that already
+runs on OpenStack. `COMPOSE_RANGE_ONLY`, the skip in
+`pytest_collection_modifyitems` and the `on_compose()` branches in
+`shared_sessions.py` are gone; nothing in `test/` skips by substrate.
+
+| Module | Tests | Outcome |
+|---|---|---|
+| `test_attacker_box` | 2 | run everywhere; the first keeps "the console's direct address is one of the box's own" and drops "the proxied address is not the box's": that is compose's proxy container, and on OpenStack the box wears the origin itself (SNAT), so the two are one address by design; HTTP attribution by `source_ip` is proven by `test_window_correlation` on both |
+| `test_board_exfil` | 4 | run everywhere, unchanged |
+| `test_concurrent_sessions` | 2 | run everywhere, unchanged (two slots) |
+| `test_event_time` | 2 | run everywhere, unchanged |
+| `test_front_door` | 3 -> 2 | the shell probe runs everywhere (its alerts now come from `terminal_session`); the inside leg reads the session's detections through the API, so the estate sensor (the WAF-to-target leg on OpenStack) counts; the console attack deleted, a duplicate of `test_map`'s placement of `tuned_session`'s console-fired case in Russia (`5.188.10.0/24`) |
+| `test_judge_isolation` | 4 + 1 | run everywhere; the gateway is the operator's host only on docker, so each host now also probes every address of `fsl-platform` the topology API lists and the published address, and counts a reach only when the scoring API (`/api/range/ready/`) or Elasticsearch itself answers (the wargame host's own published 8000 is the board app); it opens its own session; `test_terminal`'s one test moves here, probing the same addresses instead of the compose name `platform` |
+| `test_operator_log` | 1 | run everywhere; it found a product defect (below) |
+| `test_ready` | 2 -> 1 | the canary runs everywhere; "the range reports itself ready" deleted: docker answers `ready: True` as a constant, `conftest.stack_is_up` already asserts OpenStack's readiness before any test, and asserted mid-run beside a second worker it failed on the other slot's legitimate reset |
+| `test_segmentation` | 3 -> 0 | deleted: "cannot reach the target directly" and "can reach the way in" repeat `test_attacker_reach` (`http://board:8000/` from Kali) and `test_board_exfil` (200 through `board.com`); "share no segment" checks docker network membership, while on OpenStack Kali and the wargame host share `mgmt` by design and the fence is the security groups, scanned on both by `test_attacker_reach` |
+| `test_strategy_comparison` | 1 | run everywhere, unchanged |
+| `test_terminal` | 1 -> 0 | moved into `test_judge_isolation` |
+| `test_topology` | 2 | run everywhere; `full_run` now reads the topology on both |
+| `test_window_correlation` | 3 | run everywhere, unchanged |
+
+25 of the 30 run on both substrates; 5 deleted. The harness gained two
+substrate-neutral ways, no second way to reach a VM: on OpenStack
+`test/range.py` runs the attacker's commands in a login shell (`bash -lc`),
+because the terminal there is an ssh login that gets the proxy and
+`FSL_TARGET` from `/etc/profile.d/fsl.sh`, which compose sets on the Kali
+container for every process; without it the label never stamped a request
+and `$FSL_TARGET` was empty. And the probe helpers read the session's
+suricata detections through `/api/sessions/<id>/detections/` and
+`/api/detections/<id>/` (the stored eve event) instead of tailing one
+sensor's `eve.json`, which on the OPNsense edge is empty (its eve goes to
+`/var/log/suricata/suricata_<date>.log`).
+
+**Product fix.** The operator log was always empty on OpenStack: the
+terminal is an ssh login as the cloud user, only root's `.bashrc` sourced
+`operator-log.sh`, and `deploy/kali/setup.sh` never made `/var/log/fsl`.
+Now setup makes `/var/log/fsl/commands.log` (0666, as `/label/active`) and
+sources the hook from `/etc/bash.bashrc`, which every interactive bash reads;
+a unit test holds both lines. The Kali image's bundle changed, so the
+sideloaded rebuild carried a `fsl-kali` tarball too; a standing slot keeps
+its Kali until its next reset, so one session per slot was opened and closed
+before the run.
+
+**Proven live 2026-10-17** (OpenStack, platform VM 192.168.0.210). Deployed by
+`bin/cloud up --replace --sideload platform=... --sideload kali=...
+--sideload gns3=...` (platform and kali images built on the VM from 1fd5be3,
+gns3 from 1efa522): exit 0 in 12 min 33 s, both slots READY, both Kalis
+rebuilt from the new image by a reset. The 11 modules alone (`bin/acceptance
+--only`): 26 passed, 0 failed, 0 skipped in 463 s. `bin/verify` on b324ba5
+(test-only on top of the deploy; `FSL_PLATFORM_URL=http://192.168.0.210:8000`,
+the `.venv` made by hand): unit 1474 passed; acceptance 70 passed, 0 failed,
+0 errors, 0 skipped in 997 s across 4 processes (70 collected, was 75);
+ratchet holds (core_loc 580, tests 1055); 1,131 s in all. The range was
+shared with another session's live walks this day; acceptance ran only
+while no other session was open.
+

@@ -43,7 +43,7 @@ hand, the stock Ubuntu 24.04 cloud image.
 | `fsl-opnsense-<version>` built by an Ubuntu builder from the official nano image | done (26.7, 2026-10-11) | §3.6 |
 | OPNsense edge configured over mgmt ssh (`configure/`) | done (2026-10-11; survival of an OPNsense update not checked) | §6 |
 | Slot + configure via `/api/range/slot/`, `/api/range/configure/` | done (OPNsense edge; automatic after a close, §6.1) | §6 |
-| Acceptance on substrate openstack | 77 passed / 0 failed / 71 skipped (2026-10-13, two workers; the skips are `COMPOSE_RANGE_ONLY`) | §7 |
+| Acceptance on substrate openstack | 70 passed / 0 failed / 0 skipped (2026-10-17, two workers; no test is skipped by substrate) | §7 |
 
 Steps below carry **[one-click]** where the script replaces them, and
 **[admin, once]** where they stay manual because a member cannot do them.
@@ -772,6 +772,12 @@ ssh ubuntu@$ADDRESS 'cd /opt/fsl && FSL_PLATFORM_URL=http://'$ADDRESS':8000 bin/
 
 `bin/verify` restarts the platform and resets the range; never run it against
 a stack someone is using.
+
+Since 2026-10-17 the whole acceptance suite runs here with no skip (70
+passed, 0 failed, 0 skipped; `docs/DECISIONS.md` "No acceptance test is
+skipped on OpenStack"). A change to a range host's image (`deploy/kali`,
+`deploy/waf`, ...) reaches a standing slot only at its next reset: after
+`bin/cloud up`, open and close one session per slot before the run.
 
 **Acceptance on substrate openstack: partial** (the OpenStack range is out of
 the MVP). Run 2026-10-11 on a range built from scratch by `bin/cloud up`

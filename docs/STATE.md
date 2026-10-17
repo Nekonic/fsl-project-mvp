@@ -907,9 +907,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       now sit in `fsl-mgmt` (in only from `fsl-reach`), and the edge's WAN pass
       rule admits tcp 80 to the WAF's estate address only.
       `test/test_attacker_reach.py` checks both from Kali on either substrate.
-- [ ] `test/conftest.py`'s `COMPOSE_RANGE_ONLY` skips 15 modules on
+- [x] `test/conftest.py`'s `COMPOSE_RANGE_ONLY` skipped 15 modules on
       openstack, which the 2026-10-11 ruling does not allow. The five corp
-      modules left it on 2026-10-12.
+      modules left it on 2026-10-12; the rest on 2026-10-17, run on both or
+      deleted (`docs/DECISIONS.md` "No acceptance test is skipped on
+      OpenStack"): 0 skipped.
 - [x] `test_map.py::test_traffic_inside_the_estate_is_counted_but_not_placed`
       needed a sensor on the WAF-to-target leg on openstack (the edge's sees
       only the WAN). Since 2026-10-12 the wargame host runs docker's Suricata

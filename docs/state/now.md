@@ -76,6 +76,14 @@ Updated: 2026-10-17 (the coach finds every step's target; Skip replaces Do it fo
   locked`); Skip replaces "Do it for me" (`.../do/` removed). Live sweep on
   e331372, ko and en: 72 of 72 step views boxed, Skip 6 of 6 recorded.
 
+- No acceptance test is skipped on OpenStack (2026-10-17, `docs/DECISIONS.md`
+  "No acceptance test is skipped on OpenStack"): of the 30 tests
+  `COMPOSE_RANGE_ONLY` skipped, 25 run on both substrates and 5 are deleted;
+  the run found that the OpenStack terminal's commands never reached the
+  operator log (fixed in `deploy/kali/setup.sh`). Deployed 1fd5be3 by the
+  sideloaded rebuild (platform, kali, gns3); `bin/verify` there on b324ba5:
+  unit 1474 passed; acceptance 70 passed, 0 failed, 0 skipped in 997 s.
+
 ## Waiting for the user
 
 1. Gate 2: push this branch to `dev` (fast-forward).
