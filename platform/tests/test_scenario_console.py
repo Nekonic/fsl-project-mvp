@@ -33,7 +33,7 @@ ITEMS = [
 
 def serving(state, items=ITEMS, lesson=None):
     return f"""
-const range = {{state: {js(state)}, items: {js(items)}, posted: [], hinted: 0, windowed: 0}};
+const range = {{state: {js(state)}, items: {js(items)}, posted: [], hinted: 0, windowed: 0, steps: []}};
 browser.serve((request) => {{
   if (request.route === "/api/sessions/1/") return {{body: {{id: 1, scenario: "board", course_scenario: range.state.id,
     kind: "scenario", ended_at: null, guidance: Boolean({js(lesson)}), mode: "guided", lesson: {js(lesson)},
@@ -58,6 +58,10 @@ browser.serve((request) => {{
   }}
   if (request.route === "/api/sessions/1/triage/") return {{body: {{items: range.items, total: range.items.length, judged: 0}}}};
   if (request.route === "/api/sessions/1/ingest/") return {{body: {{ingested: 0}}}};
+  if (request.route.startsWith("/api/sessions/1/lesson/steps/")) {{
+    range.steps.push(request.route);
+    return {{body: {{passed: request.route.endsWith("/check/"), reason: null, progress: {{}}}}}};
+  }}
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
 """
@@ -108,3 +112,35 @@ def test_a_judgement_scenario_that_asks_the_kind_posts_it_with_the_verdict(clien
     assert seen["errors"] == []
     assert seen["result"] == [{"item": "b2", "verdict": "attack", "succeeded": False, "pattern": "CAPEC-66"}]
 
+
+LAID_OUT = """
+const RECTS = new Map();
+Object.getPrototypeOf(document.body).getBoundingClientRect = function () {
+  return RECTS.get(this) || {left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0};
+};
+const box = (left, top, width, height) => ({left, top, width, height, right: left + width, bottom: top + height});
+RECTS.set(browser.element('pane'), box(60, 56, 980, 744));
+RECTS.set(browser.element('pane-body'), box(60, 100, 980, 700));
+RECTS.set(document.querySelector('.pane-tab[data-pane="triage"]'), box(8, 300, 44, 44));
+"""
+
+def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves_on_when_it_is_pressed(client):
+    lesson = wargames.lesson("board", lesson_id="1.1")
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=lesson) + LAID_OUT, scenario="""
+      await browser.click('briefing-start');
+      await browser.wait(0);
+      await browser.wait(0);
+      const first = {title: browser.text('step-title'), ring: !browser.element('coach-ring').classList.contains('hidden'),
+                     left: browser.element('coach-ring').style.left, note: !browser.element('lesson').classList.contains('hidden')};
+      await browser.click('[data-pane="triage"]');
+      await browser.wait(0);
+      await browser.wait(1600);
+      return {first, next: browser.text('step-title'), checked: range.steps.filter((route) => route.endsWith('/check/'))};
+    """)
+    result = seen["result"]
+    steps = [step["id"] for step in lesson["steps"]]
+
+    assert seen["errors"] == []
+    assert result["first"] == {"title": english(f"{lesson['text']}.label.{steps[0]}"), "ring": True, "left": "2px", "note": True}
+    assert result["checked"] == [f"/api/sessions/1/lesson/steps/{steps[0]}/check/"]
+    assert result["next"] == english(f"{lesson['text']}.label.{steps[1]}")

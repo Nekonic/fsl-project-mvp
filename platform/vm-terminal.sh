@@ -32,8 +32,8 @@ PY
 ) || { sleep 3; exit 1; }
 addr="${found% *}"
 alias="${found#* }"
-[ -n "$addr" ] || { echo "no mgmt address for $host - the range may be down"; sleep 3; exit 1; }
 shown="${host#fsl-}"
+[ -n "$addr" ] || { echo "no mgmt address for $shown - the range may be down"; sleep 3; exit 1; }
 exec ssh -t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
   -o HostKeyAlias="$alias" -o LogLevel=ERROR \
   -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}" \

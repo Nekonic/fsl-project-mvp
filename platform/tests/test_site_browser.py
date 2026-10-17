@@ -26,15 +26,25 @@ def site_tail(request_uri):
     found = re.match(pattern.replace("(?<", "(?P<"), request_uri)
     return found.group("site_tail") if found else "/"
 
-def test_the_site_route_is_guarded_like_the_terminals_and_goes_to_the_session_s_own_waf():
+def test_the_site_route_is_guarded_like_the_terminals_and_passes_every_page_through_the_platform():
     block = site_block()
 
     assert "auth_request /terminal-allowed;" in block
     assert "proxy_pass http://127.0.0.1:8001/site-proxy/$session/$site/;" in block, (
-        "the platform passes every page on to the WAF and keeps a copy for the Network panel"
+        "the platform sends every page from the customers side and keeps a copy for the Network panel"
     )
     assert "proxy_set_header X-Site-Uri $site_uri;" in block
-    assert site.waf_url(7) == "http://fsl-7-waf-1", "the WAF judges every page the learner opens"
+
+def test_the_script_injected_into_site_pages_answers_only_its_parent_console_and_adds_no_request():
+    injected = re.search(r"sub_filter '</body>' '<script>(.*?)</script></body>';", site_block()).group(1)
+
+    assert "m.source!==p" in injected and "own(m.origin)" in injected, (
+        "a page framing the site, or a script inside it, gets no rect back"
+    )
+    assert "fslLocated:id" in injected and "},at)" in injected, "the rect goes back to the asking console only"
+    assert "src=" not in injected and "fetch(" not in injected and "XMLHttpRequest" not in injected, (
+        "the highlight helper loads nothing, so the WAF, Kibana and the Network panel never see it"
+    )
 
 def test_the_console_s_own_port_does_not_serve_the_proxy():
     console = NGINX[:NGINX.index("listen 8002;")]
@@ -134,45 +144,64 @@ def test_ingest_can_read_only_the_last_minutes_so_a_long_session_still_finds_a_n
 def test_the_rule_answer_reads_the_records_of_the_site_browser_s_own_marker():
     import wargames
 
-    rule = next(step for step in wargames.lesson("board", lesson_id="f5")["steps"] if step["id"] == "rule")
+    read = [step["check"]["marker"] for unit in ("f4", "f5", "f6")
+            for step in wargames.lesson("board", lesson_id=unit)["steps"]
+            if step["check"].get("of") == "rule" and step["check"].get("path")]
 
-    assert rule["check"]["marker"] == views.SITE_BROWSER_MARKER
+    assert read and set(read) == {views.SITE_BROWSER_MARKER}, (
+        "a rule question about the learner's own search reads the Website pane's records"
+    )
 
 class Answer:
-    def __init__(self, status, content=b"", headers=None):
-        self.status_code = status
+    def __init__(self, status, content=b"", headers=None, reason=None):
+        self.status = status
+        self.reason = reason if reason is not None else site.phrase_of(status)
         self.content = content
-        self.headers = headers or {}
-        self.closed = False
+        self.headers = list((headers or {}).items())
+        self.at = 0
 
-    def iter_content(self, size):
-        for start in range(0, len(self.content), size):
-            yield self.content[start:start + size]
+    def getheaders(self):
+        return self.headers
+
+    def getheader(self, name, default=None):
+        return next((value for key, value in self.headers if key.lower() == name.lower()), default)
+
+    def read(self, size):
+        chunk = self.content[self.at:self.at + size]
+        self.at += len(chunk)
+        return chunk
+
+class Line:
+    closed = False
+
+    def settimeout(self, seconds):
+        self.timeout = seconds
 
     def close(self):
         self.closed = True
 
+ON_CUSTOMERS = site.Egress(source="73.0.0.4", address="73.0.0.9", port=80, boxed=False)
+
 def proxied(client, path, answer, method="get", **extra):
     from unittest.mock import patch
 
-    with patch("api.site.requests.request", return_value=answer) as sent:
+    with patch("api.site.egress_of", return_value=(ON_CUSTOMERS, None)), \
+            patch("api.site.exchange", return_value=(Line(), answer)) as sent:
         response = getattr(client, method)(f"/site-proxy/{path}", HTTP_X_SITE_URI=extra.pop("uri", "/"), **extra)
         if response.streaming:
             response.passed = b"".join(response.streaming_content)
     return response, sent
 
-def test_the_proxy_passes_the_page_to_the_session_s_waf_with_the_site_s_host_and_the_marker(client):
+def test_the_proxy_sends_the_page_with_the_site_s_host_and_the_marker_and_keeps_the_platform_s_cookies(client):
     session = Session.objects.create(scenario="board", baseline=[])
     response, sent = proxied(client, f"{session.pk}/board.com/", Answer(403, b"<html>403 Forbidden</html>",
                              {"Content-Type": "text/html", "Set-Cookie": "a=b", "Server": "nginx"}),
                              uri="/search/?q=O%27Brien", HTTP_COOKIE="sessionid=platform")
 
-    method, url = sent.call_args.args
-    headers = sent.call_args.kwargs["headers"]
-    assert (method, url) == ("GET", f"http://fsl-{session.pk}-waf-1/search/?q=O%27Brien")
+    egress, _, method, target, headers, _ = sent.call_args.args
+    assert (egress, method, target) == (ON_CUSTOMERS, "GET", "/search/?q=O%27Brien")
     assert headers["Host"] == "board.com" and headers["X-FSL-Case"] == session.browse_marker
     assert "Cookie" not in headers, "the platform's cookies never reach the target"
-    assert sent.call_args.kwargs["allow_redirects"] is False
     assert response.status_code == 403 and response.passed == b"<html>403 Forbidden</html>"
     assert "Set-Cookie" not in response and response["Server"] == "nginx"
 
@@ -188,62 +217,156 @@ def test_the_proxy_answers_only_for_an_open_session(client):
         "the Network panel stops polling a closed session"
     )
 
-def test_the_site_s_requests_are_listed_per_session_with_what_the_waf_did(client):
+def test_the_network_panel_lists_each_session_s_requests_with_chrome_s_columns(client):
     session = Session.objects.create(scenario="board", baseline=[])
     other = Session.objects.create(scenario="board", baseline=[])
-    proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/")
-    proxied(client, f"{session.pk}/board.com/", Answer(403, b"no"), uri="/search/?q=O%27Brien")
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok", {"Content-Type": "text/html"}), uri="/",
+            HTTP_SEC_FETCH_DEST="iframe")
+    proxied(client, f"{session.pk}/board.com/", Answer(403, b"no", {"Content-Type": "text/html"}),
+            uri="/search/?q=O%27Brien", HTTP_SEC_FETCH_DEST="iframe")
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"body{}", {"Content-Type": "text/css"}),
+            uri="/static/vendor/bootstrap.min.css", HTTP_SEC_FETCH_DEST="style",
+            HTTP_REFERER=f"http://192.168.0.210:8002/site/{session.pk}/board.com/search/?q=O%27Brien")
     proxied(client, f"{other.pk}/board.com/", Answer(200, b"elsewhere"), uri="/")
 
     listed = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
     newer = client.get(f"/api/sessions/{session.pk}/site/requests/?after={listed[0]['id']}").json()
 
-    assert [(r["method"], r["url"], r["status"], r["blocked"]) for r in listed] == [
-        ("GET", "http://board.com/", 200, False), ("GET", "http://board.com/search/?q=O%27Brien", 403, True),
+    assert [(r["url"], r["status"], r["status_text"], r["type"], r["category"]) for r in listed] == [
+        ("http://board.com/", 200, "OK", "document", "doc"),
+        ("http://board.com/search/?q=O%27Brien", 403, "Forbidden", "document", "doc"),
+        ("http://board.com/static/vendor/bootstrap.min.css", 200, "OK", "stylesheet", "css"),
     ]
-    assert set(listed[0]) == {"id", "at", "method", "url", "status", "blocked", "ms"}
-    assert [r["status"] for r in newer] == [403]
+    assert [r["initiator"] for r in listed] == [{"type": "other"}, {"type": "other"},
+                                               {"type": "parser", "url": "http://board.com/search/?q=O%27Brien"}]
+    assert set(listed[0]) == set(site.SUMMARY) and "blocked" not in listed[0], "nothing in the panel names the WAF"
+    assert listed[2]["size"] > len(b"body{}"), "Size counts the response headers as Chrome's transferred size does"
+    assert [r["status"] for r in newer] == [403, 200]
     assert client.get(f"/api/sessions/{session.pk}/site/requests/?after=x").status_code == 400
 
-def test_one_request_s_detail_carries_both_sets_of_headers_and_bodies_bounded_to_64_kb(client):
+def test_one_request_s_detail_shows_what_the_browser_sent_without_the_marker_and_with_board_com_as_referer(client):
     session = Session.objects.create(scenario="board", baseline=[])
     big = b"a" * (site.BODY_LIMIT + 10)
-    proxied(client, f"{session.pk}/board.com/", Answer(200, big, {"Content-Type": "text/html"}), method="post",
-            uri="/posts/1/comments/", data="body=hello", content_type="application/x-www-form-urlencoded")
+    _, sent = proxied(client, f"{session.pk}/board.com/",
+                      Answer(200, big, {"Content-Type": "text/html", "Referrer-Policy": "same-origin"}), method="post",
+                      uri="/posts/1/comments/", data="body=hello", content_type="application/x-www-form-urlencoded",
+                      HTTP_ORIGIN="http://192.168.0.210:8002",
+                      HTTP_REFERER=f"http://192.168.0.210:8002/site/{session.pk}/board.com/posts/1/")
     row, = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
 
     detail = client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
 
-    assert detail["request_headers"]["Host"] == "board.com"
-    assert detail["request_headers"]["X-FSL-Case"] == site.MARKER, "the secret marker stays on the server"
-    assert detail["response_headers"] == {"Content-Type": "text/html"}
+    on_the_wire = sent.call_args.args[4]
+    assert on_the_wire["Referer"] == "http://board.com/posts/1/" and on_the_wire["Origin"] == "http://board.com", (
+        "the board, the WAF and Kibana see the Referer a browser on board.com sends, not the platform's address"
+    )
+    shown = dict(detail["request_headers"])
+    assert shown["Host"] == "board.com" and shown["Referer"] == "http://board.com/posts/1/"
+    assert "X-FSL-Case" not in shown, "the marker stays on the wire for correlation and out of the panel"
+    assert detail["response_headers"] == [["Content-Type", "text/html"], ["Referrer-Policy", "same-origin"]]
+    assert (detail["remote_address"], detail["egress"]) == ("73.0.0.9:80", "73.0.0.4"), (
+        "Remote address is what the browser connected to; the record keeps the customers address it left from"
+    )
     assert detail["request_body"] == {"text": "body=hello", "size": 10, "truncated": False}
     assert detail["response_body"]["size"] == site.BODY_LIMIT + 10
     assert len(detail["response_body"]["text"]) == site.BODY_LIMIT and detail["response_body"]["truncated"]
     assert client.get(f"/api/sessions/{session.pk}/site/requests/999999/").status_code == 404
 
-def test_on_a_cloud_range_the_proxy_reaches_the_waf_of_the_session_s_own_slot(client, monkeypatch):
-    class Slot:
-        def __init__(self, number):
-            self.number = number
+def test_a_page_s_own_referrer_policy_is_shown_for_the_requests_it_makes(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"<html>", {"Content-Type": "text/html",
+            "Referrer-Policy": "same-origin"}), uri="/", HTTP_SEC_FETCH_DEST="iframe")
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"x", {"Content-Type": "text/css"}), uri="/a.css",
+            HTTP_SEC_FETCH_DEST="style", HTTP_REFERER=f"http://h:8002/site/{session.pk}/board.com/")
 
-        def address(self, role):
-            return f"10.31.0.{self.number}0"
+    typed, linked = (client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
+                     for row in client.get(f"/api/sessions/{session.pk}/site/requests/").json())
 
-    class Cloud:
-        def in_slot(self, number):
-            return Slot(number)
+    assert typed["referrer_policy"] == "strict-origin-when-cross-origin", "an address typed in the bar has Chrome's default"
+    assert linked["referrer_policy"] == "same-origin"
 
-    monkeypatch.setattr(site, "substrate", Cloud)
-    session = Session.objects.create(scenario="board", baseline=[], slot=2)
-    try:
-        _, first = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/search/?q=a")
-        _, second = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/posts/")
-    finally:
-        site.forget(session.pk)
+def shape(*segments):
+    from range.ports import Shape
+    return Shape(segments=segments, sensors=())
 
-    assert first.call_args.args == ("GET", "http://10.31.0.20/search/?q=a")
-    assert second.call_args.args == ("GET", "http://10.31.0.20/posts/")
-    assert client.get(f"/api/sessions/{session.pk}/").json()["site"]["port"] == 8002, (
-        "on OpenStack the Website pane is offered too, or a lesson's first step cannot be done"
+class Range:
+    def __init__(self, segments, opened=None):
+        self.given = segments
+        self.lines = []
+
+    def segments(self):
+        return self.given
+
+    def runner(self, role):
+        from range.ports import Ran
+
+        def run(argv, stdin=None, timeout=60.0):
+            return Ran(exit_code=0, output="5.188.10.10 via 10.0.0.1 dev ens3 src 1.128.0.10 uid 1000")
+        return run
+
+    def opened(self, role, argv):
+        self.lines.append((role, argv))
+        return Line()
+
+def test_on_docker_the_pane_leaves_from_the_platform_s_address_on_a_customers_network_to_the_waf_there(settings):
+    from range.ports import Node, Segment
+
+    settings.ATTACKER_ORIGIN_MODE = "host-rewrite"
+    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
+                 nodes=(Node("fsl-proxy", "5.188.10.5"), Node("fsl-waf", "5.188.10.9"), Node("fsl-platform", "5.188.10.2")))
+    us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
+                 nodes=(Node("fsl-proxy", "73.0.0.5"), Node("fsl-waf", "73.0.0.9"), Node("fsl-platform", "73.0.0.2")))
+    hk = Segment(id="hk", name="Internet", origin="Hong Kong", subnet="103.152.220.0/24",
+                 nodes=(Node("fsl-proxy", "103.152.220.5"), Node("fsl-waf", "103.152.220.9"),
+                        Node("fsl-platform", "103.152.220.2")))
+    session = Session.objects.create(scenario="board", baseline=[])
+
+    egress = site.found_egress(session, Range((ru, hk, us)))
+
+    assert egress == site.Egress(source="73.0.0.2", address="73.0.0.9", port=80, boxed=False), (
+        "not the attacker's ru network; of the customers' networks the one board's customers come from most"
     )
+
+def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_through_the_firewall_to_board_com(
+        settings):
+    from range import declared
+    from range.ports import Node, Segment
+
+    settings.RANGE = declared.read(flavor="openstack")
+    settings.ATTACKER_SOURCE_CONTAINER = "fsl-kali"
+    settings.ATTACKER_CONTAINER = "fsl-kali"
+    settings.ATTACKER_ORIGIN_MODE = "snat"
+    settings.ATTACKER_TARGET_URL = "http://board.com"
+    kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
+                 nodes=(Node("fsl-edge", "175.192.0.1"), Node("fsl-kali", "175.192.0.10"),
+                        Node("fsl-kali", "175.192.0.11")))
+    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
+                 nodes=(Node("fsl-edge", "5.188.10.1"), Node("fsl-kali", "5.188.10.10")))
+    estate = Segment(id="estate", name="Application estate", subnet="10.30.0.0/24",
+                     nodes=(Node("fsl-edge", "10.30.0.1"), Node("fsl-waf", "10.30.0.63")))
+    session = Session.objects.create(scenario="board", baseline=[], slot=2)
+    cloud = Range((kr, ru, estate))
+
+    egress = site.found_egress(session, cloud)
+    worn = {origin["id"]: origin["source_ip"] for origin in __import__("attacker").origins(shape(kr, ru, estate))}
+
+    assert egress.boxed and egress.address == "10.30.0.63" and egress.port == 80, (
+        "Kali's /etc/hosts names board.com by the WAF's estate address; Kali's route to it runs through the firewall"
+    )
+    assert egress.source in {"175.192.0.10", "175.192.0.11"} - {worn["kr"]}, (
+        "a customers address on Kali, never the one the attacker sends from"
+    )
+
+def test_a_boxed_egress_opens_its_line_on_the_attacker_and_a_local_one_binds_the_customers_address(monkeypatch):
+    import attacker
+
+    cloud = Range(())
+    monkeypatch.setattr(attacker, "as_customer", lambda source, address, port: ["bridge", source, address, str(port)],
+                        raising=False)
+    site.opened(site.Egress(source="175.192.0.11", address="10.30.0.63", port=80, boxed=True), cloud)
+    bound = []
+    monkeypatch.setattr(site.socket, "create_connection", lambda *args: bound.append(args) or Line())
+    site.opened(ON_CUSTOMERS, None)
+
+    assert cloud.lines == [("attacker", ["bridge", "175.192.0.11", "10.30.0.63", "80"])]
+    assert bound == [(("73.0.0.9", 80), site.TIMEOUT[0], ("73.0.0.4", 0))]

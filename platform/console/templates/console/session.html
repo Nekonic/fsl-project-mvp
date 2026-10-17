@@ -70,6 +70,10 @@
 </section>
 
 <section id="scoreboard" class="hidden">
+  <section id="course" class="hidden card p-5 mb-5 text-[13px]">
+    <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
+    <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
+  </section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
   <div class="grid lg:grid-cols-[1fr_400px] gap-5">
@@ -151,6 +155,19 @@
   const lessonText = () => (session && session.lesson ? session.lesson.text : "");
   const lessonSteps = () => (session && session.lesson && session.lesson.steps ? session.lesson.steps.length : 0);
   const scenarioName = () => localized(`wargame.${session.scenario}.name`, wargame ? wargame.name : session.scenario);
+  const lessonSession = () => Boolean(session && session.kind === "lesson");
+  const foundations = () => (wargame && Array.isArray(wargame.foundations) ? wargame.foundations : []);
+  const lessonNumber = (lessonId) => foundations().findIndex((taught) => taught.id === lessonId) + 1;
+  const takenLessons = () => (session && Array.isArray(session.lessons) ? session.lessons : []);
+  const courseNumbers = () => takenLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
+
+  function runLabel(row) {
+    const number = row.lesson ? lessonNumber(row.lesson) : 0;
+    if (!number) return "";
+    const card = foundations()[number - 1];
+    const step = row.step && Array.isArray(card.step_ids) ? card.step_ids.indexOf(row.step) + 1 : 0;
+    return step ? t("session.run.step", number, step) : t("session.run.lesson", number);
+  }
 
   function header(taken, total) {
     const closed = Boolean(session.ended_at);
@@ -160,7 +177,9 @@
         : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
     field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
     const parts = [scenarioName()];
-    if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
+    const course = courseNumbers();
+    if (course.length > 1) parts.push(t("session.course.span", Math.min(...course), Math.max(...course)));
+    else if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
     const took = minutesBetween(session.started_at, session.ended_at);
@@ -206,7 +225,7 @@
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span class="text-faint w-12">${esc(clock(row.started_at))}</span>
           ${badge(t("session.activity.red"), "red")}
-          <span class="text-heading" title="${esc(row.name)}">${esc(caseLabel(row.name))}</span>
+          <span class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}</span>
           ${badge(outcome.text, outcome.tone)}
           ${why ? `<span class="text-faint text-[12px]">${esc(why)}</span>` : ""}
         </li>`;
@@ -215,6 +234,10 @@
 
   const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
   const caseLabel = (name) => localized(`case.${name}`, name);
+  const named = (row) => (runLabel(row) ? `${caseLabel(row.name)} (${runLabel(row)})` : caseLabel(row.name));
+  const NAMES_LISTED = ["score.warning.wrong_reason", "score.warning.no_source_ip"];
+  const warningValues = (key, values) => (NAMES_LISTED.includes(key)
+    ? [String(values[0]).split(", ").map(caseLabel).join(", "), ...values.slice(1)] : values);
 
   function scenarioBanner(judged) {
     const banner = field("verdict");
@@ -277,9 +300,9 @@
       </div>`;
   }
 
-  function plural(names) {
-    if (!names.length) return "";
-    return names.length === 1 ? caseLabel(names[0]) : t("score.and_more", caseLabel(names[0]), names.length - 1);
+  function plural(rows) {
+    if (!rows.length) return "";
+    return rows.length === 1 ? named(rows[0]) : t("score.and_more", named(rows[0]), rows.length - 1);
   }
 
   function judgement(score) {
@@ -293,15 +316,15 @@
     const parts = [];
     if (attacks.length) {
       const sentence = t("score.attacks", attacks.length, caught.length) +
-        (missed.length ? ` · ${t("score.attacks_missed", missed.length, missed.map((row) => caseLabel(row.name)).join(", "))}` : "");
+        (missed.length ? ` · ${t("score.attacks_missed", missed.length, missed.map(named).join(", "))}` : "");
       parts.push(judgementBlock([caught.length, attacks.length], sentence,
-        missed.map((row) => t("score.no_alert", caseLabel(row.name))), plural(caught.map((row) => row.name))));
+        missed.map((row) => t("score.no_alert", named(row))), plural(caught)));
     }
     if (benign.length) {
       const sentence = t("score.benign", benign.length, passed.length) +
-        (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map((row) => caseLabel(row.name)).join(", "))}` : "");
+        (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map(named).join(", "))}` : "");
       parts.push(judgementBlock([passed.length, benign.length], sentence,
-        blocked.map((row) => t("score.drew_alerts", caseLabel(row.name), row.detection_ids.length)), plural(passed.map((row) => row.name))));
+        blocked.map((row) => t("score.drew_alerts", named(row), row.detection_ids.length)), plural(passed)));
     }
     const customers = score.customers || {};
     if (customers.sent) {
@@ -318,7 +341,7 @@
     if (customers.sent) notes.push(t("score.customers_note"));
     if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
     notes.push(t("score.not_added"));
-    (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...values)));
+    (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...warningValues(key, values))));
     field("judgement").innerHTML = parts.join('<div class="border-t border-line-subdued"></div>') + `
       <div class="rounded-lg bg-subdued p-3 text-[12px] text-muted leading-relaxed space-y-1">
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
@@ -332,7 +355,8 @@
         : `<span class="${row.corroborated ? "text-success" : "text-muted"}">${esc(t(row.corroborated ? "common.yes" : "common.no"))}</span>`;
       return `
         <tr class="table-row">
-          <td class="pl-5 text-heading" title="${esc(row.name)}">${esc(caseLabel(row.name))}</td>
+          <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
+            runLabel(row) ? `<span class="block text-[12px] text-muted">${esc(runLabel(row))}</span>` : ""}</td>
           <td>${esc(t(row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
           <td>${esc(row.detection_ids.length)}</td>
           <td>${outcome}</td>
@@ -369,11 +393,32 @@
     judgement(score.body);
   }
 
+  function courseSummary() {
+    const taken = takenLessons();
+    show("course", lessonSession() && taken.length > 0);
+    const counted = Array.isArray(session.course) ? session.course : [];
+    field("course-rows").innerHTML = taken.map((one, at) => {
+      const number = lessonNumber(one.id);
+      const card = foundations()[number - 1];
+      const until = at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at;
+      const done = counted.find((row) => row.id === one.id);
+      return `
+        <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          ${number ? badge(t("session.run.lesson", number), "blue") : ""}
+          <span class="font-semibold text-heading">${esc(card ? t(card.title) : one.id)}</span>
+          ${done ? `<span class="text-muted">${esc(t("session.course.steps", done.steps, done.passed))}</span>` : ""}
+          ${done && done.skipped ? `<span class="text-muted">${esc(t("session.course.skipped", done.skipped))}</span>` : ""}
+          <span class="ml-auto text-faint">${esc(t("main.minutes_spent", minutesBetween(one.started_at, until)))}</span>
+        </li>`;
+    }).join("");
+  }
+
   async function scoreboard() {
     show("consoles", false);
     show("activity", false);
     show("traffic", false);
     show("scoreboard", true);
+    courseSummary();
     verdictBanner();
     if (session.course_scenario) showScenarioDebrief(field("debrief"));
     await scoreTables(0);
@@ -414,7 +459,10 @@
   async function restart() {
     const button = field("restart");
     button.disabled = true;
-    const settings = session.lesson_id ? { guidance: true, lesson: session.lesson_id, defense: session.defense } : {};
+    const first = takenLessons().length > 1 ? takenLessons()[0].id : session.lesson_id;
+    const card = foundations().find((taught) => taught.id === first);
+    const defense = first === session.lesson_id ? session.defense : card && card.defense;
+    const settings = first ? { guidance: true, lesson: first, ...(defense ? { defense } : {}) } : {};
     const asked = session.course_scenario ? { scenario: session.course_scenario } : { scenario: session.scenario, ...settings };
     const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
     if (started.ok && started.body.id) {
@@ -443,7 +491,8 @@
     header(result.lost, result.total);
     if (session.ended_at) {
       show("close", false);
-      field("restart").textContent = t(session.lesson_id ? "session.restart.lesson" : "session.restart");
+      field("restart").textContent = t(takenLessons().length > 1 ? "session.restart.course"
+        : session.lesson_id ? "session.restart.lesson" : "session.restart");
       show("restart", true);
       await scoreboard();
       return;

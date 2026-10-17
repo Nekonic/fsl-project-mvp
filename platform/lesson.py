@@ -7,18 +7,50 @@ import suppress
 
 ANSWER = 3
 SKIP_OFFERED = 4
+SKIP_OFFERED_IN_FOUNDATIONS = 3
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1
 CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
 CRS_TOTALS = ("949", "959", "980")
 PASTED_ROW = re.compile(r"^\s*\|?\s*([\w.@+-]+)\s*[|:\s]\s*(\S+?)\s*\|?\s*$")
+ORDER_SEPARATOR = re.compile(r"[\s,>\u2192]+")
+TOTAL_SCORE = re.compile(r"Total Score: (\d+)")
+NOCASE = re.compile(r"\bnocase\s*;|\bpcre\s*:\s*\"/.*/[A-Za-z]*i[A-Za-z]*\"")
+BLOCKING_RULE = "949110"
+PRESENT, ABSENT = "present", "absent"
+YES, NO = "yes", "no"
+ALERTED_BY = {frozenset(): "none", frozenset({"suricata"}): "ids", frozenset({"modsecurity"}): "waf",
+              frozenset({"suricata", "modsecurity"}): "both"}
 
 def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
-    if given.casefold() in {str(accepted).casefold() for accepted in check.get("accept", [])}:
+    accepted = [_bare(str(value)) for value in check.get("accept", [])]
+    if check.get("form") == "order":
+        named = [_bare(name) for name in ORDER_SEPARATOR.split(given) if name]
+        if named == accepted:
+            return True, None
+        if sorted(named) == sorted(accepted):
+            return False, [f"{wrong}.order", []]
+    elif _bare(given) in accepted:
         return True, None
     if given in check.get("known", []):
         return False, [f"{wrong}.{given}", []]
-    return False, ["lesson.check.wrong", []]
+    said = next((rule["says"] for rule in check.get("wrong_if", []) if re.search(rule["match"], given)), None)
+    return False, [f"{wrong}.{said}" if said else "lesson.check.wrong", []]
+
+def _bare(text: str) -> str:
+    return "".join(text.split()).casefold()
+
+def anomaly_totals(messages: list[str]) -> list[str]:
+    return [found[1] for found in map(TOTAL_SCORE.search, messages) if found]
+
+def ignores_case(rule: str) -> bool:
+    return bool(NOCASE.search(rule))
+
+def alerted_by(engines: set[str]) -> str:
+    return ALERTED_BY[frozenset(engines) & frozenset({"suricata", "modsecurity"})]
+
+def penalty(difficulty: int, detected: bool) -> int:
+    return difficulty * (1 if detected else 2)
 
 def fix_class(waf: dict | None, posture: dict | None) -> str | None:
     if not waf:
@@ -73,12 +105,6 @@ def added_rules(live: str, baseline: str) -> list[int]:
     started = {sid: " ".join(suppress.find(baseline, sid).split()) for sid in suppress.sids(baseline)}
     return sorted(sid for sid in suppress.sids(live)
                   if started.get(sid) != " ".join(suppress.find(live, sid).split()))
-
-def within(count: int, ratio: float) -> list[int]:
-    if count <= 0:
-        return []
-    spread = max(2, round(count * ratio))
-    return [count, *(found for found in range(max(1, count - spread), count + spread + 1) if found != count)]
 
 def pasted_rows(text: str, parsed: list) -> list:
     return parsed or [found.groups() for found in map(PASTED_ROW.match, text.splitlines()) if found]

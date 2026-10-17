@@ -56,6 +56,7 @@
   let capacity = null;
   let starting = false;
   let rangeReady = true;
+  const operatorView = new URLSearchParams(location.search).has("operator");
 
   const field = (id) => document.getElementById(id);
 
@@ -81,7 +82,7 @@
     const units = (wargame.foundations || []).map((taught, index) => `
       <li class="flex flex-col gap-1" data-foundation="${esc(taught.id)}">
         <div class="flex items-center gap-2">
-          <span class="badge badge-blue">F${index + 1}</span>
+          <span class="badge badge-blue">${esc(t("main.lesson_number", index + 1))}</span>
           <h4 class="font-semibold text-heading flex-1 min-w-0">${esc(t(taught.title))}</h4>
           ${taught.minutes ? `<span class="text-[12px] text-muted shrink-0">${esc(t("main.minutes", taught.minutes))}</span>` : ""}
         </div>
@@ -136,7 +137,7 @@
         </div>
         <h3 class="text-[16px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
         <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
-        ${counted ? `<p class="text-[12px] text-muted mt-3">${
+        ${counted && operatorView ? `<p class="text-[12px] text-muted mt-3">${
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
         ${scenariosBlock(wargame)}
@@ -304,7 +305,7 @@
   function renderRunning() {
     field("running-panel").classList.toggle("hidden", running.length === 0);
     field("running").innerHTML = running.map(runningRow).join("");
-    field("capacity").textContent = capacity === null ? "" : t("main.capacity", running.length, capacity);
+    field("capacity").textContent = capacity === null || !operatorView ? "" : t("main.capacity", running.length, capacity);
   }
 
   function resultCell(session) {
@@ -396,8 +397,8 @@
     if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !ready; });
 
     const health = field("range-health");
-    health.classList.toggle("hidden", !result.ok);
-    health.classList.toggle("flex", result.ok);
+    health.classList.toggle("hidden", !result.ok || !operatorView);
+    health.classList.toggle("flex", result.ok && operatorView);
     health.innerHTML = `<span class="dot dot-${ready ? "ok" : "warn"}"></span>${esc(t(ready ? "range.healthy" : "range.not_ready_short"))}`;
 
     field("range-state").classList.toggle("hidden", ready);
@@ -406,8 +407,8 @@
       field("range-blocked").innerHTML = reasons.map((reason) => `<li>${esc(reason)}</li>`).join("");
     }
 
-    field("range-pipeline").classList.toggle("hidden", !slot);
-    if (slot) wireCanary();
+    field("range-pipeline").classList.toggle("hidden", !slot || !operatorView);
+    if (slot && operatorView) wireCanary();
   }
 
   const SESSIONS_EVERY = 10000;

@@ -3,6 +3,31 @@
 {% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 flex flex-col md:flex-row{% endblock %}
 {% block content %}
+<style>
+  .work { flex: 1 1 0%; min-width: 0; min-height: 0; display: flex; }
+  .note-col { flex: none; width: 340px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--border); }
+  .note-col.folded { width: 44px; }
+  .note-strip { display: none; flex: 1 1 0%; align-items: flex-start; justify-content: center; padding-top: 12px; color: var(--primary-text); font-size: 12px; font-weight: 600; writing-mode: vertical-rl; }
+  .note-col.folded .note-strip { display: flex; }
+  .note-col.folded .note-open { display: none; }
+  .note-open { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
+  .note-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 1.6; }
+  @media (max-width: 1280px) { .note-col { width: 300px; } }
+  @media (max-width: 1023px) {
+    .work { flex-direction: column; }
+    .note-col { width: auto; height: 42%; border-left: 0; border-top: 1px solid var(--border); }
+    .note-col.folded { width: auto; height: 44px; }
+    .note-strip { writing-mode: horizontal-tb; align-items: center; padding-top: 0; }
+  }
+  .coach-dim { position: fixed; overflow: hidden; pointer-events: none; z-index: 40; }
+  .coach-hole { position: absolute; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.28); }
+  .coach-ring { position: fixed; pointer-events: none; z-index: 41; border-radius: 6px; box-shadow: 0 0 0 2px var(--primary); }
+  .coach-callout { position: fixed; z-index: 42; pointer-events: none; max-width: 360px; padding: 5px 10px; border-radius: 6px; background: var(--primary); color: var(--text-inverse); font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-pop); }
+  .order-chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
+  .term-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--terminal); color: var(--terminal-text); font-size: 13px; pointer-events: none; }
+  .map-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+  .note-col.hidden, .term-wait.hidden, .map-wait.hidden { display: none; }
+</style>
 <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
   <button class="pane-tab rail-btn" data-pane="elk" data-src="/kibana/">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -35,46 +60,49 @@
   </button>
 </nav>
 
-<section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
-  {% include "console/blue_scenario.html" %}
-  <div id="waf-banner" class="hidden h-10 term-bar text-[12.5px] items-center px-4 gap-3 shrink-0 min-w-0">
-    <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
-    <span class="text-faint">·</span>
-    <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
-  </div>
-  <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
-    <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
-    <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
-    <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
-    <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
-      <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <span data-t="site.not_secure"></span>
-      </span>
-      <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
-             class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
+<div id="work" class="work">
+  <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
+    {% include "console/blue_scenario.html" %}
+    <div id="waf-banner" class="hidden h-10 term-bar text-[12.5px] items-center px-4 gap-3 shrink-0 min-w-0">
+      <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
+      <span class="text-faint">·</span>
+      <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
     </div>
-    <button type="button" id="site-dev-toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
-  </form>
-  <div id="pane-body" class="flex-1 min-h-0 relative">
-    <iframe id="site-frame" class="absolute inset-x-0 top-0 bottom-0 w-full border-0 bg-panel" hidden
-            title="site" referrerpolicy="no-referrer"></iframe>
-    {% include "console/blue_dev.html" %}
-    <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
-            title="console" referrerpolicy="no-referrer"></iframe>
-    <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
-            title="Kali" referrerpolicy="no-referrer"></iframe>
-    {% include "console/blue_topology.html" %}
-    {% include "console/blue_triage.html" %}
-    {% include "console/blue_rules.html" %}
-    <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
-      <p id="pane-status-title" class="text-heading font-medium"></p>
-      <p id="pane-status-note" class="text-muted max-w-md"></p>
+    <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
+      <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
+      <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
+      <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
+      <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
+        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span data-t="site.not_secure"></span>
+        </span>
+        <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
+               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
+      </div>
+      <button type="button" id="site-dev-toggle" data-coach="toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
+    </form>
+    <div id="pane-body" class="flex-1 min-h-0 relative">
+      <iframe id="site-frame" class="absolute inset-x-0 top-0 bottom-0 w-full border-0 bg-panel" hidden
+              title="site" referrerpolicy="no-referrer"></iframe>
+      {% include "console/blue_dev.html" %}
+      <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
+              title="console" referrerpolicy="no-referrer"></iframe>
+      <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
+              title="Kali" referrerpolicy="no-referrer"></iframe>
+      <div id="term-wait" class="term-wait hidden"><span data-t="blue.term.connecting"></span></div>
+      {% include "console/blue_topology.html" %}
+      {% include "console/blue_triage.html" %}
+      {% include "console/blue_rules.html" %}
+      <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
+        <p id="pane-status-title" class="text-heading font-medium"></p>
+        <p id="pane-status-note" class="text-muted max-w-md"></p>
+      </div>
     </div>
-  </div>
+  </section>
 
   {% include "console/blue_note.html" %}
-</section>
+</div>
 
 {% include "console/blue_coach.html" %}
 {% endblock %}
@@ -84,19 +112,53 @@
   const frame = field("pane-frame");
   const tabs = Array.from(document.querySelectorAll(".pane-tab"));
   let session = null;
-  const BAR_HEIGHT = 40;
-  const STRIP_HEIGHT = 44;
-  const OVERLAY_GAP = 8;
   const CLOSED_CHECK_MS = 30000;
+  const TERMINAL_WAIT_MS = 500;
+  const TERMINAL_GIVE_UP_MS = 45000;
   const sessionClosed = () => Boolean(session && session.ended_at);
+  const terminalPanes = { waf: () => frame, kali: () => field("kali-frame") };
+  let terminalWaited = { pane: "", since: 0 };
 
   crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
           { label: t("blue.title") }]);
 
   function showFrame(url) {
     field("pane-status").style.display = "none";
-    frame.src = url;
+    if (frame.getAttribute("src") !== url) frame.src = url;
     frame.style.display = "block";
+  }
+
+  function terminalOf(host) {
+    try {
+      const term = host && host.contentWindow && host.contentWindow.term;
+      return term && term.buffer ? term : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function terminalReady(host) {
+    const term = terminalOf(host);
+    if (!term) return false;
+    const buffer = term.buffer.active;
+    if (!buffer || typeof buffer.getLine !== "function") return true;
+    for (let row = buffer.length - 1; row >= 0; row -= 1) {
+      const line = buffer.getLine(row);
+      if (line && line.translateToString(true).trim()) return true;
+    }
+    return false;
+  }
+
+  function terminalWait() {
+    const pane = Object.keys(terminalPanes).find((name) => paneOpen(name));
+    if (!pane) {
+      field("term-wait").classList.add("hidden");
+      terminalWaited = { pane: "", since: 0 };
+      return;
+    }
+    if (terminalWaited.pane !== pane) terminalWaited = { pane, since: Date.now() };
+    const waiting = !terminalReady(terminalPanes[pane]()) && Date.now() - terminalWaited.since < TERMINAL_GIVE_UP_MS;
+    field("term-wait").classList.toggle("hidden", !waiting);
   }
 
   function openPane(tab) {
@@ -109,12 +171,12 @@
     field("site-bar").classList.toggle("flex", onSite);
     field("site-frame").style.display = onSite ? "block" : "none";
     devPlace();
-    overlaysBelowBars();
     field("topology").style.display = tab.dataset.pane === "topology" ? "flex" : "none";
     field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
     field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
-    triageDock();
     field("kali-frame").style.display = tab.dataset.pane === "kali" ? "block" : "none";
+    terminalWait();
+    paneOpened.forEach((heard) => heard(tab.dataset.pane));
     if (tab.dataset.pane === "kali") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";
@@ -147,13 +209,12 @@
     if (!site.history.length) siteGo("/");
   }
 
-  function overlaysBelowBars() {
-    const bar = [field("site-bar"), field("waf-banner")].find((shown) => !shown.classList.contains("hidden"));
-    const strip = field("scenario-strip").classList.contains("hidden") ? 0 : field("scenario-strip").offsetHeight || STRIP_HEIGHT;
-    const top = `${(bar ? bar.offsetHeight || BAR_HEIGHT : 0) + strip + OVERLAY_GAP}px`;
-    field("note-pill").style.top = top;
-    field("lesson").style.top = top;
-  }
+  const paneOpened = [];
+  const paneTab = (name) => document.querySelector(`.pane-tab[data-pane="${name}"]`);
+  const paneOpen = (name) => {
+    const tab = paneTab(name);
+    return Boolean(tab) && tab.getAttribute("aria-selected") === "true";
+  };
 
   function watchClosed() {
     const timer = setInterval(async () => {
@@ -177,6 +238,7 @@
 
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
+  setInterval(terminalWait, TERMINAL_WAIT_MS);
 
   const KIBANA_ALREADY_SEEN = {
     "discover:docExplorerUpdateCalloutClosed": "true",
@@ -204,14 +266,12 @@
     const read = await api(lessonPath(""));
     session = read.ok ? read.body : null;
     if (session) rememberSession(sessionId());
-    const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
+    const kibana = paneTab("elk");
     if (session && session.discover) kibana.dataset.src = session.discover;
-    if (session && session.waf_terminal) {
-      document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.waf_terminal;
-    }
+    if (session && session.waf_terminal) paneTab("waf").dataset.src = session.waf_terminal;
     if (session && session.site) siteBrowser(session.site);
     if (session && session.kali_terminal && session.kind !== "wargame") {
-      const kali = document.querySelector('.pane-tab[data-pane="kali"]');
+      const kali = paneTab("kali");
       kali.dataset.src = session.kali_terminal;
       kali.classList.remove("hidden");
       field("rail-line").classList.remove("hidden");
@@ -225,22 +285,21 @@
               { label: t("blue.title"), href: `/blue/${sessionId()}/` },
               { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
     }
+    const guided = Boolean(session && (session.lesson || session.course_scenario));
+    if (guided) noteControls(session);
     if (session && session.course_scenario) await scenarioStart(session);
-    openPane(kibana);
     watchClosed();
-    if (!session || !session.lesson) return;
+    if (!session || !session.lesson) {
+      openPane(kibana);
+      return;
+    }
     const taught = session.lesson;
     const declared = Array.isArray(taught.steps) ? taught.steps : [];
-    field("lesson-goal").textContent = t(`${taught.text}.summary`);
-    field("lesson-goal-line").textContent = t(`${taught.text}.summary`);
-    field("lesson-steps").innerHTML = PARAGRAPHS.map((step) =>
-      `<li>${esc(t(`${taught.text}.${step}`))}</li>`).join("");
-    noteControls(taught.group === "foundations" ? "theory" : "goal");
-    doneWhen();
-    if (session.course_scenario) scenarioNote();
-    hints(taught.text, session.course_scenario ? [] : taught.hints, declared);
-    theory(taught.text, taught.theory, declared.length ? coach(taught.text, declared) : null);
-    if (taught.group === "foundations") openFirstCard();
+    noteLesson(taught);
+    objectivesShow(session.lesson_objectives);
+    const goTo = declared.length ? coach(taught.text, declared) : null;
+    if (!goTo) openPane(kibana);
+    theory(taught.text, taught.theory, goTo);
   })();
 </script>
 {% endblock %}

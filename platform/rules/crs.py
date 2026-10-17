@@ -22,11 +22,12 @@ FIRST_ID = 10000
 MOST_EXCLUSIONS = 20
 TARGET = re.compile(r"(ARGS|ARGS_GET|ARGS_POST|ARGS_NAMES|REQUEST_COOKIES|REQUEST_HEADERS)(:[\w-]+)?|REQUEST_URI_RAW|REQUEST_BODY", re.ASCII)
 PATH = re.compile(r"/[\w./-]*", re.ASCII)
+TAG = re.compile(r"[A-Za-z][A-Za-z_-]*", re.ASCII)
 THRESHOLDS = ("inbound", "outbound")
 HIGHEST_THRESHOLD = 100000
 
 LEVEL = re.compile(r"tx\.blocking_paranoia_level=([1-4])\b")
-REMOVED = re.compile(r"ctl:ruleRemove(?:TargetById=(\d+);([\w:-]+)|ById=(\d+))")
+REMOVED = re.compile(r"ctl:ruleRemove(?:TargetById=(\d+);([\w:-]+)|ById=(\d+)|TargetByTag=([A-Za-z][A-Za-z_-]*);([\w:-]+))")
 BEGINS = re.compile(r'"@beginsWith (/[\w./-]*)"')
 THRESHOLD = re.compile(r"tx\.(inbound|outbound)_anomaly_score_threshold=(\d+)")
 
@@ -52,14 +53,16 @@ def checked(tuning) -> dict:
 
 def _exclusion(entry) -> dict:
     entry = entry if isinstance(entry, dict) else {}
-    rule_id, target, path = entry.get("rule_id"), entry.get("target") or "", entry.get("path") or ""
-    if type(rule_id) is not int or not 900000 <= rule_id <= 999999:
+    rule_id, target, path, tag = entry.get("rule_id"), entry.get("target") or "", entry.get("path") or "", entry.get("tag")
+    if tag is not None and not (isinstance(tag, str) and TAG.fullmatch(tag) and target):
+        raise TuningRefused(f'"tag" must name a CRS tag such as attack-sqli and come with a target, got {tag!r}')
+    if tag is None and (type(rule_id) is not int or not 900000 <= rule_id <= 999999):
         raise TuningRefused(f'"rule_id" must be a CRS rule id from 900000 to 999999, got {rule_id!r}')
     if not isinstance(target, str) or (target and not TARGET.fullmatch(target)):
         raise TuningRefused(f'"target" must name a variable such as ARGS:q, got {target!r}')
     if not isinstance(path, str) or (path and not PATH.fullmatch(path)):
         raise TuningRefused(f'"path" must be a URL path such as /search/, got {path!r}')
-    return {"rule_id": rule_id, "target": target, "path": path}
+    return {"tag": tag, "target": target, "path": path} if tag else {"rule_id": rule_id, "target": target, "path": path}
 
 def rendered(tuning: dict) -> str:
     level = tuning["paranoia"]
@@ -70,7 +73,8 @@ def rendered(tuning: dict) -> str:
                   for way, score in sorted(tuning.get("thresholds", {}).items())) + '"'
     ]
     for offset, entry in enumerate(tuning["exclusions"], start=1):
-        control = (f"ruleRemoveTargetById={entry['rule_id']};{entry['target']}"
+        control = (f"ruleRemoveTargetByTag={entry['tag']};{entry['target']}" if entry.get("tag")
+                   else f"ruleRemoveTargetById={entry['rule_id']};{entry['target']}"
                    if entry["target"] else f"ruleRemoveById={entry['rule_id']}")
         actions = f"id:{FIRST_ID + offset},phase:1,pass,nolog,ctl:{control}"
         lines.append(f'SecRule REQUEST_FILENAME "@beginsWith {entry["path"]}" "{actions}"'
@@ -87,9 +91,9 @@ def parsed(text: str) -> dict:
     exclusions = []
     for line in lines:
         path = BEGINS.search(line)
-        for rule, target, whole in REMOVED.findall(line):
-            exclusions.append({"rule_id": int(rule or whole), "target": target,
-                               "path": path.group(1) if path else ""})
+        for rule, target, whole, tag, tagged in REMOVED.findall(line):
+            exclusions.append(({"tag": tag, "target": tagged} if tag else {"rule_id": int(rule or whole), "target": target})
+                              | {"path": path.group(1) if path else ""})
     thresholds = {way: int(score) for way, score in THRESHOLD.findall("\n".join(lines))}
     return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions,
             **({"thresholds": thresholds} if thresholds else {})}

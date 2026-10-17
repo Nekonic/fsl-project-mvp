@@ -2,6 +2,7 @@ import json
 import pathlib
 import urllib.parse
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -90,24 +91,83 @@ def unquoted(path):
     return urllib.parse.unquote(path)
 
 
-def test_the_discover_link_narrows_to_the_session_index_and_window():
+def test_the_discover_link_without_a_session_view_narrows_the_shared_view_to_the_session_index():
     start = datetime(2026, 10, 10, 5, 0, tzinfo=timezone.utc)
     end = start + timedelta(minutes=30)
 
-    closed = unquoted(kibana.discover_path("fsl-logs-15-*", start, end))
-    running = unquoted(kibana.discover_path("fsl-logs-15-*", start, None))
-    shared = unquoted(kibana.discover_path("", start, None))
+    closed = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, end, kibana.query("fsl-logs-15-*"), kibana.ALERT_COLUMNS))
+    running = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, None, kibana.query("fsl-logs-15-*")))
+    shared = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, None, kibana.query("")))
 
     assert closed.startswith("/kibana/app/discover#/?"), (
         "a link that overrides the saved search's query marks it 'Unsaved changes'; "
         "the pane opens an unsaved Discover state on the same data view instead"
     )
-    assert "dataSource:(dataViewId:fsl-logs,type:dataView)" in closed
-    assert f"and _index : fsl-logs-15-*" in closed
+    assert "dataSource:(dataViewId:'fsl-logs',type:dataView)" in closed
+    assert "and _index : fsl-logs-15-*" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running
     assert "_index" not in shared, "on OpenStack every session writes the shared index"
     assert kibana.ALERTS_QUERY.replace("'", "!'") in shared
+
+
+SENSORS = {"fsl-edge": "firewall", "fsl-wargame-host": "board.com"}
+
+
+def a_session_view(pattern="fsl-logs-slot2-*", sensors=SENSORS):
+    return kibana.session_view(pattern, sensors, "waf", kibana.shared_runtime(OBJECTS.read_bytes()))
+
+
+def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_learners_must_not_read():
+    view = a_session_view()
+    attributes = view["attributes"]
+    hidden = {entry["value"] for entry in json.loads(attributes["sourceFilters"])}
+
+    assert attributes["title"] == "fsl-logs-slot2-*" and attributes["name"] == "Session logs"
+    assert view["id"] == "session-fsl-logs-slot2", "one view per index pattern, so opening again overwrites it"
+    assert {"_index", "fsl_*", "*X-FSL-Case*", "log.*", "message", "http.request_headers*"} <= hidden, (
+        "the slot, the step marker and the raw syslog line (which carries the marker) stay out of the table and flyout"
+    )
+
+
+def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_sensor_and_the_headers():
+    runtime = json.loads(a_session_view()["attributes"]["runtimeFieldMap"])
+    observer = runtime["observer.name"]["script"]["source"]
+
+    assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "event.module", "observer.name",
+            "request_headers"} <= set(runtime)
+    assert '"fsl-edge": "firewall"' in observer and '"fsl-wargame-host": "board.com"' in observer, (
+        "observer.name is the map name of the host whose sensor wrote the event"
+    )
+    assert "emit(\"waf\")" in observer, "a ModSecurity record is written by the WAF"
+    assert '"x-fsl-case"' in runtime["request_headers"]["script"]["source"], (
+        "the request headers are shown without the step marker"
+    )
+
+
+def test_one_sensor_names_the_events_that_carry_no_sensor_host():
+    single = kibana.observer_script({"fsl-suricata": "waf"}, "waf")
+    several = kibana.observer_script(SENSORS, "waf")
+
+    assert "host == '' ? \"waf\"" in single, "docker's one Suricata writes a file, not syslog, so no host is named"
+    assert "host == '' ? \"\"" in several
+
+
+def test_opening_the_session_view_overwrites_the_one_with_its_id():
+    fake = FakeKibana()
+
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
+        made = kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", fake)
+
+    (sent,) = fake.sent
+    assert made == "session-fsl-logs-slot2"
+    assert sent.full_url == "http://kibana:5601/kibana/api/saved_objects/_import?overwrite=true"
+    assert b'"name": "Session logs"' in sent.data
+
+
+def test_a_refused_session_view_does_not_stop_the_session():
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
+        assert kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", FakeKibana(success=False)) is None
 
 
 @pytest.mark.django_db
@@ -119,6 +179,24 @@ def test_the_session_api_hands_the_console_its_discover_link(client, settings):
 
     assert f"_index : fsl-logs-{session.pk}-*" in unquoted(reply["discover"])
     assert "to:now" in unquoted(reply["discover"])
+
+
+@pytest.mark.django_db
+def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an_empty_query(client, settings):
+    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    began = datetime(2026, 10, 18, 9, 0, tzinfo=timezone.utc)
+    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f2", lessons=[
+        {"id": "f1", "started_at": (began - timedelta(minutes=10)).isoformat()},
+        {"id": "f2", "started_at": began.isoformat()}])
+
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"):
+        link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
+
+    assert "dataViewId:'session-fsl-logs-slot1'" in link
+    assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
+    assert "from:'2026-10-18T08:59:55+00:00'" in link
+    assert "columns:!(event.module,observer.name,event_type,source_ip,destination,url,status,rule_id,rule)" in link
+    assert "exists:(field:event.module)" in link, "the range VMs' own system log lines are not the session's events"
 
 
 def http_error(code, body=b""):

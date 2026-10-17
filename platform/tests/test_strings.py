@@ -104,20 +104,46 @@ def test_the_blue_page_ships_no_withheld_answer_or_pass_line(client):
         assert not [key for key in withheld[language] if key in page]
     assert "{% comment %}" not in page and "const WITHHELD" not in page
 
-def test_every_foundation_step_has_a_withheld_answer_and_line_in_both_languages():
+def foundation_steps():
     import wargames
 
-    withheld = strings.withheld()
-    missing = [
-        f"{taught['text']}.{part}.{step['id']}"
-        for wargame_id in wargames.WARGAMES for taught in wargames.foundations(wargame_id)
-        for step in taught.get("steps", []) for part in ("answer", "line")
-        if any(f"{taught['text']}.{part}.{step['id']}" not in withheld[language] for language in strings.LANGUAGES)
-    ]
-    leftover = [key for key in tables()["en"] if re.fullmatch(r"lesson\.[a-z]+\.(?:answer|line)\.[a-z_]+", key)
-                and key not in withheld["en"]]
+    for wargame_id in wargames.WARGAMES:
+        for taught in wargames.foundations(wargame_id):
+            steps = taught.get("steps", [])
+            for at, step in enumerate(steps):
+                yield taught, step, at == len(steps) - 1
 
-    assert missing == [] and leftover == []
+def test_every_foundation_step_has_its_text_and_a_withheld_pass_line_in_both_languages():
+    shown, withheld = strings.shown(), strings.withheld()
+    missing = []
+    for taught, step, solo in foundation_steps():
+        asks = step["check"]["kind"] in ("answer", "choice")
+        parts = ["title", "coach"] + (["label"] if asks else []) + ([] if solo else ["nudge", "hint"])
+        for language in strings.LANGUAGES:
+            missing += [f"{language} {taught['text']}.{part}.{step['id']}" for part in parts
+                        if f"{taught['text']}.{part}.{step['id']}" not in shown[language]]
+            if f"{taught['text']}.ok.{step['id']}" not in withheld[language]:
+                missing.append(f"{language} withheld {taught['text']}.ok.{step['id']}")
+
+    assert missing == [], f"a foundation step would show its raw key or no pass line: {missing}"
+
+def test_a_foundation_ends_on_a_solo_step_with_no_help_written_for_it():
+    table = tables()["en"]
+    helped = [f"{taught['text']}.{part}.{step['id']}" for taught, step, solo in foundation_steps() if solo
+              for part in ("nudge", "hint", "callout") if f"{taught['text']}.{part}.{step['id']}" in table]
+
+    assert helped == [], f"the last step of a lesson is done without help, yet these are written: {helped}"
+
+def test_foundations_carry_no_answer_rung_and_pass_lines_never_ship_in_the_page():
+    import wargames
+
+    texts = {taught["text"] for wargame_id in wargames.WARGAMES for taught in wargames.foundations(wargame_id)}
+    shown = strings.shown()["en"]
+    leftover = [key for key in tables()["en"]
+                if ".".join(key.split(".")[:2]) in texts and re.match(r"lesson\.[a-z]+\.(?:answer|line)\.", key)]
+    shipped = [key for key in shown if re.match(r"lesson\.[a-z]+\.ok\.", key)]
+
+    assert leftover == [] and shipped == [], (leftover, shipped)
 
 def test_no_korean_is_written_outside_the_string_table():
     korean = re.compile(r"[\uac00-\ud7a3]")
@@ -170,3 +196,32 @@ def test_every_customer_action_a_wargame_declares_has_a_label():
     for language in strings.LANGUAGES:
         unlabelled = sorted(action for action in declared if f"traffic.action.{action}" not in table[language])
         assert not unlabelled, f"the debrief shows these customer actions by their ids in {language}: {unlabelled}"
+
+def test_every_pane_a_step_opens_has_an_open_button_label_in_both_languages():
+    import wargames
+
+    opened = {step["point"]["opens"] for wargame_id in wargames.WARGAMES
+              for unit in wargames.foundations(wargame_id) + wargames.scenarios(wargame_id)
+              for step in unit.get("steps", []) if isinstance(step.get("point"), dict) and step["point"].get("opens")}
+    table = tables()
+    unlabelled = sorted(f"{language} lesson.open.{pane}" for pane in opened for language in strings.LANGUAGES
+                        if f"lesson.open.{pane}" not in table[language])
+
+    assert opened and unlabelled == [], f"a step card offers to open these panes with no label: {unlabelled}"
+
+def test_no_pass_line_names_an_option_a_later_step_of_its_lesson_offers():
+    import wargames
+
+    withheld, table = strings.withheld(), tables()
+    named = []
+    for wargame_id in wargames.WARGAMES:
+        for taught in wargames.foundations(wargame_id):
+            steps = taught.get("steps", [])
+            for at, step in enumerate(steps):
+                later = {option for after in steps[at + 1:] for option in after["check"].get("options", [])}
+                for language in strings.LANGUAGES:
+                    words = set(re.findall(r"[\w-]+", withheld[language].get(f"{taught['text']}.ok.{step['id']}", "")))
+                    named += [f"{language} {taught['text']}.ok.{step['id']}: {option}" for option in later
+                              if table[language].get(f"lesson.choice.{option}") in words]
+
+    assert named == [], f"a pass line stays on screen while a later step asks, and gives its answer away: {named}"

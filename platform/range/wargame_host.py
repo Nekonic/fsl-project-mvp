@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -25,6 +26,9 @@ SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 LOG_READER_STATE = "/var/spool/rsyslog/imfile-state:*"
 STOP_GRACE = 1
+REGISTRY = "ghcr.io/nekonic/fsl-"
+LOADED = "deploy/wargame-host/loaded"
+SERVED_AT = "http://{address}:8000/api/range/images/sideloaded/{name}/"
 
 def render(document: dict, tag: str, publish: dict[str, int]) -> str:
     services = {}
@@ -37,8 +41,30 @@ def render(document: dict, tag: str, publish: dict[str, int]) -> str:
         services[name] = kept
     return yaml.safe_dump({"services": services}, sort_keys=True)
 
+def sideloaded_images(source: Path, wargames, tag: str, sideloaded) -> dict[str, str]:
+    found = {}
+    composes = [Path(source) / COMPOSE.format(wargame=wargame) for wargame in wargames] if sideloaded else []
+    for path in (path for path in composes if path.is_file()):
+        document = yaml.safe_load(path.read_text()) or {}
+        for service in (document.get("services") or {}).values():
+            image = TAG.sub(tag, service.get("image") or "")
+            found.update({name: image for name in sideloaded if image == f"{REGISTRY}{name}:{tag}"})
+    return found
+
+def local_image_id(image: str, run=subprocess.run) -> str:
+    done = run(["docker", "image", "inspect", "--format", "{{.Id}}", image],
+               capture_output=True, text=True)
+    if done.returncode != 0 or not done.stdout.strip():
+        raise RangeUnavailable(
+            f"FSL_SIDELOADED names {image} and the platform's docker holds no such image: "
+            f"{done.stderr.strip()[:200]}")
+    return done.stdout.strip()
+
+def saved(image: str) -> list[str]:
+    return ["docker", "save", image]
+
 def generated(source: Path, host: str, wargames, publish: dict[str, int], tag: str,
-              mtu: int) -> dict[str, bytes]:
+              mtu: int, loaded=()) -> dict[str, bytes]:
     if not tag:
         raise RangeUnavailable(
             f"{host} pulls the wargames' images at build time by the platform's own tag; "
@@ -59,6 +85,8 @@ def generated(source: Path, host: str, wargames, publish: dict[str, int], tag: s
     if unserved:
         raise RangeUnavailable(
             f"{host} publishes {', '.join(unserved)}, which none of its wargames runs")
+    if loaded:
+        files[LOADED] = "".join(f"{image} {ident} {url}\n" for image, ident, url in sorted(loaded)).encode()
     files[DAEMON] = json.dumps({
         "mtu": mtu,
         "default-network-opts": {"bridge": {"com.docker.network.driver.mtu": str(mtu)}},

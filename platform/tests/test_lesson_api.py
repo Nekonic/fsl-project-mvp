@@ -308,7 +308,7 @@ def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(c
         client.post_json(f"/api/sessions/{guided['id']}/close/")
         plain = client.post_json("/api/sessions/", {}).json()
 
-    assert (guided["defense"], plain["defense"]) == ("missed", "full")
+    assert (guided["defense"], plain["defense"]) == ("overbroad", "full")
 
 def test_a_replayed_request_records_the_status_the_target_answered_with(client):
     session = board()
@@ -323,22 +323,24 @@ def test_a_replayed_request_records_the_status_the_target_answered_with(client):
         "outside the lesson a block is not judged from the target's records, so it is not claimed"
     )
 
-def test_a_foundation_s_seed_cases_are_kept_out_of_both_scores(client):
-    fire, _ = attacker({"board-normal-search": "http_code=403\n"})
+def test_a_lesson_s_benign_seed_is_scored_as_a_benign_case_so_a_course_with_kali_runs_has_a_true_negative(client):
+    fire, _ = attacker({})
     with patch("api.views.harness.fire", fire):
         opened = client.post_json("/api/sessions/", {"guidance": True}).json()
     session = Session.objects.get(pk=opened["id"])
     seeded = Case.objects.get(session=session)
-    Detection.objects.create(session=session, detection_id="d1", source="modsecurity",
-                             signature="920273", timestamp=timezone.now(), marker=seeded.case_id)
+    Case.objects.create(session=session, case_id="kali-run", name="board-sqli-orderby-sqlmap", malicious=True,
+                        correlation="marker", started_at=timezone.now(), ended_at=timezone.now(),
+                        meta={"kali": "sqlmap", "lesson": "f5"})
 
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
 
-    assert {mark: seeded.meta[mark] for mark in ("seed", "status", "blocked")} == {
-        "seed": True, "status": 403, "blocked": True}
-    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 0, 0)
-    assert score["unattributed"] == 0, "an alert drawn by a seed is not an orphan"
-    assert score["objectives"]["objectives"] == 0
+    assert seeded.meta["seed"] is True and seeded.meta["lesson"] == "f1"
+    assert (score["tp"], score["fp"], score["fn"], score["tn"]) == (0, 0, 1, 1)
+    assert score["warnings"] == [], "no operator warning on a learner's lesson session"
+    rows = {row["case_id"]: row for row in score["per_case"]}
+    assert (rows[seeded.case_id]["lesson"], rows[seeded.case_id]["seed"]) == ("f1", True)
+    assert (rows["kali-run"]["lesson"], rows["kali-run"]["step"]) == ("f5", "sqlmap"), "a run is named by its lesson and step"
 
 def test_old_lesson_replays_are_left_out_of_both_scores_and_loot_a_red_player_submits_still_counts(client):
     session = board(guidance=True, lesson="waf-exclusion")
@@ -400,18 +402,15 @@ def test_hints_are_recorded_on_the_session_and_read_back_after_close_and_do_is_n
     session = foundation("f1")
     hints = f"/api/sessions/{session.pk}/lesson/hints/"
 
-    second = [client.post_json(hints, {"step": "entry", "level": "hint"}).json() for _ in range(2)][-1]
-    third = client.post_json(hints, {"step": "entry", "level": "hint"}).json()
-    refused = client.post_json(hints, {"step": "map", "level": "do"})
+    pressed = [client.post_json(hints, {"step": "board_ip", "level": "hint"}).json() for _ in range(3)]
+    refused = client.post_json(hints, {"step": "board_ip", "level": "do"})
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     assert refused.status_code == 400
-    assert third["hints"] == [{"lesson": "f1", "step": "entry", "level": "hint"}]
-    assert "answer" not in second["progress"]["entry"], "the answer is withheld until the third hint"
-    assert third["progress"]["entry"]["answer"]
+    assert pressed[-1]["hints"] == [{"lesson": "f1", "step": "board_ip", "level": "hint"}]
     detail = client.get(f"/api/sessions/{session.pk}/").json()
-    assert detail["hints"] == third["hints"]
-    assert detail["progress"]["entry"]["hint"] == 3 and "map" not in detail["progress"]
+    assert detail["hints"] == pressed[-1]["hints"]
+    assert detail["progress"]["board_ip"]["hint"] == 3 and "db_subnet" not in detail["progress"]
 
 def test_hints_are_refused_for_a_closed_session_or_one_that_is_not_a_lesson(client):
     closed = foundation("f1")
@@ -537,11 +536,12 @@ def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defen
     body = moved.json()
     session.refresh_from_db()
     written = [call for call in stand.to("gateway") if call[3] is not None]
-    assert (body["lesson_id"], body["defense"], body["next_lesson"]) == ("f6", "missed", None)
+    assert (body["lesson_id"], body["defense"], body["next_lesson"]) == ("f6", "overbroad", None)
     assert [taken["id"] for taken in body["lessons"]] == ["f5", "f6"]
-    assert written and "ruleRemoveById=949110" in written[0][3], "F6's leaking WAF is applied to the open session"
-    assert [entry["rule_id"] for entry in session.waf["exclusions"]] == [949110, 959100]
-    assert stand.to("sensor") == [], "F5 and F6 run the same IDS rules"
+    assert written and "ruleRemoveTargetByTag=OWASP_CRS;ARGS:sort" in written[0][3], (
+        "F6's over-broad exception is applied to the open session")
+    assert session.waf["exclusions"] == [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]
+    assert stand.to("sensor"), "F6 runs the IDS rules without the URI SQL injection signature"
     assert fired == SEEDED and all(case.meta.get("seed") for case in session.cases.all())
     assert session.ended_at is None
 

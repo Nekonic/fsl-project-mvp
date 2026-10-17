@@ -263,9 +263,11 @@ def test_an_address_the_project_does_not_hold_stops_the_rebuild(tmp_path):
 class NewPlatform:
     def __init__(self):
         self.ran = []
+        self.fed = {}
 
     def ssh(self, command, stdin=None, check=True):
         self.ran.append(command)
+        self.fed[command] = stdin
         return subprocess.CompletedProcess([], 0, b"")
 
     def copy(self, source, destination):
@@ -421,6 +423,10 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
         "collector ran the old filebeat.yml until each service was recreated"
     )
+    assert platform.fed["cat >> /opt/fsl/openstack.env"] == b"FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n", (
+        "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
+        "at the same tag, so it has to know which images were sideloaded"
+    )
 
 
 def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_platform(tmp_path):
@@ -433,3 +439,4 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
     assert platform.ran[-1].endswith("up -d platform")
+    assert platform.fed["cat >> /opt/fsl/openstack.env"] == b"FSL_OPENSTACK_PASSWORD=secret\n"

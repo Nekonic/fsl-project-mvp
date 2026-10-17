@@ -118,6 +118,8 @@ KOREAN_SEARCH_AT_PL3 = {
     "thresholds": {"inbound": 10000, "outbound": 10000},
 }
 BODY_UNDER_COMMENTS = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "REQUEST_BODY", "path": "/posts/"}]}
+SQLI_FAMILY_OFF_FOR_SORT = {"paranoia": 1, "exclusions": [{"tag": "attack-sqli", "target": "ARGS:sort"}]}
+EVERY_RULE_OFF_FOR_SORT = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort"}]}
 
 @pytest.mark.parametrize("tuning, line, directive", [
     ({"paranoia": 3}, 0,
@@ -138,13 +140,16 @@ BODY_UNDER_COMMENTS = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target
     (BODY_UNDER_COMMENTS, 1,
      'SecRule REQUEST_FILENAME "@beginsWith /posts/" '
      '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_BODY"'),
-], ids=["paranoia", "thresholds", "target-under-path", "rule-everywhere", "raw-uri", "whole-body"])
+    (SQLI_FAMILY_OFF_FOR_SORT, 1,
+     'SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:sort"'),
+], ids=["paranoia", "thresholds", "target-under-path", "rule-everywhere", "raw-uri", "whole-body", "tag-everywhere"])
 def test_a_tuning_is_written_as_the_modsecurity_directive_crs_reads(tuning, line, directive):
     assert crs.rendered(crs.checked(tuning)).splitlines()[line] == directive
 
 @pytest.mark.parametrize("tuning", [
     KOREAN_SEARCH_AT_PL3, BODY_UNDER_COMMENTS, {"paranoia": 2, "exclusions": [{"rule_id": 949110}]},
-], ids=["raw-uri-and-thresholds", "whole-body", "no-thresholds"])
+    SQLI_FAMILY_OFF_FOR_SORT, EVERY_RULE_OFF_FOR_SORT,
+], ids=["raw-uri-and-thresholds", "whole-body", "no-thresholds", "tag", "every-crs-rule-tag"])
 def test_a_written_tuning_reads_back_as_written(tuning):
     checked = crs.checked(tuning)
 
@@ -167,6 +172,9 @@ def test_a_written_tuning_reads_back_as_written(tuning):
     {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "/search/\n"}]},
     {"paranoia": 1, "exclusions": [{"rule_id": 920273, "path": "search"}]},
     {"paranoia": 1, "exclusions": [{"rule_id": 920273, "target": "ARGS:ı"}]},
+    {"paranoia": 1, "exclusions": [{"tag": "attack-sqli"}]},
+    {"paranoia": 1, "exclusions": [{"tag": "attack-sqli;ARGS:q,ctl:ruleEngine=Off", "target": "ARGS:sort"}]},
+    {"paranoia": 1, "exclusions": [{"tag": "", "target": "ARGS:sort"}]},
     *({"paranoia": 1, "exclusions": [{"rule_id": 920272, "target": target}]}
       for target in ("REQUEST_URI_RAW:x", "REQUEST_URI_RAWX", "REQUEST_URI", "REQUEST_BODY:x",
                      "REQUEST_BODYX", "REQUEST_BODY_LENGTH")),

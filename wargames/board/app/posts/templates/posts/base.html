@@ -13,7 +13,7 @@
       <a class="navbar-brand" href="{% url 'post_list' %}">커뮤니티 게시판</a>
       <form class="d-flex" role="search" action="{% url 'search' %}" method="get">
         <input class="form-control me-2" type="search" name="q" placeholder="검색" value="{{ query|default:'' }}">
-        <button class="btn btn-outline-light" type="submit">검색</button>
+        <button class="btn btn-outline-light text-nowrap" type="submit">검색</button>
       </form>
       <div class="ms-3">
         {% if user.is_authenticated %}

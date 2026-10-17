@@ -81,7 +81,7 @@ async function summaryClosed(map) {
   }
 }
 
-async function fitted(map, canvas) {
+async function fitOnce(map, canvas) {
   const room = {left: 0, top: 0, width: map.innerWidth, height: map.innerHeight};
   button(map, "adjust").click();
   await sleep(200);
@@ -105,6 +105,184 @@ async function fitted(map, canvas) {
   mouse("mousemove", svg, {movementX: dx, movementY: dy});
   mouse("mouseup", map.document, {});
 }
+
+const LOCATE_EVERY_MS = 150;
+const view = {map: null, canvas: null, fitting: Promise.resolve(), asked: null, last: "", timer: null, links: null};
+
+function fitted(map, canvas) {
+  view.fitting = view.fitting.then(() => fitOnce(map, canvas)).catch(() => null);
+  return view.fitting;
+}
+
+const boxOf = (element) => {
+  const rect = element.getBoundingClientRect();
+  return {x: rect.left, y: rect.top, w: rect.width, h: rect.height};
+};
+const centreOf = (box) => ({x: box.x + box.w / 2, y: box.y + box.h / 2});
+const inside = (point, box) => point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h;
+const union = (boxes) => {
+  const shown = boxes.filter((box) => box && box.w && box.h);
+  if (!shown.length) return null;
+  const left = Math.min(...shown.map((box) => box.x));
+  const top = Math.min(...shown.map((box) => box.y));
+  const right = Math.max(...shown.map((box) => box.x + box.w));
+  const bottom = Math.max(...shown.map((box) => box.y + box.h));
+  return {x: left, y: top, w: right - left, h: bottom - top};
+};
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function nodeNamed(doc, name) {
+  return [...doc.querySelectorAll("g.node")].find((node) => {
+    const label = node.querySelector("text.label");
+    return label && label.textContent.trim() === name;
+  }) || null;
+}
+
+function iconBox(node) {
+  const icon = node.querySelector("image") || node.querySelector("svg");
+  return boxOf(icon || node);
+}
+
+function nodeBox(doc, name) {
+  const node = nodeNamed(doc, name);
+  if (!node) return null;
+  const label = node.querySelector("text.label");
+  return union([iconBox(node), label ? boxOf(label) : null]);
+}
+
+function pathEnds(path) {
+  if (!path.getTotalLength || !path.getScreenCTM) return null;
+  const length = path.getTotalLength();
+  const matrix = path.getScreenCTM();
+  if (!length || !matrix) return null;
+  const screen = (point) => ({x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+                              y: matrix.b * point.x + matrix.d * point.y + matrix.f});
+  return [screen(path.getPointAtLength(0)), screen(path.getPointAtLength(length))];
+}
+
+function linkPath(doc, a, b) {
+  const one = nodeNamed(doc, a);
+  const other = nodeNamed(doc, b);
+  if (!one || !other) return null;
+  const ends = [centreOf(iconBox(one)), centreOf(iconBox(other))];
+  let best = null;
+  doc.querySelectorAll("g.link path, path.link").forEach((path) => {
+    const at = pathEnds(path);
+    if (!at) return;
+    const apart = Math.min(distance(at[0], ends[0]) + distance(at[1], ends[1]),
+                           distance(at[0], ends[1]) + distance(at[1], ends[0]));
+    if (!best || apart < best.apart) best = {path, apart, at};
+  });
+  const reach = distance(ends[0], ends[1]);
+  return best && best.apart < Math.max(80, reach * 0.6) ? {...best, ends} : null;
+}
+
+function linkBox(doc, a, b) {
+  const found = linkPath(doc, a, b);
+  if (!found) return null;
+  const box = boxOf(found.path);
+  const thick = 8;
+  return {x: box.x - (box.w < thick ? (thick - box.w) / 2 : 0), y: box.y - (box.h < thick ? (thick - box.h) / 2 : 0),
+          w: Math.max(box.w, thick), h: Math.max(box.h, thick)};
+}
+
+async function linksRead() {
+  if (view.links) return view.links;
+  const project = new URLSearchParams(location.search).get("project");
+  const stored = JSON.parse(localStorage.getItem("controller-1") || "{}");
+  const asked = (tail) => fetch(`/v3/projects/${encodeURIComponent(project)}/${tail}`, {
+    headers: {Authorization: `Bearer ${stored.authToken}`},
+  }).then((answer) => (answer.ok ? answer.json() : []));
+  try {
+    const [nodes, links] = await Promise.all([asked("nodes"), asked("links")]);
+    const named = new Map(nodes.map((node) => [node.node_id, node.name]));
+    view.links = links.map((link) => (link.nodes || []).map((end) => ({
+      name: named.get(end.node_id), text: ((end.label && end.label.text) || "").trim(),
+    })));
+  } catch (error) {
+    view.links = [];
+  }
+  return view.links;
+}
+
+function labelBox(doc, host, other) {
+  const node = nodeNamed(doc, host);
+  if (!node) return null;
+  const centre = centreOf(iconBox(node));
+  const labels = [...doc.querySelectorAll("text.interface_label")].filter((label) => label.textContent.trim());
+  const link = (view.links || []).find((ends) => ends.some((end) => end.name === host) && ends.some((end) => end.name === other));
+  const end = link && link.find((one) => one.name === host);
+  let candidates = end && end.text ? labels.filter((label) => label.textContent.trim() === end.text) : [];
+  if (!candidates.length) {
+    const found = linkPath(doc, host, other);
+    if (!found) return null;
+    const [from, to] = found.ends;
+    const along = {x: to.x - from.x, y: to.y - from.y};
+    const span = Math.hypot(along.x, along.y) || 1;
+    candidates = labels.filter((label) => {
+      const at = centreOf(boxOf(label));
+      const share = ((at.x - from.x) * along.x + (at.y - from.y) * along.y) / (span * span);
+      const off = Math.abs((at.x - from.x) * along.y - (at.y - from.y) * along.x) / span;
+      return share > -0.15 && share < 0.5 && off < Math.max(40, span * 0.3);
+    });
+  }
+  const nearest = candidates.sort((a, b) => distance(centreOf(boxOf(a)), centre) - distance(centreOf(boxOf(b)), centre))[0];
+  return nearest ? boxOf(nearest) : null;
+}
+
+function zoneBox(doc, name) {
+  const node = nodeNamed(doc, name);
+  if (!node) return null;
+  const centre = centreOf(iconBox(node));
+  const zones = [...doc.querySelectorAll("g.drawing rect")].map(boxOf)
+    .filter((box) => box.w > 0 && box.h > 0 && inside(centre, box));
+  zones.sort((a, b) => a.w * a.h - b.w * b.h);
+  return zones[0] || null;
+}
+
+function located(spec) {
+  const doc = view.map && view.map.document;
+  if (!doc || !spec) return null;
+  if (spec.node) return nodeBox(doc, spec.node);
+  if (Array.isArray(spec.link)) return linkBox(doc, spec.link[0], spec.link[1]);
+  if (Array.isArray(spec.label)) return labelBox(doc, spec.label[0], spec.label[1]);
+  if (spec.zone) return zoneBox(doc, spec.zone);
+  return null;
+}
+
+function rounded(box) {
+  return box ? {x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h)} : null;
+}
+
+function answerLocate(always) {
+  if (!view.asked) return;
+  const rect = rounded(located(view.asked.spec));
+  const said = JSON.stringify(rect);
+  if (!always && said === view.last) return;
+  view.last = said;
+  view.asked.to.postMessage({fslLocated: view.asked.id, rect}, view.asked.origin);
+}
+
+async function locateAsked(event) {
+  const spec = event.data.fslLocate;
+  clearInterval(view.timer);
+  if (!spec) {
+    view.asked = null;
+    return;
+  }
+  view.asked = {spec, id: event.data.id, to: event.source, origin: event.origin || "*"};
+  view.last = "";
+  if (Array.isArray(spec.label)) await linksRead();
+  if (!view.canvas) return;
+  answerLocate(true);
+  view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  if (event.data === "fsl-fit" && view.canvas) fitted(view.map, view.canvas);
+  if (event.data && typeof event.data === "object" && "fslLocate" in event.data) locateAsked(event);
+});
 
 (async () => {
   const auditor = __FSL_AUDITOR__;
@@ -146,9 +324,14 @@ async function fitted(map, canvas) {
     button(map, "zoom_out_map").click();
     await sleep(200);
     await fitted(map, canvas);
-    window.addEventListener("message", (event) => {
-      if (event.data === "fsl-fit") fitted(map, canvas);
-    });
+    view.map = map;
+    view.canvas = canvas;
+    window.parent.postMessage({fslMap: "drawn"}, "*");
+    if (view.asked) {
+      answerLocate(true);
+      clearInterval(view.timer);
+      view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+    }
   }, {once: true});
   frame.src = opened;
   said.remove();

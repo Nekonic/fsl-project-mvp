@@ -1,7 +1,9 @@
+import io
 import json
 import pathlib
 import shlex
 import subprocess
+import tarfile
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -21,9 +23,9 @@ SPEC = openstack.Cloud(
     user="fsl", ssh_user="ubuntu", ssh_key="/keys/fsl",
 )
 
-def _adapter(tag="c0ffee", mtu=1450):
+def _adapter(tag="c0ffee", mtu=1450, sideloaded=frozenset()):
     built = openstack.OpenStack(OS, SPEC, get=None, build=openstack.Build(
-        source=str(ROOT), image_tag=tag, mtu=mtu))
+        source=str(ROOT), image_tag=tag, mtu=mtu, sideloaded=frozenset(sideloaded)))
     built._shape = Shape(segments=(
         Segment(id="estate", name="Estate", subnet="10.30.0.0/24",
                 nodes=(Node(HOST, "10.30.0.20"),)),
@@ -35,6 +37,10 @@ def _adapter(tag="c0ffee", mtu=1450):
 def _shipped(wargame, tag="c0ffee"):
     files = wargame_host.generated(ROOT, HOST, ENTRY.wargames, ENTRY.publish, tag, 1450)
     return yaml.safe_load(files[wargame_host.SHIPPED.format(wargame=wargame)])
+
+def _members(bundle):
+    with tarfile.open(fileobj=io.BytesIO(bundle.archive)) as archive:
+        return {member.name: archive.extractfile(member).read() for member in archive.getmembers()}
 
 def test_the_host_runs_the_same_ghcr_images_as_docker_at_the_platforms_tag():
     compose = yaml.safe_load((ROOT / "wargames/board/compose.yaml").read_text())
@@ -86,6 +92,36 @@ def test_a_new_platform_tag_is_a_new_host_image():
         "a new tag needs a host image holding that tag's images"
     )
     assert bundle("c0ffee").digest == bundle("c0ffee").digest
+
+def test_an_image_sideloaded_for_the_platform_alone_leaves_the_host_image_as_ghcr_builds_it(monkeypatch):
+    monkeypatch.setattr(wargame_host, "local_image_id", lambda image: pytest.fail("asked docker"))
+    plain = _adapter()._bundle(HOST, ENTRY)
+
+    for sideloaded in ({"platform"}, {"platform", "kali", "gns3"}):
+        assert _adapter(sideloaded=sideloaded)._bundle(HOST, ENTRY) == plain, (
+            "no wargame image was sideloaded, so the host pulls every image from GHCR as before")
+    assert wargame_host.LOADED not in wargame_host.generated(
+        ROOT, HOST, ENTRY.wargames, ENTRY.publish, "c0ffee", 1450)
+
+def test_a_sideloaded_board_reaches_the_host_image_from_the_platform_and_its_image_id_is_in_the_digest(monkeypatch):
+    held = {"ghcr.io/nekonic/fsl-board:c0ffee": "sha256:" + "a" * 64}
+    monkeypatch.setattr(wargame_host, "local_image_id", lambda image: held[image])
+    monkeypatch.setattr(openstack.OpenStack, "_platform_address", lambda self, why: "10.0.0.5")
+    built = _adapter(sideloaded={"board", "platform"})
+
+    first = built._bundle(HOST, ENTRY)
+    loaded = _members(first)[wargame_host.LOADED].decode()
+    held["ghcr.io/nekonic/fsl-board:c0ffee"] = "sha256:" + "b" * 64
+
+    assert loaded == ("ghcr.io/nekonic/fsl-board:c0ffee sha256:" + "a" * 64
+                      + " http://10.0.0.5:8000/api/range/images/sideloaded/board/\n"), (
+        "GHCR's board at the platform's tag is the pushed one; the host image must hold the board the "
+        "platform runs, and setup.sh checks the loaded image is that image")
+    assert built._bundle(HOST, ENTRY).digest != first.digest, (
+        "a slot reset keeps the wargame host's images, so a new board needs a new host image")
+    assert built.sideloaded_image("board") == "ghcr.io/nekonic/fsl-board:c0ffee"
+    assert built.sideloaded_image("platform") == "", "the platform serves only a wargame image it runs"
+    assert built.sideloaded_image("corp") == ""
 
 def test_a_wargame_starts_from_its_installed_file_with_no_pull():
     argv = wargame_host.up("board")

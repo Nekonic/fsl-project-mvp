@@ -1,22 +1,90 @@
+<style>
+  #site-dev { font: 12px/1.4 var(--font-sans); color: var(--text); }
+  #site-dev .dv-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--subdued); min-width: 0; }
+  #site-dev .dv-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-muted); }
+  #site-dev .dv-icon:hover { background: var(--border-subdued); color: var(--heading); }
+  #site-dev .dv-panel-tab { padding: 4px 10px; border-bottom: 2px solid var(--primary); color: var(--heading); }
+  #site-dev .dv-filter { height: 22px; width: 220px; min-width: 0; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); outline: none; }
+  #site-dev .dv-chip { padding: 1px 8px; border-radius: 10px; color: var(--text); white-space: nowrap; }
+  #site-dev .dv-chip[aria-pressed="true"] { background: var(--primary-line); color: var(--primary-text); }
+  #site-dev .dv-chip:hover { background: var(--border-subdued); }
+  #site-dev .dv-sep { width: 1px; height: 14px; background: var(--border); }
+  #site-dev table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  #site-dev th { position: sticky; top: 0; background: var(--subdued); font-weight: 400; color: var(--text-muted); text-align: left; padding: 3px 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #site-dev td { padding: 2px 6px; border-right: 1px solid var(--border-subdued); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #site-dev tbody tr:nth-child(even) { background: var(--subdued); }
+  #site-dev tbody tr { cursor: default; }
+  #site-dev tbody tr:hover { background: var(--primary-soft); }
+  #site-dev tbody tr[aria-selected="true"] { background: var(--primary-line); }
+  #site-dev .dv-fail { color: var(--danger); }
+  #site-dev .dv-dim { color: var(--text-muted); }
+  #site-dev .dv-sub { display: block; color: var(--text-faint); font-size: 11px; }
+  #site-dev.dv-picked .dv-wide { display: none; }
+  #site-dev .dv-tabs { display: flex; align-items: stretch; height: 28px; border-bottom: 1px solid var(--border); background: var(--subdued); }
+  #site-dev .dv-tab { padding: 0 10px; border-bottom: 2px solid transparent; color: var(--text); }
+  #site-dev .dv-tab[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--heading); }
+  #site-dev .dv-tab:hover { background: var(--border-subdued); }
+  #site-dev .dv-section { border-bottom: 1px solid var(--border); padding: 4px 0 6px; }
+  #site-dev .dv-heading { display: flex; align-items: center; gap: 8px; padding: 2px 8px; font-weight: 600; color: var(--heading); }
+  #site-dev .dv-heading label { margin-left: auto; font-weight: 400; color: var(--text); display: inline-flex; gap: 4px; align-items: center; }
+  #site-dev .dv-row { display: grid; grid-template-columns: minmax(120px, 30%) 1fr; gap: 12px; padding: 1px 8px 1px 20px; }
+  #site-dev .dv-row > :first-child { color: var(--text-muted); overflow-wrap: anywhere; }
+  #site-dev .dv-row > :last-child { color: var(--heading); font-family: var(--font-mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  #site-dev .dv-dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+  #site-dev .dv-raw { margin: 2px 8px 0 20px; font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--heading); }
+  #site-dev .dv-link { margin-left: 8px; color: var(--primary-text); font-weight: 400; }
+  #site-dev .dv-link:hover { text-decoration: underline; }
+  #site-dev .dv-source { display: grid; grid-template-columns: max-content 1fr; font-family: var(--font-mono); }
+  #site-dev .dv-source > span:nth-child(odd) { padding: 0 8px; color: var(--text-faint); text-align: right; user-select: none; border-right: 1px solid var(--border-subdued); }
+  #site-dev .dv-source > span:nth-child(even) { padding: 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--heading); }
+  #site-dev .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
+</style>
 <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
   <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
-  <div class="h-8 shrink-0 flex items-center gap-3 px-3 border-b border-line text-[12px] min-w-0">
-    <span data-t="site.dev.network" class="font-semibold text-heading shrink-0"></span>
-    <button type="button" id="site-dev-source" data-t="site.dev.source" class="btn btn-sm btn-ghost shrink-0"></button>
-    <span data-t="site.dev.cookies" class="text-faint truncate"></span>
+  <div class="dv-bar shrink-0" style="height: 26px">
+    <span data-t="site.dev.network" class="dv-panel-tab"></span>
+  </div>
+  <div class="dv-bar shrink-0" style="height: 30px">
+    <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 18.4 18.4 5.6"/></svg>
+    </button>
+    <span class="dv-sep"></span>
+    <input id="site-dev-filter" class="dv-filter" data-t-placeholder="site.dev.filter" autocomplete="off" spellcheck="false">
+    <span class="dv-sep"></span>
+    <label class="flex items-center gap-1 shrink-0" data-t-title="site.dev.preserve_title">
+      <input type="checkbox" id="site-dev-preserve"><span data-t="site.dev.preserve"></span>
+    </label>
+  </div>
+  <div id="site-dev-types" class="dv-bar shrink-0" style="height: 28px">
+    <button type="button" class="dv-chip" data-type="all" aria-pressed="true" data-t="site.dev.type.all"></button>
+    <span class="dv-sep"></span>
+    <button type="button" class="dv-chip" data-type="xhr" aria-pressed="false">Fetch/XHR</button>
+    <button type="button" class="dv-chip" data-type="doc" aria-pressed="false" data-t="site.dev.type.doc"></button>
+    <button type="button" class="dv-chip" data-type="css" aria-pressed="false">CSS</button>
+    <button type="button" class="dv-chip" data-type="js" aria-pressed="false">JS</button>
+    <button type="button" class="dv-chip" data-type="img" aria-pressed="false" data-t="site.dev.type.img"></button>
   </div>
   <div class="flex-1 min-h-0 flex">
-    <div class="w-1/2 min-w-0 overflow-auto">
-      <table class="w-full text-[12px] font-mono">
-        <thead><tr class="text-left text-muted bg-subdued">
-          <th data-t="site.dev.method" class="px-2 py-1 font-medium"></th><th data-t="site.dev.url" class="px-2 py-1 font-medium"></th>
-          <th data-t="site.dev.status" class="px-2 py-1 font-medium"></th><th data-t="site.dev.time" class="px-2 py-1 font-medium"></th>
+    <div id="site-dev-list" class="min-w-0 overflow-auto" style="flex: 1 1 auto">
+      <table>
+        <colgroup><col style="width: 34%"><col class="dv-wide" style="width: 11%"><col class="dv-wide" style="width: 12%"><col class="dv-wide" style="width: 19%"><col class="dv-wide" style="width: 12%"><col class="dv-wide" style="width: 12%"></colgroup>
+        <thead><tr>
+          <th data-t="site.dev.name"></th><th class="dv-wide" data-t="site.dev.status"></th><th class="dv-wide" data-t="site.dev.type"></th>
+          <th class="dv-wide" data-t="site.dev.initiator"></th><th class="dv-wide" data-t="site.dev.size"></th><th class="dv-wide" data-t="site.dev.time"></th>
         </tr></thead>
         <tbody id="site-dev-rows"></tbody>
       </table>
+      <p id="site-dev-empty" class="dv-empty" data-t="site.dev.recording"></p>
     </div>
-    <div id="site-dev-detail" class="w-1/2 min-w-0 overflow-auto border-l border-line p-3 text-[12px] flex flex-col gap-2">
-      <p data-t="site.dev.pick" class="text-muted"></p>
+    <div id="site-dev-detail" class="hidden min-w-0 border-l border-line flex-col" style="flex: 0 0 66%">
+      <div class="dv-tabs shrink-0">
+        <button type="button" id="site-dev-close" class="dv-icon" style="align-self: center; margin: 0 4px" data-t-title="site.dev.close" aria-label="close">✕</button>
+        <button type="button" class="dv-tab" data-tab="headers" data-coach="tab.headers" data-t="site.dev.tab.headers"></button>
+        <button type="button" class="dv-tab" data-tab="payload" data-coach="tab.payload" data-t="site.dev.tab.payload"></button>
+        <button type="button" class="dv-tab" data-tab="preview" data-coach="tab.preview" data-t="site.dev.tab.preview"></button>
+        <button type="button" class="dv-tab" data-tab="response" data-coach="tab.response" data-t="site.dev.tab.response"></button>
+      </div>
+      <div id="site-dev-view" class="flex-1 min-h-0 overflow-auto"></div>
     </div>
   </div>
 </section>

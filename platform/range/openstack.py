@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import shlex
+import shutil
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import partial
@@ -113,6 +116,7 @@ SETTINGS = {
     "platform": "FSL_OPENSTACK_PLATFORM",
     "image_tag": "FSL_IMAGE_TAG",
     "slots": "FSL_OPENSTACK_SLOTS",
+    "sideloaded": "FSL_SIDELOADED",
 }
 ROOM = (("maxTotalInstances", "totalInstancesUsed", ""), ("maxTotalCores", "totalCoresUsed", "vcpus"),
         ("maxTotalRAMSize", "totalRAMUsed", "ram"))
@@ -146,6 +150,7 @@ def connect(
     platform: str = "",
     image_tag: str = "",
     slots: str = "",
+    sideloaded: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -177,6 +182,7 @@ def connect(
             mtu=int(mtu or 0), opnsense=configured.opnsense_from(opnsense),
             network=build_network, platform=platform, image_tag=image_tag,
             slots=_count(slots or "1"),
+            sideloaded=frozenset(name for name in sideloaded.split(",") if name),
         )
     except ValueError as error:
         raise RangeUnavailable(
@@ -403,6 +409,10 @@ def _subnet_body(subnet: "fabric.Subnet", network_id: str) -> dict:
         body["gateway_ip"] = None
     return body
 
+def _tidied(piped: subprocess.Popen, scratch: Path) -> None:
+    piped.wait()
+    shutil.rmtree(scratch, ignore_errors=True)
+
 def _generations(servers: list[dict]) -> dict[str, str]:
     found = {}
     for server in servers:
@@ -445,6 +455,7 @@ class Build:
     platform: str = ""
     image_tag: str = ""
     slots: int = 1
+    sideloaded: frozenset = frozenset()
 
     def placed(self, server: dict) -> dict:
         return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
@@ -689,6 +700,25 @@ class OpenStack:
             )
         return self.runner(ATTACKER_ROLE)
 
+    def opened(self, role: str, argv: list[str]) -> socket.socket:
+        host = self.declared.host(role)
+        address = self._address(role, host, "")
+        scratch = Path(tempfile.mkdtemp())
+        config = self._config(scratch / "ssh_config", address)
+        command = self._ssh(address, True, scratch / "ssh.log", config, self._ssh_user(host))
+        ours, theirs = socket.socketpair()
+        try:
+            piped = subprocess.Popen(command + [shlex.join(argv)], stdin=theirs, stdout=theirs,
+                                     stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            ours.close()
+            shutil.rmtree(scratch, ignore_errors=True)
+            raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+        finally:
+            theirs.close()
+        threading.Thread(target=_tidied, args=(piped, scratch), daemon=True).start()
+        return ours
+
     def _bind(self, networks: list[dict]) -> dict[str, dict]:
         found: dict[str, dict] = {}
         for network in networks:
@@ -928,18 +958,20 @@ class OpenStack:
         ]
         return min(rooms, default=len(self.declared.hosts))
 
-    def _build_group(self) -> str:
+    def _platform_address(self, why: str) -> str:
         if not self.build.platform:
-            raise RangeUnavailable(
-                f"a builder that serves its disk lets in only the platform, so the platform "
-                f"needs its own server id; set {SETTINGS['platform']}")
+            raise RangeUnavailable(f"{why}, so the platform needs its own server id; set {SETTINGS['platform']}")
         own = next((port for port in self._all(PORTS, "ports", network=self.build.network)
                     if port.get("device_id") == self.build.platform and port.get("fixed_ips")), None)
         if own is None:
             raise RangeUnavailable(f"the platform has no port on the build network {self.build.network}")
+        return own["fixed_ips"][0]["ip_address"]
+
+    def _build_group(self) -> str:
+        address = self._platform_address("a builder that serves its disk lets in only the platform")
         wanted = {"direction": "ingress", "ethertype": "IPv4", "protocol": "tcp",
                   "port_range_min": images.SERVE_PORT, "port_range_max": images.SERVE_PORT,
-                  "remote_ip_prefix": f"{own['fixed_ips'][0]['ip_address']}/32"}
+                  "remote_ip_prefix": f"{address}/32"}
         group = next((g for g in self._all(SECURITY_GROUPS, "security_groups")
                       if g["name"] == BUILD_GROUP), None)
         if group is None:
@@ -993,7 +1025,8 @@ class OpenStack:
         source = Path(self.build.source)
         if entry.wargames:
             return images.bundle(source, host, entry.setup, entry.files, generated=wargame_host.generated(
-                source, host, entry.wargames, entry.publish, self.build.image_tag, self.build.mtu))
+                source, host, entry.wargames, entry.publish, self.build.image_tag, self.build.mtu,
+                loaded=self._loaded(entry.wargames)))
         if not entry.uploads:
             return images.bundle(source, host, entry.setup, entry.files)
         if entry.uploads != opnsense.UPLOADS:
@@ -1010,6 +1043,21 @@ class OpenStack:
             (source / opnsense.CONFIG).read_text(), self.build.opnsense, self.build.mtu, key)
         return images.bundle(source, host, entry.setup, entry.files, generated=generated,
                              image=self.build.opnsense.image, uploads=True)
+
+    def sideloaded_image(self, name: str) -> str:
+        wargames = [wargame for entry in self.declared.hosts.values() for wargame in entry.wargames]
+        return wargame_host.sideloaded_images(
+            self.build.source, wargames, self.build.image_tag, self.build.sideloaded).get(name, "")
+
+    def _loaded(self, wargames) -> tuple[tuple[str, str, str], ...]:
+        found = wargame_host.sideloaded_images(
+            self.build.source, wargames, self.build.image_tag, self.build.sideloaded)
+        if not found:
+            return ()
+        address = self._platform_address("the wargame host's builder fetches sideloaded images from the platform")
+        return tuple(
+            (image, wargame_host.local_image_id(image), wargame_host.SERVED_AT.format(address=address, name=name))
+            for name, image in sorted(found.items()))
 
     def _prebuilt(self) -> tuple[tuple[str, str], ...]:
         return tuple(

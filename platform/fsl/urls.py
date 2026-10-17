@@ -1,6 +1,6 @@
 from django.urls import path
 
-from api import scenario_run, site, views
+from api import scenario_run, sideloaded, site, views
 from console import views as console
 
 urlpatterns = [
@@ -43,6 +43,7 @@ urlpatterns = [
     path("api/topology/", views.range_topology),
     path("api/range/fabric/", views.range_fabric),
     path("api/range/images/", views.range_images),
+    path("api/range/images/sideloaded/<str:name>/", sideloaded.sideloaded_image),
     path("api/range/slot/", views.range_slot),
     path("api/range/slot/rebuild/", views.range_rebuild),
     path("api/range/configure/", views.range_configure),

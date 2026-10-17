@@ -90,7 +90,7 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
 
     assert names == {
         variable for name, variable in SETTINGS.items()
-        if name not in ("password", "platform", "source", "image_tag")
+        if name not in ("password", "platform", "source", "image_tag", "sideloaded")
     } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "FSL_TOOL_IMAGE"}, names
     assert "FSL_SUBSTRATE=range.openstack.connect" in lines
     assert f"FSL_TOOL_IMAGE={attacker}" in lines, (

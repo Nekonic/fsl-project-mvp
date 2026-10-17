@@ -87,6 +87,15 @@ def wear_origin(chosen: dict, box) -> None:
 def set_label(case_id: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)
 
+SQLMAP_HOMES = ("/root", "/home/*")
+SQLMAP_OUTPUTS = (".local/share/sqlmap/output", ".sqlmap/output")
+SQLMAP_INJECTABLE = re.compile(r"^Parameter: ", re.M)
+
+def sqlmap_found(box, host: str) -> bool | None:
+    logs = " ".join(f"{home}/{output}/{shlex.quote(host)}/log" for home in SQLMAP_HOMES for output in SQLMAP_OUTPUTS)
+    ran = box(["sh", "-c", f"cat {logs} 2>/dev/null; true"])
+    return bool(SQLMAP_INJECTABLE.search(ran.output)) if ran.ok else None
+
 def _write(proxy, where: str, value: str | None) -> None:
     ran = proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
     if not ran.ok:
@@ -149,14 +158,39 @@ def customer_origins(described, unbound: str = "") -> list[dict]:
 
 def place_customers(box, program: str) -> None:
     account = (
+        _customers_account()
+        + f"install -d -m 0755 -o {CUSTOMERS_ACCOUNT} -g {CUSTOMERS_ACCOUNT} {CUSTOMERS_HOME}; "
+    ) if _snat() else f"install -d -m 0755 {CUSTOMERS_HOME}; "
+    _ran(box, "set -e; " + account + f"cat > {CUSTOMERS_PROGRAM}.new; mv {CUSTOMERS_PROGRAM}.new {CUSTOMERS_PROGRAM}",
+         "take the customers' program", stdin=program)
+
+SITE_BRIDGE = (
+    "import socket, sys, threading\n"
+    "line = socket.create_connection((sys.argv[2], int(sys.argv[3])), 10, (sys.argv[1], 0))\n"
+    "def up():\n"
+    "    while chunk := sys.stdin.buffer.read1(65536):\n"
+    "        line.sendall(chunk)\n"
+    "    line.shutdown(socket.SHUT_WR)\n"
+    "threading.Thread(target=up, daemon=True).start()\n"
+    "while chunk := line.recv(65536):\n"
+    "    sys.stdout.buffer.write(chunk)\n"
+    "    sys.stdout.buffer.flush()\n"
+)
+
+def _customers_account() -> str:
+    return (
         f"id -u {CUSTOMERS_ACCOUNT} >/dev/null 2>&1 || useradd --system --no-create-home "
         f"--shell /usr/sbin/nologin {CUSTOMERS_ACCOUNT}; "
         f"iptables -t nat -C POSTROUTING -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN 2>/dev/null "
         f"|| iptables -t nat -I POSTROUTING 1 -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN; "
-        f"install -d -m 0755 -o {CUSTOMERS_ACCOUNT} -g {CUSTOMERS_ACCOUNT} {CUSTOMERS_HOME}; "
-    ) if _snat() else f"install -d -m 0755 {CUSTOMERS_HOME}; "
-    _ran(box, "set -e; " + account + f"cat > {CUSTOMERS_PROGRAM}.new; mv {CUSTOMERS_PROGRAM}.new {CUSTOMERS_PROGRAM}",
-         "take the customers' program", stdin=program)
+    )
+
+def as_customer(source: str, address: str, port: int) -> list[str]:
+    bridge = shlex.join(["python3", "-c", SITE_BRIDGE, source, address, str(port)])
+    if not _snat():
+        return ["sh", "-c", f"exec {bridge}"]
+    return ["sudo", "sh", "-c", _customers_account()
+            + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups {bridge}"]
 
 def run_customers(box, plan: str) -> bool:
     owner = f"chown {CUSTOMERS_ACCOUNT}: {CUSTOMERS_PLAN}.new; " if _snat() else ""

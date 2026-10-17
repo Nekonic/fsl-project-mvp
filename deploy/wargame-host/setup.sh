@@ -20,6 +20,16 @@ for compose in wargames/*.yaml; do
   docker compose -f "/opt/fsl/wargames/${compose##*/}" pull --quiet
 done
 
+if [ -f loaded ]; then
+  while read -r image id url; do
+    curl -fsS --retry 5 --retry-all-errors -o /var/lib/fsl/loaded.tar "$url"
+    docker load -q -i /var/lib/fsl/loaded.tar
+    rm /var/lib/fsl/loaded.tar
+    [ "$(docker image inspect --format '{{.Id}}' "$image")" = "$id" ]
+  done < loaded
+  docker image prune -f
+fi
+
 install -m 0644 ../suricata/suricata.yaml /opt/fsl/suricata.yaml
 install -m 0644 sensor.yaml /opt/fsl/sensor.yaml
 install -d -m 0755 /opt/fsl/rules
