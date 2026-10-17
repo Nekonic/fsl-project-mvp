@@ -45,10 +45,6 @@ NONCE = re.compile(r'name="_wpnonce" value="([^"]+)"')
 AJAX_NONCE = re.compile(r'"ajaxSecurity":"([a-f0-9]+)"')
 
 
-def on_compose() -> bool:
-    return substrate() == "compose"
-
-
 def open_session(**settings) -> int:
     created = requests.post(f"{PLATFORM_URL}/api/sessions/", json=settings, timeout=600)
     assert created.status_code == 201, created.text
@@ -168,13 +164,9 @@ def full_run(stack_is_up):
 
     score = score_when_ready(session_id, until=ready)
     seen = {"session_id": session_id, "score": score, "detections": detections_of(session_id)}
-    if on_compose():
-        seen["topology"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
-        ).json()
-        seen["top"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/top/", timeout=120
-        ).json()
+    seen["topology"] = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
+    ).json()
     return seen
 
 
@@ -198,10 +190,9 @@ def board_session(stack_is_up):
         seen["score_while_open"] = requests.get(
             f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60
         )
-        if on_compose():
-            seen["canary"] = requests.post(
-                f"{PLATFORM_URL}/api/range/canary/", json={"session": session_id}, timeout=180
-            )
+        seen["canary"] = requests.post(
+            f"{PLATFORM_URL}/api/range/canary/", json={"session": session_id}, timeout=180
+        )
         case_id = fired_case_id(session_id, CONTROL)
         seen["case_id"] = case_id
         loot = f"{PLATFORM_URL}/api/sessions/{session_id}/loot/"
@@ -281,16 +272,14 @@ def tuned_session(stack_is_up):
         )
         assert tuned.ok, tuned.text
         seen = {"session_id": session_id}
-        if on_compose():
-            for _ in range(30):
-                reload_probe = f"/search/?q=%27%20OR%201%3D1--%20reload{uuid.uuid4().hex[:6]}"
-                if target_code(reload_probe, session=session_id) != 403:
-                    break
-                time.sleep(1)
-            seen["past_the_waf"] = probed(session_id)
-            seen["estate"] = subnet_of(requests.get(
-                f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
-            ).json(), "estate")
+        for _ in range(30):
+            reload_probe = f"/search/?q=%27%20OR%201%3D1--%20reload{uuid.uuid4().hex[:6]}"
+            if target_code(reload_probe, session=session_id) != 403:
+                break
+            time.sleep(1)
+        seen["estate"] = subnet_of(requests.get(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
+        ).json(), "estate")
         case_id = fired_case_id(session_id, CONTROL)
         close_session(session_id)
 

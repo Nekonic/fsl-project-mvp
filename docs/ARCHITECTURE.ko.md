@@ -112,9 +112,10 @@ collector가 거기 있고 모든 세션의 Filebeat가 Elasticsearch에 닿아�
 한 네트워크의 서브넷으로 만든다. `bin/pick-origins`가 이 표를 재현하고, 수용
 테스트가 scoring이 읽는 파이프라인에 대해 모든 서브넷을 검사한다.
 
-망 분리는 Docker 네트워크 소속만으로 이루어진다: 방화벽, iptables, ACL은 없다.
-`test/test_segmentation.py`가 라이브 스택에서 이를 검사한다(Kali는 `board.com`에는
-닿지만 `board:8000`에는 닿지 못한다). `test/test_concurrent_sessions.py`는 동시에 연 두
+docker에서 망 분리는 네트워크 소속만으로 이루어진다: 방화벽, iptables, ACL은 없다.
+OpenStack에서는 fabric의 네트워크와 보안 그룹이 맡는다. `test/test_attacker_reach.py`가
+두 substrate의 라이브 레인지에서 이를 검사한다(Kali는 `board.com`에는 닿지만
+`board:8000`에는 닿지 못하고, 나가는 경로 밖의 서비스에도 닿지 못한다). `test/test_concurrent_sessions.py`는 동시에 연 두
 세션이 서로를 보지 못함을 검사한다. 고정된 것은 edge 서브넷뿐이고, 컨테이너 주소는
 Docker가 할당하며 재생성 시 바뀐다. 뷰는 요청마다 새 어댑터를 만들어 주소를 읽는다.
 레인지 호스트에서 온 요청을 거부하는 규칙은 그 주소를 30초 동안 캐시하고, substrate에

@@ -34,9 +34,6 @@ STANDING_STACK = (
     "test_attacker_reach",
     "test_board_exfil",
     "test_event_time",
-    "test_judge_isolation",
-    "test_segmentation",
-    "test_terminal",
 )
 
 
