@@ -328,7 +328,7 @@ and 3.x upgrades them on load. Two kinds, per substrate:
   bundled square switch and globe. `kali`'s frame holds OffSec's Kali dragon
   (the press pack's `kali-dragon-black.svg` at a pinned commit, checked by
   sha256, placed unmodified inside the frame; `host-kali.txt` and the
-  Topology pane say whose trademark it is).
+  Map pane say whose trademark it is).
 - **Every learner-map host is a display container.** GNS3 colours a link end
   by its node's status, so a stopped node draws every end red. Each host is a
   `docker` node of one pinned image (`busybox`, `topology.DISPLAY_IMAGE`) that
@@ -384,7 +384,7 @@ store's own NIC where it has one on that network (Docker) and otherwise the
 platform VM's (OpenStack, `ens7`). No label names a Docker bridge (`br-`). The
 one end that can stay blank is Docker's `customers`, whose box runs only while
 the customers do. Each zone caption gains the networks of the labels on its switch
-(`Application estate 10.30.0.0/24`, `Internal DB 172.18.0.0/16`; the caption
+(`Services 10.30.0.0/24`, `Internal DB 172.18.0.0/16`; the caption
 of a switch is the text in the smallest box holding it, `topology.captions`);
 Internet and Monitoring keep their name alone. A label lies level beside its node on the side its link leaves
 (`topology.leaving`): on a level or shallow link above or below the line on
@@ -415,7 +415,7 @@ keeps the URL's project id (GNS3 then keeps every id, as for a snapshot), turns
 `auto_close` off (an import is made with it on, whatever the file says, and a
 project closed when the last web client leaves stops its nodes), opens it and
 starts its nodes. A map is loaded at session open, after a slot's reset, and
-when the Topology pane asks (`GET /api/topology/?language=&session=`) and GNS3
+when the Map pane asks (`GET /api/topology/?language=&session=`) and GNS3
 does not hold it open; an unchanged map is not loaded again. The maps kept are
 the newest session's of each slot and the open sessions' on Docker; the others
 are deleted. Generated maps are never committed. If GNS3 cannot load one, the
@@ -460,7 +460,7 @@ frame, which runs the same reset and fit. The Auditor role still refuses every
 write on the server. For development MCP use (`/v3/mcp/`), `docker
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP. The console's tab for it reads
-Network map (네트워크 구성도); no word a learner reads names GNS3.
+Map (구성도); no word a learner reads names GNS3.
 
 A read-only user cannot open a project (`Project.Allocate`), so `provision.py`
 opens every project as admin at start and starts each of its stopped display
@@ -478,14 +478,14 @@ nodes. The host daemon resolves the containers' bind mounts on the host, so
 the data directory is the same path on both sides (`/var/lib/fsl-gns3`). The
 server runs as the user `gns3`, which joins the socket's group at start as
 `fsl` does in the platform. `GET /api/topology/` offers the web UI (`web_ui`)
-only while GNS3 reports the project `opened`; otherwise the console's Topology
+only while GNS3 reports the project `opened`; otherwise the console's Map
 pane says the map is not open.
 
 `GET /api/topology/?language=en|ko` returns the substrate's learner map drawn in
 that language (with `&session=<id>`, that session's map for its wargame, above)
 from GNS3 (`platform/gns3.py`) or the repo's file (`en` when absent, 400 for
 another); the console sends its own language, and `web_ui` deep-links the GNS3
-web UI to that project's id. The Topology pane is that map alone: the framed
+web UI to that project's id. The Map pane is that map alone: the framed
 GNS3 web UI and its fit button. `GET /api/sessions/<id>/topology/` reads the
 English map of the session's wargame (the pair has the same node names and
 links) and adds `project.nodes`: each host node's addresses per switch from the
@@ -504,7 +504,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
-| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects; the console's Topology pane frames the web UI at the port and path `gns3.py` returns |
+| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects; the console's Map pane frames the web UI at the port and path `gns3.py` returns |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and f6's WAF-pane step names the exclusion file for them to read, its command (`cat {waf_rules}`) filled in by `wargames.lesson` from the declared exclusion file (`settings.FSL_WAF`); the platform does not drive the terminal |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack), and its baseline rules then go through `suricata.py` |
@@ -862,7 +862,7 @@ language switch.
   person reads names them (`test_strings.py`). Open again reopens the same
   scenario, the same unit (`{scenario, guidance: true, lesson, defense}`
   when `lesson_id` is set) or the same wargame.
-- Blue (`/blue/<id>/`): a rail (Kibana, Website, Topology, Judge for a
+- Blue (`/blue/<id>/`): a rail (Kibana, Website, Map, Alerts for a
   judgement scenario, IDS rules for a detection or unknown scenario, WAF, and
   a link to Red) and the pane. On the WAF pane a banner names only the box
   (`waf_box`, `fsl-<id>-waf`) and the CRS rules directory (`waf_rules`,
@@ -897,11 +897,11 @@ marker) or left unpassed; the console sends `skipped` on Next or a list jump
 from a step not passed, never on Back or a pass. The step list ticks a step
 only when `progress` says it passed, marks one left unpassed with a hollow
 circle and "skipped", and says "n of N steps passed" above it. A step that a
-theory card `shows` gets a "Why?" link in the popover that opens that card.
+theory card `shows` gets an "Explanation" link in the popover that opens that card.
 
 Theory holds the unit's folded cards (`theory` in `scenario.yaml`; text
 under `<text>.theory.<card>.title|body`); a card that names something on
-screen has "Show me where", which moves the guide to that step. Hints holds
+screen has "Show it on screen", which moves the guide to that step. Hints holds
 reasoning only, folded one by one (`hints`, text under `<text>.hint.*`; a
 worked scenario's list is empty, since its hints are the scenario's offer),
 then a folded Solution: every step's command in order, with a copy button.
@@ -1004,10 +1004,10 @@ Where each step points is the step's `point` in `scenario.yaml` (`panel`,
 console names no unit's step and no Kibana selector, and the red box is drawn
 from the start of every step. A step names the pane it needs (`opens`: site,
 Kibana, topology, triage, rules or WAF); while that pane is not shown, the
-box is on its rail button and the popover says only "Open Website on the
-left" (or the pane named). Once it is shown: a console element (`panel`: the
-site's address bar, the site's developer toggle, the Judge list, the rule
-editor, I'm done), a `data-test-subj` in the same-origin Kibana frame
+box is on its rail button and the popover says only "Open Website in the
+left menu" (or the pane named). Once it is shown: a console element (`panel`: the
+site's address bar, the site's developer toggle, the Alerts list, the rule
+editor, Start final check), a `data-test-subj` in the same-origin Kibana frame
 (`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`
 with the row toggle as `first`), or the pane as a whole.
 Nothing is ever looked up inside the site frame, which is another origin. The
@@ -1026,7 +1026,7 @@ The rule editor (`#lesson-rules`, ruling D3) sits in the blue console's IDS
 rules pane, which `rulesPane()` shows for a scenario of class `detection` or
 `unknown`. It reads `GET /api/rules/?session=<id>`, checks with `POST
 /api/rules/validate/` and writes with `POST /api/rules/apply/` on the version
-it loaded. Validate answers `errors`: the lines carrying Suricata's `Error`
+it loaded. Check rules answers `errors`: the lines carrying Suricata's `Error`
 from every sensor that refused, and `output` is the refusing sensor's output
 with the most of them. The OPNsense edge's Suricata logs to syslog only (its
 template has no console output), so its `-T` output carries no error line;
@@ -1052,12 +1052,12 @@ first visit.
 
 | unit | defense | the learner | answers read from |
 |---|---|---|---|
-| f1 My range | `full` | opens the Topology pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image (fsl-elasticsearch on both substrates; on OpenStack it runs in the platform's compose and the learner map draws it as the log store); the switch the scenario's database node is linked to (`board-default`, `estate`) |
-| f2 The path of one request | `full` | reads the hops on the network map, searches in Korean in the Website pane and reads the status code in its developer tools | the learner's own Website pane request: the status |
-| f3 HTTP | `full` | the same request's method, path, parameter, status class | the same request record |
-| f4 Reading logs | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
-| f5 Read one attack | `full` | sends `' OR 1=1--`, names the host that stopped it from the developer tools' blocked badge and the rule that recognised it from its WAF record in Kibana; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the request record's blocked mark (the map's gateway, `waf`), the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
-| f6 What a miss costs | `missed` | reads the WAF's exclusion file, runs the same sqlmap, pastes the dumped table, says how many accounts leaked and how many objectives the first score counts lost | the WAF file in force, the loot matched against the session's snapshot, `result.objectives.lost` |
+| f1 Reading the practice network's map | `full` | opens the Map pane and names the host a customer's request reaches first, the host that keeps the logs and the database's segment | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image (fsl-elasticsearch on both substrates; on OpenStack it runs in the platform's compose and the learner map draws it as the log store); the switch the scenario's database node is linked to (`board-default`, `estate`) |
+| f2 The path of a web request | `full` | reads the hops on the map, searches in Korean in the Website pane and reads the status code in its developer tools | the learner's own Website pane request: the status |
+| f3 Reading an HTTP request | `full` | the same request's method, path, parameter, status class | the same request record |
+| f4 Finding logs in Kibana | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
+| f5 Examining an SQL injection | `full` | sends `' OR 1=1--`, names the host that stopped it from the developer tools' blocked badge and the rule that recognised it from its WAF record in Kibana; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the request record's blocked mark (the map's gateway, `waf`), the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
+| f6 Confirming an account leak | `missed` | reads the WAF's exclusion file, runs the same sqlmap, pastes the dumped table, says how many accounts leaked and how many objectives the first score counts lost | the WAF file in force, the loot matched against the session's snapshot, `result.objectives.lost` |
 
 `missed` is CRS paranoia level 1 with `ruleRemoveById` 949110 and 959100 and
 `local.rules`. No unit question carries an `accept` list.
@@ -1403,7 +1403,7 @@ session's page.
 **Console.** The home page lists the scenarios under each wargame; Start
 opens the blue console on the briefing. A strip above the panes shows the
 time left, customers blocked and alerted requests per minute, objectives lost,
-the hint offer and I'm done; a judgement scenario adds the Judge pane, which
+the hint offer and Start final check; a judgement scenario adds the Alerts pane, which
 keeps its list clear: the note's column is left free and the cards, the opened
 hints and a coach popover pointing into the pane are docked above the list; a
 detection or unknown scenario adds the IDS rules pane (the rule editor on
@@ -1416,17 +1416,17 @@ after the foundations (`order`):
 
 | Id | Title | Class, guidance | Posture | Customers | Attacks (hidden) |
 |---|---|---|---|---|---|
-| 1.1 | A quiet shift | judgement, worked | `level2`: PL2 | `community` 2/s | sqlmap at 150 s (`ru`) |
-| 1.2 | An inherited exception | judgement, faded | `inherited`: PL2, 949110 and 959100 removed | `community` 2/s | sqlmap at 120 s, a search injection at 300 s (`ru`) |
-| 1.3 | A busy evening | judgement, none; judges the pattern too | `inherited` | `community` 4/s | eight cases from 90 to 660 s, all from `kr`: sqlmap stock and tamper, search, union and sign-in injections, two XSS, path traversal |
-| 2.1 | Korean searches blocked | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s (`ru`) |
-| 2.2 | Tags and links blocked | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s (`ru`) |
-| 2.3 | Lowering the threshold | availability, none; final check at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s (`ru`) |
-| 3.1 | A rule that never fires | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s (`ru`) |
-| 3.2 | The sort attack the IDS misses | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s (`ru`) |
-| 3.3 | The same attack, spelled differently | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s (`ru`) |
-| 3.4 | XSS in a comment | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s (`ru`) |
-| 4.1 | An evening on your own | unknown, none (no cards, no hints) | `full` | `club` 2/s (adds code questions in comments) | `board-sqli-orderby-sqlmap-versioned` at 300 s, sqlmap at 600 s (`us`) |
+| 1.1 | Telling customer requests from attacks | judgement, worked | `level2`: PL2 | `community` 2/s | sqlmap at 150 s (`ru`) |
+| 1.2 | Judging alerts the WAF only logs | judgement, faded | `inherited`: PL2, 949110 and 959100 removed | `community` 2/s | sqlmap at 120 s, a search injection at 300 s (`ru`) |
+| 1.3 | Telling attack types apart | judgement, none; judges the pattern too | `inherited` | `community` 4/s | eight cases from 90 to 660 s, all from `kr`: sqlmap stock and tamper, search, union and sign-in injections, two XSS, path traversal |
+| 2.1 | Fixing false positives on Korean search | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s (`ru`) |
+| 2.2 | Fixing false positives on tags and links | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s (`ru`) |
+| 2.3 | Lowering the anomaly threshold | availability, none; final check at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s (`ru`) |
+| 3.1 | Fixing a detection rule | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s (`ru`) |
+| 3.2 | Writing a rule for the sort attack | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s (`ru`) |
+| 3.3 | Detecting a variant of an attack | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s (`ru`) |
+| 3.4 | Writing a rule for XSS in comments | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s (`ru`) |
+| 4.1 | Combined exercise | unknown, none (no cards, no hints) | `full` | `club` 2/s (adds code questions in comments) | `board-sqli-orderby-sqlmap-versioned` at 300 s, sqlmap at 600 s (`us`) |
 
 At PL3 a Korean search is refused by 920272 and 942460 on `ARGS:q` (and 920272
 on `REQUEST_URI_RAW` once those are excluded), and every page a customer opens
