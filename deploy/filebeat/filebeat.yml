@@ -84,7 +84,7 @@ filebeat.inputs:
 queue.mem.flush.timeout: 1s
 
 setup.template.name: fsl-logs
-setup.template.pattern: fsl-logs-*
+setup.template.pattern: fsl-logs*
 setup.template.settings:
   index.default_pipeline: fsl-geoip
 setup.ilm.enabled: false

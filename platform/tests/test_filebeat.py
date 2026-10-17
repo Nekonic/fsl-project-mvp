@@ -74,6 +74,17 @@ def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_re
     )
 
 
+def test_the_data_stream_filebeat_makes_for_its_template_matches_the_template_s_pattern():
+    from fnmatch import fnmatch
+
+    config = yaml.safe_load(FILEBEAT.read_text())
+
+    assert fnmatch(config["setup.template.name"], config["setup.template.pattern"]), (
+        "Filebeat creates a data stream named after its template when it loads the template; on a fresh "
+        "Elasticsearch a name outside the pattern failed the first connection with 'no matching index template'"
+    )
+    assert fnmatch("fsl-logs-slot1-2026.10.17", config["setup.template.pattern"])
+
 def test_the_template_geolocates_every_document_by_default_not_only_when_filebeat_asks():
     config = yaml.safe_load(FILEBEAT.read_text())
 
