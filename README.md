@@ -131,10 +131,12 @@ rules and the proxy's case label, reads the attacker's command log, and reads
 corp-db's MySQL binary log (`mysqlbinlog`); corp is scored by observed effect,
 not by submitted data. The board's ground truth (its `auth_user` table) is read
 over HTTP from the board itself (`BOARD_API_URL`), bypassing the WAF. On
-compose the red terminal is Kali's own ttyd, which the platform's nginx serves
+compose the Kali terminal (the red console's, and the blue console's Kali pane
+in a lesson or scenario) is Kali's own ttyd, which the platform's nginx serves
 at `/terminal/<session id>/` from that session's `fsl-<id>-kali-1`; on OpenStack
 it is a ttyd inside the platform that ssh's to the `mgmt` address of the Kali
-in the session's slot (`/vm-terminal/fsl-kali/?arg=<session id>`). The networks are in `docs/ARCHITECTURE.md`.
+in the session's slot (`/vm-terminal/fsl-kali/?arg=<session id>`), showing the
+prompt as `ubuntu@kali` (the WAF's as `ubuntu@waf`). The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 
@@ -388,19 +390,21 @@ for permission before a derivative name is used.
 
 ## Running a session
 
-Open http://localhost:8000, start a session, and open the red and blue consoles
-side by side. The language button in the header switches between English and
-Korean.
+Open http://localhost:8000 and start a session. A lesson or a scenario opens
+the blue console, which carries both sides; a wargame (person against person)
+opens a red console for the attacker and a blue console for the defender. The
+language button in the header switches between English and Korean.
 
-- **Red** has the objectives, a Kali shell and the scripted cases. A fired
-  case is labelled on the way out. Alternatively name a case, press start,
-  work in the shell and press stop: everything sent in between is attributed
-  to that name.
+- **Red** is the attacker's: the objectives, "Submit stolen hashes", a Kali
+  terminal and a Website pane pointed at the target. It runs no prepared
+  attack; the scripted cases are the harness's (`redteam/run.py`, the
+  acceptance tests) and the scenario engine's.
 - **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
   "FSL alerts" columns and query narrowed to the session, a WAF terminal, a
   Website pane (a site browser with developer tools), the Map pane (the
-  GNS3 map) and, in the scenarios that need them, an Alerts pane and an IDS
-  rules pane. It calls `/api/` for the
+  GNS3 map), in the scenarios that need them an Alerts pane and an IDS
+  rules pane, and below a divider a Kali terminal, shown in lessons and
+  scenarios and hidden in a wargame. It calls `/api/` for the
   session, the site's requests, the steps and hints of a foundation or worked
   scenario, a scenario's status and triage, ingest and detections. The
   result appears on the session page when the session closes: objectives lost
@@ -419,7 +423,7 @@ F1 reads the practice network's map in the Map pane, F2 sends one Korean search 
 pane and reads its status code in the pane's developer tools, F3 reads its method, path, parameter and status code,
 F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
 blocked SQL injection was stopped and which rule recognised it, and counts a
-sqlmap run from the Red console's Kali terminal, and F6 runs the same
+sqlmap run from the Kali pane, and F6 runs the same
 sqlmap against a WAF whose blocking rules are off (defense `missed`), hands in
 the dumped accounts and reads the loss in the first score. Every answer is read
 from the learner's own records or the substrate's topology, never a fixed key;

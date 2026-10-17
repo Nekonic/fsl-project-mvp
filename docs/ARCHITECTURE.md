@@ -87,7 +87,7 @@ Every endpoint that acts on the range (rules, validate, suppressions,
 body. Without one, a write goes to the newest open session and answers 409
 when none is open, and a read uses the newest session; a write naming a closed
 session is refused. Suppressions are stored with their session (migration
-0014). The red console sends its session id. Each
+0014). Each
 session's sensor keeps its live `local.rules` in its own container. On docker
 every session's sensor is seeded at open with its defense's rule file, or with
 `deploy/suricata/rules/local.rules` when the scenario declares no `defense`
@@ -526,7 +526,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects; the console's Map pane frames the web UI at the port and path `gns3.py` returns |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and f6's WAF-pane step names the exclusion file for them to read, its command (`cat {waf_rules}`) filled in by `wargames.lesson` from the declared exclusion file (`settings.FSL_WAF`); the platform does not drive the terminal |
-| The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` and `platform/api/views.py` builds `fsl-<id>-waf` by the compose naming convention |
+| The session's WAF container (docker) | `platform/range/docker.py`, by compose label | `platform/api/site.py` builds `http://fsl-<id>-waf-1` by the compose naming convention |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack), and its baseline rules then go through `suricata.py` |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1` |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none; on OpenStack they reach the same containers, `loot.py` over HTTP at the wargame host's published port and `effect.py` through the runner, which `docker exec`s into `corp-db` |
@@ -554,11 +554,25 @@ The terminal also records what the operator types. Kali's shell appends each
 command, with the current `/label/active` marker, to
 `/var/log/fsl/commands.log`. The platform reads it through
 `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
-On compose the red console frames `/terminal/<session id>/`, which nginx
-proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it frames
+The Kali pane (the red console's, and the blue console's in a lesson or
+scenario session) frames the URL the session API names (`kali_terminal` in
+`GET /api/sessions/<id>/`). On compose it is `/terminal/<session id>/`, which
+nginx proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it is
 `/vm-terminal/fsl-kali/?arg=<session id>`, a ttyd inside the platform that
 connects over ssh to the mgmt address of the host in the session's slot; on compose, Kali and the WAF have no mgmt address, so
 `/vm-terminal/` does not connect there.
+
+`vm-terminal.sh` checks the host key under the alias the platform's runner
+uses for the same server, `fsl-<server id>-<launch time>`
+(`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`: a
+server rebuilt by a reset is a new alias, so its new key is learnt without
+the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning, and a changed key under
+an alias already known is refused. It runs `bash --rcfile` with `-i` rather
+than a login shell: the rc file reads `/etc/profile` and `~/.profile` (so
+Kali's proxy variables, `FSL_TARGET` and the command log are as at a login),
+replaces `\h` in the prompt with the host's name without `fsl-`
+(`ubuntu@kali`, `ubuntu@waf`) and prints `/etc/motd`; with a command, sshd
+prints no Ubuntu login banner or last-login line. The hosts keep their names.
 
 The blue console's WAF pane frames the URL the session API names
 (`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
@@ -645,7 +659,11 @@ browse` sent by hand is just an unknown marker and is scored, and `POST
 /api/attacker/label/` refuses labels that start with `browse`. The API never
 shows the secret: `/detections/`, `/api/detections/<id>/` (including `raw`)
 and the Network panel show `browse` in its place. Kibana shows it, which is
-the blue team's tool. The red console has no site pane.
+the blue team's tool. The red console's Website pane is the same pane on
+the same session: in a wargame the attacker's browsing carries the session's
+secret too, so it is left out of `/score/` like the defender's, and the
+defender's Network panel lists it (open: the person-against-person wargame,
+4.2, is not built).
 
 A console HTTP case carries the `Host` of the session's wargame, `board.com`,
 whether or not an origin was chosen. Choosing an origin points traffic at the
@@ -876,7 +894,9 @@ language switch.
   sessions" lists the open ones, each closed through `ingest/` then
   `close/`. `GET /api/range/ready/` names `max_sessions`.
 - Session (`/session/<id>/`): header figures (the step a guided session
-  reached, objectives lost, target), the blue and red console cards, recent
+  reached, objectives lost, target), the blue console card and, for a
+  wargame session only, the red console card (Kali terminal, Website, the
+  objectives), recent
   cases from `GET /api/sessions/<id>/cases/`. Once closed: a scenario's
   verdict banner and its debrief ("Scenarios"), then the primary score
   (every tier, lost or kept, noticed or not, penalty difficulty x1 or x2),
@@ -889,14 +909,21 @@ language switch.
   scenario, the same unit (`{scenario, guidance: true, lesson, defense}`
   when `lesson_id` is set) or the same wargame.
 - Blue (`/blue/<id>/`): a rail (Kibana, Website, Map, Alerts for a
-  judgement scenario, IDS rules for a detection or unknown scenario, WAF, and
-  a link to Red) and the pane. On the WAF pane a banner names only the box
-  (`waf_box`, `fsl-<id>-waf`) and the CRS rules directory (`waf_rules`,
-  derived from `crs.EXCLUSIONS`).
-- Red (`/red/<id>/`): objectives (Korean names under `objective.<key>`) and
-  "Submit stolen hashes" at the top, cases grouped into attacks and benign
-  with what their last run did, the Kali terminal taking the rest. Narrow
-  widths stack the panels; the red and blue pages do not scroll sideways.
+  judgement scenario, IDS rules for a detection or unknown scenario, WAF,
+  then a divider and Kali) and the pane. Kali shows only when the session's
+  `kind` is `lesson` or `scenario`: in a `wargame` session a person attacks
+  from the red console and the defender does not hold the attacker's shell.
+  The Kali pane has its own frame, loaded once, so a running sqlmap survives
+  a switch to another pane. On the WAF pane a banner names only the box
+  (`waf_box`, `waf`) and the CRS rules directory (`waf_rules`, derived from
+  `crs.EXCLUSIONS`).
+- Red (`/red/<id>/`): the session and wargame name, the objectives (Korean
+  names under `objective.<key>`) and "Submit stolen hashes" at the top; a rail
+  with two panes, the session's Kali terminal and the Website pane (address
+  bar and developer tools, the blue console's own scripts). It runs no
+  prepared attack: no case list, run buttons, recording window or source
+  picker (2026-10-18). Narrow widths stack the rail above the pane; the red
+  and blue pages do not scroll sideways.
 
 In a guided session (a foundation or a worked scenario) the note floats over
 the pane at its top right, below the site toolbar or the WAF banner when one
@@ -1003,8 +1030,8 @@ up to 30 s: on OpenStack the pane is an ssh login whose prompt comes about
 10 s after `term`, and a paste before it is lost), calls
 `term.paste(command + "\n")` and then
 `term.input("\r")`, because bash keeps a bracketed paste's newline as text. A
-`kali` step's command is typed by the learner in the Red console's Kali
-terminal; it has no Run button.
+`kali` step's command is typed by the learner in the Kali pane, which the
+step opens (`point: {pane: true, opens: kali}`); it has no Run button.
 
 Help climbs a ladder per step (`<text>.nudge.<step>` from the page, the
 answer from the step's `progress.answer`): a nudge, then "Look at the spot
@@ -1100,7 +1127,7 @@ first visit.
 | f2 Sending a web request and reading its status code | `full` | searches in Korean in the Website pane and reads the status code in its developer tools (the Theory tab names the hops on the map; no step checks them) | the learner's own Website pane request: the status |
 | f3 Reading an HTTP request | `full` | the same request's method, path, parameter, status class | the same request record |
 | f4 Finding logs in Kibana | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
-| f5 Analysing an SQL injection in the logs | `full` | sends `' OR 1=1--`, names the host that stopped it from the developer tools' blocked badge and the rule that recognised it from its WAF record in Kibana; runs sqlmap in the Red console's Kali terminal and says how many requests it sent | the request record's blocked mark (the map's gateway, `waf`), the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
+| f5 Analysing an SQL injection in the logs | `full` | sends `' OR 1=1--`, names the host that stopped it from the developer tools' blocked badge and the rule that recognised it from its WAF record in Kibana; runs sqlmap in the Kali pane and says how many requests it sent (each sensor under its map name, `firewall` for `fsl-edge`) | the request record's blocked mark (the map's gateway, `waf`), the ModSecurity rule ids of the request (949110 gets its own explanation), the sensor's http records carrying the run's marker (within 10%) |
 | f6 Confirming an account leak | `missed` | reads the WAF's exclusion file, runs the same sqlmap, pastes the dumped table, says how many accounts leaked and how many objectives the first score counts lost | the WAF file in force, the loot matched against the session's snapshot, `result.objectives.lost` |
 
 `missed` is CRS paranoia level 1 with `ruleRemoveById` 949110 and 959100 and
@@ -1145,7 +1172,7 @@ labelling). The check passes when the sensor's http records carry the marker
 and the tool's user agent; it then records the run as an ordinary malicious
 case (`meta.kali`, no replay mark, so it counts in both scores like any other
 red action) and ingests the session. The marker is in the command rather than
-the proxy label because opening the Red console clears the label. `loot` takes the pasted table (`tools.dumped`,
+the proxy label, which the harness sets and clears around its own windows. `loot` takes the pasted table (`tools.dumped`,
 or `name:hash` and `| name | hash |` lines) and credits it as `POST /loot/`
 does, attributed to the kali case; `_credit_loot` keeps the matched
 accounts on the case it was attributed to (`meta.loot`).
@@ -1207,7 +1234,7 @@ A taken objective goes to a malicious case whose run overlaps the objective's
 window; among several, the one that started latest. The objective counts as
 detected only if that case was detected, and one that no case overlaps counts
 as undetected. Attribution is by time only: a case's
-`takes:` field is shown in the red console but not read by scoring.
+`takes:` field is not read by scoring.
 
 In the score's `objectives` block, `coverage` is detected difficulty over total
 difficulty, `null` when nothing was taken, and `false_positives` is FP.
@@ -1233,7 +1260,8 @@ Each `per_case` entry carries `expect` and `corroborated`. `corroborated` is
 true when `expect` appears, ignoring case, in the signature of some matched
 alert; a signature that also matched a benign case in the same session does
 not count. It is `null` when the case has no `expect`, which is always so for
-terminal cases: the red console sends none. A detected case that is not
+window cases recorded through `POST /api/sessions/<id>/cases/`, which carry
+none. A detected case that is not
 corroborated adds `score.warning.wrong_reason`.
 
 A case's `expect` is stored with the case when it is fired, so editing the

@@ -4946,3 +4946,124 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   holds no 500 or ERROR. `bin/select-tests` named all 32 acceptance files,
   so only `test/test_lesson.py` (the foundations' module) ran on the VM: 1
   passed in 88 s. Every session the runs opened (867-871) is closed.
+
+## 2026-10-18 — The red console is Kali and a browser; the blue console carries Kali for practice
+
+- **Rulings** (the user, 2026-10-18):
+  1. The red console offers no prepared attacks: every case runner is
+     removed from the UI (the case list, Run all, the per-case run buttons,
+     the recording and route controls). The red console is the Kali terminal
+     and a browser (the Website pane the blue console already has, pointed at
+     the target, with its address bar and developer tools), plus the session
+     header and the loot submission. The attack and benign cases, the harness
+     and the API endpoints the acceptance tests, `redteam/run.py` and the
+     scenario engine's automated attacker use stay.
+  2. The blue console's left menu gets a divider and, below it, a Kali
+     terminal pane (the same Kali terminal the red console uses). In lessons
+     and free practice the learner uses this one console for both sides;
+     there is no Kali-only view in lessons. In the real wargame (person
+     against person) the red player uses the red console and the blue player
+     the blue console.
+  3. No `fsl-` name the learner sees in the terminals or the UI (prompts,
+     banners, `fsl-edge` in lesson rows, `fsl-<id>-waf`), without renaming
+     the hosts or containers (that rename stays deferred, `docs/STATE.md`);
+     no "REMOTE HOST IDENTIFICATION HAS CHANGED" warning in the WAF terminal
+     after a rebuild, without weakening host-key checking for anything
+     outside the range.
+  4. P0: check whether the board's `/internal/auth-users` (every username and
+     password hash) is reachable from Kali or the Website pane; block it at
+     the right layer if it is.
+  5. The course is integrated attack and defence lessons, then free practice
+     (scenarios 1.1-4.1 with the automated attacker), then the wargame,
+     person against person. The lesson redesign is pending approval.
+- **Removed from the red console** (`red.html`): the case list (15 cases,
+  attacks and benign, with each one's last run and objective), Run all,
+  Attacks only, the per-case run button, the source-network picker, the box
+  addresses (target, proxy source, direct), the recording window (name,
+  route, attack checkbox, start/stop) and its status line, the run log, the
+  "covers these stages" line, and the clearing of a stale proxy label on load
+  (only the window set one). 54 string keys in each language went with them
+  (`red.cases*`, `red.baseline.*`, `red.box.*`, `red.window.*`, `red.log.*`,
+  `red.case.*`, `red.covers*`, `red.origin.*`, `stage.*`, `blue.nav.to_red`,
+  `session.tile.cases`, `session.tile.case_count`). Three learner lines
+  that named the red console now name the Kali pane; the score's
+  no-benign warning no longer says to press Run all.
+- **Kept, and why.** No endpoint is removed: each one the red console called
+  is used elsewhere. `/api/origins/` and `/api/attacker/origin/` by
+  `test/shared_sessions.py` and `test/conftest.py`; `/api/attacker/label/`
+  by `test/conftest.py`, `test/shared_sessions.py` and
+  `test/test_strategy_comparison.py`; `/api/sessions/<id>/attacks/` by
+  `test/` (`test_lesson`, `test_suppression`, `test_concurrent_sessions`,
+  `test_indiscriminate_defence`, `shared_sessions`), and the scenario engine
+  fires through the same `views._fire`; `/api/sessions/<id>/cases/` by
+  `redteam/harness.py`, the session page and the acceptance tests;
+  `/api/wargames/<id>/cases/` by the unit tests (`test_board_wargame`,
+  `test_api_redteam`, `test_lifecycle`, `test_session_close`), and it is the
+  case catalogue an API client fires from; `GET /api/attacker/` by
+  `platform/tests/test_origins.py`. `redteam/cases/` (attack and benign) and
+  the harness are unchanged.
+- **The red console now**: the session and wargame name, the objective
+  chips, "Submit stolen hashes" (shown for `loot_verified`), and a rail with
+  Kali (the session's `kali_terminal`) and Website (the blue console's
+  `blue_site_script.html`, `blue_dev.html` and `blue_dev_script.html`). It
+  still checks the objectives every 10 s (`POST /objectives/`).
+- **The Kali pane in the blue console.** Below a divider in the rail, in its
+  own iframe loaded once, so a running sqlmap survives a switch to Kibana. It
+  shows when the session's `kind` is `lesson` or `scenario` and is hidden
+  when it is `wargame`. How that was decided: `kind` is the one field that
+  types a session (`_described`: `scenario` when `course_scenario` is set,
+  `lesson` when `guidance` is set, otherwise `wargame`); a wargame session
+  is the one opened without guidance from the home card's "Start wargame",
+  the shape a person-against-person game takes (4.2, `red: person`). The
+  defender there must not hold the attacker's shell. The Red link at the
+  bottom of the rail is gone (in practice it is replaced by the pane; in a
+  wargame it would hand the defender the shell), and the session page shows
+  the red console card only for a wargame. F5's and F6's `sqlmap` steps now
+  open the Kali pane (`point: {pane: true, opens: kali}`, "Open Kali in the
+  left menu."). `GET /api/sessions/<id>/` names `kali_terminal` (the URL the
+  red console used to read from `GET /api/attacker/`).
+- **`fsl-` names.** `waf_box` is `waf` (was `fsl-<id>-waf`, the WAF
+  banner). The Kali step's requests row names each sensor by its map name
+  (`maps.learner(...).shown`: `firewall`, not `fsl-edge`). On OpenStack
+  `vm-terminal.sh` runs `bash --rcfile <(...) -i` over `ssh -t`: the rc file
+  reads `/etc/profile` and `~/.profile` (Kali's proxy variables,
+  `FSL_TARGET` and the command log as at a login; checked live: the command
+  reached `commands.log`), replaces `\h` in the prompt with the host name
+  without `fsl-` (`ubuntu@kali`, `ubuntu@waf`) and prints `/etc/motd`; with
+  a command sshd prints no Ubuntu banner or last-login line. Kali's motd
+  ("FSL red team box", the red window) is rewritten. Compose's prompts were
+  never `fsl-` (the container id), and its Kali shows the same motd.
+- **Host keys.** `vm-terminal.sh` had `StrictHostKeyChecking=no`, which still
+  printed the changed-key warning after every reset's rebuild. It now uses
+  `HostKeyAlias=fsl-<server id>-<launch time>`, the alias the platform's
+  runner already pins each server under (`OpenStack.host_key_alias`), with
+  `accept-new`: a rebuilt server is a new alias, its key is learnt silently,
+  and a changed key under a known alias is refused. Nothing outside the
+  range's terminals changes.
+- **P0, `/internal/auth-users`: not reachable; nothing to block.** Read-only,
+  2026-10-18 on the live range (slot 1, before the deploy), from Kali through
+  the platform's runner, with and without Kali's proxy, `curl --path-as-is`:
+  `http://board.com` with `/internal/auth-users`, `//internal/auth-users`,
+  `/internal%2fauth-users`, `/%69nternal/auth-users`,
+  `/internal/./auth-users`, `/x/../internal/auth-users`,
+  `/INTERNAL/auth-users`, `/internal/auth-users/`, `?x=1` and `;x`: 404 every
+  time, and `Host: not-board` to the WAF's address 404; every other range
+  address Kali knows (the edge's 30 origin gateways, estate and mgmt, the
+  WAF's estate 80 aside, the wargame host's estate and mgmt, the platform's
+  mgmt) on 8000 and 80: no connection (`000`), the WAF's estate 80 the WAF's
+  own 404. Through the Website pane's proxy (`:8002/site/874/<host>/...`,
+  hosts `board.com`, `board` and `10.30.0.63`, the same path variants): 404
+  from the WAF (`Via: waitress`, the WAF's `nginx` 404 page); the proxy
+  always sends to the session's WAF whatever host is named. The layers that
+  hold: the WAF's `location /internal/ { return 404; }` in both `server`
+  blocks (`deploy/waf/range.conf`, nginx normalises the path before matching)
+  and the `fsl-mgmt` security group (2026-10-12). The tests that hold them
+  already exist: `platform/tests/test_internal_blocked_at_waf.py`,
+  `test/test_board_exfil.py` (two cases from Kali) and
+  `test/test_attacker_reach.py`; no test added. The board answers
+  `/internal/auth-users` with no authentication of its own (`docs/STATE.md`
+  backlog), so the WAF rule and the security group are the only guards.
+- **Open.** In a wargame both players' Website panes share the session's site
+  log and marker: the defender's Network panel lists the attacker's
+  requests, and the attacker's requests through the pane are left out of
+  `/score/` like browsing. Neither matters until 4.2 is built.
