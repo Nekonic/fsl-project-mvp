@@ -4,8 +4,8 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-17 (Korean-first learner text and its review, branch
-`ko-first` at 16e951d; before it, learner text is plain, proven live on
+Updated: 2026-10-18 (Korean-first learner text, its review and its live
+sweep, at 6b72876; before it, learner text is plain, proven live on
 9674d0e). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
@@ -26,16 +26,17 @@ Updated: 2026-10-17 (Korean-first learner text and its review, branch
   F5 retargeted
   (2026-10-16), plus the three fixes its live run forced (F5 reads
   `rule_id`; a passed Kali step keeps its count; the popover is placed again).
-  This branch (`ko-first`) adds two commits on 836ab11, not pushed: the
-  Korean-first learner text (6e3a2f0) and its review (16e951d).
+  This branch (`ko-first`) adds on 836ab11, not pushed: the
+  Korean-first learner text (6e3a2f0), its review (16e951d), the docs sweep
+  and the Korean line-break fix its live sweep forced (6b72876).
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
-  times on 2026-10-16 and ten times on 2026-10-17 by `bin/cloud up --replace
+  times on 2026-10-16, ten times on 2026-10-17 and twice on 2026-10-18 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs 9674d0e with the
-  platform and gns3 images built from it and the kali image from 1fd5be3, tagged 8f9acb0
+  platform VM's rebuild runs an unpushed commit"): it runs 6b72876 with the
+  platform image built from it, the gns3 image from 9674d0e and the kali image from 1fd5be3, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
   images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
@@ -105,8 +106,15 @@ Updated: 2026-10-17 (Korean-first learner text and its review, branch
   zones; 16e951d reviewed all 951 Korean values again (61 changed) and
   retitled F2 "Sending a web request and reading its status code" (Korean
   likewise). No answer key, check fact or placeholder
-  changed. Not deployed: the VM still runs 9674d0e; no `docs/DECISIONS.md`
-  entry yet.
+  changed. Proven live 2026-10-18 (`docs/DECISIONS.md` "Korean-first
+  learner text and docs"): the sweep on 1fc2bc8 found Korean words broken
+  mid-word in the coach and the red console's sqlmap labels cut to one
+  prefix, fixed in 6b72876 (`word-break: keep-all` for Korean; the label
+  wraps); the VM runs 6b72876 (platform from it, gns3 from 9674d0e, kali
+  from 1fd5be3; 9 min 19 s); the sweep again: 72 of 72 step views boxed,
+  Skip 6 of 6, no clipped text, no forbidden learner word, the Korean map
+  captions drawn without overlap, console third-party only, platform log
+  clean. No acceptance ran (drawing text and strings only).
 
 ## Waiting for the user
 
