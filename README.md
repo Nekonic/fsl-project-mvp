@@ -188,7 +188,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 |---|---|---|
 | 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (on OpenStack, to its slot's WAF over `mgmt`) | the iframe in a person's browser |
-| 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Topology pane (tab Network map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
+| 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
@@ -412,7 +412,7 @@ reports what is in the WAF's file.
 
 The home page lists six foundations for learners new to networks, each opened
 by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
-F1 reads the range's map in the Topology pane, F2 reads the hops a request
+F1 reads the range's map in the Map pane, F2 reads the hops a request
 passes through on that map and one Korean search's status code in the Website
 pane's developer tools, F3 reads its method, path, parameter and status code,
 F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
@@ -437,14 +437,14 @@ opens on a briefing (situation, goal, how it is measured, time); a strip shows
 the time left, customers blocked and alerted requests per minute, and objectives lost;
 an attack schedule the learner does not see fires through the normal path,
 and a dump it gets counts in the first score when the board's accounts match.
-"I'm done" (or the schedule) opens a final check of a few minutes, judged by
+"Start final check" (or the schedule) opens a final check of a few minutes, judged by
 task class: judgement passes when every alerted item listed at its start is
 judged right (blocked customers are reported, not counted); availability and
 unknown when no customer is blocked and every attack is held (2.3 also needs
 anomaly thresholds of at most 5/4); detection when every attack draws a
-corroborated Suricata alert and no customer request does. `1.1` "A quiet shift" asks the learner to judge each request
+corroborated Suricata alert and no customer request does. `1.1` "Telling customer requests from attacks" asks the learner to judge each request
 that drew an alert, customer or attack and whether it got the data
-(`/api/sessions/<id>/triage/`); `2.1` "Korean searches blocked" asks for the
+(`/api/sessions/<id>/triage/`); `2.1` "Fixing false positives on Korean search" asks for the
 customers a PL3 WAF refuses to be served without letting sqlmap through. The
 rest of the course follows by task class: `1.2` and `1.3` judge alerts when an
 inherited exception lets sqlmap take the accounts (1.3 also the kind of each

@@ -59,7 +59,7 @@ def test_a_closed_session_reports_what_was_taken_and_what_the_defence_judged_cou
         "lost and unnoticed costs double the difficulty"
     )
     assert english("score.attacks", 8, 7) in result["judged"]
-    assert english("score.attacks_missed", 1, "board-sqli-orderby-sqlmap") in result["judged"]
+    assert english("score.attacks_missed", 1, english("case.board-sqli-orderby-sqlmap")) in result["judged"]
     assert english("score.benign", 4, 3) in result["judged"]
     assert english("score.one_case_once") in result["judged"]
     assert english("score.not_corroborated", 7, 1) in result["judged"]
