@@ -281,6 +281,23 @@ def test_a_step_that_points_at_the_pane_is_highlighted_whichever_pane_is_open(cl
     assert seen["result"] == {"shown": True, "target": "pane", "missing": False, "placed": True}, (
         "opening a pane again clears the popover's place; it is placed again, not left over the rail")
 
+def test_pressing_a_step_s_filter_again_reloads_kibana_so_a_record_ingested_since_shows(client):
+    seen = open_page(client, "/blue/1/", setup=coached() + """
+let reloaded = 0;
+pane.contentWindow = {location: {reload: () => { reloaded += 1; }}};
+""", scenario=f"""
+      {to("find")}
+      const chip = () => document.querySelector('#coach-pop-act [data-act="chip"]');
+      chip().click();
+      const first = {{src: browser.element('pane-frame').getAttribute('src') || browser.element('pane-frame').src, reloaded}};
+      chip().click();
+      return {{first, again: reloaded}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["first"] == {"src": "/kibana/app/discover#/?narrowed=find", "reloaded": 0}
+    assert seen["result"]["again"] == 1, "the same address is not a navigation; Discover shows what it fetched first"
+
 POLLED = ("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/")
 
 def test_only_an_open_session_s_lesson_and_network_panel_keep_polling(client):
