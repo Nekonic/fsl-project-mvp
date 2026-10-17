@@ -4913,3 +4913,36 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   holds (core_loc 580; tests 1057 -> 1063, reported). `bin/select-tests`
   named all 32 acceptance files (no acceptance test names the changed
   files); the one that exercises foundations is `test/test_lesson.py`.
+- **Run in terminal, two faults the live run found.** 2ea48a5 removed
+  `runCommand` with Do it for me but left the button's listener, so "Run in
+  terminal" (F6's first step) threw a ReferenceError and did nothing
+  (c7a69c5 restores it; its two lines no longer speak of nginx's 'test is
+  successful' or of the platform applying an exception). On OpenStack the
+  WAF pane is an ssh login (`vm-terminal.sh fsl-waf`) whose prompt comes
+  about 10 s after ttyd's `term`; the command pasted at once was lost
+  (26c1c80: the console waits up to 30 s for a last line ending in `$` or
+  `#`, then pastes). Unit tests: 1063 -> 1065.
+- **Proven live 2026-10-18** (OpenStack, platform VM 192.168.0.210; kali
+  image 1fd5be3, gns3 9674d0e, platform built from each commit). a9bab72
+  deployed by `bin/cloud up --replace --sideload` in 9 min 12 s; migration
+  0027 ran on the restored store (session 866's F1 records moved under
+  `f1`, its `lessons` written). Headless Playwright (Chromium, 1600x1000,
+  Korean), F1 started from the catalogue. Sessions 867-869 found walker
+  faults (it answered before the coach had moved on) and the dead Run
+  button; c7a69c5 deployed in 9 min 16 s; session 870 ran F1-F6 in one
+  session (a walker restart in F6, no close) and found the lost paste;
+  26c1c80 deployed in 9 min 45 s. Session 871, one browser, no restart:
+  opened 17:59:26 UTC, closed by the console after F6 at 18:04:39, 5 min
+  13 s; 27 of 27 steps passed, no wrong answer, hint or skip; per lesson F1
+  14 s, F2 13 s, F3 17 s, F4 44 s, F5 65 s, F6 110 s; each next lesson
+  started 6.5-9.4 s after the previous one's last answer (the switch, its
+  seed replay, the reload), on its Theory card. F5's Kali step moved on by
+  itself and the requests step showed "요청 1539건 (fsl-edge 1539)", answered
+  1539. F6's switch applied `missed` in place: the WAF file Run in terminal
+  printed held `ruleRemoveById=949110` and `959100`, sqlmap dumped admin,
+  jiwoo and minseo, and loot, leaked (3) and lost (3) passed; the session
+  page shows 3/3 lost. `/api/range/ready/` every 5 s: slot 1 IN_USE from
+  open to close and READY after it, no reset in between; the platform log
+  holds no 500 or ERROR. `bin/select-tests` named all 32 acceptance files,
+  so only `test/test_lesson.py` (the foundations' module) ran on the VM: 1
+  passed in 88 s. Every session the runs opened (867-871) is closed.
