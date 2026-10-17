@@ -49,6 +49,20 @@ function wafTerminal() {
 
 const settled = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const PROMPT = /[$#]\s*$/;
+const PROMPT_WAIT_TRIES = 60;
+
+function lastLine(term) {
+  const buffer = term.buffer && term.buffer.active;
+  if (!buffer) return null;
+  for (let row = buffer.length - 1; row >= 0; row -= 1) {
+    const line = buffer.getLine(row);
+    const text = line ? line.translateToString(true) : "";
+    if (text.trim()) return text;
+  }
+  return "";
+}
+
 async function terminalWhenOpen() {
   for (let tries = 0; tries < 20; tries += 1) {
     const term = wafTerminal();
@@ -58,11 +72,20 @@ async function terminalWhenOpen() {
   return null;
 }
 
+async function promptShown(term) {
+  for (let tries = 0; tries < PROMPT_WAIT_TRIES; tries += 1) {
+    const line = lastLine(term);
+    if (line === null || PROMPT.test(line)) return true;
+    await settled(500);
+  }
+  return false;
+}
+
 async function runInTerminal(text) {
   const tab = document.querySelector('.pane-tab[data-pane="waf"]');
   if (tab.getAttribute("aria-selected") !== "true") openPane(tab);
   const term = await terminalWhenOpen();
-  if (!term) return false;
+  if (!term || !(await promptShown(term))) return false;
   term.paste(`${text}\n`);
   if (typeof term.input === "function") term.input("\r");
   if (typeof term.focus === "function") term.focus();
