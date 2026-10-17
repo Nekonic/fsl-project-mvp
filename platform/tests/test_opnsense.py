@@ -151,3 +151,14 @@ def test_the_lines_the_edge_printed_are_read_back_and_a_stopped_sensor_or_empty_
     assert not opnsense.wan_rule_loaded("fsl-edge wanrule 0\n")
     assert opnsense.held("sh: php: not found\n") == set()
     assert opnsense.booted("") == ""
+
+
+def test_the_configured_edge_carries_the_models_its_early_boot_templates_read():
+    root = _rendered()
+
+    missing = [path for path in ("dnsmasq/enable", "OPNsense/Syslog/general/enabled",
+                                 "OPNsense/unboundplus/general/enabled") if root.find(path) is None]
+    assert not missing, (
+        f"{missing}: OPNsense renders every template at early boot, before its migrations fill a model's "
+        "defaults, and logged 'Generating configuration: templates...failed' on each boot"
+    )
