@@ -4494,3 +4494,66 @@ both estate sensors start with no `af-packet` warning; the WAFs', Kalis' and
 wargame hosts' journals hold no error and no container restarted; the
 console sweep (session 655, en and ko) shows only the third-party messages
 above.
+
+## 2026-10-17 — The coach finds every step's target
+
+The user: in the blue console the coach said "the highlighted spot is not on
+screen ... Kibana may still be loading" on F1 step 2 with the Topology map in
+view, and on other steps too. A headless sweep (Playwright, Chromium, 1440x900)
+opened every foundation F1-F6 and both stepped scenarios (1.1, 3.1) on the
+platform VM, in Korean and English, went to each step, opened the pane the
+step names (or pressed its Kibana filter), and read where the red box was.
+Screenshots of every step are in the session's scratchpad (`coach/`).
+
+| Step | `point` | Before (fba99ae) | Cause | Fix |
+|---|---|---|---|---|
+| F1 entry, logs, segment | `pane`, `opens: topology` | no box, "Kibana may still be loading", ko and en | a `pane` step was measured on `#pane-frame`, the Kibana/WAF iframe, hidden while the topology, site, Judge or rules pane is open | the pane is `#pane-body`, the area every pane is drawn in (2ea48a5) |
+| F5 sqlmap, requests; F6 sqlmap, loot, leaked, lost | `pane` | boxed only while the Kibana or WAF frame was open; none on Topology or Website | the same | the same |
+| every step with no target in view | — | the line always blamed Kibana | a fixed string | `lesson.coach.missing` takes `{0}`, the rail label of the step's pane (2ea48a5) |
+| F5 stopped (en) | `panel: #site-dev-toggle` | the popover sat at its static place over the rail and the address bar; the Website button could not be clicked | each pane switch ran `triageDock`, whose `dockedIn` reset the popover's `left`/`top` even when it did not move; the coach places it again only when its target moves | `dockedIn` leaves an element already in place alone (ef864c1) |
+| every Next and Skip | — | found on the first deploy of the fix: 124 `database is locked` 500s over one sweep, and the skip of F1 entry and 1.1 open was lost | Next posts the left step's skip and the next step's reach at once; each is a read-then-write transaction, and under SQLite's DEFERRED begin the second to upgrade its lock deadlocks and gets SQLITE_BUSY at once, without the 30 s busy timeout (two threads on a file database: DEFERRED fails in 0.21 s, IMMEDIATE commits both) | `transaction_mode: IMMEDIATE` (Django 5.1+) (39750bb); none since |
+| F4 find (ko) | `kibana: docTableExpandToggleColumn` | "No results" in Discover; pressing the filter four more times over 100 s did not change it | the filter was pressed 2 s after the probe; the WAF record is searchable after about 6 s (measured); the same address again is a fragment navigation, which does not refetch | the filter (and the Kali step's Kibana link) reloads the frame when it already shows that address (e331372) |
+
+The GNS3 web UI and the website are other origins (their own ports), so
+nothing inside them is looked up; their steps point at the pane. `kibana` and
+`first` are looked up only in the Kibana frame, the one same-origin frame,
+and a step that names them must `opens: elk`.
+`test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`
+(extended from the foundation-only panel check) holds every `point` of every
+foundation and stepped scenario to the rendered console; a pane step is
+boxed whichever pane is open, and stays placed when the pane is opened again;
+pressing a filter again reloads Kibana.
+
+**Skip replaces "Do it for me".** The user: replace it with Skip, and remove
+do-for-me entirely. The last rung of the hint ladder is now Skip
+(`lesson.skip`, "Skip" and its Korean in `strings.html`; `lesson.SKIP_OFFERED`): it records the
+step skipped through the step-record API that Next already uses and moves on;
+on the last step it records the skip and closes the popover. Nothing is
+entered, fired, applied or credited for the learner, so a later step that
+reads a skipped step's record stays unanswerable (`lesson.check.unrecorded`)
+until the learner does that step or skips it too. Removed: `POST
+/api/sessions/<id>/lesson/steps/<step>/do/` (`views.lesson_step_do`,
+`_put_rule`, `_kali_do`, `_loot_do`), the `do` hint level,
+`progress.done_for_me` and `help_counts.done_for_me`,
+`views.SERVER_ONLY_STEP`, the rules step's `rule:` and the sent steps' `site:`
+in `scenario.yaml` (read only by do-for-me), and the strings `lesson.do`,
+`lesson.helped`, `result.helped.do`. `result.scenario.helped` is `["hint"]` or
+empty.
+
+**Proven live** on the platform VM (192.168.0.210), deployed by `bin/cloud up
+--replace --sideload` (platform image from each commit, gns3 from 1efa522):
+ef864c1 in 24 min 43 s, 39750bb in 8 min 36 s, e331372 in 8 min 47 s. The sweep on
+39750bb: 72 step views (36 steps, ko and en), 71 boxed on the step's own
+target; the 72nd, F4 find in Korean, is the reload above. The six pane steps
+without `opens`, viewed again on the Topology pane: 12 of 12 boxed. Skip on
+one step of each kind (F1 entry answer, F4 search sent, F4 engine choice, F5
+sqlmap kali, 1.1 open click, 3.1 rules click): offered after the fourth hint,
+labelled with the Korean `lesson.skip`, recorded skipped and not passed, the coach on the next step,
+6 of 6. No popover over the rail; no `database is locked` since 39750bb.
+The sweep again on e331372: 72 of 72 step views boxed (69 on their own step;
+the other three are English views of sent steps the Korean pass had already
+passed in the same session, so the coach opened past them), 12 of 12 pane
+steps boxed on Topology, F4 find in Korean boxed after one more press of the
+filter (the reload), Skip 6 of 6 as above, no popover over the rail, no
+`database is locked` and no 500 in the platform log; every session the sweeps
+opened (657-686) closed.

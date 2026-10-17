@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-17 (errors swept before the push, proven live on fba99ae). Written for a session that has the cloud
+Updated: 2026-10-17 (the coach finds every step's target; Skip replaces Do it for me; live on e331372). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -27,9 +27,9 @@ Updated: 2026-10-17 (errors swept before the push, proven live on fba99ae). Writ
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
-  times on 2026-10-16 and four times on 2026-10-17 by `bin/cloud up --replace
+  times on 2026-10-16 and seven times on 2026-10-17 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs fba99ae with the
+  platform VM's rebuild runs an unpushed commit"): it runs e331372 with the
   platform image built from it and the gns3 image from 1efa522, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
@@ -68,6 +68,13 @@ Updated: 2026-10-17 (errors swept before the push, proven live on fba99ae). Writ
   third-party or expected. `bin/verify` there on fba99ae: unit 1469 passed, no
   warnings; acceptance 45 passed, 0 failed, 30 skipped (all Docker-only) in
   751 s; the sweep after it clean.
+- The coach finds every step's target (2026-10-17, `docs/DECISIONS.md` "The
+  coach finds every step's target"): a pane step is boxed on `#pane-body`
+  whichever pane is open, the not-found line names the step's pane, the
+  popover stays placed across pane switches, a pressed Kibana filter reloads,
+  SQLite transactions begin IMMEDIATE (Next/Skip lost records to `database is
+  locked`); Skip replaces "Do it for me" (`.../do/` removed). Live sweep on
+  e331372, ko and en: 72 of 72 step views boxed, Skip 6 of 6 recorded.
 
 ## Waiting for the user
 
