@@ -115,7 +115,7 @@ if ! docker compose restart platform >/dev/null 2>&1; then
   stack_down 'platform could not be restarted — docker compose up -d --build'
 fi
 for _ in $(seq 60); do
-  curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/sessions/?state=open" && break
+  curl -fs -o /dev/null --max-time 5 "$PLATFORM/api/sessions/?state=open" && break
   sleep 1
 done
 if curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/sessions/?state=open"; then
