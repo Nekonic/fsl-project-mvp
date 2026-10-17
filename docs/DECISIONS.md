@@ -4410,3 +4410,87 @@ database by pytest-django in a later one
 `close_old_connections` is caught and logged on its own; the unit conftest
 stubs `ensure_running` for every test (tests drive `tick` directly), and one
 test holds that a failing cleanup does not end the loop.
+
+## 2026-10-17 — Errors swept before the push
+
+The user: before pushing, every error must be caught. Swept on 2026-10-17:
+the unit run with every warning shown (`-W default`, `PYTHONDEVMODE=1`,
+tracemalloc); the platform VM at 6234510 since its deploy (compose logs of
+every service, `fsl-platform.service`, chrony, cloud-init, the boot journal);
+each slot's WAF, Kali, wargame host containers and OPNsense edge through the
+platform's own runners; the console in headless Chromium (home, blue panes,
+red, session page, en and ko, one session opened and closed); and the skip
+reasons of the last acceptance run.
+
+| Found | Where | Cause | Fix |
+|---|---|---|---|
+| `database is locked` in a scenario tick during the first prune | platform log | one session's cascade (up to hundreds of thousands of detections) deleted in one transaction held the write lock past the 30 s busy timeout | retention deletes detections and customer requests 2,000 rows per transaction, then the session (7dd9ab9) |
+| 80 `Could not close node ... No such file or directory: 'docker'`; 52 display containers left running; stale container names; UDP ports kept | gns3 log | GNS3 closes a docker node with `docker exec`; the image had no docker client | the gns3 image installs Debian's `docker-cli` 26.1.5 (API 1.45; the daemon accepts 1.44 and up) (c98f649) |
+| 12 `Controller not found error ... (DELETE)` | gns3 log | publishing DELETEd a project GNS3 never held; GNS3 logs each 404 at ERROR | the platform lists projects and deletes only a listed one; `status()` reads the list (c98f649) |
+| `failed to put data stream: no matching index template found for data stream [fsl-logs]` | collector log | Filebeat names a data stream after its template (`fsl-logs`), outside the pattern `fsl-logs-*`; once per fresh Elasticsearch | `setup.template.pattern: fsl-logs*` (58f3b73) |
+| nginx `connect() failed (111: Connection refused)` (502); `curl: (22) ... 502` in `bin/verify` | platform log, verify log | nginx started before waitress listened | nginx is tested, then started once 127.0.0.1:8001 accepts; the restart poll no longer prints the failures it waits through (c86983d) |
+| 17 `[warn] an upstream response is buffered to a temporary file` | platform log | detections and score responses outgrow nginx's memory buffers | `proxy_max_temp_file_size 0` (c86983d) |
+| `af-packet: ens3: AF_PACKET tpacket-v3 is recommended for non-inline operation` | estate sensor, both slots | `ens3` matched no `af-packet` entry and there was no `default`, so Suricata used built-in values and skipped its tpacket-v3 default | a `default` entry (d0d23ac); deploy 1 showed it never reached the hosts: the wargame host stays standing across resets and had the config only from its image, so every sensor start now writes the platform's `suricata.yaml` to the host first (1efa522) |
+| `Implicitly cleaning up <HTTPError 503>`; unclosed `records.jsonl` | unit run | Kibana bring-up kept a not-ready HTTPError open; the customers never closed their records file | closed; `Customers.run` joins its workers, then closes the file (e2e399c) |
+| 47 `ResourceWarning`s: sockets, files, SQLite connections | unit run | test fixtures that shut servers down without `server_close()`, unclosed socketpairs, an sshd log handle, in-memory store copies, a request thread's connection | each closed in its test (e2e399c); the importer test now joins its console thread before its sockets close, which the VM's Python 3.12 run caught (`Bad file descriptor`; aa03264) |
+| `GitPython is not installed. Cannot clone repository`; `Failed to initialize skills repository` | gns3 log, every first start | 3.1's copilot (installed with `[ai-features]`, without which the server does not start) clones `github.com/gns3/gns3-skills` at start; 3.1.0a6 reads no setting to turn it off | the image sets the copilot's `enabled` to `False` in `skills_config.py`, and the build fails if the line is gone (60a7197); the 2026-10-13 note that it "logs an error and fetches nothing" is superseded |
+| `kibana answered 415 to .../api/saved_objects/_import?overwrite=true: Unsupported Media Type`; the Kibana pane's data view and saved search were never imported | platform log, deploy 2 | bring-up retried only 502, 503 and 504; a starting Kibana answers `/api/status` 503 but a multipart import 415 (measured: 503/415 for about 7 s, then 200/200), so bring-up gave up; it showed once `--force-recreate` started Kibana beside the platform, as every fresh VM boot does | bring-up asks `/api/status` first and imports only once it answers (d41cec2) |
+| `Generating configuration: templates...failed` at every edge boot, both slots | OPNsense system log | the early-boot hook `rc.syshook.d/early/15-templates` renders every template before OPNsense's migrations fill model defaults; our config.xml had no `dnsmasq`, `Syslog/general` or `unboundplus`, so three templates raised (`'dnsmasq' is undefined`, measured by re-running the generator on the edge against the pre-boot copy in `/conf/backup`); each service rendered its own templates again as it started, so nothing ran misconfigured | config.xml carries the 26.7 defaults for the three models, copied from a migrated edge without `persisted_at` (fba99ae); the edge image is rebuilt for it |
+| the collector still logged the data stream error after the first deploy of the fix | collector log, deploy 1 | a sideloaded rebuild checks HEAD out under running containers; a bind-mounted file keeps the cloned commit's copy, and `compose up -d` recreated only the services whose image changed | `compose up -d --force-recreate` after a sideload (ac339c2); the fix itself was proven on a throwaway Elasticsearch 8.15.0: `filebeat setup --index-management` failed with the old pattern and created `fsl-logs` with the new |
+
+Third-party, no action: Kibana 8.15.0's one start-up `ERROR` from
+`plugins.elasticAssistant` ("Platinum, Enterprise or trial license needed";
+the plugin has no setting to turn it off, and the cluster runs the basic
+licence) and its start-up `WARN`s for unset encryption keys, cookies over
+http, legacy OpenSSL, the reporting privilege default, the screenshotting
+sandbox and task manager capacity; Elasticsearch's JVM `COMPAT locale
+provider` warning; Kibana's own CSP, COOP and `Permissions-Policy` console
+messages and its `user_profile` 404 with security off; ttyd 1.7.7's
+`unknown option: arg` and its `beforeunload`; GNS3 web UI's cross-origin
+autofocus; headless WebGL stalls; uBridge's `netlink ... attribute type 7`
+kernel lines; GNS3's advice on inotify limits and compute authentication;
+Ubuntu cloud image boot messages (GPT before growpart, MMCONFIG, IMA,
+`EXTRA_OPTS`, `dnsmasq`); an OPNsense kernel notice `Limiting ICMPv6
+destination unreachable output` 5 s after its 03:01 `periodic daily` syslog
+archive (the sender is not established; nothing failed). Expected, not
+faults: 409 on open while a slot is taken or resetting (acceptance waits on
+it), 409 on closing a closed session (acceptance's teardown), 400 for a rule
+that does not parse and the edge's matching `suricata -T` errors, 404 for an
+unknown case. Each `django.request` line is printed twice (Django's DEBUG
+console handler and waitress's root handler), which is format, not an error.
+
+Acceptance skips: all 30 of the last run skip with "exercises the compose
+range; the scored range here is openstack" (test_concurrent_sessions 2,
+test_ready 2, test_topology 2, test_window_correlation 3, test_board_exfil 4,
+test_event_time 2, test_judge_isolation 4, test_segmentation 3,
+test_terminal 1, test_attacker_box 2, test_front_door 3, test_operator_log 1,
+test_strategy_comparison 1): Docker-substrate tests by design. None skips for
+a missing fixture, an unreachable host or a range not ready.
+
+Tests added only where a defect was real: retention deletes in batches;
+publishing a project GNS3 does not hold sends no DELETE; the gns3 image has
+the docker client and fetches no skills; Filebeat's template pattern covers
+its template name; a sideload recreates every service; a sensor start
+carries the sensor config; Kibana bring-up waits for its status; the edge
+config carries the three models.
+
+**Proven live 2026-10-17** (OpenStack, platform VM 192.168.0.210). Four
+deploys by `bin/cloud up --replace --sideload platform=... --sideload
+gns3=...`, each found what the next fixed: e2e399c in 13 min 30 s, 1efa522 in
+8 min 31 s, d41cec2 in 8 min 33 s, and the final fba99ae in 14 min 33 s
+(the edge image rebuilt for its config); all exit 0 with both slots READY.
+The platform image was built on the VM from each HEAD; the gns3 image from
+1efa522, whose `deploy/gns3` is HEAD's (1814e5c's no longer is). `bin/verify`
+on fba99ae (`FSL_PLATFORM_URL=http://192.168.0.210:8000`, the `.venv` made by
+hand): unit 1469 passed, no warnings; acceptance 45 passed, 0 failed, 0
+errors, 30 skipped (the reasons above) in 751 s; ratchet holds (core_loc
+580, tests 1062); 885 s in all. The sweep after it: the platform log holds
+only the expected 409, 400 and 404 lines; the gns3 log no error, its four
+maps' 28 display containers and none exited; the collector logged nothing;
+Elasticsearch and Kibana only the third-party lines above; both edges booted
+with `templates...done` (the earlier `failed` lines in the same day's log are
+the deploys before the fix and the generator run against the pre-boot copy);
+both estate sensors start with no `af-packet` warning; the WAFs', Kalis' and
+wargame hosts' journals hold no error and no container restarted; the
+console sweep (session 655, en and ko) shows only the third-party messages
+above.
