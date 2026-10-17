@@ -21,8 +21,9 @@ for compose in wargames/*.yaml; do
 done
 
 if [ -f loaded ]; then
+  install -d -m 0700 /var/lib/fsl
   while read -r image id url; do
-    curl -fsS --retry 5 --retry-all-errors -o /var/lib/fsl/loaded.tar "$url"
+    curl -fsS --retry 5 --retry-all-errors -H "Host: localhost" -o /var/lib/fsl/loaded.tar "$url"
     docker load -q -i /var/lib/fsl/loaded.tar
     rm /var/lib/fsl/loaded.tar
     [ "$(docker image inspect --format '{{.Id}}' "$image")" = "$id" ]
