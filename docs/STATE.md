@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-13
+Updated: 2026-10-17
 
 ## Where things stand
 
@@ -26,15 +26,16 @@ sub-project B, done 2026-10-04). Juice Shop, the internal wiki and the
 `self_judged` objective model were removed on 2026-10-04 (objective-model
 Phase 4).
 
-`bin/verify` prints the scores; they and the baseline are in `metrics.json`,
-not copied here.
+`bin/measure` (and `bin/verify`) prints the metrics; the baseline is in
+`metrics.json`, not copied here.
 
 The loop runs in a browser. Open `/`, start a session, and open the red and
 blue consoles side by side. The red console fires cases and holds the Kali
 terminal; an attack typed there between Start and Stop is attributed by time,
 source address and the proxy's marker. The blue console is a sidebar that
-frames the real tools (Kibana, a WAF terminal, and a Website pane: a site
-browser with a Network panel) and calls `/api/` for the session, the site's
+frames the real tools (Kibana, a WAF terminal, a Website pane: a site browser
+with developer tools, and the Map pane: the GNS3 map, read-only) and calls
+`/api/` for the session, the site's
 requests, the steps and hints of a foundation or worked scenario, a scenario's status and triage, ingest and
 detections. The only rule editor is the Suricata one the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusions, level and anomaly thresholds. The session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
@@ -96,7 +97,7 @@ All four phases are committed and `bin/verify` is green.
   view branches, `members.json`, `wargames/juice-shop/`. Sessions stored with
   `scenario: juice-shop` keep their rows (migration 0013 only moves the
   default to `board`).
-- **The `tests` floor was lowered 1252 -> 1196 under the user's Phase 4
+- **The `tests` baseline (gated until 2026-10-16) was lowered 1252 -> 1196 under the user's Phase 4
   authorisation** (one of several authorised reductions, each recorded in
   `docs/DECISIONS.md` and `metrics.json`; this one is itemised in its commit
   message): about 64 Juice/wiki-only tests were deleted, one more
@@ -148,7 +149,7 @@ two).
 Audit cleanup committed (2026-10-02). A 10-slice over-reach
 audit (a workflow, each finding adversarially re-verified) flagged 26 items;
 the user asked for all. 23 were removed, test-first, `bin/verify` green:
-`core_loc` 472 -> 461, `product_loc` 8235 -> 8142, the `tests` floor 1201 ->
+`core_loc` 472 -> 461, `product_loc` 8235 -> 8142, the `tests` baseline 1201 ->
 1183 (`metrics.json` records the authorised test removals). Gone: the
 sketch-era `unimplemented`/`CALLS`; the per-command `ssh -G` key-pinning probe
 and `PINNING`; proactive token renewal (the 401 retry stays); the unused
@@ -189,7 +190,8 @@ history. The cloud now holds one uploaded image, the stock Ubuntu 24.04 cloud
 image; the images step builds the OPNsense edge image from the official
 release on an Ubuntu builder, `fsl-kali` builds on Ubuntu, every
 cloud-specific value is in `deploy/openstack/cloud.yaml`, and `bin/cloud
-up|down` drives the whole cloud side. None of it has run against a cloud yet.
+up|down` drives the whole cloud side. It first ran against the cloud on
+2026-10-11 (backlog 0).
 
 Backlog 2 step 6's in-scope part is done (2026-10-02): the target port is
 no longer published and the acceptance suite and command-line cases reach the
@@ -378,8 +380,14 @@ geolocated TW.
   pipeline itself, so a fresh host needs no build argument and no manual PUT.
 - **The store is the named volume `fsl_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
-  `bin/backup` copies the store live; `bin/platform-rebuild` restored a 6 GB
-  store on a new VM twice on 2026-10-15 (`docs/OPENSTACK.md` §5.3).
+  `bin/backup` copies the store live with `VACUUM INTO` and keeps the newest
+  `--keep` copies (default 1; `cloud.yaml` `backups: {keep: 1}`);
+  `bin/platform-rebuild` restored a 6 GB store on a new VM twice on 2026-10-15
+  (`docs/OPENSTACK.md` §5.3).
+- **Closed sessions are deleted after `FSL_RETAIN_CLOSED_MINUTES`** (default
+  60; `fsl/settings.py`, `compose.yaml`): `platform/api/retention.py` runs at
+  start and after every close, 2,000 rows per transaction; open sessions are
+  never touched. SQLite transactions begin `IMMEDIATE`.
 - **Published ports.** By default 8000 (platform), 9200
   (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
   cloud-init sets `FSL_PUBLISH` to the VM's address, so 8000 opens to
@@ -407,15 +415,20 @@ geolocated TW.
   `:8080` served the target until 2026-10-02 and the pfSense proxy until 2026-10-08;
   a page there must not be able to write to the API. A write with a body must
   be `application/json`.
-- **`bin/verify`** restarts the platform first (waitress never reloads), waits
-  up to two minutes for the target (else TP 0 reads as a failed defence),
-  refuses a stack another checkout brought up, and prunes only the sessions its
-  run listed in `FSL_ACCEPTANCE_SESSIONS`.
+- **`bin/verify`** restarts the platform first (waitress never reloads), opens
+  and closes one session to prove a session stack comes up (else TP 0 reads as
+  a failed defence), refuses a stack another checkout brought up, and prunes
+  only the sessions its run listed in `FSL_ACCEPTANCE_SESSIONS`. `--changed
+  [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
+  the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs
+  every unit test; docs-only changes select nothing.
 - **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
   an untracked file. It refuses a compose override, follows a block-style
   `include:` of plain paths (each wargame's file), counts only
   tests pytest collects and refuses duplicate names. It counts physical lines,
-  so joining a wrapped line "shrinks" core: never do that.
+  so joining a wrapped line "shrinks" core: never do that. `core_loc`,
+  `dependencies` and `services` may only fall; `tests`, `product_loc` and
+  `wargame_services` are reported, not gated (2026-10-16).
 
 ## The substrate seam
 
@@ -600,13 +613,14 @@ Remaining:
 
 Dropped: the rule editor's over-indent guard. The 2026-10-05 console rebuild
 removed the rule editor, and the 2026-10-08 ruling drops the pfSense GUI pane
-too; where a learner edits a Suricata rule or tunes CRS is not built yet
-(backlog 0).
+too; a learner now edits Suricata rules in the IDS rules pane and tunes CRS
+through the scenarios' exclusions, level and thresholds (backlog 0).
 
 ## Decisions left for a person
 
 - **The tutorial**: designed and approved on 2026-10-08 as the learning MVP
-  (backlog 0); not built yet.
+  (backlog 0); built since as the scenario course (foundations F1-F6 and
+  scenarios 1.1-4.1, P0-P6 of the 2026-10-13 course design).
 - **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind", which
@@ -646,7 +660,12 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   withheld until close (backlog 1, partly superseded).
 - **Console**: the landing page `/` (sessions), a red console (cases, Kali
   terminal) and a blue console that is a sidebar framing Kibana, a WAF
-  terminal and a Website pane (site browser with a Network panel); light theme, every value escaped. The blue dashboard, Live view,
+  terminal, a Website pane (site browser with developer tools) and the Map
+  pane (the GNS3 map), with the Alerts and IDS rules panes a scenario shows;
+  the course's coach steps through each foundation and stepped scenario, with
+  a hint ladder whose last rung is Skip (it did the step for the learner until
+  2026-10-17); light theme, every value escaped. The request-path view on the
+  map was removed on 2026-10-16. The blue dashboard, Live view,
   scoreboard tab, rule editor and world map were removed on 2026-10-05, and the
   pfSense GUI pane on 2026-10-08.
 - **Stack**: every service `linux/amd64`; `docker compose up` is the whole
@@ -713,15 +732,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       file (step 7). Done 2026-10-10.
 - [ ] The reachability middleware covers only the newest session's `estate`.
 - [ ] Two `POST /api/sessions/` within milliseconds can race (pre-existing).
-- [ ] Test audit (2026-10-10): 223 of 1,379 tests are duplicates (about 105),
+- [x] Test audit (2026-10-10): 223 of 1,379 tests are duplicates (about 105),
       implementation pins such as Dockerfile/YAML greps and argv shapes
       (about 42), framework or constant restatements (about 39), guards for
       removed features (about 7), or live tests whose property a unit test
       already pins (31). 163 unit tests (about 1,650 lines) and 60 acceptance
       tests (live run about 49 -> 25-30 min, with module-scoped sessions for
       topology/map/front-door). The invariant tests (isolation, seams, ratchet,
-      benign cases, TP/TN) stay. Removing them lowers the tests floor on
-      purpose; awaiting the user's ruling.
+      benign cases, TP/TN) stay. Done 2026-10-16 (`docs/DECISIONS.md` "Test
+      audit"): test functions 2,061 -> 1,051, and the test count is reported,
+      not gated.
 - [x] Push to `dev` (e5c92c7), the `images` workflow green, the six GHCR
       packages public; done 2026-10-11.
 - [x] First run on the cloud of everything built 2026-10-11: base image
@@ -763,7 +783,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] UDP syslog drops that left some sqlmap alerts without a marker: a
       32 MiB receive buffer (`net.core.rmem_max` in the platform VM's
       cloud-init, Filebeat `read_buffer`); 0 receive-buffer errors live over
-      every P5 run. Open: the cloud-init path on a rebuilt VM.
+      every P5 run. The cloud-init path (the syslog sysctl) has run on every
+      rebuilt VM since 2026-10-15.
 - [x] Scenario course P6 (2026-10-14): lessons 0-5 and 7, the rungs and
       `Session.mode` removed; docs; a live run (`docs/DECISIONS.md`, "P6
       built").
@@ -796,12 +817,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
       WordPress (P3's shape) first.
-- [ ] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
+- [x] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
       the three `test_corp_authz` tests, `test_board_loot` and
       `test_objectives` reach compose containers (`kali`, `corp-db`) the
       range lacks; make them reach the range through the API or skip them by
       substrate. (Since 2026-10-11 `corp-db` is a container on
-      `fsl-wargame-host`, reached through `run_on_role`.)
+      `fsl-wargame-host`, reached through `run_on_role`.) Done 2026-10-17:
+      every acceptance test runs on OpenStack, none skips by substrate
+      (70 passed, 0 skipped; `docs/DECISIONS.md` "No acceptance test is
+      skipped on OpenStack").
 - [ ] `bin/cloud up` after `bin/cloud down` starts with an empty store:
       `down` backs it up and nothing restores it. Restore the newest backup
       on `up`, or say in `docs/OPENSTACK.md` §5.2 that `down` is not lossless.
@@ -928,9 +952,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       per slot in `fsl-logs-slotN-*`). Full `bin/verify` with two workers:
       acceptance 72 passed, 0 failed, 0 errors, 76 skipped in 737 s (was
       30:44 with one slot). Both slots left READY.
-- [ ] The VM's `/opt/fsl` git index still points at 9367bbf, so the VM's
+- [x] The VM's `/opt/fsl` git index still points at 9367bbf, so the VM's
       `bin/verify` lists the files added since as untracked; re-point it
       (fetch a bundle of HEAD and `git reset` the index) at the next deploy.
+      Gone with that VM: every rebuild since 2026-10-15 is a new VM checked
+      out at the deployed commit, and its `bin/verify` ratchet holds.
 - [x] An openstack session now aims the attacker at the declared default
       origin on open (`_aim_attacker` ran only on docker); before, a rebuilt
       `fsl-kali` left from its DHCP-primary address (`1.128.0.10`, Australia)
@@ -984,9 +1010,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `deploy/opnsense/` and the sensor hosts' rule paths and reload commands in
       `declaration.yaml` for Suricata, and since 2026-10-12 the estate sensor:
       `deploy/wargame-host/sensor.yaml` runs Suricata on the wargame host and
-      `range/openstack.py` (`start_sensor`, `wargame_host.sensor_up`) starts it;
-      `operator_log.py` + the `fsl-kali` terminal wiring for the attacker
-      box). `CLAUDE.md`'s seam list does not name the estate sensor yet.
+      `range/openstack.py` (`start_sensor`) with `range/wargame_host.py`
+      (`sensor_up`) starts it; `operator_log.py` + the `fsl-kali` terminal
+      wiring for the attacker box). `CLAUDE.md` lists them, the estate
+      sensor as `range/wargame_host.py`.
 - [ ] Site proxy and WAF terminal name the WAF container by convention instead
       of the label lookup (`platform/api/site.py` builds
       `http://fsl-<id>-waf-1`, `platform/api/views.py` builds `fsl-<id>-waf`);
@@ -1337,7 +1364,8 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
    - **Live-cloud verification is the user's to run** (the slot `active` check,
      the rebuild, and the canary firing through pfSense are proven against the
      Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
-     has no OpenStack adapter, as for the rest of this backlog).
+     had no OpenStack adapter then). Since run: `ThroughPlatform` (2026-10-11)
+     and the acceptance runs on OpenStack in backlog 0.
 
 ### 3. Sub-project B: the WordPress authz target `corp` - done 2026-10-04
 
@@ -1348,10 +1376,6 @@ binary log via a substrate runner, proven end to end against the live stack.
 
 ## Known gaps
 
-- The cloud was not touched by Phase 4. Juice Shop and wiki images or servers
-  built there before 2026-10-04 are leftovers the declaration no longer names,
-  and the live-cloud slot has not been re-checked as a two-host (WAF, board)
-  slot.
 - The first full `bin/verify` right after `docker compose up -d --build`
   (2026-09-30) failed 56 tests in `test_console_behaviour.py` that passed in
   `--fast` before it, alone, as a file, and in the next full run. The cause
@@ -1374,7 +1398,8 @@ binary log via a substrate runner, proven end to end against the live stack.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
 - The Kali terminal at `/terminal/` (`/terminal/<session id>/` per session), and the ttyd terminals at
-  `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`, are unauthenticated
+  `/vm-terminal/fsl-kali/`, `/vm-terminal/fsl-waf/` and
+  `/waf-terminal/<session id>/`, are unauthenticated
   shells for whoever reaches the platform's port: loopback on compose, the VM's
   address (`FSL_PUBLISH`) on the platform VM.
 - `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`

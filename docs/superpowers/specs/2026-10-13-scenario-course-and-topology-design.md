@@ -59,12 +59,12 @@ range, a question answered from the learner's own records.
 
 | Unit | The learner | Checked from |
 |---|---|---|
-| F1 My range | reads the topology: users, attacker, edge, WAF, web server, DB, log server | topology |
-| F2 The path of one request | reads the hops on the network map; searches in Korean in the Website pane and reads the status code in its developer tools (the follow view it first followed the request in was removed 2026-10-16 by the user) | own request: status |
-| F3 HTTP | URL, parameter, method, status code on that request | own request |
-| F4 Reading logs | finds the request in Kibana, reads its fields | own detections |
-| F5 Read one attack | sends `' OR 1=1` and runs sqlmap; finds where it stopped (developer tools) and the rule (Kibana) | own request and detections |
-| F6 What a miss costs | the same attack with the rule off: accounts leak, the first score says lost | target ground truth |
+| F1 Reading the practice network's map | reads the Map: users, attacker, edge, WAF, web server, DB, log server | topology |
+| F2 Sending a web request and reading its status code | steps `search`, `status`: searches in Korean in the Website pane and reads the status code in its developer tools; no step checks the hops (the request-path view and its `follow`, `source` and `port` steps were removed 2026-10-16, `docs/DECISIONS.md`) | own request: status |
+| F3 Reading an HTTP request | URL, parameter, method, status code on that request | own request |
+| F4 Finding logs in Kibana | finds the request in Kibana, reads its fields | own detections |
+| F5 Analysing an SQL injection in the logs | steps `attack`, `stopped`, `rule`, `sqlmap`, `requests`: sends `' OR 1=1` and runs sqlmap; reads where it stopped in the developer tools (judged from the request record's `blocked` mark) and the rule in Kibana (`rule_id`), then sqlmap's request count | own request and detections |
+| F6 Confirming an account leak | the same attack with the rule off: accounts leak, the first score says lost | target ground truth |
 
 ### Scenarios
 
@@ -79,7 +79,7 @@ recorded; the debrief.
 
 | Task class | Scenarios (guided to unguided) | Complete when |
 |---|---|---|
-| 1 Judgement | 1.1 a quiet shift: a failed sqlmap attempt and a blocked Korean search (worked) · 1.2 an inherited rule removal lets an attack succeed · 1.3 many alerts, no guidance | each alert judged attack or customer, and whether it succeeded, matching the target's records |
+| 1 Judgement | 1.1 telling customer requests from attacks: a failed sqlmap attempt and a blocked Korean search (worked) · 1.2 an inherited rule removal lets an attack succeed · 1.3 many alerts, no guidance | each alert judged attack or customer, and whether it succeeded, matching the target's records |
 | 2 Availability vs blocking | 2.1 Korean searches blocked at PL3 · 2.2 `<b>` and URL searches blocked at PL2 · 2.3 several false positives, threshold lowered over iterations | no customer blocked and no objective lost over the window |
 | 3 Missed attacks | 3.1 fix one value of a given rule · 3.2 write the `?sort=` rule · 3.3 catch the tamper variants with one rule · 3.4 body XSS | every attack variant detected, normal sort and comment quiet |
 | 4 Unknown | 4.1 an unseen attack and new false positives, no guidance · 4.2 human red team vs blue | both scores |
@@ -101,7 +101,8 @@ O'Brien stays a benign regression case only.
   built-in Auditor role). The request-path overlay (Packet Tracer's
   simulation mode as precedent), drawn by the console from the same file and
   the session's detections, was built as the follow view and removed on
-  2026-10-16 by the user; the Topology pane is the map alone.
+  2026-10-16 by the user; the pane (Map, named Topology until 2026-10-17) is
+  the GNS3 map alone.
 - GNS3's MCP service (3.1) is for development only; it is not exposed to
   learners.
 
@@ -110,7 +111,7 @@ O'Brien stays a benign regression case only.
 | Phase | Work |
 |---|---|
 | P0 measure | the narrow fix for the Korean search at PL3; benign comment and login through the forms (CSRF); the traffic rate the range sustains; the threshold `setvar` |
-| P1 topology | the GNS3 files, the consistency test, the load check, the GNS3 service and image, the console pane and the request-path overlay |
+| P1 topology | the GNS3 files, the consistency test, the load check, the GNS3 service and image, the console pane and the request-path overlay (removed 2026-10-16) |
 | P2 foundations | F1-F6 on the existing server-side step engine |
 | P3 traffic | a benign-user generator running for the whole session, every request marked and recorded |
 | P4 scenario engine and console | descriptor, attack schedule, triage API, window-based completion, stuck detection |

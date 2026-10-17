@@ -45,7 +45,7 @@ Korean belongs in exactly four places, nowhere else:
   `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
   `.ko.md`, update both together so the pair never drifts.
 - `*.ko.gns3` — a Korean copy of a GNS3 project for Korean learners (as with
-  `deploy/topology/range-docker.ko.gns3`). The English `.gns3` file is
+  `deploy/topology/range-docker.ko.gns3` and `range-openstack.ko.gns3`). The English `.gns3` file is
   canonical; the pair keeps the same nodes, links, ports and positions, every
   id mapped one to one, and differs only in the drawing text and the project
   id and name. Change both together; a test holds the pair.
@@ -55,6 +55,10 @@ Korean belongs in exactly four places, nowhere else:
 
 Leave the last two unread unless you are editing them, and do not read the
 archived `docs/superpowers/plans/`.
+
+Korean text is written Korean-first: from the meaning, not translated from the
+English sentence, in the usage of Korean security practitioners rather than the
+National Institute of Korean Language's norms.
 
 ## How the score works
 

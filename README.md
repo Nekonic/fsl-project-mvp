@@ -33,7 +33,7 @@ flowchart TB
   subgraph cloud["OpenStack project fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
     subgraph heat["Heat stack fsl-platform"]
-      fip["floating IP<br/>8000, ssh and ping"]
+      fip["floating IP<br/>8000, 8002, 3080, ssh and ping"]
       subgraph vm["platform VM, Ubuntu 24.04"]
         unit["fsl-platform.service<br/>docker compose pull, up -d"]
         stack["the compose stack<br/>(next graph)"]
@@ -60,8 +60,8 @@ sensors' alerts go to Elasticsearch. The platform scores from those alerts and
 from the target's own records (ground truth): exfiltrated data the attacker
 submits is checked against the target's data. Two compose files split the
 stack. `compose.yaml` is the control plane, one long-lived copy: the platform,
-Elasticsearch, Kibana, and `collector`, a Filebeat that only takes syslog from
-the OpenStack range. `session.yaml` is one session's data plane: the WAF,
+Elasticsearch, Kibana, `gns3` (the learners' maps), and `collector`, a Filebeat
+that only takes syslog from the OpenStack range. `session.yaml` is one session's data plane: the WAF,
 Suricata, Filebeat, Kali, the proxy, and one folder per wargame under
 `wargames/` that it includes. Opening a session (`POST /api/sessions/`) starts
 `session.yaml` as its own compose project, `fsl-<session id>`, and waits until
@@ -147,13 +147,13 @@ docker compose -f session.yaml pull
 docker compose pull && docker compose up -d
 ```
 
-Our six images (platform, board, corp, corp-db, kali, proxy) are built by
+Our seven images (platform, board, corp, corp-db, kali, proxy, gns3) are built by
 `.github/workflows/images.yml` on every push to `dev` and published as
 `ghcr.io/nekonic/fsl-<name>`, tagged with the commit SHA and `dev`. Compose
 names each one `ghcr.io/nekonic/fsl-<name>:${FSL_IMAGE_TAG:-dev}`; set
 `FSL_IMAGE_TAG` to a commit SHA to run exactly that commit's images (the
 platform VM does). A package GitHub creates on first push is private even
-when the repository is public; make each of the six public once, or an
+when the repository is public; make each of the seven public once, or an
 unauthenticated pull fails: on github.com, the package's page, **Package
 settings**, **Change visibility**, **Public** (irreversible). Every such service keeps its `build:`, so a developer who
 changed a Dockerfile or an app builds locally instead of pulling:
@@ -186,9 +186,9 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, `/api/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8000 | the console, `/api/`, Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (on OpenStack, to its slot's WAF over `mgmt`) | the iframe in a person's browser |
-| 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
+| 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only and turns off the web UI's usage statistics, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
 
@@ -251,7 +251,7 @@ waits for the API, then calls the platform's own range API in order: fabric,
 images until clean, slot, configure, and waits until `/api/range/ready/` says
 ready. It stops at the first drift, failed image, blocked slot or refused
 configuration and says why. Both ran on the test cloud; `up --replace`
-last on 2026-10-15 (`docs/OPENSTACK.md` §5.3).
+last on 2026-10-17 (`docs/OPENSTACK.md` §5.3).
 
 `bin/platform-rebuild` alone creates or replaces only the platform VM:
 
@@ -259,7 +259,7 @@ last on 2026-10-15 (`docs/OPENSTACK.md` §5.3).
 .venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
-Before deleting anything it checks that the six images for the ref's commit
+Before deleting anything it checks that the seven images for the ref's commit
 can be pulled anonymously from ghcr.io, keeps the range key (below) and backs
 the store up (`bin/backup` over ssh). It then deletes the stack, creates it
 again with every parameter from `cloud.yaml`, and waits until `/api/sessions/`
@@ -286,7 +286,8 @@ NAME=TARBALL` (repeatable), a `docker save` tarball of one image built from
 this checkout. The VM still clones `ref` and pulls every image at its commit;
 the rebuild then checks this checkout's HEAD out from a git bundle and
 `docker load`s each tarball, tagging its image as the cloned commit's, the tag
-compose and the range's image builders use. Before deleting anything it
+compose and the range's image builders use, and recreates every service
+(`--force-recreate`), so a bind-mounted file is HEAD's too. Before deleting anything it
 refuses a tarball that does not hold one `ghcr.io/nekonic/fsl-NAME:<commit>`,
 and any image whose build context (`.github/workflows/images.yml`) differs
 between the commit it came from and HEAD. A sideloaded VM that reboots can pull
@@ -396,8 +397,10 @@ Korean.
   work in the shell and press stop: everything sent in between is attributed
   to that name.
 - **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
-  "FSL alerts" columns and query narrowed to the session, a WAF terminal, and a
-  Website pane (a site browser with a Network panel). It calls `/api/` for the
+  "FSL alerts" columns and query narrowed to the session, a WAF terminal, a
+  Website pane (a site browser with developer tools), the Map pane (the
+  GNS3 map) and, in the scenarios that need them, an Alerts pane and an IDS
+  rules pane. It calls `/api/` for the
   session, the site's requests, the steps and hints of a foundation or worked
   scenario, a scenario's status and triage, ingest and detections. The
   result appears on the session page when the session closes: objectives lost
@@ -412,9 +415,8 @@ reports what is in the WAF's file.
 
 The home page lists six foundations for learners new to networks, each opened
 by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
-F1 reads the range's map in the Map pane, F2 reads the hops a request
-passes through on that map and one Korean search's status code in the Website
-pane's developer tools, F3 reads its method, path, parameter and status code,
+F1 reads the range's map in the Map pane, F2 sends one Korean search from the Website
+pane and reads its status code in the pane's developer tools, F3 reads its method, path, parameter and status code,
 F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
 blocked SQL injection was stopped and which rule recognised it, and counts a
 sqlmap run from the Red console's Kali terminal, and F6 runs the same
@@ -433,7 +435,7 @@ benign request a unit replays at open counts in neither score.
 
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
 attacker use the board while the learner defends with the real tools. Each
-opens on a briefing (situation, goal, how it is measured, time); a strip shows
+opens on a briefing (situation, goal, how it is measured, time); a status bar at the top shows
 the time left, customers blocked and alerted requests per minute, and objectives lost;
 an attack schedule the learner does not see fires through the normal path,
 and a dump it gets counts in the first score when the board's accounts match.
@@ -463,12 +465,14 @@ from the platform:
 
 ```bash
 docker compose exec platform \
-  python redteam/run.py --target http://board.com --tool-target http://board.com
+  python redteam/run.py --tool-target http://board.com
 ```
 
 The harness opens the session of the scenario whose `case_file` matches the
 `--cases` basename (`board.yaml` opens board, `corp.yaml` opens corp, anything
-else opens board), and `--target` defaults to that scenario's `public_url`.
+else opens board) and fires each case through the platform at `--platform`
+(default `http://localhost:8000`); `--tool-target` (default `http://board.com`)
+is the address the tool containers use for the target.
 For corp: `--cases redteam/cases/corp.yaml`.
 
 ## Checking it
@@ -489,12 +493,13 @@ attacker's origin, so do not run it against a stack someone is using. It
 deletes only the sessions it created. The acceptance step is `bin/acceptance`:
 one pytest process per session the range can hold at once (`max_sessions` of
 `GET /api/range/ready/`), plus one for the checks that read only
-Elasticsearch; `bin/acceptance --plan` prints the split, `test/README.md`
+Elasticsearch, then one for the modules that need the whole range
+(`test_concurrent_sessions`, `test_lesson`); `bin/acceptance --plan` prints the split, `test/README.md`
 explains it.
 On a platform that does not listen on localhost (the OpenStack platform VM),
 run it on that host with `FSL_PLATFORM_URL=http://<address>:8000 bin/verify`;
-tests that exercise the compose range are skipped when the platform reports
-another substrate.
+every acceptance test runs on either substrate, and none is skipped on
+OpenStack.
 `bin/prune` deletes sessions by hand and is a dry run without `--apply`:
 
 ```bash
@@ -503,7 +508,7 @@ bin/prune --ids FILE --apply     # only the closed sessions FILE lists
 ```
 
 After adding a Tailwind class to a template, run `bin/build-css`; the
-generated stylesheet is committed, and a test fails when it is stale.
+generated stylesheet is committed, and no test checks that it is current.
 
 ## Backup and restore
 
@@ -559,4 +564,5 @@ no login of their own and give a shell on Kali and the WAF, as does
 
 The same holds on the platform VM. There the project's password is also plain
 text in `/opt/fsl/openstack.env` and in the platform container's environment.
-The VM's ssh and 8000 are open to any address, and 8000 asks for no login.
+The VM's ssh, 8000, 8002 and 3080 are open to any address, and 8000 asks for
+no login.

@@ -4710,3 +4710,115 @@ Traceback or `[warn]`, only the expected 409, 400 and 404. The gns3 log held
 1,397 `Invalid token` errors, every one a WebSocket with `token=null` from a
 Firefox on the operator's machine holding a Map page opened before the
 redeploy; none came from the sweep's sessions (777-840, all closed).
+
+## 2026-10-17 — Korean-first learner text and docs
+
+- **Ruling** (the user, 2026-10-17): the Korean is written Korean-first, from
+  the meaning, not translated from the English sentence, and in the usage of
+  Korean security practitioners and educators. Where practitioners and the
+  norms of 국립국어원 or published lists of translation-sounding patterns
+  disagree, practitioners win; those norms and lists were not consulted. The
+  English stays canonical for what a document or string says; the Korean
+  decides how it is said.
+- **The style guide** (a working file, not in the repo, like the test
+  audit's tables) was built from pages fetched on 2026-10-17: Dreamhack and
+  Theori (public Path and Unit pages, the Unit API, 175 wargame
+  descriptions; lectures and quizzes need a login), Igloo, AhnLab ASEC and
+  the TrusGuard IPS manual, ESTsecurity, AWS Korea's WAF false-positive
+  guide, Penta Security, Monitorapp, KISA, Logpresso's Sonar manual and the
+  Elastic Korean guidebook; an addendum added open Korean teaching sources
+  (생활코딩, BoB course material on GitLab, HSPACE's blog, dictionary and lab
+  READMEs, Kakao Cloud tutorials, Programmers, KERT and other club repos),
+  with translations (MDN, the OWASP Top 10, Juice Shop, Google Cloud) marked
+  and weighted lower. SK Shieldus, NAVER Cloud, WikiDocs and Cloudflare
+  answered 403 and are not used; personal posts without a track record were
+  rejected. Its main choices, with the counts behind them:
+  - Register: 합니다체 for explanations and notices; `-하세요` for a step the
+    learner performs, purpose first (`~하려면 ~하세요`); `-해 보세요` for
+    hints; no `-하십시오`, no `-습니까?`, no `당신` (Dreamhack's 175
+    descriptions: 입니다 98, 습니다 92, 하세요 40, 으세요 31, all 해요체 about
+    20; `-습니까?` and `당신` only in two community challenges and in
+    translations). Questions are `~나요?`, `무엇인가요?` or the quiz form
+    `~은/는?`; feedback is 정답입니다 / 틀렸습니다 with one reason.
+  - Titles end in a noun or `~하기`, never a sentence ending.
+  - Requests are 유입, 발생, 차단, 허용, 매칭; never 닿다 or 도달하다 (0 hits for
+    a request, packet or traffic reaching).
+  - Terms: 오탐 (75, 오탐지 0), 미탐, 정탐; 탐지 (700, 감지 3); 경보 (92) for
+    what reaches the analyst; 임계치 (11, 임계값 0); 시그니처 (141); 웹방화벽
+    (34 against 웹 방화벽 8); 출발지/목적지 IP (88/82, 소스 IP 0); 예외 처리 and
+    예외 규칙 (억제 0, 화이트리스트 0); 정·오탐 판단 for triage; 위험도 (39,
+    심각도 5); 모의해킹 (54, 침투테스트 0); 상태 코드 (14 against 상태코드 1
+    in the addendum's corpus, reversing the first pass); HTTP 메서드 (58,
+    메소드 6); 쉘 and 웹쉘 (32 against 셸 4, Dreamhack's 셸 noted); 룰 in prose
+    and 규칙 on product screens, 규칙 ID for a sid; 훈련장 / 훈련 환경 for a
+    cyber range (레인지 0).
+- **Vocabulary** (`docs/vocabulary.md`): cyber range 사이버 레인지 -> 훈련장;
+  penetration test 침투테스트 -> 모의해킹; initial access 초기 액세스 -> 초기
+  침투; severity 심각도 -> 위험도, levels 높음 / 중간 / 낮음 -> 높음 / 보통 /
+  낮음; suppression 억제 -> 예외 처리 (the action) / 예외 규칙 (the object);
+  triage 경보 분류 -> 정·오탐 판단; correlation 상관분석 -> 연관성 분석; enable
+  and disable a rule 룰 사용 설정 / 룰 사용 중지 -> 사용 / 사용 안 함; solved
+  -> 완료; externally exposed 외부 공개 -> 외부 노출; IP range IP 대역 ->
+  네트워크 대역; time range 시간 범위 -> 조회 기간; auto-refresh 자동
+  새로고침 -> 자동 새로 고침; 웹 방화벽 -> 웹방화벽; 정보 자산 -> 정보자산;
+  rule id (sid) -> 규칙 ID, newly settled.
+- **The string table** (6e3a2f0): all 951 Korean values (893 shown, 58
+  withheld answers and pass lines) were read; 532 Korean values were
+  rewritten from the meaning, and 183 English values changed to say the same
+  thing. The practice network shown to learners is 실습용 네트워크, the Map
+  pane 구성도; the Korean GNS3 pair names its zones 서비스망, 관제망, 내부 DB망
+  (drawing text only).
+- **Reviewer pass** (16e951d): a second reader went through the 951 values
+  against the guide and changed 62 (61 Korean, 1 English): steps the learner
+  acts on became `-하세요` instead of narration, hints and nudges
+  `-해 보세요`; multi-word button names are quoted where the bare name
+  misparses ('터미널에서 실행', '최종 점검 시작', '실행 결과 확인'); "내 실행"
+  calques went; two meanings that had drifted were restored
+  (`score.primary.how`, `score.customers_note`); 기록 became 로그 where a
+  sensor's log is meant; F1 asks "가장 먼저 받는" everywhere. F2's title
+  promised following the path, which no step asks for: it is now "Sending a
+  web request and reading its status code" / "웹 요청 보내고 상태 코드
+  확인하기". No answer key, check fact or placeholder changed.
+- **Docs sweep** (the user: every document, no exceptions):
+  English, each checked against the code by grep, not memory:
+  `README.md`, `docs/ARCHITECTURE.md`, `docs/OPENSTACK.md`,
+  `docs/THREAT-MODEL.md`, `docs/STATE.md`, `docs/state/now.md`,
+  `test/README.md`, `CLAUDE.md`, `.claude/skills/orchestrate/reference.md`
+  (`SKILL.md` was current) and the 2026-10-13 scenario-course spec. Kinds of
+  staleness fixed: ports and the platform VM's security group (8002 and 3080
+  open beside 8000 and ssh); the control plane and image list (`gns3`, seven
+  images); commands and flags (`redteam/run.py` has no `--target`, it takes
+  `--platform` and `--tool-target`; `bin/platform-rebuild --sideload` and the
+  `--force-recreate` after it; `bin/backup --keep` and `backups.keep`;
+  `bin/verify --changed`, `--live`, `--fast`, and the hand-made `.venv` on the
+  VM); the acceptance split (the solo phase) and skips (70 collected, none
+  skipped by substrate); retention, `VACUUM INTO` and IMMEDIATE transactions
+  described where the store is; the errors-swept mechanisms (nginx started
+  after waitress with `proxy_max_temp_file_size 0` everywhere, Kibana
+  bring-up waiting on `/api/status`, the gns3 image's `docker-cli` and its
+  copilot skills off, publishing deleting only a listed project, the estate
+  sensor's `default` af-packet entry, OPNsense's model defaults); the Map
+  pane (its name, no usage statistics) and the blue panes (developer tools,
+  Alerts, IDS rules); F1's answers named as the map names them (`firewall`,
+  `waf`, `log-server`, `sw1`, `sw2`); F2's and F5's steps and titles; quoted
+  labels taken from the string table ("Start final check", "Show a hint",
+  "Show the new hint", "Start the same lesson again", "Caught ..."); the
+  console's four screens, not five; ModSecurity blocking, not detection-only
+  (`SecRuleEngine On`), and the defender's WAF settings and shell in the
+  threat model; `tests` reported, not gated, and "floor" gone outside dated
+  history; done backlog items checked off (test audit, `test/` on OpenStack);
+  CLAUDE.md names both `.ko.gns3` files and says Korean is written
+  Korean-first; the skill's seam list gains `rules/crs.py`, `kibana.py` and
+  `gns3.py`; one Korean word in `docs/ARCHITECTURE.md` removed.
+  Korean: `README.ko.md` and `docs/ARCHITECTURE.ko.md`, the only `.ko.md`
+  files, rewritten in full from the updated English, section for section, in
+  합니다체 (both were in 해라체 and had fallen behind: 263 and 1,461 lines
+  against 562 and 1,840), with the guide's terms, labels quoted from the
+  string table's ko values, and no 레인지.
+- **레슨, not 단원** (the user, 2026-10-18): a foundation unit is 레슨 in
+  every Korean place. The string table's last seven 단원 (the foundations
+  group note and the six `lesson.<id>.verify` lines) became 레슨, which the
+  rest of the table already used (레슨 노트, 레슨을 완료했습니다); answers and
+  placeholders unchanged. `docs/vocabulary.md` gains the row lesson / unit ->
+  레슨, and its `shell` row takes the guide's settled 쉘 (셸 noted as
+  Dreamhack's form). `bin/verify --changed`: unit 817 passed, ratchet holds.

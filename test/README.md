@@ -10,6 +10,13 @@ docker compose up -d --build
 python -m pytest test/ -v
 ```
 
+`bin/verify` runs them through `bin/acceptance` after the unit suite;
+`FSL_PLATFORM_URL` (default `http://localhost:8000`) names the platform, so
+the same command runs against the OpenStack platform VM. `bin/verify --fast`
+skips them; `bin/verify --changed [BASE]` runs only the unit tests the change
+reaches and lists the acceptance modules it reaches, and `--live` runs those
+too. The suite collects 70 tests and skips none.
+
 If the stack is down these fail rather than skip. An acceptance check that
 quietly skips reads as "passed".
 
@@ -29,8 +36,9 @@ score reveal, the empty-objectives check and the canary; `origins_session`
 origins, rotation and the tool case; `tuned_session` the map and the inside
 leg past the WAF; `terminal_session` the operator log, the attacker box and the front
 door probe; the corp
-rogue-admin and option-flip exploits one session each for the two corp scoring
-modules and the two corp exploit checks.
+rogue-admin and option-flip exploits one session each, read by
+`test_corp_observe_live` (from the target's binlog) and `test_corp_authz`
+(from the target's own rows).
 
 ## Running in parallel
 
