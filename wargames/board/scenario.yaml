@@ -1,8 +1,9 @@
 name: Community board
 description: >-
-  An ordinary Django board on MySQL, behind the WAF and the IDS. The attacker
-  scores by exfiltrating its auth-user password hashes and proving possession
-  against the platform's snapshot.
+  A Django board on MySQL behind a WAF and an IDS. The red team steals the
+  accounts' password hashes; the blue team detects and blocks the attack. A
+  theft counts only when the submitted hashes match the accounts stored on the
+  board.
 image: ghcr.io/nekonic/fsl-board
 public_url: http://board.com
 objective_model: loot_verified

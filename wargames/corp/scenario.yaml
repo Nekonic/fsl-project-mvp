@@ -1,9 +1,9 @@
 name: Corporate site
 description: >-
-  A WordPress company site on MySQL, behind the WAF and the IDS. Three unpatched
-  plugins carry unauthenticated broken-access-control CVEs the default rules
-  cannot see; the platform scores by watching the target's own committed
-  database changes.
+  A WordPress company site on MySQL behind a WAF and an IDS. Three unpatched
+  plugins have access-control vulnerabilities (CVEs) that need no login and that
+  the default rules do not detect. An objective counts as reached only when the
+  site's own database shows the change.
 image: ghcr.io/nekonic/fsl-corp
 public_url: http://corp.com
 objective_model: effect_observed

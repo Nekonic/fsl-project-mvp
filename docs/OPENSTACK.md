@@ -276,7 +276,7 @@ sudo apt-get -y install chrony
 ```
 
 3080 is the GNS3 server (`compose.yaml` `gns3`), whose web UI the blue
-console's Topology pane frames. A platform stack made before P1 of the
+console's Map pane frames. A platform stack made before P1 of the
 scenario course lacks the rule; add it by hand:
 
 ```bash

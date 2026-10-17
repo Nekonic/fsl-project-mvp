@@ -275,7 +275,7 @@ compose는 substrate와 무관하게 Docker 소켓을 플랫폼에 마운트하�
   번들된 affinity 글리프이고, 틀 색은 공격자 빨강, 방어 초록, 사이트 파랑, 고객과 로그 서버 회색이다.
   스위치와 인터넷은 GNS3 번들의 네모 스위치와 지구본 그대로다. `kali`의 틀에는 OffSec의 Kali 드래곤이
   들어간다(프레스 팩의 `kali-dragon-black.svg`를 고정 커밋에서 받아 sha256으로 확인하고 고치지 않은 채
-  틀 안에 놓는다. `host-kali.txt`와 토폴로지 창이 누구의 상표인지 밝힌다).
+  틀 안에 놓는다. `host-kali.txt`와 구성도 창이 누구의 상표인지 밝힌다).
 - **학습자 지도의 호스트는 모두 표시용 컨테이너다.** GNS3는 링크 끝을 노드 상태로 칠하므로 멈춘
   노드는 끝이 모두 빨강이다. 호스트마다 고정한 이미지 하나(`busybox`, `topology.DISPLAY_IMAGE`)의
   `docker` 노드로, `sleep`만 돌고 콘솔은 없다. 실제 기계는 레인지에서 돌고 지도의 노드는 그것을
@@ -299,7 +299,7 @@ gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 �
 `load_topology`를 각 파일의 사본과, 학습자 지도마다 워게임별로 가짜 레인지로 만든 레인지 지도에
 돌리며, 노드가 쓰는 번들 심볼이 그 버전에 있는지 확인한다.
 
-### 내 레인지의 지도
+### 레인지 자체의 구성도
 
 학습자는 자기 레인지의 주소를 본다. `api/maps.py`는 학습자 지도에서 OpenStack 슬롯 또는 Docker
 세션과 그 세션의 워게임마다(`slot 1 board`, `session <id> corp`), 언어마다 프로젝트 하나를 만든다
@@ -334,7 +334,7 @@ id로 읽고, 플랫폼 VM 자신의 NIC는 같은 `ip`를 호스트 네트워�
 0640) 프로젝트를 지우고, URL의 프로젝트 id를 그대로 가진 `project.gns3`로 portable 프로젝트를 가져와
 (GNS3는 스냅숏처럼 모든 id를 유지한다) `auto_close`를 끄고(가져오기는 파일과 상관없이 이것을 켜고,
 마지막 웹 클라이언트가 떠나 닫힌 프로젝트는 노드를 멈춘다) 연 뒤 노드를 시작한다. 지도는 세션을 열 때,
-슬롯 초기화가 끝난 뒤, 그리고 토폴로지 창이 물었는데(`GET /api/topology/?language=&session=`) GNS3가
+슬롯 초기화가 끝난 뒤, 그리고 구성도 창이 물었는데(`GET /api/topology/?language=&session=`) GNS3가
 열어 두지 않았을 때 올린다. 바뀌지 않은 지도는 다시 올리지 않는다. 남기는 지도는 슬롯마다 가장 최근
 세션의 것과 Docker에서 열린 세션의 것이고 나머지는 지운다. 만든 지도는 커밋하지 않는다. GNS3가
 올리지 못하면 엔드포인트는 세션 워게임의 학습자 지도를 파일에서 내주고 이유를 `detail`에 쓴다.
@@ -366,7 +366,7 @@ learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 자리(`localSto
 번으로 가운데로 옮긴다(웹 UI는 `movementX`/`movementY`만큼 옮긴다). 창의 화면에 맞추기 버튼은 프레임에
 `fsl-fit`을 보내 같은 초기화와 맞춤을 다시 한다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부한다. 개발용 MCP(`/v3/mcp/`)에는 `docker exec fsl-gns3 python
 /opt/fsl-gns3/provision.py api-key <이름>`이 API 키를 출력한다. 콘솔은 MCP를 노출하지 않는다. 콘솔의
-탭 이름은 네트워크 구성도(Network map)이고, 학습자가 읽는 어떤 말도 GNS3를 이름으로 쓰지 않는다.
+탭 이름은 구성도(Map)이고, 학습자가 읽는 어떤 말도 GNS3를 이름으로 쓰지 않는다.
 
 읽기 전용 사용자는 프로젝트를 열 수 없으므로(`Project.Allocate`) `provision.py`가 시작할 때 admin으로
 모든 프로젝트를 열고 멈춘 표시용 노드를 시작하며(고정 이미지만; 다른 이미지의 노드는 절대 돌리지
@@ -379,12 +379,12 @@ uBridge가 시작한 노드의 인터페이스를 컨테이너의 호스트 pid 
 시스템 지도의 `qemu` 노드를 위해 남긴다. 호스트 데몬은 컨테이너의 바인드 마운트를 호스트에서 찾으므로
 데이터 디렉터리는 양쪽에서 같은 경로다(`/var/lib/fsl-gns3`). 서버는 `gns3` 사용자로 돌고, 플랫폼의
 `fsl`처럼 시작할 때 소켓의 그룹에 들어간다. `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로
-보고할 때만 웹 UI(`web_ui`)를 내주고, 아니면 콘솔의 토폴로지 창은 지도가 열려 있지 않다고 알린다.
+보고할 때만 웹 UI(`web_ui`)를 내주고, 아니면 콘솔의 구성도 창은 지도가 열려 있지 않다고 알린다.
 
 `GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 학습자 지도를(`&session=<id>`가
 있으면 위의 그 세션 워게임의 지도를) GNS3에서(`platform/gns3.py`) 또는 레포 파일에서 돌려준다(없으면
 `en`, 다른 값이면 400). 콘솔은 자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI를 그 프로젝트 id로 바로
-연다. 토폴로지 창은 이 지도 하나다: 프레임에 넣은 GNS3 웹 UI와 화면 맞추기 버튼. `GET
+연다. 구성도 창은 이 지도 하나다: 프레임에 넣은 GNS3 웹 UI와 화면 맞추기 버튼. `GET
 /api/sessions/<id>/topology/`는 세션 워게임의 영어 지도를 읽고(짝은 노드 이름과 링크가 같다)
 `project.nodes`를 더한다: 같은 레인지 읽기에서 얻은 호스트 노드별 스위치 주소와 `running` 또는 `not
 reported`. 세션 overlay는 지도에 있는 호스트와 지도에 있는 스위치의 주소만 싣는다. overlay는 레인지가
@@ -400,7 +400,7 @@ syslog 기록에 실리는 VM 자체의 hostname만 슬롯 접미사를 가진�
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 한다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
-| GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 learner를 만들고 프로젝트를 연다. 콘솔의 토폴로지 창은 `gns3.py`가 돌려준 포트와 경로의 웹 UI를 iframe으로 연다 |
+| GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 learner를 만들고 프로젝트를 연다. 콘솔의 구성도 창은 `gns3.py`가 돌려준 포트와 경로의 웹 UI를 iframe으로 연다 |
 | CRS 설정과 nginx 재적재 | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사람에게 `fsl-<id>-waf-1`의 셸을 열고(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM에 ssh 셸을 연다), f6의 WAF 화면 단계가 읽을 예외 파일을 알려 준다. 그 명령(`cat {waf_rules}`)의 파일 경로는 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로 채운다. 플랫폼은 터미널을 조작하지 않는다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 직접 만든다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 엣지의 Suricata를 설정하고 다시 시작한다(OpenStack). `declaration.yaml`의 각 센서 호스트(엣지, 그리고 `estate-sensor`의 wargame 호스트)가 `suricata.py`에 넘길 규칙 파일과 reload 명령을 정한다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 wargame 호스트의 estate 센서 compose 서비스를 멈추고 다시 띄우며(OpenStack), 그 뒤 기준 규칙은 `suricata.py`를 거친다 |
@@ -672,7 +672,7 @@ outbound 4), 아니면 posture에 없는 예외가 규칙 전체를 빼면 `rule
   많아도 한 번으로 센다는 것. TP/FP/FN/TN과 게임 balance는 API에 남고, 사람이 읽는 문구에는 나오지
   않는다(`test_strings.py`). 다시 열기는 같은 시나리오, 같은 단원(`lesson_id`가 있으면 `{scenario,
   guidance: true, lesson, defense}`), 또는 같은 워게임을 연다.
-- 블루(`/blue/<id>/`): 레일(Kibana, 웹사이트, 토폴로지, judgement 시나리오의 판정 창, detection·unknown
+- 블루(`/blue/<id>/`): 레일(Kibana, 웹사이트, 구성도, judgement 시나리오의 경보 창, detection·unknown
   시나리오의 IDS 규칙 창, WAF, 레드팀으로 가는 링크)과 창. WAF 창의 배너는 상자(`waf_box`,
   `fsl-<id>-waf`)와 CRS 규칙 폴더(`waf_rules`, `crs.EXCLUSIONS`에서 계산)만 보여 준다.
 - 레드(`/red/<id>/`): 위쪽에 목표(한국어 이름은 `objective.<key>`)와 "탈취한 해시 제출", 공격과
@@ -696,10 +696,10 @@ guidance 세션(기초 단원이나 worked 시나리오)에서 노트는 창의 
 marker도 받음) 또는 통과하지 않고 떠났음을 남긴다. 콘솔은 통과하지 않은 단계에서 다음이나 목록으로 옮길
 때 `skipped`를 보내고, 이전이나 통과로 옮길 때는 보내지 않는다. 단계 목록은 `progress`가 통과라고 할
 때만 ✓를 붙이고, 통과하지 않고 떠난 단계는 빈 원과 "건너뜀"으로 표시하며, 위에 "N단계 중 n단계
-통과"를 보인다. 이론 카드가 `shows`로 가리키는 단계에는 popover에 그 카드를 여는 "왜?" 링크가 있다.
+통과"를 보인다. 이론 카드가 `shows`로 가리키는 단계에는 popover에 그 카드를 여는 "설명 보기" 링크가 있다.
 
 이론 탭에는 단원의 접힌 카드가 있다(`scenario.yaml`의 `theory`, 문구는
-`<text>.theory.<card>.title|body`). 화면의 무언가를 가리키는 카드에는 "위치 보기"가 있어 안내를 그
+`<text>.theory.<card>.title|body`). 화면의 무언가를 가리키는 카드에는 "화면에서 위치 보기"가 있어 안내를 그
 단계로 옮긴다. 힌트 탭은 이유만 담아 하나씩 접어 둔다(`hints`, 문구는 `<text>.hint.*`. worked 시나리오의
 목록은 비어 있다: 그 힌트는 시나리오가 제안한다). 그 아래 접힌 풀이에는 모든 단계의 명령이 순서대로
 있고 복사 버튼이 있다.
@@ -769,9 +769,9 @@ level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 
 각 단계가 가리키는 곳은 `scenario.yaml`에 있는 그 단계의 `point`이고(`panel`, 대체용 `first`가 붙을 수
 있는 `kibana`, 또는 `pane`; `opens`), 그래서 콘솔은 어떤 단원의 단계도 Kibana selector도 이름으로
 알지 않는다. 빨간 상자는 모든 단계에서 처음부터 그려진다. 단계는 필요한 창을 밝힌다(`opens`: 사이트,
-Kibana, 토폴로지, 판정, IDS 규칙, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는 "왼쪽
-웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
-보기 전환, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
+Kibana, 구성도, 경보, IDS 룰, WAF). 그 창이 보이지 않는 동안 상자는 레일 버튼에 있고 popover는 "왼쪽
+메뉴에서 웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
+보기 전환, 경보 목록, 룰 편집기, 최종 점검 시작 버튼), 같은 출처 Kibana 프레임의
 `data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`와 대체용 `first`로 행
 펼치기), 또는 창 전체. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다. 현재 단계의 말과 이전/다음은
 popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만 보이고, popover를 닫은
@@ -783,7 +783,7 @@ popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 �
 
 규칙 편집기(`#lesson-rules`, 판정 D3)는 블루 콘솔의 IDS 규칙 창에 있고, `rulesPane()`이 `detection`이나
 `unknown` 시나리오에서 그 창을 보인다. `GET /api/rules/?session=<id>`로 읽고, `POST /api/rules/validate/`로
-확인하고, 읽어 온 버전에 대해 `POST /api/rules/apply/`로 쓴다. 검사는 `errors`로 답한다: 거부한 모든 센서의
+확인하고, 읽어 온 버전에 대해 `POST /api/rules/apply/`로 쓴다. 룰 검사는 `errors`로 답한다: 거부한 모든 센서의
 출력에서 Suricata `Error`가 든 줄들이고, `output`은 그 줄이 가장 많은 거부 센서의 출력이다. OPNsense
 edge의 Suricata는 syslog로만 로그를 남기므로(템플릿에 console 출력이 없다) `-T` 출력에 오류 줄이 없고,
 wargame 호스트의 estate 센서가 그 줄을 출력한다.
@@ -803,12 +803,12 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
-| f1 내 레인지 | `full` | 토폴로지 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
-| f2 요청 하나의 경로 | `full` | 네트워크 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
-| f3 HTTP | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
-| f4 로그 읽기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
-| f5 공격 하나 읽기 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
-| f6 놓치면 무엇을 잃나 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
+| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객의 요청이 처음 닿는 호스트, 로그를 보관하는 호스트, 데이터베이스의 구간을 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
+| f2 웹 요청의 경로 | `full` | 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
+| f3 HTTP 요청 읽기 | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
+| f4 Kibana에서 로그 찾기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
+| f5 SQL 인젝션 공격 확인 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
+| f6 계정 유출 확인 | `missed` | WAF 예외 파일을 읽고, 같은 sqlmap을 실행하고, 빼낸 표를 붙여 넣고, 유출된 계정 수와 첫째 점수가 센 빼앗긴 목표 수를 말한다 | 적용 중인 WAF 파일, 세션 스냅샷과 맞춘 루트, `result.objectives.lost` |
 
 `missed`는 CRS paranoia level 1에 949110과 959100을 `ruleRemoveById`로 끄고 `local.rules`를 쓴다. 단원의
 질문에는 `accept` 목록이 없다.
@@ -1045,7 +1045,7 @@ worked 시나리오는 `guidance`를 참으로, `lesson`을 자기 id로 두어 
 
 닫으면 남은 공격은 취소된다. 이미 발사 중인 공격은 끝까지 돌고 기록된다.
 
-**최종 점검 시간.** `POST .../scenario/verify-window/`("다 했습니다")나 일정이
+**최종 점검 시간.** `POST .../scenario/verify-window/`("최종 점검 시작")나 일정이
 `window_minutes` 동안 연다. 엔진은 일정에 있는 공격 케이스 중 그 안에 예정되지 않은
 것마다 하나씩 그 안에 넣는다. 판정하는 것은 종류의 `completion`이다. `served`는 그
 안에서 방어가 막은 고객 요청(앱이 아닌 403)이 없음, `held`는 그 안의 공격이 모두
@@ -1095,7 +1095,7 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 
 **콘솔.** 홈 페이지는 wargame마다 시나리오를 나열하고, 시작은 블루 콘솔을 상황
 설명부터 연다. 창 위의 띠가 남은 시간, 분당 막힌 고객과 경보 난 요청, 빼앗긴 목표,
-힌트 제안, 다 했습니다를 보인다. judgement 시나리오는 판단 창을 더하고, 판단 창은
+힌트 제안, 최종 점검 시작을 보인다. judgement 시나리오는 경보 창을 더하고, 경보 창은
 목록을 가리지 않는다: 레슨 메모의 열을 비워 두고, 카드와 연 힌트, 창 안을 가리키는
 코치 말풍선은 목록 위에 붙인다. detection과 unknown 시나리오는 IDS 룰 창(`/api/rules/`
 위의 룰 편집기)을 더한다. 카드는 때가 되면
@@ -1107,17 +1107,17 @@ window, passed, failed, closed), `time_left`, 지난 1분의 막힌 고객과 �
 
 | Id | 제목 | 종류, 안내 | 태세 | 고객 | 공격(숨김) |
 |---|---|---|---|---|---|
-| 1.1 | 조용한 근무 | judgement, worked | `level2`: PL2 | `community` 초당 2건 | 150초에 sqlmap(`ru`) |
-| 1.2 | 물려받은 예외 | judgement, faded | `inherited`: PL2, 949110과 959100 제거 | `community` 초당 2건 | 120초에 sqlmap, 300초에 검색 인젝션(`ru`) |
-| 1.3 | 바쁜 저녁 | judgement, none, 공격 종류도 판단 | `inherited` | `community` 초당 4건 | 90~660초에 케이스 여덟 개, 모두 `kr`: sqlmap 기본·tamper, 검색·union·로그인 인젝션, XSS 둘, 경로 추적 |
-| 2.1 | 막힌 한글 검색 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap (`ru`) |
-| 2.2 | 막힌 태그와 링크 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap (`ru`) |
-| 2.3 | 임계치 낮추기 | availability, none, 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap (`ru`) |
-| 3.1 | 울리지 않는 룰 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
-| 3.2 | IDS가 놓치는 sort 공격 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
-| 3.3 | 다르게 쓴 같은 공격 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(공백 사이의 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형 (`ru`) |
-| 3.4 | 댓글 속 XSS | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS (`ru`) |
-| 4.1 | 혼자 맡는 저녁 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문을 더함) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
+| 1.1 | 고객 요청과 공격 구분 | judgement, worked | `level2`: PL2 | `community` 초당 2건 | 150초에 sqlmap(`ru`) |
+| 1.2 | 기록만 하는 WAF 경보 판단 | judgement, faded | `inherited`: PL2, 949110과 959100 제거 | `community` 초당 2건 | 120초에 sqlmap, 300초에 검색 인젝션(`ru`) |
+| 1.3 | 공격 유형 구분 | judgement, none, 공격 종류도 판단 | `inherited` | `community` 초당 4건 | 90~660초에 케이스 여덟 개, 모두 `kr`: sqlmap 기본·tamper, 검색·union·로그인 인젝션, XSS 둘, 경로 추적 |
+| 2.1 | 한글 검색 오탐 해결 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap (`ru`) |
+| 2.2 | 태그·링크 검색 오탐 해결 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap (`ru`) |
+| 2.3 | 이상 점수 임계치 낮추기 | availability, none, 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap (`ru`) |
+| 3.1 | 탐지 룰 하나 고치기 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
+| 3.2 | sort 공격 탐지 룰 쓰기 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap (`ru`) |
+| 3.3 | 변형된 공격 탐지하기 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(공백 사이의 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형 (`ru`) |
+| 3.4 | 댓글 XSS 탐지 룰 쓰기 | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS (`ru`) |
+| 4.1 | 종합 실습 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문을 더함) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
 
 PL3에서 한글 검색은 `ARGS:q`의 920272와 942460에 막히고(그 둘을 빼면
 `REQUEST_URI_RAW`의 920272), 그 뒤 고객이 여는 모든 페이지는

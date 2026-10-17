@@ -134,7 +134,8 @@
     return `
       <div class="px-4 py-2 flex items-center gap-2 hover:bg-subdued">
         <div class="min-w-0 flex-1" title="${esc(caseDef.summary)}">
-          <div class="font-mono text-[12px] text-heading truncate">${esc(caseDef.name)}</div>
+          <div class="text-[12.5px] text-heading truncate">${esc(localized(`case.${caseDef.name}`, caseDef.name))}</div>
+          <div class="font-mono text-[11px] text-faint truncate">${esc(caseDef.name)}</div>
           <div class="text-[11.5px] text-muted truncate">${esc(caseDef.summary)}</div>
           ${takes ? `<div class="text-[11.5px] text-danger truncate">${esc(t("red.case.objective", takes))}</div>` : ""}
         </div>
