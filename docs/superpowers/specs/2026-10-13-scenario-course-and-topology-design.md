@@ -52,6 +52,19 @@ tutorials and the learning-science literature.
 
 ## The course
 
+The course runs in three stages (the user, 2026-10-18; `docs/DECISIONS.md`
+"The red console is Kali and a browser"):
+
+1. Integrated attack and defence lessons: the learner attacks from Kali and
+   defends from the same blue console (Kali is a pane below a divider in its
+   left menu). Today these are the foundations F1-F6 below; a redesign of the
+   lessons around attack and defence together is pending the user's approval.
+2. Free practice: the scenarios 1.1-4.1 below, with the automated attacker
+   (the scenario engine's schedule); Kali stays in the blue console.
+3. Wargame, person against person: the red player uses the red console (Kali
+   and a Website pane, no prepared attack), the blue player the blue console,
+   which then has no Kali pane.
+
 ### Foundations (F1-F6), on the range
 
 Each unit: one short explanation, a hands-on step on the learner's own
