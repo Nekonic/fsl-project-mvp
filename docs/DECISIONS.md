@@ -5067,3 +5067,38 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   log and marker: the defender's Network panel lists the attacker's
   requests, and the attacker's requests through the pane are left out of
   `/score/` like browsing. Neither matters until 4.2 is built.
+- **The coach beside the rail.** The first live look found the coach's
+  popover, pointing at a rail button ("Open Kali in the left menu"), placed
+  below the button and covering the rail's other buttons, Kali among them
+  (the rail is longer now). A rail target on a vertical rail now takes the
+  spot to its right first (51b28dd).
+- `bin/verify --changed`: unit 1488 passed; ratchet holds (core_loc 580,
+  product_loc 24361 -> 23996, tests 1065 -> 1066, reported).
+  `bin/select-tests` named all 32 acceptance files (`views.py`,
+  `openstack.py`, `vm-terminal.sh`, `scenario.yaml` are range-facing and no
+  test names them), so the terminal- and Kali-related modules ran on the VM:
+  `test_lesson`, `test_board_exfil`, `test_attacker_reach`,
+  `test_operator_log`, `test_attacker_box`: 10 passed, 0 failed, 0 skipped in
+  199 s.
+- **Proven live 2026-10-18** (OpenStack, platform VM 192.168.0.210). 0a90806
+  deployed by `bin/cloud up --replace --sideload` (platform and kali images
+  built on the VM from it, gns3 from 9674d0e) in 24 min 56 s, most of it
+  waiting for two sessions left open (874, 877, closed by hand) and the
+  `fsl-kali` range image rebuilt for the new motd; 51b28dd (the coach fix)
+  in 5 min 58 s. Before the deploy, the new `vm-terminal.sh` was run by hand
+  inside the old platform container against slot 1: `ubuntu@waf:~$` and
+  `ubuntu@kali:~$`, no host-key warning, `http_proxy`, `FSL_TARGET` and
+  `PROMPT_COMMAND=_fsl_record` set, the typed command in `commands.log`.
+  Headless Playwright, Korean, 1600x1000 and 390x844, sessions 880 (F5) and
+  881 (wargame): the red console shows the objectives, "탈취한 해시 제출",
+  Kali (the new motd, `ubuntu@kali:~$`) and Website (board.com, developer
+  tools), nothing else; the blue console of the wargame has no Kali and no
+  divider; its WAF pane reads `waf · CRS 설정: ...` and `ubuntu@waf:~$`; the
+  F5 blue console has the divider and Kali, the sqlmap step points at Kali
+  with the popover to its right, and the terminal's text is the same after a
+  switch to Kibana and back (the frame is kept); the session page of the
+  lesson shows only the blue card. No page error. The P0 probe again after
+  the deploy (slot 2, session 886): the same 404s from Kali, with and without
+  the proxy, and through the Website pane's proxy; every other address `000`.
+  Every session the runs opened (878-881, 886, and the acceptance run's) is
+  closed.
