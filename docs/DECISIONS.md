@@ -4822,3 +4822,37 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   placeholders unchanged. `docs/vocabulary.md` gains the row lesson / unit ->
   레슨, and its `shell` row takes the guide's settled 쉘 (셸 noted as
   Dreamhack's form). `bin/verify --changed`: unit 817 passed, ratchet holds.
+- **Proven live 2026-10-18** (OpenStack, platform VM 192.168.0.210). HEAD
+  1fc2bc8 deployed by `bin/cloud up --replace --sideload` (platform image
+  built from it; gns3 from 9674d0e, whose `deploy/gns3` is the same; kali
+  from 1fd5be3) in 9 min 14 s. The Korean map captions need no gns3 image:
+  the platform reads `deploy/topology/*.ko.gns3` from its `/src` mount and
+  imports them into GNS3 when a session's map is published
+  (`api/maps.py`). `bin/verify --changed 9674d0e`: unit 817 passed, ratchet
+  holds. `bin/select-tests` named all 32 acceptance files only because no
+  acceptance test names the two `.ko.gns3` files; their change is drawing
+  text, so no acceptance ran and the sweep checked the map instead. A
+  headless sweep (Playwright, Chromium, 1440x900, ko and en) of the home
+  page, catalogue, session page, every blue pane, the red console, every
+  step of F1-F6, scenarios 1.1 and 3.1 and the 2.1 briefing, which also
+  measured every text node against its clipping box, the viewport and
+  `text-overflow`, found two faults, fixed in 6b72876: the coach popover
+  broke Korean words mid-word (가/장, 호/스트인가요, 개발/자 도구), so the
+  console sets `word-break: keep-all` for Korean, with `overflow-wrap:
+  break-word` for a word longer than its box; and the red console's case
+  list cut both sqlmap variants' labels to the same prefix in both languages,
+  so the label wraps (the id, command and path lines keep their ellipsis,
+  the summary is the row's title). `bin/verify --fast`: unit 1476 passed.
+  Redeployed 6b72876 the same way in 9 min 19 s and swept again: 72 of 72
+  step views boxed, 12 of 12 pane steps boxed with the Map open; Skip on
+  six steps offered as 건너뛰기, recorded skipped and not passed, the coach
+  on the next step, 6 of 6; no clipped or cut text except those deliberate
+  ellipses; no learner-visible text (page text, titles, placeholders,
+  labels; 6 briefings, 72 step views, 16 page views) holds 레인지, 단원,
+  "왜?", 대신 해 주기 or the other words of the previous sweep; the Map pane
+  draws 인터넷, 서비스망 10.30.0.0/24, 내부 DB망 172.18.0.0/16 and 관제망 with
+  no text overlapping another (English likewise); the console shows only
+  the third-party messages of "Errors swept before the push", the WAF's 403
+  to the learner's own probes and two requests aborted by a pane switch; the
+  platform log holds no ERROR, Traceback or `[warn]`, only 409 (a session
+  opened while a slot reset) and the site proxy's 403.
