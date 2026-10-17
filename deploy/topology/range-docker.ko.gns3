@@ -46,7 +46,7 @@
                 "drawing_id": "1f70f330-404a-5951-ad4b-9ba5b4f378ec",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"81\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
+                "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4\ub9dd</text></svg>",
                 "x": 230,
                 "y": -96,
                 "z": 2
@@ -64,7 +64,7 @@
                 "drawing_id": "ce44b395-ab8d-58db-93a4-4b9c0ac4fb46",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"68\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
+                "svg": "<svg width=\"50\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c\ub9dd</text></svg>",
                 "x": -130,
                 "y": 466,
                 "z": 2

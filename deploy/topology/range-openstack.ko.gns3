@@ -46,7 +46,7 @@
                 "drawing_id": "4b6ab292-6277-53ea-8640-90568e11dcc7",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"81\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4 \uad6c\uac04</text></svg>",
+                "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4\ub9dd</text></svg>",
                 "x": 230,
                 "y": -96,
                 "z": 2
@@ -64,7 +64,7 @@
                 "drawing_id": "85fb7eea-d8f9-57e4-875a-c629f7ed7a68",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"98\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ub0b4\ubd80 DB \uad6c\uac04</text></svg>",
+                "svg": "<svg width=\"78\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ub0b4\ubd80 DB\ub9dd</text></svg>",
                 "x": 770,
                 "y": -96,
                 "z": 2
@@ -82,7 +82,7 @@
                 "drawing_id": "c9a3a91a-dfc6-53eb-a701-962ce9cc25a6",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"68\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c \uad6c\uac04</text></svg>",
+                "svg": "<svg width=\"50\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c\ub9dd</text></svg>",
                 "x": 140,
                 "y": 466,
                 "z": 2
