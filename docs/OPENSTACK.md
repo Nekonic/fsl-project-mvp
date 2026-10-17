@@ -113,7 +113,7 @@ neutron_external_interface: "<NIC with no IP, for provider/floating IPs>"
 kolla_internal_vip_address: "192.168.0.110"   # this cloud's API address
 neutron_plugin_agent: "openvswitch"           # the default [K2]
 enable_heat: "yes"        # default follows enable_openstack_core [K2]; keep it on
-enable_horizon: "yes"     # optional; noVNC console URLs come from Nova either way
+enable_horizon: "yes"     # optional; the platform does not use it
 #enable_cinder: false     # default [K2]; the project works without volumes
 ```
 
@@ -247,7 +247,7 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 | `fsl-mgmt` | fabric | all IPv4 in from members of `fsl-reach` (the platform's `mgmt` port) only; on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
 | `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
 
-8002 is the blue console's site browser on both substrates; on openstack the
+8002 is the blue console's Website pane on both substrates; on openstack the
 platform proxies it to the session's slot's WAF over `mgmt`. A platform
 stack made before 2026-10-13 lacks the rule; add it by hand:
 
@@ -438,6 +438,7 @@ unquoted version, overlapping CIDRs, a password written into the file).
 | `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (January and July; updates have no images [O1]) |
 | `opnsense.image_sha256`, `.pubkey_sha256` | from the release announcement [O3] | §3.6 |
 | `platform.stack`, `.repository`, `.ref` | `fsl-platform`, this repo, `dev` | the stack and the checkout it clones |
+| `backups.keep` | `1` | optional; how many store backups `backups/` keeps after a rebuild or `down`, the new one included (`bin/backup --keep`); without it, one |
 
 Where each value lands: `bin/platform-rebuild` and `bin/cloud` set the
 openstack CLI's `OS_*` variables from `identity` (no openrc needed) and pass
@@ -484,7 +485,7 @@ From the operator's machine, with `python-openstackclient` and
 `python-heatclient` installed and the repo's `.venv` (PyYAML):
 
 ```bash
-.venv/bin/python bin/cloud up            # --replace to replace a standing platform
+.venv/bin/python bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
 .venv/bin/python bin/cloud down
 ```
 
@@ -498,7 +499,7 @@ ready with no builder left (stops on a failed image or one no script builds);
 `NOT_STANDING`/`REBUILDING`; `POST configure/`, retried while it answers 503
 as the VMs' ssh comes up, stopping on 409; `GET ready/` until ready; then
 `DELETE images/` removes leftovers no server boots from. `down`:
-keeps the range key, backs up the store (`bin/backup`), `DELETE slot/`,
+keeps the range key, backs up the store (`bin/backup --keep`, `backups.keep`), `DELETE slot/`,
 `DELETE fabric/`, deletes every server whose name starts with `fsl-build-`,
 which carries the `fsl_image` property and which has a port on this stack's
 own network (the stack's `network` resource; such a port would fail the
@@ -513,7 +514,7 @@ floating IP, the `fsl-claude` keypair and the `fsl-build` group. An `up` after
 ### 5.3 Rebuild and delete — lossless
 
 ```bash
-.venv/bin/python bin/platform-rebuild    # --cloud PATH, --ref REF
+.venv/bin/python bin/platform-rebuild    # --cloud PATH, --ref REF, --sideload NAME=TARBALL
 ```
 
 It refuses unless every platform image for the ref's commit is public on GHCR,
@@ -527,11 +528,15 @@ store, and waits for `/api/sessions/`. With the key carried over, the fabric's
 into a temporary file inside the platform container and streams it over ssh
 in 1 MiB chunks; it gives up only after 600 s with no data. Once the copy
 passes `integrity_check`, older `backups/db-<UTC time>.sqlite3` files beyond
-`backups.keep` in `cloud.yaml` (default 1, the new one included) are removed;
-`bin/cloud down` does the same. The new VM holds one copy, the one it was
-restored from, in `/opt/fsl/backups`. The store itself stays small: the
-platform deletes closed sessions older than `FSL_RETAIN_CLOSED_MINUTES`
-(default 60, `compose.yaml`), so a backup carries about an hour of closed
+`--keep` (default 1, the new one included) are removed; a file named
+otherwise is never removed. `bin/platform-rebuild` and `bin/cloud down` pass
+`backups.keep` from `cloud.yaml` as `--keep`. The new VM holds one copy, the
+one it was restored from, in `/opt/fsl/backups`. The store itself stays small:
+the platform deletes sessions closed longer ago than
+`FSL_RETAIN_CLOSED_MINUTES` (default 60; `platform/fsl/settings.py`, set in
+`compose.yaml`, overridden in `/opt/fsl/.env`) with their records, at start
+and after every close, 2,000 rows per transaction (`platform/api/retention.py`);
+open sessions are never touched. A backup carries about an hour of closed
 sessions plus the open ones. The store is copied back with
 `scp` and put in place while the platform is stopped.
 
@@ -541,7 +546,7 @@ pushed commit, whose images GHCR has) and starts it as usual; the rebuild then
 copies this checkout's HEAD as a git bundle, checks it out in `/opt/fsl`,
 `docker load`s each tarball and tags its image with the cloned commit
 (`FSL_IMAGE_TAG` in `/opt/fsl/.env`), stops the platform for the restore, and
-recreates every service (HEAD's compose file may add some, and a file
+recreates every service with `docker compose up -d --force-recreate` (HEAD's compose file may add some, and a file
 bind-mounted into a running container, such as `filebeat.yml`, keeps the cloned
 commit's copy until the container is recreated). `FSL_IMAGE_TAG` stays
 the cloned commit because the range's image builders pull the wargames'
@@ -588,7 +593,7 @@ the gns3 image from 1814e5c, whose `deploy/gns3` is the same.
 | Total | 54 min 33 s | 28 min 18 s | |
 
 Security group `fsl-platform`: 22, 8000, 8002, 3080 and ICMP. After each run a
-board session (497, 514) opened in about 5 s, its Topology pane drew the
+board session (497, 514) opened in about 5 s, its map pane (now Map) drew the
 learner map from `fsl-gns3` with every link end green, and its close reset the
 slot to READY within 2 minutes. The old VM's Elasticsearch data does not move
 (only the store does).
@@ -770,8 +775,12 @@ curl -s http://$ADDRESS:8000/api/range/fabric/ | jq .clean
 ssh ubuntu@$ADDRESS 'cd /opt/fsl && FSL_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
-`bin/verify` restarts the platform and resets the range; never run it against
-a stack someone is using.
+`bin/verify` runs with the checkout's `.venv/bin/python`; the VM's cloud-init
+installs `python3-venv` but makes no `.venv`, so make it by hand first. It
+restarts the platform and resets the range; never run it against a stack
+someone is using. `bin/verify --changed --live` runs only the acceptance
+modules a change reaches (`bin/acceptance --only`); `--fast` runs no
+acceptance.
 
 Since 2026-10-17 the whole acceptance suite runs here with no skip (70
 passed, 0 failed, 0 skipped; `docs/DECISIONS.md` "No acceptance test is
@@ -779,18 +788,15 @@ skipped on OpenStack"). A change to a range host's image (`deploy/kali`,
 `deploy/waf`, ...) reaches a standing slot only at its next reset: after
 `bin/cloud up`, open and close one session per slot before the run.
 
-**Acceptance on substrate openstack: partial** (the OpenStack range is out of
-the MVP). Run 2026-10-11 on a range built from scratch by `bin/cloud up`
-(platform VM 192.168.0.210, OPNsense 26.7 edge): 50 passed, 86 skipped, 6
-failed, 4 errors (the run before the reset fixes: 24 passed, 14 failed, 22
-errors). Left (`docs/STATE.md` backlog 0):
-
-- tests that reach compose containers this range does not have:
-  `test_criterion_1_services_answer` (`kali`), the three `test_corp_authz`
-  tests (`corp-db`), `test_board_loot` and `test_objectives`;
-- `test_map`'s 4 errors: WAF tuning (`PUT /api/sessions/<id>/waf/`) has never
-  worked on OpenStack, because `rules/crs.py` hard-codes the Docker image's
-  CRS path and nginx pid.
+**The first acceptance run on substrate openstack**, 2026-10-11, on a range
+built from scratch by `bin/cloud up` (platform VM 192.168.0.210, OPNsense 26.7
+edge): 50 passed, 86 skipped, 6 failed, 4 errors (the run before the reset
+fixes: 24 passed, 14 failed, 22 errors). What it left has since been fixed or
+deleted: tests that reached compose containers (`kali`, `corp-db`) reach the
+slot's hosts through `run_on_role`; WAF tuning (`PUT /api/sessions/<id>/waf/`)
+uses the WAF host's declared rule file, reload command and pid
+(`rules/crs.py` `Layout`) instead of the Docker image's; and the compose-only
+checks were deleted on 2026-10-17.
 
 Run time 2,900 s: fixture setup 1,689 s, test bodies 1,179 s, teardown 27 s;
 the slowest item is `test_suppression`'s setup (578 s).

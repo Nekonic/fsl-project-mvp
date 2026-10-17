@@ -4,9 +4,10 @@ How the range is built, how traffic and evidence move through it, and the
 design decisions behind it. How the score is defined is in `CLAUDE.md`; open
 problems and measured quirks are in `docs/STATE.md`.
 
-Everything up to "Decisions" describes what runs today: a Docker compose
-range. The last section, "OpenStack", separates what is built there from what
-is planned (`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
+Everything up to "Decisions" describes what runs today: the Docker compose
+range, and the OpenStack range where it differs. The last section,
+"OpenStack", describes the OpenStack range and separates what is built there
+from what is planned (`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
 The hypothesis the repo started from: red team attacks can be labelled with
 ground truth, and Suricata and ModSecurity alerts can be matched to those
@@ -39,9 +40,17 @@ two opens at once cannot take down each other's new stack. Docker opens at most 
 `platform/fsl/settings.py`) and answers 409 past that; OpenStack opens one per range slot.
 Closing a session leaves its stack until an open at least three minutes
 later, while its Filebeat ships the last alerts. The store keeps a closed
-session for `FSL_RETAIN_CLOSED_MINUTES` (default 60); `platform/api/retention.py`
-deletes older closed sessions, with everything that belongs to them, at start
-(`fsl/wsgi.py`) and after each close. The OpenStack substrate has
+session for `FSL_RETAIN_CLOSED_MINUTES` (default 60, set in `compose.yaml`);
+`platform/api/retention.py` deletes older closed sessions, with everything
+that belongs to them, at start (`fsl/wsgi.py`) and after each close: a
+session's detections and customer requests 2,000 rows per transaction, then
+the session, so a large prune never holds the store's write lock for long. The
+store is SQLite with `transaction_mode: IMMEDIATE` (`fsl/settings.py`): a
+read-then-write transaction takes the write lock at its start and waits out
+the 30 s busy timeout instead of failing at once with `database is locked`.
+`bin/backup` snapshots the store with `VACUUM INTO` and keeps the newest
+`--keep` copies (default 1; `backups: {keep}` in `cloud.yaml` for
+`bin/platform-rebuild` and `bin/cloud down`). The OpenStack substrate has
 no `open_session`: its range is the Nova VMs, so no session stack starts; the
 wargames run on one VM, `fsl-wargame-host`, as the same GHCR containers. Its
 readiness probe and session baseline read the board through the adapter's
@@ -101,7 +110,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
 | `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
-| `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static; holds open the learner maps the platform loads and starts their display nodes; `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket, the host's pid namespace) | mgmt | 3080 |
+| `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli; holds open the learner maps the platform loads and starts their display nodes; `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket, the host's pid namespace) | mgmt | 3080 |
 
 8000, 8002 and 3080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
 both defaulting to 127.0.0.1; 9200 binds to loopback only.
@@ -134,7 +143,8 @@ subnet against the pipeline scoring reads.
 On docker, segmentation is network membership only: no firewall, no iptables, no
 ACL; on OpenStack it is the fabric's networks and security groups.
 `test/test_attacker_reach.py` asserts it against the live range on both (Kali
-reaches `board.com` but not `board:8000`, and no service off its route out),
+reaches neither `board:8000` nor `corp-wp` directly, and no service off its
+route out; `test/test_board_exfil.py` reaches the board through `board.com`),
 and `test/test_concurrent_sessions.py`
 that two concurrent sessions do not see each other. Only the edge subnets are fixed;
 container addresses are assigned by Docker and change on recreate. The views
@@ -178,7 +188,9 @@ is attached to every edge network and each session's `estate`, so the API checks
 
 `deploy/suricata/suricata.yaml` names the interfaces eth0 to eth4 and relies on
 Docker attaching the WAF's networks in the priority order set in
-`compose.yaml`. Nothing checks that mapping.
+`compose.yaml`. Nothing checks that mapping. Its `default` entry gives any
+other interface (the estate sensor's `ens3` on OpenStack) the same capture
+settings.
 
 The WAF routes `board.com` to `board:8000` and answers `/internal/` itself
 with a 404 (`deploy/nginx/board.conf`); `corp.com` is a second vhost to
@@ -412,7 +424,8 @@ platform takes no SSH); on Docker each session endpoint's MAC is matched to
 `gns3.publish` signs in as GNS3's admin (the password from
 `FSL_GNS3_ADMIN_PASSWORD` or `/run/fsl-gns3/admin-password`, the GNS3 data
 directory mounted read-only; the file is 0640 to the Docker socket's group),
-deletes the project, imports it as a portable project whose `project.gns3`
+deletes the project if GNS3 lists it (a DELETE of a project GNS3 never held
+is logged at ERROR), imports it as a portable project whose `project.gns3`
 keeps the URL's project id (GNS3 then keeps every id, as for a snapshot), turns
 `auto_close` off (an import is made with it on, whatever the file says, and a
 project closed when the last web client leaves stops its nodes), opens it and
@@ -444,7 +457,8 @@ built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
 token where the bundled web UI reads its controller (`controller-1`,
 `controllerIds` in `localStorage`), with `showInterfaceLabels` on and
 `integrateLinkLabelsToLinks` off so each link end's label is drawn where the
-project puts it. It opens the project in a same-origin frame and makes it
+project puts it, and `statistics_command` set to `false`, so the web UI sends
+no usage statistics from the learner's browser; the page is titled Map. It opens the project in a same-origin frame and makes it
 view-only before the map draws: a stylesheet hides every piece of editing
 chrome (the title bar, the tool column, context menus, the topology summary,
 dialogs and the Angular CDK overlay) and takes pointer events off everything
@@ -462,7 +476,8 @@ frame, which runs the same reset and fit. The Auditor role still refuses every
 write on the server. For development MCP use (`/v3/mcp/`), `docker
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP. The console's tab for it reads
-Map (구성도); no word a learner reads names GNS3.
+Map (`blue.pane.topology`, one word in Korean too); no word a learner reads
+names GNS3.
 
 A read-only user cannot open a project (`Project.Allocate`), so `provision.py`
 opens every project as admin at start and starts each of its stopped display
@@ -472,11 +487,15 @@ from its release tag with `cap_net_admin,cap_net_raw` file capabilities, and
 `CAP_NET_ADMIN` plus `/dev/net/tun` for the `ethernet_switch` nodes (3.1 backs
 each with a kernel bridge and TAPs inside the container's own network
 namespace); for the `docker` nodes the host's Docker socket (each node is a
-container `GNS3.<node>.<project id>` on the host's daemon), `busybox-static`
+container `GNS3.<node>.<project id>` on the host's daemon), Debian's
+`docker-cli` (GNS3 closes a docker node with `docker exec`), `busybox-static`
 (GNS3 copies it into every docker node it starts) and the host's pid namespace
 (`pid: host`: uBridge moves a started node's interface into the namespace of
 the container's host pid); `qemu-system-x86` stays for the system maps' `qemu`
-nodes. The host daemon resolves the containers' bind mounts on the host, so
+nodes. The `[ai-features]` extra, without which 3.1.0a6 does not start, brings
+a copilot that clones a skills repository at start; the image sets its
+`enabled` to `False` in `skills_config.py` and its build fails if that line is
+gone. The host daemon resolves the containers' bind mounts on the host, so
 the data directory is the same path on both sides (`/var/lib/fsl-gns3`). The
 server runs as the user `gns3`, which joins the socket's group at start as
 `fsl` does in the platform. `GET /api/topology/` offers the web UI (`web_ui`)
@@ -495,8 +514,7 @@ same range read, `running` or `not reported`; the session overlay lists only the
 map's hosts and their addresses on the map's switches. The overlay places hosts
 by the names the range reports them under; OpenStack reports a slot's servers by
 their declared names (`slot.known_as`), and only the VM's own hostname, which the
-syslog records carry, has the slot suffix. The follow view that drew one
-request's path on the map was removed on 2026-10-16 (`docs/DECISIONS.md`).
+syslog records carry, has the slot suffix.
 
 ## Isolation seams
 
@@ -546,7 +564,7 @@ The blue console's WAF pane frames the URL the session API names
 (`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
 `/waf-terminal/<session id>/`: nginx takes the session from the path, drops the
 client's query and proxies to a ttyd inside the platform
-(`ttyd -a -b /waf-terminal -p 7693 /app/waf-terminal.sh`) with `?arg=<session id>`;
+(`ttyd -W -a -b /waf-terminal -i 127.0.0.1 -p 7693 /app/waf-terminal.sh`) with `?arg=<session id>`;
 ttyd's `-a` passes that as the script's argument, and the script, after checking
 it is a number, runs `docker exec -it fsl-<id>-waf-1 bash`. The WAF image has
 no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
@@ -723,7 +741,12 @@ bind-mounts `./config/ingest-geoip`, which `bin/fetch-geoip` fills, so
 `GeoLite2-City.mmdb` survives a container recreate. The entrypoint registers
 the pipeline at bring-up (`platform/register_pipeline.py`, in the background
 like `kibana.py`, so the platform serves while Elasticsearch is still coming
-up). waitress serves the platform with 16 threads.
+up). waitress serves the platform with 16 threads on 127.0.0.1:8001; the
+entrypoint tests nginx's configuration and starts nginx only once that port
+accepts, so nginx never answers 502 for a platform still starting. nginx sets
+`proxy_max_temp_file_size 0` for every location and a 1 MB request body
+buffer, so no proxied response or request body is written to a temporary
+file.
 
 ## Sessions, WAF tuning and the step engine
 
@@ -819,7 +842,7 @@ game) and out of the windows corp's effect observation attributes changes to.
 Only `seed` is still written; `verify`, `check` and `replay` stay listed so
 the replays older sessions hold stay out of both scores.
 
-The console is five screens, every one filled from `/api/` (a static mockup
+The console is four screens, every one filled from `/api/` (a static mockup
 the user approved, with two rulings on top; `docs/DECISIONS.md`, 2026-10-11,
 console redesign). The palette and component classes are in `base.html` and
 `platform/console/components.css`, which `bin/build-css` puts into
@@ -828,7 +851,7 @@ language switch.
 
 - Main (`/`): running sessions with their kind (`scenario`, `lesson` or
   `wargame`), the step a foundation session reached and whether opening has
-  finished (`ready`, from `Session.ready_at`; "preparing n s / about 80 s"
+  finished (`ready`, from `Session.ready_at`; "Preparing ns / about 80s"
   until then); wargame cards with category, difficulty and minutes from
   `scenario.yaml` and counts of attack cases, benign cases and objectives
   from `GET /api/wargames/`. Under each card come the foundations block
@@ -857,11 +880,12 @@ language switch.
   cases from `GET /api/sessions/<id>/cases/`. Once closed: a scenario's
   verdict banner and its debrief ("Scenarios"), then the primary score
   (every tier, lost or kept, noticed or not, penalty difficulty x1 or x2),
-  then plain sentences on what the defence judged: "caught 7 of 8 attacks,
+  then plain sentences on what the defence judged: "Caught 7 of 8 attacks,
   missed 1 (name)", "3 of 4 benign requests passed, wrongly blocked 1
   (O'Brien search)", and that a case counts once however many alerts it
   drew. TP/FP/FN/TN and the game's balance stay in the API; no string a
-  person reads names them (`test_strings.py`). Open again reopens the same
+  person reads names them (`test_strings.py`). "Start the same scenario again" ("Start the
+  same lesson again" for a unit) reopens the same
   scenario, the same unit (`{scenario, guidance: true, lesson, defense}`
   when `lesson_id` is set) or the same wargame.
 - Blue (`/blue/<id>/`): a rail (Kibana, Website, Map, Alerts for a
@@ -975,14 +999,14 @@ ttyd's `term`, calls `term.paste(command + "\n")` and then
 terminal; it has no Run button.
 
 Help climbs a ladder per step (`<text>.nudge.<step>` from the page, the
-answer from the step's `progress.answer`): a nudge, then "look where the red
-box is", then the answer, then "Skip". It climbs on the Hint button
-or after two wrong answers or failed checks; each press is `POST
+answer from the step's `progress.answer`): a nudge, then "Look at the spot
+marked with the red box.", then the answer, then "Skip". It climbs on the
+"Show a hint" button or after two wrong answers or failed checks; each press is `POST
 /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`, which raises the
 step's `hint` level, and the first is recorded in `Session.hints` (migration
 0017; 400 for a session that is not guided or a step or level the unit does
-not have, 409 when closed). After 60 s on a step the Hint button only says
-"Hint available"; nothing is recorded until the learner presses it. "Skip"
+not have, 409 when closed). After 60 s on a step the button only changes to
+"Show the new hint"; nothing is recorded until the learner presses it. "Skip"
 (`lesson.SKIP_OFFERED`, the ladder's last rung) is Next: `POST
 /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}` and the next step
 reached; on the last step it records the skip and closes the popover.
@@ -1063,7 +1087,7 @@ first visit.
 
 | unit | defense | the learner | answers read from |
 |---|---|---|---|
-| f1 Reading the practice network's map | `full` | opens the Map pane and names the host that receives a customer's request first, the host that stores the logs and the switch the database is connected to | the substrate's GNS3 project and the declaration (`topology.facts`): the first `edge`, `gateway` or `wargames` host linked to the outside segment (fsl-edge on OpenStack, fsl-waf on Docker); the node running the Elasticsearch image (fsl-elasticsearch on both substrates; on OpenStack it runs in the platform's compose and the learner map draws it as the log store); the switch the scenario's database node is linked to (`board-default`, `estate`) |
+| f1 Reading the practice network's map | `full` | opens the Map pane and names the host that receives a customer's request first, the host that stores the logs and the switch the database is connected to | the substrate's learner map for the session's wargame and the declaration (`topology.facts`, by the map's names through `topology.learner`): the first `edge`, `gateway` or `wargames` host linked to the `internet` switch (`firewall` on OpenStack, `waf` on Docker); the `log-server` node; the switch the wargame's database node is linked to (`sw2` on OpenStack, `sw1` on Docker) |
 | f2 Sending a web request and reading its status code | `full` | searches in Korean in the Website pane and reads the status code in its developer tools (the Theory tab names the hops on the map; no step checks them) | the learner's own Website pane request: the status |
 | f3 Reading an HTTP request | `full` | the same request's method, path, parameter, status class | the same request record |
 | f4 Finding logs in Kibana | `full` | finds the Korean search in Kibana (every record, not only alerts) and says which engine wrote it; sends `<script>alert(1)</script>`, finds the WAF's record, reads `status` and `source_ip` | the engines that recorded the request (http records, detections), the request's status, the WAF detections' `src_ip` |
@@ -1320,8 +1344,9 @@ the session with 503.
 **The engine** (`platform/api/scenario_run.py`, pure rules in
 `platform/scenarios.py`) is one thread in the platform process, started on
 the first scenario and at boot by `fsl/wsgi.py` (`resume`, which puts an
-attack interrupted mid-fire back to due). Every `FSL_SCENARIO_TICK` (2 s) it,
-for each open scenario session:
+attack interrupted mid-fire back to due). A failure of a tick or of the
+connection cleanup after it is logged on its own and does not end the
+thread. Every `FSL_SCENARIO_TICK` (2 s) it, for each open scenario session:
 
 - opens the window at its scheduled time (`minutes - window_minutes` after
   open) if the learner has not;
@@ -1345,8 +1370,8 @@ for each open scenario session:
 Closing cancels the attacks still due; one already firing finishes and is
 recorded.
 
-**The final verification window.** `POST .../scenario/verify-window/` ("I'm
-done") or the schedule opens it for `window_minutes`; the engine adds one
+**The final verification window.** `POST .../scenario/verify-window/` ("Start
+final check") or the schedule opens it for `window_minutes`; the engine adds one
 entry inside it for every attack case the schedule names that is not already
 due there. What it judges is the class's `completion`: `served`, no customer
 request blocked by the defence within it (403, not the app's); `held`, every
@@ -1467,8 +1492,10 @@ not declared: it needs a second person; the engine accepts `red: person`.
   same Elasticsearch the platform ingests from. It is reached through the
   platform's port 8000 at `/kibana/` and publishes no port of its own. The
   blue console frames it. At bring-up `platform/kibana.py` (in the background,
-  retrying while Kibana cannot be reached or answers 502/503/504, and reporting
-  any other HTTP error once with its status and body) imports `deploy/kibana/objects.ndjson` with
+  asking `/api/status` first and importing only once it answers, retrying
+  while Kibana cannot be reached or answers 502/503/504, and reporting any
+  other HTTP error once with its status and body; a starting Kibana answers a
+  multipart import 415) imports `deploy/kibana/objects.ndjson` with
   overwrite: the data view `fsl-logs-*` on `@timestamp`, whose runtime fields
   fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`,
   `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the
@@ -1528,7 +1555,8 @@ it and reports every problem by key; `bin/platform-rebuild` and `bin/cloud`
 drive the openstack CLI and the Heat parameters from it, and the stack writes
 it into the platform's `openstack.env`. `bin/cloud up` creates the stack and
 then calls fabric, images, slot and configure until `/api/range/ready/` is
-ready; `bin/cloud down` keeps the key, backs the store up and removes slot,
+ready; `bin/cloud down` keeps the key, backs the store up (`bin/backup`,
+keeping `backups.keep` copies) and removes slot,
 fabric, any image builder and the stack. A `*_FAILED` stack is deleted (builders
 first) and created again by `up`, and deleted by `down`.
 
@@ -1540,7 +1568,8 @@ first) and created again by `up`, and deleted by `down`.
 - a router to the external network, and a floating IP (or, with
   `network.address` set, an association to one the project already holds,
   which a stack delete leaves in place);
-- a security group opening tcp/22, tcp/8000 and ICMP to any address;
+- a security group opening tcp/22, tcp/8000, tcp/8002, tcp/3080 and ICMP to
+  any address;
 - the Nova server `fsl-platform`, with a config drive.
 
 It has no defaults; every parameter comes from `deploy/openstack/cloud.yaml`
@@ -1562,9 +1591,9 @@ from the checkout, which `bin/platform-rebuild` avoids by checking ghcr.io first
 So the compose control plane, and only it, runs inside one Nova VM; on the
 OpenStack substrate no session stack starts there, and the board's ground truth
 is read from the wargame host at its management address. cloud-init sets
-`FSL_PUBLISH` to the VM's fixed address, so 8000 is published there
-and opened in the security group, and a browser reaches the console at the
-floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
+`FSL_PUBLISH` to the VM's fixed address, so 8000, 8002 and 3080 are
+published there and opened in the security group, and a browser reaches the
+console at the floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address
 for the edge's syslog; 9200 stays on loopback.
 
 Every parameter of the template comes from `deploy/openstack/cloud.yaml`
@@ -1690,7 +1719,9 @@ session as `?arg=<id>` (ttyd `-a`) and open its slot's host.
 
 The OPNsense edge `fsl-edge` (vtnet0 internet as WAN, vtnet1 estate as LAN,
 vtnet2 mgmt as opt1) boots in the slot. `POST /api/range/configure/` renders
-`deploy/opnsense/config.xml` for the slot (`range/opnsense.py`), stages it
+`deploy/opnsense/config.xml` for the slot (`range/opnsense.py`; the file
+carries the defaults of the `dnsmasq`, `Syslog` and `unboundplus` models, which
+the early-boot template render needs before OPNsense's migrations run), stages it
 with the Suricata include `deploy/opnsense/suricata.yaml` and the starting
 rules over the management ssh as root, installs them and reboots the edge;
 it then waits for a new boot time and checks that the edge holds the 30

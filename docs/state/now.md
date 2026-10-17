@@ -4,7 +4,9 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-17 (learner text is plain; HEAD proven live on 9674d0e). Written for a session that has the cloud
+Updated: 2026-10-17 (Korean-first learner text and its review, branch
+`ko-first` at 16e951d; before it, learner text is plain, proven live on
+9674d0e). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -13,16 +15,19 @@ Updated: 2026-10-17 (learner text is plain; HEAD proven live on 9674d0e). Writte
   `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`;
   rulings: the 2026-10-13 and 2026-10-14 entries in `docs/DECISIONS.md` (P4,
   P5 and P6 built).
-- `dev` = 8f9acb0. This branch (`claude/task-list-review-fc4953`) adds, not
-  pushed: the GNS3 topology and its pane (P1), foundations F1-F6 (P2),
+- `origin/dev` = 8f9acb0. `claude/task-list-review-fc4953` (836ab11; local
+  `dev` points there too) adds, not pushed: the GNS3 topology and its pane (P1), foundations F1-F6 (P2),
   customer traffic (P3), the scenario engine and console (P4), and the
   scenarios 1.1-1.3, 2.1-2.3, 3.1-3.4 and 4.1 on the board (P5), with the
   fixes the live runs forced, and P6: the older course (lessons 0-5 and 7,
   VERIFY, the lesson debrief, the Lesson / Practice / Wargame rungs,
   `Session.mode`) removed, migration 0026, tests 2052 -> 1981 (71 deleted,
-  121 retargeted); and the follow view removed with F2 and F5 retargeted
+  121 retargeted); and the request-path view on the map removed with F2 and
+  F5 retargeted
   (2026-10-16), plus the three fixes its live run forced (F5 reads
   `rule_id`; a passed Kali step keeps its count; the popover is placed again).
+  This branch (`ko-first`) adds two commits on 836ab11, not pushed: the
+  Korean-first learner text (6e3a2f0) and its review (16e951d).
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
@@ -73,12 +78,12 @@ Updated: 2026-10-17 (learner text is plain; HEAD proven live on 9674d0e). Writte
   whichever pane is open, the not-found line names the step's pane, the
   popover stays placed across pane switches, a pressed Kibana filter reloads,
   SQLite transactions begin IMMEDIATE (Next/Skip lost records to `database is
-  locked`); Skip replaces "Do it for me" (`.../do/` removed). Live sweep on
+  locked`); Skip is the hint ladder's last rung and `.../do/` is removed. Live sweep on
   e331372, ko and en: 72 of 72 step views boxed, Skip 6 of 6 recorded.
 
 - No acceptance test is skipped on OpenStack (2026-10-17, `docs/DECISIONS.md`
-  "No acceptance test is skipped on OpenStack"): of the 30 tests
-  `COMPOSE_RANGE_ONLY` skipped, 25 run on both substrates and 5 are deleted;
+  "No acceptance test is skipped on OpenStack"): of the 30 tests skipped as
+  compose-only, 25 run on both substrates and 5 are deleted;
   the run found that the OpenStack terminal's commands never reached the
   operator log (fixed in `deploy/kali/setup.sh`). Deployed 1fd5be3 by the
   sideloaded rebuild (platform, kali, gns3); `bin/verify` there on b324ba5:
@@ -93,9 +98,19 @@ Updated: 2026-10-17 (learner text is plain; HEAD proven live on 9674d0e). Writte
   first pass on 321f0c0 found and fixed the home page's English reset reason,
   nginx's temporary-file warnings and the Map pane's Google Analytics.
 
+- Korean-first learner text (2026-10-17, `ko-first`): 6e3a2f0 rewrote 532
+  Korean values of `strings.html` from the meaning in Korean practitioner
+  usage and 183 English values to match, took the practitioner terms with
+  their sources into `docs/vocabulary.md`, and renamed the Korean GNS3 pair's
+  zones; 16e951d reviewed all 951 Korean values again (61 changed) and
+  retitled F2 "Sending a web request and reading its status code" (Korean
+  likewise). No answer key, check fact or placeholder
+  changed. Not deployed: the VM still runs 9674d0e; no `docs/DECISIONS.md`
+  entry yet.
+
 ## Waiting for the user
 
-1. Gate 2: push this branch to `dev` (fast-forward).
+1. Gate 2: push `ko-first` to `dev` (fast-forward).
 2. After the push: the images workflow, then `bin/cloud up --replace`
    without `--sideload`. Proven already by the sideloaded runs: the Heat
    template (8002, 3080, `python3-venv`, `nodejs`, the syslog sysctl), the

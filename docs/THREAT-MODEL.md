@@ -11,7 +11,7 @@ cannot show.
 | **Attacker's position** | Outside, from one of the Internet origins the range builds (four on Docker, thirty declared), each with its own address range and a declared country that GeoIP agrees with. No account on the target at the start, no code on it, no presence on the internal network. |
 | **Command and control** | None. Attacks are requests sent from Kali or from the platform; nothing left on the target calls back. |
 | **What the attacker is after** | On `board`, the `auth_user` password hashes: the attacker exfiltrates them and submits them, and the platform credits only data that matches the target's own start-of-session snapshot (`loot_verified`). On `corp`, three changes to the WordPress database listed in `wargames/corp/objectives.yaml`: a rogue administrator, the `users_can_register` option turned on, and content written without permission. The platform reads them from `corp-db`'s own records of changes since the session started (`effect_observed`). |
-| **What the defence has** | Suricata on the WAF's traffic and ModSecurity with CRS in front of the application, currently in detection-only mode (`deploy/waf/modsecurity.conf:1`), both reporting into one index. The defender writes and suppresses rules and does nothing else. |
+| **What the defence has** | Suricata on the WAF's traffic and ModSecurity with CRS in front of the application, blocking (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`), both reporting into one index. The defender writes and suppresses Suricata rules, tunes the WAF (CRS paranoia level, anomaly thresholds, rule exclusions: `PUT /api/sessions/<id>/waf/`) and has a shell on the WAF; nothing else. |
 
 ## The stages it reaches
 
@@ -73,7 +73,7 @@ host. Limits:
 
 The target is not published; port 8000 is the console. The XSS cases make the target run script in
 any browser that loads its pages, so the API also refuses cross-origin writes
-and any write whose body is not `application/json`.
+and any write with a body that is not `application/json`.
 
 **The GNS3 server is published read-only to anyone who reaches 3080.** Its
 sign-in page (`/static/web-ui/fsl-auditor.html`) carries the learner's password,
@@ -88,7 +88,9 @@ started by us; an admin who starts one, or adds a node, runs code as root on
 the host. The Auditor is refused every write tried (start, open, close,
 delete, node and drawing create, image pull, user create: 403, measured
 2026-10-13); it can read the host's Docker image list
-(`GET /v3/computes/local/docker/images`).
+(`GET /v3/computes/local/docker/images`). The sign-in page turns the web UI's
+usage statistics off (`statistics_command` false), so the console's Map pane
+sends nothing to Google Analytics.
 
 **On OpenStack the platform answers NTP to every range host, Kali included.**
 `fsl-mgmt` fences each range host's `mgmt` port so only the platform reaches
@@ -100,6 +102,13 @@ time and send it NTP packets; it reaches nothing else on the platform from
 
 **One operator, one session.** No accounts, no roles, and nothing stops two
 browser windows driving the same session. That was a scope decision.
+
+**A closed session's records last an hour.** The platform deletes a session
+closed longer ago than `FSL_RETAIN_CLOSED_MINUTES` (default 60) with its cases,
+detections, customer requests and objectives, at start and after every close
+(`platform/api/retention.py`); a suppression stays with its session cleared.
+Nothing of an older session can be reviewed or compared from the platform's
+store; the alerts stay in Elasticsearch.
 
 **The attacker's actions are partly recorded.** The proxy labels HTTP requests,
 and commands typed in the Kali shell are logged with the active label

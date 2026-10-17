@@ -67,6 +67,11 @@ what lets a piece be swapped without touching the rest.
 - `platform/ingest/elastic.py` — Elasticsearch.
 - `platform/rules/suricata.py` — the Suricata process (a runner; it does not
   import `subprocess`).
+- `platform/rules/crs.py` — the CRS/ModSecurity configuration and the nginx
+  reload.
+- `platform/kibana.py` — the Kibana API.
+- `platform/gns3.py` — the GNS3 API (its container's own
+  `deploy/gns3/provision.py` aside).
 - `platform/attacker.py` — the attacker box and its marker.
 - `platform/api/loot.py` — the board: reads the target's own records and
   matches submitted stolen data against them.
