@@ -623,7 +623,9 @@ def _kali_check(session, step, kept, failed):
     events = _sensed(session, reached - RECORD_SLACK, timezone.now() + RECORD_SLACK, marker)
     ran = [event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
     count, by_sensor = _counted(events)
-    shown = {"kali": {"name": case["name"], "requests": count, "sensors": by_sensor,
+    learner = maps.learner(session.scenario)
+    shown = {"kali": {"name": case["name"], "requests": count,
+                      "sensors": {learner.shown(sensor): seen for sensor, seen in by_sensor.items()},
                       "discover": _discover(session, kibana.sensed_http(marker), everything=True,
                                             since=_lesson_started(session))}}
     if recorded is None and not ran:
@@ -841,6 +843,7 @@ def attacker_box(request):
     )
 
 TOP_N = 25
+WAF_SHOWN_AS = topology.WAF
 
 def _standing(session=None):
     return Shape(segments=_range(session).segments(), sensors=())
@@ -1392,7 +1395,7 @@ def _detail(session):
             **({"cases": []} if session.course_scenario else {})}
     return _described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
-        "waf_box": f"fsl-{session.pk}-waf", "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
+        "kali_terminal": _terminal_url(session), "waf_box": WAF_SHOWN_AS, "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
         "lessons": session.lessons, "next_lesson": _next_lesson(session),
     }

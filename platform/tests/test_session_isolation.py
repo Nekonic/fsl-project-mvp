@@ -328,10 +328,11 @@ def test_the_red_console_s_calls_act_on_its_own_session(client):
 
 
 @pytest.mark.django_db
-def test_the_terminal_is_the_session_s_own_kali():
+def test_the_terminal_is_the_session_s_own_kali(client):
     session, = opened_sessions(1)
 
     assert views._terminal_url(session) == f"/terminal/{session.pk}/"
+    assert client.get(f"/api/sessions/{session.pk}/").json()["kali_terminal"] == f"/terminal/{session.pk}/"
     nginx = (ROOT / "platform/nginx.conf").read_text()
     start = nginx.index("location ~ ^/terminal/(?<session>")
     block = nginx[start:nginx.index("}", start)]
@@ -371,6 +372,9 @@ def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
     assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell, (
         "the shell is the ssh user the platform tunes the WAF as, on the VM's management address"
+    )
+    assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias="$alias"' in shell, (
+        "a rebuilt server is a new key under a new alias, so the terminal neither warns nor stops checking"
     )
 
 @pytest.mark.django_db

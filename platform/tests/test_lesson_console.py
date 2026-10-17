@@ -86,7 +86,8 @@ browser.serve((request) => {
   }
   if (stepped && stepped[2] === "check/") return {body: judge(stepped[1], request.body)};
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, lesson_id: "UNIT_ID", next_lesson: NEXT_JSON, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
+    return {body: {id: 1, lesson_id: "UNIT_ID", next_lesson: NEXT_JSON, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "waf", discover: "/kibana/app/discover#/",
+                   kind: "lesson", kali_terminal: "/vm-terminal/fsl-kali/?arg=1",
                    site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lesson: GUIDANCE ? {
       text: TEXT, group: "foundations", cases: CASES_JSON,
@@ -312,7 +313,7 @@ pane.getBoundingClientRect = () => (pane.style.display === "none" ? none() : sho
 """
 
 @pytest.mark.parametrize("unit, step_id, opens", [("f1", "entry", "topology"), ("f4", "engine", "elk"),
-                                                 ("f6", "excluded", "waf"), ("f5", "sqlmap", "site")])
+                                                 ("f6", "excluded", "waf"), ("f5", "sqlmap", "kali")])
 def test_a_step_that_points_at_the_pane_is_highlighted_whichever_pane_is_open(client, unit, step_id, opens):
     seen = open_page(client, "/blue/1/", setup=coached(unit=unit) + HIDDEN_WHEN_CLOSED, scenario=f"""
       {to(step_id, unit)}

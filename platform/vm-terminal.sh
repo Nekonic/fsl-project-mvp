@@ -1,7 +1,7 @@
 #!/bin/sh
 host="$1"
 [ -n "$host" ] || { echo "no host given"; sleep 2; exit 1; }
-addr=$(python - "$host" "${2:-}" <<'PY'
+found=$(python - "$host" "${2:-}" <<'PY'
 import os, sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 import django
@@ -22,7 +22,7 @@ try:
         if seg.id == "mgmt":
             for node in seg.nodes:
                 if node.name == wanted:
-                    print(node.address)
+                    print(node.address, adapter.host_key_alias(node.address) or node.address)
                     raise SystemExit
 except SystemExit:
     pass
@@ -30,6 +30,11 @@ except Exception:
     pass
 PY
 ) || { sleep 3; exit 1; }
+addr="${found% *}"
+alias="${found#* }"
 [ -n "$addr" ] || { echo "no mgmt address for $host - the range may be down"; sleep 3; exit 1; }
-exec ssh -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=no \
-  -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}"
+shown="${host#fsl-}"
+exec ssh -t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+  -o HostKeyAlias="$alias" -o LogLevel=ERROR \
+  -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}" \
+  "exec bash --rcfile <(printf '%s\\n' '. /etc/profile' '. ~/.profile' 'PS1=\${PS1//\\\\h/$shown}' '[ -r /etc/motd ] && cat /etc/motd') -i"

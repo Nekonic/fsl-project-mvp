@@ -41,7 +41,7 @@
   <p id="traffic-status" class="text-muted mt-2"></p>
 </section>
 
-<div id="consoles" class="grid md:grid-cols-2 gap-5">
+<div id="consoles" class="grid gap-5">
   <a id="blue" href="#" class="card p-6 border-t-4 border-t-primary lift block">
     <div class="flex items-center justify-between">
       <div data-t="session.blue.title" class="text-primary font-bold text-[16px]"></div>
@@ -50,7 +50,7 @@
     <div id="blue-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
     <p id="blue-foot" class="mt-4 text-[12px] text-muted"></p>
   </a>
-  <a id="red" href="#" class="card p-6 border-t-4 border-t-danger lift block">
+  <a id="red" href="#" class="hidden card p-6 border-t-4 border-t-danger lift block">
     <div class="flex items-center justify-between">
       <div data-t="session.red.title" class="text-danger font-bold text-[16px]"></div>
       <span class="btn btn-sm btn-red" data-t="session.open_console"></span>
@@ -182,9 +182,12 @@
         : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
     ].join("");
     field("blue-foot").textContent = Number.isInteger(paranoia) ? t("session.blue.posture", paranoia) : "";
+    const wargameSession = session.kind === "wargame";
+    show("red", wargameSession);
+    field("consoles").classList.toggle("md:grid-cols-2", wargameSession);
     field("red-tiles").innerHTML = [
       tile(t("session.tile.kali"), "sqlmap · curl"),
-      tile(t("session.tile.cases"), wargame ? t("session.tile.case_count", wargame.attacks, wargame.benign) : "—"),
+      tile(t("blue.pane.site"), wargame ? wargame.public_url.replace(/^https?:\/\//, "") : "—"),
       tile(t("session.tile.objectives"), total ? t("session.tile.objective_count", total) : "—"),
     ].join("");
     field("red-foot").textContent = wargame ? t("session.red.target", wargame.public_url) : "";

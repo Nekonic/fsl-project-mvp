@@ -205,13 +205,14 @@ def test_a_passed_kali_step_moves_on_by_itself_and_the_next_step_shows_the_count
 localStorage.setItem('fsl-lesson-landed-1-f5', 'true');
 localStorage.setItem('fsl-lesson-step-1-f5', '4');
 const progress = {sqlmap: {reached: "now", hint: 0}};
+Object.getPrototypeOf(document.body).getBoundingClientRect = () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
 browser.element('pane-body').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
 Object.defineProperty(browser.element('coach-pop'), 'offsetHeight',
   {get: () => 300 + 400 * browser.element('coach-pop').querySelectorAll('[data-kali]').length});
 browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
-    return {body: {id: 1, lesson_id: "f5", guidance: true, hints: [], progress, ended_at: null, discover: "/kibana/",
-                   site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
+    return {body: {id: 1, lesson_id: "f5", guidance: true, kind: "lesson", hints: [], progress, ended_at: null,
+                   discover: "/kibana/", kali_terminal: "/vm-terminal/fsl-kali/?arg=1", site: {port: 8002, path: "/site/1/board.com/"}, waf_rules: "/etc/modsecurity.d/owasp-crs/rules",
                    lesson: {text: "lesson.attack", group: "foundations", cases: ["board-normal-search"], steps: STEPS,
                             theory: [{id: "attack", shows: "stopped"}], hints: ["why_total", "why_count"]}}};
   }
@@ -225,6 +226,7 @@ browser.serve((request) => {
 """.replace("STEPS", json.dumps(steps))
     seen = open_page(client, "/blue/1/", setup=setup, scenario="""
       await browser.wait(100);
+      await browser.click('[data-pane="kali"]');
       await browser.click('[data-act="kali"]');
       await browser.wait(3000);
       const pop = browser.element('coach-pop');
