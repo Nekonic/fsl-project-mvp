@@ -30,9 +30,11 @@ Phase 4).
 `metrics.json`, not copied here.
 
 The loop runs in a browser. Open `/`, start a session, and open the red and
-blue consoles side by side. The red console fires cases and holds the Kali
-terminal; an attack typed there between Start and Stop is attributed by time,
-source address and the proxy's marker. The blue console is a sidebar that
+blue consoles side by side. The red console is the Kali terminal and a Website
+pane, plus the objectives and the loot submission; it fires no prepared case
+(the cases stay for the API, the harness and the scenario engine's attacker).
+What is typed in Kali is stamped with the session's marker by the attacker's
+stamp proxy. The blue console is a sidebar that
 frames the real tools (Kibana, a WAF terminal, a Website pane: a site browser
 with developer tools, and the Map pane: the GNS3 map, read-only) and calls
 `/api/` for the session, the site's
@@ -798,6 +800,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       longer shows it (`topology.learner` maps the range's names to role
       names), but the system maps, the console's terminals and Kibana's
       `log.syslog.hostname` still do.
+- [ ] A slot standing before a deploy keeps its old wargame host (the close
+      resets it in place), so a changed board needs `POST
+      /api/range/slot/rebuild/` and `/configure/` by hand
+      (`docs/OPENSTACK.md` §5.3). The reset could Nova-rebuild a wargame
+      host booted from an image other than the ready one (`openstack.py`).
 - [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
       on the service segment beside the sites, and the learner map draws it
       so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda

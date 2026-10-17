@@ -178,7 +178,9 @@ the platform sets the docker socket group; then, in the background while it
 starts serving, it registers the Elasticsearch ingest pipeline, which sets each
 event's time and geolocates source addresses, and imports Kibana's data view,
 the "FSL alerts" search and the "FSL overview" dashboard, and points Kibana's
-default route at the search.
+default route at the search. Each session gets its own data view, "Session
+logs", when it opens (`KIBANA_URL`, set in `compose.yaml`): the engine and the
+sensor's map name as fields, the platform's internal fields hidden.
 Firing the scripted cases from the command line and `bin/verify`, `--fast`
 included, need a virtualenv:
 
@@ -189,7 +191,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console, `/api/`, Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
-| 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, proxied to that session's WAF (on OpenStack, to its slot's WAF over `mgmt`) | the iframe in a person's browser |
+| 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, sent to that session's WAF from a customers address (on OpenStack from Kali, through the edge) | the iframe in a person's browser |
 | 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only and turns off the web UI's usage statistics, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
 | 9200 | Elasticsearch | the acceptance tests |
@@ -399,11 +401,12 @@ language button in the header switches between English and Korean.
   terminal and a Website pane pointed at the target. It runs no prepared
   attack; the scripted cases are the harness's (`redteam/run.py`, the
   acceptance tests) and the scenario engine's.
-- **Blue** is a sidebar of framed tools: Kibana, opened on Discover with the
-  "FSL alerts" columns and query narrowed to the session, a WAF terminal, a
-  Website pane (a site browser with developer tools), the Map pane (the
-  GNS3 map), in the scenarios that need them an Alerts pane and an IDS
-  rules pane, and below a divider a Kali terminal, shown in lessons and
+- **Blue** is a sidebar of framed tools: Kibana, opened on Discover on the
+  session's own data view (an empty query in a lesson, the alert query
+  otherwise), a WAF terminal, a Website pane (a site browser with developer
+  tools laid out like Chrome's Network panel), the Map pane (the GNS3 map),
+  where a scenario or lesson needs them an Alerts pane and an IDS rules
+  pane, and below a divider a Kali terminal, shown in lessons and
   scenarios and hidden in a wargame. It calls `/api/` for the
   session, the site's requests, the steps and hints of a foundation or worked
   scenario, a scenario's status and triage, ingest and detections. The
@@ -417,31 +420,41 @@ A session opened with no guidance (`{"scenario": "board"}`, the home card's
 is PL4). An agent tunes the WAF through `PUT /api/sessions/<id>/waf/`; `GET`
 reports what is in the WAF's file.
 
-The home page lists six foundations for learners new to networks, each opened
-by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
-F1 reads the practice network's map in the Map pane, F2 sends one Korean search from the Website
-pane and reads its status code in the pane's developer tools, F3 reads its method, path, parameter and status code,
-F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
-blocked SQL injection was stopped and which rule recognised it, and counts a
-sqlmap run from the Kali pane, and F6 runs the same
-sqlmap against a WAF whose blocking rules are off (defense `missed`), hands in
-the dumped accounts and reads the loss in the first score. Every answer is read
-from the learner's own records or the substrate's topology, never a fixed key;
-the learner's own sqlmap run counts in both scores like any other red action.
-The blue console's note walks the unit's steps, each checked by the platform
+The home page lists six lessons (foundations) for learners new to networks,
+each opened by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone
+opens F1). The learner attacks from the Kali pane and the Website pane and
+defends in the same blue console:
+F1 reads addresses, a subnet, the attacker's network and a customer's request
+path on the map; F2 searches with the board's search box and reads method,
+parameter, path and status code in the developer tools; F3 finds that search
+in Kibana with KQL it writes, both legs through the reverse proxy and the
+X-Forwarded-For header; F4 sends an XSS probe (403, the CRS anomaly score),
+writes an IDS rule, bypasses it with letter case and fixes it (defense
+`xss-gap`); F5 runs sqlmap on the board's `sort` parameter and reads the
+verdict and the rules that caught it; F6 uses an over-broad WAF exception
+(defense `overbroad`) to dump the accounts undetected, reads the doubled
+penalty, removes the exception and replays the attack. Every answer is read
+from the learner's own records or the session's map, never a fixed key; the
+learner's own sqlmap run counts in both scores like any other red action.
+The blue console's lesson note, a column beside the pane, walks the unit's
+steps, each checked by the platform
 (`POST /api/sessions/<id>/lesson/steps/<step>/check/`), and records each step
-reached, passed or skipped; the session payload carries no answer key, a step's
-command only once the step is reached, and a step's answer text only once its
-hints reach it. Each step has hints that end in "Skip", which records the step
-skipped and moves on, performing nothing for the learner; hint use is
-recorded on the session. The
-benign request a unit replays at open counts in neither score.
+reached, passed or skipped; each lesson opens on its first step's pane, and a
+step's target is highlighted on the map, the page, the developer tools, Kibana
+or a terminal line. The session payload carries no answer key, and a step's
+command only once the step is reached, as text to type: no button runs an
+attack. Each step's help is a nudge, then a hint, then "Skip", which records
+the step skipped and moves on, performing nothing for the learner; hint use
+is recorded on the session. A lesson's last step is done alone, with no
+highlight or hint. The benign request a unit replays at open is scored as a
+benign case.
 The six run back to back in one session: when a unit's last step passes, the
-coach names the next unit and, 2 s later or on "Next lesson", starts it in
+note names the next unit and, 2 s later or on "Next lesson", starts it in
 the same session (`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`, which
 applies that unit's defense in place and replays its benign request), so
 the range is not reset between units; each unit judges only what happened
-since it started. After F6 the console closes the session.
+since it started. After F6 the note lists the lessons taken, and its button
+closes the session.
 
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
 attacker use the board while the learner defends with the real tools. Each
