@@ -38,13 +38,14 @@ def test_bring_up_imports_the_objects_with_overwrite_then_sets_the_default_route
 
     urls = [request.full_url for request in fake.sent]
     assert urls == [
+        "http://kibana:5601/kibana/api/status",
         "http://kibana:5601/kibana/api/saved_objects/_import?overwrite=true",
         "http://kibana:5601/kibana/api/kibana/settings",
     ] * 2, "running bring-up twice repeats the same overwrite import, never a second copy"
-    assert all(request.get_header("Kbn-xsrf") for request in fake.sent), (
+    assert all(request.get_header("Kbn-xsrf") for request in fake.sent if request.get_method() == "POST"), (
         "Kibana refuses a write without the kbn-xsrf header"
     )
-    assert payload in fake.sent[0].data
+    assert payload in fake.sent[1].data
 
 
 def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
@@ -136,6 +137,23 @@ def test_kibana_starting_up_is_waited_for_and_named_as_not_ready_rather_than_unr
     kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
 
     assert len(paused) == kibana.ATTEMPTS
+
+
+def test_nothing_is_imported_until_kibana_reports_itself_available():
+    sent = []
+
+    def send(request):
+        sent.append(request.full_url)
+        if len(sent) == 1:
+            raise http_error(503, b"Kibana server is not ready yet")
+        return {"success": True, "successCount": 7}
+
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, lambda seconds: None)
+
+    assert said == "kibana: 7 saved objects imported, default route set"
+    assert sent[:2] == ["http://kibana:5601/kibana/api/status"] * 2, (
+        "a starting Kibana answers a multipart import 415, not 503, and bring-up gave up on the objects"
+    )
 
 
 def test_a_connection_failure_is_retried_then_called_unreachable():
