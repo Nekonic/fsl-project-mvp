@@ -1295,8 +1295,10 @@ class OpenStack:
 
     def start_sensor(self, role: str, host: str) -> tuple[str, tuple[str, ...]]:
         address = self._address(role, host, slot.NAMED_ON)
-        ran = self.runner(wargame_host.ROLE)(wargame_host.sensor_up(address),
-                                             timeout=wargame_host.UP_TIMEOUT)
+        ran = self.runner(wargame_host.ROLE)(
+            wargame_host.sensor_up(address),
+            stdin=(Path(self.build.source) / wargame_host.SENSOR_CONFIG_SOURCE).read_text(),
+            timeout=wargame_host.UP_TIMEOUT)
         if not ran.ok:
             raise Drifted(f"{host} did not start its sensor on {address} (exit {ran.exit_code}): "
                           f"{ran.output[-1000:]}")

@@ -634,7 +634,9 @@ Notes:
   sensor sees from inside the WAF's namespace and the edge never sees: docker's
   Suricata image and `deploy/suricata/suricata.yaml`, run on `fsl-wargame-host`
   with host networking from `deploy/wargame-host/sensor.yaml`, on the
-  interface holding the host's estate address (`af-packet`). Its role is
+  interface holding the host's estate address (`af-packet`, the `default`
+  entry); every sensor start writes the platform's `suricata.yaml` to the host
+  first, so a change reaches a standing slot at its next reset. Its role is
   `estate-sensor`; the host entry names its rule file and reload command, and
   `logs: {suricata: /var/log/suricata/eve.json}`, which rsyslog forwards to the
   collector tagged `suricata`, as the WAF forwards its audit log. Rule seeding,
@@ -668,7 +670,7 @@ and the wargame host in place"):
 | `fsl-kali` | Nova rebuild from its image, then its time source (the platform over `mgmt`) | the red team's root shell; anything outside config can carry over |
 | `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | the blue team's shell (`vm-terminal.sh fsl-waf`) |
 | `fsl-edge` | in place: baseline `fsl.rules` written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` checked by sha256; pf states of every range subnet dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | the session can change only `fsl.rules`, and only the platform reaches its GUI and ssh (`fsl-mgmt`) |
-| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then its time source, the usual `up -d --wait --pull never`, the sensor, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
+| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then its time source, the usual `up -d --wait --pull never`, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
 
 OPNsense rewrites `config.xml` on its first boot after an install
 (migrations add uuids, defaults and `persisted_at` stamps), so the edge's file
