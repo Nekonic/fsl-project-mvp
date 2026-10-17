@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -110,12 +111,29 @@ def test_a_question_is_judged_from_the_learner_s_own_website_pane_request(client
     assert (before["passed"], before["reason"]) == (False, ["lesson.check.unrecorded", []])
     assert judged == {right: True, wrong: False}
 
-def test_every_control_a_foundation_points_at_is_on_the_blue_console(client):
-    page = client.get("/blue/1/").content.decode()
-    pointed = {step["point"]["panel"] for taught in wargames.foundations("board") for step in taught["steps"]
-               if "panel" in step.get("point", {})}
+POINTS = {"panel", "pane", "opens", "kibana", "first"}
+PANE_TAB = re.compile(r'^\.pane-tab\[data-pane="([a-z]+)"\]$')
 
-    assert pointed and [panel for panel in pointed if panel.startswith("#") and f'id="{panel[1:]}"' not in page] == []
+def unresolved(page, point):
+    panel = point.get("panel")
+    tab = PANE_TAB.match(panel or "")
+    named = [point["opens"]] if "opens" in point else []
+    return [
+        *sorted(set(point) - POINTS),
+        *([] if not panel or (tab and f'data-pane="{tab[1]}"' in page) or f'id="{panel[1:]}"' in page else [panel]),
+        *[f"opens {pane}" for pane in named + ([tab[1]] if tab else []) if f'data-pane="{pane}"' not in page],
+        *(["kibana without opens: elk"] if ("kibana" in point or "first" in point) and point.get("opens") != "elk" else []),
+        *(["pane-body"] if point.get("pane", not point) and 'id="pane-body"' not in page else []),
+    ]
+
+def test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console(client):
+    page = client.get("/blue/1/").content.decode()
+    stepped = [*wargames.foundations("board"),
+               *[wargames.lesson("board", lesson_id=one["id"]) for one in wargames.stepped_scenarios("board")]]
+    points = [(taught["id"], step["id"], step.get("point") or {}) for taught in stepped for step in taught["steps"]]
+
+    assert len({taught for taught, _, _ in points}) == len(stepped) > 6
+    assert [(taught, step, missing) for taught, step, point in points if (missing := unresolved(page, point))] == []
 
 def test_the_kali_step_labels_its_command_and_passes_on_the_sensor_s_records_of_that_label(client):
     session = opened("f5")
@@ -186,8 +204,8 @@ def test_a_passed_kali_step_stays_with_its_count_until_next_since_the_following_
     setup = """
 localStorage.setItem('fsl-lesson-landed-1', 'true');
 localStorage.setItem('fsl-lesson-step-1', '4');
-const progress = {sqlmap: {reached: "now", hint: 0, done_for_me: false}};
-browser.element('pane-frame').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
+const progress = {sqlmap: {reached: "now", hint: 0}};
+browser.element('pane-body').getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
 Object.defineProperty(browser.element('coach-pop'), 'offsetHeight',
   {get: () => 300 + 400 * browser.element('coach-pop').querySelectorAll('[data-kali]').length});
 browser.serve((request) => {

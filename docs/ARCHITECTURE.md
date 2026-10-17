@@ -887,7 +887,7 @@ per viewer in localStorage (`fsl-lesson-note`), and the step shown in
 `fsl-lesson-step-<id>`, which the main and session pages read for "step n/N".
 Progress itself is the session's (`Session.lesson_steps`, migration 0020):
 per step `reached`, `passed`, `skipped` (times), `hint` (the level shown,
-0-4) and `done_for_me`, reported as `progress` in `GET /api/sessions/<id>/`
+0-4), reported as `progress` in `GET /api/sessions/<id>/`
 and in every step and hint response. A step's record also carries what it
 has earned: `command` once the step is reached, `answer` once its hint level
 reaches 3 (`lesson.ANSWER`), and `line` once it is passed, the last two as
@@ -910,13 +910,12 @@ The steps are declared in the unit (`steps` of a foundation or a worked
 scenario in `scenario.yaml`): an `id`, a `check` whose `kind` is one of
 `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot` or `triage`
 (`wargames.CHECK_KINDS`, validated at discovery), and as the step needs a
-`site` path, a Kibana `query` or a terminal `command`, in which
+Kibana `query` or a terminal `command`, in which
 `wargames.lesson` replaces `{waf_rules}` with the declared exclusion file
 (`settings.FSL_WAF`). The session API adds a `discover` link to a step with a
 `query` (`kibana.discover_path(..., narrowed)`) and shows a check's `kind`
 only, plus a choice's `options`, a `sent` step's `match` and a `kali` step's
-`case`: no `accept` list, answer rule or `rules` step's `rule`
-(`views.SERVER_ONLY_STEP`) reaches the browser. A step's `command` is in the
+`case`: no `accept` list or answer rule reaches the browser. A step's `command` is in the
 payload only once `progress` records the step reached. The answer text
 (`<text>.answer.<step>`) and the line said on a pass (`<text>.line.<step>`)
 sit in a `{% comment %}` section at the end of `strings.html`, which Django
@@ -975,25 +974,22 @@ terminal; it has no Run button.
 
 Help climbs a ladder per step (`<text>.nudge.<step>` from the page, the
 answer from the step's `progress.answer`): a nudge, then "look where the red
-box is", then the answer, then "Do it for me". It climbs on the Hint button
+box is", then the answer, then "Skip". It climbs on the Hint button
 or after two wrong answers or failed checks; each press is `POST
 /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`, which raises the
 step's `hint` level, and the first is recorded in `Session.hints` (migration
 0017; 400 for a session that is not guided or a step or level the unit does
 not have, 409 when closed). After 60 s on a step the Hint button only says
-"Hint available"; nothing is recorded until the learner presses it. "Do it
-for me" is `POST /api/sessions/<id>/lesson/steps/<step>/do/`, recorded as
-`done_for_me` and `{step, level: "do"}` in `hints`: the platform enters the
-first accepted answer of an `answer` or `choice`, appends a `rules` step's
-`rule` to the live rule file and applies it, fires a `kali` step's case from
-the attacker box, credits a `loot` step from that run's dump, and for
-`click`, `sent` and `triage` only judges the step; the console still opens
-the site at a `sent` step's path, and for a `click` step opens the filtered
-Kibana and clicks the first row's toggle, or opens the pane the step names.
-The steps done for the learner are marked in the step list from `hints` and
-`progress` in `GET /api/sessions/<id>/`, and `result.scenario.helped`
-(`["hint", "do"]`, either or neither) puts "hints used" / "Do it for me used"
-beside PASS or FAIL on the main page and the closed session's page.
+"Hint available"; nothing is recorded until the learner presses it. "Skip"
+(`lesson.SKIP_OFFERED`, the ladder's last rung) is Next: `POST
+/api/sessions/<id>/lesson/steps/<step>/ {state: skipped}` and the next step
+reached; on the last step it records the skip and closes the popover.
+Nothing is entered, fired, applied or credited for the learner, so a later
+step that reads a skipped step's record (an answer about a request never
+sent, the loot of a run never made) stays unanswered until the learner does
+that step or skips it too. Skipped steps are marked in the step list from
+`progress`, and `result.scenario.helped` (`["hint"]` or none) puts "hints
+used" beside PASS or FAIL on the main page and the closed session's page.
 
 "Do it yourself" (a checkbox under the step list, `fsl-lesson-stretch`)
 removes the filter button and the Run button and shows the command: the
@@ -1009,8 +1005,16 @@ left" (or the pane named). Once it is shown: a console element (`panel`: the
 site's address bar, the site's developer toggle, the Judge list, the rule
 editor, I'm done), a `data-test-subj` in the same-origin Kibana frame
 (`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`
-with the row toggle as `first`), or the pane as a whole.
-Nothing is ever looked up inside the site frame, which is another origin. The
+with the row toggle as `first`), or the pane as a whole (`#pane-body`, the
+area every pane is drawn in, whichever is open: the Kibana and WAF frame, the
+site frame, the GNS3 map, the Judge list or the rule editor).
+`kibana` and `first` are looked up only in the Kibana frame, the one
+same-origin frame, so a step that names them `opens: elk`; nothing is looked
+up inside the site frame or the GNS3 web UI's frame, each another origin
+(its own port), so a step on those panes points at the pane.
+`test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`
+holds every `point` of every foundation and stepped scenario to the console
+as rendered. The
 popover is the one place for the current step's words and Back/Next; the
 note's Steps tab lists the steps with the current one marked "in progress"
 and its status, and shows "Show the guide" only after the popover is closed.
@@ -1019,7 +1023,8 @@ arrow, below, above, left or right of it (under the right end of a target
 wider than 480 px, such as the address bar), never over the open note, and
 on a terminal step in the pane's bottom right. The box has `pointer-events:
 none` and is placed every animation frame; with no target for about 2 s the
-popover says where to look. Theory and Hints stay in the note, out of the
+popover says where to look and names the pane the step uses
+(`lesson.coach.missing`, `{0}` the pane's rail label). Theory and Hints stay in the note, out of the
 path.
 
 The rule editor (`#lesson-rules`, ruling D3) sits in the blue console's IDS
@@ -1072,9 +1077,7 @@ labelling). The check passes when the sensor's http records carry the marker
 and the tool's user agent; it then records the run as an ordinary malicious
 case (`meta.kali`, no replay mark, so it counts in both scores like any other
 red action) and ingests the session. The marker is in the command rather than
-the proxy label because opening the Red console clears the label. "Do it for
-me" fires the case from the attacker box instead (`meta.done_for_me`, the
-dump kept as `meta.dumped`). `loot` takes the pasted table (`tools.dumped`,
+the proxy label because opening the Red console clears the label. `loot` takes the pasted table (`tools.dumped`,
 or `name:hash` and `| name | hash |` lines) and credits it as `POST /loot/`
 does, attributed to the kali case; `_credit_loot` keeps the matched
 accounts on the case it was attributed to (`meta.loot`).

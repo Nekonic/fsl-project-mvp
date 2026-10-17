@@ -45,7 +45,7 @@ const COMMANDS = COMMANDS_JSON;
 const revealed = () => Object.fromEntries(Object.entries(range.progress).map(([id, kept]) => [id, {...kept,
   ...(kept.hint >= 3 ? {answer: WITHHELD[id].answer} : {}), ...(kept.passed ? {line: WITHHELD[id].line} : {}),
   ...(kept.reached && COMMANDS[id] ? {command: COMMANDS[id]} : {})}]));
-const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, done_for_me: false, wrong: 0, passed: null, skipped: null});
+const own = (id) => (range.progress[id] = range.progress[id] || {hint: 0, wrong: 0, passed: null, skipped: null});
 const used = (entry) => { if (!range.used.some((one) => one.step === entry.step && one.level === entry.level)) range.used.push(entry); };
 const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: revealed()});
 const passing = (id) => { own(id).passed = own(id).passed || "now"; return stepState(id, {passed: true, reason: null}); };
@@ -84,15 +84,6 @@ browser.serve((request) => {
     return {body: stepState(id, {})};
   }
   if (stepped && stepped[2] === "check/") return {body: judge(stepped[1], request.body)};
-  if (stepped) {
-    const id = stepped[1];
-    own(id).done_for_me = true;
-    used({step: id, level: "do"});
-    const check = FULL[id];
-    if (check.kind === "answer" || check.kind === "choice") return {body: judge(id, {answer: RIGHT[id]})};
-    if (check.kind === "click" || check.kind === "sent") return {body: judge(id, {})};
-    return {body: passing(id)};
-  }
   if (request.route === "/api/sessions/1/") {
     return {body: {id: 1, guidance: GUIDANCE, hints: range.used, progress: revealed(), ended_at: range.ended_at, waf_box: "fsl-1-waf", discover: "/kibana/app/discover#/",
                    site: {port: 8002, path: "/site/1/board.com/"},
@@ -104,8 +95,7 @@ browser.serve((request) => {
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
   if (request.route === "/api/sessions/1/lesson/hints/") {
     used(request.body);
-    if (request.body.level === "hint") own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
-    else own(request.body.step).done_for_me = true;
+    own(request.body.step).hint = Math.min(4, own(request.body.step).hint + 1);
     return {body: stepState(request.body.step, {})};
   }
   return {status: 404, body: {detail: "not served"}};
@@ -161,6 +151,7 @@ Object.getPrototypeOf(document.body).getBoundingClientRect =
   () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
 const pane = browser.element('pane-frame');
 pane.getBoundingClientRect = () => ({left: 200, top: 50, right: 1000, bottom: 650, width: 800, height: 600});
+browser.element('pane-body').getBoundingClientRect = pane.getBoundingClientRect;
 const present = new Set();
 const table = {getBoundingClientRect: () => ({left: 10, top: 20, right: 110, bottom: 60, width: 100, height: 40})};
 pane.contentDocument = {
@@ -225,14 +216,12 @@ def test_help_is_recorded_on_the_session_only_when_the_learner_asks_for_it(clien
       for (let i = 0; i < 60; i += 1) await browser.wait(1000);
       const offered = range.used.length;
       {hints(4)}
-      await browser.click('coach-pop-do');
-      await browser.wait(1500);
       return {{offered, recorded: range.used}};
     """)
 
     assert seen["result"]["offered"] == 0, "the timer only offers a hint; the learner has not asked for one"
-    assert seen["result"]["recorded"] == [{"step": "rule", "level": "hint"}, {"step": "rule", "level": "do"}], (
-        "help is recorded on the session through the API, once per step and kind"
+    assert seen["result"]["recorded"] == [{"step": "rule", "level": "hint"}], (
+        "help is recorded on the session through the API, once per step"
     )
 
 WAF_TERMINAL = """
@@ -241,18 +230,52 @@ const entered = [];
 pane.contentWindow = {term: {paste: (text) => pasted.push(text), input: (text) => entered.push(text), focus() {}}};
 """
 
-def test_do_it_for_me_on_the_terminal_step_has_the_platform_answer_and_types_nothing(client):
-    seen = open_page(client, "/blue/1/", setup=coached(unit="f6") + WAF_TERMINAL, scenario=f"""
-      await browser.click('[data-pane="waf"]');
-      {to("excluded", "f6")}
+@pytest.mark.parametrize("unit, step_id", [
+    ("f4", "search"), ("f4", "engine"), ("f4", "find"), ("f5", "sqlmap"), ("f6", "excluded"),
+])
+def test_skip_after_the_last_hint_records_the_step_skipped_moves_on_and_performs_nothing(client, unit, step_id):
+    seen = open_page(client, "/blue/1/", setup=coached(unit=unit) + WAF_TERMINAL, scenario=f"""
+      {to(step_id, unit)}
+      const shownBefore = !browser.element('coach-pop-skip').classList.contains('hidden');
       {hints(4)}
-      await browser.click('coach-pop-do');
-      return {{pasted, entered, asked: browser.requests.filter((r) => r.route.endsWith('/do/')).map((r) => r.route)}};
+      const shownAfter = !browser.element('coach-pop-skip').classList.contains('hidden');
+      const before = browser.requests.length;
+      await browser.click('coach-pop-skip');
+      await browser.settle();
+      const asked = browser.requests.slice(before).map((r) => [r.route, r.body && r.body.state]);
+      return {{shownBefore, shownAfter, asked, pasted, entered, title: browser.text('coach-pop-title')}};
+    """)
+    following = ids(unit)[at(step_id, unit) + 1]
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["shownBefore"], result["shownAfter"]) == (False, True)
+    assert result["asked"] == [[f"/api/sessions/1/lesson/steps/{step_id}/", "skipped"],
+                               [f"/api/sessions/1/lesson/steps/{following}/", "reached"]], (
+        "skip only records the skip and the next step reached; nothing is checked or done for the learner")
+    assert (result["pasted"], result["entered"]) == ([], [])
+    assert result["title"] == english(f"{taught(unit)['text']}.label.{following}")
+
+HIDDEN_WHEN_CLOSED = """
+const shown = pane.getBoundingClientRect;
+const none = () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
+pane.getBoundingClientRect = () => (pane.style.display === "none" ? none() : shown());
+"""
+
+@pytest.mark.parametrize("unit, step_id, opens", [("f1", "entry", "topology"), ("f4", "engine", "elk"),
+                                                 ("f6", "excluded", "waf"), ("f5", "sqlmap", "site")])
+def test_a_step_that_points_at_the_pane_is_highlighted_whichever_pane_is_open(client, unit, step_id, opens):
+    seen = open_page(client, "/blue/1/", setup=coached(unit=unit) + HIDDEN_WHEN_CLOSED, scenario=f"""
+      {to(step_id, unit)}
+      await browser.click('[data-pane="{opens}"]');
+      await browser.wait(500);
+      const box = browser.element('coach-box');
+      return {{shown: !box.classList.contains('hidden'), target: box.dataset.target,
+               missing: !browser.element('coach-pop-missing').classList.contains('hidden')}};
     """)
 
-    assert seen["result"] == {"pasted": [], "entered": [], "asked": ["/api/sessions/1/lesson/steps/excluded/do/"]}, (
-        "the agent path: the platform answers from its own records; nothing is typed into the WAF terminal"
-    )
+    assert seen["errors"] == []
+    assert seen["result"] == {"shown": True, "target": "pane", "missing": False}
 
 POLLED = ("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/")
 

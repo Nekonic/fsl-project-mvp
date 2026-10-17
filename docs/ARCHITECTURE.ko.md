@@ -689,7 +689,7 @@ guidance 세션(기초 단원이나 worked 시나리오)에서 노트는 창의 
 뒤로는 열 때마다 접힌 채로 시작하며, 탭만 보는 사람마다 localStorage(`fsl-lesson-note`)에, 보고 있는
 단계는 `fsl-lesson-step-<id>`에 남고, 메인과 세션 화면이 이것으로 "단계 n/N"을 보여 준다. 진행 자체는
 세션의 것이다(`Session.lesson_steps`, 마이그레이션 0020): 단계마다 `reached`, `passed`,
-`skipped`(시각), `hint`(보인 단계, 0-4), `done_for_me`를 남기고 `GET /api/sessions/<id>/`와 모든 단계·힌트
+`skipped`(시각), `hint`(보인 단계, 0-4)를 남기고 `GET /api/sessions/<id>/`와 모든 단계·힌트
 응답의 `progress`로 알려 준다. 단계의 기록에는 얻은 것도 실린다: 단계에 도달하면 `command`, 힌트 단계가
 3(`lesson.ANSWER`)에 이르면 `answer`, 통과하면 `line`이며 뒤의 둘은 `{en, ko}`이다. `POST
 /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에 도달했음(`kali` 단계는 이때
@@ -706,11 +706,11 @@ marker도 받음) 또는 통과하지 않고 떠났음을 남긴다. 콘솔은 �
 
 단계는 단원에 선언한다(`scenario.yaml`에서 기초 단원이나 worked 시나리오의 `steps`): `id`, `kind`가
 `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage` 중 하나인
-`check`(`wargames.CHECK_KINDS`, 발견 시 검증), 그리고 단계에 따라 `site` 경로, Kibana `query`, 터미널
+`check`(`wargames.CHECK_KINDS`, 발견 시 검증), 그리고 단계에 따라 Kibana `query`, 터미널
 `command`. `command`의 `{waf_rules}`는 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로
 바꾼다. 세션 API는 `query`가 있는 단계에 `discover` 링크를 더하고(`kibana.discover_path(...,
 narrowed)`), 확인은 `kind`만, 그리고 선택지의 `options`, `sent` 단계의 `match`, `kali` 단계의 `case`만
-보인다: `accept` 목록, 정답 규칙, `rules` 단계의 `rule`(`views.SERVER_ONLY_STEP`)은 브라우저에 가지
+보인다: `accept` 목록과 정답 규칙은 브라우저에 가지
 않는다. 단계의 `command`는 `progress`가 그 단계에 도달했다고 남긴 뒤에만 응답에 있다. 정답
 문구(`<text>.answer.<step>`)와 통과 때 하는 말(`<text>.line.<step>`)은 Django가 그리지 않는
 `strings.html` 끝의 `{% comment %}` 구역에 있고, `console/strings.py`가 읽어 얻은 때에 단계의
@@ -749,19 +749,17 @@ bracketed paste의 줄바꿈을 글자로 두기 때문이다. `kali` 단계의 
 터미널에 입력하고, 실행 버튼은 없다.
 
 도움은 단계마다 사다리를 오른다(화면의 `<text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔,
-"빨간 상자가 있는 곳을 보세요", 정답, "대신 해 주기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
+"빨간 상자가 있는 곳을 보세요", 정답, "건너뛰기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
 오른다. 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를
 올리고, 처음 것은 `Session.hints`에 기록된다(migration 0017; guidance 세션이 아니거나 단원에 없는 단계나
 level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 버튼은 "힌트가 있습니다"라고만 말하고,
-학습자가 누르기 전에는 아무것도 기록하지 않는다. "대신 해 주기"는
-`POST /api/sessions/<id>/lesson/steps/<step>/do/`이며 `done_for_me`와 `hints`의 `{step, level: "do"}`로
-기록된다: 플랫폼이 `answer`·`choice`에는 첫 정답을 넣고, `rules` 단계에는 그 단계의 `rule`을 지금 규칙
-파일에 덧붙여 적용하고, `kali` 단계는 공격자 박스에서 케이스를 대신 실행하고, `loot` 단계는 그 실행의
-덤프로 인정하며, `click`, `sent`, `triage`는 판정만 한다. 콘솔은 `sent` 단계에서 그 경로로 사이트를 열고,
-`click` 단계에서 걸러 낸 Kibana를 열어 첫 행의 펼치기를 누르거나 단계가 밝힌 창을 연다. 대신 해 준 단계는
-`GET /api/sessions/<id>/`의 `hints`와 `progress`로 단계 목록에 표시되고,
-`result.scenario.helped`(`["hint", "do"]` 중 있는 것)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에
-"힌트 사용" / "대신 해 주기 사용"이 붙는다.
+학습자가 누르기 전에는 아무것도 기록하지 않는다. "건너뛰기"(`lesson.SKIP_OFFERED`, 사다리의 마지막
+칸)는 다음과 같다: `POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`를 남기고 다음 단계에
+닿으며, 마지막 단계에서는 건너뜀을 남기고 popover를 닫는다. 학습자 대신 넣거나 실행하거나 적용하거나
+인정하는 것은 없으므로, 건너뛴 단계의 기록을 읽는 뒤 단계(보내지 않은 요청에 대한 답, 하지 않은 실행의
+loot)는 학습자가 그 단계를 하거나 함께 건너뛸 때까지 답할 수 없다. 건너뛴 단계는 `progress`로 단계 목록에
+표시되고, `result.scenario.helped`(`["hint"]` 또는 없음)로 메인 화면과 닫힌 세션 화면의 PASS·FAIL 옆에
+"힌트 사용"이 붙는다.
 
 "직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
 펼쳐 둔다: 학습자가 KQL을 쓰고 명령을 직접 입력한다. 확인은 같다.
@@ -773,12 +771,17 @@ Kibana, 토폴로지, 판정, IDS 규칙, WAF). 그 창이 보이지 않는 동�
 웹사이트를 여세요"(또는 그 창)만 말한다. 창이 보이면: 콘솔 요소(`panel`: 사이트 주소창, 사이트의 개발자
 보기 전환, 판정 목록, 규칙 편집기, 완료 버튼), 같은 출처 Kibana 프레임의
 `data-test-subj`(`docTableExpandToggleColumn`, `field-status`, `field-source_ip`, `field-rule_id`와 대체용 `first`로 행
-펼치기), 또는 창 전체. 다른 출처인 사이트 프레임 안은 절대 찾지 않는다. 현재 단계의 말과 이전/다음은
+펼치기), 또는 창 전체(`#pane-body`, 어느 창이 열려 있든 창이 그려지는 영역: Kibana와 WAF 프레임, 사이트
+프레임, GNS3 지도, 판정 목록, 규칙 편집기). `kibana`와 `first`는 유일한 같은 출처 프레임인 Kibana
+프레임에서만 찾으므로 그것을 쓰는 단계는 `opens: elk`이다. 사이트 프레임과 GNS3 웹 UI 프레임은 각자
+다른 출처(자기 포트)라 안을 찾지 않고, 그 창의 단계는 창 전체를 가리킨다.
+`test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`이 모든 기초 단원과
+단계가 있는 시나리오의 `point`를 그려진 콘솔에 맞춰 본다. 현재 단계의 말과 이전/다음은
 popover 한 곳에만 있다. 노트의 단계 탭은 단계 목록과 현재 단계의 "진행 중"·상태만 보이고, popover를 닫은
 뒤에만 "가이드 다시 보기"를 보인다. popover는 driver.js 방식이다: 대상에 화살표로 붙어
 아래·위·왼쪽·오른쪽에 놓이고(주소창처럼 480 px보다 넓은 대상이면 그 오른쪽 끝 아래), 펼친 노트와는 겹치지
 않으며, 터미널 단계에서는 창 오른쪽 아래에 놓인다. 상자는 `pointer-events: none`이고 매 애니메이션
-프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 준다. 이론과 힌트는 경로
+프레임마다 다시 놓인다. 약 2초 동안 대상이 없으면 popover가 어디를 볼지 알려 주고 그 단계가 쓰는 창의 이름을 댄다(`lesson.coach.missing`, `{0}`은 그 창의 레일 이름). 이론과 힌트는 경로
 밖, 노트에 남는다.
 
 규칙 편집기(`#lesson-rules`, 판정 D3)는 블루 콘솔의 IDS 규칙 창에 있고, `rulesPane()`이 `detection`이나
@@ -819,8 +822,7 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 케이스 argv에 `--headers=X-FSL-Case: <marker>`를 붙인 것이다(`tools.tool_argv`, 하네스 자체의 표시 방식).
 센서의 http 기록에 그 마커와 도구의 user agent가 있으면 통과하고, 그 실행을 평범한 악성 케이스로
 기록하고(`meta.kali`, 재생 표시 없음, 다른 레드 행동처럼 두 점수에 모두 들어감) 세션을 수집한다. 마커를
-프록시 라벨이 아니라 명령에 넣는 것은 레드팀 콘솔을 열면 라벨이 지워지기 때문이다. "대신 해 주기"는
-공격자 박스에서 케이스를 대신 실행한다(`meta.done_for_me`, 덤프는 `meta.dumped`). `loot`는 붙여 넣은
+프록시 라벨이 아니라 명령에 넣는 것은 레드팀 콘솔을 열면 라벨이 지워지기 때문이다. `loot`는 붙여 넣은
 표(`tools.dumped`, 또는 `name:hash`와 `| name | hash |` 줄)를 `POST /loot/`처럼 인정하고 kali 케이스에
 귀속한다. `_credit_loot`는 일치한 계정을 귀속된 케이스에 남긴다(`meta.loot`).
 

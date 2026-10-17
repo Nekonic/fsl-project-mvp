@@ -426,8 +426,9 @@ The blue console's note walks the unit's steps, each checked by the platform
 (`POST /api/sessions/<id>/lesson/steps/<step>/check/`), and records each step
 reached, passed or skipped; the session payload carries no answer key, a step's
 command only once the step is reached, and a step's answer text only once its
-hints reach it. Each step has hints that end in "Do it for me" (`.../do/`, a
-server action); hint and "Do it for me" use is recorded on the session. The
+hints reach it. Each step has hints that end in "Skip", which records the step
+skipped and moves on, performing nothing for the learner; hint use is
+recorded on the session. The
 benign request a unit replays at open counts in neither score.
 
 After the foundations come scenarios (`{"scenario": "1.1"}`): customers and an
