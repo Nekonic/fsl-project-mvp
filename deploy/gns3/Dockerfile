@@ -29,6 +29,10 @@ RUN apt-get update \
  && pip install --no-cache-dir "gns3-server[ai-features]==3.1.0a6" \
  && useradd --system --create-home --uid 10002 gns3
 
+RUN skills="$(python -c 'import gns3server, pathlib; print(pathlib.Path(gns3server.__file__).parent)')/agent/gns3_copilot/configs/skills_config.py" \
+ && sed -i 's/"enabled": True,/"enabled": False,/' "$skills" \
+ && grep -q '"enabled": False,' "$skills"
+
 COPY --from=ubridge /usr/local/bin/ubridge /usr/local/bin/ubridge
 COPY --from=ubridge /symbols /opt/fsl-gns3/symbols
 RUN setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/ubridge
