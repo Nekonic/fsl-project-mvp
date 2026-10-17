@@ -734,7 +734,7 @@ progress}`로 답한다(`rules` 확인은 `added`, `kali` 확인은 `kali`, `loo
 값이 딸린 `strings.html` 키다. 폴링이 아닌 실패한 확인은 틀린 것으로 세고, 두 번이면 그 단계의 힌트 단계를
 올리고 힌트를 기록한다. worked 시나리오에서는 대신 시나리오의 다음 힌트를 제안한다(`scenario_run.stuck`).
 
-확인은 저절로 돈다. `kali` 단계의 "내 실행 확인" 버튼만 예외다. `sent`와 `triage`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
+확인은 저절로 돈다. `kali` 단계의 "실행 결과 확인" 버튼만 예외다. `sent`와 `triage`는 그 단계가 보이고 탭이 보이며 세션이 열려 있는
 동안 5초마다 확인한다(세션이 닫혔는지는 페이지가 30초마다 세션을 다시 읽어 안다). `sent`는 웹사이트 창에
 단계의 `match`와 맞는 경로가 보이고 1.5초 뒤에도 확인하고, `rules`는 규칙 편집기가 파일을 적용할 때
 확인한다. popover의 상태 줄이 "확인 중…", 그다음 아직 빠진 것(`<text>.fail.<step>`), 통과하면 "✓"와 찾은
@@ -749,7 +749,7 @@ bracketed paste의 줄바꿈을 글자로 두기 때문이다. `kali` 단계의 
 터미널에 입력하고, 실행 버튼은 없다.
 
 도움은 단계마다 사다리를 오른다(화면의 `<text>.nudge.<step>`, 정답은 단계의 `progress.answer`): 귀띔,
-"빨간 상자로 표시한 곳을 보세요", 정답, "건너뛰기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
+"빨간 상자로 표시한 곳을 확인해 보세요", 정답, "건너뛰기". 힌트 버튼이나 틀린 답·실패한 확인 두 번에 한 칸
 오른다. 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 그 단계의 `hint`를
 올리고, 처음 것은 `Session.hints`에 기록된다(migration 0017; guidance 세션이 아니거나 단원에 없는 단계나
 level은 400, 닫힌 세션은 409). 한 단계에서 60초가 지나면 힌트 버튼은 "힌트가 있습니다"라고만 말하고,
@@ -809,8 +809,8 @@ wargame 호스트의 estate 센서가 그 줄을 출력한다.
 
 | 단원 | defense | 학습자가 하는 것 | 답을 읽는 곳 |
 |---|---|---|---|
-| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객 요청을 처음 받는 호스트, 로그를 저장하는 호스트, 데이터베이스가 연결된 스위치를 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
-| f2 웹 요청 경로 따라가기 | `full` | 구성도에서 홉을 읽고, 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다 | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
+| f1 실습용 네트워크 구성도 읽기 | `full` | 구성도 창을 열고, 고객 요청을 가장 먼저 받는 호스트, 로그를 저장하는 호스트, 데이터베이스가 연결된 스위치를 말한다 | substrate의 GNS3 프로젝트와 선언(`topology.facts`): 바깥 구간에 링크된 첫 `edge`, `gateway`, `wargames` 호스트(OpenStack은 fsl-edge, Docker는 fsl-waf), Elasticsearch 이미지를 돌리는 노드(두 substrate 모두 fsl-elasticsearch; OpenStack에서는 플랫폼 compose에서 돌고 학습자 지도가 로그 저장소로 그린다), 시나리오의 데이터베이스 노드가 링크된 스위치(`board-default`, `estate`) |
+| f2 웹 요청 보내고 상태 코드 확인하기 | `full` | 웹사이트 창에서 한국어로 검색해 개발자 도구에서 상태 코드를 읽는다(구성도의 홉은 이론 탭이 설명하고, 확인하는 단계는 없다) | 학습자 자신의 웹사이트 창 요청: 상태 코드 |
 | f3 HTTP 요청 읽기 | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
 | f4 Kibana에서 로그 찾기 | `full` | Kibana(경보만이 아니라 모든 기록)에서 한국어 검색을 찾아 어느 엔진이 남겼는지 말하고, `<script>alert(1)</script>`를 보내 WAF 기록의 `status`와 `source_ip`를 읽는다 | 그 요청을 기록한 엔진(http 기록, 탐지), 요청의 상태 코드, WAF 탐지의 `src_ip` |
 | f5 SQL 인젝션 공격 로그 분석 | `full` | `' OR 1=1--`를 보내, 막은 호스트를 개발자 도구의 차단 표시로, 알아본 룰을 Kibana의 WAF 기록으로 말하고, 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행해 요청 수를 말한다 | 요청 기록의 차단 표시(지도의 게이트웨이, `waf`), 그 요청의 ModSecurity 룰 id(949110은 따로 설명), 실행 표시가 붙은 센서의 http 기록 수(10% 안) |
