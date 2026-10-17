@@ -415,7 +415,7 @@ reports what is in the WAF's file.
 
 The home page lists six foundations for learners new to networks, each opened
 by its id (`{"lesson": "f1"}` to `f6`; `{"guidance": true}` alone opens F1):
-F1 reads the range's map in the Map pane, F2 sends one Korean search from the Website
+F1 reads the practice network's map in the Map pane, F2 sends one Korean search from the Website
 pane and reads its status code in the pane's developer tools, F3 reads its method, path, parameter and status code,
 F4 finds records in Kibana and tells the WAF's from the IDS's, F5 reads where a
 blocked SQL injection was stopped and which rule recognised it, and counts a
