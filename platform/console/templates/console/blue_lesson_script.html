@@ -563,6 +563,12 @@ function coach(prefix, declared) {
     }
   }
 
+  async function runCommand(step) {
+    field("coach-pop-typed").textContent = t("lesson.run.opening");
+    const ran = await runInTerminal(step.command);
+    field("coach-pop-typed").textContent = t(ran ? "lesson.ran" : "lesson.run.missing");
+  }
+
   function finish() {
     finished = true;
     show(false);
