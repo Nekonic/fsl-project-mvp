@@ -101,20 +101,46 @@ def test_a_score_that_answered_without_its_tables_is_not_read_as_nothing_lost(cl
     assert english("score.kept") not in seen["result"]
     assert english("score.retrying") in seen["result"]
 
-def test_the_red_console_clears_a_stale_attacker_label_on_load(client):
-    seen = open_page(client, "/red/1/", scenario="""
-      return {
-        clears: browser.requests.filter(
-          (r) => r.route === '/api/attacker/label/' && r.method === 'POST'
-        ).map((r) => r.body),
-      };
-    """)
+def _session_7(kind):
+    return f"""
+      browser.serve((request) => {{
+        if (request.route === "/api/sessions/7/") return {{body: {{id: 7, scenario: "board", kind: "{kind}",
+          kali_terminal: "/vm-terminal/fsl-kali/?arg=7", site: {{port: 8002, path: "/site/7/board.com/"}}}}}};
+        return {{status: 404, body: {{detail: "not served"}}}};
+      }});
+    """
 
-    assert {"case_id": None, "session": "1"} in seen["result"]["clears"], (
-        "the red console must POST a null attacker label on load so a window left "
-        "open by a crashed or reloaded page does not mis-attribute later traffic: "
-        f"{seen['result']['clears']}"
+SHOWN_PANES = """
+      return {kali: browser.element('kali-frame').getAttribute('src'),
+              panes: document.querySelectorAll('.pane-tab:not(.hidden)').map((tab) => tab.dataset.pane),
+              asked: browser.requests.map((r) => r.method + " " + r.route)};
+"""
+
+def test_the_red_console_is_the_kali_terminal_and_the_website_and_runs_no_prepared_attack(client):
+    seen = open_page(client, "/red/7/", setup=_session_7("wargame"), scenario=SHOWN_PANES)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["panes"] == ["kali", "site"]
+    assert result["kali"] == "/vm-terminal/fsl-kali/?arg=7"
+    assert not [asked for asked in result["asked"] if "/cases/" in asked or "/attacks/" in asked
+                or "/api/attacker/" in asked], result["asked"]
+
+@pytest.mark.parametrize("kind, shown", [("lesson", True), ("scenario", True), ("wargame", False)])
+def test_the_blue_console_carries_kali_for_practice_and_not_in_a_wargame(client, kind, shown):
+    seen = open_page(client, "/blue/7/", setup=_session_7(kind), scenario="""
+      const panes = document.querySelectorAll('.pane-tab:not(.hidden)').map((tab) => tab.dataset.pane);
+      if (panes.includes("kali")) await browser.click('[data-pane="kali"]');
+      return {panes, kali: browser.element('kali-frame').getAttribute('src'),
+              line: !browser.element('rail-line').classList.contains('hidden')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert ("kali" in result["panes"]) is shown and result["line"] is shown, (
+        "the defender in a person-against-person wargame must not hold the attacker's shell"
     )
+    assert result["kali"] == ("/vm-terminal/fsl-kali/?arg=7" if shown else None)
 
 OPEN_SESSION = """
 browser.serve((request) => {

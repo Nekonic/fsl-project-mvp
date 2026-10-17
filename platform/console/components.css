@@ -43,3 +43,5 @@
 .lift:hover { box-shadow: var(--shadow-lift); }
 .table-head th { font-size: 12px; color: var(--text-muted); font-weight: 500; background: var(--subdued); text-align: left; padding: 8px 12px; }
 .table-row td { padding: 10px 12px; border-top: 1px solid var(--border-subdued); }
+.rail-line { flex: none; align-self: stretch; border-left: 1px solid var(--border); margin: 6px 2px; }
+@media (min-width: 768px) { .rail-line { border-left: 0; border-top: 1px solid var(--border); margin: 2px 10px; } }

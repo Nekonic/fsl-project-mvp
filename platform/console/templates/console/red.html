@@ -1,6 +1,6 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
-{% block body_class %}min-h-screen lg:h-screen lg:overflow-hidden flex flex-col{% endblock %}
+{% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
 {% block main_class %}flex-1 min-h-0 flex flex-col{% endblock %}
 {% block content %}
 <div class="relative bg-panel border-b border-line px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -32,65 +32,42 @@
   </div>
 </div>
 
-<div class="flex-1 min-h-0 flex flex-col lg:flex-row">
-  <aside class="lg:w-[320px] shrink-0 bg-panel border-b lg:border-b-0 lg:border-r border-line flex flex-col min-h-0">
-    <div class="p-4 border-b border-line-subdued">
-      <div class="flex items-center justify-between gap-2">
-        <div data-t="red.cases" class="font-semibold text-heading"></div>
-        <select id="origin" class="text-[12px] border border-line rounded-md px-2 h-7 bg-panel min-w-0 max-w-[12rem]"></select>
-      </div>
-      <div class="flex gap-2 mt-3">
-        <button id="run-all" data-t="red.baseline.run_all" class="btn btn-sm btn-red flex-1"></button>
-        <button id="run-attacks" data-t="red.baseline.run_attacks" class="btn btn-sm btn-ghost flex-1"></button>
-      </div>
-    </div>
-    <div class="flex-1 min-h-0 overflow-y-auto text-[13px] max-h-[45vh] lg:max-h-none">
-      <div class="px-4 pt-3 pb-1 label flex justify-between"><span id="attacks-heading"></span><span data-t="red.last_run"></span></div>
-      <div id="attacks"></div>
-      <div class="px-4 pt-4 pb-1 label"><span id="benign-heading"></span></div>
-      <div id="benign"></div>
-      <p id="covers" class="px-4 py-3 text-[11.5px] text-faint"></p>
-    </div>
-  </aside>
+<div class="flex-1 min-h-0 flex flex-col md:flex-row">
+  <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
+    <button class="pane-tab rail-btn" data-pane="kali">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+      <span>Kali</span>
+    </button>
+    <button class="pane-tab rail-btn hidden" data-pane="site">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+      <span data-t="blue.pane.site"></span>
+    </button>
+  </nav>
 
-  <section class="flex-1 min-w-0 min-h-0 flex flex-col p-4 gap-3">
-    <div class="card px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px]">
-      <div><span data-t="red.box.target" class="label"></span> <span id="box-target" class="font-mono ml-1 text-heading">-</span></div>
-      <div><span data-t="red.box.proxied" class="label"></span> <span id="box-proxied" class="font-mono ml-1 text-heading">-</span>
-        <span data-t="red.box.proxied.tools" class="text-faint"></span></div>
-      <div><span data-t="red.box.direct" class="label"></span> <span id="box-direct" class="font-mono ml-1 text-heading">-</span>
-        <span data-t="red.box.direct.tools" class="text-faint"></span></div>
-      <div class="xl:ml-auto flex flex-wrap items-center gap-2">
-        <span data-t="red.window.name" class="label"></span>
-        <input id="window-name" value="manual-attack"
-               class="border border-line rounded-md h-7 px-2 w-36 font-mono text-[12px] bg-panel">
-        <select id="window-route" class="border border-line rounded-md h-7 px-2 text-[12px] bg-panel">
-          <option value="proxy" data-t="red.window.route.proxy"></option>
-          <option value="direct" data-t="red.window.route.direct"></option>
-        </select>
-        <label class="flex items-center gap-1 text-[12px]">
-          <input id="window-malicious" type="checkbox" checked class="accent-danger">
-          <span data-t="red.window.malicious"></span>
-        </label>
-        <button id="window-toggle" data-t="red.window.start" class="btn btn-sm btn-ghost"></button>
+  <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
+    <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
+      <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
+      <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
+      <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
+      <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
+        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span data-t="site.not_secure"></span>
+        </span>
+        <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
+               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
       </div>
-    </div>
-    <p id="window-status" class="text-[12px] text-muted -mt-1"></p>
-
-    <div class="flex-1 min-h-[24rem] rounded-xl overflow-hidden flex flex-col border border-terminal">
-      <div class="h-9 term-bar text-[12px] flex items-center px-4 gap-3 shrink-0">
-        <span class="font-mono text-inverse">fsl-kali</span><span class="text-faint">·</span><span>root · /root</span>
-        <span id="terminal-state" class="ml-auto hidden items-center gap-1.5 text-success"><span class="dot dot-ok"></span><span data-t="red.terminal.connected"></span></span>
+      <button type="button" id="site-dev-toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
+    </form>
+    <div id="pane-body" class="flex-1 min-h-0 relative">
+      <iframe id="site-frame" class="absolute inset-x-0 top-0 bottom-0 w-full border-0 bg-panel" hidden
+              title="site" referrerpolicy="no-referrer"></iframe>
+      {% include "console/blue_dev.html" %}
+      <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
+              title="Kali" referrerpolicy="no-referrer"></iframe>
+      <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
+        <p id="pane-status-title" class="text-heading font-medium"></p>
       </div>
-      <iframe id="terminal" class="flex-1 w-full border-0 bg-terminal" title="Kali"></iframe>
-    </div>
-
-    <div class="card px-4 py-2">
-      <div class="flex items-center gap-2">
-        <span data-t="red.log.heading" class="label"></span>
-        <p id="log-empty" data-t="red.log.empty" class="text-faint text-[12px]"></p>
-      </div>
-      <div id="log" class="max-h-20 overflow-y-auto text-[12px] font-mono space-y-0.5"></div>
     </div>
   </section>
 </div>
@@ -101,85 +78,35 @@
   crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
           { label: t("common.red_team") }]);
 
-  let catalogue = [];
-  let scenario = null;
-  let tiers = [];
-  let lastRun = {};
-  const running = new Set();
+  const field = (id) => document.getElementById(id);
+  const tabs = Array.from(document.querySelectorAll(".pane-tab"));
+  let session = null;
+  const sessionClosed = () => Boolean(session && session.ended_at);
 
-  async function showCoverage() {
-    const listed = await api("/api/wargames/");
-    if (!listed.ok || !Array.isArray(listed.body)) return;
-    const wargame = listed.body.find((w) => w.id === scenario);
-    if (!wargame) return;
-    document.getElementById("red-context").textContent =
-      `${t("common.session", sessionId())} · ${localized(`wargame.${wargame.id}.name`, wargame.name)}`;
-    document.getElementById("loot-open").classList.toggle("hidden", wargame.model !== "loot_verified");
-    const named = (stages) => stages.map((s) => t("stage." + s)).join(", ");
-    const lines = [t("red.covers", named(wargame.covers))];
-    if (wargame.uncovered.length) lines.push(t("red.covers.not", named(wargame.uncovered)));
-    document.getElementById("covers").textContent = lines.join(" ");
+  function openPane(tab) {
+    tabs.forEach((other) => other.setAttribute("aria-selected", String(other === tab)));
+    const onSite = tab.dataset.pane === "site";
+    field("site-bar").classList.toggle("hidden", !onSite);
+    field("site-bar").classList.toggle("flex", onSite);
+    field("site-frame").style.display = onSite ? "block" : "none";
+    field("kali-frame").style.display = onSite ? "none" : "block";
+    field("pane-status").style.display = "none";
+    devPlace();
+    if (onSite && !site.history.length) siteGo("/");
+    if (!onSite && !field("kali-frame").src && session && session.kali_terminal) {
+      field("kali-frame").src = session.kali_terminal;
+    }
   }
 
-  function statusOf(caseDef) {
-    if (running.has(caseDef.name)) return { text: t("red.case.running"), tone: "warn" };
-    const recorded = lastRun[caseDef.name];
-    if (!recorded) return { text: t("red.case.not_run"), tone: "muted" };
-    return caseOutcome(caseDef.malicious, recorded.meta);
-  }
+{% include "console/blue_site_script.html" %}
 
-  function caseRow(caseDef) {
-    const state = statusOf(caseDef);
-    const takes = caseDef.takes ? objectiveLabel(caseDef.takes) : "";
-    return `
-      <div class="px-4 py-2 flex items-center gap-2 hover:bg-subdued">
-        <div class="min-w-0 flex-1" title="${esc(caseDef.summary)}">
-          <div class="text-[12.5px] text-heading">${esc(localized(`case.${caseDef.name}`, caseDef.name))}</div>
-          <div class="font-mono text-[11px] text-faint truncate">${esc(caseDef.name)}</div>
-          <div class="text-[11.5px] text-muted truncate">${esc(caseDef.summary)}</div>
-          ${takes ? `<div class="text-[11.5px] text-danger truncate">${esc(t("red.case.objective", takes))}</div>` : ""}
-        </div>
-        ${badge(state.text, state.tone)}
-        <button data-case="${esc(caseDef.name)}" class="fire btn btn-sm btn-ghost px-2" aria-label="${esc(t("red.case.run"))}">▶</button>
-      </div>`;
-  }
-
-  function renderCases() {
-    const attacks = catalogue.filter((c) => c.malicious);
-    const benign = catalogue.filter((c) => !c.malicious);
-    document.getElementById("attacks-heading").textContent = `${t("red.cases.attacks")} · ${attacks.length}`;
-    document.getElementById("benign-heading").textContent = `${t("red.cases.benign")} · ${benign.length}`;
-    document.getElementById("attacks").innerHTML = attacks.map(caseRow).join("");
-    document.getElementById("benign").innerHTML = benign.map(caseRow).join("");
-    document.querySelectorAll(".fire").forEach((element) => {
-      element.addEventListener("click", () => fire(element.dataset.case));
-    });
-  }
-
-  async function readLastRun() {
-    const result = await api(`/api/sessions/${sessionId()}/cases/`);
-    if (!result.ok || !Array.isArray(result.body)) return;
-    lastRun = {};
-    result.body.forEach((recorded) => { lastRun[recorded.name] = recorded; });
-  }
-
-  const LOG_LINES = 200;
-
-  function note(text, tone) {
-    document.getElementById("log-empty").classList.add("hidden");
-    const line = document.createElement("div");
-    line.className = tone;
-    line.textContent = text;
-    const log = document.getElementById("log");
-    log.prepend(line);
-    while (log.children.length > LOG_LINES) log.lastElementChild.remove();
-  }
+{% include "console/blue_dev_script.html" %}
 
   async function submitLoot() {
-    const said = document.getElementById("loot-said");
+    const said = field("loot-said");
     let parsed;
     try {
-      parsed = JSON.parse(document.getElementById("loot-input").value);
+      parsed = JSON.parse(field("loot-input").value);
     } catch (error) {
       said.textContent = t("red.loot.not_json");
       return;
@@ -187,101 +114,39 @@
     const result = await post(`/api/sessions/${sessionId()}/loot/`, { loot: parsed });
     if (!result.ok) {
       said.textContent = t("red.loot.failed", detail(result));
-      note(said.textContent, "text-warning");
       return;
     }
     said.textContent = result.body.credited.length
       ? t("red.loot.credited", result.body.matched.length, result.body.credited.length)
       : t("red.loot.none", result.body.matched.length);
-    note(said.textContent, result.body.credited.length ? "text-danger font-semibold" : "text-muted");
     await refreshTaken();
   }
 
-  document.getElementById("loot-submit").addEventListener("click", submitLoot);
-  document.getElementById("loot-open").addEventListener("click", () =>
-    document.getElementById("loot").classList.toggle("hidden"));
-  document.getElementById("loot-close").addEventListener("click", () =>
-    document.getElementById("loot").classList.add("hidden"));
+  field("loot-submit").addEventListener("click", submitLoot);
+  field("loot-open").addEventListener("click", () => field("loot").classList.toggle("hidden"));
+  field("loot-close").addEventListener("click", () => field("loot").classList.add("hidden"));
 
-  async function fire(name) {
-    running.add(name);
-    renderCases();
-    const result = await post(`/api/sessions/${sessionId()}/attacks/`,
-                              { case: name, origin: chosenOrigin() }, PATIENCE_FOR_RANGE_WORK);
-    running.delete(name);
-    if (result.ok) {
-      lastRun[name] = result.body;
-      note(t("red.log.sent", name), "text-body");
-    } else {
-      note(t("red.log.fire_failed", name, detail(result)), "text-warning");
-    }
-    renderCases();
-    await pollObjectives();
-    return result.ok;
-  }
-
-  const chosenOrigin = () => document.getElementById("origin").value;
-
-  async function loadOrigins() {
-    const select = document.getElementById("origin");
-    const result = await api("/api/origins/");
-    if (!result.ok) {
-      select.innerHTML = `<option value="">${esc(t("red.origin.unavailable"))}</option>`;
-      select.disabled = true;
-      return;
-    }
-    select.innerHTML =
-      `<option value="rotate">${esc(t("red.origin.rotate"))}</option>` +
-      result.body.origins.map((origin) =>
-        `<option value="${esc(origin.id)}">${esc(origin.label)} · ${esc(origin.subnet)}</option>`
-      ).join("");
-    const preferred = result.body.origins.find((origin) => origin.default);
-    if (preferred) select.value = preferred.id;
-    select.addEventListener("change", loadTerminal);
-  }
-
-  async function fireMany(cases) {
-    const buttons = document.querySelectorAll("button:not(:disabled)");
-    buttons.forEach((b) => (b.disabled = true));
-    for (const caseDef of cases) {
-      await fire(caseDef.name);
-    }
-    buttons.forEach((b) => (b.disabled = false));
-  }
-
-  async function render() {
-    const session = await api(`/api/sessions/${sessionId()}/`);
-    if (!session.ok) {
-      const said = session.status === 404
-        ? t("red.error.no_session") : t("red.error.session", detail(session));
-      document.getElementById("attacks").innerHTML =
-        `<p class="text-warning text-[13px] px-4">${esc(said)}</p>`;
-      return;
-    }
-    scenario = session.body.scenario;
-    await loadObjectives();
-    const cases = await api(`/api/wargames/${scenario}/cases/`);
-    if (!cases.ok || !Array.isArray(cases.body)) {
-      document.getElementById("attacks").innerHTML =
-        `<p class="text-warning text-[13px] px-4">${esc(t("red.error.no_catalogue", detail(cases)))}</p>`;
-      return;
-    }
-    catalogue = cases.body;
-    await showCoverage();
-    await readLastRun();
-    renderCases();
-  }
-
+  let tiers = [];
+  let taken = [];
   const objectiveLabel = (key) => {
     const tier = tiers.find((o) => o.key === key);
     return localized(`objective.${key}`, tier ? tier.name : key);
   };
-  let taken = [];
+
+  async function showWargame() {
+    const listed = await api("/api/wargames/");
+    if (!listed.ok || !Array.isArray(listed.body)) return;
+    const wargame = listed.body.find((w) => w.id === session.scenario);
+    if (!wargame) return;
+    field("red-context").textContent =
+      `${t("common.session", sessionId())} · ${localized(`wargame.${wargame.id}.name`, wargame.name)}`;
+    field("loot-open").classList.toggle("hidden", wargame.model !== "loot_verified");
+  }
 
   async function loadObjectives() {
-    const result = await api(`/api/wargames/${scenario}/objectives/`);
+    const result = await api(`/api/wargames/${session.scenario}/objectives/`);
     if (!result.ok || !Array.isArray(result.body)) {
-      document.getElementById("objectives").innerHTML =
+      field("objectives").innerHTML =
         `<span class="text-warning text-[12px]">${esc(t("red.error.objectives", detail(result)))}</span>`;
       return;
     }
@@ -291,12 +156,12 @@
 
   function renderObjectives() {
     const won = new Set(taken.map((o) => o.key));
-    document.getElementById("objectives").innerHTML = tiers.map((tier) => {
+    field("objectives").innerHTML = tiers.map((tier) => {
       const label = t("red.objective.chip", objectiveLabel(tier.key), tier.difficulty);
       return `<span class="badge h-7 px-3 ${won.has(tier.key) ? "badge-red" : "badge-neutral"}">
         <span class="dot ${won.has(tier.key) ? "dot-red" : "dot-neutral"}"></span>${esc(label)}</span>`;
     }).join("");
-    document.getElementById("taken").innerHTML = tiers.length
+    field("taken").innerHTML = tiers.length
       ? `${esc(t("red.taken"))} <b class="text-danger">${esc(won.size)}</b>/${esc(tiers.length)}` : "";
   }
 
@@ -310,221 +175,43 @@
   const CHECK_EVERY = 10000;
   let timer = null;
   let checking = false;
-  let recheck = false;
-  let closed = false;
   let checkedAt = 0;
 
-  function stopPolling() {
-    if (closed) return;
-    closed = true;
-    clearTimeout(timer);
-    clearLabel();
-    note(t("red.log.session_closed"), "text-muted");
-  }
-
-  async function checkObjectives() {
-    const result = await post(`/api/sessions/${sessionId()}/objectives/`);
-    if (result.status === 409) {
-      stopPolling();
-      return;
-    }
-    if (result.ok && result.body.achieved) {
-      note(t("red.log.taken", result.body.achieved), "text-danger font-semibold");
-    }
-    await refreshTaken();
-  }
-
   async function pollObjectives() {
-    if (checking) {
-      recheck = true;
-      return;
-    }
+    if (checking || sessionClosed()) return;
     checking = true;
     clearTimeout(timer);
     try {
-      do {
-        recheck = false;
-        await checkObjectives();
-      } while (recheck && !closed);
+      const result = await post(`/api/sessions/${sessionId()}/objectives/`);
+      if (result.status === 409 && session) session.ended_at = session.ended_at || "closed";
+      await refreshTaken();
     } finally {
       checking = false;
       checkedAt = Date.now();
-      schedule();
+      if (!sessionClosed()) timer = setTimeout(pollObjectives, CHECK_EVERY);
     }
-  }
-
-  function schedule() {
-    clearTimeout(timer);
-    if (!closed && !checking) timer = setTimeout(pollObjectives, CHECK_EVERY);
   }
 
   onResume(() => {
-    if (!closed && !checking && Date.now() - checkedAt >= CHECK_EVERY) pollObjectives();
+    if (!sessionClosed() && !checking && Date.now() - checkedAt >= CHECK_EVERY) pollObjectives();
   });
 
-  let attacker = null;
-  let openedAt = null;
-  let windowCaseId = null;
-  let recordedFrom = null;
+  tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
 
-  const status = (text, tone) => {
-    const element = document.getElementById("window-status");
-    element.textContent = text;
-    element.className = `text-[12px] -mt-1 ${tone || "text-muted"}`;
-  };
-
-  const windowAddress = () =>
-    document.getElementById("window-route").value === "direct"
-      ? attacker.direct_ip
-      : attacker.source_ip;
-
-  let confirmedOrigin = null;
-  let describedOrigin = null;
-  let moving = false;
-  let moveAgain = false;
-
-  async function loadTerminal() {
-    if (moving) {
-      moveAgain = true;
+  (async () => {
+    const read = await api(`/api/sessions/${sessionId()}/`);
+    if (!read.ok) {
+      field("pane-status-title").textContent = read.status === 404
+        ? t("red.error.no_session") : t("red.error.session", detail(read));
       return;
     }
-    moving = true;
-    const toggle = document.getElementById("window-toggle");
-    toggle.disabled = true;
-    try {
-      do {
-        moveAgain = false;
-        await moveTerminal();
-      } while (moveAgain);
-    } finally {
-      moving = false;
-      toggle.disabled = describedOrigin === null || describedOrigin !== confirmedOrigin;
-    }
-  }
-
-  async function moveTerminal() {
-    const select = document.getElementById("origin");
-    const wanted = select.value;
-    const origin = wanted === "rotate" ? "" : wanted;
-    const moved = await post("/api/attacker/origin/", { origin, session: sessionId() });
-    if (!moved.ok) {
-      status(t("red.window.status.origin_failed", detail(moved)), "text-warning");
-      if (confirmedOrigin !== null) select.value = confirmedOrigin;
-      return;
-    }
-    confirmedOrigin = wanted;
-    const result = await api(`/api/attacker/?origin=${encodeURIComponent(origin)}&session=${sessionId()}`);
-    if (!result.ok) {
-      status(t("red.window.status.unavailable", detail(result)), "text-warning");
-      return;
-    }
-    attacker = result.body;
-    describedOrigin = wanted;
-    const terminal = document.getElementById("terminal");
-    if (!terminal.src) {
-      terminal.src = attacker.terminal_url;
-      document.getElementById("terminal-state").classList.remove("hidden");
-      document.getElementById("terminal-state").classList.add("flex");
-    }
-    document.getElementById("box-target").textContent = attacker.public_url;
-    document.getElementById("box-proxied").textContent = attacker.source_ip;
-    document.getElementById("box-direct").textContent =
-      attacker.direct_ip || t("red.box.direct.none");
-
-    const route = document.getElementById("window-route");
-    route.querySelector('[value="direct"]').disabled = !attacker.direct_ip;
-    if (!attacker.direct_ip) route.value = "proxy";
-
-    status(t("red.window.status.will_record", windowAddress()));
-  }
-
-  const unlocked = new Set();
-
-  function lockCase(locked) {
-    ["window-name", "window-malicious", "window-route", "origin"].forEach((id) => {
-      const control = document.getElementById(id);
-      if (locked) {
-        if (!control.disabled) unlocked.add(id);
-        control.disabled = true;
-      } else if (unlocked.has(id)) {
-        control.disabled = false;
-      }
-    });
-    if (!locked) unlocked.clear();
-  }
-
-  async function toggleWindow() {
-    const toggle = document.getElementById("window-toggle");
-    const name = document.getElementById("window-name");
-    const malicious = document.getElementById("window-malicious");
-
-    if (!openedAt) {
-      const from = {
-        address: windowAddress(),
-        origin: attacker.origin,
-        route: document.getElementById("window-route").value,
-      };
-      lockCase(true);
-      windowCaseId = crypto.randomUUID();
-      const labelled = await post("/api/attacker/label/", { case_id: windowCaseId, session: sessionId() });
-      if (!labelled.ok) {
-        lockCase(false);
-        status(t("red.window.status.marker_failed", detail(labelled)), "text-warning");
-        return;
-      }
-      recordedFrom = from;
-      openedAt = new Date();
-      toggle.textContent = t("red.window.stop");
-      status(t("red.window.status.recording", from.address), "text-danger");
-      note(t("red.log.case_started", name.value), "text-muted");
-      return;
-    }
-
-    const cleared = await post("/api/attacker/label/", { case_id: null, session: sessionId() });
-    if (!cleared.ok) {
-      status(t("red.window.status.clear_failed", detail(cleared)), "text-warning");
-      return;
-    }
-    const result = await post(`/api/sessions/${sessionId()}/cases/`, {
-      case_id: windowCaseId,
-      name: name.value,
-      malicious: malicious.checked,
-      correlation: "window",
-      source_ip: recordedFrom.address,
-      meta: { origin: recordedFrom.origin, route: recordedFrom.route },
-      started_at: openedAt.toISOString(),
-      ended_at: new Date().toISOString(),
-    });
-
-    note(
-      result.ok
-        ? t("red.log.case_recorded", name.value)
-        : t("red.log.case_record_failed", name.value, detail(result)),
-      result.ok ? "text-body" : "text-warning",
-    );
-    await pollObjectives();
-    openedAt = null;
-    recordedFrom = null;
-    lockCase(false);
-    toggle.textContent = t("red.window.start");
-    status(t("red.window.status.will_record", windowAddress()));
-  }
-
-  document.getElementById("window-toggle").addEventListener("click", toggleWindow);
-
-  document.getElementById("run-all")
-    .addEventListener("click", () => fireMany(catalogue));
-  document.getElementById("run-attacks")
-    .addEventListener("click", () => fireMany(catalogue.filter((c) => c.malicious)));
-
-  function clearLabel() {
-    post("/api/attacker/label/", { case_id: null, session: sessionId() });
-  }
-
-  clearLabel();
-  render();
-  loadOrigins().then(loadTerminal);
-  refreshTaken();
-  schedule();
+    session = read.body;
+    if (session.site) siteBrowser(session.site);
+    openPane(tabs[0]);
+    await showWargame();
+    await loadObjectives();
+    await refreshTaken();
+    timer = setTimeout(pollObjectives, CHECK_EVERY);
+  })();
 </script>
 {% endblock %}

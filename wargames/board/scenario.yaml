@@ -399,7 +399,7 @@ foundations:
         query: "url : *search* and status : 403"
         check: {kind: answer, of: rule, marker: browse, path: "1=1", known: ["949110"]}
       - id: sqlmap
-        point: {pane: true}
+        point: {pane: true, opens: kali}
         check: {kind: kali, case: board-sqli-orderby-sqlmap}
       - id: requests
         point: {pane: true}
@@ -421,7 +421,7 @@ foundations:
         command: cat {waf_rules}
         check: {kind: answer, of: excluded}
       - id: sqlmap
-        point: {pane: true}
+        point: {pane: true, opens: kali}
         check: {kind: kali, case: board-sqli-orderby-sqlmap}
       - id: loot
         point: {pane: true}

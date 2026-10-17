@@ -502,6 +502,10 @@ class OpenStack:
     def segments(self) -> tuple[Segment, ...]:
         return self.describe().segments
 
+    def host_key_alias(self, address: str) -> str:
+        self.describe()
+        return self._generations.get(address, "")
+
     def _read(self) -> Shape:
         origins = {origin.id: origin for origin in self.declared.origins}
         carriers = list(dict.fromkeys(

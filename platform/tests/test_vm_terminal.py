@@ -25,6 +25,9 @@ class Slot:
                                        nodes=(Node("fsl-waf", f"10.31.{self.number}.9"),)),),
                      sensors=())
 
+    def host_key_alias(self, address):
+        return f"fsl-server-{self.number}"
+
 
 class Cloud:
     def __init__(self, slots):
@@ -51,7 +54,7 @@ def _found(monkeypatch, capsys, slots, session):
 def test_the_shell_opens_on_the_slot_the_named_session_holds(monkeypatch, capsys):
     held = Session.objects.create(scenario="board", baseline=[], slot=2)
 
-    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.2.9")
+    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.2.9 fsl-server-2")
 
 
 @pytest.mark.django_db

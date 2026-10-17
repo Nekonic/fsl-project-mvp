@@ -28,10 +28,11 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
     <span data-t="blue.pane.waf"></span>
   </button>
-  <a id="to-red" target="_blank" class="rail-btn ml-auto md:ml-0 md:mt-auto">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>
-    <span data-t="blue.nav.to_red"></span>
-  </a>
+  <div id="rail-line" class="rail-line hidden"></div>
+  <button class="pane-tab rail-btn hidden" data-pane="kali">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 7 5 5-5 5M12 18h7"/></svg>
+    <span>Kali</span>
+  </button>
 </nav>
 
 <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
@@ -61,6 +62,8 @@
     {% include "console/blue_dev.html" %}
     <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
             title="console" referrerpolicy="no-referrer"></iframe>
+    <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
+            title="Kali" referrerpolicy="no-referrer"></iframe>
     {% include "console/blue_topology.html" %}
     {% include "console/blue_triage.html" %}
     {% include "console/blue_rules.html" %}
@@ -87,7 +90,6 @@
   const CLOSED_CHECK_MS = 30000;
   const sessionClosed = () => Boolean(session && session.ended_at);
 
-  field("to-red").href = `/red/${sessionId()}/`;
   crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
           { label: t("blue.title") }]);
 
@@ -112,6 +114,13 @@
     field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
     field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
     triageDock();
+    field("kali-frame").style.display = tab.dataset.pane === "kali" ? "block" : "none";
+    if (tab.dataset.pane === "kali") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      if (!field("kali-frame").src) field("kali-frame").src = tab.dataset.src;
+      return;
+    }
     if (tab.dataset.pane === "rules") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";
@@ -201,6 +210,12 @@
       document.querySelector('.pane-tab[data-pane="waf"]').dataset.src = session.waf_terminal;
     }
     if (session && session.site) siteBrowser(session.site);
+    if (session && session.kali_terminal && session.kind !== "wargame") {
+      const kali = document.querySelector('.pane-tab[data-pane="kali"]');
+      kali.dataset.src = session.kali_terminal;
+      kali.classList.remove("hidden");
+      field("rail-line").classList.remove("hidden");
+    }
     if (session && session.waf_box) {
       field("waf-box").textContent = session.waf_box;
       field("waf-rules").textContent = `${session.waf_rules}/`;
