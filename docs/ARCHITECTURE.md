@@ -235,11 +235,10 @@ but never checks the running range.
 Segments are found by a label. On docker the adapter finds hosts by label too:
 `declaration.yaml`'s `compose:` section maps each role to a compose service,
 and the adapter picks the container with that `com.docker.compose.service`
-label in the session's project. Two places bypass that lookup and name the
+label in the session's project. One place bypasses that lookup and names the
 session's WAF container by the compose naming convention instead:
-`platform/api/site.py` (`http://fsl-<id>-waf-1`, the site proxy) and
-`platform/api/views.py` (`fsl-<id>-waf`, the WAF box the blue console names), recorded in the
-exceptions table below. Each segment
+`platform/api/site.py` (`http://fsl-<id>-waf-1`, the site proxy), recorded in
+the exceptions table below. Each segment
 carries `fsl.segment.id` as a Docker label or a Neutron tag, and the adapters
 fetch only labelled networks; a session-owned network wins over a control-plane
 one with the same segment id. Matching by name broke on compose prefixes and

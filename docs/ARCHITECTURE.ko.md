@@ -77,7 +77,7 @@ WAF 설정 조정, 단계 엔진"과 "시나리오"에서 설명하는 `defense`
 label, canary)는 쿼리나 본문에서 `session`을 받습니다. 지정하지 않으면 쓰기는 가장 최근에
 열린 세션으로 가고 열린 세션이 없으면 409로 응답하며, 읽기는 가장 최근 세션을 사용합니다.
 닫힌 세션을 지정한 쓰기는 거부합니다. 예외 처리는 세션과 함께 저장합니다(마이그레이션
-0014). 레드팀 콘솔은 자기 세션 id를 보냅니다. 각 세션의 센서는 실제로 적용 중인
+0014). 각 세션의 센서는 실제로 적용 중인
 `local.rules`를 자기 컨테이너 안에 둡니다. Docker에서는 세션을 열 때 모든 세션의 센서에 그
 `defense`의 룰 파일을 넣고, 시나리오가 `defense`를 선언하지 않으면(corp)
 `deploy/suricata/rules/local.rules`를 넣습니다. `deploy/suricata/rules`를 bind mount하는
@@ -212,11 +212,10 @@ edge, sensor, proxy 역할); 센서가 감시하는 호스트; 기본 출발지;
 
 구간은 라벨로 찾습니다. Docker에서는 어댑터가 호스트도 라벨로 찾습니다.
 `declaration.yaml`의 `compose:` 절이 각 역할을 compose 서비스에 대응시키고, 어댑터는 세션
-프로젝트에서 그 `com.docker.compose.service` 라벨을 가진 컨테이너를 고릅니다. 두 곳은 이
+프로젝트에서 그 `com.docker.compose.service` 라벨을 가진 컨테이너를 고릅니다. 한 곳은 이
 조회를 거치지 않고 compose 이름 규칙으로 세션의 WAF 컨테이너를 직접 지정합니다:
-`platform/api/site.py`(`http://fsl-<id>-waf-1`, 사이트 프록시)와
-`platform/api/views.py`(`fsl-<id>-waf`, 블루팀 콘솔이 알려 주는 WAF 박스)이며, 아래 예외
-표에 기록해 두었습니다. 각 구간은 `fsl.segment.id`를 Docker 라벨이나 Neutron 태그로 가지며,
+`platform/api/site.py`(`http://fsl-<id>-waf-1`, 사이트 프록시)이며, 아래 예외 표에 기록해
+두었습니다. 각 구간은 `fsl.segment.id`를 Docker 라벨이나 Neutron 태그로 가지며,
 어댑터는 라벨이 붙은 네트워크만 가져옵니다. 구간 id가 같으면 세션이 소유한 네트워크가
 컨트롤 플레인 네트워크보다 우선합니다. 이름으로 매칭하는 방식은 compose 접두사와
 오버라이드, Heat 스택 접미사, 유일하지 않은 Neutron 이름 때문에 깨졌습니다. OpenStack에서는
@@ -464,7 +463,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 프로젝트를 엽니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사용자에게 `fsl-<id>-waf-1`의 쉘을 열어 줍니다(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM의 ssh 쉘을 엽니다). f6의 WAF 창 단계는 사용자가 읽을 예외 파일을 알려 주며, 그 명령(`cat {waf_rules}`)은 `wargames.lesson`이 선언된 예외 파일(`settings.FSL_WAF`)로 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
-| 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 찾음 | `platform/api/site.py`는 `http://fsl-<id>-waf-1`을, `platform/api/views.py`는 `fsl-<id>-waf`를 compose 이름 규칙으로 만듭니다 |
+| 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 찾음 | `platform/api/site.py`가 `http://fsl-<id>-waf-1`을 compose 이름 규칙으로 만듭니다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 에지의 Suricata를 설정하고 재시작합니다(OpenStack). `declaration.yaml`의 각 센서 호스트(에지, 그리고 `estate-sensor`를 맡는 워게임 호스트)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 워게임 호스트의 estate 센서 compose 서비스를 멈췄다가 다시 시작하며(OpenStack), 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽습니다. 터미널 연결 설정(`settings.py`, `nginx.conf`, `entrypoint.sh`)에 `fsl-kali`와 `fsl-<id>-kali-1`이 적혀 있습니다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. OpenStack에서도 같은 컨테이너에 접근합니다. `loot.py`는 워게임 호스트의 publish된 포트로 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner를 거칩니다 |
@@ -491,11 +490,24 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 터미널은 사용자가 입력한 명령도 기록합니다. Kali의 쉘은 명령마다 현재
 `/label/active` 마커를 붙여 `/var/log/fsl/commands.log`에 덧붙입니다. 플랫폼은
 이 파일을 `runner("attacker")`로 읽어 `GET /api/sessions/<id>/commands/`로
-제공합니다. compose에서 레드팀 콘솔은 `/terminal/<세션 id>/`를 프레임으로 띄우고,
-nginx가 이를 `fsl-<id>-kali-1:7681`에 있는 Kali 자체 ttyd로 프록시합니다.
-OpenStack에서는 `/vm-terminal/fsl-kali/?arg=<세션 id>`를 띄웁니다. 이는 플랫폼
-안의 ttyd로, 세션 슬롯에 있는 호스트의 mgmt 주소로 ssh 접속합니다. compose에서는
-Kali와 WAF에 mgmt 주소가 없으므로 `/vm-terminal/`은 연결되지 않습니다.
+제공합니다. Kali 창(레드팀 콘솔의 창, 그리고 레슨·시나리오 세션에서 블루팀 콘솔의
+창)은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `kali_terminal`)을
+프레임으로 띄웁니다. compose에서는 `/terminal/<세션 id>/`이고, nginx가 이를
+`fsl-<id>-kali-1:7681`에 있는 Kali 자체 ttyd로 프록시합니다. OpenStack에서는
+`/vm-terminal/fsl-kali/?arg=<세션 id>`입니다. 이는 플랫폼 안의 ttyd로, 세션 슬롯에
+있는 호스트의 mgmt 주소로 ssh 접속합니다. compose에서는 Kali와 WAF에 mgmt 주소가
+없으므로 `/vm-terminal/`은 연결되지 않습니다.
+
+`vm-terminal.sh`는 플랫폼의 runner가 같은 서버에 쓰는 별칭
+`fsl-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 호스트 키를 확인하며,
+`StrictHostKeyChecking=accept-new`를 씁니다. 초기화로 재구축된 서버는 별칭이 새로
+바뀌므로 "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키를 등록하고, 이미
+알고 있는 별칭에서 키가 바뀌면 접속을 거부합니다. 로그인 쉘 대신 `bash --rcfile`을
+`-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을 읽고(그래서 Kali의 프록시
+변수, `FSL_TARGET`, 명령 로그가 로그인했을 때와 같습니다), 프롬프트의 `\h`를 `fsl-`를
+뺀 호스트 이름(`ubuntu@kali`, `ubuntu@waf`)으로 바꾼 뒤 `/etc/motd`를 출력합니다.
+명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을 출력하지 않습니다.
+호스트 이름 자체는 바꾸지 않습니다.
 
 블루팀 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의
 `waf_terminal`)을 프레임으로 띄웁니다. compose에서는 `/waf-terminal/<세션 id>/`입니다.
@@ -574,7 +586,10 @@ sandbox(불투명 출처)라면 8000 하나로도 이를 막을 수 있지만, C
 `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부합니다. API는 비밀값을
 보여 주지 않습니다. `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크
 패널에는 그 자리에 `browse`가 나옵니다. Kibana에는 비밀값이 보이는데, Kibana는
-블루팀의 도구입니다. 레드팀 콘솔에는 사이트 창이 없습니다.
+블루팀의 도구입니다. 레드팀 콘솔의 웹사이트 창은 같은 세션의 같은 창입니다.
+워게임에서는 공격자의 브라우징에도 세션의 비밀값이 붙으므로 방어자의 브라우징처럼
+`/score/`에서 빠지고, 방어자의 네트워크 패널에 나옵니다(미해결: 사람 대 사람
+워게임인 4.2는 아직 만들지 않았습니다).
 
 콘솔 HTTP 케이스는 출발지를 선택했는지와 관계없이 세션 워게임의 `Host`인
 `board.com`을 싣습니다. 출발지를 선택하면 트래픽은 그 출발지 네트워크에 있는 WAF
@@ -781,7 +796,8 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
   세션을 나열하고, 각각 `ingest/` 다음 `close/`로 닫습니다. `GET /api/range/ready/`가
   `max_sessions`를 알려 줍니다.
 - 세션(`/session/<id>/`): 머리글 수치(가이드 세션이 진행 중인 단계, 빼앗긴 목표, 대상
-  시스템), 블루팀·레드팀 콘솔 카드, `GET /api/sessions/<id>/cases/`의 최근 케이스. 세션이
+  시스템), 블루팀 콘솔 카드와 워게임 세션에서만 레드팀 콘솔 카드(Kali 터미널, 웹사이트,
+  목표), `GET /api/sessions/<id>/cases/`의 최근 케이스. 세션이
   닫히면 시나리오의 판정 배너와 디브리핑("시나리오"), 그다음 주 점수(모든 등급의 목표에
   대해 빼앗겼는지, 알아챘는지, 감점 난이도 ×1 또는 ×2), 그다음 방어 판단을 평범한
   문장으로 보여 줍니다. "공격 8건 중 7건 탐지 · 1건 미탐 (이름)", "정상 요청 4건 중 3건
@@ -791,13 +807,18 @@ WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 �
   시작")은 같은 시나리오, 같은 레슨(`lesson_id`가 있으면
   `{scenario, guidance: true, lesson, defense}`), 또는 같은 워게임을 다시 엽니다.
 - 블루팀(`/blue/<id>/`): 왼쪽 메뉴(Kibana, 웹사이트, 구성도, `judgement` 시나리오의
-  경보, `detection`·`unknown` 시나리오의 IDS 룰, WAF, 레드팀 화면으로 가는 링크)와 창.
-  WAF 창의 배너에는 WAF 박스(`waf_box`, `fsl-<id>-waf`)와 CRS 룰 디렉터리(`waf_rules`,
+  경보, `detection`·`unknown` 시나리오의 IDS 룰, WAF, 그 아래 구분선과 Kali)와 창.
+  Kali는 세션의 `kind`가 `lesson`이나 `scenario`일 때만 보입니다. `wargame` 세션에서는
+  사람이 레드팀 콘솔에서 공격하므로 방어자에게 공격자의 쉘을 주지 않습니다. Kali 창은
+  한 번만 불러오는 별도 프레임이어서, 다른 창으로 옮겨도 실행 중인 sqlmap이 끊기지
+  않습니다. WAF 창의 배너에는 WAF 박스(`waf_box`, `waf`)와 CRS 룰 디렉터리(`waf_rules`,
   `crs.EXCLUSIONS`에서 계산)만 나옵니다.
-- 레드팀(`/red/<id>/`): 위쪽에 목표(한국어 이름은 `objective.<key>`)와 "탈취한 해시
-  제출", 공격과 정상으로 묶고 마지막 실행 결과를 붙인 케이스 목록, 나머지 영역은 Kali
-  터미널입니다. 화면 폭이 좁으면 패널이 세로로 쌓이며, 레드팀·블루팀 화면은 가로로
-  스크롤되지 않습니다.
+- 레드팀(`/red/<id>/`): 위쪽에 세션과 워게임 이름, 목표(한국어 이름은
+  `objective.<key>`), "탈취한 해시 제출"이 있고, 왼쪽 메뉴에는 창 두 개, 세션의 Kali
+  터미널과 웹사이트 창(주소 표시줄과 개발자 도구, 블루팀 콘솔과 같은 스크립트)이
+  있습니다. 미리 준비한 공격은 실행하지 않습니다: 케이스 목록, 실행 버튼, 기록 창,
+  출발지 선택이 없습니다(2026-10-18). 화면 폭이 좁으면 메뉴가 창 위로 쌓이며,
+  레드팀·블루팀 화면은 가로로 스크롤되지 않습니다.
 
 가이드 세션(기초 레슨이나 단계형 시나리오)에서 레슨 노트는 창의 오른쪽 위에 떠
 있습니다(사이트 툴바나 WAF 배너가 보이면 그 아래, 40 px에 8 px를 더한 위치). 기본은
@@ -892,8 +913,9 @@ check는 자동으로 실행되며, `kali` 단계의 "실행 결과 확인" 버�
 있습니다. "터미널에서 실행"은 필요하면 WAF 창을 열고, ttyd의 `term`과 쉘 프롬프트(마지막
 줄이 `$`나 `#`로 끝남, 최대 30초)를 기다린 뒤 `term.paste(command + "\n")`, 이어서 `term.input("\r")`을 호출합니다. bash는 bracketed
 paste의 줄바꿈을 텍스트로 남겨 두기 때문입니다. OpenStack의 WAF 창은 ssh 로그인이라
-프롬프트가 `term`보다 10초쯤 늦게 나오고, 그 전에 붙여 넣은 명령은 사라집니다. `kali` 단계의 명령은 학습자가 레드팀
-콘솔의 Kali 터미널에 직접 입력하며, 실행 버튼이 없습니다.
+프롬프트가 `term`보다 10초쯤 늦게 나오고, 그 전에 붙여 넣은 명령은 사라집니다. `kali` 단계의 명령은 학습자가 Kali
+창에 직접 입력합니다. 이 단계가 Kali 창을 열어 주며(`point: {pane: true, opens: kali}`),
+실행 버튼은 없습니다.
 
 도움은 단계마다 힌트 단계를 따라 올라갑니다(`<text>.nudge.<step>`은 화면에서,
 정답은 단계의 `progress.answer`에서 가져옵니다). 첫 귀띔(nudge), "빨간 상자로 표시한
@@ -979,7 +1001,7 @@ discovery 시점에 검사합니다(id는 기초 레슨과 시나리오 전체�
 | f2 웹 요청 보내고 상태 코드 확인하기 | `full` | 웹사이트 창에서 한국어로 검색하고, 개발자 도구에서 상태 코드를 읽습니다(구성도상의 홉은 이론 탭에서 설명하며, 이를 확인하는 단계는 없습니다) | 학습자가 웹사이트 창에서 보낸 요청: 상태 코드 |
 | f3 HTTP 요청 읽기 | `full` | 같은 요청의 메서드, 경로, 파라미터, 상태 코드 분류 | 같은 요청 기록 |
 | f4 Kibana에서 로그 찾기 | `full` | Kibana에서 한국어 검색 요청을 찾고(경보만이 아니라 모든 기록에서) 어느 엔진이 기록했는지 답합니다. `<script>alert(1)</script>`를 보내고 WAF의 기록을 찾아 `status`와 `source_ip`를 읽습니다 | 요청을 기록한 엔진(http 기록, 탐지 기록), 요청의 상태 코드, WAF 탐지 기록의 `src_ip` |
-| f5 SQL 인젝션 공격 로그 분석 | `full` | `' OR 1=1--`를 보내고, 요청을 막은 호스트는 개발자 도구의 차단 배지로, 요청을 탐지한 룰은 Kibana의 WAF 기록으로 찾아 답합니다. 레드팀 콘솔의 Kali 터미널에서 sqlmap을 실행하고 보낸 요청 수를 답합니다 | 요청 기록의 차단 표시(구성도의 게이트웨이, `waf`), 요청의 ModSecurity 규칙 ID(949110은 따로 설명), 실행 마커가 붙은 센서의 http 기록(10% 이내) |
+| f5 SQL 인젝션 공격 로그 분석 | `full` | `' OR 1=1--`를 보내고, 요청을 막은 호스트는 개발자 도구의 차단 배지로, 요청을 탐지한 룰은 Kibana의 WAF 기록으로 찾아 답합니다. Kali 창에서 sqlmap을 실행하고 보낸 요청 수를 답합니다(센서마다 구성도 이름으로 답하며, `fsl-edge`는 `firewall`) | 요청 기록의 차단 표시(구성도의 게이트웨이, `waf`), 요청의 ModSecurity 규칙 ID(949110은 따로 설명), 실행 마커가 붙은 센서의 http 기록(10% 이내) |
 | f6 계정 유출 확인 | `missed` | WAF의 예외 파일을 읽고, 같은 sqlmap을 실행하고, 덤프한 테이블을 붙여 넣은 뒤, 유출된 계정 수와 첫 번째 점수가 잃은 것으로 센 목표 수를 답합니다 | 적용 중인 WAF 파일, 세션 스냅샷과 대조한 탈취 데이터, `result.objectives.lost` |
 
 `missed`는 CRS paranoia level 1에 `ruleRemoveById` 949110과 959100, 그리고
@@ -1020,7 +1042,7 @@ started_at}`를 덧붙인 뒤(마이그레이션 0027. 기초 레슨을 열 때 
 표시 방식). 센서의 http 기록에 마커와 도구의 user agent가 함께 있으면 통과하고, 이
 실행을 일반 악성 케이스로 기록한 뒤(`meta.kali`, 재생 표시 없음. 그래서 다른 레드팀
 행동처럼 두 점수에 모두 들어갑니다) 세션을 수집(ingest)합니다. 마커를 프록시 라벨이
-아니라 명령에 넣는 이유는 레드팀 콘솔을 열면 라벨이 지워지기 때문입니다. `loot`는 붙여 넣은 테이블(`tools.dumped`,
+아니라 명령에 넣는 이유는 프록시 라벨은 하네스가 자기 실행 구간 앞뒤로 설정하고 지우기 때문입니다. `loot`는 붙여 넣은 테이블(`tools.dumped`,
 또는 `name:hash` 줄과 `| name | hash |` 줄)을 받아 `POST /loot/`와 같은 방식으로
 인정하고 kali 케이스에 귀속합니다. `_credit_loot`는 일치한 계정을 귀속된 케이스에
 남깁니다(`meta.loot`).
@@ -1075,8 +1097,8 @@ corp-db의 바이너리 로그를 `mysqlbinlog`로 읽고, 커밋된 변경(스�
 탈취된 목표는 실행 구간이 목표의 시간 범위와 겹치는 악성 케이스에 귀속하며, 그런
 케이스가 여럿이면 가장 늦게 시작한 케이스에 귀속합니다. 그 케이스가 탐지되었을 때만
 목표도 탐지된 것으로 세고, 겹치는 케이스가 없는 목표는 탐지되지 않은 것으로 셉니다.
-귀속은 시간만으로 정합니다. 케이스의 `takes:` 필드는 레드팀 콘솔에 표시되지만 채점에서는
-읽지 않습니다.
+귀속은 시간만으로 정합니다. 케이스의 `takes:` 필드는 채점에서 읽지
+않습니다.
 
 점수의 `objectives` 블록에서 `coverage`는 전체 난이도 대비 탐지된 난이도이며, 탈취된
 것이 없으면 `null`입니다. `false_positives`는 FP입니다. `damage`는 탐지되지 않은
@@ -1100,8 +1122,8 @@ window로 메워지지 않고 미탐으로 드러나야 합니다. 터미널 케
 각 `per_case` 항목에는 `expect`와 `corroborated`가 있습니다. `corroborated`는 매칭된
 경보 중 하나의 시그니처에 `expect`가 대소문자 구분 없이 나타나면 true입니다. 같은
 세션에서 정상 케이스에도 매칭된 시그니처는 세지 않습니다. 케이스에 `expect`가 없으면
-`null`이며, 터미널 케이스는 항상 그렇습니다. 레드팀 콘솔이 `expect`를 보내지 않기
-때문입니다. 탐지되었지만 corroborated가 아닌 케이스는 `score.warning.wrong_reason`을
+`null`이며, `POST /api/sessions/<id>/cases/`로 기록한 구간 케이스는 `expect`가 없으므로
+항상 그렇습니다. 탐지되었지만 corroborated가 아닌 케이스는 `score.warning.wrong_reason`을
 추가합니다.
 
 케이스의 `expect`는 케이스를 실행할 때 케이스와 함께 저장하므로, 케이스 파일을 수정해도
