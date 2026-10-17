@@ -135,12 +135,14 @@ def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn(reques
             except socket.timeout:
                 answers.append(b"")
 
-    threading.Thread(target=console, daemon=True).start()
+    talking = threading.Thread(target=console, daemon=True)
+    talking.start()
     heard = bytearray()
     for wanted, answer in module.STEPS:
         module.awaited(ours, wanted, float("inf"), heard)
         if answer:
             ours.sendall(answer)
+    talking.join(5)
 
     assert answers[:2] == [b"x", b"vtbd1\r"], (
         "the seed disk is the second virtio disk, which FreeBSD names vtbd1"
