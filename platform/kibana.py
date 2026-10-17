@@ -39,6 +39,10 @@ def import_request(base, ndjson):
     )
 
 
+def status_request(base):
+    return urllib.request.Request(f"{base.rstrip('/')}/api/status")
+
+
 def settings_request(base):
     return urllib.request.Request(
         f"{base.rstrip('/')}/api/kibana/settings",
@@ -48,6 +52,7 @@ def settings_request(base):
 
 
 def settle(base, ndjson, send):
+    send(status_request(base))
     imported = send(import_request(base, ndjson))
     if not imported.get("success"):
         raise Refused(f"saved objects import failed: {imported.get('errors')}")
