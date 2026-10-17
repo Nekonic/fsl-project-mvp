@@ -402,8 +402,8 @@
 
     field("range-state").classList.toggle("hidden", ready);
     if (!ready && slot) {
-      field("range-blocked").innerHTML =
-        (slot.blocked || []).map((reason) => `<li>${esc(reason)}</li>`).join("");
+      const reasons = slot.phase === "RESETTING" ? [t("range.resetting")] : (slot.blocked || []);
+      field("range-blocked").innerHTML = reasons.map((reason) => `<li>${esc(reason)}</li>`).join("");
     }
 
     field("range-pipeline").classList.toggle("hidden", !slot);

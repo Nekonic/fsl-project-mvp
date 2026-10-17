@@ -157,3 +157,24 @@ def test_the_waf_pane_frames_the_session_s_own_waf_terminal(client):
         f"the WAF pane must open the terminal the session names, not a shared one: {seen['result']}"
     )
 
+
+RESETTING = """
+browser.serve((request) => {
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: false, max_sessions: 2, slot: {number: 1, session: null, phase: "RESETTING",
+      blocked: ["the range is resetting after the last session closed"]}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_the_home_page_says_the_practice_network_is_resetting_in_the_learner_s_words(client):
+    seen = open_page(client, "/", setup=RESETTING, scenario="""
+      await browser.wait(500);
+      return browser.text('range-blocked');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == english("range.resetting"), (
+        "the home page showed the readiness API's operator reason instead of the learner's line"
+    )
