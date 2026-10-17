@@ -13,7 +13,13 @@ if [ -S "$SOCK" ]; then
   fi
 fi
 
-nginx -c /app/nginx.conf
+nginx -t -q -c /app/nginx.conf
+(
+  until python -c 'import socket; socket.create_connection(("127.0.0.1", 8001), 1).close()' 2>/dev/null; do
+    sleep 1
+  done
+  exec nginx -c /app/nginx.conf
+) &
 
 gosu fsl ttyd -W -a -b /vm-terminal/fsl-kali -i 127.0.0.1 -p 7691 /app/vm-terminal.sh fsl-kali &
 gosu fsl ttyd -W -a -b /vm-terminal/fsl-waf -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf &
