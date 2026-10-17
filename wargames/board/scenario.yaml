@@ -203,10 +203,6 @@ scenarios:
         check: {kind: choice, options: [http.uri, http.request_body, http.header, http.cookie], accept: [http.uri]}
       - id: fix
         point: {panel: "#lesson-rules", opens: rules}
-        rule: >-
-          alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"FSL SQLi attempt - sort is not a column name";
-          flow:established,to_server; http.uri; pcre:"/[?&]sort=[-\w.]*[^-\w.&]/i";
-          classtype:web-application-attack; sid:9000102; rev:1;)
         check: {kind: rules}
       - id: done
         point: {panel: "#scenario-done"}
@@ -314,7 +310,6 @@ foundations:
     hints: [why_status]
     steps:
       - id: search
-        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: '[\uAC00-\uD7A3]'}
       - id: status
@@ -333,7 +328,6 @@ foundations:
     hints: [why_parameter]
     steps:
       - id: search
-        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: '[\uAC00-\uD7A3]'}
       - id: method
@@ -361,7 +355,6 @@ foundations:
     hints: [why_one_engine]
     steps:
       - id: search
-        site: "/search/?q=\uC11C\uC6B8 \uB9DB\uC9D1 \uCD94\uCC9C"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: '[\uAC00-\uD7A3]'}
       - id: engine
@@ -370,7 +363,6 @@ foundations:
         records: all
         check: {kind: choice, of: engine, about: search, options: [modsecurity, suricata]}
       - id: probe
-        site: "/search/?q=<script>alert(1)</script>"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: script}
       - id: find
@@ -396,7 +388,6 @@ foundations:
     hints: [why_total, why_count]
     steps:
       - id: attack
-        site: "/search/?q=' OR 1=1--"
         point: {panel: "#site-address", opens: site}
         check: {kind: sent, match: "1=1"}
       - id: stopped

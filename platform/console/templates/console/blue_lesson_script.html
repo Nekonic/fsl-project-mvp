@@ -162,7 +162,6 @@ const POLLED = ["sent", "triage"];
 const READ_BEFORE_MOVING_ON = ["kali"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
-const refreshers = [];
 const commandsArrived = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1200;
@@ -175,9 +174,18 @@ const paneOpen = (name) => {
 };
 const whereOf = (step) => (step.opens && !paneOpen(step.opens)
   ? { panel: `.pane-tab[data-pane="${step.opens}"]`, pending: step.opens } : step);
+const paneBody = () => field("pane-body");
+const openedPane = () => {
+  const tab = document.querySelector('.pane-tab[aria-selected="true"]');
+  return tab ? tab.dataset.pane : "";
+};
+const paneName = (name) => {
+  const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
+  return label && label.textContent ? label.textContent : name;
+};
 const ANSWER = 3;
 const spoken = (texts) => (texts ? texts[language] || texts.en || "" : "");
-const DO_IT = 4;
+const SKIP_OFFERED = 4;
 const POLL_SECONDS = 5;
 const STRETCH_KEY = "fsl-lesson-stretch";
 const MISSING_AFTER_FRAMES = 120;
@@ -208,10 +216,7 @@ function clipped(rect, bounds) {
 }
 
 function locate(step) {
-  if (step.pane) {
-    const pane = frame.getBoundingClientRect();
-    return pane.width ? { left: pane.left, top: pane.top, width: pane.width, height: pane.height } : null;
-  }
+  if (step.pane) return boxOf(paneBody());
   const inPanel = Boolean(step.panel);
   let doc = document;
   if (!inPanel) {
@@ -245,7 +250,7 @@ function placePopover(step, rect) {
   const viewWidth = window.innerWidth || 1440;
   const viewHeight = window.innerHeight || 900;
   const aside = noteBox();
-  const pane = boxOf(frame);
+  const pane = boxOf(paneBody());
   const clampX = (x) => Math.max(EDGE, Math.min(x, viewWidth - width - EDGE));
   const clampY = (y) => Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
   const fits = (spot) => spot.left >= EDGE && spot.top >= EDGE
@@ -350,8 +355,6 @@ function coach(prefix, declared) {
   let finished = false;
   let shownOnce = false;
   const saidOnPass = new Map();
-  const used = (session && Array.isArray(session.hints) ? session.hints : []);
-  const helped = new Set(used.filter((hint) => hint.level === "do").map((hint) => hint.step));
   let progress = {};
   let stretch = kept(STRETCH_KEY, false) === true;
   const check = () => steps[at].check || {};
@@ -360,7 +363,6 @@ function coach(prefix, declared) {
   function learn(body) {
     if (!body || !body.progress || typeof body.progress !== "object") return;
     progress = body.progress;
-    Object.entries(progress).forEach(([id, record]) => { if (record.done_for_me) helped.add(id); });
     const shownCommand = steps[at] && steps[at].command;
     const arrived = steps.filter((step, index) => {
       const given = recordOf(step).command;
@@ -400,8 +402,7 @@ function coach(prefix, declared) {
       const mark = done ? "✓" : skipped ? "○" : String(index + 1);
       const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
       const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
-      const help = helped.has(step.id) ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.helped"))}</span>`
-        : skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
+      const help = skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
       const state = current && !done ? `<span class="block text-[11.5px] text-primary font-normal">${
         esc(t("lesson.status.current"))}${statusText ? ` · ${esc(statusText)}` : ""}</span>` : "";
       return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
@@ -433,8 +434,8 @@ function coach(prefix, declared) {
     offered = false;
     field("coach-pop-hint").textContent = t("lesson.hint.more");
     field("coach-pop-hint").classList.remove("btn-blue");
-    field("coach-pop-hint").classList.toggle("hidden", level >= DO_IT || finished);
-    field("coach-pop-do").classList.toggle("hidden", level < DO_IT || finished);
+    field("coach-pop-hint").classList.toggle("hidden", level >= SKIP_OFFERED || finished);
+    field("coach-pop-skip").classList.toggle("hidden", level < SKIP_OFFERED || finished);
     field("coach-pop-why").classList.toggle("hidden", !explained.has(step.id));
     last = "";
   }
@@ -456,7 +457,7 @@ function coach(prefix, declared) {
 
   async function escalate() {
     const step = steps[at];
-    level = Math.min(DO_IT, level + 1);
+    level = Math.min(SKIP_OFFERED, level + 1);
     seconds = 0;
     showHelp();
     const read = await post(lessonPath("lesson/hints/"), { step: step.id, level: "hint" });
@@ -468,7 +469,7 @@ function coach(prefix, declared) {
   function wrong(text, hint) {
     say(text, "fail");
     if (Number(hint) > level) {
-      level = Math.min(DO_IT, Number(hint));
+      level = Math.min(SKIP_OFFERED, Number(hint));
       seconds = 0;
       showHelp();
     }
@@ -592,6 +593,7 @@ function coach(prefix, declared) {
     lost = rect || dismissed ? 0 : lost + 1;
     const missing = lost >= MISSING_AFTER_FRAMES;
     field("coach-pop-missing").classList.toggle("hidden", !missing);
+    if (missing) field("coach-pop-missing").textContent = t("lesson.coach.missing", paneName(where.opens || openedPane()));
     const key = dismissed ? "dismissed"
       : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open, shownPending].join() : `none-${at}-${missing}`;
     if (key !== last) {
@@ -632,7 +634,7 @@ function coach(prefix, declared) {
   function go(index, follow = true, line = "") {
     at = Math.max(0, Math.min(steps.length - 1, index));
     dismissed = false;
-    level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
+    level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
     seconds = 0;
     commandShown = false;
     finished = false;
@@ -707,71 +709,21 @@ function coach(prefix, declared) {
     settle(step, await judged(step, { answer: value }), true);
   }
 
-  function openSite(path) {
-    const tab = document.querySelector('.pane-tab[data-pane="site"]');
-    if (tab.getAttribute("aria-selected") !== "true") openPane(tab);
-    siteGo(path);
-  }
-
   function openKibana(url) {
     const tab = document.querySelector('.pane-tab[data-pane="elk"]');
     tab.dataset.src = url;
     openPane(tab);
   }
 
-  async function clickWhenThere(step) {
-    for (let tries = 0; tries < 30 && steps[at] === step; tries += 1) {
-      let target = null;
-      try {
-        target = frame.contentDocument && frame.contentDocument.querySelector(step.kibana);
-      } catch (error) {
-        target = null;
-      }
-      if (target) {
-        target.click();
-        return;
-      }
-      await settled(500);
-    }
-  }
-
-  async function runCommand(step) {
-    field("coach-pop-typed").textContent = t("lesson.run.opening");
-    if (await runInTerminal(step.command)) {
-      field("coach-pop-typed").textContent = t("lesson.ran");
-      setTimeout(() => run(step, true), 4000);
-      return true;
-    }
-    field("coach-pop-typed").textContent = t("lesson.run.missing");
-    return false;
-  }
-
-  function openNamed(step) {
-    const tab = document.querySelector(step.opens ? `.pane-tab[data-pane="${step.opens}"]` : step.panel || "none");
-    if (tab && tab.classList.contains("pane-tab") && tab.getAttribute("aria-selected") !== "true") openPane(tab);
-  }
-
-  const SHOWN_BY_THE_CONSOLE = {
-    sent: (step) => openSite(step.site),
-    click: (step) => {
-      if (!step.kibana) {
-        openNamed(step);
-        return;
-      }
-      openKibana(step.discover || session.discover);
-      clickWhenThere(step);
-    },
-  };
-
-  async function doIt() {
+  function skip() {
     const step = steps[at];
-    helped.add(step.id);
-    stepList();
-    if (SHOWN_BY_THE_CONSOLE[step.check.kind]) SHOWN_BY_THE_CONSOLE[step.check.kind](step);
-    status(t("lesson.status.checking"));
-    const verdict = await judged(step, {}, "do/");
-    refreshers.forEach((refresh) => refresh(step.check.kind));
-    settle(step, verdict, false);
+    if (at < steps.length - 1) {
+      jump(at + 1);
+      return;
+    }
+    if (!recordOf(step).passed) post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+    dismissed = true;
+    show();
   }
 
   function advanceFrom(step) {
@@ -815,7 +767,7 @@ function coach(prefix, declared) {
   setInterval(() => {
     if (dismissed || finished || sessionClosed() || document.hidden) return;
     seconds += 1;
-    if (seconds >= HELP_AFTER_SECONDS && level < DO_IT) offerHint();
+    if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
     const kind = check().kind;
     if (POLLED.includes(kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
   }, 1000);
@@ -833,7 +785,7 @@ function coach(prefix, declared) {
   });
   field("lesson-coach-show").addEventListener("click", () => go(at));
   field("coach-pop-hint").addEventListener("click", escalate);
-  field("coach-pop-do").addEventListener("click", doIt);
+  field("coach-pop-skip").addEventListener("click", skip);
   field("coach-pop-why").addEventListener("click", why);
   field("coach-pop-view").addEventListener("click", () => {
     commandShown = !commandShown;
@@ -849,7 +801,7 @@ function coach(prefix, declared) {
     keep(STRETCH_KEY, stretch);
     show(false);
   });
-  level = Math.min(DO_IT, Number(recordOf(steps[at]).hint) || 0);
+  level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
   show(!landedOnGoal);
   reach(steps[at]);
   requestAnimationFrame(tick);
@@ -976,6 +928,5 @@ function rulesEditor() {
     class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight whitespace-pre overflow-x-auto"></textarea>`;
   field("lesson-rules-validate").addEventListener("click", validateRules);
   field("lesson-rules-apply").addEventListener("click", applyRules);
-  refreshers.push((kind) => { if (kind === "rules") loadRules(); });
   loadRules();
 }

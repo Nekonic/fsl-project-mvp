@@ -6,7 +6,7 @@ import re
 import suppress
 
 ANSWER = 3
-DO_IT = 4
+SKIP_OFFERED = 4
 WRONGS_PER_HINT = 2
 CRS_DEFAULT_LEVEL = 1
 CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
@@ -56,7 +56,6 @@ def help_counts(steps: dict) -> dict:
     return {
         "hints": sum(1 for step in kept if step.get("hint")),
         "skipped": sum(1 for step in kept if step.get("skipped") and not step.get("passed")),
-        "done_for_me": sum(1 for step in kept if step.get("done_for_me")),
     }
 
 def rules_named(messages: list[dict]) -> list[str]:

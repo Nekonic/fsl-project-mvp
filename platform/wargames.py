@@ -246,9 +246,8 @@ def checked_step_judging(taught: dict, step: dict, where: str) -> None:
     if kind in ("answer", "choice") and "of" not in check and not (
             isinstance(check.get("accept"), list) and check["accept"]):
         raise InvalidCatalogue(f"{where}: an answer needs an accept list, or of: to read it from the record")
-    if kind == "rules" and not (taught.get("detected_by") and isinstance(step.get("rule"), str) and step["rule"].strip()):
-        raise InvalidCatalogue(f"{where}: a rules step needs a lesson detected_by and the rule it applies when done for "
-                               f"the learner")
+    if kind == "rules" and not taught.get("detected_by"):
+        raise InvalidCatalogue(f"{where}: a rules step needs a lesson detected_by")
     if kind == "triage" and check.get("judged") not in TRIAGE_JUDGED:
         raise InvalidCatalogue(f"{where}: a triage step needs judged:, one of {', '.join(TRIAGE_JUDGED)}")
 

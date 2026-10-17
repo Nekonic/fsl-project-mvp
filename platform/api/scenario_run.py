@@ -546,8 +546,7 @@ def debrief(session) -> dict:
     timeline.sort(key=lambda entry: entry["at"])
     before = {entry["case"]: entry["outcome"] for entry in timeline if not entry["in_window"] and entry["outcome"]}
     after = {entry["case"]: entry["outcome"] for entry in timeline if entry["in_window"] and entry["outcome"]}
-    help_steps = lesson.help_counts(session.lesson_steps) if session.lesson_steps else {"hints": 0, "skipped": 0,
-                                                                                      "done_for_me": 0}
+    help_steps = lesson.help_counts(session.lesson_steps) if session.lesson_steps else {"hints": 0, "skipped": 0}
     steps = {step["id"] for step in declared.get("steps") or []}
     triage = state["triage"]
     waf = next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")), None)

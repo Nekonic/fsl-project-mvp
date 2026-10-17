@@ -75,13 +75,12 @@ SUPPRESSION_FIELDS = (
 
 SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
-HINT_LEVELS = ("hint", "do")
+HINT_LEVELS = ("hint",)
 LESSON_STEP_STATES = ("reached", "skipped")
 RECENT_ALERTS = 600
 SHOWN_CHECK = {"choice": ("options",), "sent": ("match",), "kali": ("case",)}
 COUNT_TOLERANCE = 0.1
 SCHEDULE = ("attacks", "completion")
-SERVER_ONLY_STEP = ("rule",)
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
@@ -353,7 +352,7 @@ def lesson_hints(request, session_id):
         raise BadRequest(f'"step" must be one of {steps}, got {step!r}')
     if level not in HINT_LEVELS:
         raise BadRequest(f'"level" must be one of {list(HINT_LEVELS)}, got {level!r}')
-    session = _progressed(session, step, lambda kept, held: _helped_on(kept, held, step, level))
+    session = _progressed(session, step, lambda kept, held: _hinted(kept, held, step))
     return _reply(_lesson_state(session, step))
 
 def _lesson_of(session):
@@ -388,21 +387,18 @@ def _progressed(session, step_id, change):
         held.save(update_fields=["lesson_steps", "hints"])
     return held
 
-def _helped_on(kept, held, step_id, level):
-    used = {"step": step_id, "level": level}
+def _hinted(kept, held, step_id):
+    used = {"step": step_id, "level": "hint"}
     if used not in held.hints:
         held.hints = [*held.hints, used]
-    if level == "do":
-        kept["done_for_me"] = True
-    else:
-        kept["hint"] = min(lesson.DO_IT, kept.get("hint", 0) + 1)
+    kept["hint"] = min(lesson.SKIP_OFFERED, kept.get("hint", 0) + 1)
 
 def _progress(session):
     taught = _lesson_of(session) if session.guidance and session.lesson_steps else None
     declared = {step["id"]: step for step in (taught or {}).get("steps", [])}
     return {
         step_id: {"reached": kept.get("reached"), "passed": kept.get("passed"), "skipped": kept.get("skipped"),
-                  "hint": kept.get("hint", 0), "done_for_me": bool(kept.get("done_for_me")),
+                  "hint": kept.get("hint", 0),
                   **_revealed(session, taught, declared.get(step_id), kept)}
         for step_id, kept in session.lesson_steps.items()
     }
@@ -469,39 +465,6 @@ def lesson_step_check(request, session_id, step_id):
         return _reply({"detail": str(exc)}, status=503)
     return _reply(_judged_step(session, step_id, passed, reason, body.get("poll") is True) | dict(*seen))
 
-@require_http_methods(["POST"])
-def lesson_step_do(request, session_id, step_id):
-    session = get_object_or_404(Session, pk=session_id)
-    _refuse_closed(session)
-    taught, step = _taught_step(session, step_id)
-    session = _progressed(session, step_id, lambda kept, held: _helped_on(kept, held, step_id, "do"))
-    check = step["check"]
-    try:
-        if check["kind"] in ("answer", "choice"):
-            accepted = _accepted(session, check, taught)
-            if not accepted:
-                return _reply(_judged_step(session, step_id, False, ["lesson.check.unrecorded", []], True))
-            passed, reason, *_ = _judge(session, taught, step, {"answer": accepted[0]}, {})
-        elif check["kind"] == "rules":
-            _put_rule(session, step)
-            passed, reason, *_ = _judge(session, taught, step, {}, {})
-        elif check["kind"] == "kali":
-            session = _kali_do(session, step)
-            passed, reason, *_ = _judge(session, taught, step, {}, session.lesson_steps[step_id])
-        elif check["kind"] == "loot":
-            _loot_do(session, check)
-            passed, reason, *_ = _judge(session, taught, step, {}, {})
-        else:
-            passed, reason, *_ = _judge(session, taught, step, {}, {})
-    except harness.ToolUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
-    return _reply(_judged_step(session, step_id, passed, reason, True))
-
-def _put_rule(session, step):
-    with _turn_of(session):
-        live = _live_rules(session)
-        _apply(f"{live.rstrip()}\n{step['rule'].strip()}\n", session)
-
 def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
     return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
@@ -520,7 +483,7 @@ def _judged_step(session, step_id, passed, reason, poll):
             kept["wrong"] = 0
             stuck.append(step_id)
             if not held.course_scenario:
-                _helped_on(kept, held, step_id, "hint")
+                _hinted(kept, held, step_id)
 
     stuck = []
     session = _progressed(session, step_id, mark)
@@ -664,13 +627,6 @@ def _kali_check(session, step, kept, failed):
             pass
     return True, None, shown
 
-def _kali_do(session, step):
-    name = step["check"]["case"]
-    recorded, _ = _fire(session, name, None, lambda ran: {
-        "kali": step["id"], "done_for_me": True, "dumped": tools.dumped(ran.output),
-        "conclusions": tools.conclusions(ran.output)})
-    return _progressed(session, step["id"], lambda kept, held: kept.update(marker=recorded.case_id))
-
 def _kali_case(session, step_id):
     marker = (session.lesson_steps.get(step_id) or {}).get("marker")
     return session.cases.filter(case_id=marker).first() if marker else None
@@ -693,11 +649,6 @@ def _loot_check(session, check, given, failed):
         recorded.refresh_from_db()
     matched = recorded.meta.get("loot") or []
     return bool(matched), [failed, []], {"loot": {"matched": matched}}
-
-def _loot_do(session, check):
-    recorded = _kali_case(session, check["about"])
-    if recorded is not None and recorded.meta.get("dumped"):
-        _credit_loot(session, recorded.meta["dumped"], recorded.case_id)
 
 def _fix(session, waf):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
@@ -1387,7 +1338,7 @@ def session_detail(request, session_id):
 def _shown_step(session, step):
     check = step["check"]
     kept = {key: value for key, value in step.items()
-            if key not in SERVER_ONLY_STEP and not (key == "command" and session and not _command_shown(session, step))}
+            if not (key == "command" and session and not _command_shown(session, step))}
     if session and check["kind"] == "kali" and _command_shown(session, step):
         kept["command"] = _command_of(session, step)
     shown = dict(kept, check={"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK.get(check["kind"], ())}})

@@ -63,14 +63,13 @@ def test_every_scenario_validates_and_has_its_words_in_both_languages(scenario_i
     card = wargames.scenario_card(one)
     assert "attacks" not in card and not any(attack["case"] in str(card) for attack in one["attacks"])
 
-def test_the_broken_rule_reads_the_body_and_the_fixed_one_catches_stock_sqlmap_and_not_a_sort():
+def test_the_broken_rule_reads_the_body_and_the_answer_s_buffer_fix_catches_stock_sqlmap_and_not_a_sort():
     buffer, pattern = rule_of("broken-sort.rules", 9000101)
-    step = next(step for step in wargames.scenario_run("3.1")["steps"] if step["id"] == "fix")
-    fixed = re.search(r'pcre:"/(.*)/i"', step["rule"]).group(1)
+    answer = strings.both("scenario.fixrule.answer.fix")["en"]
 
     assert buffer == "http.request_body"
-    assert "http.uri;" in step["rule"] and pattern.pattern == fixed
-    assert all(re.search(fixed, uri, re.I) for uri in STOCK + TAMPER) and not re.search(fixed, SORTED, re.I)
+    assert all(word in answer for word in ("9000101", "http.request_body", "http.uri"))
+    assert all(pattern.search(uri) for uri in STOCK + TAMPER) and not pattern.search(SORTED)
 
 def test_the_spelled_rule_catches_the_stock_run_and_misses_every_tamper_request():
     buffer, pattern = rule_of("spaced-sort.rules", 9000101)
@@ -234,10 +233,8 @@ def test_a_rules_step_passes_on_a_changed_rule_as_well_as_a_new_one():
     assert lesson.added_rules(broken, broken) == []
     assert lesson.added_rules(spaced, broken) == []
     assert lesson.added_rules(fixed, broken) == [9000101]
-    assert lesson.added_rules(broken + step_rule("3.1"), broken) == [9000102]
-
-def step_rule(scenario_id):
-    return next(step["rule"] for step in wargames.scenario_run(scenario_id)["steps"] if step["id"] == "fix") + "\n"
+    added = next(line for line in fixed.splitlines() if "sid:9000101;" in line).replace("sid:9000101;", "sid:9000102;")
+    assert lesson.added_rules(f"{broken.rstrip()}\n{added}\n", broken) == [9000102]
 
 def test_a_detection_debrief_counts_and_shows_only_the_ids_alerts(client):
     session = opened("3.2")

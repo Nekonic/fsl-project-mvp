@@ -1,6 +1,5 @@
 import json
 from datetime import timedelta
-from urllib.parse import unquote
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,7 +9,6 @@ from django.utils import timezone
 
 import wargames
 from api.models import Case, Detection, Objective, Session
-from api.views import REPLAY_MARKS
 from range.ports import Ran
 from rules import crs
 
@@ -67,9 +65,6 @@ def foundation(lesson_id, **fields):
 
 def step(client, session, step_id, tail="check/", body=None):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
-
-def unsensed():
-    return patch("api.views._fetched", lambda index, start, end, newest_first: ([], None))
 
 def put(client, session_id, tuning):
     return client.put(
@@ -230,31 +225,6 @@ def old_replays(session):
         Detection.objects.create(session=session, detection_id=f"alert-{mark}", source="modsecurity",
                                  signature="942100" if malicious else "920273",
                                  timestamp=at - timedelta(seconds=20), marker=f"old-{mark}")
-
-def test_done_for_me_on_the_loot_step_credits_what_sqlmap_dumped_against_the_target_s_own_accounts(client):
-    session = foundation("f6")
-    fire, fired = attacker({"board-sqli-orderby-sqlmap": DUMPED})
-    with patch("api.views.harness.fire", fire), unsensed():
-        step(client, session, "sqlmap", "do/")
-        looted = step(client, session, "loot", "do/").json()
-
-    assert fired == ["board-sqli-orderby-sqlmap"]
-    assert looted["passed"] is True
-    assert Case.objects.get(session=session).meta["loot"] == sorted(TRUTH)
-    assert Objective.objects.filter(session=session).count() == 3
-
-def test_a_dump_that_matches_no_snapshot_account_is_not_loot(client):
-    session = foundation("f6")
-    fake = DUMPED.replace(TRUTH["admin"], "admin1234").replace(TRUTH["jiwoo"], "x").replace(
-        TRUTH["minseo"], "y")
-    fire, _ = attacker({"board-sqli-orderby-sqlmap": fake})
-    with patch("api.views.harness.fire", fire), unsensed():
-        step(client, session, "sqlmap", "do/")
-        looted = step(client, session, "loot", "do/").json()
-
-    assert looted["passed"] is False
-    assert "loot" not in Case.objects.get(session=session).meta
-    assert Objective.objects.count() == 0, "rows that match no account take nothing"
 
 def test_close_snapshots_the_waf_the_learner_left_and_a_closed_session_reports_that_config(client):
     session = board(waf={"paranoia": 4, "exclusions": []})
@@ -426,21 +396,22 @@ def test_a_finished_session_reports_the_objectives_it_lost_and_how_many_went_uns
     assert detail["result"]["objectives"] == {"lost": 3, "undetected": 3, "total": 3}
     assert detail["result"] == {"objectives": detail["result"]["objectives"], "scenario": None}
 
-def test_hints_and_done_for_me_are_recorded_on_the_session_and_read_back_after_close(client):
+def test_hints_are_recorded_on_the_session_and_read_back_after_close_and_do_is_no_level(client):
     session = foundation("f1")
     hints = f"/api/sessions/{session.pk}/lesson/hints/"
 
     second = [client.post_json(hints, {"step": "entry", "level": "hint"}).json() for _ in range(2)][-1]
     third = client.post_json(hints, {"step": "entry", "level": "hint"}).json()
-    recorded = client.post_json(hints, {"step": "map", "level": "do"}).json()
+    refused = client.post_json(hints, {"step": "map", "level": "do"})
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
-    assert recorded["hints"] == [{"step": "entry", "level": "hint"}, {"step": "map", "level": "do"}]
+    assert refused.status_code == 400
+    assert third["hints"] == [{"step": "entry", "level": "hint"}]
     assert "answer" not in second["progress"]["entry"], "the answer is withheld until the third hint"
     assert third["progress"]["entry"]["answer"]
     detail = client.get(f"/api/sessions/{session.pk}/").json()
-    assert detail["hints"] == recorded["hints"]
-    assert (detail["progress"]["entry"]["hint"], detail["progress"]["map"]["done_for_me"]) == (3, True)
+    assert detail["hints"] == third["hints"]
+    assert detail["progress"]["entry"]["hint"] == 3 and "map" not in detail["progress"]
 
 def test_hints_are_refused_for_a_closed_session_or_one_that_is_not_a_lesson(client):
     closed = foundation("f1")
@@ -525,21 +496,6 @@ def test_evidence_that_arrives_after_close_refreshes_the_stored_result(client):
 
     assert (before["lost"], before["undetected"]) == (1, 1)
     assert (after["lost"], after["undetected"]) == (1, 0), "an alert ingested after close is in the next list"
-
-def test_done_for_me_on_the_sqlmap_step_runs_it_under_the_step_s_label_and_scores_it_as_the_learner_s(client):
-    session = foundation("f5")
-    step(client, session, "sqlmap", tail="", body={"state": "reached"})
-    fire, _ = attacker({"board-sqli-orderby-sqlmap": (FIXTURES / "sqlmap-waf-stock-pl4.out").read_text()})
-    with patch("api.views.harness.fire", fire), unsensed():
-        done = step(client, session, "sqlmap", "do/").json()
-        checked = step(client, session, "sqlmap").json()
-    case = Case.objects.get(session=session)
-    command = done["progress"]["sqlmap"]["command"]
-
-    assert done["passed"] is True and done["progress"]["sqlmap"]["done_for_me"] is True
-    assert command.startswith("sqlmap -u ") and case.case_id in command
-    assert case.case_id in unquote(checked["kali"]["discover"])
-    assert not any(case.meta.get(mark) for mark in REPLAY_MARKS), "a run done for the learner is scored as theirs"
 
 def test_the_session_list_can_be_narrowed_to_the_ids_a_browser_remembers(client):
     first, _, third = foundation("f1"), board(), board()

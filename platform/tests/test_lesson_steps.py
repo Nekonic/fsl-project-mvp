@@ -7,7 +7,7 @@ from django.conf import settings
 from django.utils import timezone
 
 import wargames
-from api import site, views
+from api import views
 from api.models import Case, Detection, Session
 from console import strings
 
@@ -133,27 +133,6 @@ def test_a_hint_press_raises_the_step_s_hint_level_records_the_first_once_and_gi
     assert all("answer" not in one["progress"]["excluded"] for one in pressed[:2])
     assert pressed[2]["progress"]["excluded"]["answer"] == strings.both("lesson.miss.answer.excluded")
     assert Session.objects.get(pk=session.pk).hints == [{"step": "excluded", "level": "hint"}]
-
-def test_do_it_for_me_on_the_rules_step_adds_the_rule_through_the_sensor_and_checks_it(client):
-    session = worked("3.1")
-    posture = (Path(settings.FSL_SOURCE) / "deploy/suricata/rules/broken-sort.rules").read_text()
-    rule = next(shown["rule"] for shown in wargames.lesson("board", lesson_id="3.1")["steps"] if shown["id"] == "fix")
-    applied = []
-    with patch("api.views._live_rules", side_effect=lambda session=None: applied[-1] if applied else posture), \
-            patch("api.views._apply", lambda content, session=None: applied.append(content)):
-        done = step(client, session, "fix", "do/").json()
-
-    assert done["passed"] is True and done["progress"]["fix"]["done_for_me"] is True
-    assert done["hints"] == [{"step": "fix", "level": "do"}]
-    assert applied == [f"{posture.rstrip()}\n{rule.strip()}\n"]
-
-def test_do_it_for_me_on_a_step_only_the_console_can_perform_records_it_and_passes_nothing(client):
-    session = taught("f5")
-    with patch.object(site, "kept", return_value=[]):
-        done = step(client, session, "attack", "do/").json()
-
-    assert (done["passed"], done["reason"]) == (False, ["lesson.attack.fail.attack", []])
-    assert done["progress"]["attack"]["done_for_me"] is True
 
 @pytest.mark.parametrize("mark", views.REPLAY_MARKS)
 def test_a_case_an_old_check_verify_replay_or_seed_fired_stays_out_of_both_scores(client, mark):
