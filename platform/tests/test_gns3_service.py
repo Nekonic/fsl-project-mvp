@@ -30,12 +30,16 @@ def test_the_gns3_server_gets_net_admin_a_tun_device_the_docker_socket_and_the_h
     )
     assert not gns3.get("network_mode")
 
-def test_the_gns3_image_has_the_docker_client_gns3_runs_to_close_a_display_node():
+def test_the_gns3_image_has_the_docker_client_gns3_runs_to_close_a_display_node_and_fetches_no_skills():
     installed = (GNS3 / "Dockerfile").read_text()
 
     assert "docker-cli" in installed, (
         "GNS3 closes a docker node by running `docker exec`; without the client every close failed, "
         "and each deleted map left its containers running"
+    )
+    assert '"enabled": False' in installed, (
+        "3.1's copilot clones its skills repository at every start; without git it logged two errors, "
+        "and the range uses no copilot"
     )
 
 def test_the_gns3_server_runs_as_gns3_in_the_socket_s_group_like_the_platform():
