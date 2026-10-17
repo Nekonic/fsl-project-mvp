@@ -26,8 +26,8 @@ the tests pass in any order. The red-team run (`full_run`) also serves
 topology, evasion, strategy honesty, the board attack and the before-silencing
 check; `rules_session` the four rule tests; `board_session` loot, objectives,
 score reveal, the empty-objectives check and the canary; `origins_session`
-origins, rotation and the tool case; `tuned_session` the map and the probe past
-the WAF; `terminal_session` the operator log and the attacker box; the corp
+origins, rotation and the tool case; `tuned_session` the map and the inside
+leg past the WAF; `terminal_session` the operator log and the attacker box; the corp
 rogue-admin and option-flip exploits one session each for the two corp scoring
 modules and the two corp exploit checks.
 
@@ -68,8 +68,9 @@ argument goes to pytest.
 - **Room.** An open refused because the range is full or resetting (409)
   waits for room and is retried; so is the red-team run.
 
-The same suite runs on both substrates. `conftest.py` asks
-`/api/range/ready/` which one the platform drives; on openstack,
+The same suite runs on both substrates, and no test is skipped on either: a
+check of a compose-only mechanism was deleted rather than skipped (2026-10-17).
+`conftest.py` asks `/api/range/ready/` which one the platform drives; on openstack,
 `range.py` runs a role's command through the platform container's own range
 adapter (`manage.py run_on_role --session <id>`, so it reaches the slot that
 session holds) instead of `docker exec` into a compose container. Beside

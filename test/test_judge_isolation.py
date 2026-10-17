@@ -1,15 +1,47 @@
 import ipaddress
+import json
+import socket
 import struct
+from urllib.parse import urlsplit
 
 import pytest
+import requests
 
-from range import ATTACKER, BOARD, run
+from conftest import PLATFORM_URL
+from range import ATTACKER, BOARD, declared_roles, run
 
-PUBLISHED = {8000: "the scoring API", 9200: "Elasticsearch"}
+PLATFORM = declared_roles()["scorer"]
+PUBLISHED = {
+    8000: ("/api/range/ready/", "substrate", "the scoring API"),
+    9200: ("/", "cluster_name", "Elasticsearch"),
+}
 
 
-def gateway_of(role: str) -> str:
-    table = run(role, ["cat", "/proc/net/route"]).stdout.splitlines()[1:]
+@pytest.fixture(scope="module")
+def session(stack_is_up):
+    opened = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600)
+    assert opened.status_code == 201, opened.text
+    return opened.json()["id"]
+
+
+@pytest.fixture(scope="module")
+def platform_addresses(session):
+    shape = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session}/topology/", timeout=120
+    ).json()
+    found = {
+        node["address"] for segment in shape["segments"] for node in segment["nodes"]
+        if node["name"] == PLATFORM and node["address"]
+    }
+    published = socket.gethostbyname(urlsplit(PLATFORM_URL).hostname)
+    if not ipaddress.ip_address(published).is_loopback:
+        found.add(published)
+    assert found, f"the range shows no address of {PLATFORM}: {shape['segments']}"
+    return found
+
+
+def gateway_of(role: str, session: int) -> str:
+    table = run(role, ["cat", "/proc/net/route"], session=session).stdout.splitlines()[1:]
     for line in table:
         fields = line.split()
         if fields[1] == "00000000":
@@ -17,21 +49,45 @@ def gateway_of(role: str) -> str:
     pytest.fail(f"{role} has no default route: {table}")
 
 
-def reached(role: str, url: str) -> bool:
-    answer = run(role, [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "--max-time", "4", "--noproxy", "*", url,
-    ])
-    return answer.stdout.strip() not in ("", "000")
+def fetched(role: str, url: str, session: int, *extra: str) -> str:
+    return run(role, [
+        "curl", "-s", "--max-time", "4", "--noproxy", "*", *extra, url,
+    ], session=session).stdout
+
+
+def answered_by(body: str, key: str) -> bool:
+    try:
+        return key in json.loads(body)
+    except (ValueError, TypeError):
+        return False
 
 
 @pytest.mark.parametrize("role", [ATTACKER, BOARD])
 @pytest.mark.parametrize("port", sorted(PUBLISHED))
-def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(stack_is_up, role, port):
-    gateway = gateway_of(role)
-
-    assert not reached(role, f"http://{gateway}:{port}/"), (
-        f"{role} reached {PUBLISHED[port]} at its own gateway {gateway}:{port}. "
-        f"A port published on every address hairpins back into the range, so "
-        f"the side being scored can rewrite the rules or the alerts it is scored on"
+def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(
+    session, platform_addresses, role, port,
+):
+    path, key, what = PUBLISHED[port]
+    addresses = {gateway_of(role, session)} | platform_addresses
+    reached = sorted(
+        address for address in addresses
+        if answered_by(fetched(role, f"http://{address}:{port}{path}", session), key)
     )
+
+    assert not reached, (
+        f"{role} reached {what} at {reached}:{port}. A port published on an "
+        f"address a range host can route to lets the side being scored rewrite "
+        f"the rules or the alerts it is scored on"
+    )
+
+
+def test_a_host_in_the_range_is_refused_the_terminal(session, platform_addresses):
+    answered = {
+        address: fetched(
+            BOARD, f"http://{address}:8000/terminal/", session,
+            "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: localhost:8000",
+        ).strip()
+        for address in platform_addresses
+    }
+
+    assert all(code in ("403", "000", "") for code in answered.values()), answered

@@ -131,9 +131,11 @@ OpenStack fabric builds all thirty as subnets of one network.
 `bin/pick-origins` reproduces the table, and an acceptance test checks every
 subnet against the pipeline scoring reads.
 
-Segmentation is Docker network membership only: no firewall, no iptables, no
-ACL. `test/test_segmentation.py` asserts it against the live stack (Kali
-reaches `board.com` but not `board:8000`), and `test/test_concurrent_sessions.py`
+On docker, segmentation is network membership only: no firewall, no iptables, no
+ACL; on OpenStack it is the fabric's networks and security groups.
+`test/test_attacker_reach.py` asserts it against the live range on both (Kali
+reaches `board.com` but not `board:8000`, and no service off its route out),
+and `test/test_concurrent_sessions.py`
 that two concurrent sessions do not see each other. Only the edge subnets are fixed;
 container addresses are assigned by Docker and change on recreate. The views
 build a new adapter and read them on every request. The rule that refuses

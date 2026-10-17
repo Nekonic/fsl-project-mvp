@@ -26,14 +26,6 @@ ENGINES = {"suricata", "modsecurity"}
 SPLIT = os.environ.get("FSL_SPLIT", "")
 IDLE = SPLIT == "idle"
 BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("FSL_WORKERS") or 1) > 1
-COMPOSE_RANGE_ONLY = {
-    "test_attacker_box", "test_board_exfil", "test_concurrent_sessions",
-    "test_event_time",
-    "test_front_door", "test_judge_isolation",
-    "test_operator_log", "test_ready", "test_segmentation",
-    "test_strategy_comparison", "test_terminal", "test_topology",
-    "test_window_correlation",
-}
 
 def range_readiness() -> dict | None:
     try:
@@ -65,16 +57,7 @@ def range_substrate() -> str:
     return (range_readiness() or {}).get("substrate") or "compose"
 
 def pytest_collection_modifyitems(config, items):
-    substrate = range_substrate()
-    use(substrate)
-    if substrate == "compose":
-        return
-    skip = pytest.mark.skip(
-        reason=f"exercises the compose range; the scored range here is {substrate}"
-    )
-    for item in items:
-        if item.module.__name__ in COMPOSE_RANGE_ONLY:
-            item.add_marker(skip)
+    use(range_substrate())
 
 def _reachable(url: str) -> bool:
     try:

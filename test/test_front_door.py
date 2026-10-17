@@ -3,7 +3,7 @@ import ipaddress
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, credited_to, score_when_ready, seen_by_both_engines
+from conftest import PLATFORM_URL, score_when_ready
 from shared_sessions import probed
 
 EDGE = ipaddress.ip_network("5.188.10.0/24")
@@ -18,13 +18,30 @@ def _raised(alerts):
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"
     return alerts
 
+def _inside(detections, estate):
+    return {
+        d["src_ip"] for d in detections
+        if d["src_ip"] and ipaddress.ip_address(d["src_ip"]) in estate
+    }
+
 @pytest.fixture
 def probe(stack_is_up):
     return _raised(probed())
 
 @pytest.fixture
-def probe_past_the_waf(tuned_session):
-    return _raised(tuned_session["past_the_waf"])
+def past_the_waf(tuned_session):
+    session_id = tuned_session["session_id"]
+    estate = ipaddress.ip_network(tuned_session["estate"])
+
+    def crossed(totals):
+        return bool(_inside(requests.get(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+        ).json(), estate))
+
+    score_when_ready(session_id, until=crossed)
+    return estate, requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
+    ).json()
 
 def test_the_front_door_is_on_the_outside(probe):
     sources = {a["src_ip"] for a in probe}
@@ -34,35 +51,10 @@ def test_the_front_door_is_on_the_outside(probe):
         f"none of it from {EDGE} - the way in is on the inside of the estate"
     )
 
-def test_the_inside_leg_is_still_the_inside(probe_past_the_waf, tuned_session):
-    estate = ipaddress.ip_network(tuned_session["estate"])
-    inside = {
-        a["src_ip"] for a in probe_past_the_waf
-        if ipaddress.ip_address(a["src_ip"]) in estate
-    }
+def test_the_inside_leg_is_still_the_inside(past_the_waf):
+    estate, detections = past_the_waf
 
-    assert inside, f"nothing crossed the estate at all: {sorted(a['src_ip'] for a in probe_past_the_waf)}"
-
-def test_an_attack_fired_from_the_console_comes_from_outside(stack_is_up):
-    session_id = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
-    fired = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-        json={"case": "board-sqli-search"}, timeout=300,
-    )
-    assert fired.status_code == 201, fired.text
-    case_id = fired.json()["case_id"]
-
-    def seen_by_both(totals):
-        return seen_by_both_engines(session_id, totals, case_id=case_id)
-
-    score = score_when_ready(session_id, until=seen_by_both)
-    detections = credited_to(session_id, score, case_id=case_id)
-    assert detections, "the console's attack produced no detections"
-
-    sources = {d["src_ip"] for d in detections if d["src_ip"]}
-    outside = {ip for ip in sources if ipaddress.ip_address(ip) in EDGE}
-
-    assert outside, (
-        f"the console's attack arrived from {sorted(sources)}, none of it from "
-        f"{EDGE} - the platform reached the WAF without going outside"
+    assert _inside(detections, estate), (
+        f"an attack the WAF let through drew no alert from inside {estate}: "
+        f"{sorted({d['src_ip'] for d in detections if d['src_ip']})}"
     )
