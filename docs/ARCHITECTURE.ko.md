@@ -764,6 +764,9 @@ loot)는 학습자가 그 단계를 하거나 함께 건너뛸 때까지 답할 
 
 "직접 해보기"(단계 목록 아래 체크박스, `fsl-lesson-stretch`)는 필터 버튼과 실행 버튼을 없애고 명령을
 펼쳐 둔다: 학습자가 KQL을 쓰고 명령을 직접 입력한다. 확인은 같다.
+필터 버튼은 단계의 `discover` 링크를 Kibana 프레임에 열고, 같은 링크에서 다시 누르면 프레임을 새로
+고친다(`showInKibana`): 같은 주소는 fragment 이동이라 Discover가 다시 가져오지 않고, WAF 기록은 요청 뒤
+약 6초가 지나야 검색된다.
 
 각 단계가 가리키는 곳은 `scenario.yaml`에 있는 그 단계의 `point`이고(`panel`, 대체용 `first`가 붙을 수
 있는 `kibana`, 또는 `pane`; `opens`), 그래서 콘솔은 어떤 단원의 단계도 Kibana selector도 이름으로

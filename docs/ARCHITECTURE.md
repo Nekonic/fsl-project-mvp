@@ -996,6 +996,10 @@ used" beside PASS or FAIL on the main page and the closed session's page.
 "Do it yourself" (a checkbox under the step list, `fsl-lesson-stretch`)
 removes the filter button and the Run button and shows the command: the
 learner writes the KQL and types the command. The checks are the same.
+The filter button opens the step's `discover` link in the Kibana frame and,
+pressed again on the same link, reloads the frame (`showInKibana`): the same
+address is a fragment navigation, which Discover does not refetch, and a WAF
+record is searchable about 6 s after its request.
 
 Where each step points is the step's `point` in `scenario.yaml` (`panel`,
 `kibana` with an optional `first` fallback, or `pane`; `opens`), so the
