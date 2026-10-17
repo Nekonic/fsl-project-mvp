@@ -998,7 +998,10 @@ first and records no truncation, because one sqlmap case leaves more than
 A step's terminal command uses absolute paths only, since a reopened ttyd
 starts a fresh shell (f6's is `cat {waf_rules}`). Its text is folded under
 "Show command"; "Run in terminal" opens the WAF pane if needed, waits for
-ttyd's `term`, calls `term.paste(command + "\n")` and then
+ttyd's `term` and then for a shell prompt (a last line ending in `$` or `#`,
+up to 30 s: on OpenStack the pane is an ssh login whose prompt comes about
+10 s after `term`, and a paste before it is lost), calls
+`term.paste(command + "\n")` and then
 `term.input("\r")`, because bash keeps a bracketed paste's newline as text. A
 `kali` step's command is typed by the learner in the Red console's Kali
 terminal; it has no Run button.

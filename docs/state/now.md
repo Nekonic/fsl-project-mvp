@@ -4,9 +4,9 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-18 (Korean-first learner text, its review and its live
-sweep, at 6b72876; before it, learner text is plain, proven live on
-9674d0e). Written for a session that has the cloud
+Updated: 2026-10-18 (foundations F1-F6 in one session, proven live on
+26c1c80; before it, Korean-first learner text, its review and its live
+sweep, at 6b72876). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
@@ -28,14 +28,16 @@ sweep, at 6b72876; before it, learner text is plain, proven live on
   `rule_id`; a passed Kali step keeps its count; the popover is placed again).
   This branch (`ko-first`) adds on 836ab11, not pushed: the
   Korean-first learner text (6e3a2f0), its review (16e951d), the docs sweep
-  and the Korean line-break fix its live sweep forced (6b72876).
+  and the Korean line-break fix its live sweep forced (6b72876); then the
+  foundations in one session (74ce337, a9bab72) and the two Run in terminal
+  fixes its live run forced (c7a69c5, 26c1c80).
 - Every scenario was run live on OpenStack (platform VM 192.168.0.210, both
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
-  times on 2026-10-16, ten times on 2026-10-17 and twice on 2026-10-18 by `bin/cloud up --replace
+  times on 2026-10-16, ten times on 2026-10-17 and five times on 2026-10-18 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs 6b72876 with the
+  platform VM's rebuild runs an unpushed commit"): it runs 26c1c80 with the
   platform image built from it, the gns3 image from 9674d0e and the kali image from 1fd5be3, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
@@ -122,7 +124,14 @@ sweep, at 6b72876; before it, learner text is plain, proven live on
   applied in place, its seed replayed), step records and hints per lesson
   (migration 0027), every check windowed from the unit's start; the console
   starts the next unit 2 s after the last step and closes the session after
-  F6; a passed Kali step moves on and the next step shows its row.
+  F6; a passed Kali step moves on and the next step shows its row. Proven
+  live on 26c1c80 (9 min 45 s deploy): session 871, F1 opened from the
+  catalogue, F1-F6 in one session in 5 min 13 s open to close, 27 of 27
+  steps passed with no wrong answer, hint or skip, each next lesson started
+  6.5-9.4 s after the last answer, F6's `missed` applied in place (3 of 3
+  objectives lost), no reset until the close; `test/test_lesson.py` on the
+  VM 1 passed. The run found "Run in terminal" dead since 2ea48a5 and its
+  paste lost before the OpenStack WAF shell's prompt; both fixed.
 
 ## Waiting for the user
 
