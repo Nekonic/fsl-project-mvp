@@ -72,6 +72,11 @@ def _portable(document: dict) -> bytes:
         archive.writestr(PORTABLE, json.dumps(document, indent=4, sort_keys=True))
     return packed.getvalue()
 
+def _listed(headers: dict) -> list[dict]:
+    listed = requests.get(f"{_api()}/projects", headers=headers, timeout=TIMEOUT)
+    listed.raise_for_status()
+    return listed.json()
+
 def _gone(headers: dict, project_id: str) -> None:
     removed = requests.delete(f"{_api()}/projects/{project_id}", headers=headers, timeout=IMPORT_TIMEOUT)
     if removed.status_code not in (204, 404):
@@ -81,7 +86,8 @@ def publish(document: dict) -> str:
     headers = _admin()
     project_id = document["project_id"]
     try:
-        _gone(headers, project_id)
+        if any(found["project_id"] == project_id for found in _listed(headers)):
+            _gone(headers, project_id)
         made = requests.post(f"{_api()}/projects/{project_id}/import", headers=headers,
                              data=_portable(document), timeout=IMPORT_TIMEOUT)
         made.raise_for_status()
@@ -100,18 +106,15 @@ def publish(document: dict) -> str:
 
 def status(project_id: str) -> str:
     try:
-        headers = _admin()
-        found = requests.get(f"{_api()}/projects/{project_id}", headers=headers, timeout=TIMEOUT)
-    except (Unavailable, requests.RequestException):
+        listed = _listed(_admin())
+    except (Unavailable, requests.RequestException, ValueError):
         return ""
-    return found.json().get("status", "") if found.status_code == 200 else ""
+    return next((found.get("status", "") for found in listed if found.get("project_id") == project_id), "")
 
 def remove_except(named: str, kept: set[str]) -> list[str]:
     headers = _admin()
     try:
-        listed = requests.get(f"{_api()}/projects", headers=headers, timeout=TIMEOUT)
-        listed.raise_for_status()
-        stale = [found["project_id"] for found in listed.json()
+        stale = [found["project_id"] for found in _listed(headers)
                  if found.get("name", "").startswith(named) and found["project_id"] not in kept]
         for project_id in stale:
             _gone(headers, project_id)
