@@ -308,11 +308,14 @@ function placePopover(step, rect) {
     const inNote = within(rect, aside);
     const wide = rect.width > WIDE
       ? [{ side: "below", left: rect.left + rect.width - width, top: rect.top + rect.height + GAP }] : [];
-    spots = [...wide,
+    const right = { side: "right", left: rect.left + rect.width + GAP, top: middleY };
+    const rail = field("rail");
+    const onRail = Boolean(step.pending) && rail.offsetHeight > rail.offsetWidth;
+    spots = [...(onRail ? [right] : []), ...wide,
       { side: "below", left: middleX, top: rect.top + rect.height + GAP },
       { side: "above", left: middleX, top: rect.top - GAP - height },
       { side: "left", left: (inNote ? aside.left : rect.left) - GAP - width, top: middleY },
-      { side: "right", left: rect.left + rect.width + GAP, top: middleY },
+      right,
     ];
   } else {
     const area = pane || { left: 0, top: 0, width: viewWidth, height: viewHeight };
