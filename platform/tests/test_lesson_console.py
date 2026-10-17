@@ -269,13 +269,17 @@ def test_a_step_that_points_at_the_pane_is_highlighted_whichever_pane_is_open(cl
       {to(step_id, unit)}
       await browser.click('[data-pane="{opens}"]');
       await browser.wait(500);
+      await browser.click('[data-pane="{opens}"]');
+      await browser.wait(500);
       const box = browser.element('coach-box');
       return {{shown: !box.classList.contains('hidden'), target: box.dataset.target,
-               missing: !browser.element('coach-pop-missing').classList.contains('hidden')}};
+               missing: !browser.element('coach-pop-missing').classList.contains('hidden'),
+               placed: Boolean(browser.element('coach-pop').style.left)}};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"shown": True, "target": "pane", "missing": False}
+    assert seen["result"] == {"shown": True, "target": "pane", "missing": False, "placed": True}, (
+        "opening a pane again clears the popover's place; it is placed again, not left over the rail")
 
 POLLED = ("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/")
 
