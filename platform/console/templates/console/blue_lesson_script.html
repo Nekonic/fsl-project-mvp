@@ -80,15 +80,21 @@ function kaliRow(row) {
 const REPLAYS_SHOWN = 5;
 const replayed = new Map();
 
+function showInKibana(url) {
+  const tab = document.querySelector('.pane-tab[data-pane="elk"]');
+  const same = paneOpen("elk") && Boolean(frame.src)
+    && new URL(frame.src, location.href).href === new URL(url, location.href).href;
+  tab.dataset.src = url;
+  openPane(tab);
+  if (same) frame.contentWindow.location.reload();
+}
+
 function showReplay(list, row, render) {
   const rows = [row, ...(replayed.get(list) || [])].slice(0, REPLAYS_SHOWN);
   replayed.set(list, rows);
   list.innerHTML = rows.map(render).join("");
-  list.querySelectorAll("[data-discover]").forEach((link) => link.addEventListener("click", () => {
-    const kibana = document.querySelector('.pane-tab[data-pane="elk"]');
-    kibana.dataset.src = link.dataset.discover;
-    openPane(kibana);
-  }));
+  list.querySelectorAll("[data-discover]").forEach((link) => link.addEventListener("click", () =>
+    showInKibana(link.dataset.discover)));
 }
 
 const NOTE_KEY = "fsl-lesson-note";
@@ -505,7 +511,7 @@ function coach(prefix, declared) {
     act.innerHTML = html;
     act.classList.toggle("hidden", !html);
     const chip = act.querySelector('[data-act="chip"]');
-    if (chip) chip.addEventListener("click", () => openKibana(step.discover));
+    if (chip) chip.addEventListener("click", () => showInKibana(step.discover));
     const form = act.querySelector('[data-act="answer"]');
     if (form) {
       form.addEventListener("submit", (event) => {
@@ -707,12 +713,6 @@ function coach(prefix, declared) {
     const value = String(given || "").trim();
     if (!value) return;
     settle(step, await judged(step, { answer: value }), true);
-  }
-
-  function openKibana(url) {
-    const tab = document.querySelector('.pane-tab[data-pane="elk"]');
-    tab.dataset.src = url;
-    openPane(tab);
   }
 
   function skip() {
