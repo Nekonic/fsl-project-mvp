@@ -396,7 +396,7 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
             "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
-    new.ssh(f"cd {CHECKOUT} && {compose} up -d" + ("" if sideload else " platform"))
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d" + (" --force-recreate" if sideload else " platform"))
 
 
 def wait_for_api(address: str) -> None:
