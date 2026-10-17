@@ -74,10 +74,10 @@ def test_a_step_s_command_arrives_once_the_step_is_reached(client):
     reached = step(client, session, "excluded", body={"state": "reached"}).json()
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert command == f"cat {settings.FSL_WAF.rules}"
+    assert command == f"grep -n ruleRemove {settings.FSL_WAF.rules}"
     assert reached["progress"]["excluded"]["command"] == command
     assert shown["excluded"]["command"] == command
-    assert "command" not in shown["lost"] and "command" not in reached["progress"].get("lost", {})
+    assert "command" not in shown["dump"] and "command" not in reached["progress"].get("dump", {})
 
 def blocked_by(session, detection_id, marker, uri, rule):
     Detection.objects.create(session=session, detection_id=detection_id, source="modsecurity", signature=rule,
@@ -85,16 +85,16 @@ def blocked_by(session, detection_id, marker, uri, rule):
                              raw={"request": {"method": "GET", "uri": uri}, "details": {"ruleId": rule}})
 
 def test_an_answer_is_judged_on_the_server_and_two_wrong_ones_record_a_hint(client):
-    session = taught("f5")
-    blocked_by(session, "attack", session.browse_marker, "/search/?q=%27%20OR%201%3D1--", "942100")
+    session = taught("f4")
+    blocked_by(session, "attack", session.browse_marker, "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", "941100")
     with patch("api.views._ingest", lambda session, within=None: {}):
         known = check(client, session, "rule", {"answer": "949110"}).json()
         other = check(client, session, "rule", {"answer": "1234"}).json()
-        right = check(client, session, "rule", {"answer": " 942100 "}).json()
+        right = check(client, session, "rule", {"answer": " 941100 "}).json()
 
-    assert (known["passed"], known["reason"]) == (False, ["lesson.attack.wrong.rule.949110", []])
+    assert (known["passed"], known["reason"]) == (False, ["lesson.xss.wrong.rule.949110", []])
     assert (other["passed"], other["reason"], other["hint"]) == (False, ["lesson.check.wrong", []], 1)
-    assert other["hints"] == [{"lesson": "f5", "step": "rule", "level": "hint"}], "two wrong answers raise the hint and record it"
+    assert other["hints"] == [{"lesson": "f4", "step": "rule", "level": "hint"}], "two wrong answers raise the hint and record it"
     assert right["passed"] is True and right["progress"]["rule"]["passed"]
 
 def test_steps_are_refused_without_an_answer_for_an_unknown_step_a_plain_session_a_closed_one_or_an_unknown_state(client):
@@ -110,37 +110,46 @@ def test_steps_are_refused_without_an_answer_for_an_unknown_step_a_plain_session
     assert step(client, lesson, "excluded", body={"state": "done"}).status_code == 400
 
 def test_the_rule_answer_reads_recent_records_and_takes_only_a_browse_record_of_the_attack(client):
-    session = taught("f5")
+    session = taught("f4")
     read = []
     with patch("api.views._ingest", lambda session, within=None: read.append(within)):
         step(client, session, "rule", body={"state": "reached"})
-        blocked_by(session, "case", "a-case-uuid", "/search/?q=%27%20OR%201%3D1--", "942100")
-        blocked_by(session, "other", session.browse_marker, "/search/?q=release", "942100")
-        unrelated = check(client, session, "rule", {"answer": "942100"}).json()
-        blocked_by(session, "new", session.browse_marker, "/search/?q=%27%20OR%201%3D1--", "942100")
-        found = check(client, session, "rule", {"answer": "942100"}).json()
+        blocked_by(session, "case", "a-case-uuid", "/search/?q=%3Cscript%3E", "941100")
+        blocked_by(session, "other", session.browse_marker, "/search/?q=release", "941100")
+        unrelated = check(client, session, "rule", {"answer": "941100"}).json()
+        blocked_by(session, "new", session.browse_marker, "/search/?q=%3Cscript%3E", "941100")
+        found = check(client, session, "rule", {"answer": "941100"}).json()
 
     assert (unrelated["passed"], unrelated["reason"]) == (False, ["lesson.check.unrecorded", []])
     assert found["passed"] is True
     assert read == [600, 600], "only recent records, so a session with thousands still finds it"
 
-def test_a_hint_press_raises_the_step_s_hint_level_records_the_first_once_and_gives_the_answer_at_its_level(client):
+def test_a_foundation_s_hint_ladder_is_nudge_hint_then_skip_and_never_gives_the_answer(client):
     session = taught("f6")
 
-    pressed = [hint(client, session, "excluded") for _ in range(5)]
+    pressed = [hint(client, session, "excluded") for _ in range(4)]
+
+    assert [one["hint"] for one in pressed] == [1, 2, 3, 3]
+    assert not [one for one in pressed if {"answer", "line"} & set(one["progress"]["excluded"])]
+    assert Session.objects.get(pk=session.pk).hints == [{"lesson": "f6", "step": "excluded", "level": "hint"}]
+
+def test_a_worked_scenario_s_ladder_still_gives_the_answer_before_skip(client):
+    session = worked("3.1")
+
+    pressed = [hint(client, session, "buffer") for _ in range(5)]
 
     assert [one["hint"] for one in pressed] == [1, 2, 3, 4, 4]
-    assert all("answer" not in one["progress"]["excluded"] for one in pressed[:2])
-    assert pressed[2]["progress"]["excluded"]["answer"] == strings.both("lesson.miss.answer.excluded")
-    assert Session.objects.get(pk=session.pk).hints == [{"lesson": "f6", "step": "excluded", "level": "hint"}]
+    assert pressed[2]["progress"]["buffer"]["answer"] == strings.both("scenario.fixrule.answer.buffer")
 
 @pytest.mark.parametrize("mark", views.REPLAY_MARKS)
 def test_a_case_an_old_check_verify_replay_or_seed_fired_stays_out_of_both_scores(client, mark):
     session = board()
     now = timezone.now()
-    for name, malicious in (("board-sqli-orderby-sqlmap", True), ("board-normal-search-with-apostrophe", False)):
+    replayed = (("board-sqli-orderby-sqlmap", True),) if mark == "seed" else (
+        ("board-sqli-orderby-sqlmap", True), ("board-normal-search-with-apostrophe", False))
+    for name, malicious in replayed:
         Case.objects.create(session=session, case_id=f"{mark}-{name}", name=name, malicious=malicious,
-                            started_at=now, ended_at=now, meta={mark: True})
+                            correlation="marker", started_at=now, ended_at=now, meta={mark: True})
 
     score = client.get(f"/api/sessions/{session.pk}/score/").json()
 

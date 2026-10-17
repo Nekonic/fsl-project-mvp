@@ -374,13 +374,18 @@ def side_load(new: Host, sideload: Sideload) -> None:
                 f"{image}:$(sed -n 's/^FSL_IMAGE_TAG=//p' {CHECKOUT}/.env)")
 
 
+def platform_settings(password: str, sideload: Sideload | None) -> str:
+    named = f"FSL_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
+    return f"FSL_OPENSTACK_PASSWORD={password}\n{named}"
+
+
 def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
               sideload: Sideload | None = None) -> None:
     compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
     new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform")
     if sideload is not None:
         side_load(new, sideload)
-    new.ssh(f"cat >> {CHECKOUT}/openstack.env", f"FSL_OPENSTACK_PASSWORD={password}\n".encode())
+    new.ssh(f"cat >> {CHECKOUT}/openstack.env", platform_settings(password, sideload).encode())
     new.ssh(
         "sudo docker exec -i -u fsl fsl-platform sh -c "
         + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "

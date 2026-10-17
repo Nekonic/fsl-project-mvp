@@ -23,7 +23,7 @@ SCENARIO_FIELDS = ("name", "description", "image", "public_url", "objective_mode
 OBJECTIVE_MODELS = {"loot_verified", "effect_observed", "none"}
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_DEFENSE = "full"
-CHECK_KINDS = {"click", "answer", "choice", "rules", "sent", "kali", "loot", "triage"}
+CHECK_KINDS = {"click", "answer", "choice", "rules", "sent", "kali", "loot", "triage", "waf_changed", "replay"}
 TRIAGE_JUDGED = ("attack", "customer", "all")
 TASK_CLASSES = ("judgement", "availability", "detection", "unknown")
 GUIDANCE = ("worked", "faded", "none")
@@ -36,10 +36,13 @@ PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule",)
-RANGE_FACTS = ("entry", "logs", "segment", "lost", "excluded")
-REQUEST_FACTS = ("status", "method", "path", "parameter", "status_class", "engine", "sensor_source", "waf_source",
-                 "stopped_at")
-KALI_FACTS = ("requests", "leaked")
+RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "excluded_target", "lost_points")
+REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
+                 "waf_logged", "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
+KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
+UNRECORDED_FACTS = ("hits",)
+LEGS = ("inbound", "upstream")
+STEP_MARKER = "step:"
 DETECTORS = ("suricata",)
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
 LESSON_ID = re.compile(r"[a-z0-9][a-z0-9-]*", re.ASCII)
@@ -226,19 +229,55 @@ def checked_lesson_judging(taught: dict, source) -> None:
 def _kinds_of_steps(taught: dict) -> dict[str, str]:
     return {step["id"]: step["check"]["kind"] for step in taught.get("steps", [])}
 
+def fact_family(check: dict) -> str | None:
+    of = check.get("of")
+    if of in ANSWERS_OF:
+        return "rule"
+    if of == "path":
+        return "range" if check.get("form") == "order" else "request"
+    return next((family for family, facts in (("range", RANGE_FACTS), ("request", REQUEST_FACTS),
+                                              ("kali", KALI_FACTS)) if of in facts), None)
+
+def _matched_steps(taught: dict) -> set[str]:
+    return {step["id"] for step in taught.get("steps", []) if _pattern(step["check"].get("match"))}
+
 def read_from_record(taught: dict, check: dict) -> bool:
-    of, about = check.get("of"), _kinds_of_steps(taught).get(check.get("about"))
-    return (of in ANSWERS_OF and isinstance(check.get("path"), str) and bool(check["path"])) \
-        or of in RANGE_FACTS or (of in REQUEST_FACTS and about == "sent") or (of in KALI_FACTS and about == "kali")
+    family, kinds = fact_family(check), _kinds_of_steps(taught)
+    about = check.get("about")
+    abouts = about if isinstance(about, list) else [about] if about else []
+    if family == "rule":
+        marked = str(check.get("marker") or "")
+        return bool(check.get("path")) if not marked.startswith(STEP_MARKER) \
+            else kinds.get(marked[len(STEP_MARKER):]) == "kali"
+    if family == "request":
+        return check["of"] in UNRECORDED_FACTS or (bool(abouts) and set(abouts) <= _matched_steps(taught)) \
+            or (not abouts and _pattern(check.get("match")))
+    if family == "kali":
+        return kinds.get(about) == "kali"
+    return family == "range"
 
 def checked_step_judging(taught: dict, step: dict, where: str) -> None:
     check = step["check"]
     kind = check["kind"]
     if kind in ("answer", "choice") and "of" in check and not read_from_record(taught, check):
         raise InvalidCatalogue(f"{where}: an answer read from the record needs of: one of "
-                               f"{', '.join(ANSWERS_OF)} and the path of the request it is about, one of "
-                               f"{', '.join(RANGE_FACTS)}, one of {', '.join(REQUEST_FACTS)} about a sent step, "
-                               f"or one of {', '.join(KALI_FACTS)} about a kali step")
+                               f"{', '.join(ANSWERS_OF)} with the path of the request or a step: marker of a kali "
+                               f"step, one of {', '.join(RANGE_FACTS)}, one of {', '.join(REQUEST_FACTS)} about "
+                               f"a step with a match or with its own match, or one of {', '.join(KALI_FACTS)} "
+                               f"about a kali step")
+    if kind in ("answer", "choice") and check.get("leg", LEGS[0]) not in LEGS:
+        raise InvalidCatalogue(f"{where}: leg must be one of {', '.join(LEGS)}")
+    if not all(isinstance(rule, dict) and _pattern(rule.get("match")) and isinstance(rule.get("says"), str)
+               for rule in check.get("wrong_if", [])):
+        raise InvalidCatalogue(f"{where}: wrong_if is a list of a match, a regular expression, and says, a code")
+    if check.get("after") is not None and check["after"] not in _kinds_of_steps(taught):
+        raise InvalidCatalogue(f"{where}: after must name a step of the lesson")
+    if kind == "replay" and not (_pattern((check.get("benign") or {}).get("sent")) and (
+            _pattern((check.get("attack") or {}).get("sent")) or (check.get("attack") or {}).get("kali"))):
+        raise InvalidCatalogue(f"{where}: a replay step needs after:, an attack with sent: or kali:, and a benign "
+                               f"with sent:")
+    if kind == "waf_changed" and not isinstance(check.get("removed_target"), str):
+        raise InvalidCatalogue(f"{where}: a waf_changed step needs removed_target:, the exclusion's target")
     if kind == "sent" and not _pattern(check.get("match")):
         raise InvalidCatalogue(f"{where}: a sent step needs match:, a regular expression for the request's URL")
     if kind == "loot" and _kinds_of_steps(taught).get(check.get("about")) != "kali":
@@ -300,9 +339,13 @@ def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFEN
             f"{source}: lesson steps {', '.join(unchecked)} need a check whose kind is one of "
             f"{', '.join(sorted(CHECK_KINDS))}"
         )
-    unarmed = [step["id"] for step in steps if step["check"]["kind"] == "kali" and step["check"].get("case") not in known]
+    unarmed = [step["id"] for step in steps if armed_case(step["check"]) not in known
+               and (step["check"]["kind"] == "kali" or armed_case(step["check"]))]
     if unarmed:
         raise InvalidCatalogue(f"{source}: kali steps {', '.join(unarmed)} need case:, a tool case of the case file")
+
+def armed_case(check: dict) -> str | None:
+    return check.get("case") if check["kind"] == "kali" else (check.get("attack") or {}).get("kali")
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.FSL_SOURCE) / "wargames"
@@ -371,9 +414,13 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | N
     waf = waf or settings.FSL_WAF
     grouped = {"group": "foundations"} if taught in foundations(wargame_id) else {}
     return taught | grouped | {"steps": [
-        step | {"command": step["command"].replace("{waf_rules}", waf.rules)} if step.get("command") else step
+        step | {"command": filled(step["command"], waf)} if step.get("command") else step
         for step in taught.get("steps", [])
     ]}
+
+def filled(command: str, waf: crs.Layout) -> str:
+    return (command.replace("{waf_rules}", waf.rules).replace("{waf_reload}", waf.reload.replace(" 2>&1", ""))
+            .replace("{sudo}", "sudo " if waf.reload.startswith("sudo ") else ""))
 
 def lesson_defense(wargame_id: str, lesson_id: str) -> str:
     return lesson(wargame_id, lesson_id=lesson_id).get("defense", DEFAULT_DEFENSE)
@@ -507,6 +554,7 @@ def _foundation_card(taught: dict[str, Any]) -> dict[str, Any]:
         "defense": taught.get("defense", DEFAULT_DEFENSE),
         "prerequisites": list(taught.get("prerequisites") or []),
         "steps": len(taught.get("steps") or []),
+        "step_ids": [step["id"] for step in taught.get("steps") or []],
         "learns": f"{taught['text']}.learns",
     }
 

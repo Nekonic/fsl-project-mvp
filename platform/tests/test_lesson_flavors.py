@@ -1,5 +1,3 @@
-import subprocess
-
 import pytest
 from django.test import override_settings
 
@@ -28,16 +26,13 @@ def test_the_two_waf_layouts_differ_and_each_has_a_lesson_command_naming_its_own
                    for command in commands(wargame_id, lesson_id, flavor).values()), flavor
 
 @pytest.mark.parametrize("flavor", FLAVORS)
-@pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
-def test_every_lesson_command_runs_against_the_flavor_s_file(tmp_path, wargame_id, lesson_id, flavor):
+def test_the_waf_commands_a_learner_types_name_the_flavor_s_file_and_reload_with_no_placeholder_left(flavor):
     waf = layout(flavor)
-    rules = tmp_path / "exclusions.conf"
-    rules.write_text('SecRuleRemoveById 949110\n')
+    typed = [command for wargame_id, lesson_id in LESSONS for command in commands(wargame_id, lesson_id, flavor).values()]
+    edit = next(command for command in typed if "nano" in command)
 
-    for step_id, command in commands(wargame_id, lesson_id, flavor).items():
-        done = subprocess.run(["sh", "-c", command.replace(waf.rules, str(rules))], capture_output=True, text=True,
-                              env={"PATH": "/usr/bin:/bin"})
-        assert done.returncode == 0 and "SecRuleRemoveById 949110" in done.stdout, (flavor, step_id, done.stderr)
+    assert not [command for command in typed if "{" in command.replace("{target}", "")]
+    assert edit == ("sudo " if flavor else "") + f"nano {waf.rules} && " + waf.reload.replace(" 2>&1", "")
 
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)

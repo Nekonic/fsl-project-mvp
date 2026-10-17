@@ -52,3 +52,22 @@ def test_reading_the_images_changes_nothing_and_only_a_post_or_delete_acts_on_th
         {"kind": "image", "id": "img-old"}, {"kind": "server", "id": "srv-2"},
     ]
     assert (built.ensured, built.cleaned) == (1, 1)
+
+class Sideloaded:
+    def sideloaded_image(self, name):
+        return {"board": "ghcr.io/nekonic/fsl-board:c0ffee"}.get(name, "")
+
+def test_the_builder_fetches_only_a_sideloaded_wargame_image_and_gets_its_docker_save(client):
+    saved = []
+
+    def save(image):
+        saved.append(image)
+        return ["printf", "board tarball"]
+
+    with patch("api.sideloaded.substrate", Sideloaded), patch("range.wargame_host.saved", save):
+        answer = client.get(URL + "sideloaded/board/")
+        assert answer.status_code == 200
+        assert b"".join(answer.streaming_content) == b"board tarball"
+        assert client.get(URL + "sideloaded/platform/").status_code == 404, (
+            "the endpoint answers anyone on the platform network; it hands out only a wargame image")
+    assert saved == ["ghcr.io/nekonic/fsl-board:c0ffee"]

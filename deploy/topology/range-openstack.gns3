@@ -16,12 +16,30 @@
         "computes": [],
         "drawings": [
             {
+                "drawing_id": "fb351b57-3627-5975-9807-66c806527504",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"24\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": -276,
+                "y": -22,
+                "z": 2
+            },
+            {
+                "drawing_id": "afe85477-cbe2-546d-88b0-df728cb333eb",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"24\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 377,
+                "y": -22,
+                "z": 2
+            },
+            {
                 "drawing_id": "9c4492e9-06ef-5045-9dba-81d58a64fdd9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"400\" height=\"360\"><rect width=\"400\" height=\"360\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -560,
-                "y": -190,
+                "svg": "<svg width=\"360\" height=\"380\"><rect width=\"360\" height=\"380\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": -700,
+                "y": -170,
                 "z": 0
             },
             {
@@ -29,17 +47,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"72\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">Internet</text></svg>",
-                "x": -550,
-                "y": -186,
+                "x": -690,
+                "y": -166,
                 "z": 2
             },
             {
                 "drawing_id": "3b60c4aa-5aca-5d26-8fcc-b0ed8b1776d9",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"520\" height=\"370\"><rect width=\"520\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": 220,
-                "y": -100,
+                "svg": "<svg width=\"460\" height=\"310\"><rect width=\"460\" height=\"310\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": -60,
+                "y": -210,
                 "z": 0
             },
             {
@@ -47,17 +65,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"72\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">Services</text></svg>",
-                "x": 230,
-                "y": -96,
+                "x": -50,
+                "y": -206,
                 "z": 2
             },
             {
                 "drawing_id": "b004dd8b-a4fc-592e-ac56-2e07083c771a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"410\" height=\"200\"><rect width=\"410\" height=\"200\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
-                "x": 760,
-                "y": -100,
+                "svg": "<svg width=\"360\" height=\"170\"><rect width=\"360\" height=\"170\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
+                "x": 460,
+                "y": -70,
                 "z": 0
             },
             {
@@ -65,17 +83,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"95\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">Internal DB</text></svg>",
-                "x": 770,
-                "y": -96,
+                "x": 470,
+                "y": -66,
                 "z": 2
             },
             {
                 "drawing_id": "e0ec0502-98f3-542d-a962-e3a56a42212e",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"530\" height=\"180\"><rect width=\"530\" height=\"180\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": 130,
-                "y": 320,
+                "svg": "<svg width=\"860\" height=\"150\"><rect width=\"860\" height=\"150\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": -300,
+                "y": 170,
                 "z": 0
             },
             {
@@ -83,8 +101,8 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"89\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">Monitoring</text></svg>",
-                "x": 140,
-                "y": 466,
+                "x": -290,
+                "y": 174,
                 "z": 2
             }
         ],
@@ -383,8 +401,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-kali.svg",
-                "x": -510,
-                "y": 70,
+                "x": -640,
+                "y": 100,
                 "z": 1
             },
             {
@@ -407,8 +425,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-client.svg",
-                "x": -510,
-                "y": -130,
+                "x": -640,
+                "y": -100,
                 "z": 1
             },
             {
@@ -477,8 +495,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -270,
-                "y": -30,
+                "x": -460,
+                "y": 0,
                 "z": 1
             },
             {
@@ -501,8 +519,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-firewall.svg",
-                "x": 0,
-                "y": -30,
+                "x": -240,
+                "y": 0,
                 "z": 1
             },
             {
@@ -571,8 +589,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 270,
-                "y": -30,
+                "x": 150,
+                "y": -140,
                 "z": 1
             },
             {
@@ -582,8 +600,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "waf",
-                    "x": -33,
-                    "y": 20
+                    "x": null,
+                    "y": -25
                 },
                 "name": "waf",
                 "node_id": "24c2aff0-8063-55c5-b2ef-969d38d171d2",
@@ -595,8 +613,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-shield.svg",
-                "x": 270,
-                "y": 170,
+                "x": 0,
+                "y": 0,
                 "z": 1
             },
             {
@@ -619,8 +637,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 540,
-                "y": -30,
+                "x": 300,
+                "y": 0,
                 "z": 1
             },
             {
@@ -643,8 +661,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 540,
-                "y": -30,
+                "x": 300,
+                "y": 0,
                 "z": 1
             },
             {
@@ -713,8 +731,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 800,
-                "y": -30,
+                "x": 520,
+                "y": 0,
                 "z": 1
             },
             {
@@ -737,8 +755,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 1060,
-                "y": -30,
+                "x": 720,
+                "y": 0,
                 "z": 1
             },
             {
@@ -761,8 +779,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 1060,
-                "y": -30,
+                "x": 720,
+                "y": 0,
                 "z": 1
             },
             {
@@ -831,8 +849,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 270,
-                "y": 390,
+                "x": 0,
+                "y": 220,
                 "z": 1
             },
             {
@@ -855,8 +873,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-statistics.svg",
-                "x": 540,
-                "y": 390,
+                "x": 300,
+                "y": 220,
                 "z": 1
             }
         ]

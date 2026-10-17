@@ -72,3 +72,64 @@ def test_two_sessions_tune_their_own_waf_and_their_own_sensor(guided_beside_mini
         "paranoia level 1 in the first session and 4 in the second should serve and "
         f"block the O'Brien search respectively; got {served} and {refused}"
     )
+
+
+def _post(path: str, body: dict, timeout: float = 120):
+    return requests.post(f"{PLATFORM_URL}/api/sessions/{path}", json=body, timeout=timeout)
+
+
+def _walked(session_id: int) -> dict:
+    seen = {"checked": [], "refused": []}
+    detail = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/", timeout=60).json()
+    while True:
+        lesson_id = detail["lesson_id"]
+        for shown in detail["lesson"]["steps"]:
+            step = shown["id"]
+            _post(f"{session_id}/lesson/steps/{step}/", {"state": "reached"})
+            body = {"answer": "x"} if shown["check"]["kind"] in ("answer", "choice") else {"poll": True}
+            checked = _post(f"{session_id}/lesson/steps/{step}/check/", body, timeout=300)
+            seen["checked"].append((lesson_id, step, checked.status_code))
+            if checked.status_code != 200:
+                seen["refused"].append((lesson_id, step, checked.status_code, checked.text[:200]))
+            _post(f"{session_id}/lesson/steps/{step}/", {"state": "skipped"})
+        if not detail["next_lesson"]:
+            return seen
+        moved = _post(f"{session_id}/lesson/", {"lesson": detail["next_lesson"]["id"]}, timeout=900)
+        assert moved.status_code == 200, moved.text
+        detail = moved.json()
+
+
+@pytest.fixture(scope="module")
+def course(stack_is_up):
+    session_id = _open(guidance=True, lesson="f1")
+    seen = {}
+    try:
+        project = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120).json()["project"]
+        steps = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/", timeout=60).json()["lesson"]["steps"]
+        hosts = next(step["check"]["options"] for step in steps if step["id"] == "path")
+        route = ["customers", *(["firewall"] if "firewall" in hosts else []), "waf", "board.com"]
+        board = project["nodes"]["board.com"]["addresses"]["sw1"][0].partition("/")[0]
+        seen["map"] = {step: _post(f"{session_id}/lesson/steps/{step}/check/", {"answer": given}).json()["passed"]
+                       for step, given in (("board_ip", board), ("kali_zone", "Internet"),
+                                           ("path", " > ".join(route)), ("log_host", "log-server"))}
+        seen.update(_walked(session_id))
+    finally:
+        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+    seen["score"] = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=300).json()
+    return seen
+
+
+def test_f1_reads_its_answers_from_the_map_of_the_session_s_own_range(course):
+    assert course["map"] == {"board_ip": True, "kali_zone": True, "path": True, "log_host": True}
+
+
+def test_f1_to_f6_run_in_one_session_and_every_step_s_check_answers(course):
+    assert course["refused"] == []
+    assert {lesson for lesson, _, _ in course["checked"]} == {"f1", "f2", "f3", "f4", "f5", "f6"}
+
+
+def test_a_closed_course_scores_each_lesson_s_seed_as_a_benign_case_and_warns_no_operator(course):
+    score = course["score"]
+    assert score["benign_cases"] == 6, "one seed replay per lesson, each a benign case of the second score"
+    assert not [warning for warning in score["warnings"]
+                if warning[0] in ("score.warning.no_benign", "score.warning.no_marker")]

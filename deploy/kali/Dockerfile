@@ -24,7 +24,8 @@ COPY motd /etc/motd
 COPY operator-log.sh /etc/fsl/operator-log.sh
 RUN mkdir -p /var/log/fsl \
  && echo 'cat /etc/motd' >> /root/.bashrc \
- && echo '. /etc/fsl/operator-log.sh' >> /root/.bashrc
+ && echo '. /etc/fsl/operator-log.sh' >> /root/.bashrc \
+ && echo 'PS1=${PS1//\\h/kali}' >> /root/.bashrc
 
 WORKDIR /root
 

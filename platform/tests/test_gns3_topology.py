@@ -29,6 +29,7 @@ HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
 RFC1123 = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
+ACRONYM = re.compile(r"^[A-Z]{2,5}$")
 TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-([^}]*))?\}")
 GNS3_2_2_TOP_LEVEL = {
     "project_id", "type", "auto_start", "auto_close", "auto_open", "revision",
@@ -182,10 +183,11 @@ def test_every_word_drawn_on_a_korean_map_is_korean_and_none_on_an_english_one(a
     english = [shape["text"] for shape in drawn_shapes(english_of(gns3)) if shape["kind"] == "text"]
     korean = gns3["project_id"] != english_of(gns3)["project_id"]
 
+    kept_as_is = lambda said: IDENTIFIER.match(said) or ACRONYM.match(said)
     assert [text for text, said in zip(texts, english)
-            if not IDENTIFIER.match(said) and bool(HANGUL.search(text)) != korean] == []
-    assert [text for text, said in zip(texts, english) if IDENTIFIER.match(said) and text != said] == [], (
-        "a host or network name is drawn as the machine knows it, in either language")
+            if not kept_as_is(said) and bool(HANGUL.search(text)) != korean] == []
+    assert [text for text, said in zip(texts, english) if kept_as_is(said) and text != said] == [], (
+        "a host or network name is drawn as the machine knows it, and IDS as Korean practitioners write it too")
 
 def test_no_two_projects_share_an_id_because_the_gns3_compute_keeps_nodes_by_id_alone():
     ids = []
@@ -456,3 +458,15 @@ def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_
     assert all(node["properties"]["adapters"] == sum(end["node_id"] == node["node_id"] for link in
                                                        project(drawn_in)["topology"]["links"] for end in link["nodes"])
                for node in hosts), "a display node has one adapter per link and no more"
+
+@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
+def test_each_host_an_ids_runs_on_is_marked_ids_beside_it_and_no_zone_takes_the_mark_for_its_title(drawn_in, wargame):
+    learner, shown, _ = projected(drawn_in, wargame)
+    placed = {name: (node["x"] + 30, node["y"] + 30) for name, node in nodes(learner).items()}
+    marks = [shape for shape in drawn_shapes(learner) if shape["kind"] == "text" and shape["text"] == "IDS"]
+    beside = [min(placed, key=lambda name: (placed[name][0] - mark["x"] - 12) ** 2 + (placed[name][1] - mark["y"] - 8) ** 2)
+              for mark in marks]
+
+    assert sorted(beside) == sorted(set(shown.sensors.values())), (
+        "observer.name in Kibana names these hosts, so the map shows where each IDS listens")
+    assert not [switch for switch, caption in topology.captions(learner).items() if ">IDS<" in caption["svg"]]

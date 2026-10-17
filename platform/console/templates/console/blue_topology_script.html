@@ -1,20 +1,44 @@
-const topo = { read: false, web: null };
+const topo = { read: false, web: null, drawn: false, fitTimer: null, drawnHeard: [] };
+const MAP_WAIT_MS = 30000;
+const REFIT_SETTLES_MS = 250;
+
+const topologyOrigin = () => {
+  const src = field("topology-frame").getAttribute("src");
+  return src ? new URL(src, location.href).origin : "";
+};
 
 function topologyFit() {
   const frame = field("topology-frame");
-  if (frame.contentWindow && frame.src) frame.contentWindow.postMessage("fsl-fit", new URL(frame.src).origin);
+  if (frame.contentWindow && topologyOrigin() && topo.drawn) frame.contentWindow.postMessage("fsl-fit", topologyOrigin());
+}
+
+function topologyRefit() {
+  clearTimeout(topo.fitTimer);
+  topo.fitTimer = setTimeout(() => {
+    const shown = boxOf(field("topology-frame"));
+    if (shown && shown.width && paneOpen("topology")) topologyFit();
+  }, REFIT_SETTLES_MS);
+}
+
+function topologyHeard(event) {
+  const frame = field("topology-frame");
+  if (!event.data || event.data.fslMap !== "drawn" || !frame.contentWindow || event.source !== frame.contentWindow) return;
+  topo.drawn = true;
+  field("map-wait").classList.add("hidden");
+  topo.drawnHeard.forEach((heard) => heard());
 }
 
 function topologyShow() {
-  field("topology-gns3").setAttribute("aria-selected", String(Boolean(topo.web)));
   field("topology-fit").style.display = topo.web ? "" : "none";
   field("topology-frame").style.display = topo.web ? "block" : "none";
-  if (topo.web && !field("topology-frame").src) {
-    field("topology-frame").title = t("topology.view.map");
+  if (topo.web && !field("topology-frame").getAttribute("src")) {
     const at = new URL(location.href);
     at.port = String(topo.web.port);
+    field("map-wait").classList.remove("hidden");
+    setTimeout(() => field("map-wait").classList.add("hidden"), MAP_WAIT_MS);
     field("topology-frame").src = at.origin + topo.web.path;
   }
+  topologyRefit();
 }
 
 async function topologyOpen() {
@@ -26,10 +50,12 @@ async function topologyOpen() {
     }
     topo.read = true;
     topo.web = project.body.web_ui;
-    field("topology-gns3").disabled = !topo.web;
     field("topology-said").textContent = topo.web ? "" : t("topology.no_web_ui");
     field("topology-said").title = project.body.detail || "";
     field("topology-fit").addEventListener("click", topologyFit);
+    window.addEventListener("message", topologyHeard);
+    if (typeof ResizeObserver === "function") new ResizeObserver(topologyRefit).observe(field("topology"));
+    else window.addEventListener("resize", topologyRefit);
   }
   topologyShow();
 }

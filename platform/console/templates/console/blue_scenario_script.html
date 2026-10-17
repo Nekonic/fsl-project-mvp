@@ -48,7 +48,6 @@ function stripShow() {
   const offer = scenario.hints.offer;
   field("scenario-offer").classList.toggle("hidden", !offer);
   field("scenario-offer").title = offer ? t(`scenario.hint.why.${offer.reason}`) : "";
-  overlaysBelowBars();
 }
 
 function briefingShow() {
@@ -75,7 +74,7 @@ function cardsShow() {
   const next = scenario.cards.find((id) => !dismissed.includes(id));
   if (next && !stack.querySelector("[data-card]")) {
     const card = document.createElement("div");
-    card.className = "card note-shadow p-3 flex flex-col gap-1 text-[12.5px]";
+    card.className = "card p-3 flex flex-col gap-1 text-[12.5px]";
     card.dataset.card = next;
     card.innerHTML = `<b class="text-heading">${esc(t(`${scenario.text}.card.${next}.title`))}</b>
       <p class="text-body leading-relaxed">${esc(t(`${scenario.text}.card.${next}.body`))}</p>
@@ -99,6 +98,7 @@ function hintsShow() {
     : `<li class="text-muted">${esc(t("scenario.hint.none"))}</li>`;
   field("scenario-hints").classList.remove("hidden");
   field("scenario-hints").classList.add("flex");
+  setNote({ open: true });
 }
 
 async function hintOpen() {
@@ -154,43 +154,6 @@ async function scenarioDebrief() {
 }
 
 const triageVerdicts = new Map();
-const DOCKED = ["scenario-hints", "scenario-cards"];
-const DOCKED_STYLE = { position: "static", width: "auto", maxWidth: "none", left: "", top: "" };
-const UNDOCKED_STYLE = { position: "", width: "", maxWidth: "", left: "", top: "" };
-const popoverHome = field("coach-pop").parentNode;
-
-function dockedIn(element, docked, home, first = false) {
-  const dock = field("triage-dock");
-  const place = docked ? dock : home;
-  if (element.parentNode === place && (!first || place.children[0] === element)) return;
-  element.remove();
-  if (first) place.prepend(element);
-  else place.appendChild(element);
-  Object.assign(element.style, docked ? DOCKED_STYLE : UNDOCKED_STYLE);
-}
-
-function triageRoom() {
-  const aside = paneOpen("triage") ? noteBox() : null;
-  const pane = boxOf(field("triage"));
-  const right = pane ? pane.left + pane.width : 0;
-  field("triage").style.paddingRight = aside && aside.left < right ? `${Math.ceil(right - aside.left + OVERLAY_GAP)}px` : "";
-}
-
-function triageDock() {
-  const shown = paneOpen("triage");
-  DOCKED.forEach((id) => dockedIn(field(id), shown, field("pane")));
-  if (!shown) dockedIn(field("coach-pop"), false, popoverHome);
-  triageRoom();
-}
-
-function popoverDocked(step) {
-  const docked = Boolean(step) && paneOpen("triage");
-  dockedIn(field("coach-pop"), docked, popoverHome, docked);
-  return docked;
-}
-
-window.addEventListener("resize", triageRoom);
-
 function triageRule(rule) {
   return `${t(rule.engine === "modsecurity" ? "triage.engine.waf" : "triage.engine.ids")} ${rule.rule} · ${rule.signature} ×${rule.count}`;
 }
@@ -285,16 +248,11 @@ async function triageOpen() {
   field("triage-list").querySelectorAll("[data-item]").forEach(triageWire);
 }
 
-function scenarioNote() {
-  if (!scenario) return;
-  field("lesson-done").innerHTML = [scenario.briefing.goal, scenario.briefing.measured_by]
-    .map((key) => `<li>${esc(t(key))}</li>`).join("");
-}
-
 const EDITS_RULES = ["detection", "unknown"];
 
 function rulesPane() {
-  document.querySelector('.pane-tab[data-pane="rules"]').classList.remove("hidden");
+  if (!paneTab("rules").classList.contains("hidden")) return;
+  paneTab("rules").classList.remove("hidden");
   rulesEditor();
   field("lesson-rules-text").setAttribute("rows", "18");
 }

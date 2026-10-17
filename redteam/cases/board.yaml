@@ -73,6 +73,21 @@
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
+# The stock run with a browser User-Agent: CRS 913100 no longer names the
+# scanner, and the payloads are the same, so the 942 rules still decide.
+- name: board-sqli-orderby-sqlmap-random-agent
+  malicious: true
+  stage: initial-compromise
+  technique: T1190
+  pattern: CAPEC-66
+  expect: "SQL"
+  correlation: marker
+  tool: sqlmap
+  args: ["-u", "{target}/?sort=posts_post.id*",
+         "--technique=BT", "--level=5", "--risk=3", "--dbms=mysql", "--random-agent",
+         "-D", "board", "-T", "auth_user", "-C", "username,password",
+         "--dump", "--batch", "--answers=crack=N", "--flush-session"]
+
 # The same injection with a browser User-Agent and tamper scripts that rewrite
 # spaces, comparison operators and keyword case: a defence that only matches
 # sqlmap's own User-Agent or one spelling of the payload lets this one through.

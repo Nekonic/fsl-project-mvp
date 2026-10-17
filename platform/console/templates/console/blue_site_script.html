@@ -1,4 +1,8 @@
-const site = { origin: "", base: "", host: "", history: [], at: -1, expecting: false, heard: [] };
+const site = { origin: "", base: "", host: "", history: [], at: -1, expecting: false, heard: [], failed: "", busy: false };
+const SITE_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+const SITE_HOST = /[.:]|^localhost$/i;
+const SITE_UNRESOLVED = "DNS_PROBE_FINISHED_NXDOMAIN";
+const SITE_PROGRESS_MS = 200;
 
 function readable(path) {
   try {
@@ -9,20 +13,79 @@ function readable(path) {
 }
 
 function siteTyped(text) {
-  let path = String(text).trim().replace(/^[a-z]+:\/\//i, "");
-  if (site.host && path.toLowerCase().startsWith(site.host)) path = path.slice(site.host.length);
-  return path.startsWith("/") ? path : `/${path}`;
+  const rest = String(text).trim().replace(SITE_SCHEME, "");
+  const head = rest.split(/[/?#]/)[0];
+  const host = SITE_HOST.test(head) ? head.toLowerCase().replace(/:80$/, "") : site.host;
+  const path = host === site.host && !SITE_HOST.test(head) ? rest : rest.slice(head.length);
+  const shown = path.startsWith("/") ? path : `/${path}`;
+  return host === site.host ? shown : `http://${host}${shown}`;
 }
 
+const siteElsewhere = (entry) => SITE_SCHEME.test(entry);
+
 function siteShow() {
-  field("site-address").value = `http://${site.host}${readable(site.history[site.at] || "/")}`;
+  const entry = site.history[site.at] || "/";
+  field("site-address").value = siteElsewhere(entry) ? entry : `http://${site.host}${readable(entry)}`;
   field("site-back").disabled = site.at <= 0;
   field("site-forward").disabled = site.at >= site.history.length - 1;
 }
 
+function siteBusy(busy) {
+  site.busy = busy;
+  const reload = field("site-reload");
+  reload.textContent = busy ? "✕" : "↻";
+  reload.title = t(busy ? "site.stop" : "site.reload");
+  const bar = field("site-progress");
+  if (!bar) return;
+  clearTimeout(bar.fading);
+  if (busy) {
+    bar.style.transition = "none";
+    bar.style.opacity = "1";
+    bar.style.width = "0";
+    requestAnimationFrame(() => {
+      bar.style.transition = "width 8s cubic-bezier(0.1, 0.7, 0.2, 1)";
+      bar.style.width = "85%";
+    });
+    return;
+  }
+  bar.style.transition = `width ${SITE_PROGRESS_MS}ms ease-out, opacity ${SITE_PROGRESS_MS}ms ease-out ${SITE_PROGRESS_MS}ms`;
+  bar.style.width = "100%";
+  bar.style.opacity = "0";
+  bar.fading = setTimeout(() => { bar.style.width = "0"; }, SITE_PROGRESS_MS * 3);
+}
+
+function siteFailed(entry) {
+  const host = entry.replace(SITE_SCHEME, "").split(/[/?#]/)[0];
+  field("site-error").innerHTML = `<div style="max-width: 600px; margin: 0 auto; padding: 72px 24px">
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="1.2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M9.5 13.5h.01M14.5 13.5h.01M9.5 18c1.5-1.3 3.5-1.3 5 0"/></svg>
+      <h1 style="margin: 24px 0 16px; font-size: 24px; font-weight: 500; color: var(--heading)">${esc(t("site.unreachable"))}</h1>
+      <p style="font-size: 15px; color: var(--text)">${esc(t("site.unreachable.summary", "\u0000")).replace("\u0000", `<strong>${esc(host)}</strong>`)}</p>
+      <p style="margin-top: 24px; font-size: 12px; color: var(--text-muted)">${SITE_UNRESOLVED}</p>
+    </div>`;
+  site.failed = entry;
+}
+
+function sitePlace() {
+  const onSite = document.querySelector('.pane-tab[data-pane="site"]').getAttribute("aria-selected") === "true";
+  const error = field("site-error");
+  if (!error) return;
+  error.style.display = onSite && site.failed ? "block" : "none";
+  error.style.bottom = field("site-frame").style.bottom;
+  field("site-frame").style.visibility = site.failed ? "hidden" : "visible";
+}
+
 function siteLoad() {
-  site.expecting = true;
-  field("site-frame").src = site.origin + site.base + site.history[site.at].slice(1);
+  const entry = site.history[site.at];
+  if (siteElsewhere(entry)) {
+    siteBusy(false);
+    siteFailed(entry);
+  } else {
+    site.failed = "";
+    site.expecting = true;
+    siteBusy(true);
+    field("site-frame").src = site.origin + site.base + entry.slice(1);
+  }
+  sitePlace();
   siteShow();
 }
 
@@ -40,11 +103,15 @@ function siteStep(by) {
 }
 
 function siteHeard(event) {
-  const said = event.data && event.data.fslSite;
   const from = field("site-frame").contentWindow;
-  if (typeof said !== "string" || (from && event.source !== from) || !site.base) return;
+  if (!event.data || (from && event.source !== from) || !site.base) return;
   if (event.origin && event.origin !== site.origin) return;
-  if (!said.startsWith(site.base.slice(0, -1))) return;
+  if (event.data.fslKey === "F12") {
+    devToggle();
+    return;
+  }
+  const said = event.data.fslSite;
+  if (typeof said !== "string" || !said.startsWith(site.base.slice(0, -1))) return;
   const path = said.slice(site.base.length - 1) || "/";
   if (site.expecting) site.history[site.at] = path;
   else if (path !== site.history[site.at]) {
@@ -52,8 +119,24 @@ function siteHeard(event) {
     site.at = site.history.length - 1;
   }
   site.expecting = false;
+  site.failed = "";
+  siteBusy(false);
+  sitePlace();
   siteShow();
   site.heard.forEach((listener) => listener(path));
+}
+
+function siteParts() {
+  const bar = field("site-bar");
+  bar.style.position = "relative";
+  const progress = document.createElement("div");
+  progress.id = "site-progress";
+  progress.style.cssText = "position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; opacity: 0; background: var(--primary); pointer-events: none";
+  bar.appendChild(progress);
+  const error = document.createElement("div");
+  error.id = "site-error";
+  error.style.cssText = "position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: none; overflow: auto; background: var(--panel); z-index: 10";
+  field("site-frame").parentNode.appendChild(error);
 }
 
 function siteBrowser(served) {
@@ -63,13 +146,18 @@ function siteBrowser(served) {
   site.base = served.path;
   site.host = served.path.split("/")[3] || "";
   document.querySelector('.pane-tab[data-pane="site"]').classList.remove("hidden");
+  siteParts();
   field("site-bar").addEventListener("submit", (event) => {
     event.preventDefault();
     siteGo(siteTyped(field("site-address").value));
   });
   field("site-back").addEventListener("click", () => siteStep(-1));
   field("site-forward").addEventListener("click", () => siteStep(1));
-  field("site-reload").addEventListener("click", () => { if (site.history.length) siteLoad(); });
+  field("site-reload").addEventListener("click", () => {
+    if (site.busy) siteBusy(false);
+    else if (site.history.length) siteLoad();
+  });
+  field("site-frame").addEventListener("load", () => { if (site.busy) siteBusy(false); });
   window.addEventListener("message", siteHeard);
   devTools();
 }

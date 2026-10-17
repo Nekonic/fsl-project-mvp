@@ -164,6 +164,7 @@ FSL_SUBSTRATE_OPTIONS = dict(
                 "platform": "FSL_OPENSTACK_PLATFORM",
                 "image_tag": "FSL_IMAGE_TAG",
                 "slots": "FSL_OPENSTACK_SLOTS",
+                "sideloaded": "FSL_SIDELOADED",
             }.items()
         } | {"source": FSL_SOURCE},
     }.get(FSL_SUBSTRATE, {}),

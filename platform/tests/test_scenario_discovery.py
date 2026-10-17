@@ -75,7 +75,7 @@ def test_the_catalogue_lists_each_foundation_with_what_its_card_shows(client):
     assert board["foundations"]
     for card in board["foundations"]:
         assert set(card) == {"id", "order", "title", "goal", "minutes", "level", "defense", "prerequisites", "steps",
-                             "learns"}, card["id"]
+                             "step_ids", "learns"}, card["id"]
         assert card["defense"] == wargames.lesson_defense("board", card["id"])
         assert card["steps"] == len(wargames.lesson("board", lesson_id=card["id"])["steps"]) > 0
     assert board["attacks"] + board["benign"] == board["cases"] and board["benign"] >= 4
@@ -84,4 +84,4 @@ def test_the_catalogue_lists_each_foundation_with_what_its_card_shows(client):
 def test_the_waf_step_s_command_names_the_declared_exclusion_file(settings):
     [step] = [step for step in wargames.lesson("board", lesson_id="f6")["steps"] if step["id"] == "excluded"]
 
-    assert step["command"] == f"cat {settings.FSL_WAF.rules}"
+    assert step["command"] == f"grep -n ruleRemove {settings.FSL_WAF.rules}"

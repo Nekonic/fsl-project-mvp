@@ -1,12 +1,12 @@
 <div id="topology" class="absolute inset-0 flex-col bg-panel" style="display: none">
   <div class="h-10 border-b border-line bg-subdued flex items-center px-3 gap-2 shrink-0 min-w-0 text-[12.5px]">
-    <button type="button" id="topology-gns3" class="tab" data-t="topology.view.map"></button>
     <button type="button" id="topology-fit" class="btn btn-sm btn-ghost shrink-0" data-t="topology.fit" style="display: none"></button>
     <span id="topology-said" class="text-muted truncate"></span>
   </div>
   <div class="flex-1 min-h-0 relative">
     <iframe id="topology-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
-            referrerpolicy="no-referrer"></iframe>
+            data-t-title="topology.view.map" referrerpolicy="no-referrer"></iframe>
+    <div id="map-wait" class="map-wait hidden"><span data-t="topology.loading"></span></div>
   </div>
   <p id="topology-trademark" class="shrink-0 border-t border-line px-3 py-1 text-[11px] text-muted" data-t="topology.trademark"></p>
 </div>

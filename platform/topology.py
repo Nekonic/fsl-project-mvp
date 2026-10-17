@@ -185,16 +185,44 @@ def shown(drawn, project) -> dict:
         name: {**node, "addresses": {on: held for on, held in node["addresses"].items() if kinds.get(on) == SWITCH}}
         for name, node in drawn["nodes"].items() if name in kinds}}
 
-def facts(project, learner) -> dict[str, list[str]]:
-    near, kinds = _wired(project), _kinds(project)
-    entered = {name for name in near.get(INTERNET, ()) if kinds[name] != SWITCH}
-    transit = [learner.roles[role] for role in TRANSIT if learner.roles.get(role) in entered]
-    database = learner.roles.get(f"{learner.wargame}{DATABASE_SUFFIX}", "")
-    return {
-        "entry": transit[:1],
-        "logs": [name for name in kinds if name == LOG_SERVER],
-        "segment": sorted(name for name in near.get(database, ()) if kinds[name] == SWITCH),
-    }
+ZONES = {"service": SERVICE, "database": DATABASE_SWITCH, "monitoring": MONITORING}
+
+def hosts(project) -> list[str]:
+    return sorted(name for name, kind in _kinds(project).items() if kind != SWITCH)
+
+def switch_of(project, host: str) -> str:
+    kinds = _kinds(project)
+    return min((name for name in _wired(project).get(host, ()) if kinds[name] == SWITCH), default="")
+
+def route(learner, site: str) -> list[str]:
+    return list(dict.fromkeys([CUSTOMERS, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+
+def link_heads(learner, found) -> dict[tuple[str, str], object]:
+    held: dict[tuple[str, str], list] = {}
+    for one in found:
+        switch = learner.switches.get(one.segment)
+        if switch and not one.name.startswith(BRIDGE_PREFIX):
+            for name in learner.hosts.get(one.host, ()):
+                held.setdefault((name, switch), []).append(one)
+    return {pair: head for pair, kept in held.items()
+            if (head := _head(kept, learner.prefers.get(pair[0], learner.prefers[""]), strict=pair[0] == CUSTOMERS))}
+
+def address(project, learner, found, host: str, zone: str | None = None) -> list[str]:
+    one = link_heads(learner, found).get((host, ZONES.get(zone or "") or switch_of(project, host)))
+    return [one.address, one.address.partition("/")[0]] if one else []
+
+def subnet(project, learner, found, host: str) -> list[str]:
+    one = link_heads(learner, found).get((host, switch_of(project, host)))
+    return [str(ipaddress.ip_interface(one.address).network)] if one else []
+
+def zone_names(projects, host: str) -> list[str]:
+    named = [captions(project).get(switch_of(project, host)) for project in projects]
+    return [_shape(caption)[1].text.strip() for caption in named if caption is not None]
+
+def hosts_at(learner, found, addresses: list[str]) -> list[str]:
+    wanted = {value.partition("/")[0] for value in addresses}
+    return sorted({name for (name, _), one in link_heads(learner, found).items()
+                   if one.address.partition("/")[0] in wanted})
 
 LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #1b4f8a;fill-opacity: 1.0;"
 SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #5b6770;fill-opacity: 1.0;"
@@ -342,7 +370,8 @@ def _zones(document) -> tuple[list, list]:
 
 def captions(document) -> dict[str, dict]:
     zones, texts = _zones(document)
-    titled = {id(_smallest(text["x"], text["y"], zones)): text for text in texts}
+    titled = {id(_smallest(text["x"], text["y"], zones)): text
+              for text in sorted(texts, key=lambda text: (text["y"], text["x"]), reverse=True)}
     found = {}
     for node in document["topology"]["nodes"]:
         if node["node_type"] == SWITCH:
@@ -360,8 +389,9 @@ def for_wargame(project, learner) -> dict:
     zones, texts = _zones(document)
     kept = [zone for zone in zones if any(_within(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2,
                                                   _area(zone)) for node in topology["nodes"])]
-    shown = {id(zone) for zone in kept} | {id(text) for text in texts if id(_smallest(text["x"], text["y"], zones))
-                                           in {id(zone) for zone in kept}}
+    kept_ids = {id(zone) for zone in kept}
+    shown = kept_ids | {id(text) for text in texts
+                        if (zone := _smallest(text["x"], text["y"], zones)) is None or id(zone) in kept_ids}
     topology["drawings"] = [drawing for drawing in topology["drawings"] if id(drawing) in shown]
     return document
 
@@ -379,13 +409,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
     document["name"] = f"{base} {called}" + (korean + rest if korean else "")
     document["show_interface_labels"] = True
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
-    held: dict[tuple[str, str], list] = {}
-    for one in found:
-        switch = learner.switches.get(one.segment)
-        if switch and not one.name.startswith(BRIDGE_PREFIX):
-            for name in learner.hosts.get(one.host, ()):
-                held.setdefault((name, switch), []).append(one)
-    bare = _nic_only(learner, found)
+    heads, bare = link_heads(learner, found), _nic_only(learner, found)
     toward: dict[str, list[tuple[str, tuple[float, float]]]] = {}
     for link in document["topology"]["links"]:
         one, other = (by_id[end["node_id"]] for end in link["nodes"])
@@ -396,9 +420,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
         ends = [by_id[end["node_id"]] for end in link["nodes"]]
         for end, node, other in ((link["nodes"][0], ends[0], ends[1]), (link["nodes"][1], ends[1], ends[0])):
             switching = node["node_type"] == SWITCH
-            prefers = learner.prefers.get(node["name"], learner.prefers[""])
-            head = None if switching else _head(held.get((node["name"], other["name"]), []), prefers,
-                                                 strict=node["name"] == CUSTOMERS)
+            head = None if switching else heads.get((node["name"], other["name"]))
             if switching:
                 text = port_label(node, end["port_number"])
             elif head:

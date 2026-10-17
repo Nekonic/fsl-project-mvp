@@ -1,7 +1,11 @@
-const dev = { open: false, after: 0, rows: [], height: 280, timer: null, picked: null };
+const dev = {
+  open: false, after: 0, rows: [], height: 280, timer: null, picked: null, record: null, tab: "headers",
+  preserve: false, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
+};
 const DEV_POLL_MS = 2000;
-const DEV_SHORT = 2000;
 const DEV_LOWEST = 120;
+const DEV_FIELDS = ["general.url", "general.method", "general.status", "general.remote", ""];
+const DEV_FORM = "application/x-www-form-urlencoded";
 const sitePath = (tail) => `/api/sessions/${sessionId()}/site/requests/${tail}`;
 
 function devPlace() {
@@ -12,21 +16,67 @@ function devPlace() {
   field("site-dev").style.height = `${dev.height}px`;
   field("site-frame").style.bottom = shown ? `${dev.height}px` : "0px";
   field("site-dev-toggle").setAttribute("aria-pressed", String(dev.open));
+  sitePlace();
+}
+
+function devName(url) {
+  const parsed = new URL(url);
+  const last = parsed.pathname.slice(parsed.pathname.lastIndexOf("/") + 1);
+  if (last || parsed.search) return last + parsed.search;
+  const folder = parsed.pathname.replace(/\/$/, "");
+  return folder ? `${folder.slice(folder.lastIndexOf("/") + 1)}/` : parsed.host;
+}
+
+function devInitiator(initiator) {
+  if (!initiator || initiator.type !== "parser") return { text: t("site.dev.initiator.other"), sub: "" };
+  const parsed = new URL(initiator.url);
+  const name = parsed.pathname.slice(parsed.pathname.lastIndexOf("/") + 1) + parsed.search;
+  return { text: name || "(index)", sub: t("site.dev.initiator.parser"), title: initiator.url };
+}
+
+function devNumber(value, unit, digits, display = "narrow") {
+  return new Intl.NumberFormat(language, {
+    style: "unit", unit, unitDisplay: display, minimumFractionDigits: digits, maximumFractionDigits: digits,
+  }).format(value);
+}
+
+const devSize = (bytes) => devNumber(bytes / 1000, "kilobyte", bytes < 100000 ? 1 : 0);
+const devTime = (ms) => (ms < 1000 ? devNumber(Math.round(ms), "millisecond", 0) : devNumber(ms / 1000, "second", 2));
+const devFailed = (status) => status >= 400;
+const devAddress = (url) => readable(url.replace(/^https?:\/\/[^/]+/, "").replace(/\+/g, " "));
+
+function devShown() {
+  const wanted = dev.filter.toLowerCase();
+  return dev.rows.filter((row) => (dev.type === "all" || row.category === dev.type)
+    && (!wanted || row.url.toLowerCase().includes(wanted) || readable(row.url).toLowerCase().includes(wanted)));
 }
 
 function devRows() {
-  field("site-dev-rows").innerHTML = dev.rows.map((row) => {
-    const tone = row.blocked || row.status >= 400 ? "text-danger" : "text-body";
-    const picked = row.id === dev.picked ? "bg-primary-soft" : "hover:bg-subdued";
-    const blocked = row.blocked ? ` <span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
-    return `<tr data-request="${row.id}" class="cursor-pointer border-t border-line-subdued ${picked}">
-      <td class="px-2 py-1">${esc(row.method)}</td>
-      <td class="px-2 py-1 break-all">${esc(row.url)}</td>
-      <td class="px-2 py-1 ${tone} font-semibold whitespace-nowrap">${esc(row.status)}${blocked}</td>
-      <td class="px-2 py-1 text-muted whitespace-nowrap">${esc(row.ms)} ms</td></tr>`;
+  const shown = devShown();
+  field("site-dev-empty").classList.toggle("hidden", dev.rows.length > 0);
+  field("site-dev").classList.toggle("dv-picked", dev.picked !== null);
+  field("site-dev-rows").innerHTML = shown.map((row) => {
+    const from = devInitiator(row.initiator);
+    const tone = devFailed(row.status) ? "dv-fail" : "";
+    return `<tr data-request="${row.id}" data-coach="row" data-url="${esc(devAddress(row.url))}" class="${tone}"
+        aria-selected="${row.id === dev.picked}" title="${esc(row.url)}">
+      <td>${esc(devName(row.url))}</td>
+      <td class="dv-wide">${esc(row.status)}</td>
+      <td class="dv-wide">${esc(row.type)}</td>
+      <td class="dv-wide ${from.sub ? "" : "dv-dim"}" title="${esc(from.title || from.text)}">${esc(from.text)}${from.sub ? `<span class="dv-sub">${esc(from.sub)}</span>` : ""}</td>
+      <td class="dv-wide">${esc(devSize(row.size))}</td>
+      <td class="dv-wide">${esc(devTime(row.ms))}</td></tr>`;
   }).join("");
   field("site-dev-rows").querySelectorAll("[data-request]").forEach((line) =>
     line.addEventListener("click", () => devPick(Number(line.dataset.request))));
+}
+
+function devTake(rows) {
+  rows.forEach((row) => {
+    if (!dev.preserve && row.category === "doc") dev.rows = [];
+    dev.rows.push(row);
+  });
+  if (dev.picked !== null && !dev.rows.some((row) => row.id === dev.picked)) devUnpick();
 }
 
 async function devPoll() {
@@ -42,60 +92,146 @@ async function devPoll() {
     return;
   }
   if (!read.ok || !Array.isArray(read.body) || !read.body.length) return;
-  dev.rows = dev.rows.concat(read.body);
-  dev.after = Math.max(...dev.rows.map((row) => row.id));
+  dev.after = Math.max(dev.after, ...read.body.map((row) => row.id));
+  devTake(read.body);
   devRows();
 }
 
-function devHeaders(title, headers) {
-  const lines = Object.entries(headers || {}).map(([name, value]) =>
-    `<div><b class="text-heading">${esc(name)}:</b> <span class="break-all">${esc(value)}</span></div>`).join("");
-  return `<section><h4 class="label mb-1">${esc(title)}</h4><div class="font-mono">${lines || "-"}</div></section>`;
+const devToggleLink = (key, act) => `<button type="button" class="dv-link" data-act="${act}">${esc(t(key))}</button>`;
+
+function devHeaderSection(title, kind, head, headers, coach) {
+  const raw = dev.raw[kind];
+  const sorted = headers.slice().sort((a, b) => a[0].toLowerCase().localeCompare(b[0].toLowerCase()));
+  const body = raw
+    ? `<pre class="dv-raw">${esc([head, ...headers.map(([name, value]) => `${name}: ${value}`)].join("\n"))}</pre>`
+    : sorted.map(([name, value]) => `<div class="dv-row"><span>${esc(name)}</span><span>${esc(value)}</span></div>`).join("");
+  return `<section class="dv-section"${coach ? ` data-coach="${coach}"` : ""}>
+    <div class="dv-heading"><span>${esc(title)}</span>
+      <label><input type="checkbox" data-raw="${kind}"${raw ? " checked" : ""}>${esc(t("site.dev.raw"))}</label></div>
+    ${body}</section>`;
 }
 
-function devBody(title, body, key) {
-  if (!body) return "";
-  const long = body.text.length > DEV_SHORT;
-  const note = body.truncated ? `<p class="text-faint">${esc(t("site.dev.truncated", body.size))}</p>` : "";
-  return `<section><h4 class="label mb-1">${esc(title)}</h4>
-    <pre data-body="${key}" class="code whitespace-pre-wrap break-all max-h-none">${esc(long ? body.text.slice(0, DEV_SHORT) : body.text)}</pre>
-    ${long ? `<button data-more="${key}" class="text-primary hover:underline">${esc(t("site.dev.more"))}</button>` : ""}${note}</section>`;
+function devHeaders(record) {
+  const general = [
+    [t("site.dev.request_url"), esc(record.url)],
+    [t("site.dev.request_method"), esc(record.method)],
+    [t("site.dev.status_code"), `<i class="dv-dot" style="background: var(${devFailed(record.status) ? "--danger" : record.status >= 300 && record.status !== 304 ? "--warning" : "--success"})"></i>${esc(`${record.status} ${record.status_text}`)}`],
+    [t("site.dev.remote_address"), esc(record.remote_address)],
+    [t("site.dev.referrer_policy"), esc(record.referrer_policy)],
+  ];
+  const path = record.url.replace(/^https?:\/\/[^/]+/, "") || "/";
+  return `<section class="dv-section"><div class="dv-heading">${esc(t("site.dev.general"))}</div>
+      ${general.map(([name, value], index) => `<div class="dv-row"${DEV_FIELDS[index] ? ` data-coach="${DEV_FIELDS[index]}"` : ""}><span>${esc(name)}</span><span>${value}</span></div>`).join("")}</section>
+    ${devHeaderSection(t("site.dev.response_headers"), "response", `HTTP/1.1 ${record.status} ${record.status_text}`, record.response_headers)}
+    ${devHeaderSection(t("site.dev.request_headers"), "request", `${record.method} ${path} HTTP/1.1`, record.request_headers)}`;
 }
 
-function devShow(record, heading) {
-  const detail = field("site-dev-detail");
-  const verdict = record.blocked ? `<span class="badge badge-fail">${esc(t("site.dev.blocked"))}</span>` : "";
-  const tone = record.blocked || record.status >= 400 ? "text-danger" : "text-success";
-  detail.innerHTML = `<p class="font-mono break-all"><b>${esc(record.method)}</b> ${esc(record.url)}
-      <span class="${tone} font-semibold">${esc(record.status)}</span> ${verdict}</p>
-    ${heading ? `<p class="text-muted">${esc(heading)}</p>` : devHeaders(t("site.dev.request_headers"), record.request_headers)
-      + devHeaders(t("site.dev.response_headers"), record.response_headers)
-      + devBody(t("site.dev.request_body"), record.request_body, "request")}
-    ${devBody(heading ? t("site.dev.source") : t("site.dev.response_body"), record.response_body, "response")}`;
-  detail.querySelectorAll("[data-more]").forEach((more) => more.addEventListener("click", () => {
-    const body = more.dataset.more === "request" ? record.request_body : record.response_body;
-    detail.querySelector(`[data-body="${more.dataset.more}"]`).textContent = body.text;
-    more.remove();
+function devPairs(text) {
+  return text.split("&").filter(Boolean).map((pair) => {
+    const at = pair.indexOf("=");
+    return at < 0 ? [pair, ""] : [pair.slice(0, at), pair.slice(at + 1)];
+  });
+}
+
+const devDecoded = (text) => readable(text.replace(/\+/g, " "));
+
+function devParams(title, text, coach) {
+  const view = dev.query;
+  const links = view === "source"
+    ? devToggleLink("site.dev.view_parsed", "parsed")
+    : devToggleLink("site.dev.view_source", "source")
+      + devToggleLink(view === "encoded" ? "site.dev.view_decoded" : "site.dev.view_encoded", view === "encoded" ? "parsed" : "encoded");
+  const shown = (value) => (view === "encoded" ? value : devDecoded(value));
+  const body = view === "source"
+    ? `<pre class="dv-raw">${esc(text)}</pre>`
+    : devPairs(text).map(([name, value]) => `<div class="dv-row"><span>${esc(shown(name))}</span><span>${value === "" ? `<i class="dv-dim">${esc(t("site.dev.empty"))}</i>` : esc(shown(value))}</span></div>`).join("");
+  return `<section class="dv-section"${coach ? ` data-coach="${coach}"` : ""}>
+    <div class="dv-heading"><span>${esc(title)}</span>${links}</div>${body}</section>`;
+}
+
+function devSentType(record) {
+  const named = (record.request_headers || []).find(([name]) => name.toLowerCase() === "content-type");
+  return named ? named[1].split(";")[0].trim().toLowerCase() : "";
+}
+
+function devPayload(record) {
+  const query = new URL(record.url).search.slice(1);
+  const body = record.request_body ? record.request_body.text : "";
+  const parts = [];
+  if (query) parts.push(devParams(t("site.dev.query"), query, "payload.query"));
+  if (body && devSentType(record) === DEV_FORM) parts.push(devParams(t("site.dev.form"), body, "payload.form"));
+  else if (body) parts.push(`<section class="dv-section"><div class="dv-heading">${esc(t("site.dev.payload"))}</div><pre class="dv-raw">${esc(body)}</pre></section>`);
+  return parts.join("");
+}
+
+function devSource(text) {
+  return `<div class="dv-source">${text.split("\n").map((line, index) => `<span>${index + 1}</span><span>${esc(line)}</span>`).join("")}</div>`;
+}
+
+function devBodyNote(record) {
+  const body = record.response_body;
+  return body && body.truncated ? `<p class="dv-empty">${esc(t("site.dev.truncated", body.size))}</p>` : "";
+}
+
+function devResponse(record) {
+  const body = record.response_body;
+  if (!body || !body.size) return `<p class="dv-empty">${esc(t("site.dev.no_response"))}</p>`;
+  return devSource(body.text) + devBodyNote(record);
+}
+
+function devPreview(record) {
+  const body = record.response_body;
+  if (!body || !body.size) return `<p class="dv-empty">${esc(t("site.dev.no_response"))}</p>`;
+  if (record.category === "img") return `<p class="dv-empty">${esc(t("site.dev.no_preview"))}</p>`;
+  if (record.category !== "doc") return devSource(body.text);
+  return `<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="${esc(body.text)}" style="width: 100%; height: 100%; border: 0; background: #fff"></iframe>`;
+}
+
+const DEV_TABS = { headers: devHeaders, payload: devPayload, preview: devPreview, response: devResponse };
+
+function devHasPayload(record) {
+  return Boolean(new URL(record.url).search.length > 1 || (record.request_body && record.request_body.size));
+}
+
+function devShow() {
+  const record = dev.record;
+  if (!record) return;
+  const payload = devHasPayload(record);
+  if (dev.tab === "payload" && !payload) dev.tab = "headers";
+  field("site-dev-detail").querySelectorAll("[data-tab]").forEach((tab) => {
+    tab.setAttribute("aria-selected", String(tab.dataset.tab === dev.tab));
+    tab.classList.toggle("hidden", tab.dataset.tab === "payload" && !payload);
+  });
+  const view = field("site-dev-view");
+  view.style.overflow = dev.tab === "preview" && record.category === "doc" ? "hidden" : "auto";
+  view.innerHTML = DEV_TABS[dev.tab](record);
+  view.querySelectorAll("[data-raw]").forEach((box) => box.addEventListener("change", () => {
+    dev.raw[box.dataset.raw] = box.checked;
+    devShow();
+  }));
+  view.querySelectorAll("[data-act]").forEach((link) => link.addEventListener("click", () => {
+    dev.query = link.dataset.act;
+    devShow();
   }));
 }
 
 async function devPick(id) {
   dev.picked = id;
   devRows();
+  field("site-dev-detail").classList.remove("hidden");
+  field("site-dev-detail").classList.add("flex");
   const read = await api(sitePath(`${id}/`));
-  if (read.ok) devShow(read.body);
+  if (!read.ok || dev.picked !== id) return;
+  dev.record = read.body;
+  devShow();
 }
 
-async function devSource() {
-  await devPoll();
-  const here = readable(site.history[site.at] || "/");
-  const page = dev.rows.filter((row) => readable(row.url) === `http://${site.host}${here}`).pop();
-  if (!page) {
-    field("site-dev-detail").innerHTML = `<p class="text-muted">${esc(t("site.dev.no_source"))}</p>`;
-    return;
-  }
-  const read = await api(sitePath(`${page.id}/`));
-  if (read.ok) devShow(read.body, t("site.dev.source_of", read.body.url));
+function devUnpick() {
+  dev.picked = null;
+  dev.record = null;
+  field("site-dev-detail").classList.add("hidden");
+  field("site-dev-detail").classList.remove("flex");
+  field("site-dev").classList.remove("dv-picked");
 }
 
 function devResize(event) {
@@ -113,16 +249,48 @@ function devResize(event) {
   window.addEventListener("mouseup", stop);
 }
 
+function devToggle() {
+  dev.open = !dev.open;
+  devPlace();
+  clearInterval(dev.timer);
+  if (dev.open) {
+    devPoll();
+    dev.timer = setInterval(devPoll, DEV_POLL_MS);
+  }
+}
+
 function devTools() {
-  field("site-dev-toggle").addEventListener("click", () => {
-    dev.open = !dev.open;
-    devPlace();
-    clearInterval(dev.timer);
-    if (dev.open) {
-      devPoll();
-      dev.timer = setInterval(devPoll, DEV_POLL_MS);
-    }
+  field("site-dev-toggle").dataset.coach = "toggle";
+  field("site-dev-toggle").addEventListener("click", devToggle);
+  document.addEventListener("keydown", (event) => {
+    const onSite = document.querySelector('.pane-tab[data-pane="site"]').getAttribute("aria-selected") === "true";
+    if (event.key !== "F12" || !onSite) return;
+    event.preventDefault();
+    devToggle();
   });
-  field("site-dev-source").addEventListener("click", devSource);
   field("site-dev-grip").addEventListener("mousedown", devResize);
+  field("site-dev-clear").addEventListener("click", () => {
+    dev.rows = [];
+    devUnpick();
+    devRows();
+  });
+  field("site-dev-filter").addEventListener("input", (event) => {
+    dev.filter = event.target.value.trim();
+    devRows();
+  });
+  field("site-dev-preserve").addEventListener("change", (event) => { dev.preserve = event.target.checked; });
+  field("site-dev-types").querySelectorAll("[data-type]").forEach((chip) => chip.addEventListener("click", () => {
+    dev.type = chip.dataset.type;
+    field("site-dev-types").querySelectorAll("[data-type]").forEach((other) =>
+      other.setAttribute("aria-pressed", String(other === chip)));
+    devRows();
+  }));
+  field("site-dev-detail").querySelectorAll("[data-tab]").forEach((tab) => tab.addEventListener("click", () => {
+    dev.tab = tab.dataset.tab;
+    devShow();
+  }));
+  field("site-dev-close").addEventListener("click", () => {
+    devUnpick();
+    devRows();
+  });
 }

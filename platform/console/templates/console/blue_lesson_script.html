@@ -1,351 +1,7 @@
-const PARAGRAPHS = ["read", "write", "replay", "verify"];
 const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
 const lessonId = () => (session && session.lesson_id) || "";
 const caseLabel = (name) => localized(`case.${name}`, name);
-
-function copyThroughSelection(text) {
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  Object.assign(area.style, { position: "fixed", top: "0", left: "0", opacity: "0" });
-  document.body.appendChild(area);
-  try {
-    area.select();
-    return document.execCommand("copy") === true;
-  } catch (error) {
-    return false;
-  } finally {
-    area.remove();
-  }
-}
-
-async function copyText(text) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (error) {
-      return copyThroughSelection(text);
-    }
-  }
-  return copyThroughSelection(text);
-}
-
-async function copy(text, button) {
-  button.textContent = t(await copyText(text) ? "lesson.copied" : "lesson.copy_failed");
-  setTimeout(() => { button.textContent = t("lesson.copy"); }, 1500);
-}
-
-function wafTerminal() {
-  const waf = document.querySelector('.pane-tab[data-pane="waf"]');
-  if (!waf || waf.getAttribute("aria-selected") !== "true") return null;
-  try {
-    const term = frame.contentWindow && frame.contentWindow.term;
-    return term && typeof term.paste === "function" ? term : null;
-  } catch (error) {
-    return null;
-  }
-}
-
-const settled = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const PROMPT = /[$#]\s*$/;
-const PROMPT_WAIT_TRIES = 60;
-
-function lastLine(term) {
-  const buffer = term.buffer && term.buffer.active;
-  if (!buffer) return null;
-  for (let row = buffer.length - 1; row >= 0; row -= 1) {
-    const line = buffer.getLine(row);
-    const text = line ? line.translateToString(true) : "";
-    if (text.trim()) return text;
-  }
-  return "";
-}
-
-async function terminalWhenOpen() {
-  for (let tries = 0; tries < 20; tries += 1) {
-    const term = wafTerminal();
-    if (term) return term;
-    await settled(500);
-  }
-  return null;
-}
-
-async function promptShown(term) {
-  for (let tries = 0; tries < PROMPT_WAIT_TRIES; tries += 1) {
-    const line = lastLine(term);
-    if (line === null || PROMPT.test(line)) return true;
-    await settled(500);
-  }
-  return false;
-}
-
-async function runInTerminal(text) {
-  const tab = document.querySelector('.pane-tab[data-pane="waf"]');
-  if (tab.getAttribute("aria-selected") !== "true") openPane(tab);
-  const term = await terminalWhenOpen();
-  if (!term || !(await promptShown(term))) return false;
-  term.paste(`${text}\n`);
-  if (typeof term.input === "function") term.input("\r");
-  if (typeof term.focus === "function") term.focus();
-  return true;
-}
-
-function kaliRow(row) {
-  const counted = Object.entries(row.sensors || {}).map(([sensor, count]) => `${sensor || "-"} ${count}`).join(" · ");
-  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-col gap-1" data-kali="${esc(row.name)}">
-    <div class="flex flex-wrap items-center gap-2"><b class="text-heading">${esc(caseLabel(row.name))}</b>
-      ${row.discover ? `<button class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.replay.kibana"))}</button>` : ""}</div>
-    <p class="text-muted" data-requests>${esc(t("lesson.kali.requests", row.requests || 0))}${counted ? ` (${esc(counted)})` : ""}</p>
-  </li>`;
-}
-
-const REPLAYS_SHOWN = 5;
-const replayed = new Map();
-
-function showInKibana(url) {
-  const tab = document.querySelector('.pane-tab[data-pane="elk"]');
-  const same = paneOpen("elk") && Boolean(frame.src)
-    && new URL(frame.src, location.href).href === new URL(url, location.href).href;
-  tab.dataset.src = url;
-  openPane(tab);
-  if (same) frame.contentWindow.location.reload();
-}
-
-function showReplay(list, row, render) {
-  const rows = [row, ...(replayed.get(list) || [])].slice(0, REPLAYS_SHOWN);
-  replayed.set(list, rows);
-  list.innerHTML = rows.map(render).join("");
-  list.querySelectorAll("[data-discover]").forEach((link) => link.addEventListener("click", () =>
-    showInKibana(link.dataset.discover)));
-}
-
-const NOTE_KEY = "fsl-lesson-note";
-let note = { open: false, tab: "steps" };
-
-function readNote() {
-  try {
-    const kept = JSON.parse(localStorage.getItem(NOTE_KEY)) || {};
-    return typeof kept.tab === "string" ? { tab: kept.tab } : {};
-  } catch (error) {
-    return {};
-  }
-}
-
-function keepNote() {
-  try {
-    localStorage.setItem(NOTE_KEY, JSON.stringify({ tab: note.tab }));
-  } catch (error) {
-    return;
-  }
-}
-
-function placeNote() {
-  field("lesson").classList.toggle("hidden", !note.open);
-  field("lesson").classList.toggle("flex", note.open);
-  triageRoom();
-  field("note-pill").classList.toggle("hidden", note.open);
-  document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
-    tab.setAttribute("aria-selected", String(tab.dataset.tab === note.tab)));
-  document.querySelectorAll("[data-pane-of]").forEach((pane) => {
-    const shown = pane.dataset.paneOf === note.tab;
-    pane.classList.toggle("hidden", !shown);
-    pane.classList.toggle("flex", shown);
-  });
-}
-
-function setNote(change) {
-  note = { ...note, ...change };
-  keepNote();
-  placeNote();
-}
-
-const LANDED_KEY = (id, lesson) => `fsl-lesson-landed-${id}-${lesson}`;
-let landedOnGoal = false;
-
-function firstOpen() {
-  try {
-    if (localStorage.getItem(LANDED_KEY(sessionId(), lessonId()))) return false;
-    localStorage.setItem(LANDED_KEY(sessionId(), lessonId()), "true");
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-function noteControls(landing = "goal") {
-  note = { ...note, ...readNote() };
-  if (!["steps", "goal", "theory", "hint"].includes(note.tab)) note.tab = "steps";
-  landedOnGoal = firstOpen();
-  if (landedOnGoal) note = { ...note, open: true, tab: landing };
-  field("lesson-collapse").textContent = t("lesson.note.collapse");
-  field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
-  field("note-pill").addEventListener("click", () => setNote({ open: true }));
-  document.querySelectorAll("#lesson-tabs .tab").forEach((tab) =>
-    tab.addEventListener("click", () => setNote({ tab: tab.dataset.tab })));
-  placeNote();
-}
-
-const AUTOMATIC = ["rules", "sent", "triage"];
-const POLLED = ["sent", "triage"];
-const SENT_SETTLES_MS = 1500;
-const changed = [];
-const commandsArrived = [];
-const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
-const PASS_PAUSE_MS = 1200;
-const NEXT_LESSON_MS = 2000;
-const WIDE = 480;
-const HELP_AFTER_SECONDS = 60;
-const POINT = 2;
-const paneOpen = (name) => {
-  const tab = document.querySelector(`.pane-tab[data-pane="${name}"]`);
-  return Boolean(tab) && tab.getAttribute("aria-selected") === "true";
-};
-const whereOf = (step) => (step.opens && !paneOpen(step.opens)
-  ? { panel: `.pane-tab[data-pane="${step.opens}"]`, pending: step.opens } : step);
-const paneBody = () => field("pane-body");
-const openedPane = () => {
-  const tab = document.querySelector('.pane-tab[aria-selected="true"]');
-  return tab ? tab.dataset.pane : "";
-};
-const paneName = (name) => {
-  const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
-  return label && label.textContent ? label.textContent : name;
-};
-const ANSWER = 3;
 const spoken = (texts) => (texts ? texts[language] || texts.en || "" : "");
-const SKIP_OFFERED = 4;
-const POLL_SECONDS = 5;
-const STRETCH_KEY = "fsl-lesson-stretch";
-const MISSING_AFTER_FRAMES = 120;
-const GAP = 14;
-const EDGE = 12;
-
-const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left < a.left + a.width
-  && a.top < b.top + b.height && b.top < a.top + a.height;
-const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
-  && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
-
-function boxOf(element) {
-  const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : null;
-  return rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
-}
-
-function noteBox() {
-  return note.open ? boxOf(field("lesson")) : null;
-}
-
-function clipped(rect, bounds) {
-  if (!bounds) return rect;
-  const left = Math.max(rect.left, bounds.left);
-  const top = Math.max(rect.top, bounds.top);
-  const right = Math.min(rect.left + rect.width, bounds.left + bounds.width);
-  const bottom = Math.min(rect.top + rect.height, bounds.top + bounds.height);
-  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
-}
-
-function locate(step) {
-  if (step.pane) return boxOf(paneBody());
-  const inPanel = Boolean(step.panel);
-  let doc = document;
-  if (!inPanel) {
-    try {
-      doc = frame.contentDocument;
-    } catch (error) {
-      doc = null;
-    }
-  }
-  const shown = (selector) => {
-    const element = doc && selector ? doc.querySelector(selector) : null;
-    const rect = element ? element.getBoundingClientRect() : null;
-    if (!rect || !rect.width) return null;
-    if (inPanel) return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    const pane = frame.getBoundingClientRect();
-    if (rect.bottom <= 0 || rect.top >= pane.height || rect.right <= 0 || rect.left >= pane.width) return null;
-    return { left: pane.left + rect.left, top: pane.top + rect.top, width: rect.width, height: rect.height };
-  };
-  return shown(step.panel || step.kibana) || shown(step.first);
-}
-
-function placePopover(step, rect) {
-  const pop = field("coach-pop");
-  const arrow = field("coach-pop-arrow");
-  if (popoverDocked(step)) {
-    arrow.classList.add("hidden");
-    return;
-  }
-  const width = pop.offsetWidth || 340;
-  const height = pop.offsetHeight || 200;
-  const viewWidth = window.innerWidth || 1440;
-  const viewHeight = window.innerHeight || 900;
-  const aside = noteBox();
-  const pane = boxOf(paneBody());
-  const clampX = (x) => Math.max(EDGE, Math.min(x, viewWidth - width - EDGE));
-  const clampY = (y) => Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
-  const fits = (spot) => spot.left >= EDGE && spot.top >= EDGE
-    && spot.left + width <= viewWidth - EDGE && spot.top + height <= viewHeight - EDGE;
-  const clear = (spot, avoidTarget) => {
-    const area = { left: spot.left, top: spot.top, width, height };
-    return fits(spot) && !overlaps(area, aside) && !(avoidTarget && overlaps(area, rect));
-  };
-  let spots;
-  let avoidTarget = false;
-  if (rect && step.pane) {
-    const inset = 16;
-    const right = rect.left + rect.width - width - inset;
-    const bottom = rect.top + rect.height - height - inset;
-    spots = [
-      { left: right, top: bottom },
-      aside ? { left: aside.left - GAP - width, top: bottom } : null,
-      { left: rect.left + inset, top: bottom },
-      { left: rect.left + inset, top: rect.top + inset },
-    ];
-  } else if (rect) {
-    avoidTarget = true;
-    const middleX = clampX(rect.left + rect.width / 2 - width / 2);
-    const middleY = clampY(rect.top + rect.height / 2 - height / 2);
-    const inNote = within(rect, aside);
-    const wide = rect.width > WIDE
-      ? [{ side: "below", left: rect.left + rect.width - width, top: rect.top + rect.height + GAP }] : [];
-    const right = { side: "right", left: rect.left + rect.width + GAP, top: middleY };
-    const rail = field("rail");
-    const onRail = Boolean(step.pending) && rail.offsetHeight > rail.offsetWidth;
-    spots = [...(onRail ? [right] : []), ...wide,
-      { side: "below", left: middleX, top: rect.top + rect.height + GAP },
-      { side: "above", left: middleX, top: rect.top - GAP - height },
-      { side: "left", left: (inNote ? aside.left : rect.left) - GAP - width, top: middleY },
-      right,
-    ];
-  } else {
-    const area = pane || { left: 0, top: 0, width: viewWidth, height: viewHeight };
-    const centred = area.left + Math.max(EDGE, (area.width - width) / 2);
-    spots = [
-      { left: centred, top: area.top + 64 },
-      aside ? { left: aside.left - GAP - width, top: area.top + 64 } : null,
-      { left: area.left + EDGE, top: area.top + 64 },
-    ];
-  }
-  spots = spots.filter(Boolean);
-  const spot = spots.find((candidate) => clear(candidate, avoidTarget))
-    || spots.find((candidate) => clear(candidate, false)) || spots[0];
-  const left = clampX(spot.left);
-  const top = clampY(spot.top);
-  arrow.classList.toggle("hidden", !spot.side);
-  Object.assign(arrow.style, { left: "", top: "", bottom: "", right: "" });
-  if (spot.side === "below" || spot.side === "above") {
-    Object.assign(arrow.style, {
-      left: `${Math.max(12, Math.min(rect.left + rect.width / 2 - left - 6, width - 24))}px`,
-      top: spot.side === "below" ? "-6px" : "", bottom: spot.side === "above" ? "-6px" : "",
-    });
-  } else if (spot.side) {
-    Object.assign(arrow.style, {
-      top: `${Math.max(12, Math.min(rect.top + rect.height / 2 - top - 6, height - 24))}px`,
-      left: spot.side === "right" ? "-6px" : "", right: spot.side === "left" ? "-6px" : "",
-    });
-  }
-  Object.assign(pop.style, { left: `${left}px`, top: `${top}px` });
-}
 
 function kept(key, fallback) {
   try {
@@ -364,70 +20,505 @@ function keep(key, value) {
   }
 }
 
+const either = (letter) => (/[a-z]/i.test(letter) ? `[${letter.toLowerCase()}${letter.toUpperCase()}]` : letter);
+
+function pattern(text) {
+  if (!text) return null;
+  try {
+    return new RegExp(text);
+  } catch (error) {
+    try {
+      return new RegExp(text.replace(/\(\?i:([A-Za-z]+)\)/g, (_, word) => `(?:${[...word].map(either).join("")})`));
+    } catch (again) {
+      return null;
+    }
+  }
+}
+
+function boxOf(element) {
+  const rect = element && element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+  return rect && rect.width && rect.height ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+}
+
+const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left < a.left + a.width
+  && a.top < b.top + b.height && b.top < a.top + a.height;
+const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
+  && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
+const grown = (box, by) => ({ left: box.left - by, top: box.top - by, width: box.width + 2 * by, height: box.height + 2 * by });
+
+function clipped(rect, bounds) {
+  if (!rect) return null;
+  if (!bounds) return rect;
+  const left = Math.max(rect.left, bounds.left);
+  const top = Math.max(rect.top, bounds.top);
+  const right = Math.min(rect.left + rect.width, bounds.left + bounds.width);
+  const bottom = Math.min(rect.top + rect.height, bounds.top + bounds.height);
+  return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
+}
+
+function inFrame(host, rect) {
+  const box = boxOf(host);
+  if (!box || !rect) return null;
+  const left = rect.left ?? rect.x;
+  const top = rect.top ?? rect.y;
+  const width = rect.width ?? rect.w;
+  const height = rect.height ?? rect.h;
+  if (![left, top, width, height].every(Number.isFinite) || !width || !height) return null;
+  return clipped({ left: box.left + left, top: box.top + top, width, height }, box);
+}
+
+function showInKibana(url) {
+  const tab = paneTab("elk");
+  const same = paneOpen("elk") && Boolean(frame.getAttribute("src"))
+    && new URL(frame.getAttribute("src"), location.href).href === new URL(url, location.href).href;
+  tab.dataset.src = url;
+  openPane(tab);
+  if (same && frame.contentWindow && frame.contentWindow.location) frame.contentWindow.location.reload();
+}
+
+function kaliRow(row) {
+  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
+    <b class="text-heading">${esc(caseLabel(row.name))}</b>
+    ${row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
+  </li>`;
+}
+
+const NOTE_KEY = "fsl-lesson-note";
+const THEORY_KEY = (id, lesson) => `fsl-lesson-theory-${id}-${lesson}`;
+const LANDED_KEY = (id, lesson) => `fsl-lesson-landed-${id}-${lesson}`;
+let note = { open: true };
+let landed = false;
+
+function placeNote() {
+  field("lesson").classList.toggle("folded", !note.open);
+}
+
+function setNote(change) {
+  note = { ...note, ...change };
+  keep(NOTE_KEY, { open: note.open });
+  placeNote();
+}
+
+function firstOpen() {
+  try {
+    if (localStorage.getItem(LANDED_KEY(sessionId(), lessonId()))) return false;
+    localStorage.setItem(LANDED_KEY(sessionId(), lessonId()), "true");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function folding(toggle, body, mark, heard = () => {}) {
+  const set = (opened) => {
+    body.classList.toggle("hidden", !opened);
+    body.classList.toggle("flex", opened);
+    toggle.setAttribute("aria-expanded", String(opened));
+    if (mark) mark.textContent = opened ? "▴" : "▾";
+  };
+  toggle.addEventListener("click", () => {
+    const opened = toggle.getAttribute("aria-expanded") !== "true";
+    set(opened);
+    heard(opened);
+  });
+  return set;
+}
+
+let theoryFolded = () => {};
+
+function noteControls() {
+  landed = firstOpen();
+  note = { open: landed || kept(NOTE_KEY, {}).open !== false };
+  field("lesson").classList.remove("hidden");
+  field("note-strip-text").textContent = t("lesson.note.heading");
+  field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
+  field("note-strip").addEventListener("click", () => setNote({ open: true }));
+  theoryFolded = folding(field("theory-toggle"), field("theory-body"), field("theory-mark"),
+    (opened) => keep(THEORY_KEY(sessionId(), lessonId()), opened));
+  folding(field("steps-toggle"), field("lesson-step-list"));
+  placeNote();
+}
+
+function shownSection(id, shown = true) {
+  field(id).classList.toggle("hidden", !shown);
+  field(id).classList.toggle("flex", shown);
+}
+
+function noteLesson(taught) {
+  field("lesson-title").textContent = t(`${taught.text}.title`);
+  field("lesson-goal-line").textContent = localized(`${taught.text}.summary`, "");
+  const stretch = localized(`${taught.text}.stretch`, "");
+  field("stretch-text").textContent = stretch;
+  shownSection("stretch-card", Boolean(stretch));
+}
+
+const cards = (listed) => (Array.isArray(listed) ? listed : []).map((card) =>
+  (typeof card === "string" ? { id: card } : card));
+
+function theory(prefix, listed, goTo) {
+  const items = cards(listed);
+  field("lesson-theory").innerHTML = items.map((card) => `
+    <li class="flex flex-col gap-1" data-card="${esc(card.id)}">
+      <b class="text-heading">${esc(t(`${prefix}.theory.${card.id}.title`))}</b>
+      <p class="whitespace-pre-line text-body">${esc(t(`${prefix}.theory.${card.id}.body`))}</p>
+      ${card.shows && goTo ? `<button type="button" class="self-start text-[12px] text-primary hover:underline" data-shows="${esc(card.shows)}">${esc(t("lesson.theory.show"))}</button>` : ""}
+    </li>`).join("");
+  field("lesson-theory").querySelectorAll("[data-shows]").forEach((button) =>
+    button.addEventListener("click", () => goTo(button.dataset.shows)));
+  const any = items.length > 0 || Boolean(field("lesson-goal-line").textContent);
+  shownSection("theory-card", any);
+  theoryFolded(landed || kept(THEORY_KEY(sessionId(), lessonId()), false) === true);
+}
+
+function objectivesShow(objectives) {
+  const rows = objectives && Array.isArray(objectives.rows) ? objectives.rows : [];
+  shownSection("lesson-objectives", rows.length > 0);
+  if (!rows.length) return;
+  field("lesson-objectives-head").innerHTML = t("lesson.objectives.col").split(" · ").map((name, index) =>
+    `<th class="py-1 font-medium${index ? " text-right" : ""}">${esc(name)}</th>`).join("");
+  field("lesson-objectives-rows").innerHTML = rows.map((row) => `
+    <tr class="border-t border-line-subdued" data-objective="${esc(row.id)}">
+      <td class="py-1 text-heading">${esc(localized(`objective.${row.id}`, row.id))}</td>
+      <td class="py-1 text-right">${esc(row.difficulty)}</td>
+      <td class="py-1 text-right ${row.lost ? "text-danger" : "text-success"}">${esc(t(row.lost ? "lesson.objectives.lost" : "score.kept"))}</td>
+      <td class="py-1 text-right">${esc(row.lost ? t(row.detected ? "common.yes" : "common.no") : "—")}</td>
+      <td class="py-1 text-right">${esc(row.points)}</td>
+    </tr>`).join("");
+  field("lesson-objectives-total").textContent = String(objectives.total ?? 0);
+}
+
+async function objectivesRead() {
+  const read = await api(lessonPath(""));
+  if (read.ok && read.body.lesson_objectives) objectivesShow(read.body.lesson_objectives);
+}
+
+const asking = { host: null, origin: "", key: "", id: 0, rect: null, sentAt: 0 };
+const ASK_AGAIN_MS = 1500;
+
+function askFrame(host, origin, spec) {
+  const key = JSON.stringify(spec);
+  if (asking.host !== host || asking.key !== key) {
+    stopAsking();
+    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, sentAt: 0 });
+  }
+  const now = Date.now();
+  if (origin && host.contentWindow && now - asking.sentAt > ASK_AGAIN_MS) {
+    asking.sentAt = now;
+    try {
+      host.contentWindow.postMessage({ fslLocate: spec, id: asking.id }, origin);
+    } catch (error) {
+      return null;
+    }
+  }
+  return inFrame(host, asking.rect);
+}
+
+function askAgain(host) {
+  if (asking.host !== host) return;
+  asking.rect = null;
+  asking.sentAt = 0;
+}
+
+function stopAsking() {
+  if (asking.host && asking.host.contentWindow && asking.origin) {
+    try {
+      asking.host.contentWindow.postMessage({ fslLocate: null }, asking.origin);
+    } catch (error) {
+      asking.host = null;
+    }
+  }
+  Object.assign(asking, { host: null, key: "", rect: null, sentAt: 0 });
+}
+
+window.addEventListener("message", (event) => {
+  const said = event.data;
+  if (!said || typeof said !== "object" || !("fslLocated" in said)) return;
+  if (!asking.host || event.source !== asking.host.contentWindow || said.fslLocated !== asking.id) return;
+  asking.rect = said.rect || null;
+});
+
+const KIBANA = {
+  value: (name) => `[data-test-subj="tableDocViewRow-${name}-value"]`,
+  name: (name) => `[data-test-subj="tableDocViewRow-${name}-name"]`,
+  flyout: '[data-test-subj="docViewerFlyout"]',
+  fieldFilter: '[data-test-subj="unifiedDocViewerFieldsSearchInput"]',
+  expand: '[data-test-subj="docTableExpandToggleColumn"]',
+  hits: ['[data-test-subj="discoverQueryHits"]', '[data-test-subj="discoverQueryTotalHits"]',
+    '[data-test-subj="discoverNoResults"]'],
+  query: '[data-test-subj="queryInput"]',
+  topValues: '[data-test-subj="dscFieldStats-topValues"]',
+  statsTitle: '[data-test-subj="dscFieldStats-title"]',
+  sidebar: (name) => `[data-test-subj="field-${name}"]`,
+};
+
+function kibanaRect(spec) {
+  if (!paneOpen("elk")) return null;
+  let doc = null;
+  try {
+    doc = frame.contentDocument;
+  } catch (error) {
+    return null;
+  }
+  if (!doc) return null;
+  const found = (selector) => doc.querySelector(selector);
+  const rectOf = (selector) => {
+    const element = found(selector);
+    const rect = element && element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+    return rect && rect.width && rect.height ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  };
+  const first = (...selectors) => selectors.map(rectOf).find(Boolean) || null;
+  const joined = (a, b) => (a && b ? {
+    left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
+    width: Math.max(a.left + a.width, b.left + b.width) - Math.min(a.left, b.left),
+    height: Math.max(a.top + a.height, b.top + b.height) - Math.min(a.top, b.top),
+  } : a || b);
+  let rect = null;
+  if (spec.doc) {
+    const value = rectOf(KIBANA.value(spec.doc));
+    rect = value ? joined(value, rectOf(KIBANA.name(spec.doc)))
+      : rectOf(KIBANA.flyout) ? first(KIBANA.fieldFilter) : first(KIBANA.expand);
+  } else if (spec.hits) {
+    rect = first(...KIBANA.hits);
+  } else if (spec.query) {
+    rect = first(KIBANA.query);
+  } else if (spec.sidebar) {
+    const title = found(KIBANA.statsTitle);
+    const opened = title && title.textContent && title.textContent.includes(spec.sidebar);
+    rect = (opened && first(KIBANA.topValues)) || first(KIBANA.sidebar(spec.sidebar));
+  }
+  return inFrame(frame, rect);
+}
+
+function devElement(name, step) {
+  const named = (wanted) => document.querySelector(`[data-coach="${wanted}"]`);
+  const toggle = named("toggle") || field("site-dev-toggle");
+  if (name === "toggle" || !toggle || toggle.getAttribute("aria-pressed") !== "true") return toggle;
+  const wanted = pattern(step.check && step.check.match);
+  const fits = (row) => !wanted || wanted.test(readable(row.getAttribute("data-url") || ""));
+  const rows = Array.from(document.querySelectorAll('[data-coach="row"]'));
+  const last = rows.filter(fits).pop() || null;
+  if (name === "row") return last;
+  const picked = rows.find((row) => row.getAttribute("aria-selected") === "true");
+  if (!picked || !fits(picked)) return last;
+  const tab = name.startsWith("general.") ? "tab.headers" : name.startsWith("payload.") ? "tab.payload" : "";
+  const holder = tab ? named(tab) : null;
+  if (holder && holder.getAttribute("aria-selected") !== "true") return holder;
+  return named(name);
+}
+
+const BAND_ROWS = 3;
+const ROW_GUESS = 18;
+const SCANNED_LINES = 2000;
+
+function termRect(spec) {
+  if (!paneOpen(spec.pane)) return null;
+  const host = terminalPanes[spec.pane] ? terminalPanes[spec.pane]() : null;
+  const box = boxOf(host);
+  if (!box) return null;
+  const bottom = (height) => ({ left: box.left, top: box.top + box.height - height, width: box.width, height });
+  const term = terminalOf(host);
+  const screen = term && term.element && term.element.querySelector ? term.element.querySelector(".xterm-screen") : null;
+  const area = screen ? screen.getBoundingClientRect() : null;
+  if (!term || !term.rows || !area || !area.height) return bottom(BAND_ROWS * ROW_GUESS);
+  const rowHeight = area.height / term.rows;
+  const buffer = term.buffer.active;
+  const wanted = pattern(spec.match);
+  if (!buffer || typeof buffer.getLine !== "function" || !wanted) return bottom(BAND_ROWS * rowHeight);
+  for (let row = buffer.length - 1; row >= Math.max(0, buffer.length - SCANNED_LINES); row -= 1) {
+    const line = buffer.getLine(row);
+    const text = line ? line.translateToString(true) : "";
+    if (!text.trim() || !(wanted.test(text) || wanted.test(`${text} `))) continue;
+    const shown = row - (buffer.viewportY || 0);
+    if (shown < 0 || shown >= term.rows) return null;
+    return inFrame(host, { left: area.left, top: area.top + shown * rowHeight, width: area.width, height: rowHeight });
+  }
+  return null;
+}
+
+function siteRect(selector) {
+  if (!paneOpen("site") || !site.origin) return null;
+  return askFrame(field("site-frame"), site.origin, selector);
+}
+
+function mapRect(spec) {
+  if (!paneOpen("topology") || !topo.drawn) return null;
+  return askFrame(field("topology-frame"), topologyOrigin(), spec);
+}
+
+const LOCATORS = ["panel", "map", "site", "dev", "kibana", "term"];
+const LOCATOR_PANES = { map: "topology", site: "site", dev: "site", kibana: "elk" };
+const paneFor = (target, point) => (target && (target.kind === "term" ? target.spec.pane : LOCATOR_PANES[target.kind]))
+  || point.opens || "";
+
+function locatorOf(point) {
+  const kind = LOCATORS.find((name) => point && point[name] !== undefined);
+  return kind ? { kind, spec: point[kind] } : null;
+}
+
+function locate(target, step) {
+  if (target.kind === "panel") return boxOf(document.querySelector(target.spec));
+  if (target.kind === "dev") {
+    const element = paneOpen("site") ? devElement(target.spec, step) : null;
+    const tools = field("site-dev");
+    const within = tools && typeof tools.contains === "function" && tools.contains(element);
+    return clipped(boxOf(element), within ? boxOf(tools) : null);
+  }
+  if (target.kind === "kibana") return kibanaRect(target.spec);
+  if (target.kind === "term") return termRect(target.spec);
+  if (target.kind === "site") return siteRect(target.spec);
+  if (target.kind === "map") return mapRect(target.spec);
+  return null;
+}
+
+const RING_PAD = 6;
+const RING = 2;
+const CALLOUT_GAP = 10;
+const EDGE = 8;
+const CALLOUT_GUESS = { width: 220, height: 28 };
+const TALL_TARGET = 80;
+
+function placed(element, box) {
+  Object.assign(element.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+}
+
+function calloutSpot(target, size, bounds) {
+  const avoid = grown(target, RING_PAD + RING + 2);
+  const middleY = target.top + target.height / 2 - size.height / 2;
+  const middleX = target.left + target.width / 2 - size.width / 2;
+  const clampX = (x) => Math.max(bounds.left + EDGE, Math.min(x, bounds.left + bounds.width - size.width - EDGE));
+  const clampY = (y) => Math.max(bounds.top + EDGE, Math.min(y, bounds.top + bounds.height - size.height - EDGE));
+  const beside = [
+    { left: avoid.left + avoid.width + CALLOUT_GAP, top: clampY(middleY) },
+    { left: avoid.left - CALLOUT_GAP - size.width, top: clampY(middleY) },
+  ];
+  const across = [
+    { left: clampX(middleX), top: avoid.top + avoid.height + CALLOUT_GAP },
+    { left: clampX(middleX), top: avoid.top - CALLOUT_GAP - size.height },
+  ];
+  const spots = target.height > TALL_TARGET ? [...across, ...beside] : [...beside, ...across];
+  return spots.map((spot) => ({ ...spot, ...size }))
+    .find((spot) => within(spot, bounds) && !overlaps(spot, avoid)) || null;
+}
+
+function highlight(rect, callout) {
+  const ring = field("coach-ring");
+  const dim = field("coach-dim");
+  const tip = field("coach-callout");
+  if (!rect) {
+    [ring, dim, tip].forEach((element) => element.classList.add("hidden"));
+    return;
+  }
+  const pane = boxOf(field("pane"));
+  const centre = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 };
+  const dimmed = Boolean(pane) && within(centre, pane);
+  const ringed = (dimmed && clipped(grown(rect, RING_PAD), pane)) || grown(rect, RING_PAD);
+  placed(ring, ringed);
+  ring.classList.remove("hidden");
+  dim.classList.toggle("hidden", !dimmed);
+  if (dimmed) {
+    placed(dim, pane);
+    placed(field("coach-hole"), { ...ringed, left: ringed.left - pane.left, top: ringed.top - pane.top });
+  }
+  const bounds = boxOf(field("pane-body"));
+  if (!callout || !bounds) {
+    tip.classList.add("hidden");
+    return;
+  }
+  tip.textContent = callout;
+  tip.title = callout;
+  tip.style.maxWidth = `${Math.max(0, bounds.width - 2 * EDGE)}px`;
+  tip.classList.remove("hidden");
+  const size = { width: tip.offsetWidth || CALLOUT_GUESS.width, height: tip.offsetHeight || CALLOUT_GUESS.height };
+  const spot = calloutSpot(rect, size, bounds);
+  tip.classList.toggle("hidden", !spot);
+  if (spot) Object.assign(tip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
+}
+
+const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
+const POLLED = ["sent", "triage", "replay", "waf_changed", "kali"];
+const ANSWERED = ["answer", "choice", "loot"];
+const SENT_SETTLES_MS = 1500;
+const changed = [];
+const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
+const PASS_PAUSE_MS = 1500;
+const NEXT_LESSON_MS = 2000;
+const HELP_AFTER_SECONDS = 60;
+const SKIP_OFFERED = 3;
+const POLL_SECONDS = 5;
+const MISSING_AFTER_FRAMES = 120;
+const paneName = (name) => {
+  const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
+  return label && label.textContent ? label.textContent : name;
+};
+
+function choiceLabel(prefix, step, option) {
+  return localized(`lesson.choice.${option}`, localized(`${prefix}.option.${step.id}.${option}`, option));
+}
+
+function landingPane(steps, at) {
+  const opened = (step) => step && step.point && step.point.opens;
+  const before = steps.slice(0, at + 1).reverse().find(opened);
+  const named = opened(before) || opened(steps.find(opened));
+  return named && paneTab(named) && !paneTab(named).classList.contains("hidden") ? named : "elk";
+}
+
 function coach(prefix, declared) {
-  const steps = declared.map((step) => ({ ...step, ...(step.point || { pane: true }) }));
-  const box = field("coach-box");
-  const pop = field("coach-pop");
-  Object.assign(box.style, { pointerEvents: "none" });
-  pop.style.zIndex = "10000";
+  const steps = declared.map((step) => ({ ...step, point: step.point || {}, check: step.check || {} }));
   let at = Math.min(steps.length, lessonStep(sessionId(), lessonId())) - 1;
-  const explained = new Map(cards(session && session.lesson ? session.lesson.theory : [])
-    .filter((card) => card.shows).map((card) => [card.shows, card.id]));
-  let last = "";
-  let lost = 0;
-  let dismissed = false;
+  const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
+  const nextLesson = foundation ? session.next_lesson : null;
+  let progress = {};
   let level = 0;
   let seconds = 0;
   let checking = false;
   let offered = false;
-  let reaching = Promise.resolve();
-  let statusText = "";
-  let shownPending = "";
   let passing = false;
-  let commandShown = false;
   let finished = false;
-  let shownOnce = false;
   let moving = false;
-  const saidOnPass = new Map();
+  let sentSince = false;
+  let reaching = Promise.resolve();
+  let last = "";
+  let lost = 0;
+  let picked = [];
   const carried = new Map();
   const recalled = new Set();
-  const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
-  const nextLesson = foundation ? session.next_lesson : null;
-  let progress = {};
-  let stretch = kept(STRETCH_KEY, false) === true;
-  const check = () => steps[at].check || {};
+  const saidOnPass = new Map();
+  const check = () => steps[at].check;
   const recordOf = (step) => progress[step.id] || {};
+  const solo = () => Boolean(steps[at].solo);
+  const titleOf = (step) => localized(`${prefix}.title.${step.id}`, t(`${prefix}.label.${step.id}`));
+  const openedPane = () => {
+    const tab = document.querySelector('.pane-tab[aria-selected="true"]');
+    return tab ? tab.dataset.pane : "";
+  };
 
   function learn(body) {
     if (!body || !body.progress || typeof body.progress !== "object") return;
     progress = body.progress;
-    const shownCommand = steps[at] && steps[at].command;
-    const arrived = steps.filter((step, index) => {
+    const before = steps[at] && steps[at].command;
+    steps.forEach((step) => {
       const given = recordOf(step).command;
-      if (!given || given === step.command) return false;
-      step.command = declared[index].command = given;
-      return true;
+      if (given) step.command = given;
     });
-    if (arrived.length) commandsArrived.forEach((heard) => heard());
-    if (!shownOnce) return;
     stepList();
-    if (steps[at] && steps[at].command !== shownCommand) {
-      command();
-      last = "";
-    }
+    if (steps[at] && steps[at].command !== before) command();
   }
 
   learn(session);
 
   function say(text, tone) {
-    const said = field("coach-pop-said");
+    const said = field("step-said");
     said.textContent = text || "";
     said.classList.toggle("hidden", !text);
     said.classList.toggle("bg-success-soft", tone === "ok");
     said.classList.toggle("text-success", tone === "ok");
     said.classList.toggle("bg-danger-soft", tone === "fail");
     said.classList.toggle("text-danger", tone === "fail");
-    said.classList.toggle("bg-subdued", tone === "info");
+  }
+
+  function status(text) {
+    field("step-status").textContent = text;
+    field("step-status").classList.toggle("hidden", !text);
   }
 
   function stepList() {
@@ -441,56 +532,42 @@ function coach(prefix, declared) {
       const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
       const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
       const help = skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
-      const state = current && !done ? `<span class="block text-[11.5px] text-primary font-normal">${
-        esc(t("lesson.status.current"))}${statusText ? ` · ${esc(statusText)}` : ""}</span>` : "";
-      return `<li><button data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
+      return `<li><button type="button" data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
         <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
-        <span class="${words}">${
-          esc(t(`${prefix}.label.${step.id}`))}${help}${state}</span></button></li>`;
+        <span class="${words}">${esc(titleOf(step))}${help}</span></button></li>`;
     }).join("");
     field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
       button.addEventListener("click", () => jump(Number(button.dataset.step))));
   }
 
-  function followStep() {
-    if (note.open && note.tab !== "steps") setNote({ tab: "steps" });
-  }
-
   function helpLines(step) {
+    const located = Boolean(locatorOf(step.point));
+    const pointing = located ? t("lesson.hint.point") : "";
     const lines = [];
-    if (level >= 1) lines.push(t(`${prefix}.nudge.${step.id}`));
-    if (level >= POINT) lines.push(t("lesson.hint.point"));
-    if (level >= ANSWER && recordOf(step).answer) lines.push(spoken(recordOf(step).answer));
-    return lines;
+    const said = (part) => (foundation ? t(`${prefix}.${part}.${step.id}`) : localized(`${prefix}.${part}.${step.id}`, pointing));
+    if (level >= 1) lines.push(said("nudge"));
+    if (level >= 2) lines.push(said("hint"));
+    if (!foundation && level >= SKIP_OFFERED && recordOf(step).answer) lines.push(spoken(recordOf(step).answer));
+    return [...new Set(lines.filter(Boolean))];
   }
 
   function showHelp() {
     const step = steps[at];
-    const lines = helpLines(step);
-    field("coach-pop-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
-    field("coach-pop-help").classList.toggle("hidden", !lines.length);
+    const lines = solo() ? [] : helpLines(step);
+    field("step-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
+    shownSection("step-help", lines.length > 0);
     offered = false;
-    field("coach-pop-hint").textContent = t("lesson.hint.more");
-    field("coach-pop-hint").classList.remove("btn-blue");
-    field("coach-pop-hint").classList.toggle("hidden", level >= SKIP_OFFERED || finished);
-    field("coach-pop-skip").classList.toggle("hidden", level < SKIP_OFFERED || finished);
-    field("coach-pop-why").classList.toggle("hidden", !explained.has(step.id));
-    last = "";
-  }
-
-  function why() {
-    const card = explained.get(steps[at].id);
-    if (!card) return;
-    setNote({ open: true, tab: "theory" });
-    const toggle = field("lesson-theory").querySelector(`[data-card="${card}"]`);
-    if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
+    field("step-hint").textContent = t("lesson.hint.more");
+    field("step-hint").classList.remove("btn-blue");
+    field("step-hint").classList.toggle("hidden", solo() || level >= SKIP_OFFERED || finished);
+    field("step-skip").classList.toggle("hidden", finished || !(solo() || level >= SKIP_OFFERED));
   }
 
   function offerHint() {
-    if (offered) return;
+    if (offered || solo()) return;
     offered = true;
-    field("coach-pop-hint").textContent = t("lesson.hint.available");
-    field("coach-pop-hint").classList.add("btn-blue");
+    field("step-hint").textContent = t("lesson.hint.available");
+    field("step-hint").classList.add("btn-blue");
   }
 
   async function escalate() {
@@ -513,68 +590,99 @@ function coach(prefix, declared) {
     }
   }
 
+  function orderPicker(options) {
+    return `<p class="text-[12px] text-muted">${esc(t("lesson.order.help"))}</p>
+      <div class="flex flex-wrap gap-1.5">${options.map((option) =>
+        `<button type="button" data-act="pick" data-value="${esc(option)}" aria-pressed="false" class="order-chip btn btn-sm btn-ghost font-mono">${esc(option)}</button>`).join("")}</div>
+      <p data-act="picked" class="font-mono text-heading"></p>
+      <button type="button" data-act="order" class="self-start btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button>`;
+  }
+
+  function showPicked(act) {
+    act.querySelectorAll('[data-act="pick"]').forEach((chip) => {
+      const place = picked.indexOf(chip.dataset.value);
+      chip.setAttribute("aria-pressed", String(place >= 0));
+      chip.textContent = place >= 0 ? `${place + 1}. ${chip.dataset.value}` : chip.dataset.value;
+    });
+    act.querySelector('[data-act="picked"]').textContent = picked.join(" > ");
+  }
+
+  function courseSummary() {
+    return `<p class="text-heading font-medium">${esc(t("lesson.course.done"))}</p>
+      <ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
+      <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>`;
+  }
+
+  async function courseList(list) {
+    const read = await api("/api/wargames/");
+    const wargame = read.ok && Array.isArray(read.body) ? read.body.find((one) => one.id === session.scenario) : null;
+    const taken = new Set((session.lessons || []).map((one) => one.id));
+    const taught = wargame ? (wargame.foundations || []).filter((one) => taken.has(one.id)) : [];
+    list.innerHTML = taught.map((one) => `<li class="flex items-center gap-2" data-course="${esc(one.id)}">
+      <span class="text-success font-bold">✓</span><span>${esc(t(one.title))}</span></li>`).join("");
+  }
+
   function action() {
     const step = steps[at];
     const kind = check().kind;
-    const act = field("coach-pop-act");
+    const act = field("step-act");
     let html = "";
-    if (kind === "click" && step.discover && !stretch) {
-      html = `<button data-act="chip" class="self-start btn btn-sm btn-ghost font-mono">${esc(t(`${prefix}.chip.${step.id}`))}</button>`;
+    if (finished) {
+      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`
+        : foundation ? courseSummary() : "";
+    } else if (kind === "answer" && check().form === "order") {
+      html = orderPicker(check().options || []);
     } else if (kind === "answer") {
-      html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off"
+      html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off" spellcheck="false"
         class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[12.5px]"
-        placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, t("lesson.answer.placeholder")))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+        placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, ""))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+    } else if (kind === "choice") {
+      html = `<div class="flex flex-wrap gap-1.5">${(check().options || []).map((option) =>
+        `<button type="button" data-act="choose" data-value="${esc(option)}" class="btn btn-sm btn-ghost">${
+          esc(choiceLabel(prefix, step, option))}</button>`).join("")}</div>`;
     } else if (kind === "kali") {
-      html = `<button data-act="kali" class="self-start btn btn-sm btn-blue">${
-        esc(t("lesson.kali.check"))}</button><ul data-act="rows" class="flex flex-col gap-2">${
-        carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
+      html = `<button type="button" data-act="kali" class="self-start btn btn-sm btn-ghost">${esc(t("lesson.kali.check"))}</button>
+        <ul data-act="rows" class="flex flex-col gap-2">${carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
     } else if (kind === "loot") {
       html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
         class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight"
         placeholder="${esc(t("lesson.loot.placeholder"))}"></textarea><button class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.loot.submit"))}</button></form>`;
-    } else if (kind === "choice") {
-      html = `<div class="flex flex-col gap-1.5">${check().options.map((option) =>
-        `<button data-act="choose" data-value="${esc(option)}" class="text-left btn btn-sm btn-ghost">${
-          esc(t(`${prefix}.option.${step.id}.${option}`))}</button>`).join("")}</div>`;
-    }
-    if (kind !== "click" && step.discover && !stretch) {
-      html = `<button data-act="chip" class="self-start btn btn-sm btn-ghost font-mono">${esc(t(`${prefix}.chip.${step.id}`))}</button>${html}`;
     }
     const before = steps[at - 1];
-    if (before && before.check.kind === "kali" && carried.has(before.id)) {
+    if (!finished && before && before.check.kind === "kali" && carried.has(before.id)) {
       html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id))}</ul>`;
     }
-    if (finished && nextLesson) {
-      html = `<button data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`;
-    }
     act.innerHTML = html;
-    act.classList.toggle("hidden", !html);
-    const chip = act.querySelector('[data-act="chip"]');
-    if (chip) chip.addEventListener("click", () => showInKibana(step.discover));
-    const form = act.querySelector('[data-act="answer"]');
+    shownSection("step-act", Boolean(html));
+    const form = act.querySelector('[data-act="answer"], [data-act="loot"]');
     if (form) {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        answer(act.querySelector('[data-act="value"]').value);
+        answer(form.querySelector('[data-act="value"]').value);
       });
     }
     act.querySelectorAll('[data-act="choose"]').forEach((button) =>
       button.addEventListener("click", () => answer(button.dataset.value)));
-    const pasted = act.querySelector('[data-act="loot"]');
-    if (pasted) {
-      pasted.addEventListener("submit", (event) => {
-        event.preventDefault();
-        answer(pasted.querySelector('[data-act="value"]').value);
-      });
-    }
+    act.querySelectorAll('[data-act="pick"]').forEach((chip) => chip.addEventListener("click", () => {
+      const name = chip.dataset.value;
+      picked = picked.includes(name) ? picked.filter((one) => one !== name) : [...picked, name];
+      showPicked(act);
+    }));
+    const ordered = act.querySelector('[data-act="order"]');
+    if (ordered) ordered.addEventListener("click", () => answer(picked.join(" > ")));
+    if (act.querySelector('[data-act="picked"]')) showPicked(act);
     const again = act.querySelector('[data-act="kali"]');
     if (again) again.addEventListener("click", () => run(step, true));
-    act.querySelectorAll('[data-act="carried"] [data-discover], [data-act="rows"] [data-discover]').forEach((link) =>
+    act.querySelectorAll("[data-discover]").forEach((link) =>
       link.addEventListener("click", () => showInKibana(link.dataset.discover)));
     const onwards = act.querySelector('[data-act="next-lesson"]');
     if (onwards) onwards.addEventListener("click", moveOn);
-    if (before && before.check.kind === "kali" && recordOf(before).passed && !carried.has(before.id)
+    const close = act.querySelector('[data-act="close"]');
+    if (close) close.addEventListener("click", moveOn);
+    const course = act.querySelector('[data-act="course"]');
+    if (course) courseList(course);
+    if (!finished && before && before.check.kind === "kali" && recordOf(before).passed && !carried.has(before.id)
       && !recalled.has(before.id)) recall(before, step);
   }
 
@@ -583,22 +691,112 @@ function coach(prefix, declared) {
     const verdict = await judged(kali, { poll: true });
     if (!verdict || !verdict.kali || carried.has(kali.id)) return;
     carried.set(kali.id, verdict.kali);
-    if (steps[at] === step) {
-      action();
-      last = "";
-    }
+    if (steps[at] === step) action();
   }
 
-  async function runCommand(step) {
-    field("coach-pop-typed").textContent = t("lesson.run.opening");
-    const ran = await runInTerminal(step.command);
-    field("coach-pop-typed").textContent = t(ran ? "lesson.ran" : "lesson.run.missing");
+  function command() {
+    const step = steps[at];
+    field("step-command").textContent = finished ? "" : step.command || "";
+    field("step-command").classList.toggle("hidden", finished || !step.command);
+  }
+
+  function opener() {
+    const opens = paneFor(targetOf(steps[at]), steps[at].point);
+    const needed = Boolean(opens) && !finished && !paneOpen(opens) && Boolean(paneTab(opens));
+    field("step-open").textContent = needed ? t(`lesson.open.${opens}`) : "";
+    field("step-open").dataset.pane = needed ? opens : "";
+    field("step-open").classList.toggle("hidden", !needed);
+  }
+
+  function finishedText() {
+    if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
+    return foundation ? "" : t("lesson.done");
+  }
+
+  function show() {
+    const step = steps[at];
+    keepLessonStep(sessionId(), lessonId(), at + 1);
+    field("note-strip-text").textContent = t("lesson.note.strip", at + 1, steps.length);
+    shownSection("step-card");
+    field("step-count").textContent = `${at + 1} / ${steps.length}`;
+    field("step-title").textContent = finished && foundation ? t(`${prefix}.title`) : titleOf(step);
+    field("step-task").textContent = finished ? finishedText() : t(`${prefix}.coach.${step.id}`);
+    const titled = localized(`${prefix}.title.${step.id}`, "");
+    const question = !finished && titled && ANSWERED.includes(check().kind) ? t(`${prefix}.label.${step.id}`) : "";
+    field("step-question").textContent = question;
+    field("step-question").classList.toggle("hidden", !question);
+    status(AUTOMATIC.includes(check().kind) && !finished ? t("lesson.status.auto") : "");
+    picked = [];
+    action();
+    command();
+    opener();
+    showHelp();
+    field("step-back").disabled = at === 0;
+    field("step-next").disabled = at === steps.length - 1;
+    stepList();
+    last = "";
+    lost = 0;
+  }
+
+  const following = (step) => step.point.until === "sent" && sentSince && Boolean(step.point.then);
+
+  function targetOf(step) {
+    if (step.solo || finished) return null;
+    return locatorOf(following(step) ? step.point.then : step.point);
+  }
+
+  function tick() {
+    const step = steps[at];
+    const target = targetOf(step);
+    const rect = target ? locate(target, step) : null;
+    if (!target || (target.kind !== "map" && target.kind !== "site")) stopAsking();
+    const needed = paneFor(target, step.point);
+    const waiting = Boolean(needed) && !paneOpen(needed);
+    lost = rect || !target || waiting ? 0 : lost + 1;
+    const missing = lost >= MISSING_AFTER_FRAMES;
+    const key = rect ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join() : "none";
+    const callout = target ? localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "") : "";
+    const drawn = [key, at, missing, callout, note.open, waiting, finished].join("|");
+    if (drawn !== last) {
+      last = drawn;
+      highlight(rect, callout);
+      field("step-missing").classList.toggle("hidden", !missing);
+      if (missing) field("step-missing").textContent = t("lesson.coach.missing", paneName(needed || openedPane()));
+      opener();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function reach(step) {
+    reaching = post(stepPath(step), { state: "reached" }).then((read) => { if (read.ok) learn(read.body); });
+  }
+
+  function leave(index) {
+    const step = steps[at];
+    if (index === at || recordOf(step).passed) return;
+    post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+  }
+
+  function jump(index) {
+    leave(index);
+    go(index);
+  }
+
+  function go(index) {
+    at = Math.max(0, Math.min(steps.length - 1, index));
+    level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
+    seconds = 0;
+    finished = false;
+    sentSince = false;
+    say("", "");
+    show();
+    reach(steps[at]);
   }
 
   function finish() {
     finished = true;
-    show(false);
-    if (foundation) setTimeout(moveOn, NEXT_LESSON_MS);
+    show();
+    if (nextLesson) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 
   async function moveOn() {
@@ -627,142 +825,24 @@ function coach(prefix, declared) {
     say(t("session.close.failed", detail(closed)), "fail");
   }
 
-  function command() {
-    const step = steps[at];
-    const shown = Boolean(step.command);
-    field("coach-pop-command").classList.toggle("hidden", !shown);
-    field("coach-pop-does").textContent = shown ? t(`${prefix}.does.${step.id}`) : "";
-    field("coach-pop-does").classList.toggle("hidden", !shown);
-    field("coach-pop-code").textContent = step.command || "";
-    field("coach-pop-code-box").classList.toggle("hidden", !(commandShown || stretch));
-    field("coach-pop-view").textContent = t(commandShown || stretch ? "lesson.command.hide" : "lesson.command.show");
-    field("coach-pop-view").classList.toggle("hidden", stretch);
-    const onKali = check().kind === "kali";
-    field("coach-pop-run").classList.toggle("hidden", stretch || onKali);
-    field("coach-pop-typed").textContent = onKali ? t("lesson.kali.where") : stretch ? t("lesson.stretch.type") : t("lesson.run.note");
-    pop.classList.toggle("pop-wide", shown);
-  }
-
-  function show(follow) {
-    const step = steps[at];
-    if (follow) followStep();
-    keepLessonStep(sessionId(), lessonId(), at + 1);
-    field("note-pill-text").textContent = t("lesson.note.pill", at + 1, steps.length);
-    field("lesson-subtitle").textContent = `${t(`${prefix}.title`)} · ${t("main.step", at + 1, steps.length)}`;
-    field("coach-pop-count").textContent = `${at + 1} / ${steps.length}`;
-    field("coach-pop-title").textContent = t(`${prefix}.label.${step.id}`);
-    words();
-    status(AUTOMATIC.includes(check().kind) && !finished ? t("lesson.status.auto") : "");
-    action();
-    command();
-    showHelp();
-    const reached = (index) => (index <= at ? "dot-blue" : "dot-muted");
-    field("coach-pop-dots").innerHTML = steps.map((_, index) =>
-      `<span class="dot ${reached(index)}"></span>`).join("");
-    field("coach-pop-back").disabled = at === 0;
-    field("coach-pop-next").disabled = at === steps.length - 1;
-    field("lesson-coach-show").classList.toggle("hidden", !dismissed);
-    stepList();
-    shownOnce = true;
-    last = "";
-    lost = 0;
-  }
-
-  function words() {
-    const step = steps[at];
-    const where = whereOf(step);
-    shownPending = where.pending || "";
-    field("coach-pop-text").textContent = finished ? finishedText()
-      : where.pending ? t(`lesson.open.${where.pending}`) : t(`${prefix}.coach.${step.id}`);
-  }
-
-  function finishedText() {
-    if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
-    return t(foundation ? "lesson.course.done" : "lesson.done");
-  }
-
-  function status(text) {
-    statusText = text;
-    field("coach-pop-status").textContent = text;
-    field("coach-pop-status").classList.toggle("hidden", !text);
-  }
-
-  function tick() {
-    listenToKibana();
-    const step = steps[at];
-    const where = whereOf(step);
-    if ((where.pending || "") !== shownPending) {
-      words();
-      stepList();
-    }
-    const rect = dismissed ? null : locate(where);
-    lost = rect || dismissed ? 0 : lost + 1;
-    const missing = lost >= MISSING_AFTER_FRAMES;
-    field("coach-pop-missing").classList.toggle("hidden", !missing);
-    if (missing) field("coach-pop-missing").textContent = t("lesson.coach.missing", paneName(where.opens || openedPane()));
-    const key = dismissed ? "dismissed"
-      : rect ? [rect.left, rect.top, rect.width, rect.height, at, note.open, shownPending].join() : `none-${at}-${missing}`;
-    if (key !== last) {
-      last = key;
-      const drawn = rect && !where.pane && !where.panel
-        ? clipped({ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 }, boxOf(frame))
-        : rect && where.panel
-          ? { left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 } : rect;
-      box.classList.toggle("hidden", !drawn || !drawn.width);
-      box.dataset.target = rect ? (where.panel || where.kibana || "pane") : "";
-      pop.classList.toggle("hidden", dismissed);
-      box.style.zIndex = where.panel ? "9999" : "30";
-      if (drawn) {
-        Object.assign(box.style, {
-          left: `${drawn.left}px`, top: `${drawn.top}px`, width: `${drawn.width}px`, height: `${drawn.height}px`,
-        });
-      }
-      if (!dismissed) placePopover(where, rect);
-    }
-    requestAnimationFrame(tick);
-  }
-
-  function reach(step) {
-    reaching = post(stepPath(step), { state: "reached" }).then((read) => { if (read.ok) learn(read.body); });
-  }
-
-  function leave(index) {
-    const step = steps[at];
-    if (index === at || recordOf(step).passed) return;
-    post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
-  }
-
-  function jump(index) {
-    leave(index);
-    go(index);
-  }
-
-  function go(index, follow = true, line = "") {
-    at = Math.max(0, Math.min(steps.length - 1, index));
-    dismissed = false;
-    level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
-    seconds = 0;
-    commandShown = false;
-    finished = false;
-    say(line, line ? "ok" : "");
-    show(follow);
-    reach(steps[at]);
-  }
-
   function pass(step) {
     if (steps[at] !== step || passing) return;
     const line = [spoken(recordOf(step).line), saidOnPass.get(step.id)].filter(Boolean).join(" ");
-    status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
+    const ok = spoken(recordOf(step).ok) || localized(`${prefix}.ok.${step.id}`, "");
+    say([`✓ ${ok}`.trim(), line].filter(Boolean).join(" "), "ok");
+    status("");
+    field("step-act").querySelectorAll("form button, input, textarea, [data-act]").forEach((control) => {
+      if (!control.dataset.discover) control.disabled = true;
+    });
+    if (session.lesson_objectives) objectivesRead();
     if (at === steps.length - 1) {
-      say(line, "ok");
       finish();
-      status(`✓ ${t(`${prefix}.ok.${step.id}`)}`);
       return;
     }
     passing = true;
     setTimeout(() => {
       passing = false;
-      if (steps[at] === step) go(at + 1, true, line);
+      if (steps[at] === step) go(at + 1);
     }, PASS_PAUSE_MS);
   }
 
@@ -776,27 +856,31 @@ function coach(prefix, declared) {
 
   function settle(step, verdict, loud) {
     if (!verdict || steps[at] !== step) return;
-    const rows = field("coach-pop-act").querySelector('[data-act="rows"]');
-    if (verdict.kali) carried.set(step.id, verdict.kali);
-    if (verdict.kali && rows) {
-      showReplay(rows, verdict.kali, kaliRow);
-      last = "";
+    if (verdict.kali) {
+      carried.set(step.id, verdict.kali);
+      const rows = field("step-act").querySelector('[data-act="rows"]');
+      if (rows) {
+        rows.innerHTML = kaliRow(verdict.kali);
+        rows.querySelectorAll("[data-discover]").forEach((link) =>
+          link.addEventListener("click", () => showInKibana(link.dataset.discover)));
+      }
     }
-    if (verdict.loot && verdict.loot.matched.length) saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
+    if (verdict.loot && verdict.loot.matched && verdict.loot.matched.length) {
+      saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
+    }
     if (verdict.passed) {
       pass(step);
       return;
     }
-    if (!verdict.reason) return;
-    const text = t(verdict.reason[0], ...(verdict.reason[1] || []));
-    status(text);
-    if (loud) wrong(text, verdict.hint);
+    if (!loud) return;
+    status("");
+    if (verdict.reason) wrong(t(verdict.reason[0], ...(verdict.reason[1] || [])), verdict.hint);
   }
 
   async function run(step, loud) {
-    if (checking || steps[at] !== step || finished) return;
+    if (checking || steps[at] !== step || finished || passing) return;
     checking = true;
-    status(t("lesson.status.checking"));
+    if (loud) status(t("lesson.status.checking"));
     try {
       settle(step, await judged(step, loud ? {} : { poll: true }), loud);
     } finally {
@@ -807,7 +891,7 @@ function coach(prefix, declared) {
   async function answer(given) {
     const step = steps[at];
     const value = String(given || "").trim();
-    if (!value) return;
+    if (!value || passing) return;
     settle(step, await judged(step, { answer: value }), true);
   }
 
@@ -818,58 +902,38 @@ function coach(prefix, declared) {
       return;
     }
     if (!recordOf(step).passed) post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
-    if (foundation) {
-      finish();
-      return;
+    finish();
+  }
+
+  steps.filter((step) => step.point.panel && step.check.kind === "click").forEach((step) => {
+    const target = document.querySelector(step.point.panel);
+    if (target) {
+      target.addEventListener("click", () => {
+        if (steps[at] === step) setTimeout(() => run(step, true), 0);
+      });
     }
-    dismissed = true;
-    show();
-  }
-
-  function advanceFrom(step) {
-    setTimeout(() => {
-      if (steps[at] !== step) return;
-      if (step.check.kind === "click") run(step, true);
-    }, 0);
-  }
-
-  let heard = null;
-
-  function listenToKibana() {
-    let doc = null;
-    try {
-      doc = frame.contentDocument;
-    } catch (error) {
-      return;
-    }
-    if (!doc || doc === heard) return;
-    heard = doc;
-    doc.addEventListener("click", (event) => {
-      const step = steps[at];
-      const target = step.kibana ? doc.querySelector(step.kibana) : null;
-      if (target && (target === event.target || target.contains(event.target))) advanceFrom(step);
-    }, true);
-  }
-
-  steps.filter((step) => step.panel).forEach((step) => {
-    document.querySelector(step.panel).addEventListener("click", () => {
-      if (steps[at] === step) advanceFrom(step);
-    });
   });
 
   site.heard.push((path) => {
+    askAgain(field("site-frame"));
     const step = steps[at];
-    if (step.check.kind === "sent" && new RegExp(step.check.match).test(readable(path))) {
-      setTimeout(() => run(step, false), SENT_SETTLES_MS);
-    }
+    const wanted = pattern(step.check.match);
+    if (!wanted || !wanted.test(readable(path))) return;
+    sentSince = true;
+    if (step.check.kind === "sent") setTimeout(() => run(step, false), SENT_SETTLES_MS);
+  });
+  topo.drawnHeard.push(() => askAgain(field("topology-frame")));
+  field("site-frame").addEventListener("load", () => askAgain(field("site-frame")));
+  paneOpened.push(() => {
+    last = "";
+    opener();
   });
 
   setInterval(() => {
-    if (dismissed || finished || sessionClosed() || document.hidden) return;
+    if (finished || sessionClosed() || document.hidden) return;
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
-    const kind = check().kind;
-    if (POLLED.includes(kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
+    if (POLLED.includes(check().kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
   }, 1000);
 
   changed.push((what) => {
@@ -877,93 +941,22 @@ function coach(prefix, declared) {
     if (step.check.kind === what) run(step, true);
   });
 
-  field("coach-pop-back").addEventListener("click", () => go(at - 1));
-  field("coach-pop-next").addEventListener("click", () => jump(at + 1));
-  field("coach-pop-close").addEventListener("click", () => {
-    dismissed = true;
-    show();
+  field("step-back").addEventListener("click", () => go(at - 1));
+  field("step-next").addEventListener("click", () => jump(at + 1));
+  field("step-hint").addEventListener("click", escalate);
+  field("step-skip").addEventListener("click", skip);
+  field("step-open").addEventListener("click", () => {
+    const tab = paneTab(field("step-open").dataset.pane);
+    if (tab) openPane(tab);
   });
-  field("lesson-coach-show").addEventListener("click", () => go(at));
-  field("coach-pop-hint").addEventListener("click", escalate);
-  field("coach-pop-skip").addEventListener("click", skip);
-  field("coach-pop-why").addEventListener("click", why);
-  field("coach-pop-view").addEventListener("click", () => {
-    commandShown = !commandShown;
-    command();
-    last = "";
-  });
-  field("coach-pop-copy").addEventListener("click", () =>
-    copy(steps[at].command || "", field("coach-pop-copy")));
-  field("coach-pop-run").addEventListener("click", () => runCommand(steps[at]));
-  field("lesson-stretch").checked = stretch;
-  field("lesson-stretch").addEventListener("change", () => {
-    stretch = field("lesson-stretch").checked;
-    keep(STRETCH_KEY, stretch);
-    show(false);
-  });
+  if (steps.some((step) => step.point.opens === "rules")) rulesPane();
+  shownSection("steps-card");
   level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
-  show(!landedOnGoal);
+  openPane(paneTab(landingPane(steps, at)));
+  show();
   reach(steps[at]);
   requestAnimationFrame(tick);
-  return (id) => go(steps.findIndex((step) => step.id === id), false);
-}
-
-const cards = (listed) => (Array.isArray(listed) ? listed : []).map((card) =>
-  (typeof card === "string" ? { id: card } : card));
-
-function folded(list, prefix, kind, ids, extra) {
-  list.innerHTML = ids.map((card) => `
-    <li class="rounded-lg border border-line">
-      <button class="w-full text-left px-3 py-2 text-heading font-semibold flex items-center gap-2" data-card="${esc(card.id)}"
-              aria-expanded="false"><span class="flex-1">${esc(t(`${prefix}.${kind}.${card.id}.title`))}</span><span class="text-faint text-[12px]">${esc(t("lesson.open"))}</span></button>
-      <div class="hidden px-3 pb-3 flex-col gap-2 text-body" data-card-body="${esc(card.id)}">
-        <p class="whitespace-pre-line">${esc(t(`${prefix}.${kind}.${card.id}.body`))}</p>
-        ${extra(card)}
-      </div>
-    </li>`).join("");
-  list.querySelectorAll("[data-card]").forEach((toggle) => toggle.addEventListener("click", () => {
-    const body = list.querySelector(`[data-card-body="${toggle.dataset.card}"]`);
-    const opened = body.classList.toggle("hidden") === false;
-    body.classList.toggle("flex", opened);
-    toggle.setAttribute("aria-expanded", String(opened));
-  }));
-}
-
-function theory(prefix, listed, coachTo) {
-  folded(field("lesson-theory"), prefix, "theory", cards(listed), (card) => card.shows && coachTo
-    ? `<button class="self-start text-[12px] text-primary hover:underline" data-shows="${esc(card.shows)}">${esc(t("lesson.theory.show"))}</button>` : "");
-  field("lesson-theory").querySelectorAll("[data-shows]").forEach((show) =>
-    show.addEventListener("click", () => coachTo(show.dataset.shows)));
-}
-
-function openFirstCard() {
-  const first = field("lesson-theory").querySelector("[data-card]");
-  if (first && first.getAttribute("aria-expanded") !== "true") first.click();
-}
-
-function hints(prefix, listed, steps) {
-  folded(field("lesson-hints"), prefix, "hint", cards(listed), () => "");
-  const answer = () => steps.filter((step) => step.command).map((step) => step.command).join("\n");
-  let shown = false;
-  const toggle = field("lesson-answer-toggle");
-  const place = () => {
-    field("lesson-answer").textContent = answer();
-    field("lesson-answer-box").classList.toggle("hidden", !shown);
-    toggle.textContent = t(shown ? "lesson.hint.hide" : "lesson.hint.show");
-  };
-  toggle.addEventListener("click", () => { shown = !shown; place(); });
-  commandsArrived.push(place);
-  field("lesson-answer-copy").addEventListener("click", () => copy(answer(), field("lesson-answer-copy")));
-  place();
-}
-
-function doneWhen() {
-  field("lesson-done").innerHTML = `<li>${esc(t("lesson.goal.done.steps"))}</li>`;
-}
-
-function shownSection(id) {
-  field(id).classList.remove("hidden");
-  field(id).classList.add("flex");
+  return (id) => go(steps.findIndex((step) => step.id === id));
 }
 
 let rulesVersion = "";

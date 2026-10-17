@@ -12,7 +12,7 @@ def _read(path):
 
 def request(flow):
     marker = _read(LABEL_FILE)
-    if marker:
+    if marker and MARKER_HEADER not in flow.request.headers:
         flow.request.headers[MARKER_HEADER] = marker
 
     address = _read(ORIGIN_FILE)

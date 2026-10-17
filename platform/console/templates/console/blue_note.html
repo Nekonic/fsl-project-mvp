@@ -1,58 +1,79 @@
-<button id="note-pill" class="hidden absolute top-2 right-28 z-[36] btn btn-ghost note-shadow">
-  <span class="dot dot-blue"></span><span id="note-pill-text"></span><span class="text-faint">▾</span>
-</button>
-
-<aside id="lesson" class="hidden absolute top-2 right-4 bottom-4 w-[360px] max-w-[calc(100%-2rem)] z-[35] bg-panel rounded-xl border border-line note-shadow flex-col">
-  <header class="px-4 pt-3 flex items-center gap-2">
-    <h2 data-t="lesson.note.heading" class="font-bold text-heading"></h2>
-    <span id="lesson-subtitle" class="text-[12px] text-muted truncate"></span>
-    <button id="lesson-collapse" class="ml-auto text-faint text-[12px] hover:text-heading shrink-0"></button>
-  </header>
-  <p id="lesson-goal-line" class="px-4 mt-1 text-[12.5px] text-heading font-medium"></p>
-  <div id="lesson-tabs" class="px-4 mt-1 flex gap-5 border-b border-line overflow-x-auto">
-    <button class="tab" data-tab="steps" data-t="lesson.tab.steps"></button>
-    <button class="tab" data-tab="goal" data-t="lesson.tab.goal"></button>
-    <button class="tab" data-tab="theory" data-t="lesson.tab.theory"></button>
-    <button class="tab" data-tab="hint" data-t="lesson.tab.hint"></button>
-  </div>
-  <div id="lesson-body" class="flex-1 min-h-0 overflow-y-auto p-4 text-[13px] leading-relaxed">
-    <div data-pane-of="steps" class="flex flex-col gap-3">
-      <button id="lesson-coach-show" data-t="lesson.coach.show" class="self-start btn btn-sm btn-blue hidden"></button>
-      <p id="lesson-step-count" class="text-[12px] text-muted"></p>
-      <ol id="lesson-step-list" class="flex flex-col gap-1.5"></ol>
-      <label class="flex items-start gap-2 text-[12px] text-muted border-t border-line-subdued pt-3">
-        <input id="lesson-stretch" type="checkbox" class="mt-0.5">
-        <span><b data-t="lesson.stretch" class="text-heading"></b> · <span data-t="lesson.stretch.note"></span></span>
-      </label>
-    </div>
-
-    <div data-pane-of="goal" class="hidden flex-col gap-3">
-      <p id="lesson-goal" class="text-heading"></p>
-      <div class="rounded-lg bg-subdued p-3">
-        <div data-t="lesson.goal.done" class="label mb-1"></div>
-        <ul id="lesson-done" class="list-disc pl-4 space-y-0.5"></ul>
+<aside id="lesson" class="note-col hidden">
+  <button id="note-strip" type="button" class="note-strip" data-t-title="lesson.note.expand"><span id="note-strip-text"></span></button>
+  <div class="note-open">
+    <header class="px-3 py-2 border-b border-line flex items-start gap-2">
+      <div class="min-w-0 flex-1">
+        <h2 data-t="lesson.note.heading" class="font-bold text-heading text-[13px]"></h2>
+        <p id="lesson-title" class="text-[12px] text-muted truncate"></p>
       </div>
-      <ol id="lesson-steps" class="flex flex-col gap-2 list-decimal pl-5 text-body"></ol>
-    </div>
-
-    <div data-pane-of="theory" class="hidden flex-col gap-2">
-      <ul id="lesson-theory" class="flex flex-col gap-2"></ul>
-    </div>
-
-    <div data-pane-of="hint" class="hidden flex-col gap-3">
-      <p data-t="lesson.hint.intro" class="text-[12px] text-muted"></p>
-      <ul id="lesson-hints" class="flex flex-col gap-2"></ul>
-      <div class="rounded-lg border border-primary-soft bg-primary-soft">
-        <div class="px-3 py-2 flex items-center gap-2">
-          <span data-t="lesson.answer.heading" class="badge badge-blue"></span>
-          <span data-t="lesson.answer.note" class="text-[12px] text-muted"></span>
-          <button id="lesson-answer-toggle" class="ml-auto btn btn-sm btn-ghost"></button>
+      <button id="lesson-collapse" type="button" data-t-title="lesson.note.collapse" class="shrink-0 text-faint hover:text-heading text-[16px] leading-none px-1" aria-label="fold">»</button>
+    </header>
+    <div id="lesson-body" class="note-body">
+      <section id="step-card" class="card p-3 hidden flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <span id="step-count" class="text-[12px] font-semibold text-primary"></span>
         </div>
-        <div id="lesson-answer-box" class="hidden px-3 pb-3 relative">
-          <pre id="lesson-answer" class="code pr-14"></pre>
-          <button id="lesson-answer-copy" data-t="lesson.copy" class="absolute top-2 right-5 btn btn-sm btn-code"></button>
+        <h3 id="step-title" class="font-bold text-heading"></h3>
+        <p id="step-task" class="text-body whitespace-pre-line"></p>
+        <pre id="step-command" class="code hidden"></pre>
+        <button id="step-open" type="button" class="self-start btn btn-sm btn-blue hidden"></button>
+        <p id="step-question" class="font-semibold text-heading hidden"></p>
+        <div id="step-act" class="hidden flex-col gap-2"></div>
+        <p id="step-said" class="hidden text-[12.5px] rounded-md px-2.5 py-1.5"></p>
+        <p id="step-status" class="hidden text-[12px] text-muted"></p>
+        <div id="step-help" class="hidden flex-col gap-1 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
+        <p id="step-missing" class="hidden text-[12px] text-muted"></p>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="step-hint" type="button" data-t="lesson.hint.more" class="btn btn-sm btn-ghost"></button>
+          <button id="step-skip" type="button" data-t="lesson.skip" class="btn btn-sm btn-ghost hidden"></button>
+          <button id="step-back" type="button" data-t="lesson.coach.back" class="ml-auto btn btn-sm btn-ghost"></button>
+          <button id="step-next" type="button" data-t="lesson.coach.next" class="btn btn-sm btn-blue"></button>
         </div>
-      </div>
+      </section>
+
+      <section id="theory-card" class="card hidden flex-col">
+        <button id="theory-toggle" type="button" class="w-full text-left px-3 py-2 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
+          <span data-t="lesson.tab.theory" class="flex-1"></span><span id="theory-mark" class="text-faint text-[12px]">▾</span>
+        </button>
+        <div id="theory-body" class="hidden px-3 pb-3 flex-col gap-3">
+          <p id="lesson-goal-line" class="text-heading font-medium"></p>
+          <ul id="lesson-theory" class="flex flex-col gap-3"></ul>
+        </div>
+      </section>
+
+      <section id="lesson-objectives" class="card p-3 hidden flex-col gap-2">
+        <h3 data-t="lesson.objectives.title" class="font-semibold text-heading"></h3>
+        <table class="w-full text-[12px]">
+          <thead><tr id="lesson-objectives-head" class="text-left text-muted"></tr></thead>
+          <tbody id="lesson-objectives-rows"></tbody>
+          <tfoot><tr class="border-t border-line">
+            <td colspan="4" data-t="lesson.objectives.total" class="py-1 font-semibold text-heading"></td>
+            <td id="lesson-objectives-total" class="total py-1 text-right font-bold text-heading"></td>
+          </tr></tfoot>
+        </table>
+      </section>
+
+      <div id="scenario-cards" class="hidden flex-col gap-2"></div>
+
+      <section id="scenario-hints" class="hidden card p-3 flex-col gap-2 text-[12.5px]">
+        <div class="flex items-center">
+          <b data-t="scenario.hint.heading" class="text-heading"></b>
+          <button type="button" id="scenario-hints-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
+        </div>
+        <ol id="scenario-hint-list" class="flex flex-col gap-2"></ol>
+      </section>
+
+      <section id="stretch-card" class="hidden card p-3 flex-col gap-1">
+        <b data-t="lesson.stretch" class="text-heading"></b>
+        <p id="stretch-text" class="text-body whitespace-pre-line"></p>
+      </section>
+
+      <section id="steps-card" class="card hidden flex-col">
+        <button id="steps-toggle" type="button" class="w-full text-left px-3 py-2 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
+          <span data-t="lesson.tab.steps" class="flex-1"></span><span id="lesson-step-count" class="text-[12px] text-muted font-normal"></span>
+        </button>
+        <ol id="lesson-step-list" class="hidden px-2 pb-2 flex-col gap-1"></ol>
+      </section>
     </div>
   </div>
 </aside>
