@@ -4,7 +4,6 @@ import pytest
 import requests
 
 from conftest import PLATFORM_URL, score_when_ready
-from shared_sessions import probed
 
 EDGE = ipaddress.ip_network("5.188.10.0/24")
 
@@ -25,8 +24,8 @@ def _inside(detections, estate):
     }
 
 @pytest.fixture
-def probe(stack_is_up):
-    return _raised(probed())
+def probe(terminal_session):
+    return _raised(terminal_session["front"])
 
 @pytest.fixture
 def past_the_waf(tuned_session):

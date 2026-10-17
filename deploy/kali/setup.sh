@@ -45,6 +45,11 @@ install -d -m 0777 /label
 : > /label/origin
 chmod 0666 /label/active /label/origin
 
+install -d -m 0755 /var/log/fsl
+: > /var/log/fsl/commands.log
+chmod 0666 /var/log/fsl/commands.log
+echo '. /etc/fsl/operator-log.sh' >> /etc/bash.bashrc
+
 cat > /etc/profile.d/fsl.sh <<'EOF'
 export http_proxy="http://127.0.0.1:8081"
 export HTTP_PROXY="http://127.0.0.1:8081"
@@ -55,7 +60,6 @@ EOF
 cat >> /root/.bashrc <<'EOF'
 . /etc/profile.d/fsl.sh
 cat /etc/motd
-. /etc/fsl/operator-log.sh
 EOF
 
 cat > /etc/systemd/system/fsl-proxy.service <<'EOF'

@@ -115,3 +115,16 @@ def test_the_shell_hook_records_what_is_typed_where_the_platform_reads_it_and_no
         "the first prompt of a shell logged the last command of the previous one, "
         "attributed to whichever case was open now"
     )
+
+KALI_SETUP = Path(__file__).resolve().parents[2] / "deploy/kali/setup.sh"
+
+def test_the_kali_vm_records_the_terminal_s_ssh_user_and_not_only_root():
+    setup = KALI_SETUP.read_text()
+
+    assert "echo '. /etc/fsl/operator-log.sh' >> /etc/bash.bashrc" in setup, (
+        "on OpenStack the terminal is an ssh login as the cloud user, whose shell "
+        "never read root's .bashrc, so nothing it typed reached the operator log"
+    )
+    assert f"chmod 0666 {operator_log.LOG_PATH}" in setup, (
+        "the log the platform reads must exist and take the cloud user's writes"
+    )
