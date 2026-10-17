@@ -4856,3 +4856,60 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   to the learner's own probes and two requests aborted by a pane switch; the
   platform log holds no ERROR, Traceback or `[warn]`, only 409 (a session
   opened while a slot reset) and the site proxy's 403.
+
+## 2026-10-18 — Foundations run back to back in one session; Kali steps move on by themselves
+
+- **Ruling** (the user, 2026-10-18): F1 to F6 run in one session, one after
+  another, without closing; the next lesson starts by itself when the last
+  step of the previous one passes. A Kali step moves on after its pass like
+  every other step, as long as nothing the learner needs disappears. Scenarios
+  stay one per session.
+- **Before.** A foundation's last step showed "Lesson complete." and nothing
+  else; F1 to F2 meant closing the session (a slot reset, about 60 s on
+  OpenStack) and opening F2 from the catalogue. A passed `kali` step waited
+  for Next (3a7238d), because the step after it asks for the count its row
+  shows.
+- **The API.** `POST /api/sessions/<id>/lesson/ {"lesson": "f2"}` moves an
+  open guided session to any foundation: the unit's declared defense is
+  applied in place when it differs (the CRS tuning through `crs.apply`, as
+  `PUT /waf/`; the IDS rule file only when the posture's file changes, as at
+  open), `Session.lesson`, `Session.defense` and `Session.lessons` (`[{id,
+  started_at}]`, migration 0027) are updated, the unit's seed cases are
+  replayed as an open does, and the answer is the session detail with
+  `lessons` and `next_lesson`. 409 for a closed, scenario or unguided session,
+  400 for an id that is not a foundation (the open's own refusal of an unknown
+  `lesson` is a 400 too). Any foundation is accepted; the console offers only
+  the next by `order`.
+- **Per lesson.** Step records are `lesson_steps[<lesson>][<step>]` and a
+  hint is `{lesson, step, level}`: F2-F4 share the step id `search`, F5 and F6
+  `sqlmap`. Migration 0027 moves each session's records under its lesson,
+  names the lesson in its step hints (a scenario's own hints keep their
+  shape) and writes the first `lessons` entry of a foundation session.
+- **Windows.** A unit judges only what happened since it started: `sent`
+  checks count Website pane requests made after it, the `rule` answer
+  ModSecurity records after it, a `kali` check reads the sensor from the later
+  of the step's reach and the unit's start, `of: lost` counts objectives
+  achieved after it, and the steps' Kibana links open from it. The first unit
+  of a session keeps the session-wide windows.
+- **Why no reset.** The board is `loot_verified`: an objective is lost when
+  submitted loot matches the accounts snapshot taken at open, and nothing a
+  foundation does changes those accounts (sqlmap reads them). The baseline
+  taken at open stays the ground truth for F6. The only posture change is F6's
+  `missed`, applied in place on the open WAF; F1-F5 all run `full`, so F1-F5
+  change nothing on the range.
+- **The console.** On a foundation's last step pass (or Skip, the ladder's last
+  rung) the coach says "Lesson complete. Next lesson: <title>" (ko: 레슨을
+  완료했습니다. 다음 레슨: <title>) with a "Next lesson" (다음 레슨) button,
+  and 2 s later posts the switch and reloads the page into the next unit,
+  which lands on its Theory card as a first open does (the landing and step
+  keys are per lesson). After F6: "All foundation lessons complete." (기초
+  레슨을 모두 마쳤습니다.), then ingest, `POST /close/`, and the session page.
+- **Kali steps.** The 1.2 s pass pause applies to `kali` too; the step after a
+  Kali step shows that step's row (requests per sensor, the Kibana link),
+  re-read by a poll of the Kali check after a reload. 3a7238d's
+  keep-until-Next is removed; 470b1bb's re-placement of the popover when a row
+  is drawn stays, since the row now makes the next step's popover taller.
+- `bin/verify --changed`: unit 821 passed; `--fast` 1483 passed; ratchet
+  holds (core_loc 580; tests 1057 -> 1063, reported). `bin/select-tests`
+  named all 32 acceptance files (no acceptance test names the changed
+  files); the one that exercises foundations is `test/test_lesson.py`.

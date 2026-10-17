@@ -907,13 +907,14 @@ which is the steps, or a scenario's goal and how it is measured, and the four
 paragraphs), Theory and Hints. The goal line (`<text>.summary`) is pinned
 under the header, above the tabs. It opens only when the learner opens it;
 while open, moving to another step shows the Steps tab. The first time a browser opens a session's blue console
-(`fsl-lesson-landed-<id>`) the note opens on Goal, or on Theory with its card
-open for a foundation; every later load starts folded; only the tab is kept
-per viewer in localStorage (`fsl-lesson-note`), and the step shown in
-`fsl-lesson-step-<id>`, which the main and session pages read for "step n/N".
-Progress itself is the session's (`Session.lesson_steps`, migration 0020):
-per step `reached`, `passed`, `skipped` (times), `hint` (the level shown,
-0-4), reported as `progress` in `GET /api/sessions/<id>/`
+for a unit (`fsl-lesson-landed-<id>-<lesson>`) the note opens on Goal, or on
+Theory with its card open for a foundation; every later load starts folded;
+only the tab is kept per viewer in localStorage (`fsl-lesson-note`), and the
+step shown in `fsl-lesson-step-<id>-<lesson>`, which the main and session
+pages read for "step n/N". Progress itself is the session's, kept per unit
+(`Session.lesson_steps[<lesson>][<step>]`, migrations 0020 and 0027): per
+step `reached`, `passed`, `skipped` (times), `hint` (the level shown, 0-4),
+reported for the session's current unit as `progress` in `GET /api/sessions/<id>/`
 and in every step and hint response. A step's record also carries what it
 has earned: `command` once the step is reached, `answer` once its hint level
 reaches 3 (`lesson.ANSWER`), and `line` once it is passed, the last two as
@@ -985,8 +986,12 @@ also runs 1.5 s after the Website pane shows a path matching the step's
 the popover says "Checking...", then what is still missing
 (`<text>.fail.<step>`), and on a pass "✓" and what was found
 (`<text>.ok.<step>`); 1.2 s later the guide moves on and shows the step's
-line, and on the last step "Lesson complete". A wrong answer says what is
-wrong. A recent ingest (`within`) reads the newest records of the window
+line, a `kali` step too: the step after it shows the Kali step's row (the
+requests each sensor recorded and the Kibana link), read again by a poll of
+the Kali check after a reload, so F5's count stays in view while its next
+step asks for it. On the last step a foundation says "Lesson complete. Next
+lesson: <title>" and moves on ("One session, F1 to F6"); a worked scenario
+says "Lesson complete". A wrong answer says what is wrong. A recent ingest (`within`) reads the newest records of the window
 first and records no truncation, because one sqlmap case leaves more than
 5000.
 
@@ -1003,13 +1008,14 @@ answer from the step's `progress.answer`): a nudge, then "Look at the spot
 marked with the red box.", then the answer, then "Skip". It climbs on the
 "Show a hint" button or after two wrong answers or failed checks; each press is `POST
 /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`, which raises the
-step's `hint` level, and the first is recorded in `Session.hints` (migration
-0017; 400 for a session that is not guided or a step or level the unit does
+step's `hint` level, and the first is recorded in `Session.hints` with its
+unit (`{lesson, step, level}`; migrations 0017 and 0027; 400 for a session that is not guided or a step or level the unit does
 not have, 409 when closed). After 60 s on a step the button only changes to
 "Show the new hint"; nothing is recorded until the learner presses it. "Skip"
 (`lesson.SKIP_OFFERED`, the ladder's last rung) is Next: `POST
 /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}` and the next step
-reached; on the last step it records the skip and closes the popover.
+reached; on the last step it records the skip and, in a foundation, moves to
+the next unit as a pass does, or in a worked scenario closes the popover.
 Nothing is entered, fired, applied or credited for the learner, so a later
 step that reads a skipped step's record (an answer about a request never
 sent, the loot of a run never made) stays unanswered until the learner does
@@ -1096,6 +1102,35 @@ first visit.
 
 `missed` is CRS paranoia level 1 with `ruleRemoveById` 949110 and 959100 and
 `local.rules`. No unit question carries an `accept` list.
+
+One session, F1 to F6. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`
+moves an open guided session to any foundation in place: when that unit's
+declared defense differs from `Session.defense`, it writes the unit's CRS
+tuning (`crs.apply`, as `PUT /waf/` does) and seeds the sensors only when the
+posture's rule file changes; it then sets `Session.lesson` and
+`Session.defense`, appends `{id, started_at}` to `Session.lessons` (migration
+0027; a foundation open writes the first entry), replays the unit's `cases`
+as an open does, and answers the session detail. It refuses a closed session,
+a scenario session and an unguided one (409) and an id that is not a
+foundation (400). The detail carries `lessons` and `next_lesson` (`{id,
+text}` of the next foundation by `order`, or null). The console offers only
+the next unit: when a foundation's last step passes or is skipped, the coach
+says "Lesson complete. Next lesson: <title>" with a "Next lesson" button, and
+2 s later posts the switch and reloads the page into the new unit; after F6
+it says "All foundation lessons complete.", ingests, closes the session
+through `POST /close/` and opens the session page. Nothing is reset between
+units, which the board allows: its objective layer is exfiltration only
+(loot matched against the snapshot taken at open), so a unit leaves the
+ground truth as it found it, and only F6 changes the posture, in place.
+
+A unit judges only what happened since it started (`views._lesson_started`,
+the last `Session.lessons` entry once there is more than one): a `sent`
+check counts only Website pane requests made after it, the `rule` answer only
+ModSecurity records after it, a `kali` check reads the sensor from the later
+of the step's `reached` and the unit's start, `of: lost` counts only
+objectives achieved after it, and a step's Kibana link (its `query` and the
+Kali row's) opens from it. Step records are the unit's own, so F3's `search`
+is not passed by F2's.
 
 Three check kinds follow the learner's own actions: `sent` passes when the session's Website pane kept a request
 whose decoded URL matches the step's `match` regular expression (the console
