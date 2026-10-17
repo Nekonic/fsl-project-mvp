@@ -4,8 +4,9 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-18 (foundations F1-F6 in one session, proven live on
-26c1c80; before it, Korean-first learner text, its review and its live
+Updated: 2026-10-18 (the red console is Kali and a browser, the blue
+console carries Kali for practice, proven live on 51b28dd; before it,
+foundations F1-F6 in one session, proven live on 26c1c80; before that, Korean-first learner text, its review and its live
 sweep, at 6b72876). Written for a session that has the cloud
 (master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
 
@@ -35,10 +36,10 @@ sweep, at 6b72876). Written for a session that has the cloud
   slots): each failed a final check with a wrong defence and passed one with
   a right defence. The table is in `docs/DECISIONS.md`, "P5 built".
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
-  times on 2026-10-16, ten times on 2026-10-17 and five times on 2026-10-18 by `bin/cloud up --replace
+  times on 2026-10-16, ten times on 2026-10-17 and seven times on 2026-10-18 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs 26c1c80 with the
-  platform image built from it, the gns3 image from 9674d0e and the kali image from 1fd5be3, tagged 8f9acb0
+  platform VM's rebuild runs an unpushed commit"): it runs 51b28dd with the
+  platform image built from it, the gns3 image from 9674d0e and the kali image from 0a90806, tagged 8f9acb0
   (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
   `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
   images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
@@ -132,6 +133,19 @@ sweep, at 6b72876). Written for a session that has the cloud
   objectives lost), no reset until the close; `test/test_lesson.py` on the
   VM 1 passed. The run found "Run in terminal" dead since 2ea48a5 and its
   paste lost before the OpenStack WAF shell's prompt; both fixed.
+
+- The red console is Kali and a browser (2026-10-18, `docs/DECISIONS.md`
+  "The red console is Kali and a browser"): every prepared-attack control is
+  gone from the red console (cases, Run all, run buttons, recording window,
+  source picker); it is the objectives, the loot submission, Kali and the
+  Website pane. The blue console has a divider and Kali below it for lesson
+  and scenario sessions, hidden in a wargame. No `fsl-` in the terminals'
+  prompts or the WAF banner; the host key is pinned per server generation, so
+  no changed-key warning. P0: `/internal/auth-users` is not reachable from
+  Kali or the Website pane (WAF `location` 404, `fsl-mgmt` group); nothing
+  changed there. Proven live on 51b28dd; the terminal-related acceptance
+  modules 10 passed. The lesson redesign (integrated attack and defence
+  lessons) waits for the user's approval.
 
 ## Waiting for the user
 
