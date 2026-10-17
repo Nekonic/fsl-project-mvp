@@ -4397,3 +4397,16 @@ make retention adjustable by config and set it to the minimum for now.
   `close_old_connections()` in its `finally`, which pytest-django refuses
   ("Database access not allowed"); the platform's own log has no such
   exception.
+
+## 2026-10-17 — An error in the scenario engine's connection cleanup no longer stops the engine
+
+`scenario_run._run` called `close_old_connections()` in a `finally`, outside
+the `try`, so an exception there left the loop and the `fsl-scenarios` thread
+died; scenarios then stopped advancing until a scenario open or a learner
+verify started it again. Seen only in unit runs: a test that opened a
+scenario started the real thread, which outlived the test and was refused the
+database by pytest-django in a later one
+(`PytestUnhandledThreadExceptionWarning`). Now each of `tick` and
+`close_old_connections` is caught and logged on its own; the unit conftest
+stubs `ensure_running` for every test (tests drive `tick` directly), and one
+test holds that a failing cleanup does not end the loop.

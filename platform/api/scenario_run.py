@@ -100,12 +100,11 @@ def _running():
 
 def _run() -> None:
     while True:
-        try:
-            tick()
-        except Exception:
-            log.exception("the scenario engine's tick failed")
-        finally:
-            close_old_connections()
+        for step in (tick, close_old_connections):
+            try:
+                step()
+            except Exception:
+                log.exception("the scenario engine's %s failed", step.__name__)
         time.sleep(settings.SCENARIO_TICK)
 
 def tick(now=None) -> None:

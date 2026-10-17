@@ -513,3 +513,20 @@ def test_a_judgement_window_is_judged_on_the_verdicts_and_reports_blocked_custom
 
     assert result["passed"] is True, result
     assert result["customers_blocked"] == 2
+
+def test_a_failing_connection_cleanup_does_not_stop_the_engine():
+    calls = []
+
+    def cleanup():
+        calls.append("cleanup")
+        if calls.count("cleanup") == 1:
+            raise RuntimeError("cleanup refused")
+        raise SystemExit
+
+    with patch("api.scenario_run.tick", lambda: calls.append("tick")), \
+            patch("api.scenario_run.close_old_connections", cleanup), \
+            patch("api.scenario_run.time.sleep", lambda seconds: None), \
+            patch("api.scenario_run.settings.SCENARIO_TICK", 0):
+        with pytest.raises(SystemExit):
+            scenario_run._run()
+    assert calls == ["tick", "cleanup", "tick", "cleanup"]
