@@ -416,8 +416,10 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
             "$(sed -n 's/^FSL_IMAGE_TAG=//p' /opt/fsl/.env)") in load
     restore = next(i for i, command in enumerate(ran) if "docker run" in command)
     assert checkout < ran.index(load) < restore
-    assert ran[-1] == "cd /opt/fsl && sudo docker compose -f /opt/fsl/compose.yaml up -d", (
-        "HEAD's compose file may add services, so every service starts, not only the platform"
+    assert ran[-1] == "cd /opt/fsl && sudo docker compose -f /opt/fsl/compose.yaml up -d --force-recreate", (
+        "HEAD's compose file may add services, so every service starts, not only the platform; and a file "
+        "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
+        "collector ran the old filebeat.yml until each service was recreated"
     )
 
 

@@ -541,7 +541,9 @@ pushed commit, whose images GHCR has) and starts it as usual; the rebuild then
 copies this checkout's HEAD as a git bundle, checks it out in `/opt/fsl`,
 `docker load`s each tarball and tags its image with the cloned commit
 (`FSL_IMAGE_TAG` in `/opt/fsl/.env`), stops the platform for the restore, and
-starts every service (HEAD's compose file may add some). `FSL_IMAGE_TAG` stays
+recreates every service (HEAD's compose file may add some, and a file
+bind-mounted into a running container, such as `filebeat.yml`, keeps the cloned
+commit's copy until the container is recreated). `FSL_IMAGE_TAG` stays
 the cloned commit because the range's image builders pull the wargames'
 images from GHCR at that tag: a tag GHCR does not have would fail the
 `fsl-wargame-host` build. Before anything is deleted it refuses an unknown
