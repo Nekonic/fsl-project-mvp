@@ -88,3 +88,26 @@ def test_a_disk_cache_row_reads_as_in_chrome_and_the_resources_figure_is_the_dec
     assert result["cached"][4:6] == ["(disk cache)", "0 ms"]
     assert result["fetched"][4] != "(disk cache)"
     assert result["resources"].startswith("10.2") and result["transferred"].startswith("5.1")
+
+def test_the_last_waterfall_bar_ends_inside_the_column_and_no_bar_is_a_sliver(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
+      dev.rows = [doc, css, cached];
+      devRows();
+      const bars = document.querySelectorAll('#site-dev-rows .dv-wf i').map((bar) => bar.getAttribute('style'));
+      const left = (style) => Number(/left: ([\\d.]+)%/.exec(style)[1]);
+      const width = (style) => Number(/width: ([\\d.]+)%/.exec(style)[1]);
+      return {ends: bars.map((style) => left(style) + width(style)), cachedLeft: left(bars[2])};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert max(result["ends"]) < 100
+    assert result["cachedLeft"] < 100 and result["cachedLeft"] > 90
+
+def test_the_type_chips_are_the_ones_chrome_shows_in_its_order(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
+      return [...document.querySelectorAll('#site-dev-types [data-type]')].map((chip) => chip.dataset.type);
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == ["all", "xhr", "js", "css", "img", "media", "font", "doc", "ws", "wasm", "manifest", "other"]

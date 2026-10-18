@@ -5,6 +5,7 @@ const dev = {
 };
 const DEV_POLL_MS = 2000;
 const DEV_LOWEST = 120;
+const DEV_WATERFALL_PADDING = 1.05;
 const DEV_FIELDS = ["general.url", "general.method", "general.status", "general.remote", ""];
 const DEV_LABELS = {
   "site.dev.disable_cache": "Disable cache",
@@ -12,6 +13,11 @@ const DEV_LABELS = {
   "site.dev.throttling": "No throttling",
   "site.dev.throttling_title": "Throttling",
   "site.dev.waterfall": "Waterfall",
+  "site.dev.type.media": "Media",
+  "site.dev.type.font": "Font",
+  "site.dev.type.socket": "WS",
+  "site.dev.type.manifest": "Manifest",
+  "site.dev.type.other": "Other",
   "site.dev.tab.timing": "Timing",
   "site.dev.inspect": "Select an element in the page to inspect it",
   "site.dev.device": "Toggle device toolbar",
@@ -92,7 +98,7 @@ function devSpan(rows) {
   if (!timed.length) return { from: 0, length: 1 };
   const from = Math.min(...timed.map(devStarted));
   const to = Math.max(...timed.map((row) => row.at * 1000));
-  return { from, length: Math.max(to - from, 1) };
+  return { from, length: Math.max(to - from, 1) * DEV_WATERFALL_PADDING };
 }
 
 function devBar(row, span) {
