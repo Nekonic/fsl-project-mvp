@@ -1,10 +1,30 @@
 const dev = {
   open: false, after: 0, rows: [], height: 280, timer: null, picked: null, record: null, tab: "headers",
   preserve: false, coached: null, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
+  panel: "network",
 };
 const DEV_POLL_MS = 2000;
 const DEV_LOWEST = 120;
 const DEV_FIELDS = ["general.url", "general.method", "general.status", "general.remote", ""];
+const DEV_LABELS = {
+  "site.dev.disable_cache": "Disable cache",
+  "site.dev.disable_cache_title": "Disable cache (while DevTools is open)",
+  "site.dev.throttling": "No throttling",
+  "site.dev.throttling_title": "Throttling",
+  "site.dev.waterfall": "Waterfall",
+  "site.dev.tab.timing": "Timing",
+  "site.dev.inspect": "Select an element in the page to inspect it",
+  "site.dev.device": "Toggle device toolbar",
+  "site.dev.settings": "Settings",
+  "site.dev.more": "Customize and control DevTools",
+  "site.dev.initiator.none": "No initiator data",
+  "site.dev.initiator.chain": "Request initiator chain",
+  "site.dev.timing.started": "Started at {0}",
+  "site.dev.timing.request_response": "Request/Response",
+  "site.dev.timing.total": "Total",
+};
+const devWords = (key, ...values) => values.reduce(
+  (out, value, index) => out.split(`{${index}}`).join(value), localized(key, DEV_LABELS[key]));
 const DEV_FORM = "application/x-www-form-urlencoded";
 const sitePath = (tail) => `/api/sessions/${sessionId()}/site/requests/${tail}`;
 
@@ -56,10 +76,28 @@ const devSaid = (key, fallback, ...values) => values.reduce(
   (out, value, index) => out.split(`{${index}}`).join(value), localized(key, fallback));
 
 function devStatus() {
-  const bytes = dev.rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
+  const sent = dev.rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
+  const unpacked = dev.rows.reduce((sum, row) => sum + (Number(row.resource_size ?? row.size) || 0), 0);
   field("site-dev-count").textContent = devSaid("site.dev.status.requests", "{0} requests", dev.rows.length);
-  field("site-dev-transferred").textContent = devSaid("site.dev.status.transferred", "{0} transferred", devSize(bytes));
-  field("site-dev-resources").textContent = devSaid("site.dev.status.resources", "{0} resources", devSize(bytes));
+  field("site-dev-transferred").textContent = devSaid("site.dev.status.transferred", "{0} transferred", devSize(sent));
+  field("site-dev-resources").textContent = devSaid("site.dev.status.resources", "{0} resources", devSize(unpacked));
+}
+
+const devStarted = (row) => row.at * 1000 - (Number(row.ms) || 0);
+
+function devSpan(rows) {
+  const timed = rows.filter((row) => Number.isFinite(row.at));
+  if (!timed.length) return { from: 0, length: 1 };
+  const from = Math.min(...timed.map(devStarted));
+  const to = Math.max(...timed.map((row) => row.at * 1000));
+  return { from, length: Math.max(to - from, 1) };
+}
+
+function devBar(row, span) {
+  if (!Number.isFinite(row.at)) return { left: 0, width: 0 };
+  const left = ((devStarted(row) - span.from) / span.length) * 100;
+  const width = Math.max(((Number(row.ms) || 0) / span.length) * 100, 0.5);
+  return { left: left.toFixed(2), width: Math.min(width, 100 - left).toFixed(2) };
 }
 
 function devRows() {
@@ -67,9 +105,11 @@ function devRows() {
   field("site-dev-empty").classList.toggle("hidden", dev.rows.length > 0);
   field("site-dev").classList.toggle("dv-picked", dev.picked !== null);
   devStatus();
+  const span = devSpan(shown);
   field("site-dev-rows").innerHTML = shown.map((row) => {
     const from = devInitiator(row.initiator);
     const tone = devFailed(row.status) ? "dv-fail" : "";
+    const bar = devBar(row, span);
     return `<tr data-request="${row.id}" data-coach="row" data-url="${esc(devAddress(row.url))}" class="${tone}"
         aria-selected="${row.id === dev.picked}" title="${esc(row.url)}">
       <td>${esc(devName(row.url))}</td>
@@ -77,7 +117,8 @@ function devRows() {
       <td class="dv-wide">${esc(row.type)}</td>
       <td class="dv-wide ${from.sub ? "" : "dv-dim"}" title="${esc(from.title || from.text)}">${esc(from.text)}${from.sub ? `<span class="dv-sub">${esc(from.sub)}</span>` : ""}</td>
       <td class="dv-wide">${esc(devSize(row.size))}</td>
-      <td class="dv-wide">${esc(devTime(row.ms))}</td></tr>`;
+      <td class="dv-wide">${esc(devTime(row.ms))}</td>
+      <td class="dv-wide"><div class="dv-wf"><i style="left: ${bar.left}%; width: ${bar.width}%"></i></div></td></tr>`;
   }).join("");
   field("site-dev-rows").querySelectorAll("[data-request]").forEach((line) =>
     line.addEventListener("click", () => devPick(Number(line.dataset.request))));
@@ -217,7 +258,28 @@ function devPreview(record) {
   return `<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="${esc(body.text)}" style="width: 100%; height: 100%; border: 0; background: #fff"></iframe>`;
 }
 
-const DEV_TABS = { headers: devHeaders, payload: devPayload, preview: devPreview, response: devResponse };
+function devInitiatorView(record) {
+  const from = record.initiator;
+  if (!from || from.type !== "parser" || !from.url) return `<p class="dv-empty">${esc(devWords("site.dev.initiator.none"))}</p>`;
+  return `<section class="dv-section"><div class="dv-heading">${esc(devWords("site.dev.initiator.chain"))}</div>
+    <div class="dv-chain">${esc(record.url)}</div>
+    <div class="dv-chain dv-then">${esc(from.url)}</div></section>`;
+}
+
+function devTiming(record) {
+  const starts = dev.rows.filter((row) => Number.isFinite(row.at)).map(devStarted);
+  const offset = starts.length ? Math.max(devStarted(record) - Math.min(...starts), 0) : 0;
+  const total = Number(record.ms) || 0;
+  return `<section class="dv-section"><div class="dv-heading"><span>${esc(devWords("site.dev.timing.started", devTime(offset)))}</span></div></section>
+    <section class="dv-section"><div class="dv-heading"><span>${esc(devWords("site.dev.timing.request_response"))}</span>
+      <span style="margin-left: auto; font-weight: 400">${esc(t("site.dev.time"))}</span></div>
+      <div class="dv-timing"><span>${esc(devWords("site.dev.timing.total"))}</span><span>${esc(devTime(total))}</span></div></section>`;
+}
+
+const DEV_TABS = {
+  headers: devHeaders, payload: devPayload, preview: devPreview, response: devResponse,
+  initiator: devInitiatorView, timing: devTiming,
+};
 
 function devHasPayload(record) {
   return Boolean(new URL(record.url).search.length > 1 || (record.request_body && record.request_body.size));
@@ -281,6 +343,7 @@ function devResize(event) {
 
 function devToggle() {
   dev.open = !dev.open;
+  if (dev.open) devPanel("network");
   devPlace();
   clearInterval(dev.timer);
   if (dev.open) {
@@ -289,7 +352,15 @@ function devToggle() {
   }
 }
 
-const DEV_PANELS = { elements: "Elements", console: "Console", sources: "Sources" };
+const DEV_PANELS = { elements: "Elements", console: "Console", sources: "Sources", network: "Network" };
+
+function devPanel(name) {
+  dev.panel = name;
+  field("site-dev").querySelectorAll("[data-panel]").forEach((tab) =>
+    tab.setAttribute("aria-selected", String(tab.dataset.panel === name)));
+  field("site-dev-network").classList.toggle("hidden", name !== "network");
+  field("site-dev-blank").classList.toggle("hidden", name === "network");
+}
 
 function devKeep(rows) {
   if (rows.length === dev.rows.length) return;
@@ -327,7 +398,18 @@ function devTools() {
   field("site-dev-exit").addEventListener("click", devToggle);
   field("site-dev").querySelectorAll("[data-panel]").forEach((tab) => {
     tab.textContent = localized(`site.dev.panel.${tab.dataset.panel}`, DEV_PANELS[tab.dataset.panel] || "");
+    tab.addEventListener("click", () => devPanel(tab.dataset.panel));
   });
+  field("site-dev").querySelectorAll("[data-dev-t]").forEach((element) => {
+    element.textContent = devWords(element.dataset.devT);
+  });
+  field("site-dev").querySelectorAll("[data-dev-title]").forEach((element) => {
+    element.title = devWords(element.dataset.devTitle);
+  });
+  ["site-dev-inspect", "site-dev-device"].forEach((id) => field(id).addEventListener("click", (event) => {
+    const button = event.currentTarget;
+    button.setAttribute("aria-pressed", String(button.getAttribute("aria-pressed") !== "true"));
+  }));
   devStatus();
   if (typeof MutationObserver === "function") {
     new MutationObserver(devNavigating).observe(field("site-frame"), { attributes: true, attributeFilter: ["src"] });
