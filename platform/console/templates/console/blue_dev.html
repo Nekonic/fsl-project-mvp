@@ -50,6 +50,7 @@
   #site-dev .dv-timing > :nth-child(even) { text-align: right; font-family: var(--font-mono); color: var(--heading); }
   #site-dev .dv-chain { padding: 1px 8px 1px 20px; font-family: var(--font-mono); color: var(--heading); overflow-wrap: anywhere; }
   #site-dev .dv-chain.dv-then::before { content: "\21B3\00a0"; color: var(--text-faint); }
+  #site-dev .dv-prompt { display: flex; gap: 6px; padding: 2px 8px; font-family: var(--font-mono); color: var(--primary-text); }
   #site-dev .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
 </style>
 <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
@@ -74,7 +75,7 @@
     </button>
     <button type="button" id="site-dev-exit" class="dv-icon" data-t-title="site.dev.close" aria-label="close">✕</button>
   </div>
-  <div id="site-dev-blank" class="hidden flex-1 min-h-0 bg-panel"></div>
+  <div id="site-dev-blank" class="hidden flex-1 min-h-0 overflow-auto bg-panel"></div>
   <div id="site-dev-network" class="flex-1 min-h-0 flex flex-col">
   <div class="dv-bar shrink-0" style="height: 30px">
     <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">
@@ -99,15 +100,15 @@
     <button type="button" class="dv-chip" data-type="all" aria-pressed="true" data-t="site.dev.type.all"></button>
     <span class="dv-sep"></span>
     <button type="button" class="dv-chip" data-type="xhr" aria-pressed="false">Fetch/XHR</button>
-    <button type="button" class="dv-chip" data-type="js" aria-pressed="false">JS</button>
+    <button type="button" class="dv-chip" data-type="doc" aria-pressed="false" data-t="site.dev.type.doc"></button>
     <button type="button" class="dv-chip" data-type="css" aria-pressed="false">CSS</button>
+    <button type="button" class="dv-chip" data-type="js" aria-pressed="false">JS</button>
+    <button type="button" class="dv-chip" data-type="font" aria-pressed="false" data-dev-t="site.dev.type.font"></button>
     <button type="button" class="dv-chip" data-type="img" aria-pressed="false" data-t="site.dev.type.img"></button>
     <button type="button" class="dv-chip" data-type="media" aria-pressed="false" data-dev-t="site.dev.type.media"></button>
-    <button type="button" class="dv-chip" data-type="font" aria-pressed="false" data-dev-t="site.dev.type.font"></button>
-    <button type="button" class="dv-chip" data-type="doc" aria-pressed="false" data-t="site.dev.type.doc"></button>
+    <button type="button" class="dv-chip" data-type="manifest" aria-pressed="false" data-dev-t="site.dev.type.manifest"></button>
     <button type="button" class="dv-chip" data-type="ws" aria-pressed="false" data-dev-t="site.dev.type.socket"></button>
     <button type="button" class="dv-chip" data-type="wasm" aria-pressed="false">Wasm</button>
-    <button type="button" class="dv-chip" data-type="manifest" aria-pressed="false" data-dev-t="site.dev.type.manifest"></button>
     <button type="button" class="dv-chip" data-type="other" aria-pressed="false" data-dev-t="site.dev.type.other"></button>
   </div>
   <div class="flex-1 min-h-0 flex">
