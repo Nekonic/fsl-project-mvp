@@ -10,7 +10,7 @@ const topologyOrigin = () => {
 
 function topologyFit() {
   const frame = field("topology-frame");
-  if (frame.contentWindow && topologyOrigin() && topo.drawn) frame.contentWindow.postMessage("fsl-fit", topologyOrigin());
+  if (frame.contentWindow && topologyOrigin() && topo.drawn) frame.contentWindow.postMessage("fit", topologyOrigin());
 }
 
 function topologyRefit() {
@@ -23,6 +23,7 @@ function topologyRefit() {
 
 function topologyWait(ms) {
   topo.waiting = true;
+  field("topology-frame").style.visibility = "hidden";
   field("map-wait").classList.remove("hidden");
   clearTimeout(topo.waitTimer);
   topo.waitTimer = setTimeout(topologyFitted, ms);
@@ -31,16 +32,23 @@ function topologyWait(ms) {
 function topologyFitted() {
   clearTimeout(topo.waitTimer);
   topo.waiting = false;
+  field("topology-frame").style.visibility = "";
   field("map-wait").classList.add("hidden");
 }
 
 function topologyHeard(event) {
   const frame = field("topology-frame");
-  const said = event.data && event.data.fslMap;
+  const said = event.data && event.data.map;
   if ((said !== "drawn" && said !== "fitted") || !frame.contentWindow || event.source !== frame.contentWindow) return;
   topo.drawn = true;
   topologyFitted();
   if (said === "drawn") topo.drawnHeard.forEach((heard) => heard());
+}
+
+function topologyFitShown() {
+  requestAnimationFrame(() => {
+    if (boxOf(field("topology-frame")) && paneOpen("topology")) topologyFit();
+  });
 }
 
 function topologyShow() {
@@ -53,6 +61,7 @@ function topologyShow() {
     field("topology-frame").src = at.origin + topo.web.path;
   } else if (topo.web && topo.drawn) {
     topologyWait(MAP_FIT_WAIT_MS);
+    topologyFitShown();
   }
   topologyRefit();
 }

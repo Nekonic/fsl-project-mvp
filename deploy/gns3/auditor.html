@@ -43,7 +43,7 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 function viewOnly(map) {
   const style = map.document.createElement("style");
-  style.id = "fsl-view-only";
+  style.id = "view-only";
   style.textContent = VIEW_ONLY;
   map.document.head.append(style);
   const refused = (event) => {
@@ -216,7 +216,7 @@ function announced(done) {
   if (done === null) return;
   const said = view.told ? "fitted" : "drawn";
   view.told = true;
-  window.parent.postMessage({fslMap: said}, "*");
+  window.parent.postMessage({map: said}, "*");
 }
 
 function fitted(map) {
@@ -399,7 +399,8 @@ function textRects() {
     return union([iconBox(node), label ? boxOf(label) : null]);
   });
   const interfaces = [...doc.querySelectorAll("text.interface_label")].filter((label) => label.textContent.trim()).map(boxOf);
-  return [...nodes, ...interfaces].filter(Boolean).map(rounded);
+  const captions = [...doc.querySelectorAll("g.drawing text")].filter((caption) => caption.textContent.trim()).map(boxOf);
+  return [...nodes, ...interfaces, ...captions].filter(Boolean).map(rounded);
 }
 
 function zoneRects() {
@@ -417,11 +418,11 @@ function answerLocate(always) {
   const said = JSON.stringify([rect, zones, text]);
   if (!always && said === view.last) return;
   view.last = said;
-  view.asked.to.postMessage({fslLocated: view.asked.id, rect, zones, text}, view.asked.origin);
+  view.asked.to.postMessage({located: view.asked.id, rect, zones, text}, view.asked.origin);
 }
 
 async function locateAsked(event) {
-  const spec = event.data.fslLocate;
+  const spec = event.data.locate;
   clearInterval(view.timer);
   if (!spec) {
     view.asked = null;
@@ -441,9 +442,9 @@ if (typeof ResizeObserver === "function") new ResizeObserver(refitSoon).observe(
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
   const said = event.data;
-  const asksFit = said === "fsl-fit" || (said && typeof said === "object" && said.fslFit);
+  const asksFit = said === "fit" || (said && typeof said === "object" && said.fit);
   if (asksFit && view.map) fitted(view.map);
-  if (said && typeof said === "object" && "fslLocate" in said) locateAsked(event);
+  if (said && typeof said === "object" && "locate" in said) locateAsked(event);
 });
 
 (async () => {

@@ -475,12 +475,13 @@ drawn it closes the topology summary (its visibility is a constant in the
 pans, the wheel zooms), resets the zoom, zooms out with the web UI's own button
 (0.1 a step; the web UI never reads the project's `zoom`) until the drawing
 fits, and centres it with one mousemove (the web UI pans by
-`movementX`/`movementY`). The pane's Fit to view button posts `fsl-fit` to the
+`movementX`/`movementY`). The pane's Fit to view button posts `fit` to the
 frame, which runs the same reset and fit; the console posts it on every pane
 open and resize too, and shows "Loading the map..." on every open until the page
-posts `{fslMap: "drawn"}` (after its first fit) or `{fslMap: "fitted"}` (after
-every later one, which retries until the drawing lies inside the frame). The page answers the coach's
-`{fslLocate}` for a node, a link, a link end's label (read once from
+posts `{map: "drawn"}` (after its first fit) or `{map: "fitted"}` (after
+every later one, which retries until the drawing lies inside the frame); the
+frame stays hidden until then. The page answers the coach's
+`{locate}` for a node, a link, a link end's label (read once from
 `/v3/projects/<id>/nodes` and `/links` with the Auditor's token) or a zone
 with its rectangle in the pane, plus the rectangles of every node and interface
 label (`text`, so callouts stay off the map's text). The Auditor role still refuses every
@@ -638,9 +639,12 @@ would send. The console uses no cookies today; one added later would be
 reachable this way. It appends a script before `</body>` that posts
 `location.pathname + search` to the parent, which is how the address bar and
 the history follow a link clicked inside the page, passes F12 up, and
-answers the coach's `{fslLocate: <selector>}` with the element's rectangle
+answers the coach's `{locate: <selector>}` with the element's rectangle
 (again on scroll and resize), only for a message from its parent whose origin
-is the console's host; it adds no request of its own.
+is the console's host; it adds no request of its own. It shows each link as
+`http://<site>/...` (the markup nginx rewrote keeps the proxy path, so a hover
+shows the address the customer would see) and sends a plain click on such a
+link through the proxy path.
 
 The Website pane's egress (`site.found_egress`, once per session) leaves
 from a customers address, so its requests take the customers' path and the
@@ -1122,8 +1126,8 @@ console names no unit's step and no selector: where a step points is its
 Locators: `panel` (a console element: the site's address bar, the rule
 editor, the objectives total), `map` (`node`, `link`, `label: [host,
 switch]` or `zone`, which the server resolves from `{switch:<host>}`;
-`deploy/gns3/auditor.html` answers `{fslLocate}` by `postMessage` with the
-rectangle and every zone drawing's rectangle (`zones`, so callouts stay outside them), refits on `{fslFit}`, and posts `{fslMap: "drawn"}` after its first fit and `{fslMap: "fitted"}` after each later one), `site` (a
+`deploy/gns3/auditor.html` answers `{locate}` by `postMessage` with the
+rectangle, every zone drawing's rectangle (`zones`) and the boxes of the nodes, interface labels and zone captions (`text`, so callouts stay off them), refits on `{fit}`, and posts `{map: "drawn"}` after its first fit and `{map: "fitted"}` after each later one), `site` (a
 selector inside the cross-origin site frame, answered by the script nginx
 injects), `dev` (a `data-coach` name in the developer tools: the toggle, the
 matching row, a tab, a line), `kibana` (in the same-origin Kibana frame:
@@ -1132,8 +1136,12 @@ a field's row in the document flyout, brought into view through the
 flyout's field filter; on a step whose check names a `leg` the coach rings
 the expand toggle of the row on that leg (the one whose source is another
 row's destination, or the reverse) and the flyout's arrow while the other
-event is open, `sidebar: <field>`) and `term` (`{pane: kali | waf,
-match}`: the row of the xterm buffer that matches). A two-phase point holds
+event is open (when that row cannot be found, or the open document's position
+is unknown, it rings the field filter and never a value; `keep: true` on the
+point leaves the flyout open on arrival), `sidebar: <field>`) and `term`
+(`{pane: kali | waf, match}`: the row of the xterm buffer that matches; an
+optional `done` pattern, once printed after the last typed command, moves the
+ring to the step's check button). A two-phase point holds
 the first target `until: sent` and then points at `then` (the select, then
 the payload line). The highlight dims the pane alone (`pointer-events:
 none`), rings the target in the primary colour and puts a one-line callout
@@ -1141,7 +1149,8 @@ beside it (`<text>.callout.<step>`, `.callout.<step>.then` for the second
 phase), flipped or shifted inside the pane, never over the target, the
 rail, the bars or the note; the hint says "Look at the highlighted spot."
 when the step has a locator. While the step's pane is not shown, the step
-card shows the "Open <pane>" button (`lesson.open.<pane>`); with no target
+card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with its own
+callout (`lesson.open.callout`; none on the last step); with no target
 for about 2 s the card says where to look (`lesson.coach.missing`). The map
 refits on every pane open and on resize.
 `test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`

@@ -107,11 +107,11 @@ function siteHeard(event) {
   const from = field("site-frame").contentWindow;
   if (!event.data || (from && event.source !== from) || !site.base) return;
   if (event.origin && event.origin !== site.origin) return;
-  if (event.data.fslKey === "F12") {
+  if (event.data.key === "F12") {
     devToggle();
     return;
   }
-  const said = event.data.fslSite;
+  const said = event.data.site;
   if (typeof said !== "string" || !said.startsWith(site.base.slice(0, -1))) return;
   const path = said.slice(site.base.length - 1) || "/";
   if (site.expecting) site.history[site.at] = path;
