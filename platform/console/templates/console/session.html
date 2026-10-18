@@ -74,6 +74,10 @@
 </section>
 
 <section id="scoreboard" class="hidden">
+  <div id="score-slow" class="hidden card p-4 mb-5 flex flex-wrap items-center gap-3 text-[13px] border-l-4 border-l-danger">
+    <span id="score-slow-text" class="text-body"></span>
+    <button id="score-retry" class="btn btn-sm btn-ghost"></button>
+  </div>
   <section id="course" class="hidden card p-5 mb-5 text-[13px]">
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
@@ -186,6 +190,18 @@
     return step ? t("session.run.step", number, step) : t("session.run.lesson", number);
   }
 
+  const keyed = (key, fallback, ...values) => {
+    const text = t(key, ...values);
+    return text === key ? fallback : text;
+  };
+
+  function lessonProgress() {
+    const step = lessonStep(id, session.lesson_id);
+    const number = lessonNumber(session.lesson_id);
+    return number ? keyed("session.lesson_step", `Step ${step}/${lessonSteps()} (lesson ${number})`, step, lessonSteps(), number)
+      : t("main.step", step, lessonSteps());
+  }
+
   function header(taken, total) {
     const closed = Boolean(session.ended_at);
     field("session-title").textContent = t("common.session", id);
@@ -205,7 +221,7 @@
     const figures = [];
     show("session-next", lessonSession() && !closed);
     field("session-next").textContent = t("session.next.lesson");
-    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))));
+    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(lessonProgress())));
     if (total) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
     if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
     field("session-figures").innerHTML = figures.join("");
@@ -217,7 +233,7 @@
     field("blue-tiles").innerHTML = [
       tile("Kibana", t("session.tile.logs")),
       tile(t("session.tile.waf"), t("session.tile.waf_does")),
-      lesson ? tile(t("session.tile.note"), t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))
+      lesson ? tile(t("session.tile.note"), lessonProgress())
         : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
     ].join("");
     const posture = Number.isInteger(paranoia) && !lessonSession() ? t("session.blue.posture", paranoia) : "";
@@ -408,22 +424,43 @@
     field("case-rows").innerHTML = "";
   }
 
-  function scoreShown() {
-    show("loading", false);
-    show("scoreboard", true);
+  const SCORE_SLOW_AFTER = 15000;
+  let scoreRun = 0;
+  let scoreSlowTimer = null;
+
+  function scorePending() {
+    const said = esc(t("session.loading.result"));
+    field("lost-count").textContent = "—";
+    field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
+    show("penalty-total", false);
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="6">${said}</td></tr>`;
+    field("judgement").innerHTML = `<p class="text-muted">${said}</p>`;
+    field("case-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${said}</td></tr>`;
+  }
+
+  function scoreAnswered() {
+    clearTimeout(scoreSlowTimer);
+    show("score-slow", false);
   }
 
   async function scoreTables(tried) {
+    const run = scoreRun;
+    if (tried === 0) {
+      scorePending();
+      clearTimeout(scoreSlowTimer);
+      scoreSlowTimer = setTimeout(() => show("score-slow", run === scoreRun), SCORE_SLOW_AFTER);
+    }
     const [score, tiers] = await Promise.all([
       api(`/api/sessions/${id}/score/?brief=1`),
       api(`/api/wargames/${session.scenario}/objectives/`),
     ]);
-    scoreShown();
+    if (run !== scoreRun) return;
+    scoreAnswered();
     const read = score.ok && Array.isArray(score.body.breaches) && Array.isArray(score.body.per_case);
     if (!read) {
       const retrying = tried + 1 < SCORE_TRIES;
       scoreUnread(score.ok ? { body: {}, status: 0 } : score, retrying);
-      if (retrying) setTimeout(() => scoreTables(tried + 1), SCORE_RETRY_AFTER);
+      if (retrying) setTimeout(() => { if (run === scoreRun) scoreTables(tried + 1); }, SCORE_RETRY_AFTER);
       return;
     }
     objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [], score.body.breaches);
@@ -460,16 +497,16 @@
   }
 
   async function scoreboard() {
+    show("loading", false);
     show("consoles", false);
     show("activity", false);
     show("traffic", false);
-    show("scoreboard", false);
-    field("loading").textContent = t("session.loading.result");
-    show("loading", true);
     courseSummary();
     lessonScoreNote();
     verdictBanner();
     if (session.course_scenario) showScenarioDebrief(field("debrief"));
+    show("scoreboard", true);
+    scoreRun += 1;
     await scoreTables(0);
   }
 
@@ -528,7 +565,7 @@
   async function render() {
     const [read, listed] = await Promise.all([api(`/api/sessions/${id}/`), api("/api/wargames/")]);
     session = read.ok ? read.body : null;
-    crumbs([{ label: t("common.session", id), href: `/session/${id}/` },
+    crumbs([sessionCrumb(id, session),
             ...(session && session.ended_at ? [{ label: t("crumb.result") }] : [])]);
     if (!session) {
       show("loading", false);
@@ -590,6 +627,14 @@
   });
 
   field("restart").addEventListener("click", restart);
+
+  field("score-slow-text").textContent = keyed("session.result.slow", "The result has not loaded yet.");
+  field("score-retry").textContent = keyed("session.result.retry", "Load again");
+  field("score-retry").addEventListener("click", () => {
+    show("score-slow", false);
+    scoreRun += 1;
+    scoreTables(0);
+  });
 
   const ACTIVITY_EVERY = 10000;
   setInterval(() => {

@@ -125,8 +125,7 @@
   const terminalPanes = { waf: () => frame, kali: () => field("kali-frame") };
   let terminalWaited = { pane: "", since: 0 };
 
-  crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
-          { label: t("blue.title") }]);
+  crumbs([sessionCrumb(sessionId()), { label: t("blue.title") }]);
 
   function showFrame(url) {
     field("pane-status").style.display = "none";
@@ -307,9 +306,11 @@
       field("waf-rules").textContent = `${session.waf_rules}/`;
     }
     if (session && session.lesson) {
-      crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
+      crumbs([sessionCrumb(sessionId(), session),
               { label: t("blue.title"), href: `/blue/${sessionId()}/` },
               { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
+    } else if (session) {
+      crumbs([sessionCrumb(sessionId(), session), { label: t("blue.title") }]);
     }
     const guided = Boolean(session && (session.lesson || session.course_scenario));
     if (guided) noteControls(session);

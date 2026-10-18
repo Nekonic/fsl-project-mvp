@@ -75,8 +75,8 @@
 {% block script %}
 <script>
   document.title = t("common.red_team");
-  crumbs([{ label: t("common.session", sessionId()), href: `/session/${sessionId()}/` },
-          { label: t("common.red_team") }]);
+  const redCrumbs = (known) => crumbs([sessionCrumb(sessionId(), known), { label: t("common.red_team") }]);
+  redCrumbs();
 
   const field = (id) => document.getElementById(id);
   const tabs = Array.from(document.querySelectorAll(".pane-tab"));
@@ -206,6 +206,7 @@
       return;
     }
     session = read.body;
+    redCrumbs(session);
     if (session.site) siteBrowser(session.site);
     openPane(tabs[0]);
     await showWargame();
