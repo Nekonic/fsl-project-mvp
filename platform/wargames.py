@@ -36,10 +36,11 @@ PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule",)
-RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "excluded_target", "lost_points")
+RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "excluded_target", "lost_points",
+               "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
                  "waf_logged", "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
-KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
+KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by", "run_errors")
 UNRECORDED_FACTS = ("hits",)
 LEGS = ("inbound", "upstream")
 STEP_MARKER = "step:"

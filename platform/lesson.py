@@ -52,6 +52,16 @@ def alerted_by(engines: set[str]) -> str:
 def penalty(difficulty: int, detected: bool) -> int:
     return difficulty * (1 if detected else 2)
 
+def detected_penalty(tiers: list[dict], key: str) -> int | None:
+    found = next((tier for tier in tiers if tier.get("key") == key), None)
+    return penalty(int(found["difficulty"]), True) if found else None
+
+def rule_of(raw: dict) -> str:
+    return str((raw.get("details") or {}).get("ruleId") or (raw.get("alert") or {}).get("signature_id") or "")
+
+def server_errors(events: list[dict]) -> int:
+    return sum(1 for event in events if str((event.get("http") or {}).get("status") or "") == "500")
+
 def fix_class(waf: dict | None, posture: dict | None) -> str | None:
     if not waf:
         return None

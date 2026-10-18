@@ -467,7 +467,7 @@ foundations:
         check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
       - id: still
         point: {opens: elk}
-        check: {kind: answer, of: rule, marker: "step:agent", known: ["949110", "913100"]}
+        check: {kind: answer, of: rule, marker: "step:agent", family: "942", known: ["949110", "913100"]}
   - id: f6
     order: 6
     text: lesson.miss
@@ -495,11 +495,11 @@ foundations:
         point: {opens: elk, kibana: {hits: true}}
         check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
       - id: seen
-        point: {opens: elk, kibana: {sidebar: source_ip}}
-        check: {kind: answer, of: kali_source, about: dump, from: http}
+        point: {opens: elk, kibana: {hits: true}}
+        check: {kind: answer, of: run_errors, about: dump, leg: inbound}
       - id: cost
-        point: {opens: elk, panel: "#lesson-objectives .total"}
-        check: {kind: answer, of: lost_points}
+        point: {opens: elk, panel: "#lesson-objectives [data-objective=board-auth-user-admin]"}
+        check: {kind: answer, of: detected_penalty, objective: board-auth-user-admin}
       - id: narrow
         point: {opens: waf, term: {pane: waf, match: '\$ $'}}
         command: "{sudo}nano {waf_rules} && {waf_reload}"

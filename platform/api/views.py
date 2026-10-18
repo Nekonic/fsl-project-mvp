@@ -86,6 +86,8 @@ REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 SEGMENTS_KEPT_FOR = 30.0
 RECORD_SLACK = timedelta(seconds=5)
+RUN_SETTLED = timedelta(seconds=15)
+OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
 _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
@@ -596,6 +598,11 @@ def _range_fact(session, check, taught):
         return list(dict.fromkeys([*targets, *(target.partition(":")[2] for target in targets if ":" in target)]))
     if of == "lost_points":
         return [str(_lesson_objectives(session, every=True)["total"])]
+    if of == "detected_penalty":
+        if not wargames.judged(session.scenario):
+            return []
+        points = lesson.detected_penalty(wargames.objectives(session.scenario)["tiers"], check.get("objective", ""))
+        return [str(points)] if points is not None else []
     project, drawn = maps.template(session.scenario), maps.learner(session.scenario)
     if of == "logs":
         return [name for name in topology.hosts(project) if name == topology.LOG_SERVER]
@@ -699,12 +706,11 @@ def _waf_records(session, record):
         for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())]
 
 def _hits(session, check):
-    counts = []
-    for since in filter(None, (_lesson_started(session), session.started_at)):
-        events = _sensed(session, since - RECORD_SLACK, timezone.now() + RECORD_SLACK, session.browse_marker)
-        counts.append(sum(1 for event in _on_leg(session, events, check.get("leg", "inbound"))
-                          if str((event.get("http") or {}).get("url") or "").startswith(check["path"])))
-    return [str(count) for count in dict.fromkeys(counts) if count]
+    since = _lesson_started(session) or session.started_at
+    events = _sensed(session, since - RECORD_SLACK, timezone.now() + RECORD_SLACK, session.browse_marker)
+    count = sum(1 for event in _on_leg(session, events, check.get("leg", "inbound"))
+                if str((event.get("http") or {}).get("url") or "").startswith(check["path"]))
+    return [str(count)] if count else []
 
 def _window_of(record):
     start = datetime.fromtimestamp(record["at"], tz=dt_timezone.utc)
@@ -738,7 +744,8 @@ def _kali_check(session, step, kept):
     recorded, shown = _kali_run(session, step["id"], step["check"], kept)
     if recorded is None:
         tool = wargames.find_case(session.scenario, step["check"]["case"])["tool"]
-        return False, ["lesson.check.kali_none", [tool]], shown
+        state = "kali_running" if (shown.get("kali") or {}).get("running") else "kali_none"
+        return False, [f"lesson.check.{state}", [tool]], shown
     return True, None, shown
 
 def _kali_run(session, step_id, check, kept):
@@ -746,20 +753,21 @@ def _kali_run(session, step_id, check, kept):
     if not marker:
         return None, {}
     case = wargames.find_case(session.scenario, check["case"])
-    since = _lesson_started(session) or session.started_at
-    reached = max(parse_datetime(kept.get("reached") or "") or since, since)
-    shown = {"kali": {"name": case["name"],
-                      "discover": _discover(session, since=reached, until=timezone.now() + RECORD_SLACK)}}
     recorded = session.cases.filter(case_id=marker).first()
     if recorded is not None:
-        return recorded, shown
-    events = _sensed(session, reached - RECORD_SLACK, timezone.now() + RECORD_SLACK, marker)
+        return recorded, _run_shown(session, case, recorded)
+    since = _lesson_started(session) or session.started_at
+    reached = max(parse_datetime(kept.get("reached") or "") or since, since)
+    now = timezone.now()
+    events = _sensed(session, reached - RECORD_SLACK, now + RECORD_SLACK, marker)
     ran = events if check.get("ua") == "any" else [
         event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
-    if not ran:
-        return None, shown
-    first = min((parse_datetime(str(event.get("timestamp") or "")) for event in ran), default=None) or reached
-    recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), first, timezone.now(),
+    seen = sorted(stamp for event in ran if (stamp := _stamped(event)))
+    if not seen:
+        return None, {"kali": {"name": case["name"]}}
+    if now - seen[-1] < RUN_SETTLED:
+        return None, {"kali": {"name": case["name"], "running": True}}
+    recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
                              "command": _kali_command(session, case["name"])})
     _settle_and_observe(session)
@@ -767,7 +775,18 @@ def _kali_run(session, step_id, check, kept):
         _ingest(session)
     except elastic.ElasticUnavailable:
         pass
-    return recorded, shown
+    return recorded, _run_shown(session, case, recorded)
+
+def _run_shown(session, case, recorded):
+    return {"kali": {"name": case["name"],
+                     "discover": _discover(session, since=recorded.started_at, until=recorded.ended_at + RECORD_SLACK)}}
+
+def _stamped(event):
+    stamp = parse_datetime(str(event.get("timestamp") or event.get("@timestamp") or ""))
+    return stamp if stamp is None or stamp.tzinfo else stamp.replace(tzinfo=dt_timezone.utc)
+
+def _run_events(session, recorded):
+    return _sensed(session, recorded.started_at - RECORD_SLACK, recorded.ended_at + RECORD_SLACK, recorded.case_id)
 
 def _kali_case(session, step_id):
     marker = (_steps_of(session).get(step_id) or {}).get("marker")
@@ -784,13 +803,16 @@ def _kali_fact(session, check):
         except RangeUnavailable:
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
+    if of == "run_errors":
+        errors = lesson.server_errors(_on_leg(session, _run_events(session, recorded), check.get("leg", "inbound")))
+        return [str(errors)] if errors else []
+    if check.get("from") == "http":
+        return sorted({str(event["src_ip"]) for event in _on_leg(session, _run_events(session, recorded), "inbound")
+                       if event.get("src_ip")})
     _ingest(session, RECENT_ALERTS)
     marked = list(session.detections.filter(marker=recorded.case_id))
     if of == "alerted_by":
-        return [lesson.alerted_by({detection.source for detection in marked})]
-    if check.get("from") == "http":
-        events = _sensed(session, recorded.started_at - RECORD_SLACK, timezone.now() + RECORD_SLACK, recorded.case_id)
-        return sorted({str(event["src_ip"]) for event in _on_leg(session, events, "inbound") if event.get("src_ip")})
+        return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]
     return sorted({detection.src_ip for detection in marked if detection.source == "modsecurity" and detection.src_ip})
 
 def _loot_check(session, check, given, failed):
@@ -1623,7 +1645,7 @@ def _shown_point(session, point):
 
 def _lesson_objectives(session, every=False):
     taught = _lesson_of(session) if session.guidance else None
-    if not every and not any(step["check"].get("of") == "lost_points" for step in (taught or {}).get("steps", [])):
+    if not every and not any(step["check"].get("of") in OBJECTIVE_FACTS for step in (taught or {}).get("steps", [])):
         return None
     if not wargames.judged(session.scenario):
         return {"rows": [], "total": 0}
