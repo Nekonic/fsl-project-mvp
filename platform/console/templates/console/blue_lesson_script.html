@@ -228,7 +228,7 @@ function askFrame(host, origin, spec) {
   if (origin && host.contentWindow && now - asking.sentAt > ASK_AGAIN_MS) {
     asking.sentAt = now;
     try {
-      host.contentWindow.postMessage({ fslLocate: spec, id: asking.id }, origin);
+      host.contentWindow.postMessage({ locate: spec, id: asking.id }, origin);
     } catch (error) {
       return null;
     }
@@ -249,7 +249,7 @@ function askAgain(host) {
 function stopAsking() {
   if (asking.host && asking.host.contentWindow && asking.origin) {
     try {
-      asking.host.contentWindow.postMessage({ fslLocate: null }, asking.origin);
+      asking.host.contentWindow.postMessage({ locate: null }, asking.origin);
     } catch (error) {
       asking.host = null;
     }
@@ -259,8 +259,8 @@ function stopAsking() {
 
 window.addEventListener("message", (event) => {
   const said = event.data;
-  if (!said || typeof said !== "object" || !("fslLocated" in said)) return;
-  if (!asking.host || event.source !== asking.host.contentWindow || said.fslLocated !== asking.id) return;
+  if (!said || typeof said !== "object" || !("located" in said)) return;
+  if (!asking.host || event.source !== asking.host.contentWindow || said.located !== asking.id) return;
   asking.rect = said.rect || null;
   asking.zones = Array.isArray(said.zones) ? said.zones : [];
   asking.text = Array.isArray(said.text) ? said.text : [];
@@ -278,7 +278,9 @@ const KIBANA = {
   noResults: '[data-test-subj="discoverNoResults"]',
   query: '[data-test-subj="queryInput"]',
   topValues: '[data-test-subj="dscFieldStats-topValues"]',
-  statsTitle: '[data-test-subj="dscFieldStats-title"]',
+  statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
+  cellText: "[data-datagrid-cellcontent]",
+  toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
   sidebar: (name) => `[data-test-subj="field-${name}"]`,
   cell: (name) => `[data-test-subj="dataGridRowCell"][data-gridcell-column-id="${name}"]`,
   page: '[data-test-subj^="docViewerFlyoutNavigationPage-"], [data-test-subj^="dscDocNavigationPage-"]',
@@ -287,6 +289,12 @@ const KIBANA = {
   rows: '[data-test-subj^="tableDocViewRow-"]',
 };
 const GRID_ROW = "data-gridcell-row-index";
+const queryArrival = { step: "", text: null };
+
+function queryText(doc) {
+  const input = doc.querySelector(KIBANA.query);
+  return input ? String(input.value ?? input.textContent ?? "") : null;
+}
 
 function kibanaDoc() {
   if (!paneOpen("elk")) return null;
@@ -304,8 +312,10 @@ function gridRowOf(element) {
 
 function legRow(doc, spec) {
   if (!spec.leg || typeof doc.querySelectorAll !== "function") return null;
-  const column = (name) => new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name)))
-    .map((cell) => [gridRowOf(cell), (cell.textContent || "").replace(/\s+/g, "")]));
+  const column = (name) => new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name))).map((cell) => {
+    const shown = (typeof cell.querySelector === "function" && cell.querySelector(KIBANA.cellText)) || cell;
+    return [gridRowOf(cell), (shown.textContent || "").replace(/\s+/g, "")];
+  }));
   const from = column("source_ip");
   const to = column("destination");
   const hops = Array.from(to.keys()).filter((row) => row !== null && from.get(row))
@@ -326,13 +336,17 @@ function kibanaFound(doc, spec) {
   const found = (selector) => doc.querySelector(selector);
   const first = (...selectors) => selectors.map(found).find((element) => boxOf(element)) || null;
   if (spec.doc) {
-    const legged = legRow(doc, spec);
-    if (legged) {
-      if (!boxOf(found(KIBANA.flyout))) return { element: legged.toggle, stage: "expand" };
-      const opened = openedRow(doc);
-      if (opened && opened.row !== legged.row) {
-        const arrow = opened.page.querySelector(opened.row > legged.row ? KIBANA.previous : KIBANA.next);
-        return { element: boxOf(arrow) ? arrow : opened.page, stage: "other" };
+    if (spec.leg) {
+      const legged = legRow(doc, spec);
+      const flyout = boxOf(found(KIBANA.flyout));
+      if (legged && !flyout) return { element: legged.toggle, stage: "expand", leg: spec.leg };
+      if (flyout) {
+        const opened = openedRow(doc);
+        if (!legged || !opened) return { element: first(KIBANA.fieldFilter), stage: "verify", leg: spec.leg };
+        if (opened.row !== legged.row) {
+          const arrow = opened.page.querySelector(opened.row > legged.row ? KIBANA.previous : KIBANA.next);
+          return { element: boxOf(arrow) ? arrow : opened.page, stage: "other" };
+        }
       }
     }
     const value = found(KIBANA.value(spec.doc));
@@ -342,10 +356,13 @@ function kibanaFound(doc, spec) {
     return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
   }
   if (spec.hits) {
+    const text = queryText(doc);
+    if (text !== null && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text });
     const counted = first(...KIBANA.hits);
     if (counted) return { element: counted, stage: "" };
     const none = first(KIBANA.noResults);
-    return { element: none, stage: none ? "none" : "" };
+    if (!none) return { element: null, stage: "" };
+    return text === queryArrival.text ? { element: first(KIBANA.query), stage: "query" } : { element: none, stage: "none" };
   }
   if (spec.query) return { element: first(KIBANA.query), stage: "" };
   if (spec.sidebar) {
@@ -371,13 +388,20 @@ function flyoutRows(doc, ring) {
     .filter((box) => box && !overlaps(box, ring));
 }
 
-function kibanaRect(spec, leg) {
+function toolbarRows(doc, ring) {
+  return KIBANA.toolbar.map((selector) => inFrame(frame, boxOf(doc.querySelector(selector))))
+    .filter((box) => box && !overlaps(box, ring));
+}
+
+function kibanaRect(spec, leg, step) {
   const doc = kibanaDoc();
   if (!doc) return { rect: null, stage: "" };
-  const { element, also, stage } = kibanaFound(doc, leg ? { ...spec, leg } : spec);
+  if (kibanaLoading()) queryArrival.step = "";
+  const { element, also, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
   if (coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
-  return { rect, stage, leg: stage === "expand" ? leg : "", crowd: rect && spec.doc ? flyoutRows(doc, rect) : [] };
+  const crowd = !rect ? [] : spec.doc ? flyoutRows(doc, rect) : spec.hits ? toolbarRows(doc, rect) : [];
+  return { rect, stage, leg: aimed || "", crowd };
 }
 
 function kibanaLoading() {
@@ -504,6 +528,16 @@ function termRect(spec) {
     bandRows = bandRows.filter(Boolean);
     return inFrame(host, { ...rowBox(block[0].first, wide), height: rows * rowHeight });
   };
+  const finished = pattern(spec.done);
+  if (finished) {
+    const typed = (line) => /^\S+[$#] \S/.test(line.text);
+    let command = lines.length - 1;
+    while (command >= 0 && !typed(lines[command])) command -= 1;
+    const press = boxOf(document.querySelector('[data-act="kali"]'));
+    if (press && command >= 0 && lines.slice(command + 1).some((line) => finished.test(line.text))) {
+      return { rect: press, stage: "run_done", kind: "" };
+    }
+  }
   const rect = around(wanted);
   if (rect) return { rect, stage: "" };
   const idle = pattern(spec.idle);
@@ -547,7 +581,7 @@ function devCrowd(ring) {
   if (!tools || typeof tools.querySelectorAll !== "function") return [];
   return Array.from(tools.querySelectorAll("[data-coach]")).filter((one) => {
     const name = one.getAttribute("data-coach") || "";
-    return name === "row" || name.startsWith("tab.");
+    return name === "row" || name.startsWith("tab.") || name.startsWith("general.") || name.startsWith("payload.");
   }).map(boxOf).filter((box) => box && !overlaps(box, ring));
 }
 
@@ -560,7 +594,7 @@ function mapFit() {
   const origin = topologyOrigin();
   if (!topo.drawn || !origin || !host.contentWindow) return;
   try {
-    host.contentWindow.postMessage({ fslFit: true }, origin);
+    host.contentWindow.postMessage({ fit: true }, origin);
   } catch (error) {
     return;
   }
@@ -574,6 +608,7 @@ function mapFitSoon() {
 const RULE_LINE = 16;
 const RULE_PAD = 8;
 let rulesKnown = null;
+let rulesText = "";
 let rulesAdded = [];
 const sidOf = (line) => (/\bsid\s*:\s*(\d+)/.exec(line) || [])[1] || "";
 
@@ -582,6 +617,12 @@ function ownRuleLines() {
   if (!box) return [];
   return box.value.split("\n").map((text, index) => ({ text, index, sid: sidOf(text) })).filter(({ sid }) =>
     sid && (rulesAdded.includes(sid) || (rulesKnown && !rulesKnown.has(sid))));
+}
+
+function rulesHolder(marked, found) {
+  if (!marked || marked.id !== "lesson-rules") return null;
+  if (found.stage === "add") return null;
+  return found.stage === "apply" ? boxOf(field("lesson-rules-text")) : boxOf(marked);
 }
 
 function ruleTarget(editing) {
@@ -595,8 +636,7 @@ function ruleTarget(editing) {
     return fix ? { element: null, line: fix.index } : apply;
   }
   if (own.length) return apply;
-  const lines = box.value.split("\n");
-  return lines.length && !lines[lines.length - 1].trim() ? { element: null, line: lines.length - 1 } : apply;
+  return box.value === rulesText ? { element: null, line: box.value.split("\n").length - 1, stage: "add" } : apply;
 }
 
 function ruleLineRect(index) {
@@ -658,7 +698,7 @@ function locate(target, step, editing) {
     const inside = tools && typeof tools.contains === "function" && tools.contains(element);
     return { ...NOT_FOUND, rect: clipped(boxOf(element), inside ? boxOf(tools) : null), stage };
   }
-  if (target.kind === "kibana") return { ...NOT_FOUND, ...kibanaRect(target.spec, step.check.leg) };
+  if (target.kind === "kibana") return { ...NOT_FOUND, ...kibanaRect(target.spec, step.check.leg, step.id) };
   if (target.kind === "term") return { ...NOT_FOUND, ...termRect(target.spec) };
   if (target.kind === "site") return { ...NOT_FOUND, rect: siteRect(target.spec) };
   if (target.kind === "map") return { ...NOT_FOUND, rect: mapRect(target.spec) };
@@ -672,6 +712,7 @@ const EDGE = 8;
 const CALLOUT_GUESS = { width: 220, height: 28 };
 const TALL_TARGET = 80;
 const DENSE_ROW = 32;
+const LEADER_SAMPLES = 16;
 
 function padded(rect) {
   const across = rect.height < DENSE_ROW && rect.width > 4 * rect.height ? 1 : RING_PAD;
@@ -684,6 +725,27 @@ function placed(element, box) {
 
 const centreOf = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
 const apart = (a, b) => Math.hypot(centreOf(a).x - centreOf(b).x, centreOf(a).y - centreOf(b).y);
+
+const spanOf = (value, low, high) => Math.max(low, Math.min(value, high));
+
+function leaderEnds(tip, ring) {
+  const from = centreOf(tip);
+  const onRing = { x: spanOf(from.x, ring.left, ring.left + ring.width), y: spanOf(from.y, ring.top, ring.top + ring.height) };
+  const onTip = { x: spanOf(onRing.x, tip.left, tip.left + tip.width), y: spanOf(onRing.y, tip.top, tip.top + tip.height) };
+  return { onRing, onTip, length: Math.hypot(onRing.x - onTip.x, onRing.y - onTip.y) };
+}
+
+function crossesLeader(spot, ring, boxes) {
+  const { onRing, onTip, length } = leaderEnds(spot, ring);
+  if (length <= 2 * CALLOUT_GAP) return false;
+  for (let along = 1; along < LEADER_SAMPLES; along += 1) {
+    const x = onTip.x + (onRing.x - onTip.x) * along / LEADER_SAMPLES;
+    const y = onTip.y + (onRing.y - onTip.y) * along / LEADER_SAMPLES;
+    const inRing = x > ring.left && x < ring.left + ring.width && y > ring.top && y < ring.top + ring.height;
+    if (!inRing && boxes.some((box) => x > box.left && x < box.left + box.width && y > box.top && y < box.top + box.height)) return true;
+  }
+  return false;
+}
 
 function calloutSpot(target, size, bounds, options = {}) {
   const { crowd = [], kind = "", bands = [], zones = [], holder = null, titled = false } = options;
@@ -700,6 +762,8 @@ function calloutSpot(target, size, bounds, options = {}) {
     { left: clampX(middleX), top: avoid.top + avoid.height + CALLOUT_GAP },
     { left: clampX(middleX), top: avoid.top - CALLOUT_GAP - size.height },
   ];
+  const underStart = target.width > 4 * target.height
+    ? [{ left: clampX(target.left), top: avoid.top + avoid.height + CALLOUT_GAP }] : [];
   const corners = [
     { left: bounds.left + EDGE, top: bounds.top + EDGE },
     { left: bounds.left + bounds.width - size.width - EDGE, top: bounds.top + EDGE },
@@ -716,18 +780,22 @@ function calloutSpot(target, size, bounds, options = {}) {
   const heading = holder && titled ? [{ left: clampX(holder.left + holder.width - size.width - EDGE), top: holder.top + RING_PAD, inside: true }] : [];
   const tall = target.height > TALL_TARGET;
   const near = tall ? [...across, ...beside] : [...beside, ...across];
+  const holding = Boolean(holder) && within(target, holder);
   const ordered = {
     term: [...rowEnds, ...beside, ...across],
     site: [across[0], beside[1], across[1], beside[0]],
     map: [...near, ...corners],
     kibana: tall ? [beside[1], ...across, beside[0]] : near,
-  }[kind] || [...heading, ...outside, ...near];
-  const blocked = [...crowd, ...zones, ...siblings, ...(holder ? [holder] : [])];
+    open: [beside[0], across[1], beside[1], across[0]],
+  }[kind] || (holder && !holding ? [...heading, ...near, ...outside] : [...heading, ...outside, ...underStart, ...near]);
+  const blocked = [...crowd, ...(kind === "map" ? [] : zones), ...siblings, ...(holder ? [holder] : [])];
   const clear = (spot, shut = blocked) => within(spot, bounds) && !overlaps(spot, avoid)
     && !shut.some((box) => overlaps(spot, box) && !(box === holder && spot.inside));
+  const direct = (spot) => !crossesLeader(spot, avoid, crowd);
   const sized = ordered.map((spot) => ({ ...spot, ...size }));
-  const free = rowBelow.length ? sized.find((spot) => clear(spot, [...blocked, ...rowBelow])) || sized.find((spot) => clear(spot))
-    : sized.find((spot) => clear(spot));
+  const shuts = rowBelow.length ? [[...blocked, ...rowBelow], blocked] : [blocked];
+  const free = shuts.map((shut) => sized.find((spot) => clear(spot, shut) && direct(spot))).find(Boolean)
+    || shuts.map((shut) => sized.find((spot) => clear(spot, shut))).find(Boolean);
   if (free || !crowd.length) return free || null;
   const nearby = [];
   for (let step = 0; step < 2 * Math.ceil(bounds.height / size.height); step += 1) {
@@ -736,16 +804,17 @@ function calloutSpot(target, size, bounds, options = {}) {
       + away * size.height;
     const row = { left: bounds.left, top, width: bounds.width, height: size.height };
     const ends = crowd.filter((text) => overlaps(text, row)).map((text) => text.left + text.width);
-    nearby.push({ left: Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP)), top, ...size });
+    nearby.push({ left: clampX(middleX), top, ...size },
+      { left: Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP)), top, ...size });
   }
-  return nearby.find((spot) => clear(spot)) || null;
+  const spots = nearby.filter((spot) => clear(spot));
+  const distance = (spot) => apart(spot, target);
+  return spots.filter(direct).sort((a, b) => distance(a) - distance(b))[0]
+    || spots.sort((a, b) => distance(a) - distance(b))[0] || null;
 }
 
 function leaderLine(leader, tip, ring) {
-  const from = centreOf(tip);
-  const onRing = { x: Math.max(ring.left, Math.min(from.x, ring.left + ring.width)), y: Math.max(ring.top, Math.min(from.y, ring.top + ring.height)) };
-  const onTip = { x: Math.max(tip.left, Math.min(onRing.x, tip.left + tip.width)), y: Math.max(tip.top, Math.min(onRing.y, tip.top + tip.height)) };
-  const length = Math.hypot(onRing.x - onTip.x, onRing.y - onTip.y);
+  const { onRing, onTip, length } = leaderEnds(tip, ring);
   if (length <= 2 * CALLOUT_GAP) {
     leader.classList.add("hidden");
     return;
@@ -822,7 +891,12 @@ const STAGE_KEYS = {
   open: "lesson.dev.open", row: "lesson.dev.row", "tab.headers": "lesson.dev.tab.headers", "tab.payload": "lesson.dev.tab.payload",
   query: "lesson.kibana.query", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
   other: "lesson.kibana.other", none: "lesson.kibana.none", prompt: "lesson.term.prompt",
-  apply: "lesson.rules.press_apply",
+  apply: "lesson.rules.press_apply", add: "lesson.rules.add_line", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
+};
+const STAGE_FALLBACKS = {
+  add: "Add one rule line here.",
+  verify: "Type destination in the field search and read this event's destination IP. If it is not the right address, switch to the other event with the arrows.",
+  run_done: "The run has finished. Press 'Check the run'.",
 };
 const paneName = (name) => {
   const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
@@ -1169,6 +1243,7 @@ function coach(prefix, declared) {
     field("note-strip-text").textContent = t("lesson.note.strip", at + 1, steps.length);
     shownSection("step-card");
     field("step-count").textContent = `${at + 1} / ${steps.length}`;
+    field("step-count").classList.toggle("hidden", finished);
     field("step-title").textContent = finished && foundation ? t(`${prefix}.title`) : titleOf(step);
     field("step-task").textContent = finished ? finishedText() : t(`${prefix}.coach.${step.id}`);
     const titled = localized(`${prefix}.title.${step.id}`, "");
@@ -1206,13 +1281,13 @@ function coach(prefix, declared) {
     if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
     if (found.stage) {
       const key = STAGE_KEYS[found.stage];
-      return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, "");
+      return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, STAGE_FALLBACKS[found.stage] || "");
     }
     return localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "");
   }
 
   function settleKibana() {
-    if (dismissed === at || !paneOpen("elk")) return;
+    if (dismissed === at || !paneOpen("elk") || steps[at].point.keep) return;
     if (kibanaDismiss()) dismissed = at;
   }
 
@@ -1262,7 +1337,7 @@ function coach(prefix, declared) {
     const waiting = Boolean(needed) && !paneOpen(needed);
     if (target && target.kind === "site") siteHomeward();
     if (target && target.kind === "map") mapChase(rect);
-    if (target && found.line >= 0 && lined !== at) {
+    if (target && rect && found.line >= 0 && lined !== at) {
       lined = at;
       ruleLineShown(found.line);
     }
@@ -1270,21 +1345,22 @@ function coach(prefix, declared) {
     if (lost === MISSING_AFTER_FRAMES) console.log(`coach: no target for step ${step.id} in pane ${needed || openedPane()}`, JSON.stringify(target));
     const home = Boolean(target) && target.kind === "site" && siteHome.on;
     const callout = calloutFor(step, target, found, home);
-    const kind = target ? target.kind : "";
+    const kind = found.kind !== undefined ? found.kind : target ? target.kind : "";
     const crowd = crowdOf(kind, found, rect);
     const zones = kind === "map" ? mapZones() : [];
-    const openBox = !rect && waiting ? boxOf(field("step-open")) : null;
+    const openBox = target && !rect && waiting ? boxOf(field("step-open")) : null;
+    const opening = openBox ? localized("lesson.open.callout", "Open it here first.") : "";
     const layout = [boxOf(field("pane")), boxOf(field("lesson"))].map(rounded).join("/");
-    const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
+    const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, opening, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
     if (drawn !== last) {
       last = drawn;
       const marked = kind === "panel" ? document.querySelector(target.spec) : null;
       const outsidePane = marked && !field("pane").contains(marked);
       const section = outsidePane && typeof marked.closest === "function" ? marked.closest("section") : null;
       const titled = Boolean(section) && section !== marked;
-      const holder = titled ? boxOf(section) : marked && marked.id === "lesson-rules" ? boxOf(marked) : null;
-      const aimed = rect ? { kind, bands: kind === "term" ? bandRows : [], zones } : {};
-      highlight(rect || openBox, rect ? callout : "", { crowd, holder, titled, ...aimed });
+      const holder = titled ? boxOf(section) : rulesHolder(marked, found);
+      const aimed = rect ? { crowd, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones } : { kind: "open" };
+      highlight(rect || openBox, rect ? callout : opening, aimed);
       coveredSay(found.stage === "covered" && !rect ? callout : "");
       opener();
     }
@@ -1320,6 +1396,7 @@ function coach(prefix, declared) {
     dismissed = -1;
     homed = -1;
     lined = -1;
+    queryArrival.step = "";
     say("", "");
     show();
     reach(steps[at]);
@@ -1538,7 +1615,8 @@ async function loadRules() {
     status.textContent = t("lesson.rules.unread", detail(read));
     return;
   }
-  field("lesson-rules-text").value = read.body.content || "";
+  rulesText = read.body.content || "";
+  field("lesson-rules-text").value = rulesText;
   rulesVersion = read.body.version || "";
   if (!rulesKnown) rulesKnown = new Set((read.body.content || "").split("\n").map(sidOf).filter(Boolean));
   status.textContent = "";
@@ -1590,7 +1668,14 @@ function rulesEditor() {
   field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="off"
     class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre overflow-auto"
     style="padding: ${RULE_PAD}px; font-size: 11.5px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
-  field("lesson-rules-text").addEventListener("input", () => { field("lesson-rules-status").textContent = ""; });
+  field("lesson-rules-text").addEventListener("input", () => {
+    field("lesson-rules-status").textContent = "";
+    const box = field("lesson-rules-text");
+    const caret = box.selectionStart;
+    const next = box.value[caret];
+    if (box.selectionEnd !== caret || (next !== undefined && next !== "\n")) return;
+    ruleLineAcross(box, box.value.slice(0, caret).split("\n").pop());
+  });
   field("lesson-rules-validate").addEventListener("click", validateRules);
   field("lesson-rules-apply").addEventListener("click", applyRules);
   loadRules();

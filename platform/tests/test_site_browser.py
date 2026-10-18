@@ -51,11 +51,55 @@ def test_the_script_injected_into_site_pages_answers_only_its_parent_console_and
     assert "m.source!==p" in injected and "own(m.origin)" in injected, (
         "a page framing the site, or a script inside it, gets no rect back"
     )
-    assert "fslLocated:id" in injected and "},at)" in injected, "the rect goes back to the asking console only"
+    assert "located:id" in injected and "},at)" in injected, "the rect goes back to the asking console only"
     assert "text:r?near(e,r):[]" in injected, "the boxes of the content around the target go back with the rect"
     assert "src=" not in injected and "fetch(" not in injected and "XMLHttpRequest" not in injected, (
         "the highlight helper loads nothing, so the WAF, Kibana and the Network panel never see it"
     )
+
+LINKS = """
+const listeners = {};
+const anchors = [{href: "/site/7/board.com/posts/3/"}, {href: "/site/7/board.com/"}, {href: "#top"}, {href: "http://elsewhere.test/"}]
+  .map((one) => ({getAttribute: () => one.href, setAttribute: (name, value) => { one.href = value; }, one}));
+globalThis.parent = {postMessage: () => {}};
+globalThis.location = {pathname: "/site/7/board.com/", search: "", hostname: "console.test"};
+globalThis.document = {querySelectorAll: () => anchors, body: {querySelectorAll: () => []}, querySelector: () => null};
+globalThis.addEventListener = (name, handler) => { (listeners[name] = listeners[name] || []).push(handler); };
+globalThis.requestAnimationFrame = () => {};
+SCRIPT
+const shown = anchors.map((one) => one.one.href);
+const click = (anchor, extra = {}) => {
+  let prevented = false;
+  const event = {target: {closest: () => anchor}, defaultPrevented: false, button: 0, preventDefault: () => { prevented = true; }, ...extra};
+  listeners.click.forEach((handler) => handler(event));
+  return prevented;
+};
+const hovered = {one: {href: "/site/7/board.com/late/"}};
+hovered.getAttribute = () => hovered.one.href;
+hovered.setAttribute = (name, value) => { hovered.one.href = value; };
+listeners.mouseover.forEach((handler) => handler({target: {closest: () => hovered}}));
+const result = {shown, late: hovered.one.href, plain: click(anchors[0]), navigated: location.href, outside: click(anchors[3]),
+                modified: click(anchors[1], {ctrlKey: true}), hash: click(anchors[2])};
+console.log(JSON.stringify(result));
+"""
+
+def test_a_board_link_shows_its_real_address_on_hover_and_the_click_goes_through_the_proxy():
+    import json
+    import subprocess
+
+    from tests.browser import node
+
+    injected = re.search(r"sub_filter '</body>' '<script>(.*?)</script></body>';", site_block()).group(1)
+    script = injected.replace("$session", "7").replace("$site", "board.com")
+    done = subprocess.run([node(), "-e", LINKS.replace("SCRIPT", script)], capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
+    result = json.loads(done.stdout)
+
+    assert result["shown"] == ["http://board.com/posts/3/", "http://board.com/", "#top", "http://elsewhere.test/"]
+    assert result["late"] == "http://board.com/late/", "a link that appeared after the page loaded shows the same on hover"
+    assert (result["plain"], result["navigated"]) == (True, "/site/7/board.com/posts/3/")
+    assert result["outside"] is False and result["modified"] is False and result["hash"] is False
+    assert "fsl" not in injected.lower(), "the page source carries no platform name"
 
 def test_the_console_s_own_port_does_not_serve_the_proxy():
     console = NGINX[:NGINX.index("listen 8002;")]
