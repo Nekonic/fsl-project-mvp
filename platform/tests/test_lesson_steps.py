@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import wargames
-from api import views
+from api import site, views
 from api.models import Case, Detection, Objective, Session
 from console import strings
 
@@ -231,24 +231,31 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
     assert (recorded.started_at, recorded.ended_at) == (first, last), "the run spans its first to its last request"
     assert window_of(done["kali"]["discover"]) == (first - views.RECORD_SLACK, last + views.RECORD_SLACK)
 
-def test_the_count_of_my_searches_is_one_number_my_own_requests_of_this_lesson_and_leaves_the_seed_search_out(client):
+@pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "3"), ("notes", [], "4")])
+def test_the_count_of_my_searches_is_the_events_the_kibana_view_of_this_lesson_shows_for_my_word(
+        client, word, others, expected):
     now = timezone.now()
     session = taught("f3", lessons=[{"id": "f2", "started_at": (now - timedelta(minutes=10)).isoformat()},
                                     {"id": "f3", "started_at": (now - timedelta(minutes=3)).isoformat()}])
-    mine = [http_event(session.browse_marker, f"/search/?q=word{n}", now - timedelta(seconds=120 - n), 200,
+    searched = [{"at": (now - timedelta(seconds=170)).timestamp(), "method": "GET", "status": 200,
+                 "url": f"http://board.com/search/?q={word}"}]
+    mine = [http_event(session.browse_marker, f"/search/?q={word}", now - timedelta(seconds=120 - n), 200,
                        src_ip=CUSTOMER, dest_ip=WAF) for n in range(3)]
     upstream = [dict(one, src_ip=WAF, dest_ip=BOARD) for one in mine]
-    earlier = http_event(session.browse_marker, "/search/?q=before", now - timedelta(minutes=5), 200, src_ip=CUSTOMER)
-    seed = http_event("seed-case-uuid", "/search/?q=release notes", now - timedelta(seconds=179), 200)
-    sorted_ = http_event(session.browse_marker, "/?sort=title", now - timedelta(seconds=100), 200, src_ip=CUSTOMER)
-    with quietly(), behind_the_waf(), indexed(*mine, *upstream, earlier, seed, sorted_):
-        accepted = views._accepted(session, {"kind": "answer", "of": "hits", "path": "/search/", "leg": "inbound"})
-        four = check(client, session, "count", {"answer": "4"}).json()
-        three = check(client, session, "count", {"answer": "3"}).json()
+    earlier = http_event(session.browse_marker, f"/search/?q={word}", now - timedelta(minutes=5), 200, src_ip=CUSTOMER)
+    seed = http_event("seed-case-uuid", "/search/?q=release notes", now - timedelta(seconds=179), 200, dest_ip=WAF)
+    unrelated = [http_event(session.browse_marker, url, now - timedelta(seconds=100), 200, src_ip=CUSTOMER, dest_ip=WAF)
+                 for url in ("/?sort=title", *others)]
+    with quietly(), behind_the_waf(), indexed(*mine, *upstream, earlier, seed, *unrelated), \
+            patch.object(site, "kept", return_value=searched):
+        lesson = wargames.lesson("board", lesson_id="f3")
+        accepted = views._accepted(session, next(one["check"] for one in lesson["steps"] if one["id"] == "count"), lesson)
+        right = check(client, session, "count", {"answer": expected}).json()
+        wrong = check(client, session, "count", {"answer": "9"}).json()
 
-    assert accepted == ["3"], "one count: my searches since this lesson started, on the leg that reaches the WAF"
-    assert (four["passed"], four["reason"]) == (False, ["lesson.check.wrong", []])
-    assert three["passed"] is True
+    assert accepted == [expected], "my word's http events on the leg that reaches the WAF, as the KQL url : *word* shows them"
+    assert right["passed"] is True
+    assert (wrong["passed"], wrong["reason"]) == (False, ["lesson.check.wrong", []])
 
 def test_the_rule_that_still_detects_the_random_agent_run_is_a_sql_injection_rule_of_that_run_alone(client):
     session = taught("f5")

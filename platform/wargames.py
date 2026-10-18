@@ -41,7 +41,6 @@ RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "exclu
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
                  "waf_logged", "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
 KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by", "run_errors")
-UNRECORDED_FACTS = ("hits",)
 LEGS = ("inbound", "upstream")
 STEP_MARKER = "step:"
 DETECTORS = ("suricata",)
@@ -251,8 +250,7 @@ def read_from_record(taught: dict, check: dict) -> bool:
         return bool(check.get("path")) if not marked.startswith(STEP_MARKER) \
             else kinds.get(marked[len(STEP_MARKER):]) == "kali"
     if family == "request":
-        return check["of"] in UNRECORDED_FACTS or (bool(abouts) and set(abouts) <= _matched_steps(taught)) \
-            or (not abouts and _pattern(check.get("match")))
+        return bool(abouts) and set(abouts) <= _matched_steps(taught) or (not abouts and _pattern(check.get("match")))
     if family == "kali":
         return kinds.get(about) == "kali"
     return family == "range"

@@ -643,9 +643,9 @@ def _on_leg(session, events, leg):
 
 def _request_fact(session, check, taught):
     of = check["of"]
-    if of == "hits":
-        return _hits(session, check)
     records = _about_records(session, check, taught)
+    if of == "hits":
+        return _hits(session, check, records)
     if not records:
         return []
     if of in ("alerted", "alerted_sid", "alerted_sid_present", "anomaly_total", "waf_detected"):
@@ -705,11 +705,14 @@ def _waf_records(session, record):
         str(name).lower() == elastic.MARKER_HEADER.lower() and value == session.browse_marker
         for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())]
 
-def _hits(session, check):
+def _hits(session, check, records):
+    word = next(iter(parse_qs(urlsplit(records[0]["url"]).query).get("q", [])), "") if records else ""
+    if not word:
+        return []
     since = _lesson_started(session) or session.started_at
-    events = _sensed(session, since - RECORD_SLACK, timezone.now() + RECORD_SLACK, session.browse_marker)
-    count = sum(1 for event in _on_leg(session, events, check.get("leg", "inbound"))
-                if str((event.get("http") or {}).get("url") or "").startswith(check["path"]))
+    events = _on_leg(session, _suricata_http(session, since - RECORD_SLACK, timezone.now() + RECORD_SLACK),
+                     check.get("leg", "inbound"))
+    count = sum(1 for event in events if word in str((event.get("http") or {}).get("url") or ""))
     return [str(count)] if count else []
 
 def _window_of(record):
@@ -725,16 +728,17 @@ def _sensed_for(session, record):
     asked = urlsplit(record["url"])
     return _sensed(session, start, end, session.browse_marker, asked.path + (f"?{asked.query}" if asked.query else ""))
 
-def _sensed(session, start, end, marker, path=""):
+def _suricata_http(session, start, end):
     try:
         documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
     except elastic.ElasticUnavailable:
         return []
+    return [doc for _, doc in documents if doc.get("fsl_source") == "suricata" and doc.get("event_type") == "http"]
+
+def _sensed(session, start, end, marker, path=""):
     found = []
-    for _, doc in documents:
+    for doc in _suricata_http(session, start, end):
         http = doc.get("http") or {}
-        if doc.get("fsl_source") != "suricata" or doc.get("event_type") != "http":
-            continue
         labelled = elastic.suricata_marker(http)
         if labelled == marker or (path and not labelled and http.get("url") == path):
             found.append(doc)
