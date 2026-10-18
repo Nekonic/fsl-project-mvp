@@ -91,14 +91,22 @@ def test_the_learner_facing_kibana_refuses_what_is_not_discover_and_answers_what
     assert "return 403" in block
 
 def test_the_default_space_is_refused_and_the_one_internal_settings_call_is_read_only():
-    default_space, block = kibana_location("(?:app|spaces)")
-    for path in ("/kibana/app/discover", "/kibana/app", "/kibana/spaces/space_selector"):
+    default_space, block = kibana_location("(?:(?:app|spaces|api|internal)")
+    for path in (
+        "/kibana/app/discover", "/kibana/app", "/kibana/spaces/space_selector",
+        "/kibana/api/saved_objects/_find", "/kibana/internal/kibana/settings",
+        "/kibana/s/default/app/discover", "/kibana/s/default/spaces/space_selector",
+        "/kibana/s/default/api/saved_objects/_find", "/kibana/s/default",
+    ):
         assert default_space.match(path), f"{path} opens the Default space, which has every feature on"
     assert not default_space.match("/kibana/s/soc-logs-1/app/discover")
+    for path in DISCOVER_CALLS:
+        assert not default_space.match(path), f"{path} is a call Discover makes in a learner space"
     assert "return 403" in block
 
-    settings, block = kibana_location("(?:s/[^/]+/)?internal/kibana/settings")
+    settings, block = kibana_location("s/[^/]+/internal/kibana/settings")
     assert settings.match("/kibana/s/soc-logs-1/internal/kibana/settings")
+    assert not settings.match("/kibana/internal/kibana/settings")
     assert "limit_except GET" in block and "deny all" in block, "the UI writes advanced settings through this route"
 
 
@@ -115,9 +123,10 @@ def test_the_space_switcher_lists_only_the_current_space_and_a_lookup_across_spa
 def test_the_pages_that_open_administration_send_the_learner_back_to_discover():
     pages, block = kibana_location("(?<kibana_space>")
 
-    for path, space in (("/kibana/s/soc-logs-1/app/management/data/index_management", "s/soc-logs-1/"),
-                        ("/kibana/app/dev_tools", None), ("/kibana/s/soc-logs-1/app/home", "s/soc-logs-1/")):
-        assert pages.match(path).group("kibana_space") == space
+    for path in ("/kibana/s/soc-logs-1/app/management/data/index_management", "/kibana/s/soc-logs-1/app/home",
+                 "/kibana/s/soc-logs-1/app/dev_tools", "/kibana/s/soc-logs-1/app/observability/overview",
+                 "/kibana/s/soc-logs-1/app/security", "/kibana/s/soc-logs-1/app/kibana_overview"):
+        assert pages.match(path).group("kibana_space") == "s/soc-logs-1/", path
     assert not pages.match("/kibana/s/soc-logs-1/app/discover")
     assert "absolute_redirect off" in block and "return 302 /kibana/${kibana_space}app/discover" in block
 

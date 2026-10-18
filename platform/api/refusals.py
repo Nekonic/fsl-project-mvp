@@ -29,7 +29,9 @@ class Refusals:
 
     def process_exception(self, request, exception):
         if isinstance(exception, attacker.UnknownOrigin):
-            raise Http404(str(exception)) from exception
+            return JsonResponse({"detail": str(exception)}, status=404)
+        if isinstance(exception, Http404) and request.path.startswith("/api/"):
+            return JsonResponse({"detail": str(exception) or "not found"}, status=404)
         if isinstance(exception, UNAVAILABLE):
             return JsonResponse({"detail": str(exception)}, status=503)
         if isinstance(exception, (BadRequest, RuleApplyError, TuningRefused)):

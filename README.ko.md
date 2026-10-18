@@ -552,7 +552,7 @@ docker compose start platform
 
 ## 로컬 실습 전용
 
-Elasticsearch는 보안 기능 없이, Django는 `DEBUG=1`로 실행됩니다. Django는
+Elasticsearch는 보안 기능 없이 실행됩니다. Django는 `DEBUG`를 끄고, 비밀 키는 플랫폼 데이터 볼륨에 한 번 생성한 것을 씁니다. Django는
 `DJANGO_ALLOWED_HOSTS`에 추가로 지정하지 않는 한 `localhost`, `127.0.0.1`,
 `[::1]`에만 응답하고, 플랫폼 VM은 여기에 자신의 floating IP를 추가합니다.
 플랫폼에는 Docker 소켓이 마운트되어 있어 컨테이너 탈출 경로가 됩니다.

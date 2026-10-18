@@ -7,7 +7,7 @@
     <primaryconsole>serial</primaryconsole>
     <secondaryconsole>video</secondaryconsole>
     <disableconsolemenu/>
-    <hostname>edge</hostname>
+    <hostname>firewall</hostname>
     <domain>localdomain</domain>
     <dnsallowoverride>0</dnsallowoverride>
     <group>

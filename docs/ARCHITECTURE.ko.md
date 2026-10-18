@@ -402,8 +402,9 @@ runner로 `ip -o -4 addr`(OPNsense에서는 `ifconfig`)를 실행합니다. 워�
 구성도만 갖습니다(템플릿 하나가 모든 워게임을 그리므로 복사해 넣는 구성도는 없습니다).
 컨트롤러 데이터베이스가 생기기 전에 admin 비밀번호를 설정하고(`FSL_GNS3_ADMIN_PASSWORD`,
 없으면 `/var/lib/fsl-gns3/admin-password`에 한 번 생성), learner 사용자에게 `/`에 대한 내장
-Auditor 역할을 부여하며(`FSL_GNS3_AUDITOR_PASSWORD`, 기본값 `fsl-auditor`, 플랫폼에도
-전달), `/static/web-ui/fsl-auditor.html`을 작성합니다. 이 페이지는 learner로 로그인해 번들
+Auditor 역할을 부여하며(`FSL_GNS3_AUDITOR_PASSWORD`, 없으면
+`/var/lib/fsl-gns3/auditor-password`에 한 번 생성하고 플랫폼은 같은 마운트에서 읽음),
+`/static/web-ui/map.html`을 작성합니다. 이 페이지는 learner로 로그인해 번들
 웹 UI가 컨트롤러를 읽는 위치(`localStorage`의 `controller-1`, `controllerIds`)에 토큰을
 저장합니다. 또 링크 끝 라벨을 프로젝트가 지정한 위치에 그리도록 `showInterfaceLabels`를 켜고
 `integrateLinkLabelsToLinks`를 끄며, `statistics_command`를 `false`로 설정해 웹 UI가
@@ -1464,7 +1465,9 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   (console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups,
   remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API,
   `_active_space`를 뺀 spaces API, security API, settings API, saved objects import·export)에 403을
-  답하고, 페이지 `app/management`, `app/dev_tools`, `app/home`은 같은 space의 Discover로 리다이렉트합니다.
+  답하고, Default space(`s/default/...`)와 space 접두어 없는 `app`, `spaces`, `api`, `internal` 경로도
+  403으로 막고, 페이지 `app/management`, `app/dev_tools`, `app/home`, `app/observability`,
+  `app/security`, `app/kibana_overview`는 같은 space의 Discover로 리다이렉트합니다.
   Discover가 부르는 호출은 모두 통과하며, 플랫폼 자신의 설정(`KIBANA_URL`)은 Kibana에 직접 닿습니다.
   space 이름은 "SOC"입니다. data view는 세션의
   인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다. 공유 runtime
@@ -1672,7 +1675,7 @@ publish된 포트를 찾습니다. 각 데이터베이스는 호스트 안의 �
 `mgmt`는 모든 슬롯이 공유합니다. 슬롯마다 호스트가 여기서 각자의 DHCP 주소를 받고, 이전과 같이
 `fsl-mgmt`가 이들을 격리합니다. 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 슬롯의 서버만,
 선언된 호스트 이름으로 읽습니다. 그래서 역할, runner, 구성도, 에지 방화벽의 렌더링된 설정이
-모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `edge-N`으로 렌더링합니다. 한
+모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `firewall-N`으로 렌더링합니다. 한
 슬롯의 수집기를 열 때 다른 슬롯의 송신자 룰은 그대로 둡니다. 플랫폼은 세션을 열 때 세션을
 슬롯에 묶습니다(`Session.slot`; unique 제약으로 슬롯당 열린 세션은 하나). 잠금을 잡은 상태에서
 READY인 첫 번째 빈 슬롯을 고릅니다. 세션별 훈련 환경 호출은 모두 그 슬롯으로 가고, 세션 종료는 그

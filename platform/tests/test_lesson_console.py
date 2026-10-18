@@ -118,7 +118,7 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/board/objectives/") {
     return {body: [{key: "t-a", difficulty: 3}, {key: "t-b", difficulty: 4}, {key: "t-c", difficulty: 5}]};
   }
-  if (request.route === "/api/topology/") return {body: {source: "gns3", web_ui: {port: 3080, path: "/static/web-ui/fsl-auditor.html?project=p"}}};
+  if (request.route === "/api/topology/") return {body: {source: "gns3", web_ui: {port: 3080, path: "/static/web-ui/map.html?project=p"}}};
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
   if (request.route === "/api/sessions/1/lesson/") {
     range.moved.push(request.body);

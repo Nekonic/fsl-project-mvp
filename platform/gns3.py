@@ -10,7 +10,7 @@ from django.conf import settings
 
 TIMEOUT = (3, 10)
 IMPORT_TIMEOUT = (3, 120)
-BOOTSTRAP = "/static/web-ui/fsl-auditor.html"
+BOOTSTRAP = "/static/web-ui/map.html"
 ENGLISH = "en"
 PORTABLE = "project.gns3"
 
@@ -33,8 +33,14 @@ def _signed(username: str, password: str) -> dict:
     signed.raise_for_status()
     return {"Authorization": f"Bearer {signed.json()['access_token']}"}
 
+def _learner_password() -> str:
+    password = settings.FSL_GNS3_PASSWORD
+    if not password and settings.FSL_GNS3_PASSWORD_FILE.is_file():
+        password = settings.FSL_GNS3_PASSWORD_FILE.read_text().strip()
+    return password
+
 def _served(project_id: str) -> tuple[dict, str]:
-    headers = _signed(settings.FSL_GNS3_USER, settings.FSL_GNS3_PASSWORD)
+    headers = _signed(settings.FSL_GNS3_USER, _learner_password())
     found = requests.get(f"{_api()}/projects/{project_id}", headers=headers, timeout=TIMEOUT)
     found.raise_for_status()
     gns3file = requests.get(f"{_api()}/projects/{project_id}/gns3file", headers=headers, timeout=TIMEOUT)

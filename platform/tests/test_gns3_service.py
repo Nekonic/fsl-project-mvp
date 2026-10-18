@@ -132,6 +132,30 @@ def test_the_platform_reads_the_gns3_admin_password_it_needs_to_load_a_range_s_o
 
     assert "/var/lib/fsl-gns3:/run/fsl-gns3:ro" in platform["volumes"]
     assert platform["environment"]["FSL_GNS3_ADMIN_PASSWORD"] == "${FSL_GNS3_ADMIN_PASSWORD:-}"
-    assert 'chgrp "$gid" "$DATA/admin-password"' in entrypoint and 'chmod 640 "$DATA/admin-password"' in entrypoint, (
+    assert 'chgrp "$gid" "$file"' in entrypoint and 'chmod 640 "$file"' in entrypoint, (
         "only the docker socket's group, which the platform's user joins and which is root on the host, reads it"
     )
+
+def test_the_learner_map_page_and_password_carry_no_platform_name_and_the_password_is_generated():
+    provision = (GNS3 / "provision.py").read_text()
+    entrypoint = (GNS3 / "entrypoint.sh").read_text()
+    platform = composed.services()["platform"]
+
+    assert 'BOOTSTRAP = "map.html"' in provision and "fsl-auditor" not in provision
+    assert "fsl-auditor" not in json.dumps(composed.document())
+    assert 'generated admin-password' in entrypoint and 'generated auditor-password' in entrypoint
+    assert platform["environment"]["FSL_GNS3_AUDITOR_PASSWORD"] == "${FSL_GNS3_AUDITOR_PASSWORD:-}"
+    assert service()["environment"]["FSL_GNS3_AUDITOR_PASSWORD"] == "${FSL_GNS3_AUDITOR_PASSWORD:-}"
+
+def test_the_platform_signs_in_as_the_learner_with_the_generated_password_file_when_none_is_set(settings, tmp_path):
+    import gns3
+
+    secret = tmp_path / "auditor-password"
+    secret.write_text("generated\n")
+    settings.FSL_GNS3_PASSWORD = ""
+    settings.FSL_GNS3_PASSWORD_FILE = secret
+
+    assert gns3._learner_password() == "generated"
+
+    settings.FSL_GNS3_PASSWORD = "given"
+    assert gns3._learner_password() == "given"

@@ -76,7 +76,7 @@ services:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
     container_name: fsl-collector
-    hostname: siem
+    hostname: log-server
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -128,7 +128,6 @@ services:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
       - "${FSL_PUBLISH:-127.0.0.1}:8002:8002"
     environment:
-      DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
@@ -139,7 +138,7 @@ services:
       FSL_SOURCE: "/src"
       FSL_IMAGE_TAG: "${FSL_IMAGE_TAG:-dev}"
       FSL_GNS3_URL: "http://gns3:3080"
-      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
+      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-}"
       FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
       FSL_RETAIN_CLOSED_MINUTES: "${FSL_RETAIN_CLOSED_MINUTES:-60}"
     env_file:
@@ -167,7 +166,7 @@ services:
       - "${FSL_PUBLISH:-127.0.0.1}:3080:3080"
     environment:
       FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
-      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-fsl-auditor}"
+      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-}"
     cap_add: [NET_ADMIN]
     devices:
       - /dev/net/tun:/dev/net/tun

@@ -5510,3 +5510,46 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   data view carries the same list.
 - **Column widths.** The console's Discover link carries the widths the saved
   search sets (`grid:(columns:(...))`), so an IP never wraps in the table.
+
+## Round 5: what the platform origin and the Kibana pane still showed (realism lens)
+
+- **Default space.** `/kibana/s/default/...` and every path under `app`,
+  `spaces`, `api` and `internal` without a space prefix answer 403 in one
+  location. A full Discover load in a learner space asked for no such path
+  (only `ui/` fonts and styles, `translations/` and `bundles/`). The internal
+  settings route is GET only and exists only under a learner space.
+  `app/observability`, `app/security` and `app/kibana_overview` redirect to
+  Discover with the other disabled pages.
+- **DEBUG off.** `compose.yaml` no longer sets `DJANGO_DEBUG`, so a wrong path
+  on the learner's origin answers a plain 404 and a 500 prints no settings. The
+  console is inline CSS and `fetch`es `/api/`, so no static file is served. A
+  Django `Http404` under `/api/` (and `UnknownOrigin`) now answers JSON
+  `{"detail": ...}` (`api/refusals.py`), as the other refusals do; the console
+  reads `detail` or falls back to the status. The secret key: `entrypoint.sh`
+  writes a random one to `/data/secret-key` (mode 600) when `DJANGO_SECRET_KEY`
+  is unset and the file does not exist, and exports it; it is never printed and
+  never replaced. Not written into `.env`: that file is rewritten by every
+  platform rebuild and holds nothing the platform container needs, while the
+  data volume also covers `docker compose up` on a workstation.
+- **Learner map page.** `fsl-auditor.html` is `map.html`. The learner password
+  is generated into `/var/lib/fsl-gns3/auditor-password` by the gns3 entrypoint
+  when `FSL_GNS3_AUDITOR_PASSWORD` is empty (the admin password's way: mode 640,
+  the docker socket's group), the platform reads it from the same mount at each
+  call, and the old default `fsl-auditor` is gone. A standing gns3 container
+  takes the new password when it is recreated (`provision.py` sets the user's
+  password on every start). Image context changed: `deploy/gns3`.
+- **Host names.** The collector's hostname is `log-server` and OPNsense's
+  `firewall` (`firewall-N` in slot N), the names the map draws. The `sensor`
+  runtime field matches the sender's host name against the host names without
+  their first part and now also against the map names, so `firewall` and
+  `firewall-2.localdomain` reach `firewall`.
+- **Sender address.** Filebeat drops `log.source.address` (the management
+  address of the sender) in the syslog input.
+- **Hidden fields.** `http.*` (Suricata's own names beside `url`, `status` and
+  `request_header.*`) and `data_stream.*` (the namespace is the slot) join the
+  source filters. F4 listing `alert.signature*` while F6 hid them could not be
+  reproduced offline: the live view's `sourceFilters` hold both, a session open
+  re-imports the view with `overwrite=true` every time, and the platform log
+  shows no refused import. A live walk re-checks F4.
+- **Not done.** The slot number in Inspect, the space id and the index names
+  stay: a shared Kibana needs a per-slot identifier, and renaming moves it.

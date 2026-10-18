@@ -40,6 +40,7 @@ HIDDEN_FIELDS = (
     "_index", "event.*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
     "input.*", "error.*", "http.request_headers*", "transaction.*", "flow_id", "tx_id", "pcap_cnt", "in_iface",
     "pkt_src", "community_id", "metadata.*", "src_ip", "dest_ip", "alert.signature", "alert.signature_id",
+    "http.*", "data_stream.*",
 )
 SHOWN_AS_TEXT = ("src_port", "dest_port", "alert.gid", "alert.rev")
 REQUEST_HEADERS_SHOWN = (
@@ -185,7 +186,10 @@ def log_source_script():
 
 
 def sensor_script(sensors, waf):
-    shown = ", ".join(f"{_literal(_after_first_dash(host))}: {_literal(name)}" for host, name in sorted(sensors.items())) or ":"
+    named = {_after_first_dash(host): name for host, name in sensors.items()}
+    for name in sensors.values():
+        named.setdefault(name, name)
+    shown = ", ".join(f"{_literal(host)}: {_literal(name)}" for host, name in sorted(named.items())) or ":"
     alone = sorted(set(sensors.values()))
     fallback = _literal(alone[0] if len(alone) == 1 else "")
     return (

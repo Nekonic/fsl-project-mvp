@@ -18,16 +18,20 @@ if [ -S "$SOCK" ]; then
   fi
 fi
 
-if [ -z "${FSL_GNS3_ADMIN_PASSWORD:-}" ]; then
-  [ -s "$DATA/admin-password" ] || python -c 'import secrets; print(secrets.token_urlsafe(24))' > "$DATA/admin-password"
-  chmod 600 "$DATA/admin-password"
+generated() {
+  file="$DATA/$1"
+  [ -s "$file" ] || python -c 'import secrets; print(secrets.token_urlsafe(24))' > "$file"
+  chmod 600 "$file"
   if [ -n "${gid:-}" ] && [ "$gid" != 0 ]; then
-    chgrp "$gid" "$DATA/admin-password"
-    chmod 640 "$DATA/admin-password"
+    chgrp "$gid" "$file"
+    chmod 640 "$file"
   fi
-  FSL_GNS3_ADMIN_PASSWORD="$(cat "$DATA/admin-password")"
-fi
-export FSL_GNS3_ADMIN_PASSWORD
+  cat "$file"
+}
+
+[ -n "${FSL_GNS3_ADMIN_PASSWORD:-}" ] || FSL_GNS3_ADMIN_PASSWORD="$(generated admin-password)"
+[ -n "${FSL_GNS3_AUDITOR_PASSWORD:-}" ] || FSL_GNS3_AUDITOR_PASSWORD="$(generated auditor-password)"
+export FSL_GNS3_ADMIN_PASSWORD FSL_GNS3_AUDITOR_PASSWORD
 
 cat > "$DATA/gns3_server.conf" <<CONF
 [Server]
