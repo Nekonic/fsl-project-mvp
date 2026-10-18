@@ -128,3 +128,15 @@ def test_every_alert_is_counted_against_exactly_one_address_named_by_its_zone(cl
     assert sum(s["alerts"] for s in counted.values()) == 4
     assert {ip: (s["zone"], s["outside"]) for ip, s in counted.items()} == {
         "5.188.10.3": ("Internet", True), "172.30.0.2": ("Application estate", False), "10.9.9.9": ("", False)}
+
+
+def test_the_picture_names_hosts_as_the_map_does_and_the_sensor_host_likewise(client):
+    session_id = open_session(client)
+
+    with stub():
+        drawn = client.get(f"/api/sessions/{session_id}/topology/").json()
+
+    names = {node["name"] for s in drawn["segments"] for node in s["nodes"]}
+    names |= {sensor["name"] for sensor in drawn["sensors"]} | {sensor["watches"] for sensor in drawn["sensors"]}
+    assert "waf" in names and "log-server" in names
+    assert not {name for name in names if name.startswith("fsl-") and name not in ("fsl-juice-shop", "fsl-proxy")}, names

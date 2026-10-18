@@ -1042,7 +1042,6 @@ def attacker_box(request):
     origin = attacker.find(_standing(session), request.GET.get("origin"))
     return _reply(
         {
-            "container": settings.ATTACKER_CONTAINER,
             "source_ip": origin["source_ip"],
             "direct_ip": origin["direct_ip"],
             "origin": origin["id"],
@@ -1202,9 +1201,17 @@ def session_topology(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     described = _range(session).describe()
     shape = topology.shape(described, settings.RANGE)
+    learner = maps.learner(session.scenario)
 
     for segment in shape["segments"]:
         segment["alerts"] = 0
+        for node in segment["nodes"]:
+            node["name"] = learner.shown(node["name"])
+            node["sensor"] = learner.shown(node["sensor"]) if node["sensor"] else ""
+        segment["sensor"] = learner.shown(segment["sensor"]) if segment["sensor"] else ""
+    for sensor in shape["sensors"]:
+        sensor["name"] = learner.shown(sensor["name"])
+        sensor["watches"] = learner.shown(sensor["watches"])
     zones = _zones(shape["segments"])
 
     unplaced = 0
@@ -2053,7 +2060,7 @@ def _evidence(session, forced=None):
     replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
     detections = [
-        d for d in session.detections.all() if d.marker not in replayed and d.marker != session.browse_marker
+        d for d in session.detections.defer("raw") if d.marker not in replayed and d.marker != session.browse_marker
     ]
     records = [c.to_record() for c in cases]
     if forced:
