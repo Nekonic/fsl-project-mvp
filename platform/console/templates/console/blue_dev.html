@@ -24,8 +24,8 @@
   #site-dev .dv-dim { color: var(--text-muted); }
   #site-dev .dv-sub { display: block; color: var(--text-faint); font-size: 11px; }
   #site-dev.dv-picked .dv-wide { display: none; }
-  #site-dev .dv-tabs { display: flex; align-items: stretch; height: 28px; border-bottom: 1px solid var(--border); background: var(--subdued); }
-  #site-dev .dv-tab { padding: 0 10px; border-bottom: 2px solid transparent; color: var(--text); }
+  #site-dev .dv-tabs { display: flex; align-items: stretch; overflow: hidden; height: 28px; border-bottom: 1px solid var(--border); background: var(--subdued); }
+  #site-dev .dv-tab { display: inline-flex; align-items: center; white-space: nowrap; padding: 0 10px; border-bottom: 2px solid transparent; color: var(--text); }
   #site-dev .dv-tab[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--heading); }
   #site-dev .dv-tab:hover { background: var(--border-subdued); }
   #site-dev .dv-section { border-bottom: 1px solid var(--border); padding: 4px 0 6px; }
@@ -52,6 +52,41 @@
   #site-dev .dv-chain.dv-then::before { content: "\21B3\00a0"; color: var(--text-faint); }
   #site-dev .dv-prompt { display: flex; gap: 6px; padding: 2px 8px; font-family: var(--font-mono); color: var(--primary-text); }
   #site-dev .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
+  #site-dev .dv-split { display: flex; height: 100%; min-height: 0; }
+  #site-dev .dv-col { flex-direction: column; }
+  #site-dev .dv-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+  #site-dev .dv-side { flex: 0 0 34%; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+  #site-dev .dv-side.dv-nav { flex-basis: 26%; border-left: 0; border-right: 1px solid var(--border); }
+  #site-dev .dv-dom { flex: 1 1 0; min-height: 0; overflow: auto; padding: 2px 0; font: 11px/1.55 var(--font-mono); }
+  #site-dev .dv-node { position: relative; padding: 0 8px 0 calc(16px + var(--depth) * 12px); white-space: pre-wrap; overflow-wrap: anywhere; color: #222; cursor: default; }
+  #site-dev .dv-node:hover { background: var(--border-subdued); }
+  #site-dev .dv-node[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-fold { position: absolute; left: calc(3px + var(--depth) * 12px); width: 10px; font-size: 8px; color: #6e6e6e; cursor: pointer; user-select: none; }
+  #site-dev .dv-tag { color: #881280; }
+  #site-dev .dv-an { color: #994500; }
+  #site-dev .dv-av { color: #1a1aa6; }
+  #site-dev .dv-comment { color: #236e25; }
+  #site-dev .dv-doctype { color: #808080; }
+  #site-dev .dv-script { color: #222; }
+  #site-dev .dv-ref { color: #6e6e6e; }
+  #site-dev .dv-crumbs { display: flex; align-items: center; height: 22px; flex: 0 0 auto; overflow: hidden; border-top: 1px solid var(--border); background: var(--subdued); font: 11px var(--font-mono); }
+  #site-dev .dv-crumb { padding: 0 6px; line-height: 22px; white-space: nowrap; color: #222; }
+  #site-dev .dv-crumb[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-more { align-self: center; padding: 0 8px; color: var(--text-muted); }
+  #site-dev .dv-sidefilter { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-bottom: 1px solid var(--border); }
+  #site-dev .dv-sidefilter .dv-filter { flex: 1 1 auto; width: auto; }
+  #site-dev .dv-sidebody { flex: 1 1 0; overflow: auto; padding: 4px 8px; font: 11px/1.5 var(--font-mono); color: #222; }
+  #site-dev .dv-navbody { flex: 1 1 0; min-height: 0; overflow: auto; padding: 2px 0; }
+  #site-dev .dv-navrow { position: relative; padding: 1px 6px 1px calc(16px + var(--depth) * 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+  #site-dev .dv-navrow:hover { background: var(--border-subdued); }
+  #site-dev .dv-navrow[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-navrow svg { display: inline-block; vertical-align: -2px; margin-right: 4px; color: #5f6368; }
+  #site-dev .dv-codepane { flex: 1 1 0; min-height: 0; overflow: auto; font-size: 11px; }
+  #site-dev .dv-x { margin-left: 6px; font-size: 9px; color: var(--text-muted); }
+  #site-dev .dv-x:hover { color: var(--heading); }
+  #site-dev .dv-welcome { display: grid; grid-template-columns: max-content max-content; gap: 6px 16px; justify-content: center; padding: 28px 12px; color: var(--text-muted); }
+  #site-dev .dv-welcome b { font-weight: 400; color: var(--heading); font-family: var(--font-mono); }
+  #site-dev .dv-messages { flex: 1 1 0; min-height: 0; overflow: auto; }
 </style>
 <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
   <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
@@ -75,7 +110,7 @@
     </button>
     <button type="button" id="site-dev-exit" class="dv-icon" data-t-title="site.dev.close" aria-label="close">✕</button>
   </div>
-  <div id="site-dev-blank" class="hidden flex-1 min-h-0 overflow-auto bg-panel"></div>
+  <div id="site-dev-blank" class="hidden flex-1 min-h-0 overflow-hidden bg-panel"></div>
   <div id="site-dev-network" class="flex-1 min-h-0 flex flex-col">
   <div class="dv-bar shrink-0" style="height: 30px">
     <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">

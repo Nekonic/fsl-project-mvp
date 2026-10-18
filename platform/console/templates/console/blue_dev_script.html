@@ -1,7 +1,7 @@
 const dev = {
   open: false, after: 0, rows: [], height: 280, timer: null, picked: null, record: null, tab: "headers",
   preserve: false, coached: null, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
-  panel: "network", documents: {},
+  panel: "network", documents: {}, turn: 0, tree: null, side: "styles", nav: "page", file: undefined, opened: new Map(),
 };
 const DEV_POLL_MS = 2000;
 const DEV_LOWEST = 120;
@@ -28,6 +28,30 @@ const DEV_LABELS = {
   "site.dev.timing.started": "Started at {0}",
   "site.dev.timing.request_response": "Request/Response",
   "site.dev.timing.total": "Total",
+  "site.dev.styles": "Styles",
+  "site.dev.computed": "Computed",
+  "site.dev.layout": "Layout",
+  "site.dev.event_listeners": "Event Listeners",
+  "site.dev.new_style_rule": "New Style Rule",
+  "site.dev.crumb.text": "(text)",
+  "site.dev.sources.page": "Page",
+  "site.dev.sources.workspace": "Workspace",
+  "site.dev.sources.overrides": "Overrides",
+  "site.dev.sources.no_workspace": "No workspace set",
+  "site.dev.sources.no_overrides": "No local overrides set",
+  "site.dev.sources.index": "(index)",
+  "site.dev.sources.open_file": "Open file",
+  "site.dev.sources.run_command": "Run command",
+  "site.dev.sources.line_column": "Line {0}, Column {1}",
+  "site.dev.sources.coverage": "Coverage: n/a",
+  "site.dev.console.sidebar": "Show console sidebar",
+  "site.dev.console.clear": "Clear console",
+  "site.dev.console.context": "Only show messages from the current context (top, iframe, worker, extension)",
+  "site.dev.console.live": "Create live expression",
+  "site.dev.console.levels": "Default levels",
+  "site.dev.console.levels_title": "Log levels: Default",
+  "site.dev.console.settings": "Console settings",
+  "site.dev.console.prompt": "Console prompt",
 };
 const devWords = (key, ...values) => values.reduce(
   (out, value, index) => out.split(`{${index}}`).join(value), localized(key, DEV_LABELS[key]));
@@ -365,7 +389,27 @@ const DEV_PANELS = { elements: "Elements", console: "Console", sources: "Sources
 
 const DEV_VOID = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
 const DEV_TOKENS = /<!-{2}[\s\S]*?-{2}>|<!doctype[^>]*>|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<\/?[a-zA-Z][^>]*>|[^<]+|</gi;
+const DEV_ATTRIBUTE = /([^\s=>/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 const DEV_EMPTY_DOCUMENT = "<html><head></head><body></body></html>";
+const DEV_SCROLLED = ["site-dev-dom", "site-dev-code", "site-dev-navbody"];
+const DEV_SVG = (body) => `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">${body}</svg>`;
+const DEV_ICONS = {
+  top: DEV_SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>'),
+  host: DEV_SVG('<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9.5a4.2 4.2 0 0 1-.5 8.5z"/>'),
+  folder: DEV_SVG('<path d="M3 6h6l2 2h10v11H3z"/>'),
+  file: DEV_SVG('<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>'),
+  sidebar: DEV_SVG('<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M9 4v16"/>'),
+  clear: DEV_SVG('<circle cx="12" cy="12" r="9"/><path d="M5.6 18.4 18.4 5.6"/>'),
+  eye: DEV_SVG('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  gear: DEV_SVG('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+};
+const DEV_SIDE_TABS = [
+  ["styles", "site.dev.styles"], ["computed", "site.dev.computed"], ["layout", "site.dev.layout"],
+  ["listeners", "site.dev.event_listeners"],
+];
+const DEV_NAV_TABS = [
+  ["page", "site.dev.sources.page"], ["workspace", "site.dev.sources.workspace"], ["overrides", "site.dev.sources.overrides"],
+];
 
 function devRawText(token) {
   const lines = token.replace(/^<[^>]*>/, "").replace(/<\/[a-z]+\s*>$/i, "").split("\n").filter((line) => line.trim());
@@ -373,75 +417,311 @@ function devRawText(token) {
   return lines.map((line) => line.slice(indent === Infinity ? 0 : indent).trimEnd());
 }
 
-function devPretty(html) {
-  const lines = [];
-  let depth = 0;
-  const push = (text, opens) => lines.push({ depth, text, opens });
-  (html.match(DEV_TOKENS) || []).forEach((raw) => {
-    const rawBlock = /^<(script|style)\b/i.exec(raw);
-    const token = raw.trim().replace(/\s+/g, " ");
-    if (!token) return;
-    if (rawBlock) {
-      const open = /^<[^>]*>/.exec(raw)[0];
-      const close = /<\/[a-z]+\s*>$/i.exec(raw)[0].replace(/\s+/g, "");
-      const body = devRawText(raw);
-      if (!body.length) return push(open + close, false);
-      push(open, true);
-      depth += 1;
-      body.forEach((line) => push(line, false));
-      depth -= 1;
-      return push(close, false);
-    }
-    if (/^<\/[a-z]/i.test(token)) {
-      depth = Math.max(depth - 1, 0);
-      const last = lines[lines.length - 1];
-      const before = lines[lines.length - 2];
-      if (last && last.opens) {
-        lines.pop();
-        return push(last.text + token, false);
-      }
-      if (last && before && before.opens && before.depth === depth && !/^</.test(last.text)) {
-        lines.length -= 2;
-        return push(before.text + last.text + token, false);
-      }
-      return push(token, false);
-    }
-    const name = (/^<([a-z0-9]+)/i.exec(token) || [])[1];
-    if (!name || /^<[!-]/.test(token) || token.endsWith("/>") || DEV_VOID.includes(name.toLowerCase())) return push(token, false);
-    push(token, true);
-    depth += 1;
-  });
-  return lines.map((line) => "  ".repeat(line.depth) + line.text).join("\n");
+function devNode(token) {
+  const name = /^<([a-z0-9:-]+)/i.exec(token)[1].toLowerCase();
+  const attrs = [...token.slice(name.length + 1).replace(/\/?>$/, "").matchAll(DEV_ATTRIBUTE)]
+    .map(([, key, double, single, bare]) => [key, double ?? single ?? bare ?? null]);
+  return { kind: "element", name, attrs, children: [], void: DEV_VOID.includes(name) || token.endsWith("/>") };
 }
 
-async function devDocument() {
-  const latest = dev.rows.filter((row) => row.category === "doc").pop();
-  if (!latest) return { text: devPretty(DEV_EMPTY_DOCUMENT), note: "" };
-  if (!dev.documents[latest.id]) {
-    const read = await api(sitePath(`${latest.id}/`));
-    if (!read.ok) return { text: devPretty(DEV_EMPTY_DOCUMENT), note: "" };
-    dev.documents[latest.id] = read.body;
+function devParse(html) {
+  const root = { kind: "root", children: [], index: [] };
+  const stack = [root];
+  const add = (node) => {
+    node.id = root.index.length;
+    node.parent = stack[stack.length - 1];
+    root.index.push(node);
+    node.parent.children.push(node);
+    return node;
+  };
+  (html.match(DEV_TOKENS) || []).forEach((raw) => {
+    if (/^<!-{2}/.test(raw)) return add({ kind: "comment", text: raw.slice(4, -3) });
+    if (/^<!doctype/i.test(raw)) return add({ kind: "doctype", text: raw.slice(1, -1) });
+    if (/^<(script|style)\b/i.test(raw)) {
+      const node = add(devNode(/^<[^>]*>/.exec(raw)[0]));
+      const lines = devRawText(raw);
+      if (lines.length) {
+        stack.push(node);
+        add({ kind: "text", text: lines.join("\n"), raw: true });
+        stack.pop();
+      }
+      return;
+    }
+    if (raw.startsWith("</")) {
+      const at = stack.map((node) => node.name).lastIndexOf(raw.slice(2, -1).trim().toLowerCase());
+      if (at > 0) stack.length = at;
+      return;
+    }
+    if (/^<[a-z]/i.test(raw)) {
+      const node = add(devNode(raw));
+      if (!node.void) stack.push(node);
+      return;
+    }
+    const text = raw.replace(/\s+/g, " ").trim();
+    if (text) add({ kind: "text", text });
+  });
+  return root;
+}
+
+const devInline = (node) => node.children.length === 1 && node.children[0].kind === "text" && !node.children[0].text.includes("\n");
+
+function devOpenTag(node) {
+  const attrs = node.attrs.map(([key, value]) =>
+    ` <span class="dv-an">${esc(key)}</span>${value === null ? "" : `=<span class="dv-av">"${esc(value)}"</span>`}`).join("");
+  return `<span class="dv-tag">&lt;${esc(node.name)}</span>${attrs}<span class="dv-tag">&gt;</span>`;
+}
+
+const devCloseTag = (node) => `<span class="dv-tag">&lt;/${esc(node.name)}&gt;</span>`;
+
+function devTreeRows(nodes, state) {
+  const out = [];
+  const row = (node, depth, body, fold, closing) => {
+    const chosen = node.id === state.selected;
+    const marker = chosen && !closing ? ' <span class="dv-ref">== $0</span>' : "";
+    out.push(`<div class="dv-node" data-node="${node.id}" aria-selected="${chosen}" style="--depth: ${depth}">${fold}${body}${marker}</div>`);
+  };
+  const walk = (list, depth) => list.forEach((node) => {
+    if (node.kind === "doctype") return row(node, depth, `<span class="dv-doctype">&lt;${esc(node.text)}&gt;</span>`, "");
+    if (node.kind === "comment") return row(node, depth, `<span class="dv-comment">&lt;!${"-".repeat(2)}${esc(node.text)}${"-".repeat(2)}&gt;</span>`, "");
+    if (node.kind === "text") return row(node, depth, node.raw ? `<span class="dv-script">${esc(node.text)}</span>` : `"${esc(node.text)}"`, "");
+    const open = devOpenTag(node);
+    if (node.void) return row(node, depth, open, "");
+    if (!node.children.length) return row(node, depth, open + devCloseTag(node), "");
+    if (devInline(node)) return row(node, depth, open + esc(node.children[0].text) + devCloseTag(node), "");
+    const expanded = state.open.has(node.id);
+    const fold = `<span class="dv-fold" data-fold="${node.id}">${expanded ? "▼" : "▶"}</span>`;
+    if (!expanded) return row(node, depth, `${open}<span class="dv-dim">…</span>${devCloseTag(node)}`, fold);
+    row(node, depth, open, fold);
+    walk(node.children, depth + 1);
+    return row(node, depth, devCloseTag(node), "", true);
+  });
+  walk(nodes, 0);
+  return out;
+}
+
+function devCrumbs(state) {
+  const trail = [];
+  for (let at = state.root.index[state.selected]; at && at.kind !== "root"; at = at.parent) trail.unshift(at);
+  const shown = trail.filter((node) => node.kind === "element" || node.kind === "text");
+  return shown.map((node, index) => {
+    const attr = (key) => (node.attrs.find(([name]) => name === key) || [])[1] || "";
+    const classes = node.kind === "element" ? attr("class").split(/\s+/).filter(Boolean).map((one) => `.${one}`).join("") : "";
+    const label = node.kind === "text"
+      ? devWords("site.dev.crumb.text")
+      : node.name + (attr("id") ? `#${attr("id")}` : "") + classes;
+    return `<span class="dv-crumb" aria-selected="${index === shown.length - 1}">${esc(label)}</span>`;
+  }).join("");
+}
+
+function devTreeDraw() {
+  const state = dev.tree;
+  const dom = field("site-dev-dom");
+  dom.innerHTML = devTreeRows(state.root.children, state).join("") + state.note;
+  dom.querySelectorAll("[data-node]").forEach((line) => line.addEventListener("click", () => {
+    state.selected = Number(line.dataset.node);
+    devTreeDraw();
+  }));
+  dom.querySelectorAll("[data-fold]").forEach((arrow) => arrow.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const id = Number(arrow.dataset.fold);
+    if (!state.open.delete(id)) state.open.add(id);
+    state.selected = id;
+    devTreeDraw();
+  }));
+  field("site-dev-crumbs").innerHTML = devCrumbs(state);
+}
+
+function devTreeState(key, html, note) {
+  if (!dev.tree || dev.tree.key !== key) {
+    const root = devParse(html);
+    const named = (list, name) => list.find((node) => node.kind === "element" && node.name === name);
+    const page = named(root.children, "html");
+    const body = page && named(page.children, "body");
+    dev.tree = {
+      key, root, open: new Set([page, body].filter(Boolean).map((node) => node.id)), selected: body ? body.id : -1,
+    };
   }
-  const record = dev.documents[latest.id];
-  const body = record.response_body;
-  return { text: devPretty(body ? body.text : ""), note: devBodyNote(record) };
+  dev.tree.note = note;
+}
+
+const devLoaded = (status) => status < 300 || status === 304;
+const devLatest = (errors) => dev.rows
+  .filter((row) => row.category === "doc" && (devLoaded(row.status) || (errors && devFailed(row.status)))).pop();
+
+async function devRecord(row) {
+  if (!dev.documents[row.id]) {
+    const read = await api(sitePath(`${row.id}/`));
+    if (!read.ok) return null;
+    dev.documents[row.id] = read.body;
+  }
+  return dev.documents[row.id];
+}
+
+function devScrolls(kept) {
+  return DEV_SCROLLED.map((id, index) => {
+    const box = field(id);
+    if (!box) return 0;
+    if (kept) box.scrollTop = kept[index];
+    return box.scrollTop;
+  });
+}
+
+const devTabs = (names, selected, attribute) => names.map(([name, key]) =>
+  `<button type="button" class="dv-tab" data-${attribute}="${name}" aria-selected="${name === selected}">${esc(devWords(key))}</button>`).join("");
+
+function devSideFill() {
+  field("site-dev-side-filter").style.display = dev.side === "styles" || dev.side === "computed" ? "" : "none";
+  field("site-dev-side-body").innerHTML = dev.side === "styles" ? "<div>element.style {</div><div>}</div>" : "";
+  field("site-dev-side-tabs").querySelectorAll("[data-side]").forEach((tab) =>
+    tab.setAttribute("aria-selected", String(tab.dataset.side === dev.side)));
+}
+
+async function devElements(turn) {
+  const latest = devLatest(true);
+  const record = latest ? await devRecord(latest) : null;
+  if (turn !== dev.turn) return;
+  const body = record && record.response_body;
+  const captured = Boolean(body && body.text);
+  devTreeState(captured ? latest.id : "empty", captured ? body.text : DEV_EMPTY_DOCUMENT, record ? devBodyNote(record) : "");
+  const kept = devScrolls();
+  field("site-dev-blank").innerHTML = `<div class="dv-split">
+    <div class="dv-main"><div id="site-dev-dom" class="dv-dom"></div><div id="site-dev-crumbs" class="dv-crumbs"></div></div>
+    <div class="dv-side">
+      <div id="site-dev-side-tabs" class="dv-tabs shrink-0">${devTabs(DEV_SIDE_TABS, dev.side, "side")}<span class="dv-more">»</span></div>
+      <div id="site-dev-side-filter" class="dv-sidefilter">
+        <input class="dv-filter" placeholder="${esc(t("site.dev.filter"))}" autocomplete="off" spellcheck="false">
+        <span class="dv-dim">:hov</span><span class="dv-dim">.cls</span>
+        <span class="dv-dim" title="${esc(devWords("site.dev.new_style_rule"))}">+</span></div>
+      <div id="site-dev-side-body" class="dv-sidebody"></div>
+    </div></div>`;
+  devTreeDraw();
+  devSideFill();
+  devScrolls(kept);
+  field("site-dev-side-tabs").querySelectorAll("[data-side]").forEach((tab) => tab.addEventListener("click", () => {
+    dev.side = tab.dataset.side;
+    devSideFill();
+  }));
+}
+
+function devSourceTree() {
+  const hosts = new Map();
+  const rows = new Map();
+  dev.rows.filter((row) => devLoaded(row.status)).forEach((row) => rows.set(row.url, row));
+  rows.forEach((row, url) => {
+    const parsed = new URL(url);
+    const folders = parsed.pathname.split("/").filter(Boolean);
+    const last = parsed.pathname.endsWith("/") ? "" : folders.pop();
+    if (!hosts.has(parsed.host)) hosts.set(parsed.host, { name: parsed.host, folders: new Map(), files: [] });
+    const folder = folders.reduce((at, name) => {
+      if (!at.folders.has(name)) at.folders.set(name, { name, folders: new Map(), files: [] });
+      return at.folders.get(name);
+    }, hosts.get(parsed.host));
+    folder.files.push({ name: (last || devWords("site.dev.sources.index")) + parsed.search, url });
+  });
+  return { hosts, rows };
+}
+
+function devSourceRows(hosts, current) {
+  const holds = (folder) => folder.files.some((file) => file.url === current) || [...folder.folders.values()].some(holds);
+  const open = (key, folder, base) => (dev.opened.has(key) ? dev.opened.get(key) : base || holds(folder));
+  const out = [];
+  const row = (depth, attrs, icon, name, folded, chosen) => out.push(`<div class="dv-navrow" ${attrs}${folded === null ? "" : ` data-open="${folded}"`} aria-selected="${chosen}" style="--depth: ${depth}">${
+    folded === null ? "" : `<span class="dv-fold">${folded ? "▼" : "▶"}</span>`}${icon}${esc(name)}</div>`);
+  const list = (folder, depth, key) => {
+    [...folder.folders.values()].sort((a, b) => a.name.localeCompare(b.name)).forEach((one) => {
+      const at = `${key}/${one.name}`;
+      const expanded = open(at, one, false);
+      row(depth, `data-folder="${esc(at)}"`, DEV_ICONS.folder, one.name, expanded, false);
+      if (expanded) list(one, depth + 1, at);
+    });
+    folder.files.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((file) =>
+      row(depth, `data-source="${esc(file.url)}" title="${esc(file.url)}"`, DEV_ICONS.file, file.name, null, file.url === current));
+  };
+  const top = dev.opened.has("top") ? dev.opened.get("top") : true;
+  row(0, 'data-folder="top"', DEV_ICONS.top, "top", top, false);
+  if (top) {
+    hosts.forEach((host) => {
+      const at = `top/${host.name}`;
+      const expanded = open(at, host, true);
+      row(1, `data-folder="${esc(at)}"`, DEV_ICONS.host, host.name, expanded, false);
+      if (expanded) list(host, 2, at);
+    });
+  }
+  return out.join("");
+}
+
+async function devSources(turn) {
+  const { hosts, rows } = devSourceTree();
+  const latest = devLatest(false);
+  const current = dev.file === null ? null : rows.has(dev.file) ? dev.file : latest && rows.has(latest.url) ? latest.url : null;
+  const record = current ? await devRecord(rows.get(current)) : null;
+  if (turn !== dev.turn) return;
+  const body = record && record.response_body;
+  const named = [...hosts.values()].flatMap(function files(folder) {
+    return [...folder.files, ...[...folder.folders.values()].flatMap(files)];
+  }).find((file) => file.url === current);
+  const navigator = dev.nav === "page"
+    ? devSourceRows(hosts, current)
+    : `<p class="dv-empty">${esc(devWords(dev.nav === "workspace" ? "site.dev.sources.no_workspace" : "site.dev.sources.no_overrides"))}</p>`;
+  const welcome = `<div class="dv-welcome"><span>${esc(devWords("site.dev.sources.open_file"))}</span><b>Ctrl+P</b>
+    <span>${esc(devWords("site.dev.sources.run_command"))}</span><b>Ctrl+Shift+P</b></div>`;
+  const kept = devScrolls();
+  const blank = field("site-dev-blank");
+  blank.innerHTML = `<div class="dv-split">
+    <div class="dv-side dv-nav">
+      <div class="dv-tabs shrink-0">${devTabs(DEV_NAV_TABS, dev.nav, "navtab")}<span class="dv-more">»</span></div>
+      <div id="site-dev-navbody" class="dv-navbody">${navigator}</div>
+    </div>
+    <div class="dv-main">
+      <div class="dv-tabs shrink-0">${named ? `<span class="dv-tab" aria-selected="true">${esc(named.name)}<button type="button" class="dv-x" data-close="file" aria-label="${esc(t("site.dev.close"))}">✕</button></span>` : ""}</div>
+      <div id="site-dev-code" class="dv-codepane">${named ? devSource(body ? body.text : "") + (record ? devBodyNote(record) : "") : welcome}</div>
+      ${named ? `<div class="dv-status shrink-0"><span>${esc(devWords("site.dev.sources.line_column", 1, 1))}</span><span style="margin-left: auto">${esc(devWords("site.dev.sources.coverage"))}</span></div>` : ""}
+    </div></div>`;
+  devScrolls(kept);
+  const again = () => devFill("sources");
+  blank.querySelectorAll("[data-folder]").forEach((line) => line.addEventListener("click", () => {
+    dev.opened.set(line.dataset.folder, line.dataset.open !== "true");
+    again();
+  }));
+  blank.querySelectorAll("[data-source]").forEach((line) => line.addEventListener("click", () => {
+    dev.file = line.dataset.source;
+    again();
+  }));
+  blank.querySelectorAll("[data-navtab]").forEach((tab) => tab.addEventListener("click", () => {
+    dev.nav = tab.dataset.navtab;
+    again();
+  }));
+  blank.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
+    dev.file = null;
+    again();
+  }));
+}
+
+function devConsole() {
+  const button = (key, icon, extra = "") => `<button type="button" class="dv-icon" ${extra} title="${esc(devWords(key))}" aria-label="${esc(devWords(key))}">${DEV_ICONS[icon]}</button>`;
+  field("site-dev-blank").innerHTML = `<div class="dv-split dv-col">
+    <div class="dv-bar shrink-0" style="height: 30px">
+      ${button("site.dev.console.sidebar", "sidebar")}${button("site.dev.console.clear", "clear")}<span class="dv-sep"></span>
+      <select class="dv-select" title="${esc(devWords("site.dev.console.context"))}" aria-label="top"><option>top</option></select>
+      <span class="dv-sep"></span>${button("site.dev.console.live", "eye")}<span class="dv-sep"></span>
+      <input class="dv-filter" placeholder="${esc(t("site.dev.filter"))}" autocomplete="off" spellcheck="false">
+      <span class="dv-sep"></span>
+      <select class="dv-select" title="${esc(devWords("site.dev.console.levels_title"))}" aria-label="${esc(devWords("site.dev.console.levels"))}"><option>${esc(devWords("site.dev.console.levels"))}</option></select>
+      ${button("site.dev.console.settings", "gear", 'style="margin-left: auto"')}
+    </div>
+    <div class="dv-messages"><div class="dv-prompt" aria-label="${esc(devWords("site.dev.console.prompt"))}"><span>&gt;</span></div></div></div>`;
 }
 
 async function devFill(name) {
-  const blank = field("site-dev-blank");
-  if (name === "console") {
-    blank.innerHTML = `<div class="dv-prompt"><span>&gt;</span></div>`;
-    return;
-  }
-  const page = await devDocument();
-  if (dev.panel !== name) return;
-  blank.innerHTML = name === "sources"
-    ? devSource(page.text) + page.note
-    : `<pre class="dv-raw" style="margin-left: 8px">${esc(page.text)}</pre>${page.note}`;
+  dev.turn += 1;
+  if (name === "console") devConsole();
+  else if (name === "elements") await devElements(dev.turn);
+  else await devSources(dev.turn);
 }
 
 function devPanel(name) {
   dev.panel = name;
+  dev.turn += 1;
   field("site-dev").querySelectorAll("[data-panel]").forEach((tab) =>
     tab.setAttribute("aria-selected", String(tab.dataset.panel === name)));
   field("site-dev-network").classList.toggle("hidden", name !== "network");
