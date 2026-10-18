@@ -196,7 +196,7 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
     assert "dataViewId:'session-fsl-logs-slot1'" in link
     assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
     assert "from:'2026-10-18T08:59:55+00:00'" in link
-    assert "columns:!(log_source,sensor,event_type,source_ip,destination,url,status,rule_id,rule)" in link
+    assert "columns:!(event_type,source_ip,destination,url,status,rule_id,rule)" in link
     assert "exists:(field:log_source)" in link, "the range VMs' own system log lines are not the session's events"
 
 

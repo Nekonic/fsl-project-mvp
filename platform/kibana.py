@@ -16,16 +16,27 @@ ALERT_COLUMNS = (
     "fsl_source", "rule", "rule_id", "source_ip", "src_geo.country_name",
     "destination", "url", "status", "transaction.request.headers.X-FSL-Case",
 )
-SETTINGS = {"defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields": ["_source", "_id", "_score"]}
+SETTINGS = {
+    "defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
+}
 URL = os.environ.get("KIBANA_URL", "")
 SESSION_VIEW_NAME = "Session logs"
-SESSION_COLUMNS = (
-    "log_source", "sensor", "event_type", "source_ip", "destination", "url", "status", "rule_id", "rule",
-)
+SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
+COLUMN_WIDTHS = {
+    "@timestamp": 170, "event_type": 110, "source_ip": 130, "destination": 130, "status": 90, "rule_id": 110,
+    "log_source": 110, "sensor": 110,
+}
 HIDDEN_FIELDS = (
     "_index", "fsl_*", "*X-FSL-Case*", "*x-fsl-case*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
-    "input.*", "error.*", "http.request_headers*",
+    "input.*", "error.*", "http.request_headers*", "transaction.*", "flow_id", "tx_id", "pcap_cnt", "in_iface",
+    "pkt_src", "community_id", "metadata.*",
 )
+SHOWN_AS_TEXT = ("src_port", "dest_port", "alert.signature_id", "alert.gid", "alert.rev")
+REQUEST_HEADERS_SHOWN = (
+    "Host", "User-Agent", "Accept", "Accept-Language", "Accept-Encoding", "Referer", "Cookie", "Content-Type",
+    "Content-Length", "Origin", "X-Forwarded-For", "X-Forwarded-Proto", "X-Real-IP",
+)
+NO_RULE = "-"
 MODULES = ("suricata", "modsecurity")
 MARKER_HEADER = "x-fsl-case"
 ATTEMPTS = 60
@@ -167,6 +178,62 @@ def request_headers_script():
     )
 
 
+def header_field(name):
+    return name.lower().replace("-", "_")
+
+
+def request_header_script():
+    shown = ", ".join(f"{_literal(name.lower())}: {_literal(header_field(name))}" for name in REQUEST_HEADERS_SHOWN)
+    return (
+        f"Map shown = [{shown}]; "
+        "def http = params['_source']['http']; "
+        "if (http instanceof Map && http['request_headers'] instanceof List) { "
+        "for (def header : http['request_headers']) { "
+        "if (header instanceof Map && header['name'] != null) { "
+        "String key = String.valueOf(header['name']).toLowerCase(); "
+        "if (shown.containsKey(key)) { emit((String) shown.get(key), String.valueOf(header['value'])); } } } } "
+        "def transaction = params['_source']['transaction']; "
+        "def sent = transaction instanceof Map && transaction['request'] instanceof Map "
+        "? transaction['request']['headers'] : null; "
+        "if (sent instanceof Map) { for (def entry : sent.entrySet()) { "
+        "String key = String.valueOf(entry.getKey()).toLowerCase(); "
+        "if (shown.containsKey(key)) { emit((String) shown.get(key), String.valueOf(entry.getValue())); } } }"
+    )
+
+
+def _each_waf_message(emitted):
+    return (
+        "def transaction = params['_source']['transaction']; "
+        "def messages = transaction instanceof Map ? transaction['messages'] : null; "
+        "int found = 0; "
+        "if (messages instanceof List) { for (def message : messages) { if (message instanceof Map) { "
+        "String id = message['details'] instanceof Map && message['details']['ruleId'] != null "
+        "? String.valueOf(message['details']['ruleId']) : ''; "
+        "String said = message['message'] != null ? String.valueOf(message['message']) : ''; "
+        f"emit({emitted}); found++; }} }} }} "
+        f"if (found == 0) {{ emit({_literal(NO_RULE)}); }}"
+    )
+
+
+def rule_id_script():
+    return (
+        f"String module = {_value('fsl_source')}; "
+        f"if (module == 'modsecurity') {{ {_each_waf_message('id')} }} "
+        f"else if (doc.containsKey('alert.signature_id') && doc['alert.signature_id'].size() > 0) {{ "
+        "emit(String.valueOf(doc['alert.signature_id'].value)); }"
+    )
+
+
+def rule_script():
+    paired = "(id + ' ' + said).trim()"
+    return (
+        f"String module = {_value('fsl_source')}; "
+        f"if (module == 'modsecurity') {{ {_each_waf_message(paired)} }} "
+        f"else if (doc.containsKey('alert.signature') && doc['alert.signature'].size() > 0) {{ "
+        f"emit(({_value('alert.signature_id')} + ' ' + String.valueOf(doc['alert.signature'].value)).trim()); }}"
+    )
+
+
 def shared_runtime(ndjson):
     for line in ndjson.splitlines():
         found = json.loads(line) if line.strip() else {}
@@ -177,9 +244,15 @@ def shared_runtime(ndjson):
 
 def session_view(pattern, sensors, waf, runtime):
     fields = dict(runtime) | {
+        "rule": {"type": "keyword", "script": {"source": rule_script()}},
+        "rule_id": {"type": "keyword", "script": {"source": rule_id_script()}},
         "log_source": {"type": "keyword", "script": {"source": log_source_script()}},
         "sensor": {"type": "keyword", "script": {"source": sensor_script(sensors, waf)}},
         "request_headers": {"type": "keyword", "script": {"source": request_headers_script()}},
+        "request_header": {
+            "type": "composite", "script": {"source": request_header_script()},
+            "fields": {header_field(name): {"type": "keyword"} for name in REQUEST_HEADERS_SHOWN},
+        },
     }
     return {
         "type": "index-pattern",
@@ -190,6 +263,7 @@ def session_view(pattern, sensors, waf, runtime):
             "timeFieldName": "@timestamp",
             "allowNoIndex": True,
             "sourceFilters": json.dumps([{"value": hidden} for hidden in HIDDEN_FIELDS]),
+            "fieldFormatMap": json.dumps({name: {"id": "string"} for name in SHOWN_AS_TEXT}),
             "runtimeFieldMap": json.dumps(fields),
         },
         "references": [],
