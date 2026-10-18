@@ -76,6 +76,7 @@ services:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
     container_name: fsl-collector
+    hostname: siem
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -98,6 +99,7 @@ services:
       - "127.0.0.1:5601:5601"
     environment:
       ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      SERVER_NAME: kibana
       SERVER_BASEPATH: "/kibana"
       SERVER_REWRITEBASEPATH: "true"
       SERVER_PUBLICBASEURL: "http://localhost:8000/kibana"

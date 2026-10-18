@@ -5476,3 +5476,37 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   `fsl-wargame-host-2` all reach their map name. Not proven offline: the
   script's Painless and the in-place reset of a standing slot 1, whose
   recorded config hash changes with the hostname (a live walk checks both).
+
+## Round 4: what the Kibana pane still showed (realism lens)
+
+- **Default space refused.** `/kibana/app/...` and `/kibana/spaces/...` (the
+  Default space and its space selector) answer 403 at the front; the Default
+  space has every feature on and ES|QL in the picker. The console links only
+  `/kibana/s/<space>/...`; an operator reaches the Default space on 5601.
+- **Data views API.** `api/index_patterns/*` is denied like `api/data_views`,
+  except `has_user_index_pattern`, which Discover calls.
+- **Settings.** `internal/kibana/settings` is GET only (the UI writes advanced
+  settings through it). Lookups with `namespaces=` answer 403, so a learner
+  space cannot list the saved objects of another space. Not exercised against
+  a live Kibana with a browser: a live walk checks that Discover still loads.
+- **Space switcher.** `GET s/<space>/api/spaces/space` answers a list of the
+  current space alone (name SOC); every other method on it is 403.
+- **Names.** Operator saved objects lose `fsl-`: `logs`, `alerts`, `overview`,
+  `alerts-by-engine`, `top-rules`, `waf-blocks`, `top-countries`
+  (`DATA_VIEW`, `ALERT_SEARCH`, the default route). Objects with the old ids
+  stay in a standing Kibana's Default space, unreachable from the learner
+  proxy. The collector has hostname `siem` and Kibana `SERVER_NAME: kibana`,
+  so documents' `agent.name` and `host.name` and the status page print no
+  container id.
+- **Data stream.** Filebeat's index is `logs-<slot or session>-sensors` (one
+  data stream per slot, backing index `.ds-logs-1-sensors-<day>-000001`), not
+  `logs-1-<day>` with the day twice. `logs-{slot}-*` and `logs-{session}-*`
+  still match. Not done: Filebeat also creates an empty data stream named
+  after its template (`logs-sensors`); stopping that needs either a template
+  Filebeat does not create or a delete from outside, neither provable offline.
+- **Hidden fields.** `src_ip`, `dest_ip`, `alert.signature` and
+  `alert.signature_id` join the source filters (the data view shows the same
+  values as `source_ip`, `destination`, `rule` and `rule_id`); the operator
+  data view carries the same list.
+- **Column widths.** The console's Discover link carries the widths the saved
+  search sets (`grid:(columns:(...))`), so an IP never wraps in the table.

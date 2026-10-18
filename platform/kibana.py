@@ -9,8 +9,8 @@ import uuid
 
 OBJECTS = f"{os.environ.get('FSL_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
 BASE_PATH = "/kibana"
-DATA_VIEW = "fsl-logs"
-ALERT_SEARCH = "fsl-alerts"
+DATA_VIEW = "logs"
+ALERT_SEARCH = "alerts"
 ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity"'
 SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
 ALERT_COLUMNS = SESSION_COLUMNS
@@ -34,14 +34,14 @@ SESSION_VIEW_NAME = "logs-*"
 SPACE_NAME = "SOC"
 SPACE_PREFIX = "soc-"
 COLUMN_WIDTHS = {
-    "@timestamp": 170, "event_type": 110, "source_ip": 130, "destination": 130, "status": 90, "rule_id": 110,
+    "@timestamp": 170, "event_type": 120, "source_ip": 140, "destination": 140, "status": 90, "rule_id": 110,
 }
 HIDDEN_FIELDS = (
     "_index", "event.*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
     "input.*", "error.*", "http.request_headers*", "transaction.*", "flow_id", "tx_id", "pcap_cnt", "in_iface",
-    "pkt_src", "community_id", "metadata.*",
+    "pkt_src", "community_id", "metadata.*", "src_ip", "dest_ip", "alert.signature", "alert.signature_id",
 )
-SHOWN_AS_TEXT = ("src_port", "dest_port", "alert.signature_id", "alert.gid", "alert.rev")
+SHOWN_AS_TEXT = ("src_port", "dest_port", "alert.gid", "alert.rev")
 REQUEST_HEADERS_SHOWN = (
     "Host", "User-Agent", "Accept", "Accept-Language", "Accept-Encoding", "Referer", "Cookie", "Content-Type",
     "Content-Length", "Origin", "X-Forwarded-For", "X-Forwarded-Proto", "X-Real-IP",
@@ -137,6 +137,14 @@ def query(narrowed="", alerts=True):
     ) if part)
 
 
+def rison_key(name):
+    return name if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) else rison(name)
+
+
+def grid_state():
+    return ",".join(f"{rison_key(name)}:(width:{width})" for name, width in COLUMN_WIDTHS.items())
+
+
 def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS):
     until = rison(end.isoformat()) if end else "now"
     global_state = f"(time:(from:{rison(start.isoformat())},to:{until}))"
@@ -144,6 +152,7 @@ def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS):
         f"(columns:!({','.join(columns)}),"
         f"dataSource:(dataViewId:{rison(view)},type:dataView),"
         "filters:!(),"
+        f"grid:(columns:({grid_state()})),"
         f"query:(language:kuery,query:{rison(kql)}),"
         "sort:!(!('@timestamp',desc)))"
     )

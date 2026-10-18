@@ -69,6 +69,12 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
         assert any(r["id"] == kibana.DATA_VIEW for r in item["references"]), item["id"]
 
 
+def test_no_saved_object_id_names_the_platform():
+    assert not [item["id"] for item in saved_objects() if "fsl" in item["id"]], (
+        "a lookup in the learner's space prints the ids"
+    )
+
+
 def test_the_alert_search_matches_what_the_console_links_to():
     (search,) = [item for item in saved_objects() if item["type"] == "search"]
     source = json.loads(search["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
@@ -106,6 +112,9 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     assert "dataSource:(dataViewId:'soc-logs-2',type:dataView)" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running
+    assert "grid:(columns:(" in closed and "source_ip:(width:" in closed and "'@timestamp':(width:" in closed, (
+        "the saved search sets the column widths; a link that replaces the state keeps them, or an IP wraps"
+    )
     assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
 
 
@@ -125,6 +134,9 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
     assert view["id"] == "soc-logs-2", "one view per index pattern, so opening again overwrites it"
     assert {"_index", "event.*", "log.*", "message", "http.request_headers*"} <= hidden, (
         "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
+    )
+    assert {"src_ip", "dest_ip", "alert.signature", "alert.signature_id"} <= hidden, (
+        "the Suricata names for what the data view already shows as source_ip, destination, rule_id and rule"
     )
     assert not any("fsl" in entry.lower() or "slot" in entry.lower() for entry in hidden), (
         "Inspect prints the source filters, so none names the platform"

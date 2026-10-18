@@ -85,9 +85,32 @@ def test_the_learner_facing_kibana_refuses_what_is_not_discover_and_answers_what
         "/kibana/api/saved_objects/_import", "/kibana/api/saved_objects/_export",
         "/kibana/s/soc-logs-1/api/data_views/data_view", "/kibana/api/kibana/settings",
         "/kibana/s/soc-logs-1/api/kibana/settings/defaultIndex", "/kibana/api/rollup/indices",
+        "/kibana/api/index_patterns/index_pattern/logs", "/kibana/s/soc-logs-1/api/index_patterns/index_pattern/soc-logs-1",
     ):
         assert refused.match(path), f"{path} reaches Elasticsearch or Kibana administration"
     assert "return 403" in block
+
+def test_the_default_space_is_refused_and_the_one_internal_settings_call_is_read_only():
+    default_space, block = kibana_location("(?:app|spaces)")
+    for path in ("/kibana/app/discover", "/kibana/app", "/kibana/spaces/space_selector"):
+        assert default_space.match(path), f"{path} opens the Default space, which has every feature on"
+    assert not default_space.match("/kibana/s/soc-logs-1/app/discover")
+    assert "return 403" in block
+
+    settings, block = kibana_location("(?:s/[^/]+/)?internal/kibana/settings")
+    assert settings.match("/kibana/s/soc-logs-1/internal/kibana/settings")
+    assert "limit_except GET" in block and "deny all" in block, "the UI writes advanced settings through this route"
+
+
+def test_the_space_switcher_lists_only_the_current_space_and_a_lookup_across_spaces_is_refused():
+    listing, block = kibana_location("s/(?<kibana_current>")
+    assert listing.match("/kibana/s/soc-logs-1/api/spaces/space").group("kibana_current") == "soc-logs-1"
+    assert not listing.match("/kibana/s/soc-logs-1/api/spaces/space/soc-logs-2")
+    assert "$request_method != GET" in block and '"name":"SOC"' in block
+
+    text = FRONT.read_text()
+    assert re.search(r'location /kibana/ \{\s+if \(\$args ~\* "\(\^\|&\)namespaces="\) \{\s+return 403;', text)
+
 
 def test_the_pages_that_open_administration_send_the_learner_back_to_discover():
     pages, block = kibana_location("(?<kibana_space>")
