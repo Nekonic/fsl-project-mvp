@@ -47,6 +47,7 @@ Match User kali
     AuthorizedKeysCommand /usr/bin/cat /home/ubuntu/.ssh/authorized_keys
     AuthorizedKeysCommandUser root
 SSHD
+install -d -m 0755 /run/sshd
 sshd -t
 
 install -m 0644 ../proxy/stamp.py /usr/local/lib/stamp.py
