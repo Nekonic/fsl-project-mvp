@@ -57,7 +57,7 @@ cp /etc/nginx/modsecurity/crs/crs-setup.conf.example /etc/nginx/modsecurity/crs/
 install -m 664 -g adm /dev/null /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
 install -m 644 "$BUILD/modsecurity-v$MODSECURITY/unicode.mapping" /etc/nginx/modsecurity/unicode.mapping
 install -m 644 "$HERE/modsecurity.conf" /etc/nginx/modsecurity/modsecurity.conf
-install -m 644 "$HERE/range.conf" /etc/nginx/conf.d/range.conf
+install -m 644 "$HERE/board.com.conf" /etc/nginx/conf.d/board.com.conf
 rm -f /etc/nginx/sites-enabled/default
 install -d -o www-data -g adm -m 750 /var/log/modsecurity /var/log/modsecurity/audit
 install -d -o www-data -m 700 /var/cache/modsecurity

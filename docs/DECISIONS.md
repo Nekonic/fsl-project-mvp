@@ -5302,3 +5302,21 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   core_loc 580 -> 584, product_loc 23996 -> 25625, dependencies 6 and
   services 10 unchanged.
 - **Proven live:** (filled after the live review)
+
+## Target and WAF realism after the round-2 live panel
+
+- **Seed.** The board seeds 15 posts by admin, jiwoo and minseo over the
+  previous four weeks, with 28 comments (some anonymous), instead of three
+  posts stamped with one minute. Only those three accounts exist, so the
+  `auth_user` loot and the objective tiers are unchanged. The customer
+  traffic's `posts` list follows the seed (1 to 15; a test holds the pair).
+- **`/internal/`.** The WAF no longer answers with nginx's own 404, which a
+  prober can tell from the board's; it proxies the request to `/not-found/`,
+  which the board does not serve, and relays Django's 404. The platform's
+  ground-truth read still goes straight to `board:8000`.
+- **Config file name.** The WAF's nginx config is `board.com.conf`
+  (`deploy/waf/board.com.conf`, installed to `/etc/nginx/conf.d/`), no longer
+  `range.conf`. Both substrates: the Docker WAF mounts `deploy/nginx/board.conf`.
+- **Not done: paranoia in `crs-setup.conf` (id:900000).** `rules/crs.py` would
+  write and roll back a second file and F6's line numbers would move; core_loc
+  would grow.

@@ -63,7 +63,7 @@ All four phases are committed and `bin/verify` is green.
 - **The ground truth** (the target's own records). `/internal/auth-users` on
   the board returns the `auth_user` username/hash map on the `estate` network
   and answers 404 through the WAF (the Docker default vhost 404s `/internal` for
-  any Host; the cloud's `range.conf` does too). Only the platform reads it; the
+  any Host; the cloud's `board.com.conf` does too). Only the platform reads it; the
   red team cannot reach it, and it does not pass the sensors.
 - **READY** reads "ground truth readable" where it used to read "nothing
   solved on the target" (`_ground_truth_readable` in `platform/api/views.py`).
@@ -969,8 +969,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `fsl-kali` left from its DHCP-primary address (`1.128.0.10`, Australia)
       and `test_map` placed the default-origin attack there instead of Russia.
 - [ ] `/internal/auth-users` (the board's loot read_path) has no application
-      auth; its only external block is nginx `location /internal/ { return 404; }`
-      in `deploy/waf/range.conf`, independent of SecRuleEngine. Anything that
+      auth; its only external block is the nginx `location /internal/` (proxied to
+      a path the board 404s) in `deploy/waf/board.com.conf`, independent of SecRuleEngine. Anything that
       reaches `board:8000` directly (the platform's own ground-truth channel, or
       a WAF misconfig) reads every password hash unauthenticated. A vuln scan
       reads it as a planted endpoint; decide whether the no-planted-vulns policy

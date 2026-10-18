@@ -192,8 +192,9 @@ Docker attaching the WAF's networks in the priority order set in
 other interface (the estate sensor's `ens3` on OpenStack) the same capture
 settings.
 
-The WAF routes `board.com` to `board:8000` and answers `/internal/` itself
-with a 404 (`deploy/nginx/board.conf`); `corp.com` is a second vhost to
+The WAF routes `board.com` to `board:8000` and sends `/internal/` to a path
+the board does not serve, so the answer is the board's own 404, byte for byte
+(`deploy/nginx/board.conf`, and `deploy/waf/board.com.conf` on OpenStack); `corp.com` is a second vhost to
 `corp-wp:80` (`deploy/nginx/corp.conf`). The board is the first wargame: Django
 3.2.4 (an unpatched version with a known `order_by` SQL-injection flaw,
 CVE-2021-35042) under gunicorn, which migrates and seeds itself on start, on
