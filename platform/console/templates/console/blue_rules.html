@@ -1,5 +1,8 @@
 <style>
-  #lesson-rules-text { flex: 1 1 auto; min-height: 12rem; resize: none }
+  #lesson-rules-text { flex: 1 1 auto; min-height: 12rem; resize: none; overflow-x: scroll }
+  #lesson-rules-text::-webkit-scrollbar { height: 12px; width: 12px }
+  #lesson-rules-text::-webkit-scrollbar-track { background: var(--subdued); border-top: 1px solid var(--border) }
+  #lesson-rules-text::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 2px solid var(--subdued) }
 </style>
 <div id="rules-pane" class="absolute inset-0 flex-col bg-panel overflow-auto" style="display: none">
   <div class="h-10 border-b border-line bg-subdued flex items-center px-3 gap-3 shrink-0 min-w-0 text-[12.5px]">

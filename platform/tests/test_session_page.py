@@ -121,7 +121,7 @@ GATED = (
     + COURSE.replace(
         "browser.serve((request) => {",
         'browser.serve(async (request) => {\n'
-        '  if (request.route === "/api/wargames/" || request.route === "/api/sessions/1/score/") await gate;',
+        '  if (request.route === "/api/sessions/1/score/") await gate;',
         1,
     )
 )
@@ -132,25 +132,52 @@ LAYOUT = """
     ['loading', 'session-card', 'consoles', 'activity', 'scoreboard'].map((name) => [name, !hidden(name)]));
 """
 
-def test_the_result_page_shows_a_loading_line_and_no_live_layout_until_the_score_is_read(client):
+def test_the_result_page_shows_the_course_and_verdict_at_once_and_placeholders_until_the_score_is_read(client):
     seen = open_page(client, "/session/1/", setup=GATED, scenario=LAYOUT + """
-      const waiting = shown();
-      const line = browser.text('loading');
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      const waiting = {layout: shown(), course: browser.text('course-rows'), objectives: browser.text('objective-rows'),
+                       judged: browser.text('judgement'), cases: browser.text('case-rows'), slow: !hidden('score-slow')};
       open();
       for (let i = 0; i < 6; i += 1) await browser.settle();
-      return {waiting, line, done: shown(), lost: browser.text('lost-count')};
+      return {waiting, done: shown(), lost: browser.text('lost-count'), slow: !hidden('score-slow')};
+    """)
+    shown = seen["result"]
+    waiting = shown["waiting"]
+
+    assert seen["errors"] == []
+    assert waiting["layout"] == {
+        "loading": False, "session-card": True, "consoles": False, "activity": False, "scoreboard": True}, (
+        "the closed session's header and summary are on screen while the score is on its way; no loading line stands alone")
+    assert english("lesson.map.title") in waiting["course"], "the course summary does not wait for the score"
+    for part in ("objectives", "judged", "cases"):
+        assert english("session.loading.result") in waiting[part], "each table says what it is waiting for"
+    assert waiting["slow"] is False
+    assert shown["done"] == waiting["layout"]
+    assert shown["lost"] == "1 / 1"
+    assert shown["slow"] is False
+
+def test_a_score_that_takes_longer_than_fifteen_seconds_says_so_and_can_be_asked_again(client):
+    seen = open_page(client, "/session/1/", setup=GATED, scenario=LAYOUT + """
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      const asked = () => browser.requests.filter((r) => r.route === "/api/sessions/1/score/").length;
+      await browser.wait(14000);
+      const early = !hidden('score-slow');
+      await browser.wait(2000);
+      const late = {shown: !hidden('score-slow'), text: browser.text('score-slow-text'), button: browser.text('score-retry')};
+      const before = asked();
+      await browser.click('score-retry');
+      const retried = {asked: asked() - before, shown: !hidden('score-slow')};
+      open();
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {early, late, retried, lost: browser.text('lost-count'), slow: !hidden('score-slow')};
     """)
     shown = seen["result"]
 
     assert seen["errors"] == []
-    assert shown["waiting"] == {
-        "loading": True, "session-card": False, "consoles": False, "activity": False, "scoreboard": False}, (
-        "while the data is on its way the page says so; it never shows the live session's cards")
-    assert shown["line"]
-    assert shown["done"] == {
-        "loading": False, "session-card": True, "consoles": False, "activity": False, "scoreboard": True}, (
-        "a closed session shows the header and both scores, never a console card")
-    assert shown["lost"] == "1 / 1"
+    assert shown["early"] is False
+    assert shown["late"]["shown"] and shown["late"]["text"] and shown["late"]["button"]
+    assert shown["retried"] == {"asked": 1, "shown": False}
+    assert shown["lost"] == "1 / 1" and shown["slow"] is False
 
 LIVE = """
 browser.serve((request) => {
@@ -176,7 +203,8 @@ browser.serve((request) => {
 def test_an_opened_lesson_session_says_what_to_do_next_and_lists_only_the_learner_s_own_requests(client):
     seen = open_page(client, "/session/1/", setup=LIVE, scenario=LAYOUT + """
       return {layout: shown(), next: browser.text('session-next'), nextShown: !hidden('session-next'),
-              activity: browser.text('activity-list')};
+              activity: browser.text('activity-list'), figures: browser.text('session-figures'),
+              tiles: browser.text('blue-tiles'), crumbs: browser.text('crumbs'), title: browser.text('session-title')};
     """)
     shown = seen["result"]
 
@@ -184,6 +212,11 @@ def test_an_opened_lesson_session_says_what_to_do_next_and_lists_only_the_learne
     assert shown["layout"] == {
         "loading": False, "session-card": True, "consoles": True, "activity": True, "scoreboard": False}
     assert shown["nextShown"] and shown["next"]
+    assert "Step 1/2 (lesson 1)" in shown["figures"] and "Step 1/2 (lesson 1)" in shown["tiles"], (
+        "a step counter says which lesson it counts; six lessons each have steps")
+    assert "903" not in shown["crumbs"] and english("wargame.board.name") in shown["crumbs"], (
+        "the trail names the wargame, not a session number")
+    assert english("common.session", 1) == shown["title"], "the session page itself keeps the number"
     assert english("score.kind.auto_benign") not in shown["activity"], (
         "the lesson's own automatic request is the platform's, not something the learner ran")
     assert english("case.board-sqli-orderby-sqlmap") in shown["activity"]

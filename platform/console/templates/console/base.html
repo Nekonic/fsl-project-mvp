@@ -183,6 +183,26 @@
       }
     }
 
+    const SESSION_NAME_KEY = (id) => `fsl-session-name-${id}`;
+
+    function sessionCrumb(id, session) {
+      const href = `/session/${id}/`;
+      try {
+        if (session && session.scenario) {
+          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind }));
+        }
+        const kept = JSON.parse(localStorage.getItem(SESSION_NAME_KEY(id)));
+        if (kept && kept.scenario) {
+          const name = localized(`wargame.${kept.scenario}.name`, kept.scenario);
+          const kind = localized(`kind.${kept.kind}`, "");
+          return { label: kind ? `${name} · ${kind}` : name, href };
+        }
+      } catch (error) {
+        return { label: localized("crumb.session", "Session"), href };
+      }
+      return { label: localized("crumb.session", "Session"), href };
+    }
+
     function crumbs(items) {
       const trail = [{ label: t("crumb.home"), href: "/" }, ...items];
       document.getElementById("crumbs").innerHTML = trail.map((item, index) =>
