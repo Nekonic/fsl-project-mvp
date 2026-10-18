@@ -72,18 +72,48 @@ def test_with_two_slots_a_closed_unknown_or_missing_session_is_refused(monkeypat
     assert "which slot" in complaint
 
 
-def test_a_refused_lookup_ends_the_shell_without_ssh(tmp_path):
-    reached = tmp_path / "ssh-reached"
-    for name, body in {
-        "python": "cat >/dev/null; echo 'no open session 7' >&2; exit 2",
-        "sleep": "exit 0",
-        "ssh": f"touch {reached}",
-    }.items():
+def _fakes(tmp_path, **bodies):
+    for name, body in {"sleep": "exit 0", **bodies}.items():
         (tmp_path / name).write_text(f"#!/bin/sh\n{body}\n")
         (tmp_path / name).chmod(0o755)
+    return {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "TERMINAL_LOG": str(tmp_path / "terminal.log")}
 
-    ran = subprocess.run(["sh", str(SCRIPT), "fsl-waf", "7"], capture_output=True, text=True,
-                         env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"})
+
+def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_plain_line(tmp_path):
+    reached = tmp_path / "ssh-reached"
+    env = _fakes(tmp_path, python="cat >/dev/null; echo 'no open session 7' >&2; exit 2", ssh=f"touch {reached}")
+
+    ran = subprocess.run(["sh", str(SCRIPT), "fsl-waf", "7"], capture_output=True, text=True, env=env)
 
     assert ran.returncode != 0 and not reached.exists()
-    assert "no open session 7" in ran.stderr
+    assert ran.stdout.strip() == "Connection to waf failed. Reopen the terminal in a moment."
+    assert ran.stderr == ""
+    assert "no open session 7" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
+
+
+def test_the_kali_pane_logs_in_as_the_kali_user_and_the_waf_pane_as_the_cloud_user(tmp_path):
+    seen = tmp_path / "ssh-argv"
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 fsl-server-1'",
+                 ssh=f'printf "%s\\n" "$@" > {seen}')
+
+    subprocess.run(["sh", str(SCRIPT), "fsl-kali", "3"], capture_output=True, text=True, env=env)
+    kali = seen.read_text().split("\n")
+    subprocess.run(["sh", str(SCRIPT), "fsl-waf", "3"], capture_output=True, text=True, env=env)
+    waf = seen.read_text().split("\n")
+
+    assert "kali@10.31.0.180" in kali and kali[-2] == "kali@10.31.0.180", (
+        "the shell must be the login shell of the kali user, with its own prompt, not a bash started by the platform"
+    )
+    assert "ubuntu@10.31.0.180" in waf and any(argument.startswith("exec bash --rcfile") for argument in waf)
+
+
+def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 fsl-server-1'",
+                 ssh="echo 'ssh: connect to host 10.31.0.180 port 22: Connection timed out' >&2; exit 255")
+
+    ran = subprocess.run(["sh", str(SCRIPT), "fsl-kali", "3"], capture_output=True, text=True, env=env)
+
+    assert ran.returncode == 1
+    assert ran.stdout.strip() == "Connection to kali failed. Reopen the terminal in a moment."
+    assert "Connection timed out" not in ran.stdout + ran.stderr
+    assert "Connection timed out" in (tmp_path / "terminal.log").read_text()

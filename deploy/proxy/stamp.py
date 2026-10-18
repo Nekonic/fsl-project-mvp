@@ -1,8 +1,8 @@
 from pathlib import Path
 
 MARKER_HEADER = "X-FSL-Case"
-LABEL_FILE = Path("/label/active")
-ORIGIN_FILE = Path("/label/origin")
+LABEL_FILE = Path("/var/lib/session/active")
+ORIGIN_FILE = Path("/var/lib/session/origin")
 
 def _read(path):
     try:

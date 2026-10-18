@@ -9,7 +9,7 @@ pytestmark = pytest.mark.django_db
 HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
          "target_url": "http://5.188.10.9:8080", "subnet": "", "network": "fsl_edge",
          "address": "5.188.10.9", "default": True}]
-REFUSED = "sh: can't create /label/origin: Read-only file system"
+REFUSED = "sh: can't create /var/lib/session/origin: Read-only file system"
 
 def refusing(argv, stdin=None, timeout=60.0):
     return Ran(1, REFUSED)

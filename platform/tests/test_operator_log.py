@@ -1,3 +1,5 @@
+import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,31 +102,79 @@ SHELL = Path(__file__).resolve().parents[2] / "deploy/kali/operator-log.sh"
 
 def test_the_shell_hook_records_what_is_typed_where_the_platform_reads_it_and_not_the_last_shell_s_command(tmp_path):
     (tmp_path / "active").write_text("case-1\n")
+    hook = tmp_path / "hook.sh"
+    hook.write_text(
+        SHELL.read_text()
+        .replace(operator_log.LOG_PATH, str(tmp_path / "commands.log"))
+        .replace(MARKER_PATH, str(tmp_path / "active"))
+    )
     shell = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c",
-         'history -s "the old shell typed this"; source "$1"; echo "$FSL_COMMAND_LOG"; '
-         'FSL_COMMAND_LOG="$2/commands.log" FSL_LABEL="$2/active"; '
-         '_fsl_record; history -s "nmap --version"; _fsl_record; _fsl_record',
-         "bash", str(SHELL), str(tmp_path)],
+         'history -s "the old shell typed this"; source "$1"; '
+         '__log_command; history -s "nmap --version"; __log_command; __log_command',
+         "bash", str(hook)],
         capture_output=True, text=True, timeout=30,
     )
 
-    assert shell.stdout.strip() == operator_log.LOG_PATH, shell
+    assert shell.returncode == 0, shell
     typed = operator_log.commands(reader((tmp_path / "commands.log").read_text()))
     assert [(c.marker, c.text) for c in typed] == [("case-1", "nmap --version")], (
         "the first prompt of a shell logged the last command of the previous one, "
         "attributed to whichever case was open now"
     )
 
+def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_s_shell_does(tmp_path):
+    hook = tmp_path / "hook.sh"
+    hook.write_text(
+        SHELL.read_text()
+        .replace(operator_log.LOG_PATH, str(tmp_path / "commands.log"))
+        .replace(MARKER_PATH, str(tmp_path / "active"))
+    )
+
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", 'source "$1"; __log_command; __log_command; __log_command', "bash", str(hook)],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    assert shell.stdout == "\n\n"
+
+MARKER_PATH = "/var/lib/session/active"
+
 KALI_SETUP = Path(__file__).resolve().parents[2] / "deploy/kali/setup.sh"
+KALI_DOCKERFILE = Path(__file__).resolve().parents[2] / "deploy/kali/Dockerfile"
+KALI_BASHRC = Path(__file__).resolve().parents[2] / "deploy/kali/bashrc"
 
 def test_the_kali_vm_records_the_terminal_s_ssh_user_and_not_only_root():
     setup = KALI_SETUP.read_text()
 
-    assert "echo '. /etc/fsl/operator-log.sh' >> /etc/bash.bashrc" in setup, (
-        "on OpenStack the terminal is an ssh login as the cloud user, whose shell "
+    assert "echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc" in setup, (
+        "on OpenStack the terminal is an ssh login as the kali user, whose shell "
         "never read root's .bashrc, so nothing it typed reached the operator log"
     )
     assert f"chmod 0666 {operator_log.LOG_PATH}" in setup, (
-        "the log the platform reads must exist and take the cloud user's writes"
+        "the log the platform reads must exist and take the kali user's writes"
+    )
+
+def test_the_attacker_shell_is_kali_s_own_on_both_substrates():
+    setup, image = KALI_SETUP.read_text(), KALI_DOCKERFILE.read_text()
+
+    assert "useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali" in setup
+    assert "useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali" in image
+    assert 'echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali' in setup + image
+    assert "echo kali > /etc/hostname" in setup and "127.0.1.1 kali" in setup
+    assert "preserve_hostname: true" in setup, "cloud-init renamed the machine to the Nova server name again"
+    assert ": > /etc/motd" in setup and ": > /etc/motd" in image
+    assert 'CMD ["ttyd", "-W", "-t", "disableResizeOverlay=true", "-b", "/terminal", "-p", "7681", "su", "kali"]' in image
+
+def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-ic", 'source "$1"; printf "%s" "$PS1"', "bash", str(KALI_BASHRC)],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, "TERM": "xterm-256color"},
+    )
+    prompt = shell.stdout
+
+    assert "┌──" in prompt and "\\u㉿\\h" in prompt and "\\n" in prompt and "└─" in prompt, prompt
+    assert re.sub(r"\\\[.*?\\\]", "", prompt).endswith("└─\\$ "), (
+        "the terminal steps wait for the prompt with the pattern '\\$ $'"
     )
