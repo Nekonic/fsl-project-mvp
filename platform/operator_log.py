@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-LOG_PATH = "/var/log/fsl/commands.log"
+LOG_PATH = "/var/log/commands.log"
 
 class OperatorLogUnavailable(RuntimeError):
     pass

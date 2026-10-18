@@ -102,13 +102,12 @@ services:
     image: ghcr.io/nekonic/fsl-kali:${FSL_IMAGE_TAG:-dev}
     networks: [edge]
     volumes:
-      - label:/label:ro
+      - label:/var/lib/session:ro
     init: true
+    hostname: kali
     environment:
       http_proxy: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
       HTTP_PROXY: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
-      FSL_TARGET: "http://board.com"
-      FSL_TARGET_HOST: "board.com"
 
   proxy:
     platform: linux/amd64
@@ -116,4 +115,4 @@ services:
     image: ghcr.io/nekonic/fsl-proxy:${FSL_IMAGE_TAG:-dev}
     networks: [edge, edge-br, edge-hk, edge-us]
     volumes:
-      - label:/label
+      - label:/var/lib/session

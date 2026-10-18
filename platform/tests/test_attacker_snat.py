@@ -7,7 +7,7 @@ CHOSEN = {"id": "us", "source_ip": "73.0.0.10", "address": "73.0.0.1"}
 
 def test_host_rewrite_mode_writes_the_gateway_address_to_the_origin_file(settings):
     settings.ATTACKER_ORIGIN_MODE = "host-rewrite"
-    settings.ATTACKER_ORIGIN_FILE = "/label/origin"
+    settings.ATTACKER_ORIGIN_FILE = "/var/lib/session/origin"
     seen = []
 
     def runner(argv, stdin=None, timeout=60.0):
@@ -16,7 +16,7 @@ def test_host_rewrite_mode_writes_the_gateway_address_to_the_origin_file(setting
 
     attacker.wear_origin(CHOSEN, runner)
 
-    assert seen == [(["sh", "-c", "cat > /label/origin"], "73.0.0.1")]
+    assert seen == [(["sh", "-c", "cat > /var/lib/session/origin"], "73.0.0.1")]
 
 def test_the_kali_image_ships_the_source_rewrite_script():
     setup = (pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/kali/setup.sh").read_text()

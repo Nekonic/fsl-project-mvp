@@ -1,5 +1,7 @@
 import json
+import os
 import pathlib
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -173,7 +175,7 @@ def test_the_attacker_box_reaches_its_own_session_s_proxy():
     kali, proxy = stack["services"]["kali"], stack["services"]["proxy"]
 
     assert kali["environment"]["http_proxy"] == "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
-    assert "label:/label:ro" in kali["volumes"] and "label:/label" in proxy["volumes"], (
+    assert "label:/var/lib/session:ro" in kali["volumes"] and "label:/var/lib/session" in proxy["volumes"], (
         "a label directory on the host is shared by every session's proxy"
     )
 
@@ -228,7 +230,7 @@ def test_aiming_writes_the_session_s_waf_address_for_the_proxy():
     with override_settings(ATTACKER_SOURCE_CONTAINER="fsl-proxy", ATTACKER_ORIGIN_MODE="host-rewrite"):
         views._aim_attacker(Stub())
 
-    assert wrote == [("proxy", ["sh", "-c", "cat > /label/origin"], "5.188.10.17")]
+    assert wrote == [("proxy", ["sh", "-c", "cat > /var/lib/session/origin"], "5.188.10.17")]
 
 
 @pytest.mark.django_db
@@ -356,9 +358,29 @@ def test_the_waf_terminal_is_a_shell_in_the_session_s_own_waf(client):
     )
     assert "ttyd -W -a -b /waf-terminal -t disableResizeOverlay=true -i 127.0.0.1 -p 7693 /app/waf-terminal.sh" in (
         ROOT / "platform/entrypoint.sh").read_text()
-    shell = (ROOT / "platform/waf-terminal.sh").read_text()
-    assert '*[!0-9]*) echo "no session given"' in shell, "only a session number reaches docker exec"
-    assert 'docker exec -it "fsl-${session}-waf-1"' in shell
+
+def _waf_terminal(tmp_path, session, running):
+    reached = tmp_path / "docker-argv"
+    for name, body in {
+        "docker": f'case "$1" in inspect) echo {running};; exec) printf "%s\\n" "$@" > {reached};; esac',
+        "sleep": "exit 0",
+    }.items():
+        (tmp_path / name).write_text(f"#!/bin/sh\n{body}\n")
+        (tmp_path / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "TERMINAL_LOG": str(tmp_path / "terminal.log")}
+    ran = subprocess.run(["sh", str(ROOT / "platform/waf-terminal.sh"), session], capture_output=True, text=True, env=env)
+    return ran, reached
+
+def test_only_a_session_number_reaches_docker_exec_and_a_missing_waf_gets_one_plain_line(tmp_path):
+    for session, running in (("5; reboot", "true"), ("", "true"), ("5", "false")):
+        ran, reached = _waf_terminal(tmp_path, session, running)
+
+        assert not reached.exists(), session
+        assert ran.stdout.strip() == "Connection to waf failed. Reopen the terminal in a moment."
+        assert "session" not in ran.stdout and "slot" not in ran.stdout
+
+    ran, reached = _waf_terminal(tmp_path, "5", "true")
+    assert "fsl-5-waf-1" in reached.read_text().split()
 
 @pytest.mark.django_db
 def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
@@ -370,10 +392,10 @@ def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
         ROOT / "platform/entrypoint.sh").read_text()
     assert "mgmt" in declared.read(flavor="openstack").hosts["fsl-waf"].segments
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
-    assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell, (
+    assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell and '"kali@${addr}"' in shell, (
         "the shell is the ssh user the platform tunes the WAF as, on the VM's management address"
     )
-    assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias="$alias"' in shell, (
+    assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias=$alias' in shell, (
         "a rebuilt server is a new key under a new alias, so the terminal neither warns nor stops checking"
     )
 

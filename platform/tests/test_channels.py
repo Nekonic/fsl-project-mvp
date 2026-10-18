@@ -42,4 +42,4 @@ def test_the_live_case_and_the_origin_reach_the_proxy_through_the_port(write, va
 @pytest.mark.parametrize("write", [attacker.set_label, attacker.set_origin])
 def test_a_write_the_proxy_could_not_make_is_not_a_silent_success(write):
     with pytest.raises(attacker.AttackerUnavailable):
-        write("c0ffee", Host(reply="sh: can't create /label/origin: Read-only file system", exit_code=1))
+        write("c0ffee", Host(reply="sh: can't create /var/lib/session/origin: Read-only file system", exit_code=1))

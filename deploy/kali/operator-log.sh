@@ -1,22 +1,20 @@
-FSL_COMMAND_LOG=/var/log/fsl/commands.log
-FSL_LABEL=/label/active
-
-_fsl_record() {
+__log_command() {
   local status=$? number text
   read -r number text <<< "$(history 1)"
-  if [ -z "$_FSL_STARTED" ]; then
-    _FSL_STARTED=1
-    _FSL_LAST=$number
+  if [ -z "$__log_started" ]; then
+    __log_started=1
+    __log_last=$number
     return $status
   fi
-  if [ -n "$text" ] && [ "$number" != "$_FSL_LAST" ]; then
-    _FSL_LAST=$number
+  if [ -n "$text" ] && [ "$number" != "$__log_last" ]; then
+    __log_last=$number
     printf '%s\t%s\t%s\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      "$(cat "$FSL_LABEL" 2>/dev/null)" \
-      "$text" >> "$FSL_COMMAND_LOG"
+      "$(cat /var/lib/session/active 2>/dev/null)" \
+      "$text" >> /var/log/commands.log
   fi
+  echo
   return $status
 }
 
-PROMPT_COMMAND=_fsl_record
+PROMPT_COMMAND=__log_command

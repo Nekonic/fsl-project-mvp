@@ -132,7 +132,7 @@ def probed(session):
 
 def attack_from_the_shell(token, session):
     payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
-    run(ATTACKER, ["sh", "-c", f'curl -s -o /dev/null --max-time 20 "$FSL_TARGET{payload}"'],
+    run(ATTACKER, ["sh", "-c", f'curl -s -o /dev/null --max-time 20 "http://board.com{payload}"'],
         session=session)
     return alerts_mentioning(token, session)
 

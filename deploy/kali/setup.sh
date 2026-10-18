@@ -25,10 +25,32 @@ curl -fsSL -o /usr/local/bin/ttyd \
 echo "${TTYD_SHA256}  /usr/local/bin/ttyd" | sha256sum -c -
 chmod +x /usr/local/bin/ttyd
 
-install -d -m 0755 /etc/fsl /opt/fsl
-install -m 0644 motd /etc/motd
-install -m 0644 operator-log.sh /etc/fsl/operator-log.sh
-install -m 0644 ../proxy/stamp.py /opt/fsl/stamp.py
+echo "127.0.1.1 kali" >> /etc/hosts
+echo kali > /etc/hostname
+hostname kali
+echo "preserve_hostname: true" > /etc/cloud/cloud.cfg.d/99-hostname.cfg
+
+ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+echo Asia/Seoul > /etc/timezone
+: > /etc/motd
+
+useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali
+echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali
+chmod 0440 /etc/sudoers.d/90-kali
+visudo -cf /etc/sudoers.d/90-kali
+install -o kali -g kali -m 0644 bashrc /home/kali/.bashrc
+touch /home/kali/.hushlogin
+chown kali:kali /home/kali/.hushlogin
+
+cat > /etc/ssh/sshd_config.d/60-kali.conf <<'SSHD'
+Match User kali
+    AuthorizedKeysCommand /usr/bin/cat /home/ubuntu/.ssh/authorized_keys
+    AuthorizedKeysCommandUser root
+SSHD
+sshd -t
+
+install -m 0644 ../proxy/stamp.py /usr/local/lib/stamp.py
+install -m 0644 operator-log.sh /usr/local/lib/shell-hook.sh
 
 cat > /usr/local/sbin/fsl-origin <<'ORIGIN'
 #!/bin/sh
@@ -43,27 +65,18 @@ exit 0
 ORIGIN
 chmod 0755 /usr/local/sbin/fsl-origin
 
-install -d -m 0777 /label
-: > /label/active
-: > /label/origin
-chmod 0666 /label/active /label/origin
+install -d -m 0755 /var/lib/session
+: > /var/lib/session/active
+: > /var/lib/session/origin
+chown ubuntu:ubuntu /var/lib/session/active /var/lib/session/origin
 
-install -d -m 0755 /var/log/fsl
-: > /var/log/fsl/commands.log
-chmod 0666 /var/log/fsl/commands.log
-echo '. /etc/fsl/operator-log.sh' >> /etc/bash.bashrc
+: > /var/log/commands.log
+chmod 0666 /var/log/commands.log
+echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc
 
-cat > /etc/profile.d/fsl.sh <<'EOF'
+cat > /etc/profile.d/proxy.sh <<'EOF'
 export http_proxy="http://127.0.0.1:8081"
 export HTTP_PROXY="http://127.0.0.1:8081"
-export TZ="Asia/Seoul"
-export FSL_TARGET="http://board.com"
-export FSL_TARGET_HOST="board.com"
-EOF
-
-cat >> /root/.bashrc <<'EOF'
-. /etc/profile.d/fsl.sh
-cat /etc/motd
 EOF
 
 cat > /etc/systemd/system/fsl-proxy.service <<'EOF'
@@ -72,7 +85,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/mitmdump -q --listen-port 8081 --set block_global=false -s /opt/fsl/stamp.py
+ExecStart=/usr/bin/mitmdump -q --listen-port 8081 --set block_global=false -s /usr/local/lib/stamp.py
 Restart=always
 
 [Install]

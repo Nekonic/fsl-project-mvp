@@ -1,7 +1,16 @@
 #!/bin/sh
 host="$1"
-[ -n "$host" ] || { echo "no host given"; sleep 2; exit 1; }
-found=$(python - "$host" "${2:-}" <<'PY'
+shown="${host#fsl-}"
+log="${TERMINAL_LOG:-/data/terminal.log}"
+: >> "$log" 2>/dev/null || log=/dev/null
+failed() {
+  [ -z "$1" ] || printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${shown:-terminal}" "$1" >> "$log" 2>/dev/null
+  echo "Connection to ${shown:-the terminal} failed. Reopen the terminal in a moment."
+  sleep 3
+  exit 1
+}
+[ -n "$host" ] || failed "no host given"
+found=$(python - "$host" "${2:-}" 2>>"$log" <<'PY'
 import os, sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
 import django
@@ -29,12 +38,17 @@ except SystemExit:
 except Exception:
     pass
 PY
-) || { sleep 3; exit 1; }
+) || failed "lookup of ${2:+session $2 }$host refused"
 addr="${found% *}"
 alias="${found#* }"
-shown="${host#fsl-}"
-[ -n "$addr" ] || { echo "no mgmt address for $shown - the range may be down"; sleep 3; exit 1; }
-exec ssh -t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-  -o HostKeyAlias="$alias" -o LogLevel=ERROR \
-  -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}" \
-  "exec bash --rcfile <(printf '%s\\n' '. /etc/profile' '. ~/.profile' 'export TZ=Asia/Seoul' 'PS1=\${PS1//\\\\h/$shown}' '[ -r /etc/motd ] && cat /etc/motd') -i"
+[ -n "$addr" ] || failed "no management address for $host"
+options="-t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o HostKeyAlias=$alias -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=30"
+if [ "$shown" = kali ]; then
+  ssh $options "kali@${addr}" 2>>"$log"
+else
+  ssh $options "ubuntu@${addr}" \
+    "exec bash --rcfile <(printf '%s\\n' '. /etc/profile' '. ~/.profile' 'export TZ=Asia/Seoul' 'PS1=\${PS1//\\\\h/$shown}' '[ -r /etc/motd ] && cat /etc/motd') -i" 2>>"$log"
+fi
+status=$?
+[ "$status" -ne 255 ] || failed "ssh to $host at $addr ended with 255"
+exit "$status"

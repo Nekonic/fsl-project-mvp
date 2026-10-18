@@ -61,8 +61,8 @@ RANGE = declared.read(flavor=declared.flavor_for(FSL_SUBSTRATE))
 
 ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
-ATTACKER_LABEL_FILE = "/label/active"
-ATTACKER_ORIGIN_FILE = "/label/origin"
+ATTACKER_LABEL_FILE = "/var/lib/session/active"
+ATTACKER_ORIGIN_FILE = "/var/lib/session/origin"
 ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
 ATTACKER_SESSION_TERMINAL_URL = (
     "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-kali/?arg={session}"

@@ -5,7 +5,7 @@ RUN rm -f /etc/apt/sources.list.d/*.sources \
       > /etc/apt/sources.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget \
+      ca-certificates curl wget sudo tzdata \
       nmap sqlmap nikto whatweb ffuf gobuster hydra \
       netcat-traditional dnsutils jq nano wordlists dirb \
  && rm -rf /var/lib/apt/lists/*
@@ -22,15 +22,20 @@ RUN [ -f /usr/share/wordlists/rockyou.txt.gz ] \
 
 RUN f="$(dpkg -L sqlmap 2>/dev/null | grep -m1 'lib/core/settings\.py$')"; [ -n "$f" ] && touch "$f" || true
 
-COPY motd /etc/motd
-COPY operator-log.sh /etc/fsl/operator-log.sh
-RUN mkdir -p /var/log/fsl \
- && echo 'cat /etc/motd' >> /root/.bashrc \
- && echo '. /etc/fsl/operator-log.sh' >> /root/.bashrc \
- && echo 'export TZ=Asia/Seoul' >> /root/.bashrc \
- && echo 'PS1=${PS1//\\h/kali}' >> /root/.bashrc
+RUN useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali \
+ && echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali \
+ && chmod 0440 /etc/sudoers.d/90-kali \
+ && ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
+ && echo Asia/Seoul > /etc/timezone \
+ && : > /etc/motd
 
-WORKDIR /root
+COPY --chown=kali:kali bashrc /home/kali/.bashrc
+COPY operator-log.sh /usr/local/lib/shell-hook.sh
+RUN : > /var/log/commands.log \
+ && chmod 0666 /var/log/commands.log \
+ && echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc
+
+WORKDIR /home/kali
 
 EXPOSE 7681
-CMD ["ttyd", "-W", "-t", "disableResizeOverlay=true", "-b", "/terminal", "-p", "7681", "bash"]
+CMD ["ttyd", "-W", "-t", "disableResizeOverlay=true", "-b", "/terminal", "-p", "7681", "su", "kali"]
