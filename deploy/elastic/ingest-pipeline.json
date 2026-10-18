@@ -1,5 +1,5 @@
 {
-  "description": "Select evidence by event time, drop the routing field, and attach geo information to the source IP. This is why there is no Logstash.",
+  "description": "Set the event time, drop the routing field, and attach geo information to the source IP.",
   "processors": [
     {
       "remove": {

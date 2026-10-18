@@ -7,8 +7,8 @@
     <primaryconsole>serial</primaryconsole>
     <secondaryconsole>video</secondaryconsole>
     <disableconsolemenu/>
-    <hostname>fsl-edge</hostname>
-    <domain>range.internal</domain>
+    <hostname>edge</hostname>
+    <domain>localdomain</domain>
     <dnsallowoverride>0</dnsallowoverride>
     <group>
       <name>admins</name>

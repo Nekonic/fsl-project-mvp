@@ -99,11 +99,11 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     closed = unquoted(kibana.discover_path(view, start, end, kibana.query("")))
     running = unquoted(kibana.discover_path(view, start, None, kibana.query("")))
 
-    assert closed.startswith("/kibana/s/session-logs-2/app/discover#/?"), (
+    assert closed.startswith("/kibana/s/soc-logs-2/app/discover#/?"), (
         "a link that overrides the saved search's query marks it 'Unsaved changes'; "
         "the pane opens an unsaved Discover state on the session's view in the session's space instead"
     )
-    assert "dataSource:(dataViewId:'session-logs-2',type:dataView)" in closed
+    assert "dataSource:(dataViewId:'soc-logs-2',type:dataView)" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running
     assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
@@ -122,7 +122,7 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
     hidden = {entry["value"] for entry in json.loads(attributes["sourceFilters"])}
 
     assert attributes["title"] == "logs-2-*" and attributes["name"] == "logs-*"
-    assert view["id"] == "session-logs-2", "one view per index pattern, so opening again overwrites it"
+    assert view["id"] == "soc-logs-2", "one view per index pattern, so opening again overwrites it"
     assert {"_index", "event.*", "log.*", "message", "http.request_headers*"} <= hidden, (
         "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
     )
@@ -146,6 +146,23 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
     )
 
 
+def test_a_sensor_is_found_by_its_host_name_with_or_without_the_first_part_and_the_slot_number():
+    observer = kibana.sensor_script(SENSORS, "waf")
+
+    assert observer.index("shown.containsKey(host)") < observer.index("shown.containsKey(rest)")
+    assert "host.substring(0, dash)" in observer and "host.indexOf('.')" in observer, (
+        "edge, edge-2.localdomain and fsl-wargame-host-2 all reach their map name"
+    )
+
+
+def test_the_operator_objects_carry_no_platform_name_and_hide_the_same_fields_as_a_session_view():
+    found = saved_objects()
+    view = next(item for item in found if item["type"] == "index-pattern")
+
+    assert not any("fsl" in item["attributes"].get("title", "").lower() for item in found)
+    assert json.loads(view["attributes"]["sourceFilters"]) == json.loads(a_session_view()["attributes"]["sourceFilters"])
+
+
 def test_one_sensor_names_the_events_that_carry_no_sensor_host():
     single = kibana.sensor_script({"fsl-suricata": "waf"}, "waf")
     several = kibana.sensor_script(SENSORS, "waf")
@@ -162,16 +179,24 @@ def test_opening_the_session_view_makes_its_space_and_imports_the_view_and_the_r
 
     space, imported, route = fake.sent
     base = "http://kibana:5601/kibana"
-    assert made == "session-logs-2"
+    assert made == "soc-logs-2"
     assert space.full_url == f"{base}/api/spaces/space" and space.get_method() == "POST"
     body = json.loads(space.data)
     assert body["id"] == made and "discover" not in body["disabledFeatures"]
     assert {"dashboard", "visualize", "dev_tools", "advancedSettings", "indexPatterns",
             "savedObjectsManagement"} <= set(body["disabledFeatures"])
     assert imported.full_url == f"{base}/s/{made}/api/saved_objects/_import?overwrite=true"
-    assert body["name"] == "Session logs" and b'"name": "logs-*"' in imported.data
+    assert body["name"] == "SOC" and b'"name": "logs-*"' in imported.data
     assert route.full_url == f"{base}/s/{made}/api/kibana/settings"
-    assert json.loads(route.data)["changes"]["defaultRoute"] == "/app/discover", "the logo opens plain Discover"
+    changes = json.loads(route.data)["changes"]
+    assert changes["defaultRoute"] == f"/app/discover#/view/{kibana.SESSION_SEARCH}"
+    assert changes["defaultIndex"] == made, "an unset default makes the browser write it, which the front refuses"
+    assert changes["enableESQL"] is False, "ES|QL reads every index, past the view's pattern and hidden fields"
+    assert changes["defaultColumns"] == list(kibana.SESSION_COLUMNS), "a new Discover tab shows the same columns"
+    saved = [json.loads(line) for line in imported.data.decode().splitlines() if line.startswith("{")]
+    search = next(item for item in saved if item["type"] == "search")
+    assert search["id"] == kibana.SESSION_SEARCH and search["attributes"]["columns"] == list(kibana.SESSION_COLUMNS)
+    assert search["references"][0]["id"] == made
 
 
 def test_a_space_that_exists_is_updated_not_recreated():
@@ -189,7 +214,7 @@ def test_a_space_that_exists_is_updated_not_recreated():
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
         kibana.ensure_session_view("logs-2-*", SENSORS, "waf", send)
 
-    assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/session-logs-2")
+    assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/soc-logs-2")
     assert len(sent) == 4, "the view and the route are still written"
 
 
@@ -207,7 +232,7 @@ def test_the_session_api_hands_the_console_its_discover_link(client, settings):
             patch.dict(kibana.VIEWS, {f"logs-{session.pk}-*": (True, 0.0)}):
         reply = client.get(f"/api/sessions/{session.pk}/").json()
 
-    assert reply["discover"].startswith(f"/kibana/s/session-logs-{session.pk}/app/discover")
+    assert reply["discover"].startswith(f"/kibana/s/soc-logs-{session.pk}/app/discover")
     assert "to:now" in unquoted(reply["discover"])
 
 
@@ -223,7 +248,7 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
             patch.dict(kibana.VIEWS, {"logs-1-*": (True, 0.0)}):
         link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
 
-    assert "dataViewId:'session-logs-1'" in link
+    assert "dataViewId:'soc-logs-1'" in link
     assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
     assert "from:'2026-10-18T08:59:55+00:00'" in link
     assert "columns:!(event_type,source_ip,destination,url,status,rule_id,rule)" in link
@@ -320,4 +345,5 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     assert "fsl" not in visible and "slot" not in visible, (
         "the JSON tab, Inspect and the data view page print the index, the field names, the source filters and the scripts"
     )
-    assert kibana.session_view_id("logs-2-*") == "session-logs-2"
+    assert "fsl" not in json.dumps(kibana.session_search(view)).lower()
+    assert kibana.SPACE_NAME == "SOC" and kibana.session_view_id("logs-2-*") == "soc-logs-2"

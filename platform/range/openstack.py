@@ -1391,7 +1391,7 @@ class OpenStack:
                                    management=self.address(slot.EDGE_ROLE),
                                    front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
                                                        slot.NAMED_ON),
-                                   hostname=slot.named(slot.edge_of(self.declared), self.slot)
+                                   hostname=fabric.suffixed(opnsense.HOSTNAME, self.slot)
                                    if self.slot > 1 else "",
                                    clock=self.address(SCORER_ROLE))
         return (wanted, collector, opnsense.render((source / opnsense.CONFIG).read_text(), wanted),

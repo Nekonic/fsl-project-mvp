@@ -24,7 +24,7 @@ def test_every_origin_is_placed_in_its_country_by_the_pipeline_scoring_reads(sta
                         list(ipaddress.ip_network(origin["subnet"]).hosts())[-1])
     ]
     placed = requests.post(
-        f"{ELASTIC}/_ingest/pipeline/fsl-geoip/_simulate",
+        f"{ELASTIC}/_ingest/pipeline/geoip/_simulate",
         json={"docs": sources},
         timeout=60,
     ).json()["docs"]

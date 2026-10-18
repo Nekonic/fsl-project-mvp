@@ -192,11 +192,11 @@ def test_taking_one_slot_down_leaves_the_other_standing(two):
 
 
 def test_the_second_slot_s_edge_names_itself_so_the_collector_can_tell_its_logs_apart():
-    wanted = {"key": "ssh-ed25519 AAAA", "mtu": 1450, "hostname": "fsl-edge-2"}
+    wanted = {"key": "ssh-ed25519 AAAA", "mtu": 1450, "hostname": "edge-2"}
     template = (openstack.Path(build().source) / opnsense.CONFIG).read_text()
 
-    assert "<hostname>fsl-edge-2</hostname>" in opnsense.render(template, wanted)
-    assert "<hostname>fsl-edge</hostname>" in opnsense.render(template, {"key": "k", "mtu": 1450}), (
+    assert "<hostname>edge-2</hostname>" in opnsense.render(template, wanted)
+    assert f"<hostname>{opnsense.HOSTNAME}</hostname>" in opnsense.render(template, {"key": "k", "mtu": 1450}), (
         "slot 1's rendered config stays byte for byte what its edge recorded, so its in-place "
         "reset still matches"
     )

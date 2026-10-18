@@ -14,7 +14,7 @@ bin/fetch-geoip
 ```
 
 It fetches `GeoLite2-City.mmdb` from `geoip.elastic.co` (the same source the
-managed downloader uses) and checks its MD5. The `fsl-geoip` pipeline uses the
+managed downloader uses) and checks its MD5. The `geoip` pipeline uses the
 City database for both the source IP and ModSecurity's client IP.
 
 This product includes GeoLite data created by MaxMind, available from

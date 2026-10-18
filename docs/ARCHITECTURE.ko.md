@@ -468,7 +468,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
-| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `fsl-geoip` ingest 파이프라인을 PUT 합니다 |
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `geoip` ingest 파이프라인을 PUT 합니다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | 없음 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 프로젝트를 엽니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사용자에게 `fsl-<id>-waf-1`의 쉘을 열어 줍니다(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM의 ssh 쉘을 엽니다). f6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 주며, `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.FSL_WAF`)으로 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
@@ -660,7 +660,7 @@ docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly 임계치 5로 실
 ```
 WAF (ModSecurity) -> audit.log --+
 Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<session>-<day>
-                                     (event.module) pipeline fsl-geoip
+                                     (event.module) pipeline geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
@@ -691,7 +691,7 @@ ingest 호출마다 다음을 수행합니다.
   인덱스에는 두 엔진의 이벤트만 있고, 학습자가 Kibana에서 열 수 있는 필드, 인덱스, 헤더
   어디에도 플랫폼 이름이 나오지 않습니다(케이스 마커는 `X-Request-ID` 헤더로 갑니다).
 - 세션 시작 1분 전부터 종료 시각(또는 현재) 1분 후까지의 `@timestamp`를
-  Elasticsearch에 요청합니다. `fsl-geoip` 파이프라인은 `@timestamp`를 이벤트 자체의
+  Elasticsearch에 요청합니다. `geoip` 파이프라인은 `@timestamp`를 이벤트 자체의
   시각(Suricata의 `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 설정하므로,
   이 조회 기간은 Filebeat가 읽은 시점이 아니라 이벤트가 발생한 시점으로 이벤트를
   고릅니다.
@@ -1442,26 +1442,35 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   요청의 양쪽 구간이 지나갑니다.
 - Kibana는 compose에 들어 있으며, 읽기 전용 역할이 아닌 전체 권한으로, 플랫폼이
   수집하는 것과 같은 Elasticsearch를 읽습니다. 플랫폼의 8000번 포트 `/kibana/`로
-  접속하며, 자체 포트는 공개하지 않습니다. 블루팀 콘솔이 이를 프레임으로 띄웁니다. 기동 시
+  접속하되 앞단(nginx)이 Discover 밖의 요청을 거부하며(아래), 운영자의 ssh 터널용으로 플랫폼 호스트의
+  루프백 127.0.0.1:5601에도 공개합니다. 블루팀 콘솔이 이를 프레임으로 띄웁니다. 기동 시
   `platform/kibana.py`가 `deploy/kibana/objects.ndjson`을 overwrite로 가져옵니다
   (백그라운드에서 실행하며, 먼저 `/api/status`를 확인해 응답이 온 뒤에 한 번만
   가져옵니다. Kibana에 연결할 수 없거나 502/503/504로 응답하는 동안은 재시도하고, 그 밖의
   HTTP 오류는 상태와 본문을 한 번 보고합니다. 기동 중인 Kibana는 multipart 가져오기에
   415로 응답합니다). 가져오는 객체는 `@timestamp` 기준 data view `logs-*`(runtime
   field로 Suricata/ModSecurity 필드 쌍을 각각 한 열로 합칩니다: `rule`, `rule_id`,
-  `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색, "FSL overview"
-  대시보드입니다. `defaultRoute`는 그 검색으로 설정합니다. data view가 있어야 Kibana의
+  `source_ip`, `destination`, `url`, `status`), "Alerts" 검색, "Overview"
+  대시보드입니다(제목과 data view의 `sourceFilters`에 플랫폼 이름이 나오지 않음). `defaultRoute`는 그 검색으로 설정합니다. data view가 있어야 Kibana의
   Welcome 화면이 나오지 않습니다. Kibana의 `metaFields`에서 `_index`도 뺍니다. 세션을
   열 때 `kibana.py`는 그 세션만의 Kibana space를 만들고 그 안에 data view를 가져옵니다
   (`ensure_session_view`. `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함). space와
-  data view의 id는 같은 `session-<pattern>`입니다. space는 Discover 말고는 모든 기능
-  (대시보드, visualize, dev tools, management 등)을 끄고 `defaultRoute`가 일반 Discover라서
-  학습자가 default space에 남아 있는 운영자 객체에 바로 닿지 못합니다(Kibana는 보안 없이 돌아가므로
-  space 전환 메뉴에는 다른 space가 여전히 보입니다. 막으려면 nginx에서 space와 세션을 대조해야 함). data view는 세션의
-  인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다(space 이름은 "Session logs"). 공유 runtime
+  data view의 id는 같은 `soc-<pattern>`입니다. space는 Discover 말고는 모든 기능
+  (대시보드, visualize, dev tools 등)을 끕니다. space 설정은 ES|QL을 끄고(`enableESQL`.
+  ES|QL은 data view의 패턴과 숨긴 필드를 건너뛰고 모든 인덱스를 읽음), `defaultColumns`를 세션 열로 두며,
+  `defaultRoute`를 그 space의 저장된 검색 "Events"(세션 열, 최신순)로 지정해 학습자가
+  default space에 남아 있는 운영자 객체에 닿지 못하게 합니다. Kibana는 보안 없이 돌아가므로 기능으로
+  끌 수 없는 것은 앞단이 막습니다. `platform/nginx.conf`는 Elasticsearch와 Kibana 관리용 API
+  (console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups,
+  remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API,
+  `_active_space`를 뺀 spaces API, security API, settings API, saved objects import·export)에 403을
+  답하고, 페이지 `app/management`, `app/dev_tools`, `app/home`은 같은 space의 Discover로 리다이렉트합니다.
+  Discover가 부르는 호출은 모두 통과하며, 플랫폼 자신의 설정(`KIBANA_URL`)은 Kibana에 직접 닿습니다.
+  space 이름은 "SOC"입니다. data view는 세션의
+  인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다. 공유 runtime
   field에 `log_source`(`suricata` 또는 `modsecurity`), `sensor`(센서의 구성도
   이름: OpenStack은 `firewall`과 `board.com`, docker와 모든 ModSecurity 기록은 `waf`.
-  슬롯 접미사는 뗌. 스크립트에 `fsl` 호스트 이름이 나오지 않게 송신자 호스트 이름에서 첫 번째 `-` 앞부분을 떼고 맞춥니다), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-Request-ID`는
+  슬롯 접미사는 뗌. 스크립트에 `fsl` 호스트 이름이 나오지 않게 송신자 호스트 이름에서 도메인과 슬롯 번호를 떼고, 첫 번째 `-` 앞부분은 있든 없든 맞춥니다. 에지의 `edge`도 구성도 이름으로 읽힙니다), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-Request-ID`는
   뺌)를 더합니다. `sourceFilters`는 `_index`, `event.*`, `log.*`,
   `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`,
   `http.request_headers*`를 숨깁니다(KQL로는 여전히 검색됨). 가져오기가 거부되면 로그만
@@ -1663,7 +1672,7 @@ publish된 포트를 찾습니다. 각 데이터베이스는 호스트 안의 �
 `mgmt`는 모든 슬롯이 공유합니다. 슬롯마다 호스트가 여기서 각자의 DHCP 주소를 받고, 이전과 같이
 `fsl-mgmt`가 이들을 격리합니다. 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 슬롯의 서버만,
 선언된 호스트 이름으로 읽습니다. 그래서 역할, runner, 구성도, 에지 방화벽의 렌더링된 설정이
-모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `fsl-edge-N`으로 렌더링합니다. 한
+모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `edge-N`으로 렌더링합니다. 한
 슬롯의 수집기를 열 때 다른 슬롯의 송신자 룰은 그대로 둡니다. 플랫폼은 세션을 열 때 세션을
 슬롯에 묶습니다(`Session.slot`; unique 제약으로 슬롯당 열린 세션은 하나). 잠금을 잡은 상태에서
 READY인 첫 번째 빈 슬롯을 고릅니다. 세션별 훈련 환경 호출은 모두 그 슬롯으로 가고, 세션 종료는 그

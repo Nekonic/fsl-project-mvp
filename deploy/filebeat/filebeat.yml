@@ -90,7 +90,7 @@ queue.mem.flush.timeout: 1s
 setup.template.name: logs-sensors
 setup.template.pattern: logs-*
 setup.template.settings:
-  index.default_pipeline: fsl-geoip
+  index.default_pipeline: geoip
 setup.ilm.enabled: false
 
 output.elasticsearch:
@@ -99,6 +99,6 @@ output.elasticsearch:
   indices:
     - index: "logs-%{[fsl_slot]}-%{+yyyy.MM.dd}"
       when.has_fields: ["fsl_slot"]
-  pipeline: fsl-geoip
+  pipeline: geoip
 
 logging.level: warning

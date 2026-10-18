@@ -18,7 +18,7 @@ def test_the_geoip_downloader_is_off(stack_is_up):
 
 def test_geoip_places_a_source_without_the_downloader(stack_is_up):
     placed = requests.post(
-        f"{ELASTIC}/_ingest/pipeline/fsl-geoip/_simulate",
+        f"{ELASTIC}/_ingest/pipeline/geoip/_simulate",
         json={"docs": [{"_source": {"src_ip": "8.8.8.8"}}]},
         timeout=30,
     ).json()["docs"][0]["doc"]["_source"].get("src_geo", {})

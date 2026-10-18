@@ -38,3 +38,69 @@ def test_waitress_answers_the_front_alone_and_trusts_only_it():
     assert "--trusted-proxy=127.0.0.1" in text
     assert "--trusted-proxy-headers=x-forwarded-for" in text
     assert "--clear-untrusted-proxy-headers" in text
+
+def kibana_location(first_group):
+    found = re.search(rf"location ~ (\^/kibana/{re.escape(first_group)}\S*) \{{(.*?)\n        \}}", FRONT.read_text(), re.S)
+    return re.compile(found[1].replace("(?<", "(?P<")), found[2]
+
+DISCOVER_CALLS = (
+    "/kibana/s/soc-logs-1/app/discover",
+    "/kibana/s/soc-logs-1/internal/security/me",
+    "/kibana/s/soc-logs-1/internal/security/session",
+    "/kibana/s/soc-logs-1/internal/security/user_profile",
+    "/kibana/s/soc-logs-1/internal/security/security_checkup/state",
+    "/kibana/s/soc-logs-1/api/core/capabilities",
+    "/kibana/s/soc-logs-1/api/licensing/info",
+    "/kibana/s/soc-logs-1/internal/licensing/feature_usage/register",
+    "/kibana/s/soc-logs-1/api/banners/info",
+    "/kibana/s/soc-logs-1/api/saved_objects_tagging/tags",
+    "/kibana/s/soc-logs-1/internal/spaces/_active_space",
+    "/kibana/s/soc-logs-1/internal/telemetry/config",
+    "/kibana/s/soc-logs-1/internal/data_views/has_data_views",
+    "/kibana/s/soc-logs-1/internal/data_views/fields",
+    "/kibana/s/soc-logs-1/internal/data_views/_fields_for_wildcard",
+    "/kibana/s/soc-logs-1/internal/index-pattern-management/resolve_index/logs-*",
+    "/kibana/s/soc-logs-1/api/content_management/rpc/search",
+    "/kibana/s/soc-logs-1/api/content_management/rpc/get",
+    "/kibana/s/soc-logs-1/api/content_management/rpc/mSearch",
+    "/kibana/s/soc-logs-1/api/index_patterns/has_user_index_pattern",
+    "/kibana/s/soc-logs-1/internal/saved_query/_count",
+    "/kibana/s/soc-logs-1/internal/bsearch",
+    "/kibana/s/soc-logs-1/api/ui_counters/_report",
+    "/kibana/8aa0b59da12c/bundles/plugin/discover/8.15.0/discover.plugin.js",
+    "/kibana/v8.15.0.json",
+)
+
+def test_the_learner_facing_kibana_refuses_what_is_not_discover_and_answers_what_discover_asks():
+    refused, block = kibana_location("(?:s/")
+    for path in DISCOVER_CALLS:
+        assert not refused.match(path), f"{path} is a call Discover makes in a learner space"
+    for path in (
+        "/kibana/api/console/proxy", "/kibana/s/soc-logs-1/api/console/proxy",
+        "/kibana/s/soc-logs-1/api/ingest_pipelines", "/kibana/api/index_management/indices",
+        "/kibana/internal/index_management/indices", "/kibana/api/snapshot_restore/repositories",
+        "/kibana/api/transform/transforms", "/kibana/api/license", "/kibana/api/upgrade_assistant/status",
+        "/kibana/api/index_lifecycle_management/policies", "/kibana/api/spaces/space",
+        "/kibana/s/soc-logs-1/api/spaces/space/soc-logs-1", "/kibana/s/soc-logs-1/internal/spaces/space/x/copy_to_space",
+        "/kibana/api/saved_objects/_import", "/kibana/api/saved_objects/_export",
+        "/kibana/s/soc-logs-1/api/data_views/data_view", "/kibana/api/kibana/settings",
+        "/kibana/s/soc-logs-1/api/kibana/settings/defaultIndex", "/kibana/api/rollup/indices",
+    ):
+        assert refused.match(path), f"{path} reaches Elasticsearch or Kibana administration"
+    assert "return 403" in block
+
+def test_the_pages_that_open_administration_send_the_learner_back_to_discover():
+    pages, block = kibana_location("(?<kibana_space>")
+
+    for path, space in (("/kibana/s/soc-logs-1/app/management/data/index_management", "s/soc-logs-1/"),
+                        ("/kibana/app/dev_tools", None), ("/kibana/s/soc-logs-1/app/home", "s/soc-logs-1/")):
+        assert pages.match(path).group("kibana_space") == space
+    assert not pages.match("/kibana/s/soc-logs-1/app/discover")
+    assert "absolute_redirect off" in block and "return 302 /kibana/${kibana_space}app/discover" in block
+
+def test_kibana_is_published_on_the_platform_host_s_loopback_only_for_the_operator():
+    ports = composed.services()["kibana"].get("ports")
+
+    assert ports == ["127.0.0.1:5601:5601"], (
+        "the learner-facing /kibana/ refuses administration; an operator reaches Kibana whole through an ssh tunnel"
+    )
