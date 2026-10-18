@@ -73,10 +73,11 @@
   <section id="course" class="hidden card p-5 mb-5 text-[13px]">
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
+    <p data-t="lesson.course.scores" class="text-muted text-[13px] mt-2"></p>
   </section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
-  <div class="grid lg:grid-cols-[1fr_400px] gap-5">
+  <div class="grid lg:grid-cols-[1fr_400px] gap-5 items-start">
     <div class="card">
       <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
         <div>
@@ -101,9 +102,17 @@
             </tr>
           </thead>
           <tbody id="objective-rows"></tbody>
+          <tfoot id="penalty-total" class="hidden">
+            <tr class="table-row border-t border-line-subdued">
+              <td data-t="session.score1.penalty_total" class="pl-5 py-2.5 font-semibold text-heading" colspan="5"></td>
+              <td id="penalty-total-value" class="pr-5 py-2.5 text-right font-bold text-heading"></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       <div class="px-5 py-3 text-[12px] text-muted border-t border-line-subdued">
+        <p id="score-lesson-note" class="hidden text-body text-[13px] mb-2"></p>
+        <p id="score-lesson-lost" data-t="score.lesson_lost_note" class="hidden text-muted text-[13px] mb-2"></p>
         <p data-t="score.primary.how"></p>
         <div id="legend" class="mt-2 flex flex-wrap gap-4"></div>
       </div>
@@ -121,9 +130,9 @@
     <table class="w-full text-[13px]">
       <thead class="table-head">
         <tr>
-          <th data-t="score.col.case" class="pl-5"></th>
+          <th data-t="score.col.request" class="pl-5"></th>
           <th data-t="score.col.kind"></th>
-          <th data-t="score.col.alerts"></th>
+          <th data-t="score.col.rule_matches"></th>
           <th data-t="score.col.outcome"></th>
           <th data-t="score.col.mechanism"></th>
         </tr>
@@ -160,6 +169,9 @@
   const lessonNumber = (lessonId) => foundations().findIndex((taught) => taught.id === lessonId) + 1;
   const takenLessons = () => (session && Array.isArray(session.lessons) ? session.lessons : []);
   const courseNumbers = () => takenLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
+  const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
+  const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
+  const sender = (row) => (seeded(row) ? badge(t("score.kind.auto_benign"), "neutral") : badge(t("session.activity.red"), "red"));
 
   function runLabel(row) {
     const number = row.lesson ? lessonNumber(row.lesson) : 0;
@@ -200,7 +212,9 @@
       lesson ? tile(t("session.tile.note"), t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))
         : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
     ].join("");
-    field("blue-foot").textContent = Number.isInteger(paranoia) ? t("session.blue.posture", paranoia) : "";
+    const posture = Number.isInteger(paranoia) && !lessonSession() ? t("session.blue.posture", paranoia) : "";
+    field("blue-foot").textContent = posture;
+    show("blue-foot", Boolean(posture));
     const wargameSession = session.kind === "wargame";
     show("red", wargameSession);
     field("consoles").classList.toggle("md:grid-cols-2", wargameSession);
@@ -224,7 +238,7 @@
       return `
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span class="text-faint w-12">${esc(clock(row.started_at))}</span>
-          ${badge(t("session.activity.red"), "red")}
+          ${sender(row)}
           <span class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}</span>
           ${badge(outcome.text, outcome.tone)}
           ${why ? `<span class="text-faint text-[12px]">${esc(why)}</span>` : ""}
@@ -234,7 +248,7 @@
 
   const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
   const caseLabel = (name) => localized(`case.${name}`, name);
-  const named = (row) => (runLabel(row) ? `${caseLabel(row.name)} (${runLabel(row)})` : caseLabel(row.name));
+  const named = (row) => (runLabel(row) ? t("session.run.named", runLabel(row), caseLabel(row.name)) : caseLabel(row.name));
   const NAMES_LISTED = ["score.warning.wrong_reason", "score.warning.no_source_ip"];
   const warningValues = (key, values) => (NAMES_LISTED.includes(key)
     ? [String(values[0]).split(", ").map(caseLabel).join(", "), ...values.slice(1)] : values);
@@ -264,11 +278,17 @@
     const taken = tiers.filter((tier) => lost.has(tier.key)).length;
     field("lost-count").textContent = `${taken} / ${tiers.length}`;
     field("lost-count").className = `text-[22px] font-bold leading-tight ${taken ? "text-danger" : "text-success"}`;
+    const penaltyOf = (tier) => {
+      const breach = lost.get(tier.key);
+      return !breach ? 0 : tier.difficulty * (breach.detected ? 1 : 2);
+    };
+    show("penalty-total", tiers.length > 0);
+    field("penalty-total-value").textContent = String(tiers.reduce((sum, tier) => sum + penaltyOf(tier), 0));
     field("objective-rows").innerHTML = tiers.map((tier) => {
       const breach = lost.get(tier.key);
       const outcome = !breach ? badge(t("score.kept"), "ok-strong")
         : breach.detected ? badge(t("score.lost_seen"), "warn") : badge(t("score.lost_unseen"), "red-strong");
-      const penalty = !breach ? 0 : tier.difficulty * (breach.detected ? 1 : 2);
+      const penalty = penaltyOf(tier);
       return `
         <tr class="table-row">
           <td class="pl-5 font-semibold text-heading">${esc(objectiveName(tier))}</td>
@@ -338,6 +358,7 @@
     if (!parts.length) parts.push(`<p class="text-muted">${esc(t("score.no_cases"))}</p>`);
     const unproven = caught.filter((row) => row.corroborated === false).length;
     const notes = [t("score.one_case_once")];
+    if (perCase.some(seeded)) notes.push(t("score.benign_auto_note"));
     if (customers.sent) notes.push(t("score.customers_note"));
     if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
     notes.push(t("score.not_added"));
@@ -357,7 +378,7 @@
         <tr class="table-row">
           <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
             runLabel(row) ? `<span class="block text-[12px] text-muted">${esc(runLabel(row))}</span>` : ""}</td>
-          <td>${esc(t(row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
+          <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
           <td>${esc(row.detection_ids.length)}</td>
           <td>${outcome}</td>
           <td>${mechanism}</td>
@@ -372,6 +393,7 @@
     const said = `${t("score.unavailable", detail(failed))}${retrying ? ` ${t("score.retrying")}` : ""}`;
     field("lost-count").textContent = "—";
     field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
+    show("penalty-total", false);
     field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-danger" colspan="6">${esc(said)}</td></tr>`;
     field("judgement").innerHTML = `<p class="text-danger">${esc(said)}</p>`;
     field("case-rows").innerHTML = "";
@@ -413,12 +435,22 @@
     }).join("");
   }
 
+  function lessonScoreNote() {
+    const notes = takenLessons()
+      .map((one) => localized(`${lessonPrefix(foundations()[lessonNumber(one.id) - 1])}.score_note`, ""))
+      .filter((note, at, all) => note && all.indexOf(note) === at);
+    show("score-lesson-note", notes.length > 0);
+    field("score-lesson-note").textContent = notes.join(" ");
+    show("score-lesson-lost", takenLessons().some((one) => lessonNumber(one.id) === 6));
+  }
+
   async function scoreboard() {
     show("consoles", false);
     show("activity", false);
     show("traffic", false);
     show("scoreboard", true);
     courseSummary();
+    lessonScoreNote();
     verdictBanner();
     if (session.course_scenario) showScenarioDebrief(field("debrief"));
     await scoreTables(0);
@@ -498,7 +530,7 @@
       return;
     }
     show("close", true);
-    const waf = await api(`/api/sessions/${id}/waf/`);
+    const waf = lessonSession() ? { ok: false } : await api(`/api/sessions/${id}/waf/`);
     consoles(waf.ok ? waf.body.paranoia : null, result.lost, result.total);
     activity();
     trafficPanel();

@@ -22,6 +22,10 @@
   .coach-dim { position: fixed; overflow: hidden; pointer-events: none; z-index: 40; }
   .coach-hole { position: absolute; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.28); }
   .coach-ring { position: fixed; pointer-events: none; z-index: 41; border-radius: 6px; box-shadow: 0 0 0 2px var(--primary); }
+  .coach-ring.inset { border-radius: 3px; box-shadow: inset 0 0 0 2px var(--primary); }
+  .coach-leader { position: fixed; pointer-events: none; z-index: 42; height: 2px; background: var(--primary); transform-origin: 0 50%; opacity: 0.85; }
+  .coach-leader.hidden { display: none; }
+  .rail-btn:disabled { opacity: 0.35; cursor: default; }
   .coach-callout { position: fixed; z-index: 42; pointer-events: none; max-width: 360px; padding: 5px 10px; border-radius: 6px; background: var(--primary); color: var(--text-inverse); font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-pop); }
   .order-chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
   .term-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--terminal); color: var(--terminal-text); font-size: 13px; pointer-events: none; }

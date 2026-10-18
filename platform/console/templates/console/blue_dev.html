@@ -3,7 +3,11 @@
   #site-dev .dv-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--subdued); min-width: 0; }
   #site-dev .dv-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-muted); }
   #site-dev .dv-icon:hover { background: var(--border-subdued); color: var(--heading); }
-  #site-dev .dv-panel-tab { padding: 4px 10px; border-bottom: 2px solid var(--primary); color: var(--heading); }
+  #site-dev .dv-panel-tab { padding: 4px 10px; border-bottom: 2px solid transparent; color: var(--text-faint); white-space: nowrap; }
+  #site-dev .dv-panel-tab[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--heading); }
+  #site-dev .dv-status { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-top: 1px solid var(--border); background: var(--subdued); color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; }
+  #site-dev .dv-pair { padding: 1px 8px 1px 20px; font-family: var(--font-mono); color: var(--heading); white-space: pre-wrap; overflow-wrap: anywhere; }
+  #site-dev .dv-pair b { font-weight: 600; color: var(--text); }
   #site-dev .dv-filter { height: 22px; width: 220px; min-width: 0; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); outline: none; }
   #site-dev .dv-chip { padding: 1px 8px; border-radius: 10px; color: var(--text); white-space: nowrap; }
   #site-dev .dv-chip[aria-pressed="true"] { background: var(--primary-line); color: var(--primary-text); }
@@ -42,7 +46,11 @@
 <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
   <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
   <div class="dv-bar shrink-0" style="height: 26px">
-    <span data-t="site.dev.network" class="dv-panel-tab"></span>
+    <span class="dv-panel-tab" data-panel="elements" aria-selected="false"></span>
+    <span class="dv-panel-tab" data-panel="console" aria-selected="false"></span>
+    <span class="dv-panel-tab" data-panel="sources" aria-selected="false"></span>
+    <span data-t="site.dev.network" class="dv-panel-tab" aria-selected="true"></span>
+    <button type="button" id="site-dev-exit" class="dv-icon" style="margin-left: auto" data-t-title="site.dev.close" aria-label="close">✕</button>
   </div>
   <div class="dv-bar shrink-0" style="height: 30px">
     <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">
@@ -86,5 +94,10 @@
       </div>
       <div id="site-dev-view" class="flex-1 min-h-0 overflow-auto"></div>
     </div>
+  </div>
+  <div id="site-dev-status" class="dv-status shrink-0">
+    <span id="site-dev-count"></span><span class="dv-sep"></span>
+    <span id="site-dev-transferred"></span><span class="dv-sep"></span>
+    <span id="site-dev-resources"></span>
   </div>
 </section>

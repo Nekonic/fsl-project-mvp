@@ -52,10 +52,21 @@ function devShown() {
     && (!wanted || row.url.toLowerCase().includes(wanted) || readable(row.url).toLowerCase().includes(wanted)));
 }
 
+const devSaid = (key, fallback, ...values) => values.reduce(
+  (out, value, index) => out.split(`{${index}}`).join(value), localized(key, fallback));
+
+function devStatus() {
+  const bytes = dev.rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
+  field("site-dev-count").textContent = devSaid("site.dev.status.requests", "{0} requests", dev.rows.length);
+  field("site-dev-transferred").textContent = devSaid("site.dev.status.transferred", "{0} transferred", devSize(bytes));
+  field("site-dev-resources").textContent = devSaid("site.dev.status.resources", "{0} resources", devSize(bytes));
+}
+
 function devRows() {
   const shown = devShown();
   field("site-dev-empty").classList.toggle("hidden", dev.rows.length > 0);
   field("site-dev").classList.toggle("dv-picked", dev.picked !== null);
+  devStatus();
   field("site-dev-rows").innerHTML = shown.map((row) => {
     const from = devInitiator(row.initiator);
     const tone = devFailed(row.status) ? "dv-fail" : "";
@@ -145,7 +156,7 @@ function devParams(title, text, coach) {
   const shown = (value) => (view === "encoded" ? value : devDecoded(value));
   const body = view === "source"
     ? `<pre class="dv-raw">${esc(text)}</pre>`
-    : devPairs(text).map(([name, value]) => `<div class="dv-row"><span>${esc(shown(name))}</span><span>${value === "" ? `<i class="dv-dim">${esc(t("site.dev.empty"))}</i>` : esc(shown(value))}</span></div>`).join("");
+    : devPairs(text).map(([name, value]) => `<div class="dv-pair"><b>${esc(shown(name))}:</b> ${value === "" ? `<i class="dv-dim">${esc(t("site.dev.empty"))}</i>` : esc(shown(value))}</div>`).join("");
   return `<section class="dv-section"${coach ? ` data-coach="${coach}"` : ""}>
     <div class="dv-heading"><span>${esc(title)}</span>${links}</div>${body}</section>`;
 }
@@ -260,9 +271,47 @@ function devToggle() {
   }
 }
 
+const DEV_PANELS = { elements: "Elements", console: "Console", sources: "Sources" };
+
+function devKeep(rows) {
+  if (rows.length === dev.rows.length) return;
+  dev.rows = rows;
+  if (dev.picked !== null && !dev.rows.some((row) => row.id === dev.picked)) devUnpick();
+  devRows();
+}
+
+function devNavigating() {
+  if (!dev.preserve) devKeep([]);
+}
+
+function devLanded(path) {
+  if (dev.preserve) return;
+  const same = (row) => {
+    try {
+      const at = new URL(row.url);
+      const raw = at.pathname + at.search;
+      return raw === path || readable(raw) === readable(path);
+    } catch (error) {
+      return false;
+    }
+  };
+  const index = dev.rows.map((row) => row.category === "doc" && same(row)).lastIndexOf(true);
+  devKeep(index >= 0 ? dev.rows.slice(index) : []);
+  if (dev.open) devPoll();
+}
+
 function devTools() {
   field("site-dev-toggle").dataset.coach = "toggle";
   field("site-dev-toggle").addEventListener("click", devToggle);
+  field("site-dev-exit").addEventListener("click", devToggle);
+  field("site-dev").querySelectorAll("[data-panel]").forEach((tab) => {
+    tab.textContent = localized(`site.dev.panel.${tab.dataset.panel}`, DEV_PANELS[tab.dataset.panel] || "");
+  });
+  devStatus();
+  if (typeof MutationObserver === "function") {
+    new MutationObserver(devNavigating).observe(field("site-frame"), { attributes: true, attributeFilter: ["src"] });
+  }
+  site.heard.push(devLanded);
   document.addEventListener("keydown", (event) => {
     const onSite = document.querySelector('.pane-tab[data-pane="site"]').getAttribute("aria-selected") === "true";
     if (event.key !== "F12" || !onSite) return;
