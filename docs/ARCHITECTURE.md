@@ -1623,9 +1623,15 @@ not declared: it needs a second person; the engine accepts `red: person`.
   "FSL overview" dashboard. It sets `defaultRoute` to that search. A data view
   existing is what keeps Kibana's Welcome screen away. It also drops `_index`
   from Kibana's `metaFields`. When a session opens, `kibana.py` imports a data
-  view of its own (`ensure_session_view`, needs `KIBANA_URL`, which
-  `compose.yaml` sets): id `session-<pattern>` on the session's index
-  pattern, shown by its name "Session logs", never the pattern; the shared
+  view of its own in a Kibana space of its own (`ensure_session_view`, needs
+  `KIBANA_URL`, which `compose.yaml` sets): the space and the data view share
+  the id `session-<pattern>`; the space disables every feature but Discover
+  (dashboards, visualize, dev tools, management and the rest) and its
+  `defaultRoute` is plain Discover, so the learner never reaches the operator
+  objects, which stay in the default space (Kibana runs without security, so
+  its space switcher still lists the other spaces; closing that needs an
+  nginx check of the space against the session); the data view is on the session's
+  index pattern, shown by its name "Session logs", never the pattern; the shared
   runtime fields plus `log_source` (`suricata` or `modsecurity`),
   `sensor` (the map name of the sensor: `firewall` and `board.com` on
   OpenStack, `waf` on docker and for every ModSecurity record, slot suffixes
@@ -1635,14 +1641,14 @@ not declared: it needs a second person; the engine accepts `red: person`.
   `input.*`, `error.*` and `http.request_headers*` (KQL on them still
   works). A refused import is logged and does not stop the session. `GET
   /api/sessions/<id>/` carries `discover`: an unsaved Discover state on that
-  view, from the current unit's start, with the columns `log_source,
+  view at `/kibana/s/<space>/app/discover`, from the current unit's start, with the columns `log_source,
   sensor, event_type, source_ip, destination, url, status, rule_id,
   rule` and a filter `log_source: exists` (it hides the range hosts' own
   syslog lines); a lesson opens it with an empty query, a scenario or a
-  wargame with the alert query. Without `KIBANA_URL` it is the shared
-  `fsl-logs` view with the alert search's columns and query, narrowed to the
-  session's index (`_index : fsl-logs-<id>-*`) and window. The ELK pane opens
-  it. It is not the saved search with an overriding query, which Kibana
+  wargame with the alert query. While the space or view is not ready (or
+  without `KIBANA_URL`) `discover` is null, never the shared `fsl-logs` view;
+  the ELK pane shows a preparing line and polls the session until the link
+  arrives (the import is retried every 10 seconds). The ELK pane opens it. It is not the saved search with an overriding query, which Kibana
   badges "Unsaved changes". Before the pane loads, the blue console marks
   Kibana's first-visit callouts seen in the shared same-origin localStorage
   (`discover:docExplorerUpdateCalloutClosed`,

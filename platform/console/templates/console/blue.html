@@ -33,7 +33,7 @@
   .note-col.hidden, .term-wait.hidden, .map-wait.hidden { display: none; }
 </style>
 <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
-  <button class="pane-tab rail-btn" data-pane="elk" data-src="/kibana/">
+  <button class="pane-tab rail-btn" data-pane="elk" data-src="">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <span>Kibana</span>
   </button>
@@ -95,6 +95,7 @@
       <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
               title="Kali" referrerpolicy="no-referrer"></iframe>
       <div id="term-wait" class="term-wait hidden"><span data-t="blue.term.connecting"></span></div>
+      <div id="kibana-wait" class="map-wait hidden"><span data-t="blue.kibana.preparing"></span></div>
       {% include "console/blue_topology.html" %}
       {% include "console/blue_triage.html" %}
       {% include "console/blue_rules.html" %}
@@ -118,6 +119,7 @@
   let session = null;
   const CLOSED_CHECK_MS = 30000;
   const TERMINAL_WAIT_MS = 500;
+  const KIBANA_RETRY_MS = 3000;
   const TERMINAL_GIVE_UP_MS = 45000;
   const sessionClosed = () => Boolean(session && session.ended_at);
   const terminalPanes = { waf: () => frame, kali: () => field("kali-frame") };
@@ -180,7 +182,14 @@
     field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
     field("kali-frame").style.display = tab.dataset.pane === "kali" ? "block" : "none";
     terminalWait();
+    const kibanaWaiting = tab.dataset.pane === "elk" && !tab.dataset.src;
+    field("kibana-wait").classList.toggle("hidden", !kibanaWaiting);
     paneOpened.forEach((heard) => heard(tab.dataset.pane));
+    if (kibanaWaiting) {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      return;
+    }
     if (tab.dataset.pane === "kali") {
       field("pane-status").style.display = "none";
       frame.style.display = "none";
@@ -260,6 +269,18 @@
 
   quietKibana();
 
+  function kibanaLink() {
+    const kibana = paneTab("elk");
+    if (kibana.dataset.src) return;
+    const timer = setInterval(async () => {
+      const read = await api(`/api/sessions/${sessionId()}/`);
+      if (!read.ok || !read.body.discover) return;
+      clearInterval(timer);
+      kibana.dataset.src = read.body.discover;
+      if (paneOpen("elk")) openPane(kibana);
+    }, KIBANA_RETRY_MS);
+  }
+
 {% include "console/debrief_script.html" %}
 
 {% include "console/blue_lesson_script.html" %}
@@ -272,6 +293,7 @@
     if (session) rememberSession(sessionId());
     const kibana = paneTab("elk");
     if (session && session.discover) kibana.dataset.src = session.discover;
+    kibanaLink();
     if (session && session.waf_terminal) paneTab("waf").dataset.src = session.waf_terminal;
     if (session && session.site) siteBrowser(session.site);
     if (session && session.kali_terminal && session.kind !== "wargame") {
