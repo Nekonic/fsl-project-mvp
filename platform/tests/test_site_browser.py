@@ -405,6 +405,19 @@ def test_the_pane_sends_the_headers_chrome_sends_in_chrome_s_order(client):
     shown = dict(detail_of(client, session, 0)["request_headers"])
     assert "X-Request-ID" not in shown and shown["Accept-Encoding"] == "gzip, deflate"
 
+def test_a_navigation_without_fetch_metadata_still_asks_to_upgrade(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    _, upgraded = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok", {"Content-Type": "text/html"}),
+                          HTTP_UPGRADE_INSECURE_REQUESTS="1", HTTP_ACCEPT="*/*")
+    _, accepted = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok", {"Content-Type": "text/html"}),
+                          HTTP_ACCEPT="text/html,application/xhtml+xml")
+    _, script = proxied(client, f"{session.pk}/board.com/", Answer(200, b"x", {"Content-Type": "text/css"}),
+                        HTTP_ACCEPT="text/css,*/*;q=0.1")
+
+    assert sent_headers(upgraded)["Upgrade-Insecure-Requests"] == "1"
+    assert sent_headers(accepted)["Upgrade-Insecure-Requests"] == "1"
+    assert "Upgrade-Insecure-Requests" not in sent_headers(script)
+
 def test_a_post_shows_the_content_length_chrome_shows(client):
     session = Session.objects.create(scenario="board", baseline=[])
     _, sent = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), method="post", uri="/login/",
