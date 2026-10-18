@@ -60,7 +60,8 @@ browser.serve((request) => {{
   if (request.route === "/api/sessions/1/ingest/") return {{body: {{ingested: 0}}}};
   if (request.route.startsWith("/api/sessions/1/lesson/steps/")) {{
     range.steps.push(request.route);
-    return {{body: {{passed: request.route.endsWith("/check/"), reason: null, progress: {{}}}}}};
+    const passed = request.route.endsWith("/check/");
+    return {{body: {{passed, reason: null, progress: passed ? {{[request.route.split("/")[6]]: {{passed: true}}}} : {{}}}}}};
   }}
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
@@ -135,7 +136,10 @@ def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves
       await browser.click('[data-pane="triage"]');
       await browser.wait(0);
       await browser.wait(1600);
-      return {first, next: browser.text('step-title'), checked: range.steps.filter((route) => route.endsWith('/check/'))};
+      const stayed = {title: browser.text('step-title'), next: browser.element('step-next').classList.contains('btn-blue')};
+      await browser.click('step-next');
+      await browser.wait(0);
+      return {first, stayed, next: browser.text('step-title'), checked: range.steps.filter((route) => route.endsWith('/check/'))};
     """)
     result = seen["result"]
     steps = [step["id"] for step in lesson["steps"]]
@@ -143,4 +147,5 @@ def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves
     assert seen["errors"] == []
     assert result["first"] == {"title": english(f"{lesson['text']}.label.{steps[0]}"), "ring": True, "left": "2px", "note": True}
     assert result["checked"] == [f"/api/sessions/1/lesson/steps/{steps[0]}/check/"]
+    assert result["stayed"] == {"title": english(f"{lesson['text']}.label.{steps[0]}"), "next": True}
     assert result["next"] == english(f"{lesson['text']}.label.{steps[1]}")

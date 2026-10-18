@@ -259,7 +259,10 @@ def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges
       range.sent.push("/search/?q=hello");
       for (let i = 0; i < 6; i += 1) await browser.wait(1000);
       await browser.wait(1600);
-      return {{quiet, polls: range.checked.filter(([id]) => id === 'search').map(([, body]) => body.poll),
+      const passed = {{title: browser.text('step-title'), said: browser.text('step-said'), ring: shown('coach-ring'),
+                       next: browser.element('step-next').classList.contains('btn-blue'), status: browser.text('step-status')}};
+      await browser.click('step-next');
+      return {{quiet, passed, polls: range.checked.filter(([id]) => id === 'search').map(([, body]) => body.poll),
                title: browser.text('step-title'),
                read: browser.requests.filter((r) => r.route.includes('/detections/')).length}};
     """)
@@ -269,6 +272,8 @@ def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges
     assert result["quiet"] == {"said": False, "status": english("lesson.status.auto")}, (
         "a poll that finds nothing is not a failure the learner should read")
     assert result["polls"] and all(result["polls"])
+    assert result["passed"] == {"title": "lesson.demo.label.search", "said": "✓ search passed", "ring": False, "next": True,
+                                "status": ""}, "an automatically checked step shows its pass line and waits for Next"
     assert result["title"] == "lesson.demo.label.method"
     assert result["read"] == 0
 
@@ -397,7 +402,9 @@ def test_a_kali_step_shows_the_command_to_type_and_no_button_runs_or_copies_it_a
       await browser.click('#step-act [data-act="kali"]');
       await browser.wait(1600);
       const row = browser.element('step-act').querySelector('[data-kali]');
-      return {{buttons, command, title: browser.text('step-title'), row: row.textContent.trim().replace(/\\s+/g, ' '),
+      const stayed = browser.text('step-title');
+      await browser.click('step-next');
+      return {{buttons, command, stayed, title: browser.text('step-title'), row: row.textContent.trim().replace(/\\s+/g, ' '),
                window: row.querySelector('[data-discover]').dataset.discover}};
     """)
     result = seen["result"]
@@ -407,6 +414,7 @@ def test_a_kali_step_shows_the_command_to_type_and_no_button_runs_or_copies_it_a
     assert result["command"] == {"shown": True, "text": step["command"]}
     assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.more"), english("lesson.coach.back"),
                                  english("lesson.coach.next")], "the learner types every attack"
+    assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
     assert result["title"] == "lesson.demo.label.verdict"
     assert "1539" not in result["row"] and "firewall" not in result["row"]
     assert result["row"].endswith(english("lesson.kali.window"))
@@ -438,14 +446,15 @@ def test_the_ring_sits_on_the_target_the_pane_alone_is_dimmed_and_the_callout_ne
       await frames();
       const target = {{left: 1380, top: 300, width: 40, height: 20}};
       return {{ring: styled('coach-ring'), dim: shown('coach-dim'), callout: callout(),
-               meets: meets(callout(), target), inPane: callout() && callout().left + 220 <= 1040}};
+               meets: meets(callout(), target), inNote: callout() && callout().left >= 1040 && callout().left + 220 <= 1440}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["ring"] == {"left": 1374, "top": 294, "width": 52, "height": 32}
     assert result["dim"] is False, "a target outside the pane is ringed without dimming the pane"
-    assert result["callout"] is not None and result["meets"] is False and result["inPane"] is True
+    assert result["callout"] is not None and result["meets"] is False and result["inNote"] is True, (
+        "a target in the note column keeps its callout in the note column, never over the pane")
 
 def test_the_website_and_the_map_are_asked_where_the_target_is_and_their_answer_is_placed_at_the_frame(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -565,8 +574,8 @@ def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_mat
     assert result["filter"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
         "a flyout open without the field's row: the flyout's field filter, since the table renders only some rows")
     assert result["row"] == {"left": 574, "top": 295, "width": 432, "height": 26}
-    assert result["line"] == {"left": 60, "top": 115, "width": 714, "height": 22}, (
-        "the ring spans the line's text and stays inside the pane")
+    assert result["line"] == {"left": 60, "top": 116, "width": 714, "height": 20}, (
+        "the ring spans the line's text over whole rows and stays inside the pane")
 
 def test_a_terminal_ring_covers_a_wrapped_line_or_a_printed_table_and_its_callout_avoids_the_text(client):
     wrapped = "[CRITICAL] all tested parameters do not appear to be injectable. Try to increase "
@@ -592,8 +601,9 @@ def test_a_terminal_ring_covers_a_wrapped_line_or_a_printed_table_and_its_callou
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["verdict"]["ring"] == {"left": 60, "top": 110, "width": 966, "height": 52}, "both rows of the wrapped line"
-    assert result["table"]["ring"] == {"left": 60, "top": 170, "width": 282, "height": 132}, "the table and its borders"
+    assert result["verdict"]["ring"] == {"left": 60, "top": 116, "width": 966, "height": 40}, (
+        "both rows of the wrapped line, whole rows, never into the line above")
+    assert result["table"]["ring"] == {"left": 60, "top": 176, "width": 282, "height": 120}, "the table and its borders"
     assert result["verdict"]["callout"] and result["table"]["callout"]
     assert result["overText"] is False
 
@@ -637,12 +647,14 @@ def test_every_step_that_reads_a_kali_run_carries_the_button_that_opens_kibana_a
       await browser.wait(1600);
       {to("run_source")}
       await browser.settle();
-      const button = browser.element('step-act').querySelector('[data-discover]');
-      return button ? button.dataset.discover : null;
+      const button = browser.element('step-open');
+      return {{window: button.dataset.discover || null, text: browser.text('step-open'), shown: shown('step-open'),
+               links: browser.element('step-act').querySelectorAll('[data-discover]').length}};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == "/kibana/app/discover#/?run=sqlmap"
+    assert seen["result"] == {"window": "/kibana/app/discover#/?run=sqlmap", "text": english("lesson.kali.window"), "shown": True,
+                              "links": 0}, "one button: the step's open button itself opens the run's window"
 
 def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario="""

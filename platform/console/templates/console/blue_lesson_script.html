@@ -2,6 +2,8 @@ const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
 const lessonId = () => (session && session.lesson_id) || "";
 const caseLabel = (name) => localized(`case.${name}`, name);
 const spoken = (texts) => (texts ? texts[language] || texts.en || "" : "");
+const phrase = (key, fallback, ...values) => values.reduce(
+  (out, value, index) => out.split(`{${index}}`).join(value), localized(key, fallback));
 
 function kept(key, fallback) {
   try {
@@ -45,6 +47,12 @@ const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.lef
 const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
   && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
 const grown = (box, by) => ({ left: box.left - by, top: box.top - by, width: box.width + 2 * by, height: box.height + 2 * by });
+const joined = (a, b) => (a && b ? {
+  left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
+  width: Math.max(a.left + a.width, b.left + b.width) - Math.min(a.left, b.left),
+  height: Math.max(a.top + a.height, b.top + b.height) - Math.min(a.top, b.top),
+} : a || b);
+const rounded = (box) => (box ? [box.left, box.top, box.width, box.height].map(Math.round).join() : "");
 
 function clipped(rect, bounds) {
   if (!rect) return null;
@@ -76,10 +84,10 @@ function showInKibana(url) {
   if (same && frame.contentWindow && frame.contentWindow.location) frame.contentWindow.location.reload();
 }
 
-function kaliRow(row) {
+function kaliRow(row, windowed = true) {
   return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
     <b class="text-heading">${esc(caseLabel(row.name))}</b>
-    ${row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
+    ${windowed && row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
   </li>`;
 }
 
@@ -192,14 +200,14 @@ async function objectivesRead() {
   if (read.ok && read.body.lesson_objectives) objectivesShow(read.body.lesson_objectives);
 }
 
-const asking = { host: null, origin: "", key: "", id: 0, rect: null, sentAt: 0, answered: false };
+const asking = { host: null, origin: "", key: "", id: 0, rect: null, zones: [], sentAt: 0, since: 0, answered: false };
 const ASK_AGAIN_MS = 1500;
 
 function askFrame(host, origin, spec) {
   const key = JSON.stringify(spec);
   if (asking.host !== host || asking.key !== key) {
     stopAsking();
-    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, sentAt: 0, answered: false });
+    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, zones: [], sentAt: 0, since: Date.now(), answered: false });
   }
   const now = Date.now();
   if (origin && host.contentWindow && now - asking.sentAt > ASK_AGAIN_MS) {
@@ -216,7 +224,9 @@ function askFrame(host, origin, spec) {
 function askAgain(host) {
   if (asking.host !== host) return;
   asking.rect = null;
+  asking.zones = [];
   asking.sentAt = 0;
+  asking.since = Date.now();
   asking.answered = false;
 }
 
@@ -228,7 +238,7 @@ function stopAsking() {
       asking.host = null;
     }
   }
-  Object.assign(asking, { host: null, key: "", rect: null, sentAt: 0, answered: false });
+  Object.assign(asking, { host: null, key: "", rect: null, zones: [], sentAt: 0, since: 0, answered: false });
 }
 
 window.addEventListener("message", (event) => {
@@ -236,6 +246,7 @@ window.addEventListener("message", (event) => {
   if (!said || typeof said !== "object" || !("fslLocated" in said)) return;
   if (!asking.host || event.source !== asking.host.contentWindow || said.fslLocated !== asking.id) return;
   asking.rect = said.rect || null;
+  asking.zones = Array.isArray(said.zones) ? said.zones : [];
   asking.answered = true;
 });
 
@@ -243,6 +254,7 @@ const KIBANA = {
   value: (name) => `[data-test-subj="tableDocViewRow-${name}-value"]`,
   name: (name) => `[data-test-subj="tableDocViewRow-${name}-name"]`,
   flyout: '[data-test-subj="docViewerFlyout"]',
+  close: '[data-test-subj="euiFlyoutCloseButton"]',
   fieldFilter: '[data-test-subj="unifiedDocViewerFieldsSearchInput"]',
   expand: '[data-test-subj="docTableExpandToggleColumn"]',
   hits: ['[data-test-subj="discoverQueryHits"]', '[data-test-subj="discoverQueryTotalHits"]',
@@ -253,59 +265,97 @@ const KIBANA = {
   sidebar: (name) => `[data-test-subj="field-${name}"]`,
 };
 
-function kibanaRect(spec) {
+function kibanaDoc() {
   if (!paneOpen("elk")) return null;
-  let doc = null;
   try {
-    doc = frame.contentDocument;
+    return frame.contentDocument || null;
   } catch (error) {
     return null;
   }
-  if (!doc) return null;
+}
+
+function kibanaFound(doc, spec) {
   const found = (selector) => doc.querySelector(selector);
-  const rectOf = (selector) => {
-    const element = found(selector);
-    const rect = element && element.getBoundingClientRect ? element.getBoundingClientRect() : null;
-    return rect && rect.width && rect.height ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
-  };
-  const first = (...selectors) => selectors.map(rectOf).find(Boolean) || null;
-  const joined = (a, b) => (a && b ? {
-    left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
-    width: Math.max(a.left + a.width, b.left + b.width) - Math.min(a.left, b.left),
-    height: Math.max(a.top + a.height, b.top + b.height) - Math.min(a.top, b.top),
-  } : a || b);
-  let rect = null;
+  const first = (...selectors) => selectors.map(found).find((element) => boxOf(element)) || null;
   if (spec.doc) {
-    const value = rectOf(KIBANA.value(spec.doc));
-    rect = value ? joined(value, rectOf(KIBANA.name(spec.doc)))
-      : rectOf(KIBANA.flyout) ? first(KIBANA.fieldFilter) : first(KIBANA.expand);
-  } else if (spec.hits) {
-    rect = first(...KIBANA.hits);
-  } else if (spec.query) {
-    rect = first(KIBANA.query);
-  } else if (spec.sidebar) {
+    const value = found(KIBANA.value(spec.doc));
+    if (boxOf(value)) return { element: value, also: found(KIBANA.name(spec.doc)), stage: "" };
+    if (boxOf(found(KIBANA.flyout))) return { element: first(KIBANA.fieldFilter), stage: "field" };
+    const expand = first(KIBANA.expand);
+    return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
+  }
+  if (spec.hits) return { element: first(...KIBANA.hits), stage: "" };
+  if (spec.query) return { element: first(KIBANA.query), stage: "" };
+  if (spec.sidebar) {
     const title = found(KIBANA.statsTitle);
     const opened = title && title.textContent && title.textContent.includes(spec.sidebar);
-    rect = (opened && first(KIBANA.topValues)) || first(KIBANA.sidebar(spec.sidebar));
+    return { element: (opened && first(KIBANA.topValues)) || first(KIBANA.sidebar(spec.sidebar)), stage: "" };
   }
-  return inFrame(frame, rect);
+  return { element: null, stage: "" };
+}
+
+function coveredIn(doc, element) {
+  const box = boxOf(element);
+  if (!box || typeof doc.elementFromPoint !== "function") return false;
+  const hit = doc.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  if (!hit || hit === element) return false;
+  const holds = (outer, inner) => typeof outer.contains === "function" && outer.contains(inner);
+  return !holds(element, hit) && !holds(hit, element);
+}
+
+function kibanaRect(spec) {
+  const doc = kibanaDoc();
+  if (!doc) return { rect: null, stage: "" };
+  const { element, also, stage } = kibanaFound(doc, spec);
+  if (coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
+  return { rect: inFrame(frame, joined(boxOf(element), boxOf(also))), stage };
+}
+
+function kibanaLoading() {
+  try {
+    const doc = frame.contentDocument;
+    return !doc || doc.readyState === "loading" || !doc.querySelector(KIBANA.query);
+  } catch (error) {
+    return true;
+  }
+}
+
+function kibanaDismiss() {
+  const doc = kibanaDoc();
+  if (!doc || kibanaLoading()) return false;
+  const close = doc.querySelector(KIBANA.close);
+  if (close && typeof close.click === "function") close.click();
+  const view = frame.contentWindow;
+  const Key = view && view.KeyboardEvent;
+  const Mouse = view && view.MouseEvent;
+  const focused = doc.activeElement || doc.body;
+  if (typeof Key === "function" && focused) {
+    ["keydown", "keyup"].forEach((type) => focused.dispatchEvent(
+      new Key(type, { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true })));
+  }
+  if (typeof Mouse === "function" && doc.body) {
+    ["mousedown", "mouseup", "click"].forEach((type) => doc.body.dispatchEvent(new Mouse(type, { bubbles: true, cancelable: true })));
+  }
+  return true;
 }
 
 function devElement(name, step) {
   const named = (wanted) => document.querySelector(`[data-coach="${wanted}"]`);
   const toggle = named("toggle") || field("site-dev-toggle");
-  if (name === "toggle" || !toggle || toggle.getAttribute("aria-pressed") !== "true") return toggle;
+  if (name === "toggle" || !toggle || toggle.getAttribute("aria-pressed") !== "true") {
+    return { element: toggle, stage: name === "toggle" ? "" : "open" };
+  }
   const wanted = pattern(step.check && step.check.match);
   const fits = (row) => !wanted || wanted.test(readable(row.getAttribute("data-url") || ""));
   const rows = Array.from(document.querySelectorAll('[data-coach="row"]'));
   const last = rows.filter(fits).pop() || null;
-  if (name === "row") return last;
+  if (name === "row") return { element: last, stage: "" };
   const picked = rows.find((row) => row.getAttribute("aria-selected") === "true");
-  if (!picked || !fits(picked)) return last;
+  if (!picked || !fits(picked)) return { element: last, stage: "row" };
   const tab = name.startsWith("general.") ? "tab.headers" : name.startsWith("payload.") ? "tab.payload" : "";
   const holder = tab ? named(tab) : null;
-  if (holder && holder.getAttribute("aria-selected") !== "true") return holder;
-  return named(name);
+  if (holder && holder.getAttribute("aria-selected") !== "true") return { element: holder, stage: tab };
+  return { element: named(name), stage: "" };
 }
 
 const BAND_ROWS = 3;
@@ -313,6 +363,7 @@ const ROW_GUESS = 18;
 const SCANNED_LINES = 2000;
 const TABLE_BORDER = /^\s*\+[-+]+\+?\s*$/;
 let textRows = [];
+let bandRows = [];
 
 function logicalLines(buffer, from, to) {
   const lines = [];
@@ -320,9 +371,9 @@ function logicalLines(buffer, from, to) {
     const line = buffer.getLine(row);
     const text = line ? line.translateToString(true) : "";
     if (line && line.isWrapped && lines.length) {
-      const joined = lines[lines.length - 1];
-      joined.text += text;
-      joined.last = row;
+      const joinedLine = lines[lines.length - 1];
+      joinedLine.text += text;
+      joinedLine.last = row;
     } else {
       lines.push({ text, first: row, last: row });
     }
@@ -332,6 +383,7 @@ function logicalLines(buffer, from, to) {
 
 function termRect(spec) {
   textRows = [];
+  bandRows = [];
   if (!paneOpen(spec.pane)) return null;
   const host = terminalPanes[spec.pane] ? terminalPanes[spec.pane]() : null;
   const box = boxOf(host);
@@ -348,9 +400,12 @@ function termRect(spec) {
   if (!buffer || typeof buffer.getLine !== "function" || !wanted) return bottom(BAND_ROWS * rowHeight);
   const top = buffer.viewportY || 0;
   const rowBox = (row, columns) => ({ left: area.left, top: area.top + (row - top) * rowHeight, width: columns * cellWidth, height: rowHeight });
-  for (let row = top; row < Math.min(buffer.length, top + term.rows); row += 1) {
+  const lengthOf = (row) => {
     const line = buffer.getLine(row);
-    const length = line ? line.translateToString(true).length : 0;
+    return line ? line.translateToString(true).length : 0;
+  };
+  for (let row = top; row < Math.min(buffer.length, top + term.rows); row += 1) {
+    const length = lengthOf(row);
     if (length) textRows.push(inFrame(host, rowBox(row, length)));
   }
   textRows = textRows.filter(Boolean);
@@ -370,6 +425,11 @@ function termRect(spec) {
   const wide = block.some((line) => line.last > line.first) ? term.cols || 80 : columns;
   const shown = block[0].first - top;
   if (shown + rows <= 0 || shown >= term.rows) return null;
+  for (let row = block[0].first; row <= block[block.length - 1].last; row += 1) {
+    const length = lengthOf(row);
+    if (length) bandRows.push(inFrame(host, rowBox(row, length)));
+  }
+  bandRows = bandRows.filter(Boolean);
   return inFrame(host, { ...rowBox(block[0].first, wide), height: rows * rowHeight });
 }
 
@@ -387,15 +447,6 @@ function siteRect(selector) {
   return askFrame(field("site-frame"), site.origin, SITE_HOME);
 }
 
-function kibanaLoading() {
-  try {
-    const doc = frame.contentDocument;
-    return !doc || doc.readyState === "loading" || !doc.querySelector(KIBANA.query);
-  } catch (error) {
-    return true;
-  }
-}
-
 function settling(target) {
   if (target.kind === "term") return true;
   if (target.kind === "map") return !topo.drawn;
@@ -409,6 +460,72 @@ function mapRect(spec) {
   return askFrame(field("topology-frame"), topologyOrigin(), spec);
 }
 
+const mapZones = () => asking.zones.map((zone) => inFrame(field("topology-frame"), zone)).filter(Boolean);
+
+const MAP_FIT_AGAIN_MS = 3000;
+let fitTimer = null;
+
+function mapFit() {
+  if (typeof topologyRefit === "function") topologyRefit();
+  const host = field("topology-frame");
+  const origin = topologyOrigin();
+  if (!topo.drawn || !origin || !host.contentWindow) return;
+  try {
+    host.contentWindow.postMessage({ fslFit: true }, origin);
+  } catch (error) {
+    return;
+  }
+}
+
+function mapFitSoon() {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => { if (paneOpen("topology")) mapFit(); }, 250);
+}
+
+const RULE_LINE = 16;
+const RULE_PAD = 8;
+let rulesKnown = null;
+let rulesAdded = [];
+const sidOf = (line) => (/\bsid\s*:\s*(\d+)/.exec(line) || [])[1] || "";
+
+function ownRuleLines() {
+  const box = field("lesson-rules-text");
+  if (!box) return [];
+  return box.value.split("\n").map((text, index) => ({ text, index, sid: sidOf(text) })).filter(({ sid }) =>
+    sid && (rulesAdded.includes(sid) || (rulesKnown && !rulesKnown.has(sid))));
+}
+
+function ruleTarget(editing) {
+  const box = field("lesson-rules-text");
+  const apply = { element: field("lesson-rules-apply"), line: -1, stage: "apply" };
+  if (!box) return apply;
+  const own = ownRuleLines();
+  if (editing) {
+    if (!own.length) return { element: null, line: -1, stage: "" };
+    const fix = own.find(({ text }) => !/\bnocase\b/.test(text));
+    return fix ? { element: null, line: fix.index } : apply;
+  }
+  if (own.length) return apply;
+  const lines = box.value.split("\n");
+  return lines.length && !lines[lines.length - 1].trim() ? { element: null, line: lines.length - 1 } : apply;
+}
+
+function ruleLineRect(index) {
+  const box = field("lesson-rules-text");
+  const outer = boxOf(box);
+  if (!outer) return null;
+  const top = outer.top + RULE_PAD + 1 + index * RULE_LINE - (box.scrollTop || 0);
+  return clipped({ left: outer.left + RULE_PAD, top, width: Math.max(0, outer.width - 2 * RULE_PAD - 2), height: RULE_LINE }, outer);
+}
+
+function ruleLineShown(index) {
+  const box = field("lesson-rules-text");
+  if (!box) return;
+  const visible = box.clientHeight || 0;
+  const at = RULE_PAD + index * RULE_LINE;
+  if (at < (box.scrollTop || 0) || at + RULE_LINE > (box.scrollTop || 0) + visible) box.scrollTop = Math.max(0, at - visible / 2);
+}
+
 const LOCATORS = ["panel", "map", "site", "dev", "kibana", "term"];
 const LOCATOR_PANES = { map: "topology", site: "site", dev: "site", kibana: "elk" };
 const paneFor = (target, point) => (target && (target.kind === "term" ? target.spec.pane : LOCATOR_PANES[target.kind]))
@@ -419,19 +536,28 @@ function locatorOf(point) {
   return kind ? { kind, spec: point[kind] } : null;
 }
 
-function locate(target, step) {
-  if (target.kind === "panel") return boxOf(document.querySelector(target.spec));
-  if (target.kind === "dev") {
-    const element = paneOpen("site") ? devElement(target.spec, step) : null;
-    const tools = field("site-dev");
-    const within = tools && typeof tools.contains === "function" && tools.contains(element);
-    return clipped(boxOf(element), within ? boxOf(tools) : null);
+const NOT_FOUND = { rect: null, stage: "", line: -1 };
+
+function locate(target, step, editing) {
+  if (target.kind === "panel") {
+    const element = document.querySelector(target.spec);
+    if (element && element.id === "lesson-rules" && step.check.kind === "rules") {
+      const aimed = ruleTarget(editing);
+      return { rect: aimed.line >= 0 ? ruleLineRect(aimed.line) : boxOf(aimed.element), stage: aimed.stage || "", line: aimed.line };
+    }
+    return { ...NOT_FOUND, rect: boxOf(element) };
   }
-  if (target.kind === "kibana") return kibanaRect(target.spec);
-  if (target.kind === "term") return termRect(target.spec);
-  if (target.kind === "site") return siteRect(target.spec);
-  if (target.kind === "map") return mapRect(target.spec);
-  return null;
+  if (target.kind === "dev") {
+    const { element, stage } = paneOpen("site") ? devElement(target.spec, step) : { element: null, stage: "" };
+    const tools = field("site-dev");
+    const inside = tools && typeof tools.contains === "function" && tools.contains(element);
+    return { ...NOT_FOUND, rect: clipped(boxOf(element), inside ? boxOf(tools) : null), stage };
+  }
+  if (target.kind === "kibana") return { ...NOT_FOUND, ...kibanaRect(target.spec) };
+  if (target.kind === "term") return { ...NOT_FOUND, rect: termRect(target.spec) };
+  if (target.kind === "site") return { ...NOT_FOUND, rect: siteRect(target.spec) };
+  if (target.kind === "map") return { ...NOT_FOUND, rect: mapRect(target.spec) };
+  return NOT_FOUND;
 }
 
 const RING_PAD = 6;
@@ -451,7 +577,11 @@ function placed(element, box) {
   Object.assign(element.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
 }
 
-function calloutSpot(target, size, bounds, crowd = []) {
+const centreOf = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+const apart = (a, b) => Math.hypot(centreOf(a).x - centreOf(b).x, centreOf(a).y - centreOf(b).y);
+
+function calloutSpot(target, size, bounds, options = {}) {
+  const { crowd = [], kind = "", bands = [], zones = [], holder = null } = options;
   const avoid = grown(target, RING_PAD + RING + 2);
   const middleY = target.top + target.height / 2 - size.height / 2;
   const middleX = target.left + target.width / 2 - size.width / 2;
@@ -465,9 +595,27 @@ function calloutSpot(target, size, bounds, crowd = []) {
     { left: clampX(middleX), top: avoid.top + avoid.height + CALLOUT_GAP },
     { left: clampX(middleX), top: avoid.top - CALLOUT_GAP - size.height },
   ];
-  const spots = target.height > TALL_TARGET ? [...across, ...beside] : [...beside, ...across];
-  const clear = (spot) => within(spot, bounds) && !overlaps(spot, avoid) && !crowd.some((text) => overlaps(spot, text));
-  const sized = spots.map((spot) => ({ ...spot, ...size }));
+  const corners = [
+    { left: bounds.left + EDGE, top: bounds.top + EDGE },
+    { left: bounds.left + bounds.width - size.width - EDGE, top: bounds.top + EDGE },
+    { left: bounds.left + EDGE, top: bounds.top + bounds.height - size.height - EDGE },
+    { left: bounds.left + bounds.width - size.width - EDGE, top: bounds.top + bounds.height - size.height - EDGE },
+  ].map((spot) => ({ ...spot, ...size })).sort((a, b) => apart(a, target) - apart(b, target));
+  const rowEnds = bands.slice().reverse().map((row) => ({ left: row.left + row.width + CALLOUT_GAP, top: row.top }));
+  const siblings = kind === "site" ? [{ left: bounds.left, top: target.top, width: bounds.width, height: target.height }] : [];
+  const outside = holder ? [
+    { left: clampX(holder.left), top: holder.top + holder.height + CALLOUT_GAP },
+    { left: clampX(holder.left), top: holder.top - CALLOUT_GAP - size.height },
+  ] : [];
+  const near = target.height > TALL_TARGET ? [...across, ...beside] : [...beside, ...across];
+  const ordered = {
+    term: [...rowEnds, ...beside, ...across],
+    site: [across[0], beside[1], across[1], beside[0]],
+    map: zones.length ? [...near, ...corners] : [...corners, ...near],
+  }[kind] || [...outside, ...near];
+  const blocked = [...crowd, ...zones, ...siblings, ...(holder ? [holder] : [])];
+  const clear = (spot) => within(spot, bounds) && !overlaps(spot, avoid) && !blocked.some((box) => overlaps(spot, box));
+  const sized = ordered.map((spot) => ({ ...spot, ...size }));
   const free = sized.find(clear);
   if (free || !crowd.length) return free || null;
   const nearby = [];
@@ -482,28 +630,51 @@ function calloutSpot(target, size, bounds, crowd = []) {
   return nearby.find(clear) || null;
 }
 
-function highlight(rect, callout, crowd = []) {
+function leaderLine(leader, tip, ring) {
+  const from = centreOf(tip);
+  const onRing = { x: Math.max(ring.left, Math.min(from.x, ring.left + ring.width)), y: Math.max(ring.top, Math.min(from.y, ring.top + ring.height)) };
+  const onTip = { x: Math.max(tip.left, Math.min(onRing.x, tip.left + tip.width)), y: Math.max(tip.top, Math.min(onRing.y, tip.top + tip.height)) };
+  const length = Math.hypot(onRing.x - onTip.x, onRing.y - onTip.y);
+  if (length <= 2 * CALLOUT_GAP) {
+    leader.classList.add("hidden");
+    return;
+  }
+  Object.assign(leader.style, {
+    left: `${onTip.x}px`, top: `${onTip.y}px`, width: `${length}px`,
+    transform: `rotate(${Math.atan2(onRing.y - onTip.y, onRing.x - onTip.x)}rad)`,
+  });
+  leader.classList.remove("hidden");
+}
+
+function highlight(rect, callout, options = {}) {
   const ring = field("coach-ring");
   const dim = field("coach-dim");
   const tip = field("coach-callout");
+  const leader = field("coach-leader");
   if (!rect) {
-    [ring, dim, tip].forEach((element) => element.classList.add("hidden"));
+    [ring, dim, tip, leader].forEach((element) => element.classList.add("hidden"));
     return;
   }
   const pane = boxOf(field("pane"));
+  const noteBox = boxOf(field("lesson-body")) || boxOf(field("lesson"));
   const centre = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 };
-  const dimmed = Boolean(pane) && within(centre, pane);
-  const ringed = (dimmed && clipped(padded(rect), pane)) || padded(rect);
+  const inPane = Boolean(pane) && within(centre, pane);
+  const inNote = !inPane && Boolean(noteBox) && within(centre, noteBox);
+  const banded = options.kind === "term";
+  const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height } : padded(rect);
+  const ringed = (inPane && clipped(shape, pane)) || shape;
   placed(ring, ringed);
+  ring.classList.toggle("inset", banded);
   ring.classList.remove("hidden");
-  dim.classList.toggle("hidden", !dimmed);
-  if (dimmed) {
+  dim.classList.toggle("hidden", !inPane);
+  if (inPane) {
     placed(dim, pane);
     placed(field("coach-hole"), { ...ringed, left: ringed.left - pane.left, top: ringed.top - pane.top });
   }
-  const bounds = boxOf(field("pane-body"));
+  const bounds = inNote ? noteBox : (options.kind === "map" && boxOf(field("topology-frame"))) || boxOf(field("pane-body"));
   if (!callout || !bounds) {
     tip.classList.add("hidden");
+    leader.classList.add("hidden");
     return;
   }
   tip.textContent = callout;
@@ -511,9 +682,14 @@ function highlight(rect, callout, crowd = []) {
   tip.style.maxWidth = `${Math.max(0, bounds.width - 2 * EDGE)}px`;
   tip.classList.remove("hidden");
   const size = { width: tip.offsetWidth || CALLOUT_GUESS.width, height: tip.offsetHeight || CALLOUT_GUESS.height };
-  const spot = calloutSpot(rect, size, bounds, crowd);
+  const spot = calloutSpot(rect, size, bounds, options);
   tip.classList.toggle("hidden", !spot);
-  if (spot) Object.assign(tip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
+  if (!spot) {
+    leader.classList.add("hidden");
+    return;
+  }
+  Object.assign(tip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
+  leaderLine(leader, { ...spot, ...size }, ringed);
 }
 
 const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
@@ -528,6 +704,12 @@ const HELP_AFTER_SECONDS = 60;
 const SKIP_OFFERED = 3;
 const POLL_SECONDS = 5;
 const MISSING_AFTER_FRAMES = 120;
+const SITE_SILENT_MS = 3000;
+const STAGE_KEYS = {
+  open: "lesson.dev.open", row: "lesson.dev.row", "tab.headers": "lesson.dev.tab.headers", "tab.payload": "lesson.dev.tab.payload",
+  query: "lesson.kibana.query", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
+  apply: "lesson.rules.press_apply",
+};
 const paneName = (name) => {
   const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
   return label && label.textContent ? label.textContent : name;
@@ -537,11 +719,13 @@ function choiceLabel(prefix, step, option) {
   return localized(`lesson.choice.${option}`, localized(`${prefix}.option.${step.id}.${option}`, option));
 }
 
+const usable = (tab) => Boolean(tab) && !tab.classList.contains("hidden") && !tab.disabled;
+
 function landingPane(steps, at) {
   const opened = (step) => step && step.point && step.point.opens;
   const before = steps.slice(0, at + 1).reverse().find(opened);
   const named = opened(before) || opened(steps.find(opened));
-  return named && paneTab(named) && !paneTab(named).classList.contains("hidden") ? named : "elk";
+  return named && usable(paneTab(named)) ? named : "elk";
 }
 
 function coach(prefix, declared) {
@@ -562,13 +746,21 @@ function coach(prefix, declared) {
   let last = "";
   let lost = 0;
   let picked = [];
+  let dismissed = -1;
+  let homed = -1;
+  let lined = -1;
+  let fitAsked = 0;
+  let coveredSaid = false;
+  let siteLoadedAt = 0;
   const carried = new Map();
   const recalled = new Set();
   const saidOnPass = new Map();
   const check = () => steps[at].check;
   const recordOf = (step) => progress[step.id] || {};
   const solo = () => Boolean(steps[at].solo);
+  const done = (step) => Boolean(recordOf(step).passed);
   const titleOf = (step) => localized(`${prefix}.title.${step.id}`, t(`${prefix}.label.${step.id}`));
+  const firstRules = () => steps.findIndex((step) => step.check.kind === "rules");
   const openedPane = () => {
     const tab = document.querySelector('.pane-tab[aria-selected="true"]');
     return tab ? tab.dataset.pane : "";
@@ -607,12 +799,12 @@ function coach(prefix, declared) {
     const passedCount = steps.filter((step) => recordOf(step).passed).length;
     field("lesson-step-count").textContent = t("lesson.steps.passed", passedCount, steps.length);
     field("lesson-step-list").innerHTML = steps.map((step, index) => {
-      const done = Boolean(recordOf(step).passed);
+      const passed = Boolean(recordOf(step).passed);
       const current = index === at;
-      const skipped = !done && !current && Boolean(recordOf(step).skipped);
-      const mark = done ? "✓" : skipped ? "○" : String(index + 1);
-      const circle = done ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
-      const words = current ? "font-semibold text-heading" : done ? "text-muted" : "text-faint";
+      const skipped = !passed && !current && Boolean(recordOf(step).skipped);
+      const mark = passed ? "✓" : skipped ? "○" : String(index + 1);
+      const circle = passed ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
+      const words = current ? "font-semibold text-heading" : passed ? "text-muted" : "text-faint";
       const help = skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
       return `<li><button type="button" data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
         <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
@@ -635,18 +827,19 @@ function coach(prefix, declared) {
 
   function showHelp() {
     const step = steps[at];
-    const lines = solo() ? [] : helpLines(step);
+    const passed = done(step) && !finished;
+    const lines = solo() || passed ? [] : helpLines(step);
     field("step-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
     shownSection("step-help", lines.length > 0);
     offered = false;
     field("step-hint").textContent = t("lesson.hint.more");
     field("step-hint").classList.remove("btn-blue");
-    field("step-hint").classList.toggle("hidden", solo() || level >= SKIP_OFFERED || finished);
-    field("step-skip").classList.toggle("hidden", finished || !(solo() || level >= SKIP_OFFERED));
+    field("step-hint").classList.toggle("hidden", solo() || passed || level >= SKIP_OFFERED || finished);
+    field("step-skip").classList.toggle("hidden", finished || passed || !(solo() || level >= SKIP_OFFERED));
   }
 
   function offerHint() {
-    if (offered || solo()) return;
+    if (offered || solo() || done(steps[at])) return;
     offered = true;
     field("step-hint").textContent = t("lesson.hint.available");
     field("step-hint").classList.add("btn-blue");
@@ -691,6 +884,7 @@ function coach(prefix, declared) {
 
   function courseSummary() {
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
+      <p class="text-muted text-[12.5px] whitespace-pre-line">${esc(t("lesson.course.scores"))}</p>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>`;
   }
 
@@ -732,7 +926,7 @@ function coach(prefix, declared) {
     }
     const before = runOf(at);
     if (!finished && before && carried.has(before.id)) {
-      html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id))}</ul>`;
+      html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id), false)}</ul>`;
     }
     act.innerHTML = html;
     shownSection("step-act", Boolean(html));
@@ -777,12 +971,21 @@ function coach(prefix, declared) {
     return steps.indexOf(run) === index - 1 || kibana ? run : null;
   }
 
+  function runWindow() {
+    const run = finished ? null : runOf(at);
+    const row = run ? carried.get(run.id) : null;
+    return row && row.discover ? row.discover : "";
+  }
+
   async function recall(kali, step) {
     recalled.add(kali.id);
     const verdict = await judged(kali, { poll: true });
     if (!verdict || !verdict.kali || carried.has(kali.id)) return;
     carried.set(kali.id, verdict.kali);
-    if (steps[at] === step) action();
+    if (steps[at] === step) {
+      action();
+      opener();
+    }
   }
 
   function command() {
@@ -792,16 +995,38 @@ function coach(prefix, declared) {
   }
 
   function opener() {
-    const opens = paneFor(targetOf(steps[at]), steps[at].point);
-    const needed = Boolean(opens) && !finished && !paneOpen(opens) && Boolean(paneTab(opens));
-    field("step-open").textContent = needed ? t(`lesson.open.${opens}`) : "";
-    field("step-open").dataset.pane = needed ? opens : "";
-    field("step-open").classList.toggle("hidden", !needed);
+    const step = steps[at];
+    const opens = paneFor(targetOf(step), step.point);
+    const runAt = opens === "elk" ? runWindow() : "";
+    const needed = !finished && Boolean(opens) && usable(paneTab(opens)) && (Boolean(runAt) || !paneOpen(opens));
+    const button = field("step-open");
+    button.textContent = needed ? (runAt ? t("lesson.kali.window") : t(`lesson.open.${opens}`)) : "";
+    button.dataset.pane = needed ? opens : "";
+    if (needed && runAt) button.dataset.discover = runAt;
+    else button.removeAttribute("data-discover");
+    button.classList.toggle("hidden", !needed);
   }
 
   function finishedText() {
     if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
     return t(foundation ? "lesson.course.done" : "lesson.done");
+  }
+
+  function nextStyled() {
+    const passed = done(steps[at]) && !finished;
+    field("step-next").classList.toggle("btn-blue", passed);
+    field("step-next").classList.toggle("btn-ghost", !passed);
+    field("step-next").classList.toggle("hidden", finished);
+  }
+
+  function objectivesPlaced(step) {
+    const card = field("lesson-objectives");
+    const body = field("lesson-body");
+    const aimed = !finished && typeof step.point.panel === "string" && step.point.panel.startsWith("#lesson-objectives");
+    const anchor = aimed ? field("step-card") : field("theory-card");
+    if (typeof body.insertBefore !== "function" || !anchor) return;
+    if (anchor.nextElementSibling !== card) body.insertBefore(card, anchor.nextSibling);
+    if (aimed && typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest" });
   }
 
   function show() {
@@ -816,7 +1041,8 @@ function coach(prefix, declared) {
     const question = !finished && titled && ANSWERED.includes(check().kind) ? localized(`${prefix}.label.${step.id}`, "") : "";
     field("step-question").textContent = question;
     field("step-question").classList.toggle("hidden", !question);
-    status(AUTOMATIC.includes(check().kind) && !finished ? t("lesson.status.auto") : "");
+    status(AUTOMATIC.includes(check().kind) && !finished && !done(step) ? t("lesson.status.auto") : "");
+    field("step-said").style.order = finished ? "-1" : "";
     picked = [];
     action();
     command();
@@ -824,38 +1050,93 @@ function coach(prefix, declared) {
     showHelp();
     field("step-back").disabled = at === 0;
     field("step-next").disabled = at === steps.length - 1;
+    nextStyled();
+    objectivesPlaced(step);
     stepList();
+    if (paneOpen("topology")) mapFit();
     last = "";
     lost = 0;
+    coveredSaid = false;
   }
 
   const following = (step) => step.point.until === "sent" && sentSince && Boolean(step.point.then);
 
   function targetOf(step) {
-    if (step.solo || finished) return null;
+    if (step.solo || finished || done(step)) return null;
     return locatorOf(following(step) ? step.point.then : step.point);
+  }
+
+  function calloutFor(step, target, found, home) {
+    if (!target) return "";
+    if (home) return t("lesson.site.home");
+    if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
+    if (found.stage) return localized(STAGE_KEYS[found.stage], "");
+    return localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "");
+  }
+
+  function settleKibana() {
+    if (dismissed === at || !paneOpen("elk")) return;
+    if (kibanaDismiss()) dismissed = at;
+  }
+
+  function siteHomeward() {
+    if (homed === at || !paneOpen("site") || !site.history.length || site.expecting || site.busy) return;
+    const unanswered = !asking.answered && asking.since && siteLoadedAt
+      && Date.now() - asking.since > SITE_SILENT_MS && Date.now() - siteLoadedAt > SITE_SILENT_MS;
+    const nowhere = asking.answered && !asking.rect && siteHome.on;
+    if (!unanswered && !nowhere) return;
+    homed = at;
+    console.log(`coach: no ${siteHome.selector || "target"} on ${site.history[site.at]}, going back to the front page`);
+    siteGo("/");
+  }
+
+  function mapChase(rect) {
+    if (rect || !topo.drawn || !paneOpen("topology") || !asking.answered || Date.now() - fitAsked < MAP_FIT_AGAIN_MS) return;
+    fitAsked = Date.now();
+    mapFit();
+  }
+
+  function coveredSay(text) {
+    if (text) {
+      status(text);
+      coveredSaid = true;
+    } else if (coveredSaid) {
+      status("");
+      coveredSaid = false;
+    }
   }
 
   function tick() {
     const step = steps[at];
     const target = targetOf(step);
-    const rect = target ? locate(target, step) : null;
+    settleKibana();
+    const found = target ? locate(target, step, firstRules() !== at) : NOT_FOUND;
+    const rect = found.rect;
     if (!target || (target.kind !== "map" && target.kind !== "site")) stopAsking();
     const needed = paneFor(target, step.point);
     const waiting = Boolean(needed) && !paneOpen(needed);
+    if (target && target.kind === "site") siteHomeward();
+    if (target && target.kind === "map") mapChase(rect);
+    if (target && found.line >= 0 && lined !== at) {
+      lined = at;
+      ruleLineShown(found.line);
+    }
     lost = rect || !target || waiting || settling(target) ? 0 : lost + 1;
-    const missing = lost >= MISSING_AFTER_FRAMES;
-    const key = rect ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join() : "none";
+    if (lost === MISSING_AFTER_FRAMES) console.log(`coach: no target for step ${step.id} in pane ${needed || openedPane()}`, JSON.stringify(target));
     const home = Boolean(target) && target.kind === "site" && siteHome.on;
-    const callout = !target ? "" : home ? t("lesson.site.home")
-      : localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "");
-    const crowd = target && target.kind === "term" ? textRows : [];
-    const drawn = [key, at, missing, callout, note.open, waiting, finished, crowd.length].join("|");
+    const callout = calloutFor(step, target, found, home);
+    const kind = target ? target.kind : "";
+    const crowd = kind === "term" ? textRows : [];
+    const zones = kind === "map" ? mapZones() : [];
+    const layout = [boxOf(field("pane")), boxOf(field("lesson"))].map(rounded).join("/");
+    const drawn = [rounded(rect) || "none", at, found.stage, callout, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
     if (drawn !== last) {
       last = drawn;
-      highlight(rect, callout, crowd);
-      field("step-missing").classList.toggle("hidden", !missing);
-      if (missing) field("step-missing").textContent = t("lesson.coach.missing", paneName(needed || openedPane()));
+      const marked = kind === "panel" ? document.querySelector(target.spec) : null;
+      const section = marked && typeof marked.closest === "function" ? marked.closest("section") : null;
+      const holder = section && section !== marked ? boxOf(section) : marked && marked.id === "lesson-rules" ? boxOf(marked) : null;
+      highlight(rect, callout, { crowd, kind, bands: kind === "term" ? bandRows : [], zones, holder });
+      coveredSay(found.stage === "covered" && !rect ? callout : "");
       opener();
     }
     requestAnimationFrame(tick);
@@ -876,15 +1157,24 @@ function coach(prefix, declared) {
     go(index);
   }
 
+  function rulesLearned() {
+    const step = steps[at];
+    if (step.check.kind === "rules" && !done(step) && !finished) run(step, false);
+  }
+
   function go(index) {
     at = Math.max(0, Math.min(steps.length - 1, index));
     level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
     seconds = 0;
     finished = false;
     sentSince = false;
+    dismissed = -1;
+    homed = -1;
+    lined = -1;
     say("", "");
     show();
     reach(steps[at]);
+    rulesLearned();
   }
 
   function finish() {
@@ -925,6 +1215,9 @@ function coach(prefix, declared) {
     const ok = spoken(recordOf(step).ok) || localized(`${prefix}.ok.${step.id}`, "");
     say([`✓ ${ok}`.trim(), line].filter(Boolean).join(" "), "ok");
     status("");
+    coveredSaid = false;
+    showHelp();
+    nextStyled();
     field("step-act").querySelectorAll("form button, input, textarea, [data-act]").forEach((control) => {
       if (!control.dataset.discover) control.disabled = true;
     });
@@ -933,6 +1226,7 @@ function coach(prefix, declared) {
       finish();
       return;
     }
+    if (!ANSWERED.includes(step.check.kind)) return;
     passing = true;
     setTimeout(() => {
       passing = false;
@@ -959,6 +1253,7 @@ function coach(prefix, declared) {
           link.addEventListener("click", () => showInKibana(link.dataset.discover)));
       }
     }
+    if (Array.isArray(verdict.added)) rulesAdded = verdict.added.map(String);
     if (verdict.loot && verdict.loot.matched && verdict.loot.matched.length) {
       saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
     }
@@ -972,7 +1267,7 @@ function coach(prefix, declared) {
   }
 
   async function run(step, loud) {
-    if (checking || steps[at] !== step || finished || passing) return;
+    if (checking || steps[at] !== step || finished || passing || done(step)) return;
     checking = true;
     if (loud) status(t("lesson.status.checking"));
     try {
@@ -1011,18 +1306,27 @@ function coach(prefix, declared) {
   site.heard.push((path) => {
     askAgain(field("site-frame"));
     siteHome.on = false;
+    siteLoadedAt = Date.now();
     const step = steps[at];
     const wanted = pattern(step.check.match);
     if (!wanted || !wanted.test(readable(path))) return;
     sentSince = true;
     if (step.check.kind === "sent") setTimeout(() => run(step, false), SENT_SETTLES_MS);
   });
-  topo.drawnHeard.push(() => askAgain(field("topology-frame")));
-  field("site-frame").addEventListener("load", () => askAgain(field("site-frame")));
-  paneOpened.push(() => {
+  topo.drawnHeard.push(() => {
+    askAgain(field("topology-frame"));
+    mapFit();
+  });
+  field("site-frame").addEventListener("load", () => {
+    askAgain(field("site-frame"));
+    siteLoadedAt = Date.now();
+  });
+  paneOpened.push((name) => {
     last = "";
     opener();
+    if (name === "topology") mapFitSoon();
   });
+  if (typeof ResizeObserver === "function") new ResizeObserver(mapFitSoon).observe(field("topology"));
 
   setInterval(() => {
     if (finished || sessionClosed() || document.hidden) return;
@@ -1041,15 +1345,26 @@ function coach(prefix, declared) {
   field("step-hint").addEventListener("click", escalate);
   field("step-skip").addEventListener("click", skip);
   field("step-open").addEventListener("click", () => {
-    const tab = paneTab(field("step-open").dataset.pane);
+    const button = field("step-open");
+    if (button.dataset.discover) {
+      showInKibana(button.dataset.discover);
+      return;
+    }
+    const tab = paneTab(button.dataset.pane);
     if (tab) openPane(tab);
   });
-  if (steps.some((step) => step.point.opens === "rules")) rulesPane();
+  const editsRules = steps.some((step) => step.point.opens === "rules" || step.check.kind === "rules");
+  if (editsRules) rulesPane();
+  if (paneTab("rules")) {
+    paneTab("rules").classList.remove("hidden");
+    paneTab("rules").disabled = !editsRules;
+  }
   shownSection("steps-card");
   level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
   openPane(paneTab(landingPane(steps, at)));
   show();
   reach(steps[at]);
+  rulesLearned();
   requestAnimationFrame(tick);
   return (id) => go(steps.findIndex((step) => step.id === id));
 }
@@ -1066,6 +1381,7 @@ async function loadRules() {
   }
   field("lesson-rules-text").value = read.body.content || "";
   rulesVersion = read.body.version || "";
+  if (!rulesKnown) rulesKnown = new Set((read.body.content || "").split("\n").map(sidOf).filter(Boolean));
   status.textContent = "";
 }
 
@@ -1112,8 +1428,9 @@ async function applyRules() {
 
 function rulesEditor() {
   shownSection("lesson-rules");
-  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10"
-    class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight whitespace-pre overflow-x-auto"></textarea>`;
+  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="off"
+    class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre overflow-auto"
+    style="padding: ${RULE_PAD}px; font-size: 11.5px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
   field("lesson-rules-validate").addEventListener("click", validateRules);
   field("lesson-rules-apply").addEventListener("click", applyRules);
   loadRules();
