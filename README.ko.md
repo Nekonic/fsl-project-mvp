@@ -131,7 +131,7 @@ HTTP로 직접 읽습니다(`BOARD_API_URL`). compose에서 Kali 터미널(레�
 터미널, 그리고 레슨·시나리오에서 블루팀 콘솔의 Kali 창)은 Kali 자체의 ttyd이고,
 플랫폼의 nginx가 해당 세션의 `fsl-<id>-kali-1`을 `/terminal/<세션 id>/`로
 제공합니다. OpenStack에서는 플랫폼 안의 ttyd가 세션 슬롯에 있는 Kali의 `mgmt`
-주소로 ssh 접속하며(`/vm-terminal/fsl-kali/?arg=<세션 id>`), 프롬프트는
+주소로 ssh 접속하며(`/vm-terminal/kali/?arg=<세션 id>`), 프롬프트는
 Kali 자체의 `(kali㉿kali)`로 보입니다(WAF는 `ubuntu@waf`).
 네트워크 구성은 `docs/ARCHITECTURE.ko.md`에 있습니다.
 
@@ -188,7 +188,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | 포트 | | 사용처 |
 |---|---|---|
-| 8000 | 콘솔, `/api/`, `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 쉘, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 터미널 | 사용자의 브라우저 |
+| 8000 | 콘솔, `/api/`, `/kibana/`의 Kibana, `/terminal/<세션 id>/`의 세션별 Kali ttyd, `/waf-terminal/<세션 id>/`의 세션별 WAF 쉘, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 터미널 | 사용자의 브라우저 |
 | 8002 | 블루팀 콘솔의 웹사이트 창: `/site/<세션 id>/<host>/`, 고객 주소에서 해당 세션의 WAF로 보냄(OpenStack에서는 Kali에서 에지를 거쳐) | 사용자 브라우저 안의 iframe |
 | 3080 | `gns3`, GNS3 3.1의 API와 웹 UI: 세션마다 학습자용 구성도를 제공합니다. 학습자가 방어하는 회사 네트워크를 실습 네트워크 구성도로 그린 것입니다(역할 이름, 링크 끝마다 인터페이스와 프리픽스가 붙은 주소, `kali`와 `customers`에는 인터페이스만, 인터넷을 제외한 각 영역에는 네트워크를 캡션으로 표시; 관리망, 플랫폼, 장비 자체의 이름은 표시하지 않음). 슬롯(OpenStack) 또는 세션(Docker)과 그 세션의 워게임마다 영어와 한국어로 하나씩 두고, 모든 노드를 시작한 채 열어 둡니다(호스트마다 고정한 busybox 이미지 하나로 만든 표시용 컨테이너라 링크 끝이 모두 초록색입니다. 실제 장비는 훈련 환경에서 실행됩니다). 전체 배선은 `deploy/topology/system/`에 있고 학습자에게는 제공하지 않습니다. 블루팀 콘솔의 구성도 창(구성도 탭)은 `/static/web-ui/fsl-auditor.html`을 iframe으로 띄웁니다. 이 페이지는 읽기 전용으로 로그인하고 웹 UI의 사용 통계 전송을 끈 뒤, 해당 세션의 구성도를 콘솔 표시 언어로, 보기 전용으로(편집 컨트롤 없음, 드래그로 이동, 휠로 확대·축소) 창 크기에 맞춰 보여 줍니다. 컨테이너에는 `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스가 있습니다. GNS3가 스위치를 실행하고 docker 노드를 시작하는 데 필요합니다(`docs/ARCHITECTURE.md`, The topology) | 사용자 브라우저 안의 iframe, 그리고 `mgmt`를 거친 `platform/gns3.py` |
 | 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 에지, WAF, 워게임 호스트의 estate 센서 |

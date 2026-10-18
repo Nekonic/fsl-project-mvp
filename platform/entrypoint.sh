@@ -21,8 +21,8 @@ nginx -t -q -c /app/nginx.conf
   exec nginx -c /app/nginx.conf
 ) &
 
-gosu fsl ttyd -W -a -b /vm-terminal/fsl-kali -t disableResizeOverlay=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh fsl-kali &
-gosu fsl ttyd -W -a -b /vm-terminal/fsl-waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf &
+gosu fsl ttyd -W -a -b /vm-terminal/kali -t disableResizeOverlay=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh fsl-kali &
+gosu fsl ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf &
 gosu fsl ttyd -W -a -b /waf-terminal -t disableResizeOverlay=true -i 127.0.0.1 -p 7693 /app/waf-terminal.sh &
 
 exec gosu fsl sh -c '

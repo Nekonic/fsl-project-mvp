@@ -105,7 +105,7 @@ def _session_7(kind):
     return f"""
       browser.serve((request) => {{
         if (request.route === "/api/sessions/7/") return {{body: {{id: 7, scenario: "board", kind: "{kind}",
-          kali_terminal: "/vm-terminal/fsl-kali/?arg=7", site: {{port: 8002, path: "/site/7/board.com/"}}}}}};
+          kali_terminal: "/vm-terminal/kali/?arg=7", site: {{port: 8002, path: "/site/7/board.com/"}}}}}};
         return {{status: 404, body: {{detail: "not served"}}}};
       }});
     """
@@ -122,7 +122,7 @@ def test_the_red_console_is_the_kali_terminal_and_the_website_and_runs_no_prepar
 
     assert seen["errors"] == []
     assert result["panes"] == ["kali", "site"]
-    assert result["kali"] == "/vm-terminal/fsl-kali/?arg=7"
+    assert result["kali"] == "/vm-terminal/kali/?arg=7"
     assert not [asked for asked in result["asked"] if "/cases/" in asked or "/attacks/" in asked
                 or "/api/attacker/" in asked], result["asked"]
 
@@ -140,7 +140,7 @@ def test_the_blue_console_carries_kali_for_practice_and_not_in_a_wargame(client,
     assert ("kali" in result["panes"]) is shown and result["line"] is shown, (
         "the defender in a person-against-person wargame must not hold the attacker's shell"
     )
-    assert result["kali"] == ("/vm-terminal/fsl-kali/?arg=7" if shown else None)
+    assert result["kali"] == ("/vm-terminal/kali/?arg=7" if shown else None)
 
 OPEN_SESSION = """
 browser.serve((request) => {

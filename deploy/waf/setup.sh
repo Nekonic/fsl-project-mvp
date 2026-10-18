@@ -24,7 +24,7 @@ cat > /usr/local/sbin/set-hostname <<'NAME'
 #!/bin/sh
 set -eu
 [ "$(hostname)" = waf ] && exit 0
-printf 'global(localHostname="%s")\n' "$(hostname)" > /etc/rsyslog.d/05-sender.conf
+printf 'global(localHostname="%s")\n' "$(hostname | sed 's/^fsl-//')" > /etc/rsyslog.d/05-sender.conf
 rsyslogd -N1 >/dev/null 2>&1 || rm -f /etc/rsyslog.d/05-sender.conf
 echo waf > /etc/hostname
 hostname waf
