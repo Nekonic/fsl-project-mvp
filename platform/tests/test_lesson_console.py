@@ -33,6 +33,7 @@ STEPS = [
     {"id": "loot", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"^\|"}}, "check": {"kind": "loot"}},
     {"id": "address", "point": {"opens": "site", "panel": "#site-address"}, "check": {"kind": "answer"}},
     {"id": "write", "point": {"opens": "rules", "panel": "#lesson-rules"}, "check": {"kind": "rules"}},
+    {"id": "replay", "point": {"opens": "site"}, "check": {"kind": "replay"}},
     {"id": "cost", "point": {"panel": "#lesson-objectives .total"}, "check": {"kind": "answer"}},
     {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}},
 ]
@@ -82,6 +83,9 @@ const judge = (id, body) => {
     return range.passed ? passing(id, {kali: {name: "board-sqli-orderby-sqlmap", requests: 1539, sensors: {firewall: 1539},
                                               discover: "/kibana/app/discover#/?run=sqlmap"}})
       : failing(id, body.poll, "lesson.demo.fail");
+  }
+  if (check.kind === "replay") {
+    return range.passed ? passing(id) : failing(id, body.poll, range.attacked ? "lesson.check.replay_benign" : "lesson.check.replay_attack");
   }
   return range.passed ? passing(id) : failing(id, body.poll, "lesson.demo.fail");
 };
@@ -410,7 +414,8 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
       const buttons = card.querySelectorAll('button').filter((button) => !button.classList.contains('hidden') && button.id !== 'step-copy')
         .map((button) => button.textContent);
       const command = {{shown: shown('step-command'), text: browser.text('step-command'), copy: shown('step-copy'),
-                       unwrapped: browser.element('step-command').getAttribute('style').includes('white-space: pre;')}};
+                       wraps: browser.element('step-command').getAttribute('style').includes('white-space: pre-wrap;')
+                                && browser.element('step-command').getAttribute('style').includes('word-break: normal')}};
       range.passed = true;
       await browser.click('#step-act [data-act="kali"]');
       await browser.wait(1600);
@@ -424,7 +429,7 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
     step = STEPS[ids.index("sqlmap")]
 
     assert seen["errors"] == []
-    assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "unwrapped": True}
+    assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "wraps": True}
     assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.more"), english("lesson.coach.back"),
                                  english("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
@@ -986,18 +991,24 @@ def test_a_finished_run_moves_the_ring_from_the_prompt_to_the_check_button(clien
       await frames();
       kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
       await frames();
-      const done = {{text: browser.text('coach-callout'), ring: styled('coach-ring'), dim: shown('coach-dim')}};
+      const press = document.querySelector('[data-act="kali"]');
+      const line = browser.element('step-coach');
+      const done = {{text: browser.text('step-coach'), shown: shown('step-coach'), floating: shown('coach-callout'),
+                    below: line.parentNode.children[line.parentNode.children.indexOf(press) + 1] === line,
+                    ring: styled('coach-ring'), dim: shown('coach-dim')}};
       kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00", "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing");
       await frames();
-      return {{idle, done, again: shown('coach-ring')}};
+      return {{idle, done, again: shown('coach-ring'), gone: shown('step-coach')}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["idle"] == {"shown": True, "top": 96}, "the prompt line is rung before the run"
-    assert result["done"] == {"text": "The run has finished. Press Check.",
-                              "ring": {"left": 1054, "top": 399, "width": 142, "height": 30}, "dim": False}
+    assert result["done"] == {"text": "The run has finished. Press Check.", "shown": True, "floating": False, "below": True,
+                              "ring": {"left": 1054, "top": 399, "width": 142, "height": 30}, "dim": False}, (
+        "the line sits right under the button inside the note, never floating over the run card")
     assert result["again"] is False, "a new command after the finished run leaves nothing to ring until its output ends"
+    assert result["gone"] is False
 
 def test_a_sidebar_step_rings_the_top_values_once_the_popover_shows_that_field_s_name(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1043,7 +1054,7 @@ def test_a_step_that_keeps_the_document_open_does_not_close_the_flyout_on_arriva
     assert seen["errors"] == []
     assert seen["result"] == {"leaving": 1, "kept": 1}
 
-def test_a_hit_count_step_on_an_empty_result_asks_for_the_query_until_it_changes_then_rings_the_empty_notice(client):
+def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previous_result_was_empty_or_not(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       STRINGS.en['lesson.kibana.none'] = 'No events match.';
       STRINGS.en['lesson.kibana.query'] = 'Type the KQL here.';
@@ -1056,18 +1067,23 @@ def test_a_hit_count_step_on_an_empty_result_asks_for_the_query_until_it_changes
       await browser.click('step-open');
       kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
       await frames();
+      const previous = browser.text('coach-callout');
+      input.value = 'status : 200';
+      await frames();
       const counted = browser.text('coach-callout');
+      input.value = 'status : 500';
       kibana.delete('[data-test-subj="discoverQueryHits"]');
       kibana.set('[data-test-subj="discoverNoResults"]', box(400, 300, 300, 40));
       await frames();
       const arrival = {{text: browser.text('coach-callout'), ring: styled('coach-ring').top}};
       input.value = 'url : *nothing*';
       await frames();
-      return {{counted, arrival, none: browser.text('coach-callout'), ring: styled('coach-ring').top}};
+      return {{previous, counted, arrival, none: browser.text('coach-callout'), ring: styled('coach-ring').top}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
+    assert result["previous"] == "Type the KQL here.", "the previous query's count is not this step's answer either"
     assert result["counted"] == "The count."
     assert result["arrival"] == {"text": "Type the KQL here.", "ring": 190}, (
         "the previous step's empty result is not this step's answer: the query bar is rung first")
@@ -1097,8 +1113,11 @@ def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_ha
       placeAt('step-open', box(1060, 300, 120, 28));
       {to("search")}
       await frames();
+      const opener = browser.element('step-open');
+      const line = browser.element('step-coach');
       const closed = {{ring: styled('coach-ring'), ringShown: shown('coach-ring'), dim: shown('coach-dim'),
-                       callout: shown('coach-callout') ? browser.text('coach-callout') : null, spot: callout()}};
+                       callout: shown('step-coach') ? browser.text('step-coach') : null, floating: shown('coach-callout'),
+                       below: line.parentNode.children[line.parentNode.children.indexOf(opener) + 1] === line}};
       await browser.click('[data-pane="elk"]');
       {to("db_ip")}
       await frames(3);
@@ -1113,7 +1132,8 @@ def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_ha
     assert result["closed"]["ring"] == {"left": 1054, "top": 299, "width": 132, "height": 30}
     assert (result["closed"]["ringShown"], result["closed"]["dim"], result["closed"]["callout"]) == (
         True, False, "Open it here first.")
-    assert result["closed"]["spot"]["left"] > 1060 + 120, "beside the button, inside the note column"
+    assert (result["closed"]["floating"], result["closed"]["below"]) == (False, True), (
+        "the line follows the button inside the note and never floats over the task text")
     assert result["solo"] == {"button": True, "ring": False, "callout": False}, "the last step keeps the button and gets no ring"
     assert result["button"] is False, "the objectives card is on screen whichever pane is open"
 
@@ -1325,7 +1345,7 @@ def test_a_callout_for_a_row_of_the_objectives_card_sits_on_the_card_s_title_lin
     assert seen["errors"] == []
     assert seen["result"]["callout"]["top"] == 246, "inside the card, on its title line, clear of the ring"
 
-def test_the_map_waits_for_a_fit_each_time_the_pane_opens_and_the_ring_waits_with_it(client):
+def test_the_map_waits_for_a_fit_only_when_the_pane_opens_at_a_size_it_was_not_fitted_to_and_the_ring_waits_with_it(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       const frameWindow = browser.element('topology-frame').contentWindow;
       const said = (what) => window.dispatchEvent({{type: 'message', data: {{map: what}}, source: frameWindow}});
@@ -1336,9 +1356,182 @@ def test_the_map_waits_for_a_fit_each_time_the_pane_opens_and_the_ring_waits_wit
       await browser.click('[data-pane="elk"]');
       await browser.click('[data-pane="topology"]');
       const reopened = shown('map-wait');
+      await browser.click('[data-pane="elk"]');
+      placeAt('topology-frame', box(60, 96, 700, 704));
+      await browser.click('[data-pane="topology"]');
+      const resized = shown('map-wait');
       said('fitted');
-      return {{loading, drawn, reopened, fitted: shown('map-wait')}};
+      return {{loading, drawn, reopened, resized, fitted: shown('map-wait')}};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"loading": True, "drawn": False, "reopened": True, "fitted": False}
+    assert seen["result"] == {"loading": True, "drawn": False, "reopened": False, "resized": True, "fitted": False}
+
+def test_a_replay_step_lists_which_of_its_two_requests_is_confirmed_while_it_checks_on_its_own(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.replay.attack'] = 'Attack: {{0}}';
+      STRINGS.en['lesson.demo.replay.benign'] = 'Normal: {{0}}';
+      {to("replay")}
+      const first = browser.text('step-status');
+      range.attacked = true;
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      const second = browser.text('step-status');
+      range.passed = true;
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      return {{first, second, third: browser.text('step-status'), shown: shown('step-status')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["first"] == "Attack: waiting\nNormal: waiting"
+    assert seen["result"]["second"] == "Attack: confirmed\nNormal: waiting"
+    assert seen["result"]["shown"] is False, "the pass line takes over once both are confirmed"
+
+def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_off_the_toolbar(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.kibana.top_values'] = 'The most frequent values.';
+      STRINGS.en['lesson.demo.callout.run_source'] = 'Press the field name.';
+      const doc = browser.element('pane-frame').contentDocument;
+      const plain = doc.querySelector;
+      let title = 'Top values';
+      doc.querySelector = (selector) => (selector === '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]'
+        ? {{textContent: title, getBoundingClientRect: () => box(300, 200, 100, 20)}} : plain(selector));
+      {to("run_source")}
+      await browser.click('step-open');
+      kibana.set('[data-test-subj="field-source_ip"]', box(20, 400, 160, 24));
+      kibana.set('[data-test-subj="dscFieldStats-topValues"]', box(200, 450, 260, 30));
+      kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(470, 446, 116, 28));
+      await frames();
+      const before = browser.text('coach-callout');
+      title = 'source_ip';
+      await frames();
+      const spot = callout();
+      return {{before, after: browser.text('coach-callout'), over: meets(spot, {{left: 530, top: 542, width: 116, height: 28}})}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == "Press the field name."
+    assert seen["result"]["after"] == "The most frequent values."
+    assert seen["result"]["over"] is False
+
+def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave_unchanged(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.kibana.query'] = 'Type the KQL here.';
+      {to("logged")}
+      await browser.click('step-open');
+      kibana.set('[data-test-subj="queryInput"]', box(200, 100, 400, 36));
+      kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
+      kibana.set('[data-test-subj="superDatePickerToggleQuickMenuButton"]', box(610, 100, 36, 36));
+      kibana.set('[data-test-subj="superDatePickerstartDatePopoverButton"]', box(650, 100, 150, 36));
+      await frames();
+      const spot = callout();
+      return {{text: browser.text('coach-callout'), over: [[670, 196, 36, 36], [710, 196, 150, 36]].map(([left, top, width, height]) =>
+        meets(spot, {{left, top, width, height}}))}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["text"] == "Type the KQL here."
+    assert seen["result"]["over"] == [False, False]
+
+def test_a_map_callout_that_finds_no_spot_beside_its_label_goes_to_the_nearest_free_row_and_not_to_a_corner(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.board_ip'] = 'The board address.';
+      await frames();
+      window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
+      await frames();
+      const last = posted.filter((one) => one.frame === 'map' && one.data.locate).pop();
+      const text = [{{x: 510, y: 294, w: 220, h: 28}}, {{x: 160, y: 294, w: 220, h: 28}},
+                    {{x: 335, y: 336, w: 220, h: 28}}, {{x: 335, y: 252, w: 220, h: 28}}];
+      window.dispatchEvent({{type: 'message', data: {{located: last.data.id, rect: {{x: 400, y: 300, w: 90, h: 16}}, zones: [], text}},
+                             source: browser.element('topology-frame').contentWindow, origin: last.origin}});
+      await frames();
+      const spot = callout();
+      return {{spot, apart: Math.hypot(spot.left + 110 - 505, spot.top + 14 - 404)}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["spot"] is not None and seen["result"]["apart"] < 300
+
+def test_a_map_zone_callout_goes_inside_the_zone_on_the_first_row_free_of_text(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.path'] = 'The internet side.';
+      {to("path")}
+      await frames();
+      window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
+      await frames();
+      const last = posted.filter((one) => one.frame === 'map' && one.data.locate).pop();
+      const caption = {{x: 120, y: 40, w: 160, h: 20}};
+      window.dispatchEvent({{type: 'message', data: {{located: last.data.id, rect: {{x: 100, y: 20, w: 700, h: 600}}, zones: [], text: [caption]}},
+                             source: browser.element('topology-frame').contentWindow, origin: last.origin}});
+      await frames();
+      const spot = callout();
+      const zone = {{left: 160, top: 116, width: 700, height: 600}};
+      return {{spot, inside: spot.left >= zone.left && spot.top >= zone.top && spot.left + spot.width <= zone.left + zone.width,
+              belowCaption: spot.top >= 96 + 60}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["inside"] is True and seen["result"]["belowCaption"] is True
+
+def test_the_terminal_is_fitted_to_the_pane_it_sits_in_and_left_alone_once_it_fits(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      const resized = [];
+      const term = browser.element('kali-frame').contentWindow.term;
+      const grid = {{getBoundingClientRect: () => box(0, 0, term.cols * 12, term.rows * 20)}};
+      term.element = {{querySelector: (selector) => (selector === '.xterm-screen' ? grid : null),
+                      parentElement: {{clientWidth: 1000, clientHeight: 480}}}};
+      term.resize = (cols, rows) => {{ resized.push([cols, rows]); term.cols = cols; term.rows = rows; }};
+      await browser.click('[data-pane="kali"]');
+      for (let i = 0; i < 4; i += 1) await browser.wait(500);
+      return {{resized}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["resized"] == [[83, 24]]
+
+def test_the_map_pane_keeps_its_size_while_another_pane_is_open(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      await browser.click('[data-pane="topology"]');
+      const open = browser.element('topology').style.visibility;
+      await browser.click('[data-pane="elk"]');
+      const closed = browser.element('topology').style.visibility;
+      return {{open, closed, display: browser.element('topology').style.display || ''}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"open": "", "closed": "hidden", "display": ""}
+
+def test_a_callout_for_the_objectives_card_leaves_the_title_line_when_its_leader_would_cross_a_column_header(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.cost'] = 'The total is here';
+      placeAt('lesson-objectives', box(1050, 240, 380, 160));
+      placeAt('lesson-objectives-total', box(1380, 360, 40, 20));
+      {to("cost")}
+      await frames();
+      const heading = callout();
+      RECTS.set(document.querySelectorAll('#lesson-objectives-head th')[2], box(1340, 280, 80, 16));
+      await frames();
+      return {{heading, moved: callout()}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["heading"]["top"] == 246
+    assert seen["result"]["moved"]["top"] >= 400, "below the card, where the leader crosses no header"
+
+def test_a_developer_tools_callout_also_keeps_off_the_toolbar_controls_and_the_tabs_it_does_not_point_at(client):
+    seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
+      STRINGS.en['lesson.dev.tab.headers'] = 'Press this tab';
+      {to("method")}
+      await browser.click('step-open');
+      browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
+      listRows('true');
+      showTabs('tab.payload');
+      await frames();
+      const first = callout();
+      RECTS.set(browser.element('site-dev-throttle'), {{...first, right: first.left + first.width, bottom: first.top + first.height}});
+      await frames();
+      const second = callout();
+      return {{first, second, over: meets(first, second)}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["second"] is not None and seen["result"]["over"] is False

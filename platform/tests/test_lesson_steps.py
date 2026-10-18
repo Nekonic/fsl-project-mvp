@@ -85,6 +85,14 @@ def test_a_step_s_command_arrives_once_the_step_is_reached(client):
     assert shown["excluded"]["command"] == command
     assert "command" not in shown["dump"] and "command" not in reached["progress"].get("dump", {})
 
+def test_the_f5_address_step_gives_the_exact_address_in_a_command_box_once_the_step_is_reached(client):
+    session = taught("f5")
+
+    step(client, session, "error", body={"state": "reached"})
+    shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+
+    assert shown["error"]["command"] == "http://board.com/?sort=posts_post.id)"
+
 def blocked_by(session, detection_id, marker, uri, rule):
     Detection.objects.create(session=session, detection_id=detection_id, source="modsecurity", signature=rule,
                              timestamp=timezone.now(), marker=marker,

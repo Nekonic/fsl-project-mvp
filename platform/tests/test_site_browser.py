@@ -53,6 +53,7 @@ def test_the_script_injected_into_site_pages_answers_only_its_parent_console_and
     )
     assert "located:id" in injected and "},at)" in injected, "the rect goes back to the asking console only"
     assert "text:r?near(e,r):[]" in injected, "the boxes of the content around the target go back with the rect"
+    assert "selectNodeContents(c)" in injected, "a heading or paragraph reports where its text is, not its full-width block"
     assert "src=" not in injected and "fetch(" not in injected and "XMLHttpRequest" not in injected, (
         "the highlight helper loads nothing, so the WAF, Kibana and the Network panel never see it"
     )

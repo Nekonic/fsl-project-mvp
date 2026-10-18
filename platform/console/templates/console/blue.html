@@ -154,8 +154,22 @@
     return false;
   }
 
+  function terminalFit(host) {
+    const term = terminalOf(host);
+    const screen = term && term.element && term.element.querySelector ? term.element.querySelector(".xterm-screen") : null;
+    const room = term && term.element ? term.element.parentElement : null;
+    if (!screen || !room || typeof term.resize !== "function" || !term.cols || !term.rows) return;
+    const area = screen.getBoundingClientRect();
+    if (!area.width || !area.height || !room.clientWidth || !room.clientHeight) return;
+    const bar = term.element.querySelector(".xterm-viewport");
+    const cols = Math.floor((room.clientWidth - (bar ? bar.offsetWidth - bar.clientWidth : 0)) * term.cols / area.width);
+    const rows = Math.floor(room.clientHeight * term.rows / area.height);
+    if (cols > 1 && rows > 1 && (cols !== term.cols || rows !== term.rows)) term.resize(cols, rows);
+  }
+
   function terminalWait() {
     const pane = Object.keys(terminalPanes).find((name) => paneOpen(name));
+    if (pane) terminalFit(terminalPanes[pane]());
     if (!pane) {
       field("term-wait").classList.add("hidden");
       terminalWaited = { pane: "", since: 0 };
@@ -176,7 +190,7 @@
     field("site-bar").classList.toggle("flex", onSite);
     field("site-frame").style.display = onSite ? "block" : "none";
     devPlace();
-    field("topology").style.display = tab.dataset.pane === "topology" ? "flex" : "none";
+    field("topology").style.visibility = tab.dataset.pane === "topology" ? "" : "hidden";
     field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
     field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
     field("kali-frame").style.display = tab.dataset.pane === "kali" ? "block" : "none";

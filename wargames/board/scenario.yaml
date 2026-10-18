@@ -444,6 +444,7 @@ foundations:
         check: {kind: answer, of: param_value, name: sort, match: '[?&]sort='}
       - id: error
         point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}
+        command: 'http://board.com/?sort=posts_post.id)'
         check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)'}
       - id: undetected
         point: {opens: elk, kibana: {doc: rule_id}}

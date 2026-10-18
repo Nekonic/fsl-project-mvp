@@ -1,4 +1,4 @@
-const topo = { read: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [] };
+const topo = { read: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
 const MAP_WAIT_MS = 30000;
 const MAP_FIT_WAIT_MS = 8000;
 const REFIT_SETTLES_MS = 250;
@@ -41,6 +41,7 @@ function topologyHeard(event) {
   const said = event.data && event.data.map;
   if ((said !== "drawn" && said !== "fitted") || !frame.contentWindow || event.source !== frame.contentWindow) return;
   topo.drawn = true;
+  topo.fitBox = rounded(boxOf(frame));
   topologyFitted();
   if (said === "drawn") topo.drawnHeard.forEach((heard) => heard());
 }
@@ -59,11 +60,11 @@ function topologyShow() {
     at.port = String(topo.web.port);
     topologyWait(MAP_WAIT_MS);
     field("topology-frame").src = at.origin + topo.web.path;
-  } else if (topo.web && topo.drawn) {
+  } else if (topo.web && topo.drawn && rounded(boxOf(field("topology-frame"))) !== topo.fitBox) {
     topologyWait(MAP_FIT_WAIT_MS);
     topologyFitShown();
   }
-  topologyRefit();
+  if (!topo.drawn || rounded(boxOf(field("topology-frame"))) !== topo.fitBox) topologyRefit();
 }
 
 async function topologyOpen() {
