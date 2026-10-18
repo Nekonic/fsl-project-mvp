@@ -93,7 +93,7 @@ label, canary)는 쿼리나 본문에서 `session`을 받습니다. 지정하지
 | `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), edge에서 별칭 `board.com` (edge는 공유하므로 플랫폼이 세션마다 프록시와 도구가 그 세션의 WAF를 향하게 함) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | WAF의 네트워크 네임스페이스 | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 audit log 전송 | mgmt | |
-| `fsl-kali` | session | `deploy/kali`에서 빌드한 `ghcr.io/nekonic/fsl-kali`; `http_proxy`는 `http://fsl-<id>-proxy-1:8081` | edge | |
+| `fsl-kali` | session | `deploy/kali`에서 빌드한 `ghcr.io/nekonic/fsl-kali`; `http_proxy`는 `http://proxy-<id>:8081`(공유 `edge`에서 그 세션의 프록시만 가진 alias) | edge | |
 | `fsl-proxy` | session | `deploy/proxy`에서 빌드한 `ghcr.io/nekonic/fsl-proxy` (mitmdump); `/var/lib/session`은 프로젝트의 named volume `label` | edge 네트워크 네 개 | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만 사용 (OpenStack 훈련 환경용) | mgmt | 5140/udp |
@@ -252,7 +252,7 @@ import하지 않고 substrate 이름도 쓰지 않습니다.
 | 센서 | 선언된 각 센서가 선언된 gateway의 네트워크 네임스페이스를 공유하지 않으면 훈련 환경 기술(describe)을 거부 (`docker ps`, `.HostConfig.NetworkMode`) | 이름이 지정된 두 서버가 모두 있으면 센서를 보고함; 센서가 gateway의 트래픽을 실제로 보는지는 확인하지 않음 |
 | runner | 세션 프로젝트에서 해당 역할의 서비스 컨테이너로 `docker exec` | 인스턴스로 `ssh`; 워게임 호스트가 맡고 `compose:`가 서비스에 대응시킨 역할은 그 컨테이너 안에서 실행 (`sudo docker exec <service>`, `range/wargame_host.py`) |
 | address | 세션 프로젝트에서 해당 역할의 `estate` IP | 호스트의 `mgmt` 주소 |
-| launcher | `docker run --rm --network <segment>`, 세션 WAF의 이름에 대한 `--add-host` 포함 | `runner("attacker")`: 선언된 공격 박스의 mgmt 주소로 ssh해 도구를 실행 (origin은 공격 박스가 그 구간에 있는지만 확인하며, 출발 국가는 `fsl-origin` SNAT가 정함); 다른 이미지는 거부함. Nova로는 호스트를 부팅해 출력을 받고 삭제할 수 없기 때문 |
+| launcher | `docker run --rm --network <segment>`, 세션 WAF의 이름에 대한 `--add-host` 포함 | `runner("attacker")`: 선언된 공격 박스의 mgmt 주소로 ssh해 도구를 실행 (origin은 공격 박스가 그 구간에 있는지만 확인하며, 출발 국가는 `set-origin` SNAT가 정함); 다른 이미지는 거부함. Nova로는 호스트를 부팅해 출력을 받고 삭제할 수 없기 때문 |
 | 검증 대상 | 실제 스택 | 공개 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트; `fsl-range` 클라우드에서 플랫폼 VM이 `/api/range/`로 fabric, 이미지, 슬롯을 구축했고, `describe()`가 출발지 서른 개 위의 WAF와 estate·mgmt 위의 호스트 네 대를 다시 읽었으며, `runner()`가 각 호스트에서 mgmt 주소로 ssh해 실행됨; `launcher()`는 2026-10-08에 `ru`와 `tw` 출발지에서 sqlmap을 실행함 |
 
 compose는 substrate와 관계없이 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫폼
@@ -490,7 +490,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소: OpenStack에서는 Kali가 가진 주소로, `fsl-users` 계정으로 보내 에지를 지남. docker에서는 고객 네트워크에 있는 플랫폼 자신의 주소 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
 | 고객 | `deploy/traffic/users.py`, `fsl-<id>-users` 안에서(docker) 또는 Kali VM의 `fsl-users`로(OpenStack) | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
-프록시는 `mitmdump` 스크립트입니다. `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의
+프록시는 `mitmdump` 스크립트입니다(OpenStack Kali에서는 `web-proxy.service`가 `/usr/local/lib/web-proxy.py`로 실행하고 터미널은 `ttyd.service`입니다. `/var/lib/session/active`와 `origin`은 플랫폼이 로그인하는 `ubuntu` 전용 0600이며, 쉘 훅은 직접 읽지 못하면 `sudo -n cat`으로 마커를 읽습니다. `/var/log/commands.log`는 `ubuntu` 소유 0622라 `kali`는 덧붙이기만 합니다). `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의
 값으로 그 헤더를 설정하고, `/var/lib/session/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
 주소로 전달합니다. 두 파일은 플랫폼이 `docker exec`로 씁니다. TLS 가로채기를
 하지 않으므로 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다.
@@ -517,7 +517,9 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 `__log_command`, `/etc/bash.bashrc`에서 불러옴)이 로그인했을 때처럼 적용됩니다. WAF는
 `ubuntu`로 `bash --rcfile`을 `-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을
 읽고 시간대를 설정하며, 프롬프트의 `\h`를 `fsl-`를 뺀 호스트 이름(`ubuntu@waf`)으로 바꾼 뒤
-`/etc/motd`를 출력합니다. 명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을
+`/etc/motd`를 출력합니다. WAF VM의 hostname도 `waf`입니다. 부팅 유닛 `set-hostname`이 cloud-init
+뒤에 이름을 바꾸고 Nova 이름을 rsyslog `localHostname`으로 넘겨, Filebeat가 송신자 이름에서
+슬롯을 계속 읽습니다. 명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을
 출력하지 않습니다.
 
 블루팀 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의
@@ -1228,7 +1230,7 @@ board 세션에는 고객을 둘 수 있습니다. 세션 내내 둘러보고, �
 |---|---|---|
 | 실행 위치 | `fsl-<id>-users`: `Docker.users_box`가 Kali 이미지로 페르소나의 출발지 네트워크에 띄우는 컨테이너이며, 라벨은 `fsl.customers=<id>`입니다. compose 서비스가 아닙니다 | 슬롯의 `fsl-kali` VM에서 시스템 계정 `fsl-users`로 실행 |
 | 출발지 주소 | 출발지 네트워크마다 컨테이너 자신의 주소 | 페르소나마다 VM의 출발지 주소 중 하나에 바인딩 |
-| 공격자와 분리 | 선언된 기본 출발지는 쓰지 않으며, 컨테이너의 주소는 컨테이너 자신의 것입니다 | 기본 출발지를 쓰지 않고, 공격자가 쓰는 어떤 출발지의 `source_ip`나 VM의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)도 쓰지 않습니다. `POSTROUTING -m owner --uid-owner fsl-users -j RETURN`을 `FSL-ORIGIN` SNAT 점프 앞에 넣으므로 공격자의 출발지 변환은 고객에게 적용되지 않습니다 |
+| 공격자와 분리 | 선언된 기본 출발지는 쓰지 않으며, 컨테이너의 주소는 컨테이너 자신의 것입니다 | 기본 출발지를 쓰지 않고, 공격자가 쓰는 어떤 출발지의 `source_ip`나 VM의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)도 쓰지 않습니다. `POSTROUTING -m owner --uid-owner fsl-users -j RETURN`을 `ORIGIN-SNAT` SNAT 점프 앞에 넣으므로 공격자의 출발지 변환은 고객에게 적용되지 않습니다 |
 
 `platform/attacker.py`가 박스에서 실행하는 모든 명령을 담습니다: `place_customers`
 (계정, NAT 예외, 프로그램 배치. OpenStack에서는 `sudo`로), `run_customers`(계획을
@@ -1681,7 +1683,7 @@ estate 주소로 가는 tcp 80만 허용하고 나머지는 허용하지 않습�
 파일에 쓰고, include가 여는 소켓에서 `suricatasc`로 룰을 다시 읽힙니다. 에지의 syslog와 WAF의
 ModSecurity audit 로그는 GeoIP 정보가 붙은 채 플랫폼의 Elasticsearch로 수집됩니다. Kali 이미지
 하나가 모든 출발지를 맡습니다. 인터넷 포트 하나에 국가별 주소 약 100개를 두고(슬롯의
-`bootcmd`가 NIC에 추가), `/usr/local/sbin/fsl-origin`이 박스에서 나가는 트래픽의 출발지 주소를
+`bootcmd`가 NIC에 추가), `/usr/local/sbin/set-origin`이 박스에서 나가는 트래픽의 출발지 주소를
 국가별로 SNAT하므로, 어떤 도구를 쓰든 선택한 국가에서 나가는 트래픽이 됩니다. marker를 붙이는
 프록시와 ttyd 터미널은 Kali 박스에서 실행됩니다.
 

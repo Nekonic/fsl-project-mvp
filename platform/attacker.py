@@ -76,7 +76,7 @@ def set_origin(address: str | None, proxy) -> None:
 
 def wear_origin(chosen: dict, box) -> None:
     if settings.ATTACKER_ORIGIN_MODE == "snat":
-        ran = box(["sudo", "/usr/local/sbin/fsl-origin", chosen["source_ip"]])
+        ran = box(["sudo", "/usr/local/sbin/set-origin", chosen["source_ip"]])
         if not ran.ok:
             raise AttackerUnavailable(
                 f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"

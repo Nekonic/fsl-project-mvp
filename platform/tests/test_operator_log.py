@@ -151,8 +151,8 @@ def test_the_kali_vm_records_the_terminal_s_ssh_user_and_not_only_root():
         "on OpenStack the terminal is an ssh login as the kali user, whose shell "
         "never read root's .bashrc, so nothing it typed reached the operator log"
     )
-    assert f"chmod 0666 {operator_log.LOG_PATH}" in setup, (
-        "the log the platform reads must exist and take the kali user's writes"
+    assert f"install -m 0622 -o ubuntu -g ubuntu /dev/null {operator_log.LOG_PATH}" in setup, (
+        "the log must exist, take the kali user's appends, and be read by the account the platform logs in as"
     )
 
 def test_the_attacker_shell_is_kali_s_own_on_both_substrates():

@@ -174,7 +174,7 @@ def test_the_attacker_box_reaches_its_own_session_s_proxy():
     stack = yaml.safe_load((ROOT / "session.yaml").read_text())
     kali, proxy = stack["services"]["kali"], stack["services"]["proxy"]
 
-    assert kali["environment"]["http_proxy"] == "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
+    assert kali["environment"]["http_proxy"] == "http://proxy-${FSL_SESSION:-shared}:8081"
     assert "label:/var/lib/session:ro" in kali["volumes"] and "label:/var/lib/session" in proxy["volumes"], (
         "a label directory on the host is shared by every session's proxy"
     )

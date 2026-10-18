@@ -170,8 +170,8 @@ def test_the_website_pane_leaves_kali_as_the_customers_account_so_the_attacker_o
 def test_the_attackers_own_rewrite_stays_after_the_customers_exemption():
     setup = (REPO / "deploy/kali/setup.sh").read_text()
 
-    assert "iptables -t nat -C POSTROUTING -o \"$dev\" -j FSL-ORIGIN 2>/dev/null \\\n  || iptables -t nat -A POSTROUTING" \
-        in setup, "fsl-origin appends its jump, so an exemption inserted first is passed before the rewrite"
+    assert "iptables -t nat -C POSTROUTING -o \"$dev\" -j ORIGIN-SNAT 2>/dev/null \\\n  || iptables -t nat -A POSTROUTING" \
+        in setup, "set-origin appends its jump, so an exemption inserted first is passed before the rewrite"
 
 def test_records_are_cut_out_of_whatever_else_the_box_said():
     from range.ports import Ran

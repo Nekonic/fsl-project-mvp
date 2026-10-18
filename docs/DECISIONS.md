@@ -414,7 +414,7 @@ dates.
   internet, so the attack missed the range (FN) and hit a real site. `fire`
   now runs every case, HTTP included, through the Kali launcher as a `curl`
   argv (`--path-as-is` keeps `%2e%2e` traversal), so the traffic crosses
-  pfSense/Suricata and carries the origin country from `fsl-origin` SNAT. A
+  pfSense/Suricata and carries the origin country from `set-origin` SNAT. A
   request that does not reach the target raises instead of recording a miss.
   The dead `http`/`target_url` plumbing through `fire`/`run`/`views`/`run.py`
   and the `--target` flag went with it; `core_loc` fell 463 -> 461. This was a
@@ -439,7 +439,7 @@ dates.
 
 `POST /sessions/<id>/attacks/` recorded the requested origin in the case meta
 and picked the launcher segment, but never applied the SNAT. On OpenStack the
-source country is set only by `fsl-origin`, so an API-only caller fired from
+source country is set only by `set-origin`, so an API-only caller fired from
 whatever origin `/api/attacker/origin/` had last set — the recorded origin and
 the on-wire source could diverge. `fire_attack` now calls `attacker.wear_origin`
 for the chosen origin before firing (one proxy round trip), the same call the
@@ -2858,7 +2858,7 @@ traffic", has the mix, the generator, the API and the per-substrate table.
   attacks without judging them (task class 1).
 - **Origins.** Customers never use the declared default origin, nor on
   OpenStack any address the attacker sends from: each origin's `source_ip`
-  (the SNAT address `fsl-origin` wears) and the VM's unbound source, read with
+  (the SNAT address `set-origin` wears) and the VM's unbound source, read with
   `ip route get` to the target (on slot 1 it is 1.128.0.10, Australia, not the
   default origin's address). Twelve personas are allocated by largest
   remainder over the declared weights the range offers: on OpenStack kr 9,
@@ -2869,11 +2869,11 @@ traffic", has the mix, the generator, the API and the per-substrate table.
   need new fixed IPs on the
   Kali port, which only a slot rebuild makes. Docker has no KR network, so
   its customers come from us, hk and br.
-- **The SNAT conflict on OpenStack** (`fsl-origin` SNATs everything leaving the
+- **The SNAT conflict on OpenStack** (`set-origin` SNATs everything leaving the
   VM) is solved by account: the generator runs as `fsl-users` (`setpriv`),
   each persona binds its own origin address, and `POSTROUTING -m owner
   --uid-owner fsl-users -j RETURN` is inserted at position 1, before the
-  `FSL-ORIGIN` jump that `fsl-origin` appends. Not chosen: per-process binding
+  `ORIGIN-SNAT` jump that `set-origin` appends. Not chosen: per-process binding
   alone (the SNAT rewrites the bound source too); SNAT with an address range
   (the kernel picks one address per source/destination pair, so every
   customer would look alike).
@@ -5381,3 +5381,31 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
 - **Not proven offline.** Filebeat 8.15 with template `logs-sensors` on
   `logs-*` beside the built-in `logs` templates, nested `event.module` in
   `fields`, and `drop_event` on a syslog input. A live walk checks them.
+
+## Round 3: what a learner can list on the attacker box and the WAF VM
+
+- **Names.** On the OpenStack Kali the units are `web-proxy.service` and
+  `ttyd.service`, the proxy script `/usr/local/lib/web-proxy.py`, the SNAT
+  script `/usr/local/sbin/set-origin` and its nat chain `ORIGIN-SNAT`; nothing
+  in `deploy/kali/setup.sh` carries the platform's name (a test holds it).
+- **Modes.** `/var/lib/session/active` and `origin` are 0600 `ubuntu` (the
+  account the platform logs in as; the proxy runs as root), the directory 0711,
+  `/var/log/commands.log` 0622 `ubuntu`: `kali` can append, not read. The
+  shell hook cannot read the marker as `kali`, so it falls back to
+  `sudo -n cat`; the learner has passwordless sudo, so this hides the files
+  from a casual `cat` and from `ls`, not from a determined learner. On docker
+  the log is root 0622 and the marker volume stays readable.
+- **Docker proxy address.** `http_proxy` is `http://proxy-<id>:8081`, an alias
+  on the shared `edge` that only that session's proxy carries. Not chosen: a
+  per-session `lab` network with the bare name `proxy`. `test_declaration`
+  requires every compose network to realise a declared segment, the platform
+  attaches itself to every project network, and Docker resolves a name that
+  two networks carry by network order, which was not provable offline.
+- **WAF hostname.** `waf`, set by the boot unit `set-hostname` (after
+  `cloud-init.service`, before rsyslog and ssh) instead of at image build,
+  because Filebeat takes the slot from the syslog sender name (`fsl-waf-2`) and
+  a fixed name would put every slot's WAF log in slot 1. The unit writes
+  `global(localHostname=<Nova name>)` to `/etc/rsyslog.d/05-sender.conf`
+  (dropped if `rsyslogd -N1` rejects it) before renaming. Not proven offline: a
+  live walk checks `hostname` on the WAF and that a second slot's WAF events
+  still land in `logs-2-*`.

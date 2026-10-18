@@ -19,6 +19,34 @@ fetch() {
 }
 
 export DEBIAN_FRONTEND=noninteractive
+
+cat > /usr/local/sbin/set-hostname <<'NAME'
+#!/bin/sh
+set -eu
+[ "$(hostname)" = waf ] && exit 0
+printf 'global(localHostname="%s")\n' "$(hostname)" > /etc/rsyslog.d/05-sender.conf
+rsyslogd -N1 >/dev/null 2>&1 || rm -f /etc/rsyslog.d/05-sender.conf
+echo waf > /etc/hostname
+hostname waf
+grep -q '^127.0.1.1 waf$' /etc/hosts || echo "127.0.1.1 waf" >> /etc/hosts
+systemctl try-restart rsyslog || true
+NAME
+chmod 0755 /usr/local/sbin/set-hostname
+cat > /etc/systemd/system/set-hostname.service <<'UNIT'
+[Unit]
+After=cloud-init.service
+Before=rsyslog.service ssh.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/set-hostname
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable set-hostname
+
 $APT update
 $APT install nginx build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
   libyajl-dev libcurl4-openssl-dev liblmdb-dev libmaxminddb-dev
