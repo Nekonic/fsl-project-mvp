@@ -141,7 +141,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
         given = {
             "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (board_ip, f"{board_ip}/24", WAF)],
             "db_subnet": [answer(client, session, "db_subnet", one)["passed"] for one in (db_subnet, db_ip)],
-            "kali_zone": [answer(client, session, "kali_zone", one)["passed"] for one in ("인터넷", "internet", "Services")],
+            "kali_zone": [answer(client, session, "kali_zone", one)["passed"] for one in ("인터넷망", "internet", "Services")],
             "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("log-server", "waf")],
             "db_ip": [answer(client, session, "db_ip", one)["passed"] for one in (db_ip, board_ip)],
         }
