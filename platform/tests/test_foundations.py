@@ -141,7 +141,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
         given = {
             "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (board_ip, f"{board_ip}/24", WAF)],
             "db_subnet": [answer(client, session, "db_subnet", one)["passed"] for one in (db_subnet, db_ip)],
-            "kali_zone": [answer(client, session, "kali_zone", one)["passed"] for one in ("인터넷망", "internet", "Services")],
+            "kali_zone": [answer(client, session, "kali_zone", one)["passed"] for one in ("인터넷망", "인터넷", "internet", "Services")],
             "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("log-server", "waf")],
             "db_ip": [answer(client, session, "db_ip", one)["passed"] for one in (db_ip, board_ip)],
         }
@@ -149,7 +149,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert given == {"board_ip": [True, True, False], "db_subnet": [True, False], "kali_zone": [True, True, False],
+    assert given == {"board_ip": [True, True, False], "db_subnet": [True, False], "kali_zone": [True, True, True, False],
                      "log_host": [True, False], "db_ip": [True, False]}
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
     assert right["passed"] is True
@@ -316,11 +316,14 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
                        dest_port=80) for n, status in enumerate((500, 500, 200))]
     upstream = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, src_ip=WAF, dest_ip=BOARD)
                 for n, status in enumerate((500, 500, 200))]
+    logged = [{"fsl_source": "modsecurity", "@timestamp": edge[0]["timestamp"],
+               "transaction": {"request": {"headers": {}}, "response": {"http_code": status}}}
+              for status in (500, 500, 500, 403)]
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
-    with quietly(), on_map(read_slot()), flavor("openstack"), indexed(*edge, *upstream), \
+    with quietly(), on_map(read_slot()), flavor("openstack"), indexed(*edge, *upstream, *logged), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("excluded", "sort"), ("alerts", "none"), ("seen", "2"))}
+            ("excluded", "sort"), ("alerts", "none"), ("seen", "3"))}
         detected(session, "ids", "suricata", "dump-1", "SQLi", alert={"signature_id": 9000003})
         ids_only = answer(client, session, "alerts", "ids")["passed"]
 

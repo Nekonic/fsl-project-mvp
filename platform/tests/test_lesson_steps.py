@@ -10,6 +10,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+import kibana
 import wargames
 from api import site, views
 from api.models import Case, Detection, Objective, Session
@@ -216,7 +217,8 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
     first, last = now - timedelta(seconds=90), now - timedelta(seconds=40)
     run = [http_event("agent-run", f"/?sort=posts_post.id{n}", at, 403)
            for n, at in enumerate((first, now - timedelta(seconds=70), last))]
-    with quietly():
+    with quietly(), patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
+            patch.dict(kibana.VIEWS, {views._session_index(session): (True, 0.0)}):
         with indexed(*run, http_event("agent-run", "/?sort=posts_post.id9", now - timedelta(seconds=3), 403)):
             running = check(client, session, "agent", {"poll": True}).json()
         premature = Case.objects.filter(session=session, case_id="agent-run").exists()
@@ -293,26 +295,29 @@ def test_waf_records_without_a_rule_are_no_alert_so_a_run_that_drew_only_server_
     assert none["passed"] is True
     assert waf["passed"] is True
 
-def test_the_errors_a_run_drew_are_counted_on_its_own_window_and_the_leg_the_step_names(client):
+def waf_record(at, status, marker=None):
+    headers = {"X-FSL-Case": marker} if marker else {}
+    return {"fsl_source": "modsecurity", "@timestamp": at.isoformat(),
+            "transaction": {"request": {"headers": headers}, "response": {"http_code": status}}}
+
+def test_the_errors_a_run_drew_are_the_waf_log_records_with_status_500_in_the_window_kibana_opens(client):
     session = taught("f6")
     now = timezone.now()
     started, ended = now - timedelta(seconds=90), now - timedelta(seconds=30)
     recorded_run(session, "f6", "dump", "dump-run", started, ended)
-    inside = [http_event("dump-run", f"/?sort=posts_post.id{n}", started + timedelta(seconds=10 * n), status)
-              for n, status in enumerate((500, 500, 200, 500))]
-    upstream = [dict(one, src_ip=WAF, dest_ip=BOARD) for one in inside]
-    before = http_event("dump-run", "/?sort=posts_post.id", started - timedelta(seconds=20), 500)
-    unmarked = http_event(None, "/?sort=posts_post.id", started + timedelta(seconds=5), 500)
+    inside = [waf_record(started + timedelta(seconds=10 * n), status, "dump-run" if n % 2 else None)
+              for n, status in enumerate((500, 500, 403, 500))]
+    suricata = [dict(http_event("dump-run", "/?sort=posts_post.id", started + timedelta(seconds=5), 500))]
+    before = waf_record(started - timedelta(seconds=20), 500, "dump-run")
     asked = []
-    with quietly(), behind_the_waf(), indexed(*inside, *upstream, before, unmarked, asked=asked):
-        inbound = views._accepted(session, {"kind": "answer", "of": "run_errors", "about": "dump", "leg": "inbound"})
-        both_legs = views._accepted(session, {"kind": "answer", "of": "run_errors", "about": "dump", "leg": "upstream"})
+    with quietly(), indexed(*inside, *suricata, before, asked=asked):
+        accepted = views._accepted(session, {"kind": "answer", "of": "run_errors", "about": "dump"})
         right = check(client, session, "seen", {"answer": "3"}).json()
-        doubled = check(client, session, "seen", {"answer": "6"}).json()
+        suricata_count = check(client, session, "seen", {"answer": "4"}).json()
 
-    assert (inbound, both_legs) == (["3"], ["3"]), "one leg at a time, so the same request is not counted twice"
-    assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the run's own window"
-    assert right["passed"] is True and doubled["passed"] is False
+    assert accepted == ["3"], "the WAF records with status 500, the number log_source : modsecurity and status : 500 shows"
+    assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
+    assert right["passed"] is True and suricata_count["passed"] is False
 
 def test_the_cost_question_asks_what_the_admin_objective_would_have_cost_if_detected_not_the_printed_total(client):
     session = taught("f6")

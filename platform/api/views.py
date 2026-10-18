@@ -609,8 +609,9 @@ def _range_fact(session, check, taught):
     if of == "path":
         return topology.route(drawn, wargames.host(session.scenario))
     if of == "zone_of":
-        return topology.zone_names([maps.template(session.scenario, language) for language in strings.LANGUAGES],
-                                   check["host"])
+        named = topology.zone_names([maps.template(session.scenario, language) for language in strings.LANGUAGES],
+                                    check["host"])
+        return list(dict.fromkeys([*named, *(name.removesuffix("망") for name in named if len(name) > 1)]))
     found = _map_found(session)
     if of == "host_of":
         return topology.hosts_at(drawn, found, _accepted(session, _taught_check(taught, check["from"]), taught))
@@ -695,13 +696,16 @@ def _alerted_sids(session, record):
     return [sid for detection in _alerts_for(session, record)
             if (sid := ((detection.raw or {}).get("alert") or {}).get("signature_id")) is not None]
 
-def _waf_records(session, record):
-    start, end = _window_of(record)
+def _logged(session, start, end, source):
     try:
         documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
     except elastic.ElasticUnavailable:
         return []
-    return [doc for _, doc in documents if doc.get("fsl_source") == "modsecurity" and any(
+    return [doc for _, doc in documents if doc.get("fsl_source") == source]
+
+def _waf_records(session, record):
+    start, end = _window_of(record)
+    return [doc for doc in _logged(session, start, end, "modsecurity") if any(
         str(name).lower() == elastic.MARKER_HEADER.lower() and value == session.browse_marker
         for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())]
 
@@ -729,11 +733,7 @@ def _sensed_for(session, record):
     return _sensed(session, start, end, session.browse_marker, asked.path + (f"?{asked.query}" if asked.query else ""))
 
 def _suricata_http(session, start, end):
-    try:
-        documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
-    except elastic.ElasticUnavailable:
-        return []
-    return [doc for _, doc in documents if doc.get("fsl_source") == "suricata" and doc.get("event_type") == "http"]
+    return [doc for doc in _logged(session, start, end, "suricata") if doc.get("event_type") == "http"]
 
 def _sensed(session, start, end, marker, path=""):
     found = []
@@ -808,7 +808,8 @@ def _kali_fact(session, check):
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
     if of == "run_errors":
-        errors = lesson.server_errors(_on_leg(session, _run_events(session, recorded), check.get("leg", "inbound")))
+        errors = lesson.server_errors(_logged(session, recorded.started_at - RECORD_SLACK,
+                                              recorded.ended_at + RECORD_SLACK, "modsecurity"))
         return [str(errors)] if errors else []
     if check.get("from") == "http":
         return sorted({str(event["src_ip"]) for event in _on_leg(session, _run_events(session, recorded), "inbound")
@@ -1692,11 +1693,10 @@ def _discover(session, narrowed=None, everything=False, since=None, until=None):
     start = since - RECORD_SLACK if since else session.started_at - timedelta(minutes=1)
     end = until or (session.ended_at and session.ended_at + timedelta(minutes=1))
     if not (index and kibana.URL and _session_view_ready(session, index)):
-        return kibana.discover_path(kibana.DATA_VIEW, start, end, kibana.query(index, narrowed, alerts=not everything),
-                                    kibana.ALERT_COLUMNS)
+        return None
     taught = bool(session.guidance and not session.course_scenario)
     return kibana.discover_path(kibana.session_view_id(index), start, end,
-                                kibana.query("", narrowed, alerts=not (taught or everything)), engines_only=True)
+                                kibana.query(narrowed, alerts=not (taught or everything)), engines_only=True)
 
 @require_http_methods(["POST"])
 def close_session(request, session_id):
