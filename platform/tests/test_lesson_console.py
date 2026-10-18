@@ -98,7 +98,7 @@ browser.serve((request) => {
   if (request.route === "/api/sessions/1/") {
     return {body: {id: 1, scenario: "board", lesson_id: "f9", next_lesson: NEXT_JSON, guidance: true, hints: range.used,
                    progress: range.progress, ended_at: range.ended_at, waf_box: "waf", discover: "/kibana/app/discover#/",
-                   kind: "lesson", kali_terminal: "/vm-terminal/fsl-kali/?arg=1", site: {port: 8002, path: "/site/1/board.com/"},
+                   kind: "lesson", kali_terminal: "/vm-terminal/kali/?arg=1", site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lessons: [{id: "f1"}, {id: "f9"}],
                    lesson_objectives: OBJECTIVES_JSON,
                    lesson: {text: "lesson.demo", group: "foundations", steps: STEPS, theory: [{id: "one"}], hints: []}}};

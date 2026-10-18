@@ -135,7 +135,7 @@ compose the Kali terminal (the red console's, and the blue console's Kali pane
 in a lesson or scenario) is Kali's own ttyd, which the platform's nginx serves
 at `/terminal/<session id>/` from that session's `fsl-<id>-kali-1`; on OpenStack
 it is a ttyd inside the platform that ssh's to the `mgmt` address of the Kali
-in the session's slot (`/vm-terminal/fsl-kali/?arg=<session id>`), showing the
+in the session's slot (`/vm-terminal/kali/?arg=<session id>`), showing the
 prompt as Kali's own, `(kali㉿kali)` (the WAF's as `ubuntu@waf`). The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
@@ -190,7 +190,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 
 | Port | | Used by |
 |---|---|---|
-| 8000 | the console, `/api/`, Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/` | a person's browser |
+| 8000 | the console, `/api/`, Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, and the terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | a person's browser |
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, sent to that session's WAF from a customers address (on OpenStack from Kali, through the edge) | the iframe in a person's browser |
 | 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only and turns off the web UI's usage statistics, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |

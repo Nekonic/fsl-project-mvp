@@ -386,9 +386,9 @@ def test_only_a_session_number_reaches_docker_exec_and_a_missing_waf_gets_one_pl
 def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
     with override_settings(WAF_SESSION_TERMINAL_URL=""):
         session, = opened_sessions(1)
-        assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/fsl-waf/"
+        assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/waf/"
 
-    assert "ttyd -W -a -b /vm-terminal/fsl-waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
+    assert "ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
         ROOT / "platform/entrypoint.sh").read_text()
     assert "mgmt" in declared.read(flavor="openstack").hosts["fsl-waf"].segments
     shell = (ROOT / "platform/vm-terminal.sh").read_text()

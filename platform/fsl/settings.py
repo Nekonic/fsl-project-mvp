@@ -63,13 +63,13 @@ ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = "/var/lib/session/active"
 ATTACKER_ORIGIN_FILE = "/var/lib/session/origin"
-ATTACKER_TERMINAL_URL = "/vm-terminal/fsl-kali/"
+ATTACKER_TERMINAL_URL = "/vm-terminal/kali/"
 ATTACKER_SESSION_TERMINAL_URL = (
-    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-kali/?arg={session}"
+    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/kali/?arg={session}"
 )
-WAF_TERMINAL_URL = "/vm-terminal/fsl-waf/"
+WAF_TERMINAL_URL = "/vm-terminal/waf/"
 WAF_SESSION_TERMINAL_URL = (
-    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/fsl-waf/?arg={session}"
+    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/waf/?arg={session}"
 )
 SITE_PORT = 8002
 ATTACKER_ORIGIN_MODE = os.environ.get(

@@ -109,7 +109,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
-| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/fsl-kali/` and `/vm-terminal/fsl-waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
+| `fsl-platform` | control | `platform/` (Django under waitress, behind nginx; nginx also serves Kibana at `/kibana/`, each session's Kali ttyd at `/terminal/<session id>/`, each session's WAF shell at `/waf-terminal/<session id>/`, the VM terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/`); carries the compose plugin and mounts `session.yaml` at `/src/session.yaml` | the edge networks, mgmt, and each open session's estate | 8000, 8002 |
 | `fsl-gns3` | control | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli; holds open the learner maps the platform loads and starts their display nodes; `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket, the host's pid namespace) | mgmt | 3080 |
 
 8000, 8002 and 3080 bind to `FSL_PUBLISH` and 5140/udp to `FSL_SYSLOG_PUBLISH`,
@@ -570,7 +570,7 @@ The Kali pane (the red console's, and the blue console's in a lesson or
 scenario session) frames the URL the session API names (`kali_terminal` in
 `GET /api/sessions/<id>/`). On compose it is `/terminal/<session id>/`, which
 nginx proxies to Kali's own ttyd in `fsl-<id>-kali-1:7681`. On OpenStack it is
-`/vm-terminal/fsl-kali/?arg=<session id>`, a ttyd inside the platform that
+`/vm-terminal/kali/?arg=<session id>`, a ttyd inside the platform that
 connects over ssh to the mgmt address of the host in the session's slot; on compose, Kali and the WAF have no mgmt address, so
 `/vm-terminal/` does not connect there.
 
@@ -589,8 +589,8 @@ time zone, replaces `\h` in the prompt with the host's name without `fsl-`
 (`ubuntu@waf`) and prints `/etc/motd`; with a command, sshd prints no Ubuntu
 login banner or last-login line. The WAF VM's own hostname is `waf` too: the
 boot unit `set-hostname` renames it after cloud-init and hands the Nova name to
-rsyslog as `localHostname`, so Filebeat still reads the slot from the sender
-name.
+rsyslog as `localHostname` without the `fsl-` prefix (`waf`, `waf-2`), so Filebeat
+still reads the slot from the sender name.
 
 The blue console's WAF pane frames the URL the session API names
 (`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
@@ -600,7 +600,7 @@ client's query and proxies to a ttyd inside the platform
 ttyd's `-a` passes that as the script's argument, and the script, after checking
 it is a number, runs `docker exec -it fsl-<id>-waf-1 bash`. The WAF image has
 no ttyd of its own. The same `auth_request /terminal-allowed` guards it. On
-OpenStack the pane frames `/vm-terminal/fsl-waf/?arg=<session id>`.
+OpenStack the pane frames `/vm-terminal/waf/?arg=<session id>`.
 
 The blue console's Website pane is a browser inside the console: back,
 forward, reload (a stop button with a thin progress bar while a page loads),

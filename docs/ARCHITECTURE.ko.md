@@ -518,7 +518,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 `ubuntu`로 `bash --rcfile`을 `-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을
 읽고 시간대를 설정하며, 프롬프트의 `\h`를 `fsl-`를 뺀 호스트 이름(`ubuntu@waf`)으로 바꾼 뒤
 `/etc/motd`를 출력합니다. WAF VM의 hostname도 `waf`입니다. 부팅 유닛 `set-hostname`이 cloud-init
-뒤에 이름을 바꾸고 Nova 이름을 rsyslog `localHostname`으로 넘겨, Filebeat가 송신자 이름에서
+뒤에 이름을 바꾸고 `fsl-`를 뺀 Nova 이름(`waf`, `waf-2`)을 rsyslog `localHostname`으로 넘겨, Filebeat가 송신자 이름에서
 슬롯을 계속 읽습니다. 명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을
 출력하지 않습니다.
 
