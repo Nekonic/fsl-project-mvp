@@ -1,7 +1,7 @@
 const dev = {
   open: false, after: 0, rows: [], height: 280, timer: null, picked: null, record: null, tab: "headers",
   preserve: false, coached: null, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
-  panel: "network",
+  panel: "network", documents: {},
 };
 const DEV_POLL_MS = 2000;
 const DEV_LOWEST = 120;
@@ -174,6 +174,7 @@ async function devPoll() {
   dev.after = Math.max(dev.after, ...read.body.map((row) => row.id));
   devTake(read.body);
   devRows();
+  if (dev.panel === "elements" || dev.panel === "sources") devFill(dev.panel);
 }
 
 const devToggleLink = (key, act) => `<button type="button" class="dv-link" data-act="${act}">${esc(t(key))}</button>`;
@@ -362,12 +363,91 @@ function devToggle() {
 
 const DEV_PANELS = { elements: "Elements", console: "Console", sources: "Sources", network: "Network" };
 
+const DEV_VOID = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
+const DEV_TOKENS = /<!-{2}[\s\S]*?-{2}>|<!doctype[^>]*>|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<\/?[a-zA-Z][^>]*>|[^<]+|</gi;
+const DEV_EMPTY_DOCUMENT = "<html><head></head><body></body></html>";
+
+function devRawText(token) {
+  const lines = token.replace(/^<[^>]*>/, "").replace(/<\/[a-z]+\s*>$/i, "").split("\n").filter((line) => line.trim());
+  const indent = Math.min(...lines.map((line) => line.length - line.trimStart().length), Infinity);
+  return lines.map((line) => line.slice(indent === Infinity ? 0 : indent).trimEnd());
+}
+
+function devPretty(html) {
+  const lines = [];
+  let depth = 0;
+  const push = (text, opens) => lines.push({ depth, text, opens });
+  (html.match(DEV_TOKENS) || []).forEach((raw) => {
+    const rawBlock = /^<(script|style)\b/i.exec(raw);
+    const token = raw.trim().replace(/\s+/g, " ");
+    if (!token) return;
+    if (rawBlock) {
+      const open = /^<[^>]*>/.exec(raw)[0];
+      const close = /<\/[a-z]+\s*>$/i.exec(raw)[0].replace(/\s+/g, "");
+      const body = devRawText(raw);
+      if (!body.length) return push(open + close, false);
+      push(open, true);
+      depth += 1;
+      body.forEach((line) => push(line, false));
+      depth -= 1;
+      return push(close, false);
+    }
+    if (/^<\/[a-z]/i.test(token)) {
+      depth = Math.max(depth - 1, 0);
+      const last = lines[lines.length - 1];
+      const before = lines[lines.length - 2];
+      if (last && last.opens) {
+        lines.pop();
+        return push(last.text + token, false);
+      }
+      if (last && before && before.opens && before.depth === depth && !/^</.test(last.text)) {
+        lines.length -= 2;
+        return push(before.text + last.text + token, false);
+      }
+      return push(token, false);
+    }
+    const name = (/^<([a-z0-9]+)/i.exec(token) || [])[1];
+    if (!name || /^<[!-]/.test(token) || token.endsWith("/>") || DEV_VOID.includes(name.toLowerCase())) return push(token, false);
+    push(token, true);
+    depth += 1;
+  });
+  return lines.map((line) => "  ".repeat(line.depth) + line.text).join("\n");
+}
+
+async function devDocument() {
+  const latest = dev.rows.filter((row) => row.category === "doc").pop();
+  if (!latest) return { text: devPretty(DEV_EMPTY_DOCUMENT), note: "" };
+  if (!dev.documents[latest.id]) {
+    const read = await api(sitePath(`${latest.id}/`));
+    if (!read.ok) return { text: devPretty(DEV_EMPTY_DOCUMENT), note: "" };
+    dev.documents[latest.id] = read.body;
+  }
+  const record = dev.documents[latest.id];
+  const body = record.response_body;
+  return { text: devPretty(body ? body.text : ""), note: devBodyNote(record) };
+}
+
+async function devFill(name) {
+  const blank = field("site-dev-blank");
+  if (name === "console") {
+    blank.innerHTML = `<div class="dv-prompt"><span>&gt;</span></div>`;
+    return;
+  }
+  const page = await devDocument();
+  if (dev.panel !== name) return;
+  blank.innerHTML = name === "sources"
+    ? devSource(page.text) + page.note
+    : `<pre class="dv-raw" style="margin-left: 8px">${esc(page.text)}</pre>${page.note}`;
+}
+
 function devPanel(name) {
   dev.panel = name;
   field("site-dev").querySelectorAll("[data-panel]").forEach((tab) =>
     tab.setAttribute("aria-selected", String(tab.dataset.panel === name)));
   field("site-dev-network").classList.toggle("hidden", name !== "network");
   field("site-dev-blank").classList.toggle("hidden", name === "network");
+  field("site-dev-blank").innerHTML = "";
+  if (name !== "network") devFill(name);
 }
 
 function devKeep(rows) {

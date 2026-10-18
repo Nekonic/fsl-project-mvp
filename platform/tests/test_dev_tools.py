@@ -17,7 +17,7 @@ const cached = {id: 3, at: NOW + 0.3, method: "GET", url: "http://board.com/stat
                 size: 0, ms: 0, cache: "disk", body_size: 3000};
 """
 
-def test_the_tools_open_on_the_network_panel_and_the_other_panels_are_empty(client):
+def test_the_tools_open_on_the_network_panel_and_the_other_panels_show_what_chrome_shows(client):
     seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
       await browser.click('[data-pane="site"]');
       await browser.click('site-dev-toggle');
@@ -25,22 +25,30 @@ def test_the_tools_open_on_the_network_panel_and_the_other_panels_are_empty(clie
       const state = () => ({network: shown('site-dev-network'), blank: shown('site-dev-blank'),
                             selected: ['elements', 'console', 'sources', 'network'].filter((n) => panel(n).getAttribute('aria-selected') === 'true')});
       const opened = state();
+      dev.rows = [doc];
+      dev.documents[1] = {response_body: {text: '<html><body><h1>Board</h1><p>Hello</p></body></html>', size: 52, truncated: false}};
       panel('console').click();
-      const console = state();
+      await browser.settle();
+      const console = {...state(), text: browser.text('site-dev-blank')};
+      panel('elements').click();
+      await browser.settle();
+      const elements = browser.element('site-dev-blank').innerHTML;
       panel('sources').click();
-      const sources = state();
+      await browser.settle();
+      const sources = {...state(), text: browser.element('site-dev-blank').innerHTML};
       browser.element('site-dev-toggle').click();
       browser.element('site-dev-toggle').click();
-      return {opened, console, sources, reopened: state(), blankText: browser.text('site-dev-blank')};
+      return {opened, console, elements, sources, reopened: state()};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["opened"] == {"network": True, "blank": False, "selected": ["network"]}
-    assert result["console"] == {"network": False, "blank": True, "selected": ["console"]}
-    assert result["sources"] == {"network": False, "blank": True, "selected": ["sources"]}
+    assert result["console"] == {"network": False, "blank": True, "selected": ["console"], "text": ">"}
+    assert "\n  &lt;body&gt;\n    &lt;h1&gt;Board&lt;/h1&gt;" in result["elements"]
+    assert result["sources"]["blank"] and result["sources"]["selected"] == ["sources"]
+    assert "&lt;h1&gt;Board&lt;/h1&gt;" in result["sources"]["text"] and "/site/" not in result["sources"]["text"]
     assert result["reopened"] == result["opened"], "the coach's rows and tabs are on screen whenever the tools open"
-    assert result["blankText"] == "", "no made-up content in the panels the learner has nothing to inspect in"
 
 def test_the_network_table_has_a_waterfall_bar_per_row_and_the_status_bar_sums_the_unpacked_sizes(client):
     seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
@@ -110,4 +118,4 @@ def test_the_type_chips_are_the_ones_chrome_shows_in_its_order(client):
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == ["all", "xhr", "js", "css", "img", "media", "font", "doc", "ws", "wasm", "manifest", "other"]
+    assert seen["result"] == ["all", "xhr", "doc", "css", "js", "font", "img", "media", "manifest", "ws", "wasm", "other"]
