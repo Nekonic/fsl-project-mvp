@@ -375,7 +375,7 @@ foundations:
         check: {kind: choice, of: waf_logged, about: search, options: [present, absent]}
       - id: count
         point: {opens: elk}
-        check: {kind: answer, of: hits, path: /search/, leg: inbound}
+        check: {kind: answer, of: hits, about: search, leg: inbound}
   - id: f4
     order: 4
     text: lesson.xss

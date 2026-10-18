@@ -184,11 +184,11 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_so_one_sensor_seeing
     with flavor("openstack"), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"))}
+            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "1"))}
         Session.objects.filter(pk=session.pk).update(lesson_steps={"f3": {"site_source": {"passed": "x"}}})
         host = answer(client, session, "site_host", "waf")["passed"]
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "4"))}
+            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "2"))}
 
     assert said == {"site_source": True, "client_source": True, "xff": True, "count": True}
     assert host is True, "the host is the map host whose address the step before found"
