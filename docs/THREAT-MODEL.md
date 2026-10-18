@@ -76,7 +76,8 @@ any browser that loads its pages, so the API also refuses cross-origin writes
 and any write with a body that is not `application/json`.
 
 **The GNS3 server is published read-only to anyone who reaches 3080.** Its
-sign-in page (`/static/web-ui/fsl-auditor.html`) carries the learner's password,
+sign-in page (`/static/web-ui/map.html`) carries the learner's password (generated at
+bring-up, not a shipped default),
 and the learner holds only the built-in Auditor role. The admin password is
 `FSL_GNS3_ADMIN_PASSWORD` or generated into `/var/lib/fsl-gns3/admin-password`
 and never given to learners, and API keys for MCP are minted only by

@@ -46,6 +46,9 @@ filebeat.inputs:
               var slot = /^[^.]*-(\d+)(\.|$)/.exec(event.Get("log.syslog.hostname") || "");
               event.Put("fsl_slot", slot ? slot[1] : "1");
             }
+      - drop_fields:
+          fields: [log.source.address]
+          ignore_missing: true
       - if:
           and:
             - equals:

@@ -28,19 +28,19 @@ return {
 """
 
 def test_the_topology_pane_frames_the_gns3_web_ui_through_its_read_only_sign_in(client):
-    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    web_ui = {"port": 3080, "path": "/static/web-ui/map.html?project=p"}
     seen = open_page(client, "/blue/1/", setup=serving(web_ui), scenario="""
       await browser.click('[data-pane="topology"]');
     """ + READ)
 
     assert seen["errors"] == []
-    assert seen["result"]["frame"] == "http://console.test:3080/static/web-ui/fsl-auditor.html?project=p"
+    assert seen["result"]["frame"] == "http://console.test:3080/static/web-ui/map.html?project=p"
     assert seen["result"]["frameShown"] == "block"
 
 
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(client, language):
-    web_ui = {"port": 3080, "path": "/static/web-ui/fsl-auditor.html?project=p"}
+    web_ui = {"port": 3080, "path": "/static/web-ui/map.html?project=p"}
     chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
     seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
       await browser.click('[data-pane="topology"]');

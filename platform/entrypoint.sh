@@ -26,6 +26,11 @@ gosu fsl ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.
 gosu fsl ttyd -W -a -b /waf-terminal -t disableResizeOverlay=true -i 127.0.0.1 -p 7693 /app/waf-terminal.sh &
 
 exec gosu fsl sh -c '
+  if [ -z "${DJANGO_SECRET_KEY:-}" ]; then
+    [ -s /data/secret-key ] || (umask 077 && python -c "import secrets; print(secrets.token_urlsafe(50))" > /data/secret-key)
+    DJANGO_SECRET_KEY="$(cat /data/secret-key)"
+    export DJANGO_SECRET_KEY
+  fi
   python manage.py migrate --noinput
   python register_pipeline.py &
   python kibana.py &

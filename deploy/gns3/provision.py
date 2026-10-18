@@ -11,7 +11,7 @@ import gns3server
 API = "http://127.0.0.1:3080/v3"
 HERE = Path(__file__).resolve().parent
 WEB_UI = Path(gns3server.__file__).resolve().parent / "static" / "web-ui"
-BOOTSTRAP = "fsl-auditor.html"
+BOOTSTRAP = "map.html"
 SYMBOLS = HERE / "symbols"
 ADMIN = "admin"
 AUDITOR_ROLE = "Auditor"
@@ -26,7 +26,7 @@ def admin_password() -> str:
 def auditor() -> dict:
     return {
         "username": os.environ.get("FSL_GNS3_AUDITOR_USER") or "learner",
-        "password": os.environ.get("FSL_GNS3_AUDITOR_PASSWORD") or "fsl-auditor",
+        "password": os.environ.get("FSL_GNS3_AUDITOR_PASSWORD") or (DATA / "auditor-password").read_text().strip(),
     }
 
 def call(method: str, path: str, body=None, token: str = "", raw: bytes | None = None):

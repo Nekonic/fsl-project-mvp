@@ -120,8 +120,8 @@ def slot_rule():
 
 
 @pytest.mark.parametrize("hostname, slot", [
-    ("edge.localdomain", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
-    ("edge-2.localdomain", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
+    ("firewall.localdomain", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
+    ("firewall-2.localdomain", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
 ])
 def test_a_range_vm_s_syslog_is_tagged_with_the_slot_its_hostname_names(hostname, slot):
     found = slot_rule().match(hostname)
@@ -139,3 +139,10 @@ def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_
         "two slots send from the same origin addresses at once; one index for both would "
         "score each session on the other's alerts"
     )
+
+
+def test_a_document_does_not_carry_the_management_address_it_was_received_from():
+    [heard] = syslog_inputs()
+    [dropped] = [step["drop_fields"] for step in heard["processors"] if "drop_fields" in step]
+
+    assert dropped["fields"] == ["log.source.address"] and dropped["ignore_missing"] is True

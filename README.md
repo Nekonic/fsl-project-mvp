@@ -578,7 +578,7 @@ the whole procedure has not been run against a live stack.
 
 ## Local lab only
 
-Elasticsearch runs without security and Django with `DEBUG=1`. Django answers
+Elasticsearch runs without security. Django runs with `DEBUG` off and a secret key generated once into the platform's data volume. Django answers
 only to `localhost`, `127.0.0.1` and `[::1]` unless `DJANGO_ALLOWED_HOSTS`
 names more; the platform VM adds its floating IP. The Docker socket is
 mounted into the platform, a container escape path. `/terminal/` is an

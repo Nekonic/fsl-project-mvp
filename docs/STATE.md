@@ -397,7 +397,7 @@ geolocated TW.
   `0.0.0.0` for 5140/udp (`platform.yaml:145`); 9200 stays on loopback. Django
   answers to the floating IP. Before, each segment's gateway
   forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
-  (8 of 8 reached). `DJANGO_DEBUG=1` is safe only because of this. Another
+  (8 of 8 reached). Django runs with DEBUG off. Another
   machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
   `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at `*`
   DNS rebinding passed the same-origin check, which trusts the request's Host.
@@ -796,7 +796,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] Rename the infrastructure's `fsl-` names (deferred by the user,
       2026-10-15): hosts, containers, VMs and networks (`fsl-kali`,
       `fsl-waf`, `fsl-edge`, `fsl-wargame-host`, `fsl-platform`, `fsl_mgmt`,
-      `fsl-auditor.html`, ...). `fsl-` is not a real name; the learner map no
+      ...). `fsl-` is not a real name; the learner map no
       longer shows it (`topology.learner` maps the range's names to role
       names), but the system maps, the console's terminals and Kibana's
       `log.syslog.hostname` still do.

@@ -455,9 +455,10 @@ holds only the maps the platform loads (a template draws every wargame, so none
 is copied in), sets the admin password before the controller database exists
 (`FSL_GNS3_ADMIN_PASSWORD`, or generated once into
 `/var/lib/fsl-gns3/admin-password`), gives the learner user the
-built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, default
-`fsl-auditor`, also handed to the platform), and writes
-`/static/web-ui/fsl-auditor.html`, which signs in as the learner and stores the
+built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, or generated once
+into `/var/lib/fsl-gns3/auditor-password`, which the platform reads from the
+same mount), and writes
+`/static/web-ui/map.html`, which signs in as the learner and stores the
 token where the bundled web UI reads its controller (`controller-1`,
 `controllerIds` in `localStorage`), with `showInterfaceLabels` on and
 `integrateLinkLabelsToLinks` off so each link end's label is drawn where the
@@ -1663,8 +1664,10 @@ not declared: it needs a second person; the engine accepts `red: person`.
   index management, snapshot and restore, transforms, rollups, remote clusters,
   license, upgrade assistant, index lifecycle, watcher, the data views API,
   the spaces API except `_active_space`, the security API, the settings API,
-  saved objects import and export) and redirects the pages `app/management`,
-  `app/dev_tools` and `app/home` to Discover of the same space; every call Discover
+  saved objects import and export) and refuses the Default space (`s/default/...`) and every path without a space prefix under
+  `app`, `spaces`, `api` and `internal`, and redirects the pages `app/management`,
+  `app/dev_tools`, `app/home`, `app/observability`, `app/security` and `app/kibana_overview`
+  to Discover of the same space; every call Discover
   makes goes through, and the platform's own setup (`KIBANA_URL`) reaches Kibana
   directly. The space is named "SOC"; the data view is on the session's
   index pattern, shown by its name `logs-*`, never the pattern; the shared
@@ -1905,7 +1908,7 @@ slot's hosts take their own DHCP addresses there and `fsl-mgmt` fences them
 as before. A slot adapter (`OpenStack.in_slot(n)`) reads only its own slot's
 servers, by their declared host name, so roles, runners, topology and the
 edge's rendered settings are the same in every slot; slot N's edge renders
-its hostname as `edge-N`. Opening the collector for one slot keeps the
+its hostname as `firewall-N`. Opening the collector for one slot keeps the
 other slots' sender rules. The platform binds a session to a slot at open
 (`Session.slot`, one open session per slot by a unique constraint): the
 first free slot that is READY, chosen under a lock. Every per-session range

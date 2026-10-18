@@ -135,6 +135,9 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
     assert {"_index", "event.*", "log.*", "message", "http.request_headers*"} <= hidden, (
         "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
     )
+    assert {"http.*", "data_stream.*"} <= hidden, (
+        "Suricata's own http names sit beside the lesson's url and status, and the data stream names the slot"
+    )
     assert {"src_ip", "dest_ip", "alert.signature", "alert.signature_id"} <= hidden, (
         "the Suricata names for what the data view already shows as source_ip, destination, rule_id and rule"
     )
@@ -359,3 +362,9 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     )
     assert "fsl" not in json.dumps(kibana.session_search(view)).lower()
     assert kibana.SPACE_NAME == "SOC" and kibana.session_view_id("logs-2-*") == "soc-logs-2"
+
+
+def test_a_sensor_whose_host_name_is_its_map_name_is_found_by_that_name():
+    observer = kibana.sensor_script(SENSORS, "waf")
+
+    assert '"firewall": "firewall"' in observer and '"edge": "firewall"' in observer
