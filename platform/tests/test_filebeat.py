@@ -64,14 +64,22 @@ def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_re
             continue
         appname = next(c["equals"]["log.syslog.appname"] for c in step["if"]["and"] if "equals" in c)
         names = [next(iter(each)) for each in step["then"]]
-        tagged = next(each["add_fields"]["fields"]["fsl_source"] for each in step["then"] if "add_fields" in each)
+        tagged = next(each["add_fields"]["fields"]["event"]["module"] for each in step["then"] if "add_fields" in each)
         assert "decode_json_fields" in names
         decoded[appname] = tagged
 
     assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity"}, (
-        "ingest normalizes a document by fsl_source; a line from another "
-        "program is kept as fsl_source syslog and scored as nothing"
+        "ingest normalizes a document by event.module"
     )
+
+
+def test_a_syslog_line_from_another_program_is_dropped_so_the_index_holds_only_the_engines_events():
+    [heard] = syslog_inputs()
+
+    assert heard["processors"][-1] == {"drop_event": {"when": {"not": {"has_fields": ["event.module"]}}}}, (
+        "the learner's Discover shows every document of the index; the hosts' own system log lines are no events"
+    )
+    assert "fsl_source" not in yaml.safe_dump(heard["processors"])
 
 
 def test_the_data_stream_filebeat_makes_for_its_template_matches_the_template_s_pattern():
@@ -83,7 +91,7 @@ def test_the_data_stream_filebeat_makes_for_its_template_matches_the_template_s_
         "Filebeat creates a data stream named after its template when it loads the template; on a fresh "
         "Elasticsearch a name outside the pattern failed the first connection with 'no matching index template'"
     )
-    assert fnmatch("fsl-logs-slot1-2026.10.17", config["setup.template.pattern"])
+    assert fnmatch("logs-1-2026.10.17", config["setup.template.pattern"])
 
 def test_the_template_geolocates_every_document_by_default_not_only_when_filebeat_asks():
     config = yaml.safe_load(FILEBEAT.read_text())
@@ -125,8 +133,8 @@ def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_
     config = yaml.safe_load(FILEBEAT.read_text())
     output = config["output.elasticsearch"]
 
-    assert output["index"] == "fsl-logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
-    assert output["indices"] == [{"index": "fsl-logs-slot%{[fsl_slot]}-%{+yyyy.MM.dd}",
+    assert output["index"] == "logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
+    assert output["indices"] == [{"index": "logs-%{[fsl_slot]}-%{+yyyy.MM.dd}",
                                   "when.has_fields": ["fsl_slot"]}], (
         "two slots send from the same origin addresses at once; one index for both would "
         "score each session on the other's alerts"

@@ -236,7 +236,7 @@ class Board(BaseHTTPRequestHandler):
         return parse_qs(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode())
 
     def _note(self):
-        noted = {"marker": self.headers.get("X-FSL-Case"), "path": self.path, "method": self.command,
+        noted = {"marker": self.headers.get("X-Request-ID"), "path": self.path, "method": self.command,
                  "cookies": self._cookies(), "source": self.client_address[0],
                  "host": self.headers.get("Host"), "referer": self.headers.get("Referer")}
         Board.seen.append(noted)

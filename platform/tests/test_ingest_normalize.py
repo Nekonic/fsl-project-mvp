@@ -9,14 +9,14 @@ WINDOW = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, t
 
 def suricata_alert(**overrides):
     doc = {
-        "fsl_source": "suricata",
+        "event": {"module": "suricata"},
         "event_type": "alert",
         "timestamp": "2026-09-18T12:00:01.500000+0000",
         "src_ip": "172.20.0.5",
         "alert": {"signature": "ET WEB SQL Injection", "severity": 1},
         "http": {
             "hostname": "waf",
-            "request_headers": [{"name": "X-FSL-Case", "value": MARKER}],
+            "request_headers": [{"name": "X-Request-ID", "value": MARKER}],
         },
     }
     doc.update(overrides)
@@ -49,18 +49,18 @@ def test_suricata_alert_without_marker_has_none(http):
 
 def modsec_doc(messages):
     return {
-        "fsl_source": "modsecurity",
+        "event": {"module": "modsecurity"},
         "transaction": {
             "time_stamp": "2026-09-18T12:00:02.000000+0000",
             "client_ip": "172.20.0.5",
-            "request": {"headers": {"X-FSL-Case": MARKER}},
+            "request": {"headers": {"X-Request-ID": MARKER}},
             "messages": messages,
         },
     }
 
 def test_modsecurity_header_name_is_matched_case_insensitively():
     doc = modsec_doc([{"message": "SQLi"}])
-    doc["transaction"]["request"]["headers"] = {"x-fsl-case": MARKER}
+    doc["transaction"]["request"]["headers"] = {"x-request-id": MARKER}
 
     [det] = normalize("es2", doc)
 
@@ -89,7 +89,7 @@ def test_modsecurity_falls_back_to_rule_id_when_message_is_missing():
 
     assert det["signature"] == "ruleId 942100"
 
-@pytest.mark.parametrize("doc", [{"fsl_source": "nginx-access"}, {"message": "hello"}])
+@pytest.mark.parametrize("doc", [{"event": {"module": "nginx-access"}}, {"message": "hello"}])
 def test_unknown_source_is_dropped(doc):
     assert normalize("es3", doc) == []
 
@@ -97,7 +97,7 @@ def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
     return (
         doc_id,
         {
-            "fsl_source": "suricata",
+            "event": {"module": "suricata"},
             "event_type": "http",
             "flow_id": flow_id,
             "timestamp": "2026-09-18T12:00:01.000000+0000",
@@ -106,7 +106,7 @@ def suricata_http_event(marker=MARKER, flow_id=42, doc_id="h1"):
                 "url": "/rest/products/search",
                 "request_headers": [
                     {"name": "Host", "value": "localhost"},
-                    {"name": "X-FSL-Case", "value": marker},
+                    {"name": "X-Request-ID", "value": marker},
                 ],
             },
         },
@@ -174,14 +174,14 @@ def keepalive_pair(tx_id, marker, flow_id=7):
     alert["http"] = {"url": f"/tx/{tx_id}"}
 
     http = {
-        "fsl_source": "suricata",
+        "event": {"module": "suricata"},
         "event_type": "http",
         "flow_id": flow_id,
         "tx_id": tx_id,
         "timestamp": "2026-09-18T12:00:01.000000+0000",
         "http": {
             "url": f"/tx/{tx_id}",
-            "request_headers": [{"name": "X-FSL-Case", "value": marker}],
+            "request_headers": [{"name": "X-Request-ID", "value": marker}],
         },
     }
     return [(f"a{tx_id}", alert), (f"h{tx_id}", http)]
@@ -240,7 +240,7 @@ def _fetch(hits, total, monkeypatch, **kwargs):
         elastic.requests, "post", lambda *a, **k: _Response(hits, total)
     )
     when = datetime(2026, 9, 21, tzinfo=timezone.utc)
-    return elastic.fetch("http://es", "fsl-logs-*", when, when, **kwargs)
+    return elastic.fetch("http://es", "logs-*", when, when, **kwargs)
 
 @pytest.mark.parametrize("hits, total, expected", [(120, 120, None), (5000, 25937, (5000, 25937))])
 def test_a_fetch_that_hit_the_cap_says_what_it_lost(monkeypatch, hits, total, expected):
@@ -272,7 +272,7 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
     with patch("ingest.elastic.requests.post") as posted:
         posted.return_value.ok = True
         posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
-        elastic.fetch("http://es:9200", "fsl-logs-*", *WINDOW)
+        elastic.fetch("http://es:9200", "logs-*", *WINDOW)
 
     assert "allow_partial_search_results=false" in posted.call_args.args[0], (
         "a search that lost a shard answers 200 with fewer hits, and ingest "
@@ -305,4 +305,4 @@ def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said
         post = {"raises": requests.RequestException("connection refused")}
     with patch("ingest.elastic.requests.post", _failing(**post)):
         with pytest.raises(elastic.ElasticUnavailable, match=said):
-            elastic.fetch("http://es:9200", "fsl-logs-*", *WINDOW)
+            elastic.fetch("http://es:9200", "logs-*", *WINDOW)

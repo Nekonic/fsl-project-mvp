@@ -6,7 +6,7 @@ from typing import Any
 
 import requests
 
-MARKER_HEADER = "X-FSL-Case"
+MARKER_HEADER = "X-Request-ID"
 _MARKER_KEY = MARKER_HEADER.lower()
 
 FETCH_TIMEOUT = 10.0
@@ -95,7 +95,7 @@ def _transaction_key(doc: dict[str, Any]) -> tuple[Any, Any] | None:
     return (flow_id, doc.get("tx_id"))
 
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    source = doc.get("fsl_source")
+    source = (doc.get("event") or {}).get("module")
     if source == "suricata":
         return _normalize_suricata(doc_id, doc)
     if source == "modsecurity":

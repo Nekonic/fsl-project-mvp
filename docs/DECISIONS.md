@@ -5335,3 +5335,49 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   Kibana's space switcher. The product has no learner identity: any session's
   console is reachable by its URL, so a per-space access check would protect
   nothing more than the URL already gives away.
+
+## Kibana shows no platform name (round-2 realism M5, L1, L2)
+
+- **What a learner can open.** The JSON tab prints `_index` and `_source`;
+  Inspect prints the request (the `_source` excludes, the runtime mappings and
+  their scripts); the data view page prints the pattern and the name; KQL
+  autocomplete lists the fields. Each carried `fsl-logs-slotN-...`,
+  `fsl_source`, `fsl_slot` or `X-FSL-Case`. None does now.
+- **Names.** Indices are `logs-<session id>-<day>` on docker and
+  `logs-<N>-<day>` on OpenStack (the data stream behind it is
+  `.ds-logs-<N>-<day>-000001`); Filebeat's template is `logs-sensors` on
+  `logs-*`, priority 150 over Elasticsearch's built-in `logs-*-*` (100); the
+  data view is named `logs-*` (the space keeps "Session logs", the only place
+  that name is shown); the engine is the ECS field `event.module`
+  (`suricata`, `modsecurity`), `log_source` stays as the runtime field the
+  lessons name; `event.*` joins the source filters, `fsl_*` and the marker
+  patterns leave them (the fields no longer exist; the headers sit under
+  `transaction.*` and `http.request_headers*`, still hidden).
+- **Slot tag.** Filebeat still routes on `fsl_slot`, and the ingest pipeline's
+  first processor removes it before the document is stored, so no mapping or
+  document has it. It is not moved to `@metadata`: whether `has_fields`
+  reads `@metadata` in the output selector was not provable offline.
+- **Marker header.** `X-FSL-Case` is now `X-Request-ID`, a header gateways
+  and load balancers set on every request, in `deploy/proxy/stamp.py`,
+  `deploy/traffic/users.py`, `redteam/tools.py`, `ingest/elastic.py`,
+  `site.py` and `kibana.py`; its value is still the case id. Nothing in the
+  WAF, Suricata or the board sets that header (checked by search), so the
+  stamp-only-when-absent rule is unchanged. Not chosen: removing the header
+  after extraction (Suricata and ModSecurity record the request before the
+  pipeline sees it, and the platform re-reads it from Elasticsearch at
+  ingest), or storing the marker under a custom field (that field is a platform
+  name too).
+- **Syslog lines.** Filebeat drops a syslog event that is neither a Suricata
+  nor a ModSecurity JSON line (`drop_event` on `not has_fields event.module`),
+  so the index holds only the two engines' events and the Discover link no
+  longer adds `log_source: exists`. Nothing read those lines.
+- **Sensor script.** The `sensor` runtime field matched on the host names
+  `fsl-edge` and `fsl-wargame-host`, which Inspect printed; it now matches on
+  the sender's host name without its first dash-separated part, on both sides.
+- **Operator objects.** The default space still holds `fsl-*` ids and "FSL ..."
+  titles (saved search, visualizations, dashboard); a learner space cannot
+  reach them. The ingest pipeline keeps its name `fsl-geoip`; no learner
+  screen shows it.
+- **Not proven offline.** Filebeat 8.15 with template `logs-sensors` on
+  `logs-*` beside the built-in `logs` templates, nested `event.module` in
+  `fields`, and `drop_event` on a syslog input. A live walk checks them.

@@ -266,7 +266,7 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
 
 
 def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, settings):
-    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
     opened(client)
     second = opened(client)
     read = []
@@ -274,7 +274,7 @@ def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, set
     with patch("api.views.elastic.fetch", lambda url, index, *a, **k: read.append(index) or ([], None)):
         client.post_json(f"/api/sessions/{second.pk}/ingest/")
 
-    assert read == ["fsl-logs-slot2-*"]
+    assert read == ["logs-2-*"]
 
 
 def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot(monkeypatch):
@@ -284,7 +284,7 @@ def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot
     monkeypatch.delenv("ELASTIC_SESSION_INDEX", raising=False)
     said = runpy.run_path(str(Path(__file__).resolve().parents[1] / "fsl" / "settings.py"))
 
-    assert said["ELASTIC_SESSION_INDEX"] == "fsl-logs-slot{slot}-*"
+    assert said["ELASTIC_SESSION_INDEX"] == "logs-{slot}-*"
 
 
 def test_run_on_role_runs_on_the_slot_the_named_session_holds(client, cloud, monkeypatch):

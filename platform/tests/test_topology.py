@@ -79,7 +79,7 @@ def test_an_alert_with_no_source_is_unplaced_and_a_segment_with_no_subnet_says_z
 
 def _addressed(doc_id, src_ip, dest_ip, dest_port=80):
     return (doc_id, {
-        "fsl_source": "suricata", "event_type": "alert",
+        "event": {"module": "suricata"}, "event_type": "alert",
         "timestamp": "2026-09-20T12:00:00Z",
         "src_ip": src_ip, "dest_ip": dest_ip, "dest_port": dest_port,
         "alert": {"signature": "FSL SQLi attempt", "severity": 1},

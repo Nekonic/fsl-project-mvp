@@ -67,7 +67,7 @@ Suricata, Filebeat, Kali, the proxy, and one folder per wargame under
 `session.yaml` as its own compose project, `fsl-<session id>`, and waits until
 every service is healthy; the platform then reads the target's baseline from
 that session's own target. Sessions run side by side: each stack has its own
-`estate` network and its own Elasticsearch index (`fsl-logs-<session id>-*`),
+`estate` network and its own Elasticsearch index (`logs-<session id>-*`),
 and opening a session takes down only the stacks of sessions closed more than
 three minutes before, since a just-closed session's Filebeat may still be
 shipping the alerts it is scored on.

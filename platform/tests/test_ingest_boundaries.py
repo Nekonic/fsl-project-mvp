@@ -14,10 +14,10 @@ RULE = 'alert http any any -> any any (msg:"one"; sid:9000901; rev:1;)\n'
 
 def alert(doc_id, when):
     return (doc_id, {
-        "fsl_source": "suricata", "event_type": "alert",
+        "event": {"module": "suricata"}, "event_type": "alert",
         "timestamp": when.isoformat(), "src_ip": "5.188.10.5",
         "alert": {"signature": "SQLi", "severity": 1},
-        "http": {"request_headers": [{"name": "X-FSL-Case", "value": MARKER}]},
+        "http": {"request_headers": [{"name": "X-Request-ID", "value": MARKER}]},
     })
 
 
@@ -163,14 +163,14 @@ def test_an_alert_read_before_its_request_gets_the_marker_when_the_request_arriv
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     now = timezone.now()
     flagged = ("a1", {
-        "fsl_source": "suricata", "event_type": "alert", "timestamp": now.isoformat(),
+        "event": {"module": "suricata"}, "event_type": "alert", "timestamp": now.isoformat(),
         "src_ip": "5.188.10.5", "flow_id": 42, "tx_id": 0,
         "alert": {"signature": "SQLi", "severity": 1},
     })
     request = ("h1", {
-        "fsl_source": "suricata", "event_type": "http", "timestamp": now.isoformat(),
+        "event": {"module": "suricata"}, "event_type": "http", "timestamp": now.isoformat(),
         "flow_id": 42, "tx_id": 0,
-        "http": {"request_headers": [{"name": "X-FSL-Case", "value": MARKER}]},
+        "http": {"request_headers": [{"name": "X-Request-ID", "value": MARKER}]},
     })
     ingest = f"/api/sessions/{session_id}/ingest/"
 

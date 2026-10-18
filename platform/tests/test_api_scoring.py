@@ -33,12 +33,12 @@ def es_alert(marker, doc_id="es1"):
     return (
         doc_id,
         {
-            "fsl_source": "suricata",
+            "event": {"module": "suricata"},
             "event_type": "alert",
             "timestamp": (T0 + timedelta(seconds=1)).isoformat(),
             "src_ip": "172.20.0.5",
             "alert": {"signature": "SQLi", "severity": 1},
-            "http": {"request_headers": [{"name": "X-FSL-Case", "value": marker}]},
+            "http": {"request_headers": [{"name": "X-Request-ID", "value": marker}]},
         },
     )
 

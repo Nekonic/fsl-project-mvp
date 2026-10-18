@@ -19,10 +19,10 @@ INTERNAL_TARGET = "http://waf:8080"
 def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_the_marker():
     assert tool_argv(CASE, INTERNAL_TARGET) == (TOOL_IMAGE, [
         "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
-        "--headers=X-FSL-Case: abc-123",
+        "--headers=X-Request-ID: abc-123",
     ])
     _, window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET)
-    assert not any("X-FSL-Case" in part for part in window)
+    assert not any("X-Request-ID" in part for part in window)
 
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path

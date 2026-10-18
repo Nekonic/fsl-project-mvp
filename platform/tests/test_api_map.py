@@ -14,7 +14,7 @@ MOSCOW = {
 
 def suricata(doc_id, src_ip, geo=None, signature="SQLi"):
     source = {
-        "fsl_source": "suricata", "event_type": "alert", "timestamp": T0,
+        "event": {"module": "suricata"}, "event_type": "alert", "timestamp": T0,
         "src_ip": src_ip, "alert": {"signature": signature, "severity": 1},
     }
     if geo:
@@ -25,7 +25,7 @@ def modsecurity(doc_id, src_ip, message="SQL Injection"):
     return (
         doc_id,
         {
-            "fsl_source": "modsecurity",
+            "event": {"module": "modsecurity"},
             "transaction": {
                 "time_stamp": "Sun Sep 20 12:00:00 2026", "client_ip": src_ip,
                 "messages": [{"message": message}],

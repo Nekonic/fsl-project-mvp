@@ -780,7 +780,7 @@ above; slot N>1 is `fsl-edge-N`, `fsl-kali-N`, `fsl-waf-N`,
 (the same 30 origin /24s) and `fsl-estate-N` (the same estate CIDR), tagged
 `fsl.slot=N`; `fsl-mgmt` is shared. The platform gives each session the first
 free READY slot and keeps it for the session's life; the close resets only
-that slot. The collector writes each slot's syslog to `fsl-logs-slotN-*`,
+that slot. The collector writes each slot's syslog to `logs-N-*`,
 telling the slots apart by the sender's hostname (`fsl-waf-2`,
 `fsl-edge-2.range.internal`); a session reads its slot's index.
 

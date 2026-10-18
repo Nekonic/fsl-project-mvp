@@ -555,7 +555,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: on OpenStack one Kali holds, sent as the `fsl-users` account so it crosses the edge; on docker the platform's own address on the customers network | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
 | Customers | `deploy/traffic/users.py`, in `fsl-<id>-users` (docker) or as `fsl-users` on the Kali VM (OpenStack) | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
 
-The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/var/lib/session/active`
+The proxy is a `mitmdump` script. It sets `X-Request-ID` from `/var/lib/session/active`
 on a request that carries none and, when `/var/lib/session/origin` names an address, forwards the request there with the
 original `Host`. The platform writes both files with `docker exec`. There is no
 TLS interception, so the proxy is an environment variable and does not enforce
@@ -692,12 +692,12 @@ the English ones Chrome's en-US casing; nothing in the panel says "WAF".
 
 Browsing is marked with the session's own secret (`Session.browse_marker`,
 `browse-` and 32 random hex digits, made when the session is created; the
-recorder replaces whatever `X-FSL-Case` the browser sent), and the request
+recorder replaces whatever `X-Request-ID` the browser sent), and the request
 comes from a customers address (above). Its alerts are ingested and listed
 like any other, so the learner finds them in Kibana and in `/detections/`, but
 `/score/` leaves out detections carrying that session's secret the way it
 leaves out replays (`views.REPLAY_MARKS`): browsing is not a case, so it is neither a
-true or false positive nor an unattributed alert. A literal `X-FSL-Case:
+true or false positive nor an unattributed alert. A literal `X-Request-ID:
 browse` sent by hand is just an unknown marker and is scored, and `POST
 /api/attacker/label/` refuses labels that start with `browse`. The API never
 shows the secret: `/detections/`, `/api/detections/<id>/` (including `raw`)
@@ -739,12 +739,12 @@ OpenStack WAF VM blocks the same way (`SecRuleEngine On` in
 
 ```
 WAF (ModSecurity) -> audit.log --+
-Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<session>-<day>
-                                     (fsl_source)   pipeline fsl-geoip
+Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<session>-<day>
+                                     (event.module) pipeline fsl-geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
-             parse per fsl_source, copy the marker onto alerts, store
+             parse per event.module, copy the marker onto alerts, store
              as Detection rows in SQLite
 ```
 
@@ -754,7 +754,7 @@ at close; alerts that arrive after the click are not ingested.
 
 ModSecurity's audit log carries the request headers, so its alerts carry the
 marker directly. Suricata's alert events carry no request headers; only its
-`http` events do (with `dump-all-headers: request`; `custom: [X-FSL-Case]` has
+`http` events do (with `dump-all-headers: request`; `custom: [X-Request-ID]` has
 no effect). Ingest copies the marker from the `http` event onto the alert with
 the same `(flow_id, tx_id)`. Joining on `flow_id` alone attributed every alert
 on a keep-alive connection to its first case.
@@ -762,11 +762,16 @@ on a keep-alive connection to its first case.
 Each ingest call:
 
 - first restores rule suppressions that have expired;
-- reads `fsl-logs-<session>-*` on docker (`ELASTIC_SESSION_INDEX`; each
-  session's Filebeat writes its own index) and `fsl-logs-slot<N>-*` on
+- reads `logs-<session>-*` on docker (`ELASTIC_SESSION_INDEX`; each
+  session's Filebeat writes its own index) and `logs-<N>-*` on
   OpenStack, where the shared collector tags each syslog line with the slot
-  its sender's hostname names (`-N` before the domain, slot 1 otherwise) and
-  writes it to that slot's index;
+  its sender's hostname names (`-N` before the domain, slot 1 otherwise),
+  writes it to that slot's index and the ingest pipeline removes the tag
+  before the document is stored. Filebeat sets `event.module`
+  (`suricata` or `modsecurity`) on every event and drops a syslog line that
+  is neither, so an index holds only the two engines' events and no field,
+  index or header a learner can open in Kibana names the platform (the case
+  marker travels as an `X-Request-ID` header);
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
   to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
@@ -1307,7 +1312,7 @@ how an undetected loss counts double.
 Detection. A case is matched to alerts by one of two strategies, declared
 per case:
 
-- `marker`: the alert carries the case's `X-FSL-Case` value;
+- `marker`: the alert carries the case's `X-Request-ID` value;
 - `window`: the alert's source address matches the case's and its time falls
   within the case's start and end, with two seconds of slack each side.
 
@@ -1378,7 +1383,7 @@ cookie, and follows the 302. A flow whose page carried no token (the GET was
 blocked) stops there, as a browser would.
 
 `deploy/traffic/users.py` is the generator: Python's standard library only,
-paced to the plan's rate across threads, one fresh UUID in `X-FSL-Case` per
+paced to the plan's rate across threads, one fresh UUID in `X-Request-ID` per
 request (the same shape as a case's marker, so a learner cannot tell a
 customer from an attack by it), one JSON line per request in
 `records.jsonl`. It re-reads the plan when the file changes and stops when the
@@ -1625,7 +1630,7 @@ not declared: it needs a second person; the engine accepts `red: person`.
   while Kibana cannot be reached or answers 502/503/504, and reporting any
   other HTTP error once with its status and body; a starting Kibana answers a
   multipart import 415) imports `deploy/kibana/objects.ndjson` with
-  overwrite: the data view `fsl-logs-*` on `@timestamp`, whose runtime fields
+  overwrite: the data view `logs-*` on `@timestamp`, whose runtime fields
   fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`,
   `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the
   "FSL overview" dashboard. It sets `defaultRoute` to that search. A data view
@@ -1639,22 +1644,24 @@ not declared: it needs a second person; the engine accepts `red: person`.
   objects, which stay in the default space (Kibana runs without security, so
   its space switcher still lists the other spaces; closing that needs an
   nginx check of the space against the session); the data view is on the session's
-  index pattern, shown by its name "Session logs", never the pattern; the shared
+  index pattern, shown by its name `logs-*` (the space is named "Session logs"), never the pattern; the shared
   runtime fields plus `log_source` (`suricata` or `modsecurity`),
-  `sensor` (the map name of the sensor: `firewall` and `board.com` on
+  `sensor` (the map name of the sensor, matched on the sender's host name
+  without its first dash-separated part so the script names no `fsl` host:
+  `firewall` and `board.com` on
   OpenStack, `waf` on docker and for every ModSecurity record, slot suffixes
   stripped) and `request_headers` (one `Name: value` per request header,
-  `X-FSL-Case` left out); `sourceFilters` hide `_index`, `fsl_*`,
-  `*X-FSL-Case*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`,
+  `X-Request-ID` left out); `sourceFilters` hide `_index`, `event.*`,
+  `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`,
   `input.*`, `error.*` and `http.request_headers*` (KQL on them still
   works). A refused import is logged and does not stop the session. `GET
   /api/sessions/<id>/` carries `discover`: an unsaved Discover state on that
   view at `/kibana/s/<space>/app/discover`, from the current unit's start, with the columns `log_source,
   sensor, event_type, source_ip, destination, url, status, rule_id,
-  rule` and a filter `log_source: exists` (it hides the range hosts' own
-  syslog lines); a lesson opens it with an empty query, a scenario or a
+  rule` and no filter (Filebeat keeps the range hosts' own
+  syslog lines out of the index); a lesson opens it with an empty query, a scenario or a
   wargame with the alert query. While the space or view is not ready (or
-  without `KIBANA_URL`) `discover` is null, never the shared `fsl-logs` view;
+  without `KIBANA_URL`) `discover` is null, never the shared operator view;
   the ELK pane shows a preparing line and polls the session until the link
   arrives (the import is retried every 10 seconds). The ELK pane opens it. It is not the saved search with an overriding query, which Kibana
   badges "Unsaved changes". Before the pane loads, the blue console marks

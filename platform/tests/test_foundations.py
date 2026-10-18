@@ -44,17 +44,17 @@ def browsed(url, status, request_id=1, ms=40, at=None):
             "status": status, "blocked": status == 403, "ms": ms}
 
 def http_event(marker, url, status, host="fsl-wargame-host", agent="Mozilla/5.0", event_type="http", **fields):
-    headers = [{"name": "X-FSL-Case", "value": marker}] if marker else []
+    headers = [{"name": "X-Request-ID", "value": marker}] if marker else []
     headers += [{"name": "X-Forwarded-For", "value": fields["xff"]}] if fields.get("xff") else []
-    return {"fsl_source": "suricata", "event_type": event_type, "timestamp": (fields.get("at") or timezone.now()).isoformat(),
+    return {"event": {"module": "suricata"}, "event_type": event_type, "timestamp": (fields.get("at") or timezone.now()).isoformat(),
             "src_ip": fields.get("src_ip", WAF), "dest_ip": fields.get("dest_ip", BOARD),
             "dest_port": fields.get("dest_port", 8000), "log": {"syslog": {"hostname": host}},
             "http": {"url": url, "status": status, "http_method": "GET", "http_user_agent": agent,
                      "request_headers": headers}}
 
 def waf_record(marker, uri):
-    return {"fsl_source": "modsecurity", "@timestamp": timezone.now().isoformat(),
-            "transaction": {"client_ip": CUSTOMER, "request": {"uri": uri, "headers": {"X-FSL-Case": marker}},
+    return {"event": {"module": "modsecurity"}, "@timestamp": timezone.now().isoformat(),
+            "transaction": {"client_ip": CUSTOMER, "request": {"uri": uri, "headers": {"X-Request-ID": marker}},
                             "messages": []}}
 
 def indexed(*events):
@@ -316,7 +316,7 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
                        dest_port=80) for n, status in enumerate((500, 500, 200))]
     upstream = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, src_ip=WAF, dest_ip=BOARD)
                 for n, status in enumerate((500, 500, 200))]
-    logged = [{"fsl_source": "modsecurity", "@timestamp": edge[0]["timestamp"],
+    logged = [{"event": {"module": "modsecurity"}, "@timestamp": edge[0]["timestamp"],
                "transaction": {"request": {"headers": {}}, "response": {"http_code": status}}}
               for status in (500, 500, 500, 403)]
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
