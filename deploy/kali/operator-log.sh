@@ -10,7 +10,7 @@ __log_command() {
     __log_last=$number
     printf '%s\t%s\t%s\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      "$(cat /var/lib/session/active 2>/dev/null)" \
+      "$(cat /var/lib/session/active 2>/dev/null || sudo -n cat /var/lib/session/active 2>/dev/null)" \
       "$text" >> /var/log/commands.log
   fi
   echo

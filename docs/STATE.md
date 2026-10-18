@@ -266,7 +266,7 @@ lifecycle with the three-check READY gate; detail under backlog 2, step 7.
   the existing gateway `bootcmd` spreads onto the NIC; the proxy/terminal run on
   the Kali box (`proxy: fsl-kali`); `attacker.origins()` reads the edge as the
   way in and the target by name; choosing an origin runs
-  `/usr/local/sbin/fsl-origin` to SNAT the box's outgoing source
+  `/usr/local/sbin/set-origin` to SNAT the box's outgoing source
   (`ATTACKER_ORIGIN_MODE=snat`), so every tool leaves as that country.
 
 **Left 6 - the scored end-to-end run (cloud-verified 2026-10-02).** From a
@@ -304,10 +304,10 @@ WAN-pass-rule bug.
 
 **Left 5/6 reproduced from a clean boot (2026-10-02), and it exposed a real
 bug.** The whole slot was torn down, the Kali image rebuilt (its `setup.sh`
-ships `/usr/local/sbin/fsl-origin`), and the slot re-booted and re-configured
+ships `/usr/local/sbin/set-origin`), and the slot re-booted and re-configured
 through the API alone (`DELETE /slot/`, `DELETE`+`POST /images/` until clean,
 `POST /slot/`, `POST /configure/`). The fresh Kali came up with 100 eth0
-addresses from the slot `bootcmd` and `fsl-origin` from the image, with no
+addresses from the slot `bootcmd` and `set-origin` from the image, with no
 hand steps, and `POST /api/attacker/origin/` SNATs it per country. A fresh
 scored session then read TP 1, FP 0, FN 0, TN 1, the SQLi corroborated
 across both engines (ModSecurity 16 + Suricata 4 detections), src 120.96.0.10
@@ -1295,7 +1295,7 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `deploy/kali/setup.sh` on a `kali-rolling` base and boots in the slot on
      an origin + mgmt (the terminal/proxy/tooling baked in). Its one Internet
      port holds the ~100 per-country addresses (the slot `bootcmd` spreads them
-     onto the NIC) and `/usr/local/sbin/fsl-origin` SNATs the box's source per
+     onto the NIC) and `/usr/local/sbin/set-origin` SNATs the box's source per
      country, so any origin fires. Proven from a clean image+slot rebuild.
 6. **The sidebar and one port**: Kibana (the real ELK, reading the same
    Elasticsearch), the pfSense pane through a reverse-proxy on the platform's

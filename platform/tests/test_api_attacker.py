@@ -81,7 +81,7 @@ def test_on_snat_mode_choosing_an_origin_wears_its_source_address(client, settin
 
     assert response.status_code == 200
     [(argv, stdin)] = worn
-    assert argv == ["sudo", "/usr/local/sbin/fsl-origin", "172.20.0.7"], (
+    assert argv == ["sudo", "/usr/local/sbin/set-origin", "172.20.0.7"], (
         "snat mode rewrites the box's outgoing source to the origin's address, "
         "which the port already owns; it does not write the host-rewrite file"
     )

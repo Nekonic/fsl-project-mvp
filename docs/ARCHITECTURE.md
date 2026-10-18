@@ -104,7 +104,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-waf` | session | `owasp/modsecurity-crs` (nginx), alias `board.com` on edge (shared, so the platform aims each session's proxy and tools at its own WAF) | edge, edge-br, edge-hk, edge-us, estate | |
 | `fsl-suricata` | session | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, ships the session's `eve.json` and audit log | mgmt | |
-| `fsl-kali` | session | `ghcr.io/nekonic/fsl-kali` from `deploy/kali`; `http_proxy` is `http://fsl-<id>-proxy-1:8081` | edge | |
+| `fsl-kali` | session | `ghcr.io/nekonic/fsl-kali` from `deploy/kali`; `http_proxy` is `http://proxy-<id>:8081`, an alias only that session's proxy carries on the shared `edge` | edge | |
 | `fsl-proxy` | session | `ghcr.io/nekonic/fsl-proxy` from `deploy/proxy` (mitmdump); `/var/lib/session` is the project's named volume `label` | the four edge networks | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
@@ -277,7 +277,7 @@ names a substrate.
 | sensor | refuses to describe the range unless each declared sensor shares the declared gateway's network namespace (`docker ps`, `.HostConfig.NetworkMode`) | reports a sensor whenever both named servers exist; nothing confirms it sees the gateway's traffic |
 | runner | `docker exec` into the role's service container in the session's project | `ssh` to the instance; a role the wargame host fills and `compose:` maps to a service runs in that container (`sudo docker exec <service>`, `range/wargame_host.py`) |
 | address | the role's `estate` IP in the session's project | the host's `mgmt` address |
-| launcher | `docker run --rm --network <segment>`, with `--add-host` for the session WAF's names | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `fsl-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
+| launcher | `docker run --rm --network <segment>`, with `--add-host` for the session WAF's names | `runner("attacker")`: runs the tool over ssh to the declared attacker's mgmt address (the origin only checks that the attacker stands on that segment; the source country comes from `set-origin` SNAT); any other image is refused, because Nova cannot boot a host, return its output and delete it |
 | tested against | the live stack | unit tests on fakes built from the published API reference and a local sshd; on the `fsl-range` cloud, the platform VM built the fabric, the images and the slot through `/api/range/`, `describe()` read back the WAF on the thirty origins and the four hosts on estate and mgmt, and `runner()` ran on each host over ssh to its mgmt address; `launcher()` fired sqlmap from the `ru` and `tw` origins on 2026-10-08 |
 
 Compose mounts the Docker socket into the platform whatever the substrate, and
@@ -555,7 +555,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: on OpenStack one Kali holds, sent as the `fsl-users` account so it crosses the edge; on docker the platform's own address on the customers network | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
 | Customers | `deploy/traffic/users.py`, in `fsl-<id>-users` (docker) or as `fsl-users` on the Kali VM (OpenStack) | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
 
-The proxy is a `mitmdump` script. It sets `X-Request-ID` from `/var/lib/session/active`
+The proxy is a `mitmdump` script (on the OpenStack Kali, `web-proxy.service` runs it from `/usr/local/lib/web-proxy.py`, and `ttyd.service` the terminal; `/var/lib/session/active` and `origin` are mode 0600 for `ubuntu`, which the platform logs in as, and the shell hook reads the marker through `sudo -n cat` when it cannot read it; `/var/log/commands.log` is 0622 `ubuntu`, so `kali` can only append). It sets `X-Request-ID` from `/var/lib/session/active`
 on a request that carries none and, when `/var/lib/session/origin` names an address, forwards the request there with the
 original `Host`. The platform writes both files with `docker exec`. There is no
 TLS interception, so the proxy is an environment variable and does not enforce
@@ -586,7 +586,10 @@ an alias already known is refused. Kali gets a plain login as the `kali` user
 `-i` as `ubuntu`: the rc file reads `/etc/profile` and `~/.profile`, sets the
 time zone, replaces `\h` in the prompt with the host's name without `fsl-`
 (`ubuntu@waf`) and prints `/etc/motd`; with a command, sshd prints no Ubuntu
-login banner or last-login line.
+login banner or last-login line. The WAF VM's own hostname is `waf` too: the
+boot unit `set-hostname` renames it after cloud-init and hands the Nova name to
+rsyslog as `localHostname`, so Filebeat still reads the slot from the sender
+name.
 
 The blue console's WAF pane frames the URL the session API names
 (`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
@@ -1393,7 +1396,7 @@ file is removed or on SIGTERM.
 |---|---|---|
 | Where it runs | `fsl-<id>-users`, a container from the Kali image started by `Docker.users_box` on the personas' origin networks, labelled `fsl.customers=<id>`; not a compose service | the slot's `fsl-kali` VM, as the system account `fsl-users` |
 | Source address | the container's own address on each origin network | each persona is bound to one of the VM's origin addresses |
-| Kept apart from the attacker | the declared default origin is not used; the container's addresses are its own | the default origin is not used; nor is any origin's `source_ip` the attacker wears, nor the VM's unbound source (`ip route get` to the target); `POSTROUTING -m owner --uid-owner fsl-users -j RETURN` is inserted before the `FSL-ORIGIN` SNAT jump, so the attacker's origin rewrite never applies to customers |
+| Kept apart from the attacker | the declared default origin is not used; the container's addresses are its own | the default origin is not used; nor is any origin's `source_ip` the attacker wears, nor the VM's unbound source (`ip route get` to the target); `POSTROUTING -m owner --uid-owner fsl-users -j RETURN` is inserted before the `ORIGIN-SNAT` SNAT jump, so the attacker's origin rewrite never applies to customers |
 
 `platform/attacker.py` holds every command run on the box: `place_customers`
 (the account, the NAT exemption and the program, through `sudo` on OpenStack),
@@ -1909,7 +1912,7 @@ reloads with `suricatasc` on the socket it opens. The edge's syslog and the
 WAF's ModSecurity audit log reach the platform's Elasticsearch, with GeoIP
 enrichment. One Kali image serves every origin: its
 single Internet port holds the ~100 per-country addresses (the slot's
-`bootcmd` adds them to the NIC) and `/usr/local/sbin/fsl-origin` SNATs the
+`bootcmd` adds them to the NIC) and `/usr/local/sbin/set-origin` SNATs the
 box's outgoing source per country, so every tool leaves as the chosen country.
 The marker-adding proxy and the ttyd terminal run on the Kali box.
 

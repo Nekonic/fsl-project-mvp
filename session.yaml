@@ -106,13 +106,18 @@ services:
     init: true
     hostname: kali
     environment:
-      http_proxy: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
-      HTTP_PROXY: "http://fsl-${FSL_SESSION:-}-proxy-1:8081"
+      http_proxy: "http://proxy-${FSL_SESSION:-shared}:8081"
+      HTTP_PROXY: "http://proxy-${FSL_SESSION:-shared}:8081"
 
   proxy:
     platform: linux/amd64
     build: ./deploy/proxy
     image: ghcr.io/nekonic/fsl-proxy:${FSL_IMAGE_TAG:-dev}
-    networks: [edge, edge-br, edge-hk, edge-us]
+    networks:
+      edge:
+        aliases: ["proxy-${FSL_SESSION:-shared}"]
+      edge-br:
+      edge-hk:
+      edge-us:
     volumes:
       - label:/var/lib/session

@@ -32,7 +32,7 @@ RUN useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali \
 COPY --chown=kali:kali bashrc /home/kali/.bashrc
 COPY operator-log.sh /usr/local/lib/shell-hook.sh
 RUN : > /var/log/commands.log \
- && chmod 0666 /var/log/commands.log \
+ && chmod 0622 /var/log/commands.log \
  && echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc
 
 WORKDIR /home/kali

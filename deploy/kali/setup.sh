@@ -50,29 +50,27 @@ SSHD
 install -d -m 0755 /run/sshd
 sshd -t
 
-install -m 0644 ../proxy/stamp.py /usr/local/lib/stamp.py
+install -m 0644 ../proxy/stamp.py /usr/local/lib/web-proxy.py
 install -m 0644 operator-log.sh /usr/local/lib/shell-hook.sh
 
-cat > /usr/local/sbin/fsl-origin <<'ORIGIN'
+cat > /usr/local/sbin/set-origin <<'ORIGIN'
 #!/bin/sh
 set -eu
 source=${1-}
 dev=$(ip route show default | awk '{print $5; exit}')
-iptables -t nat -N FSL-ORIGIN 2>/dev/null || iptables -t nat -F FSL-ORIGIN
-iptables -t nat -C POSTROUTING -o "$dev" -j FSL-ORIGIN 2>/dev/null \
-  || iptables -t nat -A POSTROUTING -o "$dev" -j FSL-ORIGIN
-[ -n "$source" ] && iptables -t nat -A FSL-ORIGIN -j SNAT --to-source "$source"
+iptables -t nat -N ORIGIN-SNAT 2>/dev/null || iptables -t nat -F ORIGIN-SNAT
+iptables -t nat -C POSTROUTING -o "$dev" -j ORIGIN-SNAT 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -o "$dev" -j ORIGIN-SNAT
+[ -n "$source" ] && iptables -t nat -A ORIGIN-SNAT -j SNAT --to-source "$source"
 exit 0
 ORIGIN
-chmod 0755 /usr/local/sbin/fsl-origin
+chmod 0755 /usr/local/sbin/set-origin
 
-install -d -m 0755 /var/lib/session
-: > /var/lib/session/active
-: > /var/lib/session/origin
-chown ubuntu:ubuntu /var/lib/session/active /var/lib/session/origin
+install -d -m 0711 /var/lib/session
+install -m 0600 -o ubuntu -g ubuntu /dev/null /var/lib/session/active
+install -m 0600 -o ubuntu -g ubuntu /dev/null /var/lib/session/origin
 
-: > /var/log/commands.log
-chmod 0666 /var/log/commands.log
+install -m 0622 -o ubuntu -g ubuntu /dev/null /var/log/commands.log
 echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc
 
 cat > /etc/profile.d/proxy.sh <<'EOF'
@@ -80,20 +78,20 @@ export http_proxy="http://127.0.0.1:8081"
 export HTTP_PROXY="http://127.0.0.1:8081"
 EOF
 
-cat > /etc/systemd/system/fsl-proxy.service <<'EOF'
+cat > /etc/systemd/system/web-proxy.service <<'EOF'
 [Unit]
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/mitmdump -q --listen-port 8081 --set block_global=false -s /usr/local/lib/stamp.py
+ExecStart=/usr/bin/mitmdump -q --listen-port 8081 --set block_global=false -s /usr/local/lib/web-proxy.py
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/fsl-terminal.service <<'EOF'
+cat > /etc/systemd/system/ttyd.service <<'EOF'
 [Unit]
 After=network-online.target
 Wants=network-online.target
@@ -106,4 +104,4 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-systemctl enable fsl-proxy fsl-terminal
+systemctl enable web-proxy ttyd
