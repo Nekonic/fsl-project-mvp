@@ -225,6 +225,16 @@ class Element {
     changed(this);
   }
 
+  after(node) {
+    const parent = this.parentNode;
+    if (!parent || node === this) return;
+    node.remove();
+    node.parentNode = parent;
+    parent.children.splice(parent.children.indexOf(this) + 1, 0, node);
+    if (parent.nodes !== null) parent.nodes.splice(parent.nodes.indexOf(this) + 1, 0, node);
+    changed(parent);
+  }
+
   remove() {
     const parent = this.parentNode;
     if (!parent) return;

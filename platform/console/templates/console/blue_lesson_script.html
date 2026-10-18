@@ -281,6 +281,8 @@ const KIBANA = {
   statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
   cellText: "[data-datagrid-cellcontent]",
   toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
+  picker: ['[data-test-subj="superDatePickerToggleQuickMenuButton"]', '[data-test-subj="superDatePickerstartDatePopoverButton"]',
+    '[data-test-subj="superDatePickerendDatePopoverButton"]'],
   sidebar: (name) => `[data-test-subj="field-${name}"]`,
   cell: (name) => `[data-test-subj="dataGridRowCell"][data-gridcell-column-id="${name}"]`,
   page: '[data-test-subj^="docViewerFlyoutNavigationPage-"], [data-test-subj^="dscDocNavigationPage-"]',
@@ -359,16 +361,18 @@ function kibanaFound(doc, spec) {
     const text = queryText(doc);
     if (text !== null && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text });
     const counted = first(...KIBANA.hits);
-    if (counted) return { element: counted, stage: "" };
+    const unchanged = text !== null && text === queryArrival.text;
+    if (counted) return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: counted, stage: "" };
     const none = first(KIBANA.noResults);
     if (!none) return { element: null, stage: "" };
-    return text === queryArrival.text ? { element: first(KIBANA.query), stage: "query" } : { element: none, stage: "none" };
+    return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: none, stage: "none" };
   }
   if (spec.query) return { element: first(KIBANA.query), stage: "" };
   if (spec.sidebar) {
     const title = found(KIBANA.statsTitle);
     const opened = title && title.textContent && title.textContent.includes(spec.sidebar);
-    return { element: (opened && first(KIBANA.topValues)) || first(KIBANA.sidebar(spec.sidebar)), stage: "" };
+    const values = opened ? first(KIBANA.topValues) : null;
+    return { element: values || first(KIBANA.sidebar(spec.sidebar)), stage: values ? "top" : "" };
   }
   return { element: null, stage: "" };
 }
@@ -388,10 +392,13 @@ function flyoutRows(doc, ring) {
     .filter((box) => box && !overlaps(box, ring));
 }
 
-function toolbarRows(doc, ring) {
-  return KIBANA.toolbar.map((selector) => inFrame(frame, boxOf(doc.querySelector(selector))))
+function controlRows(doc, ring, selectors) {
+  return selectors.map((selector) => inFrame(frame, boxOf(doc.querySelector(selector))))
     .filter((box) => box && !overlaps(box, ring));
 }
+
+const toolbarRows = (doc, ring) => controlRows(doc, ring, KIBANA.toolbar);
+const pickerRows = (doc, ring) => controlRows(doc, ring, KIBANA.picker);
 
 function kibanaRect(spec, leg, step) {
   const doc = kibanaDoc();
@@ -400,7 +407,8 @@ function kibanaRect(spec, leg, step) {
   const { element, also, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
   if (coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
-  const crowd = !rect ? [] : spec.doc ? flyoutRows(doc, rect) : spec.hits ? toolbarRows(doc, rect) : [];
+  const crowd = !rect ? [] : stage === "query" || spec.query ? pickerRows(doc, rect)
+    : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
   return { rect, stage, leg: aimed || "", crowd };
 }
 
@@ -576,13 +584,12 @@ const mapZones = () => asking.zones.map((zone) => inFrame(field("topology-frame"
 const mapText = () => asking.text.map((text) => inFrame(field("topology-frame"), text)).filter(Boolean);
 const siteText = () => asking.text.map((text) => inFrame(field("site-frame"), text)).filter(Boolean);
 
+const DEV_CROWD = '[data-coach], .dv-tab, .dv-row, .dv-chip, .dv-panel-tab, .dv-bar label, .dv-bar select, .dv-filter';
+
 function devCrowd(ring) {
   const tools = field("site-dev");
   if (!tools || typeof tools.querySelectorAll !== "function") return [];
-  return Array.from(tools.querySelectorAll("[data-coach]")).filter((one) => {
-    const name = one.getAttribute("data-coach") || "";
-    return name === "row" || name.startsWith("tab.") || name.startsWith("general.") || name.startsWith("payload.");
-  }).map(boxOf).filter((box) => box && !overlaps(box, ring));
+  return Array.from(tools.querySelectorAll(DEV_CROWD)).map(boxOf).filter((box) => box && !overlaps(box, ring));
 }
 
 const MAP_FIT_AGAIN_MS = 3000;
@@ -741,6 +748,8 @@ const CALLOUT_GUESS = { width: 220, height: 28 };
 const TALL_TARGET = 80;
 const DENSE_ROW = 32;
 const LEADER_SAMPLES = 16;
+const LEADER_CROSS_COST = 120;
+const BIG_TARGET = 2;
 
 function padded(rect) {
   const across = rect.height < DENSE_ROW && rect.width > 4 * rect.height ? 1 : RING_PAD;
@@ -809,22 +818,27 @@ function calloutSpot(target, size, bounds, options = {}) {
   const tall = target.height > TALL_TARGET;
   const near = tall ? [...across, ...beside] : [...beside, ...across];
   const holding = Boolean(holder) && within(target, holder);
+  const roomy = target.width > BIG_TARGET * size.width && target.height > BIG_TARGET * size.height;
+  const inside = kind === "map" && roomy
+    ? Array.from({ length: Math.floor(target.height / (size.height / 2)) }, (_, row) => ({
+      left: clampX(target.left + EDGE), top: target.top + EDGE + row * size.height / 2, over: true })).filter((spot) => within({ ...spot, ...size }, target))
+    : [];
   const ordered = {
     term: [...rowEnds, ...beside, ...across],
     site: [across[0], beside[1], across[1], beside[0]],
-    map: [...near, ...corners],
+    map: [...inside, ...near],
     kibana: tall ? [beside[1], ...across, beside[0]] : near,
     open: [beside[0], across[1], beside[1], across[0]],
   }[kind] || (holder && !holding ? [...heading, ...near, ...outside] : [...heading, ...outside, ...underStart, ...near]);
   const blocked = [...crowd, ...(kind === "map" ? [] : zones), ...siblings, ...(holder ? [holder] : [])];
-  const clear = (spot, shut = blocked) => within(spot, bounds) && !overlaps(spot, avoid)
+  const clear = (spot, shut = blocked) => within(spot, bounds) && (spot.over || !overlaps(spot, avoid))
     && !shut.some((box) => overlaps(spot, box) && !(box === holder && spot.inside));
   const direct = (spot) => !crossesLeader(spot, avoid, crowd);
   const sized = ordered.map((spot) => ({ ...spot, ...size }));
   const shuts = rowBelow.length ? [[...blocked, ...rowBelow], blocked] : [blocked];
   const free = shuts.map((shut) => sized.find((spot) => clear(spot, shut) && direct(spot))).find(Boolean)
     || shuts.map((shut) => sized.find((spot) => clear(spot, shut))).find(Boolean);
-  if (free || !crowd.length) return free || null;
+  if (free || (!crowd.length && kind !== "map")) return free || null;
   const nearby = [];
   for (let step = 0; step < 2 * Math.ceil(bounds.height / size.height); step += 1) {
     const away = (step % 2 ? -1 : 1) * Math.ceil(step / 2);
@@ -833,12 +847,12 @@ function calloutSpot(target, size, bounds, options = {}) {
     const row = { left: bounds.left, top, width: bounds.width, height: size.height };
     const ends = crowd.filter((text) => overlaps(text, row)).map((text) => text.left + text.width);
     nearby.push({ left: clampX(middleX), top, ...size },
-      { left: Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP)), top, ...size });
+      { left: clampX(Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP))), top, ...size });
   }
   const spots = nearby.filter((spot) => clear(spot));
-  const distance = (spot) => apart(spot, target);
-  return spots.filter(direct).sort((a, b) => distance(a) - distance(b))[0]
-    || spots.sort((a, b) => distance(a) - distance(b))[0] || null;
+  const score = (spot) => apart(spot, target) + (direct(spot) ? 0 : LEADER_CROSS_COST);
+  return spots.sort((a, b) => score(a) - score(b))[0]
+    || (kind === "map" ? corners.find((spot) => clear(spot)) : null) || null;
 }
 
 function leaderLine(leader, tip, ring) {
@@ -854,11 +868,15 @@ function leaderLine(leader, tip, ring) {
   leader.classList.remove("hidden");
 }
 
+let coachLine = null;
+
 function highlight(rect, callout, options = {}) {
   const ring = field("coach-ring");
   const dim = field("coach-dim");
   const tip = field("coach-callout");
   const leader = field("coach-leader");
+  const line = coachLine || (coachLine = field("step-coach"));
+  line.classList.add("hidden");
   if (!rect) {
     [ring, dim, tip, leader].forEach((element) => element.classList.add("hidden"));
     return;
@@ -882,6 +900,14 @@ function highlight(rect, callout, options = {}) {
   const body = boxOf(field("pane-body"));
   const room = body && within(centre, body) ? body : pane || body;
   const bounds = inNote ? noteBox : (options.kind === "map" && boxOf(field("topology-frame"))) || room;
+  if (callout && inNote && options.anchor && typeof options.anchor.after === "function") {
+    options.anchor.after(line);
+    line.textContent = callout;
+    line.classList.remove("hidden");
+    tip.classList.add("hidden");
+    leader.classList.add("hidden");
+    return;
+  }
   if (!callout || !bounds) {
     tip.classList.add("hidden");
     leader.classList.add("hidden");
@@ -917,11 +943,12 @@ const MISSING_AFTER_FRAMES = 120;
 const SITE_SILENT_MS = 3000;
 const STAGE_KEYS = {
   open: "lesson.dev.open", row: "lesson.dev.row", "tab.headers": "lesson.dev.tab.headers", "tab.payload": "lesson.dev.tab.payload",
-  query: "lesson.kibana.query", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
+  query: "lesson.kibana.query", top: "lesson.kibana.top_values", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
   other: "lesson.kibana.other", none: "lesson.kibana.none", prompt: "lesson.term.prompt",
   apply: "lesson.rules.press_apply", add: "lesson.rules.add_line", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
 };
 const STAGE_FALLBACKS = {
+  top: "The most frequent values of this field and their share.",
   add: "Add one rule line here.",
   verify: "Type destination in the field search and read this event's destination IP. If it is not the right address, switch to the other event with the arrows.",
   run_done: "The run has finished. Press 'Check the run'.",
@@ -962,6 +989,7 @@ function coach(prefix, declared) {
   let last = "";
   let lost = 0;
   let picked = [];
+  let replayed = { attack: false, benign: false };
   let dismissed = -1;
   let homed = -1;
   let lined = -1;
@@ -1010,6 +1038,16 @@ function coach(prefix, declared) {
     field("step-status").textContent = text;
     field("step-status").classList.toggle("hidden", !text);
   }
+
+  function replayLines(step) {
+    const attack = localized(`${prefix}.replay.attack`, "");
+    const benign = localized(`${prefix}.replay.benign`, "");
+    if (step.check.kind !== "replay" || !attack || !benign || finished || done(step)) return "";
+    const word = (confirmed) => localized(confirmed ? "lesson.replay.confirmed" : "lesson.replay.waiting", confirmed ? "confirmed" : "waiting");
+    return [attack.split("{0}").join(word(replayed.attack)), benign.split("{0}").join(word(replayed.benign))].join("\n");
+  }
+
+  const standing = (step) => replayLines(step) || (AUTOMATIC.includes(step.check.kind) && !finished && !done(step) ? t("lesson.status.auto") : "");
 
   function stepList() {
     const passedCount = steps.filter((step) => recordOf(step).passed).length;
@@ -1099,9 +1137,10 @@ function coach(prefix, declared) {
   }
 
   function courseSummary() {
+    const notes = [t("lesson.course.scores"), localized("lesson.course.result_link", "")].filter(Boolean).join("\n");
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
-      <p data-act="values" class="hidden text-heading font-medium text-[12.5px]"></p>
-      <p class="text-muted text-[12.5px] whitespace-pre-line">${esc(t("lesson.course.scores"))}</p>
+      <p data-act="values" class="text-heading font-medium text-[12.5px]">${esc(localized("lesson.course.computing", "Calculating the scores…"))}</p>
+      <p class="text-muted text-[12.5px] whitespace-pre-line">${esc(notes)}</p>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>`;
   }
 
@@ -1117,7 +1156,10 @@ function coach(prefix, declared) {
   async function courseScores(line) {
     const [score, tiers] = await Promise.all([api(lessonPath("score/?brief=1")), api(`/api/wargames/${session.scenario}/objectives/`)]);
     const body = score.ok ? score.body : {};
-    if (!Array.isArray(body.breaches) || !Array.isArray(body.per_case)) return;
+    if (!Array.isArray(body.breaches) || !Array.isArray(body.per_case)) {
+      line.classList.add("hidden");
+      return;
+    }
     const lost = new Map(body.breaches.map((breach) => [breach.key, breach]));
     const penalty = (tiers.ok && Array.isArray(tiers.body) ? tiers.body : []).reduce((sum, tier) =>
       sum + (lost.has(tier.key) ? tier.difficulty * (lost.get(tier.key).detected ? 1 : 2) : 0), 0);
@@ -1161,6 +1203,7 @@ function coach(prefix, declared) {
       html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id), false)}</ul>`;
     }
     act.innerHTML = html;
+    last = "";
     shownSection("step-act", Boolean(html));
     const form = act.querySelector('[data-act="answer"], [data-act="loot"]');
     if (form) {
@@ -1278,7 +1321,7 @@ function coach(prefix, declared) {
     const question = !finished && titled && ANSWERED.includes(check().kind) ? localized(`${prefix}.label.${step.id}`, "") : "";
     field("step-question").textContent = question;
     field("step-question").classList.toggle("hidden", !question);
-    status(AUTOMATIC.includes(check().kind) && !finished && !done(step) ? t("lesson.status.auto") : "");
+    status(standing(step));
     field("step-said").style.order = finished ? "-1" : "";
     picked = [];
     action();
@@ -1374,7 +1417,12 @@ function coach(prefix, declared) {
     const home = Boolean(target) && target.kind === "site" && siteHome.on;
     const callout = calloutFor(step, target, found, home);
     const kind = found.kind !== undefined ? found.kind : target ? target.kind : "";
-    const crowd = crowdOf(kind, found, rect);
+    const marked = kind === "panel" && target ? document.querySelector(target.spec) : null;
+    const outsidePane = marked && !field("pane").contains(marked);
+    const section = outsidePane && typeof marked.closest === "function" ? marked.closest("section") : null;
+    const titled = Boolean(section) && section !== marked;
+    const cells = titled ? Array.from(section.querySelectorAll("thead th, tbody tr")).map(boxOf).filter((box) => box && !overlaps(box, rect)) : [];
+    const crowd = [...crowdOf(kind, found, rect), ...cells];
     const zones = kind === "map" ? mapZones() : [];
     const openBox = target && !rect && waiting ? boxOf(field("step-open")) : null;
     const opening = openBox ? localized("lesson.open.callout", "Open it here first.") : "";
@@ -1382,12 +1430,11 @@ function coach(prefix, declared) {
     const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, opening, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
     if (drawn !== last) {
       last = drawn;
-      const marked = kind === "panel" ? document.querySelector(target.spec) : null;
-      const outsidePane = marked && !field("pane").contains(marked);
-      const section = outsidePane && typeof marked.closest === "function" ? marked.closest("section") : null;
-      const titled = Boolean(section) && section !== marked;
       const holder = titled ? boxOf(section) : rulesHolder(marked, found);
-      const aimed = rect ? { crowd, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones } : { kind: "open" };
+      const pressing = found.stage === "run_done" ? document.querySelector('[data-act="kali"]') : null;
+      const aimed = rect
+        ? { crowd, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing }
+        : { kind: "open", anchor: field("step-open") };
       highlight(rect || openBox, rect ? callout : opening, aimed);
       coveredSay(found.stage === "covered" && !rect ? callout : "");
       opener();
@@ -1420,6 +1467,7 @@ function coach(prefix, declared) {
     level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
     seconds = 0;
     finished = false;
+    replayed = { attack: false, benign: false };
     sentSince = false;
     dismissed = -1;
     homed = -1;
@@ -1499,6 +1547,11 @@ function coach(prefix, declared) {
 
   function settle(step, verdict, loud) {
     if (!verdict || steps[at] !== step) return;
+    if (step.check.kind === "replay") {
+      const reason = Array.isArray(verdict.reason) ? verdict.reason[0] : "";
+      replayed = { attack: Boolean(verdict.passed) || reason === "lesson.check.replay_benign", benign: Boolean(verdict.passed) };
+      if (!verdict.passed && replayLines(step)) status(replayLines(step));
+    }
     if (verdict.kali) {
       carried.set(step.id, verdict.kali);
       const rows = field("step-act").querySelector('[data-act="rows"]');
@@ -1517,7 +1570,7 @@ function coach(prefix, declared) {
       return;
     }
     if (!loud) return;
-    status("");
+    status(replayLines(step));
     if (verdict.reason) wrong(t(verdict.reason[0], ...(verdict.reason[1] || [])), verdict.hint);
   }
 
