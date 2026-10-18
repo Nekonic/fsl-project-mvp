@@ -204,3 +204,26 @@ def test_the_home_page_says_the_practice_network_is_resetting_in_the_learner_s_w
     assert seen["result"] == english("range.resetting"), (
         "the home page showed the readiness API's operator reason instead of the learner's line"
     )
+
+BLOCKED = """
+LOCATION
+browser.serve((request) => {
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: false, max_sessions: 2, slot: {number: 1, session: null, phase: "READY",
+      blocked: ["image fsl-waf is not ready", "the fabric has no network for fsl-kali"]}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+@pytest.mark.parametrize("operator", [False, True], ids=["learner", "operator"])
+def test_the_home_page_gives_the_learner_one_line_and_the_operator_the_raw_reasons(client, operator):
+    seen = open_page(client, "/", setup=BLOCKED.replace("LOCATION", 'location.search = "?operator";' if operator else ""),
+                     scenario="""
+      await browser.wait(500);
+      return browser.text('range-blocked');
+    """)
+
+    assert seen["errors"] == []
+    assert english("range.blocked") in seen["result"]
+    assert ("fsl-waf" in seen["result"]) is operator, seen["result"]
