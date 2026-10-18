@@ -95,9 +95,9 @@ setup.ilm.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
+  index: "logs-${FSL_SESSION:shared}-sensors"
   indices:
-    - index: "logs-%{[fsl_slot]}-%{+yyyy.MM.dd}"
+    - index: "logs-%{[fsl_slot]}-sensors"
       when.has_fields: ["fsl_slot"]
   pipeline: geoip
 

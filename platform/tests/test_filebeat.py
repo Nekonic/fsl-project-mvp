@@ -133,8 +133,8 @@ def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_
     config = yaml.safe_load(FILEBEAT.read_text())
     output = config["output.elasticsearch"]
 
-    assert output["index"] == "logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
-    assert output["indices"] == [{"index": "logs-%{[fsl_slot]}-%{+yyyy.MM.dd}",
+    assert output["index"] == "logs-${FSL_SESSION:shared}-sensors"
+    assert output["indices"] == [{"index": "logs-%{[fsl_slot]}-sensors",
                                   "when.has_fields": ["fsl_slot"]}], (
         "two slots send from the same origin addresses at once; one index for both would "
         "score each session on the other's alerts"
