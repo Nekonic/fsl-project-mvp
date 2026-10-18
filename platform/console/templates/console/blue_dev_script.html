@@ -15,6 +15,7 @@ function devPlace() {
   field("site-dev").classList.toggle("flex", shown);
   field("site-dev").style.height = `${dev.height}px`;
   field("site-frame").style.bottom = shown ? `${dev.height}px` : "0px";
+  field("site-frame").style.height = shown ? `calc(100% - ${dev.height}px)` : "100%";
   field("site-dev-toggle").setAttribute("aria-pressed", String(dev.open));
   sitePlace();
 }
