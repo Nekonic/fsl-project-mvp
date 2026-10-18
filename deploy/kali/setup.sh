@@ -14,6 +14,9 @@ $APT install \
   nmap sqlmap nikto whatweb ffuf gobuster hydra \
   netcat-traditional dnsutils jq dirb mitmproxy
 
+f=$(dpkg -L sqlmap 2>/dev/null | grep -m1 'lib/core/settings\.py$' || true)
+[ -n "$f" ] && touch "$f" || true
+
 install -d -m 0755 /usr/share/wordlists
 ln -sfn /usr/share/dirb/wordlists /usr/share/wordlists/dirb
 
@@ -53,6 +56,7 @@ echo '. /etc/fsl/operator-log.sh' >> /etc/bash.bashrc
 cat > /etc/profile.d/fsl.sh <<'EOF'
 export http_proxy="http://127.0.0.1:8081"
 export HTTP_PROXY="http://127.0.0.1:8081"
+export TZ="Asia/Seoul"
 export FSL_TARGET="http://board.com"
 export FSL_TARGET_HOST="board.com"
 EOF
@@ -81,7 +85,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/ttyd -W -b /terminal -p 7681 bash
+ExecStart=/usr/local/bin/ttyd -W -t disableResizeOverlay=true -b /terminal -p 7681 bash
 Restart=always
 
 [Install]

@@ -37,4 +37,4 @@ shown="${host#fsl-}"
 exec ssh -t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
   -o HostKeyAlias="$alias" -o LogLevel=ERROR \
   -o ConnectTimeout=10 -o ServerAliveInterval=30 "ubuntu@${addr}" \
-  "exec bash --rcfile <(printf '%s\\n' '. /etc/profile' '. ~/.profile' 'PS1=\${PS1//\\\\h/$shown}' '[ -r /etc/motd ] && cat /etc/motd') -i"
+  "exec bash --rcfile <(printf '%s\\n' '. /etc/profile' '. ~/.profile' 'export TZ=Asia/Seoul' 'PS1=\${PS1//\\\\h/$shown}' '[ -r /etc/motd ] && cat /etc/motd') -i"

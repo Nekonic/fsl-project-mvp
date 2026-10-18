@@ -5,6 +5,7 @@ case "$session" in
 esac
 rc=$(cat <<'RC'
 [ -r ~/.bashrc ] && . ~/.bashrc
+export TZ=Asia/Seoul
 PS1='\u@waf:\w\$ '
 RC
 )

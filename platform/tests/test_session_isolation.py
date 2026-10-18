@@ -354,7 +354,7 @@ def test_the_waf_terminal_is_a_shell_in_the_session_s_own_waf(client):
     assert "proxy_pass http://127.0.0.1:7693/waf-terminal/$rest?arg=$session;" in block, (
         "the session comes from the path alone; a client's own ?arg= is dropped"
     )
-    assert "ttyd -W -a -b /waf-terminal -i 127.0.0.1 -p 7693 /app/waf-terminal.sh" in (
+    assert "ttyd -W -a -b /waf-terminal -t disableResizeOverlay=true -i 127.0.0.1 -p 7693 /app/waf-terminal.sh" in (
         ROOT / "platform/entrypoint.sh").read_text()
     shell = (ROOT / "platform/waf-terminal.sh").read_text()
     assert '*[!0-9]*) echo "no session given"' in shell, "only a session number reaches docker exec"
@@ -366,7 +366,7 @@ def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/fsl-waf/"
 
-    assert "ttyd -W -a -b /vm-terminal/fsl-waf -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
+    assert "ttyd -W -a -b /vm-terminal/fsl-waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
         ROOT / "platform/entrypoint.sh").read_text()
     assert "mgmt" in declared.read(flavor="openstack").hosts["fsl-waf"].segments
     shell = (ROOT / "platform/vm-terminal.sh").read_text()

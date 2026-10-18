@@ -20,14 +20,17 @@ RUN curl -fsSL -o /usr/local/bin/ttyd \
 RUN [ -f /usr/share/wordlists/rockyou.txt.gz ] \
  && gunzip -f /usr/share/wordlists/rockyou.txt.gz || true
 
+RUN f="$(dpkg -L sqlmap 2>/dev/null | grep -m1 'lib/core/settings\.py$')"; [ -n "$f" ] && touch "$f" || true
+
 COPY motd /etc/motd
 COPY operator-log.sh /etc/fsl/operator-log.sh
 RUN mkdir -p /var/log/fsl \
  && echo 'cat /etc/motd' >> /root/.bashrc \
  && echo '. /etc/fsl/operator-log.sh' >> /root/.bashrc \
+ && echo 'export TZ=Asia/Seoul' >> /root/.bashrc \
  && echo 'PS1=${PS1//\\h/kali}' >> /root/.bashrc
 
 WORKDIR /root
 
 EXPOSE 7681
-CMD ["ttyd", "-W", "-b", "/terminal", "-p", "7681", "bash"]
+CMD ["ttyd", "-W", "-t", "disableResizeOverlay=true", "-b", "/terminal", "-p", "7681", "bash"]
