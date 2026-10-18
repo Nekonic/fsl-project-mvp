@@ -13,6 +13,7 @@ CRS_DEFAULT_LEVEL = 1
 CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
 CRS_TOTALS = ("949", "959", "980")
 PASTED_ROW = re.compile(r"^\s*\|?\s*([\w.@+-]+)\s*[|:\s]\s*(\S+?)\s*\|?\s*$")
+GROUPED_NUMBER = re.compile(r"\d{1,3}(,\d{3})+")
 ORDER_SEPARATOR = re.compile(r"[\s,>\u2192]+")
 TOTAL_SCORE = re.compile(r"Total Score: (\d+)")
 NOCASE = re.compile(r"\bnocase\s*;|\bpcre\s*:\s*\"/.*/[A-Za-z]*i[A-Za-z]*\"")
@@ -30,12 +31,15 @@ def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
             return True, None
         if sorted(named) == sorted(accepted):
             return False, [f"{wrong}.order", []]
-    elif _bare(given) in accepted:
+    elif {_bare(given), _bare(_ungrouped(given))} & set(accepted):
         return True, None
     if given in check.get("known", []):
         return False, [f"{wrong}.{given}", []]
     said = next((rule["says"] for rule in check.get("wrong_if", []) if re.search(rule["match"], given)), None)
     return False, [f"{wrong}.{said}" if said else "lesson.check.wrong", []]
+
+def _ungrouped(text: str) -> str:
+    return text.replace(",", "") if GROUPED_NUMBER.fullmatch(text.strip()) else text
 
 def _bare(text: str) -> str:
     return "".join(text.split()).casefold()
