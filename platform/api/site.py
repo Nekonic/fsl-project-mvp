@@ -394,6 +394,12 @@ def _fetch_favicon(session: Session, host: str, egress: Egress, adapter, browsed
         pass
 
 
+def _navigation(request, destination):
+    if destination:
+        return DESTINATIONS.get(destination) == "document"
+    return request.headers.get("Upgrade-Insecure-Requests") == "1" or request.headers.get("Accept", "").startswith("text/html")
+
+
 @csrf_exempt
 def proxy(request, session_id, host):
     session = get_object_or_404(Session, pk=session_id)
@@ -406,7 +412,7 @@ def proxy(request, session_id, host):
     browsed = {name: as_browsed(name, request.headers[name], host) for name in PASSED_ON if name in request.headers}
     browsed = {name: value for name, value in browsed.items() if value}
     body = request.body
-    sent = _outgoing(session, host, request.method, target, browsed, body, DESTINATIONS.get(destination) == "document")
+    sent = _outgoing(session, host, request.method, target, browsed, body, _navigation(request, destination))
     started = time.monotonic()
     try:
         egress, adapter = egress_of(session)
