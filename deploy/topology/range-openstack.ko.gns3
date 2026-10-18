@@ -19,27 +19,27 @@
                 "drawing_id": "00cbf202-0ec3-5c8a-a0ee-eae48f971c74",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"24\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
-                "x": -276,
-                "y": -22,
+                "svg": "<svg width=\"20\" height=\"14\"><text font-family=\"Noto Sans\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 409,
+                "y": -17,
                 "z": 2
             },
             {
                 "drawing_id": "af156c71-e858-5d3c-813a-5af98201ffde",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"24\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
-                "x": 377,
-                "y": -22,
+                "svg": "<svg width=\"20\" height=\"14\"><text font-family=\"Noto Sans\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 899,
+                "y": 37,
                 "z": 2
             },
             {
                 "drawing_id": "6e07a08c-a2a2-55b6-af17-0a8f2a73b52d",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"360\" height=\"380\"><rect width=\"360\" height=\"380\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -700,
-                "y": -170,
+                "svg": "<svg width=\"208\" height=\"332\"><rect width=\"208\" height=\"332\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": 26,
+                "y": -160,
                 "z": 0
             },
             {
@@ -47,17 +47,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"47\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137</text></svg>",
-                "x": -690,
-                "y": -166,
+                "x": 34,
+                "y": -157,
                 "z": 2
             },
             {
                 "drawing_id": "b7f598f2-9f7a-5b0a-9c37-16eda8913da8",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"460\" height=\"310\"><rect width=\"460\" height=\"310\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -60,
-                "y": -210,
+                "svg": "<svg width=\"422\" height=\"351\"><rect width=\"422\" height=\"351\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 591,
+                "y": -92,
                 "z": 0
             },
             {
@@ -65,17 +65,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4\ub9dd</text></svg>",
-                "x": -50,
-                "y": -206,
+                "x": 599,
+                "y": -89,
                 "z": 2
             },
             {
                 "drawing_id": "5860ec5a-8df4-5c77-b274-9e0b7db2cf10",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"360\" height=\"170\"><rect width=\"360\" height=\"170\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
-                "x": 460,
-                "y": -70,
+                "svg": "<svg width=\"346\" height=\"159\"><rect width=\"346\" height=\"159\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
+                "x": 592,
+                "y": -270,
                 "z": 0
             },
             {
@@ -83,17 +83,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"78\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ub0b4\ubd80 DB\ub9dd</text></svg>",
-                "x": 470,
-                "y": -66,
+                "x": 600,
+                "y": -267,
                 "z": 2
             },
             {
                 "drawing_id": "daffa5ca-65f4-5c0e-864d-efc51c1d5386",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"860\" height=\"150\"><rect width=\"860\" height=\"150\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -300,
-                "y": 170,
+                "svg": "<svg width=\"352\" height=\"164\"><rect width=\"352\" height=\"164\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": 386,
+                "y": 268,
                 "z": 0
             },
             {
@@ -101,8 +101,8 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"50\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c\ub9dd</text></svg>",
-                "x": -290,
-                "y": 174,
+                "x": 394,
+                "y": 271,
                 "z": 2
             }
         ],
@@ -401,7 +401,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-kali.svg",
-                "x": -640,
+                "x": 40,
                 "y": 100,
                 "z": 1
             },
@@ -425,7 +425,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-client.svg",
-                "x": -640,
+                "x": 40,
                 "y": -100,
                 "z": 1
             },
@@ -495,7 +495,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -460,
+                "x": 150,
                 "y": 0,
                 "z": 1
             },
@@ -507,7 +507,7 @@
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "firewall",
                     "x": null,
-                    "y": -25
+                    "y": -40
                 },
                 "name": "firewall",
                 "node_id": "6e74495c-c3dd-59df-9de7-a720764d7c6a",
@@ -519,7 +519,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-firewall.svg",
-                "x": -240,
+                "x": 388,
                 "y": 0,
                 "z": 1
             },
@@ -589,8 +589,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 150,
-                "y": -140,
+                "x": 617,
+                "y": 0,
                 "z": 1
             },
             {
@@ -600,8 +600,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "waf",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 20
                 },
                 "name": "waf",
                 "node_id": "42a52cee-03bb-525a-b4ba-d5a691e4a787",
@@ -613,8 +613,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-shield.svg",
-                "x": 0,
-                "y": 0,
+                "x": 617,
+                "y": 160,
                 "z": 1
             },
             {
@@ -624,8 +624,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board.com",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 12
                 },
                 "name": "board.com",
                 "node_id": "c01c6b90-c78b-551c-a04b-611f5d0f5fee",
@@ -637,7 +637,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 300,
+                "x": 832,
                 "y": 0,
                 "z": 1
             },
@@ -648,8 +648,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp.com",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 12
                 },
                 "name": "corp.com",
                 "node_id": "4f1bab76-6df2-5041-bd3f-f93278db9ad8",
@@ -661,7 +661,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 300,
+                "x": 832,
                 "y": 0,
                 "z": 1
             },
@@ -672,8 +672,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "sw2",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 20
                 },
                 "name": "sw2",
                 "node_id": "59180116-44db-59c4-aee9-979341752c97",
@@ -731,8 +731,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 520,
-                "y": 0,
+                "x": 832,
+                "y": -210,
                 "z": 1
             },
             {
@@ -755,8 +755,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 720,
-                "y": 0,
+                "x": 607,
+                "y": -210,
                 "z": 1
             },
             {
@@ -779,8 +779,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 720,
-                "y": 0,
+                "x": 607,
+                "y": -210,
                 "z": 1
             },
             {
@@ -790,7 +790,7 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "sw3",
-                    "x": -36,
+                    "x": 64,
                     "y": 20
                 },
                 "name": "sw3",
@@ -849,8 +849,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 0,
-                "y": 220,
+                "x": 617,
+                "y": 360,
                 "z": 1
             },
             {
@@ -873,8 +873,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-statistics.svg",
-                "x": 300,
-                "y": 220,
+                "x": 410,
+                "y": 360,
                 "z": 1
             }
         ]

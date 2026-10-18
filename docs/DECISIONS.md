@@ -5196,13 +5196,19 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
     `lesson.open.<pane>` in both languages.
   - PC-6 Kibana: `kibana.py` imports a data view per session, "Session
     logs" (`session-<pattern>`), when the session opens (`KIBANA_URL`, now in
-    `compose.yaml`): the shared runtime fields plus `event.module`,
-    `observer.name` (map names: `firewall`, `board.com`, `waf`) and
+    `compose.yaml`): the shared runtime fields plus `log_source`
+    (`suricata` or `modsecurity`), `sensor` (map names: `firewall`,
+    `board.com`, `waf`) and
     `request_headers` (one `Name: value` per header, `X-FSL-Case` left out);
     `sourceFilters` hide `_index`, `fsl_*`, `*X-FSL-Case*`, `log.*`,
     `message`, `agent.*`, `ecs.*`, `host*`, `input.*`, `error.*`,
     `http.request_headers*`, and `_index` leaves `metaFields`; a filter
-    `event.module: exists` hides the range hosts' own syslog lines. A lesson
+    `log_source: exists` hides the range hosts' own syslog lines. The spec's
+    ECS names `event.module` and `observer.name` were built first and found
+    dead live: the index template maps both (empty) and Kibana 8.15 answered
+    no hit for any query or filter on the runtime fields of the same name,
+    while Elasticsearch with the same `runtime_mappings` matched; plain names
+    no template maps (`log_source`, `sensor`) work. A lesson
     opens it with an empty query from the lesson's start; scenarios keep the
     alert query. Suricata `msg` lost the "FSL " prefix; every served rule
     file has a neutral header.

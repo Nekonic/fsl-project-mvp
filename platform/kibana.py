@@ -20,7 +20,7 @@ SETTINGS = {"defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields":
 URL = os.environ.get("KIBANA_URL", "")
 SESSION_VIEW_NAME = "Session logs"
 SESSION_COLUMNS = (
-    "event.module", "observer.name", "event_type", "source_ip", "destination", "url", "status", "rule_id", "rule",
+    "log_source", "sensor", "event_type", "source_ip", "destination", "url", "status", "rule_id", "rule",
 )
 HIDDEN_FIELDS = (
     "_index", "fsl_*", "*X-FSL-Case*", "*x-fsl-case*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
@@ -97,8 +97,8 @@ def query(index="", narrowed="", alerts=True):
 
 def recorded_by_an_engine(view):
     return (
-        f"(meta:(alias:!n,disabled:!f,index:{rison(view)},key:event.module,negate:!f,type:exists,value:exists),"
-        "query:(exists:(field:event.module)))"
+        f"(meta:(alias:!n,disabled:!f,index:{rison(view)},key:log_source,negate:!f,type:exists,value:exists),"
+        "query:(exists:(field:log_source)))"
     )
 
 
@@ -132,12 +132,12 @@ def _literal(text):
     return json.dumps(text)
 
 
-def event_module_script():
+def log_source_script():
     allowed = " || ".join(f"module == {_literal(module)}" for module in MODULES)
     return f"String module = {_value('fsl_source')}; if ({allowed}) {{ emit(module); }}"
 
 
-def observer_script(sensors, waf):
+def sensor_script(sensors, waf):
     shown = ", ".join(f"{_literal(host)}: {_literal(name)}" for host, name in sorted(sensors.items())) or ":"
     alone = sorted(set(sensors.values()))
     fallback = _literal(alone[0] if len(alone) == 1 else "")
@@ -177,8 +177,8 @@ def shared_runtime(ndjson):
 
 def session_view(pattern, sensors, waf, runtime):
     fields = dict(runtime) | {
-        "event.module": {"type": "keyword", "script": {"source": event_module_script()}},
-        "observer.name": {"type": "keyword", "script": {"source": observer_script(sensors, waf)}},
+        "log_source": {"type": "keyword", "script": {"source": log_source_script()}},
+        "sensor": {"type": "keyword", "script": {"source": sensor_script(sensors, waf)}},
         "request_headers": {"type": "keyword", "script": {"source": request_headers_script()}},
     }
     return {

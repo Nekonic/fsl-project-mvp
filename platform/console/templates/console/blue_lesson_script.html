@@ -192,14 +192,14 @@ async function objectivesRead() {
   if (read.ok && read.body.lesson_objectives) objectivesShow(read.body.lesson_objectives);
 }
 
-const asking = { host: null, origin: "", key: "", id: 0, rect: null, sentAt: 0 };
+const asking = { host: null, origin: "", key: "", id: 0, rect: null, sentAt: 0, answered: false };
 const ASK_AGAIN_MS = 1500;
 
 function askFrame(host, origin, spec) {
   const key = JSON.stringify(spec);
   if (asking.host !== host || asking.key !== key) {
     stopAsking();
-    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, sentAt: 0 });
+    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, sentAt: 0, answered: false });
   }
   const now = Date.now();
   if (origin && host.contentWindow && now - asking.sentAt > ASK_AGAIN_MS) {
@@ -217,6 +217,7 @@ function askAgain(host) {
   if (asking.host !== host) return;
   asking.rect = null;
   asking.sentAt = 0;
+  asking.answered = false;
 }
 
 function stopAsking() {
@@ -227,7 +228,7 @@ function stopAsking() {
       asking.host = null;
     }
   }
-  Object.assign(asking, { host: null, key: "", rect: null, sentAt: 0 });
+  Object.assign(asking, { host: null, key: "", rect: null, sentAt: 0, answered: false });
 }
 
 window.addEventListener("message", (event) => {
@@ -235,6 +236,7 @@ window.addEventListener("message", (event) => {
   if (!said || typeof said !== "object" || !("fslLocated" in said)) return;
   if (!asking.host || event.source !== asking.host.contentWindow || said.fslLocated !== asking.id) return;
   asking.rect = said.rect || null;
+  asking.answered = true;
 });
 
 const KIBANA = {
@@ -309,8 +311,27 @@ function devElement(name, step) {
 const BAND_ROWS = 3;
 const ROW_GUESS = 18;
 const SCANNED_LINES = 2000;
+const TABLE_BORDER = /^\s*\+[-+]+\+?\s*$/;
+let textRows = [];
+
+function logicalLines(buffer, from, to) {
+  const lines = [];
+  for (let row = from; row < to; row += 1) {
+    const line = buffer.getLine(row);
+    const text = line ? line.translateToString(true) : "";
+    if (line && line.isWrapped && lines.length) {
+      const joined = lines[lines.length - 1];
+      joined.text += text;
+      joined.last = row;
+    } else {
+      lines.push({ text, first: row, last: row });
+    }
+  }
+  return lines;
+}
 
 function termRect(spec) {
+  textRows = [];
   if (!paneOpen(spec.pane)) return null;
   const host = terminalPanes[spec.pane] ? terminalPanes[spec.pane]() : null;
   const box = boxOf(host);
@@ -321,23 +342,66 @@ function termRect(spec) {
   const area = screen ? screen.getBoundingClientRect() : null;
   if (!term || !term.rows || !area || !area.height) return bottom(BAND_ROWS * ROW_GUESS);
   const rowHeight = area.height / term.rows;
+  const cellWidth = area.width / (term.cols || 80);
   const buffer = term.buffer.active;
   const wanted = pattern(spec.match);
   if (!buffer || typeof buffer.getLine !== "function" || !wanted) return bottom(BAND_ROWS * rowHeight);
-  for (let row = buffer.length - 1; row >= Math.max(0, buffer.length - SCANNED_LINES); row -= 1) {
+  const top = buffer.viewportY || 0;
+  const rowBox = (row, columns) => ({ left: area.left, top: area.top + (row - top) * rowHeight, width: columns * cellWidth, height: rowHeight });
+  for (let row = top; row < Math.min(buffer.length, top + term.rows); row += 1) {
     const line = buffer.getLine(row);
-    const text = line ? line.translateToString(true) : "";
-    if (!text.trim() || !(wanted.test(text) || wanted.test(`${text} `))) continue;
-    const shown = row - (buffer.viewportY || 0);
-    if (shown < 0 || shown >= term.rows) return null;
-    return inFrame(host, { left: area.left, top: area.top + shown * rowHeight, width: area.width, height: rowHeight });
+    const length = line ? line.translateToString(true).length : 0;
+    if (length) textRows.push(inFrame(host, rowBox(row, length)));
   }
-  return null;
+  textRows = textRows.filter(Boolean);
+  const lines = logicalLines(buffer, Math.max(0, buffer.length - SCANNED_LINES), buffer.length);
+  const fits = (line) => line.text.trim() && (wanted.test(line.text) || wanted.test(`${line.text} `));
+  let at = lines.length - 1;
+  while (at >= 0 && !fits(lines[at])) at -= 1;
+  if (at < 0) return null;
+  const belongs = (line) => fits(line) || TABLE_BORDER.test(line.text);
+  let first = at;
+  let final = at;
+  while (first > 0 && belongs(lines[first - 1])) first -= 1;
+  while (final < lines.length - 1 && belongs(lines[final + 1])) final += 1;
+  const block = lines.slice(first, final + 1);
+  const columns = Math.min(term.cols || 80, Math.max(...block.map((line) => line.text.length)));
+  const rows = block[block.length - 1].last - block[0].first + 1;
+  const wide = block.some((line) => line.last > line.first) ? term.cols || 80 : columns;
+  const shown = block[0].first - top;
+  if (shown + rows <= 0 || shown >= term.rows) return null;
+  return inFrame(host, { ...rowBox(block[0].first, wide), height: rows * rowHeight });
 }
+
+const SITE_HOME = "a.navbar-brand";
+const siteHome = { selector: "", on: false };
 
 function siteRect(selector) {
   if (!paneOpen("site") || !site.origin) return null;
-  return askFrame(field("site-frame"), site.origin, selector);
+  if (siteHome.selector !== selector) Object.assign(siteHome, { selector, on: false });
+  if (!siteHome.on) {
+    const rect = askFrame(field("site-frame"), site.origin, selector);
+    if (rect || !asking.answered || selector === SITE_HOME) return rect;
+    siteHome.on = true;
+  }
+  return askFrame(field("site-frame"), site.origin, SITE_HOME);
+}
+
+function kibanaLoading() {
+  try {
+    const doc = frame.contentDocument;
+    return !doc || doc.readyState === "loading" || !doc.querySelector(KIBANA.query);
+  } catch (error) {
+    return true;
+  }
+}
+
+function settling(target) {
+  if (target.kind === "term") return true;
+  if (target.kind === "map") return !topo.drawn;
+  if (target.kind === "kibana") return kibanaLoading();
+  if (target.kind === "site") return site.expecting || !asking.answered;
+  return false;
 }
 
 function mapRect(spec) {
@@ -376,12 +440,18 @@ const CALLOUT_GAP = 10;
 const EDGE = 8;
 const CALLOUT_GUESS = { width: 220, height: 28 };
 const TALL_TARGET = 80;
+const DENSE_ROW = 32;
+
+function padded(rect) {
+  const across = rect.height < DENSE_ROW && rect.width > 4 * rect.height ? 1 : RING_PAD;
+  return { left: rect.left - RING_PAD, top: rect.top - across, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * across };
+}
 
 function placed(element, box) {
   Object.assign(element.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
 }
 
-function calloutSpot(target, size, bounds) {
+function calloutSpot(target, size, bounds, crowd = []) {
   const avoid = grown(target, RING_PAD + RING + 2);
   const middleY = target.top + target.height / 2 - size.height / 2;
   const middleX = target.left + target.width / 2 - size.width / 2;
@@ -396,11 +466,23 @@ function calloutSpot(target, size, bounds) {
     { left: clampX(middleX), top: avoid.top - CALLOUT_GAP - size.height },
   ];
   const spots = target.height > TALL_TARGET ? [...across, ...beside] : [...beside, ...across];
-  return spots.map((spot) => ({ ...spot, ...size }))
-    .find((spot) => within(spot, bounds) && !overlaps(spot, avoid)) || null;
+  const clear = (spot) => within(spot, bounds) && !overlaps(spot, avoid) && !crowd.some((text) => overlaps(spot, text));
+  const sized = spots.map((spot) => ({ ...spot, ...size }));
+  const free = sized.find(clear);
+  if (free || !crowd.length) return free || null;
+  const nearby = [];
+  for (let step = 0; step < 2 * Math.ceil(bounds.height / size.height); step += 1) {
+    const away = (step % 2 ? -1 : 1) * Math.ceil(step / 2);
+    const top = (away >= 0 ? avoid.top + avoid.height + CALLOUT_GAP : avoid.top - CALLOUT_GAP - size.height)
+      + away * size.height;
+    const row = { left: bounds.left, top, width: bounds.width, height: size.height };
+    const ends = crowd.filter((text) => overlaps(text, row)).map((text) => text.left + text.width);
+    nearby.push({ left: Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP)), top, ...size });
+  }
+  return nearby.find(clear) || null;
 }
 
-function highlight(rect, callout) {
+function highlight(rect, callout, crowd = []) {
   const ring = field("coach-ring");
   const dim = field("coach-dim");
   const tip = field("coach-callout");
@@ -411,7 +493,7 @@ function highlight(rect, callout) {
   const pane = boxOf(field("pane"));
   const centre = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 };
   const dimmed = Boolean(pane) && within(centre, pane);
-  const ringed = (dimmed && clipped(grown(rect, RING_PAD), pane)) || grown(rect, RING_PAD);
+  const ringed = (dimmed && clipped(padded(rect), pane)) || padded(rect);
   placed(ring, ringed);
   ring.classList.remove("hidden");
   dim.classList.toggle("hidden", !dimmed);
@@ -429,7 +511,7 @@ function highlight(rect, callout) {
   tip.style.maxWidth = `${Math.max(0, bounds.width - 2 * EDGE)}px`;
   tip.classList.remove("hidden");
   const size = { width: tip.offsetWidth || CALLOUT_GUESS.width, height: tip.offsetHeight || CALLOUT_GUESS.height };
-  const spot = calloutSpot(rect, size, bounds);
+  const spot = calloutSpot(rect, size, bounds, crowd);
   tip.classList.toggle("hidden", !spot);
   if (spot) Object.assign(tip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
 }
@@ -608,8 +690,7 @@ function coach(prefix, declared) {
   }
 
   function courseSummary() {
-    return `<p class="text-heading font-medium">${esc(t("lesson.course.done"))}</p>
-      <ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
+    return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>`;
   }
 
@@ -649,8 +730,8 @@ function coach(prefix, declared) {
         placeholder="${esc(t("lesson.loot.placeholder"))}"></textarea><button class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.loot.submit"))}</button></form>`;
     }
-    const before = steps[at - 1];
-    if (!finished && before && before.check.kind === "kali" && carried.has(before.id)) {
+    const before = runOf(at);
+    if (!finished && before && carried.has(before.id)) {
       html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id))}</ul>`;
     }
     act.innerHTML = html;
@@ -682,8 +763,18 @@ function coach(prefix, declared) {
     if (close) close.addEventListener("click", moveOn);
     const course = act.querySelector('[data-act="course"]');
     if (course) courseList(course);
-    if (!finished && before && before.check.kind === "kali" && recordOf(before).passed && !carried.has(before.id)
+    if (!finished && before && recordOf(before).passed && !carried.has(before.id)
       && !recalled.has(before.id)) recall(before, step);
+  }
+
+  function runOf(index) {
+    const step = steps[index];
+    const about = steps.find((one) => one.id === step.check.about && one.check.kind === "kali");
+    const latest = steps.slice(0, index).reverse().find((one) => one.check.kind === "kali");
+    const run = about || latest;
+    if (!run || step.check.kind === "kali") return null;
+    const kibana = paneFor(locatorOf(step.point), step.point) === "elk" || step.point.opens === "elk";
+    return steps.indexOf(run) === index - 1 || kibana ? run : null;
   }
 
   async function recall(kali, step) {
@@ -710,7 +801,7 @@ function coach(prefix, declared) {
 
   function finishedText() {
     if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
-    return foundation ? "" : t("lesson.done");
+    return t(foundation ? "lesson.course.done" : "lesson.done");
   }
 
   function show() {
@@ -722,7 +813,7 @@ function coach(prefix, declared) {
     field("step-title").textContent = finished && foundation ? t(`${prefix}.title`) : titleOf(step);
     field("step-task").textContent = finished ? finishedText() : t(`${prefix}.coach.${step.id}`);
     const titled = localized(`${prefix}.title.${step.id}`, "");
-    const question = !finished && titled && ANSWERED.includes(check().kind) ? t(`${prefix}.label.${step.id}`) : "";
+    const question = !finished && titled && ANSWERED.includes(check().kind) ? localized(`${prefix}.label.${step.id}`, "") : "";
     field("step-question").textContent = question;
     field("step-question").classList.toggle("hidden", !question);
     status(AUTOMATIC.includes(check().kind) && !finished ? t("lesson.status.auto") : "");
@@ -752,14 +843,17 @@ function coach(prefix, declared) {
     if (!target || (target.kind !== "map" && target.kind !== "site")) stopAsking();
     const needed = paneFor(target, step.point);
     const waiting = Boolean(needed) && !paneOpen(needed);
-    lost = rect || !target || waiting ? 0 : lost + 1;
+    lost = rect || !target || waiting || settling(target) ? 0 : lost + 1;
     const missing = lost >= MISSING_AFTER_FRAMES;
     const key = rect ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join() : "none";
-    const callout = target ? localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "") : "";
-    const drawn = [key, at, missing, callout, note.open, waiting, finished].join("|");
+    const home = Boolean(target) && target.kind === "site" && siteHome.on;
+    const callout = !target ? "" : home ? t("lesson.site.home")
+      : localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "");
+    const crowd = target && target.kind === "term" ? textRows : [];
+    const drawn = [key, at, missing, callout, note.open, waiting, finished, crowd.length].join("|");
     if (drawn !== last) {
       last = drawn;
-      highlight(rect, callout);
+      highlight(rect, callout, crowd);
       field("step-missing").classList.toggle("hidden", !missing);
       if (missing) field("step-missing").textContent = t("lesson.coach.missing", paneName(needed || openedPane()));
       opener();
@@ -916,6 +1010,7 @@ function coach(prefix, declared) {
 
   site.heard.push((path) => {
     askAgain(field("site-frame"));
+    siteHome.on = false;
     const step = steps[at];
     const wanted = pattern(step.check.match);
     if (!wanted || !wanted.test(readable(path))) return;

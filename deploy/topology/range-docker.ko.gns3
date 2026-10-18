@@ -19,18 +19,18 @@
                 "drawing_id": "a2522324-51a7-5848-adcf-552a02db1606",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"24\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
-                "x": -13,
-                "y": -22,
+                "svg": "<svg width=\"20\" height=\"14\"><text font-family=\"Noto Sans\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 433,
+                "y": -17,
                 "z": 2
             },
             {
                 "drawing_id": "ac91557a-50df-5ab9-a532-68d2a8944543",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"360\" height=\"380\"><rect width=\"360\" height=\"380\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": -460,
-                "y": -170,
+                "svg": "<svg width=\"208\" height=\"332\"><rect width=\"208\" height=\"332\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": 26,
+                "y": -160,
                 "z": 0
             },
             {
@@ -38,17 +38,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"47\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137</text></svg>",
-                "x": -450,
-                "y": -166,
+                "x": 34,
+                "y": -157,
                 "z": 2
             },
             {
                 "drawing_id": "4fe1b42c-7928-52b4-80d7-f16e0a18eaf3",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"720\" height=\"310\"><rect width=\"720\" height=\"310\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": -60,
-                "y": -210,
+                "svg": "<svg width=\"710\" height=\"307\"><rect width=\"710\" height=\"307\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 260,
+                "y": -75,
                 "z": 0
             },
             {
@@ -56,17 +56,17 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4\ub9dd</text></svg>",
-                "x": -50,
-                "y": -206,
+                "x": 268,
+                "y": -72,
                 "z": 2
             },
             {
                 "drawing_id": "99ed3bc7-4373-5573-ad6a-c47cbc44301c",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"620\" height=\"150\"><rect width=\"620\" height=\"150\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": -60,
-                "y": 170,
+                "svg": "<svg width=\"366\" height=\"164\"><rect width=\"366\" height=\"164\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": 152,
+                "y": 248,
                 "z": 0
             },
             {
@@ -74,8 +74,8 @@
                 "locked": true,
                 "rotation": 0,
                 "svg": "<svg width=\"50\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c\ub9dd</text></svg>",
-                "x": -50,
-                "y": 174,
+                "x": 160,
+                "y": 251,
                 "z": 2
             }
         ],
@@ -272,7 +272,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-kali.svg",
-                "x": -400,
+                "x": 40,
                 "y": 100,
                 "z": 1
             },
@@ -296,7 +296,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-client.svg",
-                "x": -400,
+                "x": 40,
                 "y": -100,
                 "z": 1
             },
@@ -366,7 +366,7 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/globe.svg",
-                "x": -220,
+                "x": 150,
                 "y": 0,
                 "z": 1
             },
@@ -378,7 +378,7 @@
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "waf",
                     "x": null,
-                    "y": -25
+                    "y": -40
                 },
                 "name": "waf",
                 "node_id": "b8aead7a-8c17-53b5-b914-958640b3aa26",
@@ -390,7 +390,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-shield.svg",
-                "x": 0,
+                "x": 412,
                 "y": 0,
                 "z": 1
             },
@@ -460,8 +460,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 150,
-                "y": -140,
+                "x": 648,
+                "y": 0,
                 "z": 1
             },
             {
@@ -484,7 +484,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 300,
+                "x": 884,
                 "y": 0,
                 "z": 1
             },
@@ -508,7 +508,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 300,
+                "x": 884,
                 "y": 0,
                 "z": 1
             },
@@ -519,8 +519,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board-db",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 20
                 },
                 "name": "board-db",
                 "node_id": "64ab56b9-572e-59db-8fdb-1375cbf329b5",
@@ -532,8 +532,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 560,
-                "y": 0,
+                "x": 648,
+                "y": 160,
                 "z": 1
             },
             {
@@ -543,8 +543,8 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp-db",
-                    "x": null,
-                    "y": -25
+                    "x": 64,
+                    "y": 20
                 },
                 "name": "corp-db",
                 "node_id": "8343ce67-6d2e-5217-98fb-d2d96ed1031e",
@@ -556,8 +556,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 560,
-                "y": 0,
+                "x": 648,
+                "y": 160,
                 "z": 1
             },
             {
@@ -567,7 +567,7 @@
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "sw3",
-                    "x": -36,
+                    "x": 64,
                     "y": 20
                 },
                 "name": "sw3",
@@ -626,8 +626,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 0,
-                "y": 220,
+                "x": 412,
+                "y": 340,
                 "z": 1
             },
             {
@@ -650,8 +650,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-statistics.svg",
-                "x": 300,
-                "y": 220,
+                "x": 176,
+                "y": 340,
                 "z": 1
             }
         ]

@@ -55,7 +55,7 @@ async function topologyOpen() {
     field("topology-fit").addEventListener("click", topologyFit);
     window.addEventListener("message", topologyHeard);
     if (typeof ResizeObserver === "function") new ResizeObserver(topologyRefit).observe(field("topology"));
-    else window.addEventListener("resize", topologyRefit);
+    window.addEventListener("resize", topologyRefit);
   }
   topologyShow();
 }
