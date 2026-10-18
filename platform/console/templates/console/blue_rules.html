@@ -1,11 +1,14 @@
+<style>
+  #lesson-rules-text { flex: 1 1 auto; min-height: 12rem; resize: none }
+</style>
 <div id="rules-pane" class="absolute inset-0 flex-col bg-panel overflow-auto" style="display: none">
   <div class="h-10 border-b border-line bg-subdued flex items-center px-3 gap-3 shrink-0 min-w-0 text-[12.5px]">
     <b data-t="blue.pane.rules" class="text-heading shrink-0"></b>
   </div>
-  <div id="rules-pane-body" class="p-4 flex flex-col gap-3 text-[13px]">
-    <section id="lesson-rules" class="hidden flex-col gap-2 border-b border-line-subdued pb-3">
+  <div id="rules-pane-body" class="p-4 flex flex-col gap-3 text-[13px] flex-1">
+    <section id="lesson-rules" class="hidden flex-col gap-2 border-b border-line-subdued pb-3 flex-1">
       <p data-t="lesson.rules.note" class="text-muted text-[12px]"></p>
-      <div id="lesson-rules-box"></div>
+      <div id="lesson-rules-box" class="flex flex-col flex-1"></div>
       <div class="flex gap-2">
         <button id="lesson-rules-validate" data-t="lesson.rules.validate" class="btn btn-sm btn-ghost"></button>
         <button id="lesson-rules-apply" data-t="lesson.rules.apply" class="btn btn-sm btn-blue"></button>

@@ -1,7 +1,8 @@
 {% extends "console/base.html" %}
 {% block title %}FSL{% endblock %}
 {% block content %}
-<div class="card p-5 flex flex-wrap items-center gap-5 mb-5">
+<p id="unread" class="hidden text-danger text-[13px]"></p>
+<div id="session-card" class="hidden card p-5 flex flex-wrap items-center gap-5 mb-5">
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
       <h1 id="session-title" class="text-[20px] font-bold text-heading"></h1>
@@ -28,6 +29,8 @@
 
 <p id="closed" class="text-muted text-[13px] mb-5 hidden"></p>
 
+<p id="loading" class="text-muted text-[13px] mb-5"></p>
+
 <section id="traffic" class="hidden card p-4 mb-5 max-w-xl text-[13px]">
   <div data-t="traffic.heading" class="font-semibold text-heading mb-2"></div>
   <div class="flex flex-wrap items-end gap-3">
@@ -41,12 +44,13 @@
   <p id="traffic-status" class="text-muted mt-2"></p>
 </section>
 
-<div id="consoles" class="grid gap-5">
+<div id="consoles" class="hidden grid gap-5">
   <a id="blue" href="#" class="card p-6 border-t-4 border-t-primary lift block">
     <div class="flex items-center justify-between">
       <div data-t="session.blue.title" class="text-primary font-bold text-[16px]"></div>
       <span class="btn btn-sm btn-blue" data-t="session.open_console"></span>
     </div>
+    <p id="session-next" class="hidden mt-3 text-body text-[13px]"></p>
     <div id="blue-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
     <p id="blue-foot" class="mt-4 text-[12px] text-muted"></p>
   </a>
@@ -60,7 +64,7 @@
   </a>
 </div>
 
-<section id="activity" class="card mt-5 p-5">
+<section id="activity" class="hidden card mt-5 p-5">
   <div class="flex items-center justify-between mb-3">
     <h2 data-t="session.activity" class="font-semibold text-heading"></h2>
     <span data-t="session.activity.live" class="label"></span>
@@ -150,6 +154,7 @@
   const field = (name) => document.getElementById(name);
   const show = (name, visible) => field(name).classList.toggle("hidden", !visible);
   document.title = t("common.session", id);
+  field("loading").textContent = t("session.loading");
   field("red").href = `/red/${id}/`;
   field("blue").href = `/blue/${id}/`;
 
@@ -198,10 +203,13 @@
     parts.push(closed ? t("session.span", began, ended, took) : t("session.since", began, took));
     field("session-line").textContent = parts.filter(Boolean).join(" · ");
     const figures = [];
+    show("session-next", lessonSession() && !closed);
+    field("session-next").textContent = t("session.next.lesson");
     if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(t("main.step", lessonStep(id, session.lesson_id), lessonSteps()))));
     if (total) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
     if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
     field("session-figures").innerHTML = figures.join("");
+    show("session-card", true);
   }
 
   function consoles(paranoia, taken, total) {
@@ -228,7 +236,8 @@
 
   async function activity() {
     const cases = await api(`/api/sessions/${id}/cases/`);
-    const hidden = (row) => session.course_scenario && !session.ended_at && row.meta && row.meta.scheduled;
+    const hidden = (row) => !session.ended_at && ((session.course_scenario && row.meta && row.meta.scheduled)
+      || (lessonSession() && seeded(row)));
     const rows = cases.ok && Array.isArray(cases.body) ? cases.body.filter((row) => !hidden(row)).slice(-8).reverse() : [];
     show("activity-empty", rows.length === 0);
     field("activity-list").innerHTML = rows.map((row) => {
@@ -399,11 +408,17 @@
     field("case-rows").innerHTML = "";
   }
 
+  function scoreShown() {
+    show("loading", false);
+    show("scoreboard", true);
+  }
+
   async function scoreTables(tried) {
     const [score, tiers] = await Promise.all([
       api(`/api/sessions/${id}/score/`),
       api(`/api/wargames/${session.scenario}/objectives/`),
     ]);
+    scoreShown();
     const read = score.ok && Array.isArray(score.body.breaches) && Array.isArray(score.body.per_case);
     if (!read) {
       const retrying = tried + 1 < SCORE_TRIES;
@@ -448,7 +463,9 @@
     show("consoles", false);
     show("activity", false);
     show("traffic", false);
-    show("scoreboard", true);
+    show("scoreboard", false);
+    field("loading").textContent = t("session.loading.result");
+    show("loading", true);
     courseSummary();
     lessonScoreNote();
     verdictBanner();
@@ -506,18 +523,23 @@
     show("restart-failed", true);
   }
 
+  const UNREAD_RETRY_AFTER = 5000;
+
   async function render() {
-    const read = await api(`/api/sessions/${id}/`);
+    const [read, listed] = await Promise.all([api(`/api/sessions/${id}/`), api("/api/wargames/")]);
     session = read.ok ? read.body : null;
     crumbs([{ label: t("common.session", id), href: `/session/${id}/` },
             ...(session && session.ended_at ? [{ label: t("crumb.result") }] : [])]);
     if (!session) {
-      show("close", true);
-      activity();
+      show("loading", false);
+      const retrying = read.status !== 404;
+      field("unread").textContent = `${t("session.unread", detail(read))}${retrying ? ` ${t("score.retrying")}` : ""}`;
+      show("unread", true);
+      if (retrying) setTimeout(render, UNREAD_RETRY_AFTER);
       return;
     }
+    show("unread", false);
     rememberSession(id);
-    const listed = await api("/api/wargames/");
     wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
     const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };
     header(result.lost, result.total);
@@ -532,7 +554,10 @@
     show("close", true);
     const waf = lessonSession() ? { ok: false } : await api(`/api/sessions/${id}/waf/`);
     consoles(waf.ok ? waf.body.paranoia : null, result.lost, result.total);
-    activity();
+    await activity();
+    show("loading", false);
+    show("consoles", true);
+    show("activity", true);
     trafficPanel();
   }
 

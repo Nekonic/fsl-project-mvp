@@ -115,3 +115,92 @@ def test_the_catalogue_shows_range_controls_only_in_the_operator_view(client, op
     assert shown["health"] is not operator and shown["canary"] is not operator, (
         "the alert ingest check and the network state are operator controls")
     assert (english("main.counts", 9, 6, 3) in shown["cards"]) is operator
+
+GATED = (
+    "let open;\nconst gate = new Promise((resolve) => { open = resolve; });\n"
+    + COURSE.replace(
+        "browser.serve((request) => {",
+        'browser.serve(async (request) => {\n'
+        '  if (request.route === "/api/wargames/" || request.route === "/api/sessions/1/score/") await gate;',
+        1,
+    )
+)
+
+LAYOUT = """
+  const hidden = (name) => browser.element(name).classList.contains('hidden');
+  const shown = () => Object.fromEntries(
+    ['loading', 'session-card', 'consoles', 'activity', 'scoreboard'].map((name) => [name, !hidden(name)]));
+"""
+
+def test_the_result_page_shows_a_loading_line_and_no_live_layout_until_the_score_is_read(client):
+    seen = open_page(client, "/session/1/", setup=GATED, scenario=LAYOUT + """
+      const waiting = shown();
+      const line = browser.text('loading');
+      open();
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {waiting, line, done: shown(), lost: browser.text('lost-count')};
+    """)
+    shown = seen["result"]
+
+    assert seen["errors"] == []
+    assert shown["waiting"] == {
+        "loading": True, "session-card": False, "consoles": False, "activity": False, "scoreboard": False}, (
+        "while the data is on its way the page says so; it never shows the live session's cards")
+    assert shown["line"]
+    assert shown["done"] == {
+        "loading": False, "session-card": True, "consoles": False, "activity": False, "scoreboard": True}, (
+        "a closed session shows the header and both scores, never a console card")
+    assert shown["lost"] == "1 / 1"
+
+LIVE = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", guidance: true, kind: "lesson", ready: true,
+      lesson_id: "f1", defense: "full", lesson: {text: "lesson.map", steps: [{id: "entry"}, {id: "route"}]},
+      started_at: "2026-10-18T09:00:00Z", ended_at: null, lessons: [{id: "f1", started_at: "2026-10-18T09:00:00Z"}],
+      result: {objectives: {lost: 0, undetected: 0, total: 3}, scenario: null}}};
+  }
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", public_url: "http://board.com", foundations: FOUNDATIONS}]};
+  }
+  if (request.route === "/api/sessions/1/cases/") {
+    return {body: [
+      {name: "board-normal-search", malicious: false, detected: false, meta: {seed: true}, started_at: "2026-10-18T09:00:05Z"},
+      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, meta: {}, started_at: "2026-10-18T09:05:00Z"},
+    ]};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+""".replace("FOUNDATIONS", FOUNDATIONS)
+
+def test_an_opened_lesson_session_says_what_to_do_next_and_lists_only_the_learner_s_own_requests(client):
+    seen = open_page(client, "/session/1/", setup=LIVE, scenario=LAYOUT + """
+      return {layout: shown(), next: browser.text('session-next'), nextShown: !hidden('session-next'),
+              activity: browser.text('activity-list')};
+    """)
+    shown = seen["result"]
+
+    assert seen["errors"] == []
+    assert shown["layout"] == {
+        "loading": False, "session-card": True, "consoles": True, "activity": True, "scoreboard": False}
+    assert shown["nextShown"] and shown["next"]
+    assert english("score.kind.auto_benign") not in shown["activity"], (
+        "the lesson's own automatic request is the platform's, not something the learner ran")
+    assert english("case.board-sqli-orderby-sqlmap") in shown["activity"]
+
+def test_a_session_that_cannot_be_read_says_so_instead_of_showing_an_empty_page(client):
+    seen = open_page(client, "/session/1/", setup="""
+      browser.serve((request) => ({status: 500, body: {detail: "busy"}}));
+    """, scenario=LAYOUT + """
+      const first = {layout: shown(), unread: browser.text('unread')};
+      const before = browser.requests.filter((r) => r.route === "/api/sessions/1/").length;
+      await browser.wait(6000);
+      const after = browser.requests.filter((r) => r.route === "/api/sessions/1/").length;
+      return {first, retried: after > before};
+    """)
+    shown = seen["result"]
+
+    assert shown["first"]["layout"] == {
+        "loading": False, "session-card": False, "consoles": False, "activity": False, "scoreboard": False}
+    assert shown["first"]["unread"]
+    assert shown["retried"], "a busy server is asked again"

@@ -524,6 +524,15 @@ function ruleLineShown(index) {
   const visible = box.clientHeight || 0;
   const at = RULE_PAD + index * RULE_LINE;
   if (at < (box.scrollTop || 0) || at + RULE_LINE > (box.scrollTop || 0) + visible) box.scrollTop = Math.max(0, at - visible / 2);
+  ruleLineAcross(box, box.value.split("\n")[index] || "");
+}
+
+function ruleLineAcross(box, text) {
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return;
+  context.font = getComputedStyle(box).font;
+  const end = 2 * RULE_PAD + context.measureText(text).width;
+  box.scrollLeft = Math.max(0, end - (box.clientWidth || 0));
 }
 
 const LOCATORS = ["panel", "map", "site", "dev", "kibana", "term"];
