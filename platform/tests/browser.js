@@ -25,7 +25,7 @@ const camel = (name) => name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 const kebab = (name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", times: "×" };
 const decode = (text) => text.replace(/&(amp|lt|gt|quot|#39|times);/g, (_, name) => ENTITIES[name]);
-const visibleText = (html) => decode(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+const visibleText = (html) => decode(html.replace(/<span class="seg">([^<]*)<\/span>/g, "$1").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
 const escapeText = (text) => String(text).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 const escapeAttribute = (text) => escapeText(text).replace(/"/g, "&quot;");
 const VOID = new Set([

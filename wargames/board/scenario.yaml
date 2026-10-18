@@ -338,7 +338,7 @@ foundations:
         point: {opens: site, dev: payload.query}
         check: {kind: answer, of: parameter, about: search}
       - id: sort
-        point: {opens: site, site: "select[name=sort]", until: sent, then: {dev: payload.query}}
+        point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
         check: {kind: answer, of: parameter, match: '[?&]sort='}
       - id: missing
         point: {opens: site}
@@ -368,7 +368,7 @@ foundations:
         point: {opens: elk, kibana: {doc: source_ip}}
         check: {kind: answer, of: sensor_source, about: search, leg: inbound}
       - id: xff
-        point: {opens: elk, kibana: {doc: request_headers}}
+        point: {opens: elk, kibana: {doc: request_header.x_forwarded_for}}
         check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
       - id: waf_logged
         point: {opens: elk, kibana: {hits: true}}
@@ -440,7 +440,7 @@ foundations:
       - {id: sqlmap, shows: sqlmap}
     steps:
       - id: sort
-        point: {opens: site, site: "select[name=sort]", until: sent, then: {dev: payload.query}}
+        point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
         check: {kind: answer, of: param_value, name: sort, match: '[?&]sort='}
       - id: error
         point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}

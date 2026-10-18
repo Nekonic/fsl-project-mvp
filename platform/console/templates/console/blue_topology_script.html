@@ -17,7 +17,7 @@ function topologyRefit() {
   clearTimeout(topo.fitTimer);
   topo.fitTimer = setTimeout(() => {
     const shown = boxOf(field("topology-frame"));
-    if (shown && shown.width && paneOpen("topology")) topologyFit();
+    if (shown && shown.width && paneOpen("topology") && rounded(shown) !== topo.fitBox) topologyFit();
   }, REFIT_SETTLES_MS);
 }
 

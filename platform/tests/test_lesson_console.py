@@ -180,9 +180,9 @@ const meets = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left <
 const frames = async (count = 2) => { for (let i = 0; i < count; i += 1) await browser.wait(0); };
 """
 
-def served(next_lesson="f10", objectives=OBJECTIVES):
+def served(next_lesson="f10", objectives=OBJECTIVES, steps=None):
     following = json.dumps({"id": next_lesson, "text": "lesson.next"} if next_lesson else None)
-    return SERVED.replace("STEPS_JSON", json.dumps(STEPS)).replace("RIGHT_JSON", json.dumps(RIGHT)).replace(
+    return SERVED.replace("STEPS_JSON", json.dumps(steps or STEPS)).replace("RIGHT_JSON", json.dumps(RIGHT)).replace(
         "NEXT_JSON", following).replace("OBJECTIVES_JSON", json.dumps(objectives)) + LAID_OUT
 
 def to(step):
@@ -414,8 +414,8 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
       const buttons = card.querySelectorAll('button').filter((button) => !button.classList.contains('hidden') && button.id !== 'step-copy')
         .map((button) => button.textContent);
       const command = {{shown: shown('step-command'), text: browser.text('step-command'), copy: shown('step-copy'),
-                       wraps: browser.element('step-command').getAttribute('style').includes('white-space: pre-wrap;')
-                                && browser.element('step-command').getAttribute('style').includes('word-break: normal')}};
+                       pieces: browser.element('step-command').querySelectorAll('.seg').map((piece) => piece.textContent),
+                       styled: browser.element('step-command').getAttribute('style')}};
       range.passed = true;
       await browser.click('#step-act [data-act="kali"]');
       await browser.wait(1600);
@@ -429,7 +429,9 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
     step = STEPS[ids.index("sqlmap")]
 
     assert seen["errors"] == []
-    assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "wraps": True}
+    assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "styled": None, "pieces": [
+        "sqlmap", "-u", '"http://', "board.com/?", 'sort=posts_post.id*"', "--batch"]}, (
+        "a space-separated word never breaks across lines; a long path may break only after a slash or a question mark")
     assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.more"), english("lesson.coach.back"),
                                  english("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
@@ -758,7 +760,8 @@ def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total
 
     assert seen["errors"] == []
     assert seen["result"]["shown"] is True and seen["result"]["total"] == "4"
-    assert seen["result"]["rows"][0][1:] == ["2", english("lesson.objectives.lost"), english("common.no"), "4"]
+    assert seen["result"]["rows"][0][1:] == ["2", english("common.yes"), english("common.no"), "4"], (
+        "lost and detected read yes or no, as on the result page")
 
 POLLED = ("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/")
 
@@ -1535,3 +1538,76 @@ def test_a_developer_tools_callout_also_keeps_off_the_toolbar_controls_and_the_t
 
     assert seen["errors"] == []
     assert seen["result"]["second"] is not None and seen["result"]["over"] is False
+
+def test_the_map_is_not_asked_to_fit_again_after_it_drew_or_when_a_lesson_ends_at_the_size_it_was_fitted_to(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      const frameWindow = browser.element('topology-frame').contentWindow;
+      const said = (what) => window.dispatchEvent({{type: 'message', data: {{map: what}}, source: frameWindow}});
+      const fits = () => posted.filter((one) => one.frame === 'map' && (one.data === 'fit' || (one.data && one.data.fit))).length;
+      await browser.click('[data-pane="topology"]');
+      said('drawn');
+      await browser.wait(800);
+      const drawn = fits();
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(800);
+      const finished = fits();
+      placeAt('topology-frame', box(60, 96, 700, 704));
+      mapFit();
+      return {{drawn, finished, resized: fits()}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"drawn": 0, "finished": 0, "resized": 1}, (
+        "a second fit right after the first, or one when the last step passes, redraws the map in front of the learner")
+
+def test_a_replay_shows_the_normal_request_as_checking_once_it_was_seen_and_the_logs_are_pending(client):
+    replay = [{**step, "check": {"kind": "replay", "match": "[?&]sort=title$"}} if step["id"] == "replay" else step for step in STEPS]
+    seen = open_page(client, "/blue/1/", setup=served(steps=replay), scenario=f"""
+      STRINGS.en['lesson.demo.replay.attack'] = 'Attack: {{0}}';
+      STRINGS.en['lesson.demo.replay.benign'] = 'Normal: {{0}}';
+      {to("replay")}
+      range.attacked = true;
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      const waiting = browser.text('step-status');
+      window.dispatchEvent({{type: 'message', data: {{site: '/site/1/board.com/?sort=title'}}, source: browser.element('site-frame').contentWindow,
+                             origin: 'http://console.test:8002'}});
+      const seen = browser.text('step-status');
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      return {{waiting, seen, later: browser.text('step-status')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"waiting": "Attack: confirmed\nNormal: waiting", "seen": "Attack: confirmed\nNormal: checking",
+                              "later": "Attack: confirmed\nNormal: checking"}
+
+def test_the_course_summary_explains_the_lost_objectives_under_the_values_and_the_run_card_says_it_is_still_running_until_the_run_ends(client):
+    seen = open_page(client, "/blue/1/", setup=served(next_lesson=None), scenario=f"""
+      STRINGS.en['lesson.course.values'] = 'S1 {{0}}';
+      STRINGS.en['lesson.kali.running'] = 'Still running.';
+      STRINGS.en['score.lesson_lost_note'] = 'Lost on purpose at step 2.';
+      {to("sqlmap")}
+      await browser.click('step-open');
+      document.querySelector('#step-act [data-act="rows"]').innerHTML = kaliRow({{name: 'board-sqli-orderby-sqlmap', discover: '/kibana/'}});
+      RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
+      const running = () => browser.element('step-act').querySelector('[data-running]').classList.contains('hidden');
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing");
+      await frames();
+      const during = running();
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      await frames();
+      const after = running();
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(500);
+      const note = document.querySelector('#step-act [data-act="lost-note"]');
+      return {{during, after, note: note.textContent, hidden: note.classList.contains('hidden')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"during": False, "after": True, "note": "Lost on purpose at step 2.", "hidden": False}
+
+def test_the_lesson_text_and_the_callouts_switch_off_the_font_ligature_that_draws_an_arrow_for_a_dash_and_a_greater_than(client):
+    page = client.get("/blue/1/").content.decode()
+
+    assert re.search(r'#lesson,\s*\.coach-callout\s*\{[^}]*font-feature-settings:\s*"calt"\s*0', page)
