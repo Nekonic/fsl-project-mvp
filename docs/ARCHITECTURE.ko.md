@@ -1437,8 +1437,12 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색, "FSL overview"
   대시보드입니다. `defaultRoute`는 그 검색으로 설정합니다. data view가 있어야 Kibana의
   Welcome 화면이 나오지 않습니다. Kibana의 `metaFields`에서 `_index`도 뺍니다. 세션을
-  열 때 `kibana.py`는 그 세션만의 data view를 가져옵니다(`ensure_session_view`.
-  `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함). id는 `session-<pattern>`이고 세션의
+  열 때 `kibana.py`는 그 세션만의 Kibana space를 만들고 그 안에 data view를 가져옵니다
+  (`ensure_session_view`. `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함). space와
+  data view의 id는 같은 `session-<pattern>`입니다. space는 Discover 말고는 모든 기능
+  (대시보드, visualize, dev tools, management 등)을 끄고 `defaultRoute`가 일반 Discover라서
+  학습자가 default space에 남아 있는 운영자 객체에 바로 닿지 못합니다(Kibana는 보안 없이 돌아가므로
+  space 전환 메뉴에는 다른 space가 여전히 보입니다. 막으려면 nginx에서 space와 세션을 대조해야 함). data view는 세션의
   인덱스 패턴 위에 있으며, 패턴이 아니라 이름 "Session logs"로 보입니다. 공유 runtime
   field에 `log_source`(`suricata` 또는 `modsecurity`), `sensor`(센서의 구성도
   이름: OpenStack은 `firewall`과 `board.com`, docker와 모든 ModSecurity 기록은 `waf`.
@@ -1447,12 +1451,13 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`,
   `http.request_headers*`를 숨깁니다(KQL로는 여전히 검색됨). 가져오기가 거부되면 로그만
   남기고 세션은 그대로 진행합니다. `GET /api/sessions/<id>/`는 `discover`를 담습니다.
-  이는 그 data view 위의 저장되지 않은 Discover 상태로, 현재 레슨의 시작부터,
+  이는 `/kibana/s/<space>/app/discover`의 그 data view 위의 저장되지 않은 Discover 상태로, 현재 레슨의 시작부터,
   `log_source, sensor, event_type, source_ip, destination, url, status,
   rule_id, rule` 열과 `log_source: exists` 필터(훈련 환경 호스트 자체의 syslog 줄을
   숨김)를 씁니다. 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
-  `KIBANA_URL`이 없으면 공유 `fsl-logs` data view에 경보 검색의 열과 쿼리를 쓰고 세션
-  인덱스(`_index : fsl-logs-<id>-*`)와 시간 범위로 좁힙니다. ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가
+  space나 data view가 아직 준비되지 않았거나 `KIBANA_URL`이 없으면 `discover`는 null이며,
+  공유 `fsl-logs` data view로 대신하지 않습니다. ELK 창은 준비 중 문구를 보이고 링크가
+  생길 때까지 세션을 다시 읽습니다(가져오기는 10초마다 재시도). ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가
   아닙니다. 그런 형태에는 Kibana가 "Unsaved changes" 배지를 붙입니다. 창이 로드되기 전에
   블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를
   이미 본 것으로 표시합니다(`discover:docExplorerUpdateCalloutClosed`,

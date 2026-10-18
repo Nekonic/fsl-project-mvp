@@ -19,6 +19,13 @@ ALERT_COLUMNS = (
 SETTINGS = {
     "defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
 }
+SPACE_SETTINGS = {"defaultRoute": "/app/discover", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul"}
+SPACE_FEATURES_OFF = (
+    "enterpriseSearch", "dashboard", "canvas", "maps", "ml", "logs", "visualize", "infrastructure", "apm", "uptime",
+    "siem", "securitySolutionCases", "observabilityCases", "slo", "dev_tools", "advancedSettings", "indexPatterns",
+    "filesManagement", "savedObjectsManagement", "savedObjectsTagging", "osquery", "actions", "generalCases",
+    "guidedOnboardingFeature", "rulesSettings", "maintenanceWindow", "stackAlerts", "fleetv2", "fleet", "monitoring",
+)
 URL = os.environ.get("KIBANA_URL", "")
 SESSION_VIEW_NAME = "Session logs"
 SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
@@ -42,7 +49,7 @@ MARKER_HEADER = "x-fsl-case"
 ATTEMPTS = 60
 NOT_READY = (502, 503, 504)
 PAUSE = 5
-VIEW_RETRY = 60
+VIEW_RETRY = 10
 VIEWS = {}
 
 
@@ -68,12 +75,35 @@ def status_request(base):
     return urllib.request.Request(f"{base.rstrip('/')}/api/status")
 
 
-def settings_request(base):
+def settings_request(base, changes=None):
     return urllib.request.Request(
         f"{base.rstrip('/')}/api/kibana/settings",
-        data=json.dumps({"changes": SETTINGS}).encode(), method="POST",
+        data=json.dumps({"changes": changes or SETTINGS}).encode(), method="POST",
         headers={"kbn-xsrf": "fsl", "Content-Type": "application/json"},
     )
+
+
+def space_request(base, space, create):
+    path = "/api/spaces/space" if create else f"/api/spaces/space/{space}"
+    body = {"id": space, "name": SESSION_VIEW_NAME, "disabledFeatures": list(SPACE_FEATURES_OFF)}
+    return urllib.request.Request(
+        f"{base.rstrip('/')}{path}", data=json.dumps(body).encode(), method="POST" if create else "PUT",
+        headers={"kbn-xsrf": "fsl", "Content-Type": "application/json"},
+    )
+
+
+def space_base(base, space):
+    return f"{base.rstrip('/')}/s/{space}"
+
+
+def ensure_space(base, space, send):
+    try:
+        send(space_request(base, space, create=True))
+    except urllib.error.HTTPError as exc:
+        with exc:
+            if exc.code != 409:
+                raise
+        send(space_request(base, space, create=False))
 
 
 def settle(base, ndjson, send):
@@ -98,10 +128,9 @@ def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 
 
-def query(index="", narrowed="", alerts=True):
+def query(narrowed="", alerts=True):
     return " and ".join(part for part in (
         f"({ALERTS_QUERY})" if alerts else "",
-        f"_index : {index}" if index else "",
         f"({narrowed})" if narrowed else "",
     ) if part)
 
@@ -125,7 +154,7 @@ def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS, engines_onl
     )
     safe = "()!:,'*@-._~"
     return (
-        f"{BASE_PATH}/app/discover#/"
+        f"{BASE_PATH}/s/{view}/app/discover#/"
         f"?_g={urllib.parse.quote(global_state, safe=safe)}"
         f"&_a={urllib.parse.quote(app_state, safe=safe)}"
     )
@@ -277,9 +306,12 @@ def ensure_session_view(pattern, sensors, waf, send=None):
     try:
         with open(OBJECTS, "rb") as objects:
             view = session_view(pattern, sensors, waf, shared_runtime(objects.read()))
-        imported = (send or send_json)(import_request(URL, json.dumps(view).encode()))
+        send = send or send_json
+        ensure_space(URL, view["id"], send)
+        imported = send(import_request(space_base(URL, view["id"]), json.dumps(view).encode()))
         if not imported.get("success"):
             raise Refused(f"Kibana refused the data view for {pattern}: {imported.get('errors')}")
+        send(settings_request(space_base(URL, view["id"]), SPACE_SETTINGS))
         return view["id"]
     except (Refused, OSError, ValueError, KeyError) as exc:
         print(f"kibana: no session data view for {pattern}: {exc}", flush=True)

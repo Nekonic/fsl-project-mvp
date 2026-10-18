@@ -91,24 +91,22 @@ def unquoted(path):
     return urllib.parse.unquote(path)
 
 
-def test_the_discover_link_without_a_session_view_narrows_the_shared_view_to_the_session_index():
+def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     start = datetime(2026, 10, 10, 5, 0, tzinfo=timezone.utc)
     end = start + timedelta(minutes=30)
+    view = kibana.session_view_id("fsl-logs-slot2-*")
 
-    closed = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, end, kibana.query("fsl-logs-15-*"), kibana.ALERT_COLUMNS))
-    running = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, None, kibana.query("fsl-logs-15-*")))
-    shared = unquoted(kibana.discover_path(kibana.DATA_VIEW, start, None, kibana.query("")))
+    closed = unquoted(kibana.discover_path(view, start, end, kibana.query("")))
+    running = unquoted(kibana.discover_path(view, start, None, kibana.query("")))
 
-    assert closed.startswith("/kibana/app/discover#/?"), (
+    assert closed.startswith("/kibana/s/session-fsl-logs-slot2/app/discover#/?"), (
         "a link that overrides the saved search's query marks it 'Unsaved changes'; "
-        "the pane opens an unsaved Discover state on the same data view instead"
+        "the pane opens an unsaved Discover state on the session's view in the session's space instead"
     )
-    assert "dataSource:(dataViewId:'fsl-logs',type:dataView)" in closed
-    assert "and _index : fsl-logs-15-*" in closed
+    assert "dataSource:(dataViewId:'session-fsl-logs-slot2',type:dataView)" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running
-    assert "_index" not in shared, "on OpenStack every session writes the shared index"
-    assert kibana.ALERTS_QUERY.replace("'", "!'") in shared
+    assert "_index" not in closed and "fsl-logs'" not in closed, "no link reaches the shared view or another index"
 
 
 SENSORS = {"fsl-edge": "firewall", "fsl-wargame-host": "board.com"}
@@ -153,16 +151,43 @@ def test_one_sensor_names_the_events_that_carry_no_sensor_host():
     assert "host == '' ? \"\"" in several
 
 
-def test_opening_the_session_view_overwrites_the_one_with_its_id():
+def test_opening_the_session_view_makes_its_space_and_imports_the_view_and_the_route_into_it():
     fake = FakeKibana()
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
         made = kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", fake)
 
-    (sent,) = fake.sent
+    space, imported, route = fake.sent
+    base = "http://kibana:5601/kibana"
     assert made == "session-fsl-logs-slot2"
-    assert sent.full_url == "http://kibana:5601/kibana/api/saved_objects/_import?overwrite=true"
-    assert b'"name": "Session logs"' in sent.data
+    assert space.full_url == f"{base}/api/spaces/space" and space.get_method() == "POST"
+    body = json.loads(space.data)
+    assert body["id"] == made and "discover" not in body["disabledFeatures"]
+    assert {"dashboard", "visualize", "dev_tools", "advancedSettings", "indexPatterns",
+            "savedObjectsManagement"} <= set(body["disabledFeatures"])
+    assert imported.full_url == f"{base}/s/{made}/api/saved_objects/_import?overwrite=true"
+    assert b'"name": "Session logs"' in imported.data
+    assert route.full_url == f"{base}/s/{made}/api/kibana/settings"
+    assert json.loads(route.data)["changes"]["defaultRoute"] == "/app/discover", "the logo opens plain Discover"
+
+
+def test_a_space_that_exists_is_updated_not_recreated():
+    import io
+    import urllib.error
+
+    sent = []
+
+    def send(request):
+        sent.append((request.get_method(), request.full_url))
+        if request.get_method() == "POST" and request.full_url.endswith("/api/spaces/space"):
+            raise urllib.error.HTTPError(request.full_url, 409, "conflict", {}, io.BytesIO(b""))
+        return {"success": True}
+
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
+        kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", send)
+
+    assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/session-fsl-logs-slot2")
+    assert len(sent) == 4, "the view and the route are still written"
 
 
 def test_a_refused_session_view_does_not_stop_the_session():
@@ -175,9 +200,11 @@ def test_the_session_api_hands_the_console_its_discover_link(client, settings):
     settings.ELASTIC_SESSION_INDEX = "fsl-logs-{session}-*"
     session = Session.objects.create(scenario="board", baseline=[])
 
-    reply = client.get(f"/api/sessions/{session.pk}/").json()
+    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
+            patch.dict(kibana.VIEWS, {f"fsl-logs-{session.pk}-*": (True, 0.0)}):
+        reply = client.get(f"/api/sessions/{session.pk}/").json()
 
-    assert f"_index : fsl-logs-{session.pk}-*" in unquoted(reply["discover"])
+    assert reply["discover"].startswith(f"/kibana/s/session-fsl-logs-{session.pk}/app/discover")
     assert "to:now" in unquoted(reply["discover"])
 
 
@@ -201,17 +228,24 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
 
 
 @pytest.mark.django_db
-def test_a_session_view_kibana_refused_links_the_shared_view_narrowed_to_the_session_not_a_view_that_does_not_exist(
-        client, settings):
+def test_a_session_view_kibana_refused_gives_no_link_rather_than_the_shared_operator_view(client, settings):
     settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
     session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f1")
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.dict(kibana.VIEWS, {}, clear=True), \
             patch.object(kibana, "ensure_session_view", return_value=None):
-        link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
+        link = client.get(f"/api/sessions/{session.pk}/").json()["discover"]
 
-    assert "session-fsl-logs-slot1" not in link
-    assert "_index : fsl-logs-slot1-*" in link
+    assert link is None
+
+
+@pytest.mark.django_db
+def test_a_session_without_kibana_configured_gets_no_link(client, settings):
+    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    session = Session.objects.create(scenario="board", baseline=[])
+
+    with patch.object(kibana, "URL", ""):
+        assert client.get(f"/api/sessions/{session.pk}/").json()["discover"] is None
 
 
 def http_error(code, body=b""):
