@@ -639,6 +639,62 @@ def test_a_website_step_whose_element_is_not_on_this_page_points_at_the_link_to_
     assert seen["errors"] == []
     assert seen["result"] == {"home": "a.navbar-brand", "ring": True, "callout": english("lesson.site.home"), "missing": False}
 
+def visit_without_the_target(client, path):
+    return open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("search")}
+      await browser.click('step-open');
+      await frames();
+      window.dispatchEvent({{type: 'message', data: {{fslSite: '/site/1/board.com{path}'}}, source: browser.element('site-frame').contentWindow,
+                             origin: 'http://console.test:8002'}});
+      await frames();
+      answer('site-frame', null);
+      await frames();
+      answer('site-frame', null);
+      await frames();
+      return {{at: site.history.slice(-1)[0], coached: dev.coached && dev.coached.path}};
+    """)
+
+def test_the_coach_goes_home_from_a_page_the_learner_wandered_to_but_never_from_the_page_their_request_produced(client):
+    wandered = visit_without_the_target(client, "/posts/3/")
+    sent = visit_without_the_target(client, "/search/?q=%3Cscript%3Ealert(1)%3C/script%3E")
+
+    assert wandered["errors"] == [] and sent["errors"] == []
+    assert wandered["result"] == {"at": "/", "coached": "/"}
+    assert sent["result"] == {"at": "/search/?q=%3Cscript%3Ealert(1)%3C/script%3E", "coached": None}, (
+        "the block page that the learner's request produced stays on screen while the next step reads it"
+    )
+
+def test_a_navigation_the_coach_makes_keeps_the_network_rows_and_one_the_learner_makes_clears_them(client):
+    seen = open_page(client, "/blue/1/", setup=served() + """
+      const watchers = [];
+      globalThis.MutationObserver = class { constructor(callback) { watchers.push(callback); } observe() {} };
+    """, scenario="""
+      const row = (id, url, category = 'doc', status = 200) => ({id, url, category, status, type: category, size: 100, ms: 10});
+      const ids = () => dev.rows.map((one) => one.id);
+      const srcChanged = () => watchers.forEach((callback) => callback());
+
+      devTake([row(1, 'http://board.com/search/?q=%3Cscript%3E', 'doc', 403)]);
+      siteGo('/', true);
+      srcChanged();
+      const justAfter = ids();
+      devTake([row(2, 'http://board.com/')]);
+      devLanded('/');
+      devTake([row(3, 'http://board.com/static/app.css', 'stylesheet')]);
+      const coached = ids();
+
+      siteGo('/posts/1/');
+      srcChanged();
+      const learnerNavigating = ids();
+      devTake([row(5, 'http://board.com/posts/1/')]);
+      devLanded('/posts/1/');
+      return {justAfter, coached, learnerNavigating, learnerLanded: ids(), pending: dev.coached};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"justAfter": [1], "coached": [1, 2, 3], "learnerNavigating": [], "learnerLanded": [5], "pending": None}, (
+        "the coach's own trip home keeps the rows, as with Preserve log; the learner's navigation clears them as Chrome does"
+    )
+
 def test_every_step_that_reads_a_kali_run_carries_the_button_that_opens_kibana_at_its_time(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("sqlmap")}

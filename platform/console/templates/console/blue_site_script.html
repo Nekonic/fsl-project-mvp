@@ -89,7 +89,8 @@ function siteLoad() {
   siteShow();
 }
 
-function siteGo(path) {
+function siteGo(path, coached = false) {
+  if (coached) devCoached(path);
   site.history = site.history.slice(0, site.at + 1).concat([path]);
   site.at = site.history.length - 1;
   siteLoad();

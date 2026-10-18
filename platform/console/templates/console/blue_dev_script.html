@@ -1,6 +1,6 @@
 const dev = {
   open: false, after: 0, rows: [], height: 280, timer: null, picked: null, record: null, tab: "headers",
-  preserve: false, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
+  preserve: false, coached: null, type: "all", filter: "", raw: { response: false, request: false }, query: "parsed",
 };
 const DEV_POLL_MS = 2000;
 const DEV_LOWEST = 120;
@@ -83,9 +83,27 @@ function devRows() {
     line.addEventListener("click", () => devPick(Number(line.dataset.request))));
 }
 
+function devSamePath(row, path) {
+  try {
+    const at = new URL(row.url);
+    const raw = at.pathname + at.search;
+    return raw === path || readable(raw) === readable(path);
+  } catch (error) {
+    return false;
+  }
+}
+
+function devCoached(path) {
+  dev.coached = { path, navigated: false, row: false, landed: false };
+}
+
 function devTake(rows) {
   rows.forEach((row) => {
-    if (!dev.preserve && row.category === "doc") dev.rows = [];
+    const coached = dev.coached && !dev.coached.row && row.category === "doc" && devSamePath(row, dev.coached.path);
+    if (coached) {
+      dev.coached.row = true;
+      if (dev.coached.landed) dev.coached = null;
+    } else if (!dev.preserve && row.category === "doc") dev.rows = [];
     dev.rows.push(row);
   });
   if (dev.picked !== null && !dev.rows.some((row) => row.id === dev.picked)) devUnpick();
@@ -281,21 +299,24 @@ function devKeep(rows) {
 }
 
 function devNavigating() {
+  if (dev.coached && !dev.coached.navigated) {
+    dev.coached.navigated = true;
+    return;
+  }
+  dev.coached = null;
   if (!dev.preserve) devKeep([]);
 }
 
 function devLanded(path) {
   if (dev.preserve) return;
-  const same = (row) => {
-    try {
-      const at = new URL(row.url);
-      const raw = at.pathname + at.search;
-      return raw === path || readable(raw) === readable(path);
-    } catch (error) {
-      return false;
-    }
-  };
-  const index = dev.rows.map((row) => row.category === "doc" && same(row)).lastIndexOf(true);
+  if (dev.coached && !dev.coached.landed && dev.coached.path === path) {
+    dev.coached.landed = true;
+    if (dev.coached.row) dev.coached = null;
+    if (dev.open) devPoll();
+    return;
+  }
+  dev.coached = null;
+  const index = dev.rows.map((row) => row.category === "doc" && devSamePath(row, path)).lastIndexOf(true);
   devKeep(index >= 0 ? dev.rows.slice(index) : []);
   if (dev.open) devPoll();
 }

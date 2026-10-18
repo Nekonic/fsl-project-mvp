@@ -1080,14 +1080,14 @@ function coach(prefix, declared) {
   }
 
   function siteHomeward() {
-    if (homed === at || !paneOpen("site") || !site.history.length || site.expecting || site.busy) return;
+    if (sentSince || homed === at || !paneOpen("site") || !site.history.length || site.expecting || site.busy) return;
     const unanswered = !asking.answered && asking.since && siteLoadedAt
       && Date.now() - asking.since > SITE_SILENT_MS && Date.now() - siteLoadedAt > SITE_SILENT_MS;
     const nowhere = asking.answered && !asking.rect && siteHome.on;
     if (!unanswered && !nowhere) return;
     homed = at;
     console.log(`coach: no ${siteHome.selector || "target"} on ${site.history[site.at]}, going back to the front page`);
-    siteGo("/");
+    siteGo("/", true);
   }
 
   function mapChase(rect) {
