@@ -420,10 +420,11 @@ mousedown도 삼킵니다. 페이지가 직접 만든 합성 이벤트는 신뢰
 웹 UI 자체의 축소 버튼을 누르고(한 번에 0.1; 웹 UI는 프로젝트의 `zoom`을 읽지 않습니다),
 mousemove 한 번으로 그림을 가운데로 옮깁니다(웹 UI는 `movementX`/`movementY`만큼
 이동합니다). 창의 "화면에 맞추기" 버튼은 프레임에 `fsl-fit`을 보내 같은 초기화와 맞춤을
-실행합니다. 콘솔은 창을 열 때와 크기가 바뀔 때마다 이 메시지를 보내고, 페이지가 첫 맞춤
-뒤에 `{fslMap: "drawn"}`을 보낼 때까지 불러오는 중이라고 표시합니다. 페이지는
+실행합니다. 콘솔은 창을 열 때와 크기가 바뀔 때마다 이 메시지를 보내고, 창을 열 때마다 페이지가
+`{fslMap: "drawn"}`(첫 맞춤 뒤) 또는 `{fslMap: "fitted"}`(그 뒤 맞춤마다, 도면이 프레임 안에
+들어올 때까지 다시 시도)를 보낼 때까지 불러오는 중이라고 표시합니다. 페이지는
 코치의 `{fslLocate}`에 노드, 링크, 링크 끝 라벨(Auditor 토큰으로
-`/v3/projects/<id>/nodes`와 `/links`를 한 번 읽어 앎), 영역의 창 안 사각형으로 답합니다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다. 개발용
+`/v3/projects/<id>/nodes`와 `/links`를 한 번 읽어 앎), 영역의 창 안 사각형으로 답하고, 모든 노드와 인터페이스 라벨의 사각형(`text`, 말풍선이 지도의 글자를 가리지 않도록)도 함께 보냅니다. 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다. 개발용
 MCP(`/v3/mcp/`)를 쓰려면 `docker exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key
 <name>`으로 API 키를 출력하세요. 콘솔에는 MCP를 노출하는 곳이 없습니다. 콘솔의 해당 탭
 이름은 구성도(`blue.pane.topology`, 영어로는 Map)이며, 학습자가 읽는 문구 어디에도 GNS3라는 이름은 나오지 않습니다.
@@ -973,11 +974,13 @@ sqlmap 케이스 하나가 5000건 넘는 기록을 남기기 때문입니다.
 하나와 필요한 창 `opens`로 이루어집니다. 로케이터는 `panel`(콘솔 요소: 사이트 주소창,
 룰 편집기, 목표 합계), `map`(`node`, `link`, `label: [host, switch]`, `zone`. 서버가
 `{switch:<host>}`를 풀어 줍니다. `deploy/gns3/auditor.html`이 `postMessage`로
-`{fslLocate}`에 사각형과 모든 영역(zone) 도형의 사각형(`zones`, 말풍선이 영역 밖에 놓이도록)으로 답하고, `{fslFit}`를 받으면 화면을 다시 맞추며, 처음 화면 맞춤이 끝나면 `{fslMap: "drawn"}`을
+`{fslLocate}`에 사각형과 모든 영역(zone) 도형의 사각형(`zones`, 말풍선이 영역 밖에 놓이도록)으로 답하고, `{fslFit}`를 받으면 화면을 다시 맞추며, 처음 화면 맞춤이 끝나면 `{fslMap: "drawn"}`을, 그 뒤 맞춤마다 `{fslMap: "fitted"}`를
 보냅니다), `site`(출처가 다른 사이트 프레임 안의 선택자, nginx가 붙인 스크립트가
 답함), `dev`(개발자 도구의 `data-coach` 이름: 토글, 맞는 행, 탭, 줄), `kibana`(출처가 같은
-Kibana 프레임 안: `query`, `hits`(대체 대상 `discoverNoResults`), 문서 플라이아웃에서 필드
-행을 가리키는 `doc: <field>`(플라이아웃의 필드 필터로 행을 화면에 불러옴),
+Kibana 프레임 안: `query`, `hits`(대체 대상 `discoverNoResults`, 자체 단계 말풍선), 문서 플라이아웃에서 필드
+행을 가리키는 `doc: <field>`(플라이아웃의 필드 필터로 행을 화면에 불러옴. 단계의 체크가 `leg`을 지정하면
+코치는 그 구간 행(출발지가 다른 행의 목적지인 행, 또는 그 반대)의 펼치기 버튼을, 다른 이벤트가
+열려 있으면 플라이아웃의 화살표를 가리킴),
 `sidebar: <field>`), `term`(`{pane: kali | waf, match}`: xterm 버퍼에서 맞는 줄)입니다.
 두 단계 로케이터는 첫 대상을 `until: sent`까지 가리킨 뒤 `then`을 가리킵니다(정렬
 선택 상자, 그다음 페이로드의 줄). 강조 표시는 창만 어둡게 하고(`pointer-events: none`),

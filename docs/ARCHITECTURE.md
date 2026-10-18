@@ -477,11 +477,13 @@ pans, the wheel zooms), resets the zoom, zooms out with the web UI's own button
 fits, and centres it with one mousemove (the web UI pans by
 `movementX`/`movementY`). The pane's Fit to view button posts `fsl-fit` to the
 frame, which runs the same reset and fit; the console posts it on every pane
-open and resize too, and shows "Loading the map..." until the page posts
-`{fslMap: "drawn"}` after its first fit. The page answers the coach's
+open and resize too, and shows "Loading the map..." on every open until the page
+posts `{fslMap: "drawn"}` (after its first fit) or `{fslMap: "fitted"}` (after
+every later one, which retries until the drawing lies inside the frame). The page answers the coach's
 `{fslLocate}` for a node, a link, a link end's label (read once from
 `/v3/projects/<id>/nodes` and `/links` with the Auditor's token) or a zone
-with its rectangle in the pane. The Auditor role still refuses every
+with its rectangle in the pane, plus the rectangles of every node and interface
+label (`text`, so callouts stay off the map's text). The Auditor role still refuses every
 write on the server. For development MCP use (`/v3/mcp/`), `docker
 exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API
 key; nothing in the console exposes MCP. The console's tab for it reads
@@ -1110,13 +1112,16 @@ Locators: `panel` (a console element: the site's address bar, the rule
 editor, the objectives total), `map` (`node`, `link`, `label: [host,
 switch]` or `zone`, which the server resolves from `{switch:<host>}`;
 `deploy/gns3/auditor.html` answers `{fslLocate}` by `postMessage` with the
-rectangle and every zone drawing's rectangle (`zones`, so callouts stay outside them), refits on `{fslFit}`, and posts `{fslMap: "drawn"}` after its first fit), `site` (a
+rectangle and every zone drawing's rectangle (`zones`, so callouts stay outside them), refits on `{fslFit}`, and posts `{fslMap: "drawn"}` after its first fit and `{fslMap: "fitted"}` after each later one), `site` (a
 selector inside the cross-origin site frame, answered by the script nginx
 injects), `dev` (a `data-coach` name in the developer tools: the toggle, the
 matching row, a tab, a line), `kibana` (in the same-origin Kibana frame:
-`query`, `hits` with `discoverNoResults` as its fallback, `doc: <field>` for
+`query`, `hits` with `discoverNoResults` as its fallback (its own stage callout), `doc: <field>` for
 a field's row in the document flyout, brought into view through the
-flyout's field filter, `sidebar: <field>`) and `term` (`{pane: kali | waf,
+flyout's field filter; on a step whose check names a `leg` the coach rings
+the expand toggle of the row on that leg (the one whose source is another
+row's destination, or the reverse) and the flyout's arrow while the other
+event is open, `sidebar: <field>`) and `term` (`{pane: kali | waf,
 match}`: the row of the xterm buffer that matches). A two-phase point holds
 the first target `until: sent` and then points at `then` (the select, then
 the payload line). The highlight dims the pane alone (`pointer-events:

@@ -322,9 +322,6 @@ foundations:
       - id: method
         point: {opens: site, dev: general.method}
         check: {kind: answer, of: method, about: search}
-      - id: parameter
-        point: {opens: site, dev: payload.query}
-        check: {kind: answer, of: parameter, about: search}
       - id: path
         point: {opens: site, dev: general.url}
         check:
@@ -337,6 +334,9 @@ foundations:
       - id: status
         point: {opens: site, dev: general.status}
         check: {kind: answer, of: status, about: search}
+      - id: parameter
+        point: {opens: site, dev: payload.query}
+        check: {kind: answer, of: parameter, about: search}
       - id: sort
         point: {opens: site, site: "select[name=sort]", until: sent, then: {dev: payload.query}}
         check: {kind: answer, of: parameter, match: '[?&]sort='}
@@ -481,7 +481,7 @@ foundations:
       - {id: cost, shows: cost}
     steps:
       - id: excluded
-        point: {opens: waf, term: {pane: waf, match: 'ruleRemove'}}
+        point: {opens: waf, term: {pane: waf, match: 'ctl:ruleRemove', idle: '\$ '}}
         command: grep -n ruleRemove {waf_rules}
         check: {kind: answer, of: excluded_target}
       - id: dump
