@@ -41,17 +41,41 @@
   #site-dev .dv-source { display: grid; grid-template-columns: max-content 1fr; font-family: var(--font-mono); }
   #site-dev .dv-source > span:nth-child(odd) { padding: 0 8px; color: var(--text-faint); text-align: right; user-select: none; border-right: 1px solid var(--border-subdued); }
   #site-dev .dv-source > span:nth-child(even) { padding: 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--heading); }
+  #site-dev .dv-icon[aria-pressed="true"] { background: var(--primary-line); color: var(--primary-text); }
+  #site-dev .dv-select { height: 22px; max-width: 140px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); color: var(--text); font: inherit; }
+  #site-dev .dv-check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  #site-dev .dv-wf { position: relative; height: 12px; }
+  #site-dev .dv-wf > i { position: absolute; top: 2px; height: 8px; min-width: 2px; border-radius: 1px; background: var(--primary); }
+  #site-dev .dv-timing { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 1px 8px 1px 20px; }
+  #site-dev .dv-timing > :nth-child(even) { text-align: right; font-family: var(--font-mono); color: var(--heading); }
+  #site-dev .dv-chain { padding: 1px 8px 1px 20px; font-family: var(--font-mono); color: var(--heading); overflow-wrap: anywhere; }
+  #site-dev .dv-chain.dv-then::before { content: "\21B3\00a0"; color: var(--text-faint); }
   #site-dev .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
 </style>
 <section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
   <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
   <div class="dv-bar shrink-0" style="height: 26px">
-    <span class="dv-panel-tab" data-panel="elements" aria-selected="false"></span>
-    <span class="dv-panel-tab" data-panel="console" aria-selected="false"></span>
-    <span class="dv-panel-tab" data-panel="sources" aria-selected="false"></span>
-    <span data-t="site.dev.network" class="dv-panel-tab" aria-selected="true"></span>
-    <button type="button" id="site-dev-exit" class="dv-icon" style="margin-left: auto" data-t-title="site.dev.close" aria-label="close">✕</button>
+    <button type="button" id="site-dev-inspect" class="dv-icon" data-dev-title="site.dev.inspect" aria-pressed="false" aria-label="inspect">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 11V4h16v7"/><path d="M4 18v2h2"/><path d="M11 20h-1"/><path d="M12 12l9 3.5-4 1.5-1.5 4z" fill="currentColor"/></svg>
+    </button>
+    <button type="button" id="site-dev-device" class="dv-icon" data-dev-title="site.dev.device" aria-pressed="false" aria-label="device">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="12" height="14" rx="1.5"/><rect x="13" y="3" width="8" height="12" rx="1.5" fill="var(--subdued)"/></svg>
+    </button>
+    <span class="dv-sep"></span>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="elements" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="console" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="sources" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="network" aria-selected="true"></button>
+    <button type="button" id="site-dev-settings" class="dv-icon" style="margin-left: auto" data-dev-title="site.dev.settings" aria-label="settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button type="button" id="site-dev-more" class="dv-icon" data-dev-title="site.dev.more" aria-label="more">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
+    <button type="button" id="site-dev-exit" class="dv-icon" data-t-title="site.dev.close" aria-label="close">✕</button>
   </div>
+  <div id="site-dev-blank" class="hidden flex-1 min-h-0 bg-panel"></div>
+  <div id="site-dev-network" class="flex-1 min-h-0 flex flex-col">
   <div class="dv-bar shrink-0" style="height: 30px">
     <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 18.4 18.4 5.6"/></svg>
@@ -62,6 +86,14 @@
     <label class="flex items-center gap-1 shrink-0" data-t-title="site.dev.preserve_title">
       <input type="checkbox" id="site-dev-preserve"><span data-t="site.dev.preserve"></span>
     </label>
+    <span class="dv-sep"></span>
+    <label class="flex items-center gap-1 shrink-0" data-dev-title="site.dev.disable_cache_title">
+      <input type="checkbox" id="site-dev-cache"><span data-dev-t="site.dev.disable_cache"></span>
+    </label>
+    <span class="dv-sep"></span>
+    <select id="site-dev-throttle" class="dv-select" data-dev-title="site.dev.throttling_title" aria-label="throttling">
+      <option data-dev-t="site.dev.throttling"></option>
+    </select>
   </div>
   <div id="site-dev-types" class="dv-bar shrink-0" style="height: 28px">
     <button type="button" class="dv-chip" data-type="all" aria-pressed="true" data-t="site.dev.type.all"></button>
@@ -75,10 +107,11 @@
   <div class="flex-1 min-h-0 flex">
     <div id="site-dev-list" class="min-w-0 overflow-auto" style="flex: 1 1 auto">
       <table>
-        <colgroup><col style="width: 34%"><col class="dv-wide" style="width: 11%"><col class="dv-wide" style="width: 12%"><col class="dv-wide" style="width: 19%"><col class="dv-wide" style="width: 12%"><col class="dv-wide" style="width: 12%"></colgroup>
+        <colgroup><col style="width: 28%"><col class="dv-wide" style="width: 8%"><col class="dv-wide" style="width: 10%"><col class="dv-wide" style="width: 16%"><col class="dv-wide" style="width: 10%"><col class="dv-wide" style="width: 9%"><col class="dv-wide" style="width: 19%"></colgroup>
         <thead><tr>
           <th data-t="site.dev.name"></th><th class="dv-wide" data-t="site.dev.status"></th><th class="dv-wide" data-t="site.dev.type"></th>
           <th class="dv-wide" data-t="site.dev.initiator"></th><th class="dv-wide" data-t="site.dev.size"></th><th class="dv-wide" data-t="site.dev.time"></th>
+          <th class="dv-wide" data-dev-t="site.dev.waterfall"></th>
         </tr></thead>
         <tbody id="site-dev-rows"></tbody>
       </table>
@@ -91,6 +124,8 @@
         <button type="button" class="dv-tab" data-tab="payload" data-coach="tab.payload" data-t="site.dev.tab.payload"></button>
         <button type="button" class="dv-tab" data-tab="preview" data-coach="tab.preview" data-t="site.dev.tab.preview"></button>
         <button type="button" class="dv-tab" data-tab="response" data-coach="tab.response" data-t="site.dev.tab.response"></button>
+        <button type="button" class="dv-tab" data-tab="initiator" data-t="site.dev.initiator"></button>
+        <button type="button" class="dv-tab" data-tab="timing" data-dev-t="site.dev.tab.timing"></button>
       </div>
       <div id="site-dev-view" class="flex-1 min-h-0 overflow-auto"></div>
     </div>
@@ -99,5 +134,6 @@
     <span id="site-dev-count"></span><span class="dv-sep"></span>
     <span id="site-dev-transferred"></span><span class="dv-sep"></span>
     <span id="site-dev-resources"></span>
+  </div>
   </div>
 </section>
