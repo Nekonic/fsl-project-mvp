@@ -540,6 +540,7 @@ function mapRect(spec) {
 
 const mapZones = () => asking.zones.map((zone) => inFrame(field("topology-frame"), zone)).filter(Boolean);
 const mapText = () => asking.text.map((text) => inFrame(field("topology-frame"), text)).filter(Boolean);
+const siteText = () => asking.text.map((text) => inFrame(field("site-frame"), text)).filter(Boolean);
 
 function devCrowd(ring) {
   const tools = field("site-dev");
@@ -707,7 +708,7 @@ function calloutSpot(target, size, bounds, options = {}) {
   ].map((spot) => ({ ...spot, ...size })).sort((a, b) => apart(a, target) - apart(b, target));
   const rowEnds = bands.slice().reverse().map((row) => ({ left: row.left + row.width + CALLOUT_GAP, top: row.top }));
   const siblings = kind === "site" ? [{ left: bounds.left, top: target.top, width: bounds.width, height: target.height }] : [];
-  const rowBelow = kind === "site" ? [{ left: bounds.left, top: target.top + target.height, width: bounds.width, height: target.height }] : [];
+  const rowBelow = kind === "site" && !crowd.length ? [{ left: bounds.left, top: target.top + target.height, width: bounds.width, height: target.height }] : [];
   const outside = holder ? [
     { left: clampX(holder.left), top: holder.top + holder.height + CALLOUT_GAP },
     { left: clampX(holder.left), top: holder.top - CALLOUT_GAP - size.height },
@@ -1012,7 +1013,7 @@ function coach(prefix, declared) {
   }
 
   async function courseScores(line) {
-    const [score, tiers] = await Promise.all([api(lessonPath("score/")), api(`/api/wargames/${session.scenario}/objectives/`)]);
+    const [score, tiers] = await Promise.all([api(lessonPath("score/?brief=1")), api(`/api/wargames/${session.scenario}/objectives/`)]);
     const body = score.ok ? score.body : {};
     if (!Array.isArray(body.breaches) || !Array.isArray(body.per_case)) return;
     const lost = new Map(body.breaches.map((breach) => [breach.key, breach]));
@@ -1229,6 +1230,7 @@ function coach(prefix, declared) {
   function crowdOf(kind, found, rect) {
     if (kind === "term") return textRows;
     if (kind === "map") return mapText();
+    if (kind === "site") return siteText();
     if (kind === "kibana") return found.crowd || [];
     return kind === "dev" && rect ? devCrowd(rect) : [];
   }

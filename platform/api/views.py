@@ -2002,6 +2002,7 @@ def session_score(request, session_id):
     totals = compute_score(result)
     per_case = _per_case(result, _expected(session.scenario, cases), signatures, cases)
     breaches = _breaches(session, cases, result)
+    keep_ids = request.GET.get("brief") != "1"
     board = scoreboard.tally(breaches, totals.fp)
     warnings = [warning for warning in list(totals.warnings) + _wrong_reason_warnings(per_case)
                 if not (session.guidance and not session.course_scenario and warning[0] in OPERATOR_WARNINGS)]
@@ -2016,10 +2017,12 @@ def session_score(request, session_id):
             "unattributed": sum(1 for d in detections if d.detection_id in unmatched and d.marker not in alerted),
             "customers": customers.availability(session, alerted),
             "warnings": warnings,
-            "per_case": per_case,
+            "per_case": per_case if keep_ids else [_without(row, "detection_ids") for row in per_case],
             "objectives": board.__dict__,
             "breaches": [
-                dict(b.__dict__, detection_ids=list(b.detection_ids)) for b in breaches
+                dict(b.__dict__, detection_ids=list(b.detection_ids)) if keep_ids
+                else _without(b.__dict__, "detection_ids")
+                for b in breaches
             ],
             "game": _game(session, cases, detections, result, breaches, totals),
         }
@@ -2149,6 +2152,7 @@ def _per_case(result, expectations, signatures, cases=()):
             "detected": m.detected,
             "verdict": _verdict(m.malicious, m.detected),
             "detection_ids": list(m.detection_ids),
+            "detections": len(m.detection_ids),
             "expect": expectations.get(m.case_id) or "",
             "lesson": meta.get(m.case_id, {}).get("lesson"),
             "step": meta.get(m.case_id, {}).get("kali"),
@@ -2161,6 +2165,9 @@ def _per_case(result, expectations, signatures, cases=()):
         }
         for m in result.matches
     ]
+
+def _without(row, key):
+    return {name: value for name, value in row.items() if name != key}
 
 def _wrong_reason_warnings(per_case):
     wrong = [c["name"] for c in per_case if c["detected"] and c["corroborated"] is False]

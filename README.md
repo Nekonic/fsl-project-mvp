@@ -136,7 +136,7 @@ in a lesson or scenario) is Kali's own ttyd, which the platform's nginx serves
 at `/terminal/<session id>/` from that session's `fsl-<id>-kali-1`; on OpenStack
 it is a ttyd inside the platform that ssh's to the `mgmt` address of the Kali
 in the session's slot (`/vm-terminal/fsl-kali/?arg=<session id>`), showing the
-prompt as `ubuntu@kali` (the WAF's as `ubuntu@waf`). The networks are in `docs/ARCHITECTURE.md`.
+prompt as Kali's own, `(kali㉿kali)` (the WAF's as `ubuntu@waf`). The networks are in `docs/ARCHITECTURE.md`.
 
 ## Bringing it up
 

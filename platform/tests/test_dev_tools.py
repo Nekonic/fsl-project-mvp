@@ -11,7 +11,10 @@ const doc = {id: 1, at: NOW, method: "GET", url: "http://board.com/search/?q=hel
              type: "document", category: "doc", initiator: {type: "other"}, size: 4200, ms: 40};
 const css = {id: 2, at: NOW + 0.2, method: "GET", url: "http://board.com/static/app.css", status: 200, status_text: "OK",
              type: "stylesheet", category: "css", initiator: {type: "parser", url: "http://board.com/search/?q=hello"},
-             size: 900, ms: 20, resource_size: 3000};
+             size: 900, ms: 20, body_size: 3000};
+const cached = {id: 3, at: NOW + 0.3, method: "GET", url: "http://board.com/static/app.css", status: 200, status_text: "OK",
+                type: "stylesheet", category: "css", initiator: {type: "parser", url: "http://board.com/search/?q=hello"},
+                size: 0, ms: 0, cache: "disk", body_size: 3000};
 """
 
 def test_the_tools_open_on_the_network_panel_and_the_other_panels_are_empty(client):
@@ -70,4 +73,18 @@ def test_the_initiator_and_timing_tabs_show_what_the_record_holds(client):
     assert seen["errors"] == []
     assert "No initiator data" in result["none"]
     assert "http://board.com/search/?q=hello" in result["chain"] and "http://board.com/static/app.css" in result["chain"]
-    assert "Total" in result["timing"] and "20ms" in result["timing"]
+    assert "Total" in result["timing"] and "20 ms" in result["timing"]
+
+def test_a_disk_cache_row_reads_as_in_chrome_and_the_resources_figure_is_the_decoded_size(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
+      dev.rows = [doc, css, cached];
+      devRows();
+      const cells = (index) => [...document.querySelectorAll('#site-dev-rows tr')[index].querySelectorAll('td')].map((cell) => cell.textContent);
+      return {cached: cells(2), fetched: cells(1), resources: browser.text('site-dev-resources'), transferred: browser.text('site-dev-transferred')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["cached"][4:6] == ["(disk cache)", "0 ms"]
+    assert result["fetched"][4] != "(disk cache)"
+    assert result["resources"].startswith("10.2") and result["transferred"].startswith("5.1")

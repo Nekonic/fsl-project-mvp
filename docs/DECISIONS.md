@@ -5320,3 +5320,18 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
 - **Not done: paranoia in `crs-setup.conf` (id:900000).** `rules/crs.py` would
   write and roll back a second file and F6's line numbers would move; core_loc
   would grow.
+
+## The Kali shell and the Kibana spaces after the round-2 live panel
+
+- **Kali keeps `http_proxy`, no transparent redirect.** The Kali shell sends
+  its web traffic through mitmproxy by `http_proxy` from
+  `/etc/profile.d/proxy.sh`, not by an iptables redirect of port 80. A
+  redirect cannot be proven offline, and it would push every port-80
+  connection from kali (`nmap -sT`, `nc`) through mitmproxy, changing what
+  the learner sees from the tools. `curl --noproxy '*'` still skips the proxy,
+  as before.
+- **Learner Kibana spaces stay listed.** Each session's Kibana data view lives
+  in a space of its own, and the other sessions' spaces remain visible in
+  Kibana's space switcher. The product has no learner identity: any session's
+  console is reachable by its URL, so a per-space access check would protect
+  nothing more than the URL already gives away.

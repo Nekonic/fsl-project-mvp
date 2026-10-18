@@ -59,6 +59,19 @@ def test_the_score_counts_each_case_by_the_alerts_its_marker_drew(client, sessio
     assert (score["tp"], score["fp"], score["fn"], score["tn"]) == counts
     assert {entry["name"]: entry["verdict"] for entry in score["per_case"]} == verdicts
 
+def test_a_brief_score_counts_the_alerts_per_case_without_listing_their_ids(client, session_with_cases):
+    ingest(client, session_with_cases, [es_alert(ATTACK), es_alert(ATTACK, doc_id="es2")])
+
+    full = client.get(f"/api/sessions/{session_with_cases}/score/").json()
+    brief = client.get(f"/api/sessions/{session_with_cases}/score/?brief=1").json()
+    attack = next(entry for entry in brief["per_case"] if entry["name"] == "sqli")
+
+    assert sorted(next(entry for entry in full["per_case"] if entry["name"] == "sqli")["detection_ids"]) == ["es1", "es2"]
+    assert attack["detections"] == 2 and "detection_ids" not in attack
+    assert all("detection_ids" not in entry for entry in brief["breaches"])
+    assert {key: value for key, value in brief.items() if key not in ("per_case", "breaches")} == \
+        {key: value for key, value in full.items() if key not in ("per_case", "breaches")}
+
 def test_reading_the_score_writes_nothing(client, session_with_cases):
     from django.db import connection
 

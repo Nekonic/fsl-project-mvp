@@ -62,7 +62,9 @@ function devNumber(value, unit, digits, display = "narrow") {
 }
 
 const devSize = (bytes) => devNumber(bytes / 1000, "kilobyte", bytes < 100000 ? 1 : 0);
-const devTime = (ms) => (ms < 1000 ? devNumber(Math.round(ms), "millisecond", 0) : devNumber(ms / 1000, "second", 2));
+const devTime = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : devNumber(ms / 1000, "second", 2));
+const devCached = (row) => row.cache === "disk";
+const devSizeCell = (row) => (devCached(row) ? t("site.dev.disk_cache") : devSize(row.size));
 const devFailed = (status) => status >= 400;
 const devAddress = (url) => readable(url.replace(/^https?:\/\/[^/]+/, "").replace(/\+/g, " "));
 
@@ -77,7 +79,7 @@ const devSaid = (key, fallback, ...values) => values.reduce(
 
 function devStatus() {
   const sent = dev.rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
-  const unpacked = dev.rows.reduce((sum, row) => sum + (Number(row.resource_size ?? row.size) || 0), 0);
+  const unpacked = dev.rows.reduce((sum, row) => sum + (Number(row.body_size ?? row.size) || 0), 0);
   field("site-dev-count").textContent = devSaid("site.dev.status.requests", "{0} requests", dev.rows.length);
   field("site-dev-transferred").textContent = devSaid("site.dev.status.transferred", "{0} transferred", devSize(sent));
   field("site-dev-resources").textContent = devSaid("site.dev.status.resources", "{0} resources", devSize(unpacked));
@@ -116,7 +118,7 @@ function devRows() {
       <td class="dv-wide">${esc(row.status)}</td>
       <td class="dv-wide">${esc(row.type)}</td>
       <td class="dv-wide ${from.sub ? "" : "dv-dim"}" title="${esc(from.title || from.text)}">${esc(from.text)}${from.sub ? `<span class="dv-sub">${esc(from.sub)}</span>` : ""}</td>
-      <td class="dv-wide">${esc(devSize(row.size))}</td>
+      <td class="dv-wide">${esc(devSizeCell(row))}</td>
       <td class="dv-wide">${esc(devTime(row.ms))}</td>
       <td class="dv-wide"><div class="dv-wf"><i style="left: ${bar.left}%; width: ${bar.width}%"></i></div></td></tr>`;
   }).join("");

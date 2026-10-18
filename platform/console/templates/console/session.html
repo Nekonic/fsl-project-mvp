@@ -353,7 +353,7 @@
       const sentence = t("score.benign", benign.length, passed.length) +
         (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map(named).join(", "))}` : "");
       parts.push(judgementBlock([passed.length, benign.length], sentence,
-        blocked.map((row) => t("score.drew_alerts", named(row), row.detection_ids.length)), plural(passed)));
+        blocked.map((row) => t("score.drew_alerts", named(row), row.detections)), plural(passed)));
     }
     const customers = score.customers || {};
     if (customers.sent) {
@@ -388,7 +388,7 @@
           <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
             runLabel(row) ? `<span class="block text-[12px] text-muted">${esc(runLabel(row))}</span>` : ""}</td>
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
-          <td>${esc(row.detection_ids.length)}</td>
+          <td>${esc(row.detections)}</td>
           <td>${outcome}</td>
           <td>${mechanism}</td>
         </tr>`;
@@ -415,7 +415,7 @@
 
   async function scoreTables(tried) {
     const [score, tiers] = await Promise.all([
-      api(`/api/sessions/${id}/score/`),
+      api(`/api/sessions/${id}/score/?brief=1`),
       api(`/api/wargames/${session.scenario}/objectives/`),
     ]);
     scoreShown();
