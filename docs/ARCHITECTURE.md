@@ -1148,12 +1148,19 @@ the payload line). The highlight dims the pane alone (`pointer-events:
 none`), rings the target in the primary colour and puts a one-line callout
 beside it (`<text>.callout.<step>`, `.callout.<step>.then` for the second
 phase), flipped or shifted inside the pane, never over the target, the
-rail, the bars or the note; the hint says "Look at the highlighted spot."
+rail, the bars or the note, nor over the text and controls the site frame or
+the Kibana frame report around the target (Kibana's leaf text and controls
+within 220 px of the ring, skipping what the document flyout covers); with no
+one-line spot free it wraps to two or three lines, a flyout step (the next-event
+arrow) looks inside the flyout first, and a target in the note card gets its
+callout in the pane beside the card; the leader line crosses no text and is
+left out when the callout is within 48 px of the ring; the hint says "Look at the highlighted spot."
 when the step has a locator. While the step's pane is not shown, the step
 card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with its own
 callout (`lesson.open.callout`; none on the last step); with no target
 for about 2 s the card says where to look (`lesson.coach.missing`). The map
-refits on every pane open and on resize.
+refits when its pane's size differs from the size it was last fitted at (a pane open or a
+resize), so a step change or a lesson's last step alone does not redraw it.
 `test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`
 holds every `point` of every foundation and stepped scenario to the console
 as rendered.

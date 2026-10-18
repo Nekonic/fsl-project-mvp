@@ -1645,7 +1645,8 @@ def _shown_check(session, taught, check):
     if check.get("form") == "order" and session:
         shown["options"] = topology.hosts(maps.template(session.scenario))
     about = check.get("about")
-    match = check.get("match") or (_taught_check(taught, about).get("match") if taught and isinstance(about, str) else None)
+    match = (check.get("match") or (check.get("benign") or {}).get("sent")
+             or (_taught_check(taught, about).get("match") if taught and isinstance(about, str) else None))
     return shown | ({"match": match} if match else {})
 
 def _shown_point(session, point):
