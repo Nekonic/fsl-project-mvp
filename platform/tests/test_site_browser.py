@@ -13,6 +13,16 @@ NGINX = (ROOT / "platform/nginx.conf").read_text()
 
 pytestmark = pytest.mark.django_db
 
+@pytest.fixture(autouse=True)
+def nothing_runs_later(monkeypatch):
+    monkeypatch.setattr(site, "_later", lambda delay, work, *args: None)
+    site._jars.clear()
+    site._favicons.clear()
+
+@pytest.fixture
+def runs_at_once(monkeypatch):
+    monkeypatch.setattr(site, "_later", lambda delay, work, *args: work(*args))
+
 def site_server():
     start = NGINX.index("listen 8002;")
     return NGINX[start:]
@@ -157,7 +167,7 @@ class Answer:
         self.status = status
         self.reason = reason if reason is not None else site.phrase_of(status)
         self.content = content
-        self.headers = list((headers or {}).items())
+        self.headers = list(headers.items()) if isinstance(headers, dict) else list(headers or [])
         self.at = 0
 
     def getheaders(self):
@@ -370,3 +380,169 @@ def test_a_boxed_egress_opens_its_line_on_the_attacker_and_a_local_one_binds_the
 
     assert cloud.lines == [("attacker", ["bridge", "175.192.0.11", "10.30.0.63", "80"])]
     assert bound == [(("73.0.0.9", 80), site.TIMEOUT[0], ("73.0.0.4", 0))]
+
+def detail_of(client, session, index):
+    row = client.get(f"/api/sessions/{session.pk}/site/requests/").json()[index]
+    return client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
+
+def sent_headers(sent):
+    return sent.call_args.args[4]
+
+def test_the_pane_sends_the_headers_chrome_sends_in_chrome_s_order(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    _, page = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok", {"Content-Type": "text/html"}),
+                      HTTP_SEC_FETCH_DEST="iframe", HTTP_USER_AGENT="Chrome", HTTP_ACCEPT="text/html",
+                      HTTP_ACCEPT_LANGUAGE="ko")
+    _, asset = proxied(client, f"{session.pk}/board.com/", Answer(200, b"x", {"Content-Type": "text/css"}),
+                       HTTP_SEC_FETCH_DEST="style", HTTP_USER_AGENT="Chrome")
+
+    assert list(sent_headers(page)) == ["Host", "Connection", "Upgrade-Insecure-Requests", "User-Agent", "Accept",
+                                        "Accept-Encoding", "Accept-Language", "X-FSL-Case"]
+    assert sent_headers(page)["Accept-Encoding"] == "gzip, deflate" and sent_headers(page)["Connection"] == "keep-alive"
+    assert sent_headers(page)["Upgrade-Insecure-Requests"] == "1"
+    assert "Upgrade-Insecure-Requests" not in sent_headers(asset), "only a document asks to upgrade"
+    shown = dict(detail_of(client, session, 0)["request_headers"])
+    assert "X-FSL-Case" not in shown and shown["Accept-Encoding"] == "gzip, deflate"
+
+def test_a_post_shows_the_content_length_chrome_shows(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    _, sent = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), method="post", uri="/login/",
+                      data="a=b", content_type="application/x-www-form-urlencoded")
+
+    assert list(sent_headers(sent))[:4] == ["Host", "Connection", "Content-Length", "Content-Type"]
+    assert sent_headers(sent)["Content-Length"] == "3"
+
+def test_a_gzip_answer_reaches_the_browser_decoded_and_the_panel_shows_both_sizes(client):
+    import gzip
+
+    session = Session.objects.create(scenario="board", baseline=[])
+    page = b"<html>" + b"board " * 400 + b"</html>"
+    packed = gzip.compress(page)
+    response, _ = proxied(client, f"{session.pk}/board.com/", Answer(200, packed, {
+        "Content-Type": "text/html", "Content-Encoding": "gzip", "Content-Length": str(len(packed))}))
+    row, = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
+    detail = client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
+
+    assert response.passed == page and "Content-Encoding" not in response, (
+        "the platform's nginx rewrites links in the page and cannot read a compressed body"
+    )
+    assert ["Content-Encoding", "gzip"] in detail["response_headers"], "the panel lists what the site sent"
+    assert detail["response_body"]["text"] == page.decode() and detail["body_size"] == len(page)
+    assert row["body_size"] == len(page) and row["size"] < len(page), "Size is what travelled, resources the decoded body"
+
+def test_a_deflate_answer_is_decoded_too(client):
+    import zlib
+
+    session = Session.objects.create(scenario="board", baseline=[])
+    response, _ = proxied(client, f"{session.pk}/board.com/", Answer(200, zlib.compress(b"deflated"), {
+        "Content-Type": "text/plain", "Content-Encoding": "deflate"}))
+
+    assert response.passed == b"deflated"
+
+def test_an_encoding_the_pane_cannot_decode_is_passed_on_with_its_header(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    response, _ = proxied(client, f"{session.pk}/board.com/", Answer(200, b"\x01\x02", {"Content-Encoding": "br"}))
+
+    assert response["Content-Encoding"] == "br" and response.passed == b"\x01\x02"
+
+def test_the_pane_keeps_the_site_s_cookies_for_the_session_and_sends_them_back_like_a_browser(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    other = Session.objects.create(scenario="board", baseline=[])
+    response, _ = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok", [
+        ("Set-Cookie", "csrftoken=abc; expires=Thu, 01 Jan 2099 00:00:00 GMT; Max-Age=31449600; Path=/; SameSite=Lax"),
+        ("Set-Cookie", "admin_area=1; Path=/admin/"), ("Set-Cookie", "tracking=1; Secure; Path=/")]),
+        uri="/login/")
+
+    _, home = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/", HTTP_COOKIE="sessionid=platform")
+    _, admin = proxied(client, f"{session.pk}/board.com/", Answer(200, b"ok"), uri="/admin/users/")
+    _, elsewhere = proxied(client, f"{other.pk}/board.com/", Answer(200, b"ok"), uri="/")
+    row = detail_of(client, session, 0)
+    later = dict(detail_of(client, session, 1)["request_headers"])
+
+    assert "Set-Cookie" not in response, "the browser inside the pane never holds the site's cookies"
+    assert sent_headers(home)["Cookie"] == "csrftoken=abc" and later["Cookie"] == "csrftoken=abc"
+    assert sent_headers(admin)["Cookie"] == "csrftoken=abc; admin_area=1"
+    assert "Cookie" not in sent_headers(elsewhere), "each session has a jar of its own"
+    assert [name for name, _ in row["response_headers"]].count("Set-Cookie") == 3, "DevTools lists Set-Cookie as Chrome does"
+
+def test_a_cookie_the_site_expires_leaves_the_jar(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"", {"Set-Cookie": "sessionid=1; Path=/"}))
+    _, kept = proxied(client, f"{session.pk}/board.com/", Answer(200, b"", {"Set-Cookie": "sessionid=; Max-Age=0; Path=/"}))
+    _, gone = proxied(client, f"{session.pk}/board.com/", Answer(200, b""))
+
+    assert sent_headers(kept)["Cookie"] == "sessionid=1" and "Cookie" not in sent_headers(gone)
+
+def test_forgetting_a_session_empties_its_jar(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    proxied(client, f"{session.pk}/board.com/", Answer(200, b"", {"Set-Cookie": "sessionid=1; Path=/"}))
+    site.forget(session.pk)
+    _, sent = proxied(client, f"{session.pk}/board.com/", Answer(200, b""))
+
+    assert "Cookie" not in sent_headers(sent)
+
+def served(client, session, calls, **extra):
+    from unittest.mock import patch
+
+    with patch("api.site.egress_of", return_value=(ON_CUSTOMERS, None)), \
+            patch("api.site.exchange", side_effect=[(Line(), call) for call in calls]) as sent:
+        response = client.get(f"/site-proxy/{session.pk}/board.com/", HTTP_X_SITE_URI=extra.pop("uri", "/"),
+                              HTTP_SEC_FETCH_DEST=extra.pop("dest", "iframe"), **extra)
+        b"".join(response.streaming_content)
+    return sent
+
+def test_the_first_page_draws_a_favicon_request_the_way_chrome_does_and_only_once(client, runs_at_once):
+    session = Session.objects.create(scenario="board", baseline=[])
+    page = lambda: Answer(200, b"<html></html>", {"Content-Type": "text/html"})
+
+    first = served(client, session, [page(), Answer(404, b"<html>Not Found</html>", {"Content-Type": "text/html"})],
+                   HTTP_USER_AGENT="Chrome")
+    second = served(client, session, [page()], uri="/search/")
+    rows = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
+
+    favicon_headers = first.call_args_list[1].args[4]
+    assert first.call_args_list[1].args[3] == "/favicon.ico" and favicon_headers["User-Agent"] == "Chrome"
+    assert favicon_headers["X-FSL-Case"] == session.browse_marker, "the board's logs tie it to browsing, not an attack"
+    assert second.call_count == 1
+    assert [(r["url"], r["status"], r["type"], r["category"]) for r in rows] == [
+        ("http://board.com/", 200, "document", "doc"),
+        ("http://board.com/favicon.ico", 404, "text/html", "other"),
+        ("http://board.com/search/", 200, "document", "doc"),
+    ]
+
+def test_a_stylesheet_the_browser_kept_is_listed_as_a_disk_cache_hit_and_one_it_asked_for_again_is_not(client):
+    session = Session.objects.create(scenario="board", baseline=[])
+    css = "/static/vendor/bootstrap.min.css"
+    html = f'<html><link rel="stylesheet" href="{css}"><a href="/x/">x</a><script src="http://elsewhere/a.js"></script></html>'
+    page = lambda: Answer(200, html.encode(), {"Content-Type": "text/html"})
+    sheet = lambda: Answer(200, b"body{}", {"Content-Type": "text/css"})
+
+    served(client, session, [page()])
+    served(client, session, [sheet()], uri=css, dest="style")
+    served(client, session, [page()], uri="/posts/")
+    document = site.kept(session.pk)[-1]
+    wanted = site._subresources(html, document["url"])
+    site._list_cached(session.pk, document, wanted)
+    cached = site.kept(session.pk)[-1]
+
+    served(client, session, [page()], uri="/again/")
+    document = site.kept(session.pk)[-1]
+    served(client, session, [sheet()], uri=css, dest="style")
+    before = len(site.kept(session.pk))
+    site._list_cached(session.pk, document, wanted)
+
+    assert wanted == [f"http://board.com{css}"], "links to pages and scripts of other hosts are not subresources"
+    assert (cached["url"], cached["cache"], cached["size"], cached["status"], cached["category"]) == (
+        f"http://board.com{css}", "disk", 0, 200, "css")
+    assert cached["initiator"] == {"type": "parser", "url": "http://board.com/posts/"}
+    assert len(site.kept(session.pk)) == before, "a stylesheet requested after the page was not cached"
+
+def test_the_page_schedules_the_cache_listing_after_it_was_sent(client, monkeypatch):
+    scheduled = []
+    monkeypatch.setattr(site, "_later", lambda delay, work, *args: scheduled.append((delay, work.__name__)))
+    session = Session.objects.create(scenario="board", baseline=[])
+
+    served(client, session, [Answer(200, b"<html></html>", {"Content-Type": "text/html"})])
+    served(client, session, [Answer(200, b"body{}", {"Content-Type": "text/css"})], uri="/a.css", dest="style")
+
+    assert scheduled == [(site.CACHE_WAIT, "_list_cached"), (0, "_fetch_favicon")]
