@@ -1625,8 +1625,8 @@ not declared: it needs a second person; the engine accepts `red: person`.
   view of its own (`ensure_session_view`, needs `KIBANA_URL`, which
   `compose.yaml` sets): id `session-<pattern>` on the session's index
   pattern, shown by its name "Session logs", never the pattern; the shared
-  runtime fields plus `event.module` (`suricata` or `modsecurity`),
-  `observer.name` (the map name of the sensor: `firewall` and `board.com` on
+  runtime fields plus `log_source` (`suricata` or `modsecurity`),
+  `sensor` (the map name of the sensor: `firewall` and `board.com` on
   OpenStack, `waf` on docker and for every ModSecurity record, slot suffixes
   stripped) and `request_headers` (one `Name: value` per request header,
   `X-FSL-Case` left out); `sourceFilters` hide `_index`, `fsl_*`,
@@ -1634,9 +1634,9 @@ not declared: it needs a second person; the engine accepts `red: person`.
   `input.*`, `error.*` and `http.request_headers*` (KQL on them still
   works). A refused import is logged and does not stop the session. `GET
   /api/sessions/<id>/` carries `discover`: an unsaved Discover state on that
-  view, from the current unit's start, with the columns `event.module,
-  observer.name, event_type, source_ip, destination, url, status, rule_id,
-  rule` and a filter `event.module: exists` (it hides the range hosts' own
+  view, from the current unit's start, with the columns `log_source,
+  sensor, event_type, source_ip, destination, url, status, rule_id,
+  rule` and a filter `log_source: exists` (it hides the range hosts' own
   syslog lines); a lesson opens it with an empty query, a scenario or a
   wargame with the alert query. Without `KIBANA_URL` it is the shared
   `fsl-logs` view with the alert search's columns and query, narrowed to the

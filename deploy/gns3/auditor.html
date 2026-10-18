@@ -83,6 +83,8 @@ async function summaryClosed(map) {
 
 async function fitOnce(map, canvas) {
   const room = {left: 0, top: 0, width: map.innerWidth, height: map.innerHeight};
+  button(map, "zoom_out_map").click();
+  await sleep(200);
   button(map, "adjust").click();
   await sleep(200);
   const box = canvas.getBBox();
@@ -107,10 +109,15 @@ async function fitOnce(map, canvas) {
 }
 
 const LOCATE_EVERY_MS = 150;
-const view = {map: null, canvas: null, fitting: Promise.resolve(), asked: null, last: "", timer: null, links: null};
+const view = {map: null, canvas: null, fitting: Promise.resolve(), queued: false, asked: null, last: "", timer: null, links: null};
 
 function fitted(map, canvas) {
-  view.fitting = view.fitting.then(() => fitOnce(map, canvas)).catch(() => null);
+  if (view.queued) return view.fitting;
+  view.queued = true;
+  view.fitting = view.fitting.then(() => {
+    view.queued = false;
+    return fitOnce(map, canvas);
+  }).catch(() => null);
   return view.fitting;
 }
 
@@ -278,6 +285,10 @@ async function locateAsked(event) {
   view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
 }
 
+window.addEventListener("resize", () => {
+  if (view.canvas) fitted(view.map, view.canvas);
+});
+
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
   if (event.data === "fsl-fit" && view.canvas) fitted(view.map, view.canvas);
@@ -321,8 +332,6 @@ window.addEventListener("message", (event) => {
     const canvas = await drawn(map);
     await summaryClosed(map);
     if (!canvas) return;
-    button(map, "zoom_out_map").click();
-    await sleep(200);
     await fitted(map, canvas);
     view.map = map;
     view.canvas = canvas;

@@ -468,5 +468,5 @@ def test_each_host_an_ids_runs_on_is_marked_ids_beside_it_and_no_zone_takes_the_
               for mark in marks]
 
     assert sorted(beside) == sorted(set(shown.sensors.values())), (
-        "observer.name in Kibana names these hosts, so the map shows where each IDS listens")
+        "sensor in Kibana names these hosts, so the map shows where each IDS listens")
     assert not [switch for switch, caption in topology.captions(learner).items() if ">IDS<" in caption["svg"]]

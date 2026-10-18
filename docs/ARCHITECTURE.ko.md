@@ -1439,7 +1439,7 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   열 때 `kibana.py`는 그 세션만의 data view를 가져옵니다(`ensure_session_view`.
   `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함). id는 `session-<pattern>`이고 세션의
   인덱스 패턴 위에 있으며, 패턴이 아니라 이름 "Session logs"로 보입니다. 공유 runtime
-  field에 `event.module`(`suricata` 또는 `modsecurity`), `observer.name`(센서의 구성도
+  field에 `log_source`(`suricata` 또는 `modsecurity`), `sensor`(센서의 구성도
   이름: OpenStack은 `firewall`과 `board.com`, docker와 모든 ModSecurity 기록은 `waf`.
   슬롯 접미사는 뗌), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-FSL-Case`는
   뺌)를 더합니다. `sourceFilters`는 `_index`, `fsl_*`, `*X-FSL-Case*`, `log.*`,
@@ -1447,8 +1447,8 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   `http.request_headers*`를 숨깁니다(KQL로는 여전히 검색됨). 가져오기가 거부되면 로그만
   남기고 세션은 그대로 진행합니다. `GET /api/sessions/<id>/`는 `discover`를 담습니다.
   이는 그 data view 위의 저장되지 않은 Discover 상태로, 현재 레슨의 시작부터,
-  `event.module, observer.name, event_type, source_ip, destination, url, status,
-  rule_id, rule` 열과 `event.module: exists` 필터(훈련 환경 호스트 자체의 syslog 줄을
+  `log_source, sensor, event_type, source_ip, destination, url, status,
+  rule_id, rule` 열과 `log_source: exists` 필터(훈련 환경 호스트 자체의 syslog 줄을
   숨김)를 씁니다. 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
   `KIBANA_URL`이 없으면 공유 `fsl-logs` data view에 경보 검색의 열과 쿼리를 쓰고 세션
   인덱스(`_index : fsl-logs-<id>-*`)와 시간 범위로 좁힙니다. ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가

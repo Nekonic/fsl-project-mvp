@@ -132,12 +132,12 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
 
 def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_sensor_and_the_headers():
     runtime = json.loads(a_session_view()["attributes"]["runtimeFieldMap"])
-    observer = runtime["observer.name"]["script"]["source"]
+    observer = runtime["sensor"]["script"]["source"]
 
-    assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "event.module", "observer.name",
+    assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "log_source", "sensor",
             "request_headers"} <= set(runtime)
     assert '"fsl-edge": "firewall"' in observer and '"fsl-wargame-host": "board.com"' in observer, (
-        "observer.name is the map name of the host whose sensor wrote the event"
+        "sensor is the map name of the host whose sensor wrote the event"
     )
     assert "emit(\"waf\")" in observer, "a ModSecurity record is written by the WAF"
     assert '"x-fsl-case"' in runtime["request_headers"]["script"]["source"], (
@@ -146,8 +146,8 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
 
 
 def test_one_sensor_names_the_events_that_carry_no_sensor_host():
-    single = kibana.observer_script({"fsl-suricata": "waf"}, "waf")
-    several = kibana.observer_script(SENSORS, "waf")
+    single = kibana.sensor_script({"fsl-suricata": "waf"}, "waf")
+    several = kibana.sensor_script(SENSORS, "waf")
 
     assert "host == '' ? \"waf\"" in single, "docker's one Suricata writes a file, not syslog, so no host is named"
     assert "host == '' ? \"\"" in several
@@ -196,8 +196,8 @@ def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an
     assert "dataViewId:'session-fsl-logs-slot1'" in link
     assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
     assert "from:'2026-10-18T08:59:55+00:00'" in link
-    assert "columns:!(event.module,observer.name,event_type,source_ip,destination,url,status,rule_id,rule)" in link
-    assert "exists:(field:event.module)" in link, "the range VMs' own system log lines are not the session's events"
+    assert "columns:!(log_source,sensor,event_type,source_ip,destination,url,status,rule_id,rule)" in link
+    assert "exists:(field:log_source)" in link, "the range VMs' own system log lines are not the session's events"
 
 
 @pytest.mark.django_db

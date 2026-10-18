@@ -27,6 +27,8 @@ STEPS = [
      "command": "sqlmap -u \"http://board.com/?sort=posts_post.id*\" --batch", "check": {"kind": "kali"}},
     {"id": "verdict", "point": {"opens": "kali", "term": {"pane": "kali", "match": "injectable"}},
      "check": {"kind": "choice", "options": ["yes", "no"]}},
+    {"id": "run_source", "point": {"opens": "elk", "kibana": {"sidebar": "source_ip"}}, "check": {"kind": "answer"}},
+    {"id": "loot", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"^\|"}}, "check": {"kind": "loot"}},
     {"id": "cost", "point": {"panel": "#lesson-objectives .total"}, "check": {"kind": "answer"}},
     {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}},
 ]
@@ -146,9 +148,10 @@ browser.element('pane-frame').contentDocument = {
 };
 const kaliLines = ["ubuntu@kali:~$ "];
 const screen = {getBoundingClientRect: () => box(0, 0, 960, 480)};
-browser.element('kali-frame').contentWindow = {term: {rows: 24, element: {querySelector: () => screen},
+browser.element('kali-frame').contentWindow = {term: {rows: 24, cols: 80, element: {querySelector: () => screen},
   buffer: {active: {get length() { return kaliLines.length; }, viewportY: 0,
-                    getLine: (row) => ({translateToString: () => kaliLines[row]})}}}};
+                    getLine: (row) => ({isWrapped: typeof kaliLines[row] === 'object',
+                                        translateToString: () => kaliLines[row].text ?? kaliLines[row]})}}}};
 const shown = (id) => !browser.element(id).classList.contains('hidden');
 const styled = (id) => {
   const style = browser.element(id).style;
@@ -469,10 +472,10 @@ def test_the_website_and_the_map_are_asked_where_the_target_is_and_their_answer_
 
     assert seen["errors"] == []
     assert (result["mapAsked"], result["mapOrigin"]) == ({"label": ["board.com", "sw1"]}, "http://console.test:3080")
-    assert result["onMap"] == {"left": 454, "top": 290, "width": 102, "height": 28}
+    assert result["onMap"] == {"left": 454, "top": 295, "width": 102, "height": 18}
     assert result["stopped"] is True, "the map stops answering once the step no longer points at it"
     assert (result["siteAsked"], result["siteOrigin"]) == ("input[name=q]", "http://console.test:8002")
-    assert result["onSite"] == {"left": 154, "top": 140, "width": 312, "height": 42}
+    assert result["onSite"] == {"left": 154, "top": 145, "width": 312, "height": 32}
     assert result["dim"] is True and result["meets"] is False
 
 DEV = """
@@ -512,7 +515,7 @@ def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"closed": 974, "noRow": 60, "rowTop": 614, "wrongTab": 494, "line": 614}, (
+    assert seen["result"] == {"closed": 974, "noRow": 60, "rowTop": 619, "wrongTab": 494, "line": 614}, (
         "closed DevTools: the toggle; no row picked: the last row of the step's request; wrong tab: the tab; then the line")
 
 def test_a_step_held_until_its_request_is_sent_then_points_at_what_follows(client):
@@ -559,10 +562,87 @@ def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_mat
 
     assert seen["errors"] == []
     assert result["toggle"] == {"left": 64, "top": 390, "width": 32, "height": 32}, "no flyout open: the row's expand toggle"
-    assert result["filter"] == {"left": 574, "top": 170, "width": 312, "height": 36}, (
+    assert result["filter"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
         "a flyout open without the field's row: the flyout's field filter, since the table renders only some rows")
-    assert result["row"] == {"left": 574, "top": 290, "width": 432, "height": 36}
-    assert result["line"] == {"left": 60, "top": 110, "width": 966, "height": 32}, "the ring stays inside the pane"
+    assert result["row"] == {"left": 574, "top": 295, "width": 432, "height": 26}
+    assert result["line"] == {"left": 60, "top": 115, "width": 714, "height": 22}, (
+        "the ring spans the line's text and stays inside the pane")
+
+def test_a_terminal_ring_covers_a_wrapped_line_or_a_printed_table_and_its_callout_avoids_the_text(client):
+    wrapped = "[CRITICAL] all tested parameters do not appear to be injectable. Try to increase "
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
+      STRINGS.en['lesson.demo.callout.loot'] = 'The table';
+      {to("verdict")}
+      await browser.click('step-open');
+      kaliLines.push({json.dumps(wrapped)}, {{text: "values for '--level'/'--risk' options"}}, "ubuntu@kali:~$ ");
+      await frames();
+      const verdict = {{ring: styled('coach-ring'), callout: callout()}};
+      {to("loot")}
+      kaliLines.push("+----------+--------+", "| username | password |", "+----------+--------+", "| admin    | pbkdf2 |",
+                     "| jiwoo    | pbkdf2 |", "+----------+--------+", "", "ubuntu@kali:~$ ");
+      await frames();
+      const table = {{ring: styled('coach-ring'), callout: callout()}};
+      const text = [...Array(kaliLines.length).keys()].map((row) => {{
+        const line = kaliLines[row].text ?? kaliLines[row];
+        return {{left: 60, top: 96 + row * 20, width: line.trimEnd().length * 12, height: 20}};
+      }}).filter((row) => row.width);
+      return {{verdict, table, overText: text.some((row) => meets(table.callout, row) || meets(verdict.callout, row))}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["verdict"]["ring"] == {"left": 60, "top": 110, "width": 966, "height": 52}, "both rows of the wrapped line"
+    assert result["table"]["ring"] == {"left": 60, "top": 170, "width": 282, "height": 132}, "the table and its borders"
+    assert result["verdict"]["callout"] and result["table"]["callout"]
+    assert result["overText"] is False
+
+def test_no_missing_line_while_a_terminal_runs_a_command_or_a_pane_still_loads(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      await browser.click('step-open');
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing connection");
+      await frames(130);
+      const busy = {{missing: shown('step-missing'), ring: shown('coach-ring')}};
+      {to("board_ip")}
+      await frames(130);
+      const drawing = shown('step-missing');
+      return {{busy, drawing}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"busy": {"missing": False, "ring": False}, "drawing": False}
+
+def test_a_website_step_whose_element_is_not_on_this_page_points_at_the_link_to_the_post_list(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sort")}
+      await browser.click('step-open');
+      await frames();
+      answer('site-frame', null);
+      await frames();
+      const home = posted.filter((one) => one.frame === 'site' && one.data.fslLocate).pop().data.fslLocate;
+      answer('site-frame', {{x: 10, y: 10, w: 120, h: 24}});
+      await frames();
+      return {{home, ring: shown('coach-ring'), callout: browser.text('coach-callout'), missing: shown('step-missing')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"home": "a.navbar-brand", "ring": True, "callout": english("lesson.site.home"), "missing": False}
+
+def test_every_step_that_reads_a_kali_run_carries_the_button_that_opens_kibana_at_its_time(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      range.passed = true;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.wait(1600);
+      {to("run_source")}
+      await browser.settle();
+      const button = browser.element('step-act').querySelector('[data-discover]');
+      return button ? button.dataset.discover : null;
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == "/kibana/app/discover#/?run=sqlmap"
 
 def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario="""
@@ -622,6 +702,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
         assert (result["moved"], result["reloaded"], result["closed"]) == ([{"lesson": following}], 1, 0)
     else:
         assert result["course"] == ["f1", "f9"]
+        assert result["said"] == english("lesson.course.done"), "the last task line is never left empty"
         assert result["waited"] == 0, "the summary stays until the learner closes the session"
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
