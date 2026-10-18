@@ -5409,3 +5409,70 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   (dropped if `rsyslogd -N1` rejects it) before renaming. Not proven offline: a
   live walk checks `hostname` on the WAF and that a second slot's WAF events
   still land in `logs-2-*`.
+
+## Round 3: what a learner can reach through the Kibana pane
+
+- **Problem.** The learner's space lists Stack Management, and `/kibana/`
+  passed every path to Kibana, which runs without security: Ingest Pipelines,
+  Index Management, Snapshot and Restore, the spaces of other sessions and the
+  Dev Tools console proxy (`_search` on any index, with the raw `_index`,
+  host names and container ids) were one click away, read and write.
+- **Deny at the front.** `platform/nginx.conf` answers 403 to the APIs of
+  Elasticsearch and Kibana administration (console, ingest pipelines, index
+  management, snapshot and restore, transform, rollup, remote clusters,
+  license, upgrade assistant, index lifecycle, watcher, the data views API,
+  the spaces API except `internal/spaces/_active_space`, the security API,
+  the settings API, saved objects import and export) and redirects the pages
+  `app/management`, `app/dev_tools` and `app/home` to the same space's
+  Discover. The list of what Discover needs was captured on the live Kibana
+  with headless Playwright (load, expand a document, the JSON tab, field
+  details and Visualize, Field statistics, the time picker, Open, a query, the
+  data view picker and the Create flyout, GETs and searches only):
+  `internal/security/*`, `api/core/capabilities`, `api/licensing/info`,
+  `internal/licensing/feature_usage/register`, `api/banners/info`,
+  `api/saved_objects_tagging/tags`, `internal/spaces/_active_space`,
+  `internal/telemetry/config`, `internal/data_views/*`,
+  `internal/index-pattern-management/resolve_index/*`,
+  `api/content_management/rpc/*`, `api/index_patterns/has_user_index_pattern`,
+  `internal/saved_query/_count`, `internal/bsearch`, `api/ui_counters/_report`.
+  A deny list, not an allow list: an allow list would break on the first call
+  the capture missed. `test_front.py` holds both lists against the pattern.
+  What stays open: Discover's own searches (`internal/bsearch` is also what an
+  ES|QL or an ad-hoc data view runs), so a learner who makes an ad-hoc data
+  view on `logs-*` still sees every slot and every raw field. ES|QL is off
+  (`enableESQL`; the 8.15 key was read from the uiSettings defaults on the
+  page); the ad-hoc view has no switch in 8.15 and stays an unverified gap.
+  Client-side navigation to Home or Stack Management from the app menu does not
+  request the page, so the menu entries remain and open pages whose APIs answer
+  403.
+- **Operators.** Kibana publishes `127.0.0.1:5601` on the platform host; an
+  operator reaches it whole through `ssh -L 5601:127.0.0.1:5601`. The platform's
+  own setup (`KIBANA_URL`) talks to `kibana:5601` directly and is unaffected.
+- **Not chosen: Elasticsearch security with a per-slot role.** Every
+  Elasticsearch caller (platform, Filebeat, Kibana, the acceptance tests) would
+  need credentials, and Kibana would need a sign-in the platform performs.
+- **Space.** Named "SOC", id `soc-<pattern>` (not `session-`). Its settings:
+  `enableESQL` false, `defaultColumns` the session columns (a new Discover tab
+  showed only `@timestamp` once `transaction.*` and `log.*` were hidden),
+  `defaultIndex` the space's data view (set by the platform, so the browser
+  has no default to write through the refused settings API), `defaultRoute`
+  the space's own saved search "Events" with the session columns. Spaces named
+  `session-...` from earlier builds stay in Kibana as unused spaces.
+- **Operator objects.** Titles lose "FSL" ("Alerts", "Overview", "Top rules",
+  ...); the data view takes the same `sourceFilters` and field formats as a
+  session view, so the operator alert search shows the session columns.
+  Object ids keep `fsl-`, so an overwrite import replaces them instead of
+  leaving a second set; they show only in the default space's URLs.
+- **Ingest pipeline.** `fsl-geoip` is `geoip` (Filebeat's output and template
+  default, `register_pipeline.py`, the acceptance tests); its description names
+  no purpose. The old pipeline stays in a standing Elasticsearch: today's
+  indices carry `default_pipeline: fsl-geoip` in their settings and would
+  refuse writes without it, so it is not deleted.
+- **Edge hostname.** `edge` and domain `localdomain` in
+  `deploy/opnsense/config.xml` (slot N renders `edge-N`, `opnsense.HOSTNAME`).
+  `log.syslog.hostname` was `fsl-edge.range.internal`. The `sensor` script now
+  strips the domain and the slot number, then looks the name up whole and
+  without its first dash-separated part, so `edge`, `edge-2.localdomain` and
+  `fsl-wargame-host-2` all reach their map name. Not proven offline: the
+  script's Painless and the in-place reset of a standing slot 1, whose
+  recorded config hash changes with the hostname (a live walk checks both).

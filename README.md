@@ -177,9 +177,9 @@ recreate (the cloud's Elasticsearch cannot reach the download CDN). On start
 the platform sets the docker socket group; then, in the background while it
 starts serving, it registers the Elasticsearch ingest pipeline, which sets each
 event's time and geolocates source addresses, and imports Kibana's data view,
-the "FSL alerts" search and the "FSL overview" dashboard, and points Kibana's
-default route at the search. Each session gets its own data view, "Session
-logs", when it opens (`KIBANA_URL`, set in `compose.yaml`): the engine and the
+the "Alerts" search and the "Overview" dashboard, and points Kibana's
+default route at the search. Each session gets its own data view, "logs-*",
+when it opens (`KIBANA_URL`, set in `compose.yaml`): the engine and the
 sensor's map name as fields, the platform's internal fields hidden.
 Firing the scripted cases from the command line and `bin/verify`, `--fast`
 included, need a virtualenv:
@@ -194,6 +194,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 8002 | the blue console's Website pane: `/site/<session id>/<host>/`, sent to that session's WAF from a customers address (on OpenStack from Kali, through the edge) | the iframe in a person's browser |
 | 3080 | `gns3`, GNS3 3.1's API and web UI: each session's learner map, the company network the learner defends drawn as a lab topology (role names, interface and address with prefix at each link end, the interface alone at `kali` and `customers`, each zone but the Internet captioned with its network; no management segment, no platform, no machine's own name), one per slot (OpenStack) or session (Docker) and the session's wargame, in English and Korean, held open with every node started (each host is a display container of one pinned busybox image, so every link end is green; the machines themselves run in the range). The full wiring is in `deploy/topology/system/`, never offered to learners. The blue console's Map pane (tab Map) frames `/static/web-ui/fsl-auditor.html`, which signs in read-only and turns off the web UI's usage statistics, on its session's map in the console's language, view-only (no editing controls; drag pans, the wheel zooms) and fitted to the pane. The container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace, which GNS3 needs to run its switches and start a docker node (`docs/ARCHITECTURE.md`, The topology) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
 | 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor on OpenStack |
+| 5601 | Kibana itself, on the platform host's loopback only; `/kibana/` on 8000 refuses everything but Discover | an operator, through an ssh tunnel |
 | 9200 | Elasticsearch | the acceptance tests |
 
 nginx inside the platform image serves 8000 and 8002. 8002 is a separate
@@ -299,7 +300,7 @@ the cloned commit's images from GHCR over the sideloaded ones; push and
 rebuild instead of rebooting it.
 
 The stack's `address` output is the floating IP. The console is at
-`http://ADDRESS:8000/` and does not ask for a login. 9200 stays
+`http://ADDRESS:8000/` and does not ask for a login. 9200 and 5601 stay
 on the VM's loopback; 5140/udp listens on all of the VM's addresses.
 
 On the VM the checkout is `/opt/fsl`, owned by `ubuntu`; run compose,

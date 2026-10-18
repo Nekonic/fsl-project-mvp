@@ -534,7 +534,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 
 | Concern | Owning file | Known exceptions |
 |---|---|---|
-| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `fsl-geoip` ingest pipeline at bring-up |
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | none |
 | The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects; the console's Map pane frames the web UI at the port and path `gns3.py` returns |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and f6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`), filled in by `wargames.lesson` from the declared exclusion file and reload command (`settings.FSL_WAF`); the platform does not drive the terminal |
@@ -747,7 +747,7 @@ OpenStack WAF VM blocks the same way (`SecRuleEngine On` in
 ```
 WAF (ModSecurity) -> audit.log --+
 Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<session>-<day>
-                                     (event.module) pipeline fsl-geoip
+                                     (event.module) pipeline geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
@@ -780,7 +780,7 @@ Each ingest call:
   index or header a learner can open in Kibana names the platform (the case
   marker travels as an `X-Request-ID` header);
 - asks Elasticsearch for `@timestamp` from the session's start minus a minute
-  to its end (or now) plus a minute. The `fsl-geoip` pipeline sets `@timestamp`
+  to its end (or now) plus a minute. The `geoip` pipeline sets `@timestamp`
   from the event's own clock (Suricata's `timestamp`, ModSecurity's
   `transaction.time_stamp`), so the window selects events by when they
   happened, not when Filebeat read them;
@@ -1636,30 +1636,42 @@ not declared: it needs a second person; the engine accepts `red: person`.
   The WAF's interfaces carry both legs of every request.
 - Kibana is in compose, with full access (not a read-only role), reading the
   same Elasticsearch the platform ingests from. It is reached through the
-  platform's port 8000 at `/kibana/` and publishes no port of its own. The
-  blue console frames it. At bring-up `platform/kibana.py` (in the background,
+  platform's port 8000 at `/kibana/`, where the front refuses
+  everything but Discover (below), and on the platform host's loopback at
+  127.0.0.1:5601 for an operator's ssh tunnel. The blue console frames it. At bring-up `platform/kibana.py` (in the background,
   asking `/api/status` first and importing only once it answers, retrying
   while Kibana cannot be reached or answers 502/503/504, and reporting any
   other HTTP error once with its status and body; a starting Kibana answers a
   multipart import 415) imports `deploy/kibana/objects.ndjson` with
   overwrite: the data view `logs-*` on `@timestamp`, whose runtime fields
   fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`,
-  `source_ip`, `destination`, `url`, `status`), the "FSL alerts" search and the
-  "FSL overview" dashboard. It sets `defaultRoute` to that search. A data view
+  `source_ip`, `destination`, `url`, `status`), the "Alerts" search and the
+  "Overview" dashboard (their titles and the data view's `sourceFilters` name no platform). It sets `defaultRoute` to that search. A data view
   existing is what keeps Kibana's Welcome screen away. It also drops `_index`
   from Kibana's `metaFields`. When a session opens, `kibana.py` imports a data
   view of its own in a Kibana space of its own (`ensure_session_view`, needs
   `KIBANA_URL`, which `compose.yaml` sets): the space and the data view share
-  the id `session-<pattern>`; the space disables every feature but Discover
-  (dashboards, visualize, dev tools, management and the rest) and its
-  `defaultRoute` is plain Discover, so the learner never reaches the operator
-  objects, which stay in the default space (Kibana runs without security, so
-  its space switcher still lists the other spaces; closing that needs an
-  nginx check of the space against the session); the data view is on the session's
-  index pattern, shown by its name `logs-*` (the space is named "Session logs"), never the pattern; the shared
+  the id `soc-<pattern>`; the space disables every feature but Discover
+  (dashboards, visualize, dev tools and the rest). Its settings turn ES|QL off
+  (`enableESQL`, which reads every index past the view's pattern and hidden
+  fields), set `defaultColumns` to the session columns, and set `defaultRoute`
+  to the space's own saved search "Events" (the session columns, newest first) so the
+  learner never reaches the operator objects, which stay in the default space.
+  Kibana runs without security, so what the features cannot switch off is
+  refused by the front: `platform/nginx.conf` answers 403 to the Kibana APIs of
+  Elasticsearch and Kibana administration (the console proxy, ingest pipelines,
+  index management, snapshot and restore, transforms, rollups, remote clusters,
+  license, upgrade assistant, index lifecycle, watcher, the data views API,
+  the spaces API except `_active_space`, the security API, the settings API,
+  saved objects import and export) and redirects the pages `app/management`,
+  `app/dev_tools` and `app/home` to Discover of the same space; every call Discover
+  makes goes through, and the platform's own setup (`KIBANA_URL`) reaches Kibana
+  directly. The space is named "SOC"; the data view is on the session's
+  index pattern, shown by its name `logs-*`, never the pattern; the shared
   runtime fields plus `log_source` (`suricata` or `modsecurity`),
   `sensor` (the map name of the sensor, matched on the sender's host name
-  without its first dash-separated part so the script names no `fsl` host:
+  without its domain and slot number, with or without its first dash-separated part, so the script names no `fsl` host and the edge's `edge`
+  still reads as its map name:
   `firewall` and `board.com` on
   OpenStack, `waf` on docker and for every ModSecurity record, slot suffixes
   stripped) and `request_headers` (one `Name: value` per request header,
@@ -1893,7 +1905,7 @@ slot's hosts take their own DHCP addresses there and `fsl-mgmt` fences them
 as before. A slot adapter (`OpenStack.in_slot(n)`) reads only its own slot's
 servers, by their declared host name, so roles, runners, topology and the
 edge's rendered settings are the same in every slot; slot N's edge renders
-its hostname as `fsl-edge-N`. Opening the collector for one slot keeps the
+its hostname as `edge-N`. Opening the collector for one slot keeps the
 other slots' sender rules. The platform binds a session to a slot at open
 (`Session.slot`, one open session per slot by a unique constraint): the
 first free slot that is READY, chosen under a lock. Every per-session range

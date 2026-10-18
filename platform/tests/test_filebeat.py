@@ -96,7 +96,7 @@ def test_the_data_stream_filebeat_makes_for_its_template_matches_the_template_s_
 def test_the_template_geolocates_every_document_by_default_not_only_when_filebeat_asks():
     config = yaml.safe_load(FILEBEAT.read_text())
 
-    assert config["setup.template.settings"]["index.default_pipeline"] == "fsl-geoip", (
+    assert config["setup.template.settings"]["index.default_pipeline"] == "geoip", (
         "a per-request output pipeline was observed to not reach the data "
         "stream on one deployment; the template's default pipeline geolocates "
         "every write regardless, which is where src_ip -> country has to happen"
@@ -120,8 +120,8 @@ def slot_rule():
 
 
 @pytest.mark.parametrize("hostname, slot", [
-    ("fsl-edge.range.internal", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
-    ("fsl-edge-2.range.internal", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
+    ("edge.localdomain", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
+    ("edge-2.localdomain", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
 ])
 def test_a_range_vm_s_syslog_is_tagged_with_the_slot_its_hostname_names(hostname, slot):
     found = slot_rule().match(hostname)

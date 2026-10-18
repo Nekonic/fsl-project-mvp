@@ -174,9 +174,9 @@ Elasticsearch의 managed GeoIP downloader는 꺼 두었고, 대신 `config/inges
 남습니다(클라우드의 Elasticsearch는 다운로드 CDN에 접속할 수 없습니다). 플랫폼은
 시작할 때 docker 소켓 그룹을 설정합니다. 그다음 서비스를 시작하는 동안
 백그라운드에서 Elasticsearch ingest pipeline을 등록하고(이벤트마다 시각을 정하고
-출발지 주소의 위치 정보를 붙입니다), Kibana의 data view, "FSL alerts" 검색,
-"FSL overview" 대시보드를 가져온 뒤 Kibana의 기본 경로를 그 검색으로 지정합니다.
-세션마다 열 때 그 세션만의 data view "Session logs"를 만듭니다(`compose.yaml`이
+출발지 주소의 위치 정보를 붙입니다), Kibana의 data view, "Alerts" 검색,
+"Overview" 대시보드를 가져온 뒤 Kibana의 기본 경로를 그 검색으로 지정합니다.
+세션마다 열 때 그 세션만의 data view "logs-*"를 만듭니다(`compose.yaml`이
 설정하는 `KIBANA_URL`). 엔진과 센서의 구성도 이름을 필드로 보여 주고, 플랫폼 내부
 필드는 숨깁니다.
 명령줄에서 스크립트 케이스를 실행하거나 `bin/verify`(`--fast` 포함)를 실행하려면
@@ -192,6 +192,7 @@ python3 -m venv .venv && .venv/bin/pip install -r platform/requirements.txt
 | 8002 | 블루팀 콘솔의 웹사이트 창: `/site/<세션 id>/<host>/`, 고객 주소에서 해당 세션의 WAF로 보냄(OpenStack에서는 Kali에서 에지를 거쳐) | 사용자 브라우저 안의 iframe |
 | 3080 | `gns3`, GNS3 3.1의 API와 웹 UI: 세션마다 학습자용 구성도를 제공합니다. 학습자가 방어하는 회사 네트워크를 실습 네트워크 구성도로 그린 것입니다(역할 이름, 링크 끝마다 인터페이스와 프리픽스가 붙은 주소, `kali`와 `customers`에는 인터페이스만, 인터넷을 제외한 각 영역에는 네트워크를 캡션으로 표시; 관리망, 플랫폼, 장비 자체의 이름은 표시하지 않음). 슬롯(OpenStack) 또는 세션(Docker)과 그 세션의 워게임마다 영어와 한국어로 하나씩 두고, 모든 노드를 시작한 채 열어 둡니다(호스트마다 고정한 busybox 이미지 하나로 만든 표시용 컨테이너라 링크 끝이 모두 초록색입니다. 실제 장비는 훈련 환경에서 실행됩니다). 전체 배선은 `deploy/topology/system/`에 있고 학습자에게는 제공하지 않습니다. 블루팀 콘솔의 구성도 창(구성도 탭)은 `/static/web-ui/fsl-auditor.html`을 iframe으로 띄웁니다. 이 페이지는 읽기 전용으로 로그인하고 웹 UI의 사용 통계 전송을 끈 뒤, 해당 세션의 구성도를 콘솔 표시 언어로, 보기 전용으로(편집 컨트롤 없음, 드래그로 이동, 휠로 확대·축소) 창 크기에 맞춰 보여 줍니다. 컨테이너에는 `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스가 있습니다. GNS3가 스위치를 실행하고 docker 노드를 시작하는 데 필요합니다(`docs/ARCHITECTURE.md`, The topology) | 사용자 브라우저 안의 iframe, 그리고 `mgmt`를 거친 `platform/gns3.py` |
 | 5140/udp | `collector`, Filebeat의 syslog 입력 | OpenStack의 OPNsense 에지, WAF, 워게임 호스트의 estate 센서 |
+| 5601 | Kibana 자체. 플랫폼 호스트의 loopback에만 열려 있으며, 8000번의 `/kibana/`는 Discover 밖의 요청을 거부합니다 | 운영자, ssh 터널로 |
 | 9200 | Elasticsearch | acceptance 테스트 |
 
 8000과 8002는 플랫폼 이미지 안의 nginx가 제공합니다. 8002는 대상 사이트용 별도
@@ -292,7 +293,7 @@ VM이 재부팅하면 clone한 커밋의 이미지를 GHCR에서 pull해 sideloa
 덮어쓸 수 있습니다. 재부팅하지 말고 push한 뒤 재구축하세요.
 
 스택의 `address` 출력값이 floating IP입니다. 콘솔은 `http://ADDRESS:8000/`에 있고
-로그인을 요구하지 않습니다. 9200은 VM의 loopback에만 열려 있고, 5140/udp는 VM의
+로그인을 요구하지 않습니다. 9200과 5601은 VM의 loopback에만 열려 있고, 5140/udp는 VM의
 모든 주소에서 수신합니다.
 
 VM에서 체크아웃 위치는 `/opt/fsl`이고 소유자는 `ubuntu`입니다. compose,

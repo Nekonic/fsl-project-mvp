@@ -7,7 +7,7 @@ PIPELINE = f"{os.environ.get('FSL_SOURCE', '/app')}/deploy/elastic/ingest-pipeli
 
 
 def endpoint(base: str) -> str:
-    return f"{base.rstrip('/')}/_ingest/pipeline/fsl-geoip"
+    return f"{base.rstrip('/')}/_ingest/pipeline/geoip"
 
 
 def main():
@@ -26,13 +26,13 @@ def main():
         try:
             with urllib.request.urlopen(request, timeout=5) as answer:
                 if answer.status < 300:
-                    print("fsl-geoip pipeline registered", flush=True)
+                    print("geoip pipeline registered", flush=True)
                     return
         except (urllib.error.URLError, OSError):
             pass
         time.sleep(2)
 
-    print("could not register the fsl-geoip pipeline; ingest will not geolocate", flush=True)
+    print("could not register the geoip pipeline; ingest will not geolocate", flush=True)
 
 
 if __name__ == "__main__":

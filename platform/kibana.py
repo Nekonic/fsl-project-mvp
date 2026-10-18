@@ -12,14 +12,17 @@ BASE_PATH = "/kibana"
 DATA_VIEW = "fsl-logs"
 ALERT_SEARCH = "fsl-alerts"
 ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity"'
-ALERT_COLUMNS = (
-    "event.module", "rule", "rule_id", "source_ip", "src_geo.country_name",
-    "destination", "url", "status", "transaction.request.headers.X-Request-ID",
-)
+SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
+ALERT_COLUMNS = SESSION_COLUMNS
+SESSION_SEARCH = "events"
+SESSION_SEARCH_TITLE = "Events"
 SETTINGS = {
     "defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
 }
-SPACE_SETTINGS = {"defaultRoute": "/app/discover", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul"}
+SPACE_SETTINGS = {
+    "defaultRoute": f"/app/discover#/view/{SESSION_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
+    "enableESQL": False, "defaultColumns": list(SESSION_COLUMNS),
+}
 SPACE_FEATURES_OFF = (
     "enterpriseSearch", "dashboard", "canvas", "maps", "ml", "logs", "visualize", "infrastructure", "apm", "uptime",
     "siem", "securitySolutionCases", "observabilityCases", "slo", "dev_tools", "advancedSettings", "indexPatterns",
@@ -28,11 +31,10 @@ SPACE_FEATURES_OFF = (
 )
 URL = os.environ.get("KIBANA_URL", "")
 SESSION_VIEW_NAME = "logs-*"
-SPACE_NAME = "Session logs"
-SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
+SPACE_NAME = "SOC"
+SPACE_PREFIX = "soc-"
 COLUMN_WIDTHS = {
     "@timestamp": 170, "event_type": 110, "source_ip": 130, "destination": 130, "status": 90, "rule_id": 110,
-    "log_source": 110, "sensor": 110,
 }
 HIDDEN_FIELDS = (
     "_index", "event.*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
@@ -154,7 +156,7 @@ def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS):
 
 
 def session_view_id(pattern):
-    return "session-" + re.sub(r"[^a-z0-9]+", "-", pattern.lower()).strip("-")
+    return SPACE_PREFIX + re.sub(r"[^a-z0-9]+", "-", pattern.lower()).strip("-")
 
 
 def _value(field):
@@ -182,13 +184,14 @@ def sensor_script(sensors, waf):
         f"if (module == 'modsecurity') {{ emit({_literal(waf)}); }} "
         f"else if (module == 'suricata') {{ "
         f"String host = {_value('log.syslog.hostname')}; "
-        "int first = host.indexOf('-'); if (first >= 0) { host = host.substring(first + 1); } "
         "int dot = host.indexOf('.'); if (dot >= 0) { host = host.substring(0, dot); } "
         "int dash = host.lastIndexOf('-'); boolean numbered = dash > 0 && dash < host.length() - 1; "
         "for (int i = dash + 1; numbered && i < host.length(); ++i) { numbered = Character.isDigit(host.charAt(i)); } "
         "if (numbered) { host = host.substring(0, dash); } "
+        "int first = host.indexOf('-'); String rest = first >= 0 ? host.substring(first + 1) : host; "
         f"Map shown = [{shown}]; "
-        f"String name = shown.containsKey(host) ? (String) shown.get(host) : (host == '' ? {fallback} : ''); "
+        "String name = shown.containsKey(host) ? (String) shown.get(host) : "
+        f"(shown.containsKey(rest) ? (String) shown.get(rest) : (host == '' ? {fallback} : '')); "
         "if (name != '') { emit(name); } }"
     )
 
@@ -299,16 +302,40 @@ def session_view(pattern, sensors, waf, runtime):
     }
 
 
+def session_search(view):
+    return {
+        "type": "search",
+        "id": SESSION_SEARCH,
+        "attributes": {
+            "title": SESSION_SEARCH_TITLE,
+            "columns": list(SESSION_COLUMNS),
+            "grid": {"columns": {name: {"width": width} for name, width in COLUMN_WIDTHS.items()}},
+            "sort": [["@timestamp", "desc"]],
+            "hideChart": False,
+            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({
+                "query": {"query": "", "language": "kuery"}, "filter": [],
+                "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+            })},
+        },
+        "references": [{"id": view["id"], "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                        "type": "index-pattern"}],
+        "managed": False,
+        "coreMigrationVersion": "8.8.0",
+        "typeMigrationVersion": "10.4.0",
+    }
+
+
 def ensure_session_view(pattern, sensors, waf, send=None):
     try:
         with open(OBJECTS, "rb") as objects:
             view = session_view(pattern, sensors, waf, shared_runtime(objects.read()))
         send = send or send_json
         ensure_space(URL, view["id"], send)
-        imported = send(import_request(space_base(URL, view["id"]), json.dumps(view).encode()))
+        lines = "\n".join(json.dumps(found) for found in (view, session_search(view))).encode()
+        imported = send(import_request(space_base(URL, view["id"]), lines))
         if not imported.get("success"):
             raise Refused(f"Kibana refused the data view for {pattern}: {imported.get('errors')}")
-        send(settings_request(space_base(URL, view["id"]), SPACE_SETTINGS))
+        send(settings_request(space_base(URL, view["id"]), SPACE_SETTINGS | {"defaultIndex": view["id"]}))
         return view["id"]
     except (Refused, OSError, ValueError, KeyError) as exc:
         print(f"kibana: no session data view for {pattern}: {exc}", flush=True)
