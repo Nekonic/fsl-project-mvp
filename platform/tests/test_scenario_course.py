@@ -272,3 +272,19 @@ def test_only_raising_the_thresholds_is_named_a_threshold_fix(waf, posture, name
         posture = wargames.defense("board", "untuned")["waf"]
     assert lesson.fix_class(waf, posture) == named
 
+
+@pytest.mark.parametrize("given, passes", [
+    ("1292", True), ("1,292", True), (" 1,292 ", True), ("1,292,", False), ("12,92", False),
+    ("1,2,9,2", False), ("1,29", False), ("1.292", False), ("1,2920", False),
+])
+def test_a_numeric_answer_takes_thousands_separators_as_kibana_prints_them(given, passes):
+    import lesson
+
+    check = {"kind": "answer", "accept": ["1292"]}
+    assert lesson.answered(check, given, "lesson.wrong.seen")[0] is passes
+
+def test_an_ordered_answer_still_splits_on_commas():
+    import lesson
+
+    check = {"form": "order", "accept": ["1", "292"]}
+    assert lesson.answered(check, "1,292", "lesson.wrong.order")[0] is True
