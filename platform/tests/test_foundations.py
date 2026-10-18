@@ -46,7 +46,7 @@ def browsed(url, status, request_id=1, ms=40, at=None):
 def http_event(marker, url, status, host="fsl-wargame-host", agent="Mozilla/5.0", event_type="http", **fields):
     headers = [{"name": "X-FSL-Case", "value": marker}] if marker else []
     headers += [{"name": "X-Forwarded-For", "value": fields["xff"]}] if fields.get("xff") else []
-    return {"fsl_source": "suricata", "event_type": event_type, "timestamp": timezone.now().isoformat(),
+    return {"fsl_source": "suricata", "event_type": event_type, "timestamp": (fields.get("at") or timezone.now()).isoformat(),
             "src_ip": fields.get("src_ip", WAF), "dest_ip": fields.get("dest_ip", BOARD),
             "dest_port": fields.get("dest_port", 8000), "log": {"syslog": {"hostname": host}},
             "http": {"url": url, "status": status, "http_method": "GET", "http_user_agent": agent,
@@ -265,16 +265,22 @@ def test_a_kali_step_writes_its_marker_to_the_stamp_proxy_shows_no_runnable_comm
         step(client, session, "agent", tail="", body={"state": "reached"})
     marker = Session.objects.get(pk=session.pk).lesson_steps["f5"]["agent"]["marker"]
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+    settled = timezone.now() - timedelta(seconds=20)
     run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="fsl-edge", agent="Opera/9.21",
-                       src_ip=KALI, dest_ip=WAF) for n in range(3)]
+                       src_ip=KALI, dest_ip=WAF, at=settled) for n in range(3)]
+    fresh = http_event(marker, "/?sort=posts_post.id9", 403, host="fsl-edge", agent="Opera/9.21", src_ip=KALI, dest_ip=WAF)
     with indexed(), quietly():
         early = step(client, session, "agent").json()
+    with indexed(*run, fresh), quietly():
+        running = step(client, session, "agent").json()
     with indexed(*run), quietly():
         ran = step(client, session, "agent").json()
 
     assert labelled.call_args.args[0] == marker
     assert "--headers" not in shown["agent"]["command"] and "--random-agent" in shown["agent"]["command"]
-    assert early["passed"] is False
+    assert (early["passed"], early["reason"]) == (False, ["lesson.check.kali_none", ["sqlmap"]])
+    assert (running["passed"], running["reason"]) == (False, ["lesson.check.kali_running", ["sqlmap"]]), (
+        "a request seconds ago means the run is still going")
     assert ran["passed"] is True and set(ran["kali"]) == {"name", "discover"}, "no request count, no sensor names"
     recorded = Case.objects.get(session=session, case_id=marker)
     assert recorded.malicious and (recorded.meta["kali"], recorded.meta["lesson"]) == ("agent", "f5")
@@ -303,17 +309,19 @@ def test_f5_reads_the_verdict_from_sqlmap_s_own_log_and_the_run_s_source_and_rul
     assert "/.local/share/sqlmap/output/board.com/log" in logs[0]
     assert run.case_id == "run-1"
 
-def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_its_source_from_the_run(client):
+def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_caused_from_the_run(client):
     session = opened("f6")
     kali_run(session, "f6", "dump", "dump-1")
-    edge = http_event("dump-1", "/?sort=posts_post.id", 200, host="fsl-edge", src_ip=KALI, dest_ip=WAF, dest_port=80)
-    upstream = http_event("dump-1", "/?sort=posts_post.id", 200, src_ip=WAF, dest_ip=BOARD)
+    edge = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, host="fsl-edge", src_ip=KALI, dest_ip=WAF,
+                       dest_port=80) for n, status in enumerate((500, 500, 200))]
+    upstream = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, src_ip=WAF, dest_ip=BOARD)
+                for n, status in enumerate((500, 500, 200))]
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
-    with quietly(), on_map(read_slot()), flavor("openstack"), indexed(edge, upstream), \
+    with quietly(), on_map(read_slot()), flavor("openstack"), indexed(*edge, *upstream), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("excluded", "sort"), ("alerts", "none"), ("seen", KALI))}
-        detected(session, "ids", "suricata", "dump-1", "SQLi")
+            ("excluded", "sort"), ("alerts", "none"), ("seen", "2"))}
+        detected(session, "ids", "suricata", "dump-1", "SQLi", alert={"signature_id": 9000003})
         ids_only = answer(client, session, "alerts", "ids")["passed"]
 
     assert said == {"excluded": True, "alerts": True, "seen": True}
@@ -329,11 +337,12 @@ def test_the_penalty_counts_double_for_an_objective_lost_undetected_since_the_le
         Objective.objects.create(session=session, key=key, name=key, difficulty=difficulty,
                                  achieved_at=timezone.now() + timedelta(seconds=1))
     with quietly():
-        right = answer(client, session, "cost", "18")["passed"]
+        total = answer(client, session, "cost", "18")["passed"]
+        right = answer(client, session, "cost", "4")["passed"]
         card = client.get(f"/api/sessions/{session.pk}/").json()["lesson_objectives"]
 
-    assert right is True, "2 x (4 + 5): F5's loss is not F6's"
-    assert card["total"] == 18
+    assert (total, right) == (False, True), "the question asks what admin would have cost detected, not the printed total"
+    assert card["total"] == 18, "2 x (4 + 5): F5's loss is not F6's"
     assert [(row["id"], row["lost"], row["points"]) for row in card["rows"]] == [
         ("board-auth-user-partial", False, 0), ("board-auth-user-admin", True, 8), ("board-auth-user-full", True, 10)]
 

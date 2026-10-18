@@ -972,7 +972,7 @@ sqlmap 케이스 하나가 5000건 넘는 기록을 남기기 때문입니다.
 하나와 필요한 창 `opens`로 이루어집니다. 로케이터는 `panel`(콘솔 요소: 사이트 주소창,
 룰 편집기, 목표 합계), `map`(`node`, `link`, `label: [host, switch]`, `zone`. 서버가
 `{switch:<host>}`를 풀어 줍니다. `deploy/gns3/auditor.html`이 `postMessage`로
-`{fslLocate}`에 사각형으로 답하고, 처음 화면 맞춤이 끝나면 `{fslMap: "drawn"}`을
+`{fslLocate}`에 사각형과 모든 영역(zone) 도형의 사각형(`zones`, 말풍선이 영역 밖에 놓이도록)으로 답하고, `{fslFit}`를 받으면 화면을 다시 맞추며, 처음 화면 맞춤이 끝나면 `{fslMap: "drawn"}`을
 보냅니다), `site`(출처가 다른 사이트 프레임 안의 선택자, nginx가 붙인 스크립트가
 답함), `dev`(개발자 도구의 `data-coach` 이름: 토글, 맞는 행, 탭, 줄), `kibana`(출처가 같은
 Kibana 프레임 안: `query`, `hits`(대체 대상 `discoverNoResults`), 문서 플라이아웃에서 필드
@@ -1024,10 +1024,10 @@ id는 거부하며, 기초 레슨에는 `group: foundations`를 붙입니다. `G
 |---|---|---|---|
 | f1 구성도 읽기(`lesson.map`) | `full`, 구성도 | board.com의 서비스망 주소, board-db의 서브넷, kali가 연결된 망의 이름을 읽고, 고객의 검색 요청이 거치는 호스트를 순서대로 고르고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계: board-db의 주소 | 세션의 학습자용 구성도(`topology.learner`를 거친 `topology.facts`): 링크 라벨의 주소(`address`, 프리픽스 길이는 있어도 없어도 됨), 영역의 서브넷(`subnet`), 두 언어의 영역 캡션(`zone_of`), `customers` 다음 구성도에 있는 경유 역할, 그다음 사이트(`path`: OpenStack은 `customers > firewall > waf > board.com`, Docker는 `customers > waf > board.com`), `log-server` 노드(`logs`) |
 | f2 개발자 도구로 HTTP 요청 읽기(`lesson.http`) | `full`, 웹사이트 | 게시판 검색창으로 검색하고, 네트워크 패널에서 메서드, 파라미터, 경로, 상태 코드를 읽은 뒤 게시판 정렬 기능이 쓰는 파라미터를 찾습니다. 혼자 푸는 단계: 없는 게시글의 상태 코드 | 학습자가 웹사이트 창에서 보낸 요청 기록: `method`, `parameter`, `path`(답에 호스트나 쿼리가 들어가면 `wrong_if`가 알려 줌), `status` |
-| f3 Kibana에서 내 요청 찾기(`lesson.logs`) | `full`, 웹사이트 | 영문자와 숫자로 된 단어를 검색하고 그 단어로 KQL을 씁니다. board.com에 도착한 이벤트의 출발지 IP, 구성도에서 그 주소를 쓰는 호스트, 같은 검색이 waf에 도착한 이벤트의 출발지 IP, 그 X-Forwarded-For, WAF 로그에 남았는지를 답합니다. 혼자 푸는 단계: 내 검색 중 waf에 도착한 건수 | 기록에 대한 센서의 http 이벤트(`sensor_source`, `forwarded_for`)를 구간으로 나눔: `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). 그래서 두 구간을 모두 보는 센서 하나도 검색을 한 번씩만 셉니다. `host_of`는 그 주소를 쓰는 구성도 호스트, `waf_logged`는 WAF 자체의 기록, `hits`는 레슨(또는 세션) 시작 뒤 `/search/` 아래 브라우징 마커가 붙은 inbound 이벤트 수 |
+| f3 Kibana에서 내 요청 찾기(`lesson.logs`) | `full`, 웹사이트 | 영문자와 숫자로 된 단어를 검색하고 그 단어로 KQL을 씁니다. board.com에 도착한 이벤트의 출발지 IP, 구성도에서 그 주소를 쓰는 호스트, 같은 검색이 waf에 도착한 이벤트의 출발지 IP, 그 X-Forwarded-For, WAF 로그에 남았는지를 답합니다. 혼자 푸는 단계: 내 검색 중 waf에 도착한 건수 | 기록에 대한 센서의 http 이벤트(`sensor_source`, `forwarded_for`)를 구간으로 나눔: `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). 그래서 두 구간을 모두 보는 센서 하나도 검색을 한 번씩만 셉니다. `host_of`는 그 주소를 쓰는 구성도 호스트, `waf_logged`는 WAF 자체의 기록, `hits`는 내 검색의 수 하나로, 레슨(또는 세션) 시작 뒤 `/search/` 아래 브라우징 마커가 붙은 inbound 이벤트 수 |
 | f4 XSS 요청 차단과 IDS 룰 작성(`lesson.xss`) | `xss-gap`, 웹사이트 | `<script>alert(1)</script>`의 상태 코드, 탐지한 룰 하나, Total Score, 대소문자를 섞은 요청의 상태 코드, 두 요청에 IDS 경보가 있었는지를 답하고, URI의 `<script`를 잡는 룰을 써서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. 혼자 푸는 단계: 대소문자를 섞은 요청과 일반 검색을 다시 보냄 | `status`, `rule`(요청의 ModSecurity 룰 id, 949110 제외), `anomaly_total`(949110의 `Total Score: N`), `alerted`, `alerted_sid`, `alerted_sid_present`(기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조), `needs: nocase`가 붙은 `rules`, `replay` |
-| f5 sort 파라미터 SQL Injection 분석(`lesson.sqli`) | `full`, 웹사이트 | sort 값을 읽고, 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행의 출발지 IP, 스캐너를 알아본 룰을 읽고, `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계: 그래도 차단한 룰 하나 | `param_value`, `status`, `waf_detected`(요청의 ModSecurity 탐지 기록. 500은 룰 없이 기록되며 탐지가 아님), `sqlmap_found`(`attacker.sqlmap_found`가 박스의 `<home>/.local/share/sqlmap/output/<host>/log`를 읽어 `Parameter:` 줄이 있는지 봄), `kali_source`(실행의 ModSecurity `src_ip`), `marker: step:<id>`와 `family: "913"`이 붙은 `rule`, 그다음 `known: [949110, 913100]` |
-| f6 넓은 예외 처리로 놓친 공격 확인하기(`lesson.miss`) | `overbroad`, WAF | 예외 파일을 grep해 빠진 파라미터를 찾고, sqlmap으로 계정을 덤프해 표를 붙여 넣고, 어느 엔진이 경보를 냈는지, inbound http 이벤트에서 공격의 출발지, 목표 카드의 감점 합계를 답한 뒤, 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계: 덤프를 다시 실행하고 정렬을 한 번 바꿈 | `excluded_target`(적용 중인 WAF 파일: `ARGS:sort` 또는 `sort`), 세션 스냅샷과 대조한 `loot`, `alerted_by`(실행의 탐지 기록으로 없음, IDS만, 웹방화벽만, 둘 다), `from: http`가 붙은 `kali_source`, `lost_points`(레슨 시작 뒤 빼앗긴 목표마다 난이도 ×1 또는 ×2), `waf_changed`, `replay`(실행이 차단되고 탈취 데이터 없음, 일반 정렬은 2xx에 WAF 기록 없음) |
+| f5 sort 파라미터 SQL Injection 분석(`lesson.sqli`) | `full`, 웹사이트 | sort 값을 읽고, 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행의 출발지 IP, 스캐너를 알아본 룰을 읽고, `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계: 그래도 차단한 룰 하나 | `param_value`, `status`, `waf_detected`(요청의 ModSecurity 탐지 기록. 500은 룰 없이 기록되며 탐지가 아님), `sqlmap_found`(`attacker.sqlmap_found`가 박스의 `<home>/.local/share/sqlmap/output/<host>/log`를 읽어 `Parameter:` 줄이 있는지 봄), `kali_source`(실행의 ModSecurity `src_ip`), `marker: step:<id>`와 `family: "913"`(스캐너)이 붙은 `rule`, 그다음 `family: "942"`와 `known: [949110, 913100]`이 붙은 `rule`(다시 실행해도 차단한 SQL Injection 룰) |
+| f6 넓은 예외 처리로 놓친 공격 확인하기(`lesson.miss`) | `overbroad`, WAF | 예외 파일을 grep해 빠진 파라미터를 찾고, sqlmap으로 계정을 덤프해 표를 붙여 넣고, 어느 엔진이 경보를 냈는지, 실행에서 대상이 500으로 답한 요청 수, 관리자 목표가 탐지되었을 때 붙는 감점을 답한 뒤, 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계: 덤프를 다시 실행하고 정렬을 한 번 바꿈 | `excluded_target`(적용 중인 WAF 파일: `ARGS:sort` 또는 `sort`), 세션 스냅샷과 대조한 `loot`, `alerted_by`(실행의 탐지 기록으로 없음, IDS만, 웹방화벽만, 둘 다), `run_errors`(실행의 inbound 구간 http 이벤트 중 500 상태의 수, `lesson.server_errors`), `objective:`가 붙은 `detected_penalty`(그 목표가 탐지되었을 때 붙는 감점, 곧 난이도 ×1. 값은 `wargames.objectives`의 등급에서 읽고, 채점하지 않는 시나리오에서는 비어 있음), `waf_changed`, `replay`(실행이 차단되고 탈취 데이터 없음, 일반 정렬은 2xx에 WAF 기록 없음) |
 
 방어 설정: `xss-gap`은 CRS paranoia level 1에 `no-xss.rules`(sid 9000003을 뺀
 `local.rules`)입니다. `overbroad`는 level 1에 예외 하나, `{tag: OWASP_CRS, target:
@@ -1081,12 +1081,12 @@ kali 케이스에 귀속합니다. `_credit_loot`는 일치한 계정을 귀속�
 남깁니다(`meta.loot`).
 
 답은 `of:`로 다음 중 하나를 읽습니다. 훈련 환경 사실(`address`, `subnet`, `zone_of`,
-`path`, `logs`, `host_of`, `excluded_target`, `lost_points`), `about:`이 `match`가 있는
+`path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`), `about:`이 `match`가 있는
 단계를 가리키거나 단계 자신의 `match`가 있는 요청 사실(`status`, `method`, `path`,
 `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`,
 `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`,
 `hits`. 그 단계와 일치하는 가장 최근 웹사이트 창 기록), `about:`이 `kali` 단계를
-가리키는 Kali 사실(`sqlmap_found`, `kali_source`, `alerted_by`), 또는 요청의 `path`나
+가리키는 Kali 사실(`sqlmap_found`, `kali_source`, `alerted_by`, `run_errors`), 또는 요청의 `path`나
 `step:` 마커와 함께 쓰는 `rule`(위). 그 밖의 값은 `wargames.read_from_record`가
 discovery 시점에 거부합니다.
 
