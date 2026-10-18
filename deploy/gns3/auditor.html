@@ -16,8 +16,17 @@ const MARGIN = 24;
 const ZOOM_STEP = 0.1;
 const SMALLEST = 0.3;
 const WAIT_MS = 20000;
+const FONTS_MS = 5000;
+const STILL_MS = 400;
+const STILL_SAMPLES = 3;
+const SETTLE_MS = 250;
+const CLICK_MS = 60;
+const CLOSE_ENOUGH = 2;
+const PAN_TRIES = 4;
+const LEAST_ROOM = 2 * MARGIN + 40;
 
 const VIEW_ONLY = `
+  html, body { overflow: hidden !important; }
   #project-titlebar, #project-toolbar, app-project-map-menu, app-nodes-menu, app-template,
   app-context-menu, app-context-console-menu, app-topology-summary, app-notification-center,
   app-console-wrapper, app-web-console-inline, app-ai-chat, app-log-console, .inline-taskbar,
@@ -55,17 +64,39 @@ function button(map, icon) {
   });
 }
 
+const canvasOf = (map) => map.document.querySelector("svg.map g.canvas");
+const transformOf = (map) => {
+  const canvas = canvasOf(map);
+  return canvas ? canvas.getAttribute("transform") || "" : "";
+};
+
+function picture(map) {
+  const canvas = canvasOf(map);
+  if (!canvas) return null;
+  const counted = ["g.node", "g.link", "g.drawing"].map((kind) => canvas.querySelectorAll(kind).length);
+  if (!counted[0]) return null;
+  const box = canvas.getBBox();
+  return {canvas, said: [...counted, box.x, box.y, box.width, box.height].map(Math.round).join()};
+}
+
+async function fontsReady(map) {
+  const fonts = map.document.fonts;
+  if (!fonts || !fonts.ready) return;
+  await Promise.race([fonts.ready, sleep(FONTS_MS)]);
+}
+
 async function drawn(map) {
   const until = Date.now() + WAIT_MS;
+  await fontsReady(map);
   let last = "";
+  let still = 0;
   while (Date.now() < until) {
-    const canvas = map.document.querySelector("svg.map g.canvas");
-    const nodes = canvas ? canvas.querySelectorAll("g.node").length : 0;
-    const box = canvas && nodes ? canvas.getBBox() : null;
-    const now = box ? [nodes, box.x, box.y, box.width, box.height].map(Math.round).join() : "";
-    if (now && now === last && button(map, "zoom_out") && button(map, "zoom_out_map")) return canvas;
-    last = now;
-    await sleep(400);
+    const now = picture(map);
+    const ready = now && ["zoom_out", "adjust", "zoom_out_map"].every((icon) => button(map, icon));
+    still = ready && now.said === last ? still + 1 : 0;
+    last = now ? now.said : "";
+    if (still >= STILL_SAMPLES - 1) return now.canvas;
+    await sleep(STILL_MS);
   }
   return null;
 }
@@ -81,44 +112,118 @@ async function summaryClosed(map) {
   }
 }
 
-async function fitOnce(map, canvas) {
-  const room = {left: 0, top: 0, width: map.innerWidth, height: map.innerHeight};
-  button(map, "zoom_out_map").click();
-  await sleep(200);
+function dragged(map, dx, dy) {
+  const svg = map.document.querySelector("svg.map");
+  if (!svg) return false;
+  const at = {clientX: Math.round(map.innerWidth / 2), clientY: Math.round(map.innerHeight / 2)};
+  const mouse = (type, target, moved) => target.dispatchEvent(new map.MouseEvent(type, {
+    bubbles: true, cancelable: true, view: map, button: 0, buttons: 1, ...at, ...moved,
+  }));
+  const before = transformOf(map);
+  mouse("mousedown", svg, {});
+  mouse("mousemove", svg, {movementX: dx, movementY: dy});
+  mouse("mouseup", map.document, {buttons: 0});
+  return transformOf(map) !== before;
+}
+
+async function panning(map) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (dragged(map, 1, 0)) {
+      dragged(map, -1, 0);
+      return true;
+    }
+    const toggle = button(map, "zoom_out_map");
+    if (!toggle) return false;
+    toggle.click();
+    await sleep(CLICK_MS);
+  }
+  return false;
+}
+
+function shownBox(map) {
+  const canvas = canvasOf(map);
+  if (!canvas) return null;
+  const rects = [...canvas.querySelectorAll("g.node, g.link, g.drawing")].map((part) => part.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return {left, top, width: right - left, height: bottom - top};
+}
+
+async function scaled(map, room) {
   button(map, "adjust").click();
-  await sleep(200);
-  const box = canvas.getBBox();
-  const wanted = Math.min(1, (room.width - 2 * MARGIN) / box.width, (room.height - 2 * MARGIN) / box.height);
+  await sleep(SETTLE_MS);
+  const shown = shownBox(map);
+  if (!shown) return;
+  const wanted = Math.min(1, (room.width - 2 * MARGIN) / shown.width, (room.height - 2 * MARGIN) / shown.height);
   const steps = Math.min(Math.ceil((1 - wanted) / ZOOM_STEP - 1e-9), Math.round((1 - SMALLEST) / ZOOM_STEP));
   for (let step = 0; step < steps; step++) {
     button(map, "zoom_out").click();
-    await sleep(60);
+    await sleep(CLICK_MS);
   }
-  await sleep(300);
-  const now = canvas.getBoundingClientRect();
-  const dx = Math.round(room.left + room.width / 2 - (now.left + now.width / 2));
-  const dy = Math.round(room.top + room.height / 2 - (now.top + now.height / 2));
-  const svg = map.document.querySelector("svg.map");
-  const mouse = (type, target, moved) => target.dispatchEvent(new map.MouseEvent(type, {
-    bubbles: true, cancelable: true, view: map, button: 0, buttons: 1,
-    clientX: room.left + room.width / 2, clientY: room.top + room.height / 2, ...moved,
-  }));
-  mouse("mousedown", svg, {});
-  mouse("mousemove", svg, {movementX: dx, movementY: dy});
-  mouse("mouseup", map.document, {});
+  await sleep(SETTLE_MS);
+}
+
+function offCentre(map, room) {
+  const now = shownBox(map);
+  if (!now) return null;
+  return {dx: Math.round(room.width / 2 - (now.left + now.width / 2)),
+          dy: Math.round(room.height / 2 - (now.top + now.height / 2))};
+}
+
+const near = (off) => off && Math.abs(off.dx) <= CLOSE_ENOUGH && Math.abs(off.dy) <= CLOSE_ENOUGH;
+
+async function centred(map, room) {
+  for (let attempt = 0; attempt < PAN_TRIES; attempt++) {
+    const off = offCentre(map, room);
+    if (!off) return false;
+    if (near(off)) return true;
+    if (!dragged(map, off.dx, off.dy) && !(await panning(map))) return false;
+    await sleep(CLICK_MS);
+  }
+  return near(offCentre(map, room));
+}
+
+async function fitOnce(map) {
+  const room = {width: map.innerWidth, height: map.innerHeight};
+  if (room.width < LEAST_ROOM || room.height < LEAST_ROOM) return null;
+  map.scrollTo(0, 0);
+  const pans = await panning(map);
+  await scaled(map, room);
+  return pans && centred(map, room);
 }
 
 const LOCATE_EVERY_MS = 150;
-const view = {map: null, canvas: null, fitting: Promise.resolve(), queued: false, asked: null, last: "", timer: null, links: null};
+const view = {map: null, canvas: null, fitting: Promise.resolve(), queued: false, told: false, timer: null,
+              refit: null, asked: null, last: "", links: null};
 
-function fitted(map, canvas) {
+function announced(done) {
+  if (view.told || done === null) return;
+  view.told = true;
+  window.parent.postMessage({fslMap: "drawn"}, "*");
+}
+
+function fitted(map) {
   if (view.queued) return view.fitting;
   view.queued = true;
   view.fitting = view.fitting.then(() => {
     view.queued = false;
-    return fitOnce(map, canvas);
-  }).catch(() => null);
+    return fitOnce(map);
+  }).catch(() => false).then((done) => {
+    announced(done);
+    return done;
+  });
   return view.fitting;
+}
+
+function refitSoon() {
+  clearTimeout(view.refit);
+  view.refit = setTimeout(() => {
+    if (view.map) fitted(view.map);
+  }, SETTLE_MS);
 }
 
 const boxOf = (element) => {
@@ -261,13 +366,21 @@ function rounded(box) {
   return box ? {x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h)} : null;
 }
 
+function zoneRects() {
+  const doc = view.map && view.map.document;
+  if (!doc) return [];
+  return [...doc.querySelectorAll("g.drawing rect")].map(boxOf)
+    .filter((box) => box.w > 0 && box.h > 0).map(rounded);
+}
+
 function answerLocate(always) {
   if (!view.asked) return;
   const rect = rounded(located(view.asked.spec));
-  const said = JSON.stringify(rect);
+  const zones = zoneRects();
+  const said = JSON.stringify([rect, zones]);
   if (!always && said === view.last) return;
   view.last = said;
-  view.asked.to.postMessage({fslLocated: view.asked.id, rect}, view.asked.origin);
+  view.asked.to.postMessage({fslLocated: view.asked.id, rect, zones}, view.asked.origin);
 }
 
 async function locateAsked(event) {
@@ -285,14 +398,15 @@ async function locateAsked(event) {
   view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
 }
 
-window.addEventListener("resize", () => {
-  if (view.canvas) fitted(view.map, view.canvas);
-});
+window.addEventListener("resize", refitSoon);
+if (typeof ResizeObserver === "function") new ResizeObserver(refitSoon).observe(document.documentElement);
 
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
-  if (event.data === "fsl-fit" && view.canvas) fitted(view.map, view.canvas);
-  if (event.data && typeof event.data === "object" && "fslLocate" in event.data) locateAsked(event);
+  const said = event.data;
+  const asksFit = said === "fsl-fit" || (said && typeof said === "object" && said.fslFit);
+  if (asksFit && view.map) fitted(view.map);
+  if (said && typeof said === "object" && "fslLocate" in said) locateAsked(event);
 });
 
 (async () => {
@@ -332,10 +446,9 @@ window.addEventListener("message", (event) => {
     const canvas = await drawn(map);
     await summaryClosed(map);
     if (!canvas) return;
-    await fitted(map, canvas);
     view.map = map;
     view.canvas = canvas;
-    window.parent.postMessage({fslMap: "drawn"}, "*");
+    await fitted(map);
     if (view.asked) {
       answerLocate(true);
       clearInterval(view.timer);
