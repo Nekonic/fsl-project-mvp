@@ -639,29 +639,57 @@ function ruleTarget(editing) {
   return box.value === rulesText ? { element: null, line: box.value.split("\n").length - 1, stage: "add" } : apply;
 }
 
+let ruleRowsKnown = { key: "", rows: [] };
+
+function ruleLineRows(box) {
+  const font = getComputedStyle(box).font;
+  const width = Math.max(0, (box.clientWidth || 0) - 2 * RULE_PAD);
+  const key = `${font}|${width}|${box.value}`;
+  if (ruleRowsKnown.key === key) return ruleRowsKnown.rows;
+  const mirror = document.createElement("div");
+  Object.assign(mirror.style, { position: "absolute", visibility: "hidden", left: "-9999px", top: "0", width: `${width}px`, padding: "0", border: "0",
+    font, lineHeight: `${RULE_LINE}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word", tabSize: "4" });
+  box.value.split("\n").forEach((text) => {
+    const line = document.createElement("div");
+    line.textContent = text || " ";
+    mirror.appendChild(line);
+  });
+  document.body.appendChild(mirror);
+  let top = 0;
+  const rows = Array.from(mirror.children).map((line) => {
+    const row = { top, height: Math.max(RULE_LINE, line.offsetHeight || 0) };
+    top += row.height;
+    return row;
+  });
+  mirror.remove();
+  ruleRowsKnown = { key, rows };
+  return rows;
+}
+
+function ruleLineRow(box, index) {
+  const rows = ruleLineRows(box);
+  if (rows[index]) return rows[index];
+  const last = rows[rows.length - 1];
+  return { top: (last ? last.top + last.height : 0) + (index - rows.length) * RULE_LINE, height: RULE_LINE };
+}
+
 function ruleLineRect(index) {
   const box = field("lesson-rules-text");
   const outer = boxOf(box);
   if (!outer) return null;
-  const top = outer.top + RULE_PAD + 1 + index * RULE_LINE - (box.scrollTop || 0);
-  return clipped({ left: outer.left + RULE_PAD, top, width: Math.max(0, outer.width - 2 * RULE_PAD - 2), height: RULE_LINE }, outer);
+  const row = ruleLineRow(box, index);
+  const top = outer.top + RULE_PAD + 1 + row.top - (box.scrollTop || 0);
+  return clipped({ left: outer.left + RULE_PAD, top, width: Math.max(0, outer.width - 2 * RULE_PAD - 2), height: row.height }, outer);
 }
 
 function ruleLineShown(index) {
   const box = field("lesson-rules-text");
   if (!box) return;
+  const row = ruleLineRow(box, index);
   const visible = box.clientHeight || 0;
-  const at = RULE_PAD + index * RULE_LINE;
-  if (at < (box.scrollTop || 0) || at + RULE_LINE > (box.scrollTop || 0) + visible) box.scrollTop = Math.max(0, at - visible / 2);
-  ruleLineAcross(box, box.value.split("\n")[index] || "");
-}
-
-function ruleLineAcross(box, text) {
-  const context = document.createElement("canvas").getContext("2d");
-  if (!context) return;
-  context.font = getComputedStyle(box).font;
-  const end = 2 * RULE_PAD + context.measureText(text).width;
-  box.scrollLeft = Math.max(0, end - (box.clientWidth || 0));
+  const scrolled = box.scrollTop || 0;
+  const at = RULE_PAD + row.top;
+  if (at < scrolled || at + row.height > scrolled + visible) box.scrollTop = Math.max(0, row.height >= visible ? at : at - (visible - row.height) / 2);
 }
 
 const LOCATORS = ["panel", "map", "site", "dev", "kibana", "term"];
@@ -1665,16 +1693,11 @@ async function applyRules() {
 
 function rulesEditor() {
   shownSection("lesson-rules");
-  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="off"
-    class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre overflow-auto"
+  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="soft"
+    class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre-wrap overflow-y-auto"
     style="padding: ${RULE_PAD}px; font-size: 11.5px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
   field("lesson-rules-text").addEventListener("input", () => {
     field("lesson-rules-status").textContent = "";
-    const box = field("lesson-rules-text");
-    const caret = box.selectionStart;
-    const next = box.value[caret];
-    if (box.selectionEnd !== caret || (next !== undefined && next !== "\n")) return;
-    ruleLineAcross(box, box.value.slice(0, caret).split("\n").pop());
   });
   field("lesson-rules-validate").addEventListener("click", validateRules);
   field("lesson-rules-apply").addEventListener("click", applyRules);

@@ -1263,6 +1263,36 @@ def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then
     assert result["applying"]["text"] == "Press Apply" and result["applying"]["ring"]["top"] == 680 - 6
     assert result["over"] is False, "the callout sits beside the Apply button, never over the rules being edited"
 
+def test_the_rules_ring_and_scroll_follow_the_rows_a_long_line_wraps_into(client):
+    seen = open_page(client, "/blue/1/", setup=RULES + served(), scenario=f"""
+      const plain = document.createElement;
+      document.createElement = (tag) => {{
+        const made = plain(tag);
+        if (tag === 'div') Object.defineProperty(made, 'offsetHeight', {{get: () => 16 * Math.ceil(Math.max(1, made.textContent.length) / Math.floor(parseFloat(made.parentNode.style.width) / 8))}});
+        return made;
+      }};
+      {to("write")}
+      await frames(4);
+      const area = browser.element('lesson-rules-text');
+      Object.assign(area, {{clientHeight: 60, clientWidth: 256, value: ['x'.repeat(80), 'y'.repeat(20), 'z'.repeat(70)].join('\\n')}});
+      placeAt('lesson-rules-text', box(1060, 500, 260, 200));
+      return {{
+        first: ruleLineRect(0), second: ruleLineRect(1), third: ruleLineRect(2),
+        past: ruleLineRect(3),
+        scrolled: (ruleLineShown(2), area.scrollTop),
+        kept: (area.scrollTop = 0, ruleLineShown(0), area.scrollTop),
+        wide: (area.scrollTop = 0, area.clientWidth = 700, ruleLineRect(2)),
+      }};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert [result[name]["top"] for name in ("first", "second", "third", "past")] == [509, 557, 573, 621]
+    assert [result[name]["height"] for name in ("first", "second", "third", "past")] == [48, 16, 48, 16]
+    assert result["scrolled"] == 66, "the three-row line is centred in the 60px window by its own height, not by one row"
+    assert result["kept"] == 0
+    assert result["wide"]["top"] == 509 + 16 + 16 and result["wide"]["height"] == 16, "wide enough, the same lines take one row each"
+
 def lesson_steps(lesson_id):
     return {one["id"]: one for one in next(one for one in wargames.foundations("board") if one["id"] == lesson_id)["steps"]}
 

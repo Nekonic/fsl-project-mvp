@@ -1,7 +1,7 @@
 <style>
-  #lesson-rules-text { flex: 1 1 auto; min-height: 12rem; resize: none; overflow-x: scroll }
-  #lesson-rules-text::-webkit-scrollbar { height: 12px; width: 12px }
-  #lesson-rules-text::-webkit-scrollbar-track { background: var(--subdued); border-top: 1px solid var(--border) }
+  #lesson-rules-text { flex: 1 1 auto; min-height: 12rem; resize: none; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: break-word }
+  #lesson-rules-text::-webkit-scrollbar { width: 12px }
+  #lesson-rules-text::-webkit-scrollbar-track { background: var(--subdued); border-left: 1px solid var(--border) }
   #lesson-rules-text::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 2px solid var(--subdued) }
 </style>
 <div id="rules-pane" class="absolute inset-0 flex-col bg-panel overflow-auto" style="display: none">
