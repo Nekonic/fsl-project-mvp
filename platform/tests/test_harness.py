@@ -28,7 +28,7 @@ def test_build_request_omits_marker_for_window_cases():
 
     prepared = build_request(case, BASE)
 
-    assert "X-FSL-Case" not in prepared.headers
+    assert "X-Request-ID" not in prepared.headers
 
 def test_default_cases_file_has_both_labels_known_correlations_and_unique_names():
     cases = load_cases(DEFAULT_CASES)
@@ -127,7 +127,7 @@ def test_fire_launches_an_http_case_as_curl_on_the_attacker_box():
     assert image == TOOL_IMAGE, "it runs the same image tool cases use (the Kali box)"
     assert argv[0] == "curl"
     assert "--path-as-is" in argv
-    assert "X-FSL-Case: abc" in argv, "the marker the proxy labels the request by must be sent"
+    assert "X-Request-ID: abc" in argv, "the marker the proxy labels the request by must be sent"
     assert argv[-1] == build_request(case, "http://10.9.0.5").url, (
         "curl is sent exactly the prepared path to the in-range tool target, unaltered"
     )

@@ -126,7 +126,7 @@ services:
     environment:
       DJANGO_DEBUG: "1"
       ELASTIC_URL: "http://elasticsearch:9200"
-      ELASTIC_INDEX: "fsl-logs-*"
+      ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
       TARGET_URL: "http://board.com"

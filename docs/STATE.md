@@ -607,7 +607,7 @@ Remaining:
   verification.
 - A tool killed on the attacker when its timeout passes (touches the attacker
   seam).
-- `fsl-logs-*` expire after 30 days, with a disk warning (an ES ILM policy;
+- `logs-*` expire after 30 days, with a disk warning (an ES ILM policy;
   verify against the live stack).
 - The ratchet counts statements with the baseline from `HEAD`, and
   `scoreboard.py` moves into core. This redefines the gate and raises
@@ -712,7 +712,7 @@ scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
 `wargames/board/scenario.yaml`, D11 of 2026-10-13);
 (4) declaration roles name compose services, resolved per project; (5)
 `loot`/`effect` read the session's own target address; (6) a per-session index
-`fsl-logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
+`logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
 Suricata per session); (8) acceptance: two concurrent sessions, each scoring
 only its own target and alerts. Status 2026-10-10: steps 1-8 built and
 live-verified (`bin/verify` all green on the acceptance VM 192.168.0.220,

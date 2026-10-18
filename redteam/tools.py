@@ -5,7 +5,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-MARKER_HEADER = "X-FSL-Case"
+MARKER_HEADER = "X-Request-ID"
 STATUS = re.compile(r"http_code=(\d{3})")
 FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
 TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")

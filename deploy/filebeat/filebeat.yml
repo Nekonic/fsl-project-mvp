@@ -12,7 +12,8 @@ filebeat.inputs:
           add_error_key: true
     fields_under_root: true
     fields:
-      fsl_source: suricata
+      event:
+        module: suricata
 
   - type: filestream
     id: modsecurity-audit
@@ -27,7 +28,8 @@ filebeat.inputs:
           add_error_key: true
     fields_under_root: true
     fields:
-      fsl_source: modsecurity
+      event:
+        module: modsecurity
 
   - type: udp
     id: range-syslog
@@ -37,10 +39,6 @@ filebeat.inputs:
     processors:
       - syslog:
           field: message
-      - add_fields:
-          target: ""
-          fields:
-            fsl_source: syslog
       - script:
           lang: javascript
           source: >
@@ -63,7 +61,8 @@ filebeat.inputs:
           - add_fields:
               target: ""
               fields:
-                fsl_source: suricata
+                event:
+                  module: suricata
       - if:
           and:
             - equals:
@@ -79,21 +78,26 @@ filebeat.inputs:
           - add_fields:
               target: ""
               fields:
-                fsl_source: modsecurity
+                event:
+                  module: modsecurity
+      - drop_event:
+          when:
+            not:
+              has_fields: ["event.module"]
 
 queue.mem.flush.timeout: 1s
 
-setup.template.name: fsl-logs
-setup.template.pattern: fsl-logs*
+setup.template.name: logs-sensors
+setup.template.pattern: logs-*
 setup.template.settings:
   index.default_pipeline: fsl-geoip
 setup.ilm.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "fsl-logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
+  index: "logs-${FSL_SESSION:shared}-%{+yyyy.MM.dd}"
   indices:
-    - index: "fsl-logs-slot%{[fsl_slot]}-%{+yyyy.MM.dd}"
+    - index: "logs-%{[fsl_slot]}-%{+yyyy.MM.dd}"
       when.has_fields: ["fsl_slot"]
   pipeline: fsl-geoip
 

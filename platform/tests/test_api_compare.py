@@ -24,14 +24,14 @@ def scored_session(client):
     alert = (
         "es1",
         {
-            "fsl_source": "suricata",
+            "event": {"module": "suricata"},
             "event_type": "alert",
             "timestamp": "2026-09-20T12:00:30Z",
             "src_ip": "172.20.0.7",
             "alert": {"signature": "SQLi", "severity": 1},
             "http": {
                 "request_headers": [
-                    {"name": "X-FSL-Case", "value": WINDOW_CASE["case_id"]}
+                    {"name": "X-Request-ID", "value": WINDOW_CASE["case_id"]}
                 ]
             },
         },
@@ -53,7 +53,7 @@ def test_forcing_marker_on_traffic_that_carries_none_misses_it(client):
     unmarked = (
         "es2",
         {
-            "fsl_source": "suricata",
+            "event": {"module": "suricata"},
             "event_type": "alert",
             "timestamp": "2026-09-20T12:00:30Z",
             "src_ip": "172.20.0.7",

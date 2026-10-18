@@ -8,7 +8,7 @@ pytestmark = pytest.mark.django_db
 
 def waf_record(uri="/rest/user/login", method="POST", host_ip="5.188.10.4", port=80):
     return {
-        "fsl_source": "modsecurity",
+        "event": {"module": "modsecurity"},
         "transaction": {
             "time_stamp": timezone.now().strftime("%a %b %d %H:%M:%S %Y"),
             "client_ip": "5.188.10.1",

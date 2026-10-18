@@ -175,10 +175,10 @@ def test_the_fix_is_named_by_how_narrow_it_is_against_the_session_s_defense(tuni
     assert views._fix(board(defense="minimal"), tuning) == fix
 
 def http_event(marker, url, at, status=200, src_ip=KALI, dest_ip=WAF):
-    return {"fsl_source": "suricata", "event_type": "http", "timestamp": at.isoformat(), "@timestamp": at.isoformat(),
+    return {"event": {"module": "suricata"}, "event_type": "http", "timestamp": at.isoformat(), "@timestamp": at.isoformat(),
             "src_ip": src_ip, "dest_ip": dest_ip,
             "http": {"url": url, "status": status, "http_user_agent": "sqlmap/1.8.4#stable (https://sqlmap.org)",
-                     "request_headers": [{"name": "X-FSL-Case", "value": marker}] if marker else []}}
+                     "request_headers": [{"name": "X-Request-ID", "value": marker}] if marker else []}}
 
 def indexed(*events, asked=None):
     def fetched(index, start, end, newest_first):
@@ -296,8 +296,8 @@ def test_waf_records_without_a_rule_are_no_alert_so_a_run_that_drew_only_server_
     assert waf["passed"] is True
 
 def waf_record(at, status, marker=None):
-    headers = {"X-FSL-Case": marker} if marker else {}
-    return {"fsl_source": "modsecurity", "@timestamp": at.isoformat(),
+    headers = {"X-Request-ID": marker} if marker else {}
+    return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
             "transaction": {"request": {"headers": headers}, "response": {"http_code": status}}}
 
 def test_the_errors_a_run_drew_are_the_waf_log_records_with_status_500_in_the_window_kibana_opens(client):

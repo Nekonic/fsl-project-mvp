@@ -86,11 +86,11 @@ WARGAME_CASES_DIR = os.environ.get(
 )
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
-ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "fsl-logs-*")
+ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
-    {"range.docker.Docker": "fsl-logs-{session}-*",
-     "range.openstack.connect": "fsl-logs-slot{slot}-*"}.get(FSL_SUBSTRATE, ""),
+    {"range.docker.Docker": "logs-{session}-*",
+     "range.openstack.connect": "logs-{slot}-*"}.get(FSL_SUBSTRATE, ""),
 )
 
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))

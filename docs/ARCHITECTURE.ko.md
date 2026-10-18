@@ -490,7 +490,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소: OpenStack에서는 Kali가 가진 주소로, `fsl-users` 계정으로 보내 에지를 지남. docker에서는 고객 네트워크에 있는 플랫폼 자신의 주소 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
 | 고객 | `deploy/traffic/users.py`, `fsl-<id>-users` 안에서(docker) 또는 Kali VM의 `fsl-users`로(OpenStack) | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
-프록시는 `mitmdump` 스크립트입니다. `X-FSL-Case`가 없는 요청에 `/var/lib/session/active`의
+프록시는 `mitmdump` 스크립트입니다. `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의
 값으로 그 헤더를 설정하고, `/var/lib/session/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
 주소로 전달합니다. 두 파일은 플랫폼이 `docker exec`로 씁니다. TLS 가로채기를
 하지 않으므로 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다.
@@ -611,13 +611,13 @@ Chrome 자체의 문구(`front_end/core/i18n/locales/ko.json`)이고 영어는 C
 표기를 따릅니다. 패널 어디에도 "WAF"라는 말은 없습니다.
 
 브라우징 요청에는 세션 자신의 비밀값(`Session.browse_marker`, `browse-`와 무작위
-16진수 32자리, 세션을 만들 때 생성)이 마커로 붙고(브라우저가 보낸 `X-FSL-Case`는
+16진수 32자리, 세션을 만들 때 생성)이 마커로 붙고(브라우저가 보낸 `X-Request-ID`는
 기록기가 덮어씁니다), 요청은 고객 주소에서 나갑니다(위). 이 요청의 경보도
 다른 경보와 똑같이 수집되고 목록에 나오므로 학습자는 Kibana와 `/detections/`에서
 찾을 수 있습니다. 그러나 `/score/`는 재실행(`views.REPLAY_MARKS`)을 빼는 것과 같은
 방식으로 그 세션의 비밀값이 붙은 탐지 기록을 뺍니다. 브라우징은 케이스가 아니므로
 정탐도 오탐도 아니고, 출처를 알 수 없는 경보도 아닙니다. 손으로 보낸
-`X-FSL-Case: browse`는 알 수 없는 마커일 뿐이어서 점수에 들어가며,
+`X-Request-ID: browse`는 알 수 없는 마커일 뿐이어서 점수에 들어가며,
 `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부합니다. API는 비밀값을
 보여 주지 않습니다. `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크
 패널에는 그 자리에 `browse`가 나옵니다. Kibana에는 비밀값이 보이는데, Kibana는
@@ -655,12 +655,12 @@ docker에서 세션 WAF는 CRS를 `SecRuleEngine On`, anomaly 임계치 5로 실
 
 ```
 WAF (ModSecurity) -> audit.log --+
-Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, fsl-logs-<session>-<day>
-                                     (fsl_source)   pipeline fsl-geoip
+Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<session>-<day>
+                                     (event.module) pipeline fsl-geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests and by the session page's close)
                                                           |
-             parse per fsl_source, copy the marker onto alerts, store
+             parse per event.module, copy the marker onto alerts, store
              as Detection rows in SQLite
 ```
 
@@ -670,7 +670,7 @@ curl 명령을 출력합니다. 브라우저로 진행한 라운드는 종료 �
 
 ModSecurity의 audit log에는 요청 헤더가 있으므로 그 경보에는 마커가 바로 붙어
 있습니다. Suricata의 alert 이벤트에는 요청 헤더가 없고 `http` 이벤트에만 있습니다
-(`dump-all-headers: request` 설정 시. `custom: [X-FSL-Case]`는 효과가 없습니다).
+(`dump-all-headers: request` 설정 시. `custom: [X-Request-ID]`는 효과가 없습니다).
 수집(ingest)은 `(flow_id, tx_id)`가 같은 `http` 이벤트의 마커를 alert로 복사합니다.
 `flow_id`만으로 조인했을 때는 keep-alive 연결의 모든 경보가 그 연결의 첫 케이스로
 귀속되었습니다.
@@ -678,10 +678,14 @@ ModSecurity의 audit log에는 요청 헤더가 있으므로 그 경보에는 �
 ingest 호출마다 다음을 수행합니다.
 
 - 먼저 만료된 룰 예외 처리를 원래대로 되돌립니다.
-- docker에서는 `fsl-logs-<session>-*`를 읽고(`ELASTIC_SESSION_INDEX`. 세션마다 자기
-  Filebeat가 자기 인덱스에 씁니다), OpenStack에서는 `fsl-logs-slot<N>-*`를 읽습니다.
+- docker에서는 `logs-<session>-*`를 읽고(`ELASTIC_SESSION_INDEX`. 세션마다 자기
+  Filebeat가 자기 인덱스에 씁니다), OpenStack에서는 `logs-<N>-*`를 읽습니다.
   OpenStack에서는 공유 수집기가 syslog 줄마다 송신자 hostname이 가리키는 슬롯(도메인
-  앞의 `-N`, 없으면 슬롯 1)을 태그로 붙여 그 슬롯의 인덱스에 씁니다.
+  앞의 `-N`, 없으면 슬롯 1)을 태그로 붙여 그 슬롯의 인덱스에 쓰고, ingest 파이프라인이
+  문서를 저장하기 전에 그 태그를 지웁니다. Filebeat는 모든 이벤트에 `event.module`
+  (`suricata` 또는 `modsecurity`)을 붙이고 둘 다 아닌 syslog 줄은 버립니다. 그래서
+  인덱스에는 두 엔진의 이벤트만 있고, 학습자가 Kibana에서 열 수 있는 필드, 인덱스, 헤더
+  어디에도 플랫폼 이름이 나오지 않습니다(케이스 마커는 `X-Request-ID` 헤더로 갑니다).
 - 세션 시작 1분 전부터 종료 시각(또는 현재) 1분 후까지의 `@timestamp`를
   Elasticsearch에 요청합니다. `fsl-geoip` 파이프라인은 `@timestamp`를 이벤트 자체의
   시각(Suricata의 `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 설정하므로,
@@ -1148,7 +1152,7 @@ corp-db의 바이너리 로그를 `mysqlbinlog`로 읽고, 커밋된 변경(스�
 
 탐지. 케이스는 케이스마다 선언한 두 전략 중 하나로 경보와 매칭합니다.
 
-- `marker`: 경보에 케이스의 `X-FSL-Case` 값이 들어 있습니다.
+- `marker`: 경보에 케이스의 `X-Request-ID` 값이 들어 있습니다.
 - `window`: 경보의 출발지 주소가 케이스의 출발지 주소와 일치하고, 경보 시각이
   케이스의 시작과 끝 사이(앞뒤로 2초 여유)에 있습니다.
 
@@ -1215,7 +1219,7 @@ board 세션에는 고객을 둘 수 있습니다. 세션 내내 둘러보고, �
 멈춥니다.
 
 `deploy/traffic/users.py`가 생성기입니다. Python 표준 라이브러리만 쓰고, 여러
-스레드로 계획의 속도에 맞춰 요청을 보내며, 요청마다 새 UUID 하나를 `X-FSL-Case`에
+스레드로 계획의 속도에 맞춰 요청을 보내며, 요청마다 새 UUID 하나를 `X-Request-ID`에
 넣습니다(케이스 마커와 같은 형태라 학습자는 이 값으로 고객과 공격을 구분할 수
 없습니다). 요청마다 JSON 한 줄을 `records.jsonl`에 씁니다. 계획 파일이 바뀌면 다시
 읽고, 파일이 삭제되거나 SIGTERM을 받으면 멈춥니다.
@@ -1437,7 +1441,7 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   (백그라운드에서 실행하며, 먼저 `/api/status`를 확인해 응답이 온 뒤에 한 번만
   가져옵니다. Kibana에 연결할 수 없거나 502/503/504로 응답하는 동안은 재시도하고, 그 밖의
   HTTP 오류는 상태와 본문을 한 번 보고합니다. 기동 중인 Kibana는 multipart 가져오기에
-  415로 응답합니다). 가져오는 객체는 `@timestamp` 기준 data view `fsl-logs-*`(runtime
+  415로 응답합니다). 가져오는 객체는 `@timestamp` 기준 data view `logs-*`(runtime
   field로 Suricata/ModSecurity 필드 쌍을 각각 한 열로 합칩니다: `rule`, `rule_id`,
   `source_ip`, `destination`, `url`, `status`), "FSL alerts" 검색, "FSL overview"
   대시보드입니다. `defaultRoute`는 그 검색으로 설정합니다. data view가 있어야 Kibana의
@@ -1448,20 +1452,20 @@ PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단되고(�
   (대시보드, visualize, dev tools, management 등)을 끄고 `defaultRoute`가 일반 Discover라서
   학습자가 default space에 남아 있는 운영자 객체에 바로 닿지 못합니다(Kibana는 보안 없이 돌아가므로
   space 전환 메뉴에는 다른 space가 여전히 보입니다. 막으려면 nginx에서 space와 세션을 대조해야 함). data view는 세션의
-  인덱스 패턴 위에 있으며, 패턴이 아니라 이름 "Session logs"로 보입니다. 공유 runtime
+  인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다(space 이름은 "Session logs"). 공유 runtime
   field에 `log_source`(`suricata` 또는 `modsecurity`), `sensor`(센서의 구성도
   이름: OpenStack은 `firewall`과 `board.com`, docker와 모든 ModSecurity 기록은 `waf`.
-  슬롯 접미사는 뗌), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-FSL-Case`는
-  뺌)를 더합니다. `sourceFilters`는 `_index`, `fsl_*`, `*X-FSL-Case*`, `log.*`,
+  슬롯 접미사는 뗌. 스크립트에 `fsl` 호스트 이름이 나오지 않게 송신자 호스트 이름에서 첫 번째 `-` 앞부분을 떼고 맞춥니다), `request_headers`(요청 헤더마다 `Name: value` 하나, `X-Request-ID`는
+  뺌)를 더합니다. `sourceFilters`는 `_index`, `event.*`, `log.*`,
   `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`,
   `http.request_headers*`를 숨깁니다(KQL로는 여전히 검색됨). 가져오기가 거부되면 로그만
   남기고 세션은 그대로 진행합니다. `GET /api/sessions/<id>/`는 `discover`를 담습니다.
   이는 `/kibana/s/<space>/app/discover`의 그 data view 위의 저장되지 않은 Discover 상태로, 현재 레슨의 시작부터,
   `log_source, sensor, event_type, source_ip, destination, url, status,
-  rule_id, rule` 열과 `log_source: exists` 필터(훈련 환경 호스트 자체의 syslog 줄을
-  숨김)를 씁니다. 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
+  rule_id, rule` 열과 필터는 쓰지 않습니다(훈련 환경 호스트 자체의 syslog 줄은 Filebeat가 인덱스에
+  넣지 않음). 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
   space나 data view가 아직 준비되지 않았거나 `KIBANA_URL`이 없으면 `discover`는 null이며,
-  공유 `fsl-logs` data view로 대신하지 않습니다. ELK 창은 준비 중 문구를 보이고 링크가
+  공유 운영자 data view로 대신하지 않습니다. ELK 창은 준비 중 문구를 보이고 링크가
   생길 때까지 세션을 다시 읽습니다(가져오기는 10초마다 재시도). ELK 창이 이 상태를 엽니다. 이는 저장된 검색에 쿼리를 덮어쓴 형태가
   아닙니다. 그런 형태에는 Kibana가 "Unsaved changes" 배지를 붙입니다. 창이 로드되기 전에
   블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를

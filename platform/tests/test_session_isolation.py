@@ -166,7 +166,7 @@ def test_each_session_ships_its_logs_to_its_own_index():
     filebeat = yaml.safe_load((ROOT / "deploy/filebeat/filebeat.yml").read_text())
     stack = yaml.safe_load((ROOT / "session.yaml").read_text())
 
-    assert filebeat["output.elasticsearch"]["index"].startswith("fsl-logs-${FSL_SESSION:shared}-")
+    assert filebeat["output.elasticsearch"]["index"].startswith("logs-${FSL_SESSION:shared}-")
     assert stack["services"]["filebeat"]["environment"]["FSL_SESSION"] == "${FSL_SESSION:-shared}"
 
 
@@ -194,7 +194,7 @@ def test_ingest_reads_only_the_session_s_own_index(client):
         with override_settings(ELASTIC_SESSION_INDEX=""):
             client.post_json(f"/api/sessions/{session_id}/ingest/")
 
-    assert read == [f"fsl-logs-{session_id}-*", "fsl-logs-*"], (
+    assert read == [f"logs-{session_id}-*", "logs-*"], (
         "a session scored the alerts another session's attacks drew"
     )
 

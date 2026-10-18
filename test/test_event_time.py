@@ -7,7 +7,7 @@ import requests
 from conftest import from_attacker
 
 ELASTIC = "http://localhost:9200"
-INDEX = "fsl-logs-*"
+INDEX = "logs-*"
 TOLERANCE = 0.5
 
 def _iso(value: str) -> datetime:
@@ -21,11 +21,11 @@ def _ctime(value: str) -> datetime:
         tzinfo=timezone.utc
     )
 
-def _since(fsl_source: str, since: datetime) -> list[dict]:
+def _since(module: str, since: datetime) -> list[dict]:
     body = {
         "size": 200,
         "sort": [{"@timestamp": "desc"}],
-        "query": {"term": {"fsl_source": fsl_source}},
+        "query": {"term": {"event.module": module}},
     }
     hits = requests.post(f"{ELASTIC}/{INDEX}/_search", json=body, timeout=30).json()
     fresh = []

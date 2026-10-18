@@ -1,12 +1,18 @@
 {
-  "description": "FSL: select evidence by event time, and attach geo information to the source IP. This is why there is no Logstash.",
+  "description": "Select evidence by event time, drop the routing field, and attach geo information to the source IP. This is why there is no Logstash.",
   "processors": [
+    {
+      "remove": {
+        "field": "fsl_slot",
+        "ignore_missing": true
+      }
+    },
     {
       "date": {
         "field": "timestamp",
         "target_field": "@timestamp",
         "formats": ["yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", "ISO8601"],
-        "if": "ctx.fsl_source == 'suricata' && ctx.timestamp != null"
+        "if": "ctx.event?.module == 'suricata' && ctx.timestamp != null"
       }
     },
     {
@@ -14,7 +20,7 @@
         "field": "transaction.time_stamp",
         "target_field": "@timestamp",
         "formats": ["EEE MMM  d HH:mm:ss yyyy", "EEE MMM d HH:mm:ss yyyy"],
-        "if": "ctx.fsl_source == 'modsecurity' && ctx.transaction?.time_stamp != null"
+        "if": "ctx.event?.module == 'modsecurity' && ctx.transaction?.time_stamp != null"
       }
     },
     {

@@ -701,7 +701,7 @@ def _logged(session, start, end, source):
         documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
     except elastic.ElasticUnavailable:
         return []
-    return [doc for _, doc in documents if doc.get("fsl_source") == source]
+    return [doc for _, doc in documents if (doc.get("event") or {}).get("module") == source]
 
 def _waf_records(session, record):
     start, end = _window_of(record)
@@ -1696,7 +1696,7 @@ def _discover(session, narrowed=None, everything=False, since=None, until=None):
         return None
     taught = bool(session.guidance and not session.course_scenario)
     return kibana.discover_path(kibana.session_view_id(index), start, end,
-                                kibana.query(narrowed, alerts=not (taught or everything)), engines_only=True)
+                                kibana.query(narrowed, alerts=not (taught or everything)))
 
 @require_http_methods(["POST"])
 def close_session(request, session_id):

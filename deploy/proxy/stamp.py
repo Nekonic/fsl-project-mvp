@@ -1,6 +1,6 @@
 from pathlib import Path
 
-MARKER_HEADER = "X-FSL-Case"
+MARKER_HEADER = "X-Request-ID"
 LABEL_FILE = Path("/var/lib/session/active")
 ORIGIN_FILE = Path("/var/lib/session/origin")
 

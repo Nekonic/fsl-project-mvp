@@ -132,7 +132,7 @@ def test_a_label_that_is_not_one_marker_is_refused_before_the_proxy_stamps_it(cl
 
     assert response.status_code == 400, (
         f"case_id={given!r} answered {response.status_code}; the proxy puts the "
-        f"label into the X-FSL-Case header of every request the terminal sends, "
+        f"label into the X-Request-ID header of every request the terminal sends, "
         f"so a line break there writes headers of the caller's choosing"
     )
     assert response.json()["detail"]

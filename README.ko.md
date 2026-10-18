@@ -66,7 +66,7 @@ syslog만 받는 Filebeat인 `collector`. `session.yaml`은 세션 하나의 데
 `session.yaml`을 별도 compose 프로젝트 `fsl-<세션 id>`로 띄우고 모든 서비스가
 healthy가 될 때까지 기다립니다. 그다음 플랫폼이 해당 세션의 대상 시스템에서
 baseline을 읽습니다. 세션은 동시에 여러 개 실행됩니다: 스택마다 자체 `estate`
-네트워크와 자체 Elasticsearch 인덱스(`fsl-logs-<세션 id>-*`)가 있고, 세션을 열 때는
+네트워크와 자체 Elasticsearch 인덱스(`logs-<세션 id>-*`)가 있고, 세션을 열 때는
 닫힌 지 3분이 넘은 세션의 스택만 내립니다. 방금 닫힌 세션의 Filebeat가 채점에
 쓰일 경보를 아직 전송하고 있을 수 있기 때문입니다.
 동시에 열 수 있는 세션은 최대 `FSL_MAX_SESSIONS`개(기본 2)이고, 하나를 더 열면

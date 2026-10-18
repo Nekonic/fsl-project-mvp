@@ -29,11 +29,11 @@ def alert(marker, signature):
     return (
         "es1",
         {
-            "fsl_source": "suricata", "event_type": "alert",
+            "event": {"module": "suricata"}, "event_type": "alert",
             "timestamp": (T0 + timedelta(seconds=1)).isoformat(),
             "src_ip": "172.20.0.5",
             "alert": {"signature": signature, "severity": 1},
-            "http": {"request_headers": [{"name": "X-FSL-Case", "value": marker}]},
+            "http": {"request_headers": [{"name": "X-Request-ID", "value": marker}]},
         },
     )
 

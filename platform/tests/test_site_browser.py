@@ -121,14 +121,14 @@ def test_the_secret_marker_never_leaves_the_api(client):
     secret = session.browse_marker
     row = Detection.objects.create(
         session=session, detection_id="b1", source="modsecurity", signature="920273", timestamp=timezone.now(),
-        marker=secret, raw={"transaction": {"request": {"headers": {"X-FSL-Case": secret}}}})
+        marker=secret, raw={"transaction": {"request": {"headers": {"X-Request-ID": secret}}}})
 
     listed = client.get(f"/api/sessions/{session.pk}/detections/").content.decode()
     detail = client.get(f"/api/detections/{row.pk}/").json()
 
     assert secret not in listed
     assert detail["marker"] == site.MARKER
-    assert detail["raw"]["transaction"]["request"]["headers"]["X-FSL-Case"] == site.MARKER
+    assert detail["raw"]["transaction"]["request"]["headers"]["X-Request-ID"] == site.MARKER
 
 @pytest.mark.parametrize("label", ["browse", "browse-1234", "browsewhatever"])
 def test_the_attacker_cannot_label_its_traffic_as_browsing(client, label):
@@ -211,7 +211,7 @@ def test_the_proxy_sends_the_page_with_the_site_s_host_and_the_marker_and_keeps_
 
     egress, _, method, target, headers, _ = sent.call_args.args
     assert (egress, method, target) == (ON_CUSTOMERS, "GET", "/search/?q=O%27Brien")
-    assert headers["Host"] == "board.com" and headers["X-FSL-Case"] == session.browse_marker
+    assert headers["Host"] == "board.com" and headers["X-Request-ID"] == session.browse_marker
     assert "Cookie" not in headers, "the platform's cookies never reach the target"
     assert response.status_code == 403 and response.passed == b"<html>403 Forbidden</html>"
     assert "Set-Cookie" not in response and response["Server"] == "nginx"
@@ -273,7 +273,7 @@ def test_one_request_s_detail_shows_what_the_browser_sent_without_the_marker_and
     )
     shown = dict(detail["request_headers"])
     assert shown["Host"] == "board.com" and shown["Referer"] == "http://board.com/posts/1/"
-    assert "X-FSL-Case" not in shown, "the marker stays on the wire for correlation and out of the panel"
+    assert "X-Request-ID" not in shown, "the marker stays on the wire for correlation and out of the panel"
     assert detail["response_headers"] == [["Content-Type", "text/html"], ["Referrer-Policy", "same-origin"]]
     assert (detail["remote_address"], detail["egress"]) == ("73.0.0.9:80", "73.0.0.4"), (
         "Remote address is what the browser connected to; the record keeps the customers address it left from"
@@ -398,12 +398,12 @@ def test_the_pane_sends_the_headers_chrome_sends_in_chrome_s_order(client):
                        HTTP_SEC_FETCH_DEST="style", HTTP_USER_AGENT="Chrome")
 
     assert list(sent_headers(page)) == ["Host", "Connection", "Upgrade-Insecure-Requests", "User-Agent", "Accept",
-                                        "Accept-Encoding", "Accept-Language", "X-FSL-Case"]
+                                        "Accept-Encoding", "Accept-Language", "X-Request-ID"]
     assert sent_headers(page)["Accept-Encoding"] == "gzip, deflate" and sent_headers(page)["Connection"] == "keep-alive"
     assert sent_headers(page)["Upgrade-Insecure-Requests"] == "1"
     assert "Upgrade-Insecure-Requests" not in sent_headers(asset), "only a document asks to upgrade"
     shown = dict(detail_of(client, session, 0)["request_headers"])
-    assert "X-FSL-Case" not in shown and shown["Accept-Encoding"] == "gzip, deflate"
+    assert "X-Request-ID" not in shown and shown["Accept-Encoding"] == "gzip, deflate"
 
 def test_a_post_shows_the_content_length_chrome_shows(client):
     session = Session.objects.create(scenario="board", baseline=[])
@@ -503,7 +503,7 @@ def test_the_first_page_draws_a_favicon_request_the_way_chrome_does_and_only_onc
 
     favicon_headers = first.call_args_list[1].args[4]
     assert first.call_args_list[1].args[3] == "/favicon.ico" and favicon_headers["User-Agent"] == "Chrome"
-    assert favicon_headers["X-FSL-Case"] == session.browse_marker, "the board's logs tie it to browsing, not an attack"
+    assert favicon_headers["X-Request-ID"] == session.browse_marker, "the board's logs tie it to browsing, not an attack"
     assert second.call_count == 1
     assert [(r["url"], r["status"], r["type"], r["category"]) for r in rows] == [
         ("http://board.com/", 200, "document", "doc"),

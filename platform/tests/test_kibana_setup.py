@@ -57,9 +57,9 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
 
     (view,) = by_type["index-pattern"]
     assert view["id"] == kibana.DATA_VIEW
-    assert view["attributes"]["title"] == "fsl-logs-*"
+    assert view["attributes"]["title"] == "logs-*"
     assert view["attributes"]["timeFieldName"] == "@timestamp", (
-        "the fsl-geoip pipeline writes the event's own time to @timestamp"
+        "the geoip pipeline writes the event's own time to @timestamp"
     )
     ids = {item["id"] for item in found}
     for item in found:
@@ -94,25 +94,25 @@ def unquoted(path):
 def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     start = datetime(2026, 10, 10, 5, 0, tzinfo=timezone.utc)
     end = start + timedelta(minutes=30)
-    view = kibana.session_view_id("fsl-logs-slot2-*")
+    view = kibana.session_view_id("logs-2-*")
 
     closed = unquoted(kibana.discover_path(view, start, end, kibana.query("")))
     running = unquoted(kibana.discover_path(view, start, None, kibana.query("")))
 
-    assert closed.startswith("/kibana/s/session-fsl-logs-slot2/app/discover#/?"), (
+    assert closed.startswith("/kibana/s/session-logs-2/app/discover#/?"), (
         "a link that overrides the saved search's query marks it 'Unsaved changes'; "
         "the pane opens an unsaved Discover state on the session's view in the session's space instead"
     )
-    assert "dataSource:(dataViewId:'session-fsl-logs-slot2',type:dataView)" in closed
+    assert "dataSource:(dataViewId:'session-logs-2',type:dataView)" in closed
     assert "from:'2026-10-10T05:00:00+00:00',to:'2026-10-10T05:30:00+00:00'" in closed
     assert "to:now" in running
-    assert "_index" not in closed and "fsl-logs'" not in closed, "no link reaches the shared view or another index"
+    assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
 
 
 SENSORS = {"fsl-edge": "firewall", "fsl-wargame-host": "board.com"}
 
 
-def a_session_view(pattern="fsl-logs-slot2-*", sensors=SENSORS):
+def a_session_view(pattern="logs-2-*", sensors=SENSORS):
     return kibana.session_view(pattern, sensors, "waf", kibana.shared_runtime(OBJECTS.read_bytes()))
 
 
@@ -121,10 +121,13 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
     attributes = view["attributes"]
     hidden = {entry["value"] for entry in json.loads(attributes["sourceFilters"])}
 
-    assert attributes["title"] == "fsl-logs-slot2-*" and attributes["name"] == "Session logs"
-    assert view["id"] == "session-fsl-logs-slot2", "one view per index pattern, so opening again overwrites it"
-    assert {"_index", "fsl_*", "*X-FSL-Case*", "log.*", "message", "http.request_headers*"} <= hidden, (
-        "the slot, the step marker and the raw syslog line (which carries the marker) stay out of the table and flyout"
+    assert attributes["title"] == "logs-2-*" and attributes["name"] == "logs-*"
+    assert view["id"] == "session-logs-2", "one view per index pattern, so opening again overwrites it"
+    assert {"_index", "event.*", "log.*", "message", "http.request_headers*"} <= hidden, (
+        "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
+    )
+    assert not any("fsl" in entry.lower() or "slot" in entry.lower() for entry in hidden), (
+        "Inspect prints the source filters, so none names the platform"
     )
 
 
@@ -134,11 +137,11 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
 
     assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "log_source", "sensor",
             "request_headers"} <= set(runtime)
-    assert '"fsl-edge": "firewall"' in observer and '"fsl-wargame-host": "board.com"' in observer, (
-        "sensor is the map name of the host whose sensor wrote the event"
+    assert '"edge": "firewall"' in observer and '"wargame-host": "board.com"' in observer, (
+        "sensor is the map name of the host whose sensor wrote the event, found by the host name without its first part"
     )
     assert "emit(\"waf\")" in observer, "a ModSecurity record is written by the WAF"
-    assert '"x-fsl-case"' in runtime["request_headers"]["script"]["source"], (
+    assert '"x-request-id"' in runtime["request_headers"]["script"]["source"], (
         "the request headers are shown without the step marker"
     )
 
@@ -155,18 +158,18 @@ def test_opening_the_session_view_makes_its_space_and_imports_the_view_and_the_r
     fake = FakeKibana()
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        made = kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", fake)
+        made = kibana.ensure_session_view("logs-2-*", SENSORS, "waf", fake)
 
     space, imported, route = fake.sent
     base = "http://kibana:5601/kibana"
-    assert made == "session-fsl-logs-slot2"
+    assert made == "session-logs-2"
     assert space.full_url == f"{base}/api/spaces/space" and space.get_method() == "POST"
     body = json.loads(space.data)
     assert body["id"] == made and "discover" not in body["disabledFeatures"]
     assert {"dashboard", "visualize", "dev_tools", "advancedSettings", "indexPatterns",
             "savedObjectsManagement"} <= set(body["disabledFeatures"])
     assert imported.full_url == f"{base}/s/{made}/api/saved_objects/_import?overwrite=true"
-    assert b'"name": "Session logs"' in imported.data
+    assert body["name"] == "Session logs" and b'"name": "logs-*"' in imported.data
     assert route.full_url == f"{base}/s/{made}/api/kibana/settings"
     assert json.loads(route.data)["changes"]["defaultRoute"] == "/app/discover", "the logo opens plain Discover"
 
@@ -184,52 +187,52 @@ def test_a_space_that_exists_is_updated_not_recreated():
         return {"success": True}
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", send)
+        kibana.ensure_session_view("logs-2-*", SENSORS, "waf", send)
 
-    assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/session-fsl-logs-slot2")
+    assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/session-logs-2")
     assert len(sent) == 4, "the view and the route are still written"
 
 
 def test_a_refused_session_view_does_not_stop_the_session():
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        assert kibana.ensure_session_view("fsl-logs-slot2-*", SENSORS, "waf", FakeKibana(success=False)) is None
+        assert kibana.ensure_session_view("logs-2-*", SENSORS, "waf", FakeKibana(success=False)) is None
 
 
 @pytest.mark.django_db
 def test_the_session_api_hands_the_console_its_discover_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "fsl-logs-{session}-*"
+    settings.ELASTIC_SESSION_INDEX = "logs-{session}-*"
     session = Session.objects.create(scenario="board", baseline=[])
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {f"fsl-logs-{session.pk}-*": (True, 0.0)}):
+            patch.dict(kibana.VIEWS, {f"logs-{session.pk}-*": (True, 0.0)}):
         reply = client.get(f"/api/sessions/{session.pk}/").json()
 
-    assert reply["discover"].startswith(f"/kibana/s/session-fsl-logs-{session.pk}/app/discover")
+    assert reply["discover"].startswith(f"/kibana/s/session-logs-{session.pk}/app/discover")
     assert "to:now" in unquoted(reply["discover"])
 
 
 @pytest.mark.django_db
 def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an_empty_query(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
     began = datetime(2026, 10, 18, 9, 0, tzinfo=timezone.utc)
     session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f2", lessons=[
         {"id": "f1", "started_at": (began - timedelta(minutes=10)).isoformat()},
         {"id": "f2", "started_at": began.isoformat()}])
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {"fsl-logs-slot1-*": (True, 0.0)}):
+            patch.dict(kibana.VIEWS, {"logs-1-*": (True, 0.0)}):
         link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
 
-    assert "dataViewId:'session-fsl-logs-slot1'" in link
+    assert "dataViewId:'session-logs-1'" in link
     assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
     assert "from:'2026-10-18T08:59:55+00:00'" in link
     assert "columns:!(event_type,source_ip,destination,url,status,rule_id,rule)" in link
-    assert "exists:(field:log_source)" in link, "the range VMs' own system log lines are not the session's events"
+    assert "filters:!()" in link, "the learner sets every filter; the index holds only the engines' events"
 
 
 @pytest.mark.django_db
 def test_a_session_view_kibana_refused_gives_no_link_rather_than_the_shared_operator_view(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
     session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f1")
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.dict(kibana.VIEWS, {}, clear=True), \
@@ -241,7 +244,7 @@ def test_a_session_view_kibana_refused_gives_no_link_rather_than_the_shared_oper
 
 @pytest.mark.django_db
 def test_a_session_without_kibana_configured_gets_no_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "fsl-logs-slot{slot}-*"
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
     session = Session.objects.create(scenario="board", baseline=[])
 
     with patch.object(kibana, "URL", ""):
@@ -308,3 +311,13 @@ def test_nothing_that_waits_on_another_service_runs_before_the_platform_serves()
     )
     threads = int(text.split("--threads=")[1].split()[0])
     assert threads >= 16, "lesson checks, the Network panel and a long verify must not take every thread"
+
+
+def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
+    view = a_session_view()
+    visible = json.dumps(view["attributes"]).lower() + kibana.SESSION_VIEW_NAME.lower()
+
+    assert "fsl" not in visible and "slot" not in visible, (
+        "the JSON tab, Inspect and the data view page print the index, the field names, the source filters and the scripts"
+    )
+    assert kibana.session_view_id("logs-2-*") == "session-logs-2"

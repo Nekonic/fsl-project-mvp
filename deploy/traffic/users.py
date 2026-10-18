@@ -12,7 +12,7 @@ import zlib
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlsplit
 
-MARKER = "X-FSL-Case"
+MARKER = "X-Request-ID"
 TOKEN = re.compile(rb'name="csrfmiddlewaretoken" value="([^"]+)"')
 CSRF_REFUSED = b"CSRF verification failed"
 DJANGO_REFUSED = b"<span>(403)</span></h1>"

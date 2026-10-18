@@ -11,10 +11,10 @@ OBJECTS = f"{os.environ.get('FSL_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
 BASE_PATH = "/kibana"
 DATA_VIEW = "fsl-logs"
 ALERT_SEARCH = "fsl-alerts"
-ALERTS_QUERY = 'event_type : "alert" or fsl_source : "modsecurity"'
+ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity"'
 ALERT_COLUMNS = (
-    "fsl_source", "rule", "rule_id", "source_ip", "src_geo.country_name",
-    "destination", "url", "status", "transaction.request.headers.X-FSL-Case",
+    "event.module", "rule", "rule_id", "source_ip", "src_geo.country_name",
+    "destination", "url", "status", "transaction.request.headers.X-Request-ID",
 )
 SETTINGS = {
     "defaultRoute": f"/app/discover#/view/{ALERT_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
@@ -27,14 +27,15 @@ SPACE_FEATURES_OFF = (
     "guidedOnboardingFeature", "rulesSettings", "maintenanceWindow", "stackAlerts", "fleetv2", "fleet", "monitoring",
 )
 URL = os.environ.get("KIBANA_URL", "")
-SESSION_VIEW_NAME = "Session logs"
+SESSION_VIEW_NAME = "logs-*"
+SPACE_NAME = "Session logs"
 SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
 COLUMN_WIDTHS = {
     "@timestamp": 170, "event_type": 110, "source_ip": 130, "destination": 130, "status": 90, "rule_id": 110,
     "log_source": 110, "sensor": 110,
 }
 HIDDEN_FIELDS = (
-    "_index", "fsl_*", "*X-FSL-Case*", "*x-fsl-case*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
+    "_index", "event.*", "log.*", "message", "agent.*", "ecs.*", "host", "host.*",
     "input.*", "error.*", "http.request_headers*", "transaction.*", "flow_id", "tx_id", "pcap_cnt", "in_iface",
     "pkt_src", "community_id", "metadata.*",
 )
@@ -44,8 +45,7 @@ REQUEST_HEADERS_SHOWN = (
     "Content-Length", "Origin", "X-Forwarded-For", "X-Forwarded-Proto", "X-Real-IP",
 )
 NO_RULE = "-"
-MODULES = ("suricata", "modsecurity")
-MARKER_HEADER = "x-fsl-case"
+MARKER_HEADER = "x-request-id"
 ATTEMPTS = 60
 NOT_READY = (502, 503, 504)
 PAUSE = 5
@@ -85,7 +85,7 @@ def settings_request(base, changes=None):
 
 def space_request(base, space, create):
     path = "/api/spaces/space" if create else f"/api/spaces/space/{space}"
-    body = {"id": space, "name": SESSION_VIEW_NAME, "disabledFeatures": list(SPACE_FEATURES_OFF)}
+    body = {"id": space, "name": SPACE_NAME, "disabledFeatures": list(SPACE_FEATURES_OFF)}
     return urllib.request.Request(
         f"{base.rstrip('/')}{path}", data=json.dumps(body).encode(), method="POST" if create else "PUT",
         headers={"kbn-xsrf": "fsl", "Content-Type": "application/json"},
@@ -135,20 +135,13 @@ def query(narrowed="", alerts=True):
     ) if part)
 
 
-def recorded_by_an_engine(view):
-    return (
-        f"(meta:(alias:!n,disabled:!f,index:{rison(view)},key:log_source,negate:!f,type:exists,value:exists),"
-        "query:(exists:(field:log_source)))"
-    )
-
-
-def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS, engines_only=False):
+def discover_path(view, start, end, kql="", columns=SESSION_COLUMNS):
     until = rison(end.isoformat()) if end else "now"
     global_state = f"(time:(from:{rison(start.isoformat())},to:{until}))"
     app_state = (
         f"(columns:!({','.join(columns)}),"
         f"dataSource:(dataViewId:{rison(view)},type:dataView),"
-        f"filters:!({recorded_by_an_engine(view) if engines_only else ''}),"
+        "filters:!(),"
         f"query:(language:kuery,query:{rison(kql)}),"
         "sort:!(!('@timestamp',desc)))"
     )
@@ -172,24 +165,28 @@ def _literal(text):
     return json.dumps(text)
 
 
+def _after_first_dash(host):
+    return host.split("-", 1)[-1]
+
+
 def log_source_script():
-    allowed = " || ".join(f"module == {_literal(module)}" for module in MODULES)
-    return f"String module = {_value('fsl_source')}; if ({allowed}) {{ emit(module); }}"
+    return f"String module = {_value('event.module')}; if (module != '') {{ emit(module); }}"
 
 
 def sensor_script(sensors, waf):
-    shown = ", ".join(f"{_literal(host)}: {_literal(name)}" for host, name in sorted(sensors.items())) or ":"
+    shown = ", ".join(f"{_literal(_after_first_dash(host))}: {_literal(name)}" for host, name in sorted(sensors.items())) or ":"
     alone = sorted(set(sensors.values()))
     fallback = _literal(alone[0] if len(alone) == 1 else "")
     return (
-        f"String module = {_value('fsl_source')}; "
+        f"String module = {_value('event.module')}; "
         f"if (module == 'modsecurity') {{ emit({_literal(waf)}); }} "
         f"else if (module == 'suricata') {{ "
         f"String host = {_value('log.syslog.hostname')}; "
+        "int first = host.indexOf('-'); if (first >= 0) { host = host.substring(first + 1); } "
         "int dot = host.indexOf('.'); if (dot >= 0) { host = host.substring(0, dot); } "
-        "int dash = host.lastIndexOf('-'); boolean slotted = dash > 0 && dash < host.length() - 1; "
-        "for (int i = dash + 1; slotted && i < host.length(); ++i) { slotted = Character.isDigit(host.charAt(i)); } "
-        "if (slotted) { host = host.substring(0, dash); } "
+        "int dash = host.lastIndexOf('-'); boolean numbered = dash > 0 && dash < host.length() - 1; "
+        "for (int i = dash + 1; numbered && i < host.length(); ++i) { numbered = Character.isDigit(host.charAt(i)); } "
+        "if (numbered) { host = host.substring(0, dash); } "
         f"Map shown = [{shown}]; "
         f"String name = shown.containsKey(host) ? (String) shown.get(host) : (host == '' ? {fallback} : ''); "
         "if (name != '') { emit(name); } }"
@@ -246,7 +243,7 @@ def _each_waf_message(emitted):
 
 def rule_id_script():
     return (
-        f"String module = {_value('fsl_source')}; "
+        f"String module = {_value('event.module')}; "
         f"if (module == 'modsecurity') {{ {_each_waf_message('id')} }} "
         f"else if (doc.containsKey('alert.signature_id') && doc['alert.signature_id'].size() > 0) {{ "
         "emit(String.valueOf(doc['alert.signature_id'].value)); }"
@@ -256,7 +253,7 @@ def rule_id_script():
 def rule_script():
     paired = "(id + ' ' + said).trim()"
     return (
-        f"String module = {_value('fsl_source')}; "
+        f"String module = {_value('event.module')}; "
         f"if (module == 'modsecurity') {{ {_each_waf_message(paired)} }} "
         f"else if (doc.containsKey('alert.signature') && doc['alert.signature'].size() > 0) {{ "
         f"emit(({_value('alert.signature_id')} + ' ' + String.valueOf(doc['alert.signature'].value)).trim()); }}"
