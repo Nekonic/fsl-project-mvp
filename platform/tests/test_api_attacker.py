@@ -34,6 +34,7 @@ def test_attacker_reports_the_address_alerts_will_carry(client):
     assert response.status_code == 200
     assert response.json()["source_ip"] == "172.20.0.7"
     assert response.json()["terminal_url"]
+    assert "container" not in response.json()
 
 @pytest.mark.parametrize("path, body", [
     ("/api/attacker/label/", {"case_id": "c0ffee"}),
