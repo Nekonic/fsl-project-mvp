@@ -175,8 +175,9 @@ OpenStack에서는 fabric의 네트워크와 보안 그룹이 망을 분리합�
 관계를 검사하는 곳은 없습니다. 이 파일의 `default` 항목은 그 밖의 인터페이스(OpenStack에서는
 estate 센서의 `ens3`)에도 같은 캡처 설정을 적용합니다.
 
-WAF는 `board.com`을 `board:8000`으로 보내고 `/internal/`에는 직접 404로
-응답합니다(`deploy/nginx/board.conf`). `corp.com`은 `corp-wp:80`으로 가는 두 번째
+WAF는 `board.com`을 `board:8000`으로 보내고, `/internal/`은 board가 서비스하지 않는
+경로로 보내 board 자신의 404 응답을 그대로 돌려줍니다(`deploy/nginx/board.conf`,
+OpenStack에서는 `deploy/waf/board.com.conf`). `corp.com`은 `corp-wp:80`으로 가는 두 번째
 vhost입니다(`deploy/nginx/corp.conf`). board는 첫 번째 워게임입니다. gunicorn 위에서 도는
 Django 3.2.4(알려진 `order_by` SQL Injection 취약점 CVE-2021-35042가 있는 미패치 버전)로,
 시작할 때 스스로 마이그레이션과 시드 데이터 입력을 수행하며 digest로 고정한 MySQL을 씁니다.

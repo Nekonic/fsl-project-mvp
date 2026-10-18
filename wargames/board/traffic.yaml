@@ -16,7 +16,7 @@ origins: {kr: 70, jp: 6, us: 8, cn: 3, vn: 3, tw: 3, hk: 3, br: 2, de: 1, gb: 1}
 accounts:
   - {username: jiwoo, password: jiwoo1234}
   - {username: minseo, password: minseo1234}
-posts: [1, 2, 3]
+posts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 agents:
   - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
   - "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"

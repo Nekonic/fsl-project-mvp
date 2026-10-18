@@ -71,7 +71,7 @@ def test_the_board_is_published_where_the_ground_truth_reader_and_the_waf_expect
     from django.conf import settings
 
     assert ENTRY.publish["board"] == urlsplit(settings.BOARD_API_URL).port
-    assert "proxy_pass http://board:8000;" in (ROOT / "deploy/waf/range.conf").read_text()
+    assert "proxy_pass http://board:8000;" in (ROOT / "deploy/waf/board.com.conf").read_text()
     assert {"board", OS.compose["corp"]} <= set(ENTRY.names), "the WAF resolves both to the host through /etc/hosts"
     assert {"board.com", "corp.com"} <= set(OS.hosts["fsl-waf"].names)
 
@@ -148,7 +148,7 @@ def test_a_wargame_that_does_not_come_up_healthy_is_drift():
         built.start_wargames()
 
 def test_the_vm_waf_reaches_corp_without_a_resolver():
-    conf = (ROOT / "deploy/waf/range.conf").read_text()
+    conf = (ROOT / "deploy/waf/board.com.conf").read_text()
     corp = conf[conf.index("server_name corp.com;"):]
 
     assert "proxy_pass http://corp-wp:80;" in corp, (
