@@ -44,8 +44,8 @@ def test_the_tools_open_on_the_network_panel_and_the_other_panels_show_what_chro
 
     assert seen["errors"] == []
     assert result["opened"] == {"network": True, "blank": False, "selected": ["network"]}
-    assert result["console"] == {"network": False, "blank": True, "selected": ["console"], "text": ">"}
-    assert "\n  &lt;body&gt;\n    &lt;h1&gt;Board&lt;/h1&gt;" in result["elements"]
+    assert result["console"] == {"network": False, "blank": True, "selected": ["console"], "text": "top Default levels >"}
+    assert "&lt;h1" in result["elements"] and "Board" in result["elements"] and "&lt;body" in result["elements"]
     assert result["sources"]["blank"] and result["sources"]["selected"] == ["sources"]
     assert "&lt;h1&gt;Board&lt;/h1&gt;" in result["sources"]["text"] and "/site/" not in result["sources"]["text"]
     assert result["reopened"] == result["opened"], "the coach's rows and tabs are on screen whenever the tools open"
@@ -119,3 +119,185 @@ def test_the_type_chips_are_the_ones_chrome_shows_in_its_order(client):
 
     assert seen["errors"] == []
     assert seen["result"] == ["all", "xhr", "doc", "css", "js", "font", "img", "media", "manifest", "ws", "wasm", "other"]
+
+PLAIN = """
+const plain = (row) => row.innerHTML.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+"""
+
+PAGE = """
+const PAGE = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Board</title>
+  <!-- header -->
+  <script>
+    var a = 1;
+    var b = 2;
+  </script>
+</head>
+<body class="home dark">
+  <div id="wrap">
+    <h1>Board</h1>
+    <ul><li>one</li><li>two</li></ul>
+    <p>Hello<br>again</p>
+  </div>
+</body>
+</html>`;
+"""
+
+def test_elements_is_a_collapsible_tree_coloured_as_chrome_colours_it(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS + PAGE + PLAIN, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      dev.rows = [doc];
+      dev.documents[1] = {response_body: {text: PAGE, size: PAGE.length, truncated: false}};
+      document.querySelector('[data-panel="elements"]').click();
+      await browser.settle();
+      const lines = () => [...document.querySelectorAll('#site-dev-dom [data-node]')].map(plain);
+      const first = lines();
+      const rows = () => document.querySelectorAll('#site-dev-dom [data-node]');
+      const fold = (text) => rows().find((row) => plain(row).startsWith(text)).querySelector('[data-fold]');
+      fold('\u25B6<head>').click();
+      await browser.settle();
+      const head = lines();
+      fold('\u25B6<div').click();
+      await browser.settle();
+      const div = lines();
+      fold('\\u25B6<p>').click();
+      await browser.settle();
+      const para = lines();
+      const markup = browser.element('site-dev-dom').innerHTML;
+      const crumbs = browser.text('site-dev-crumbs');
+      fold('\u25BC<div').click();
+      await browser.settle();
+      return {first, head, div, para, crumbs, markup, again: lines()};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["first"] == [
+        "<!DOCTYPE html>", '\u25BC<html lang="ko">', "\u25B6<head>\u2026</head>",
+        '\u25BC<body class="home dark"> == $0', '\u25B6<div id="wrap">\u2026</div>', "</body>", "</html>",
+    ]
+    assert any(line.startswith("<meta charset=\"utf-8\">") for line in result["head"])
+    assert "<title>Board</title>" in result["head"]
+    assert "<!-- header -->" in result["head"]
+    assert "<h1>Board</h1>" in result["div"] and "\u25B6<p>\u2026</p>" in result["div"]
+    assert '"Hello"' in result["para"] and "<br>" in result["para"] and '"again"' in result["para"]
+    assert any(line.startswith("\u25B6<ul>") for line in result["div"])
+    assert '<span class="dv-tag">&lt;div</span> <span class="dv-an">id</span>=<span class="dv-av">"wrap"</span>' in result["markup"]
+    assert result["crumbs"] == "html body.home.dark div#wrap p"
+    assert not any("<h1>" in line for line in result["again"])
+
+def test_elements_keeps_its_folds_when_new_requests_refill_the_panel(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS + PAGE + PLAIN, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      dev.rows = [doc];
+      dev.documents[1] = {response_body: {text: PAGE, size: PAGE.length, truncated: false}};
+      document.querySelector('[data-panel="elements"]').click();
+      await browser.settle();
+      const rows = () => [...document.querySelectorAll('#site-dev-dom [data-node]')];
+      rows().find((row) => plain(row).startsWith('\u25B6<head>')).querySelector('[data-fold]').click();
+      await browser.settle();
+      dev.rows.push(css);
+      await devFill('elements');
+      const kept = rows().map(plain);
+      dev.rows = [{...doc, id: 9}];
+      dev.documents[9] = {response_body: {text: '<html><body><p>x</p></body></html>', size: 36, truncated: false}};
+      await devFill('elements');
+      return {kept, other: rows().map(plain)};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert any(line.startswith("\u25BC<head>") for line in result["kept"])
+    assert result["other"] == ["\u25BC<html>", "\u25BC<body> == $0", "<p>x</p>", "</body>", "</html>"]
+
+def test_an_empty_page_shows_the_bare_document_and_the_style_pane_shows_element_style(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS + PLAIN, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      document.querySelector('[data-panel="elements"]').click();
+      await browser.settle();
+      const tree = [...document.querySelectorAll('#site-dev-dom [data-node]')].map(plain);
+      const side = [...document.querySelectorAll('#site-dev-side-tabs [data-side]')].map((tab) => tab.textContent);
+      const styles = browser.text('site-dev-side-body');
+      document.querySelector('[data-side="layout"]').click();
+      return {tree, side, styles, layout: browser.text('site-dev-side-body'), filter: browser.element('site-dev-side-filter').style.display};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["tree"] == ["\u25BC<html>", "<head></head>", "<body></body> == $0", "</html>"]
+    assert result["side"] == ["Styles", "Computed", "Layout", "Event Listeners"]
+    assert result["styles"] == "element.style { }" and result["layout"] == "" and result["filter"] == "none"
+
+def test_sources_has_the_page_navigator_with_the_site_folders_and_opens_the_chosen_file(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS + PAGE + PLAIN, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      dev.rows = [doc, css];
+      dev.documents[1] = {response_body: {text: PAGE, size: PAGE.length, truncated: false}};
+      dev.documents[2] = {response_body: {text: 'body { margin: 0 }', size: 18, truncated: false}};
+      document.querySelector('[data-panel="sources"]').click();
+      await browser.settle();
+      const names = () => [...document.querySelectorAll('#site-dev-navbody .dv-navrow')].map(plain);
+      const first = names();
+      const tabs = [...document.querySelectorAll('[data-navtab]')].map((tab) => tab.textContent);
+      const open = () => document.querySelector('.dv-main .dv-tab');
+      const opened = open().textContent;
+      document.querySelector('[data-folder="top/board.com/static"]').click();
+      await browser.settle();
+      const folder = names();
+      document.querySelector('[data-source="http://board.com/static/app.css"]').click();
+      await browser.settle();
+      const code = browser.text('site-dev-code');
+      const kept = names();
+      document.querySelector('[data-folder="top/board.com/static"]').click();
+      await browser.settle();
+      const shut = names();
+      const status = browser.element('site-dev-blank').querySelector('.dv-status').textContent;
+      document.querySelector('[data-close="file"]').click();
+      await browser.settle();
+      const closed = browser.text('site-dev-code');
+      document.querySelector('[data-navtab="overrides"]').click();
+      await browser.settle();
+      return {first, tabs, opened, folder, code, kept, shut, status, closed, overrides: browser.text('site-dev-navbody')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["first"] == ["\u25BCtop", "\u25BCboard.com", "\u25B6search", "\u25B6static"] or result["first"] == [
+        "\u25BCtop", "\u25BCboard.com", "\u25BCsearch", "(index)?q=hello", "\u25B6static"]
+    assert result["tabs"] == ["Page", "Workspace", "Overrides"]
+    assert result["opened"].startswith("(index)?q=hello")
+    assert "app.css" in result["folder"]
+    assert "body { margin: 0 }" in result["code"]
+    assert "app.css" in result["kept"] and "app.css" not in result["shut"]
+    assert result["status"].startswith("Line 1, Column 1")
+    assert result["closed"].startswith("Open file")
+    assert result["overrides"] == "No local overrides set"
+
+def test_the_console_has_chromes_toolbar_above_the_prompt(client):
+    seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      document.querySelector('[data-panel="console"]').click();
+      await browser.settle();
+      const blank = browser.element('site-dev-blank');
+      return {
+        titles: [...blank.querySelectorAll('button')].map((button) => button.title),
+        selects: [...blank.querySelectorAll('select')].map((select) => select.textContent),
+        filter: blank.querySelector('input').placeholder,
+        order: [...blank.querySelectorAll('.dv-bar, .dv-prompt')].map((box) => box.className.split(' ')[0]),
+      };
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["titles"] == ["Show console sidebar", "Clear console", "Create live expression", "Console settings"]
+    assert result["selects"] == ["top", "Default levels"]
+    assert result["filter"] == "Filter"
+    assert result["order"] == ["dv-bar", "dv-prompt"]
