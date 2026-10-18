@@ -29,7 +29,7 @@ Kali, 프록시, 워게임. 이 파일은 edge 네트워크와 `mgmt`에 `extern
 mount가 호스트 기준으로 해석되게 하고, `FSL_SESSION`은 세션 id로 설정합니다. 이어서
 플랫폼은 세션의 `estate`에 참여하고(`docker network connect`, 별칭 `platform`; 기본
 게이트웨이는 `gw_priority: 1`로 플랫폼 자신의 `edge`에 남습니다) 세션의 프록시가 그 세션
-자신의 WAF를 향하게 합니다(`/label/origin`). baseline은 그다음에 읽습니다. 세션은 동시에
+자신의 WAF를 향하게 합니다(`/var/lib/session/origin`). baseline은 그다음에 읽습니다. 세션은 동시에
 실행됩니다. 세션을 열 때는 끝난 지 3분이 넘은 세션의 `fsl-<n>` 프로젝트에만 `down -v`를
 실행하며(먼저 그 `estate`에서 빠집니다), 어느 프로젝트를 내릴지는 잠금 하나 아래에서
 정하므로 동시에 열리는 두 세션이 서로의 새 스택을 내리지 않습니다. Docker는 세션을 최대
@@ -94,7 +94,7 @@ label, canary)는 쿼리나 본문에서 `session`을 받습니다. 지정하지
 | `fsl-suricata` | session | `jasonish/suricata` | WAF의 네트워크 네임스페이스 | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, 세션의 `eve.json`과 audit log 전송 | mgmt | |
 | `fsl-kali` | session | `deploy/kali`에서 빌드한 `ghcr.io/nekonic/fsl-kali`; `http_proxy`는 `http://fsl-<id>-proxy-1:8081` | edge | |
-| `fsl-proxy` | session | `deploy/proxy`에서 빌드한 `ghcr.io/nekonic/fsl-proxy` (mitmdump); `/label`은 프로젝트의 named volume | edge 네트워크 네 개 | |
+| `fsl-proxy` | session | `deploy/proxy`에서 빌드한 `ghcr.io/nekonic/fsl-proxy` (mitmdump); `/var/lib/session`은 프로젝트의 named volume `label` | edge 네트워크 네 개 | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만 사용 (OpenStack 훈련 환경용) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
@@ -162,8 +162,8 @@ OpenStack에서는 fabric의 네트워크와 보안 그룹이 망을 분리합�
    eve.json --volume suricatalogs--> filebeat
    ModSecurity audit.log --volume waflogs--> filebeat
    volume label (per session) --> proxy (read-write), kali (read-only)
-   kali's shell --> /var/log/fsl/commands.log, each command with its marker
-   platform --docker exec--> proxy (/label files), suricata (rules),
+   kali's shell --> /var/log/commands.log, each command with its marker
+   platform --docker exec--> proxy (/var/lib/session files), suricata (rules),
                              waf (CRS tuning, nginx reload),
                              kali (command log), corp-db (mysql, mysqlbinlog)
    platform --docker run--> throwaway fsl-kali for tool cases
@@ -474,7 +474,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | WAF 터미널(`waf-terminal.sh`)이 사용자에게 `fsl-<id>-waf-1`의 쉘을 열어 줍니다(OpenStack에서는 `vm-terminal.sh fsl-waf`가 WAF VM의 ssh 쉘을 엽니다). f6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 주며, `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.FSL_WAF`)으로 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
 | 세션의 WAF 컨테이너(docker) | `platform/range/docker.py`, compose 라벨로 찾음 | Python 코드에는 없음. `waf-terminal.sh`가 `fsl-<id>-waf-1`을 지정합니다(위 행) |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 에지의 Suricata를 설정하고 재시작합니다(OpenStack). `declaration.yaml`의 각 센서 호스트(에지, 그리고 `estate-sensor`를 맡는 워게임 호스트)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 워게임 호스트의 estate 센서 compose 서비스를 멈췄다가 다시 시작하며(OpenStack), 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
-| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/fsl/commands.log`를 읽습니다. 터미널 연결 설정(`settings.py`, `nginx.conf`, `entrypoint.sh`)에 `fsl-kali`와 `fsl-<id>-kali-1`이 적혀 있습니다. 예외가 아닌 것: 웹사이트 창(`platform/api/site.py`)은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(OpenStack에서는 ssh stdio 스트림)만 거쳐 박스에 닿습니다 |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/commands.log`를 읽습니다. 터미널 연결 설정(`settings.py`, `nginx.conf`, `entrypoint.sh`)에 `fsl-kali`와 `fsl-<id>-kali-1`이 적혀 있습니다. 예외가 아닌 것: 웹사이트 창(`platform/api/site.py`)은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(OpenStack에서는 ssh stdio 스트림)만 거쳐 박스에 닿습니다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. OpenStack에서도 같은 컨테이너에 접근합니다. `loot.py`는 워게임 호스트의 publish된 포트로 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner를 거칩니다 |
 
 ## 요청의 출처
@@ -490,14 +490,14 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 | 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소: OpenStack에서는 Kali가 가진 주소로, `fsl-users` 계정으로 보내 에지를 지남. docker에서는 고객 네트워크에 있는 플랫폼 자신의 주소 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
 | 고객 | `deploy/traffic/users.py`, `fsl-<id>-users` 안에서(docker) 또는 Kali VM의 `fsl-users`로(OpenStack) | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
-프록시는 `mitmdump` 스크립트입니다. `X-FSL-Case`가 없는 요청에 `/label/active`의
-값으로 그 헤더를 설정하고, `/label/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
+프록시는 `mitmdump` 스크립트입니다. `X-FSL-Case`가 없는 요청에 `/var/lib/session/active`의
+값으로 그 헤더를 설정하고, `/var/lib/session/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그
 주소로 전달합니다. 두 파일은 플랫폼이 `docker exec`로 씁니다. TLS 가로채기를
 하지 않으므로 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다.
 `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
 
 터미널은 사용자가 입력한 명령도 기록합니다. Kali의 쉘은 명령마다 현재
-`/label/active` 마커를 붙여 `/var/log/fsl/commands.log`에 덧붙입니다. 플랫폼은
+`/var/lib/session/active` 마커를 붙여 `/var/log/commands.log`에 덧붙입니다. 플랫폼은
 이 파일을 `runner("attacker")`로 읽어 `GET /api/sessions/<id>/commands/`로
 제공합니다. Kali 창(레드팀 콘솔의 창, 그리고 레슨·시나리오 세션에서 블루팀 콘솔의
 창)은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `kali_terminal`)을
@@ -511,12 +511,14 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 `fsl-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 호스트 키를 확인하며,
 `StrictHostKeyChecking=accept-new`를 씁니다. 초기화로 재구축된 서버는 별칭이 새로
 바뀌므로 "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키를 등록하고, 이미
-알고 있는 별칭에서 키가 바뀌면 접속을 거부합니다. 로그인 쉘 대신 `bash --rcfile`을
-`-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을 읽고(그래서 Kali의 프록시
-변수, `FSL_TARGET`, 명령 로그가 로그인했을 때와 같습니다), 프롬프트의 `\h`를 `fsl-`를
-뺀 호스트 이름(`ubuntu@kali`, `ubuntu@waf`)으로 바꾼 뒤 `/etc/motd`를 출력합니다.
-명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을 출력하지 않습니다.
-호스트 이름 자체는 바꾸지 않습니다.
+알고 있는 별칭에서 키가 바뀌면 접속을 거부합니다. Kali는 `kali` 사용자로 그냥 로그인합니다
+(sudo, 호스트 이름 `kali`, Kali 자체의 두 줄 프롬프트, motd 없음). 그래서
+`/etc/profile.d/proxy.sh`(`http_proxy`)와 명령 훅(`/usr/local/lib/shell-hook.sh`의
+`__log_command`, `/etc/bash.bashrc`에서 불러옴)이 로그인했을 때처럼 적용됩니다. WAF는
+`ubuntu`로 `bash --rcfile`을 `-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을
+읽고 시간대를 설정하며, 프롬프트의 `\h`를 `fsl-`를 뺀 호스트 이름(`ubuntu@waf`)으로 바꾼 뒤
+`/etc/motd`를 출력합니다. 명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을
+출력하지 않습니다.
 
 블루팀 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의
 `waf_terminal`)을 프레임으로 띄웁니다. compose에서는 `/waf-terminal/<세션 id>/`입니다.
@@ -881,7 +883,7 @@ seed 재실행은 정상 케이스로 채점하므로(2026-10-18) 레슨 세션�
 시나리오에서는 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`입니다.
 `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에
 진입했음 또는 통과하지 않고 넘어갔음을 기록합니다. check가 Kali 케이스를 가리키는
-단계에 진입하면 마커를 받고, 플랫폼이 그 마커를 스탬프 프록시의 `/label/active`에
+단계에 진입하면 마커를 받고, 플랫폼이 그 마커를 스탬프 프록시의 `/var/lib/session/active`에
 씁니다. 콘솔은 통과하지 않은 단계에서 다음을 누르거나 목록으로 이동할 때 `skipped`를
 보내고, 이전을 누르거나 통과했을 때는 보내지 않습니다. 통과 문장은 통과한 단계에
 보여 주고, 다음 단계는 깨끗한 카드로 시작합니다.
@@ -1072,7 +1074,7 @@ hints}]`)가 실립니다. 콘솔은 다음 레슨만 제안합니다. 기초 �
 학습자 자신의 행동을 따라가는 점검 종류는 세 가지입니다. `sent`는 세션의 웹사이트 창이
 보관한 요청 중 디코딩한 경로와 쿼리가 단계의 `match` 정규식과 일치하는 요청이 있으면
 통과합니다. `kali`는 케이스 파일의 도구 케이스를 지정합니다. 학습자가 해당 단계에
-들어서면 마커가 생성되고, 플랫폼이 그 마커를 스탬프 프록시의 `/label/active`에 씁니다
+들어서면 마커가 생성되고, 플랫폼이 그 마커를 스탬프 프록시의 `/var/lib/session/active`에 씁니다
 (레슨을 바꿀 때와 세션을 닫을 때 지움). 그래서 학습자가 Kali 창에 입력한 명령은 Kali의
 `http_proxy`를 거치며 마커가 붙어 나갑니다. 단계의 `command`는 입력할 문구일 뿐입니다.
 센서의 http 기록에 마커와 도구의 user agent가 함께 있으면(`ua: any`이면 user agent는

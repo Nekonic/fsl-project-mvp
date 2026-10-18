@@ -32,7 +32,7 @@ directory compose started the platform from (its
 resolve on the host, and `FSL_SESSION` set to the session id. The platform then
 joins the session's `estate` (`docker network connect`, alias `platform`;
 its own `edge` keeps the default gateway through `gw_priority: 1`) and
-aims the session's proxy at the session's own WAF (`/label/origin`); the
+aims the session's proxy at the session's own WAF (`/var/lib/session/origin`); the
 baseline is read after that. Sessions run concurrently: opening a session runs
 `down -v` only on `fsl-<n>` projects whose session ended more than three
 minutes ago (leaving their `estate` first), deciding which under one lock so
@@ -105,7 +105,7 @@ requests from range hosts covers only the newest session's `estate`.
 | `fsl-suricata` | session | `jasonish/suricata` | the WAF's namespace | |
 | `fsl-filebeat` | session | `filebeat:8.15.0`, ships the session's `eve.json` and audit log | mgmt | |
 | `fsl-kali` | session | `ghcr.io/nekonic/fsl-kali` from `deploy/kali`; `http_proxy` is `http://fsl-<id>-proxy-1:8081` | edge | |
-| `fsl-proxy` | session | `ghcr.io/nekonic/fsl-proxy` from `deploy/proxy` (mitmdump); `/label` is the project's named volume | the four edge networks | |
+| `fsl-proxy` | session | `ghcr.io/nekonic/fsl-proxy` from `deploy/proxy` (mitmdump); `/var/lib/session` is the project's named volume `label` | the four edge networks | |
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, the syslog input only (the OpenStack range) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, served at `/kibana/` | mgmt | |
@@ -178,8 +178,8 @@ is attached to every edge network and each session's `estate`, so the API checks
    eve.json --volume suricatalogs--> filebeat
    ModSecurity audit.log --volume waflogs--> filebeat
    volume label (per session) --> proxy (read-write), kali (read-only)
-   kali's shell --> /var/log/fsl/commands.log, each command with its marker
-   platform --docker exec--> proxy (/label files), suricata (rules),
+   kali's shell --> /var/log/commands.log, each command with its marker
+   platform --docker exec--> proxy (/var/lib/session files), suricata (rules),
                              waf (CRS tuning, nginx reload),
                              kali (command log), corp-db (mysql, mysqlbinlog)
    platform --docker run--> throwaway fsl-kali for tool cases
@@ -539,7 +539,7 @@ Each concern has one owning file. The exceptions below exist in code today.
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | the WAF terminal (`waf-terminal.sh`) opens a shell in `fsl-<id>-waf-1` for the person (on OpenStack, `vm-terminal.sh fsl-waf` an ssh shell on the WAF VM), and f6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`), filled in by `wargames.lesson` from the declared exclusion file and reload command (`settings.FSL_WAF`); the platform does not drive the terminal |
 | The session's WAF container (docker) | `platform/range/docker.py`, by compose label | none in Python; `waf-terminal.sh` names `fsl-<id>-waf-1` (the row above) |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack); each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command `suricata.py` is handed; `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack), and its baseline rules then go through `suricata.py` |
-| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/fsl/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1`. Not an exception: the Website pane (`platform/api/site.py`) reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stdio stream on OpenStack) |
+| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`; the terminal wiring (`settings.py`, `nginx.conf`, `entrypoint.sh`) names `fsl-kali` and `fsl-<id>-kali-1`. Not an exception: the Website pane (`platform/api/site.py`) reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stdio stream on OpenStack) |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | none; on OpenStack they reach the same containers, `loot.py` over HTTP at the wargame host's published port and `effect.py` through the runner, which `docker exec`s into `corp-db` |
 
 ## Where requests come from
@@ -555,15 +555,15 @@ Each concern has one owning file. The exceptions below exist in code today.
 | Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: on OpenStack one Kali holds, sent as the `fsl-users` account so it crosses the edge; on docker the platform's own address on the customers network | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
 | Customers | `deploy/traffic/users.py`, in `fsl-<id>-users` (docker) or as `fsl-users` on the Kali VM (OpenStack) | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
 
-The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/label/active`
-on a request that carries none and, when `/label/origin` names an address, forwards the request there with the
+The proxy is a `mitmdump` script. It sets `X-FSL-Case` from `/var/lib/session/active`
+on a request that carries none and, when `/var/lib/session/origin` names an address, forwards the request there with the
 original `Host`. The platform writes both files with `docker exec`. There is no
 TLS interception, so the proxy is an environment variable and does not enforce
 anything: `curl --noproxy '*'` skips it.
 
 The terminal also records what the operator types. Kali's shell appends each
-command, with the current `/label/active` marker, to
-`/var/log/fsl/commands.log`. The platform reads it through
+command, with the current `/var/lib/session/active` marker, to
+`/var/log/commands.log`. The platform reads it through
 `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
 The Kali pane (the red console's, and the blue console's in a lesson or
 scenario session) frames the URL the session API names (`kali_terminal` in
@@ -578,12 +578,15 @@ uses for the same server, `fsl-<server id>-<launch time>`
 (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`: a
 server rebuilt by a reset is a new alias, so its new key is learnt without
 the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning, and a changed key under
-an alias already known is refused. It runs `bash --rcfile` with `-i` rather
-than a login shell: the rc file reads `/etc/profile` and `~/.profile` (so
-Kali's proxy variables, `FSL_TARGET` and the command log are as at a login),
-replaces `\h` in the prompt with the host's name without `fsl-`
-(`ubuntu@kali`, `ubuntu@waf`) and prints `/etc/motd`; with a command, sshd
-prints no Ubuntu login banner or last-login line. The hosts keep their names.
+an alias already known is refused. Kali gets a plain login as the `kali` user
+(sudo, hostname `kali`, Kali's own two-line prompt, no motd), so
+`/etc/profile.d/proxy.sh` (`http_proxy`) and the command hook
+(`/usr/local/lib/shell-hook.sh`, `__log_command`, sourced from
+`/etc/bash.bashrc`) apply as at any login. The WAF runs `bash --rcfile` with
+`-i` as `ubuntu`: the rc file reads `/etc/profile` and `~/.profile`, sets the
+time zone, replaces `\h` in the prompt with the host's name without `fsl-`
+(`ubuntu@waf`) and prints `/etc/motd`; with a command, sshd prints no Ubuntu
+login banner or last-login line.
 
 The blue console's WAF pane frames the URL the session API names
 (`waf_terminal` in `GET /api/sessions/<id>/`). On compose it is
@@ -1002,7 +1005,7 @@ scenario `answer` once its hint level reaches 3 (`lesson.ANSWER`). `POST
 /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}` records a
 step reached or left unpassed; reaching a step whose check names a Kali case
 gives it a marker and writes that marker to the stamp proxy's
-`/label/active`. The console sends `skipped` on Next or a list jump from a
+`/var/lib/session/active`. The console sends `skipped` on Next or a list jump from a
 step not passed, never on Back or a pass. A pass is said on the passed step;
 the next step opens on a clean card.
 
@@ -1223,7 +1226,7 @@ Three check kinds follow the learner's own actions: `sent` passes when the
 session's Website pane kept a request whose decoded path and query match the
 step's `match` regular expression; `kali` names a tool case of the case file:
 reaching the step gives it a marker, which the platform writes to the stamp
-proxy's `/label/active` (cleared on a lesson switch and at close), so what
+proxy's `/var/lib/session/active` (cleared on a lesson switch and at close), so what
 the learner types in the Kali pane goes out marked through Kali's
 `http_proxy`. The step's `command` is plain text to type. The check passes
 when the sensor's http records carry the marker and the tool's user agent

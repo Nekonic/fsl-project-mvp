@@ -496,7 +496,7 @@ foundations:
         check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
       - id: seen
         point: {opens: elk, kibana: {hits: true}}
-        check: {kind: answer, of: run_errors, about: dump, leg: inbound}
+        check: {kind: answer, of: run_errors, about: dump}
       - id: cost
         point: {opens: elk, panel: "#lesson-objectives [data-objective=board-auth-user-admin]"}
         check: {kind: answer, of: detected_penalty, objective: board-auth-user-admin}

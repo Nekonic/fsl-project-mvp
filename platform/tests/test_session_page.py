@@ -37,11 +37,11 @@ browser.serve((request) => {
     return {body: {tp: 1, fp: 0, fn: 1, tn: 1, warnings: [["score.warning.wrong_reason", "board-sqli-orderby-sqlmap"]],
       breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],
       per_case: [
-        {name: "board-normal-search", malicious: false, detected: false, detection_ids: [], corroborated: null,
+        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
          lesson: "f1", step: null, seed: true},
-        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detection_ids: ["d"], corroborated: false,
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
          lesson: "f5", step: "sqlmap", seed: false},
-        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detection_ids: [], corroborated: null,
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
          lesson: "f6", step: "dump", seed: false},
       ]}};
   }

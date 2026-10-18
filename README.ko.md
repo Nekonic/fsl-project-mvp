@@ -132,7 +132,7 @@ HTTP로 직접 읽습니다(`BOARD_API_URL`). compose에서 Kali 터미널(레�
 플랫폼의 nginx가 해당 세션의 `fsl-<id>-kali-1`을 `/terminal/<세션 id>/`로
 제공합니다. OpenStack에서는 플랫폼 안의 ttyd가 세션 슬롯에 있는 Kali의 `mgmt`
 주소로 ssh 접속하며(`/vm-terminal/fsl-kali/?arg=<세션 id>`), 프롬프트는
-`ubuntu@kali`로 보입니다(WAF는 `ubuntu@waf`).
+Kali 자체의 `(kali㉿kali)`로 보입니다(WAF는 `ubuntu@waf`).
 네트워크 구성은 `docs/ARCHITECTURE.ko.md`에 있습니다.
 
 ## 기동

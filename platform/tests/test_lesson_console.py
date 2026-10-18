@@ -146,10 +146,10 @@ const posted = [];
 const asked = (id) => ({postMessage: (data, origin) => posted.push({frame: id, data, origin})});
 browser.element('site-frame').contentWindow = asked('site');
 browser.element('topology-frame').contentWindow = asked('map');
-const answer = (id, rect) => {
+const answer = (id, rect, text) => {
   const frame = browser.element(id);
   const last = posted.filter((one) => one.frame === (id === 'site-frame' ? 'site' : 'map') && one.data.fslLocate).pop();
-  window.dispatchEvent({type: 'message', data: {fslLocated: last.data.id, rect}, source: frame.contentWindow, origin: last.origin});
+  window.dispatchEvent({type: 'message', data: {fslLocated: last.data.id, rect, text}, source: frame.contentWindow, origin: last.origin});
 };
 const kibana = new Map();
 browser.element('pane-frame').contentDocument = {
@@ -496,6 +496,24 @@ def test_the_website_and_the_map_are_asked_where_the_target_is_and_their_answer_
     assert (result["siteAsked"], result["siteOrigin"]) == ("input[name=q]", "http://console.test:8002")
     assert result["onSite"] == {"left": 154, "top": 145, "width": 312, "height": 32}
     assert result["dim"] is True and result["meets"] is False
+
+def test_the_callout_on_the_website_keeps_off_the_page_content_the_frame_reports_around_the_target(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("search")}
+      STRINGS.en['lesson.demo.callout.search'] = 'Type the word here';
+      await browser.click('step-open');
+      await frames();
+      answer('site-frame', {{x: 100, y: 50, w: 300, h: 30}}, [
+        {{x: 100, y: 100, w: 500, h: 40}}, {{x: 100, y: 150, w: 500, h: 40}}, {{x: 100, y: 200, w: 500, h: 40}},
+        {{x: 100, y: 20, w: 200, h: 20}}]);
+      await frames();
+      const content = [[160, 196, 500, 40], [160, 246, 500, 40], [160, 296, 500, 40], [160, 116, 200, 20]];
+      return {{callout: callout(), over: content.map(([left, top, width, height]) => meets(callout(), {{left, top, width, height}}))}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["callout"] is not None and result["over"] == [False, False, False, False]
 
 DEV = """
 const listRows = (picked) => {
