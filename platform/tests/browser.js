@@ -244,6 +244,11 @@ class Element {
 
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 
+  contains(other) {
+    for (let at = other; at; at = at.parentNode) if (at === this) return true;
+    return false;
+  }
+
   closest(selector) {
     const matches = matcher(selector);
     let at = this;

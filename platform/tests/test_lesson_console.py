@@ -20,15 +20,16 @@ STEPS = [
     {"id": "method", "point": {"opens": "site", "dev": "general.method"}, "check": {"kind": "answer", "match": SEARCH}},
     {"id": "sort", "point": {"opens": "site", "site": "select[name=sort]", "until": "sent",
                              "then": {"dev": "payload.query"}}, "check": {"kind": "answer", "match": "[?&]sort="}},
-    {"id": "source", "point": {"opens": "elk", "kibana": {"doc": "source_ip"}}, "check": {"kind": "answer"}},
+    {"id": "source", "point": {"opens": "elk", "kibana": {"doc": "source_ip"}}, "check": {"kind": "answer", "leg": "upstream"}},
     {"id": "logged", "point": {"opens": "elk", "kibana": {"hits": True}},
      "check": {"kind": "choice", "options": ["present", "absent"]}},
     {"id": "sqlmap", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"\$ $"}},
      "command": "sqlmap -u \"http://board.com/?sort=posts_post.id*\" --batch", "check": {"kind": "kali"}},
-    {"id": "verdict", "point": {"opens": "kali", "term": {"pane": "kali", "match": "injectable"}},
+    {"id": "verdict", "point": {"opens": "kali", "term": {"pane": "kali", "match": "injectable", "idle": r"\$ "}},
      "check": {"kind": "choice", "options": ["yes", "no"]}},
     {"id": "run_source", "point": {"opens": "elk", "kibana": {"sidebar": "source_ip"}}, "check": {"kind": "answer"}},
     {"id": "loot", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"^\|"}}, "check": {"kind": "loot"}},
+    {"id": "address", "point": {"opens": "site", "panel": "#site-address"}, "check": {"kind": "answer"}},
     {"id": "cost", "point": {"panel": "#lesson-objectives .total"}, "check": {"kind": "answer"}},
     {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}},
 ]
@@ -101,6 +102,14 @@ browser.serve((request) => {
   }
   if (request.route === "/api/wargames/") {
     return {body: [{id: "board", foundations: [{id: "f1", title: "lesson.map.title"}, {id: "f9", title: "lesson.demo.title"}]}]};
+  }
+  if (request.route === "/api/sessions/1/score/") {
+    return {body: {breaches: [{key: "t-a", detected: false}, {key: "t-b", detected: true}],
+                   per_case: [{malicious: true, detected: true}, {malicious: true, detected: false},
+                              {malicious: false, detected: false}, {malicious: false, detected: false}, {malicious: false, detected: true}]}};
+  }
+  if (request.route === "/api/wargames/board/objectives/") {
+    return {body: [{key: "t-a", difficulty: 3}, {key: "t-b", difficulty: 4}, {key: "t-c", difficulty: 5}]};
   }
   if (request.route === "/api/topology/") return {body: {source: "gns3", web_ui: {port: 3080, path: "/static/web-ui/fsl-auditor.html?project=p"}}};
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
@@ -390,14 +399,15 @@ def test_next_and_a_jump_record_a_step_left_unpassed_as_skipped_and_back_does_no
         ["source", "reached"], ["sort", "reached"],
     ], "a passed step moves on without a skip; Back is not a skip"
 
-def test_a_kali_step_shows_the_command_to_type_and_no_button_runs_or_copies_it_and_its_row_carries_no_count(client):
+def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_runs_it_and_its_row_carries_no_count(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("sqlmap")}
       await browser.click('step-open');
       const card = browser.element('step-card');
-      const buttons = card.querySelectorAll('button').filter((button) => !button.classList.contains('hidden'))
+      const buttons = card.querySelectorAll('button').filter((button) => !button.classList.contains('hidden') && button.id !== 'step-copy')
         .map((button) => button.textContent);
-      const command = {{shown: shown('step-command'), text: browser.text('step-command')}};
+      const command = {{shown: shown('step-command'), text: browser.text('step-command'), copy: shown('step-copy'),
+                       unwrapped: browser.element('step-command').getAttribute('style').includes('white-space: pre;')}};
       range.passed = true;
       await browser.click('#step-act [data-act="kali"]');
       await browser.wait(1600);
@@ -411,7 +421,7 @@ def test_a_kali_step_shows_the_command_to_type_and_no_button_runs_or_copies_it_a
     step = STEPS[ids.index("sqlmap")]
 
     assert seen["errors"] == []
-    assert result["command"] == {"shown": True, "text": step["command"]}
+    assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "unwrapped": True}
     assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.more"), english("lesson.coach.back"),
                                  english("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
@@ -524,7 +534,7 @@ def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"closed": 974, "noRow": 60, "rowTop": 619, "wrongTab": 494, "line": 614}, (
+    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 619, "wrongTab": 494, "line": 614}, (
         "closed DevTools: the toggle; no row picked: the last row of the step's request; wrong tab: the tab; then the line")
 
 def test_a_step_held_until_its_request_is_sent_then_points_at_what_follows(client):
@@ -865,3 +875,223 @@ def test_every_pane_a_step_opens_or_points_into_has_an_open_button_label_in_both
     assert panes
     assert [(language, f"lesson.open.{pane}") for pane in sorted(panes) for language in ("en", "ko")
             if f"lesson.open.{pane}" not in table[language]] == [], "the step card's open button would show a raw key"
+
+GRID = """
+const doc = browser.element('pane-frame').contentDocument;
+const plain = doc.querySelector;
+const arrows = new Map();
+let pageAt = null;
+const hop = (row, from, to) => ({row, from, to});
+let hops = [];
+const cellOf = (row, text) => ({textContent: text, closest: () => ({getAttribute: () => String(row)})});
+const toggleOf = (row) => ({closest: () => ({getAttribute: () => String(row)}), getBoundingClientRect: () => box(10, 300 + 40 * row, 20, 20)});
+doc.querySelectorAll = (selector) => {
+  if (selector.includes('"source_ip"')) return hops.map((one) => cellOf(one.row, one.from));
+  if (selector.includes('"destination"')) return hops.map((one) => cellOf(one.row, one.to));
+  if (selector.includes('docTableExpandToggleColumn')) return hops.map((one) => toggleOf(one.row));
+  return [];
+};
+doc.querySelector = (selector) => (selector.includes('NavigationPage')
+  ? (pageAt === null ? null : {getAttribute: () => `dscDocNavigationPage-${pageAt}`, getBoundingClientRect: () => box(700, 20, 200, 30),
+                              querySelector: (inner) => (arrows.has(inner) ? {getBoundingClientRect: () => arrows.get(inner)} : null)})
+  : plain(selector));
+"""
+
+def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arrow_off_a_wrong_document_then_the_value(client):
+    seen = open_page(client, "/blue/1/", setup=served() + GRID, scenario=f"""
+      STRINGS.en['lesson.kibana.expand.upstream'] = 'Expand the row for the board';
+      STRINGS.en['lesson.kibana.other'] = 'Another event';
+      {to("source")}
+      await browser.click('step-open');
+      hops = [hop(0, '175.192.0.10', '10.30.0.102'), hop(1, '10.30.0.102', '10.30.0.63')];
+      await frames();
+      const expand = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
+      pageAt = 0;
+      arrows.set('button[data-test-subj="pagination-button-next"]', box(760, 24, 24, 24));
+      await frames();
+      const other = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      pageAt = 1;
+      kibana.set('[data-test-subj="tableDocViewRow-source_ip-value"]', box(640, 200, 300, 24));
+      await frames();
+      const value = styled('coach-ring');
+      return {{expand, other, value}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["expand"] == {"ring": {"left": 64, "top": 430, "width": 32, "height": 32},
+                                "text": "Expand the row for the board"}, "the second row: its source is the first row's destination"
+    assert result["other"] == {"ring": {"left": 814, "top": 114, "width": 36, "height": 36}, "text": "Another event"}
+    assert result["value"] == {"left": 694, "top": 295, "width": 312, "height": 26}, "the right document: the value itself"
+
+def test_a_hit_count_step_on_an_empty_result_rings_the_empty_notice_with_its_own_callout(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.kibana.none'] = 'No events match.';
+      STRINGS.en['lesson.demo.callout.logged'] = 'The count.';
+      {to("logged")}
+      await browser.click('step-open');
+      kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
+      await frames();
+      const counted = browser.text('coach-callout');
+      kibana.delete('[data-test-subj="discoverQueryHits"]');
+      kibana.set('[data-test-subj="discoverNoResults"]', box(400, 300, 300, 40));
+      await frames();
+      return {{counted, none: browser.text('coach-callout'), ring: shown('coach-ring')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"counted": "The count.", "none": "No events match.", "ring": True}
+
+def test_a_terminal_step_rings_the_prompt_until_its_line_appears(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.term.prompt'] = 'Type the command here.';
+      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
+      {to("verdict")}
+      await browser.click('step-open');
+      await frames();
+      const idle = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x", "[INFO] not injectable", "ubuntu@kali:~$ ");
+      await frames();
+      return {{idle, found: {{ring: styled('coach-ring'), text: browser.text('coach-callout')}}}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["idle"]["text"] == "Type the command here." and result["idle"]["ring"]["top"] == 96
+    assert result["found"]["text"] == "The verdict" and result["found"]["ring"]["top"] == 116
+
+def test_a_closed_pane_rings_the_open_button_and_a_note_target_outside_the_pane_has_no_pane_button(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      placeAt('step-open', box(1060, 300, 120, 28));
+      {to("search")}
+      await frames();
+      const closed = {{ring: styled('coach-ring'), ringShown: shown('coach-ring'), dim: shown('coach-dim'), callout: shown('coach-callout')}};
+      {to("cost")}
+      await frames();
+      return {{closed, button: shown('step-open'), ringShown: shown('coach-ring')}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["closed"] == {"ring": {"left": 1054, "top": 299, "width": 132, "height": 30}, "ringShown": True,
+                                "dim": False, "callout": False}
+    assert result["button"] is False, "the objectives card is on screen whichever pane is open"
+
+def test_an_address_bar_target_inside_the_pane_still_gets_its_callout(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.address'] = 'Type the address here.';
+      placeAt('site-address', box(120, 60, 800, 28));
+      {to("address")}
+      await browser.click('step-open');
+      await frames();
+      const spot = callout();
+      return {{shown: shown('coach-callout'), below: spot && spot.top > 88, meets: meets(spot, {{left: 120, top: 60, width: 800, height: 28}})}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"shown": True, "below": True, "meets": False}
+
+def test_a_map_callout_stays_beside_its_target_and_off_the_map_text(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.board_ip'] = 'The board address.';
+      await frames();
+      window.dispatchEvent({{type: 'message', data: {{fslMap: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
+      await frames();
+      const last = posted.filter((one) => one.frame === 'map' && one.data.fslLocate).pop();
+      const text = [{{x: 560, y: 262, w: 70, h: 40}}, {{x: 640, y: 250, w: 60, h: 24}}];
+      window.dispatchEvent({{type: 'message', data: {{fslLocated: last.data.id, rect: {{x: 400, y: 300, w: 90, h: 16}}, zones: [], text}},
+                             source: browser.element('topology-frame').contentWindow, origin: last.origin}});
+      await frames();
+      const spot = callout();
+      const placed = text.map((one) => ({{left: 60 + one.x, top: 96 + one.y, width: one.w, height: one.h}}));
+      return {{spot, near: Math.abs(spot.left - 460) < 400 && Math.abs(spot.top - 396) < 120, over: placed.some((one) => meets(spot, one))}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["near"] is True, "beside the ring, not in a corner of the map"
+    assert result["over"] is False
+
+def test_the_course_summary_shows_the_learner_s_own_two_scores(client):
+    seen = open_page(client, "/blue/1/", setup=served(next_lesson=None), scenario=f"""
+      STRINGS.en['lesson.course.values'] = 'S1 {{0}} / attacks {{1}} caught {{2}} / benign {{3}} alerted {{4}}';
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(500);
+      const line = document.querySelector('#step-act [data-act="values"]');
+      return {{text: line.textContent, hidden: line.classList.contains('hidden')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"text": "S1 10 / attacks 2 caught 1 / benign 3 alerted 1", "hidden": False}, (
+        "score 1 counts each lost objective's difficulty, doubled when undetected: 3 x 2 + 4 x 1"
+    )
+
+def test_a_developer_tools_callout_keeps_off_the_sibling_tabs_and_the_other_requests(client):
+    seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
+      STRINGS.en['lesson.dev.tab.headers'] = 'Press this tab';
+      {to("method")}
+      await browser.click('step-open');
+      browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
+      listRows('true');
+      showTabs('tab.payload');
+      await frames();
+      const spot = callout();
+      const others = [...document.querySelectorAll('[data-coach="row"], [data-coach="tab.payload"]')].map((one) => RECTS.get(one));
+      return {{text: browser.text('coach-callout'), spot, over: others.some((one) => meets(spot, one))}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["text"] == "Press this tab" and seen["result"]["spot"] is not None
+    assert seen["result"]["over"] is False
+
+def lesson_steps(lesson_id):
+    return {one["id"]: one for one in next(one for one in wargames.foundations("board") if one["id"] == lesson_id)["steps"]}
+
+def test_f2_reads_the_request_panel_top_down_search_method_path_status_parameter_sort_missing():
+    assert list(lesson_steps("f2")) == ["search", "method", "path", "status", "parameter", "sort", "missing"]
+
+def test_f6_rings_the_waf_prompt_until_the_exception_line_prints_and_the_cost_step_points_at_the_note_card_only():
+    steps = lesson_steps("f6")
+
+    assert steps["excluded"]["point"]["term"] == {"pane": "waf", "match": "ctl:ruleRemove", "idle": r"\$ "}
+    assert "panel" in steps["cost"]["point"] and "kibana" not in steps["cost"]["point"]
+
+def test_the_console_is_told_which_leg_a_log_question_is_about(client):
+    from tests.test_foundations import opened as opened_lesson
+
+    session = opened_lesson("f3")
+    shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+
+    assert [shown[name]["check"].get("leg") for name in ("site_source", "client_source", "xff")] == ["upstream", "inbound", "upstream"]
+
+def test_a_callout_for_a_row_of_the_objectives_card_sits_on_the_card_s_title_line_not_over_the_next_card(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.cost'] = 'The total is here';
+      placeAt('lesson-objectives', box(1050, 240, 380, 160));
+      {to("cost")}
+      await frames();
+      return {{callout: callout()}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["callout"]["top"] == 246, "inside the card, on its title line, clear of the ring"
+
+def test_the_map_waits_for_a_fit_each_time_the_pane_opens_and_the_ring_waits_with_it(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      const frameWindow = browser.element('topology-frame').contentWindow;
+      const said = (what) => window.dispatchEvent({{type: 'message', data: {{fslMap: what}}, source: frameWindow}});
+      await browser.click('[data-pane="topology"]');
+      const loading = shown('map-wait');
+      said('drawn');
+      const drawn = shown('map-wait');
+      await browser.click('[data-pane="elk"]');
+      await browser.click('[data-pane="topology"]');
+      const reopened = shown('map-wait');
+      said('fitted');
+      return {{loading, drawn, reopened, fitted: shown('map-wait')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"loading": True, "drawn": False, "reopened": True, "fitted": False}

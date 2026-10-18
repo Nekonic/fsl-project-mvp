@@ -23,6 +23,7 @@ const SETTLE_MS = 250;
 const CLICK_MS = 60;
 const CLOSE_ENOUGH = 2;
 const PAN_TRIES = 4;
+const FIT_TRIES = 3;
 const LEAST_ROOM = 2 * MARGIN + 40;
 
 const VIEW_ONLY = `
@@ -187,13 +188,24 @@ async function centred(map, room) {
   return near(offCentre(map, room));
 }
 
+function insideRoom(map, room) {
+  const shown = shownBox(map);
+  return Boolean(shown) && shown.left >= 0 && shown.top >= 0
+    && shown.left + shown.width <= room.width && shown.top + shown.height <= room.height;
+}
+
 async function fitOnce(map) {
   const room = {width: map.innerWidth, height: map.innerHeight};
   if (room.width < LEAST_ROOM || room.height < LEAST_ROOM) return null;
-  map.scrollTo(0, 0);
-  const pans = await panning(map);
-  await scaled(map, room);
-  return pans && centred(map, room);
+  let done = false;
+  for (let attempt = 0; attempt < FIT_TRIES && !done; attempt++) {
+    map.scrollTo(0, 0);
+    await panning(map);
+    await scaled(map, room);
+    await centred(map, room);
+    done = insideRoom(map, room);
+  }
+  return done;
 }
 
 const LOCATE_EVERY_MS = 150;
@@ -201,9 +213,10 @@ const view = {map: null, canvas: null, fitting: Promise.resolve(), queued: false
               refit: null, asked: null, last: "", links: null};
 
 function announced(done) {
-  if (view.told || done === null) return;
+  if (done === null) return;
+  const said = view.told ? "fitted" : "drawn";
   view.told = true;
-  window.parent.postMessage({fslMap: "drawn"}, "*");
+  window.parent.postMessage({fslMap: said}, "*");
 }
 
 function fitted(map) {
@@ -352,10 +365,22 @@ function zoneBox(doc, name) {
   return zones[0] || null;
 }
 
+function withInterfaces(doc, box) {
+  if (!box) return null;
+  const reach = Math.max(box.w, box.h) * 0.4;
+  const near = {x: box.x - reach, y: box.y - reach, w: box.w + 2 * reach, h: box.h + 2 * reach};
+  const touching = (label) => {
+    const at = boxOf(label);
+    return at.x < near.x + near.w && near.x < at.x + at.w && at.y < near.y + near.h && near.y < at.y + at.h;
+  };
+  const labels = [...doc.querySelectorAll("text.interface_label")].filter((label) => label.textContent.trim() && touching(label));
+  return union([box, ...labels.map(boxOf)]);
+}
+
 function located(spec) {
   const doc = view.map && view.map.document;
   if (!doc || !spec) return null;
-  if (spec.node) return nodeBox(doc, spec.node);
+  if (spec.node) return withInterfaces(doc, nodeBox(doc, spec.node));
   if (Array.isArray(spec.link)) return linkBox(doc, spec.link[0], spec.link[1]);
   if (Array.isArray(spec.label)) return labelBox(doc, spec.label[0], spec.label[1]);
   if (spec.zone) return zoneBox(doc, spec.zone);
@@ -364,6 +389,17 @@ function located(spec) {
 
 function rounded(box) {
   return box ? {x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h)} : null;
+}
+
+function textRects() {
+  const doc = view.map && view.map.document;
+  if (!doc) return [];
+  const nodes = [...doc.querySelectorAll("g.node")].map((node) => {
+    const label = node.querySelector("text.label");
+    return union([iconBox(node), label ? boxOf(label) : null]);
+  });
+  const interfaces = [...doc.querySelectorAll("text.interface_label")].filter((label) => label.textContent.trim()).map(boxOf);
+  return [...nodes, ...interfaces].filter(Boolean).map(rounded);
 }
 
 function zoneRects() {
@@ -377,10 +413,11 @@ function answerLocate(always) {
   if (!view.asked) return;
   const rect = rounded(located(view.asked.spec));
   const zones = zoneRects();
-  const said = JSON.stringify([rect, zones]);
+  const text = textRects();
+  const said = JSON.stringify([rect, zones, text]);
   if (!always && said === view.last) return;
   view.last = said;
-  view.asked.to.postMessage({fslLocated: view.asked.id, rect, zones}, view.asked.origin);
+  view.asked.to.postMessage({fslLocated: view.asked.id, rect, zones, text}, view.asked.origin);
 }
 
 async function locateAsked(event) {

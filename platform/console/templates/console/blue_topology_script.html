@@ -1,5 +1,6 @@
-const topo = { read: false, web: null, drawn: false, fitTimer: null, drawnHeard: [] };
+const topo = { read: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [] };
 const MAP_WAIT_MS = 30000;
+const MAP_FIT_WAIT_MS = 8000;
 const REFIT_SETTLES_MS = 250;
 
 const topologyOrigin = () => {
@@ -20,12 +21,26 @@ function topologyRefit() {
   }, REFIT_SETTLES_MS);
 }
 
+function topologyWait(ms) {
+  topo.waiting = true;
+  field("map-wait").classList.remove("hidden");
+  clearTimeout(topo.waitTimer);
+  topo.waitTimer = setTimeout(topologyFitted, ms);
+}
+
+function topologyFitted() {
+  clearTimeout(topo.waitTimer);
+  topo.waiting = false;
+  field("map-wait").classList.add("hidden");
+}
+
 function topologyHeard(event) {
   const frame = field("topology-frame");
-  if (!event.data || event.data.fslMap !== "drawn" || !frame.contentWindow || event.source !== frame.contentWindow) return;
+  const said = event.data && event.data.fslMap;
+  if ((said !== "drawn" && said !== "fitted") || !frame.contentWindow || event.source !== frame.contentWindow) return;
   topo.drawn = true;
-  field("map-wait").classList.add("hidden");
-  topo.drawnHeard.forEach((heard) => heard());
+  topologyFitted();
+  if (said === "drawn") topo.drawnHeard.forEach((heard) => heard());
 }
 
 function topologyShow() {
@@ -34,9 +49,10 @@ function topologyShow() {
   if (topo.web && !field("topology-frame").getAttribute("src")) {
     const at = new URL(location.href);
     at.port = String(topo.web.port);
-    field("map-wait").classList.remove("hidden");
-    setTimeout(() => field("map-wait").classList.add("hidden"), MAP_WAIT_MS);
+    topologyWait(MAP_WAIT_MS);
     field("topology-frame").src = at.origin + topo.web.path;
+  } else if (topo.web && topo.drawn) {
+    topologyWait(MAP_FIT_WAIT_MS);
   }
   topologyRefit();
 }
