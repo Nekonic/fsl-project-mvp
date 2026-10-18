@@ -71,3 +71,19 @@ def test_no_alert_of_the_session_is_missing_from_the_accounting(client):
         f"a case and {totals['unattributed']} were reported unattributed. The "
         f"difference is evidence that entered no number at all"
     )
+
+def test_scoring_and_the_session_page_never_read_the_raw_alert_bodies(client):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    session = session_with(alerts_matching_no_case=5, benign_cases=1, benign_that_alerted=1)
+
+    with CaptureQueriesContext(connection) as captured:
+        assert client.get(f"/api/sessions/{session.id}/score/?brief=1").status_code == 200
+        assert client.get(f"/api/sessions/{session.id}/").status_code == 200
+
+    reads = [query["sql"] for query in captured if "api_detection" in query["sql"] and "SELECT" in query["sql"]]
+    assert reads and not [sql for sql in reads if '"raw"' in sql], (
+        "the result page asked for every alert body (the raw JSON) of a session that can hold tens of "
+        "thousands of alerts; parsing them was most of the time the result tables took to fill in"
+    )

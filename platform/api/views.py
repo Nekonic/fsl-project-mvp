@@ -54,7 +54,7 @@ from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
-from scoring.types import CORRELATION_STRATEGIES
+from scoring.types import CORRELATION_STRATEGIES, DetectionRecord
 
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
@@ -2059,14 +2059,15 @@ def session_traffic(request, session_id):
 def _evidence(session, forced=None):
     replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
-    detections = [
-        d for d in session.detections.defer("raw") if d.marker not in replayed and d.marker != session.browse_marker
-    ]
+    rows = session.detections.values_list("detection_id", "timestamp", "src_ip", "marker", "signature")
+    detections = [DetectionRecord(*row[:4]) for row in rows
+                  if row[3] not in replayed and row[3] != session.browse_marker]
+    kept = {detection.detection_id for detection in detections}
     records = [c.to_record() for c in cases]
     if forced:
         records = [replace(record, correlation=forced) for record in records]
-    result = correlate(records, [d.to_record() for d in detections])
-    return cases, detections, result, {d.detection_id: d.signature for d in detections}
+    result = correlate(records, detections)
+    return cases, detections, result, {row[0]: row[4] for row in rows if row[0] in kept}
 
 def _game(session, cases, detections, result, breaches, totals):
     if session.ended_at is None:
