@@ -4,13 +4,12 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-18 (foundations F1-F6 rebuilt as attack and defence
-lessons, 3aa49a5, live review pending; before it, the red console is Kali
-and a browser, the blue console carries Kali for practice, proven live on
-51b28dd; before it,
-foundations F1-F6 in one session, proven live on 26c1c80; before that, Korean-first learner text, its review and its live
-sweep, at 6b72876). Written for a session that has the cloud
-(master@192.168.0.100, Keystone http://192.168.0.110:5000) and the Internet.
+Updated: 2026-10-19 (foundations review loop, rounds 2-5, e4a467e deployed;
+before it, foundations F1-F6 rebuilt as attack and defence lessons, 3aa49a5;
+the red console is Kali and a browser, proven live on 51b28dd; foundations in
+one session, proven live on 26c1c80; Korean-first learner text at 6b72876).
+Written for a session that has the cloud (master@192.168.0.100, Keystone
+http://192.168.0.110:5000) and the Internet.
 
 ## Where things stand
 
@@ -41,11 +40,10 @@ sweep, at 6b72876). Written for a session that has the cloud
 - The platform VM (192.168.0.210) was rebuilt twice on 2026-10-15 and five
   times on 2026-10-16, ten times on 2026-10-17 and seven times on 2026-10-18 by `bin/cloud up --replace
   --sideload` (`docs/OPENSTACK.md` §5.3, `docs/DECISIONS.md` 2026-10-15 "The
-  platform VM's rebuild runs an unpushed commit"): it runs 51b28dd with the
-  platform image built from it, the gns3 image from 9674d0e and the kali image from 0a90806, tagged 8f9acb0
-  (`FSL_IMAGE_TAG`); every other image is GHCR's 8f9acb0. Do not reboot it:
-  `fsl-platform.service` can pull GHCR's 8f9acb0 over the sideloaded
-  images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
+  platform VM's rebuild runs an unpushed commit"): it runs e4a467e with all
+  five images built from it, tagged 8f9acb0
+  (`FSL_IMAGE_TAG`). Do not reboot it: `fsl-platform.service` can pull GHCR's
+  8f9acb0 over the sideloaded images. The old VM's `/opt/fsl/backups` (P4 and P6 store copies) and both
   runs' store backups are in the main checkout's `backups/` on the operator's
   machine (`old-platform-vm-20261015-opt-fsl-backups.tgz`,
   `db-20261015T061630Z.sqlite3`, `db-20261015T073913Z.sqlite3`); this
@@ -151,16 +149,28 @@ sweep, at 6b72876). Written for a session that has the cloud
 
 - Foundations rebuilt as attack and defence lessons (2026-10-18, 3aa49a5,
   `docs/DECISIONS.md` "Foundations rebuilt as integrated attack and defence
-  lessons"): F1 map, F2 DevTools, F3 Kibana (both legs of the reverse
-  proxy), F4 XSS and an IDS rule (`xss-gap`), F5 sqlmap on `sort`, F6 an
-  over-broad exception (`overbroad`, `OWASP_CRS` on `ARGS:sort`); one
-  highlighted element per step, the note docked as a column, nudge, hint,
-  Skip, a solo last step; the Website pane leaves from the customers side;
-  a per-session Kibana view; seed replays scored as benign; a sideloaded
-  board reaches the wargame host. In flight: the deploy (platform, kali,
-  board sideloaded; the slot rebuild so the standing slots take the new
-  board) and the live review of F1-F6 in one session (pending live
-  review).
+  lessons"): F1 map, F2 DevTools, F3 Kibana, F4 XSS and an IDS rule, F5
+  sqlmap on `sort`, F6 an over-broad exception; one highlighted element per
+  step, nudge, hint, Skip, a solo last step.
+- Foundations review loop (2026-10-19, `docs/DECISIONS.md` "Foundations
+  review loop, rounds 2-5"): four live rounds of six reviewers (design, UI,
+  terms, AI-tone, realism and leaks, first-time learner) on top of the
+  instructor and UX pair; critical and high findings summed over the
+  reviewers fell from 7 and 12 in round 2 to 0 and 1 in round 5; medium and
+  low stay at 18 and 48 (round 5, five reviewers finished). Every walker run passed 48 of 48 steps. The round-5 fixes
+  (9f1f39d..60243e6) are deployed as e4a467e on the platform VM
+  (192.168.0.210; all five images sideloaded from it, both slots rebuilt and
+  configured, `ready` true) but not re-reviewed: round 6 and the full
+  `bin/verify` with acceptance were skipped at the user's request.
+  `bin/verify --fast`: 1666 passed. Decided, not fixed, with reasons: in the
+  same entry.
+- Unverified and open: the round-5 fixes have had no panel review and no
+  live acceptance since round 4's changes; Kibana's learner space still shows
+  Home and Stack Management in its menu (their pages answer 403) and ad-hoc
+  data views cannot be turned off in 8.15; no taste items were collected.
+- To try it: open http://192.168.0.210:8000, open the catalogue, start the
+  foundations course ("레슨 1") and go F1 to F6 in one session; about 30-40
+  minutes by hand.
 
 ## Waiting for the user
 

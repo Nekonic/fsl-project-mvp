@@ -1405,7 +1405,7 @@ binary log via a substrate runner, proven end to end against the live stack.
 - The platform mounts the Docker socket (non-root, via the socket's group): an
   escape path that goes away with the OpenStack adapter.
 - The Kali terminal at `/terminal/` (`/terminal/<session id>/` per session), and the ttyd terminals at
-  `/vm-terminal/fsl-kali/`, `/vm-terminal/fsl-waf/` and
+  `/vm-terminal/kali/`, `/vm-terminal/waf/` and
   `/waf-terminal/<session id>/`, are unauthenticated
   shells for whoever reaches the platform's port: loopback on compose, the VM's
   address (`FSL_PUBLISH`) on the platform VM.
