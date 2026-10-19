@@ -814,6 +814,31 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       substrates, not scheduled.
 - [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
       accepts `red: person`. Needs a second person to run live.
+- [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
+      9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
+      review loop, rounds 2-5"):
+      - [ ] Lesson auto-advance: after F1 and F2 finish, the console
+            sometimes does not move to the next lesson within 4 min (it is
+            meant to after 2 s); F3 to F4 did. The "다음 레슨" button works.
+            Cause not found (the e4a467e smoke, session 907, in
+            `docs/state/now.md`).
+      - [ ] Re-walk F4-F6 live on e4a467e or later; the last full 48 of 48
+            walk was round 5 on d077869.
+      - [ ] A live review round of the round-5 fixes under the convergence
+            rule: six reviewers (lesson design, UI, terms, AI-sounding
+            Korean, realism and leaks, first-time learner); a finding counts
+            only if a learner would notice it, taste items are listed
+            separately; exit is a round with zero countable findings. Counts
+            so far (critical/high/medium/low, summed over reviewers): r2 live
+            7/12/45/76, r3 2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI
+            reviewer missing).
+      - [ ] Kibana's menu still lists Home and Stack Management (they answer
+            403 or redirect to Discover); Kibana 8.15 cannot switch off
+            ad-hoc data views.
+      - [ ] The live walker (headless Playwright, F1-F6, about 28 min) lives
+            outside the repo in `~/.cache/fsl-work/walker/walk.py`; decide
+            whether it becomes a repo tool (under `bin/` or `test/live/`) so
+            it no longer depends on a scratch folder.
 - [ ] A range reset interrupted by a platform restart is not resumed at
       boot: the slot refuses sessions until `POST /api/range/configure/`.
 - [ ] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under

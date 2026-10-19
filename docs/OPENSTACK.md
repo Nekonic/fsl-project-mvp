@@ -889,6 +889,11 @@ deleted the same day; its floating IP 192.168.0.220 is still allocated to
   2026-10-12 the WAF and Kali, booted while the board had its own VM and
   `fsl-waf` named only `board.com`, kept the old board address and no
   `corp.com` until their servers were deleted and `slot/` booted them again.
+- Dev machine on the lab's subnet: when the operator's Wi-Fi uses the same
+  192.168.0.0/24 as the lab and the lab is reached over a WireGuard tunnel,
+  the connected route wins and lab addresses go out the Wi-Fi interface. Put
+  /32 `AllowedIPs` for the lab hosts in the tunnel, or run a proxy bound to
+  the tunnel interface, and check the route before any cloud call.
 
 ## Sources
 

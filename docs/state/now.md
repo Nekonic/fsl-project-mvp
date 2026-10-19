@@ -205,3 +205,10 @@ http://192.168.0.110:5000) and the Internet.
    deploy only when `/api/range/ready/` shows no slot resetting, or resume it.
 4. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
+5. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
+   rebuild, remaining work"): the F1 and F2 auto-advance that sometimes does
+   not fire within 4 min (cause not found); re-walk F4-F6 live on e4a467e or
+   later; a live review round of 9f1f39d..60243e6 (six reviewers, convergence
+   rule, exit on zero countable findings); Kibana's Home and Stack Management
+   menu entries; whether the walker (`~/.cache/fsl-work/walker/walk.py`)
+   becomes a repo tool.
