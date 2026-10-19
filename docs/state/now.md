@@ -168,6 +168,13 @@ http://192.168.0.110:5000) and the Internet.
   live acceptance since round 4's changes; Kibana's learner space still shows
   Home and Stack Management in its menu (their pages answer 403) and ad-hoc
   data views cannot be turned off in 8.15; no taste items were collected.
+  The e4a467e smoke (session 907, F1-F3 with the walker fixed for its own
+  artefacts) passed 20 of 20 steps, but F1 and F2 did not move to the next
+  lesson by themselves within 4 minutes (the walker moved them through the
+  API); F3 did move to F4 by itself. Cause not found yet; the "다음 레슨"
+  button is shown on every finished lesson. Panes seen loading in the smoke
+  and in the round-6 run: map, website, DevTools, Kibana, IDS rules, Kali
+  and WAF terminals.
 - To try it: open http://192.168.0.210:8000, open the catalogue, start the
   foundations course ("레슨 1") and go F1 to F6 in one session; about 30-40
   minutes by hand.
