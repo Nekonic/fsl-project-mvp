@@ -5301,7 +5301,7 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   view in `kibana.py`, the tag exclusion in `rules/crs.py`. Metrics:
   core_loc 580 -> 584, product_loc 23996 -> 25625, dependencies 6 and
   services 10 unchanged.
-- **Proven live:** (filled after the live review)
+- **Proven live:** see "Foundations review loop, rounds 2-5" (2026-10-19): the walker passed 48 of 48 steps on d077869; e4a467e is deployed and smoke-tested only.
 
 ## Target and WAF realism after the round-2 live panel
 
@@ -5553,3 +5553,93 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   shows no refused import. A live walk re-checks F4.
 - **Not done.** The slot number in Inspect, the space id and the index names
   stay: a shared Kibana needs a per-slot identifier, and renaming moves it.
+
+## 2026-10-19 — Foundations review loop, rounds 2-5
+
+Six reviewers per live round (design, UI, terms, AI-tone, realism and leaks,
+first-time learner) read headless-Chrome screenshots of the walked lessons
+F1-F6 and the report of each step; round 1 was the instructor and UX pair.
+Counts are critical/high/medium/low per reviewer.
+
+| Round | Commit | Counts |
+|---|---|---|
+| 1 | 326fa6f..f261301 | instructor 2/9/21/16, UX 2/13/28/13 |
+| 2 static | strings, scenario | terms 1/6/9/19, AI-tone 1/4/23/27, lesson design 0/4/9/13 |
+| 2 live | f261301 | design 2/3/6/11, UI 0/3/7/10, terms 0/0/4/8, AI-tone 0/1/9/23, realism 0/3/5/14, learner 5/2/14/10 |
+| 3 live | f9d433b | design 2/0/4/15, UI 0/1/9/8, terms 0/0/4/9, AI-tone 0/0/8/28, realism 0/2/3/8, learner 0/8/10/11 |
+| 4 live | 1dac802 | design 0/0/6/10, UI 0/0/4/8, terms 0/0/1/8, AI-tone 0/0/7/24, realism 0/1/4/8, learner 0/1/8/12 |
+| 5 live | d077869 | design 0/0/4/9, terms 0/0/2/4, AI-tone 0/0/7/17, realism 0/0/2/7, learner 0/1/3/11; the UI reviewer did not finish (usage limits) and its partial work was lost |
+
+The walker passed 48 of 48 steps in every run from round 2. Critical and
+high findings fell to zero by round 4 (one high in each of realism and
+learner), to one learner high in round 5.
+
+- **What changed (rounds 2-5, fixed in 326fa6f..60243e6).**
+  - Learner text rewritten Korean-first: 탈취, 정탐, 게시판 검색창 against
+    KQL 입력창, 실습 환경, 구성도, 레슨, 건너뛰기. F4's fired step asks for
+    the sid; the F3 count and F6 seen checks equal what Kibana shows; numeric
+    answers accept `1,292`.
+  - Coach: Kibana rows that know which leg of the proxy they show, callouts
+    under the note buttons, a ring when the run finishes, the map hidden
+    until fitted, command boxes that wrap only at spaces and carry a copy
+    button, a rule editor that wraps with wrap-aware rings, callout placement
+    by distance and leader cost.
+  - Realism: the Kali VM user is `kali` with Kali's prompt, hostnames `kali`
+    and `waf`, neutral unit and path names; the Website pane sends Chrome's
+    headers, keeps cookies and lists favicon and cache rows; DevTools has the
+    toolbar, a waterfall, type chips in Chrome's order, an Elements tree,
+    Sources navigator and Console toolbar; the board seed is 15 posts and 30
+    comments.
+  - Leaks closed: a Kibana learner space "SOC" per session with only Discover,
+    ES|QL off, admin APIs, the Default space and unprefixed paths answering
+    403; index `logs-<slot>-sensors`, `event.module`, marker header
+    `X-Request-ID`, collector hostname `log-server`, edge hostname
+    `firewall`, `log.source.address` dropped, `http.*` and `data_stream.*`
+    hidden; Django `DEBUG` off with a generated secret key; the GNS3 page
+    `map.html` with a generated learner password; terminals at
+    `/vm-terminal/kali/` and `/vm-terminal/waf/`.
+- **Decided, not fixed** (the panel was told not to re-raise these):
+  - `/internal/auth-users` stays on the board: `api/loot.py` is the one reader
+    of the target's ground truth by design; Kali and the Website pane cannot
+    reach it and the WAF answers it with the board's own 404.
+  - No public service IP or DNAT on the edge; F1's theory says the practice
+    network forwards without NAT. The firewall's WAN label on the OpenStack
+    map is the edge's real address on an origin /24.
+  - The "개발자 도구" button stays (F2 teaches opening DevTools with it; F12
+    works too). DevTools Styles/Computed/Layout are empty (no CSS rule data
+    is captured) and inert toolbar controls stay inert.
+  - Map links of `customers` and `kali` carry no IP (their source address
+    changes per origin). F1's db_ip repeats reading a link label (on the
+    Docker map the variant would equal step 1). The last step of each lesson
+    is solo by design.
+  - Kibana 8.15 cannot switch off ad-hoc data views; the space switcher still
+    lists other spaces and the app menu lists Home and Stack Management (their
+    pages answer 403 or redirect to Discover). A per-slot number (space id,
+    index name, Inspect) stays visible in a shared Kibana; it is neutral.
+    Elasticsearch security with per-slot roles is not used; the `/kibana/`
+    proxy refuses the admin APIs instead. Filebeat's empty data stream named
+    after its template (`logs-sensors`) stays; learners' views never cover it.
+  - The Kali shell keeps `http_proxy` instead of a transparent redirect;
+    `/etc/os-release` and `uname` say Ubuntu (one cloud image); the label
+    files are hidden from casual reads only (passwordless sudo, as on Kali).
+    Docker Kali reaches its proxy as `proxy-<id>` on the shared edge network.
+  - The CRS paranoia `SecAction` stays on line 1 of the exclusion file
+    (moving it grows the gated `core_loc`). The `traffic.yaml` customer
+    comment texts stay (changing the benign mix changes scenario 2.x's
+    measured baseline).
+- **Not verified.**
+  - Round 6 (the panel under the convergence rule: a finding counts only if
+    a Korean freshman learner would notice it on screen) and the full
+    `bin/verify` with acceptance were skipped at the user's request, for time.
+    The round-5 fixes (9f1f39d..60243e6) are deployed as e4a467e but were not
+    re-reviewed live, and no live acceptance has run since the round-4 changes.
+  - The round-6 smoke walk hit walker artefacts (an order answer sent as one
+    item; the walker's answer source lacked the web process's in-memory
+    website requests; the sort step needed the brand link first), fixed in the
+    walker, not product bugs.
+  - No taste items were collected; the convergence rule began with round 6.
+- **Proven live 2026-10-19** (OpenStack, platform VM 192.168.0.210). The
+  walker passed 48 of 48 steps on d077869 (round 5). e4a467e was then
+  deployed with all five images sideloaded from it, both slots rebuilt onto
+  the new Kali and WAF images and configured, `ready` true; that deploy was
+  smoke-tested only. `bin/verify --fast`: 1666 passed.

@@ -98,7 +98,7 @@ label, canary)는 쿼리나 본문에서 `session`을 받습니다. 지정하지
 | `fsl-elasticsearch` | control | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `fsl-collector` | control | `filebeat:8.15.0`, syslog 입력만 사용 (OpenStack 훈련 환경용) | mgmt | 5140/udp |
 | `fsl-kibana` | control | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | |
-| `fsl-platform` | control | `platform/` (waitress 위의 Django, nginx 뒤에서 동작; nginx는 `/kibana/`의 Kibana, `/terminal/<session id>/`의 세션별 Kali ttyd, `/waf-terminal/<session id>/`의 세션별 WAF 쉘, `/vm-terminal/fsl-kali/`와 `/vm-terminal/fsl-waf/`의 VM 터미널도 제공); compose 플러그인을 포함하고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
+| `fsl-platform` | control | `platform/` (waitress 위의 Django, nginx 뒤에서 동작; nginx는 `/kibana/`의 Kibana, `/terminal/<session id>/`의 세션별 Kali ttyd, `/waf-terminal/<session id>/`의 세션별 WAF 쉘, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 VM 터미널도 제공); compose 플러그인을 포함하고 `session.yaml`을 `/src/session.yaml`에 마운트 | edge 네트워크, mgmt, 열린 각 세션의 estate | 8000, 8002 |
 | `fsl-gns3` | control | `deploy/gns3`에서 빌드한 `ghcr.io/nekonic/fsl-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli; 플랫폼이 올린 학습자 구성도를 열어 두고 그 표시용 노드를 시작; `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스) | mgmt | 3080 |
 
 8000, 8002, 3080은 `FSL_PUBLISH`에, 5140/udp는 `FSL_SYSLOG_PUBLISH`에 바인딩하며 둘 다
@@ -504,7 +504,7 @@ GNS3(`platform/gns3.py`)나 레포 파일에서 반환합니다(값이 없으면
 창)은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `kali_terminal`)을
 프레임으로 띄웁니다. compose에서는 `/terminal/<세션 id>/`이고, nginx가 이를
 `fsl-<id>-kali-1:7681`에 있는 Kali 자체 ttyd로 프록시합니다. OpenStack에서는
-`/vm-terminal/fsl-kali/?arg=<세션 id>`입니다. 이는 플랫폼 안의 ttyd로, 세션 슬롯에
+`/vm-terminal/kali/?arg=<세션 id>`입니다. 이는 플랫폼 안의 ttyd로, 세션 슬롯에
 있는 호스트의 mgmt 주소로 ssh 접속합니다. compose에서는 Kali와 WAF에 mgmt 주소가
 없으므로 `/vm-terminal/`은 연결되지 않습니다.
 
@@ -530,7 +530,7 @@ nginx가 경로에서 세션을 꺼내고 클라이언트가 보낸 쿼리는 �
 `?arg=<세션 id>`를 붙여 프록시합니다. ttyd의 `-a`가 이 값을 스크립트 인자로 넘기고,
 스크립트는 숫자인지 확인한 뒤 `docker exec -it fsl-<id>-waf-1 bash`를 실행합니다.
 WAF 이미지에는 자체 ttyd가 없습니다. 이 경로도 같은 `auth_request /terminal-allowed`로
-보호합니다. OpenStack에서는 이 창이 `/vm-terminal/fsl-waf/?arg=<세션 id>`를 띄웁니다.
+보호합니다. OpenStack에서는 이 창이 `/vm-terminal/waf/?arg=<세션 id>`를 띄웁니다.
 
 블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다. 뒤로, 앞으로, 새로 고침(페이지를
 불러오는 동안에는 중지 버튼과 얇은 진행 막대), 전체 URL(`http://board.com/<경로>`)을
