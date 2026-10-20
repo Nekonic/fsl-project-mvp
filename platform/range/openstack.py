@@ -38,6 +38,7 @@ CREATE_NETWORK = "POST {neutron}/v2.0/networks"
 TAG_NETWORK = "PUT {neutron}/v2.0/networks/{network}/tags"
 CREATE_SUBNETS = "POST {neutron}/v2.0/subnets"
 DELETE_SUBNET = "DELETE {neutron}/v2.0/subnets/{subnet}"
+NO_RESOLVER = "0.0.0.0"
 DELETE_NETWORK = "DELETE {neutron}/v2.0/networks/{network}"
 KEYPAIRS = "GET {nova}/os-keypairs"
 IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
@@ -403,7 +404,7 @@ def _refuse_undeclared(origins, bound: dict, allocated: dict) -> None:
 def _subnet_body(subnet: "fabric.Subnet", network_id: str) -> dict:
     body = {
         "network_id": network_id, "name": subnet.name, "cidr": subnet.cidr,
-        "ip_version": 4, "enable_dhcp": subnet.dhcp,
+        "ip_version": 4, "enable_dhcp": subnet.dhcp, "dns_nameservers": [NO_RESOLVER],
     }
     if not subnet.gateway:
         body["gateway_ip"] = None
