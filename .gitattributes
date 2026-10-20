@@ -1,0 +1,18 @@
+* text=auto eol=lf
+*.mmdb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.img binary
+*.qcow2 binary
+*.bz2 binary
+*.gz binary
+*.tar binary
+*.zip binary
+*.sqlite3 binary
+*.pdf binary

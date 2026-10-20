@@ -22,8 +22,9 @@ done
 
 if [ -f loaded ]; then
   install -d -m 0700 /var/lib/fsl
-  while read -r image id url; do
-    curl -fsS --retry 5 --retry-all-errors -H "Host: localhost" -o /var/lib/fsl/loaded.tar "$url"
+  served=$(cat served-from)
+  while read -r image id name; do
+    curl -fsS --retry 5 --retry-all-errors -H "Host: localhost" -o /var/lib/fsl/loaded.tar "$served$name/"
     docker load -q -i /var/lib/fsl/loaded.tar
     rm /var/lib/fsl/loaded.tar
     [ "$(docker image inspect --format '{{.Id}}' "$image")" = "$id" ]

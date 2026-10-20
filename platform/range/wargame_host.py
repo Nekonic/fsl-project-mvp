@@ -28,7 +28,8 @@ LOG_READER_STATE = "/var/spool/rsyslog/imfile-state:*"
 STOP_GRACE = 1
 REGISTRY = "ghcr.io/nekonic/fsl-"
 LOADED = "deploy/wargame-host/loaded"
-SERVED_AT = "http://{address}:8000/api/range/images/sideloaded/{name}/"
+SERVED_FROM = "deploy/wargame-host/served-from"
+SERVED_AT = "http://{address}:8000/api/range/images/sideloaded/"
 
 def render(document: dict, tag: str, publish: dict[str, int]) -> str:
     services = {}
@@ -86,12 +87,15 @@ def generated(source: Path, host: str, wargames, publish: dict[str, int], tag: s
         raise RangeUnavailable(
             f"{host} publishes {', '.join(unserved)}, which none of its wargames runs")
     if loaded:
-        files[LOADED] = "".join(f"{image} {ident} {url}\n" for image, ident, url in sorted(loaded)).encode()
+        files[LOADED] = "".join(f"{image} {ident} {name}\n" for image, ident, name in sorted(loaded)).encode()
     files[DAEMON] = json.dumps({
         "mtu": mtu,
         "default-network-opts": {"bridge": {"com.docker.network.driver.mtu": str(mtu)}},
     }, sort_keys=True).encode()
     return files
+
+def served_from(address: str) -> dict[str, bytes]:
+    return {SERVED_FROM: f"{SERVED_AT.format(address=address)}\n".encode()}
 
 def up(wargame: str) -> list[str]:
     return ["sudo", "docker", "compose", "-p", wargame, "-f", INSTALLED.format(wargame=wargame),

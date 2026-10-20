@@ -1,8 +1,11 @@
 import importlib.util
 import json
 import re
+import sqlite3
+import stat
 import subprocess
 import tarfile
+from contextlib import closing
 from argparse import Namespace
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -229,6 +232,50 @@ def test_the_rebuild_takes_the_range_key_from_the_running_platform_once(tmp_path
     assert key.stat().st_mode & 0o777 == 0o600
 
 
+def test_the_first_bring_up_makes_the_range_key_and_a_replace_still_refuses_without_one(tmp_path):
+    module = rebuild()
+    key = tmp_path / "ssh" / "range-key"
+    ran = []
+
+    def keygen(argv, stdin=None, check=True):
+        ran.append(argv)
+        Path(argv[argv.index("-f") + 1]).write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    module.keep_range_key(key, None, first=True, run=keygen)
+
+    assert ran[0][:2] == ["ssh-keygen", "-q"] and "ed25519" in ran[0] and str(key) in ran[0]
+    assert key.is_file()
+    module.keep_range_key(key, None, first=True, run=keygen)
+    assert len(ran) == 1, "an existing key is never replaced"
+    with pytest.raises(module.Refused, match="range's VMs refuse"):
+        module.keep_range_key(tmp_path / "absent", None, run=keygen)
+    assert len(ran) == 1
+
+
+def test_the_rebuild_says_what_ssh_answered_when_the_new_vm_never_takes_it(monkeypatch, tmp_path):
+    module = rebuild()
+    monkeypatch.setattr(module, "SSH_WAIT", -1)
+    host = module.Host("ubuntu", "10.0.0.5", tmp_path / "known_hosts", tmp_path / "key")
+    monkeypatch.setattr(module, "run", lambda argv, stdin=None, check=True: subprocess.CompletedProcess(
+        argv, 255, b"", b"ubuntu@10.0.0.5: Permission denied (publickey)."))
+
+    with pytest.raises(module.Refused, match="Permission denied"):
+        host.wait()
+
+
+def test_the_openstack_cli_beside_the_interpreter_is_found_before_the_path(monkeypatch, tmp_path):
+    module = rebuild()
+    python = tmp_path / "bin" / "python"
+    python.parent.mkdir()
+    python.write_text("")
+    monkeypatch.setattr(module.sys, "executable", str(python))
+
+    assert module.openstack_cli(lambda name: "/usr/bin/openstack") == "/usr/bin/openstack"
+    (python.parent / "openstack").write_text("")
+    assert module.openstack_cli(lambda name: "/usr/bin/openstack") == str(python.parent / "openstack")
+
+
 class FloatingIps:
     def __init__(self, held):
         self.held, self.ran = held, []
@@ -272,6 +319,9 @@ class NewPlatform:
 
     def copy(self, source, destination):
         self.ran.append(f"copy {source} {destination}")
+
+    def settings_fed(self):
+        return next(stdin for command, stdin in self.fed.items() if "openstack.env.kept" in command)
 
 
 COMPOSE_2_40_DOCKER = """#!/bin/sh
@@ -412,6 +462,10 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     ran = platform.ran
     checkout = next(i for i, command in enumerate(ran) if f"checkout -q --detach {HEAD}" in command)
     assert f"fetch -q /tmp/{bundle.name} HEAD" in ran[checkout]
+    [venv] = [command for command in ran if "fsl-venv-checkout" in command]
+    assert ran.index(venv) > checkout and "--no-block" in venv and module.VENV_COMMAND in venv.replace("'", ""), (
+        "a sideload checkout can change platform/requirements.txt, and the pip install must not hold up the hand-over"
+    )
     [load] = [command for command in ran if "docker load" in command]
     assert f"/tmp/gns3.tar" in load
     assert (f"docker tag ghcr.io/nekonic/fsl-gns3:{built} ghcr.io/nekonic/fsl-gns3:"
@@ -423,7 +477,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
         "collector ran the old filebeat.yml until each service was recreated"
     )
-    assert platform.fed["cat >> /opt/fsl/openstack.env"] == b"FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n", (
+    assert platform.settings_fed() == b"FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n", (
         "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
         "at the same tag, so it has to know which images were sideloaded"
     )
@@ -439,4 +493,412 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
     assert platform.ran[-1].endswith("up -d platform")
-    assert platform.fed["cat >> /opt/fsl/openstack.env"] == b"FSL_OPENSTACK_PASSWORD=secret\n"
+    assert platform.settings_fed() == b"FSL_OPENSTACK_PASSWORD=secret\n"
+
+
+class Probed:
+    target = "ubuntu@203.0.113.7"
+
+    def __init__(self, returncode=0, out=b"", err=b""):
+        self.answer = subprocess.CompletedProcess([], returncode, out, err)
+
+    def ssh(self, command, stdin=None, check=True):
+        return self.answer
+
+
+def test_a_vm_that_answers_with_nothing_holds_no_store_and_one_that_says_stored_does():
+    module = rebuild()
+
+    assert module.holds_store(Probed(0, b"")) is False
+    assert module.holds_store(Probed(0, b"stored\n")) is True
+
+
+@pytest.mark.parametrize("code, said", [(255, "Permission denied"), (3, "")])
+def test_a_vm_that_cannot_be_asked_is_never_taken_to_hold_nothing(code, said):
+    module = rebuild()
+
+    with pytest.raises(module.Refused, match="cannot tell whether ubuntu@203.0.113.7 holds"):
+        module.holds_store(Probed(code, b"", said.encode()))
+
+
+@pytest.fixture
+def probe(tmp_path):
+    module = rebuild()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (bin_dir / "test").write_text('#!/bin/sh\n[ "$@" ]\n')
+    for name in ("sudo", "test"):
+        (bin_dir / name).chmod(0o755)
+    volume = tmp_path / "volume"
+    volume.mkdir()
+    script = module.STORE_PROBE.replace(module.STORE_DIRECTORY, str(volume))
+
+    def run(docker=None, stored=False):
+        (bin_dir / "docker").unlink(missing_ok=True)
+        if docker is not None:
+            (bin_dir / "docker").write_text(f"#!/bin/sh\n{docker}\n")
+            (bin_dir / "docker").chmod(0o755)
+        (volume / "db.sqlite3").unlink(missing_ok=True)
+        if stored:
+            (volume / "db.sqlite3").write_bytes(b"")
+        done = subprocess.run(["/bin/sh", "-c", script], env={"PATH": str(bin_dir)},
+                              capture_output=True, text=True)
+        return done.returncode, done.stdout.strip()
+
+    return run
+
+
+def test_the_store_probe_finds_nothing_only_where_docker_is_absent_or_never_ran_the_platform(probe):
+    assert probe(docker=None) == (0, ""), "a VM whose cloud-init stopped before Docker has nothing to lose"
+    assert probe(docker="exit 0") == (0, ""), "Docker with no platform container and no store file"
+
+
+@pytest.mark.parametrize("docker, stored", [("echo abc123", False), ("exit 0", True), ("echo abc123", True)])
+def test_the_store_probe_reports_a_running_platform_or_a_store_file_as_something_to_keep(probe, docker, stored):
+    code, out = probe(docker=docker, stored=stored)
+
+    assert code == 0 and out
+
+
+def test_the_store_probe_cannot_tell_when_docker_does_not_answer(probe):
+    code, out = probe(docker="exit 1", stored=True)
+
+    assert code == 3 and not out
+
+
+class Unfinished(NewPlatform):
+    def ssh(self, command, stdin=None, check=True):
+        self.ran.append(command)
+        return subprocess.CompletedProcess([], 1, b"", b"")
+
+
+def test_a_vm_whose_first_boot_did_not_finish_stops_the_hand_over_and_says_how_to_make_it_again(tmp_path):
+    module = rebuild()
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = Unfinished()
+    platform.target = "ubuntu@203.0.113.7"
+
+    with pytest.raises(module.Refused, match=r"first boot did not finish.*up --replace"):
+        module.hand_over(platform, "secret", key, None)
+    assert len(platform.ran) == 1
+
+
+HANDED_OVER = "FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PASSWORD=old\nFSL_SIDELOADED=board,platform\nFSL_OPENSTACK_PLATFORM=srv\n"
+
+
+def rewritten_settings(monkeypatch, tmp_path, sideload):
+    module = rebuild()
+    checkout = tmp_path / "fsl"
+    checkout.mkdir()
+    settings = checkout / "openstack.env"
+    settings.write_text(HANDED_OVER)
+    settings.chmod(0o600)
+    monkeypatch.setattr(module, "CHECKOUT", str(checkout))
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+    module.hand_over(platform, "secret", key, None, sideload)
+    [rewrite] = [command for command in platform.ran if "openstack.env.kept" in command]
+    subprocess.run(["/bin/sh", "-c", rewrite], input=platform.fed[rewrite], check=True)
+    assert not (checkout / "openstack.env.kept").exists()
+    assert stat.S_IMODE(settings.stat().st_mode) == 0o600
+    return module, settings.read_text()
+
+
+def test_a_second_hand_over_leaves_one_password_line_and_keeps_every_line_it_does_not_own(monkeypatch, tmp_path):
+    _, settings = rewritten_settings(monkeypatch, tmp_path, None)
+
+    assert settings == (
+        "FSL_OPENSTACK_USER=fsl\nFSL_SIDELOADED=board,platform\nFSL_OPENSTACK_PLATFORM=srv\n"
+        "FSL_OPENSTACK_PASSWORD=secret\n"
+    ), (
+        "plain up redoes the hand-over on a VM that was sideloaded; dropping FSL_SIDELOADED made the "
+        "platform pull GHCR's wargame images over the sideloaded ones and rebuild the wargame host"
+    )
+
+
+def test_a_sideloading_hand_over_rewrites_the_sideloaded_line_too(monkeypatch, tmp_path):
+    module = rebuild()
+    sideload = module.Sideload(HEAD, tmp_path / "head.bundle",
+                               {"gns3": module.Tarball(tmp_path / "gns3.tar", "3" * 40)})
+
+    _, settings = rewritten_settings(monkeypatch, tmp_path, sideload)
+
+    assert settings == (
+        "FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PLATFORM=srv\n"
+        "FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n"
+    )
+
+
+def test_the_range_key_is_written_into_a_platform_container_that_is_started_first(tmp_path):
+    module = rebuild()
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, None)
+
+    started = next(i for i, command in enumerate(platform.ran) if "up -d platform >/dev/null" in command)
+    written = next(i for i, command in enumerate(platform.ran) if "docker exec -i -u fsl fsl-platform" in command)
+    assert started < written, (
+        "a redone hand-over found the platform container stopped and docker exec refused the key "
+        "with 'container ... is not running'"
+    )
+
+
+def test_a_platform_container_that_will_not_start_stops_the_hand_over_before_anything_is_written(tmp_path):
+    module = rebuild()
+
+    class Stopped(NewPlatform):
+        target = "ubuntu@203.0.113.7"
+
+        def ssh(self, command, stdin=None, check=True):
+            self.ran.append(command)
+            failing = "up -d platform >/dev/null" in command
+            return subprocess.CompletedProcess([], 1 if failing else 0, b"", b"dependency failed" if failing else b"")
+
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = Stopped()
+
+    with pytest.raises(module.Refused, match=r"fsl-platform container on ubuntu@203.0.113.7 is not running.*dependency failed"):
+        module.hand_over(platform, "secret", key, None)
+    assert not [command for command in platform.ran if "docker exec" in command or "openstack.env" in command]
+
+
+def test_the_password_that_marks_a_finished_hand_over_is_written_after_the_store_is_restored(tmp_path):
+    module = rebuild()
+    store = tmp_path / "store.sqlite3"
+    store.write_bytes(b"")
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, store)
+
+    restore = next(i for i, command in enumerate(platform.ran) if "docker run" in command)
+    marked = next(i for i, command in enumerate(platform.ran) if "openstack.env.kept" in command)
+    assert restore < marked < len(platform.ran) - 1, (
+        "plain up takes a VM with the password line as handed over and restores nothing; a hand-over "
+        "that broke before its store was in place must not leave that line behind"
+    )
+
+
+@pytest.mark.parametrize("code, done", [(0, True), (1, False)])
+def test_the_hand_over_counts_as_done_only_when_the_password_line_is_found(code, done):
+    assert rebuild().hand_over_done(Probed(code)) is done
+
+
+@pytest.mark.parametrize("code, said", [(255, "Connection timed out"), (2, "Permission denied")])
+def test_a_hand_over_that_cannot_be_checked_is_never_redone(code, said):
+    module = rebuild()
+
+    with pytest.raises(module.Refused, match="cannot tell whether ubuntu@203.0.113.7 took its hand-over"):
+        module.hand_over_done(Probed(code, b"", said.encode()))
+
+
+def test_the_hand_over_check_reads_a_missing_settings_file_as_not_done(monkeypatch, tmp_path):
+    module = rebuild()
+    checkout = tmp_path / "fsl"
+    checkout.mkdir()
+    monkeypatch.setattr(module, "CHECKOUT", str(checkout))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (bin_dir / "sudo").chmod(0o755)
+
+    class Shell:
+        target = "ubuntu@203.0.113.7"
+
+        def ssh(self, command, stdin=None, check=True):
+            return subprocess.run(["/bin/sh", "-c", command], env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+                                  capture_output=True)
+
+    assert module.hand_over_done(Shell()) is False, "cloud-init has not moved openstack.env into place yet"
+    (checkout / "openstack.env").write_text("FSL_OPENSTACK_USER=fsl\n")
+    assert module.hand_over_done(Shell()) is False
+    (checkout / "openstack.env").write_text("FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PASSWORD=secret\n")
+    assert module.hand_over_done(Shell()) is True
+
+
+def stamped_backup(directory, name, rows):
+    directory.mkdir(exist_ok=True)
+    path = directory / name
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY)")
+        db.executemany("INSERT INTO api_session DEFAULT VALUES", [()] * rows)
+        db.commit()
+    return path
+
+
+def test_the_newest_backup_that_holds_rows_is_the_one_restored(monkeypatch, tmp_path):
+    module = rebuild()
+    backups = tmp_path / "backups"
+    monkeypatch.setattr(module, "BACKUPS", backups)
+    assert module.newest_backup() is None
+    stamped_backup(backups, "db-20261001T000000Z.sqlite3", 3)
+    wanted = stamped_backup(backups, "db-20261002T000000Z.sqlite3", 2)
+    stamped_backup(backups, "db-20261003T000000Z.sqlite3", 0)
+    stamped_backup(backups, "db-20261004-pre-p6.sqlite3", 5)
+    (backups / "db-20261005T000000Z.sqlite3").write_bytes(b"not a store")
+
+    assert module.newest_backup() == wanted, (
+        "an empty backup or one that is not a store is skipped, and a file named by hand is never "
+        "picked, as bin/backup never removes it"
+    )
+
+
+class Resumed:
+    def __init__(self, module, monkeypatch, tmp_path, answers=False, done=False, holds=False):
+        self.module, self.calls = module, []
+        self.backups = tmp_path / "backups"
+        monkeypatch.setattr(module, "BACKUPS", self.backups)
+        self.cloud, self.environment = module.load(
+            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), {}, lambda _: "/bin/openstack")
+        monkeypatch.setattr(module, "api_answers", lambda address: answers)
+        monkeypatch.setattr(module.Host, "wait", lambda host: self.calls.append("ssh"))
+        monkeypatch.setattr(module, "hand_over_done", lambda host: done)
+        monkeypatch.setattr(module, "holds_store", lambda host: holds)
+        monkeypatch.setattr(module, "start_platform", lambda host: self.calls.append("start"))
+        monkeypatch.setattr(module, "keep_range_key",
+                            lambda key, old, first=False, run=None: self.calls.append(("key", old is not None, first)))
+        monkeypatch.setattr(module, "hand_over",
+                            lambda host, password, key, store, sideload=None: self.calls.append(("hand_over", store)))
+        monkeypatch.setattr(module, "wait_for_api", lambda address: self.calls.append("api"))
+
+    def resume(self, sideload=()):
+        self.module.resume(self.cloud, self.environment, "203.0.113.7", list(sideload))
+        return self.calls
+
+
+def test_a_platform_that_answers_and_took_its_hand_over_is_left_alone(monkeypatch, tmp_path):
+    assert Resumed(rebuild(), monkeypatch, tmp_path, answers=True, done=True).resume() == ["ssh", "api"]
+
+
+def test_a_platform_that_answers_without_its_password_line_gets_the_hand_over_again(monkeypatch, tmp_path):
+    calls = Resumed(rebuild(), monkeypatch, tmp_path, answers=True, done=False, holds=True).resume()
+
+    assert calls == ["ssh", "start", ("key", True, False), ("hand_over", None), "api"], (
+        "a container started before the password line went away still answers; the range build "
+        "then fails, so the answer alone does not mean the hand-over was taken")
+
+
+def test_a_stack_whose_platform_never_took_its_hand_over_gets_it_instead_of_a_twenty_minute_wait(
+        monkeypatch, tmp_path):
+    calls = Resumed(rebuild(), monkeypatch, tmp_path, done=False).resume()
+
+    assert calls == ["ssh", ("key", False, True), ("hand_over", None), "api"]
+
+
+def test_a_platform_that_took_its_hand_over_and_is_still_booting_is_waited_for(monkeypatch, tmp_path):
+    assert Resumed(rebuild(), monkeypatch, tmp_path, done=True).resume() == ["ssh", "api"]
+
+
+def test_a_hand_over_redone_on_a_vm_that_holds_a_store_takes_the_key_from_it(monkeypatch, tmp_path):
+    calls = Resumed(rebuild(), monkeypatch, tmp_path, done=False, holds=True).resume()
+
+    assert calls == ["ssh", "start", ("key", True, False), ("hand_over", None), "api"], (
+        "the store's container may be stopped; the key is taken from it with docker exec"
+    )
+
+
+def test_a_hand_over_redone_on_a_vm_that_holds_no_store_restores_the_newest_backup(monkeypatch, tmp_path, capsys):
+    resumed = Resumed(rebuild(), monkeypatch, tmp_path, done=False, holds=False)
+    newest = stamped_backup(resumed.backups, "db-20261019T033253Z.sqlite3", 4)
+
+    assert ("hand_over", newest) in resumed.resume()
+    assert f"restoring {newest}" in capsys.readouterr().out
+
+
+def test_a_sideload_is_not_silently_dropped_when_the_hand_over_is_redone(monkeypatch, tmp_path):
+    module = rebuild()
+    resumed = Resumed(module, monkeypatch, tmp_path, done=False)
+
+    with pytest.raises(module.Refused, match="up --replace --sideload"):
+        resumed.resume(["platform=x.tar"])
+    assert "api" not in resumed.calls and ("hand_over", None) not in resumed.calls
+
+
+class Replacing:
+    def __init__(self, module, monkeypatch, tmp_path, holds, status="CREATE_COMPLETE", kept_rows=1,
+                 address="203.0.113.7"):
+        self.calls = []
+        self.backups = tmp_path / "backups"
+        monkeypatch.setattr(module, "BACKUPS", self.backups)
+        self.cloud, self.environment = module.load(
+            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), {}, lambda _: "/bin/openstack")
+        monkeypatch.setattr(module, "commit_of", lambda repository, ref: "a" * 40)
+        monkeypatch.setattr(module, "refuse_unless_published", lambda *args, **kwargs: None)
+        monkeypatch.setattr(module, "stack_status", lambda stack: status)
+        monkeypatch.setattr(module, "address_of", lambda stack, run=None: address)
+        monkeypatch.setattr(module, "holds_store", lambda old: holds)
+        monkeypatch.setattr(module, "start_platform", lambda old: self.calls.append("start"))
+        monkeypatch.setattr(module, "keep_range_key",
+                            lambda key, old, first=False, run=None: self.calls.append(("key", old is not None, first)))
+
+        def back_up(old, keep):
+            self.calls.append("back_up")
+            self.kept = stamped_backup(self.backups, "db-20261020T120000Z.sqlite3", kept_rows)
+            return self.kept
+
+        monkeypatch.setattr(module, "back_up", back_up)
+        monkeypatch.setattr(module, "replace_stack",
+                            lambda cloud, existed: self.calls.append("replace_stack") or "203.0.113.8")
+        monkeypatch.setattr(module.Host, "wait", lambda host: None)
+        monkeypatch.setattr(module, "hand_over",
+                            lambda host, password, key, store, sideload=None: self.calls.append(("hand_over", store)))
+        monkeypatch.setattr(module, "wait_for_api", lambda address: None)
+        self.module = module
+
+    def run(self):
+        self.module.rebuild(self.cloud, self.environment)
+        return self.calls
+
+
+def test_replacing_a_platform_that_never_stored_anything_needs_no_backup(monkeypatch, tmp_path, capsys):
+    calls = Replacing(rebuild(), monkeypatch, tmp_path, holds=False).run()
+
+    assert calls == [("key", False, True), "replace_stack", ("hand_over", None)]
+    assert "starts with an empty store" in capsys.readouterr().out
+
+
+def test_replacing_a_platform_that_holds_a_store_still_backs_it_up_first(monkeypatch, tmp_path):
+    replacing = Replacing(rebuild(), monkeypatch, tmp_path, holds=True)
+    calls = replacing.run()
+
+    assert calls == ["start", ("key", True, True), "back_up", "replace_stack", ("hand_over", replacing.kept)]
+
+
+@pytest.mark.parametrize("status", ["CREATE_COMPLETE", "CREATE_FAILED", None],
+                         ids=["vm-that-never-took-its-hand-over", "failed-stack", "no-stack-after-down"])
+def test_a_platform_made_where_no_store_stands_gets_the_newest_backup(monkeypatch, tmp_path, capsys, status):
+    replacing = Replacing(rebuild(), monkeypatch, tmp_path, holds=False, status=status)
+    newest = stamped_backup(replacing.backups, "db-20261019T033253Z.sqlite3", 4)
+
+    calls = replacing.run()
+
+    assert calls[-1] == ("hand_over", newest), (
+        "up --replace backed the store up, the new VM's hand-over failed, and the advice is to run "
+        "up --replace again: that VM holds no store, so the backup is the only copy and must be restored"
+    )
+    assert f"restoring {newest}" in capsys.readouterr().out
+
+
+def test_a_replaced_vm_whose_store_is_empty_hands_on_the_older_backup_that_holds_rows(monkeypatch, tmp_path):
+    replacing = Replacing(rebuild(), monkeypatch, tmp_path, holds=True, kept_rows=0)
+    older = stamped_backup(replacing.backups, "db-20261019T033253Z.sqlite3", 4)
+
+    calls = replacing.run()
+
+    assert calls[-1] == ("hand_over", older)
+
+
+def test_a_standing_stack_whose_address_cannot_be_read_is_never_deleted(monkeypatch, tmp_path):
+    module = rebuild()
+    replacing = Replacing(module, monkeypatch, tmp_path, holds=True, address=None)
+
+    with pytest.raises(module.Refused, match="CREATE_COMPLETE but its address output cannot be read"):
+        replacing.run()
+    assert replacing.calls == []

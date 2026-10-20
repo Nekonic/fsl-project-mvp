@@ -157,7 +157,7 @@ def up(args: argparse.Namespace) -> str:
     if address is None or args.replace:
         address = rebuild.rebuild(cloud, environment, args.sideload)
     else:
-        rebuild.wait_for_api(address)
+        rebuild.resume(cloud, environment, address, args.sideload)
     converge(Platform(address))
     return address
 
@@ -168,8 +168,8 @@ def take_down(call, stack: str, run) -> None:
     rebuild.delete_stack(stack, run)
 
 
-def take_down_broken(stack: str, status: str, run) -> None:
-    print(f"stack {stack} is {status} and has no platform to ask; removing its builders and the stack")
+def take_down_broken(stack: str, why: str, run) -> None:
+    print(f"stack {stack} {why}; removing its builders and the stack")
     rebuild.delete_stack(stack, run)
 
 
@@ -181,15 +181,21 @@ def down(args: argparse.Namespace) -> None:
         print(f"no stack {cloud.stack}; nothing to take down")
         return
     rebuild.refuse_if_busy(cloud.stack, status)
-    address = None if rebuild.failed(status) else rebuild.address_of(cloud.stack)
+    address = rebuild.standing_address(cloud.stack, status)
     if address is None:
-        take_down_broken(cloud.stack, status, rebuild.run)
+        take_down_broken(cloud.stack, f"is {status} and has no platform to ask", rebuild.run)
         return
     with tempfile.TemporaryDirectory() as scratch:
         old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
                            Path(cloud.operator_key_file).expanduser())
+        if not rebuild.holds_store(old):
+            take_down_broken(cloud.stack, f"at {address} has no fsl-platform container and no store, so "
+                             "there is nothing to back up and no platform to ask", rebuild.run)
+            return
+        rebuild.start_platform(old)
         rebuild.keep_range_key(Path(cloud.range_key).expanduser(), old)
         rebuild.back_up(old, cloud.backups_keep)
+    rebuild.wait_for_api(address)
     take_down(Platform(address), cloud.stack, rebuild.run)
     print("the platform and the range are gone; Glance keeps the images")
 

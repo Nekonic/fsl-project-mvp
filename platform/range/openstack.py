@@ -413,6 +413,10 @@ def _tidied(piped: subprocess.Popen, scratch: Path) -> None:
     piped.wait()
     shutil.rmtree(scratch, ignore_errors=True)
 
+def _detached(port: dict) -> bool:
+    return not port.get("device_id") and not port.get("device_owner")
+
+
 def _generations(servers: list[dict]) -> dict[str, str]:
     found = {}
     for server in servers:
@@ -832,9 +836,12 @@ class OpenStack:
         )
 
     def _attach(self, network: str, group: str) -> None:
+        name = f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"
+        for left in self._all(PORTS, "ports", network=network):
+            if left.get("name") == name and _detached(left):
+                self.get(self._call(DELETE_PORT, port=left["id"]))
         port = self.get(self._call(CREATE_PORT), {"port": {
-            "network_id": network, "name": f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}",
-            "security_groups": [group],
+            "network_id": network, "name": name, "security_groups": [group],
         }})["port"]["id"]
         try:
             self.get(self._call(ATTACH, server=self.build.platform), {
@@ -850,10 +857,9 @@ class OpenStack:
         owned = {network["id"]: network for number in range(1, self.slots + 1)
                  for network in fabric.bound(self.declared, networks, number).values()}
         for network in owned.values():
-            servers = [
-                port for port in self._all(PORTS, "ports", network=network["id"])
-                if str(port.get("device_owner") or "").startswith("compute:")
-            ]
+            ports = self._all(PORTS, "ports", network=network["id"])
+            servers = [port for port in ports if str(port.get("device_owner") or "").startswith("compute:")]
+            own += [("port", p["id"]) for p in ports if _detached(p)]
             own += [("port", p["id"]) for p in servers if p.get("device_id") == self.build.platform]
             standing = [p for p in servers if p.get("device_id") != self.build.platform]
             if standing:
@@ -1024,9 +1030,12 @@ class OpenStack:
     def _bundle(self, host: str, entry) -> images.Bundle:
         source = Path(self.build.source)
         if entry.wargames:
+            loaded = self._loaded(entry.wargames)
+            served = wargame_host.served_from(self._platform_address(
+                "the wargame host's builder fetches sideloaded images from the platform")) if loaded else None
             return images.bundle(source, host, entry.setup, entry.files, generated=wargame_host.generated(
                 source, host, entry.wargames, entry.publish, self.build.image_tag, self.build.mtu,
-                loaded=self._loaded(entry.wargames)))
+                loaded=loaded), unhashed=served)
         if not entry.uploads:
             return images.bundle(source, host, entry.setup, entry.files)
         if entry.uploads != opnsense.UPLOADS:
@@ -1052,12 +1061,7 @@ class OpenStack:
     def _loaded(self, wargames) -> tuple[tuple[str, str, str], ...]:
         found = wargame_host.sideloaded_images(
             self.build.source, wargames, self.build.image_tag, self.build.sideloaded)
-        if not found:
-            return ()
-        address = self._platform_address("the wargame host's builder fetches sideloaded images from the platform")
-        return tuple(
-            (image, wargame_host.local_image_id(image), wargame_host.SERVED_AT.format(address=address, name=name))
-            for name, image in sorted(found.items()))
+        return tuple((image, wargame_host.local_image_id(image), name) for name, image in sorted(found.items()))
 
     def _prebuilt(self) -> tuple[tuple[str, str], ...]:
         return tuple(

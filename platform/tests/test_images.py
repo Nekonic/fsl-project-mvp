@@ -46,6 +46,33 @@ def test_the_same_files_give_the_same_digest_and_any_change_gives_another(source
     (source / "waf" / "site.conf").write_text("server { listen 81; }\n")
     assert packed(source).digest != first
 
+def test_a_checkout_s_umask_does_not_change_the_digest_and_only_the_executable_bit_does(source):
+    script = source / "waf" / "setup.sh"
+    conf = source / "waf" / "site.conf"
+    script.chmod(0o755)
+    conf.chmod(0o644)
+    cloned = packed(source)
+    script.chmod(0o775)
+    conf.chmod(0o664)
+    sideloaded = packed(source)
+
+    assert sideloaded.digest == cloned.digest
+    assert {name: m.mode for name, m in members(sideloaded).items()} == {
+        "waf/setup.sh": 0o755, "waf/site.conf": 0o644}
+    script.chmod(0o664)
+    assert packed(source).digest != cloned.digest
+
+def test_a_build_time_file_is_packed_for_the_builder_and_left_out_of_the_digest(source):
+    plain = packed(source)
+    first = images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://a/\n"})
+    moved = images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://b/\n"})
+
+    assert "waf/served-from" in members(first)
+    assert first.digest == moved.digest == plain.digest, (
+        "where the builder fetches its inputs from is not what the image holds")
+    with pytest.raises(RangeUnavailable, match="waf/site.conf"):
+        images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/site.conf": b""})
+
 def test_a_file_the_declaration_names_and_the_repo_lacks_is_refused_by_name(source):
     with pytest.raises(RangeUnavailable, match="waf/gone.conf"):
         packed(source, files=("waf", "waf/gone.conf"))

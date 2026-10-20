@@ -152,3 +152,32 @@ def test_the_platform_vm_serves_ntp_to_the_range_management_network_alone():
         "time when it loses its upstream, because the scorer compares against it"
     )
     assert example().heat_parameters()["management"] == example().inside["mgmt"] == "10.31.0.0/24"
+
+def test_the_platform_vm_makes_its_own_virtualenv_in_the_background_after_the_platform_is_up():
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+
+    config = cloud_config()
+    commands = [list(map(str, command)) for command in config["runcmd"]]
+    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+    [made] = [i for i, c in enumerate(commands) if c[0] == "systemd-run"]
+    command = commands[made]
+    loader = SourceFileLoader("platform_rebuild_venv", str(ROOT / "bin/platform-rebuild"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+
+    assert "python3-venv" in config["packages"]
+    assert made > started, "the platform service starts first; the virtualenv must not delay it"
+    assert "--no-block" in command, "a slow pip install would hold up the rest of the first boot"
+    assert {"--uid=ubuntu", "--gid=ubuntu"} <= set(command), (
+        "bin/verify runs as the ubuntu user and the checkout is owned by it"
+    )
+    assert command[-3:] == ["sh", "-c", module.VENV_COMMAND], (
+        "the first boot and the hand-over after a sideload checkout make the same virtualenv, "
+        "one at a time: the hand-over starts while the first boot's pip install may still run"
+    )
+    assert module.VENV_COMMAND == (
+        "exec 9>/tmp/fsl-venv.lock && flock 9 && python3 -m venv /opt/fsl/.venv && "
+        "/opt/fsl/.venv/bin/pip install --quiet -r /opt/fsl/platform/requirements.txt"
+    )

@@ -177,7 +177,8 @@ def main():
         parser.error("--keep must be at least 1: the backup just taken is always kept")
 
     kept, size, rows = keep()
-    gone = thin(kept, args.keep)
+    stored = any(rows.values())
+    gone = thin(kept, args.keep) if stored else []
 
     print(kept)
     print(f"  {size} bytes, integrity_check ok")
@@ -186,6 +187,8 @@ def main():
         print(f"  {label:<14} {count:>8}")
     for path in gone:
         print(f"  removed {path.name}, older than the newest {args.keep}")
+    if not stored:
+        print("  the store holds no rows, so no older backup was removed")
 
 
 if __name__ == "__main__":

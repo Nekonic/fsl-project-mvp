@@ -246,6 +246,7 @@ resources:
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]
               - [systemctl, enable, --now, fsl-platform.service]
+              - [systemd-run, --collect, --no-block, --unit=fsl-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/fsl-venv.lock && flock 9 && python3 -m venv /opt/fsl/.venv && /opt/fsl/.venv/bin/pip install --quiet -r /opt/fsl/platform/requirements.txt"]
 
 outputs:
   address:

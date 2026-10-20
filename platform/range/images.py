@@ -77,26 +77,34 @@ def _members(source: Path, paths) -> list[str]:
         ]
     return sorted(dict.fromkeys(found))
 
+def _as_git_tracks(mode: int) -> int:
+    return 0o755 if mode & 0o111 else 0o644
+
 def bundle(source: Path, host: str, setup: str, files, generated: dict[str, bytes] | None = None,
-           image: str = "", uploads: bool = False) -> Bundle:
+           image: str = "", uploads: bool = False, unhashed: dict[str, bytes] | None = None) -> Bundle:
     source = Path(source)
     digest = hashlib.sha256()
     packed = io.BytesIO()
     contents = {
-        member: ((source / member).read_bytes(), (source / member).stat().st_mode & 0o777)
+        member: ((source / member).read_bytes(), _as_git_tracks((source / member).stat().st_mode))
         for member in _members(source, [setup, *files])
     }
     clashing = sorted(set(contents) & set(generated or {}))
     if clashing:
         raise RangeUnavailable(f"{', '.join(clashing)} would be both a repo file and a generated one")
     contents.update({member: (content, 0o644) for member, content in (generated or {}).items()})
+    clashing = sorted(set(contents) & set(unhashed or {}))
+    if clashing:
+        raise RangeUnavailable(f"{', '.join(clashing)} would be both an image file and a build-time one")
+    contents.update({member: (content, 0o644) for member, content in (unhashed or {}).items()})
     with tarfile.open(fileobj=packed, mode="w:gz", compresslevel=9) as archive:
         for member in sorted(contents):
             content, mode = contents[member]
             info = tarfile.TarInfo(member)
             info.size = len(content)
             info.mode = mode
-            digest.update(f"{member}\0{info.mode:o}\0".encode() + content + b"\0")
+            if member not in (unhashed or {}):
+                digest.update(f"{member}\0{info.mode:o}\0".encode() + content + b"\0")
             archive.addfile(info, io.BytesIO(content))
     return Bundle(host=host, setup=setup, digest=digest.hexdigest()[:16], archive=packed.getvalue(),
                   image=image, uploads=uploads)
