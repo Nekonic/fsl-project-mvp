@@ -80,9 +80,9 @@ nudge, a hint, then Skip.
 | F1 Reading the network map | `full` | reads board.com's address, board-db's subnet and the name of kali's network on the map; picks in order the hosts a customer's search passes; names the log host; alone: board-db's address | the learner map |
 | F2 Reading HTTP requests in DevTools | `full` | searches with the board's search box; reads method, parameter, path and status code in a Chrome-like Network panel; finds the `sort` parameter behind the board's sort control; alone: the status of a missing post | own requests |
 | F3 Finding your requests in Kibana | `full` | writes KQL for its own search; reads the source IP of both legs through the reverse proxy, the map host behind the inner one and X-Forwarded-For; says whether the WAF logged it; alone: how many of its searches arrived at the WAF | own requests at the sensors and the WAF |
-| F4 Blocking an XSS request and writing an IDS rule | `xss-gap` (no XSS signature in the IDS) | sends `<script>alert(1)</script>`: 403, a 941 rule, the anomaly score; sees no IDS alert; writes a rule, bypasses it with letter case, adds `nocase`; alone: replays the bypass and an ordinary search | own requests, detections and IDS alerts |
+| F4 Checking the XSS block and writing an IDS rule | `xss-gap` (no XSS signature in the IDS) | sends `<script>alert(1)</script>`: 403, a 941 rule, the anomaly score; sees no IDS alert; writes a rule, bypasses it with letter case, adds `nocase`; alone: replays the bypass and an ordinary search | own requests, detections and IDS alerts |
 | F5 Analysing SQL injection on the sort parameter | `full` | breaks `sort` into a 500 no WAF rule detected; runs sqlmap from Kali, reads its verdict, its source IP and 913100; reruns with `--random-agent`; alone: a rule that still blocked it | own requests, sqlmap's log, the run's detections |
-| F6 Finding the attack an over-broad exception let through | `overbroad` (CRS skips `sort`) | finds the exception, dumps the accounts with sqlmap, sees no alert and the penalty doubled for each objective lost undetected, removes the exception; alone: replays the dump (blocked) and an ordinary sort (served) | the WAF file, target ground truth, the run's detections |
+| F6 Finding the attack missed because of a broad exception | `overbroad` (CRS skips `sort`) | finds the exception, dumps the accounts with sqlmap, sees no alert and the penalty doubled for each objective lost undetected, removes the exception; alone: replays the dump (blocked) and an ordinary sort (served) | the WAF file, target ground truth, the run's detections |
 
 ### Scenarios
 
@@ -106,16 +106,21 @@ O'Brien stays a benign regression case only.
 
 ### Topology: a real GNS3 project
 
-- The range's topology is two GNS3 project files (`revision` 9, so GNS3 2.2
+- Two system projects (`deploy/topology/system/`, `revision` 9, so GNS3 2.2
   opens them and 3.x upgrades them), one per substrate: segments are
-  `ethernet_switch` nodes, containers `docker` nodes with their GHCR images,
+  `ethernet_switch` nodes, containers `docker` nodes with their images,
   OpenStack VMs `qemu` nodes (the OPNsense edge with three adapters), links
-  port to port. A test keeps them equal to `platform/range/declaration.yaml`;
-  a check loads them in a real gns3-server.
+  port to port; tests hold them to `compose.yaml` and
+  `platform/range/declaration.yaml`, and a check loads them in a real
+  gns3-server. The learner sees a separate map per substrate
+  (`deploy/topology/range-*.gns3`, each with its `.ko.gns3` pair): the
+  defended network named by role, every host an idle busybox display
+  container that the GNS3 service starts at bring-up (`docs/DECISIONS.md`
+  2026-10-15, "The learner map is the company network...").
 - A GNS3 server (3.1.0a6, pinned; the official images are 2.x only, so the
   image is built from the gns3-server tag) runs in the platform's compose on
-  its own port; nodes are never started (no KVM, no privilege, no docker
-  socket). Learners see its web UI in the blue console read-only (the
+  its own port; it holds the docker socket, `NET_ADMIN` and `/dev/net/tun`
+  (`compose.yaml` `gns3`). Learners see its web UI in the blue console read-only (the
   built-in Auditor role). The request-path overlay (Packet Tracer's
   simulation mode as precedent), drawn by the console from the same file and
   the session's detections, was built as the follow view and removed on
