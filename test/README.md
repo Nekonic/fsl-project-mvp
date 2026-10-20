@@ -1,92 +1,123 @@
 # test
 
-Checks the acceptance criteria from section 9 of the design document. Speaks
-only HTTP and never imports platform code: it sees the system from outside.
+These tests check the acceptance criteria from section 9 of the design
+document. They talk to the platform only over HTTP and never import platform
+code. They see the system from the outside.
 
-The stack must be running.
+The range must be up before you run them. Run the suite on the OpenStack
+platform VM, against that VM's own platform and its running range
+(`docs/OPENSTACK.md` §7). `bin/verify` needs the checkout's `.venv`. The platform VM
+makes `/opt/fsl/.venv` itself at first boot and after a sideload checkout
+(`docs/OPENSTACK.md` §7).
 
 ```bash
-docker compose up -d --build
-python -m pytest test/ -v
+ssh ubuntu@<address> 'cd /opt/fsl && FSL_PLATFORM_URL=http://<address>:8000 bin/verify'
 ```
 
-`bin/verify` runs them through `bin/acceptance` after the unit suite;
-`FSL_PLATFORM_URL` (default `http://localhost:8000`) names the platform, so
-the same command runs against the OpenStack platform VM. `bin/verify --fast`
-skips them; `bin/verify --changed [BASE]` runs only the unit tests the change
-reaches and lists the acceptance modules it reaches, and `--live` runs those
-too. The suite collects 70 tests and skips none.
+`bin/verify` runs these steps in order:
 
-If the stack is down these fail rather than skip. An acceptance check that
-quietly skips reads as "passed".
+1. The unit suite.
+2. The acceptance suite, through `bin/acceptance`, which runs `python -m pytest test/`.
+3. The ratchet.
 
-Tests that change the Suricata rules do it in a session of their own; closing
-the session ends the change (docker drops the stack at an open three minutes
-or more later, OpenStack resets the slot).
+`FSL_PLATFORM_URL` is the platform's address. The default is
+`http://localhost:8000`. The platform VM does not listen on localhost, so always
+set it there. The harness code still has a docker branch (the platform builds
+the range on docker instead of OpenStack) until the docker substrate is removed
+(`docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`). That
+branch is not a way to run the product.
 
-Opening a session is the slow part of the suite, so tests whose claims hold on
-the same traffic share one. `shared_sessions.py` holds those sessions as
-session-scoped fixtures: each opens its session, does every write (fire, tune,
-apply rules, loot) and every live read the tests need, closes it, and hands
-the tests the recorded answers. No test body writes into a shared session, so
-the tests pass in any order. The red-team run (`full_run`) also serves
-topology, evasion, strategy honesty, the board attack and the before-silencing
-check; `rules_session` the four rule tests; `board_session` loot, objectives,
-score reveal, the empty-objectives check and the canary; `origins_session`
-origins, rotation and the tool case; `tuned_session` the map and the inside
-leg past the WAF; `terminal_session` the operator log, the attacker box and the front
-door probe; the corp
-rogue-admin and option-flip exploits one session each, read by
-`test_corp_observe_live` (from the target's binlog) and `test_corp_authz`
-(from the target's own rows).
+`bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
+runs only the unit tests the change reaches and lists the acceptance modules it
+reaches. Add `--live` to run those modules too. The suite collects 73 tests and
+skips none.
+
+If the range is down, these tests fail. They do not skip, because a skipped
+acceptance check reads as "passed".
+
+Tests that change the Suricata rules each use a session of their own. Closing
+the session resets its slot (one copy of the range), which undoes the change.
+
+Opening a session is the slow part of the suite. Tests whose claims hold on the
+same traffic therefore share one session. `shared_sessions.py` holds these
+sessions as session-scoped fixtures. Each fixture does the following:
+
+1. Opens its session.
+2. Does every write the tests need (fire a case, tune, apply rules, loot) and
+   every live read.
+3. Closes the session.
+4. Gives the tests the recorded answers.
+
+No test body writes into a shared session, so the tests pass in any order.
+
+These fixtures serve these tests:
+
+| Fixture | Tests it serves |
+|---|---|
+| `full_run` (the red-team run) | topology, evasion, strategy honesty, the board attack and the check before silencing |
+| `rules_session` | the four rule tests |
+| `board_session` | loot, objectives, score reveal, the empty-objectives check and the canary |
+| `origins_session` | origins, rotation and the tool case |
+| `tuned_session` | the map and the check that an attack passes the WAF to the inside |
+| `terminal_session` | the operator log, the attacker box and the check that an attack through the published port arrives from the outside |
+
+The corp rogue-admin exploit and the corp option-flip exploit each get one
+session. `test_corp_observe_live` reads them from the target's binlog, and
+`test_corp_authz` reads them from the target's own rows.
 
 ## Running in parallel
 
-`bin/verify` runs the suite through `bin/acceptance`, which starts several
-pytest processes over disjoint sets of modules and prints one summary line
-with the totals of all of them (from each process's JUnit report).
-`bin/acceptance --plan` prints the split without running it;
-`--workers N` overrides the count, `--only test_a,test_b` limits the run to
-those modules (what `bin/verify --changed --live` passes), and any other
-argument goes to pytest.
+`bin/verify` runs the suite through `bin/acceptance`. It starts several pytest
+processes over separate sets of modules. It prints one summary line with the
+totals of all of them, taken from each process's JUnit report.
 
-- **Workers.** N is `max_sessions` from `GET /api/range/ready/`: docker 2
-  (`FSL_MAX_SESSIONS`), OpenStack the range's slot count (`compute.slots`,
-  two on the test cloud since 2026-10-12). With N = 1 one
-  worker runs every session module in the order `pytest test/` would.
-- **Idle.** `test_geoip_durable`, `test_origin_placement` and
-  `test_waf_geolocation` read only Elasticsearch and repo files, so they run
-  in a process of their own beside the workers, without waiting out a range
-  reset. Everything that runs a
-  command on a range host needs the range standing and stays in a worker.
-- **Balanced.** For N > 1 the modules that share a session-scoped fixture
-  (from `shared_sessions.py` or `conftest.py`, read statically) are one group
-  and stay in one process; groups go to the least-loaded worker, heaviest
-  first, by the seconds in `durations.json` (`--save-durations` writes the
-  measured ones back).
-- **Standing stack.** Beside another worker, a call that names no session
-  cannot use "the newest stack": on docker another worker's open takes down
-  stacks of closed sessions, and on OpenStack the newest session may hold the
-  other slot. The modules that need a stack but open no
-  session (`STANDING_STACK` in `bin/acceptance`) share one process, run
-  first, and get a session that worker holds until it opens its own.
-  `range.py` defaults a call without `session=` to it, and fails a call that
-  names no session while the worker has one of its own open.
-- **Solo.** `test_concurrent_sessions` and `test_lesson` hold two sessions at
-  once, so they run alone after the workers.
-- **Room.** An open refused because the range is full or resetting (409)
-  waits for room and is retried; so is the red-team run.
+- `bin/acceptance --plan` prints the split without running it.
+- `--workers N` sets the number of workers.
+- `--only test_a,test_b` limits the run to those modules. This is what
+  `bin/verify --changed --live` passes.
+- Any other argument goes to pytest.
 
-The same suite runs on both substrates, and no test is skipped on either: a
-check of a compose-only mechanism was deleted rather than skipped (2026-10-17).
-`conftest.py` asks `/api/range/ready/` which one the platform drives; on openstack,
-`range.py` runs a role's command through the platform container's own range
-adapter (`manage.py run_on_role --session <id>`, so it reaches the slot that
-session holds) instead of `docker exec` into a compose container, and runs
-the attacker's in a login shell, as the terminal's ssh login gets it (the
-proxy, which compose sets on the Kali container). Alerts are
-read through the platform's API (`/api/sessions/<id>/detections/`), not from
-a sensor's log file. Beside
-another worker on OpenStack the per-test wait for a range reset is skipped:
-every call reaches a slot its worker holds, and the other slot's reset does
-not touch it.
+The split follows these rules:
+
+- **Workers.** N is `max_sessions` from `GET /api/range/ready/`: the number of
+  slots (`compute.slots`, two on the test cloud since 2026-10-12). With N = 1,
+  one worker runs every session module in the order `pytest test/` would.
+- **No range host.** `test_geoip_durable`, `test_origin_placement` and
+  `test_waf_geolocation` read only Elasticsearch and repo files. They run in a
+  process of their own beside the workers, so they do not wait for a range reset.
+  Anything that runs a command on a range host needs the range up and stays in a
+  worker.
+- **Balanced.** For N > 1, the modules that share a session-scoped fixture are
+  one group and stay in one process. The script finds these fixtures by reading
+  `shared_sessions.py` and `conftest.py` as text. Groups go to the least-loaded
+  worker, heaviest first. The weight is the seconds in `durations.json`.
+  `--save-durations` writes the measured seconds back.
+- **Standing stack.** When another worker is running, a call that names no
+  session cannot use the newest session, because that session may hold the
+  other slot. Some modules need a stack but open no session (`STANDING_STACK`
+  in `bin/acceptance`). They share one process and run first. They get a session
+  that this worker holds until it opens its own. `range.py` sends a call that
+  has no `session=` to that session. It fails a call that names no session while
+  the worker has one of its own open.
+- **Solo.** `test_concurrent_sessions` and `test_lesson` each hold two sessions
+  at once, so they run alone after the workers.
+- **Room.** If the range is full or resetting, opening a session is refused with
+  409. The test waits for room and retries. So does the red-team run.
+
+## How the suite reaches the range
+
+Every acceptance test runs on OpenStack and none is skipped. We deleted one
+check of a compose-only mechanism instead of skipping it (2026-10-17).
+`range.py` works like this:
+
+- It runs a role's command through the platform container's own range adapter
+  (`manage.py run_on_role --session <id>`), which reaches the slot that session
+  holds.
+- It runs the attacker's command in a login shell. The shell reads
+  `/etc/profile.d/proxy.sh`, so the command gets the same `http_proxy` (the
+  stamping proxy) as the terminal's ssh login.
+- It reads alerts through the platform's API
+  (`/api/sessions/<id>/detections/`), not from a sensor's log file.
+- Beside another worker, it skips the wait for a range reset after each test.
+  Every call reaches a slot its worker holds, and the reset of the other slot
+  does not touch it.

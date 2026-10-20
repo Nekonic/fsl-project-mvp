@@ -1,92 +1,119 @@
 # OpenStack
 
-What this project needs from an OpenStack cloud, and how to set it up from
-nothing: the cloud (Kolla-Ansible 2026.1 or later), the project, the one base
-image, `cloud.yaml`, the platform VM, the range, and the checks. Written for
-an operator rebuilding the cloud side or onboarding a new cloud.
+This file says what this project needs from an OpenStack cloud and how to set
+one up from nothing. It covers the cloud (Kolla-Ansible 2026.1), the project,
+the one base image, `cloud.yaml`, the platform VM, the range and the checks. It
+is written for an operator who rebuilds the cloud side or onboards a new cloud.
+`README.md` has the numbered steps to bring the product up. This file has the
+detail behind them. §9 builds the whole cloud in one VM so you can check that it
+works.
+
+Words used in this file:
+
+- **Range**: the VMs and networks the platform builds for training.
+- **Slot**: one full copy of the range, four VMs: `fsl-edge`, `fsl-kali`,
+  `fsl-waf` and `fsl-wargame-host`. One open session uses one slot.
+- **Edge**: the OPNsense VM that works as the firewall and runs Suricata.
+- **Wargame host**: the VM that runs the wargames (`board` and `corp`) as
+  containers.
+- **Estate network** (`fsl-estate`): the network behind the edge. It holds the
+  WAF and the wargame host.
+- **Fabric**: the networks, security groups and keypair the platform creates
+  before any VM (`POST /api/range/fabric/`).
+- **Store**: the platform's SQLite database (`db.sqlite3`).
+- **Builder**: a temporary VM that builds one image.
+- **Substrate**: what the platform builds the range on (`FSL_SUBSTRATE`); here
+  `range.openstack.connect`.
 
 Facts marked **(this cloud)** come from the running cloud on
-`master@192.168.0.100` as recorded in `docs/STATE.md` and `docs/DECISIONS.md`;
-the cloud was not reachable when this file was written (2026-10-11), so they
-were not re-read live. Everything else is from this repo's code or the primary
-sources listed at the end.
+`master@192.168.0.100`, as recorded in `docs/STATE.md` and `docs/DECISIONS.md`.
+The cloud was not reachable when this file was written (2026-10-11), so we did
+not read those facts from it again. Everything else comes from this repo's code
+or from the sources listed at the end.
 
 ## Target: one-click build
 
-The end state: one command builds the whole environment, with nothing
-compiled or installed by hand on the cloud and exactly one image uploaded by
+The end state is one command that builds the whole environment. Nothing is
+compiled or installed by hand on the cloud. You upload exactly one image by
 hand, the stock Ubuntu 24.04 cloud image.
 
-1. `bin/cloud up` reads `deploy/openstack/cloud.yaml` (§4) and has Heat create
-   the platform VM (`deploy/openstack/platform.yaml`); its first boot pulls the
-   platform and session images from GHCR instead of building them.
-2. It hands the VM the password and the range ssh key over ssh.
-3. It drives the platform's own range API: fabric, golden images (each built
-   on a builder booted from the stock Ubuntu image; the OPNsense edge image
-   downloaded from the official release by such a builder and uploaded to
-   Glance), then the slot, then `configure/`, until `ready/` says ready.
+1. `bin/cloud up` reads `deploy/openstack/cloud.yaml` (§4). It has Heat create
+   the platform VM (`deploy/openstack/platform.yaml`). On first boot the VM pulls
+   the platform and session images from GHCR. It does not build them.
+2. The script gives the VM the password and the range ssh key over ssh.
+3. The script then drives the platform's own range API in this order: fabric;
+   images (the "golden images" the range boots from), repeated until every
+   image is built; slot; `configure/`. Then it waits until `ready/` says ready.
+   Each image is built on a builder booted from the stock Ubuntu image. The
+   edge's builder downloads the official OPNsense release and serves the
+   finished disk; the platform checks its SHA256 and uploads it to Glance.
 
 | Piece | Status | Where |
 |---|---|---|
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVS) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, quotas, flavors | done by hand, admin only | §3 |
-| One base image, stock Ubuntu 24.04, checksum-verified upload | by hand, once per cloud; done (this cloud, noble 20260911) | §3.6 |
+| One base image, stock Ubuntu 24.04, upload with checksum check | by hand, once per cloud; done (this cloud, noble 20260911) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | done (this cloud, 2026-10-11) | §4 |
 | Platform images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
-| `bin/platform-rebuild`: lossless replace (store + range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
-| `bin/cloud up|down` | done (2026-10-11); `up` after `down` starts with an empty store | §5 |
+| `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
+| `bin/cloud up|down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/range/fabric/` | done | §6 |
 | Golden images built on the cloud via `POST /api/range/images/` | done | §6 |
 | `fsl-kali` built on Ubuntu (no second base image) | done (2026-10-11, every tool present) | §6 |
-| `fsl-wargame-host`: every wargame (board, corp) as its GHCR containers on one host image, no image per wargame | done (built 2026-10-11, runs every slot's board and corp since; a sideloaded board reaches it, 2026-10-18) | §3.6, §6 |
+| `fsl-wargame-host`: every wargame (board, corp) runs as its GHCR containers on one host image, with no image per wargame | done (built 2026-10-11, runs the board and corp of every slot since; a sideloaded board reaches it, 2026-10-18) | §3.6, §6 |
 | `fsl-opnsense-<version>` built by an Ubuntu builder from the official nano image | done (26.7, 2026-10-11) | §3.6 |
-| OPNsense edge configured over mgmt ssh (`configure/`) | done (2026-10-11; survival of an OPNsense update not checked) | §6 |
-| Slot + configure via `/api/range/slot/`, `/api/range/configure/` | done (OPNsense edge; automatic after a close, §6.1) | §6 |
-| Acceptance on substrate openstack | 70 passed / 0 failed / 0 skipped (2026-10-17, two workers; no test is skipped by substrate) | §7 |
+| OPNsense edge configured over mgmt ssh (`configure/`) | done (2026-10-11); we did not check whether it survives an OPNsense update | §6 |
+| Slot and configure via `/api/range/slot/` and `/api/range/configure/` | done (OPNsense edge; runs by itself after a close, §6.1) | §6 |
+| Acceptance on the OpenStack substrate | 70 passed / 0 failed / 0 skipped (2026-10-17, two workers; no test is skipped by substrate) | §7 |
 
-Steps below carry **[one-click]** where the script replaces them, and
-**[admin, once]** where they stay manual because a member cannot do them.
+Steps below are tagged **[one-click]** where the script does them for you. They
+are tagged **[admin, once]** where you must do them by hand because a member
+user cannot.
 
 ## 1. What this project needs from OpenStack
 
-The platform runs on one of two substrates (`FSL_SUBSTRATE`):
+The platform builds the range as Nova servers on Neutron networks. It creates
+them as a member user. cloud-init writes `FSL_SUBSTRATE=range.openstack.connect`
+on the platform VM to select this.
 
-- `range.docker.Docker` — the whole range as compose stacks on one Docker
-  host. Needs only a VM with Docker; OpenStack is just where the VM lives.
-  Both substrates are first-class: every acceptance test must run and pass
-  on substrate openstack as on docker, none marked docker-only or skipped
-  there (`docs/DECISIONS.md` 2026-10-11, superseding the 2026-10-08 spec's
-  "OpenStack work, not MVP").
-- `range.openstack.connect` — the range as Nova servers on Neutron networks
-  the platform creates as a member user. The platform VM runs only the control
-  plane (platform, Elasticsearch, Kibana, collector).
+The platform VM runs only the control plane as containers: platform,
+Elasticsearch, Kibana, gns3 and the collector. `docker compose` pulls their
+prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack,
+and none is marked skipped there (`docs/DECISIONS.md` 2026-10-11, which
+replaced the 2026-10-08 spec's "OpenStack work, not MVP").
 
-The edge (firewall + Suricata) is an OPNsense VM and exists only on substrate
-openstack. On docker the sensor is a Suricata container.
+The edge (firewall and Suricata) is an OPNsense VM.
 
-APIs the platform calls (`platform/range/openstack.py`): Keystone v3 (password
-auth in the configured domain), Nova (servers, keypairs, flavors,
-`os-interface`, rebuild, console log), Neutron (networks
-with tags, subnets, ports with fixed IPs and `allowed_address_pairs`, security
-groups), Glance v2 (images: list, create a record, delete; the edge's builder
-uploads the image data with `PUT /v2/images/{id}/file`). The operator also
-uses Heat for the platform VM. No Cinder, Octavia or Designate.
+The platform calls these APIs (`platform/range/openstack.py`):
 
-## 2. Cloud prerequisites (Kolla-Ansible 2026.1+)
+- Keystone v3, with password authentication in the configured domain.
+- Nova: servers, keypairs, flavors, `os-interface`, rebuild and console log.
+- Neutron: networks with tags, subnets, ports with fixed IPs and
+  `allowed_address_pairs`, and security groups.
+- Glance v2: list images, create an image record and delete an image. The
+  platform uploads the edge's disk with `PUT /v2/images/{id}/file`, using its
+  own token; the builder holds no credential.
 
-**(this cloud)** kolla-ansible 2026.1 (Gazpacho, 22.x; host had
-22.2.1.dev9), all-in-one inventory `/root/all-in-one`, Ubuntu images,
-ML2/Open vSwitch, API endpoints on `192.168.0.110`, no Cinder.
+The operator also uses Heat for the platform VM. The project uses no Cinder,
+Octavia or Designate.
+
+## 2. What the cloud needs (Kolla-Ansible 2026.1)
+
+**(this cloud)** kolla-ansible 2026.1 (Gazpacho, 22.x; the host had
+22.2.1.dev9), the all-in-one inventory `/root/all-in-one`, Ubuntu images,
+ML2/Open vSwitch, API endpoints on `192.168.0.110`, and no Cinder.
 
 ### 2.1 Install and deploy [admin, once]
 
-From the 2026.1 quickstart [K1]:
+These commands follow the 2026.1 quickstart [K1]:
 
 ```bash
+sudo apt install -y git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev python3-venv
 python3 -m venv /opt/kolla-venv && . /opt/kolla-venv/bin/activate
 pip install -U pip
 pip install git+https://opendev.org/openstack/kolla-ansible@stable/2026.1
+pip install docker dbus-python
 sudo mkdir -p /etc/kolla && sudo chown $USER:$USER /etc/kolla
 cp -r /opt/kolla-venv/share/kolla-ansible/etc_examples/kolla/* /etc/kolla
 cp /opt/kolla-venv/share/kolla-ansible/ansible/inventory/all-in-one .
@@ -94,38 +121,64 @@ kolla-ansible install-deps
 kolla-genpwd
 # edit /etc/kolla/globals.yml (below)
 kolla-ansible bootstrap-servers -i ./all-in-one
-kolla-ansible prechecks -i ./all-in-one
+kolla-ansible prechecks -i ./all-in-one --use-test-images
 kolla-ansible deploy -i ./all-in-one
 pip install python-openstackclient python-heatclient -c https://releases.openstack.org/constraints/upper/2026.1
-kolla-ansible post-deploy        # writes /etc/kolla/clouds.yaml
+kolla-ansible post-deploy -i ./all-in-one        # writes /etc/kolla/clouds.yaml
 ```
 
-The kolla venv on this cloud has no Heat client; drive Heat from a separate
-venv with `python-openstackclient` and `python-heatclient` **(this cloud)**.
+Three details in these lines each fixed a failure in the 2026-10-20 trial (§9):
+
+- `pip install docker dbus-python` puts both modules in the Kolla venv.
+  `bootstrap-servers` installs `python3-docker` for the system Python, but an
+  all-in-one run uses the venv's Python, and `prechecks` stops at "Checking
+  docker SDK version" without the module. `dbus-python` needs
+  `libdbus-glib-1-dev`.
+- `--use-test-images` is needed because the images come from the
+  `quay.io/openstack.kolla` namespace, which `prechecks` calls test-only.
+  `deploy` takes no such flag.
+- `post-deploy` needs `-i ./all-in-one`. Without it, it looks for
+  `/etc/kolla/ansible/inventory/all-in-one` and stops.
+
+The kolla venv on this cloud has no Heat client. Run Heat from a separate venv
+that has `python-openstackclient` and `python-heatclient` **(this cloud)**.
 
 ### 2.2 globals.yml
 
 ```yaml
-kolla_base_distro: "ubuntu"
+kolla_base_distro: "ubuntu"                   # the example file defaults to rocky; match the host [K1]
 openstack_release: "2026.1"
-network_interface: "<mgmt NIC>"
-neutron_external_interface: "<NIC with no IP, for provider/floating IPs>"
-kolla_internal_vip_address: "192.168.0.110"   # this cloud's API address
+network_interface: "<NIC with the management IP>"
+neutron_external_interface: "<NIC up with no IP: floating IPs and the external network>"
+kolla_internal_vip_address: "192.168.0.110"   # this cloud's API address: an unused address on network_interface's network [K1]
+nova_compute_virt_type: "kvm"                 # the default [K7]; the compute hosts need VT-x or AMD-V
 neutron_plugin_agent: "openvswitch"           # the default [K2]
 enable_heat: "yes"        # default follows enable_openstack_core [K2]; keep it on
 enable_horizon: "yes"     # optional; the platform does not use it
 #enable_cinder: false     # default [K2]; the project works without volumes
 ```
 
-Heat, Glance, Nova, Neutron, Keystone, Placement are all in
-`enable_openstack_core` (default true) [K2]. Nothing else is required.
+Heat, Glance, Nova, Neutron, Keystone and Placement are all part of
+`enable_openstack_core`, which is true by default [K2]. Nothing else is
+required. The hosts are Ubuntu 24.04 on x86_64, because every image the project
+runs is amd64.
+
+On an all-in-one cloud without HAProxy and keepalived, set `enable_haproxy:
+"no"`. Set `kolla_internal_vip_address` to the IP of `network_interface` itself
+[K2]. The API endpoints are then that address. Keystone is on port 5000. This is
+the `identity.keystone` value in `cloud.yaml` (`http://ADDRESS:5000`).
+
+Set `enable_proxysql: "no"` beside it. ProxySQL is enabled with MariaDB, not
+with HAProxy, and it binds port 3306 on the VIP. Here the VIP is the host's own
+address, so MariaDB then cannot bind its port and `deploy` fails with "Address
+already in use".
 
 ### 2.3 Tap-as-a-Service (optional; dropped from the design)
 
-TaaS was enabled on this cloud on 2026-09-30 for an organiser-owned sensor;
-that sensor was then dropped (`docs/STATE.md`, "Tap-as-a-Service is dropped
-from the design"). It stays enabled here, off every path. A new cloud does not
-need it. If you enable it on 2026.1:
+We enabled TaaS on this cloud on 2026-09-30 for a sensor owned by the organiser.
+We then dropped that sensor (`docs/STATE.md`, "Tap-as-a-Service is dropped from
+the design"). TaaS stays enabled here but nothing uses it. A new cloud does not
+need it. To enable it on 2026.1:
 
 ```yaml
 enable_neutron_taas: "yes"     # defined in ansible/group_vars/all/neutron.yml, default false [K3]
@@ -136,14 +189,18 @@ cp /etc/kolla/globals.yml /etc/kolla/globals.yml.before-taas
 kolla-ansible reconfigure -i /root/all-in-one -t neutron
 ```
 
-**The 2026.1 bug.** kolla-ansible adds `taas` to `service_plugins` for all
-three Neutron API services, but its config task writes `neutron_taas.conf`
-only for services in `services_need_neutron_taas_conf` — `neutron-server` and
-`neutron-openvswitch-agent` [K4]. `neutron_rpc_server` and
-`neutron_periodic_worker` then exit with `No providers specified for 'TAAS'`
-and every agent reads dead. The fix uses kolla's per-service override, which
-the same task merges from `{{ node_custom_config }}/neutron/{{ item.key }}.conf`
-[K4][K5]:
+**The 2026.1 bug.**
+
+- kolla-ansible adds `taas` to `service_plugins` for all three Neutron API
+  services.
+- Its config task writes `neutron_taas.conf` only for the services in
+  `services_need_neutron_taas_conf`, which are `neutron-server` and
+  `neutron-openvswitch-agent` [K4].
+- `neutron_rpc_server` and `neutron_periodic_worker` then exit with `No
+  providers specified for 'TAAS'`, and every agent reads dead.
+
+The fix uses kolla's per-service override. The same task merges the file
+`{{ node_custom_config }}/neutron/{{ item.key }}.conf` [K4][K5]:
 
 ```bash
 c=/etc/kolla/neutron-server/neutron_taas.conf
@@ -155,20 +212,63 @@ openstack network agent list          # every agent Alive :-)
 docker ps --filter name=neutron       # rpc_server and periodic_worker Up
 ```
 
-A later reconfigure keeps the override files **(this cloud)**. Checked as a
-member: a tap service plus a `BOTH` tap flow goes ACTIVE and `br-tap` exists.
-Whether this is fixed upstream after 2026.1 was not checked.
+A later reconfigure keeps the override files **(this cloud)**. We checked as a
+member: a tap service plus a `BOTH` tap flow goes ACTIVE and `br-tap` exists. We
+did not check whether upstream fixed this after 2026.1.
 
 ### 2.4 Nova: resize is off
 
-`allow_resize_to_same_host` defaults to `False` [N1], and on an all-in-one
-cloud there is no other host, so a resize cannot be scheduled. It is not set
-on this cloud. Changing a server's flavor therefore means **replacing** it.
-Heat's `OS::Nova::Server` applies a flavor change by resize unless
-`flavor_update_policy: REPLACE` [H1]; on this cloud use a stack replace
-(delete + create, as `bin/platform-rebuild` does) rather than a flavor update.
-To allow resize instead: `[DEFAULT] allow_resize_to_same_host = True` in
-`/etc/kolla/config/nova.conf`, then `kolla-ansible reconfigure -t nova` [K5][N1].
+`allow_resize_to_same_host` is `False` by default [N1]. An all-in-one cloud has
+no other host, so a resize cannot be scheduled. This cloud does not change the
+setting. To change a server's flavor you must **replace** the server.
+
+Heat's `OS::Nova::Server` applies a flavor change as a resize unless
+`flavor_update_policy: REPLACE` is set [H1]. On this cloud, replace the stack
+(delete and create, as `bin/platform-rebuild` does). Do not update the flavor.
+
+To allow resize instead, set `[DEFAULT] allow_resize_to_same_host = True` in
+`/etc/kolla/config/nova.conf`. Then run `kolla-ansible reconfigure -t nova`
+[K5][N1].
+
+### 2.5 External network and floating IPs [admin, once]
+
+The platform VM is reached on a floating IP. Its stack, the builders and the
+image downloads leave through a router on an external network. A fresh
+Kolla-Ansible cloud has none.
+
+Kolla maps `neutron_external_interface` to the physical network `physnet1` on
+`br-ex` [K8]. Run these as admin (`source /etc/kolla/admin-openrc.sh`, which
+`kolla-ansible post-deploy` writes). Use the subnet, gateway and pool of the
+network that interface is wired to:
+
+```bash
+openstack network create --external --provider-network-type flat --provider-physical-network physnet1 provider
+openstack subnet create --network provider --no-dhcp --subnet-range 192.168.100.0/24 \
+  --gateway 192.168.100.1 --allocation-pool start=192.168.100.20,end=192.168.100.99 provider-subnet
+```
+
+`provider` is `network.external` in `cloud.yaml`. The gateway must be a real
+router that reaches the Internet. The pool must hold only addresses that nothing
+else on that network uses. Each floating IP and the gateway address of each
+tenant router come from the pool.
+
+### 2.6 Internet egress
+
+The router gives the project's networks source NAT to the Internet. DNS is
+`network.dns`. The hosts below must be reachable through it. If you filter with
+an allowlist, also allow the hosts the registries redirect to.
+
+| Who | Reaches | For |
+|---|---|---|
+| platform VM (cloud-init, `fsl-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; Docker Hub; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; the seven `fsl-*` images; Elasticsearch, Kibana and Filebeat; the pinned WAF, Suricata and MySQL images; `bin/fetch-geoip` |
+| the Kali builder | the Ubuntu archive; github.com | the tools; ttyd |
+| the WAF builder | the Ubuntu archive; github.com; nginx.org | ModSecurity, its nginx connector and the Core Rule Set; the nginx source |
+| the wargame host builder | the Ubuntu archive; ghcr.io; Docker Hub | Docker; the wargames' images |
+| the edge builder | the Ubuntu archive; `opnsense.mirror` (pkg.opnsense.org) | QEMU and its tools; the OPNsense release |
+| the operator machine | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
+
+The range's own VMs (edge, Kali, WAF, wargame host) have no Internet. The
+builders above put everything those VMs run into their images.
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
 
@@ -180,27 +280,53 @@ openstack user create --project fsl-range --password-prompt fsl-range
 openstack role add --project fsl-range --user fsl-range member
 ```
 
-**(this cloud)** project id `64ffc2a247464ebdae21cfdae0f96d90`; password only
-in `/root/fsl-range.password`; `/root/fsl-range-openrc.sh` sources it. The
-platform signs in as this member, never admin; the user's domain is `default`.
+**(this cloud)** The project id is `64ffc2a247464ebdae21cfdae0f96d90`. The
+password is stored only in `/root/fsl-range.password`, and
+`/root/fsl-range-openrc.sh` reads it. The platform signs in as this member user,
+never as admin. The user's domain is `default`.
 
 ### 3.2 Quotas [admin, once]
 
-**(this cloud)** cores quota is 20, RAM 50 GB, instances 10; it holds the
-platform VM (m1.large, 2 cores) and, since 2026-10-12, two slots
-(`compute.slots: 2`) of 4 VMs each (`fsl-edge`, `fsl-kali`, `fsl-waf`,
-`fsl-wargame-host`, 2 cores each): 9 instances, 18 cores, 40 GB. Each slot
-beyond the first adds 2 networks (`fsl-internet-N`, `fsl-estate-N`), 31
-subnets, 9 ports and 3 collector rules in `fsl-reach`: measured with two
-slots, networks 6/100, subnets 64/100, ports 25/500, security group rules
-26/100, security groups 6/10. Image builders (one per built host, 2 cores
-each on `m1.linux`) boot only as many at once as the quota leaves room for
-(Nova `GET /limits` against the builder flavor): with both slots standing
-that is one, and the next boots once the first is deleted, so
-`POST /api/range/images/` repeated until clean builds them one at a time. With
-no room and no builder at work, `images/` answers 503 and names the fix:
-`DELETE /api/range/slot/?slot=2` or a higher quota. Also 1 network for the
-stack, 1 router, 1 floating IP, and image storage for 4 golden images.
+The platform VM and one slot need 10 vCPU, 24 GB RAM, 5 instances and 1
+floating IP.
+
+- The platform VM is 2 vCPU, 8 GB RAM and 60 GB disk (`m1.large`).
+- Each of the slot's four VMs (edge, Kali, WAF, wargame host) is 2 vCPU, 4 GB
+  RAM and 30 GB disk (`m1.medium`, §3.3).
+
+Nova's default quotas (20 cores, 51200 MB of RAM, 10 instances) and Neutron's
+default network quotas already cover this. A new cloud sets none. The image
+builders never add to the quota. They use the same `m1.medium` and are deleted
+before the slot boots.
+
+Nova has no per-project disk quota. The 180 GB of flavor disk (60 + 4 x 30) is
+space that the compute node's instance storage must have, at a disk allocation
+ratio of 1.0 [N2].
+
+Each further slot adds 8 vCPU, 16 GB RAM, 120 GB disk and 4 instances. Then you
+must raise the quota.
+
+**(this cloud)** These are the measured figures:
+
+- The cores quota is 20, RAM 50 GB and instances 10.
+- The cloud holds the platform VM (m1.large, 2 cores). Since 2026-10-12 it also
+  holds two slots (`compute.slots: 2`) of 4 VMs each (`fsl-edge`, `fsl-kali`,
+  `fsl-waf`, `fsl-wargame-host`, 2 cores each). That makes 9 instances, 18
+  cores and 40 GB.
+- Each slot beyond the first adds 2 networks (`fsl-internet-N`, `fsl-estate-N`),
+  31 subnets, 9 ports and 3 collector rules in `fsl-reach`. With two slots we
+  measured networks 6/100, subnets 64/100, ports 25/500, security group rules
+  26/100 and security groups 6/10.
+- The stack also needs 1 network, 1 router and 1 floating IP. Image storage is
+  needed for 4 golden images.
+- Image builders (one per built host, 2 cores each on `m1.linux`) boot only as
+  many at once as the quota leaves room for. The platform checks this with Nova
+  `GET /limits` against the builder flavor. With both slots up, that is one
+  builder. The next builder boots after the first is deleted. So you repeat
+  `POST /api/range/images/` until it is clean, and it builds the images one at a
+  time.
+- If there is no room and no builder is working, `images/` answers 503 and names
+  the fix: `DELETE /api/range/slot/?slot=2` or a higher quota.
 
 ```bash
 openstack quota show fsl-range
@@ -209,67 +335,80 @@ openstack quota set --cores 24 --ram 65536 --instances 12 fsl-range   # example
 
 ### 3.3 Flavors [admin, once]
 
-A member cannot create flavors. `compute.flavors` in `cloud.yaml` names them:
+A member user cannot create flavors. `compute.flavors` in `cloud.yaml` names
+them:
 
 | Key | Use | Notes |
 |---|---|---|
-| `platform` | platform VM | 8 GB RAM or more; 4 GB OOM-killed Elasticsearch once sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
-| `builder` | image builders | the OPNsense builder holds the 3 GB raw image, its qcow2 and a 2 GB QEMU guest: 4 GB RAM and 20 GB disk or more (`m1.medium`) |
-| `range` | every slot VM no role names | 20 GB disk or more: a golden image's min disk is its builder's disk |
-| `edge` (required), or any other role name | the host filling that role | the edge is required: OPNsense wants 3 GB RAM or more (its image says `min_ram` 3072), so the `range` flavor would fail at boot |
-| `wargames` (optional) | `fsl-wargame-host` | runs two MySQL 8, Django and WordPress containers at once; the example names `m1.medium` (4 GB). Without it the host takes `range`. Its memory use is not measured |
+| `platform` | platform VM | 8 GB RAM or more. With 4 GB, the OOM killer once killed Elasticsearch when sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
+| `builder` | image builders | The OPNsense builder holds the 3 GB raw image, its qcow2 and a 2 GB QEMU guest. It needs 4 GB RAM and 20 GB disk or more (`m1.medium`) |
+| `range` | every slot VM that no role key names | The disk must be at least the `builder` flavor's disk, because a golden image's minimum disk is its builder's disk (30 GB with `m1.medium`) |
+| `edge` (required), or any other role name | the host that fills that role | The edge is required. OPNsense needs 3 GB RAM or more (its image says `min_ram` 3072), so the `range` flavor would fail at boot |
+| `wargames` (optional) | `fsl-wargame-host` | It runs two MySQL 8, Django and WordPress containers at once. The example names `m1.medium` (4 GB). Without this key the host takes `range`. We did not measure its memory use |
 
 **(this cloud)** `platform` is `m1.large` (8 GB / 2 vCPU / 60 GB, created
-2026-10-11; `m1.platform8` was deleted), and `builder`, `range` and `edge` are
-`m1.linux` (4 GB / 2 vCPU / 30 GB). Check every flavor `cloud.yaml` names exists on the cloud
-you use; the platform refuses a missing one by name.
+2026-10-11; `m1.platform8` was deleted). `builder`, `range` and `edge` are
+`m1.linux` (4 GB / 2 vCPU / 30 GB). Check that every flavor `cloud.yaml` names
+exists on your cloud. The platform refuses a missing flavor and names it.
 
 ```bash
 openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
+openstack flavor create --ram 4096 --vcpus 2 --disk 30 m1.medium
 ```
+
+A new cloud makes these two flavors. `cloud.example.yaml` names `m1.medium` for
+`range`. That size (4 GB / 2 vCPU / 30 GB) is what `builder`, `range` and
+`edge` used on this cloud.
 
 ### 3.4 Keypairs
 
-- `fsl-claude` — the operator's key the platform VM boots with (stack
-  parameter `key_name`, `keys.operator` in `cloud.yaml`). Create it as `fsl-range` before the stack:
+- `fsl-claude` is the operator's key that the platform VM boots with. It is the
+  stack parameter `key_name` and `keys.operator` in `cloud.yaml`. Make the key,
+  then create the keypair as `fsl-range` before the stack. Use the sign-in
+  variables from `README.md` step 6:
+  `ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude` and
   `openstack keypair create --public-key ~/.ssh/fsl_claude.pub fsl-claude`
-- `fsl-platform` — the platform's own range key, imported by
-  `POST /api/range/fabric/` from `/data/ssh/id_ed25519` in the platform
-  container. Never create it by hand. See §6.3 on drift.
+- `fsl-platform` is the platform's own range key. `POST /api/range/fabric/`
+  imports it from `/data/ssh/id_ed25519` in the platform container. Never create
+  this keypair by hand. The key file it comes from (`keys.range`) needs no step
+  either. The first `bin/cloud up` on a cloud with no stack makes the file if it
+  is missing. §6.3 covers a mismatch between the two.
 
 ### 3.5 Security groups
 
 | Group | Made by | Rules |
 |---|---|---|
 | `fsl-platform` | Heat stack | tcp 22, tcp 8000, tcp 8002, tcp 3080, icmp in |
-| `fsl-range` | fabric | all IPv4 in; on every range port off `mgmt` (anti-spoofing stays on) |
-| `fsl-reach` | fabric | nothing in but udp 123 (NTP) from members of `fsl-mgmt`, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
-| `fsl-mgmt` | fabric | all IPv4 in from members of `fsl-reach` (the platform's `mgmt` port) only; on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
+| `fsl-range` | fabric | all IPv4 in; on every range port except `mgmt` (anti-spoofing stays on) |
+| `fsl-reach` | fabric | nothing in except udp 123 (NTP) from members of `fsl-mgmt`, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
+| `fsl-mgmt` | fabric | all IPv4 in, only from members of `fsl-reach` (the platform's `mgmt` port); applied on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
 | `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
 
-8002 is the blue console's Website pane on both substrates; on openstack the
-platform sends each request over an ssh stream to the slot's Kali (over
-`mgmt`), which sends it from a customers address through the edge to the WAF
-(`docs/ARCHITECTURE.md`, the Website pane's egress). A platform
-stack made before 2026-10-13 lacks the rule; add it by hand:
+Port 8002 is the blue console's Website pane. The platform sends each request
+over an ssh stream to the slot's Kali (over `mgmt`). Kali sends it from a
+customers address through the edge to the WAF (`docs/ARCHITECTURE.md`, the
+Website pane's egress). A platform stack made before 2026-10-13 lacks the rule. Add it by hand:
 
 ```bash
 openstack security group rule create --protocol tcp --dst-port 8002 fsl-platform
 ```
 
-The range has no Internet, so it has no time source but the platform: the
-platform VM runs chrony (cloud-init, `allow <network.mgmt>` and `local stratum
-10`, so it keeps serving its own clock if it loses its upstream), and every
-range host keeps time by the platform's `mgmt` address. The Ubuntu hosts
-(Kali, the WAF, the wargame host) get a `systemd-timesyncd` drop-in
-(`/etc/systemd/timesyncd.conf.d/60-fsl.conf`, `NTP=<platform mgmt>`) at every
-configure and reset, and the step waits for the first answer; the edge's
-rendered `config.xml` names the platform in `system/timeservers` with ntpd
-bound to `opt1`. A rebuilt platform VM has a new `mgmt` address, which the
-hosts take at the next reset or `configure/`. A range made before 2026-10-15
-gets the udp 123 rule at the next `bin/cloud up` (`POST /api/range/fabric/`
-plans it as `ntp`). A platform VM booted before then lacks chrony; run what
-cloud-init runs:
+The range has no Internet, so the platform is its only time source.
+
+- The platform VM runs chrony. cloud-init sets `allow <network.mgmt>` and `local
+  stratum 10`, so the platform keeps serving its own clock if it loses its
+  upstream time source.
+- Every range host takes its time from the platform's `mgmt` address.
+- The Ubuntu hosts (Kali, the WAF, the wargame host) get a `systemd-timesyncd`
+  drop-in (`/etc/systemd/timesyncd.conf.d/60-fsl.conf`, `NTP=<platform mgmt>`) at
+  every configure and reset. The step waits for the first answer.
+- The edge's rendered `config.xml` names the platform in `system/timeservers`,
+  with ntpd bound to `opt1`.
+- A rebuilt platform VM has a new `mgmt` address. The hosts take it at the next
+  reset or `configure/`.
+- A range made before 2026-10-15 gets the udp 123 rule at the next `bin/cloud up`
+  (`POST /api/range/fabric/` plans it as `ntp`).
+- A platform VM booted before 2026-10-15 lacks chrony. Run what cloud-init runs:
 
 ```bash
 sudo install -d /etc/chrony/conf.d
@@ -277,9 +416,9 @@ printf 'allow 10.31.0.0/24\nlocal stratum 10\n' | sudo tee /etc/chrony/conf.d/fs
 sudo apt-get -y install chrony
 ```
 
-3080 is the GNS3 server (`compose.yaml` `gns3`), whose web UI the blue
-console's Map pane frames. A platform stack made before P1 of the
-scenario course lacks the rule; add it by hand:
+Port 3080 is the GNS3 server (`compose.yaml` `gns3`). The blue console's Map
+pane shows its web UI in a frame. A platform stack made before P1 of the
+scenario course lacks the rule. Add it by hand:
 
 ```bash
 openstack security group rule create --protocol tcp --dst-port 3080 fsl-platform
@@ -287,238 +426,363 @@ openstack security group rule create --protocol tcp --dst-port 3080 fsl-platform
 
 ### 3.6 Images
 
-The cloud holds exactly one image uploaded by hand: Canonical's Ubuntu 24.04
-cloud image, unmodified. Nothing is baked into it; every package, tool, key
-and setting the project needs is installed or written at boot by cloud-init
-(the platform VM, the builders) or by the platform over ssh (`configure/`).
+The cloud holds exactly one image that you upload by hand: Canonical's Ubuntu
+24.04 cloud image, unmodified. Nothing is baked into it. cloud-init installs or
+writes every package, tool, key and setting at boot (the platform VM, the
+builders). The platform does the rest over ssh (`configure/`).
 
 | Image | How it gets there | One-click |
 |---|---|---|
-| `compute.base_image` (e.g. `ubuntu-24.04`) | stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | by hand, once |
+| `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | by hand, once |
 | `fsl-waf`, `fsl-kali` | golden images, built by the platform on builders booted from the base image (§6) | yes |
-| `fsl-wargame-host` | built the same way; holds Docker and every wargame's GHCR images at the platform's tag (below) | yes |
+| `fsl-wargame-host` | built the same way. It holds Docker and every wargame's GHCR images at the platform's tag (below) | yes |
 | `fsl-opnsense-<version>` | built by the platform on a builder booted from the base image, from the official OPNsense nano image (below) | yes |
 
-The base image, as a project member, on a machine with the openstack CLI
-(`SHA256SUMS` lists one line per file of that build; `--ignore-missing`
-checks the one downloaded) [U1]:
+Upload the base image as admin with `--public`, on a machine that has the
+openstack CLI.
+
+- `SHA256SUMS` lists one line per file of that build. `--ignore-missing` checks
+  only the file you downloaded [U1].
+- Without `--public`, an admin's image belongs to the admin project and
+  `fsl-range` does not see it. The stack then fails on its `image`, and the
+  platform finds none.
+- As `fsl-range`, signed in as in `README.md` step 6, the same command without
+  `--public` works, because the image then belongs to the project.
 
 ```bash
 curl -fLO https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
 curl -fLO https://cloud-images.ubuntu.com/noble/current/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-openstack image create --disk-format qcow2 --container-format bare \
+openstack image create --public --disk-format qcow2 --container-format bare \
   --file noble-server-cloudimg-amd64.img ubuntu-24.04
 ```
 
-The `.img` is a qcow2 disk. `SHA256SUMS.gpg` beside it signs the list; to
-check it as well, import Ubuntu's cloud-image signing key, compare its
-fingerprint with the one Ubuntu publishes, and run `gpg --verify
-SHA256SUMS.gpg SHA256SUMS`. The name you give the image is
-`compute.base_image`. The platform refuses to build while the cloud holds
-none, or more than one active image, of that name. **(this cloud)**
-`ubuntu-24.04` is the noble 20260911 build; its SHA256 matched `SHA256SUMS`
-(2026-10-11), and it is the only image uploaded by hand.
+The `.img` file is a qcow2 disk. `SHA256SUMS.gpg` beside it signs the list. To
+check the signature as well, import Ubuntu's cloud-image signing key and compare
+its fingerprint with the one Ubuntu publishes. Then run `gpg --verify
+SHA256SUMS.gpg SHA256SUMS`.
 
-What used to assume more than the stock image: `fsl-kali` was built on a
-second uploaded image (`kali-rolling`). It is now built on Ubuntu; its setup
-enables the `universe` and `multiverse` components itself and installs the
-tools from the Ubuntu archive (`wordlists` is Kali-only; the motd's list is
-dirb's, linked to the old path).
+The name you give the image is `compute.base_image`. The platform refuses to
+build while the cloud holds none, or more than one active image, of that name.
+**(this cloud)** `ubuntu-24.04` is the noble 20260911 build. Its SHA256 matched
+`SHA256SUMS` (2026-10-11). It is the only image uploaded by hand.
 
-**The wargame host [one-click].** No wargame has an image of its own; the
-image count is fixed at five (base, `fsl-opnsense-<version>`, `fsl-waf`,
-`fsl-kali`, `fsl-wargame-host`) however many wargames there are.
+`fsl-kali` used to need a second uploaded image (`kali-rolling`). It is now built
+on Ubuntu. Its setup enables the `universe` and `multiverse` components itself
+and installs the tools from the Ubuntu archive. The `wordlists` package exists
+only on Kali. The motd's list is dirb's, linked to the old path.
+
+**The wargame host [one-click].** No wargame has an image of its own. There are
+always five images (base, `fsl-opnsense-<version>`, `fsl-waf`, `fsl-kali`,
+`fsl-wargame-host`), however many wargames there are.
+
 `fsl-wargame-host` declares `wargames: [board, corp]` and `publish: {board:
-8000, corp-wp: 80}`. Its bundle holds `deploy/wargame-host/setup.sh` and three
-files the platform generates: each wargame's own `compose.yaml` rendered for
-the host (no `build:`, no session network, `container_name` set to the
-service, `${FSL_IMAGE_TAG}` replaced by the platform's tag, the published
-ports added) and `daemon.json` with the tenant MTU (`network.mtu`), as the
-platform VM has. The setup enables `universe`, installs `docker.io` and
-`docker-compose-v2`, installs the files under `/opt/fsl/wargames/` and runs
-`docker compose pull` on each while the builder still has the Internet: the
-range has none. The images are the ones the docker substrate runs
-(`ghcr.io/nekonic/fsl-board`, `fsl-corp`, `fsl-corp-db`, the pinned `mysql`),
-so they must be public and exist for the tag (`FSL_IMAGE_TAG`, the platform
-checkout's commit, from `/opt/fsl/.env`). The tag is in the bundle's digest,
-so a platform on a new commit plans a new host image. A tag that moves (`dev`)
-does not: rebuild by deleting the image. A wargame image sideloaded onto the
-platform (§5.3) is not on GHCR: the bundle then also holds a generated
-`loaded` file (`<image> <image id> <url>` per line, so the id is in the
-digest), and after the pulls the setup fetches each image from the platform
-(`GET /api/range/images/sideloaded/<name>/` with `Host: localhost`, which
-Django's allowed hosts take, a `docker save` stream, retried 5 times), `docker load`s it, refuses unless its id equals the platform's, and
-prunes the GHCR copy. The builder reaches the platform's 8000 on the build
-network (`fsl-platform` security group, `FSL_PUBLISH` the fixed IP).
+8000, corp-wp: 80}`. Its bundle (the files the builder gets in its user data)
+holds `deploy/wargame-host/setup.sh` and files the platform generates:
+
+- One `compose.yaml` per wargame (two today), rendered for the host: no
+  `build:`, no session network, `container_name` set to the service name,
+  `${FSL_IMAGE_TAG}` replaced by the platform's tag, and the published ports
+  added.
+- `daemon.json` with the tenant MTU (`network.mtu`), as on the platform VM.
+
+The setup does the following while the builder still has the Internet. The
+range has none.
+
+1. It enables `universe` and installs `docker.io` and `docker-compose-v2`.
+2. It installs the files under `/opt/fsl/wargames/`.
+3. It runs `docker compose pull` on each wargame.
+
+The images are the ones the wargames' compose files name
+(`ghcr.io/nekonic/fsl-board`, `fsl-corp`, `fsl-corp-db`, the pinned `mysql`).
+They must be public and exist for the tag. The tag is `FSL_IMAGE_TAG`, the
+commit of the platform checkout, taken from `/opt/fsl/.env`.
+
+The tag is part of the bundle's digest, so a platform on a new commit plans a
+new host image. A tag that moves (`dev`) does not change the digest. In that
+case, delete the image to rebuild it.
+
+Every bundle digest hashes each file's name, its content and its mode. The mode
+is only the executable bit, 0755 or 0644, as git tracks it. A checkout's umask
+therefore does not change a digest: a sideloaded checkout (files 0664) and a
+cloud-init clone (files 0644) of one commit plan the same image. Every digest
+changed once, when this rule began (2026-10-20).
+
+A wargame image sideloaded onto the platform (§5.3) is not on GHCR. The bundle
+then also holds a generated `loaded` file. It has one line per image:
+`<image> <image id> <name>`, so the id is part of the digest. The platform's
+address goes in a second file, `served-from`. The bundle packs it for the
+builder and leaves it out of the digest, so a new fixed IP for the platform
+does not rebuild the image. After the pulls, the setup does this for each such
+image:
+
+1. It fetches the image from the platform with
+   `GET /api/range/images/sideloaded/<name>/` (the base URL is in `served-from`)
+   and `Host: localhost`, which Django's allowed hosts accept. The reply is a `docker save` stream. The setup
+   retries 5 times.
+2. It runs `docker load` on it.
+3. It refuses the image unless its id equals the platform's.
+4. It prunes the GHCR copy.
+
+The builder reaches the platform's port 8000 on the build network
+(`fsl-platform` security group, `FSL_PUBLISH` is the fixed IP).
 
 **The OPNsense image [one-click].** `fsl-edge` declares `setup:
-deploy/opnsense/build.sh` and `uploads: opnsense`. On `POST
-/api/range/images/` the platform boots a builder from the base image with the
-bundle in its user data and no credential, in the security group
-`fsl-build`, which the images step makes if absent: its only ingress rule is
-tcp 8080 from the platform's address on the platform network (replaced when
-that address changes), and it keeps Neutron's default egress. The builder:
+deploy/opnsense/build.sh` and `uploads: opnsense`. On `POST /api/range/images/`
+the platform boots a builder from the base image. The builder gets the bundle in
+its user data and no credential.
 
-1. installs `curl`, `bzip2`, `openssl`, `qemu-utils`, `qemu-system-x86`,
-   `dosfstools`, `mtools`, `fdisk`, `python3` (nothing assumed of the image);
-2. downloads `OPNsense-<version>-nano-amd64.img.bz2`, its `.sig` and
-   `OPNsense-<version>.pub` from `opnsense.mirror`/`<version>/`;
-3. checks the archive against `opnsense.image_sha256` and the key's DER
-   SHA256 against `opnsense.pubkey_sha256`, both copied from the release
-   announcement [O3], not from the mirror, as the manual advises [O1];
-4. unpacks it and verifies the signature on the unpacked image (`openssl
-   base64 -d`, `openssl dgst -sha256 -verify`) [O1];
-5. boots it once under QEMU (KVM when the builder has it, TCG otherwise) with
-   three virtio NICs and a FAT seed disk holding `conf/config.xml`, presses a
-   key at the configuration importer's prompt and names the seed disk
-   (`vtbd1`) [O4], waits for `login:` and powers it off over the QEMU monitor
-   (`deploy/opnsense/importer.py`);
-6. converts it with `qemu-img convert -O qcow2 -c` to
-   `/var/lib/fsl-serve/disk.qcow2`, starts `python3 -m http.server 8080` on
-   it as the transient unit `fsl-serve`, and prints the ready line with the
-   disk's SHA256 on its console;
-7. the platform reads that line through Nova, pulls the disk over the
-   platform network, refuses it if its SHA256 differs, then creates the
-   Glance record `fsl-opnsense-<version>` (qcow2, bare, private,
-   `hw_vif_model=virtio`, `hw_disk_bus=virtio`, `os_distro=freebsd`,
-   `min_ram` 3072, `fsl_bundle`) and `PUT`s the file with its own fresh token
-   [G3]; once Glance says active, the platform deletes the builder. A record
-   left `queued` by an interrupted upload is filled on the next call.
+The builder runs in the security group `fsl-build`, which the images step makes
+if it is absent. Its only ingress rule is tcp 8080 from the platform's address
+on the platform network. The rule is replaced when that address changes. The
+builder keeps Neutron's default egress.
 
-The nano image is a preinstalled serial-console disk whose `/conf/config.xml`
-is created from the default on first boot. That default assigns only LAN
-(static 192.168.1.1/24) and WAN, so the third NIC, mgmt, would get no address
-and the platform could not reach a new edge; the importer step is how the
-image starts from a config of ours without anyone at its console. The image's config
-(`deploy/opnsense/config.xml`, rendered with the MTU and the platform's
-public key) gives root no password (`*`) and only the platform's key, sshd
-without password logins, opt1 (mgmt) by DHCP: the stock default password
-`opnsense` never exists on it. The bundle digest covers the release settings,
-the MTU, the platform key and the scripts, so any of them changing builds a
-new image; a new version also gets a new name. An `fsl-opnsense-*` image
-of a release `cloud.yaml` no longer names is listed as a leftover and removed
-by `DELETE /api/range/images/` (and by `bin/cloud up` once the range is
-ready on the new images), but only when it carries `fsl_bundle`, the mark of
-an image this platform made, and no server in the project boots from it; any
-other image of that name is left alone. Run on this cloud 2026-10-11 with
-26.7: the archive SHA256 matched, the `.sig` verified ("Verified OK") over the
-unpacked image, the importer's console strings appeared as read from the
-source [O4], the builder went from boot through import to power-off in about
-a minute, `fsl-serve` served the disk, and the Glance image went active with
-the properties above.
+The builder does these steps:
 
-**Licence (researched 2026-10-11, not legal advice).** OPNsense is BSD
-2-clause, "Copyright © 2025 by Deciso B.V.", based on FreeBSD [O2]. Its
-trademark policy lets the name be used "to promote OPNsense based products"
-but asks for permission at project@opnsense.org before using a derivative of
-the name [O2]. The project builds the image from the official release on each
-cloud and does not publish it; describing the range as "based on OPNsense" is
-within the policy, naming the image anything like "FSL-OPNsense" in public is
-not without permission. The image's Glance name stays private to the project.
+1. It installs `curl`, `bzip2`, `openssl`, `qemu-utils`, `qemu-system-x86`,
+   `dosfstools`, `mtools`, `fdisk` and `python3`. It assumes nothing about the
+   image.
+2. It downloads `OPNsense-<version>-nano-amd64.img.bz2`, its `.sig` and
+   `OPNsense-<version>.pub` from `opnsense.mirror`/`<version>/`.
+3. It checks the archive against `opnsense.image_sha256`. It checks the SHA256
+   of the key's DER form against `opnsense.pubkey_sha256`. Copy both values from
+   the release announcement [O3], not from the mirror, as the manual advises
+   [O1].
+4. It unpacks the archive. It verifies the signature on the unpacked image
+   (`openssl base64 -d`, `openssl dgst -sha256 -verify`) [O1].
+5. It boots the image once under QEMU. QEMU uses KVM when the builder has it and
+   TCG otherwise. The guest has three virtio NICs and a FAT seed disk that holds
+   `conf/config.xml`. The builder presses a key at the configuration importer's
+   prompt and names the seed disk (`vtbd1`) [O4]. It waits for `login:` and
+   powers the guest off over the QEMU monitor (`deploy/opnsense/importer.py`).
+6. It converts the disk with `qemu-img convert -O qcow2 -c` to
+   `/var/lib/fsl-serve/disk.qcow2`. It serves that file with `python3 -m
+   http.server 8080` as the transient unit `fsl-serve`. It prints a ready line
+   with the disk's SHA256 on its console.
+7. The platform reads that line through Nova and pulls the disk over the
+   platform network. It refuses the disk if the SHA256 differs. It then creates
+   the Glance record `fsl-opnsense-<version>` (qcow2, bare, private,
+   `hw_vif_model=virtio`, `hw_disk_bus=virtio`, `os_distro=freebsd`, `min_ram`
+   3072, `fsl_bundle`) and uploads the file with `PUT`, using its own fresh token
+   [G3]. When Glance says the image is active, the platform deletes the builder.
+   If an upload was interrupted and left a record `queued`, the next call fills
+   it.
+
+The nano image is a preinstalled serial-console disk. Its `/conf/config.xml` is
+created from the default on first boot. That default assigns only LAN (static
+192.168.1.1/24) and WAN. The third NIC, mgmt, would get no address, and the
+platform could not reach a new edge. The importer step lets the image start from
+our config without anyone at its console.
+
+The image's config (`deploy/opnsense/config.xml`, rendered with the MTU and the
+platform's public key) sets these:
+
+- Root has no password (`*`) and accepts only the platform's key.
+- sshd allows no password logins.
+- opt1 (mgmt) gets its address by DHCP.
+
+The stock default password `opnsense` never exists on this image.
+
+The bundle digest covers the release settings, the MTU, the platform key and the
+scripts. If any of them changes, the platform builds a new image. A new version
+also gets a new name.
+
+An `fsl-opnsense-*` image of a release that `cloud.yaml` no longer names is
+listed as unused. `DELETE /api/range/images/` removes it, and so does `bin/cloud
+up` once the range is ready on the new images. It is removed only if both
+conditions hold: it carries `fsl_bundle`, which marks an image this platform
+made, and no server in the project boots from it. Any other image of that name
+is left alone.
+
+We ran this on this cloud on 2026-10-11 with 26.7:
+
+- The archive SHA256 matched.
+- The `.sig` verified ("Verified OK") over the unpacked image.
+- The importer's console strings appeared as read from the source [O4].
+- The builder went from boot through import to power-off in about a minute.
+- `fsl-serve` served the disk.
+- The Glance image went active with the properties above.
+
+**Licence (researched 2026-10-11, not legal advice).**
+
+- OPNsense is BSD 2-clause, "Copyright © 2025 by Deciso B.V.", and is based on
+  FreeBSD [O2].
+- Its trademark policy lets the name be used "to promote OPNsense based
+  products". It asks for permission at project@opnsense.org before you use a
+  derivative of the name [O2].
+- This project builds the image from the official release on each cloud and does
+  not publish it.
+- Describing the range as "based on OPNsense" is within the policy. Naming the
+  image anything like "FSL-OPNsense" in public is not, without permission.
+- The image's Glance name stays private to the project.
 
 ## 4. cloud.yaml
 
-`deploy/openstack/cloud.example.yaml` is committed; copy it to
-`deploy/openstack/cloud.yaml` (git ignores it) and fill it in. No secret goes
-in it: only where to read the password. `platform/range/cloud.py` reads it
-and refuses it before anything is touched, naming every problem by its dotted
-key (an unknown key, a missing one, a Keystone URL ending in `/v3`, an
-unquoted version, overlapping CIDRs, a password written into the file).
+`deploy/openstack/cloud.example.yaml` is committed. Copy it to
+`deploy/openstack/cloud.yaml` (git ignores that file) and fill it in. No secret
+goes in it, only where to read the password. `platform/range/cloud.py` reads the
+file. It refuses the file before touching anything and names every problem by
+its dotted key. The problems it finds include an unknown key, a missing key, a
+Keystone URL that ends in `/v3`, an unquoted version, overlapping CIDRs and a
+password written into the file.
 
 | Key | Example | Used by |
 |---|---|---|
 | `identity.keystone` | `http://192.168.0.110:5000` | Keystone base URL without `/v3`; CLI and platform |
 | `identity.region`, `identity.interface` | `RegionOne`, `public` | the catalogue endpoints the CLI and the platform call |
 | `identity.domain` | `default` | the id of the user's and the project's domain |
-| `identity.project`, `identity.user` | `fsl-range` | the member the CLI and the platform sign in as |
-| `identity.password_file` or `identity.password_env` | `~/.config/fsl/fsl-range.password` | exactly one; read on the operator's machine, appended to the VM's `openstack.env` over ssh |
+| `identity.project`, `identity.user` | `fsl-range` | the member user the CLI and the platform sign in as |
+| `identity.password_file` or `identity.password_env` | `~/.config/fsl/fsl-range.password` | set exactly one; read on the operator's machine and appended to the VM's `openstack.env` over ssh |
 | `network.external` | `provider` | the stack's router and floating IP |
-| `network.address` | `""` (**(this cloud)** `192.168.0.210`) | optional; a floating IP the project already holds, which the stack associates and never releases, so the address survives `bin/cloud down` and every rebuild; empty, the stack allocates a new one (§5.1) |
+| `network.address` | `""` (**(this cloud)** `192.168.0.210`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
 | `network.mtu` | `1450` | the edge's interfaces (the tenant networks' MTU; 1450 on VXLAN) |
-| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/24`, `10.31.0.0/24` | private, non-overlapping, outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins |
+| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/24`, `10.31.0.0/24` | The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and every builder |
-| `compute.availability_zone` | `""` | the platform VM, builders and slot VMs; empty lets Nova choose |
+| `compute.availability_zone` | `""` | the platform VM, builders and slot VMs; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `builder`, `range`, `edge` (required, 3 GB RAM or more), per role | §3.3 |
-| `compute.slots` | `1` (**(this cloud)** `2`) | optional; how many copies of the range stand, so how many sessions run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
-| `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with and its private half |
+| `compute.slots` | `1` (**(this cloud)** `2`) | optional; how many copies of the range stand, which is how many sessions can run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
+| `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with, and its private half |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
-| `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (January and July; updates have no images [O1]) |
+| `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (released in January and July; updates have no images [O1]) |
 | `opnsense.image_sha256`, `.pubkey_sha256` | from the release announcement [O3] | §3.6 |
-| `platform.stack`, `.repository`, `.ref` | `fsl-platform`, this repo, `dev` | the stack and the checkout it clones |
-| `backups.keep` | `1` | optional; how many store backups `backups/` keeps after a rebuild or `down`, the new one included (`bin/backup --keep`); without it, one |
+| `platform.stack`, `.repository`, `.ref` | `fsl-platform`, this repo, `dev` | the stack, and the checkout it clones |
+| `backups.keep` | `1` | optional; how many store backups `backups/` keeps after a rebuild or `down`, counting the new one (`bin/backup --keep`). Without it, one |
 
-Where each value lands: `bin/platform-rebuild` and `bin/cloud` set the
-openstack CLI's `OS_*` variables from `identity` (no openrc needed) and pass
-every Heat parameter from the file (`Cloud.heat_parameters()`); the template
-has no defaults and writes the values into `/opt/fsl/openstack.env` as
-`FSL_OPENSTACK_*` and `FSL_OPNSENSE`, which the platform reads (`settings.py`)
-and refuses by name when one it needs is missing.
+Where each value goes:
+
+- `bin/platform-rebuild` and `bin/cloud` set the openstack CLI's `OS_*`
+  variables from `identity`, so no openrc file is needed.
+- They pass every Heat parameter from the file (`Cloud.heat_parameters()`).
+- The template has no defaults. It writes the values into
+  `/opt/fsl/openstack.env` as `FSL_OPENSTACK_*` and `FSL_OPNSENSE`.
+- The platform reads those variables (`settings.py`). If one it needs is
+  missing, it refuses and names the variable.
 
 ## 5. The platform VM
 
 ### 5.1 The Heat stack
 
-`deploy/openstack/platform.yaml` creates network `fsl-platform`
-(`network.platform`), a router to `network.external`, group `fsl-platform`, a
-port, a floating IP and a server from
-`compute.base_image` whose cloud-init installs Docker, sets Docker's MTU to the
-network's, adds 4 GB swap, clones `repository` at `ref` into `/opt/fsl`,
-writes `/opt/fsl/openstack.env` (every cloud value but the password, and
-`FSL_TOOL_IMAGE=fsl-kali`, the attacker host the launcher runs tools on) and
-`/opt/fsl/.env` (`FSL_PUBLISH=<fixed IP>`, `FSL_SYSLOG_PUBLISH=0.0.0.0`), and
-enables `fsl-platform.service`.
+`deploy/openstack/platform.yaml` creates:
 
-With `network.address` set, `bin/platform-rebuild` looks the floating IP up
-by address (`openstack floating ip list --floating-ip-address`) before it
-deletes anything, refuses if the project holds none, and passes its id as
-`floating_ip_id`; the stack then creates an `OS::Neutron::FloatingIPAssociation`
-instead of an `OS::Neutron::FloatingIP`. Deleting the association only sets
-the floating IP's `port_id` to null (Heat `neutron/floatingip.py`,
-`FloatingIPAssociation.handle_delete`), so the address stays in the project.
-Neutron's default policy lets only an admin choose the address, so it is
-created once, as admin: **(this cloud)** `openstack floating ip create
+- the network `fsl-platform` (`network.platform`)
+- a router to `network.external`
+- the group `fsl-platform`
+- a port
+- a floating IP
+- a server from `compute.base_image`
+
+The server's cloud-init does these steps:
+
+1. Installs Docker.
+2. Sets Docker's MTU to the network's MTU.
+3. Adds 4 GB of swap.
+4. Clones `repository` at `ref` into `/opt/fsl`.
+5. Writes `/opt/fsl/openstack.env`. It holds every cloud value except the
+   password, and `FSL_TOOL_IMAGE=fsl-kali`, the attacker host the launcher runs
+   tools on.
+6. Writes `/opt/fsl/.env` with `FSL_PUBLISH=<fixed IP>` and
+   `FSL_SYSLOG_PUBLISH=0.0.0.0`.
+7. Enables `fsl-platform.service`.
+
+When `network.address` is set, `bin/platform-rebuild` does this before it
+deletes anything:
+
+1. It looks the floating IP up by address (`openstack floating ip list
+   --floating-ip-address`).
+2. It refuses to go on if the project holds no such floating IP.
+3. It passes the floating IP's id as `floating_ip_id`.
+
+The stack then creates an `OS::Neutron::FloatingIPAssociation` instead of an
+`OS::Neutron::FloatingIP`. Deleting the association only sets the floating IP's
+`port_id` to null (Heat `neutron/floatingip.py`,
+`FloatingIPAssociation.handle_delete`). The address stays in the project.
+
+Neutron's default policy lets only an admin choose the address, so the floating
+IP is created once, as admin. **(this cloud)** `openstack floating ip create
 --project fsl-range --floating-ip-address 192.168.0.210 provider`.
 
-`FSL_PUBLISH` is the VM's fixed IP, so 8000 listens on that address, not
-loopback; the floating IP NATs to it. `FSL_PUBLISH=0.0.0.0` on a VM is an
-environment error recorded in DECISIONS 2026-10-10.
+`FSL_PUBLISH` is the VM's fixed IP. Port 8000 therefore listens on that address,
+not on loopback, and the floating IP NATs to it. Setting `FSL_PUBLISH=0.0.0.0` on
+a VM is an environment error (DECISIONS 2026-10-10).
 
-The password stays out of Heat and user data: Nova's metadata service answers
-from inside containers on the VM, so anything in user data is readable there.
+The password stays out of Heat and out of user data. Nova's metadata service
+answers inside the containers on the VM, so anything in user data can be read
+there.
 
 ### 5.2 One command [one-click]
 
-From the operator's machine, with `python-openstackclient` and
-`python-heatclient` installed and the repo's `.venv` (PyYAML):
+Run this from the operator's machine. `python-openstackclient` and
+`python-heatclient` must be installed in the repo's `.venv`, which has PyYAML.
+The scripts find the `openstack` command beside `.venv/bin/python`.
 
 ```bash
 .venv/bin/python bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
 .venv/bin/python bin/cloud down
 ```
 
-`up`: refuses without a usable `cloud.yaml`; reads the stack's status and
-refuses while it is `*_IN_PROGRESS`; creates the stack if absent, and if it is
-`*_FAILED` deletes its builders and the stack (`--wait`) and creates it again
-(`--replace` replaces a working one through `bin/platform-rebuild`, below); waits for the
-API; `POST fabric/` (stops on drift); `POST images/` until every image is
-ready with no builder left (stops on a failed image or one no script builds);
-`POST slot/` (stops when blocked); `GET ready/` until the slot leaves
-`NOT_STANDING`/`REBUILDING`; `POST configure/`, retried while it answers 503
-as the VMs' ssh comes up, stopping on 409; `GET ready/` until ready; then
-`DELETE images/` removes leftovers no server boots from. `down`:
-keeps the range key, backs up the store (`bin/backup --keep`, `backups.keep`), `DELETE slot/`,
-`DELETE fabric/`, deletes every server whose name starts with `fsl-build-`,
-which carries the `fsl_image` property and which has a port on this stack's
-own network (the stack's `network` resource; such a port would fail the
-stack delete), then deletes the stack; Glance keeps the images. A `*_FAILED` stack has
-no platform to ask: `down` deletes its builders and the stack only. Run
-2026-10-11: `down` took 26 s and left no stack, builder, range network, port,
-router or range security group; it kept the Glance images, the reserved
-floating IP, the `fsl-claude` keypair and the `fsl-build` group. An `up` after
-`down` starts with an empty store: `down`'s backup is not restored (open,
-`docs/STATE.md` backlog 0).
+`up` does these steps in order:
+
+1. It refuses to run without a usable `cloud.yaml`.
+2. It reads the stack's status. It refuses while the status is `*_IN_PROGRESS`.
+3. If the stack is absent, it creates it. If the stack is `*_FAILED`, it deletes
+   the builders and the stack (`--wait`) and creates the stack again.
+   (`--replace` replaces a working stack through `bin/platform-rebuild`, below.)
+4. It asks the VM over ssh whether it took its hand-over, whether or not the API
+   answers, and then waits for the API. A container can answer before the
+   password line is written, and a range build on it would fail. The hand-over
+   is the step that gives a new VM the password, the range key and the store
+   (§5.3). A VM never took it when `/opt/fsl/openstack.env` has no
+   `FSL_OPENSTACK_PASSWORD`. In that case `up` does the hand-over first. If the
+   `fsl-platform` container is stopped, `up` starts it first, because the key is
+   written into that container. The redone hand-over keeps every other line of
+   `openstack.env`, `FSL_SIDELOADED` included. `up` refuses a `--sideload` here,
+   because it applies only to a new VM.
+5. It sends `POST fabric/`. It stops on drift (a resource that exists but
+   differs from what the platform would create).
+6. It sends `POST images/` until every image is ready and no builder is left. It
+   stops on a failed image or an image that no script builds.
+7. It sends `POST slot/`. It stops when the slot is blocked.
+8. It sends `GET ready/` until the slot leaves `NOT_STANDING` and `REBUILDING`.
+9. It sends `POST configure/`. It retries while the answer is 503, which means
+   the VMs' ssh is not up yet. It stops on 409.
+10. It sends `GET ready/` until the range is ready.
+11. It sends `DELETE images/`, which removes unused images that no server boots
+    from.
+
+`down` does these steps:
+
+1. It asks the VM over ssh whether a running `fsl-platform` container or a store
+   file exists. The store file is `db.sqlite3` in the `fsl_platformdata` volume.
+2. If neither exists, as after a first boot that never started the platform,
+   there is nothing to back up and no platform to ask. `down` then deletes only
+   the builders and the stack.
+3. If ssh does not answer, or Docker does not, `down` cannot tell. It refuses and
+   deletes nothing.
+4. If a store file exists beside a stopped platform container, `down` starts the
+   container, because the backup runs through `docker exec`. It refuses, and
+   deletes nothing, when the container does not start.
+5. It keeps the range key and backs up the store (`bin/backup --keep`,
+   `backups.keep`).
+6. It waits for the API. Then it runs `DELETE slot/` and `DELETE fabric/`.
+7. It deletes every server whose name starts with `fsl-build-`, which carries the
+   `fsl_image` property and which has a port on this stack's own network (the
+   stack's `network` resource). Such a port would make the stack delete fail.
+8. It deletes the stack. Glance keeps the images.
+
+A `*_FAILED` stack has no platform to ask. For it, `down` deletes the builders
+and the stack only.
+
+We ran `down` on 2026-10-11. It took 26 s. It left no stack, builder, range
+network, port, router or range security group. It kept the Glance images, the
+reserved floating IP, the `fsl-claude` keypair and the `fsl-build` group.
+
+On 2026-10-20 a `down` beside a stopped container took 40 s and wrote a backup
+of 430,080 bytes that passed `PRAGMA integrity_check`. An `up` after `down`
+restores the newest backup that holds rows (§5.3).
+
+If a stack is not `*_FAILED` but its `address` output cannot be read, `up` and
+`down` refuse and delete nothing.
 
 ### 5.3 Rebuild and delete — lossless
 
@@ -526,52 +790,101 @@ floating IP, the `fsl-claude` keypair and the `fsl-build` group. An `up` after
 .venv/bin/python bin/platform-rebuild    # --cloud PATH, --ref REF, --sideload NAME=TARBALL
 ```
 
-It refuses unless every platform image for the ref's commit is public on GHCR,
-keeps the range key (`keys.range`, taken once from the running platform),
-backs up the store with `bin/backup`, deletes and recreates the stack, appends
-the password, writes the kept key to `/data/ssh/id_ed25519`, restores the
-store, and waits for `/api/sessions/`. With the key carried over, the fabric's
-`fsl-platform` keypair stays valid and the slot need not be torn down.
+This command replaces the platform VM without losing data. It does these steps:
 
-`bin/backup` writes a compacted copy of the store with SQLite's `VACUUM INTO`
-into a temporary file inside the platform container and streams it over ssh
-in 1 MiB chunks; it gives up only after 600 s with no data. Once the copy
-passes `integrity_check`, older `backups/db-<UTC time>.sqlite3` files beyond
-`--keep` (default 1, the new one included) are removed; a file named
-otherwise is never removed. `bin/platform-rebuild` and `bin/cloud down` pass
-`backups.keep` from `cloud.yaml` as `--keep`. The new VM holds one copy, the
-one it was restored from, in `/opt/fsl/backups`. The store itself stays small:
-the platform deletes sessions closed longer ago than
-`FSL_RETAIN_CLOSED_MINUTES` (default 60; `platform/fsl/settings.py`, set in
-`compose.yaml`, overridden in `/opt/fsl/.env`) with their records, at start
-and after every close, 2,000 rows per transaction (`platform/api/retention.py`);
-open sessions are never touched. A backup carries about an hour of closed
-sessions plus the open ones. The store is copied back with
-`scp` and put in place while the platform is stopped.
+1. It refuses unless every platform image for the ref's commit is public on GHCR.
+2. It keeps the range key (`keys.range`), which it takes once from the running
+   platform.
+3. It backs up the store with `bin/backup`. If the old VM holds a store but its
+   `fsl-platform` container is stopped, it starts the container first. If the old
+   VM has neither a running `fsl-platform` container nor a store file, it says so,
+   skips the backup and makes the range key if it is missing. If ssh to the old VM
+   does not answer, it refuses.
+4. It deletes and recreates the stack.
+5. It starts the `fsl-platform` container on the new VM if it is stopped, then
+   writes the kept key to `/data/ssh/id_ed25519` through `docker exec`.
+6. It restores the store.
+7. It rewrites the password line in `/opt/fsl/openstack.env`, and the
+   `FSL_SIDELOADED` line when the run sideloads. It keeps every other line, and
+   the file keeps mode 0600.
+8. It waits for `/api/sessions/`.
 
-**An unpushed commit (`--sideload NAME=TARBALL`).** Both `bin/platform-rebuild`
-and `bin/cloud up` take it, once per image. The VM clones `platform.ref` (a
-pushed commit, whose images GHCR has) and starts it as usual; the rebuild then
-copies this checkout's HEAD as a git bundle, checks it out in `/opt/fsl`,
-`docker load`s each tarball and tags its image with the cloned commit
-(`FSL_IMAGE_TAG` in `/opt/fsl/.env`), stops the platform for the restore, and
-recreates every service with `docker compose up -d --force-recreate` (HEAD's compose file may add some, and a file
-bind-mounted into a running container, such as `filebeat.yml`, keeps the cloned
-commit's copy until the container is recreated). `FSL_IMAGE_TAG` stays
-the cloned commit because the range's image builders pull the wargames'
-images from GHCR at that tag: a tag GHCR does not have would fail the
-`fsl-wargame-host` build. A sideloaded wargame image (`board`, `corp`,
-`corp-db`) reaches the range from the platform instead: the rebuild writes
-`FSL_SIDELOADED=<names>` beside the password in `/opt/fsl/openstack.env`
-(a later rebuild without `--sideload` makes a VM without it), the platform
-adds the image's id to the `fsl-wargame-host` bundle, and the builder, after
-pulling GHCR's copy at the cloned tag, loads the sideloaded one from `GET
-/api/range/images/sideloaded/<name>/` (`platform/api/sideloaded.py`, §3.6).
-A new board is therefore a new `fsl-wargame-host` image, built when the
-range's images are next planned (`bin/cloud up` does it; about 4 to 5
-minutes). A slot that was standing before keeps the wargame host it booted,
-old board included, because a close resets that host in place (§6.1); with
-no session open, rebuild every slot and configure it again:
+The password line marks a finished hand-over, so it is written after the store
+is in place.
+
+There may be no store to carry over: there may be no stack, the stack may have
+failed, or the VM may hold none. The backup just taken may also hold no rows. In
+these cases the command restores the newest `backups/db-<UTC time>.sqlite3` that
+holds rows, and names it. If there is none, the platform starts empty and says
+so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
+store.
+
+Because the key is carried over, the fabric's `fsl-platform` keypair stays valid.
+You do not need to tear the slot down.
+
+`bin/backup` works like this:
+
+- It writes a compacted copy of the store into a temporary file inside the
+  platform container, using SQLite's `VACUUM INTO`. It streams the copy over ssh
+  in 1 MiB chunks. It gives up only after 600 s with no data.
+- When the copy passes `integrity_check`, it removes older
+  `backups/db-<UTC time>.sqlite3` files beyond `--keep` (default 1, counting the
+  new one). If the store held no rows, as a new VM's does, it removes none. It
+  never removes a file with any other name.
+- `bin/platform-rebuild` and `bin/cloud down` pass `backups.keep` from
+  `cloud.yaml` as `--keep`.
+- The new VM holds one copy in `/opt/fsl/backups`, the one it was restored from.
+
+The store stays small. The platform deletes sessions that were closed more than
+`FSL_RETAIN_CLOSED_MINUTES` ago, with their records. The default is 60
+(`platform/fsl/settings.py`, set in `compose.yaml`, overridden in
+`/opt/fsl/.env`). It does this at start and after every close, 2,000 rows per
+transaction (`platform/api/retention.py`). It never touches open sessions. A
+backup therefore carries about an hour of closed sessions plus the open ones.
+The store is copied back with `scp` and put in place while the platform is
+stopped.
+
+**An unpushed commit (`--sideload NAME=TARBALL`).** Sideloading means loading a
+Docker image from a tarball instead of pulling it from GHCR. Both
+`bin/platform-rebuild` and `bin/cloud up` take the flag, once per image.
+
+1. The VM clones `platform.ref`, a pushed commit whose images GHCR has. It
+   starts that commit as usual.
+2. The rebuild copies this checkout's HEAD as a git bundle and checks it out in
+   `/opt/fsl`.
+3. It runs `docker load` on each tarball and tags the image with the cloned
+   commit (`FSL_IMAGE_TAG` in `/opt/fsl/.env`).
+4. It stops the platform for the restore.
+5. It recreates every service with `docker compose up -d --force-recreate`.
+   HEAD's compose file may add services. A file bind-mounted into a running
+   container, such as `filebeat.yml`, keeps the cloned commit's copy until the
+   container is recreated.
+
+`FSL_IMAGE_TAG` stays the cloned commit. The range's image builders pull the
+wargames' images from GHCR at that tag. A tag that GHCR does not have would make
+the `fsl-wargame-host` build fail.
+
+A sideloaded wargame image (`board`, `corp`, `corp-db`) reaches the range from
+the platform instead:
+
+1. The rebuild writes `FSL_SIDELOADED=<names>` beside the password in
+   `/opt/fsl/openstack.env`. A later rebuild without `--sideload` makes a VM
+   without it. A hand-over that `up` redoes on a standing VM keeps the line.
+2. The platform adds the image's id to the `fsl-wargame-host` bundle. The
+   platform's address is not part of its digest, so a `down` then `up` that
+   gives the platform a new fixed IP does not rebuild the image (live,
+   2026-10-20: every image was ready on the first plan).
+3. The builder pulls GHCR's copy at the cloned tag. It then loads the sideloaded
+   one from `GET /api/range/images/sideloaded/<name>/`
+   (`platform/api/sideloaded.py`, §3.6).
+
+A new board is therefore a new `fsl-wargame-host` image. It is built when the
+range's images are next planned. `bin/cloud up` does that, and it takes about 4
+to 5 minutes.
+
+A slot that was already up keeps the wargame host it booted, with the old board,
+because a close resets that host in place (§6.1). When no session is open,
+rebuild every slot and configure it again:
 
 ```bash
 P=http://ADDRESS:8000/api/range
@@ -581,17 +894,24 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # re
 curl -s $P/ready/          # every slot READY
 ```
 
-Open: the reset does not yet notice that a wargame host booted from an image
-other than the ready one; until it does, a deploy that changes a wargame
-image needs the slot rebuild above (`docs/DECISIONS.md` 2026-10-18,
-"Foundations rebuilt as integrated attack and defence lessons"). `sudo
-docker exec fsl-platform env | grep FSL_SIDELOADED` on the VM shows the
-names. Before anything is deleted it refuses an unknown
-name, a name given twice, a missing tarball, a tarball without exactly one
-`ghcr.io/nekonic/fsl-NAME:<commit>`, and any image whose build context in
-`.github/workflows/images.yml` differs between the commit it was built from
-(the tarball's tag, or the cloned commit for a pulled image) and HEAD. Build a
-tarball on any x86_64 Docker host from a clean export of the commit:
+This is still open: the reset does not yet notice that a wargame host booted from
+an image other than the ready one. Until it does, a deploy that changes a
+wargame image needs the slot rebuild above (`docs/DECISIONS.md` 2026-10-18,
+"Foundations rebuilt as integrated attack and defence lessons"). To see the
+sideloaded names, run `sudo docker exec fsl-platform env | grep FSL_SIDELOADED`
+on the VM.
+
+Before it deletes anything, the command refuses in these cases:
+
+- an unknown name
+- a name given twice
+- a missing tarball
+- a tarball that does not hold exactly one `ghcr.io/nekonic/fsl-NAME:<commit>`
+- an image whose build context in `.github/workflows/images.yml` differs between
+  the commit it was built from and HEAD. The built-from commit is the tarball's
+  tag, or the cloned commit for an image that is pulled.
+
+Build a tarball on any x86_64 Docker host from a clean export of the commit:
 
 ```bash
 git archive $C platform | tar -x -C ctx
@@ -600,22 +920,25 @@ docker save -o fsl-platform-$C.tar ghcr.io/nekonic/fsl-platform:$C
 .venv/bin/python bin/cloud up --replace --sideload platform=fsl-platform-$C.tar
 ```
 
-A changed board goes the same way (`git archive $C wargames/board/app`,
-`docker build ... ctx/wargames/board/app`, `--sideload board=fsl-board-$C.tar`);
-the refusal names every image whose build context differs from HEAD.
+A changed board goes the same way (`git archive $C wargames/board/app`, `docker
+build ... ctx/wargames/board/app`, `--sideload board=fsl-board-$C.tar`). The
+refusal names every image whose build context differs from HEAD.
 
-A sideloaded VM that reboots runs `fsl-platform.service` again, whose
-`compose pull` can replace the sideloaded images with GHCR's for the same tag;
-push and rebuild rather than reboot it. MicroK8s calls importing images from
-`.tar` archives without a registry "Image side-loading"
+A sideloaded VM that reboots runs `fsl-platform.service` again. Its `compose
+pull` can replace the sideloaded images with GHCR's for the same tag. Push and
+rebuild instead of rebooting it. MicroK8s calls importing images from `.tar`
+archives without a registry "Image side-loading"
 (https://canonical.com/microk8s/docs/sideload).
 
-**Runs 2026-10-15**, `bin/cloud up --replace --sideload platform=...
---sideload gns3=...` over `dev` = 8f9acb0, untouched, both exit 0; both slots
-READY and no session open before each. Run 1 ran HEAD d20b35e from the
-previous platform VM; run 2 ran HEAD 412e379 (the backup fix found by run 1's
-`bin/verify`) from run 1's VM. The platform image was built from each HEAD,
-the gns3 image from 1814e5c, whose `deploy/gns3` is the same.
+**Runs 2026-10-15.** We ran `bin/cloud up --replace --sideload platform=...
+--sideload gns3=...` over `dev` = 8f9acb0, untouched. Both runs exited 0. Both
+slots were READY and no session was open before each run.
+
+- Run 1 ran HEAD d20b35e from the previous platform VM.
+- Run 2 ran HEAD 412e379 (the backup fix that run 1's `bin/verify` found) from
+  run 1's VM.
+- The platform image was built from each HEAD. The gns3 image was built from
+  1814e5c, whose `deploy/gns3` is the same.
 
 | Stage | Run 1 | Run 2 | Evidence |
 |---|---|---|---|
@@ -632,16 +955,20 @@ the gns3 image from 1814e5c, whose `deploy/gns3` is the same.
 | Total | 54 min 33 s | 28 min 18 s | |
 
 Security group `fsl-platform`: 22, 8000, 8002, 3080 and ICMP. After each run a
-board session (497, 514) opened in about 5 s, its map pane (now Map) drew the
-learner map from `fsl-gns3` with every link end green, and its close reset the
-slot to READY within 2 minutes. The old VM's Elasticsearch data does not move
-(only the store does).
+board session (497, 514) opened in about 5 s. Its map pane (now Map) drew the
+learner map from `fsl-gns3` with every link end green. Its close reset the slot
+to READY within 2 minutes. The old VM's Elasticsearch data does not move. Only
+the store does.
 
 ## 6. The range (substrate openstack)
 
-Everything is through the platform's API, as `fsl-range`. Each `GET` reads the
-plan (missing, present, drifted, left over); `POST` converges; `DELETE` tears
-down. `bin/cloud up` runs these in order; by hand:
+Everything goes through the platform's API, as `fsl-range`.
+
+- Each `GET` reads the plan: what is missing, present, drifted or unused.
+- `POST` makes the cloud match the plan.
+- `DELETE` tears down.
+
+`bin/cloud up` runs these calls in order. By hand:
 
 ```bash
 P=http://$ADDRESS:8000/api/range
@@ -655,137 +982,168 @@ curl -s $P/ready/
 
 Notes:
 
-- Networks are found by tag `fsl.segment.id=<segment>`, not name; the fabric
-  needs the Neutron `standard-attr-tag` extension (on by default).
-- Image builds need `FSL_OPENSTACK_BUILD_NETWORK` (the template writes the
-  stack's network, which has a router) and `compute.base_image` present exactly
-  once. Nova user data is capped at 65535 bytes base64 per image bundle.
-- The edge's Internet and estate ports hold every origin's `.1` and the
-  estate's gateway and have `allowed_address_pairs 0.0.0.0/0`, so the edge
-  forwards un-NATted; Kali's Internet port holds ~100 origin addresses.
-  cloud-init applies only a port's first address, hence the slot's `bootcmd`.
-- The edge's NICs are ordered internet, estate, mgmt, which FreeBSD names
-  vtnet0, vtnet1, vtnet2 and the config assigns to WAN, LAN and opt1. It runs
-  no cloud-init; the platform reaches it as root over mgmt with its key.
+- The platform finds networks by the tag `fsl.segment.id=<segment>`, not by
+  name. The fabric needs the Neutron `standard-attr-tag` extension, which is on
+  by default.
+- Image builds need `FSL_OPENSTACK_BUILD_NETWORK` and exactly one
+  `compute.base_image`. The template writes the stack's network, which has a
+  router, into `FSL_OPENSTACK_BUILD_NETWORK`.
+- Nova caps user data at 65535 bytes of base64 per image bundle.
+- The edge's Internet and estate ports hold every origin's `.1` and the estate's
+  gateway. They have `allowed_address_pairs 0.0.0.0/0`, so the edge forwards
+  traffic without NAT. Kali's Internet port holds about 100 origin addresses.
+  cloud-init applies only a port's first address, so the slot's `bootcmd` adds
+  the others.
+- The edge's NICs are ordered internet, estate, mgmt. FreeBSD names them vtnet0,
+  vtnet1 and vtnet2, and the config assigns them to WAN, LAN and opt1. The edge
+  runs no cloud-init. The platform reaches it as root over mgmt with its key.
 - The edge's Suricata watches the WAN in IDS (pcap) mode with hardware
-  offloading off [O5]; HOME_NET is the estate and mgmt, because OPNsense's
-  suricata.yaml sets EXTERNAL_NET to `!$HOME_NET` and includes
-  `conf.d/*.yaml` [O6].
-- The edge's WAN pass rule admits tcp 80 to the WAF's estate address only;
-  before 2026-10-12 it passed any destination, and Kali reached the wargame
-  host's 8000 and 80 on the estate through the edge, past the WAF.
-- A second sensor watches the estate leg (WAF to target), which docker's one
-  sensor sees from inside the WAF's namespace and the edge never sees: docker's
-  Suricata image and `deploy/suricata/suricata.yaml`, run on `fsl-wargame-host`
-  with host networking from `deploy/wargame-host/sensor.yaml`, on the
-  interface holding the host's estate address (`af-packet`, the `default`
-  entry); every sensor start writes the platform's `suricata.yaml` to the host
-  first, so a change reaches a standing slot at its next reset. Its role is
-  `estate-sensor`; the host entry names its rule file and reload command, and
-  `logs: {suricata: /var/log/suricata/eve.json}`, which rsyslog forwards to the
-  collector tagged `suricata`, as the WAF forwards its audit log. Rule seeding,
-  validation and changes go to both sensors.
-- `configure/` writes `/conf/config.xml`, the Suricata include
-  (`/usr/local/etc/suricata/conf.d/fsl.yaml`) and the rule file, reboots the
-  edge, waits up to 15 minutes for a new boot time before checking it, and
-  then records `/conf/fsl-settled` for the session reset (§6.1).
-- `configure/` ends by starting the wargames on `fsl-wargame-host` over ssh,
-  as `ubuntu` with sudo: `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml
-  up -d --wait --pull never` for each (the `wargames` role), and fails with
-  compose's output if one does not come up healthy. The board publishes 8000
-  and corp-wp 80 on the host; the WAF reaches them by the names `board` and
-  `corp-wp` its `/etc/hosts` gives the host's estate address, and the platform
-  reads the board's ground truth at the host's mgmt address on 8000. A role
-  the host fills (`board`, `board-db`, `corp`, `corp-db`) runs commands inside
-  its container (`sudo docker exec <service>`), which is how the corp effect
-  reader gets `corp-db`'s binary log and the harness's `run_on_role` reaches
-  the same containers it reaches on docker.
-- A guest needs a config drive; without one it gets no metadata.
+  offloading off [O5]. HOME_NET is the estate and mgmt. OPNsense's
+  `suricata.yaml` sets EXTERNAL_NET to `!$HOME_NET` and includes `conf.d/*.yaml`
+  [O6].
+- The edge's WAN pass rule admits tcp 80 to the WAF's estate address only. Before
+  2026-10-12 it passed any destination, and Kali reached the wargame host's ports
+  8000 and 80 on the estate through the edge, past the WAF.
+- A second sensor watches the estate leg, the traffic from the WAF to the target,
+  which the edge never sees. The second sensor works like this:
+  - It runs docker's Suricata image and `deploy/suricata/suricata.yaml` on
+    `fsl-wargame-host`, with host networking, from
+    `deploy/wargame-host/sensor.yaml`.
+  - It listens on the interface that holds the host's estate address
+    (`af-packet`, the `default` entry).
+  - Every sensor start first writes the platform's `suricata.yaml` to the host.
+    A change therefore reaches a standing slot at its next reset.
+  - Its role is `estate-sensor`. The host entry names its rule file and reload
+    command, and `logs: {suricata: /var/log/suricata/eve.json}`. rsyslog
+    forwards that log to the collector tagged `suricata`, as the WAF forwards its
+    audit log.
+  - Rule seeding, validation and changes go to both sensors.
+- `configure/` does these steps on the edge:
+  1. It writes `/conf/config.xml`, the Suricata include
+     (`/usr/local/etc/suricata/conf.d/fsl.yaml`) and the rule file.
+  2. It reboots the edge.
+  3. It waits up to 15 minutes for a new boot time before checking the edge.
+  4. It records `/conf/fsl-settled` for the session reset (§6.1).
+- `configure/` ends by starting the wargames on `fsl-wargame-host` over ssh, as
+  `ubuntu` with sudo. For each wargame (the `wargames` role) it runs `docker
+  compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never`. If
+  one does not come up healthy, `configure/` fails and shows compose's output.
+  - The board publishes port 8000 on the host. corp-wp publishes port 80.
+  - The WAF reaches them by the names `board` and `corp-wp`. Its `/etc/hosts`
+    maps those names to the host's estate address.
+  - The platform reads the board's accounts (`/internal/auth-users`, the
+    snapshot that submitted loot is checked against) at the host's mgmt address
+    on port 8000.
+  - A role the host fills (`board`, `board-db`, `corp`, `corp-db`) runs commands
+    inside its container (`sudo docker exec <service>`). This is how the corp
+    effect reader gets `corp-db`'s binary log. It is also how the harness's
+    `run_on_role` reaches the wargame containers.
+- A guest needs a config drive. Without one it gets no metadata.
 - Nova here answers 404 for the console of a powered-off guest.
 
 ### 6.1 Session reset
 
-Closing a session resets the slot; since 2026-10-12 only the VMs that hand
-out a shell are rebuilt (see `docs/DECISIONS.md`, "The close resets the edge
-and the wargame host in place"):
+Closing a session resets the slot. Since 2026-10-12 only the VMs that hand out a
+shell are rebuilt (see `docs/DECISIONS.md`, "The close resets the edge and the
+wargame host in place"):
 
 | VM | Reset at close | Why |
 |---|---|---|
-| `fsl-kali` | Nova rebuild from its image, then its time source (the platform over `mgmt`) | the red team's root shell; anything outside config can carry over |
-| `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | the blue team's shell (`vm-terminal.sh fsl-waf`) |
-| `fsl-edge` | in place: baseline `fsl.rules` written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` checked by sha256; pf states of every range subnet dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | the session can change only `fsl.rules`, and only the platform reaches its GUI and ssh (`fsl-mgmt`) |
-| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` per wargame and for the estate sensor, its `eve.json` and rsyslog's imfile state removed; then its time source, the usual `up -d --wait --pull never`, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | the containers mount no host path, run unprivileged and get no docker socket |
+| `fsl-kali` | Nova rebuild from its image, then its time source (the platform over `mgmt`) | It is the red team's root shell. Anything outside the config can carry over |
+| `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | It is the blue team's shell (`vm-terminal.sh fsl-waf`) |
+| `fsl-edge` | in place: the baseline `fsl.rules` is written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` are checked by sha256; the pf states of every range subnet are dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | The session can change only `fsl.rules`, and only the platform reaches the edge's GUI and ssh (`fsl-mgmt`) |
+| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` for each wargame and for the estate sensor; its `eve.json` and rsyslog's imfile state are removed. Then its time source, the usual `up -d --wait --pull never`, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | The containers mount no host path, run unprivileged and get no docker socket |
 
-OPNsense rewrites `config.xml` on its first boot after an install
-(migrations add uuids, defaults and `persisted_at` stamps), so the edge's file
-never equals the rendered one. `configure/` therefore ends by writing
-`/conf/fsl-settled`: the sha256 of the config the platform rendered and the
-sha256 of `/conf/config.xml` once the edge has settled. The in-place reset
-compares both against what it renders now and what the edge holds; any
-mismatch, a Suricata that does not answer within 60 s, or an edge that does
-not hold its addresses, sensor, logging and WAN pass rule afterwards falls
-back to the install and reboot (`configure_edge()`), which records again. The
-configd actions are OPNsense's own (`actions_ids.conf` `[restart]` runs
-`/usr/local/etc/rc.d/suricata restart`; `actions_filter.conf` `[reload]` runs
-`/usr/local/etc/rc.filter_configure`, opnsense/core
-`src/opnsense/service/conf/actions.d`). `[flush.states]` (`pfctl -F state`)
-is not used: states are floating (`all`) and the pass rules keep state with
-`flags S/SA`, so flushing every state would drop the platform's own ssh
-session to the edge.
+OPNsense rewrites `config.xml` on its first boot after an install. Its
+migrations add uuids, defaults and `persisted_at` stamps. The edge's file
+therefore never equals the rendered one. For this reason `configure/` ends by
+writing `/conf/fsl-settled`. The file holds two hashes: the sha256 of the config
+the platform rendered, and the sha256 of `/conf/config.xml` once the edge has
+settled.
 
-The in-place resets start at once, beside the Nova rebuilds; the rebuilt VMs
-are configured once Nova has shown each of them rebuilding and back to ACTIVE
-(a rebuilt VM never seen leaving ACTIVE within 2 minutes fails the reset), from
-a fresh read of the cloud (a VM's ssh host-key alias follows its launch time).
-Everything runs under one hold of the rules lock and polls every 2-3 s.
-Meanwhile `ready/` answers phase `RESETTING` and a refused
-`POST /api/sessions/` names the reset, so a client waits rather than calling
-`configure/`. A failed reset reads `RESET_FAILED` with its reason;
-`POST $P/configure/` retries it (a full configure, edge reboot included).
-`POST $P/slot/rebuild/` still Nova-rebuilds every slot VM and is not followed
-by a configure; run `configure/` after it.
+The in-place reset compares both hashes against what the platform renders now
+and what the edge holds. The reset falls back to the install and reboot
+(`configure_edge()`), which records the hashes again, in any of these cases:
 
-Close to READY: 95-116 s per session while every VM was rebuilt and the edge
-rebooted; 65.8, 65.9 and 60.1 s with the in-place reset (three board
+- a hash does not match
+- Suricata does not answer within 60 s
+- the edge does not hold its addresses, sensor, logging and WAN pass rule
+  afterwards
+
+The configd actions are OPNsense's own. `actions_ids.conf` `[restart]` runs
+`/usr/local/etc/rc.d/suricata restart`. `actions_filter.conf` `[reload]` runs
+`/usr/local/etc/rc.filter_configure` (opnsense/core
+`src/opnsense/service/conf/actions.d`).
+
+The reset does not use `[flush.states]` (`pfctl -F state`). States are floating
+(`all`), and the pass rules keep state with `flags S/SA`. Flushing every state
+would drop the platform's own ssh session to the edge.
+
+The in-place resets start at once, beside the Nova rebuilds. The platform
+configures the rebuilt VMs only after Nova has shown each of them rebuilding and
+back to ACTIVE. If a rebuilt VM is never seen leaving ACTIVE within 2 minutes,
+the reset fails. The platform configures them from a fresh read of the cloud,
+because a VM's ssh host-key alias follows its launch time. Everything runs under
+one hold of the rules lock and polls every 2-3 s.
+
+While the reset runs, `ready/` answers phase `RESETTING`. A refused `POST
+/api/sessions/` names the reset, so a client waits and does not call
+`configure/`. A failed reset reads `RESET_FAILED` with its reason. `POST
+$P/configure/` retries it (a full configure, edge reboot included). `POST
+$P/slot/rebuild/` still Nova-rebuilds every slot VM. A configure does not follow
+it, so run `configure/` after it.
+
+Close to READY took 95-116 s per session while every VM was rebuilt and the edge
+rebooted. With the in-place reset it took 65.8, 65.9 and 60.1 s (three board
 sessions, 2026-10-12, no fallback).
 
-Recorded trade-offs, not verified threats: the edge's isolation between
-sessions is now "config verified by hash" rather than "rebuilt from its
-image" (a change that leaves the three files alone, such as a package
-installed through the GUI's firmware page, would carry over); a container
-escape on the wargame host would persist to the next session, where a rebuild
-removed it.
+These trade-offs are recorded. They are not verified threats:
+
+- The edge's isolation between sessions is now "config verified by hash". It used
+  to be "rebuilt from its image". A change that leaves the three files alone
+  would carry over. An example is a package installed through the GUI's firmware
+  page.
+- A container escape on the wargame host would persist to the next session. A
+  rebuild would have removed it.
 
 ### 6.2 Teardown order
 
-Slot, then fabric (`DELETE $P/slot/` takes every slot, `?slot=N` one). `DELETE $P/fabric/` refuses while any server other than the
-platform has a port on a range network. Images stay; `DELETE $P/images/`
-removes only failed builders and images of older bundles.
+Delete the slot, then the fabric. `DELETE $P/slot/` takes every slot.
+`DELETE $P/slot/?slot=N` takes one. `DELETE $P/fabric/` refuses while any server
+other than the platform has a port on a range network. Teardown also deletes the
+ports that no server holds any more (Nova leaves the pre-created
+`fsl-platform.mgmt` port standing when it deletes a platform VM), and the next
+attach deletes such a leftover before it makes a new port. The images stay.
+`DELETE $P/images/` removes only failed builders and images of older bundles.
 
 ### 6.3 Keypair drift
 
-The fabric compares keypair `fsl-platform` with the platform's
-`/data/ssh/id_ed25519`. A new VM without the kept key makes a new one, and
-`GET fabric/` reports `keypair fsl-platform holds another public key` (drift,
-409 on POST). Today: tear down slot → fabric before replacing the VM. With
-`bin/platform-rebuild` the key is carried over and nothing drifts.
-
+The fabric compares the keypair `fsl-platform` with the platform's
+`/data/ssh/id_ed25519`. A new VM without the kept key makes a new key. Then `GET
+fabric/` reports `keypair fsl-platform holds another public key` (drift, and
+`POST` answers 409). The fix is to delete the slot and then the fabric before
+you replace the VM. With `bin/platform-rebuild` the key is carried over and
+nothing drifts.
 
 ### 6.4 Range slots
 
-`compute.slots: N` stands N copies of the range. Slot 1 keeps the names
-above; slot N>1 is `fsl-edge-N`, `fsl-kali-N`, `fsl-waf-N`,
-`fsl-wargame-host-N`, its ports `<host>-N.<segment>`, its servers tagged
-`fsl_slot=N`. Each slot beyond the first stands on its own `fsl-internet-N`
-(the same 30 origin /24s) and `fsl-estate-N` (the same estate CIDR), tagged
-`fsl.slot=N`; `fsl-mgmt` is shared. The platform gives each session the first
-free READY slot and keeps it for the session's life; the close resets only
-that slot. The collector writes each slot's syslog to `logs-N-*`,
-telling the slots apart by the sender's hostname (`fsl-waf-2`,
-`firewall-2.localdomain`); a session reads its slot's index.
+`compute.slots: N` sets how many copies of the range stand.
 
-Adding a slot to a standing range, by hand (what `bin/cloud up` does for
-every slot):
+- Slot 1 keeps the names used above.
+- Slot N>1 uses `fsl-edge-N`, `fsl-kali-N`, `fsl-waf-N` and
+  `fsl-wargame-host-N`. Its ports are `<host>-N.<segment>`. Its servers are
+  tagged `fsl_slot=N`.
+- Each slot beyond the first stands on its own `fsl-internet-N` (the same 30
+  origin /24s) and `fsl-estate-N` (the same estate CIDR), tagged `fsl.slot=N`.
+  `fsl-mgmt` is shared.
+- The platform gives each session the first free READY slot and keeps it for the
+  life of the session. The close resets only that slot.
+- The collector writes each slot's syslog to `logs-N-*`. It tells the slots apart
+  by the sender's hostname (`waf-2`, `firewall-2.localdomain`). A session reads
+  its slot's index.
+
+To add a slot to a standing range by hand (`bin/cloud up` does this for every
+slot):
 
 ```bash
 echo FSL_OPENSTACK_SLOTS=2 >> /opt/fsl/openstack.env    # or compute.slots in cloud.yaml before bin/cloud up
@@ -796,15 +1154,19 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$P/configure/?slot=
 curl -s $P/ready/                                                                  # slots[].phase READY
 ```
 
-Measured 2026-10-12: the slot-2 VMs went ACTIVE within about 30 s and
-`configure/?slot=2` took 72 s (edge install and reboot included); slot 1
-stayed READY throughout. Two sessions opened at once took slots 1 and 2, a
-third answered 409; the same case fired in each left from the same JP origin
-address, 106.128.0.14, and its alerts landed in `fsl-logs-slot1-*` (from
-`fsl-edge.range.internal`, `fsl-waf`) and `fsl-logs-slot2-*` (from
-`fsl-edge-2.range.internal`, `fsl-waf-2`) respectively; each session ingested
-only its own case's alerts. Closing slot 2's session rebuilt `fsl-waf-2` and
-`fsl-kali-2` only, slot 1 stayed `IN_USE`, and slot 2 was READY 64.9 s later.
+We measured this on 2026-10-12:
+
+- The slot-2 VMs went ACTIVE within about 30 s.
+- `configure/?slot=2` took 72 s, including the edge install and reboot.
+- Slot 1 stayed READY throughout.
+- Two sessions opened at once took slots 1 and 2. A third answered 409.
+- We fired the same case in each session. Both left from the same JP origin
+  address, 106.128.0.14.
+- The alerts landed in `fsl-logs-slot1-*` (from `fsl-edge.range.internal`,
+  `fsl-waf`) and `fsl-logs-slot2-*` (from `fsl-edge-2.range.internal`,
+  `fsl-waf-2`). Each session ingested only its own case's alerts.
+- Closing slot 2's session rebuilt only `fsl-waf-2` and `fsl-kali-2`. Slot 1
+  stayed `IN_USE`. Slot 2 was READY 64.9 s later.
 
 ## 7. Verification
 
@@ -814,95 +1176,259 @@ curl -s http://$ADDRESS:8000/api/range/fabric/ | jq .clean
 ssh ubuntu@$ADDRESS 'cd /opt/fsl && FSL_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
-`bin/verify` runs with the checkout's `.venv/bin/python`; the VM's cloud-init
-installs `python3-venv` but makes no `.venv`, so make it by hand first. It
-restarts the platform and resets the range; never run it against a stack
-someone is using. `bin/verify --changed --live` runs only the acceptance
-modules a change reaches (`bin/acceptance --only`); `--fast` runs no
-acceptance.
+`bin/verify` runs with the checkout's `.venv/bin/python`. The platform VM
+creates `/opt/fsl/.venv` at first boot. `bin/verify` restarts the platform and
+resets the range. Never run it against a stack that someone is using.
 
-Since 2026-10-17 the whole acceptance suite runs here with no skip (70
-passed, 0 failed, 0 skipped; `docs/DECISIONS.md` "No acceptance test is
-skipped on OpenStack"). A change to a range host's image (`deploy/kali`,
-`deploy/waf`, ...) reaches a standing slot only at its next reset: after
-`bin/cloud up`, open and close one session per slot before the run.
+`bin/verify --changed --live` runs only the acceptance modules that a change
+reaches (`bin/acceptance --only`). `--fast` runs no acceptance.
 
-**The first acceptance run on substrate openstack**, 2026-10-11, on a range
+Since 2026-10-17 the whole acceptance suite runs here with no skip: 70 passed, 0
+failed, 0 skipped (`docs/DECISIONS.md` "No acceptance test is skipped on
+OpenStack"). The latest full run, 2026-10-20 on bf96876's code, passed unit 1718 and
+acceptance 73, with 0 failed, 0 errors and 0 skipped (about 22 minutes).
+
+A change to a range host's image (`deploy/kali`, `deploy/waf`, ...) reaches a
+standing slot only at its next reset. After `bin/cloud up`, open and close one
+session per slot before the run.
+
+**The first acceptance run on the OpenStack substrate**, 2026-10-11, on a range
 built from scratch by `bin/cloud up` (platform VM 192.168.0.210, OPNsense 26.7
-edge): 50 passed, 86 skipped, 6 failed, 4 errors (the run before the reset
-fixes: 24 passed, 14 failed, 22 errors). What it left has since been fixed or
-deleted: tests that reached compose containers (`kali`, `corp-db`) reach the
-slot's hosts through `run_on_role`; WAF tuning (`PUT /api/sessions/<id>/waf/`)
-uses the WAF host's declared rule file, reload command and pid
-(`rules/crs.py` `Layout`) instead of the Docker image's; and the compose-only
-checks were deleted on 2026-10-17.
+edge): 50 passed, 86 skipped, 6 failed, 4 errors. The run before the reset fixes
+gave 24 passed, 14 failed, 22 errors. We have since fixed or deleted what that
+run left:
 
-Run time 2,900 s: fixture setup 1,689 s, test bodies 1,179 s, teardown 27 s;
-the slowest item is `test_suppression`'s setup (578 s).
+- Tests that reached compose containers (`kali`, `corp-db`) now reach the slot's
+  hosts through `run_on_role`.
+- WAF tuning (`PUT /api/sessions/<id>/waf/`) uses the WAF host's declared rule
+  file, reload command and pid (`rules/crs.py` `Layout`), not the Docker image's.
+- We deleted the compose-only checks on 2026-10-17.
 
-Checked live the same day: the edge's Suricata 8.0.6 loads the
-`conf.d/fsl.yaml` include and `fsl.rules` (4 of 4 rules), `suricatasc` is at
-`/usr/local/bin/suricatasc` with its socket at
-`/var/run/suricata-command.socket` as the declaration names, the WAN pass rule
-is in pf, and all of it survives a reboot (the edge answers again in about
-30 s). Not checked: that it survives an OPNsense update; the edge has no route
-to the Internet and cannot resolve `pkg.opnsense.org`. Kali on Ubuntu has
-mitmproxy (8.1.1), mitmdump, nikto, ffuf, gobuster, whatweb, dirb with its
-wordlists, sqlmap, nmap, hydra and nc. A session close resets the range
-(§6.1): close to READY measured at 93 s.
+Run time was 2,900 s: fixture setup 1,689 s, test bodies 1,179 s, teardown 27 s.
+The slowest item is `test_suppression`'s setup (578 s).
 
-The MVP gate on substrate docker ran on the platform VM itself: 146 passed, 0
-failed, twice on 2026-10-11 (before and after the `gw_priority` fix in
-`compose.yaml`). The temporary `fsl-acceptance` VM (192.168.0.220) was
-deleted the same day; its floating IP 192.168.0.220 is still allocated to
-`fsl-range`.
+We checked live the same day:
+
+- The edge's Suricata 8.0.6 loads the `conf.d/fsl.yaml` include and `fsl.rules`
+  (4 of 4 rules).
+- `suricatasc` is at `/usr/local/bin/suricatasc` with its socket at
+  `/var/run/suricata-command.socket`, as the declaration names.
+- The WAN pass rule is in pf.
+- All of this survives a reboot. The edge answers again in about 30 s.
+- Kali on Ubuntu has mitmproxy (8.1.1), mitmdump, nikto, ffuf, gobuster, whatweb,
+  dirb with its wordlists, sqlmap, nmap, hydra and nc.
+- A session close resets the range (§6.1). Close to READY measured 93 s.
+
+We did not check whether the edge survives an OPNsense update. The edge has no
+route to the Internet and cannot resolve `pkg.opnsense.org`.
 
 ## 8. Known issues
 
-- MTU (`network.mtu`), no resize (§2.4), TaaS override (§2.3), no Cinder,
-  keypair drift (§6.3), full core quota (§3.2).
-- A member cannot create flavors or change quotas; the stack uses no
+- Related sections: MTU (`network.mtu`), no resize (§2.4), the TaaS override
+  (§2.3), no Cinder, keypair drift (§6.3), and the full core quota (§3.2).
+- A member user cannot create flavors or change quotas. The stack uses no
   admin-only Heat resource.
-- `platform.ref` is required (example value `dev`; `--ref` overrides it): the
-  VM only sees pushed commits.
-- The project password is plain text in `/opt/fsl/openstack.env` and the
+- `platform.ref` is required (example value `dev`; `--ref` overrides it). The VM
+  sees only pushed commits.
+- The project password is plain text in `/opt/fsl/openstack.env` and in the
   platform container's environment.
 - The edge's builder serves its disk over plain HTTP on the platform network
-  until it is deleted; integrity rests on the SHA256 it prints on its console,
-  which the platform reads through Nova and checks before the upload.
-- Every edge built from one image shares its sshd host keys (generated on the
-  builder's QEMU boot); the platform pins each server's key by its own alias.
-- The nano image keeps `/var/log` and `/tmp` in memory [O1]; nothing is kept
-  there across a reboot, and the edge's logs live in Elasticsearch.
-- The platform reaches Kali over `mgmt`: origin addresses collide with the
-  platform's docker edge bridges.
-- Fixed 2026-10-12, measured first: Kali has a `mgmt` port, and while every
-  range port sat in `fsl-range` an nmap from Kali found the wargame host's
-  22, 80 and 8000 (`/internal/auth-users` answered 200 with every password
-  hash), the edge's 22, 80 and 443 (the OPNsense GUI) and the WAF's 22 and 80
-  open on `mgmt`. `mgmt` ports now sit in `fsl-mgmt`, which admits only the
-  platform's port (`test/test_attacker_reach.py` scans from Kali). The
-  Neutron DHCP port on `mgmt` (dnsmasq, 53) has no security group and still
-  answers Kali.
-- A server's `/etc/hosts` (and Kali's `board.com`/`corp.com`) comes from the
-  user data it was booted with, and the reset's rebuild passes none. On
-  2026-10-12 the WAF and Kali, booted while the board had its own VM and
-  `fsl-waf` named only `board.com`, kept the old board address and no
-  `corp.com` until their servers were deleted and `slot/` booted them again.
-- Dev machine on the lab's subnet: when the operator's Wi-Fi uses the same
-  192.168.0.0/24 as the lab and the lab is reached over a WireGuard tunnel,
-  the connected route wins and lab addresses go out the Wi-Fi interface. Put
-  /32 `AllowedIPs` for the lab hosts in the tunnel, or run a proxy bound to
-  the tunnel interface, and check the route before any cloud call.
+  until the builder is deleted. Integrity rests on the SHA256 that the builder
+  prints on its console. The platform reads it through Nova and checks it before
+  the upload.
+- Every edge built from one image shares its sshd host keys, which the builder's
+  QEMU boot generates. The platform pins each server's key by its own alias.
+- The nano image keeps `/var/log` and `/tmp` in memory [O1]. Nothing there
+  survives a reboot. The edge's logs live in Elasticsearch.
+- The platform reaches Kali over `mgmt` because Kali's origin addresses collide
+  with the Docker networks `compose.yaml` declares on the platform VM.
+- Fixed 2026-10-12, after we measured it first. Kali has a `mgmt` port. While
+  every range port sat in `fsl-range`, an nmap from Kali found these open ports
+  on `mgmt`:
+  - the wargame host's 22, 80 and 8000 (`/internal/auth-users` answered 200 with
+    every password hash)
+  - the edge's 22, 80 and 443 (the OPNsense GUI)
+  - the WAF's 22 and 80
+
+  `mgmt` ports now sit in `fsl-mgmt`, which admits only the platform's port
+  (`test/test_attacker_reach.py` scans from Kali). The Neutron DHCP port on `mgmt`
+  (dnsmasq, 53) has no security group and still answers Kali.
+- A server's `/etc/hosts` (and Kali's `board.com` and `corp.com`) comes from the
+  user data it was booted with. The reset's rebuild passes none. On 2026-10-12
+  the WAF and Kali had booted while the board had its own VM, and `fsl-waf` named
+  only `board.com`. They kept the old board address and had no `corp.com` until
+  we deleted their servers and `slot/` booted them again.
+- Dev machine on the lab's subnet. Suppose the operator's Wi-Fi uses the same
+  192.168.0.0/24 as the lab, and the lab is reached over a WireGuard tunnel. The
+  connected route then wins, and lab addresses go out the Wi-Fi interface. Put
+  /32 `AllowedIPs` for the lab hosts in the tunnel, or run a proxy bound to the
+  tunnel interface. Check the route before any cloud call.
+
+## 9. Try it in one VM (VirtualBox or VMware)
+
+This section is for checking that the product runs. It is not for operating it.
+One Ubuntu 24.04 VM holds an all-in-one Kolla-Ansible 2026.1 cloud and this
+repo's numbered steps. It follows the official quickstart [K1] and the
+hypervisors' manuals [V1][W1]. Run end to end on 2026-10-20 (on a KVM host; the
+VirtualBox/VMware settings themselves were not exercised).
+
+### 9.1 The VM
+
+- Ubuntu 24.04 Server with **8 vCPU, 40 GB RAM and a 250 GB disk** (allocated as
+  needed). The sizes come from these figures:
+  - The range's VMs need 24 GB of RAM and 180 GB of disk (§3.2). Nova counts RAM
+    and disk one to one (`initial_ram_allocation_ratio` and
+    `initial_disk_allocation_ratio` are 1.0 [N2]).
+  - Kolla's own services need the quickstart's minimum of 8 GB and 40 GB [K1].
+  - 30 GB of disk is margin for the images Glance holds.
+  - 24 GB of guests plus Kolla's 8 GB is 32 GB. The other 8 GB are headroom for
+    the VM's page cache and the builders' image conversions.
+  - Nova shares CPU 4 to 1 by default [N2], so 8 vCPU carry the range's 10.
+  - The host needs more than 40 GB of RAM and 250 GB of free disk.
+- The whole 250 GB must reach Nova. Ubuntu's guided storage makes the root
+  logical volume at most 100 GiB of a disk this large. It leaves the rest of the
+  volume group unused [S1]. Nova would then see about 100 GB, and the second
+  builder or the slot would fail with `NoValidHost`.
+  - In the installer's storage step, edit `ubuntu-lv` to use the whole volume
+    group.
+  - On an installed VM, run `sudo lvextend -r -l +100%FREE
+    /dev/ubuntu-vg/ubuntu-lv`. `df -h /` then shows about 245 GB.
+- Turn on nested virtualization in the hypervisor's own setting. In VirtualBox:
+  Settings, System, Processor, **Enable Nested VT-x/AMD-V** [V1]. In VMware
+  Workstation: Processors, **Virtualize Intel VT-x/EPT or AMD-V/RVI** [W1].
+- Give the VM two network adapters on the same network. The host must reach that
+  network, and it must reach the Internet.
+  - VMware Workstation: set both adapters to **NAT**.
+  - VirtualBox: set both to **Bridged Adapter** on the host's wired interface. On
+    the second adapter, under Advanced, set Promiscuous Mode to **Allow All**
+    [V1].
+- The commands below use the plan in the table. Replace it with your network's
+  own values. In VMware Workstation, the Virtual Network Editor shows the NAT
+  subnet, its gateway and its DHCP range. The pool must lie outside the DHCP
+  range.
+
+| | Example |
+|---|---|
+| Network | 192.168.100.0/24 |
+| Gateway | 192.168.100.1 |
+| First adapter (management, fixed) | 192.168.100.10 |
+| Floating-IP pool | 192.168.100.20 to 192.168.100.99 |
+
+After the install, find the adapters' names with `ip -br link` (here NIC1 and
+NIC2). Give the first the fixed address and bring the second up with no address.
+Put this in `/etc/netplan/60-kolla.yaml`, then run `sudo netplan apply`:
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    NIC1:
+      dhcp4: false
+      addresses: [192.168.100.10/24]
+      routes: [{to: default, via: 192.168.100.1}]
+      nameservers: {addresses: [8.8.8.8, 8.8.4.4]}
+    NIC2:
+      dhcp4: false
+      dhcp6: false
+      optional: true
+```
+
+The two settings do the following:
+
+- `dhcp4: false` on NIC1 matters because the installer's own
+  `50-cloud-init.yaml` merges with this file. Without the setting, it would
+  leave a DHCP address and a second default route beside the fixed one.
+- `optional: true` on NIC2 keeps boot from waiting for an address that the
+  adapter never gets.
+
+Kolla-Ansible runs its playbooks with sudo, and the deploying user must not be
+asked for a password. Give that user passwordless sudo:
+
+```bash
+echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/90-kolla
+```
+
+Install the quickstart's packages and check that the CPU's virtualization
+reaches the VM:
+
+```bash
+sudo apt update && sudo apt install -y git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev python3-venv cpu-checker
+sudo kvm-ok          # "KVM acceleration can be used"
+```
+
+### 9.2 The cloud
+
+These are the quickstart's all-in-one steps [K1], run in `~`:
+
+```bash
+python3 -m venv ~/kolla-venv && . ~/kolla-venv/bin/activate && pip install -U pip
+pip install git+https://opendev.org/openstack/kolla-ansible@stable/2026.1
+pip install docker dbus-python
+sudo mkdir -p /etc/kolla && sudo chown $USER:$USER /etc/kolla
+cp -r ~/kolla-venv/share/kolla-ansible/etc_examples/kolla/* /etc/kolla
+cp ~/kolla-venv/share/kolla-ansible/ansible/inventory/all-in-one .
+kolla-ansible install-deps
+kolla-genpwd
+```
+
+Append this to `/etc/kolla/globals.yml` (§2.2). The example file is all
+comments:
+
+```yaml
+kolla_base_distro: "ubuntu"
+network_interface: "NIC1"
+neutron_external_interface: "NIC2"
+kolla_internal_vip_address: "192.168.100.10"
+enable_haproxy: "no"
+enable_proxysql: "no"
+nova_compute_virt_type: "kvm"
+```
+
+Then deploy. This step pulls the images from quay.io and is the long one. It
+took 11 min 39 s on 2026-10-20. §2.1 gives the reasons for the extra `pip install`,
+`--use-test-images` and `-i`.
+
+```bash
+kolla-ansible bootstrap-servers -i ./all-in-one
+kolla-ansible prechecks -i ./all-in-one --use-test-images
+kolla-ansible deploy -i ./all-in-one
+pip install python-openstackclient -c https://releases.openstack.org/constraints/upper/2026.1
+kolla-ansible post-deploy -i ./all-in-one
+. /etc/kolla/admin-openrc.sh
+```
+
+### 9.3 The project, then this repo's steps
+
+Stay in that shell as admin. Do these steps:
+
+1. Create the external network on the second adapter's network, with the plan's
+   subnet and pool (§2.5).
+2. Create the project, user, quota, flavors and base image. Upload the base image
+   with `--public` (§3.1, §3.3, §3.6). Nova's default quotas already cover one
+   slot (§3.2).
+
+In `cloud.yaml`, `identity.keystone` is `http://192.168.100.10:5000`.
+
+Then open a new shell. The admin shell holds the Kolla venv and the admin `OS_*`
+variables, and README step 6 sets those of the `fsl-range` user. Follow
+`README.md` from step 2 in that new shell, in the same VM and as your own user. The browser of step 8 is the host's browser. It opens the
+floating IP that `bin/cloud up` prints. The external network makes that address
+reachable on the host's network.
 
 ## Sources
 
 - [K1] Kolla-Ansible 2026.1 quickstart — https://docs.openstack.org/kolla-ansible/2026.1/user/quickstart.html
 - [K2] kolla-ansible stable/2026.1 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2026.1/etc/kolla/globals.yml
+- [K7] Kolla-Ansible 2026.1, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2026.1/reference/compute/libvirt-guide.html
+- [K8] Kolla-Ansible 2026.1, Neutron networking (`neutron_external_interface` must be up without an IP) — https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html
 - [K3] kolla-ansible stable/2026.1 `ansible/group_vars/all/neutron.yml` (`enable_neutron_taas: false`); TaaS added in 18.0.0 — https://docs.openstack.org/releasenotes/kolla-ansible/2024.1.html
 - [K4] kolla-ansible stable/2026.1 `ansible/roles/neutron/tasks/config.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2026.1/ansible/roles/neutron/tasks/config.yml
 - [K5] Kolla-Ansible, OpenStack service configuration overrides — https://docs.openstack.org/kolla-ansible/latest/admin/advanced-configuration.html
 - [N1] Nova configuration, `allow_resize_to_same_host` (default False) — https://docs.openstack.org/nova/latest/configuration/config.html
+- [N2] Nova configuration, `initial_cpu_allocation_ratio` 4.0, `initial_ram_allocation_ratio` 1.0, `initial_disk_allocation_ratio` 1.0, `reserved_host_memory_mb` 512 — same page
+- [V1] VirtualBox manual (nested virtualization, "Enable Nested VT-x/AMD-V"; bridged networking; promiscuous mode "Allow All") — https://www.virtualbox.org/manual/UserManual.html
+- [S1] Canonical Subiquity, `subiquity/common/storage/sizes.py` (`scaled_rootfs_size`: "Use at most 100G of a large disk") — https://github.com/canonical/subiquity/blob/main/subiquity/common/storage/sizes.py
+- [W1] Broadcom KB 389469, "Virtualized Intel VT-x/EPT is not supported on this platform" (names the Workstation setting "Virtualize Intel VT-x/EPT or AMD-V/RVI") — https://knowledge.broadcom.com/external/article/389469
 - [H1] Heat `OS::Nova::Server` (`flavor_update_policy` RESIZE|REPLACE, default RESIZE; `user_data_update_policy` default REPLACE) — https://opendev.org/openstack/heat/src/branch/master/heat/engine/resources/openstack/nova/server.py
 - [G3] Glance API v2, upload binary image data (`PUT /v2/images/{image_id}/file`) — https://docs.openstack.org/api-ref/image/v2/
 - [U1] Ubuntu 24.04 cloud images and their `SHA256SUMS` — https://cloud-images.ubuntu.com/noble/current/
