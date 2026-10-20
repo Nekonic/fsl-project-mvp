@@ -16,7 +16,7 @@ network:
   external: provider                    # the external network floating IPs come from
   address: ""                           # a floating IP the project already holds, kept across rebuilds; empty: a new one per stack
   dns: [8.8.8.8, 8.8.4.4]
-  mtu: 1450                             # the tenant networks' MTU (1450 on VXLAN)
+  mtu: 1450                             # the tenant networks' MTU (1450 on VXLAN with ML2/OVS, 1442 on Geneve with ML2/OVN)
   platform: 10.20.0.0/24                # the platform VM's network
   estate: 10.30.0.0/24                  # the targets and the WAF
   mgmt: 10.31.0.0/24                    # out-of-band: ssh and syslog only

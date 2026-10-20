@@ -5959,3 +5959,74 @@ the floating IP; the 40 GB figure under load (the trial peaked at 26 GB used).
 fresh VM. The full `bin/verify` there: unit 1718; acceptance 73 passed, 0 failed,
 0 errors, 0 skipped; ratchet ok; about 22 minutes. The squash into bf96876 kept
 this code; the ids of 2026-10-20 in this file predate it.
+
+## 2026-10-20 — The product moved to a new OpenStack cloud
+
+The user moved the product to a new OpenStack cloud on 2026-10-20. The previous
+cloud (`master@192.168.0.100`, Keystone 192.168.0.110, platform 192.168.0.210)
+is now in other use. The product no longer runs there, and we did not touch it.
+`docs/OPENSTACK.md`, `deploy/openstack/network.yaml` and
+`deploy/openstack/cloud.example.yaml` now describe the new cloud. Earlier
+entries in this file keep the old addresses, because they record what happened
+then.
+
+The new cloud: Kolla-Ansible, ML2/OVN with Geneve, KVM. `con01`
+(10.0.0.11) is the controller, with the API address 10.0.0.10. `com01`
+(10.0.0.31) is the one compute node. `stg01` (10.0.0.41) holds Cinder. The
+operator reaches 10.0.0.0/24 and the provider network (192.168.2.0/24) through a
+VPN. The platform's floating IP is 192.168.2.247.
+
+What had to be done on the cloud side:
+
+- The admin made the flavors `m1.large` (8 GB / 2 vCPU / 60 GB) and `m1.medium`
+  (4 GB / 2 vCPU / 30 GB), and uploaded `ubuntu-24.04` as a public image.
+  `cloud.yaml` uses `m1.large` for the platform and `m1.medium` for the builder,
+  range, edge and wargames.
+- The root logical volume of `com01` was extended so that Nova reports
+  `local_gb` 546.
+- cinder-volume on `stg01` had been down since 2026-09-18. The rendered config
+  named Kolla's default volume group `cinder-volumes`, which does not exist
+  there. `cinder_volume_group: "ubuntu-vg"` in `globals.yml` fixed it. The product
+  does not use Cinder.
+- The project quota is 20 cores, 51200 MB of RAM and 10 instances. The user's own
+  VM `FSL-front` (4 vCPU, 8 GB) uses 4 cores and 8 GB of it. The platform VM and
+  one slot need 10 cores and 24 GB, so `compute.slots` is 1. A second slot would
+  need 22 cores.
+- `network.mtu` is 1442 here (Geneve). 1450 is right on VXLAN with ML2/OVS.
+
+The first `bin/cloud up` on this cloud had no stack and restored the store backup
+`db-20261020T111111Z`. It built all four golden images and then failed at
+`configure/`: `POST /api/range/configure/` answered 409 "container corp-wp is
+unhealthy".
+
+- Cause. With ML2/OVN and no `[ovn] dns_servers`, Neutron announces the resolvers
+  of the neutron-server host's `/etc/resolv.conf`, which under systemd-resolved
+  is 127.0.0.53 (`get_dhcp_dns_servers` in `neutron/common/ovn/utils.py` falls
+  back to `[ovn] dns_servers`, then to the system resolvers; it returns none when
+  a configured server is 0.0.0.0, per
+  https://docs.openstack.org/neutron/latest/admin/config-dns-res.html). The range
+  hosts' systemd-networkd then sent 127.0.0.53 out of `ens3`. Every name lookup
+  waited about 25 s (`getent` 24.6 s), and corp-wp's healthcheck (`wp core
+  is-installed`, timeout 5 s) took 29.2 s.
+- Fix, commit 68efc7c. `platform/range/openstack.py` creates every range subnet
+  with `dns_nameservers ["0.0.0.0"]`. The range has no Internet, so it needs no
+  resolver. The product no longer depends on the cloud's `[ovn] dns_servers`,
+  which an admin can still set for the cloud's other VMs.
+- On the standing cloud the 32 range subnets were set the same way by hand
+  (`openstack subnet set --dns-nameserver 0.0.0.0`), and Kali, the WAF and the
+  wargame host were rebooted. After that `getent` failed in 0.03 s and `wp core
+  is-installed` took 1.9 s. `bin/cloud up` then resumed and reported the range
+  ready.
+- A fabric made before 68efc7c keeps the old subnets. `openstack subnet set
+  --dns-nameserver 0.0.0.0 <subnet>` on each range subnet, then a reset or reboot
+  of the hosts, brings it in line. `docs/OPENSTACK.md` §8 says so.
+
+Standing now: the platform VM `fsl-platform` (`m1.large`, fixed 10.20.0.143,
+`mgmt` 10.31.0.183) and slot 1 with `fsl-edge` (estate 10.30.0.1, `mgmt`
+10.31.0.103), `fsl-waf` (estate 10.30.0.71, `mgmt` 10.31.0.235), `fsl-kali`
+(`mgmt` 10.31.0.40) and `fsl-wargame-host` (estate 10.30.0.231, `mgmt`
+10.31.0.204). The console is at http://192.168.2.247:8000/.
+
+The full `bin/verify` is running on the new platform VM.
+
+Full bin/verify on the new VM: RESULT_PENDING
