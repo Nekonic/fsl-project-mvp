@@ -166,8 +166,8 @@ def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
     assert ran.output == "a b\nc;d\n$HOME\n", (
         "ssh appends the arguments to the command separated by spaces and "
         "hands the result to the remote shell, so without quoting 'a b' "
-        "arrives as two arguments and 'c;d' runs d. The docker adapter "
-        f"passes an argv through exactly and so must this one: {ran.output!r}"
+        "arrives as two arguments and 'c;d' runs d. An argv must "
+        f"arrive exactly as it was passed: {ran.output!r}"
     )
 
 

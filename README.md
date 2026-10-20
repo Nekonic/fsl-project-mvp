@@ -800,6 +800,9 @@ bin/verify --fast     # unit and API tests and the metrics, no stack needed
 bin/verify            # also the acceptance tests in test/, against the live stack
 ```
 
+The range runs only on OpenStack, so a laptop runs `--changed` and `--fast`
+and nothing more. The acceptance tests need the platform VM.
+
 `--changed` compares against the merge-base with `dev` (or a commit, or `A..B`)
 and prints which tests each changed file reaches and why. `bin/select-tests`
 prints that without running anything. With `--live`, `--changed` also runs the

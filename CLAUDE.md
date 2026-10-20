@@ -45,7 +45,7 @@ Korean belongs in exactly four places among the documentation and the console:
   `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
   `.ko.md`, update both together so the pair never drifts.
 - `*.ko.gns3` — a Korean copy of a GNS3 project for Korean learners (as with
-  `deploy/topology/range-docker.ko.gns3` and `range-openstack.ko.gns3`). The English `.gns3` file is
+  `deploy/topology/range-openstack.ko.gns3`). The English `.gns3` file is
   canonical; the pair keeps the same nodes, links, ports and positions, every
   id mapped one to one, and differs only in the drawing text and the project
   id and name. Change both together; a test holds the pair.
@@ -122,10 +122,8 @@ alert that does not mention the attack's mechanism is reported
   it refuses and answers Kibana's `api/spaces/space` lookup itself, and
   `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `fsl-kali` (`nginx.conf`'s Kali terminal route names
-  `fsl-$session-kali-1:7681` by convention, like `waf-terminal.sh`);
-  `waf-terminal.sh` docker-execs into the session's WAF
-  (on OpenStack the WAF pane is `vm-terminal.sh fsl-waf`) and foundation F6's
+  names `fsl-kali` and `fsl-waf` (`entrypoint.sh` starts
+  `vm-terminal.sh fsl-kali` and `vm-terminal.sh fsl-waf`); foundation F6's
   step commands name the exclusion file and the nginx reload, which
   `wargames.lesson` fills in from the declaration. `docs/ARCHITECTURE.md` keeps
   the table.
@@ -161,12 +159,13 @@ range-facing logic changed, and before a push.
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
   suppression works, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
-  Bring-up pulls prebuilt images from GHCR (built by
-  `.github/workflows/images.yml` on push to `dev`): `docker compose -f
-  session.yaml pull`, then `docker compose pull && docker compose up -d`
-  starts the shared control plane (it sets up the docker socket group and
-  registers the Elasticsearch ingest pipeline); each session's stack starts
-  when the session opens. `build:` stays for local development only. The
+  The product runs only on OpenStack: the range is the cloud's VMs, and the
+  platform VM runs the shared control plane from `compose.yaml`. Bring-up
+  pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
+  push to `dev`): `docker compose pull && docker compose up -d` starts the
+  control plane (it sets up the docker socket group and registers the
+  Elasticsearch ingest pipeline). Local development runs the unit tests, not
+  the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
   the whole cloud side comes up with `bin/cloud up` from
   `deploy/openstack/cloud.yaml`, the one file of cloud-specific values (no

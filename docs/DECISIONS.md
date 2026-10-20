@@ -6030,3 +6030,37 @@ Standing now: the platform VM `fsl-platform` (`m1.large`, fixed 10.20.0.143,
 The full `bin/verify` is running on the new platform VM.
 
 Full bin/verify on the new VM: RESULT_PENDING
+
+## 2026-10-21 — The docker substrate is removed
+
+The plan of 2026-10-20 (`docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`, D1-D4 decided yes) ran in commits d6e0328 to 34d5943, then this documentation commit. The product runs only on OpenStack. Docker stays where the 2026-10-20 ruling kept it: the platform VM's own services, the wargame host and the GNS3 display nodes.
+
+What went:
+
+- `platform/range/docker.py`, `session.yaml`, `platform/waf-terminal.sh`, `deploy/nginx/`, `deploy/kali/Dockerfile`, `deploy/proxy/Dockerfile`.
+- The docker learner map and its Korean pair, and the docker system map (`deploy/topology/range-docker.gns3`, `range-docker.ko.gns3`, `system/range-docker.gns3`).
+- In `compose.yaml`: the four edge networks, the platform's attachments to them and the `session.yaml` mount. In `platform/nginx.conf` and `entrypoint.sh`: the per-session Kali and WAF terminal routes and the ttyd on 7693. In the collector's `filebeat.yml`: the two filestream inputs.
+- The docker-only branches (D1: `open_session`, `for_session`, `has_stack`, the stacks kept after a close, the per-session GNS3 maps), the `host-rewrite` origin mode (D2) and the `openstack:` overlay of the declaration, now folded into the base (D3).
+- In the acceptance harness: the `Docker` class, `DOCKER_HOSTS`, `segments()` and `recreate()`. The harness reaches the range only through the platform; only the `scorer` role runs with `docker exec` on the platform container.
+- The `kali` and `proxy` images in `images.yml` and in `bin/platform-rebuild`.
+
+Measured with `bin/measure` against `metrics.json`: `services` 10 to 5, `product_loc` 28192 to 25016, `tests` 1232 to 1198. `core_loc` (584) and `dependencies` (6) did not move, and `wargame_services` stays 4 because `bin/measure` now counts it from `wargames/*/compose.yaml` (D4).
+
+Deviations from the plan, recorded in the commit messages:
+
+- The stand-in for the range in the unit tests (`platform/tests/standin.py`) guards `subprocess.Popen`, not ssh, because `test_openstack_ssh` runs real ssh against a local sshd.
+- The `kali` and `proxy` entries of `images.yml` and `IMAGES` went with the Dockerfiles, not in the bring-up commit, because the test that CI publishes exactly what compose builds and the one that ties `IMAGES` to the workflow fail otherwise.
+- More tests were deleted than the plan's table lists, each for testing only a removed mechanism: the compose-versus-declaration checks in `test_declaration`, the session WAF health check in `test_deployment`, the docker board vhost in `test_internal_blocked_at_waf`, the refusal at open for unreadable board accounts in `test_loot_session_start`, and the `for_session` case in `test_substrate_choice`. The check that HOME_NET's public entries are the WAF's edge networks in `test_home_net` went with those networks.
+- A write that names no session on a single-slot range now records none, as it already did on OpenStack. A board session whose accounts cannot be read is no longer refused at open; readiness blocks the slot instead.
+- An origin's target URL is always `ATTACKER_TARGET_URL`. The per-origin WAF address was the docker shape.
+- Found on the way: the two-session acceptance fixture left its first session open when the second failed to open, and every later module waited for a slot that never freed. It now closes the first session (b9e6728).
+- `redteam/tools.py` `TOOL_IMAGE` defaults to `fsl-kali`, with a test.
+
+Image digests (computed before and after the fold of the declaration, with the same inputs): `fsl-waf` is unchanged (5b1227892cf313e9). `fsl-kali` changes once, from f34cfaad783d7351 to bc3fa783269d30bc, because `deploy/kali/Dockerfile` was in its bundle (the bundle lists `deploy/kali` as a directory). The cloud builds a new Kali image and rebuilds the slots once. `fsl-wargame-host` is 9b691e0b491f9695 at tag c0ffee and MTU 1450.
+
+Open, left as they are:
+
+- `deploy/suricata/suricata.yaml` `HOME_NET` still lists the four former docker edge subnets (5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24 and 73.0.0.0/24), and the file still names the interfaces `eth0` to `eth4`. Changing `HOME_NET` changes what the estate sensor alerts on, so it needs a decision.
+- `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name `/var/lib/session/origin`, which nothing writes now. Both are in the Kali bundle, so editing them would change its digest again.
+
+Live proof on the new cloud: PENDING
