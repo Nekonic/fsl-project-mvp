@@ -1,38 +1,43 @@
 # FSL — network addressing, the real deployment (as drawn in the topology diagram).
 # A picture of the network for people. The values that configure it are in
-# cloud.yaml (copied from cloud.example.yaml); the provider/host values are the live cloud's.
+# cloud.yaml (copied from cloud.example.yaml); the provider/host values are the live cloud's
+# (the cloud the product moved to on 2026-10-20; the tenant MTU there is 1442, OVN Geneve).
 
-provider:                         # the office LAN — physical, where the cloud is reached
-  cidr: 192.168.0.0/24
-  openstack_host: master          # the single OpenStack host (kolla-ansible on KVM)
-  openstack_host_ip: 192.168.0.100
-  operator: 192.168.0.x
-  floating_pool: 192.168.0.0/24   # floating IPs live here; the platform's is 192.168.0.210
+provider:                         # the external network (flat) — physical, where floating IPs live
+  cidr: 192.168.2.0/24
+  gateway: 192.168.2.1
+  floating_pool: 192.168.2.200-192.168.2.250   # the platform's floating IP is 192.168.2.247
+  openstack_hosts:                # kolla-ansible on KVM, ML2/OVN; every public endpoint is http://10.0.0.10:<port>
+    api_vip: 10.0.0.10
+    con01: 10.0.0.11              # controller
+    com01: 10.0.0.31              # the one compute node
+    stg01: 10.0.0.41              # storage (Cinder LVM; the product does not use it)
+  operator: "reaches 10.0.0.0/24 and the provider network through a VPN"
 
-tenant:                           # fsl-range — VMs on `master`, reached via the Neutron router + floating IPs
+tenant:                           # fsl-range — VMs on `com01`, reached via the Neutron router + floating IPs
   project: fsl-range
   router:                         # Neutron tenant router (virtual)
     gateway: 10.20.0.1            # the fsl-platform subnet gateway
-    nat: "FIP 192.168.0.210 -> platform 10.20.0.138"
+    nat: "FIP 192.168.2.247 -> platform 10.20.0.143"
   networks:
     fsl-platform: 10.20.0.0/24    # the scorer VM's net; the floating IP terminates here
     fsl-internet: "30 origin /24 (simulated), default ru 5.188.10.0/24"
-    fsl-estate:   10.30.0.0/24    # the targets + the WAF
+    fsl-estate:   10.30.0.0/24    # the targets + the WAF; the edge is 10.30.0.1
     fsl-mgmt:     10.31.0.0/24    # out-of-band management (no gateway, fabric.py NO_DEFAULT_ROUTE)
   hosts:
     fsl-platform:                 # scorer, multi-homed
-      ens3: 10.20.0.138           # fsl-platform -> FIP 192.168.0.210 (operator console :8000)
-      ens7: 10.31.0.195           # fsl-mgmt -> ssh to range hosts, syslog :5140 collector
+      ens3: 10.20.0.143           # fsl-platform -> FIP 192.168.2.247 (operator console :8000)
+      ens7: 10.31.0.183           # fsl-mgmt -> ssh to range hosts, syslog :5140 collector
     fsl-edge:                     # OPNsense edge firewall + Suricata (IDS)
       wan:  "fsl-internet — holds the .1 gateway of each of the 30 origin /24s"
       opt1: "fsl-estate"
-      mgmt: 10.31.0.158
-    fsl-kali:     { fsl-internet: "origin source IPs (30 countries, per-country SNAT)", mgmt: 10.31.0.x }
-    fsl-waf:      { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }   # ModSecurity reverse-proxy, fronts the targets
-    fsl-wargame-host: { fsl-estate: 10.30.0.x, mgmt: 10.31.0.x }   # Docker: board :8000, corp-wp :80 published; board-db, corp-db inside
+      mgmt: 10.31.0.103
+    fsl-kali:     { fsl-internet: "origin source IPs (30 countries, per-country SNAT)", mgmt: 10.31.0.40 }
+    fsl-waf:      { fsl-estate: 10.30.0.71, mgmt: 10.31.0.235 }   # ModSecurity reverse-proxy, fronts the targets
+    fsl-wargame-host: { fsl-estate: 10.30.0.231, mgmt: 10.31.0.204 }   # Docker: board :8000, corp-wp :80 published; board-db, corp-db inside
   paths:
-    external: "operator 192.168.0.x -> FIP 192.168.0.210 -> platform (console :8000)"
+    external: "operator (through the VPN) -> FIP 192.168.2.247 -> platform (console :8000)"
     attack:   "fsl-kali -> fsl-internet (spoofed origin) -> OPNsense WAN -> fsl-estate -> WAF -> board/corp"
-    mgmt:     "platform ens7 10.31.0.195 -> fsl-mgmt -> ssh / syslog to every host (out-of-band)"
+    mgmt:     "platform ens7 10.31.0.183 -> fsl-mgmt -> ssh / syslog to every host (out-of-band)"
   collector_port: 5140            # syslog UDP: OPNsense + WAF -> platform Filebeat -> Elasticsearch -> Kibana
   security_groups: [fsl-range, fsl-reach, fsl-platform]

@@ -25,11 +25,14 @@ Words used in this file:
 - **Substrate**: what the platform builds the range on (`FSL_SUBSTRATE`); here
   `range.openstack.connect`.
 
-Facts marked **(this cloud)** come from the running cloud on
-`master@192.168.0.100`, as recorded in `docs/STATE.md` and `docs/DECISIONS.md`.
-The cloud was not reachable when this file was written (2026-10-11), so we did
-not read those facts from it again. Everything else comes from this repo's code
-or from the sources listed at the end.
+Facts marked **(this cloud)** come from the cloud the product has run on since
+2026-10-20: Kolla-Ansible on three nodes, `con01` (10.0.0.11), `com01`
+(10.0.0.31) and `stg01` (10.0.0.41). We read them from that cloud on 2026-10-20.
+The operator reaches 10.0.0.0/24 and the provider network through a VPN. From
+2026-10-11 to 2026-10-20 the product ran on an earlier cloud (an all-in-one host
+`master`, ML2/OVS). Where this file quotes a measurement from that time, it says
+"the previous cloud". Everything else comes from this repo's code or from the
+sources listed at the end.
 
 ## Target: one-click build
 
@@ -50,10 +53,10 @@ hand, the stock Ubuntu 24.04 cloud image.
 
 | Piece | Status | Where |
 |---|---|---|
-| Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVS) | done (this cloud) | §2 |
+| Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, quotas, flavors | done by hand, admin only | §3 |
-| One base image, stock Ubuntu 24.04, upload with checksum check | by hand, once per cloud; done (this cloud, noble 20260911) | §3.6 |
-| `cloud.yaml`: every cloud-specific value, validated | done (this cloud, 2026-10-11) | §4 |
+| One base image, stock Ubuntu 24.04, upload with checksum check | by hand, once per cloud; done (this cloud, 2026-10-20) | §3.6 |
+| `cloud.yaml`: every cloud-specific value, validated | done (this cloud, 2026-10-20) | §4 |
 | Platform images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
@@ -100,9 +103,40 @@ Octavia or Designate.
 
 ## 2. What the cloud needs (Kolla-Ansible 2026.1)
 
-**(this cloud)** kolla-ansible 2026.1 (Gazpacho, 22.x; the host had
-22.2.1.dev9), the all-in-one inventory `/root/all-in-one`, Ubuntu images,
-ML2/Open vSwitch, API endpoints on `192.168.0.110`, and no Cinder.
+**(this cloud)** kolla-ansible (Nova reports microversion 2.100), Ubuntu images, ML2/OVN
+with Geneve tenant networks, and `nova_compute_virt_type: "kvm"`. The nodes are:
+
+- `con01` (10.0.0.11) is the controller. The API address
+  (`kolla_internal_vip_address`) is 10.0.0.10, and every public endpoint is
+  `http://10.0.0.10:<port>`.
+- `com01` (10.0.0.31) is the one compute node. Its root logical volume was
+  extended so that Nova reports `local_gb` 546.
+- `stg01` (10.0.0.41) is the storage node, with the Cinder LVM backend `lvm-1`.
+  The product does not use Cinder. We mention the node because its cinder-volume
+  was down from 2026-09-18 to 2026-10-20. Kolla's default volume group is
+  `cinder-volumes`, which does not exist on `stg01`, so the rendered config named
+  a missing group. The fix was `cinder_volume_group: "ubuntu-vg"` in
+  `globals.yml`.
+
+The sections below show the all-in-one steps, because §9 builds that. A
+multi-node cloud such as this one uses the same `globals.yml` keys with its own
+inventory.
+
+**ML2/OVN and DNS.** With ML2/OVN, Neutron tells each VM's DHCP client which DNS
+resolvers to use. If `[ovn] dns_servers` is empty, Neutron uses the resolvers of
+the `neutron-server` host's own `/etc/resolv.conf`. Under systemd-resolved, that
+is `127.0.0.53`, which means nothing to a VM (`get_dhcp_dns_servers` in
+`neutron/common/ovn/utils.py`). A subnet created with the DNS server `0.0.0.0`
+announces no resolver at all [N3]. The platform creates every range subnet that
+way (`platform/range/openstack.py`), because the range has no Internet and needs
+no resolver. The product therefore does not depend on `[ovn] dns_servers`. A
+cloud admin who wants the cloud's other VMs to resolve names sets
+`[ovn] dns_servers` in `neutron.conf` (Kolla: an override file, §2.3's
+mechanism). §8 has the symptom.
+
+**MTU.** The tenant networks' MTU is 1442 on OVN (Geneve) and 1450 on VXLAN with
+ML2/OVS. Set `network.mtu` to the value `openstack network show` reports for a
+tenant network on your cloud.
 
 ### 2.1 Install and deploy [admin, once]
 
@@ -140,8 +174,8 @@ Three details in these lines each fixed a failure in the 2026-10-20 trial (§9):
 - `post-deploy` needs `-i ./all-in-one`. Without it, it looks for
   `/etc/kolla/ansible/inventory/all-in-one` and stops.
 
-The kolla venv on this cloud has no Heat client. Run Heat from a separate venv
-that has `python-openstackclient` and `python-heatclient` **(this cloud)**.
+The kolla venv has no Heat client. Run Heat from a separate venv that has
+`python-openstackclient` and `python-heatclient`.
 
 ### 2.2 globals.yml
 
@@ -150,12 +184,13 @@ kolla_base_distro: "ubuntu"                   # the example file defaults to roc
 openstack_release: "2026.1"
 network_interface: "<NIC with the management IP>"
 neutron_external_interface: "<NIC up with no IP: floating IPs and the external network>"
-kolla_internal_vip_address: "192.168.0.110"   # this cloud's API address: an unused address on network_interface's network [K1]
+kolla_internal_vip_address: "10.0.0.10"       # this cloud's API address: an unused address on network_interface's network [K1]
 nova_compute_virt_type: "kvm"                 # the default [K7]; the compute hosts need VT-x or AMD-V
-neutron_plugin_agent: "openvswitch"           # the default [K2]
+neutron_plugin_agent: "openvswitch"           # the default [K2]; this cloud runs ML2/OVN, and the product runs on either
 enable_heat: "yes"        # default follows enable_openstack_core [K2]; keep it on
 enable_horizon: "yes"     # optional; the platform does not use it
 #enable_cinder: false     # default [K2]; the project works without volumes
+#cinder_volume_group: "ubuntu-vg"   # only if Cinder is on and the host's volume group is not Kolla's default, cinder-volumes (this cloud)
 ```
 
 Heat, Glance, Nova, Neutron, Keystone and Placement are all part of
@@ -175,10 +210,11 @@ already in use".
 
 ### 2.3 Tap-as-a-Service (optional; dropped from the design)
 
-We enabled TaaS on this cloud on 2026-09-30 for a sensor owned by the organiser.
-We then dropped that sensor (`docs/STATE.md`, "Tap-as-a-Service is dropped from
-the design"). TaaS stays enabled here but nothing uses it. A new cloud does not
-need it. To enable it on 2026.1:
+We enabled TaaS on the previous cloud (ML2/OVS) on 2026-09-30 for a sensor owned
+by the organiser. We then dropped that sensor (`docs/STATE.md`, "Tap-as-a-Service
+is dropped from the design"). Nothing uses TaaS, and a new cloud does not need
+it. The steps below are the ones we ran on the previous cloud, and they assume
+the Open vSwitch agent. To enable it on 2026.1:
 
 ```yaml
 enable_neutron_taas: "yes"     # defined in ansible/group_vars/all/neutron.yml, default false [K3]
@@ -212,19 +248,20 @@ openstack network agent list          # every agent Alive :-)
 docker ps --filter name=neutron       # rpc_server and periodic_worker Up
 ```
 
-A later reconfigure keeps the override files **(this cloud)**. We checked as a
-member: a tap service plus a `BOTH` tap flow goes ACTIVE and `br-tap` exists. We
+A later reconfigure kept the override files on the previous cloud. We checked as
+a member: a tap service plus a `BOTH` tap flow goes ACTIVE and `br-tap` exists. We
 did not check whether upstream fixed this after 2026.1.
 
 ### 2.4 Nova: resize is off
 
 `allow_resize_to_same_host` is `False` by default [N1]. An all-in-one cloud has
-no other host, so a resize cannot be scheduled. This cloud does not change the
-setting. To change a server's flavor you must **replace** the server.
+no other host, so a resize cannot be scheduled. This cloud has one compute node
+(`com01`) and does not change the setting. To change a server's flavor you must
+**replace** the server.
 
 Heat's `OS::Nova::Server` applies a flavor change as a resize unless
-`flavor_update_policy: REPLACE` is set [H1]. On this cloud, replace the stack
-(delete and create, as `bin/platform-rebuild` does). Do not update the flavor.
+`flavor_update_policy: REPLACE` is set [H1]. Replace the stack (delete and
+create, as `bin/platform-rebuild` does). Do not update the flavor.
 
 To allow resize instead, set `[DEFAULT] allow_resize_to_same_host = True` in
 `/etc/kolla/config/nova.conf`. Then run `kolla-ansible reconfigure -t nova`
@@ -246,6 +283,9 @@ openstack network create --external --provider-network-type flat --provider-phys
 openstack subnet create --network provider --no-dhcp --subnet-range 192.168.100.0/24 \
   --gateway 192.168.100.1 --allocation-pool start=192.168.100.20,end=192.168.100.99 provider-subnet
 ```
+
+**(this cloud)** The `provider` network is flat. Its subnet is 192.168.2.0/24
+with gateway 192.168.2.1 and the pool 192.168.2.200 to 192.168.2.250.
 
 `provider` is `network.external` in `cloud.yaml`. The gateway must be a real
 router that reaches the Internet. The pool must hold only addresses that nothing
@@ -280,10 +320,11 @@ openstack user create --project fsl-range --password-prompt fsl-range
 openstack role add --project fsl-range --user fsl-range member
 ```
 
-**(this cloud)** The project id is `64ffc2a247464ebdae21cfdae0f96d90`. The
-password is stored only in `/root/fsl-range.password`, and
-`/root/fsl-range-openrc.sh` reads it. The platform signs in as this member user,
-never as admin. The user's domain is `default`.
+**(this cloud)** The project and the user sit in the domain `fsl` (id
+`c72af53edecb4e31a5645fdd9a07f0f9`), so the commands above also take `--domain
+fsl`, and `identity.domain` in `cloud.yaml` is that id. The project `fsl-range`
+has the id `3c82e428f6cc4997949a89f5fdee68c7`. The user `fsl-range` is a member
+of it. The platform signs in as this member user, never as admin.
 
 ### 3.2 Quotas [admin, once]
 
@@ -306,27 +347,30 @@ ratio of 1.0 [N2].
 Each further slot adds 8 vCPU, 16 GB RAM, 120 GB disk and 4 instances. Then you
 must raise the quota.
 
-**(this cloud)** These are the measured figures:
+**(this cloud)** These are the figures:
 
-- The cores quota is 20, RAM 50 GB and instances 10.
-- The cloud holds the platform VM (m1.large, 2 cores). Since 2026-10-12 it also
-  holds two slots (`compute.slots: 2`) of 4 VMs each (`fsl-edge`, `fsl-kali`,
-  `fsl-waf`, `fsl-wargame-host`, 2 cores each). That makes 9 instances, 18
-  cores and 40 GB.
+- The quota is 20 cores, 51200 MB of RAM and 10 instances.
+- The project also holds a VM that the user owns, `FSL-front` (flavor
+  `dba.medium`, 4 vCPU and 8 GB, floating IP 192.168.2.241, on its own network
+  `fsl-net` 172.16.10.0/24 and router `fsl-router`). It uses 4 cores and 8 GB of
+  the quota.
+- The platform VM (2 cores, 8 GB) and one slot (8 cores, 16 GB) bring the project
+  to 14 cores, 32 GB and 6 instances. A second slot would need 22 cores, which is
+  over the quota of 20. So `compute.slots` is 1 here.
 - Each slot beyond the first adds 2 networks (`fsl-internet-N`, `fsl-estate-N`),
-  31 subnets, 9 ports and 3 collector rules in `fsl-reach`. With two slots we
-  measured networks 6/100, subnets 64/100, ports 25/500, security group rules
-  26/100 and security groups 6/10.
+  31 subnets, 9 ports and 3 collector rules in `fsl-reach`. On the previous cloud
+  with two slots we measured networks 6/100, subnets 64/100, ports 25/500,
+  security group rules 26/100 and security groups 6/10.
 - The stack also needs 1 network, 1 router and 1 floating IP. Image storage is
   needed for 4 golden images.
-- Image builders (one per built host, 2 cores each on `m1.linux`) boot only as
+- Image builders (one per built host, 2 cores each on `m1.medium`) boot only as
   many at once as the quota leaves room for. The platform checks this with Nova
-  `GET /limits` against the builder flavor. With both slots up, that is one
-  builder. The next builder boots after the first is deleted. So you repeat
+  `GET /limits` against the builder flavor. When there is room for one builder,
+  the next boots after the first is deleted. So you repeat
   `POST /api/range/images/` until it is clean, and it builds the images one at a
   time.
 - If there is no room and no builder is working, `images/` answers 503 and names
-  the fix: `DELETE /api/range/slot/?slot=2` or a higher quota.
+  the fix: delete a slot (`DELETE /api/range/slot/?slot=N`) or raise the quota.
 
 ```bash
 openstack quota show fsl-range
@@ -346,19 +390,18 @@ them:
 | `edge` (required), or any other role name | the host that fills that role | The edge is required. OPNsense needs 3 GB RAM or more (its image says `min_ram` 3072), so the `range` flavor would fail at boot |
 | `wargames` (optional) | `fsl-wargame-host` | It runs two MySQL 8, Django and WordPress containers at once. The example names `m1.medium` (4 GB). Without this key the host takes `range`. We did not measure its memory use |
 
-**(this cloud)** `platform` is `m1.large` (8 GB / 2 vCPU / 60 GB, created
-2026-10-11; `m1.platform8` was deleted). `builder`, `range` and `edge` are
-`m1.linux` (4 GB / 2 vCPU / 30 GB). Check that every flavor `cloud.yaml` names
-exists on your cloud. The platform refuses a missing flavor and names it.
+**(this cloud)** The admin made two flavors: `m1.large` (8 GB / 2 vCPU / 60 GB)
+and `m1.medium` (4 GB / 2 vCPU / 30 GB). `cloud.yaml` names `m1.large` for
+`platform` and `m1.medium` for `builder`, `range`, `edge` and `wargames`. Check
+that every flavor `cloud.yaml` names exists on your cloud. The platform refuses a
+missing flavor and names it.
 
 ```bash
 openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 openstack flavor create --ram 4096 --vcpus 2 --disk 30 m1.medium
 ```
 
-A new cloud makes these two flavors. `cloud.example.yaml` names `m1.medium` for
-`range`. That size (4 GB / 2 vCPU / 30 GB) is what `builder`, `range` and
-`edge` used on this cloud.
+A new cloud makes these two flavors, and `cloud.example.yaml` names them.
 
 ### 3.4 Keypairs
 
@@ -464,8 +507,8 @@ SHA256SUMS.gpg SHA256SUMS`.
 
 The name you give the image is `compute.base_image`. The platform refuses to
 build while the cloud holds none, or more than one active image, of that name.
-**(this cloud)** `ubuntu-24.04` is the noble 20260911 build. Its SHA256 matched
-`SHA256SUMS` (2026-10-11). It is the only image uploaded by hand.
+**(this cloud)** The admin uploaded `ubuntu-24.04` and made it public. It is the
+only image uploaded by hand.
 
 `fsl-kali` used to need a second uploaded image (`kali-rolling`). It is now built
 on Ubuntu. Its setup enables the `universe` and `multiverse` components itself
@@ -594,7 +637,7 @@ conditions hold: it carries `fsl_bundle`, which marks an image this platform
 made, and no server in the project boots from it. Any other image of that name
 is left alone.
 
-We ran this on this cloud on 2026-10-11 with 26.7:
+We ran this on the previous cloud on 2026-10-11 with 26.7:
 
 - The archive SHA256 matched.
 - The `.sig` verified ("Verified OK") over the unpacked image.
@@ -628,20 +671,20 @@ password written into the file.
 
 | Key | Example | Used by |
 |---|---|---|
-| `identity.keystone` | `http://192.168.0.110:5000` | Keystone base URL without `/v3`; CLI and platform |
+| `identity.keystone` | `http://10.0.0.10:5000` | Keystone base URL without `/v3`; CLI and platform |
 | `identity.region`, `identity.interface` | `RegionOne`, `public` | the catalogue endpoints the CLI and the platform call |
-| `identity.domain` | `default` | the id of the user's and the project's domain |
+| `identity.domain` | `default` (**(this cloud)** `c72af53edecb4e31a5645fdd9a07f0f9`, the domain `fsl`) | the id of the user's and the project's domain |
 | `identity.project`, `identity.user` | `fsl-range` | the member user the CLI and the platform sign in as |
 | `identity.password_file` or `identity.password_env` | `~/.config/fsl/fsl-range.password` | set exactly one; read on the operator's machine and appended to the VM's `openstack.env` over ssh |
 | `network.external` | `provider` | the stack's router and floating IP |
-| `network.address` | `""` (**(this cloud)** `192.168.0.210`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
+| `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
-| `network.mtu` | `1450` | the edge's interfaces (the tenant networks' MTU; 1450 on VXLAN) |
+| `network.mtu` | `1450` (**(this cloud)** `1442`) | the edge's interfaces (the tenant networks' MTU; 1450 on VXLAN with ML2/OVS, 1442 on Geneve with ML2/OVN, §2) |
 | `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/24`, `10.31.0.0/24` | The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and every builder |
 | `compute.availability_zone` | `""` | the platform VM, builders and slot VMs; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `builder`, `range`, `edge` (required, 3 GB RAM or more), per role | §3.3 |
-| `compute.slots` | `1` (**(this cloud)** `2`) | optional; how many copies of the range stand, which is how many sessions can run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
+| `compute.slots` | `1` (**(this cloud)** `1`, because the quota has room for one, §3.2) | optional; how many copies of the range stand, which is how many sessions can run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
 | `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with, and its private half |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (released in January and July; updates have no images [O1]) |
@@ -700,7 +743,7 @@ The stack then creates an `OS::Neutron::FloatingIPAssociation` instead of an
 
 Neutron's default policy lets only an admin choose the address, so the floating
 IP is created once, as admin. **(this cloud)** `openstack floating ip create
---project fsl-range --floating-ip-address 192.168.0.210 provider`.
+--project fsl-range --floating-ip-address 192.168.2.247 provider`.
 
 `FSL_PUBLISH` is the VM's fixed IP. Port 8000 therefore listens on that address,
 not on loopback, and the floating IP NATs to it. Setting `FSL_PUBLISH=0.0.0.0` on
@@ -944,7 +987,7 @@ slots were READY and no session was open before each run.
 |---|---|---|---|
 | Refusal checks, GHCR, bundle | 15 s | 13 s | 5 images public at 8f9acb0; contexts equal |
 | Backup (`bin/backup` over ssh) | 12 min 8 s | 7 min 50 s | 5,957,828,608 bytes, integrity_check ok; 1,878,072 detections |
-| Stack delete, create | 10 s, 23 s | 10 s, 22 s | reserved floating IP 192.168.0.210 re-associated |
+| Stack delete, create | 10 s, 23 s | 10 s, 22 s | reserved floating IP re-associated |
 | Server created to ssh | 21 s | about 20 s | |
 | cloud-init, `fsl-platform.service` at 8f9acb0 | 2 min | 2 min | done, no errors; `python3-venv` 3.12.3, `nodejs` 18.19.1; `/etc/sysctl.d/90-fsl-syslog.conf` applied (`net.core.rmem_max = 33554432`) |
 | HEAD bundle, two tarballs loaded | 2 min 29 s | 1 min 4 s | 111 MB and 241 MB; the containers run images labelled with HEAD and 1814e5c |
@@ -1193,10 +1236,9 @@ standing slot only at its next reset. After `bin/cloud up`, open and close one
 session per slot before the run.
 
 **The first acceptance run on the OpenStack substrate**, 2026-10-11, on a range
-built from scratch by `bin/cloud up` (platform VM 192.168.0.210, OPNsense 26.7
-edge): 50 passed, 86 skipped, 6 failed, 4 errors. The run before the reset fixes
-gave 24 passed, 14 failed, 22 errors. We have since fixed or deleted what that
-run left:
+built from scratch by `bin/cloud up` on the previous cloud (OPNsense 26.7 edge):
+50 passed, 86 skipped, 6 failed, 4 errors. The run before the reset fixes gave 24
+passed, 14 failed, 22 errors. We have since fixed or deleted what that run left:
 
 - Tests that reached compose containers (`kali`, `corp-db`) now reach the slot's
   hosts through `run_on_role`.
@@ -1226,6 +1268,22 @@ route to the Internet and cannot resolve `pkg.opnsense.org`.
 
 - Related sections: MTU (`network.mtu`), no resize (§2.4), the TaaS override
   (§2.3), no Cinder, keypair drift (§6.3), and the full core quota (§3.2).
+- Every name lookup on a range host waits about 25 s, and `POST
+  /api/range/configure/` answers 409 `container corp-wp is unhealthy`. This
+  happened on the first `bin/cloud up` on this cloud (ML2/OVN, 2026-10-20). With no
+  `[ovn] dns_servers`, Neutron announced `127.0.0.53`, the resolver of the
+  `neutron-server` host (§2). The hosts' systemd-networkd sent that address out
+  of `ens3`, so each lookup timed out (`getent` took 24.6 s). WordPress's
+  healthcheck, `wp core is-installed` with a 5 s timeout, took 29.2 s.
+  - Fixed in commit 68efc7c: `platform/range/openstack.py` creates every range
+    subnet with the DNS server `0.0.0.0`, which announces no resolver. After the
+    fix on the standing range, `getent` failed in 0.03 s and `wp core
+    is-installed` took 1.9 s.
+  - A fabric made before that commit keeps the old subnets. Run `openstack subnet
+    set --dns-nameserver 0.0.0.0 <subnet>` on each range subnet (32 with one
+    slot), then reset or reboot the range hosts so that they ask DHCP again.
+  - A cloud admin can also set `[ovn] dns_servers`, which helps the cloud's other
+    VMs. The product no longer needs it.
 - A member user cannot create flavors or change quotas. The stack uses no
   admin-only Heat resource.
 - `platform.ref` is required (example value `dev`; `--ref` overrides it). The VM
@@ -1258,11 +1316,12 @@ route to the Internet and cannot resolve `pkg.opnsense.org`.
   the WAF and Kali had booted while the board had its own VM, and `fsl-waf` named
   only `board.com`. They kept the old board address and had no `corp.com` until
   we deleted their servers and `slot/` booted them again.
-- Dev machine on the lab's subnet. Suppose the operator's Wi-Fi uses the same
-  192.168.0.0/24 as the lab, and the lab is reached over a WireGuard tunnel. The
-  connected route then wins, and lab addresses go out the Wi-Fi interface. Put
-  /32 `AllowedIPs` for the lab hosts in the tunnel, or run a proxy bound to the
-  tunnel interface. Check the route before any cloud call.
+- Operator machine on the same subnet as the cloud. Suppose the operator's
+  Wi-Fi uses the same subnet as the cloud's addresses, and the cloud is reached
+  over a tunnel (WireGuard or another VPN). The connected route then wins, and
+  cloud addresses go out the Wi-Fi interface. Put /32 `AllowedIPs` for the cloud
+  hosts in the tunnel, or run a proxy bound to the tunnel interface. Check the
+  route before any cloud call.
 
 ## 9. Try it in one VM (VirtualBox or VMware)
 
@@ -1426,6 +1485,7 @@ reachable on the host's network.
 - [K5] Kolla-Ansible, OpenStack service configuration overrides — https://docs.openstack.org/kolla-ansible/latest/admin/advanced-configuration.html
 - [N1] Nova configuration, `allow_resize_to_same_host` (default False) — https://docs.openstack.org/nova/latest/configuration/config.html
 - [N2] Nova configuration, `initial_cpu_allocation_ratio` 4.0, `initial_ram_allocation_ratio` 1.0, `initial_disk_allocation_ratio` 1.0, `reserved_host_memory_mb` 512 — same page
+- [N3] Neutron, DNS resolution for instances with ML2/OVN (`[ovn] dns_servers`, the host's resolvers as the fallback, and `0.0.0.0` announcing none), and `get_dhcp_dns_servers` in `neutron/common/ovn/utils.py` — https://docs.openstack.org/neutron/latest/admin/config-dns-res.html
 - [V1] VirtualBox manual (nested virtualization, "Enable Nested VT-x/AMD-V"; bridged networking; promiscuous mode "Allow All") — https://www.virtualbox.org/manual/UserManual.html
 - [S1] Canonical Subiquity, `subiquity/common/storage/sizes.py` (`scaled_rootfs_size`: "Use at most 100G of a large disk") — https://github.com/canonical/subiquity/blob/main/subiquity/common/storage/sizes.py
 - [W1] Broadcom KB 389469, "Virtualized Intel VT-x/EPT is not supported on this platform" (names the Workstation setting "Virtualize Intel VT-x/EPT or AMD-V/RVI") — https://knowledge.broadcom.com/external/article/389469

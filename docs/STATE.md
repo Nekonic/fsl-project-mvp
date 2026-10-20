@@ -23,16 +23,23 @@ as attack and defence lessons that run back to back in one session, and on
 2026-10-19 four live review rounds (2-5) tuned them. On 2026-10-20 the user
 ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm) and the newcomer
 bring-up was fixed and rewritten; removing the docker substrate from the code
-is planned, not started (backlog 0). The platform VM runs bf96876's code
-(8752a35 before the squash), which makes its own `/opt/fsl/.venv`. Live runs on
+is planned, not started (backlog 0). Later the same day the user moved the
+product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
+moved to a new OpenStack cloud"). The old cloud is in other use and is not
+touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
+through the user's VPN), one slot, running dev's 3da925e code from GHCR images
+with no sideload; commit 68efc7c, local and not pushed, stops the range subnets
+announcing a DNS resolver. Live runs on the old cloud on
 2026-10-20 proved the changed bring-up paths and led to fixes
 (`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths" and "The
 one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
-from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify`, on 8752a35's code with the `.venv` the VM made: unit 1718 passed;
-acceptance 73 passed, 0 failed, 0 errors, 0 skipped; ratchet ok. Before it, two
+from an empty cloud (README step 7 took 17 min 41 s). The last
+full `bin/verify` that finished, on the old cloud at 8752a35's code with the
+`.venv` the VM made: unit 1718 passed; acceptance 73 passed, 0 failed, 0
+errors, 0 skipped; ratchet ok. The full run on the new VM (3da925e) is recorded
+in `docs/state/now.md`. Before the last one, two
 runs on e01b1f3: acceptance 72 passed and 1 failed (the `test_corp_authz` nonce
 error), then 73 passed (1155 s). Commit ids from 2026-10-20 such as 620592f,
 8f19f43, 3834b61, e01b1f3 and 8752a35 predate the squash into bf96876..1cc5d96.
@@ -484,7 +491,10 @@ on 2026-10-02), sends the Nova
 microversion, follows `next` links (at most 50 pages), asks Neutron only for
 tagged networks, and keeps fixed IPv4 addresses.
 
-**Deployed on the KVM cloud (2026-09-30).** `master@192.168.0.100` (ssh key
+**Deployed on the KVM cloud (2026-09-30).** This is the old cloud, in other use
+since 2026-10-20 (see "Where things stand"); the product runs on a new cloud
+now and this paragraph records what happened on the old one.
+`master@192.168.0.100` (ssh key
 `fsl_claude`, passwordless sudo); its API endpoints are on `192.168.0.110`.
 It runs kolla-ansible 2026.1 (Gazpacho, the 22.x series; the host has
 22.2.1.dev9), Ubuntu images, ML2/Open vSwitch, inventory `/root/all-in-one`.
@@ -714,8 +724,8 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   images and the slot (the OPNsense edge running Suricata, the WAF, Kali, and
   `fsl-wargame-host` running the wargames' GHCR containers with an estate
   Suricata) through `/api/range/fabric/`, `/images/` and `/slot/`, and reaches
-  every host over ssh on `mgmt` (backlog 2); two slots on the test cloud
-  (`compute.slots: 2` in its `cloud.yaml`).
+  every host over ssh on `mgmt` (backlog 2); one slot on the current cloud
+  (`compute.slots: 1`, the project quota allows no more; the old cloud ran two).
 
 ## Backlog
 
@@ -918,10 +928,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       failed, 0 errors, 0 skipped in 1155 s; ratchet ok. At 3834b61: unit 1716,
       acceptance 73 passed in 1165 s. At 8f19f43: unit 1711, acceptance 73
       passed in 1157 s. To rerun, with no open
-      session: `cd /opt/fsl && FSL_PLATFORM_URL=http://192.168.0.210:8000
+      session: `cd /opt/fsl && FSL_PLATFORM_URL=http://192.168.2.247:8000
       setsid nohup bin/verify > ~/verify-full.log 2>&1 &`.
-- [ ] Check the `images.yml` run for the current `dev`; it has not been
-      looked at.
+- [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
+      2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
+      images. Still to do: check the run for the commit that follows (68efc7c,
+      not pushed yet).
 - [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
       9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
       review loop, rounds 2-5"):
@@ -985,8 +997,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       (987 s on 9674d0e with 70 tests). Measure where the setup still goes, then: parallel sessions on substrate docker (the
       platform VM's 8 GB limit under several sessions is unmeasured), polling
       instead of fixed waits, edge configuration without a reboot.
-- [ ] Floating IP 192.168.0.220 is still allocated to `fsl-range` after
-      `fsl-acceptance` was deleted; release it with the user's yes.
+- [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
+      address belongs to the old cloud, which is in other use and which we do
+      not touch.
+- [ ] Rebuild the platform VM with `bin/cloud up --replace` once 68efc7c is on
+      `dev` and its images are built: the standing VM runs 3da925e, whose
+      subnets would announce 127.0.0.53 as a resolver again (`docs/state/now.md`,
+      Next, 2).
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
