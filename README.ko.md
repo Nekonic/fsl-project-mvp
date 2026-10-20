@@ -756,6 +756,9 @@ bin/verify --fast     # 단위·API 테스트와 지표, 스택 불필요
 bin/verify            # test/의 acceptance 테스트까지, 실행 중인 스택 대상
 ```
 
+레인지는 OpenStack에서만 돌아가므로 노트북에서는 `--changed`와 `--fast`까지만
+실행됩니다. acceptance 테스트는 플랫폼 VM에서 돌려야 합니다.
+
 `--changed`는 `dev`와의 merge-base(또는 지정한 커밋이나 `A..B`)와 비교해, 바뀐
 파일마다 닿는 테스트와 그 이유를 출력합니다. `bin/select-tests`는 아무것도 실행하지
 않고 그 결과만 출력합니다. `--live`를 함께 주면 변경이 닿는 acceptance 모듈도

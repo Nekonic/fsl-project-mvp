@@ -22,10 +22,8 @@ ssh ubuntu@<address> 'cd /opt/fsl && FSL_PLATFORM_URL=http://<address>:8000 bin/
 
 `FSL_PLATFORM_URL` is the platform's address. The default is
 `http://localhost:8000`. The platform VM does not listen on localhost, so always
-set it there. The harness code still has a docker branch (the platform builds
-the range on docker instead of OpenStack) until the docker substrate is removed
-(`docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`). That
-branch is not a way to run the product.
+set it there. The suite has no other way to reach the range: the docker
+substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.
 
 `bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
 runs only the unit tests the change reaches and lists the acceptance modules it
@@ -108,11 +106,12 @@ The split follows these rules:
 
 Every acceptance test runs on OpenStack and none is skipped. We deleted one
 check of a compose-only mechanism instead of skipping it (2026-10-17).
-`range.py` works like this:
+`range.py` reaches the range only through the platform and works like this:
 
 - It runs a role's command through the platform container's own range adapter
   (`manage.py run_on_role --session <id>`), which reaches the slot that session
-  holds.
+  holds. The only command it runs on the platform itself is the one for the
+  `scorer` role, with `docker exec` on the platform container.
 - It runs the attacker's command in a login shell. The shell reads
   `/etc/profile.d/proxy.sh`, so the command gets the same `http_proxy` (the
   stamping proxy) as the terminal's ssh login.

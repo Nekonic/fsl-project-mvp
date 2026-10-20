@@ -1,6 +1,6 @@
 # Plan: remove the docker substrate so the product is OpenStack-only
 
-Status: Decided 2026-10-20, not started; run it as the next task. Gate 1 is passed (the user decided D1-D4 and chose to run it next on 2026-10-20): start at commit 1 without presenting the plan again. Done = commits 1-8 each green on `bin/verify --fast`, then the section 5 live rows, then the last commit rewrites `docs/state/now.md` and `docs/STATE.md`, then gate 2 (show the change and wait for the user's push approval).
+Status: Done in code (commits d6e0328..34d5943 and the documentation commit after them); live rows of section 5 pending.
 
 Ruling: the product is OpenStack-only (`docs/DECISIONS.md`, 2026-10-20). Docker stays as the way the platform VM runs the platform's own services from GHCR images, and as the wargame host's and GNS3's container runtime; it is no longer a substrate the product can run on.
 
