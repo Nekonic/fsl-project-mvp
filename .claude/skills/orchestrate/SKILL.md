@@ -153,6 +153,15 @@ lines of plain language, then the evidence.
 - `docs/state/now.md` — the live state: the goal in flight, the stage, what is
   awaiting review, the last feedback. Small; keep it current, drop finished
   detail into the archive or let `git log` hold it.
+- `docs/STATE.md` — the product record: "Where things stand", "What exists
+  now", the backlog with its open items, and the finished record, one line
+  each.
+- Before every push, as the last commit, reread `now.md` and `STATE.md` whole
+  and make every line true for the commit being pushed: what the platform VM
+  runs, what was verified live and with which `bin/verify` numbers, what was
+  skipped and why, what is open, the next tasks in order, the user's last
+  feedback. Write no push status ("pushed", "not pushed", "origin/dev = ...");
+  it goes stale the moment the push lands, and `git log` holds it.
 - `docs/DECISIONS.md` — append-only; every ruling and every rejected approach,
   with the reason. Read it before proposing; add to it when something is
   settled, so the same ground is not re-argued next time.
