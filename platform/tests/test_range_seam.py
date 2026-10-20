@@ -29,18 +29,10 @@ class Dispatched:
         self.stderr = stderr
         self.raises = raises
         self.commands = []
-        self.looked_up = []
 
     def __call__(self, command, **kwargs):
         if self.raises is not None:
             raise self.raises
-        if command[1] == "ps":
-            self.looked_up.append(list(command))
-            service = command[3].rpartition("=")[2]
-            return types.SimpleNamespace(
-                returncode=0, stderr="",
-                stdout=f"fsl-3-{service}-1 fsl-3\nfsl-7-{service}-1 fsl-7\nfsl-{service} fsl\n",
-            )
         self.commands.append(list(command))
         return types.SimpleNamespace(
             returncode=self.returncode, stdout=self.stdout, stderr=self.stderr
@@ -66,38 +58,48 @@ def dispatch(monkeypatch):
 def finished(code, stderr=""):
     return f"{stderr}{seam.EXIT_MARK}{code}\n"
 
-def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch):
-    dispatch(returncode=0, stdout="", stderr=finished(1, "nmap: not found"))
-    substrate = seam.Docker()
+def answered(code, stdout="", stderr=""):
+    output = f"{stdout}\n{seam.STDOUT_END}\n{stderr}"
+    return f"{seam.PLATFORM_ANSWER}{json.dumps({'exit_code': code, 'output': output})}\n"
 
-    ran = substrate.run(seam.ATTACKER, ["sh", "-c", "command -v nmap"])
+@pytest.mark.parametrize("role, said", [
+    (seam.ATTACKER, {"stdout": answered(1, stderr="nmap: not found")}),
+    (seam.SCORER, {"stderr": finished(1, "nmap: not found")}),
+], ids=["through-the-platform", "on-the-platform"])
+def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch, role, said):
+    dispatch(returncode=0, **said)
+
+    ran = seam.ThroughPlatform().run(role, ["sh", "-c", "command -v nmap"])
 
     assert not ran.ok
     assert ran.exit_code == 1
     assert "not found" in ran.stderr
 
-def test_a_command_reaches_the_session_it_names_and_otherwise_the_newest(dispatch):
-    fake = dispatch(stderr=finished(0))
+def test_a_command_names_to_the_platform_the_session_it_was_given_and_no_other(dispatch):
+    fake = dispatch(stdout=answered(0))
 
-    seam.Docker().run(seam.ATTACKER, ["true"], session=3)
-    seam.Docker().run(seam.SENSOR, ["true"])
+    seam.ThroughPlatform().run(seam.ATTACKER, ["true"], session=3)
+    seam.ThroughPlatform().run(seam.SENSOR, ["true"])
 
-    assert fake.commands[0][:3] == ["docker", "exec", "fsl-3-kali-1"]
-    assert fake.looked_up[0][2:4] == ["--filter", "label=com.docker.compose.service=kali"]
-    assert fake.commands[1][:3] == ["docker", "exec", "fsl-7-suricata-1"]
+    platform = seam.declared_roles()[seam.SCORER]
+    assert fake.commands[0][:6] == ["docker", "exec", platform, "python", "manage.py", "run_on_role"]
+    assert fake.commands[0][6] == seam.ATTACKER and fake.commands[0][-2:] == ["--session", "3"]
+    assert fake.commands[1][6] == seam.SENSOR and "--session" not in fake.commands[1]
 
+@pytest.mark.parametrize("role", [seam.ATTACKER, seam.SCORER], ids=["through-the-platform", "on-the-platform"])
 @pytest.mark.parametrize("failure", [
     {"returncode": 1, "stderr": "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
                                 "Is the docker daemon running?\n"},
-    {"returncode": 1, "stderr": "Error: No such container: fsl-kali"},
+    {"returncode": 1, "stderr": "Error: No such container: fsl-platform"},
+    {"returncode": 0, "stdout": "", "stderr": ""},
     {"raises": FileNotFoundError("docker")},
     {"raises": subprocess.TimeoutExpired(cmd="docker", timeout=8)},
-], ids=["daemon-down", "host-not-running", "not-dispatched", "never-finished"])
-def test_a_command_the_substrate_could_not_run_is_an_outage_not_a_failed_command(dispatch, failure):
+], ids=["daemon-down", "platform-not-running", "no-answer", "not-dispatched", "never-finished"])
+def test_a_command_the_platform_could_not_run_is_an_outage_not_a_failed_command(dispatch, role, failure):
     dispatch(**failure)
 
     with pytest.raises(seam.RangeUnavailable):
-        seam.Docker().run(seam.ATTACKER, ["curl", "http://board.com/"])
+        seam.ThroughPlatform().run(role, ["curl", "http://board.com/"])
 
 def run_here(wrapped, interpreter):
     done = subprocess.run(
@@ -118,49 +120,6 @@ def test_the_report_survives_a_real_interpreter():
     _, missing = run_here(seam.through_shell(["/nonexistent/fsl-tool", "--flag"]), "/bin/sh")
     assert missing is not None and missing[0] == 127, missing
 
-def test_two_roles_sharing_no_segment_is_an_answer_not_an_outage(dispatch):
-    dispatch(stdout=json.dumps({"fsl_edge": {}}))
-    substrate = seam.Docker()
-    attacker = substrate.segments(seam.ATTACKER)
-    dispatch(stdout=json.dumps({"fsl_estate": {}}))
-    target = substrate.segments(seam.BOARD)
-
-    assert (attacker, target) == (frozenset({"fsl_edge"}), frozenset({"fsl_estate"}))
-    assert not attacker & target
-
-@pytest.mark.parametrize("failure", [
-    {"returncode": 1, "stderr": "Error: No such object: fsl-wg-board"},
-    {"returncode": 0, "stdout": "<null>"},
-], ids=["host-missing", "not-a-list"])
-def test_segments_the_substrate_could_not_list_are_an_outage(dispatch, failure):
-    dispatch(**failure)
-
-    with pytest.raises(seam.RangeUnavailable):
-        seam.Docker().segments(seam.BOARD)
-
-def test_a_host_no_session_stack_holds_is_not_recreated_into_a_guessed_one(dispatch):
-    fake = dispatch(stdout="\n")
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable, match="no session stack"):
-        substrate.recreate(seam.BOARD)
-
-    assert len(fake.commands) == 1, (
-        "compose ran without the project of the open session, so it would "
-        "start a stack nobody opened"
-    )
-
-def test_a_recreate_that_did_not_take_the_host_away_does_not_bring_it_back(dispatch):
-    fake = dispatch(returncode=1, stderr="no configuration file provided")
-    substrate = seam.Docker()
-
-    with pytest.raises(seam.RangeUnavailable):
-        substrate.recreate(seam.BOARD)
-
-    assert len(fake.commands) == 1, (
-        "the host was never removed and the seam reported it recreated anyway"
-    )
-
 def test_nothing_substrate_specific_crosses_the_seam():
     source = SEAM_PATH.read_text()
     signatures = [
@@ -169,7 +128,7 @@ def test_nothing_substrate_specific_crosses_the_seam():
     ]
 
     for line in signatures:
-        assert "docker" not in line.lower() or line.lstrip().startswith("class Docker"), (
+        assert "docker" not in line.lower(), (
             f"the substrate is named in a signature the tests call: {line.strip()}"
         )
 

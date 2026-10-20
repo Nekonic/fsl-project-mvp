@@ -14,11 +14,11 @@ pytestmark = pytest.mark.django_db
 
 SEGMENTS = (
     Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24", network="fsl_edge",
-            nodes=(Node("fsl-proxy", "5.188.10.5"), Node("fsl-waf", "5.188.10.9"))),
+            nodes=(Node("fsl-kali", "5.188.10.5"), Node("fsl-waf", "5.188.10.9"))),
     Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24", network="fsl_edge-us",
-            nodes=(Node("fsl-proxy", "73.0.0.5"), Node("fsl-waf", "73.0.0.9"))),
+            nodes=(Node("fsl-kali", "73.0.0.5"), Node("fsl-kali", "73.0.0.6"), Node("fsl-waf", "73.0.0.9"))),
     Segment(id="hk", name="Internet", origin="Hong Kong", subnet="103.152.220.0/24", network="fsl_edge-hk",
-            nodes=(Node("fsl-proxy", "103.152.220.5"), Node("fsl-waf", "103.152.220.9"))),
+            nodes=(Node("fsl-kali", "103.152.220.5"), Node("fsl-kali", "103.152.220.6"), Node("fsl-waf", "103.152.220.9"))),
 )
 
 class Box:
@@ -34,6 +34,8 @@ class Box:
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         script = argv[-1]
+        if "route get" in script:
+            return Ran(0, "5.188.10.1 dev eth0 src 5.188.10.5 uid 0\n")
         if "fsl.records=" in script:
             offset = int(re.search(r"tail -c \+(\d+)", script)[1]) - 1
             limit = int(re.search(r"head -c (\d+)", script)[1])
@@ -54,7 +56,6 @@ class Range:
     def __init__(self, box):
         self.box = box
         self.asked = []
-        self.dropped = 0
 
     def segments(self):
         return SEGMENTS
@@ -65,9 +66,6 @@ class Range:
 
     def runner(self, role, segment_id=""):
         return self.box
-
-    def drop_users_box(self):
-        self.dropped += 1
 
 @pytest.fixture
 def box():

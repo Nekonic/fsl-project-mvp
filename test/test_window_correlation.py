@@ -45,7 +45,7 @@ def window_session(stack_is_up):
     )
     assert attacker.ok, (
         f"the attacker box is not available: {attacker.text}. "
-        f"Run `{start_hint(ATTACKER)}`."
+        f"Run `{start_hint()}`."
     )
     source_ip = attacker.json()["source_ip"]
 

@@ -48,8 +48,7 @@ def _keep(session, **changed) -> dict:
     return state
 
 def _personas(adapter, mix: dict, seed: str) -> list[dict]:
-    unbound = attacker.unbound_source(adapter.runner("attacker")) \
-        if settings.ATTACKER_ORIGIN_MODE == "snat" else ""
+    unbound = attacker.unbound_source(adapter.runner("attacker"))
     available = attacker.customer_origins(Shape(segments=adapter.segments(), sensors=()), unbound)
     return traffic.personas(mix, available, random.Random(seed))
 
@@ -79,8 +78,6 @@ def stop(session, adapter) -> dict:
     box = _box(adapter, state)
     attacker.stop_customers(box)
     pull(session, box)
-    if hasattr(adapter, "drop_users_box"):
-        adapter.drop_users_box()
     return _keep(session, running=False, stopped_at=timezone.now().isoformat())
 
 def stop_on_close(session, adapter) -> None:

@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.stands_in_for_docker
-
 ROOT = Path(__file__).resolve().parents[2]
 RESTART = "compose restart platform"
 

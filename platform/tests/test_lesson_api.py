@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.utils import timezone
 
 import wargames
@@ -14,7 +15,6 @@ from rules import crs
 
 pytestmark = pytest.mark.django_db
 
-ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 TRUTH = json.loads((FIXTURES / "board-auth-users.json").read_text())
 SEEDED = ["board-normal-search"]
@@ -32,11 +32,12 @@ class Stand:
         def runner(adapter, role, segment_id=""):
             def run(argv, stdin=None, timeout=60.0):
                 calls.append((adapter.session, role, " ".join(argv), stdin))
-                if " ".join(argv).endswith(crs.workers_of(crs.Layout().pid)):
+                waf = settings.FSL_WAF
+                if " ".join(argv).endswith(crs.workers_of(waf.pid)):
                     return Ran(0, str(len(calls)))
-                if " ".join(argv).endswith("cat > " + crs.EXCLUSIONS):
+                if " ".join(argv).endswith("cat > " + waf.rules):
                     files[(adapter.session, role)] = stdin
-                if crs.EXCLUSIONS + " 2>/dev/null" in " ".join(argv):
+                if waf.rules + " 2>/dev/null" in " ".join(argv):
                     return Ran(0, files.get((adapter.session, role), ""))
                 if "reload-rules" in argv:
                     return Ran(0, '{"message":"done","return":"OK"}')
@@ -91,34 +92,25 @@ def test_settings_the_scenario_does_not_declare_are_refused(client, body, refuse
     assert Session.objects.count() == 0
 
 @pytest.mark.takes_defense
-def test_the_chosen_defense_is_applied_to_the_session_s_own_stack_after_it_is_up(client):
-    stand, order = Stand(), []
-    with patch("range.docker.Docker.runner", stand.runner()), \
-            patch("range.docker.Docker.open_session",
-                  lambda self, session_id, live=(): order.append(len(stand.calls))):
+def test_the_chosen_defense_is_applied_to_the_waf_of_the_slot_the_session_opens_on(client):
+    stand = Stand()
+    with one_slot(stand):
         opened = client.post_json("/api/sessions/", {"defense": "minimal"}).json()
 
     session = Session.objects.get(pk=opened["id"])
-    rules = (ROOT / "deploy/suricata/rules/local.rules").read_text()
-    seeded = [call for call in stand.to("sensor") if call[3] is not None]
     written = [call for call in stand.to("gateway") if call[3] is not None]
-    assert order == [0], "the defense was written before the session's stack was up"
-    assert seeded and seeded[0][0] == session.pk and seeded[0][3] == rules
-    assert written and "tx.blocking_paranoia_level=4" in written[0][3]
+    assert written and written[0][0] == "slot-1" and "tx.blocking_paranoia_level=4" in written[0][3]
     assert session.waf == {"paranoia": 4, "exclusions": []}
 
 @pytest.mark.takes_defense
-def test_a_scenario_without_a_defense_gets_the_default_rules_and_an_untouched_waf(client):
+def test_a_scenario_without_a_defense_leaves_the_slot_s_baseline_rules_and_waf_untouched(client):
     stand = Stand()
-    with patch("range.docker.Docker.runner", stand.runner()):
+    with one_slot(stand):
         answer = client.post_json("/api/sessions/", {"scenario": "corp"})
 
-    rules = (ROOT / "deploy/suricata/rules/local.rules").read_text()
-    seeded = [call for call in stand.to("sensor") if call[3] is not None]
     assert answer.status_code == 201, answer.content
-    assert [call[3] for call in seeded] == [rules], (
-        "no session's sensor shares a rules mount any more, so one that is not "
-        "seeded at open runs with no rules and raises no alert"
+    assert stand.to("sensor") == [], (
+        "the slot was offered only once its sensors held the baseline rules, so the open leaves them alone"
     )
     assert stand.to("gateway") == []
 
@@ -127,7 +119,7 @@ def test_the_waf_tuning_round_trips_through_the_api(client):
     tuning = {"paranoia": 4, "exclusions": [
         {"rule_id": 920273, "target": "ARGS:q", "path": "/search/"},
     ]}
-    with patch("range.docker.Docker.runner", Stand().runner()):
+    with one_slot(Stand()):
         answer = put(client, session.pk, tuning)
         read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
@@ -144,8 +136,8 @@ def test_the_waf_api_reports_what_is_in_the_waf_s_file_after_an_edit_in_the_term
         "SecRule REQUEST_FILENAME \"@beginsWith /search/\" \\\n"
         "    \"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920273;ARGS:q\"\n"
     )
-    stand.files[(session.pk, "gateway")] = edited
-    with patch("range.docker.Docker.runner", stand.runner()):
+    stand.files[("slot-1", "gateway")] = edited
+    with one_slot(stand):
         read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
     assert read["paranoia"] == 4
@@ -154,20 +146,20 @@ def test_the_waf_api_reports_what_is_in_the_waf_s_file_after_an_edit_in_the_term
     )
     assert read["file"] == edited
 
-def test_a_tuning_goes_only_to_the_gateway_of_the_session_asked(client):
-    first, second = board(), board()
+def test_a_tuning_goes_only_to_the_gateway_of_the_slot_of_the_session_asked(client):
+    first, second = board(slot=1), board(slot=2)
     stand = Stand()
-    with patch("range.docker.Docker.runner", stand.runner()):
+    with patch("api.views.substrate", lambda: TwoSlots(stand)):
         put(client, second.pk, {"paranoia": 3})
 
-    assert {(session, role) for session, role, _, _ in stand.calls} == {(second.pk, "gateway")}
+    assert {(slot, role) for slot, role, _, _ in stand.calls} == {("slot-2", "gateway")}
     assert Session.objects.get(pk=first.pk).waf is None
 
 def test_a_closed_session_takes_no_tuning(client):
     session = board()
     client.post_json(f"/api/sessions/{session.pk}/close/")
     stand = Stand()
-    with patch("range.docker.Docker.runner", stand.runner()):
+    with one_slot(stand):
         answer = put(client, session.pk, {"paranoia": 3})
 
     assert answer.status_code == 409
@@ -176,7 +168,7 @@ def test_a_closed_session_takes_no_tuning(client):
 def test_a_tuning_that_would_inject_configuration_is_refused_with_the_reason(client):
     session = board()
     stand = Stand()
-    with patch("range.docker.Docker.runner", stand.runner()):
+    with one_slot(stand):
         answer = put(client, session.pk, {"paranoia": 4, "exclusions": [
             {"rule_id": 920273, "target": 'ARGS:q"\nSecRuleEngine Off'},
         ]})
@@ -193,7 +185,7 @@ def test_a_tuning_nginx_refuses_is_reported_and_not_saved(client):
             1 if "nginx" in " ".join(argv) else 0, "nginx: [emerg] Rules error",
         )
 
-    with patch("range.docker.Docker.runner", runner):
+    with one_slot(runner):
         answer = put(client, session.pk, {"paranoia": 1})
 
     assert answer.status_code == 400 and "Rules error" in answer.json()["detail"]
@@ -230,11 +222,11 @@ def test_close_snapshots_the_waf_the_learner_left_and_a_closed_session_reports_t
     session = board(waf={"paranoia": 4, "exclusions": []})
     stand = Stand()
     tuned = {"paranoia": 4, "exclusions": [{"rule_id": 920273, "target": "ARGS:q", "path": "/search/"}]}
-    stand.files[(session.pk, "gateway")] = crs.rendered(tuned)
-    with patch("range.docker.Docker.runner", stand.runner()):
+    stand.files[("slot-1", "gateway")] = crs.rendered(tuned)
+    with one_slot(stand):
         client.post_json(f"/api/sessions/{session.pk}/close/")
     after = Stand()
-    with patch("range.docker.Docker.runner", after.runner()):
+    with one_slot(after):
         read = client.get(f"/api/sessions/{session.pk}/waf/").json()
 
     assert after.to("gateway") == [], "a closed session's WAF is read from its record, not the slot's next tenant"
@@ -283,6 +275,20 @@ class OneSlot:
 
     def launcher(self, segment_id):
         return lambda image, argv, timeout=600.0: Ran(0, "")
+
+class TwoSlots(OneSlot):
+    slots = max_sessions = 2
+
+    def __init__(self, stand, number=1):
+        super().__init__(stand)
+        self.stand, self.session = stand, f"slot-{number}"
+
+    def in_slot(self, number):
+        return TwoSlots(self.stand, number)
+
+def one_slot(runs):
+    stand = runs if hasattr(runs, "runner") else SimpleNamespace(runner=lambda: runs)
+    return patch("api.views.substrate", lambda: OneSlot(stand))
 
 @pytest.mark.takes_defense
 def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the_logs(client):
@@ -430,7 +436,7 @@ def test_reading_the_waf_for_a_poll_waits_on_the_gateway_only_briefly(client):
             return Ran(0, "")
         return run
 
-    with patch("range.docker.Docker.runner", runner):
+    with one_slot(runner):
         assert client.get(f"/api/sessions/{session.pk}/waf/").status_code == 200
 
     assert waited and max(waited) <= 10, "a WAF box that hangs holds a server thread no longer than this"
@@ -447,15 +453,16 @@ def test_a_polled_read_of_the_detections_reads_the_stack_s_shape_once_not_on_eve
                              timestamp=timezone.now() + timedelta(seconds=1), src_ip="5.188.10.2")
     read = []
 
-    def segments(adapter):
-        read.append(adapter.session)
-        return ()
+    class Shaped(OneSlot):
+        def segments(self):
+            read.append(self.session)
+            return ()
 
-    with patch("range.docker.Docker.segments", segments):
+    with patch("api.views.substrate", lambda: Shaped(Stand())):
         for _ in range(3):
             assert client.get(f"/api/sessions/{session.pk}/detections/").status_code == 200
 
-    assert read == [session.pk]
+    assert read == ["slot-1"]
 
 def test_listing_closed_sessions_scores_each_once_then_reads_the_stored_result(client):
     for fields in ({"guidance": True, "lesson": "f1"}, {}):
@@ -529,7 +536,7 @@ def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defen
     session = foundation("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
     stand = Stand()
     fire, fired = attacker({})
-    with patch("range.docker.Docker.runner", stand.runner()), patch("api.views.harness.fire", fire):
+    with one_slot(stand), patch("api.views.harness.fire", fire):
         moved = switch(client, session, "f6")
 
     assert moved.status_code == 200, moved.content

@@ -9,7 +9,7 @@ from tests.browser import open_page
 pytestmark = pytest.mark.django_db
 
 PROJECT = json.loads(
-    (pathlib.Path(__file__).resolve().parents[2] / "deploy/topology/range-docker.gns3").read_text()
+    (pathlib.Path(__file__).resolve().parents[2] / "deploy/topology/range-openstack.gns3").read_text()
 )
 def serving(web_ui):
     return f"""

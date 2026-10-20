@@ -15,13 +15,8 @@ INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WARGAME_HOST = "fsl-wargame-host"
-_BASE = declared.read()
-_OS = declared.read(flavor="openstack")
-DECLARED = replace(
-    _BASE,
-    roles={**_BASE.roles, **{role: host for role, host in _OS.roles.items() if host == WARGAME_HOST}},
-    hosts={**_BASE.hosts, WARGAME_HOST: _OS.hosts[WARGAME_HOST]},
-)
+_DECLARED = declared.read()
+DECLARED = replace(_DECLARED, hosts={name: host for name, host in _DECLARED.hosts.items() if not host.uploads})
 
 class Cloud:
     def __init__(self, decl=DECLARED, source=ROOT):

@@ -14,7 +14,7 @@ from range import declared, openstack, ports, wargame_host
 from range.ports import Drifted, Node, Ran, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OS = declared.read(flavor="openstack")
+OS = declared.read()
 HOST = "fsl-wargame-host"
 ENTRY = OS.hosts[HOST]
 SPEC = openstack.Cloud(
@@ -54,7 +54,7 @@ def test_the_host_runs_the_same_ghcr_images_as_docker_at_the_platforms_tag():
 def test_the_shipped_compose_file_builds_nothing_and_names_each_container_by_its_service():
     for service, entry in _shipped("board")["services"].items():
         assert "build" not in entry, "the range has no Internet and no source tree to build from"
-        assert "networks" not in entry, "estate is session.yaml's network; on the host the project's own default serves"
+        assert "networks" not in entry, "on the host the project's own default network serves"
         assert entry["container_name"] == service
 
 @pytest.mark.parametrize("wargame, front, port, database", [

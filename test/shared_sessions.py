@@ -12,7 +12,7 @@ from conftest import (
     PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
     score_when_ready, seen_by_both_engines, target_code,
 )
-from range import ATTACKER, BOARD, missing, run, substrate
+from range import ATTACKER, BOARD, missing, run
 
 CONTROL = "board-sqli-search"
 UNION = "board-sqli-union-search"
@@ -447,7 +447,7 @@ def flip(security, name, value, session=None):
 def corp_is_declared():
     absent = missing(CORP, CORP_DB)
     assert not absent, (
-        f"the corp wargame is not on this range (substrate {substrate()}): "
+        f"the corp wargame is not on this range: "
         f"{', '.join(absent)} {'has' if len(absent) == 1 else 'have'} no host "
         f"in platform/range/declaration.yaml for it, so nothing builds or boots "
         f"the target and the live exploit has nothing to change"

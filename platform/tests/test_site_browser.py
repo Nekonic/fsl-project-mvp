@@ -236,7 +236,7 @@ class Line:
     def close(self):
         self.closed = True
 
-ON_CUSTOMERS = site.Egress(source="73.0.0.4", address="73.0.0.9", port=80, boxed=False)
+ON_CUSTOMERS = site.Egress(source="73.0.0.4", address="73.0.0.9", port=80)
 
 def proxied(client, path, answer, method="get", **extra):
     from unittest.mock import patch
@@ -364,34 +364,14 @@ class Range:
         self.lines.append((role, argv))
         return Line()
 
-def test_on_docker_the_pane_leaves_from_the_platform_s_address_on_a_customers_network_to_the_waf_there(settings):
-    from range.ports import Node, Segment
-
-    settings.ATTACKER_ORIGIN_MODE = "host-rewrite"
-    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("fsl-proxy", "5.188.10.5"), Node("fsl-waf", "5.188.10.9"), Node("fsl-platform", "5.188.10.2")))
-    us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
-                 nodes=(Node("fsl-proxy", "73.0.0.5"), Node("fsl-waf", "73.0.0.9"), Node("fsl-platform", "73.0.0.2")))
-    hk = Segment(id="hk", name="Internet", origin="Hong Kong", subnet="103.152.220.0/24",
-                 nodes=(Node("fsl-proxy", "103.152.220.5"), Node("fsl-waf", "103.152.220.9"),
-                        Node("fsl-platform", "103.152.220.2")))
-    session = Session.objects.create(scenario="board", baseline=[])
-
-    egress = site.found_egress(session, Range((ru, hk, us)))
-
-    assert egress == site.Egress(source="73.0.0.2", address="73.0.0.9", port=80, boxed=False), (
-        "not the attacker's ru network; of the customers' networks the one board's customers come from most"
-    )
-
 def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_through_the_firewall_to_board_com(
         settings):
     from range import declared
     from range.ports import Node, Segment
 
-    settings.RANGE = declared.read(flavor="openstack")
+    settings.RANGE = declared.read()
     settings.ATTACKER_SOURCE_CONTAINER = "fsl-kali"
     settings.ATTACKER_CONTAINER = "fsl-kali"
-    settings.ATTACKER_ORIGIN_MODE = "snat"
     settings.ATTACKER_TARGET_URL = "http://board.com"
     kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
                  nodes=(Node("fsl-edge", "175.192.0.1"), Node("fsl-kali", "175.192.0.10"),
@@ -406,26 +386,22 @@ def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_thr
     egress = site.found_egress(session, cloud)
     worn = {origin["id"]: origin["source_ip"] for origin in __import__("attacker").origins(shape(kr, ru, estate))}
 
-    assert egress.boxed and egress.address == "10.30.0.63" and egress.port == 80, (
+    assert egress.address == "10.30.0.63" and egress.port == 80, (
         "Kali's /etc/hosts names board.com by the WAF's estate address; Kali's route to it runs through the firewall"
     )
     assert egress.source in {"175.192.0.10", "175.192.0.11"} - {worn["kr"]}, (
         "a customers address on Kali, never the one the attacker sends from"
     )
 
-def test_a_boxed_egress_opens_its_line_on_the_attacker_and_a_local_one_binds_the_customers_address(monkeypatch):
+def test_an_egress_opens_its_line_on_the_attacker_from_the_customers_address(monkeypatch):
     import attacker
 
     cloud = Range(())
     monkeypatch.setattr(attacker, "as_customer", lambda source, address, port: ["bridge", source, address, str(port)],
                         raising=False)
-    site.opened(site.Egress(source="175.192.0.11", address="10.30.0.63", port=80, boxed=True), cloud)
-    bound = []
-    monkeypatch.setattr(site.socket, "create_connection", lambda *args: bound.append(args) or Line())
-    site.opened(ON_CUSTOMERS, None)
+    site.opened(site.Egress(source="175.192.0.11", address="10.30.0.63", port=80), cloud)
 
     assert cloud.lines == [("attacker", ["bridge", "175.192.0.11", "10.30.0.63", "80"])]
-    assert bound == [(("73.0.0.9", 80), site.TIMEOUT[0], ("73.0.0.4", 0))]
 
 def detail_of(client, session, index):
     row = client.get(f"/api/sessions/{session.pk}/site/requests/").json()[index]

@@ -12,17 +12,11 @@ def location(path):
     start = text.index(f"location {path} {{")
     return text[start:text.index("}", start)]
 
-def test_the_terminal_has_no_port_of_its_own():
-    assert not composed.services()["kali"].get("ports"), (
-        "everything a person uses is on the platform's one port"
-    )
-
 def test_the_terminal_is_handed_over_only_after_the_platform_agrees():
-    terminal = location("/terminal/")
-
-    assert "auth_request" in terminal, (
-        "the terminal path would skip the platform's refusal of range addresses"
-    )
+    for terminal in (location("/vm-terminal/kali/"), location("/vm-terminal/waf/")):
+        assert "auth_request /terminal-allowed;" in terminal, (
+            "the terminal path would skip the platform's refusal of range addresses"
+        )
 
 def test_the_platform_sees_the_client_not_the_front():
     forwarded = re.findall(r"proxy_set_header\s+X-Forwarded-For\s+(\S+);", FRONT.read_text())

@@ -9,7 +9,7 @@ from range import cloud, declared, fabric, slot
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DECLARED = declared.read(flavor="openstack")
+DECLARED = declared.read()
 READY = {host: f"img-{host}" for host in DECLARED.hosts}
 
 def fabric_standing():
@@ -98,12 +98,12 @@ def test_a_port_left_from_an_earlier_try_is_used_not_made_again():
 
 def test_a_host_that_is_neither_edge_nor_attacker_may_not_stand_on_the_internet(tmp_path):
     document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
-    document["openstack"]["hosts"]["fsl-wargame-host"]["segments"] = ["estate", "mgmt", "internet"]
+    document["hosts"]["fsl-wargame-host"]["segments"] = ["estate", "mgmt", "internet"]
     path = tmp_path / "declaration.yaml"
     path.write_text(yaml.safe_dump(document))
     networks, subnets = fabric_standing()
 
-    plan = slot.plan(declared.read(path, flavor="openstack"), networks, subnets, [], [], READY)
+    plan = slot.plan(declared.read(path), networks, subnets, [], [], READY)
 
     assert any("fsl-wargame-host" in reason and "internet" in reason for reason in plan.blocked)
 

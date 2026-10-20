@@ -49,74 +49,55 @@ roles:
   attacker: fsl-kali
   scorer: fsl-platform
   gateway: fsl-waf
-  proxy: fsl-proxy
-  sensor: fsl-suricata
-  board: fsl-wg-board
-  board-db: fsl-wg-board-db
-  corp: fsl-wg-corp-wp
-  corp-db: fsl-wg-corp-db
+  proxy: fsl-kali
+  sensor: fsl-edge
+  board: fsl-wargame-host
+  board-db: fsl-wargame-host
+  corp: fsl-wargame-host
+  corp-db: fsl-wargame-host
+  edge: fsl-edge
+  wargames: fsl-wargame-host
+  estate-sensor: fsl-wargame-host
 
 compose:
-  attacker: kali
-  proxy: proxy
-  gateway: waf
-  sensor: suricata
   board: board
   board-db: board-db
   corp: corp-wp
   corp-db: corp-db
+  estate-sensor: suricata
 
 watches:
-  sensor: gateway
+  sensor: edge
+  estate-sensor: wargames
 
 hosts:
   fsl-waf:
-    segments: [internet, estate, mgmt]
+    segments: [estate, mgmt]
     names: [board.com, corp.com]
     setup: deploy/waf/setup.sh
     files: [deploy/waf]
-
-openstack:
-  roles:
-    edge: fsl-edge
-    sensor: fsl-edge
-    proxy: fsl-kali
-    wargames: fsl-wargame-host
-    board: fsl-wargame-host
-    board-db: fsl-wargame-host
-    corp: fsl-wargame-host
-    corp-db: fsl-wargame-host
-    estate-sensor: fsl-wargame-host
-  compose:
-    estate-sensor: suricata
-  watches:
-    sensor: edge
-    estate-sensor: wargames
-  hosts:
-    fsl-edge:
-      segments: [internet, estate, mgmt]
-      setup: deploy/opnsense/build.sh
-      files: [deploy/opnsense]
-      uploads: opnsense
-      ssh_user: root
-      rules: /usr/local/etc/suricata/rules/fsl.rules
-      reload: /usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket
-    fsl-kali:
-      segments: [internet, mgmt]
-      setup: deploy/kali/setup.sh
-      files: [deploy/kali, deploy/proxy/stamp.py]
-    fsl-waf:
-      segments: [estate, mgmt]
-      rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-      reload: sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1
-      pid: /run/nginx.pid
-    fsl-wargame-host:
-      segments: [estate, mgmt]
-      names: [board, corp-wp]
-      setup: deploy/wargame-host/setup.sh
-      files: [deploy/wargame-host, deploy/suricata/suricata.yaml, deploy/suricata/rules/local.rules]
-      wargames: [board, corp]
-      publish: {board: 8000, corp-wp: 80}
-      logs: {suricata: /var/log/suricata/eve.json}
-      rules: /var/lib/suricata/rules/local.rules
-      reload: suricatasc -c reload-rules
+    rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+    reload: sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1
+    pid: /run/nginx.pid
+  fsl-edge:
+    segments: [internet, estate, mgmt]
+    setup: deploy/opnsense/build.sh
+    files: [deploy/opnsense]
+    uploads: opnsense
+    ssh_user: root
+    rules: /usr/local/etc/suricata/rules/fsl.rules
+    reload: /usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket
+  fsl-kali:
+    segments: [internet, mgmt]
+    setup: deploy/kali/setup.sh
+    files: [deploy/kali, deploy/proxy/stamp.py]
+  fsl-wargame-host:
+    segments: [estate, mgmt]
+    names: [board, corp-wp]
+    setup: deploy/wargame-host/setup.sh
+    files: [deploy/wargame-host, deploy/suricata/suricata.yaml, deploy/suricata/rules/local.rules]
+    wargames: [board, corp]
+    publish: {board: 8000, corp-wp: 80}
+    logs: {suricata: /var/log/suricata/eve.json}
+    rules: /var/lib/suricata/rules/local.rules
+    reload: suricatasc -c reload-rules

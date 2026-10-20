@@ -88,7 +88,6 @@ SEGMENTS_KEPT_FOR = 30.0
 RECORD_SLACK = timedelta(seconds=5)
 RUN_SETTLED = timedelta(seconds=15)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
-STACK_OUTLIVES_ITS_SESSION = timedelta(minutes=3)
 _segments_kept: dict = {}
 SUPPRESSION_MINUTES = 60
 DEFAULT_RULES = "local.rules"
@@ -255,18 +254,10 @@ def sessions(request):
         except IntegrityError:
             raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
     try:
-        if hasattr(adapter, "open_session"):
-            adapter.open_session(session.pk, live=_stacks_to_keep(session))
         adapter = _range(session, adapter)
         _aim_attacker(adapter)
         _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)
-        if hasattr(adapter, "for_session") and not session.baseline \
-                and wargames.objective_model(scenario) == "loot_verified":
-            raise loot.GroundTruthUnavailable(
-                f"the {scenario} target's accounts could not be read at open, so "
-                f"nothing it loses could be checked; the session is closed"
-            )
         session.save(update_fields=["baseline", "waf"])
         if guidance and not played:
             _seed_logs(session)
@@ -289,12 +280,6 @@ def _asked_ids(given):
         return [int(one, 10) for one in given.split(",") if one.strip()]
     except ValueError:
         raise BadRequest(f'"ids" must be session ids separated by commas, got {given!r}')
-
-def _stacks_to_keep(opening):
-    shipping = timezone.now() - STACK_OUTLIVES_ITS_SESSION
-    return Session.objects.filter(
-        Q(ended_at=None) | Q(ended_at__gte=shipping)
-    ).exclude(pk=opening.pk).order_by("pk").values_list("pk", flat=True)
 
 def _described(session, judged=False):
     return _shape(session, SESSION_FIELDS) | {
@@ -1001,10 +986,7 @@ def _range(session=None, adapter=None):
     adapter = adapter or substrate()
     if _slotted(adapter):
         return adapter.in_slot(_slot_of(_newest(session)) if adapter.slots > 1 else 1)
-    if not hasattr(adapter, "for_session"):
-        return adapter
-    session = _newest(session)
-    return adapter.for_session(session.pk if session else None)
+    return adapter
 
 def _asked_session(request):
     given = request.GET.get("session")
@@ -1024,7 +1006,7 @@ def _written(request):
         _refuse_closed(asked)
         return asked
     adapter = substrate()
-    if not hasattr(adapter, "for_session") and getattr(adapter, "slots", 1) <= 1:
+    if getattr(adapter, "slots", 1) <= 1:
         return None
     found = Session.objects.filter(ended_at=None).order_by("-id").first()
     if found is None:
@@ -1162,21 +1144,14 @@ def range_topology(request):
 
 def _map_key(session, adapter=None):
     adapter = adapter or substrate()
-    if not hasattr(adapter, "interfaces"):
+    if not hasattr(adapter, "interfaces") or not _slotted(adapter):
         return None
-    if _slotted(adapter):
-        return maps.called(maps.SLOT, _slot_of(session), session.scenario)
-    return maps.called(maps.SESSION, session.pk, session.scenario)
-
-def _map_kind(adapter) -> str:
-    return maps.SLOT if _slotted(adapter) else maps.SESSION
+    return maps.called(maps.SLOT, _slot_of(session), session.scenario)
 
 def _maps_live(adapter) -> list[str]:
-    if _slotted(adapter):
-        newest = (Session.objects.filter(Q(slot=number) | (Q(slot=None) if number == 1 else Q(pk__in=[])))
-                  .order_by("-pk").first() for number in range(1, adapter.slots + 1))
-        return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in newest if session]
-    return [maps.called(maps.SESSION, session.pk, session.scenario) for session in Session.objects.filter(ended_at=None)]
+    newest = (Session.objects.filter(Q(slot=number) | (Q(slot=None) if number == 1 else Q(pk__in=[])))
+              .order_by("-pk").first() for number in range(1, adapter.slots + 1))
+    return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in newest if session]
 
 def _map_read(session):
     drawn = maps.learner(session.scenario)
@@ -1186,12 +1161,7 @@ def _map_read(session):
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
     if key is not None and settings.FSL_GNS3_URL:
-        maps.begin(key, _map_read(session), _map_kind(adapter), _maps_live(adapter))
-
-def _maps_tidied(adapter):
-    if settings.FSL_GNS3_URL and hasattr(adapter, "interfaces") and not _slotted(adapter):
-        threading.Thread(target=maps.tidied, args=(_map_kind(adapter), _maps_live(adapter)),
-                         name="fsl-map-tidy", daemon=True).start()
+        maps.begin(key, _map_read(session), maps.SLOT, _maps_live(adapter))
 
 def _drawn(session, described):
     return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario))
@@ -1480,8 +1450,7 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
             harness.case_meta(case),
             **({"origin": origin["id"], "target_url": origin["target_url"]}
                if origin else {}),
-            **({"source_ip": origin["source_ip"]}
-               if origin and settings.ATTACKER_ORIGIN_MODE == "snat" else {}),
+            **({"source_ip": origin["source_ip"]} if origin else {}),
             launched_on=launched_on,
             **witness(ran),
         ),
@@ -1724,7 +1693,6 @@ def close_session(request, session_id):
             _refuse_closed(session)
     session.ended_at = closed_at
     site.forget(session.pk)
-    _maps_tidied(adapter)
     reply = _shape(session, SESSION_FIELDS)
 
     begun = None
@@ -2290,14 +2258,13 @@ def _restore(record) -> tuple[bool, str | None]:
         if record.session is None or record.session.ended_at is None:
             raise
         adapter = _range(record.session)
-        rebuilt = hasattr(adapter, "rebuild_slot")
-        if not rebuilt and (not hasattr(adapter, "has_stack") or adapter.has_stack()):
+        if not hasattr(adapter, "rebuild_slot"):
             raise
         record.restored_at = timezone.now()
         record.save(update_fields=["restored_at"])
         return True, (
             f"session {record.session_id} has ended and its sensor is "
-            f"{'rebuilt from its image' if rebuilt else 'gone'}, so nothing is left silenced"
+            f"rebuilt from its image, so nothing is left silenced"
         )
     superseded = suppress.find(current, record.sid) is not None
     lift = suppress.discard if superseded else suppress.restore
@@ -2403,7 +2370,7 @@ def _fabric_plan(plan):
 def _built_by_the_cloud(adapter, plans: str, what: str):
     if not hasattr(adapter, plans):
         raise Conflict(
-            f"compose builds this range; the {what} built through the "
+            f"this range has no {plans}; the {what} built through the "
             f"OpenStack API only"
         )
     return adapter

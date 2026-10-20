@@ -25,8 +25,6 @@ from redteam import harness
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "board.yaml"
 
 def range_of(adapter, session_id):
-    if hasattr(adapter, "for_session"):
-        return adapter.for_session(session_id)
     if hasattr(adapter, "in_slot"):
         return adapter.in_slot(Session.objects.get(pk=session_id).slot or 1)
     return adapter

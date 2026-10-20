@@ -171,7 +171,7 @@ def test_closing_a_session_ingests_first_and_closes_even_when_the_ingest_fails(c
 def test_the_waf_pane_frames_the_session_s_own_waf_terminal(client):
     seen = open_page(client, "/blue/7/", setup="""
       browser.serve((request) => {
-        if (request.route === "/api/sessions/7/") return {body: {id: 7, waf_terminal: "/waf-terminal/7/"}};
+        if (request.route === "/api/sessions/7/") return {body: {id: 7, waf_terminal: "/vm-terminal/waf/?arg=7"}};
         return {status: 404, body: {detail: "not served"}};
       });
     """, scenario="""
@@ -179,7 +179,7 @@ def test_the_waf_pane_frames_the_session_s_own_waf_terminal(client):
       return browser.element('pane-frame').getAttribute('src');
     """)
 
-    assert seen["result"] == "/waf-terminal/7/", (
+    assert seen["result"] == "/vm-terminal/waf/?arg=7", (
         f"the WAF pane must open the terminal the session names, not a shared one: {seen['result']}"
     )
 

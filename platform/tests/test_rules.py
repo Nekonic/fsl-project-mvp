@@ -2,8 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from range.declared import Declaration
-from range.ports import EXIT_MARK, Ran, RangeUnavailable
+from range.ports import Ran, RangeUnavailable
 from rules.suricata import RuleApplyError
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open")]
@@ -26,32 +25,6 @@ class Sensor:
                 return reply
         return Ran(0, "")
 
-def test_writing_through_the_substrate_opens_stdin():
-    from range.docker import Docker
-
-    run = Docker(Declaration(roles={"sensor": "fsl-suricata"})).runner("sensor")
-
-    with patch("range.docker.subprocess.run") as ran:
-        ran.return_value.returncode = 0
-        ran.return_value.stdout = ""
-        ran.return_value.stderr = f"{EXIT_MARK}0\n"
-        run(["sh", "-c", "cat > /x"], stdin=GOOD_RULE)
-
-    assert "-i" in ran.call_args.args[0], "docker exec without -i discards stdin"
-    assert ran.call_args.kwargs["input"] == GOOD_RULE
-
-def test_a_missing_sensor_is_unavailable_not_a_failed_command():
-    from range.docker import Docker
-
-    run = Docker(Declaration(roles={"sensor": "fsl-suricata"})).runner("sensor")
-
-    with patch("range.docker.subprocess.run") as ran:
-        ran.return_value.returncode = 1
-        ran.return_value.stdout = ""
-        ran.return_value.stderr = "Error: No such container: fsl-suricata"
-        with pytest.raises(RangeUnavailable):
-            run(["cat", "/x"])
-
 def test_validate_endpoint_does_not_store_a_ruleset(client):
     from api.models import RuleSet
 
@@ -73,7 +46,7 @@ def test_validate_endpoint_does_not_store_a_ruleset(client):
 def test_apply_endpoint_stores_and_marks_applied(client):
     from api.models import RuleSet
 
-    with patch("api.views.suricata.apply") as applier:
+    with patch("api.views.suricata.apply") as applier, patch("api.views.suricata.current", return_value=""):
         response = client.post_json("/api/rules/apply/", {"content": GOOD_RULE})
 
     assert applier.call_args.args[0] == GOOD_RULE
@@ -82,7 +55,8 @@ def test_apply_endpoint_stores_and_marks_applied(client):
     assert stored.content == GOOD_RULE
     assert stored.applied_at is not None
 
-    with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad rule")):
+    with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad rule")), \
+            patch("api.views.suricata.current", return_value=""):
         refused = client.post_json("/api/rules/apply/", {"content": "x"})
 
     assert refused.status_code == 400

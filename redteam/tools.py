@@ -20,9 +20,7 @@ CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
-TOOL_IMAGE = os.environ.get(
-    "FSL_TOOL_IMAGE", f"ghcr.io/nekonic/fsl-kali:{os.environ.get('FSL_IMAGE_TAG', 'dev')}"
-)
+TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
 
 class ToolUnavailable(RuntimeError):
     pass
@@ -32,7 +30,7 @@ STARTUP_FAILURE = 125
 def unavailable(case_name: str, detail: str) -> ToolUnavailable:
     return ToolUnavailable(
         f"{case_name}: the tool did not run ({TOOL_IMAGE}). {detail} "
-        f"Pull it first: docker compose -f session.yaml pull kali"
+        f"The attacker host must be up: GET /api/range/ready/"
     )
 
 def is_tool_case(case: dict[str, Any]) -> bool:

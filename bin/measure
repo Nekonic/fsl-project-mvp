@@ -30,7 +30,7 @@ TEST_DIRS = ("platform/tests/", "test/")
 TEST_FILES = "test_*.py"
 
 COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
-SESSION_FILE = "session.yaml"
+WARGAMES = "wargames/*/compose.yaml"
 COMPOSE_OVERRIDES = (
     "compose.override.yml",
     "compose.override.yaml",
@@ -117,32 +117,14 @@ def _compose_file() -> Path | None:
             return ROOT / name
     return None
 
-def _stacks() -> list[Path]:
-    compose = _compose_file()
-    if compose is None:
-        return []
-    session = ROOT / SESSION_FILE
-    if not session.is_file():
-        return [compose]
-    shared = service_names(compose) & service_names(session)
-    if shared:
-        raise SystemExit(
-            f"measure: {compose.name} and {SESSION_FILE} both define "
-            f"{', '.join(sorted(shared))}; a service belongs to the control plane "
-            f"or to the session stack, not both"
-        )
-    return [compose, session]
-
 def services() -> int:
-    return sum(len(service_names(stack, follow=False)) for stack in _stacks())
+    compose = _compose_file()
+    return len(service_names(compose)) if compose else 0
 
 def wargame_services() -> int:
-    return sum(
-        len(service_names(stack)) - len(service_names(stack, follow=False))
-        for stack in _stacks()
-    )
+    return sum(len(service_names(wargame)) for wargame in sorted(ROOT.glob(WARGAMES)))
 
-def service_names(compose: Path, within: tuple[Path, ...] = (), follow: bool = True) -> set[str]:
+def service_names(compose: Path, within: tuple[Path, ...] = ()) -> set[str]:
     def refuse(number: int, what: str) -> None:
         raise SystemExit(
             f"measure: {compose.name} line {number}: {what}; measure counts the "
@@ -202,8 +184,7 @@ def service_names(compose: Path, within: tuple[Path, ...] = (), follow: bool = T
         more = service_names(target, within + (compose.resolve(),))
         if names & more:
             refuse(number, f"{path} defines {', '.join(sorted(names & more))} again")
-        if follow:
-            names |= more
+        names |= more
     return names
 
 def measure() -> dict[str, int]:

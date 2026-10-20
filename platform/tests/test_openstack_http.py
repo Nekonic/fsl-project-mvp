@@ -168,7 +168,7 @@ REAL_SHAPES = {
          "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.4", "OS-EXT-IPS-MAC:mac_addr": "00:0c:29:0d:11:74",
               "OS-EXT-IPS:type": "fixed", "version": 4}]}},
-        {"name": "fsl-suricata", "id": "srv-ids", "status": "ACTIVE",
+        {"name": "fsl-edge", "id": "srv-edge", "status": "ACTIVE",
          "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
     ],
@@ -210,10 +210,10 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     edge = shape.segments[0]
     assert (edge.id, edge.subnet, edge.gateway) == ("ru", "5.188.10.0/24", "5.188.10.1")
     assert [(n.name, n.address) for n in edge.nodes] == [
-        ("fsl-suricata", "5.188.10.9"), ("fsl-waf", "5.188.10.4"),
+        ("fsl-edge", "5.188.10.9"), ("fsl-waf", "5.188.10.4"),
     ]
     assert [(s.name, s.watches) for s in shape.sensors] == [
-        ("fsl-suricata", "fsl-waf")
+        ("fsl-edge", "fsl-edge")
     ]
 
 

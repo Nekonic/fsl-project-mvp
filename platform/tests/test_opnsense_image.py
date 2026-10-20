@@ -15,7 +15,7 @@ import yaml
 from range import cloud, declared, images, openstack, opnsense
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OS = declared.read(flavor="openstack")
+OS = declared.read()
 EDGE = OS.hosts["fsl-edge"]
 RELEASE = cloud.read(cloud.EXAMPLE).opnsense
 KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"

@@ -86,7 +86,7 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
 
     lines = written_credentials()["content"].splitlines()
     names = {line.split("=", 1)[0] for line in lines if line}
-    attacker = declared.read(flavor=declared.flavor_for("range.openstack.connect")).roles["attacker"]
+    attacker = declared.read().roles["attacker"]
 
     assert names == {
         variable for name, variable in SETTINGS.items()

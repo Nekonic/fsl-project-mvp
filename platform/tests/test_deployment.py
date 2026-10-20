@@ -76,20 +76,6 @@ def test_socket_access_is_granted_by_a_group_resolved_at_start_that_may_already_
         "a required build argument breaks `docker compose up` on a fresh host"
     )
 
-def test_nothing_the_stack_does_to_itself_trips_the_rules_it_is_scored_on():
-    import re
-
-    compose = composed.document()
-    check = " ".join(compose["services"]["waf"]["healthcheck"]["test"])
-    host = re.search(r"https?://([^/\s\"]+)", check)
-
-    assert host and not re.fullmatch(r"[\d.]+(:\d+)?", host.group(1)), (
-        f"the WAF's own health check asks {host and host.group(1)!r}, and a "
-        f"numeric Host header trips CRS 920350. It runs every ten seconds, so "
-        f"the platform files a false positive against the defence it is "
-        f"scoring, forever, in every session"
-    )
-
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()
     opened = verify.find('post("/api/sessions/"')

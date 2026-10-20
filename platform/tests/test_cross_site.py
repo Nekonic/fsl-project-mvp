@@ -67,7 +67,7 @@ def test_a_form_post_cannot_reach_a_json_endpoint(client):
 
 
 def test_the_console_s_own_requests_still_go_through(client):
-    with patch("api.views.suricata.apply"):
+    with patch("api.views.suricata.apply"), patch("api.views.suricata.current", return_value=""):
         response = client.post(
             "/api/rules/apply/", RULES, content_type="application/json",
             HTTP_ORIGIN="http://testserver", HTTP_SEC_FETCH_SITE="same-origin",

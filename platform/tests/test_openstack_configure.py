@@ -8,7 +8,7 @@ from range.ports import Drifted, Node, Ran, RangeUnavailable, Segment, Shape
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"
-OS = declared.read(flavor="openstack")
+OS = declared.read()
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
     nova="http://nova:8774/v2.1", glance="http://glance:9292", project="fsl",

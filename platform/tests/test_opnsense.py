@@ -8,7 +8,7 @@ from range import cloud, declared, opnsense
 from range.ports import Segment
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OS = declared.read(flavor="openstack")
+OS = declared.read()
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 COLLECTOR = ("10.31.0.195", 5140)
 KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"

@@ -110,20 +110,12 @@ def test_each_wargame_names_the_image_its_service_runs():
         assert image.removeprefix("ghcr.io/nekonic/fsl-") in repositories, image
 
 
-def test_tool_cases_run_the_kali_image_the_session_pulls():
-    from redteam.tools import TOOL_IMAGE
-
-    kali = composed.services()["kali"]["image"]
-
-    assert TOOL_IMAGE == kali.replace("${FSL_IMAGE_TAG:-dev}", "dev")
-
-
-def test_the_platform_hands_its_image_tag_to_the_sessions_it_starts():
+def test_the_platform_hands_its_image_tag_to_the_range_it_builds():
     environment = composed.services()["platform"]["environment"]
 
     assert environment["FSL_IMAGE_TAG"] == "${FSL_IMAGE_TAG:-dev}", (
-        "the platform runs session.yaml itself; without the tag it would "
-        "start sessions from :dev whatever the VM pulled"
+        "the platform ships the wargame images to the wargame host at this tag; "
+        "without it the range would run :dev whatever the VM pulled"
     )
 
 
@@ -140,7 +132,7 @@ def test_the_platform_vm_pulls_and_never_builds():
     text = unit["content"] + "\n".join(" ".join(map(str, c)) for c in config["runcmd"])
 
     assert "build" not in re.sub(r"--no-build", "", text), text
-    assert "compose.yaml pull" in text and "session.yaml pull" in text, text
+    assert "compose.yaml pull" in text and "session.yaml" not in text, text
 
 
 def test_the_platform_vm_runs_the_images_built_from_its_own_checkout():
@@ -198,9 +190,9 @@ def test_the_openstack_cli_is_driven_by_cloud_yaml_not_an_openrc(tmp_path):
 
 def test_the_rebuild_refuses_while_an_image_cannot_be_pulled():
     module = rebuild()
-    missing = {"kali": "ghcr.io/nekonic/fsl-kali is not public, or was never pushed"}
+    missing = {"corp-db": "ghcr.io/nekonic/fsl-corp-db is not public, or was never pushed"}
 
-    with pytest.raises(module.Refused, match="fsl-kali is not public"):
+    with pytest.raises(module.Refused, match="fsl-corp-db is not public"):
         module.refuse_unless_published("abc", lambda name, tag: missing.get(name))
     module.refuse_unless_published("abc", lambda name, tag: None)
 
@@ -431,7 +423,7 @@ def test_every_image_must_be_built_from_what_head_holds():
 
     with pytest.raises(module.Refused, match=rf"sideload them:\n  gns3: deploy/gns3 differs between {BASE} and HEAD$"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, git)
-    assert (built, "platform") in git.compared and (BASE, "deploy/kali") in git.compared
+    assert (built, "platform") in git.compared and (BASE, "wargames/corp/db") in git.compared
     module.refuse_unless_unchanged(
         BASE, HEAD, {**platform, "gns3": module.Tarball(Path("g.tar"), built)}, git)
     with pytest.raises(module.Refused, match=f"platform: platform differs between {built} and HEAD"):

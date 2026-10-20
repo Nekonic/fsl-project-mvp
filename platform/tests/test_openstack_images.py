@@ -88,7 +88,7 @@ SPEC = openstack.Cloud(
 def cloud():
     return Cloud()
 
-OS = declared.read(flavor="openstack")
+OS = declared.read()
 SCRIPTED = replace(OS, hosts={host: entry for host, entry in OS.hosts.items() if not entry.uploads})
 
 def adapter(cloud, network="net-platform"):

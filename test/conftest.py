@@ -8,7 +8,7 @@ import requests
 
 import range as the_range
 from opening import has_room, refused_a_run_for_room, refused_for_room, retried, wait_for_room
-from range import ATTACKER, RangeUnavailable, SCORER, ThroughPlatform, run, start_hint, substrate, use
+from range import ATTACKER, SCORER, RangeUnavailable, run, start_hint
 
 pytest_plugins = ["shared_sessions"]
 
@@ -53,12 +53,6 @@ def wait_out_a_reset() -> dict | None:
             return readiness
         time.sleep(RESET_POLL)
 
-def range_substrate() -> str:
-    return (range_readiness() or {}).get("substrate") or "compose"
-
-def pytest_collection_modifyitems(config, items):
-    use(range_substrate())
-
 def _reachable(url: str) -> bool:
     try:
         requests.get(url, timeout=3)
@@ -76,12 +70,6 @@ def target_code(path: str = "/", session: int | None = None) -> int:
     code = probe.stdout.strip()
     return int(code) if code.isdigit() else 0
 
-def target_answers() -> bool:
-    try:
-        return 0 < target_code() < 500
-    except RangeUnavailable:
-        return False
-
 @pytest.fixture(scope="session", autouse=True)
 def stack_is_up():
     assert _reachable(PLATFORM_URL), (
@@ -93,15 +81,7 @@ def stack_is_up():
     assert readiness is not None, (
         f"{PLATFORM_URL}/api/range/ready/ gave no readable answer within {RESET_WAIT}s"
     )
-    if (readiness.get("substrate") or "compose") != "compose":
-        assert readiness.get("ready"), f"the range is not ready: {readiness}"
-        return
-    if SPLIT:
-        return
-    assert target_answers(), (
-        f"the target does not answer through the WAF from inside the range. "
-        f"Run `{start_hint()}` first."
-    )
+    assert readiness.get("ready"), f"the range is not ready: {readiness}"
 
 MADE_BY_THIS_RUN: set[int] = set()
 OPENED_IN_ORDER: list[int] = []
@@ -233,7 +213,7 @@ def wait_out_a_running_reset() -> dict | None:
 
 @pytest.fixture(autouse=True)
 def the_range_is_not_resetting(stack_is_up):
-    if substrate() == ThroughPlatform.substrate and not IDLE and not BESIDE_ANOTHER_WORKER:
+    if not IDLE and not BESIDE_ANOTHER_WORKER:
         readiness = wait_out_a_running_reset()
         assert not resetting(readiness), (
             f"the range was still resetting after {RESET_WAIT}s: {readiness}. A "
