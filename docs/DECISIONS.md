@@ -5693,30 +5693,29 @@ Rulings by the user:
   `.gitattributes` fixes line endings (no doc text about CRLF); the first
   `bin/cloud up` makes the range key; the `openstack` CLI is found beside the
   interpreter in `.venv`; a platform VM that never ran `fsl-platform` has
-  nothing to back up, so `down` and `up --replace` proceed (5420d04).
+  nothing to back up, so `down` and `up --replace` proceed.
 
 What newcomers hit, from two read-only audits that followed the docs on a
-clean clone (one line each; fixed in c321210, b231c6c, 7d8e3c2, 5420d04,
-a662fdf):
+clean clone (one line each; all fixed):
 
 - No range key on the first `bin/cloud up` (it refused); now made by the first
-  `up` (c321210).
+  `up`.
 - The `openstack` CLI installed into `.venv` was not found without activating
-  the venv; now found beside `sys.executable` (c321210).
+  the venv; now found beside `sys.executable`.
 - Line endings: no `.gitattributes`, so a CRLF checkout broke sideload
-  tarballs and scripts; now pinned to LF (c321210). The ssh wait now reports
-  the last ssh error, and cloud files are read as UTF-8 (c321210).
+  tarballs and scripts; now pinned to LF. The ssh wait now reports
+  the last ssh error, and cloud files are read as UTF-8.
 - README led with Docker and called both substrates first-class; it now
   states the requirements and nine numbered steps, each with a check and a
   recovery, and what the cloud needs from Kolla-Ansible 2026.1, the external
-  network and egress (b231c6c, 7d8e3c2).
+  network and egress.
 - The base image was uploaded as admin and `fsl-range` could not see it:
-  `--public` (a662fdf).
+  `--public`.
 - The installer's guided LVM gave Nova about 100 GB of 250 GB: extend the
-  logical volume to the whole volume group (a662fdf).
+  logical volume to the whole volume group.
 - No way back when the platform VM never came up: `up` redoes the hand-over of
   a VM that never took it, and `down` / `up --replace` proceed without a
-  backup when there was no `fsl-platform` to back up (5420d04, a662fdf).
+  backup when there was no `fsl-platform` to back up.
 - A review found that path could lose the store: `up --replace` backed up VM
   A, the new VM's hand-over failed, the advice was `up --replace` again, that
   VM held no store, so the next one started empty and the next backup with
@@ -5736,7 +5735,7 @@ a662fdf):
 - Smaller: passwordless sudo and netplan lines for Kolla, range flavor
   `m1.medium` in the example, `OS_AUTH_URL` from `identity.keystone`, quota
   wording, when `ready` is true, VMware Workstation, `python3-venv`, 40 GB VM
-  RAM (a662fdf).
+  RAM.
 
 The research behind it: no OpenStack-based range has a host-OS quick start
 (KYPO/CyberRangeCZ's `kypo-lite` is Ubuntu with 48 GB RAM; its Windows path is
@@ -5762,7 +5761,7 @@ tested with fake ssh, Docker and OpenStack CLIs only. Two live runs on the test
 cloud closed that. Notes: `~/.cache/fsl-work/notes/live-push-check.md` and
 `live-fix-check.md` (outside the repo).
 
-First run, code 620592f, platform VM at 192.168.0.210:
+First run, on the code before the fixes, platform VM at 192.168.0.210:
 
 - `bin/cloud up --replace --sideload` (store probe, backup, range key kept)
   passed in 27 min 13 s. A full `bin/verify` on the new VM passed: unit 1706,
@@ -5785,7 +5784,7 @@ First run, code 620592f, platform VM at 192.168.0.210:
   passed (10 min 17 s). `down`, then `up --sideload`, restored the newest backup
   that holds rows (`db-20261020T041910Z`, 2 sessions) in 14 min 49 s.
 
-Fix commit 8f19f43:
+The fix commit:
 
 - `range/openstack.py`: `_attach` deletes detached `fsl-platform.mgmt` ports
   before it creates one, and `teardown_fabric` deletes detached ports on the
@@ -5799,7 +5798,7 @@ Fix commit 8f19f43:
   run sideloads. Every other line is kept and the file keeps mode 0600.
 - `bin/verify --fast` passed 1711.
 
-Second run, code 8f19f43:
+Second run, on the fixed code:
 
 - Plain `up` with the container stopped and the password line removed passed in
   71 s; `FSL_SIDELOADED` was kept and no image was rebuilt.
@@ -5809,7 +5808,7 @@ Second run, code 8f19f43:
 - `bin/cloud up --sideload` restored `db-20261020T050321Z` (3 sessions at
   backup time; retention dropped the closed ones at start, as before) in
   15 min 52 s, and the range was ready.
-- The VM runs 8f19f43, `ready` true, both slots READY, no open session.
+- The VM runs the fixed code, `ready` true, both slots READY, no open session.
 
 Still open, not fixed:
 
@@ -5828,7 +5827,7 @@ The previous entry ended with four items open and the §9 one-VM trial unrun.
 This entry closes them. Notes: `~/.cache/fsl-work/notes/live-open-items.md` and
 `s9-trial.md` (outside the repo).
 
-The four items, fixed in 7f6f31c and 3834b61 and run live on the test cloud
+The four items, fixed and run live on the test cloud
 (platform VM 192.168.0.210):
 
 1. `bin/cloud down` beside a stopped `fsl-platform` container. `down` now starts
@@ -5856,11 +5855,11 @@ The four items, fixed in 7f6f31c and 3834b61 and run live on the test cloud
    image built. The wargame host kept its digest `7bce304b14aea25e` while
    `FSL_PUBLISH` changed from 10.20.0.64 to 10.20.0.181.
 
-A full `bin/verify` on 3834b61 passed: unit 1716, acceptance 73 passed, 0
+A full `bin/verify` on the code with items 1 to 4 fixed passed: unit 1716, acceptance 73 passed, 0
 failed, 0 skipped (1165 s), ratchet ok (`core_loc` 584, `dependencies` 6,
 `services` 10).
 
-The mode-digest fix, e01b1f3. The run of item 3 showed that `setup.sh` was mode
+The mode-digest fix. The run of item 3 showed that `setup.sh` was mode
 0664 in the sideloaded checkout (umask 002) and 0644 in cloud-init's clone
 (umask 022), and the digest hashed `st_mode & 0o777`. One commit therefore built
 two digests, and a VM made without `--sideload` would have rebuilt every image
@@ -5869,7 +5868,7 @@ as git tracks it. Every digest changes once, when this rule begins. The test
 `test_a_checkout_s_umask_does_not_change_the_digest_and_only_the_executable_bit_does`
 holds it. `bin/verify --fast` passed 1717.
 
-The §9 trial, run end to end on e01b1f3 from an empty cloud (`docs/OPENSTACK.md`
+The §9 trial, run end to end on the code with the mode-digest fix, from an empty cloud (`docs/OPENSTACK.md`
 §9):
 
 | Stage | Time | Note |
@@ -5932,13 +5931,13 @@ Where the trial differed from §9 as written:
   in a headless Chromium through an ssh tunnel, so a host browser reaching the
   floating IP was not tried.
 
-The restore. After the trial, `bin/cloud up --sideload platform=e01b1f3` on the
+The restore. After the trial, `bin/cloud up --sideload platform=<image of that code>` on the
 test cloud took 11 min 55 s and restored `db-20261020T082615Z` (rule sets 232,
 suppressions 79, no sessions). The waf, edge, kali and opnsense images stayed
 ready on their digests; only `fsl-wargame-host` was rebuilt, once, because of the
 mode rule above. Both slots were READY with all checks true.
 
-Two full `bin/verify` runs on e01b1f3, on that VM:
+Two full `bin/verify` runs on the same code, on that VM:
 
 - First: unit 1717 passed; acceptance 72 passed, 1 failed (1257 s). The failure
   was `test_corp_authz`'s live content overwrite: WordPress answered `Invalid
@@ -5954,11 +5953,11 @@ passing on rerun. It stays open.
 Not verified: the VirtualBox and VMware settings of §9.1; a host browser reaching
 the floating IP; the 40 GB figure under load (the trial peaked at 26 GB used).
 
-8752a35: the platform VM makes `/opt/fsl/.venv` itself (the cloud-init
+The last code before the move to the new cloud: the platform VM makes `/opt/fsl/.venv` itself (the cloud-init
 `fsl-venv` unit, and `fsl-venv-checkout` after a sideload checkout), proven on a
 fresh VM. The full `bin/verify` there: unit 1718; acceptance 73 passed, 0 failed,
 0 errors, 0 skipped; ratchet ok; about 22 minutes. The squash into bf96876 kept
-this code; the ids of 2026-10-20 in this file predate it.
+this code.
 
 ## 2026-10-20 — The product moved to a new OpenStack cloud
 
@@ -6008,7 +6007,7 @@ unhealthy".
   hosts' systemd-networkd then sent 127.0.0.53 out of `ens3`. Every name lookup
   waited about 25 s (`getent` 24.6 s), and corp-wp's healthcheck (`wp core
   is-installed`, timeout 5 s) took 29.2 s.
-- Fix, commit 68efc7c. `platform/range/openstack.py` creates every range subnet
+- The fix. `platform/range/openstack.py` creates every range subnet
   with `dns_nameservers ["0.0.0.0"]`. The range has no Internet, so it needs no
   resolver. The product no longer depends on the cloud's `[ovn] dns_servers`,
   which an admin can still set for the cloud's other VMs.
@@ -6017,7 +6016,7 @@ unhealthy".
   wargame host were rebooted. After that `getent` failed in 0.03 s and `wp core
   is-installed` took 1.9 s. `bin/cloud up` then resumed and reported the range
   ready.
-- A fabric made before 68efc7c keeps the old subnets. `openstack subnet set
+- A fabric made before this fix keeps the old subnets. `openstack subnet set
   --dns-nameserver 0.0.0.0 <subnet>` on each range subnet, then a reset or reboot
   of the hosts, brings it in line. `docs/OPENSTACK.md` §8 says so.
 
@@ -6027,13 +6026,11 @@ Standing now: the platform VM `fsl-platform` (`m1.large`, fixed 10.20.0.143,
 (`mgmt` 10.31.0.40) and `fsl-wargame-host` (estate 10.30.0.231, `mgmt`
 10.31.0.204). The console is at http://192.168.2.247:8000/.
 
-The full `bin/verify` is running on the new platform VM.
-
-Full bin/verify on the new VM: RESULT_PENDING
+Full `bin/verify` on the new VM at 3da925e (2026-10-20, before the docker substrate removal, single slot): unit 1718 passed; acceptance 68 passed, 2 failed, 3 errors, 0 skipped in 10024 s. Every failure comes from the new cloud having one slot (`compute.slots` 1, because the user's VM `FSL-front` takes 4 cores and 8 GB of the project quota): the errors are `409 "1 session is already open on the range; close one first"` in the tests that need a second session, and the 2 failures are `test_strategy_honesty`, whose shared session was deleted by retention (`FSL_RETAIN_CLOSED_MINUTES` 60) because a one-slot run takes about 2 h 47 min. Three `test_lesson` tests passed in this run only because a leaked session was closed by hand during it. The later run, after the removal, is in "The docker substrate is removed" below.
 
 ## 2026-10-21 — The docker substrate is removed
 
-The plan of 2026-10-20 (`docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`, D1-D4 decided yes) ran in commits d6e0328 to 34d5943, then this documentation commit. The product runs only on OpenStack. Docker stays where the 2026-10-20 ruling kept it: the platform VM's own services, the wargame host and the GNS3 display nodes.
+The plan of 2026-10-20 (`docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`, D1-D4 decided yes) ran in the removal commit, then the documentation commits. The product runs only on OpenStack. Docker stays where the 2026-10-20 ruling kept it: the platform VM's own services, the wargame host and the GNS3 display nodes.
 
 What went:
 
@@ -6053,14 +6050,52 @@ Deviations from the plan, recorded in the commit messages:
 - More tests were deleted than the plan's table lists, each for testing only a removed mechanism: the compose-versus-declaration checks in `test_declaration`, the session WAF health check in `test_deployment`, the docker board vhost in `test_internal_blocked_at_waf`, the refusal at open for unreadable board accounts in `test_loot_session_start`, and the `for_session` case in `test_substrate_choice`. The check that HOME_NET's public entries are the WAF's edge networks in `test_home_net` went with those networks.
 - A write that names no session on a single-slot range now records none, as it already did on OpenStack. A board session whose accounts cannot be read is no longer refused at open; readiness blocks the slot instead.
 - An origin's target URL is always `ATTACKER_TARGET_URL`. The per-origin WAF address was the docker shape.
-- Found on the way: the two-session acceptance fixture left its first session open when the second failed to open, and every later module waited for a slot that never freed. It now closes the first session (b9e6728).
+- Found on the way: the two-session acceptance fixture left its first session open when the second failed to open, and every later module waited for a slot that never freed. It now closes the first session.
 - `redteam/tools.py` `TOOL_IMAGE` defaults to `fsl-kali`, with a test.
 
 Image digests (computed before and after the fold of the declaration, with the same inputs): `fsl-waf` is unchanged (5b1227892cf313e9). `fsl-kali` changes once, from f34cfaad783d7351 to bc3fa783269d30bc, because `deploy/kali/Dockerfile` was in its bundle (the bundle lists `deploy/kali` as a directory). The cloud builds a new Kali image and rebuilds the slots once. `fsl-wargame-host` is 9b691e0b491f9695 at tag c0ffee and MTU 1450.
 
 Open, left as they are:
 
-- `deploy/suricata/suricata.yaml` `HOME_NET` still lists the four former docker edge subnets (5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24 and 73.0.0.0/24), and the file still names the interfaces `eth0` to `eth4`. Changing `HOME_NET` changes what the estate sensor alerts on, so it needs a decision.
+- `deploy/suricata/suricata.yaml` `HOME_NET` still listed the four former docker edge subnets (5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24 and 73.0.0.0/24), and the file still named the interfaces `eth0` to `eth4`. Settled the next day; see "2026-10-21 — The estate sensor's HOME_NET and a repeated lesson move".
 - `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name `/var/lib/session/origin`, which nothing writes now. Both are in the Kali bundle, so editing them would change its digest again.
 
-Live proof on the new cloud: PENDING
+Live proof on the new cloud, 2026-10-20 to 2026-10-21:
+
+- `bin/cloud up --replace --sideload platform=<image of the removal commit>`, from the checkout with the documents, passed in 19 min 44 s (18:41:36Z to 19:01:20Z). The store backup `db-20261020T184152Z` was taken and restored. Only `fsl-kali` was rebuilt, as computed above (its bundle held `deploy/kali/Dockerfile`); the `fsl-waf`, `fsl-edge` and `fsl-wargame-host` images were reused. The range reported ready. The VM then ran that checkout with the sideloaded platform image (`FSL_SIDELOADED=platform`).
+- Full `bin/verify` on the VM, on the code with the docker substrate removed: unit 1575 passed; acceptance 65 passed, 2 failed, 6 errors, 0 skipped in 10241 s; ratchet ok (`core_loc` 584, `dependencies` 6, `services` 5, `wargame_services` 4, `product_loc` 25016, `tests` 1198). The unit count is lower than the 1718 at 3da925e because the removal deleted tests of removed mechanisms.
+- The reference run before the removal, at 3da925e on the same cloud, is in "The product moved to a new OpenStack cloud" above: unit 1718 passed; acceptance 68 passed, 2 failed, 3 errors, 0 skipped in 10024 s.
+- Every failure in both runs comes from the one slot (`compute.slots` 1; `FSL-front` takes 4 cores and 8 GB of the project quota). The 6 errors are `409 "1 session is already open on the range; close one first"`: 2 in `test_concurrent_sessions` and 4 in `test_lesson` (the two-session test, and the three later tests of the module, which cannot open a session while the module's `minimal` session is open). The 2 failures are `test_strategy_honesty`: its shared session from `full_run` was deleted by retention (`FSL_RETAIN_CLOSED_MINUTES` 60), because a one-slot run takes about 2 h 50 min; slot resets take 4 to 5 min on this cloud against 70 to 80 s on the previous one. Nothing failed because of the removal.
+- The terminal-isolation test (`test_judge_isolation`) probes `/vm-terminal/kali/` and `/vm-terminal/waf/` instead of the removed `/terminal/` (found by the review before gate 2). Live result: on the VM, with the tree of the removal and the fixed `test_judge_isolation.py` copied in, `pytest test_judge_isolation.py` gave 5 passed in 162 s (2026-10-21).
+
+Open from the live runs: the one-slot run outlives the retention window (either the harness keeps a session it still needs, or the window accounts for a long run); the rerun with `compute.slots` 2 waits for the user to raise the project quota to 24 cores, 65536 MB of RAM and 12 instances.
+
+## 2026-10-21 — The estate sensor's HOME_NET and a repeated lesson move
+
+The user decided both on 2026-10-21.
+
+- `HOME_NET`. The four public /24s were in `HOME_NET` because on the
+  docker substrate the WAF's outside address sat on those edge networks
+  (f4b45cd). On OpenStack they are the origins Kali sends from on
+  `fsl-internet`, so the estate sensor took the attacker for the inside
+  network. `HOME_NET` is now 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16; the
+  estate it watches is in 10.0.0.0/8. The `eth0`-`eth4` af-packet entries went
+  too: the wargame host passes `--af-packet=<estate interface>`, which takes
+  the `default` entry. The `fsl-wargame-host` bundle holds this file, so the
+  rebuild built that image again.
+- A repeated lesson move. `POST /api/sessions/<id>/lesson/` with the
+  lesson the session is on appended a second entry to `lessons`, and the
+  course summary listed the lesson twice (session 1070). It now answers the
+  session as it is, with no WAF apply, sensor seed or log seed.
+- Live proof. `bin/cloud up --replace --sideload platform=<image of the repeated-lesson-move fix>`
+  passed (about 25 min, the wargame host image rebuilt). On that VM
+  `bin/acceptance --only test_acceptance,test_ready,test_rule_variables,
+  test_bufferless_rule,test_tool_cases` gave 14 passed, 0 failed, 0 errors,
+  0 skipped in 1555 s, TP > 0 and TN > 0 among them. Through the API, session
+  1077 (F1): two `POST /lesson/ {"lesson": "f1"}` left `lessons` as `[f1]`,
+  then `{"lesson": "f2"}` made it `[f1, f2]`.
+- After the pre-push review (a follow-up to the repeated-lesson-move fix): `bin/cloud up --replace
+  --sideload platform=<image of that code>` passed in about 15 min. Session 1078:
+  f1, then f2, then f2 again left `lessons` as `[f1, f2]`;
+  `bin/acceptance --only test_judge_isolation` gave 5 passed, 0 failed, 0
+  errors, 0 skipped in 158 s.
