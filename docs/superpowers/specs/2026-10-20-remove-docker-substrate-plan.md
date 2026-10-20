@@ -1,6 +1,6 @@
 # Plan: remove the docker substrate so the product is OpenStack-only
 
-Status: Done in code (commits d6e0328..34d5943 and the documentation commit after them); live rows of section 5 pending.
+Status: Done (the docker-substrate removal commit and its follow-ups; live rows of section 5 run 2026-10-21, recorded in docs/DECISIONS.md).
 
 Ruling: the product is OpenStack-only (`docs/DECISIONS.md`, 2026-10-20). Docker stays as the way the platform VM runs the platform's own services from GHCR images, and as the wargame host's and GNS3's container runtime; it is no longer a substrate the product can run on.
 

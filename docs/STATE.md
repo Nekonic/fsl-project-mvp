@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-20
+Updated: 2026-10-21
 
 ## Where things stand
 
@@ -22,28 +22,32 @@ on 2026-10-14 (`docs/DECISIONS.md`). On 2026-10-18 the foundations were rebuilt
 as attack and defence lessons that run back to back in one session, and on
 2026-10-19 four live review rounds (2-5) tuned them. On 2026-10-20 the user
 ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm) and the newcomer
-bring-up was fixed and rewritten; removing the docker substrate from the code
-is planned, not started (backlog 0). Later the same day the user moved the
+bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
 moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
-through the user's VPN), one slot, running dev's 3da925e code from GHCR images
-with no sideload; commit 68efc7c, local and not pushed, stops the range subnets
-announcing a DNS resolver. Live runs on the old cloud on
+through the user's VPN), one slot. On 2026-10-21 the docker substrate was
+removed from the code (the removal commit, then the documents) and
+proven live on the new cloud; the VM's `/opt/fsl` is a git checkout of dev's
+head and it runs a sideloaded platform image built from this branch's code
+(`docs/DECISIONS.md` 2026-10-21, "The docker substrate is removed" and "The
+estate sensor's HOME_NET and a repeated lesson move"). The commits above
+3da925e, among them the fix that makes range subnets announce no DNS resolver,
+are on `dev`. Live runs on the old cloud on
 2026-10-20 proved the changed bring-up paths and led to fixes
 (`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths" and "The
 one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last
-full `bin/verify` that finished, on the old cloud at 8752a35's code with the
+full `bin/verify` that finished, on the old cloud with the
 `.venv` the VM made: unit 1718 passed; acceptance 73 passed, 0 failed, 0
-errors, 0 skipped; ratchet ok. The full run on the new VM (3da925e) is recorded
-in `docs/state/now.md`. Before the last one, two
-runs on e01b1f3: acceptance 72 passed and 1 failed (the `test_corp_authz` nonce
-error), then 73 passed (1155 s). Commit ids from 2026-10-20 such as 620592f,
-8f19f43, 3834b61, e01b1f3 and 8752a35 predate the squash into bf96876..1cc5d96.
-They are on the local backup/pre-squash-20261020* branches, not on dev. Live
+errors, 0 skipped; ratchet ok. The full runs on the new cloud (3da925e before
+the removal, and one after it; failures that all come from the single slot) are
+recorded in `docs/DECISIONS.md`, and `docs/state/now.md` summarises them.
+Before the last one, two
+runs on the same code: acceptance 72 passed and 1 failed (the `test_corp_authz`
+nonce error), then 73 passed (1155 s). Live
 state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
@@ -405,7 +409,7 @@ geolocated TW.
 - **The WAF's health check asks `/healthz`**, which the WAF answers itself;
   sent through to the target it alerted every ten seconds and used up a
   session's 5,000-document read in about 14 hours.
-- **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (its unit also pulls `session.yaml`'s images, which the docker-substrate removal drops; `build:` is for local development). The platform's
+- **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (`build:` is for local development). The platform's
   entrypoint reads the docker socket's group from the socket at start, adds
   `fsl` to it, drops root with `gosu`, and registers the `geoip` ingest
   pipeline itself, so a fresh host needs no build argument and no manual PUT.
@@ -433,7 +437,8 @@ geolocated TW.
 - **nginx inside the platform's image owns 8000.** waitress listens on
   `127.0.0.1:8001` and takes the client from `X-Forwarded-For`, which nginx
   sets to `$remote_addr` and waitress trusts only from `127.0.0.1`; anything
-  that reads `REMOTE_ADDR` sees the real client. `/terminal/` goes to ttyd
+  that reads `REMOTE_ADDR` sees the real client. `/vm-terminal/kali/` and
+  `/vm-terminal/waf/` go to ttyd
   only after `auth_request` to `/api/attacker/` answers 2xx; a 403 passes
   through, and any other answer (Django's 400 for a Host it does not allow)
   becomes nginx's 500, still refused.
@@ -463,7 +468,7 @@ geolocated TW.
 
 ## The substrate seam
 
-Docker was the first substrate; OpenStack is the deployment target.
+Docker was the first substrate and was removed on 2026-10-21; OpenStack is the only one.
 `platform/range/` is the port: `describe() -> Shape`, `segments()` (who stands
 where, without the sensor), `runner(role, segment)` and `launcher(segment)`.
 `range.substrate()` is the one place a name becomes an adapter
@@ -473,12 +478,11 @@ where, without the sensor), `runner(role, segment)` and `launcher(segment)`.
 of the port.
 
 `platform/range/declaration.yaml` declares per segment an id, a name and an
-attack origin, a role table, and `watches: {sensor: gateway}`; the Docker
+attack origin, a role table, and `watches: {sensor: gateway}`; the OpenStack
 adapter, `fsl/settings.py` and `test/range.py` read it. Identity is declared,
 allocation reported: a declared subnet that disagreed with the real one would
-bin alerts by a subnet nothing lives on. `test_declaration.py` holds
-`compose.yaml` to it. A segment is bound by its `fsl.segment.id` mark (Docker
-label, Neutron tag), never by name: compose overrides, Heat stack suffixes,
+bin alerts by a subnet nothing lives on. A segment is bound by its
+`fsl.segment.id` mark (a Neutron tag), never by name: Heat stack suffixes,
 non-unique Neutron names and a project called `fsl_lab` broke name rules.
 
 `platform/range/openstack.py` is unit-tested against fakes built from the
@@ -673,9 +677,7 @@ through the scenarios' exclusions, level and thresholds (backlog 0).
 
 The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
-- **Range**: an Internet segment with thirty declared origin countries (the
-  docker substrate still in the code builds four: Russia, the default, Brazil,
-  Hong Kong, United States), the
+- **Range**: an Internet segment with thirty declared origin countries, the
   internal network (`estate`) and management, crossed only at the WAF; two
   targets stand there, `http://board.com` and `http://corp.com`.
 - **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
@@ -715,9 +717,9 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Stack**: every service `linux/amd64`. On the platform VM,
   `fsl-platform.service` runs `docker compose pull` and `up -d` for the
   control plane (the platform entrypoint sets the socket group and registers
-  the ingest pipeline). The code still contains the docker substrate
-  (`platform/range/docker.py`, `session.yaml`); the product is OpenStack-only
-  since 2026-10-20 and its removal is open in backlog 0.
+  the ingest pipeline). The product is OpenStack-only since 2026-10-20; the
+  docker substrate (`platform/range/docker.py`, `session.yaml`) was removed on
+  2026-10-21.
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
 - **The range on OpenStack**: the platform builds the networks, the golden
@@ -772,25 +774,38 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 
 - [x] `bin/platform-rebuild` `resume` checked the hand-over only when the API
       did not answer, so a VM whose platform answered but never got the
-      password skipped the redone hand-over. It now asks the VM every time
-      (7f6f31c). Run live 2026-10-20: plain `up` with the password line
+      password skipped the redone hand-over. It now asks the VM every time.
+      Run live 2026-10-20: plain `up` with the password line
       removed redid the hand-over in 89 s.
 - [x] `bin/cloud down` refused a store file beside a stopped `fsl-platform`
       container. It now starts the container, backs up, waits for the API,
-      then removes the range (7f6f31c). Run live 2026-10-20: 40 s.
+      then removes the range. Run live 2026-10-20: 40 s.
 - [x] After `down` then `up`, the `fsl-wargame-host` image was rebuilt each
-      time, because the platform's fixed IP was in the bundle digest (3834b61).
+      time, because the platform's fixed IP was in the bundle digest.
       Run live 2026-10-20: the second `down` then `up` built nothing. The same
-      run showed that a checkout's umask changed the digest, fixed in e01b1f3
+      run showed that a checkout's umask changed the digest, fixed the same day
       (the digest takes only the executable bit of each file's mode).
-- [ ] Remove the docker substrate (decided 2026-10-20; plan
+- [x] Remove the docker substrate (decided 2026-10-20; plan
       `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`,
       D1-D4 decided yes): the product is OpenStack-only, Docker stays as the
-      platform VM's way to run its own services. Not started; the code, the
-      acceptance harness' docker executor, the docker GNS3 maps and the
-      docs that mention the docker substrate stay as they are until it runs.
-- [x] Newcomer bring-up on OpenStack (2026-10-20, c321210, b231c6c, 7d8e3c2,
-      5420d04, a662fdf): LF line endings pinned (`.gitattributes`); the first
+      platform VM's way to run its own services. Done 2026-10-21 (the removal commit, the
+      documents, the README laptop note and two follow-up test fixes). Proven
+      live on the new cloud: `bin/cloud up --replace
+      --sideload` passed in 19 min 44 s, and the full `bin/verify` on the code
+      with the docker substrate removed passed but for the single-slot failures (`docs/DECISIONS.md` 2026-10-21,
+      "The docker substrate is removed"). Still open from it:
+      `/var/lib/session/origin` in `deploy/proxy/stamp.py` and
+      `deploy/kali/setup.sh` (needs a decision); `HOME_NET` was settled by
+      the HOME_NET fix; a one-slot acceptance run
+      outlives `FSL_RETAIN_CLOSED_MINUTES` (next item).
+- [ ] A one-slot acceptance run takes about 2 h 50 min on the new cloud, longer
+      than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deletes the shared
+      session `test_strategy_honesty` still needs. Either the harness keeps a
+      session it still needs, or the retention window accounts for a long run
+      (open question). With one slot (`compute.slots: 1`), `test_concurrent_sessions`
+      and `test_lesson` also fail with 409 "1 session is already open"; two slots need the
+      user to raise the project quota (`docs/state/now.md`, Next, 1).
+- [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
       `bin/cloud up` makes the range key; the `openstack` CLI is found
       beside the interpreter; a platform VM that never ran `fsl-platform`
       can be taken down or replaced; README and `docs/OPENSTACK.md` rewritten
@@ -810,7 +825,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `up --replace` on a standing platform (`STORE_PROBE` over ssh), plain
       `up`'s resume with a stopped container and the redone hand-over, and the
       restore of the newest backup (`down`, then `up`). The live runs found
-      three bugs, fixed in 8f19f43 and run live again: orphan
+      three bugs, fixed and run live again: orphan
       `fsl-platform.mgmt` ports made `down` fail with 409 SubnetInUse, a
       stopped container made the redone hand-over fail, and the redone
       hand-over dropped `FSL_SIDELOADED`. The first range key was made live
@@ -917,33 +932,50 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       summed over the reviewers fell from 7 and 12 to 0 and 1; every walker
       run passed 48 of 48 steps; the round-5 fixes (9f1f39d..60243e6) are
       deployed as e4a467e and carried by the VM's current code; the last full
-      `bin/verify` passed on 8752a35's code. Round 6 was skipped at the user's
+      `bin/verify` passed on the code of 2026-10-20. Round 6 was skipped at the user's
       request.
-- [x] Full `bin/verify` (unit and acceptance) on the VM at 8752a35
-      (2026-10-20): unit 1718 passed; acceptance 73 passed, 0 failed, 0
+- [x] Full `bin/verify` (unit and acceptance) on the old cloud's VM
+      (2026-10-20, the last code before the move): unit 1718 passed; acceptance 73 passed, 0 failed, 0
       errors, 0 skipped; the VM made its own `.venv`.
-- [x] Full `bin/verify` (unit and acceptance) on the VM at e01b1f3
-      (2026-10-20), run twice: unit 1717 passed both times; acceptance 72
+- [x] Full `bin/verify` (unit and acceptance) on the VM
+      (2026-10-20, after the fix that makes the bundle digest ignore a checkout's umask),
+      run twice: unit 1717 passed both times; acceptance 72
       passed and 1 failed (`test_corp_authz` nonce) in 1257 s, then 73 passed, 0
-      failed, 0 errors, 0 skipped in 1155 s; ratchet ok. At 3834b61: unit 1716,
-      acceptance 73 passed in 1165 s. At 8f19f43: unit 1711, acceptance 73
-      passed in 1157 s. To rerun, with no open
+      failed, 0 errors, 0 skipped in 1155 s; ratchet ok. After the fix that takes the platform's fixed IP out of the bundle digest:
+      unit 1716, acceptance 73 passed in 1165 s. After the three bring-up fixes
+      (orphan `fsl-platform.mgmt` ports, a stopped container, `FSL_SIDELOADED`):
+      unit 1711, acceptance 73 passed in 1157 s. To rerun, with no open
       session: `cd /opt/fsl && FSL_PLATFORM_URL=http://192.168.2.247:8000
       setsid nohup bin/verify > ~/verify-full.log 2>&1 &`.
+- [x] Full `bin/verify` on the new cloud's VM (single slot; records in
+      `docs/DECISIONS.md`). At 3da925e (2026-10-20): unit 1718 passed;
+      acceptance 68 passed, 2 failed, 3 errors, 0 skipped in 10024 s. At
+      the code after the docker substrate removal (2026-10-21): unit 1575
+      passed; acceptance 65 passed, 2 failed, 6 errors, 0 skipped in 10241 s;
+      ratchet ok. Every failure comes from the single slot, none from the
+      removal.
 - [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
       2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
-      images. Still to do: check the run for the commit that follows (68efc7c,
-      not pushed yet).
+      images. Still to do: check the run for dev's head (the commits above 3da925e
+      are on `dev`).
 - [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
       9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
       review loop, rounds 2-5"):
-      - [ ] Lesson auto-advance: after F1 and F2 finish, the console
-            sometimes does not move to the next lesson within 4 min (it is
-            meant to after 2 s); F3 to F4 did. The next-lesson button works.
-            Cause not found (the e4a467e smoke, session 907, in
-            `docs/state/now.md`).
-      - [ ] Re-walk F4-F6 live on e4a467e or later; the last full 48 of 48
-            walk was round 5 on d077869.
+      - [x] Lesson auto-advance (2026-10-21): the console does move on
+            2 s after the last step of F1 and F2; the walker was wrong. It
+            read the session's lesson after the page had already moved and
+            then waited for that lesson to change (session 1070: F1's last
+            step passed 22:11:27Z, `lessons` shows f2 from 22:11:29Z). F3 to
+            F4 hid the race because a change of defense delays the save.
+            Fixed in `~/.cache/fsl-work/walker/walk.py` (compare against the
+            lesson just walked). The walker's fallback POST added a second
+            f2 entry to `lessons`; since the repeated-lesson-move fix `POST /lesson/` with the
+            current lesson changes nothing.
+      - [ ] Re-walk F4-F6 after fixing the walker. The 2026-10-21 walk on
+            the new cloud (session 1070, F1-F6) passed 46 of 48 steps; both
+            misses were walker faults (F4 replay waited for a search box on
+            the 403 page the previous step left in the Website pane; F6
+            replay never read the sqlmap command its card shows).
       - [ ] A live review round of the round-5 fixes under the convergence
             rule: six reviewers (lesson design, UI, terms, AI-sounding
             Korean, realism and leaks, first-time learner); a finding counts
@@ -965,8 +997,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `/search/` did not serve the Korean search (hypothesis: 920272 also
       matches the request URI); measure.
 - [ ] The unexplained `test_corp_*` nonce error, seen twice and passing on
-      rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20 at
-      e01b1f3 `test_corp_authz`'s live content overwrite got WordPress's
+      rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20
+      `test_corp_authz`'s live content overwrite got WordPress's
       "Invalid nonce." for a nonce the test had just fetched.
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
@@ -983,7 +1015,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] `bin/cloud up` after `bin/cloud down` starts with an empty store
       (2026-10-20): `up` now restores the newest `backups/db-*.sqlite3` that
       holds rows into a platform VM made where no store stands, and names it.
-      Run live 2026-10-20 on 8f19f43: `down`, then `up --sideload` restored
+      Run live 2026-10-20: `down`, then `up --sideload` restored
       `db-20261020T050321Z`.
 - [ ] `bin/cloud down` leaves the `fsl-build` security group the images
       step makes; delete it there, or record that it stays as the keypair
@@ -994,16 +1026,17 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
       alone 578 s); with two slots and the audited tests about 730-990 s
-      (987 s on 9674d0e with 70 tests). Measure where the setup still goes, then: parallel sessions on substrate docker (the
-      platform VM's 8 GB limit under several sessions is unmeasured), polling
+      (987 s on 9674d0e with 70 tests). Measure where the setup still goes, then: polling
       instead of fixed waits, edge configuration without a reboot.
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
-- [ ] Rebuild the platform VM with `bin/cloud up --replace` once 68efc7c is on
-      `dev` and its images are built: the standing VM runs 3da925e, whose
-      subnets would announce 127.0.0.53 as a resolver again (`docs/state/now.md`,
-      Next, 2).
+- [ ] Rebuild the platform VM with `bin/cloud up --replace`, without
+      `--sideload`, from the main checkout once the `images.yml` run for dev's
+      head is green (`gh run list --workflow images.yml --branch dev --limit
+      3`): the standing VM runs dev's head with a sideloaded platform image
+      built from this branch's code, so the rebuild makes it run dev from GitHub
+      and GHCR (`docs/state/now.md`, Next, 2).
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
@@ -1343,7 +1376,7 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `fsl-platform.mgmt` in `fsl-reach` attached to it through
      `os-interface`. Teardown deletes that port first and still refuses any
      other server's. Nova detaches the port when it deletes the platform VM but
-     leaves it standing, so since 2026-10-20 (8f19f43) `_attach` deletes the
+     leaves it standing, so since 2026-10-20 `_attach` deletes the
      detached `fsl-platform.mgmt` ports before it makes one, and teardown
      deletes every detached port on the fabric's networks; before, 35 leftovers
      made `down` fail with 409 SubnetInUse. The template writes the server id at
@@ -1546,10 +1579,8 @@ binary log via a substrate runner, proven end to end against the live stack.
   group and answers Kali's queries.
 - The platform and gns3 containers mount the Docker socket (the platform
   non-root, via the socket's group): an escape path, on the platform VM too.
-- The Kali terminal at `/terminal/` (`/terminal/<session id>/` per session), and the ttyd terminals at
-  `/vm-terminal/kali/`, `/vm-terminal/waf/` and
-  `/waf-terminal/<session id>/`, are unauthenticated
-  shells for whoever reaches the platform's port: loopback on compose, the VM's
+- The ttyd terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` are
+  unauthenticated shells for whoever reaches the platform's port: the VM's
   address (`FSL_PUBLISH`) on the platform VM.
 - `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
   records included. Since 2026-10-13 a full ingest pages by `@timestamp`
