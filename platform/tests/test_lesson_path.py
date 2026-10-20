@@ -1,9 +1,9 @@
-from unittest.mock import patch
 
 import pytest
 
 import wargames
 from range.ports import Ran
+from tests.test_lesson_api import one_slot
 
 pytestmark = pytest.mark.django_db
 
@@ -31,7 +31,7 @@ def test_rule_validation_reports_suricata_s_error_lines_from_the_sensor_that_pri
     def runner(adapter, role, segment_id=""):
         return lambda argv, stdin=None, timeout=60.0: Ran(1, quiet if role == "sensor" else loud)
 
-    with patch("range.docker.Docker.runner", runner):
+    with one_slot(runner):
         checked = client.post_json("/api/rules/validate/", {"content": "alert http any any -> any any (contnet:\"x\"; sid:1;)"})
 
     assert checked.status_code == 400

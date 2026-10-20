@@ -35,7 +35,7 @@ class Sensor:
 def test_the_sensor_is_reloaded_through_its_command_socket_by_default():
     from django.conf import settings
 
-    assert settings.FSL_SENSOR_RELOAD == RELOAD, (
+    assert (settings.FSL_SENSOR_RELOAD[0].rpartition("/")[2], *settings.FSL_SENSOR_RELOAD[1:3]) == RELOAD, (
         "kill -USR2 1 signals whatever is pid 1, which is Suricata only in "
         "its container and init on an instance, and it returns before the "
         "new rules have loaded, so the caller never learns whether they did"

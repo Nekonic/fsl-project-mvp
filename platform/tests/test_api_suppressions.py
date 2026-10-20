@@ -37,7 +37,7 @@ def ids():
         yield fake
 
 def test_silencing_a_rule_comments_it_out_reloads_and_names_the_session(client, ids, a_session_is_open):
-    response = client.post_json("/api/rules/suppressions/", {"sid": 9000001})
+    response = client.post_json("/api/rules/suppressions/", {"sid": 9000001, "session": a_session_is_open.pk})
     listed = client.get("/api/rules/suppressions/").json()["suppressions"]
 
     assert response.status_code == 201

@@ -171,13 +171,6 @@ else
   exit 1
 fi
 
-kali_image="$(docker compose -f session.yaml config --images kali 2>/dev/null)"
-if [ -n "$kali_image" ] && docker image inspect "$kali_image" >/dev/null 2>&1; then
-  ok "attacker image present"
-else
-  fail "${kali_image:-the kali image} missing — docker compose -f session.yaml pull kali"
-fi
-
 if "$PY" - <<'RULECHECK'
 import json, os, pathlib, sys, time, urllib.request
 
@@ -216,9 +209,6 @@ then
   ok "suricata can read its config"
 else
   fail "suricata could not validate deploy/suricata/rules/local.rules (reason above)"
-  echo "     if it names a file it cannot open, the bind mounts went stale:"
-  echo "     open a new session, or: docker compose -p fsl-<id> -f session.yaml"
-  echo "     up -d --force-recreate waf suricata"
 fi
 
 section "acceptance (live stack)"

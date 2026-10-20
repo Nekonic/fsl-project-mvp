@@ -13,15 +13,15 @@ from api import site
 from api.models import Case, Detection, Objective, Session
 from range import declared
 from range.ports import Ran
-from tests.test_gns3_maps import DOCKER_FOUND, read_slot
-from tests.test_lesson_api import DUMPED, TRUTH, Stand, attacker
+from tests.test_gns3_maps import read_slot
+from tests.test_lesson_api import DUMPED, TRUTH, Stand, attacker, one_slot
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
 
 pytestmark = pytest.mark.django_db
 
 ROOT = Path(__file__).resolve().parents[2]
-TOPOLOGIES = {flavor: ROOT / "deploy" / "topology" / f"range-{flavor}.gns3" for flavor in ("docker", "openstack")}
+TOPOLOGY = ROOT / "deploy" / "topology" / "range-openstack.gns3"
 SQLMAP_AGENT = "sqlmap/1.8.4#stable (https://sqlmap.org)"
 BOARD = "10.30.0.184"
 WAF = "10.30.0.177"
@@ -67,8 +67,8 @@ def quietly():
 def on_map(found):
     return patch("api.views._map_found", lambda session: found)
 
-def flavor(name):
-    return override_settings(FSL_TOPOLOGY=TOPOLOGIES[name], RANGE=declared.read(flavor=name))
+def on_the_range():
+    return override_settings(FSL_TOPOLOGY=TOPOLOGY, RANGE=declared.read())
 
 def detected(session, detection_id, source, marker, signature="", src_ip=None, **raw):
     return Detection.objects.create(session=session, detection_id=detection_id, source=source, signature=signature,
@@ -130,14 +130,10 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
     steps = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
 
-@pytest.mark.parametrize("name, found, board_ip, db_subnet, db_ip, route", [
-    ("docker", DOCKER_FOUND, "172.30.0.5", "172.30.0.0/24", "172.30.0.6", "customers > waf > board.com"),
-    ("openstack", None, BOARD, "172.18.0.0/16", "172.18.0.2", "customers > firewall > waf > board.com"),
-])
-def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(
-        client, name, found, board_ip, db_subnet, db_ip, route):
+def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(client):
+    board_ip, db_subnet, db_ip, route = BOARD, "172.18.0.0/16", "172.18.0.2", "customers > firewall > waf > board.com"
     session = opened("f1")
-    with flavor(name), on_map(found if found is not None else read_slot()):
+    with on_the_range(), on_map(read_slot()):
         given = {
             "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (board_ip, f"{board_ip}/24", WAF)],
             "db_subnet": [answer(client, session, "db_subnet", one)["passed"] for one in (db_subnet, db_ip)],
@@ -154,7 +150,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
     assert right["passed"] is True
     assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"]) and "sw1" not in shown["path"]["check"]["options"]
-    assert shown["db_subnet"]["point"]["map"] == {"zone": "sw1" if name == "docker" else "sw2"}
+    assert shown["db_subnet"]["point"]["map"] == {"zone": "sw2"}
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),
@@ -181,7 +177,7 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_so_one_sensor_seeing
     legs = [event for word in ("kim2026", "lee2026") for event in (
         http_event(marker, f"/search/?q={word}", 200, host="fsl-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
         http_event(marker, f"/search/?q={word}", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER))]
-    with flavor("openstack"), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
+    with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
             ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "1"))}
@@ -299,7 +295,7 @@ def test_f5_reads_the_verdict_from_sqlmap_s_own_log_and_the_run_s_source_and_rul
         logs.append(argv[-1])
         return Ran(0, "")
 
-    with quietly(), patch("range.docker.Docker.runner", lambda adapter, role, segment_id="": kali):
+    with quietly(), one_slot(lambda adapter, role, segment_id="": kali):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
             ("verdict", "no"), ("source", KALI), ("scanner", "913100"))}
         family = answer(client, session, "scanner", "942100")["passed"]
@@ -320,7 +316,7 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
                "transaction": {"request": {"headers": {}}, "response": {"http_code": status}}}
               for status in (500, 500, 500, 403)]
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
-    with quietly(), on_map(read_slot()), flavor("openstack"), indexed(*edge, *upstream, *logged), \
+    with quietly(), on_map(read_slot()), on_the_range(), indexed(*edge, *upstream, *logged), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
             ("excluded", "sort"), ("alerts", "none"), ("seen", "3"))}
@@ -334,7 +330,7 @@ def test_the_penalty_counts_double_for_an_objective_lost_undetected_since_the_le
     session = opened("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
     Objective.objects.create(session=session, key="board-auth-user-partial", name="partial", difficulty=2,
                              achieved_at=timezone.now() - timedelta(minutes=1))
-    with patch("range.docker.Docker.runner", Stand().runner()), patch("api.views.harness.fire", attacker({})[0]):
+    with one_slot(Stand()), patch("api.views.harness.fire", attacker({})[0]):
         client.post_json(f"/api/sessions/{session.pk}/lesson/", {"lesson": "f6"})
     for key, difficulty in (("board-auth-user-admin", 4), ("board-auth-user-full", 5)):
         Objective.objects.create(session=session, key=key, name=key, difficulty=difficulty,

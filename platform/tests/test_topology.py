@@ -27,7 +27,7 @@ MGMT = Segment(
 
 SHAPE = Shape(
     segments=(EDGE, ESTATE, MGMT),
-    sensors=(Sensor(name="fsl-suricata", watches="fsl-waf"),),
+    sensors=(Sensor(name="fsl-edge", watches="fsl-waf"),),
 )
 
 def stub(described=SHAPE, error=None):

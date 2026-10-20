@@ -1,36 +1,4 @@
 filebeat.inputs:
-  - type: filestream
-    id: suricata-eve
-    enabled: true
-    paths:
-      - /logs/suricata/eve.json
-    prospector.scanner.fingerprint.enabled: true
-    file_identity.fingerprint: ~
-    parsers:
-      - ndjson:
-          target: ""
-          add_error_key: true
-    fields_under_root: true
-    fields:
-      event:
-        module: suricata
-
-  - type: filestream
-    id: modsecurity-audit
-    enabled: true
-    paths:
-      - /logs/modsecurity/audit.log
-    prospector.scanner.fingerprint.enabled: true
-    file_identity.fingerprint: ~
-    parsers:
-      - ndjson:
-          target: ""
-          add_error_key: true
-    fields_under_root: true
-    fields:
-      event:
-        module: modsecurity
-
   - type: udp
     id: range-syslog
     host: "0.0.0.0:5140"

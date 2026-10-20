@@ -11,8 +11,6 @@ from range.ports import RangeUnavailable
 from console.strings import LANGUAGES
 
 SLOT = "slot"
-SESSION = "session"
-SNAT = "snat"
 
 _guard = threading.Lock()
 _turns: dict[str, threading.Lock] = {}
@@ -47,8 +45,7 @@ def _customers_prefer(wargame: str) -> tuple[str, ...]:
 
 def learner(wargame: str) -> topology.Learner:
     declared = settings.RANGE
-    customers_from = declared.roles["attacker"] if settings.ATTACKER_ORIGIN_MODE == SNAT else ""
-    return topology.learner(declared, wargame, customers_from, _customers_prefer(wargame))
+    return topology.learner(declared, wargame, declared.roles["attacker"], _customers_prefer(wargame))
 
 def template(wargame: str, language: str = gns3.ENGLISH) -> dict:
     return topology.for_wargame(gns3.local(language), learner(wargame))
@@ -83,12 +80,6 @@ def tidy(kind: str, live: list[str]) -> list[str]:
     for key in [key for key in _loaded if key.startswith(kind) and key not in live]:
         _loaded.pop(key, None)
     return removed
-
-def tidied(kind: str, live: list[str]) -> None:
-    try:
-        tidy(kind, live)
-    except gns3.Unavailable:
-        pass
 
 def _run(key: str, read, kind: str, live: list[str]) -> None:
     try:

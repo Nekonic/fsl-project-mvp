@@ -82,6 +82,7 @@ def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
 @pytest.mark.django_db
 def test_the_reload_command_comes_from_configuration(client, settings):
     settings.FSL_SENSOR_RELOAD = ("reload-it",)
+    settings.FSL_EXTRA_SENSORS = ()
     sensor = Sensor(reload=("reload-it",))
 
     class Standing:

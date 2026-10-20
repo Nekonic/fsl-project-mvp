@@ -457,11 +457,11 @@ def test_the_debrief_stays_closed_until_the_window_is_judged_then_shows_the_time
     assert told["cases"] == [{"name": SQLMAP, "malicious": True, "before": "held", "after": "held"}]
 
 def test_a_put_without_thresholds_keeps_the_thresholds_in_force(client):
-    from tests.test_lesson_api import Stand
+    from tests.test_lesson_api import Stand, one_slot
 
     session = Session.objects.create(scenario="board", baseline=dict(TRUTH))
     raised = {"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 10000, "outbound": 10000}}
-    with patch("range.docker.Docker.runner", Stand().runner()):
+    with one_slot(Stand()):
         client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(raised), content_type="application/json")
         read = client.put(f"/api/sessions/{session.pk}/waf/", json.dumps({"paranoia": 2}),
                           content_type="application/json").json()
@@ -480,14 +480,14 @@ def test_the_score_reads_customer_records_before_it_sets_their_alerts_apart(clie
     assert pulled == [session.pk]
 
 def test_a_new_waf_change_the_engine_happened_to_read_first_is_not_called_applied_again(client):
-    from tests.test_lesson_api import Stand
+    from tests.test_lesson_api import Stand, one_slot
 
     session = opened(waf={"paranoia": 3, "exclusions": []})
     first = {"paranoia": 3, "exclusions": [{"rule_id": 920272, "target": "ARGS:q", "path": "/search/"}]}
     second = {"paranoia": 3, "exclusions": [{"rule_id": 949110}]}
     put = lambda tuning: client.put(f"/api/sessions/{session.pk}/waf/", json.dumps(tuning),
                                     content_type="application/json")
-    with patch("range.docker.Docker.runner", Stand().runner()):
+    with one_slot(Stand()):
         put(first)
         scenario_run._waf_seen(session, crs.rendered(crs.checked(second)), timezone.now())
         put(second)

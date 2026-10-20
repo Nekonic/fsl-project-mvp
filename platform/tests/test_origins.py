@@ -6,36 +6,41 @@ import pytest
 
 import attacker
 from attacker import AttackerUnavailable
+from range import declared
 from range.ports import Node, RangeUnavailable, Segment, Shape
 
-PROXY = "fsl-proxy"
 KALI = "fsl-kali"
 WAF = "fsl-waf"
+PF = "fsl-edge"
 
 EDGE = Segment(
     id="ru", name="Internet", origin="Russia",
-    subnet="5.188.10.0/24", network="fsl_edge",
-    nodes=(Node(PROXY, "5.188.10.7"), Node(KALI, "5.188.10.2"),
-           Node(WAF, "5.188.10.9")),
+    subnet="5.188.10.0/24", network="fsl-internet", gateway="5.188.10.1",
+    nodes=(Node(PF, "5.188.10.1"), Node(KALI, "5.188.10.10")),
 )
 HK = Segment(
     id="hk", name="Internet", origin="Hong Kong",
-    subnet="103.152.220.0/24", network="fsl_edge-hk",
-    nodes=(Node(PROXY, "103.152.220.7"), Node(WAF, "103.152.220.9")),
+    subnet="103.152.220.0/24", network="fsl-internet", gateway="103.152.220.1",
+    nodes=(Node(PF, "103.152.220.1"), Node(KALI, "103.152.220.10")),
 )
 BR = Segment(
     id="br", name="Internet", origin="Brazil",
-    subnet="177.54.144.0/24", network="fsl_edge-br",
-    nodes=(Node(PROXY, "177.54.144.7"), Node(WAF, "177.54.144.9")),
+    subnet="177.54.144.0/24", network="fsl-internet", gateway="177.54.144.1",
+    nodes=(Node(PF, "177.54.144.1"), Node(KALI, "177.54.144.10")),
 )
 ESTATE = Segment(
     id="estate", name="Application estate", origin="",
-    subnet="172.30.0.0/24", network="fsl_estate",
-    nodes=(Node(PROXY, "172.30.0.7"), Node("fsl-juice-shop", "172.30.0.2"),
-           Node(WAF, "172.30.0.9")),
+    subnet="10.30.0.0/24", network="fsl-estate",
+    nodes=(Node(PF, "10.30.0.1"), Node(WAF, "10.30.0.217")),
 )
 
 SHAPE = Shape(segments=(EDGE, HK, BR, ESTATE), sensors=())
+
+@pytest.fixture(autouse=True)
+def on_the_attacker_box(settings):
+    settings.RANGE = declared.read()
+    settings.ATTACKER_SOURCE_CONTAINER = KALI
+    settings.ATTACKER_CONTAINER = KALI
 
 def stub(described=SHAPE, error=None):
     class Stub:
@@ -70,46 +75,9 @@ def test_every_declared_network_is_an_origin_in_a_stable_order_with_the_default_
     assert [o["id"] for o in listed] == ["br", "hk", "ru"], "rotation depends on a stable order"
     assert [o["id"] for o in listed if o["default"]] == ["ru"]
 
-def test_an_origin_carries_both_addresses_the_terminal_can_leave_by():
-    found = {o["id"]: o for o in origins()}
-
-    assert (found["ru"]["source_ip"], found["ru"]["direct_ip"]) == ("5.188.10.7", "5.188.10.2")
-    assert (found["hk"]["source_ip"], found["hk"]["direct_ip"]) == ("103.152.220.7", ""), (
-        "an origin the attacker box cannot reach says so")
-    assert (found["hk"]["label"], found["hk"]["subnet"]) == ("Hong Kong", "103.152.220.0/24")
-    assert found["hk"]["target_url"] == "http://103.152.220.9", (
-        "the address was a name assembled out of the origin id - 'waf-' plus "
-        "'hk' - which only resolves because compose was asked to put that "
-        "alias on that network. Neutron hands out no aliases"
-    )
-
-def test_a_missing_attacker_box_does_not_lose_the_origins():
-    without_kali = Shape(
-        segments=tuple(
-            replace(s, nodes=tuple(n for n in s.nodes if n.name != KALI))
-            for s in SHAPE.segments
-        ),
-        sensors=(),
-    )
-
-    assert {o["id"] for o in origins(without_kali)} == {
-        "ru", "hk", "br",
-    }
-
-@pytest.mark.parametrize("missing", [WAF, PROXY])
-def test_an_origin_with_no_way_in_is_not_offered(missing):
-    stranded = replace(HK, nodes=tuple(n for n in HK.nodes if n.name != missing))
-
-    listed = attacker.origins(Shape(segments=(EDGE, stranded), sensors=()))
-
-    assert [o["id"] for o in listed] == ["ru"], (
-        "an origin whose segment the gateway does not stand on was offered, "
-        "and an attack fired from it would have gone nowhere"
-    )
-
 def test_an_attacker_box_on_nothing_at_all_is_an_error_not_an_empty_list():
     nowhere = Shape(
-        segments=(replace(EDGE, nodes=(Node(KALI, "5.188.10.2"),)),), sensors=(),
+        segments=(replace(EDGE, nodes=(Node(PF, "5.188.10.1"),)),), sensors=(),
     )
 
     with pytest.raises(AttackerUnavailable) as raised:
@@ -123,7 +91,7 @@ def test_finding_an_origin_never_names_the_substrate():
     assert "subprocess" not in source
 
 def test_the_default_origin_answers_when_none_was_asked_for():
-    assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.7"
+    assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.10"
 
 pytestmark = pytest.mark.django_db
 
@@ -331,12 +299,6 @@ def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
     )
 
 
-def _openstack_range():
-    from range import declared
-    return declared.read(flavor="openstack")
-
-PF = "fsl-edge"
-
 def _openstack_shape():
     us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
                  network="fsl-internet", gateway="73.0.0.1",
@@ -348,10 +310,7 @@ def _openstack_shape():
                      network="fsl-estate", nodes=(Node("fsl-waf", "10.30.0.217"),))
     return Shape(segments=(us, tw, estate), sensors=())
 
-def test_on_openstack_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
-    settings.RANGE = _openstack_range()
-    settings.ATTACKER_SOURCE_CONTAINER = KALI
-    settings.ATTACKER_CONTAINER = KALI
+def test_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
     settings.ATTACKER_TARGET_URL = "http://shop.com"
 
     found = {o["id"]: o for o in attacker.origins(_openstack_shape())}
@@ -359,16 +318,11 @@ def test_on_openstack_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
     assert set(found) == {"us", "tw"}, "the estate is not an origin"
     assert found["us"]["source_ip"] == "73.0.0.10", "the attack comes from the Kali box"
     assert found["us"]["target_url"] == "http://shop.com", (
-        "on OpenStack the target is reached by name through the OPNsense edge, not by a "
-        "per-origin WAF address the way Docker hands one out"
+        "the target is reached by name through the OPNsense edge, not by a per-origin WAF address"
     )
     assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"
 
-def test_on_openstack_an_origin_the_attacker_has_no_address_on_is_not_offered(settings):
-    settings.RANGE = _openstack_range()
-    settings.ATTACKER_SOURCE_CONTAINER = KALI
-    settings.ATTACKER_CONTAINER = KALI
-
+def test_an_origin_the_attacker_has_no_address_on_is_not_offered():
     shape = _openstack_shape()
     no_kali = tuple(
         replace(s, nodes=tuple(n for n in s.nodes if n.name != KALI)) if s.id == "tw" else s

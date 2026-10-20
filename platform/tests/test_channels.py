@@ -27,9 +27,8 @@ def test_the_attacker_channel_does_not_name_the_substrate():
 @pytest.mark.parametrize("write, value, sent, where", [
     (attacker.set_label, "c0ffee", "c0ffee", "active"),
     (attacker.set_label, None, "", "active"),
-    (attacker.set_origin, "edge-br", "edge-br", "origin"),
 ])
-def test_the_live_case_and_the_origin_reach_the_proxy_through_the_port(write, value, sent, where):
+def test_the_live_case_reaches_the_proxy_through_the_port(write, value, sent, where):
     proxy = Host()
 
     write(value, proxy)
@@ -39,7 +38,7 @@ def test_the_live_case_and_the_origin_reach_the_proxy_through_the_port(write, va
     assert content == sent, "a cleared case must not label the shell's traffic with the word None"
     assert where in path
 
-@pytest.mark.parametrize("write", [attacker.set_label, attacker.set_origin])
-def test_a_write_the_proxy_could_not_make_is_not_a_silent_success(write):
+def test_a_write_the_proxy_could_not_make_is_not_a_silent_success():
     with pytest.raises(attacker.AttackerUnavailable):
-        write("c0ffee", Host(reply="sh: can't create /var/lib/session/origin: Read-only file system", exit_code=1))
+        attacker.set_label("c0ffee", Host(reply="sh: can't create /var/lib/session/active: Read-only file system",
+                                          exit_code=1))

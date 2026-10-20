@@ -141,7 +141,6 @@ def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_
 MARKER_PATH = "/var/lib/session/active"
 
 KALI_SETUP = Path(__file__).resolve().parents[2] / "deploy/kali/setup.sh"
-KALI_DOCKERFILE = Path(__file__).resolve().parents[2] / "deploy/kali/Dockerfile"
 KALI_BASHRC = Path(__file__).resolve().parents[2] / "deploy/kali/bashrc"
 
 def test_the_kali_vm_records_the_terminal_s_ssh_user_and_not_only_root():
@@ -155,16 +154,14 @@ def test_the_kali_vm_records_the_terminal_s_ssh_user_and_not_only_root():
         "the log must exist, take the kali user's appends, and be read by the account the platform logs in as"
     )
 
-def test_the_attacker_shell_is_kali_s_own_on_both_substrates():
-    setup, image = KALI_SETUP.read_text(), KALI_DOCKERFILE.read_text()
+def test_the_attacker_shell_is_kali_s_own():
+    setup = KALI_SETUP.read_text()
 
     assert "useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali" in setup
-    assert "useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali" in image
-    assert 'echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali' in setup + image
+    assert 'echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali' in setup
     assert "echo kali > /etc/hostname" in setup and "127.0.1.1 kali" in setup
     assert "preserve_hostname: true" in setup, "cloud-init renamed the machine to the Nova server name again"
-    assert ": > /etc/motd" in setup and ": > /etc/motd" in image
-    assert 'CMD ["ttyd", "-W", "-t", "disableResizeOverlay=true", "-b", "/terminal", "-p", "7681", "su", "kali"]' in image
+    assert ": > /etc/motd" in setup
 
 def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
     shell = subprocess.run(

@@ -79,7 +79,7 @@ def fixture_range(document, learner):
 
 for source, written in zip(sys.argv[1::2], sys.argv[2::2]):
     document = json.loads(Path(source).read_text())
-    stack = declared.read(flavor="openstack" if "openstack" in source else "")
+    stack = declared.read()
     wargame = Path(written).stem.split(".")[0].rsplit("-", 1)[1]
     learner = topology.learner(stack, wargame, stack.roles["attacker"], ("10.0.0.0/8",))
     drawn = topology.for_wargame(document, learner)

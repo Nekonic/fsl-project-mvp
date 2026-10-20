@@ -28,8 +28,6 @@ from range.slot import NAMED_ON
 MARKER = "browse"
 GATEWAY_ROLE = "gateway"
 ATTACKER_ROLE = "attacker"
-SCORER_ROLE = "scorer"
-SNAT = "snat"
 SITE_PORT = 80
 MARKER_HEADER = "X-Request-ID"
 KEPT_PER_SESSION = 200
@@ -73,7 +71,6 @@ class Egress:
     source: str
     address: str
     port: int
-    boxed: bool
 
     @property
     def remote(self) -> str:
@@ -84,8 +81,6 @@ def _adapter(session: Session):
     adapter = substrate()
     if hasattr(adapter, "in_slot"):
         return adapter.in_slot(session.slot or 1)
-    if hasattr(adapter, "for_session"):
-        return adapter.for_session(session.pk)
     return adapter
 
 
@@ -110,20 +105,12 @@ def found_egress(session: Session, adapter) -> Egress:
     declared = settings.RANGE
     segments = adapter.segments()
     gateway = declared.host(GATEWAY_ROLE)
-    if settings.ATTACKER_ORIGIN_MODE == SNAT:
-        origin = _customers_origin(session, segments, attacker.unbound_source(adapter.runner(ATTACKER_ROLE)))
-        address = _standing(segments, NAMED_ON, gateway)
-        if not origin["addresses"] or not address:
-            raise RangeUnavailable(f"no customers address on {origin['id']!r}, or {gateway} has no {NAMED_ON} "
-                                   f"address for board.com")
-        return Egress(source=origin["addresses"][0], address=address, port=SITE_PORT, boxed=True)
-    origin = _customers_origin(session, segments, "")
-    source = _standing(segments, origin["id"], declared.host(SCORER_ROLE))
-    address = _standing(segments, origin["id"], gateway)
-    if not source or not address:
-        raise RangeUnavailable(f"the platform and {gateway} do not both stand on the customers network "
-                               f"{origin['id']!r}")
-    return Egress(source=source, address=address, port=SITE_PORT, boxed=False)
+    origin = _customers_origin(session, segments, attacker.unbound_source(adapter.runner(ATTACKER_ROLE)))
+    address = _standing(segments, NAMED_ON, gateway)
+    if not origin["addresses"] or not address:
+        raise RangeUnavailable(f"no customers address on {origin['id']!r}, or {gateway} has no {NAMED_ON} "
+                               f"address for board.com")
+    return Egress(source=origin["addresses"][0], address=address, port=SITE_PORT)
 
 
 def egress_of(session: Session) -> tuple[Egress, object]:
@@ -139,10 +126,7 @@ def egress_of(session: Session) -> tuple[Egress, object]:
 
 
 def opened(egress: Egress, adapter) -> socket.socket:
-    if egress.boxed:
-        line = adapter.opened(ATTACKER_ROLE, attacker.as_customer(egress.source, egress.address, egress.port))
-    else:
-        line = socket.create_connection((egress.address, egress.port), TIMEOUT[0], (egress.source, 0))
+    line = adapter.opened(ATTACKER_ROLE, attacker.as_customer(egress.source, egress.address, egress.port))
     line.settimeout(TIMEOUT[1])
     return line
 

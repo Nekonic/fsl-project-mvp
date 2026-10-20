@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+
 import pytest
 
 from redteam.tools import (
@@ -105,3 +109,16 @@ def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
     assert all(not line.startswith("[0") for line in dumped)
     assert missing == ["[CRITICAL] host 'nowhere' does not exist"]
     assert conclusions("") == []
+
+def test_the_tool_image_defaults_to_the_attacker_host_the_range_declares(settings):
+    from tests.conftest import REPO_ROOT
+
+    environment = {name: value for name, value in os.environ.items() if name != "FSL_TOOL_IMAGE"}
+    printed = subprocess.run(
+        [sys.executable, "-c", "from redteam.tools import TOOL_IMAGE; print(TOOL_IMAGE)"],
+        cwd=REPO_ROOT, env=environment, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    assert printed == settings.RANGE.roles["attacker"], (
+        "the OpenStack launcher runs a tool only on the attacker host the range declares"
+    )

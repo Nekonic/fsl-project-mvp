@@ -65,22 +65,6 @@ def test_the_board_and_its_database_stand_inside_the_estate_only():
         assert not services[name].get("ports"), f"{name} is published past the WAF"
 
 
-def test_a_session_network_cannot_take_the_platform_s_default_gateway():
-    joined = composed.services()["platform"]["networks"]
-    pinned = {
-        name: entry["gw_priority"]
-        for name, entry in (joined.items() if isinstance(joined, dict) else [])
-        if isinstance(entry, dict) and entry.get("gw_priority", 0) > 0
-    }
-
-    assert len(pinned) == 1, (
-        f"opening a session connects the platform to the session's network at "
-        f"gw-priority 0; unless one of the platform's own networks outranks it, "
-        f"Docker may make the session network the default gateway and move the "
-        f"8000 publish onto it, and the reply to the open never arrives: {pinned}"
-    )
-
-
 def host_ip(entry):
     if isinstance(entry, dict):
         return entry.get("host_ip")
@@ -163,67 +147,10 @@ def test_the_platform_s_store_outlives_the_checkout_that_started_it():
         f"the only store there is, and removing that checkout removes them"
     )
 
-def test_the_waf_s_health_check_never_reaches_the_sensor():
-    check = composed.services()["waf"]["healthcheck"]["test"]
-    asked = re.search(r"https?://[^/\s\"]+(/[^\s\"]*)?", " ".join(check))
+def test_every_wargame_is_one_folder():
+    folders = {path.parent.name for path in composed.included()}
 
-    assert asked and asked.group(1) == "/healthz", (
-        f"the WAF's health check asks {asked and asked.group(1)!r}. The image's "
-        f"nginx answers /healthz itself and proxies every other path to "
-        f"the board over the estate leg, where Suricata writes an http event "
-        f"for it: 360 an hour for as long as the stack runs. Ingest reads at "
-        f"most 5000 documents of a session's window, oldest first, so a "
-        f"session open 14 hours reads health checks and never the alerts after "
-        f"them"
-    )
-
-def test_the_sensor_restarts_with_the_waf_whose_network_it_watches():
-    suricata = composed.services()["suricata"]
-    declared = (suricata.get("depends_on") or {}).get("waf")
-
-    assert suricata["network_mode"] == "service:waf"
-    assert declared is None or declared.get("restart") is True, (
-        f"suricata declares depends_on waf as {declared}. network_mode "
-        f"service:waf already gives it that dependency with restart: true, and "
-        f"a declaration without restart replaces it: compose then restarts the "
-        f"waf and leaves suricata, which captures inside the waf's network "
-        f"namespace, as it was"
-    )
-
-
-def test_the_waf_writes_its_audit_log_where_its_own_user_can():
-    services = composed.services()
-    audit_dir = services["waf"]["environment"]["MODSEC_AUDIT_LOG"].rsplit("/", 1)[0]
-    [source] = [
-        volume.split(":")[0] for volume in services["waf"]["volumes"]
-        if volume.split(":")[1] == audit_dir
-    ]
-
-    assert audit_dir == "/var/log/modsecurity/audit" and not source.startswith("."), (
-        f"{source} on {audit_dir}: the WAF runs as nginx, a bind mount's "
-        f"directory is created by dockerd as root, and only the image's "
-        f"audit directory belongs to nginx, which a named volume copies. On a "
-        f"Linux Docker host the audit log never appeared"
-    )
-    assert any(volume.startswith(f"{source}:") and volume.endswith(":ro")
-               for volume in services["filebeat"]["volumes"]), (
-        "Filebeat does not read the volume the WAF writes"
-    )
-
-def test_every_wargame_is_one_folder_the_stack_includes():
-    included = {
-        str(path.relative_to(composed.ROOT)) for path in composed.included()
-    }
-    folders = {
-        str(path.relative_to(composed.ROOT))
-        for path in (composed.ROOT / "wargames").glob("*/compose.yaml")
-    }
-
-    assert folders and included == folders, (
-        f"session.yaml includes {sorted(included)} and the wargames folder holds "
-        f"{sorted(folders)}: a wargame is added or removed as one folder"
-    )
-    assert {path.split("/")[1] for path in folders} == set(WARGAMES), (
+    assert folders and folders == set(WARGAMES), (
         "the console offers a wargame with no folder, or a folder with no wargame"
     )
 
@@ -249,22 +176,9 @@ def test_the_address_a_vm_publishes_on_stays_out_of_git():
 
     assert ignored.returncode == 0
 
-def test_the_waf_blocks_rather_than_only_logging():
-    assert composed.services()["waf"]["environment"]["MODSEC_RULE_ENGINE"] == "On", (
-        "the lesson is passed only when the attack is blocked; a WAF in "
-        "DetectionOnly lets every variant through and the lesson cannot be passed"
-    )
-
 def test_the_openstack_waf_vm_blocks_as_the_container_does():
     shipped = (COMPOSE.parent / "deploy/waf/modsecurity.conf").read_text()
 
     assert "SecRuleEngine On" in shipped.splitlines(), (
         "the VM ran DetectionOnly, so the lesson's attacks went through on OpenStack"
-    )
-
-def test_no_sensor_reads_its_live_rules_from_a_directory_every_session_shares():
-    mounted = composed.services()["suricata"].get("volumes") or []
-
-    assert not [v for v in mounted if "deploy/suricata/rules" in v], (
-        "applying a rule in one session would rewrite every session's rule file"
     )

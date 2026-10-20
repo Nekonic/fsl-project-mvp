@@ -15,11 +15,6 @@ class AttackerUnavailable(RangeUnavailable):
 class UnknownOrigin(ValueError):
     pass
 
-def _target_url(address: str) -> str:
-    parts = urlsplit(settings.TARGET_URL)
-    port = f":{parts.port}" if parts.port else ""
-    return f"{parts.scheme}://{address}{port}"
-
 def _way_in() -> str:
     roles = settings.RANGE.roles
     return roles.get("edge") or roles["gateway"]
@@ -28,7 +23,6 @@ def origins(described) -> list[dict]:
     box = settings.ATTACKER_SOURCE_CONTAINER
     terminal = settings.ATTACKER_CONTAINER
     way_in = _way_in()
-    by_name = "edge" in settings.RANGE.roles
 
     standing = [
         (segment, {node.name: node.address for node in segment.nodes})
@@ -47,13 +41,11 @@ def origins(described) -> list[dict]:
             "source_ip": addresses[box],
             "direct_ip": addresses.get(terminal, ""),
             "address": addresses.get(way_in) or segment.gateway,
-            "target_url": settings.ATTACKER_TARGET_URL if by_name
-            else _target_url(addresses[way_in]),
+            "target_url": settings.ATTACKER_TARGET_URL,
             "default": segment.id == settings.RANGE.default_origin,
         }
         for segment, addresses in standing
         if segment.origin and addresses.get(box)
-        and (by_name or addresses.get(way_in))
     ]
     return sorted(found, key=lambda origin: origin["id"])
 
@@ -71,18 +63,12 @@ def find(described, origin_id: str | None) -> dict:
         f"{[o['id'] for o in available]}"
     )
 
-def set_origin(address: str | None, proxy) -> None:
-    _write(proxy, settings.ATTACKER_ORIGIN_FILE, address)
-
 def wear_origin(chosen: dict, box) -> None:
-    if settings.ATTACKER_ORIGIN_MODE == "snat":
-        ran = box(["sudo", "/usr/local/sbin/set-origin", chosen["source_ip"]])
-        if not ran.ok:
-            raise AttackerUnavailable(
-                f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
-            )
-        return
-    set_origin(chosen["address"], box)
+    ran = box(["sudo", "/usr/local/sbin/set-origin", chosen["source_ip"]])
+    if not ran.ok:
+        raise AttackerUnavailable(
+            f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
+        )
 
 def set_label(case_id: str | None, proxy) -> None:
     _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)
@@ -116,11 +102,8 @@ ROUTE_SOURCE = re.compile(r"\bsrc (\S+)")
 RECORDS_BEGIN = "fsl.records="
 RECORDS_END = "=fsl.records"
 
-def _snat() -> bool:
-    return settings.ATTACKER_ORIGIN_MODE == "snat"
-
 def _as_root(script: str) -> list[str]:
-    return ["sudo", "sh", "-c", script] if _snat() else ["sh", "-c", script]
+    return ["sudo", "sh", "-c", script]
 
 def _ran(box, script: str, what: str, stdin: str | None = None, timeout: float = 60.0):
     ran = box(_as_root(script), stdin=stdin, timeout=timeout)
@@ -149,8 +132,8 @@ def customer_origins(described, unbound: str = "") -> list[dict]:
         addresses = sorted(
             {node.address for node in by_id[origin["id"]].nodes if node.name == box} - taken,
             key=ipaddress.ip_address,
-        ) if _snat() else []
-        if _snat() and not addresses:
+        )
+        if not addresses:
             continue
         found.append({"id": origin["id"], "label": origin["label"],
                       "target_url": origin["target_url"], "addresses": addresses})
@@ -160,7 +143,7 @@ def place_customers(box, program: str) -> None:
     account = (
         _customers_account()
         + f"install -d -m 0755 -o {CUSTOMERS_ACCOUNT} -g {CUSTOMERS_ACCOUNT} {CUSTOMERS_HOME}; "
-    ) if _snat() else f"install -d -m 0755 {CUSTOMERS_HOME}; "
+    )
     _ran(box, "set -e; " + account + f"cat > {CUSTOMERS_PROGRAM}.new; mv {CUSTOMERS_PROGRAM}.new {CUSTOMERS_PROGRAM}",
          "take the customers' program", stdin=program)
 
@@ -187,15 +170,12 @@ def _customers_account() -> str:
 
 def as_customer(source: str, address: str, port: int) -> list[str]:
     bridge = shlex.join(["python3", "-c", SITE_BRIDGE, source, address, str(port)])
-    if not _snat():
-        return ["sh", "-c", f"exec {bridge}"]
     return ["sudo", "sh", "-c", _customers_account()
             + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups {bridge}"]
 
 def run_customers(box, plan: str) -> bool:
-    owner = f"chown {CUSTOMERS_ACCOUNT}: {CUSTOMERS_PLAN}.new; " if _snat() else ""
-    user = (f"setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
-            if _snat() else "")
+    owner = f"chown {CUSTOMERS_ACCOUNT}: {CUSTOMERS_PLAN}.new; "
+    user = f"setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
     ran = _ran(box, (
         f"set -e; umask 077; cat > {CUSTOMERS_PLAN}.new; {owner}mv {CUSTOMERS_PLAN}.new {CUSTOMERS_PLAN}; "
         f"if {CUSTOMERS_RUNNING}; then echo fsl.customers=changed; exit 0; fi; "

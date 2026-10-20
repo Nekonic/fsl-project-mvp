@@ -165,26 +165,8 @@ def _hosts(entries) -> dict[str, Host]:
         for name, entry in (entries or {}).items()
     }
 
-def _overlaid(document: dict, flavor: str) -> dict:
-    overlay = (document.get(flavor) or {}) if flavor else {}
-    if not overlay:
-        return document
-    merged = dict(document)
-    merged["roles"] = {**(document.get("roles") or {}), **(overlay.get("roles") or {})}
-    merged["compose"] = {**(document.get("compose") or {}), **(overlay.get("compose") or {})}
-    if "watches" in overlay:
-        merged["watches"] = overlay["watches"]
-    hosts = {name: dict(entry) for name, entry in (document.get("hosts") or {}).items()}
-    for name, entry in (overlay.get("hosts") or {}).items():
-        hosts[name] = {**hosts.get(name, {}), **(entry or {})}
-    merged["hosts"] = hosts
-    return merged
-
-def flavor_for(substrate: str) -> str:
-    return "openstack" if substrate.startswith("range.openstack") else ""
-
-def read(path: Path = DECLARATION, flavor: str = "") -> Declaration:
-    document = _overlaid(yaml.safe_load(Path(path).read_text()) or {}, flavor)
+def read(path: Path = DECLARATION) -> Declaration:
+    document = yaml.safe_load(Path(path).read_text()) or {}
     entries = document.get("segments") or []
     origins = {entry["id"]: _origins(entry) for entry in entries}
     found = Declaration(

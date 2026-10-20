@@ -174,9 +174,8 @@ def test_a_prebuilt_image_the_cloud_already_holds_is_ready_with_no_builder():
     assert lacking.images[0].state == "missing" and "fsl-edge" in lacking.images[0].detail
     assert not lacking.clean
 
-@pytest.mark.parametrize("flavor", ["", "openstack"])
-def test_every_image_is_built_from_files_the_repo_holds(flavor):
-    hosts = declared.read(flavor=flavor).hosts
+def test_every_image_is_built_from_files_the_repo_holds():
+    hosts = declared.read().hosts
     built = {host: entry for host, entry in hosts.items() if entry.setup}
     assert built
     for host, entry in built.items():

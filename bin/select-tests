@@ -32,7 +32,7 @@ WHOLE_UNIT_SUITE = (
 )
 RANGE_FACING = (
     "wargames/", "redteam/", "deploy/", "platform/", "test/",
-    "compose.yaml", "session.yaml", "bin/acceptance",
+    "compose.yaml", "bin/acceptance",
 )
 NOT_RANGE_FACING = ("platform/tests/", "platform/console/", "test/durations.json")
 ACCEPTANCE_CONFTEST = "test/conftest.py"

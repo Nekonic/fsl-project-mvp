@@ -220,11 +220,12 @@ def test_an_override_file_is_refused_by_name(measure, tmp_path, name):
         measure.services()
 
 
-def test_included_services_are_the_wargame_surface_not_the_gate(measure, tmp_path):
+def test_a_wargame_s_services_are_counted_from_its_folder_and_an_included_file_is_gated(measure, tmp_path):
     (tmp_path / "compose.yaml").write_text(
-        "include:\n  - wargames/a/compose.yaml\n  - 'wargames/b/compose.yaml'\n"
+        "include:\n  - more.yaml\n"
         "services:\n  web:\n    image: a:1\n"
     )
+    (tmp_path / "more.yaml").write_text("services:\n  db:\n    image: b:1\n")
     for name, count in (("a", 2), ("b", 1)):
         (tmp_path / "wargames" / name).mkdir(parents=True)
         (tmp_path / "wargames" / name / "compose.yaml").write_text(
@@ -233,11 +234,13 @@ def test_included_services_are_the_wargame_surface_not_the_gate(measure, tmp_pat
             )
         )
 
-    assert measure.services() == 1, (
-        "the gate counts only the platform's own services; a wargame owns its "
-        "own, counted as the wargame surface, so adding a scenario is not a gated regression"
+    assert measure.services() == 2, (
+        "the platform VM runs what compose.yaml includes, so an included service is gated"
     )
-    assert measure.wargame_services() == 3
+    assert measure.wargame_services() == 3, (
+        "the wargame host runs each wargames/<id>/compose.yaml; its services are "
+        "the wargame surface, reported and not gated"
+    )
 
 
 INCLUDES_MEASURE_CANNOT_FOLLOW = {
@@ -290,23 +293,3 @@ def test_services_measure_cannot_count_are_refused_not_skipped(
 
     with pytest.raises(SystemExit, match=re.escape(named)):
         measure.services()
-
-
-def test_the_session_stack_s_own_services_are_gated_with_the_control_plane(measure, tmp_path):
-    (tmp_path / "compose.yaml").write_text("services:\n  platform:\n    image: a:1\n")
-    (tmp_path / "session.yaml").write_text(
-        "include:\n  - wargames/a/compose.yaml\n"
-        "services:\n  waf:\n    image: a:1\n  sensor:\n    image: b:1\n"
-    )
-    (tmp_path / "wargames" / "a").mkdir(parents=True)
-    (tmp_path / "wargames" / "a" / "compose.yaml").write_text(
-        "services:\n  board:\n    image: c:1\n"
-    )
-
-    assert measure.services() == 3, (
-        "a service moved out of compose.yaml into the session stack still runs "
-        "for every session; leaving it uncounted lets the gate fall for free"
-    )
-    assert measure.wargame_services() == 1
-
-

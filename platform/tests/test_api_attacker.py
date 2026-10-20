@@ -69,8 +69,7 @@ def test_a_terminal_window_is_recorded_as_a_window_case(client):
     assert created.json()["source_ip"] == "172.20.0.7"
 
 
-def test_on_snat_mode_choosing_an_origin_wears_its_source_address(client, settings):
-    settings.ATTACKER_ORIGIN_MODE = "snat"
+def test_choosing_an_origin_wears_its_source_address(client):
     worn = []
 
     def runner(argv, stdin=None, timeout=60.0):
@@ -83,14 +82,12 @@ def test_on_snat_mode_choosing_an_origin_wears_its_source_address(client, settin
     assert response.status_code == 200
     [(argv, stdin)] = worn
     assert argv == ["sudo", "/usr/local/sbin/set-origin", "172.20.0.7"], (
-        "snat mode rewrites the box's outgoing source to the origin's address, "
-        "which the port already owns; it does not write the host-rewrite file"
+        "the box's outgoing source is rewritten to the origin's address, "
+        "which the port already owns"
     )
     assert stdin is None
 
-def test_on_snat_mode_a_source_the_box_refused_is_503(client, settings):
-    settings.ATTACKER_ORIGIN_MODE = "snat"
-
+def test_a_source_the_box_refused_is_503(client):
     with stub(proxy=refusing), patch("api.views.attacker.origins", return_value=HOME):
         response = client.post_json("/api/attacker/origin/", {"origin": "edge"})
 

@@ -7,11 +7,11 @@ from range.declared import Declaration, Host
 
 DECLARATION = pathlib.Path(declared.__file__).resolve().parent / "declaration.yaml"
 
-def openstack():
-    return declared.read(DECLARATION, flavor="openstack")
+def read():
+    return declared.read(DECLARATION)
 
-def test_the_openstack_flavor_puts_opnsense_at_the_edge_as_the_sensor():
-    d = openstack()
+def test_opnsense_stands_at_the_edge_as_the_sensor():
+    d = read()
 
     assert d.roles["edge"] == "fsl-edge"
     assert d.roles["sensor"] == "fsl-edge"
@@ -21,13 +21,12 @@ def test_the_openstack_flavor_puts_opnsense_at_the_edge_as_the_sensor():
     )
     assert d.watches == {"sensor": "edge", "estate-sensor": "wargames"}
 
-def test_the_openstack_flavor_watches_the_inside_leg_on_the_wargame_host():
-    d = openstack()
+def test_the_wargame_host_watches_the_inside_leg():
+    d = read()
 
     assert d.roles["estate-sensor"] == "fsl-wargame-host"
     assert d.compose["estate-sensor"] == "suricata", (
-        "docker's sensor sees the WAF's leg to the target too; on openstack the "
-        "edge sees only the wan, so the wargame host runs the same sensor image"
+        "the edge sees only the wan, so the wargame host runs a sensor on the WAF's leg to the target"
     )
     host = d.hosts["fsl-wargame-host"]
     assert host.rules == "/var/lib/suricata/rules/local.rules"
@@ -40,15 +39,8 @@ def test_the_openstack_flavor_watches_the_inside_leg_on_the_wargame_host():
         "configctl ids reload sends USR2 and returns before they are"
     )
 
-def test_the_docker_flavor_keeps_one_sensor_and_no_overlay_compose_role():
-    d = declared.read()
-
-    assert d.watches == {"sensor": "gateway"}
-    assert "estate-sensor" not in d.compose
-    assert "edge" not in d.roles and "fsl-edge" not in d.hosts
-
-def test_the_openstack_flavor_adds_the_edge_and_kali_and_takes_the_waf_off_the_internet():
-    d = openstack()
+def test_the_edge_and_kali_stand_on_the_internet_and_the_waf_behind_the_edge():
+    d = read()
 
     assert d.hosts["fsl-edge"].segments == ("internet", "estate", "mgmt"), (
         "the NIC order is the order OPNsense numbers vtnet0, vtnet1, vtnet2 in, "

@@ -1,42 +1,6 @@
 name: fsl
 
 networks:
-  edge:
-    labels:
-      fsl.segment.id: "ru"
-      fsl.segment: "Internet"
-      fsl.origin: "Russia"
-    ipam:
-      config:
-        - subnet: 5.188.10.0/24
-
-  edge-br:
-    labels:
-      fsl.segment.id: "br"
-      fsl.segment: "Internet"
-      fsl.origin: "Brazil"
-    ipam:
-      config:
-        - subnet: 177.54.144.0/24
-
-  edge-hk:
-    labels:
-      fsl.segment.id: "hk"
-      fsl.segment: "Internet"
-      fsl.origin: "Hong Kong"
-    ipam:
-      config:
-        - subnet: 103.152.220.0/24
-
-  edge-us:
-    labels:
-      fsl.segment.id: "us"
-      fsl.segment: "Internet"
-      fsl.origin: "United States"
-    ipam:
-      config:
-        - subnet: 73.0.0.0/24
-
   mgmt:
     labels:
       fsl.segment.id: "mgmt"
@@ -119,10 +83,6 @@ services:
     depends_on:
       elasticsearch: {condition: service_healthy}
     networks:
-      edge: {gw_priority: 1}
-      edge-br: {}
-      edge-hk: {}
-      edge-us: {}
       mgmt: {}
     ports:
       - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
@@ -150,7 +110,6 @@ services:
       - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
-      - ./session.yaml:/src/session.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/fsl-gns3:/run/fsl-gns3:ro
       - platformdata:/data

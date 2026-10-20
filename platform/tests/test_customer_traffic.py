@@ -102,10 +102,9 @@ def _openstack_shape():
 @pytest.fixture
 def on_openstack(settings):
     from range import declared
-    settings.RANGE = declared.read(flavor="openstack")
+    settings.RANGE = declared.read()
     settings.ATTACKER_SOURCE_CONTAINER = KALI
     settings.ATTACKER_CONTAINER = KALI
-    settings.ATTACKER_ORIGIN_MODE = "snat"
     settings.ATTACKER_TARGET_URL = "http://board.com"
 
 def test_customers_never_take_an_address_the_attacker_sends_from(on_openstack):
@@ -118,19 +117,6 @@ def test_customers_never_take_an_address_the_attacker_sends_from(on_openstack):
     assert "au" not in found, "the box's unbound source is the attacker's when it wears no origin"
     assert worn["kr"] not in found["kr"] and worn["us"] not in found["us"]
     assert found["kr"] and found["us"]
-
-def test_with_a_per_origin_way_in_customers_get_their_own_container_address(settings):
-    settings.ATTACKER_ORIGIN_MODE = "host-rewrite"
-    settings.ATTACKER_SOURCE_CONTAINER = "fsl-proxy"
-    settings.ATTACKER_CONTAINER = "fsl-kali"
-    us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
-                 nodes=(Node("fsl-proxy", "73.0.0.5"), Node("fsl-waf", "73.0.0.9")))
-    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("fsl-proxy", "5.188.10.5"), Node("fsl-waf", "5.188.10.9")))
-
-    found = attacker.customer_origins(Shape(segments=(us, ru), sensors=()))
-
-    assert found == [{"id": "us", "label": "United States", "target_url": "http://73.0.0.9", "addresses": []}]
 
 def test_the_unbound_source_is_read_from_the_boxs_route_to_the_target(on_openstack):
     seen = []
@@ -180,34 +166,6 @@ def test_records_are_cut_out_of_whatever_else_the_box_said():
         return Ran(0, 'fsl.records=\n{"marker":"a"}\n{"mar\n=fsl.records\nsudo: unable to resolve host\n')
 
     assert attacker.customer_records(box, 0, 100) == '{"marker":"a"}\n{"mar'
-
-@pytest.mark.stands_in_for_docker
-def test_on_docker_the_customers_get_a_container_of_their_own_on_their_origins(tmp_path, monkeypatch):
-    import stat
-    from range import declared, docker
-    log = tmp_path / "docker.log"
-    stand_in = tmp_path / "docker"
-    stand_in.write_text(
-        "#!/bin/sh\n"
-        f'echo "$@" >> {log}\n'
-        'case "$1" in\n'
-        '  network) [ "$2" = ls ] && { seg="${4##*=}"; echo "fsl_edge-$seg fsl $seg"; }; exit 0;;\n'
-        '  exec) shift; [ "$1" = -i ] && shift; shift; exec "$@";;\n'
-        "esac\nexit 0\n"
-    )
-    stand_in.chmod(stand_in.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
-
-    box = docker.Docker(declared=declared.read(), project="fsl", session=7).users_box(["us", "hk"], "fsl-kali:dev")
-    ran = box(["echo", "inside"])
-    said = log.read_text().splitlines()
-
-    assert ran.output.strip() == "inside"
-    started = next(line for line in said if line.startswith("run "))
-    assert "--name fsl-7-users" in started and "--network fsl_edge-us" in started
-    assert "--label fsl.customers=7" in started and started.endswith("fsl-kali:dev infinity")
-    assert "network connect fsl_edge-hk fsl-7-users" in said
-    assert any(line.startswith("exec fsl-7-users ") for line in said)
 
 def _program():
     spec = importlib.util.spec_from_file_location("customers_program", REPO / "deploy/traffic/users.py")

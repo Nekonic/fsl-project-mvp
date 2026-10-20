@@ -56,25 +56,17 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
 
-FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.docker.Docker")
-RANGE = declared.read(flavor=declared.flavor_for(FSL_SUBSTRATE))
+FSL_SUBSTRATE = os.environ.get("FSL_SUBSTRATE", "range.openstack.connect")
+RANGE = declared.read()
 
 ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
 ATTACKER_LABEL_FILE = "/var/lib/session/active"
-ATTACKER_ORIGIN_FILE = "/var/lib/session/origin"
 ATTACKER_TERMINAL_URL = "/vm-terminal/kali/"
-ATTACKER_SESSION_TERMINAL_URL = (
-    "/terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/kali/?arg={session}"
-)
+ATTACKER_SESSION_TERMINAL_URL = "/vm-terminal/kali/?arg={session}"
 WAF_TERMINAL_URL = "/vm-terminal/waf/"
-WAF_SESSION_TERMINAL_URL = (
-    "/waf-terminal/{session}/" if FSL_SUBSTRATE == "range.docker.Docker" else "/vm-terminal/waf/?arg={session}"
-)
+WAF_SESSION_TERMINAL_URL = "/vm-terminal/waf/?arg={session}"
 SITE_PORT = 8002
-ATTACKER_ORIGIN_MODE = os.environ.get(
-    "ATTACKER_ORIGIN_MODE", "snat" if "edge" in RANGE.roles else "host-rewrite"
-)
 ATTACKER_TARGET_URL = os.environ.get("ATTACKER_TARGET_URL", os.environ.get("PUBLIC_TARGET_URL", "http://board.com"))
 
 TARGET_URL = os.environ.get("TARGET_URL", "http://board.com")
@@ -89,8 +81,7 @@ ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
-    {"range.docker.Docker": "logs-{session}-*",
-     "range.openstack.connect": "logs-{slot}-*"}.get(FSL_SUBSTRATE, ""),
+    {"range.openstack.connect": "logs-{slot}-*"}.get(FSL_SUBSTRATE, ""),
 )
 
 READY_SKEW = float(os.environ.get("FSL_READY_SKEW", "5"))
@@ -124,7 +115,7 @@ def waf_layout(shape):
 
 FSL_WAF = waf_layout(RANGE)
 FSL_SOURCE = os.environ.get("FSL_SOURCE", str(BASE_DIR.parent))
-FSL_TOPOLOGY = Path(FSL_SOURCE) / "deploy" / "topology" / f"range-{declared.flavor_for(FSL_SUBSTRATE) or 'docker'}.gns3"
+FSL_TOPOLOGY = Path(FSL_SOURCE) / "deploy" / "topology" / "range-openstack.gns3"
 FSL_GNS3_URL = os.environ.get("FSL_GNS3_URL", "")
 FSL_GNS3_USER = os.environ.get("FSL_GNS3_AUDITOR_USER") or "learner"
 FSL_GNS3_PASSWORD = os.environ.get("FSL_GNS3_AUDITOR_PASSWORD", "")
@@ -136,11 +127,6 @@ FSL_GNS3_ADMIN_PASSWORD_FILE = Path(os.environ.get("FSL_GNS3_ADMIN_PASSWORD_FILE
 
 FSL_SUBSTRATE_OPTIONS = dict(
     {
-        "range.docker.Docker": {
-            "project": os.environ.get("FSL_PROJECT", "fsl"),
-            "session_file": os.path.join(FSL_SOURCE, "session.yaml"),
-            "max_sessions": int(os.environ.get("FSL_MAX_SESSIONS") or 2),
-        },
         "range.openstack.connect": {
             name: os.environ.get(variable, "")
             for name, variable in {

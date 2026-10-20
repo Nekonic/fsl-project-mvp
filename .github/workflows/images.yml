@@ -23,8 +23,6 @@ jobs:
           - {name: board, context: wargames/board/app}
           - {name: corp, context: wargames/corp/app}
           - {name: corp-db, context: wargames/corp/db}
-          - {name: kali, context: deploy/kali}
-          - {name: proxy, context: deploy/proxy}
           - {name: gns3, context: deploy/gns3}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

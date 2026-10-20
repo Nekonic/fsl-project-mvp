@@ -21,15 +21,6 @@ def origins():
     ]
 
 
-def edges():
-    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
-    return [
-        ipaddress.ip_network(entry["ipam"]["config"][0]["subnet"])
-        for entry in compose["networks"].values()
-        if entry.get("labels", {}).get("fsl.origin")
-    ]
-
-
 def test_a_session_estate_from_any_default_pool_is_home():
     outside = [
         pool for pool in DOCKER_DEFAULT_POOLS
@@ -42,11 +33,8 @@ def test_a_session_estate_from_any_default_pool_is_home():
     )
 
 
-def test_home_holds_no_origin_except_the_waf_s_own_edges():
+def test_home_holds_no_origin_in_its_private_ranges():
     private = [net for net in home_net() if net.is_private]
     inside = [str(o) for o in origins() if any(o.overlaps(net) for net in private)]
 
     assert not inside, f"origins {inside} fall in HOME_NET's private ranges"
-    assert {net for net in home_net() if not net.is_private} == set(edges()), (
-        "HOME_NET lists outside subnets that are not the WAF's edges"
-    )

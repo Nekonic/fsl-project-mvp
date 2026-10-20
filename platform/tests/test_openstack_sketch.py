@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from range import declared, docker, openstack, ports
+from range import declared, openstack, ports
 from range.ports import RangeUnavailable
 
 CLOUD = openstack.Cloud(
@@ -97,11 +97,11 @@ def sketch(networks=None):
     return openstack.OpenStack(declared.read(), CLOUD, get=cloud_reader(networks))
 
 
-def test_the_sketch_offers_the_same_port_the_docker_adapter_does():
-    for verb in ("describe", "runner", "launcher"):
+def test_the_sketch_offers_the_port_every_substrate_offers():
+    for verb in ("describe", "segments", "runner", "launcher"):
         assert inspect.signature(
             getattr(openstack.OpenStack, verb)
-        ) == inspect.signature(getattr(docker.Docker, verb))
+        ).parameters == inspect.signature(getattr(ports.Substrate, verb)).parameters
 
 
 def test_the_cloud_supplies_only_what_it_allocated():
@@ -285,7 +285,7 @@ def test_a_host_is_reached_on_management_when_no_segment_is_named(monkeypatch):
 
 def test_the_board_is_addressed_on_management_not_on_the_estate():
     servers = {"servers": [{
-        "name": "fsl-wg-board",
+        "name": "fsl-wargame-host",
         "addresses": {
             "range1-estate-v4": [{"addr": "10.20.0.9", "OS-EXT-IPS:type": "fixed"}],
             "range1-mgmt-v4": [{"addr": "172.31.0.9", "OS-EXT-IPS:type": "fixed"}],

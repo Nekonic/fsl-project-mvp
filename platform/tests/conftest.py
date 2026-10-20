@@ -34,28 +34,12 @@ def no_scenario_engine_thread():
         yield
 
 @pytest.fixture(autouse=True)
-def no_real_substrate(request):
-    import subprocess
+def no_real_range(settings):
+    from tests import standin
 
-    if request.node.get_closest_marker("stands_in_for_docker"):
-        yield
-        return
-
-    real = subprocess.run
-
-    def refuse(argv, **kwargs):
-        if argv and argv[0] == "docker":
-            from range.ports import RangeUnavailable
-
-            raise RangeUnavailable(
-                f"this unit test supplied no range, so {' '.join(argv[:3])} "
-                f"was refused. Production code sees the same state when the "
-                f"substrate is down; a test that needs a range must stub "
-                f"api.views.substrate"
-            )
-        return real(argv, **kwargs)
-
-    with patch("range.docker.subprocess.run", refuse):
+    settings.FSL_SUBSTRATE = "tests.standin.StandIn"
+    with patch("api.views._aim_attacker", lambda adapter: None), \
+            patch("subprocess.Popen", standin.refusing_docker()):
         yield
 
 @pytest.fixture(autouse=True)
@@ -91,16 +75,6 @@ def no_real_effect_read(request):
 
     with patch("api.views.effect.snapshot", refuse_snapshot), \
             patch("api.views.effect.read_changes", refuse_changes):
-        yield
-
-@pytest.fixture(autouse=True)
-def no_real_session_stack(request):
-    if request.node.get_closest_marker("opens_session_stack"):
-        yield
-        return
-    with patch("range.docker.Docker.open_session", lambda self, session_id, live=(): None), \
-            patch("range.docker.Docker.address", lambda self, role: ""), \
-            patch("api.views._aim_attacker", lambda adapter: None):
         yield
 
 @pytest.fixture(autouse=True)

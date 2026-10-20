@@ -229,7 +229,6 @@ resources:
                   RemainAfterExit=yes
                   TimeoutStartSec=0
                   ExecStartPre=-/usr/bin/docker compose -f /opt/fsl/compose.yaml pull --quiet
-                  ExecStartPre=-/usr/bin/docker compose -f /opt/fsl/session.yaml pull --quiet
                   ExecStart=/usr/bin/docker compose -f /opt/fsl/compose.yaml up -d
                   [Install]
                   WantedBy=multi-user.target
