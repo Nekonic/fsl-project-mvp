@@ -83,11 +83,14 @@ def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(
 
 def test_a_host_in_the_range_is_refused_the_terminal(session, platform_addresses):
     answered = {
-        address: fetched(
-            BOARD, f"http://{address}:8000/terminal/", session,
+        (address, pane): fetched(
+            BOARD, f"http://{address}:8000/vm-terminal/{pane}/", session,
             "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: localhost:8000",
         ).strip()
         for address in platform_addresses
+        for pane in ("kali", "waf")
     }
 
-    assert all(code in ("403", "000", "") for code in answered.values()), answered
+    assert all(code in ("403", "000") for code in answered.values()), (
+        f"{answered}: 403 is the terminal's auth_request refusing a range host and 000 is "
+        f"no route to the platform; an empty answer means curl never ran")

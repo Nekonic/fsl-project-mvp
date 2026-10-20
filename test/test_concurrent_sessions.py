@@ -14,20 +14,24 @@ def _open() -> int:
 
 @pytest.fixture(scope="module")
 def two_sessions(stack_is_up):
-    first, second = _open(), _open()
-    sent = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{first}/attacks/", json={"case": CASE}, timeout=300,
-    )
-    assert sent.status_code == 201, sent.text
+    opened = [_open()]
+    try:
+        opened.append(_open())
+        first, second = opened
+        sent = requests.post(
+            f"{PLATFORM_URL}/api/sessions/{first}/attacks/", json={"case": CASE}, timeout=300,
+        )
+        assert sent.status_code == 201, sent.text
 
-    def case_detected(totals):
-        return any(c["name"] == CASE and c["detected"] for c in totals["per_case"])
+        def case_detected(totals):
+            return any(c["name"] == CASE and c["detected"] for c in totals["per_case"])
 
-    score_when_ready(first, until=case_detected)
-    requests.post(f"{PLATFORM_URL}/api/sessions/{second}/ingest/", timeout=120)
-    yield first, second, sent.json()["case_id"]
-    for session_id in (first, second):
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
+        score_when_ready(first, until=case_detected)
+        requests.post(f"{PLATFORM_URL}/api/sessions/{second}/ingest/", timeout=120)
+        yield first, second, sent.json()["case_id"]
+    finally:
+        for session_id in opened:
+            requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
 
 def test_both_sessions_stay_open_at_once(two_sessions):
