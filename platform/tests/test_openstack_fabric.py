@@ -141,6 +141,11 @@ def test_building_on_an_empty_project_makes_the_whole_fabric_with_no_way_out_of_
     [mgmt] = [s for s in cloud.subnets if s["network_id"] == network_of(cloud, fabric.MANAGEMENT)["id"]]
     assert mgmt["gateway_ip"] is None and mgmt["enable_dhcp"] is True
 
+def test_no_range_subnet_announces_a_dns_resolver_because_the_range_has_no_internet(cloud, adapter):
+    adapter.ensure_fabric()
+
+    assert {tuple(s["dns_nameservers"]) for s in cloud.subnets} == {("0.0.0.0",)}
+
 def test_the_platform_makes_its_own_key_and_keeps_it_private(cloud, adapter, tmp_path):
     adapter.ensure_fabric()
 
