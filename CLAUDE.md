@@ -38,7 +38,7 @@ messages, PR descriptions, documents, the state and decision files — because
 Korean costs about twice the tokens per line and every session re-reads them.
 Code carries no comments in any language.
 
-Korean belongs in exactly four places, nowhere else:
+Korean belongs in exactly four places among the documentation and the console:
 
 - `*.ko.md` — a document for Korean readers. The English file is canonical; add
   a `.ko.md` beside it only when the user asks (as with `README.ko.md` and
@@ -50,11 +50,18 @@ Korean belongs in exactly four places, nowhere else:
   id mapped one to one, and differs only in the drawing text and the project
   id and name. Change both together; a test holds the pair.
 - `platform/console/templates/console/strings.html` — the console's `en`/`ko`
-  string table, the only template allowed Korean, enforced by a test.
+  string table, the only console template allowed Korean, enforced by a test.
 - `docs/vocabulary.md` — term translations and their sources.
 
 Leave the last two unread unless you are editing them, and do not read the
 archived `docs/superpowers/plans/`.
+
+Korean in code is the exception, in three kinds only: the board target's
+site, which is a Korean site by design (`wargames/board/app/posts/templates/`,
+`posts/management/commands/seed.py`); test inputs standing in for Korean
+learner text (`platform/tests/test_lesson_path.py` and the like); and matching
+code, as `platform/api/views.py` matching the Korean map label suffix for "network". Do not add
+more.
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -97,21 +104,27 @@ alert that does not mention the attack's mechanism is reported
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
   configuration and the nginx reload, `kibana.py` the only one that knows the
   Kibana API, `gns3.py` the only one that knows the GNS3 API (its container's
-  own `deploy/gns3/provision.py` aside), `attacker.py` the only one that knows
-  the attacker box, and the loot
+  own `deploy/gns3/provision.py` and `auditor.html`, served as `map.html`,
+  aside), `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
   `range/opnsense.py` (with `deploy/opnsense/`) configures and restarts
-  Suricata on the OPNsense edge (OpenStack), and the sensor host in
-  `declaration.yaml` names the rule file and reload command `rules/suricata.py`
-  is handed;
+  Suricata on the OPNsense edge (OpenStack), and each sensor host in
+  `declaration.yaml` (the edge and the wargame host) names the rule file and
+  reload command `rules/suricata.py` is handed;
   `range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and
   starts the estate sensor on the wargame host when a slot is configured or reset;
+  `range/waf.py` reads the `SecAuditLog` path from `deploy/waf/modsecurity.conf`
+  to forward the audit log; `platform/nginx.conf` names the Kibana API routes
+  it refuses and answers Kibana's `api/spaces/space` lookup itself, and
+  `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `fsl-kali`; `waf-terminal.sh` docker-execs into the session's WAF
+  names `fsl-kali` (`nginx.conf`'s Kali terminal route names
+  `fsl-$session-kali-1:7681` by convention, like `waf-terminal.sh`);
+  `waf-terminal.sh` docker-execs into the session's WAF
   (on OpenStack the WAF pane is `vm-terminal.sh fsl-waf`) and foundation F6's
   step commands name the exclusion file and the nginx reload, which
   `wargames.lesson` fills in from the declaration. `docs/ARCHITECTURE.md` keeps
