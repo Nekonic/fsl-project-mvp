@@ -17,6 +17,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import NamedTuple
 
@@ -25,10 +26,24 @@ TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
 CLOUD = ROOT / "deploy/openstack/cloud.yaml"
 WORKFLOW = ROOT / ".github/workflows/images.yml"
 LOADER = ROOT / "platform/range/cloud.py"
+BACKUP = ROOT / "bin/backup"
+BACKUPS = ROOT / "backups"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
 CHECKOUT = "/opt/fsl"
+VENV_COMMAND = (
+    "exec 9>/tmp/fsl-venv.lock && flock 9 && "
+    f"python3 -m venv {CHECKOUT}/.venv && "
+    f"{CHECKOUT}/.venv/bin/pip install --quiet -r {CHECKOUT}/platform/requirements.txt"
+)
 SSH_WAIT = 900
 API_WAIT = 1200
+CONTAINER_WAIT = 120
+STORE_DIRECTORY = "/var/lib/docker/volumes/fsl_platformdata/_data"
+STORE_PROBE = (
+    "command -v docker >/dev/null || exit 0; "
+    "sudo docker ps -q --filter 'name=^fsl-platform$' --filter status=running || exit 3; "
+    f"sudo test -e {STORE_DIRECTORY}/db.sqlite3 && echo stored; exit 0"
+)
 REGISTRY = "ghcr.io"
 OWNER = "nekonic"
 BUILDER = "fsl-build-"
@@ -93,9 +108,17 @@ def load(args: argparse.Namespace, environ=os.environ, which=shutil.which):
         environment = cloud.cli_environment(environ)
     except module.Invalid as invalid:
         raise Refused(f"{Path(sys.argv[0]).name}: {invalid}") from invalid
-    if which("openstack") is None:
-        raise Refused(f"{Path(sys.argv[0]).name}: no openstack CLI on PATH (pip install python-openstackclient python-heatclient)")
+    if openstack_cli(which) is None:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: no openstack CLI beside {Path(sys.executable).parent} or on PATH "
+            f"(pip install python-openstackclient python-heatclient into the environment that runs this)"
+        )
     return cloud, environment
+
+
+def openstack_cli(which=shutil.which) -> str | None:
+    beside = Path(sys.executable).parent / "openstack"
+    return str(beside) if beside.is_file() else which("openstack")
 
 
 def commit_of(repository: str, ref: str) -> str:
@@ -140,6 +163,8 @@ def refuse_unless_published(tag: str, lookup=published, sideloaded=()) -> None:
 
 
 def run(argv: list[str], stdin: bytes | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    if argv[0] == "openstack":
+        argv = [openstack_cli() or "openstack", *argv[1:]]
     print("+", " ".join(shlex.quote(a) for a in argv), flush=True)
     done = subprocess.run(argv, input=stdin, capture_output=True)
     if check and done.returncode != 0:
@@ -189,7 +214,7 @@ def head_commit(run=run) -> str:
 
 def build_contexts() -> dict[str, str]:
     import yaml
-    matrix = yaml.safe_load(WORKFLOW.read_text())["jobs"]["image"]["strategy"]["matrix"]["include"]
+    matrix = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["image"]["strategy"]["matrix"]["include"]
     return {entry["name"]: entry["context"] for entry in matrix}
 
 
@@ -243,10 +268,22 @@ def refuse_if_busy(stack: str, status: str | None) -> None:
         raise Refused(f"{Path(sys.argv[0]).name}: stack {stack} is {status}; wait for Heat to finish")
 
 
+def standing_address(stack: str, status: str | None, run=run) -> str | None:
+    if status is None or failed(status):
+        return None
+    address = address_of(stack, run)
+    if address is None:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: stack {stack} is {status} but its address output cannot be read, "
+            f"so nothing was deleted; openstack stack output show {stack} address says why"
+        )
+    return address
+
+
 def working_address(stack: str, run=run) -> str | None:
     status = stack_status(stack, run)
     refuse_if_busy(stack, status)
-    return None if status is None or failed(status) else address_of(stack, run)
+    return standing_address(stack, status, run)
 
 
 def stack_network(stack: str, run=run) -> str | None:
@@ -294,14 +331,28 @@ class Host:
 
     def wait(self) -> None:
         deadline = time.monotonic() + SSH_WAIT
-        while self.ssh("true", check=False).returncode != 0:
+        while True:
+            tried = self.ssh("true", check=False)
+            if tried.returncode == 0:
+                return
             if time.monotonic() > deadline:
-                raise Refused(f"platform-rebuild: {self.target} took no ssh within {SSH_WAIT}s")
+                said = tried.stderr.decode(errors="replace").strip()
+                raise Refused(f"platform-rebuild: {self.target} took no ssh within {SSH_WAIT}s; "
+                              f"the last attempt said: {said[-400:] or 'nothing'}")
             time.sleep(10)
 
 
-def keep_range_key(key: Path, old: Host | None) -> None:
+def make_range_key(key: Path, run=run) -> None:
+    key.parent.mkdir(parents=True, exist_ok=True)
+    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "fsl-range", "-f", str(key)])
+    print(f"made the range key at {key}")
+
+
+def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) -> None:
     if key.is_file():
+        return
+    if old is None and first:
+        make_range_key(key, run)
         return
     if old is None:
         raise Refused(
@@ -318,6 +369,17 @@ def keep_range_key(key: Path, old: Host | None) -> None:
     print(f"kept the platform's range key at {key}")
 
 
+def holds_store(old: Host) -> bool:
+    asked = old.ssh(STORE_PROBE, check=False)
+    if asked.returncode != 0:
+        said = asked.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: cannot tell whether {old.target} holds the platform's store "
+            f"(ssh exited {asked.returncode}: {said[-300:] or 'nothing'}), so nothing was deleted"
+        )
+    return bool(asked.stdout.strip())
+
+
 def back_up(old: Host, keep: int = 1) -> Path:
     environ = {**os.environ, "FSL_PLATFORM_EXEC": shlex.join(
         ["ssh", *old.options, old.target, "sudo docker exec -i fsl-platform python -"])}
@@ -327,6 +389,40 @@ def back_up(old: Host, keep: int = 1) -> Path:
         raise Refused(f"platform-rebuild: no backup, so nothing was deleted: {done.stderr.strip()}")
     print(done.stdout, end="")
     return Path(done.stdout.splitlines()[0])
+
+
+def backup_module():
+    loader = SourceFileLoader("fsl_backup", str(BACKUP))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("fsl_backup", loader))
+    loader.exec_module(module)
+    return module
+
+
+def holds_rows(kept: Path, check) -> bool:
+    try:
+        return any(check(kept.resolve()).values())
+    except SystemExit:
+        return False
+
+
+def newest_backup() -> Path | None:
+    backup = backup_module()
+    stamped = sorted((path for path in BACKUPS.glob("db-*.sqlite3") if backup.STAMPED.fullmatch(path.name)),
+                     reverse=True)
+    return next((path for path in stamped if holds_rows(path, backup.check)), None)
+
+
+def store_to_restore(kept: Path | None) -> Path | None:
+    if kept is not None:
+        if holds_rows(kept, backup_module().check):
+            return kept
+        print(f"{kept.name} holds no rows, so the newest backup that does is restored instead")
+    newest = newest_backup()
+    if newest is None:
+        print(f"no backup in {BACKUPS} holds any rows, so the platform starts with an empty store")
+    else:
+        print(f"restoring {newest}, the newest backup in {BACKUPS} that holds rows")
+    return newest
 
 
 def reserved_floating_ip(address: str, run=run) -> str:
@@ -366,6 +462,8 @@ def side_load(new: Host, sideload: Sideload) -> None:
     new.copy(sideload.bundle, f"/tmp/{sideload.bundle.name}")
     new.ssh(f"git -C {CHECKOUT} fetch -q /tmp/{sideload.bundle.name} HEAD "
             f"&& git -C {CHECKOUT} checkout -q --detach {sideload.commit} && rm /tmp/{sideload.bundle.name}")
+    new.ssh(f"sudo systemd-run --collect --no-block --unit=fsl-venv-checkout --uid=ubuntu --gid=ubuntu "
+            f"sh -c {shlex.quote(VENV_COMMAND)}")
     for name, tarball in sideload.tarballs.items():
         image = f"{REGISTRY}/{OWNER}/fsl-{name}"
         new.copy(tarball.path, f"/tmp/{tarball.path.name}")
@@ -379,13 +477,47 @@ def platform_settings(password: str, sideload: Sideload | None) -> str:
     return f"FSL_OPENSTACK_PASSWORD={password}\n{named}"
 
 
+def settings_rewrite(sideload: Sideload | None) -> str:
+    owned = ("FSL_OPENSTACK_PASSWORD",) + (("FSL_SIDELOADED",) if sideload else ())
+    unowned = " ".join(f"-e '^{name}='" for name in owned)
+    settings = f"{CHECKOUT}/openstack.env"
+    kept = f"{settings}.kept"
+    return f"umask 077 && {{ grep -v {unowned} {settings} > {kept}; cat {kept} - > {settings} && rm {kept}; }}"
+
+
+def start_platform(host: Host) -> None:
+    running = "[ \"$(sudo docker inspect -f '{{.State.Running}}' fsl-platform 2>/dev/null)\" = true ]"
+    started = host.ssh(
+        f"cd {CHECKOUT} && sudo docker compose -f {CHECKOUT}/compose.yaml up -d platform >/dev/null "
+        f"&& for _ in $(seq {CONTAINER_WAIT // 2}); do {running} && exit 0; sleep 2; done; exit 1",
+        check=False,
+    )
+    if started.returncode != 0:
+        said = started.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"platform-rebuild: the fsl-platform container on {host.target} is not running and did not "
+            f"start within {CONTAINER_WAIT}s (ssh exited {started.returncode}: {said[-300:] or 'nothing'}); "
+            f"read `sudo docker compose -f {CHECKOUT}/compose.yaml logs platform` there"
+        )
+
+
 def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
               sideload: Sideload | None = None) -> None:
     compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
-    new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform")
+    brought_up = new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform",
+                         check=False)
+    if brought_up.returncode != 0:
+        said = brought_up.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"platform-rebuild: fsl-platform.service is not active on {new.target} (ssh exited "
+            f"{brought_up.returncode}: {said[-300:] or 'nothing'}); its first boot did not finish. Read "
+            f"`sudo cloud-init status --long` and `sudo journalctl -u fsl-platform` there. Nothing is "
+            f"stored on it yet, so `bin/cloud up --replace` makes it again and restores the newest "
+            f"backup in backups/"
+        )
     if sideload is not None:
         side_load(new, sideload)
-    new.ssh(f"cat >> {CHECKOUT}/openstack.env", platform_settings(password, sideload).encode())
+    start_platform(new)
     new.ssh(
         "sudo docker exec -i -u fsl fsl-platform sh -c "
         + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "
@@ -401,23 +533,62 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
             "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
+    new.ssh(settings_rewrite(sideload), platform_settings(password, sideload).encode())
     new.ssh(f"cd {CHECKOUT} && {compose} up -d" + (" --force-recreate" if sideload else " platform"))
 
 
-def wait_for_api(address: str) -> None:
+def api_answers(address: str) -> bool:
     url = f"http://{address}:8000/api/sessions/"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as answer:
+            return answer.status == 200
+    except OSError:
+        return False
+
+
+def wait_for_api(address: str) -> None:
     deadline = time.monotonic() + API_WAIT
     while True:
-        try:
-            with urllib.request.urlopen(url, timeout=10) as answer:
-                if answer.status == 200:
-                    print(f"{url} answers")
-                    return
-        except OSError:
-            pass
+        if api_answers(address):
+            print(f"http://{address}:8000/api/sessions/ answers")
+            return
         if time.monotonic() > deadline:
-            raise Refused(f"platform-rebuild: {url} did not answer within {API_WAIT}s")
+            raise Refused(f"platform-rebuild: http://{address}:8000/api/sessions/ did not answer within {API_WAIT}s")
         time.sleep(10)
+
+
+def hand_over_done(host: Host) -> bool:
+    settings = f"{CHECKOUT}/openstack.env"
+    asked = host.ssh(f"sudo test -e {settings} || exit 1; sudo grep -q '^FSL_OPENSTACK_PASSWORD=' {settings}",
+                     check=False)
+    if asked.returncode in (0, 1):
+        return asked.returncode == 0
+    said = asked.stderr.decode(errors="replace").strip()
+    raise Refused(
+        f"{Path(sys.argv[0]).name}: cannot tell whether {host.target} took its hand-over "
+        f"(ssh exited {asked.returncode}: {said[-300:] or 'nothing'}), so nothing was changed"
+    )
+
+
+def resume(cloud, environment: dict[str, str], address: str, sideload_pairs: list[str] = ()) -> None:
+    range_key = Path(cloud.range_key).expanduser()
+    identity = Path(cloud.operator_key_file).expanduser()
+    with tempfile.TemporaryDirectory() as scratch:
+        host = Host("ubuntu", address, Path(scratch) / "known_hosts", identity)
+        host.wait()
+        if not hand_over_done(host):
+            if sideload_pairs:
+                raise Refused(
+                    f"cloud: the platform VM at {address} never took its hand-over, and --sideload "
+                    f"applies only to a new VM; run up --replace --sideload"
+                )
+            print(f"the platform VM at {address} never took its hand-over; doing it now")
+            holding = holds_store(host)
+            if holding:
+                start_platform(host)
+            keep_range_key(range_key, host if holding else None, first=not holding)
+            hand_over(host, environment["OS_PASSWORD"], range_key, None if holding else store_to_restore(None))
+    wait_for_api(address)
 
 
 def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) -> str:
@@ -436,10 +607,15 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         known_hosts = Path(scratch) / "known_hosts"
         status = stack_status(cloud.stack)
         refuse_if_busy(cloud.stack, status)
-        old_address = None if failed(status) else address_of(cloud.stack)
+        old_address = standing_address(cloud.stack, status)
         old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
-        keep_range_key(range_key, old)
-        store = back_up(old, cloud.backups_keep) if old else None
+        holding = holds_store(old) if old else False
+        if holding:
+            start_platform(old)
+        if old and not holding:
+            print(f"{old.target} has no fsl-platform container and no store, so there is nothing to back up")
+        keep_range_key(range_key, old if holding else None, first=status is None or old is not None)
+        store = store_to_restore(back_up(old, cloud.backups_keep) if holding else None)
         known_hosts.unlink(missing_ok=True)
         address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)

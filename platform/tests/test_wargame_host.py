@@ -111,17 +111,38 @@ def test_a_sideloaded_board_reaches_the_host_image_from_the_platform_and_its_ima
 
     first = built._bundle(HOST, ENTRY)
     loaded = _members(first)[wargame_host.LOADED].decode()
+    served = _members(first)[wargame_host.SERVED_FROM].decode()
     held["ghcr.io/nekonic/fsl-board:c0ffee"] = "sha256:" + "b" * 64
 
-    assert loaded == ("ghcr.io/nekonic/fsl-board:c0ffee sha256:" + "a" * 64
-                      + " http://10.0.0.5:8000/api/range/images/sideloaded/board/\n"), (
+    assert loaded == "ghcr.io/nekonic/fsl-board:c0ffee sha256:" + "a" * 64 + " board\n", (
         "GHCR's board at the platform's tag is the pushed one; the host image must hold the board the "
         "platform runs, and setup.sh checks the loaded image is that image")
+    assert served == "http://10.0.0.5:8000/api/range/images/sideloaded/\n"
     assert built._bundle(HOST, ENTRY).digest != first.digest, (
         "a slot reset keeps the wargame host's images, so a new board needs a new host image")
     assert built.sideloaded_image("board") == "ghcr.io/nekonic/fsl-board:c0ffee"
     assert built.sideloaded_image("platform") == "", "the platform serves only a wargame image it runs"
     assert built.sideloaded_image("corp") == ""
+
+def test_a_platform_at_a_new_address_reuses_the_host_image_it_sideloaded_into(monkeypatch):
+    monkeypatch.setattr(wargame_host, "local_image_id", lambda image: "sha256:" + "a" * 64)
+    built = _adapter(sideloaded={"board", "platform"})
+
+    monkeypatch.setattr(openstack.OpenStack, "_platform_address", lambda self, why: "10.20.0.27")
+    first = built._bundle(HOST, ENTRY)
+    monkeypatch.setattr(openstack.OpenStack, "_platform_address", lambda self, why: "10.20.0.141")
+    moved = built._bundle(HOST, ENTRY)
+
+    assert _members(moved)[wargame_host.SERVED_FROM] == b"http://10.20.0.141:8000/api/range/images/sideloaded/\n"
+    assert moved.digest == first.digest, (
+        "bin/cloud down then up makes a new platform VM whose fixed IP Neutron picks again; setup.sh "
+        "checks the image id it fetched, so where it fetched it from is not what the host image holds")
+
+def test_the_host_setup_fetches_each_sideloaded_image_from_the_address_the_platform_gave():
+    setup = (ROOT / "deploy/wargame-host/setup.sh").read_text()
+
+    assert "served=$(cat served-from)" in setup
+    assert 'while read -r image id name; do' in setup and '"$served$name/"' in setup
 
 def test_a_wargame_starts_from_its_installed_file_with_no_pull():
     argv = wargame_host.up("board")

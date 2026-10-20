@@ -166,6 +166,35 @@ def test_taking_it_down_removes_only_what_the_fabric_owns(cloud, platform):
     assert [n["id"] for n in cloud.networks] == ["net-scratch"]
     assert cloud.ports == [] and cloud.subnets == [] and cloud.keypairs == [] and cloud.groups == []
 
+def replaced(cloud, tmp_path, old):
+    openstack.OpenStack(declared.read(), spec(tmp_path), get=cloud,
+                        build=openstack.Build(platform=old, inside=INSIDE)).ensure_fabric()
+    for port in cloud.ports:
+        if port["device_id"] == old:
+            port.update(device_id="", device_owner="")
+
+def test_a_replaced_platform_s_detached_management_port_is_deleted_before_the_new_one_is_made(cloud, platform, tmp_path):
+    replaced(cloud, tmp_path, "srv-old")
+    replaced(cloud, tmp_path, "srv-older")
+
+    platform.ensure_fabric()
+
+    named = [p for p in cloud.ports if p["name"] == f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"]
+    assert [p["device_id"] for p in named] == ["srv-platform"], (
+        "Nova detaches a port it did not create when the server is deleted and leaves it standing; "
+        "one left per up --replace kept the management subnet in use and bin/cloud down failed"
+    )
+
+def test_taking_it_down_removes_detached_ports_that_hold_a_subnet_in_use(cloud, platform, tmp_path):
+    replaced(cloud, tmp_path, "srv-old")
+    estate = network_of(cloud, "estate")["id"]
+    cloud.ports.append({"id": "port-left", "name": "fsl-1-wargame.estate", "network_id": estate,
+                        "device_id": "", "device_owner": ""})
+
+    platform.teardown_fabric()
+
+    assert cloud.ports == [] and cloud.subnets == [] and cloud.networks == []
+
 def test_planning_only_reads(cloud, adapter):
     adapter.plan_fabric()
 

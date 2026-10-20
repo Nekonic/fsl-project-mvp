@@ -93,7 +93,7 @@ class Cloud:
         path = Path(self.password_file).expanduser()
         if not path.is_file():
             raise Invalid(f"identity.password_file names {path}, which does not exist")
-        return path.read_text().strip()
+        return path.read_text(encoding="utf-8-sig").strip()
 
     def heat_parameters(self, floating_ip_id: str = "") -> dict[str, str]:
         return {
@@ -301,7 +301,7 @@ def _complaints(document) -> list[str]:
 def _compose_networks(path: Path = COMPOSE) -> dict[str, ipaddress.IPv4Network]:
     if not path.is_file():
         return {}
-    networks = (yaml.safe_load(path.read_text()) or {}).get("networks") or {}
+    networks = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("networks") or {}
     return {
         f"the compose network {name}": ipaddress.ip_network(pool["subnet"])
         for name, entry in networks.items()
@@ -313,7 +313,7 @@ def _compose_networks(path: Path = COMPOSE) -> dict[str, ipaddress.IPv4Network]:
 def _origins(path: Path = DECLARATION) -> dict[str, ipaddress.IPv4Network]:
     if not path.is_file():
         return {}
-    declared = yaml.safe_load(path.read_text()) or {}
+    declared = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {
         f"origin {origin['id']}": ipaddress.ip_network(origin["subnet"])
         for segment in declared.get("segments") or []
@@ -387,7 +387,7 @@ def read(path: Path = CONFIGURED) -> Cloud:
             f"and fill in this cloud's values"
         )
     try:
-        document = yaml.safe_load(path.read_text())
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:
         raise Invalid(f"{path} is not YAML: {error}") from error
     return parse(document, str(path))

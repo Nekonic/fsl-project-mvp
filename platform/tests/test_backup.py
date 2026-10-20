@@ -331,3 +331,23 @@ def test_the_snapshot_leaves_the_space_of_deleted_rows_behind(backup, tmp_path):
     assert len(image) < store.stat().st_size / 10, (
         "pruned sessions leave free pages in the store; shipping them made every rebuild copy 6 GB"
     )
+
+
+def test_a_backup_of_an_empty_store_removes_no_older_backup(backup, monkeypatch, tmp_path):
+    empty = tmp_path / "empty.sqlite3"
+    with closing(sqlite3.connect(empty)) as db:
+        for table in ROWS:
+            db.execute(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, note TEXT)")
+        db.commit()
+    answering(monkeypatch, tmp_path, empty.read_bytes())
+    backups = backup.module.BACKUPS
+    backups.mkdir()
+    (backups / "db-20261001T000000Z.sqlite3").write_bytes(b"older")
+
+    said = backup()
+
+    assert "db-20261001T000000Z.sqlite3" in backup.kept() and len(backup.kept()) == 2, (
+        "a replacement VM that never took its hand-over holds a new, empty store; backing it up "
+        "with --keep 1 removed the only copy of the store it was meant to receive"
+    )
+    assert "holds no rows" in said
