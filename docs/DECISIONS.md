@@ -913,8 +913,8 @@ Kibana highlight spike.
 - The sub-steps and selectors are a small list in `blue.html`, not in
   `scenario.yaml`: they describe Kibana's and the panel's UI, which every
   scenario shares; only their text is per lesson (`<lesson.text>.coach.*`).
-- Verified live in a guided board session (session 195, opened from "레슨으로
-  시작"): boxes over the alert table, a row's expand toggle and the panel's
+- Verified live in a guided board session (session 195, opened from the
+  start-as-a-lesson button of the time): boxes over the alert table, a row's expand toggle and the panel's
   Apply button. Console code is product code; `core_loc` is unchanged.
 
 ## 2026-10-10 — Kibana opens clean; the lesson is a floating note
@@ -1079,19 +1079,21 @@ need not hold the tuning.
   answered).
 
 Korean terms. The ko strings and the touched `*.ko.md` files now use the
-product terms as CRS and ModSecurity write them instead of translations:
+product terms as CRS and ModSecurity write them instead of translations (the
+old Korean terms are glossed in English; the current ones are rows of
+`docs/vocabulary.md`):
 
 | old | new | source |
 |---|---|---|
-| 편집증 수준 | Paranoia Level (PL) | https://coreruleset.org/docs/2-how-crs-works/2-2-paranoia_levels/ ("The paranoia level (PL)") |
+| the literal Korean translation of "paranoia level" | Paranoia Level (PL) | https://coreruleset.org/docs/2-how-crs-works/2-2-paranoia_levels/ ("The paranoia level (PL)") |
 | anomaly scoring (lowercase title) | Anomaly Scoring, inbound anomaly score | https://coreruleset.org/docs/2-how-crs-works/2-1-anomaly_scoring/ |
-| 임계값 | inbound anomaly score threshold | same page ("inbound anomaly score threshold of 5") |
-| 규칙 제외, 제외 | rule exclusion | https://coreruleset.org/docs/2-how-crs-works/2-3-false-positives-and-tuning/ ("rule exclusions") |
-| 오탐 (in the CRS cards) | false positive | same page ("it is described as a false positive") |
-| 감사 로그, audit 기록 | audit log | https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x) (`SecAuditLog`) |
-| 규칙 ID | rule ID | same reference (`id` action) |
-| CRS 규칙 | CRS 룰 (the console's existing loanword for a rule) | — |
-| 참음성(TN) | TN | the en table already says TN; no translated term |
+| the Korean word for "threshold" | inbound anomaly score threshold | same page ("inbound anomaly score threshold of 5") |
+| the Korean translations of "rule exclusion" and "exclusion" | rule exclusion | https://coreruleset.org/docs/2-how-crs-works/2-3-false-positives-and-tuning/ ("rule exclusions") |
+| the Korean term for false positive (in the CRS cards) | false positive | same page ("it is described as a false positive") |
+| the Korean translations of "audit log" and "audit record" | audit log | https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x) (`SecAuditLog`) |
+| the Korean translation of "rule ID" | rule ID | same reference (`id` action) |
+| CRS "rule" in the formal Korean word | CRS "rule" in the console's existing loanword for a rule | — |
+| the Korean translation of "true negative" | TN | the en table already says TN; no translated term |
 
 The scoreboard's Korean TP/FN/FP tiles stay: they label the platform's own
 TP/FN/FP counts, not a CRS term. (Superseded by R1 below, 2026-10-11, and by
@@ -1341,15 +1343,15 @@ Terms (strings.html both halves and the Korean docs):
 |---|---|---|
 | 949110 "'too many warnings'" | its msg, "Inbound Anomaly Score Exceeded" (English in Korean too) | CRS `rules/REQUEST-949-BLOCKING-EVALUATION.conf`, rule 949110 `msg:'Inbound Anomaly Score Exceeded (Total Score: ...)'` — https://github.com/coreruleset/coreruleset |
 | "Kibana is the WAF's logbook; one row is one request" | "In Discover's document table one row is one document, here one request" | Kibana 8.15 Discover docs — https://www.elastic.co/guide/en/kibana/8.15/discover.html; Kibana's `i18n.locale` offers en, zh-CN, ja-JP, fr-FR only (https://www.elastic.co/guide/en/kibana/8.15/settings.html), so Kibana's labels stay English verbatim |
-| arrow / 화살표 | expand icon / expand 아이콘 | as above |
-| Kibana query / Kibana 검색어 | KQL query / KQL 쿼리 | https://www.elastic.co/guide/en/kibana/8.15/kuery-query.html |
-| false positive (Korean theory) | 오탐(false positive) first, then 오탐; 놓침(미탐), 잘못 막음(오탐) | Cisco Korean documentation's 오탐 for false positive |
-| 룰 | 규칙 | AWS WAF Korean developer guide (규칙, 규칙 그룹) |
-| rule exclusion | rule exclusion(규칙 제외) on first mention | AWS WAF Korean developer guide |
-| objective {1}개 인정 | 목표 {1}개 인정 | the console's own 목표 elsewhere |
-| Open ELK / ELK에서 | Kibana | the pane is Kibana |
-| 주의 요함, 개발자 도구, 소스 보기 | kept | Chromium `components_strings_ko.xtb` |
-| WAF 실습 (ARCHITECTURE.ko) / 라운드 진행 (README.ko) | WAF 레슨 / 세션 진행 (README's "Running a round" → "Running a session") | the console's own words |
+| arrow (English and Korean) | expand icon (English and Korean, the Korean with the loanword for "icon") | as above |
+| Kibana query (English and Korean "search term") | KQL query (English and Korean with the loanword for "query") | https://www.elastic.co/guide/en/kibana/8.15/kuery-query.html |
+| false positive (Korean theory) | the practitioner term for false positive with the English in parentheses first, then the term alone; "missed" for a false negative and "wrongly blocked" for a false positive | Cisco Korean documentation's term for false positive (`docs/vocabulary.md`, rows `false positive (FP)` and `false negative (FN)`) |
+| the loanword for "rule" | the formal Korean word for "rule" | AWS WAF Korean developer guide (its words for "rule" and "rule group") |
+| rule exclusion | rule exclusion with the Korean translation in parentheses on first mention | AWS WAF Korean developer guide |
+| "objective" left in English inside the Korean credited line (`red.loot.credited`) | the Korean word for objective | the console's own word for objective elsewhere |
+| Open ELK / "in ELK" (English and Korean) | Kibana | the pane is Kibana |
+| "Attention required", "Developer tools" (`site.dev.toggle`) and "View source" in Korean | kept | Chromium `components_strings_ko.xtb` |
+| "WAF practice" (ARCHITECTURE.ko) / "running a round" (README.ko) | "WAF lesson" / "running a session" (README's "Running a round" → "Running a session") | the console's own words |
 
 Metrics after these commits: core_loc 560 (unchanged), product_loc 11191 (+126,
 not gated), dependencies 6, services 9, tests 1472 (+31). Correction: commit
@@ -2742,7 +2744,7 @@ Sans. The web UI opens with its topology summary over the map; that panel's
 visibility is a constant in the bundle, not a stored setting, so the learner
 closes it once. Checked live on session 297 (board, slot 1): the blue
 console's Topology pane frames the opened OpenStack project; "Follow a
-request" on the Website pane's search for 서울 맛집 추천 (200, not blocked)
+request" on the Website pane's search for a Korean phrase, a Seoul restaurant recommendation (200, not blocked)
 walks internet, fsl-edge, estate, fsl-waf (passed, no rule), fsl-wargame-host,
 board-default, board (200). The hop list says the source is unknown: a
 Website-pane request carries no origin address, and on OpenStack the platform
@@ -2937,13 +2939,14 @@ read the console in Korean. `*.ko.gns3` is the fourth place Korean belongs
 - **A pair, not a second map.** `range-docker.ko.gns3` and
   `range-openstack.ko.gns3` are the English files with only the drawing text
   translated (title, zone titles, the notes beside nodes), in
-  `docs/vocabulary.md`'s terms where it has one (인터넷, 서비스 구간,
-  관리·관제 구간, 웹 방화벽, 공격자 PC, 경계 방화벽, 로그 저장소 ...). Node
+  `docs/vocabulary.md`'s terms where it has one (Internet, service zone,
+  management and monitoring zone, web firewall, attacker PC, perimeter
+  firewall, log store ...; the Korean words are in the `.ko.gns3` files). Node
   names stay the host names: the platform, the follow view and GNS3 3.1's
   label rule all match on them. A text drawing's `width` is re-estimated for
   the Korean text; height, position and every rect and line are unchanged.
 - **Every id is `uuid5(<English id>, "ko")`, the project name gets
-  ` (한국어)`.** GNS3's compute keeps nodes in one dict keyed by node id
+  a suffix, the Korean word for "Korean" in parentheses.** GNS3's compute keeps nodes in one dict keyed by node id
   (`compute/base_manager.py` `create_node` returns the existing node for a
   known id), so a pair sharing node ids could not both be open. Rejected: the
   same ids (breaks opening both); random ids (no rule a test can rebuild).
@@ -3147,9 +3150,10 @@ Phase P5 of the scenario course design, built and run live on OpenStack
   CAPEC pattern from the case file (CAPEC-66, -63, -126), asked beside the
   verdict when the completion says `pattern: judged`, judged against the
   case's own `pattern`, never shown on an item. The Korean labels follow KISA's
-  vulnerability-assessment guide (2026 edition): SQL 인젝션, 크로스사이트
-  스크립팅(XSS), 경로 추적 (the secure-coding guide says 경로 조작; AWS's
-  Korean docs 경로 탐색).
+  vulnerability-assessment guide (2026 edition) for SQL injection,
+  cross-site scripting (XSS) and path traversal (`triage.pattern.CAPEC-66`,
+  `-63` and `-126`; the guide says "path tracing", the secure-coding guide
+  "path manipulation", AWS's Korean docs "path exploration").
 - **The availability completion may name thresholds.** 2.3 completes when the
   thresholds in force at the window's snapshot are at most 5 inbound and 4
   outbound (missing thresholds are the CRS defaults) as well as on served and
@@ -3349,7 +3353,7 @@ backed up to `/opt/fsl/backups/db-20261014-pre-p6.sqlite3`, the branch synced
 and the platform rebuilt with both slots idle; 0026 applied to the kept store.
 
 - Home page (Korean, headless Chromium): six foundations, eleven scenarios, one
-  "워게임 시작" per wargame card, no lesson card, no page errors.
+  "Start wargame" button (`main.start`) per wargame card, no lesson card, no page errors.
 - Session 250 (closed `assessment` session in practice mode, 7 seed and 7
   verify cases): lists with kind `lesson`, `lesson_id` null, no `mode`,
   `result` without a lesson verdict; the detail reads `lesson: null`; `/score/`
@@ -3577,7 +3581,7 @@ What the maps are now:
   `eth0 .3`); the zone caption carries the rest. A label sits above its line,
   or below it when the link climbs, so a diagonal link never runs through it.
 - **A zone caption is the segment's name and the network the range holds
-  for it** (`Application estate 10.30.0.0/24`, `서비스 구간 10.30.0.0/24`,
+  for it** (`Application estate 10.30.0.0/24`, its Korean caption with the word for "service zone",
   `board_default 172.18.0.0/16`), added when the slot's or session's map is
   generated, from the interfaces read (the default origin's network on the
   internet side). The committed learner map holds the name alone, since the
@@ -3663,7 +3667,7 @@ network (Cisco NetAcad lab topology, NSRC logical diagram):
   carries the sites' host address (`ens3 .63` slot 1, `.184` slot 2: the WAF
   reaches `board.com` and `corp.com` there), on the database switch the site
   container's (`eth0 .3`). Zone captions carry the networks of the labels on
-  their switch (`인터넷 175.192.0.0/24, 5.188.10.0/24`).
+  their switch (`Internet 175.192.0.0/24, 5.188.10.0/24`, the Korean map with the Korean word for "Internet").
 - **Log links are where records really go.** OpenStack: firewall, waf and the
   site, because the estate sensor runs on the sites' host and ships its
   eve.json (`logs:` in the declaration); the board app (gunicorn on :8000)
@@ -3697,7 +3701,8 @@ network (Cisco NetAcad lab topology, NSRC logical diagram):
 - **Removed: the addressing table** (its tab, en/ko strings, `GET
   /api/sessions/<id>/topology/addresses/`, `topology.addressing`, the
   default-route read in `range/interfaces.py`). The Topology pane's tab reads
-  Network map / 네트워크 구성도; no word a learner reads names GNS3 (the f1
+  Network map in English and the Korean equivalent in Korean (the pane's key is
+  `blue.pane.topology`; it reads Map since 9674d0e); no word a learner reads names GNS3 (the f1
   lesson text now names the hosts by role).
 - **A customer request can be followed** (`?customer=<marker>`), starting at
   `customers`; the console's picker does not list them yet (STATE backlog).
@@ -3736,8 +3741,8 @@ image tag rewritten; `test_foundations.py`'s expected answers.
 
 Live (platform VM, OpenStack): sessions 436 (board, slot 1) and 437 (corp,
 slot 2); both maps in both languages loaded, every node `started`, every link
-end green; the console pane showed slot 1's map under Network map /
-네트워크 구성도; both closed. Session 434 and 435 failed to open on the first
+end green; the console pane showed slot 1's map under Network map in
+English and Korean; both closed. Session 434 and 435 failed to open on the first
 deploy (`_maps_live` used the suppression query's `session__slot`); fixed and
 tested before the run above.
 
@@ -4696,10 +4701,11 @@ Map, not Network map (9674d0e, the gns3 image rebuilt). Redeployed 9674d0e
 (platform and gns3 images from it, kali from 1fd5be3) in 9 min 26 s;
 `bin/verify`: unit 1476 passed; acceptance 70 passed, 0 failed, 0 errors, 0
 skipped in 987 s; ratchet holds (core_loc 580, tests 1057). The sweep again:
-72 of 72 step views boxed; Skip on six steps offered as 건너뛰기, recorded
+72 of 72 step views boxed; Skip on six steps offered as the Skip button (`lesson.skip`), recorded
 skipped and not passed, the coach on the next step, 6 of 6; no learner-visible
 text (page text, titles, placeholders, labels; 4 briefings, 72 step views, 16
-page views) holds 레인지, range, 레일, 지도, 토폴로지, 대신 해 주기, "왜?", their
+page views) holds the retired Korean words for range (the loanword and the
+native word), rail, map, topology, "do it for me" and "why?", their
 English or the deleted blurbs, the brand aside; the page's string table
 matches the 191 shipped keys of the approved review table except the Korean
 `main.title` (kept by the merge), the two stage names without the review's
@@ -4716,7 +4722,7 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
 - **Ruling** (the user, 2026-10-17): the Korean is written Korean-first, from
   the meaning, not translated from the English sentence, and in the usage of
   Korean security practitioners and educators. Where practitioners and the
-  norms of 국립국어원 or published lists of translation-sounding patterns
+  norms of the National Institute of Korean Language or published lists of translation-sounding patterns
   disagree, practitioners win; those norms and lists were not consulted. The
   English stays canonical for what a document or string says; the Korean
   decides how it is said.
@@ -4727,58 +4733,65 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   the TrusGuard IPS manual, ESTsecurity, AWS Korea's WAF false-positive
   guide, Penta Security, Monitorapp, KISA, Logpresso's Sonar manual and the
   Elastic Korean guidebook; an addendum added open Korean teaching sources
-  (생활코딩, BoB course material on GitLab, HSPACE's blog, dictionary and lab
+  (Life Coding, BoB course material on GitLab, HSPACE's blog, dictionary and lab
   READMEs, Kakao Cloud tutorials, Programmers, KERT and other club repos),
   with translations (MDN, the OWASP Top 10, Juice Shop, Google Cloud) marked
   and weighted lower. SK Shieldus, NAVER Cloud, WikiDocs and Cloudflare
   answered 403 and are not used; personal posts without a track record were
   rejected. Its main choices, with the counts behind them:
-  - Register: 합니다체 for explanations and notices; `-하세요` for a step the
-    learner performs, purpose first (`~하려면 ~하세요`); `-해 보세요` for
-    hints; no `-하십시오`, no `-습니까?`, no `당신` (Dreamhack's 175
-    descriptions: 입니다 98, 습니다 92, 하세요 40, 으세요 31, all 해요체 about
-    20; `-습니까?` and `당신` only in two community challenges and in
-    translations). Questions are `~나요?`, `무엇인가요?` or the quiz form
-    `~은/는?`; feedback is 정답입니다 / 틀렸습니다 with one reason.
-  - Titles end in a noun or `~하기`, never a sentence ending.
-  - Requests are 유입, 발생, 차단, 허용, 매칭; never 닿다 or 도달하다 (0 hits for
-    a request, packet or traffic reaching).
-  - Terms: 오탐 (75, 오탐지 0), 미탐, 정탐; 탐지 (700, 감지 3); 경보 (92) for
-    what reaches the analyst; 임계치 (11, 임계값 0); 시그니처 (141); 웹방화벽
-    (34 against 웹 방화벽 8); 출발지/목적지 IP (88/82, 소스 IP 0); 예외 처리 and
-    예외 규칙 (억제 0, 화이트리스트 0); 정·오탐 판단 for triage; 위험도 (39,
-    심각도 5); 모의해킹 (54, 침투테스트 0); 상태 코드 (14 against 상태코드 1
-    in the addendum's corpus, reversing the first pass); HTTP 메서드 (58,
-    메소드 6); 쉘 and 웹쉘 (32 against 셸 4, Dreamhack's 셸 noted); 룰 in prose
-    and 규칙 on product screens, 규칙 ID for a sid; 훈련장 / 훈련 환경 for a
-    cyber range (레인지 0).
-- **Vocabulary** (`docs/vocabulary.md`): cyber range 사이버 레인지 -> 훈련장;
-  penetration test 침투테스트 -> 모의해킹; initial access 초기 액세스 -> 초기
-  침투; severity 심각도 -> 위험도, levels 높음 / 중간 / 낮음 -> 높음 / 보통 /
-  낮음; suppression 억제 -> 예외 처리 (the action) / 예외 규칙 (the object);
-  triage 경보 분류 -> 정·오탐 판단; correlation 상관분석 -> 연관성 분석; enable
-  and disable a rule 룰 사용 설정 / 룰 사용 중지 -> 사용 / 사용 안 함; solved
-  -> 완료; externally exposed 외부 공개 -> 외부 노출; IP range IP 대역 ->
-  네트워크 대역; time range 시간 범위 -> 조회 기간; auto-refresh 자동
-  새로고침 -> 자동 새로 고침; 웹 방화벽 -> 웹방화벽; 정보 자산 -> 정보자산;
-  rule id (sid) -> 규칙 ID, newly settled.
+  - Register: the formal polite ending for explanations and notices; the
+    polite imperative for a step the learner performs, purpose first ("to do
+    X, do Y"); the "try ..." imperative for hints; no formal imperative, no
+    formal question ending, no second-person pronoun "you" (Dreamhack's 175
+    descriptions: formal polite endings 98 and 92, polite imperatives 40 and
+    31, the informal polite register about 20; the formal question ending and
+    the pronoun appear only in two community challenges and in translations).
+    Questions end in the polite question form, "what is ...?" or the quiz
+    form "X is/are?"; feedback is "correct" / "wrong" with one reason.
+  - Titles end in a noun or the "-ing" noun form, never a sentence ending.
+  - Requests are described as flowing in, occurring, blocked, allowed or
+    matched; never as "reaching" (0 hits for a request, packet or traffic
+    reaching).
+  - Terms (`docs/vocabulary.md` has each row): false positive (75; the longer
+    "false detection" form 0), false negative and true positive; detection
+    (700; the alternative word 3); alert (92) for what reaches the analyst;
+    threshold (11; the alternative word 0); signature (141); web firewall as
+    one word (34 against spaced 8); source/destination IP (88/82; the
+    loanword "source IP" 0); exception handling and exception rule (the word
+    "suppression" 0, "whitelist" 0); "true/false positive judgment" for
+    triage; severity as "risk level" (39; "severity" 5); "mock hacking" for
+    penetration testing (54; the loanword for "penetration test" 0); status
+    code (14 against the unspaced spelling 1 in the addendum's corpus,
+    reversing the first pass); HTTP method (58; the loanword 6); shell and
+    web shell in the loanword spelling (32 against the other spelling 4,
+    Dreamhack's noted); the loanword for "rule" in prose and the formal word
+    on product screens, "rule ID" for a sid; "training ground" / "training
+    environment" for a cyber range (the loanword "range" 0).
+- **Vocabulary** (`docs/vocabulary.md`; each row holds the old and the new
+  Korean term): changed rows are cyber range, penetration test, initial
+  access, severity and its levels, suppression (the action and the object),
+  triage, correlation, enable and disable a rule, solved, externally exposed,
+  IP range, time range, auto-refresh, web firewall (now one word),
+  information asset (now one word), and rule id (sid), newly settled.
 - **The string table** (6e3a2f0): all 951 Korean values (893 shown, 58
   withheld answers and pass lines) were read; 532 Korean values were
   rewritten from the meaning, and 183 English values changed to say the same
-  thing. The practice network shown to learners is 실습용 네트워크, the Map
-  pane 구성도; the Korean GNS3 pair names its zones 서비스망, 관제망, 내부 DB망
-  (drawing text only).
+  thing. The practice network shown to learners is the "practice network"
+  wording of `range.healthy` and `session.close.rebuilds`, the Map pane
+  `blue.pane.topology`; the Korean GNS3 pair names its zones service,
+  monitoring and internal-database network (drawing text only, in
+  `deploy/topology/range-*.ko.gns3`).
 - **Reviewer pass** (16e951d): a second reader went through the 951 values
   against the guide and changed 62 (61 Korean, 1 English): steps the learner
-  acts on became `-하세요` instead of narration, hints and nudges
-  `-해 보세요`; multi-word button names are quoted where the bare name
-  misparses ('터미널에서 실행', '최종 점검 시작', '실행 결과 확인'); "내 실행"
-  calques went; two meanings that had drifted were restored
-  (`score.primary.how`, `score.customers_note`); 기록 became 로그 where a
-  sensor's log is meant; F1 asks "가장 먼저 받는" everywhere. F2's title
-  promised following the path, which no step asks for: it is now "Sending a
-  web request and reading its status code" / "웹 요청 보내고 상태 코드
-  확인하기". No answer key, check fact or placeholder changed.
+  acts on became the polite imperative instead of narration, hints and
+  nudges the "try ..." form; multi-word button names are quoted where the
+  bare name misparses (the Run in terminal, Start final check and Check run
+  result buttons); the "my run" calques went; two meanings that had drifted
+  were restored (`score.primary.how`, `score.customers_note`); "record"
+  became "log" where a sensor's log is meant; F1 asks for the one "received
+  first" everywhere. F2's title promised following the path, which no step
+  asks for: it is now "Sending a web request and reading its status code" in
+  both languages. No answer key, check fact or placeholder changed.
 - **Docs sweep** (the user: every document, no exceptions):
   English, each checked against the code by grep, not memory:
   `README.md`, `docs/ARCHITECTURE.md`, `docs/OPENSTACK.md`,
@@ -4812,15 +4825,18 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   `gns3.py`; one Korean word in `docs/ARCHITECTURE.md` removed.
   Korean: `README.ko.md` and `docs/ARCHITECTURE.ko.md`, the only `.ko.md`
   files, rewritten in full from the updated English, section for section, in
-  합니다체 (both were in 해라체 and had fallen behind: 263 and 1,461 lines
-  against 562 and 1,840), with the guide's terms, labels quoted from the
-  string table's ko values, and no 레인지.
-- **레슨, not 단원** (the user, 2026-10-18): a foundation unit is 레슨 in
-  every Korean place. The string table's last seven 단원 (the foundations
-  group note and the six `lesson.<id>.verify` lines) became 레슨, which the
-  rest of the table already used (레슨 노트, 레슨을 완료했습니다); answers and
-  placeholders unchanged. `docs/vocabulary.md` gains the row lesson / unit ->
-  레슨, and its `shell` row takes the guide's settled 쉘 (셸 noted as
+  the formal polite register (both were in the plain declarative register
+  and had fallen behind: 263 and 1,461 lines against 562 and 1,840), with the
+  guide's terms, labels quoted from the string table's ko values, and no use
+  of the loanword for range.
+- **"Lesson", not "unit"** (the user, 2026-10-18): a foundation unit is called
+  a lesson (the loanword) in every Korean place. The string table's last
+  seven occurrences of the native word for "unit" (the foundations group note
+  and the six `lesson.<id>.verify` lines) became the loanword for lesson,
+  which the rest of the table already used (the lesson note, `lesson.done`);
+  answers and placeholders unchanged. `docs/vocabulary.md` gains the row
+  lesson / unit, and its `shell` row takes the guide's settled spelling (the
+  other spelling noted as
   Dreamhack's form). `bin/verify --changed`: unit 817 passed, ratchet holds.
 - **Proven live 2026-10-18** (OpenStack, platform VM 192.168.0.210). HEAD
   1fc2bc8 deployed by `bin/cloud up --replace --sideload` (platform image
@@ -4837,7 +4853,7 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   step of F1-F6, scenarios 1.1 and 3.1 and the 2.1 briefing, which also
   measured every text node against its clipping box, the viewport and
   `text-overflow`, found two faults, fixed in 6b72876: the coach popover
-  broke Korean words mid-word (가/장, 호/스트인가요, 개발/자 도구), so the
+  broke Korean words mid-word (three examples, one of them the developer tools label, `site.dev.toggle`), so the
   console sets `word-break: keep-all` for Korean, with `overflow-wrap:
   break-word` for a word longer than its box; and the red console's case
   list cut both sqlmap variants' labels to the same prefix in both languages,
@@ -4845,12 +4861,14 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   the summary is the row's title). `bin/verify --fast`: unit 1476 passed.
   Redeployed 6b72876 the same way in 9 min 19 s and swept again: 72 of 72
   step views boxed, 12 of 12 pane steps boxed with the Map open; Skip on
-  six steps offered as 건너뛰기, recorded skipped and not passed, the coach
+  six steps offered as the Skip button (`lesson.skip`), recorded skipped and not passed, the coach
   on the next step, 6 of 6; no clipped or cut text except those deliberate
   ellipses; no learner-visible text (page text, titles, placeholders,
-  labels; 6 briefings, 72 step views, 16 page views) holds 레인지, 단원,
-  "왜?", 대신 해 주기 or the other words of the previous sweep; the Map pane
-  draws 인터넷, 서비스망 10.30.0.0/24, 내부 DB망 172.18.0.0/16 and 관제망 with
+  labels; 6 briefings, 72 step views, 16 page views) holds the retired Korean
+  words for range and unit, "why?", "do it for me" or the other words of the
+  previous sweep; the Map pane draws the Internet, the service network
+  10.30.0.0/24, the internal database network 172.18.0.0/16 and the
+  monitoring network (their Korean captions) with
   no text overlapping another (English likewise); the console shows only
   the third-party messages of "Errors swept before the push", the WAF's 403
   to the learner's own probes and two requests aborted by a pane switch; the
@@ -4898,12 +4916,12 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   `missed`, applied in place on the open WAF; F1-F5 all run `full`, so F1-F5
   change nothing on the range.
 - **The console.** On a foundation's last step pass (or Skip, the ladder's last
-  rung) the coach says "Lesson complete. Next lesson: <title>" (ko: 레슨을
-  완료했습니다. 다음 레슨: <title>) with a "Next lesson" (다음 레슨) button,
+  rung) the coach says "Lesson complete. Next lesson: <title>" (ko: `lesson.next.ready`)
+  with a "Next lesson" button (`lesson.next.start`),
   and 2 s later posts the switch and reloads the page into the next unit,
   which lands on its Theory card as a first open does (the landing and step
-  keys are per lesson). After F6: "All foundation lessons complete." (기초
-  레슨을 모두 마쳤습니다.), then ingest, `POST /close/`, and the session page.
+  keys are per lesson). After F6: "All foundation lessons complete." (`lesson.course.done`),
+  then ingest, `POST /close/`, and the session page.
 - **Kali steps.** The 1.2 s pass pause applies to `kali` too; the step after a
   Kali step shows that step's row (requests per sensor, the Kibana link),
   re-read by a poll of the Kali check after a reload. 3a7238d's
@@ -4937,7 +4955,7 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   14 s, F2 13 s, F3 17 s, F4 44 s, F5 65 s, F6 110 s; each next lesson
   started 6.5-9.4 s after the previous one's last answer (the switch, its
   seed replay, the reload), on its Theory card. F5's Kali step moved on by
-  itself and the requests step showed "요청 1539건 (fsl-edge 1539)", answered
+  itself and the requests step showed the requests line "1539 requests (fsl-edge 1539)" in Korean, answered
   1539. F6's switch applied `missed` in place: the WAF file Run in terminal
   printed held `ruleRemoveById=949110` and `959100`, sqlmap dumped admin,
   jiwoo and minseo, and loot, leaked (3) and lost (3) passed; the session
@@ -5090,10 +5108,10 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   `ubuntu@kali:~$`, no host-key warning, `http_proxy`, `FSL_TARGET` and
   `PROMPT_COMMAND=_fsl_record` set, the typed command in `commands.log`.
   Headless Playwright, Korean, 1600x1000 and 390x844, sessions 880 (F5) and
-  881 (wargame): the red console shows the objectives, "탈취한 해시 제출",
+  881 (wargame): the red console shows the objectives, "Submit stolen hashes" (`red.loot.heading`),
   Kali (the new motd, `ubuntu@kali:~$`) and Website (board.com, developer
   tools), nothing else; the blue console of the wargame has no Kali and no
-  divider; its WAF pane reads `waf · CRS 설정: ...` and `ubuntu@waf:~$`; the
+  divider; its WAF pane reads `waf · ` plus the CRS settings label (`blue.waf.rules`) and the values, and `ubuntu@waf:~$`; the
   F5 blue console has the divider and Kali, the sqlmap step points at Kali
   with the popover to its right, and the terminal's text is the same after a
   switch to Kibana and back (the frame is kept); the session page of the
@@ -5570,13 +5588,19 @@ Counts are critical/high/medium/low per reviewer.
 | 4 live | 1dac802 | design 0/0/6/10, UI 0/0/4/8, terms 0/0/1/8, AI-tone 0/0/7/24, realism 0/1/4/8, learner 0/1/8/12 |
 | 5 live | d077869 | design 0/0/4/9, terms 0/0/2/4, AI-tone 0/0/7/17, realism 0/0/2/7, learner 0/1/3/11; the UI reviewer did not finish (usage limits) and its partial work was lost |
 
-The walker passed 48 of 48 steps in every run from round 2. Critical and
-high findings fell to zero by round 4 (one high in each of realism and
-learner), to one learner high in round 5.
+The walker passed 48 of 48 steps in every run from round 2. Critical findings
+fell to zero by round 4 and high to two (one each in realism and learner),
+then to one learner high in round 5.
 
 - **What changed (rounds 2-5, fixed in 326fa6f..60243e6).**
-  - Learner text rewritten Korean-first: 탈취, 정탐, 게시판 검색창 against
-    KQL 입력창, 실습 환경, 구성도, 레슨, 건너뛰기. F4's fired step asks for
+  - Learner text rewritten Korean-first: the ko strings for exfiltration
+    (`result.lost`, `red.loot.heading`), true positive (`score.second.heading`,
+    the `true positive (TP)` vocabulary row), the board's search box told
+    apart from Kibana's KQL input box (`lesson.http.coach.search`,
+    `lesson.logs.theory.discover.body`), practice environment
+    (`scenario.shift.measured_by`, `range.healthy`), Map
+    (`blue.pane.topology`), lesson (`lesson.next.start`) and Skip
+    (`lesson.skip`). F4's fired step asks for
     the sid; the F3 count and F6 seen checks equal what Kibana shows; numeric
     answers accept `1,292`.
   - Coach: Kibana rows that know which leg of the proxy they show, callouts
@@ -5605,7 +5629,7 @@ learner), to one learner high in round 5.
   - No public service IP or DNAT on the edge; F1's theory says the practice
     network forwards without NAT. The firewall's WAN label on the OpenStack
     map is the edge's real address on an origin /24.
-  - The "개발자 도구" button stays (F2 teaches opening DevTools with it; F12
+  - The developer tools button (`site.dev.toggle`) stays (F2 teaches opening DevTools with it; F12
     works too). DevTools Styles/Computed/Layout are empty (no CSS rule data
     is captured) and inert toolbar controls stay inert.
   - Map links of `customers` and `kali` carry no IP (their source address
@@ -5643,3 +5667,295 @@ learner), to one learner high in round 5.
   deployed with all five images sideloaded from it, both slots rebuilt onto
   the new Kali and WAF images and configured, `ready` true; that deploy was
   smoke-tested only. `bin/verify --fast`: 1666 passed.
+
+## 2026-10-20 — The product is OpenStack-only; a newcomer's bring-up is the repo's job
+
+Rulings by the user:
+
+- **OpenStack only.** The product runs on OpenStack, on Kolla-Ansible 2026.1
+  with `nova_compute_virt_type: "kvm"` (never `qemu`). This supersedes the
+  2026-10-11 ruling "OpenStack is a first-class substrate; no acceptance test
+  is docker-only" ("every acceptance test must run and pass on substrate
+  openstack as it does on docker"): there is no second substrate to run
+  beside it. The docker substrate (`platform/range/docker.py`, `session.yaml`
+  and what hangs on them) is to be removed from the code; the plan is
+  `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`, decided
+  with its D1-D4 as yes, not started. Docker stays as the way the platform VM
+  runs the platform's own services from GHCR images (and the wargame host's
+  and GNS3's container runtime); it is never presented as a separate way to
+  run the product. Until the plan runs, the docker substrate still exists in
+  the code.
+- **A one-VM trial** on VirtualBox or VMware (any host OS) is for checking that
+  the bring-up works, not for operating the product (`docs/OPENSTACK.md` §9).
+  Nothing in the docs is host-OS-specific: no PowerShell, no Windows-only
+  steps.
+- **If the repo can make a reader's step unnecessary, the repo does it.**
+  `.gitattributes` fixes line endings (no doc text about CRLF); the first
+  `bin/cloud up` makes the range key; the `openstack` CLI is found beside the
+  interpreter in `.venv`; a platform VM that never ran `fsl-platform` has
+  nothing to back up, so `down` and `up --replace` proceed (5420d04).
+
+What newcomers hit, from two read-only audits that followed the docs on a
+clean clone (one line each; fixed in c321210, b231c6c, 7d8e3c2, 5420d04,
+a662fdf):
+
+- No range key on the first `bin/cloud up` (it refused); now made by the first
+  `up` (c321210).
+- The `openstack` CLI installed into `.venv` was not found without activating
+  the venv; now found beside `sys.executable` (c321210).
+- Line endings: no `.gitattributes`, so a CRLF checkout broke sideload
+  tarballs and scripts; now pinned to LF (c321210). The ssh wait now reports
+  the last ssh error, and cloud files are read as UTF-8 (c321210).
+- README led with Docker and called both substrates first-class; it now
+  states the requirements and nine numbered steps, each with a check and a
+  recovery, and what the cloud needs from Kolla-Ansible 2026.1, the external
+  network and egress (b231c6c, 7d8e3c2).
+- The base image was uploaded as admin and `fsl-range` could not see it:
+  `--public` (a662fdf).
+- The installer's guided LVM gave Nova about 100 GB of 250 GB: extend the
+  logical volume to the whole volume group (a662fdf).
+- No way back when the platform VM never came up: `up` redoes the hand-over of
+  a VM that never took it, and `down` / `up --replace` proceed without a
+  backup when there was no `fsl-platform` to back up (5420d04, a662fdf).
+- A review found that path could lose the store: `up --replace` backed up VM
+  A, the new VM's hand-over failed, the advice was `up --replace` again, that
+  VM held no store, so the next one started empty and the next backup with
+  `backups.keep` 1 removed A's copy. Now a VM made where no store stands (no
+  stack, a failed stack, a VM that holds none, and `up`'s redone hand-over)
+  gets the newest `backups/db-<UTC time>.sqlite3` that holds rows, named on
+  the console, or starts empty and says so; a backup that holds no rows is
+  passed over for that newest one; `bin/backup` removes no older backup when
+  the store it copied holds no rows; the password line that marks a finished
+  hand-over is written after the store is restored. This also closes "`up`
+  after `down` starts with an empty store". Two smaller fixes from the same
+  review: a stack that is not `*_FAILED` but whose `address` output cannot be
+  read is refused by `up`, `up --replace` and `down` with nothing deleted
+  (before, it was taken for a broken stack and deleted); the hand-over check
+  counts only grep's 0 and 1, and any other answer (ssh failing) refuses
+  instead of redoing the hand-over.
+- Smaller: passwordless sudo and netplan lines for Kolla, range flavor
+  `m1.medium` in the example, `OS_AUTH_URL` from `identity.keystone`, quota
+  wording, when `ready` is true, VMware Workstation, `python3-venv`, 40 GB VM
+  RAM (a662fdf).
+
+The research behind it: no OpenStack-based range has a host-OS quick start
+(KYPO/CyberRangeCZ's `kypo-lite` is Ubuntu with 48 GB RAM; its Windows path is
+a separate VirtualBox sandbox tool without OpenStack); AIT AttackBed documents
+numbered install steps, and StratoCyberLab states minimums on its first screen
+and ends with a check step. Notes: `~/.cache/fsl-work/panel/ranges-broad-survey.md`,
+`ranges-windows-research.md`, `kolla-windows-research.md` (outside the repo).
+
+Not verified: the §9 one-VM trial has not been run end to end; the Kolla
+`sudo` and netplan lines follow the docs only (kolla-ansible's `--become`
+implies no password; the installer's netplan merge was read, not run). The
+changed bring-up paths are unit-tested with fake ssh, Docker and OpenStack
+CLIs only; none has run live on the changed code: `down` and `up --replace`
+on a standing platform (`STORE_PROBE` over ssh), `up --replace` with the
+first-range-key logic, plain `up`'s resume (`hand_over_done`, the redone
+hand-over with its `sed` on `/opt/fsl/openstack.env`), and the restore of the
+newest backup.
+
+## 2026-10-20 — Live checks of the bring-up paths, and three fixes they led to
+
+The bring-up paths changed earlier on 2026-10-20 (the entry above) had been
+tested with fake ssh, Docker and OpenStack CLIs only. Two live runs on the test
+cloud closed that. Notes: `~/.cache/fsl-work/notes/live-push-check.md` and
+`live-fix-check.md` (outside the repo).
+
+First run, code 620592f, platform VM at 192.168.0.210:
+
+- `bin/cloud up --replace --sideload` (store probe, backup, range key kept)
+  passed in 27 min 13 s. A full `bin/verify` on the new VM passed: unit 1706,
+  acceptance 73 passed, 0 failed, 0 errors, 0 skipped (1129 s), ratchet ok.
+- Three bugs came out of it.
+  1. `bin/cloud down` failed with 409 SubnetInUse on `fsl-mgmt`. Thirty-five
+     detached `fsl-platform.mgmt` ports stood on it, one left by every platform
+     VM replace since 2026-10-17: `_attach` pre-creates the port, Nova detaches
+     it when the server is deleted and does not delete it, and teardown deleted
+     only ports held by this platform. The bug is older than this branch. The
+     ports were deleted by hand and `down` then passed (26 s).
+  2. Plain `up` on a VM whose `fsl-platform` container was stopped and which
+     had not taken its hand-over failed: the hand-over writes the range key with
+     `docker exec`, which needs a running container, and the store probe had said
+     "stored" because the volume file exists.
+  3. The redone hand-over dropped `FSL_SIDELOADED` (its `sed` deleted the line
+     and the resume does not write it again), so the next bundle was built
+     without the sideloaded images.
+- With the container started by hand and the password line removed, plain `up`
+  passed (10 min 17 s). `down`, then `up --sideload`, restored the newest backup
+  that holds rows (`db-20261020T041910Z`, 2 sessions) in 14 min 49 s.
+
+Fix commit 8f19f43:
+
+- `range/openstack.py`: `_attach` deletes detached `fsl-platform.mgmt` ports
+  before it creates one, and `teardown_fabric` deletes detached ports on the
+  fabric's networks.
+- `bin/platform-rebuild`: `start_platform` starts the `fsl-platform` container
+  and waits until it runs. The hand-over calls it before the range key write, and
+  the resume and the replace call it before they take a key or a backup from a VM
+  that holds a store.
+- `bin/platform-rebuild`: `settings_rewrite` rewrites only the lines the
+  hand-over owns: `FSL_OPENSTACK_PASSWORD` always, `FSL_SIDELOADED` only when the
+  run sideloads. Every other line is kept and the file keeps mode 0600.
+- `bin/verify --fast` passed 1711.
+
+Second run, code 8f19f43:
+
+- Plain `up` with the container stopped and the password line removed passed in
+  71 s; `FSL_SIDELOADED` was kept and no image was rebuilt.
+- `up --replace --sideload` passed in 14 min 3 s and left exactly one
+  `fsl-platform.mgmt` port; the old VM's detached port was deleted by `_attach`.
+- `bin/cloud down` passed with no hand work in 32 s.
+- `bin/cloud up --sideload` restored `db-20261020T050321Z` (3 sessions at
+  backup time; retention dropped the closed ones at start, as before) in
+  15 min 52 s, and the range was ready.
+- The VM runs 8f19f43, `ready` true, both slots READY, no open session.
+
+Still open, not fixed:
+
+- `bin/cloud down` refuses when a store sits beside a stopped platform container
+  (it does not start the container first, unlike `up` and the replace).
+- `resume` returns as soon as the API answers, before it checks the hand-over
+  (`docs/STATE.md` backlog 0).
+- The §9 one-VM trial has not been run, and the first range key was not made
+  live (the key existed in both runs and was kept).
+- After `down` then `up`, the `fsl-wargame-host` image was rebuilt both times;
+  not investigated.
+
+## 2026-10-20 — The one-VM trial and the last bring-up fixes
+
+The previous entry ended with four items open and the §9 one-VM trial unrun.
+This entry closes them. Notes: `~/.cache/fsl-work/notes/live-open-items.md` and
+`s9-trial.md` (outside the repo).
+
+The four items, fixed in 7f6f31c and 3834b61 and run live on the test cloud
+(platform VM 192.168.0.210):
+
+1. `bin/cloud down` beside a stopped `fsl-platform` container. `down` now starts
+   the container, backs up, waits for the API and then removes the range. It
+   still refuses, deleting nothing, when ssh or Docker does not answer or the
+   container does not start. Live: 40 s, a backup of 430,080 bytes that passed
+   `integrity_check`, and the slot, the fabric and the stack gone.
+2. `resume` checks the hand-over every time. Before, it returned as soon as
+   `/api/sessions/` answered, so a container started before the password line
+   was written skipped the redone hand-over and the range build failed. Live: with
+   only the `FSL_OPENSTACK_PASSWORD` line removed and the container running,
+   plain `up` redid the hand-over in 89 s. `openstack.env` came back with the
+   same lines and mode 0600, and the key was unchanged.
+3. The first range key, made live. With `~/.ssh/fsl-platform` moved away and no
+   stack, `up --sideload` made the key (with its `.pub`), restored the newest
+   backup that holds rows, rebuilt `fsl-edge` (it trusts the new key) and
+   `fsl-wargame-host`, and reused `fsl-waf` and `fsl-kali`. It took 15 min
+   53 s. The old key is kept in the operator's backup.
+4. The wargame host rebuilt after every `down` then `up`. The cause was the
+   platform's fixed IP: the list of sideloaded images in the bundle carried the
+   URL each image is fetched from, so a new stack (Neutron gives the port a new
+   fixed IP) changed the digest. The list is now `<image> <image id> <name>`,
+   and the base URL goes in `served-from`, which the builder gets and the digest
+   leaves out. Live: `down` 30 s, then `up --sideload` 8 min 56 s with no
+   image built. The wargame host kept its digest `7bce304b14aea25e` while
+   `FSL_PUBLISH` changed from 10.20.0.64 to 10.20.0.181.
+
+A full `bin/verify` on 3834b61 passed: unit 1716, acceptance 73 passed, 0
+failed, 0 skipped (1165 s), ratchet ok (`core_loc` 584, `dependencies` 6,
+`services` 10).
+
+The mode-digest fix, e01b1f3. The run of item 3 showed that `setup.sh` was mode
+0664 in the sideloaded checkout (umask 002) and 0644 in cloud-init's clone
+(umask 022), and the digest hashed `st_mode & 0o777`. One commit therefore built
+two digests, and a VM made without `--sideload` would have rebuilt every image
+once. The digest and the archive now take only the executable bit, 0755 or 0644,
+as git tracks it. Every digest changes once, when this rule begins. The test
+`test_a_checkout_s_umask_does_not_change_the_digest_and_only_the_executable_bit_does`
+holds it. `bin/verify --fast` passed 1717.
+
+The §9 trial, run end to end on e01b1f3 from an empty cloud (`docs/OPENSTACK.md`
+§9):
+
+| Stage | Time | Note |
+|---|---|---|
+| Platform tarball built | 1 min 21 s | |
+| Test cloud `bin/cloud down` | 29 s | backup 438,272 bytes, integrity ok |
+| Trial VM created | 37 s | |
+| §9.1 netplan, sudoers, apt | 39 s | `kvm-ok` passed |
+| §9.2 `install-deps`, `bootstrap-servers` | 76 s, 51 s | |
+| §9.2 `prechecks` | 27 s | failed twice first (D1, D2) |
+| §9.2 `deploy` | 11 min 39 s | failed once first (D3); `failed=0` |
+| §9.2 `post-deploy` | 4 s | failed once first (D4) |
+| §9.3 external network, project, flavors, base image | 3, 5, 1, 57 s | |
+| README steps 2 to 6 | 17 s | |
+| README step 7, `bin/cloud up` | 17 min 41 s | four builders in parallel |
+| README step 8 | Start to session page 9.3 s and 6.9 s; close to ready again 80 s and 70 s | |
+| Teardown | 25 s | |
+
+At the end of the trial the VM used 26 of 39 GB of RAM and 57 GB of disk, with
+a load of about 3. The nested platform ran the commit's code, and the range's
+guests saw `vmx` and `/dev/kvm`.
+
+Seven defects in the document came out of it, all fixed in `docs/OPENSTACK.md`
+and `README.md`/`README.ko.md`:
+
+- D1. `prechecks` stopped at "Checking docker SDK version". Fix: `pip install
+  docker dbus-python` in the Kolla venv.
+- D2. `prechecks` refused the `quay.io/openstack.kolla` images. Fix:
+  `--use-test-images` on `prechecks` (`deploy` takes none).
+- D3. `deploy` failed with "Address already in use" on port 3306: ProxySQL is
+  enabled with MariaDB, not with HAProxy, and binds the VIP, which an all-in-one
+  makes the host's own address. Fix: `enable_proxysql: "no"` beside
+  `enable_haproxy: "no"`. The failed run was cleaned by removing the proxysql
+  and mariadb containers, their volumes and `/etc/kolla/proxysql`.
+- D4. `post-deploy` without `-i` looked for a missing inventory. Fix: `-i
+  ./all-in-one`.
+- D5. README step 8 said the blue console opens by itself. It does not: the
+  session page has a "Blue team console" card with "Open". The page opens within
+  seconds.
+- D6. The timings: deploy 11 min 39 s, README step 7 17 min 41 s, and §9 now says
+  it was run end to end.
+- D7. The admin shell's `OS_*` variables must not be set for README steps 2 to 6,
+  so §9.3 says to open a new shell.
+
+Where the trial differed from §9 as written:
+
+- The trial VM was a guest of the KVM test cloud, not a VirtualBox or VMware VM.
+  The nested-virtualization setting, the promiscuous-mode setting and the
+  adapters' modes of §9.1 were therefore not exercised, and §9's intro says so.
+- It booted the stock Ubuntu cloud image, not the Server installer. The root
+  disk was already 242 GB, so the `lvextend` step did not apply, and cloud-init
+  had put DHCP on both adapters, which gave the two default routes that §9.1
+  predicts and its netplan file removes.
+- Its outer network was a VXLAN tenant network with MTU 1450, so the netplan file
+  carried `mtu: 1450` on both adapters. Nova also refused a port with no fixed
+  IP for the second adapter. Both belong to that host and stay out of §9.
+- The repo came from a git bundle, because origin/dev lacked the commit, and the
+  platform from `--sideload platform=...` (only the platform context differed
+  from origin/dev). The fsl-range password was generated, not typed. Step 8 ran
+  in a headless Chromium through an ssh tunnel, so a host browser reaching the
+  floating IP was not tried.
+
+The restore. After the trial, `bin/cloud up --sideload platform=e01b1f3` on the
+test cloud took 11 min 55 s and restored `db-20261020T082615Z` (rule sets 232,
+suppressions 79, no sessions). The waf, edge, kali and opnsense images stayed
+ready on their digests; only `fsl-wargame-host` was rebuilt, once, because of the
+mode rule above. Both slots were READY with all checks true.
+
+Two full `bin/verify` runs on e01b1f3, on that VM:
+
+- First: unit 1717 passed; acceptance 72 passed, 1 failed (1257 s). The failure
+  was `test_corp_authz`'s live content overwrite: WordPress answered `Invalid
+  nonce.` to a nonce the test had just fetched. `bin/acceptance --only
+  test_corp_authz` passed all 3 on rerun (118 s).
+- Second: unit 1717 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped
+  (1155 s); ratchet ok; all green.
+
+The nonce failure is the same one the backlog records ("unexplained test_corp_*
+nonce error, once, passed on rerun"). It has now been seen twice, both times
+passing on rerun. It stays open.
+
+Not verified: the VirtualBox and VMware settings of §9.1; a host browser reaching
+the floating IP; the 40 GB figure under load (the trial peaked at 26 GB used).
+
+8752a35: the platform VM makes `/opt/fsl/.venv` itself (the cloud-init
+`fsl-venv` unit, and `fsl-venv-checkout` after a sideload checkout), proven on a
+fresh VM. The full `bin/verify` there: unit 1718; acceptance 73 passed, 0 failed,
+0 errors, 0 skipped; ratchet ok; about 22 minutes. The squash into bf96876 kept
+this code; the ids of 2026-10-20 in this file predate it.
