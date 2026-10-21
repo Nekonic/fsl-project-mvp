@@ -129,7 +129,7 @@ The platform reaches the range on `mgmt` only.
 
 "The range on OpenStack: the target structure", near the end of this document, draws the whole path.
 
-`deploy/suricata/suricata.yaml` is the estate sensor's configuration. It still names the interfaces `eth0` to `eth4`, left over from the WAF's network namespace in the docker range. Its `default` entry gives any other interface the same capture settings, for example the estate sensor's `ens3`. Its `HOME_NET` still lists the four former docker edge subnets (5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24 and 73.0.0.0/24) beside 10/8, 172.16/12 and 192.168/16. Changing it changes what the estate sensor alerts on, so it waits for a decision (`docs/DECISIONS.md`, 2026-10-21).
+`deploy/suricata/suricata.yaml` is the estate sensor's configuration. Its one af-packet entry, `default`, gives the interface the wargame host names with `--af-packet` its capture settings, for example `ens3`. Its `HOME_NET` is 10/8, 172.16/12 and 192.168/16, and it holds no origin: the attacker's addresses are outside (`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
 
 The WAF sends `board.com` to `board:8000`. It sends `/internal/` to a path the board does not serve, so the answer is the board's own 404, byte for byte (`deploy/waf/board.com.conf`). `corp.com` is a second vhost in the same file. It goes to `corp-wp:80`.
 
