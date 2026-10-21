@@ -4,8 +4,8 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-21 (the platform VM runs dev's head from GitHub and GHCR,
-with two range slots). Written for a session that reaches the new cloud through the user's
+Updated: 2026-10-22 (the platform VM runs the fixes of this push with its
+platform and corp images sideloaded, with two range slots). Written for a session that reaches the new cloud through the user's
 VPN (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and
 the Internet.
 
@@ -18,10 +18,11 @@ the Internet.
   `docs/DECISIONS.md` "The product moved to a new OpenStack cloud"; the cloud's
   values are the "(this cloud)" passages of `docs/OPENSTACK.md` §2-§4.
 - The platform VM is `fsl-platform` at 192.168.2.247. On 2026-10-21 it was
-  rebuilt with `bin/cloud up --replace` from the main checkout, without
-  `--sideload` (29 min): `/opt/fsl` is dev's head cloned from GitHub and every
-  image comes from GHCR. Its store was restored from `db-20261021T130039Z`.
-  Two slots (`compute.slots: 2`), both READY: the user had their VM
+  rebuilt from the main checkout without `--sideload` (29 min, dev's head from
+  GitHub and GHCR), then twice from a worktree with `--sideload
+  platform=... --sideload corp=...` (27 min each) to prove the corp readiness
+  and reset-resume fixes live. It runs the fixes of this push now
+  (`FSL_SIDELOADED=corp,platform`); the other images come from GHCR. Two slots (`compute.slots: 2`), both READY: the user had their VM
   `FSL-front` deleted, which freed 4 cores, and the project now uses 18 of
   its 20 cores (`docs/OPENSTACK.md` §3.2).
 - A rebuilt VM has new ssh host keys. Check the new fingerprints in the VM's
@@ -42,11 +43,15 @@ the Internet.
   cloud. The record is in `docs/DECISIONS.md` "The docker substrate is removed",
   "Live proof on the new cloud": `bin/cloud up --replace --sideload` passed in
   19 min 44 s, and the full `bin/verify` on the VM, on the code with the docker substrate removed, passed with 8
-  failures that all come from the single slot (next bullet).
-- Last full `bin/verify`, on the rebuilt VM with two slots (2026-10-21,
-  dev's head): unit 1578 passed; acceptance 73 passed, 0 failed, 0 errors, 0
-  skipped in 3853 s; ratchet ok. The one-slot failures below are gone
-  (`docs/DECISIONS.md` "Two range slots on the new cloud").
+  failures that all come from the single slot (the earlier runs, two bullets
+  down).
+- Last full `bin/verify`, on the sideloaded VM with the fixes of this push
+  (2026-10-22): unit 1581 passed; acceptance 73 passed, 0 failed, 0 errors, 0
+  skipped in 3759 s; ratchet ok (`docs/DECISIONS.md` "A reset cut short by a
+  restart, and corp's readiness"). The run before it, on dev's head without a
+  sideload, gave unit 1578 and acceptance 73 passed in 3853 s; the one-slot
+  failures below are gone (`docs/DECISIONS.md` "Two range slots on the new
+  cloud").
 - Earlier full `bin/verify` runs on the new cloud are recorded in `docs/DECISIONS.md`:
   the 3da925e run (before the removal) in "The product moved to a new OpenStack
   cloud", the run after the removal in "The docker substrate is removed".
@@ -97,7 +102,7 @@ the Internet.
 - Unverified and open: Kibana's learner space still shows Home and Stack
   Management in its menu (their pages answer 403) and ad-hoc data views cannot
   be turned off in 8.15; no taste items were collected. The e4a467e smoke passed
-  20 of 20 steps (details under Next, 11).
+  20 of 20 steps (details under Next, 9).
 - To try it: open http://192.168.2.247:8000 (through the VPN), open the
   catalogue, start the foundations course (its first lesson button) and go F1 to
   F6 in one session; about 30-40 minutes by hand.
@@ -114,14 +119,20 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
 - `sh reach.sh` checks the platform VM and Keystone.
 - `sh build.sh platform` builds the image on the platform VM (the Mac's Docker
   daemon is off) and copies `images/fsl-platform-<HEAD>.tar` back. It knows
-  `platform`, `board`, `kali`, `proxy` and `gns3`.
+  `platform`, `board`, `corp`, `kali`, `proxy` and `gns3`.
 - `sh deploy.sh <tag> platform=<HEAD>` runs `bin/cloud up --replace
   --sideload` with the `openstack` CLI from `osc/bin`; the log is
   `deploy/<tag>.log`. A rebuild from images on GHCR needs no script: run
-  `bin/cloud up --replace` from this worktree.
+  `bin/cloud up --replace` from the main checkout.
+- `sh known-hosts.sh` replaces the operator's `known_hosts` entry for
+  192.168.2.247 with the keys cloud-init printed to the VM's console log,
+  after checking their fingerprints; run it after every rebuild.
+- `live/resume-proof.sh` is the live check of a reset resumed after a
+  platform restart (`docs/DECISIONS.md` "A reset cut short by a restart, and
+  corp's readiness").
 - `sh s.sh '<cmd>'` runs a command on the platform VM, for example `sh s.sh 'git
   -C /opt/fsl rev-parse HEAD'`.
-- `walker/walk.py` is the lesson walker (Next, 11).
+- `walker/walk.py` is the lesson walker (Next, 9).
 - The repository has a `cloud` git remote (the VM's `/opt/fsl`). Work goes to
   the VM with `git push cloud HEAD:refs/heads/work` and `git -C /opt/fsl
   checkout --detach work` on the VM. Claude Code asks the user before every push to GitHub
@@ -130,8 +141,9 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
 `bin/cloud` needs three gitignored files in the checkout that runs it:
 `deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`. The
 main checkout (`/Users/nekonic/Documents/GitHub/fsl-project-mvp`) and this
-worktree both have them for the new cloud (newest copy
-`db-20261021T095201Z.sqlite3`); the old cloud's `cloud.yaml` is kept outside the
+worktree both have them for the new cloud (newest copy: the main checkout's
+`db-20261021T130039Z.sqlite3`, 22.8 MB; this worktree's
+`db-20261021T153219Z.sqlite3`, 471 KB); the old cloud's `cloud.yaml` is kept outside the
 repo in `~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned
 up loses these files, so copy them before working in a new one. Older store
 copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
@@ -147,33 +159,39 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 
 ## Next, in order
 
-1. Open items that need a decision (`docs/DECISIONS.md` "The docker substrate
+1. After the next push: check the `images.yml` run for that push (`gh run list
+   --workflow images.yml --branch dev --limit 3`; the run for ee5e641 was
+   green), then rebuild the platform VM
+   from the main checkout with `bin/cloud up --replace`, without `--sideload`,
+   so the VM runs dev from GitHub and GHCR. Then refresh the operator's
+   `known_hosts` from the console log (`~/.cache/fsl-work/known-hosts.sh`).
+2. Open items that need a decision (`docs/DECISIONS.md` "The docker substrate
    is removed"): `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name
    `/var/lib/session/origin`, which nothing writes (editing them changes the
    Kali image digest once more).
-2. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
+3. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
    the shared session of `test_strategy_honesty` to retention. A one-slot run
    took about 2 h 50 min and failed there; the two-slot run of 2026-10-21 took
    64 min and passed. Open question: either the harness keeps a session it
    still needs, or the retention window accounts for a long run.
-3. The `test_corp_authz` nonce error: the likely cause (corp healthy before
-   its forms existed) is fixed in code; prove it live once the `fsl-corp`
-   image is rebuilt (`docs/STATE.md` backlog 0).
-4. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
+4. The `test_corp_authz` nonce error: the likely cause (corp healthy before
+   its forms existed) is fixed and one full `bin/verify` passed with it. The
+   error was intermittent, so watch the next runs for it (`docs/STATE.md`
+   backlog 0).
+5. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
    or VMware (the 2026-10-20 trial ran on the KVM test cloud).
-5. 4.2, a person as the red team against the learner: the engine accepts
+6. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live.
-6. A corp scenario: corp's CVEs succeed but it has no customer traffic; needs
+7. A corp scenario: corp's CVEs succeed but it has no customer traffic; needs
    a generator for WordPress first (P3's shape).
-7. Acceptance run time and ingest re-reading the whole window (paged since
+8. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
-8. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
+9. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
    rebuild, remaining work"): the F1/F2 "auto-advance" item was a walker
-   race, fixed in the walker on 2026-10-21 (`docs/STATE.md`); the 2026-10-21 walk on the new cloud (session
-   1070, F1-F6): 46 of 48 steps passed; the two misses are walker faults: F4
-   replay waited for a search box on the 403 page the previous step left in
-   the Website pane, and F6 replay never read the sqlmap command its card
-   shows (walker shot 254); fix both in the walker and re-walk; a live review round of 9f1f39d..60243e6 (six reviewers, convergence
+   race, fixed in the walker on 2026-10-21 (`docs/STATE.md`); the walker's
+   two F4/F6 faults are fixed and the 2026-10-22 re-walk (session 1137)
+   passed F4-F6, 28 of 28 steps; the Kali and WAF terminals are wider than
+   their pane, so line ends sit under the lesson notes; a live review round of 9f1f39d..60243e6 (six reviewers, convergence
    rule, exit on zero countable findings); Kibana's Home and Stack Management
    menu entries; whether the walker (`~/.cache/fsl-work/walker/walk.py`)
    becomes a repo tool.

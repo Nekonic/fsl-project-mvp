@@ -6128,3 +6128,78 @@ The user decided both on 2026-10-21.
   open race were already fixed in ac18e68; the WAF terminal item went with
   the docker substrate; `fsl-build` staying after `down` is recorded as
   intended.
+
+## 2026-10-22 — A reset cut short by a restart, and corp's readiness
+
+Two backlog items the 2026-10-21 triage found still real, fixed overnight
+while the user was away, and one found by reading the live target.
+
+- A reset cut short by a platform restart. Reset state lived only in the
+  platform process, so after a restart the slot read idle and sat in
+  `CHECKING`, or read READY over a half-reset estate. A claimed reset now
+  leaves `slot-N` in `/data/reset-owed` until the reset ends idle, and the
+  served process repeats each owed reset at boot as a close does:
+  `reset_slot`, the suppressions it lifts, the in-place reset of the edge and
+  the wargames, configure. The first version only configured the slot; the
+  pre-push review showed that the wargame host and the edge are reset in
+  place, not rebuilt, so it could hand the next session the last one's corp
+  and board data, and the next effect snapshot would take that as its
+  baseline. Rejected: configure only (that defect); a retry loop when the
+  cloud is unreachable at boot (the file stays and the next start or
+  `POST /api/range/configure/` recovers).
+- corp's readiness. Its healthcheck passed once Ultimate Member was active,
+  before the entrypoint made UM's forms, pages and the rbsm form, so a reset's
+  `up --wait` could hand a session a half-set-up corp: the likely cause of the
+  intermittent "no `_wpnonce`" and "Invalid nonce." in `test_corp_*`. The
+  entrypoint now touches `/tmp/fsl-corp-ready` last (in the container layer,
+  so a recreate starts without it) and the healthcheck requires it.
+- Read live on slot 2: UM's forms are 5 (registration), 6 (login), 7
+  (profile), so `corp-rogue-admin` and `corp-normal-registration` posted a
+  form (4) that does not exist on the shipped image; they post 5, as the
+  acceptance helper already did. `/submit-a-story/` localizes two `"nonce"`
+  values (`rbGlobalSubmissionSettings`, `um_scripts`), so the prefetch and
+  the test now name the first. The 2026-10-09 finding that 5 was the login
+  form came from a local build; the block-theme item was likewise stale.
+- Live proof, with this branch's platform and corp images sideloaded
+  (`bin/cloud up --replace --sideload platform=... --sideload corp=...`,
+  27 min, exit 0, twice): session 1103 on slot 1, a WordPress user planted,
+  the session closed (Nova rebuilt the WAF and Kali at 15:59:48Z), the
+  platform container restarted 40 s later. The slot read `RESETTING` again,
+  Nova rebuilt both VMs a second time at 16:00:35Z, the slot was READY at
+  16:03:57Z, `/data/reset-owed` was empty and the planted user was gone.
+  Then the full `bin/verify` on that VM: unit 1581 passed; acceptance 73
+  passed, 0 failed, 0 errors, 0 skipped in 3759 s; ratchet ok (core_loc 584,
+  dependencies 6, services 5). After it, `bin/acceptance --only
+  test_corp_authz,test_corp_observe_live` three times in a row, each across
+  slot resets: 5 passed, 0 failed, 0 errors each (436 s, 411 s, 577 s), no
+  nonce error. Four clean runs make the cause likely, not certain, so the
+  nonce item stays open until runs on the GHCR image stay clean too.
+
+## 2026-10-22 — PL4 and the Korean search
+
+Measured live on session 1136 (slot 2) through the product's REST API:
+`PUT /api/sessions/<id>/waf/` with `paranoia` 4 and the exclusions, then
+`POST /api/sessions/<id>/attacks/` per case, and the ModSecurity audit log
+read through `run_on_role gateway`.
+
+- With 920273, 920272 and 942460 excluded on `ARGS:q` under `/search/`, the
+  Korean search (`board-normal-search-korean`) still drew 403: 920272
+  "Invalid character in request" matched `REQUEST_URI_RAW` (the raw query
+  string carries the UTF-8 bytes), then 949110 at score 5. The 2026-10-13
+  hypothesis named `REQUEST_URI`; the variable is `REQUEST_URI_RAW`, which
+  `rules/crs.py` already accepts as an exclusion target.
+
+| Exclusions under `/search/` at PL4 | Korean | O'Brien | `board-sqli-search` |
+|---|---|---|---|
+| 920273, 920272 on `ARGS:q`; 920272 on `REQUEST_URI_RAW` | 200 | 200 | 403 |
+| the same plus 942460 on `ARGS:q` | 200 | 200 | 403 |
+| 920273, 942460 on `ARGS:q`; 920272 on `REQUEST_URI_RAW` | 403 | 200 | 403 |
+| 920272 on `ARGS:q` and on `REQUEST_URI_RAW` | 403 | 403 | 403 |
+| 920272 on `REQUEST_URI_RAW` only | 403 | 403 | 403 |
+
+- 942460 scores 3, below the threshold of 5, so it is not needed once
+  920273 and 920272 are excluded. The SQLi search stays blocked by
+  942100, 942130, 942180, 942330, 942390 and 942432 on `ARGS:q`.
+- Not changed: the assessment and the lesson text. Whether they should
+  teach the `REQUEST_URI_RAW` exclusion is a content decision, left open in
+  `docs/STATE.md`.

@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-21
+Updated: 2026-10-22
 
 ## Where things stand
 
@@ -28,27 +28,32 @@ moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
 through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
-proven live on the new cloud; the VM's `/opt/fsl` is a git checkout of dev's
-head, and since its rebuild on 2026-10-21 every image comes from GHCR
-(`docs/DECISIONS.md` 2026-10-21, "Two range slots on the new cloud", "The docker substrate is removed" and "The
-estate sensor's HOME_NET and a repeated lesson move"). The commits above
-3da925e, among them the fix that makes range subnets announce no DNS resolver,
-are on `dev`. Live runs on the old cloud on
+proven live on the new cloud. The VM's `/opt/fsl` runs the fixes of this
+push (the reset resumed at boot, corp's readiness healthcheck, the corp cases'
+form id and nonce key) with the platform and corp images sideloaded
+(`FSL_SIDELOADED=corp,platform`); before that, on 2026-10-21, it was rebuilt
+from dev's head on GHCR images alone. The records are in `docs/DECISIONS.md`
+(2026-10-21, "Two range slots on the new cloud", "The docker substrate is
+removed" and "The estate sensor's HOME_NET and a repeated lesson move";
+2026-10-22, "A reset cut short by a restart, and corp's readiness"). The
+commits above 3da925e include the fix that makes range subnets announce no DNS
+resolver. Live runs on the old cloud on
 2026-10-20 proved the changed bring-up paths and led to fixes
 (`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths" and "The
 one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
-from an empty cloud (README step 7 took 17 min 41 s). The last
-full `bin/verify` that finished, on the old cloud with the
-`.venv` the VM made: unit 1718 passed; acceptance 73 passed, 0 failed, 0
-errors, 0 skipped; ratchet ok. The full runs on the new cloud (3da925e before
-the removal, and one after it; failures that all come from the single slot) are
-recorded in `docs/DECISIONS.md`, and `docs/state/now.md` summarises them.
-Before the last one, two
-runs on the same code: acceptance 72 passed and 1 failed (the `test_corp_authz`
-nonce error), then 73 passed (1155 s). Live
-state: `docs/state/now.md`.
+from an empty cloud (README step 7 took 17 min 41 s). The last full
+`bin/verify` ran on 2026-10-22 on the new cloud with two slots: unit 1581
+passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 3759 s; ratchet
+ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
+passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
+the removal, and one after it; failures that all come from the single slot) and
+the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
+`docs/DECISIONS.md`, and `docs/state/now.md` summarises them. Before the old
+cloud's last run, two runs on the same code: acceptance 72 passed and 1 failed
+(the `test_corp_authz` nonce error), then 73 passed (1155 s). Live state:
+`docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -937,7 +942,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       summed over the reviewers fell from 7 and 12 to 0 and 1; every walker
       run passed 48 of 48 steps; the round-5 fixes (9f1f39d..60243e6) are
       deployed as e4a467e and carried by the VM's current code; the last full
-      `bin/verify` passed on the code of 2026-10-20. Round 6 was skipped at the user's
+      `bin/verify` passed on 2026-10-22. Round 6 was skipped at the user's
       request.
 - [x] Full `bin/verify` (unit and acceptance) on the old cloud's VM
       (2026-10-20, the last code before the move): unit 1718 passed; acceptance 73 passed, 0 failed, 0
@@ -961,8 +966,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       removal.
 - [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
       2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
-      images. Still to do: check the run for dev's head (the commits above 3da925e
-      are on `dev`).
+      images. The run for ee5e641 was green too. Still to do: check the run for
+      the next push (`docs/state/now.md` Next 1).
 - [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
       9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
       review loop, rounds 2-5"):
@@ -976,11 +981,17 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             lesson just walked). The walker's fallback POST added a second
             f2 entry to `lessons`; since the repeated-lesson-move fix `POST /lesson/` with the
             current lesson changes nothing.
-      - [ ] Re-walk F4-F6 after fixing the walker. The 2026-10-21 walk on
-            the new cloud (session 1070, F1-F6) passed 46 of 48 steps; both
-            misses were walker faults (F4 replay waited for a search box on
-            the 403 page the previous step left in the Website pane; F6
-            replay never read the sqlmap command its card shows).
+      - [x] Re-walk F4-F6 after fixing the walker (2026-10-22). The
+            2026-10-21 walk (session 1070) missed 2 of 48 steps on walker
+            faults. The walker now goes back to the board home when the
+            Website pane holds an error page instead of the search box, and
+            reads the step card's command once it has rendered. Session
+            1137, F4-F6: 28 of 28 steps passed (F4 11, F5 9, F6 8).
+      - [ ] The Kali and WAF terminals are wider than their pane at
+            1440x900: line ends sit under the lesson notes column (sqlmap's
+            CRITICAL line in F5, `systemctl reload nginx` in F6). Seen in
+            the 2026-10-22 walk's screenshots; the terminal's columns do
+            not follow the visible width.
       - [ ] A live review round of the round-5 fixes under the convergence
             rule: six reviewers (lesson design, UI, terms, AI-sounding
             Korean, realism and leaks, first-time learner); a finding counts
@@ -1001,10 +1012,21 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       the end of a successful reset removes it, and at boot `fsl/wsgi.py` does
       each owed slot's reset again as a close does (rebuild, suppressions
       lifted, in-place reset of the edge and the wargames, configure). A
-      failed one keeps its file and shows `RESET_FAILED`.
-- [ ] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under
-      `/search/` did not serve the Korean search (hypothesis: 920272 also
-      matches the request URI); measure.
+      failed one keeps its file and shows `RESET_FAILED`. Proven live on
+      2026-10-22: a platform restart 40 s into slot 1's reset; the slot read
+      `RESETTING` again, Nova rebuilt the WAF and Kali a second time, the slot
+      was READY 3.5 min later and a WordPress user planted before the close
+      was gone.
+- [x] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under
+      `/search/` did not serve the Korean search: measured 2026-10-22. 920272
+      also matches `REQUEST_URI_RAW`, which an `ARGS:q` exclusion does not
+      cover. 920273 and 920272 on `ARGS:q` plus 920272 on `REQUEST_URI_RAW`
+      let the Korean search and O'Brien through (200) while the SQLi search
+      stays blocked (403); 942460 is not needed (`docs/DECISIONS.md`
+      2026-10-22, "PL4 and the Korean search").
+- [ ] Whether the assessment and its lesson text should name the
+      `REQUEST_URI_RAW` exclusion for the Korean search at PL4 (a lesson
+      content change; measured above).
 - [ ] The unexplained `test_corp_*` nonce error, seen twice and passing on
       rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20
       `test_corp_authz`'s live content overwrite got WordPress's
@@ -1013,8 +1035,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       forms and `/submit-a-story/` existed, so a session could open on a
       half-set-up corp. Fixed 2026-10-21: the entrypoint touches
       `/tmp/fsl-corp-ready` after the forms, pages and rbsm form exist and the
-      healthcheck requires it, so `up --wait` covers corp. Live proof pending
-      (needs the `fsl-corp` image rebuilt). The live `/submit-a-story/` page
+      healthcheck requires it, so `up --wait` covers corp. Not yet
+      on the GHCR image; the full `bin/verify` of 2026-10-22 with the fixed
+      corp image passed, and so did three `test_corp_*` runs in a row after
+      it, but the error was intermittent, so this is not yet proof. The live `/submit-a-story/` page
       localizes two `"nonce"` values (`rbGlobalSubmissionSettings` and
       `um_scripts`); `test_corp_authz` and `corp-content-write` now read the
       `rbGlobalSubmissionSettings` one only.
@@ -1044,15 +1068,17 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
-      alone 578 s); with two slots and the audited tests about 730-990 s
-      (987 s on 9674d0e with 70 tests). Measure where the setup still goes, then: polling
+      alone 578 s); with two slots and the audited tests about 730-990 s on the
+      old cloud (987 s on 9674d0e with 70 tests); with two slots on the new
+      cloud the run takes 3,759-3,853 s. Measure where the setup still goes, then: polling
       instead of fixed waits, edge configuration without a reboot.
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
-- [x] Rebuild the platform VM with `bin/cloud up --replace`, without
-      `--sideload`: done 2026-10-21 from the main checkout at dev's head, 29
-      min, exit 0; the VM runs dev from GitHub and GHCR.
+- [ ] Rebuild the platform VM with `bin/cloud up --replace`, without
+      `--sideload`, from the main checkout after the push and a green
+      `images.yml` run. Done once on 2026-10-21 (dev's head, 29 min, exit 0),
+      then replaced by two sideloaded rebuilds to prove the fixes of this push.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
@@ -1178,7 +1204,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       unauth user made administrator. The cases were non-functional as written
       (empty nonces; rogue-admin on form_id 5=login). Fixed with a reusable
       harness `prefetch: {from, pattern}` (fetch the public nonce, inject
-      `{nonce}`) + form_id 4; done 2026-10-09. option-flip verified end-to-end
+      `{nonce}`) + form_id 4 (form_id 4 came from a local build; the cases post
+      5 since 2026-10-22, which is the registration form on the shipped image);
+      done 2026-10-09. option-flip verified end-to-end
       through the harness; the raw CVEs by hand.
 - [x] corp block theme (twentytwentyfour) does not render the plugin shortcode
       forms, so the per-form nonces are on no public page: not so on the GHCR
@@ -1199,8 +1227,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `deploy/wargame-host/sensor.yaml` runs Suricata on the wargame host and
       `range/openstack.py` (`start_sensor`) with `range/wargame_host.py`
       (`sensor_up`) starts it; `operator_log.py` + the `fsl-kali` terminal
-      wiring for the attacker box; `waf-terminal.sh`, and `vm-terminal.sh
-      fsl-waf` on OpenStack, and F6's step commands naming the exclusion file
+      wiring for the attacker box; `vm-terminal.sh fsl-waf`, and F6's step commands naming the exclusion file
       and the nginx reload). `CLAUDE.md` lists them, the estate
       sensor as `range/wargame_host.py`.
 - [x] The WAF terminal names the WAF container by convention instead of the
