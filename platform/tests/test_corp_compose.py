@@ -33,3 +33,19 @@ def test_corp_keeps_no_persistent_volume_so_each_rebuild_is_clean():
     assert not _corp()["corp-wp"].get("volumes"), (
         "a wp-content volume would shadow the plugins baked into the image"
     )
+
+
+def test_corp_is_healthy_only_after_its_forms_and_pages_exist():
+    entrypoint = (ROOT / "wargames/corp/app/entrypoint.sh").read_text().splitlines()
+    mark = "/tmp/fsl-corp-ready"
+    forms = next(i for i, line in enumerate(entrypoint) if "install_default_forms" in line)
+    pages = next(i for i, line in enumerate(entrypoint) if "install_default_pages" in line)
+    rbsm = next(i for i, line in enumerate(entrypoint) if "fsl-rbsm-form.php" in line)
+    touched = [i for i, line in enumerate(entrypoint) if line.startswith("touch ") and mark in line]
+    cleared = [i for i, line in enumerate(entrypoint) if line.startswith("rm -f ") and mark in line]
+    assert len(touched) == 1 and touched[0] > max(forms, pages, rbsm)
+    assert len(cleared) == 1 and cleared[0] < forms
+    test = _corp()["corp-wp"]["healthcheck"]["test"]
+    assert f"test -f {mark}" in test[-1]
+    assert "ultimate-member" in test[-1]
+    assert not _corp()["corp-wp"].get("volumes")

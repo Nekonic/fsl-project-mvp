@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+rm -f /tmp/fsl-corp-ready
+
 docker-entrypoint.sh apache2-foreground &
 APACHE_PID=$!
 
@@ -23,5 +25,6 @@ wp option update default_role subscriber --allow-root
 wp option patch update um_options account_tab_password 1 --allow-root >/dev/null 2>&1 || true
 wp --allow-root --user=admin eval 'UM()->setup()->install_default_forms(); UM()->setup()->install_default_pages();'
 wp --allow-root --user=admin eval-file /usr/local/bin/fsl-rbsm-form.php
+touch /tmp/fsl-corp-ready
 
 wait "$APACHE_PID"

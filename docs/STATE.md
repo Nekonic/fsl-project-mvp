@@ -1004,7 +1004,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] The unexplained `test_corp_*` nonce error, seen twice and passing on
       rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20
       `test_corp_authz`'s live content overwrite got WordPress's
-      "Invalid nonce." for a nonce the test had just fetched.
+      "Invalid nonce." for a nonce the test had just fetched. Likely cause:
+      corp's healthcheck passed once Ultimate Member was active, before the
+      forms and `/submit-a-story/` existed, so a session could open on a
+      half-set-up corp. Fixed 2026-10-21: the entrypoint touches
+      `/tmp/fsl-corp-ready` after the forms, pages and rbsm form exist and the
+      healthcheck requires it, so `up --wait` covers corp. Live proof pending
+      (needs the `fsl-corp` image rebuilt). Still open: `test_corp_authz`'s
+      generic `"nonce"` regex; narrowing it needs the rbsm localize key from a
+      live `/submit-a-story/` page.
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
       WordPress (P3's shape) first.
