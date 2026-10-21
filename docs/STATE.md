@@ -1010,9 +1010,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       half-set-up corp. Fixed 2026-10-21: the entrypoint touches
       `/tmp/fsl-corp-ready` after the forms, pages and rbsm form exist and the
       healthcheck requires it, so `up --wait` covers corp. Live proof pending
-      (needs the `fsl-corp` image rebuilt). Still open: `test_corp_authz`'s
-      generic `"nonce"` regex; narrowing it needs the rbsm localize key from a
-      live `/submit-a-story/` page.
+      (needs the `fsl-corp` image rebuilt). The live `/submit-a-story/` page
+      localizes two `"nonce"` values (`rbGlobalSubmissionSettings` and
+      `um_scripts`); `test_corp_authz` and `corp-content-write` now read the
+      `rbGlobalSubmissionSettings` one only.
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
       WordPress (P3's shape) first.
@@ -1175,20 +1176,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       harness `prefetch: {from, pattern}` (fetch the public nonce, inject
       `{nonce}`) + form_id 4; done 2026-10-09. option-flip verified end-to-end
       through the harness; the raw CVEs by hand.
-- [ ] corp block theme (twentytwentyfour) does not render the plugin shortcode
-      forms (UM register at /register/, rbsm submit at /submit-a-story/) on the
-      front-end, though `do_shortcode` renders them. So the per-form nonces for
-      corp-content-write (easy-post) and corp-rogue-admin (um_register_form) are
-      not on any public page, and their prefetch fails; only option-flip
-      (wpgdprc nonce, enqueued globally) works. Ship corp with a classic theme
-      or fix the block-theme content rendering so the forms render. A classic
-      theme was not installable in the dev container (none bundled, WordPress.org
-      unreachable). When the form renders, narrow corp-content-write's prefetch
-      pattern from the generic `"nonce":"(...)"` to the rbsm-specific key: the
-      page localizes several `"nonce"` values and `re.search` takes the first,
-      so it could capture another plugin's token. Today this is masked (the form
-      does not render, so the prefetch raises ToolUnavailable rather than
-      grabbing a wrong token).
+- [x] corp block theme (twentytwentyfour) does not render the plugin shortcode
+      forms, so the per-form nonces are on no public page: not so on the GHCR
+      corp image. Read live on slot 2 on 2026-10-21: `/register/` carries UM
+      form 5 with its `_wpnonce`, and `/submit-a-story/` carries
+      `rbGlobalSubmissionSettings`' nonce. UM's forms there are 5
+      (registration), 6 (login) and 7 (profile), so `corp-rogue-admin` and
+      `corp-normal-registration` posted a form id (4) that does not exist; they
+      now post 5, as `test/shared_sessions.py` does, and `corp-content-write`'s
+      prefetch reads the rbsm key only.
 - [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
       written by the platform VM's cloud-init since 2026-10-11) rather than
       from the substrate in code; decide which.
