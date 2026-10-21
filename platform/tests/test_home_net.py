@@ -38,3 +38,11 @@ def test_home_holds_no_origin_in_its_private_ranges():
     inside = [str(o) for o in origins() if any(o.overlaps(net) for net in private)]
 
     assert not inside, f"origins {inside} fall in HOME_NET's private ranges"
+
+
+def test_home_holds_no_origin_at_all():
+    inside = [str(o) for o in origins() if any(o.overlaps(net) for net in home_net())]
+
+    assert not inside, (
+        f"origins {inside} are in HOME_NET, so the estate sensor takes the attacker "
+        f"for the inside network")

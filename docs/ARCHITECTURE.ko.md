@@ -129,7 +129,7 @@
 
 경로 전체는 이 문서 끝쪽의 "OpenStack 훈련 환경: 목표 구조"에 그림으로 있습니다.
 
-`deploy/suricata/suricata.yaml`은 estate 센서의 설정 파일입니다. 인터페이스를 `eth0`부터 `eth4`까지 지정하는데, docker 훈련 환경에서 WAF의 네트워크 네임스페이스를 쓰던 때의 흔적입니다. 이 파일의 `default` 항목은 그 밖의 인터페이스에도 같은 캡처 설정을 적용합니다. 예를 들면 estate 센서의 `ens3`입니다. `HOME_NET`에는 지금도 예전 docker edge 서브넷 네 개(5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24, 73.0.0.0/24)와 10/8, 172.16/12, 192.168/16이 들어 있습니다. 이 값을 바꾸면 estate 센서가 경보를 내는 범위가 달라지므로 결정을 기다리는 중입니다(`docs/DECISIONS.md`, 2026-10-21).
+`deploy/suricata/suricata.yaml`은 estate 센서의 설정 파일입니다. af-packet 항목은 `default` 하나뿐이고, wargame host가 `--af-packet`으로 지정한 인터페이스(예: `ens3`)에 이 캡처 설정이 적용됩니다. `HOME_NET`은 10/8, 172.16/12, 192.168/16이며 출발지 대역은 들어 있지 않습니다. 공격자 주소는 바깥으로 취급합니다(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
 
 WAF는 `board.com`을 `board:8000`으로 보냅니다. `/internal/`은 board가 서비스하지 않는 경로로 보내서, board 자신의 404 응답이 그대로 나가게 합니다(`deploy/waf/board.com.conf`). `corp.com`은 같은 파일에 있는 두 번째 vhost이며 `corp-wp:80`으로 갑니다.
 

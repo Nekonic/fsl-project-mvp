@@ -2,7 +2,7 @@
 ---
 vars:
   address-groups:
-    HOME_NET: "[5.188.10.0/24,177.54.144.0/24,103.152.220.0/24,73.0.0.0/24,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
     EXTERNAL_NET: "any"
   port-groups:
     HTTP_PORTS: "[80,8000]"
@@ -24,26 +24,6 @@ outputs:
             dump-all-headers: request
 
 af-packet:
-  - interface: eth0
-    cluster-id: 99
-    cluster-type: cluster_flow
-    defrag: yes
-  - interface: eth1
-    cluster-id: 98
-    cluster-type: cluster_flow
-    defrag: yes
-  - interface: eth2
-    cluster-id: 97
-    cluster-type: cluster_flow
-    defrag: yes
-  - interface: eth3
-    cluster-id: 96
-    cluster-type: cluster_flow
-    defrag: yes
-  - interface: eth4
-    cluster-id: 95
-    cluster-type: cluster_flow
-    defrag: yes
   - interface: default
     cluster-id: 94
     cluster-type: cluster_flow
