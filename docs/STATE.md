@@ -26,11 +26,11 @@ bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
 moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
-through the user's VPN), one slot. On 2026-10-21 the docker substrate was
+through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
 proven live on the new cloud; the VM's `/opt/fsl` is a git checkout of dev's
-head and it runs a sideloaded platform image built from this branch's code
-(`docs/DECISIONS.md` 2026-10-21, "The docker substrate is removed" and "The
+head, and since its rebuild on 2026-10-21 every image comes from GHCR
+(`docs/DECISIONS.md` 2026-10-21, "Two range slots on the new cloud", "The docker substrate is removed" and "The
 estate sensor's HOME_NET and a repeated lesson move"). The commits above
 3da925e, among them the fix that makes range subnets announce no DNS resolver,
 are on `dev`. Live runs on the old cloud on
@@ -726,8 +726,8 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   images and the slot (the OPNsense edge running Suricata, the WAF, Kali, and
   `fsl-wargame-host` running the wargames' GHCR containers with an estate
   Suricata) through `/api/range/fabric/`, `/images/` and `/slot/`, and reaches
-  every host over ssh on `mgmt` (backlog 2); one slot on the current cloud
-  (`compute.slots: 1`, the project quota allows no more; the old cloud ran two).
+  every host over ssh on `mgmt` (backlog 2); two slots on the current cloud
+  (`compute.slots: 2`, since 2026-10-21).
 
 ## Backlog
 
@@ -802,9 +802,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deletes the shared
       session `test_strategy_honesty` still needs. Either the harness keeps a
       session it still needs, or the retention window accounts for a long run
-      (open question). With one slot (`compute.slots: 1`), `test_concurrent_sessions`
-      and `test_lesson` also fail with 409 "1 session is already open"; two slots need the
-      user to raise the project quota (`docs/state/now.md`, Next, 1).
+      (open question). With two slots (2026-10-21) the run took 64 min and
+      passed; with one slot `test_concurrent_sessions` and `test_lesson` also
+      fail with 409 "1 session is already open".
 - [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
       `bin/cloud up` makes the range key; the `openstack` CLI is found
       beside the interpreter; a platform VM that never ran `fsl-platform`
@@ -839,8 +839,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Per-session Suricata ruleset: nothing mounts `deploy/suricata/rules`
       any more; each session's sensor is seeded at open with its own rule
       file (step 7). Done 2026-10-10.
-- [ ] The reachability middleware covers only the newest session's `estate`.
-- [ ] Two `POST /api/sessions/` within milliseconds can race (pre-existing).
+- [x] The reachability middleware covers only the newest session's `estate`:
+      fixed in ac18e68 (`api/reachability.py` walks every slot; test in
+      `test_api_slots.py`). Found done on 2026-10-21.
+- [x] Two `POST /api/sessions/` within milliseconds can race: fixed in
+      ac18e68 (`SLOT_CHOICE` lock in `api/views.py`, and the
+      `one_open_session_per_slot` constraint answers 409). Found done on
+      2026-10-21.
 - [x] Test audit (2026-10-10): 223 of 1,379 tests are duplicates (about 105),
       implementation pins such as Dockerfile/YAML greps and argv shapes
       (about 42), framework or constant restatements (about 39), guards for
@@ -1017,9 +1022,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       holds rows into a platform VM made where no store stands, and names it.
       Run live 2026-10-20: `down`, then `up --sideload` restored
       `db-20261020T050321Z`.
-- [ ] `bin/cloud down` leaves the `fsl-build` security group the images
-      step makes; delete it there, or record that it stays as the keypair
-      does.
+- [x] `bin/cloud down` leaves the `fsl-build` security group the images
+      step makes: it stays, as the keypair does (`docs/OPENSTACK.md` §3.5,
+      §5.2); the next images step reuses it and resets its one ingress rule
+      to the platform's address. Recorded 2026-10-21.
 - [ ] Unverified: the edge's Suricata include and rules surviving an
       OPNsense update (`opnsense-update`); the edge has no Internet route and
       cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
@@ -1031,12 +1037,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
-- [ ] Rebuild the platform VM with `bin/cloud up --replace`, without
-      `--sideload`, from the main checkout once the `images.yml` run for dev's
-      head is green (`gh run list --workflow images.yml --branch dev --limit
-      3`): the standing VM runs dev's head with a sideloaded platform image
-      built from this branch's code, so the rebuild makes it run dev from GitHub
-      and GHCR (`docs/state/now.md`, Next, 2).
+- [x] Rebuild the platform VM with `bin/cloud up --replace`, without
+      `--sideload`: done 2026-10-21 from the main checkout at dev's head, 29
+      min, exit 0; the VM runs dev from GitHub and GHCR.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
@@ -1192,10 +1195,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       fsl-waf` on OpenStack, and F6's step commands naming the exclusion file
       and the nginx reload). `CLAUDE.md` lists them, the estate
       sensor as `range/wargame_host.py`.
-- [ ] The WAF terminal names the WAF container by convention instead of the
-      label lookup (`platform/waf-terminal.sh` builds `fsl-<id>-waf-1`); route
-      it through `range/docker.py`. The site proxy (3aa49a5) and `views.py`
-      (0a90806) no longer do.
+- [x] The WAF terminal names the WAF container by convention instead of the
+      label lookup (`platform/waf-terminal.sh` builds `fsl-<id>-waf-1`): moot
+      since the docker substrate removal deleted both files; the terminal is
+      `vm-terminal.sh fsl-waf`, found through the session's slot.
 - [x] The blue WAF terminal (`/vm-terminal/`) did not connect on compose:
       the WAF has no `mgmt` address there. Fixed 2026-10-10: the pane frames
       `/waf-terminal/<session id>/`, a platform ttyd that `docker exec`s into

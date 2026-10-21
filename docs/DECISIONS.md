@@ -6099,3 +6099,32 @@ The user decided both on 2026-10-21.
   f1, then f2, then f2 again left `lessons` as `[f1, f2]`;
   `bin/acceptance --only test_judge_isolation` gave 5 passed, 0 failed, 0
   errors, 0 skipped in 158 s.
+
+## 2026-10-21 — Two range slots on the new cloud
+
+- The user had their VM `FSL-front` deleted, with its floating IP
+  192.168.2.241, router `fsl-router`, network `fsl-net`, its subnet and the
+  group `fsl-front-sg`. It held 4 of the project's 20 cores, which left room
+  for one slot only. No snapshot was kept, at the user's word.
+- `compute.slots` is 2 in the main checkout's `cloud.yaml`. The platform VM
+  and two slots use 18 cores, 40 GB and 9 instances; the 2 cores left fit one
+  image builder at a time. The quota was not raised.
+- `bin/cloud up --replace` from the main checkout at dev's head, with no
+  `--sideload`, ran 13:00-13:29Z and exited 0: backup of 22.8 MB
+  (`integrity_check ok`, 6 sessions), new stack, store restored, the
+  `fsl-wargame-host` image rebuilt for the new tag, slot 2 booted and
+  configured, both slots READY. The VM runs dev from GitHub and GHCR.
+- Full `bin/verify` on that VM: unit 1578 passed; acceptance 73 passed, 0
+  failed, 0 errors, 0 skipped in 3853 s across 4 processes; ratchet ok
+  (core_loc 584, dependencies 6, services 5). The 409 errors of
+  `test_concurrent_sessions` and `test_lesson` and the retention failure of
+  `test_strategy_honesty` from the one-slot run are gone.
+- The rebuilt VM has new ssh host keys, and the operator machine's
+  `known_hosts` held the previous VM's. The new fingerprints were checked
+  against the cloud-init block of the VM's console log before the entry was
+  replaced. `bin/cloud` and `bin/platform-rebuild` use their own scratch
+  `known_hosts`, so only the operator's own ssh is affected.
+- Backlog triage the same day: the reachability middleware and the session
+  open race were already fixed in ac18e68; the WAF terminal item went with
+  the docker substrate; `fsl-build` staying after `down` is recorded as
+  intended.

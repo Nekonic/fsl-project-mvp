@@ -350,13 +350,11 @@ must raise the quota.
 **(this cloud)** These are the figures:
 
 - The quota is 20 cores, 51200 MB of RAM and 10 instances.
-- The project also holds a VM that the user owns, `FSL-front` (flavor
-  `dba.medium`, 4 vCPU and 8 GB, floating IP 192.168.2.241, on its own network
-  `fsl-net` 172.16.10.0/24 and router `fsl-router`). It uses 4 cores and 8 GB of
-  the quota.
-- The platform VM (2 cores, 8 GB) and one slot (8 cores, 16 GB) bring the project
-  to 14 cores, 32 GB and 6 instances. A second slot would need 22 cores, which is
-  over the quota of 20. So `compute.slots` is 1 here.
+- The platform VM (2 cores, 8 GB) and two slots (8 cores, 16 GB each) bring the
+  project to 18 cores, 40 GB and 9 instances. So `compute.slots` is 2 here. The
+  2 cores left fit one image builder at a time.
+- Until 2026-10-21 the project also held a VM of the user's, `FSL-front` (4
+  cores, 8 GB), which left room for one slot only. The user had it deleted.
 - Each slot beyond the first adds 2 networks (`fsl-internet-N`, `fsl-estate-N`),
   31 subnets, 9 ports and 3 collector rules in `fsl-reach`. On the previous cloud
   with two slots we measured networks 6/100, subnets 64/100, ports 25/500,
@@ -425,7 +423,7 @@ A new cloud makes these two flavors, and `cloud.example.yaml` names them.
 | `fsl-range` | fabric | all IPv4 in; on every range port except `mgmt` (anti-spoofing stays on) |
 | `fsl-reach` | fabric | nothing in except udp 123 (NTP) from members of `fsl-mgmt`, then udp 5140 from exactly the edge, the WAF and the wargame host (`configure/`) |
 | `fsl-mgmt` | fabric | all IPv4 in, only from members of `fsl-reach` (the platform's `mgmt` port); applied on every range host's `mgmt` port, so Kali's `mgmt` port reaches no one |
-| `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it |
+| `fsl-build` | images step | tcp 8080 from the platform's address only (§3.6); `bin/cloud down` leaves it, and the next images step reuses it and resets its rule to the platform's address |
 
 Port 8002 is the blue console's Website pane. The platform sends each request
 over an ssh stream to the slot's Kali (over `mgmt`). Kali sends it from a
@@ -684,7 +682,7 @@ password written into the file.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and every builder |
 | `compute.availability_zone` | `""` | the platform VM, builders and slot VMs; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `builder`, `range`, `edge` (required, 3 GB RAM or more), per role | §3.3 |
-| `compute.slots` | `1` (**(this cloud)** `1`, because the quota has room for one, §3.2) | optional; how many copies of the range stand, which is how many sessions can run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
+| `compute.slots` | `1` (**(this cloud)** `2`, which the quota has room for, §3.2) | optional; how many copies of the range stand, which is how many sessions can run at once (§6.4); `FSL_OPENSTACK_SLOTS` |
 | `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with, and its private half |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `opnsense.version`, `.mirror` | `"26.7"`, `https://pkg.opnsense.org/releases` | the image release (released in January and July; updates have no images [O1]) |
