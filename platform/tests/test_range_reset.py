@@ -215,3 +215,44 @@ def test_closing_on_the_cloud_rebuilds_what_the_adapter_names_and_resets_the_res
     assert closed.json()["rebuilding"] == [{"host": "fsl-waf", "server": "s2"}]
     assert cloud.reset == 1 and cloud.configured_rebuilt == [["fsl-waf"]]
     assert reset.standing()["state"] == reset.IDLE
+
+def test_a_reset_cut_short_by_a_restart_is_resumed_at_boot(client):
+    from api import views
+
+    class Cloud(ResetsInPlace):
+        def reset_slot(self):
+            self.slot_reset = getattr(self, "slot_reset", 0) + 1
+            return [("fsl-waf", "s2")]
+
+    cloud = Cloud(plans=[WAF_REBUILDING])
+    assert reset.claim(1)
+    assert reset.owed() == [1]
+
+    with patch.dict(reset._states, clear=True), patch("api.reset.REBUILD_SHOWN", 0):
+        assert reset.standing()["state"] == reset.IDLE
+        with patch("api.views.substrate", lambda: cloud):
+            views.resume_resets()
+        _until_settled()
+        after = reset.standing()
+
+    assert cloud.slot_reset == 1, "the resume did not rebuild the VMs a close rebuilds"
+    assert cloud.reset == 1, "the resume configured the slot over the last session's wargame data"
+    assert cloud.configured_rebuilt == [["fsl-waf"]]
+    assert after == {"state": reset.IDLE, "reason": ""}
+    assert reset.owed() == []
+
+def test_a_resumed_reset_that_fails_keeps_the_marker_for_the_next_start():
+    from api import views
+
+    def drifts():
+        raise Drifted("fsl-edge did not take its configuration")
+
+    reset.claim(1)
+    with patch.dict(reset._states, clear=True):
+        with patch("api.views.substrate", lambda: Slot(configure=drifts)):
+            views.resume_resets()
+        _until_settled()
+        failed = reset.standing()
+
+    assert failed == {"state": reset.FAILED, "reason": "fsl-edge did not take its configuration"}
+    assert reset.owed() == [1]

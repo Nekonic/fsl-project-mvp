@@ -996,8 +996,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             outside the repo in `~/.cache/fsl-work/walker/walk.py`; decide
             whether it becomes a repo tool (under `bin/` or `test/live/`) so
             it no longer depends on a scratch folder.
-- [ ] A range reset interrupted by a platform restart is not resumed at
-      boot: the slot refuses sessions until `POST /api/range/configure/`.
+- [x] A range reset interrupted by a platform restart is resumed at boot: a
+      close writes `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`),
+      the end of a successful reset removes it, and at boot `fsl/wsgi.py` does
+      each owed slot's reset again as a close does (rebuild, suppressions
+      lifted, in-place reset of the edge and the wargames, configure). A
+      failed one keeps its file and shows `RESET_FAILED`.
 - [ ] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under
       `/search/` did not serve the Korean search (hypothesis: 920272 also
       matches the request URI); measure.

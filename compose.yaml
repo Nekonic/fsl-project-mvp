@@ -92,6 +92,7 @@ services:
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
+      FSL_RESET_OWED_DIR: "/data/reset-owed"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"

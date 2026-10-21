@@ -156,19 +156,18 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    took about 2 h 50 min and failed there; the two-slot run of 2026-10-21 took
    64 min and passed. Open question: either the harness keeps a session it
    still needs, or the retention window accounts for a long run.
-3. Find the cause of the `test_corp_authz` nonce error (seen twice on the old
-   cloud, passes on rerun; `docs/STATE.md` backlog 0).
+3. The `test_corp_authz` nonce error: the likely cause (corp healthy before
+   its forms existed) is fixed in code; prove it live once the `fsl-corp`
+   image is rebuilt (`docs/STATE.md` backlog 0).
 4. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
    or VMware (the 2026-10-20 trial ran on the KVM test cloud).
 5. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live.
 6. A corp scenario: corp's CVEs succeed but it has no customer traffic; needs
    a generator for WordPress first (P3's shape).
-7. A range reset interrupted by a platform restart is not resumed at boot;
-   deploy only when `/api/range/ready/` shows no slot resetting, or resume it.
-8. Acceptance run time and ingest re-reading the whole window (paged since
+7. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
-9. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
+8. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
    rebuild, remaining work"): the F1/F2 "auto-advance" item was a walker
    race, fixed in the walker on 2026-10-21 (`docs/STATE.md`); the 2026-10-21 walk on the new cloud (session
    1070, F1-F6): 46 of 48 steps passed; the two misses are walker faults: F4

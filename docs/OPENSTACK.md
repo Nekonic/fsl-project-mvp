@@ -1120,6 +1120,13 @@ The reset does not use `[flush.states]` (`pfctl -F state`). States are floating
 (`all`), and the pass rules keep state with `flags S/SA`. Flushing every state
 would drop the platform's own ssh session to the edge.
 
+A restart of the platform during a reset does not lose it. The reset leaves a file
+`slot-N` in `/data/reset-owed` until it succeeds. At boot the platform does the
+reset again for each slot that still has one, as a close does: it rebuilds the
+WAF and Kali, lifts the slot's suppressions, resets the edge and the wargames in
+place and configures the slot. `/api/range/ready/` shows that slot `RESETTING`,
+then `READY` or `RESET_FAILED` with the reason.
+
 The in-place resets start at once, beside the Nova rebuilds. The platform
 configures the rebuilt VMs only after Nova has shown each of them rebuilding and
 back to ACTIVE. If a rebuilt VM is never seen leaving ACTIVE within 2 minutes,

@@ -1738,6 +1738,25 @@ def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
     return claimed and reset.begin(adapter, turn, rebuilt, claimed=True,
                                    then=lambda: _map_begin(session, adapter))
 
+def resume_resets():
+    numbers = reset.owed()
+    if not numbers:
+        return
+    cloud = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
+    for number in numbers:
+        if reset.claim(number):
+            _reset_again(_in_slot(cloud, number), _turn(number if _slotted(cloud) else None), number)
+
+def _reset_again(adapter, turn, number):
+    try:
+        with turn:
+            rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
+        _lifted_by_the_rebuild(timezone.now(), number)
+    except Exception as exc:
+        reset.failed(number, str(exc) or type(exc).__name__)
+        return
+    reset.begin(adapter, turn, rebuilt, claimed=True)
+
 def _lifted_by_the_rebuild(rebuilt_at, number=1):
     Suppression.objects.filter(
         _of_slot(number), restored_at__isnull=True, created_at__lte=rebuilt_at,

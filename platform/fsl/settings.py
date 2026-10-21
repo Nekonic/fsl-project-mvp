@@ -51,6 +51,8 @@ DATABASES = {
     }
 }
 
+RESET_OWED_DIR = os.environ.get("FSL_RESET_OWED_DIR", str(BASE_DIR / "reset-owed"))
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 TIME_ZONE = "UTC"

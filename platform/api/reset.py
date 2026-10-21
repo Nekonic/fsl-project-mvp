@@ -1,6 +1,9 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
+from pathlib import Path
+
+from django.conf import settings
 
 from range.ports import Drifted, RangeUnavailable
 
@@ -15,6 +18,15 @@ FAILED = "failed"
 _guard = threading.Lock()
 _states: dict[int, dict] = {}
 
+def _marker(slot: int) -> Path:
+    return Path(settings.RESET_OWED_DIR) / f"slot-{slot}"
+
+def owed() -> list[int]:
+    directory = Path(settings.RESET_OWED_DIR)
+    if not directory.is_dir():
+        return []
+    return sorted(int(path.name.removeprefix("slot-")) for path in directory.glob("slot-*"))
+
 def _of(slot: int) -> dict:
     return _states.setdefault(slot, {"state": IDLE, "reason": ""})
 
@@ -26,16 +38,23 @@ def configured_by_hand(slot: int = 1) -> None:
     with _guard:
         if _of(slot)["state"] == FAILED:
             _of(slot).update(state=IDLE, reason="")
+        if _of(slot)["state"] == IDLE:
+            _marker(slot).unlink(missing_ok=True)
 
 def claim(slot: int) -> bool:
     with _guard:
         if _of(slot)["state"] == RUNNING:
             return False
+        _marker(slot).parent.mkdir(parents=True, exist_ok=True)
+        _marker(slot).touch()
         _of(slot).update(state=RUNNING, reason="")
         return True
 
 def release(slot: int) -> None:
     _set(slot, IDLE, "")
+
+def failed(slot: int, reason: str) -> None:
+    _set(slot, FAILED, reason)
 
 def begin(adapter, turn, rebuilt=None, claimed=False, then=None):
     slot = getattr(adapter, "slot", 1)
@@ -50,6 +69,8 @@ def begin(adapter, turn, rebuilt=None, claimed=False, then=None):
 def _set(slot: int, state: str, reason: str) -> None:
     with _guard:
         _of(slot).update(state=state, reason=reason)
+        if state == IDLE:
+            _marker(slot).unlink(missing_ok=True)
 
 def _reset(adapter, turn, rebuilt, then=None) -> None:
     slot = getattr(adapter, "slot", 1)
