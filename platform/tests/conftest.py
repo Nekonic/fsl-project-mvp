@@ -29,6 +29,10 @@ def nothing_remembered_between_tests():
     site._records.clear()
 
 @pytest.fixture(autouse=True)
+def reset_markers_in_a_scratch_dir(settings, tmp_path):
+    settings.RESET_OWED_DIR = str(tmp_path / "reset-owed")
+
+@pytest.fixture(autouse=True)
 def no_scenario_engine_thread():
     with patch("api.scenario_run.ensure_running", lambda: None):
         yield

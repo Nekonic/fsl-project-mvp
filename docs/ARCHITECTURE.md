@@ -1579,7 +1579,7 @@ Both sides retry while a VM does not answer ssh (up to 30 minutes). The first fa
 
 `configure_slot()` (the manual configure) runs every host's steps side by side, one thread per host: the edge (configure and reboot), the WAF, Kali, the wargame host, and the collector's security group. Every Ubuntu host's chain starts with its time source. It waits for all of them and fails with the first failure in that order.
 
-The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
+The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `fsl/wsgi.py` does the reset again for each owed slot, as a close does (rebuild, suppressions lifted, in-place reset, configure), so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
 
 **Readiness.** Session create answers 409 while every slot is held or no free slot is ready.
 

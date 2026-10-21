@@ -25,5 +25,11 @@ def prune_closed_sessions():
 
     retention.prune_quietly()
 
+def resume_resets():
+    from api import views
+
+    views.resume_resets()
+
+threading.Thread(target=resume_resets, name="fsl-resets-resume", daemon=True).start()
 threading.Thread(target=resume_scenarios, name="fsl-scenarios-resume", daemon=True).start()
 threading.Thread(target=prune_closed_sessions, name="fsl-retention", daemon=True).start()
