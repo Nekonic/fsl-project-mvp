@@ -117,9 +117,8 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
 - `walker/walk.py` is the lesson walker (Next, 11).
 - The repository has a `cloud` git remote (the VM's `/opt/fsl`). Work goes to
   the VM with `git push cloud HEAD:refs/heads/work` and `git -C /opt/fsl
-  checkout --detach work` on the VM. A checked-in hook (`.claude/hooks/guard.py`)
-  lets Claude Code push to GitHub or open a pull request only in a turn where
-  the user asked for it.
+  checkout --detach work` on the VM. Claude Code asks the user before every push to GitHub
+  or pull request (the `ask` rules in `.claude/settings.json`).
 
 `bin/cloud` needs three gitignored files in the checkout that runs it:
 `deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`. The

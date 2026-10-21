@@ -67,9 +67,11 @@
       "Bash(jq *)"
     ],
     "ask": [
-      "Bash(git push*)",
+      "Bash(docker compose down -v*)",
+      "Bash(gh pr *)",
       "Bash(gh pr create*)",
-      "Bash(docker compose down -v*)"
+      "Bash(gh repo *)",
+      "Bash(git push*)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
