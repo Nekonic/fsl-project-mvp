@@ -13,7 +13,7 @@ from shared_sessions import corp_is_declared
 CORP = "corp"
 CORP_DB = "corp-db"
 CORP_HOST = "Host: corp.com"
-NONCE = re.compile(r'"nonce":"([a-f0-9]+)"')
+NONCE = re.compile(r'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"')
 
 def _target_post(session=None):
     out = run(CORP_DB, [

@@ -33,7 +33,7 @@
       from: /register/
       pattern: 'name="_wpnonce" value="([a-f0-9]+)"'
     data:
-      form_id: "4"
+      form_id: "5"
       _wpnonce: "{nonce}"
       um_request: ""
       _wp_http_referer: "/register/"
@@ -58,7 +58,7 @@
       from: /register/
       pattern: 'name="_wpnonce" value="([a-f0-9]+)"'
     data:
-      form_id: "4"
+      form_id: "5"
       _wpnonce: "{nonce}"
       um_request: ""
       _wp_http_referer: "/register/"
@@ -101,7 +101,7 @@
     path: /wp-admin/admin-ajax.php
     prefetch:
       from: /submit-a-story/
-      pattern: '"nonce":"([a-f0-9]+)"'
+      pattern: 'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"'
     data:
       action: "rbsm_submit_post"
       _nonce: "{nonce}"
