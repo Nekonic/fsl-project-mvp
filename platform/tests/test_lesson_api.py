@@ -552,6 +552,41 @@ def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defen
     assert fired == SEEDED and all(case.meta.get("seed") for case in session.cases.all())
     assert session.ended_at is None
 
+def test_moving_to_the_lesson_the_session_is_already_on_changes_nothing(client):
+    session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
+    stand = Stand()
+    fire, fired = attacker({})
+    with one_slot(stand), patch("api.views.harness.fire", fire):
+        switch(client, session, "f2")
+        writes, seeded = len(stand.calls), list(fired)
+        again = switch(client, session, "f2")
+
+    assert again.status_code == 200, again.content
+    assert [taken["id"] for taken in again.json()["lessons"]] == ["f1", "f2"], (
+        "the page and a learner's second click both ask for the lesson already open; "
+        "a second entry would list the lesson twice in the course summary")
+    assert len(stand.calls) == writes and fired == seeded == SEEDED
+
+def test_a_repeated_move_after_the_log_seed_failed_seeds_the_lesson_once_more(client):
+    from redteam.tools import ToolUnavailable
+
+    session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
+    fire, fired = attacker({})
+
+    def unavailable(case, launch, target_url):
+        raise ToolUnavailable("curl: the tool did not run")
+
+    with one_slot(Stand()):
+        with patch("api.views.harness.fire", unavailable):
+            failed = switch(client, session, "f2")
+        with patch("api.views.harness.fire", fire):
+            retried = switch(client, session, "f2")
+
+    assert failed.status_code == 503, failed.content
+    assert retried.status_code == 200, retried.content
+    assert fired == SEEDED, "a retry after a 503 must not answer 200 with the lesson's logs never seeded"
+    assert [taken["id"] for taken in retried.json()["lessons"]] == ["f1", "f2"]
+
 def test_a_lesson_switch_is_refused_for_a_closed_scenario_or_unguided_session_and_an_unknown_lesson(client):
     closed, scenario, plain, guided = foundation("f1"), board(guidance=True, lesson="1.1", course_scenario="1.1"), board(), foundation("f1")
     client.post_json(f"/api/sessions/{closed.pk}/close/")

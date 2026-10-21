@@ -931,22 +931,30 @@ def session_lesson(request, session_id):
     defense = wargames.lesson_defense(session.scenario, asked)
     adapter = _range(session)
     with _turn_of(session):
-        if defense != session.defense:
-            before, after = (wargames.defense(session.scenario, name) for name in (session.defense, defense))
-            if _ruleset_of(before) != _ruleset_of(after):
-                _seed_ruleset(adapter, _ruleset_of(after))
-            if after is not None:
-                session.waf = crs.apply(after["waf"], adapter.runner("gateway"), settings.FSL_WAF)
-        taken = session.lessons or [{"id": session.lesson, "started_at": session.started_at.isoformat()}]
-        session.lessons = [*taken, {"id": asked, "started_at": timezone.now().isoformat()}]
-        session.lesson, session.defense = asked, defense
-        session.save(update_fields=["lesson", "lessons", "defense", "waf"])
+        session.refresh_from_db()
+        moved = asked != session.lesson
+        if moved:
+            if defense != session.defense:
+                before, after = (wargames.defense(session.scenario, name) for name in (session.defense, defense))
+                if _ruleset_of(before) != _ruleset_of(after):
+                    _seed_ruleset(adapter, _ruleset_of(after))
+                if after is not None:
+                    session.waf = crs.apply(after["waf"], adapter.runner("gateway"), settings.FSL_WAF)
+            taken = session.lessons or [{"id": session.lesson, "started_at": session.started_at.isoformat()}]
+            session.lessons = [*taken, {"id": asked, "started_at": timezone.now().isoformat()}]
+            session.lesson, session.defense = asked, defense
+            session.save(update_fields=["lesson", "lessons", "defense", "waf"])
+    if not moved and _logs_seeded(session):
+        return _reply(_detail(session))
     _label(session, None)
     try:
         _seed_logs(session)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     return _reply(_detail(session))
+
+def _logs_seeded(session):
+    return any(case.meta.get("seed") and case.meta.get("lesson") == session.lesson for case in session.cases.all())
 
 def _seed_logs(session):
     for name in _lesson_of(session)["cases"]:
