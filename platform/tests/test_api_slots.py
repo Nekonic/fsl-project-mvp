@@ -2,6 +2,7 @@ import io
 import json
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -65,9 +66,12 @@ class Slot:
         self.cloud.configured.append(self.slot)
         return [("fsl-waf", ("configured",))]
 
-    def ensure_slot(self):
+    def ensure_slot(self, renew=True):
         self.cloud.ensured.append(self.slot)
-        return self.plan_slot()
+        if not renew:
+            return self.plan_slot()
+        self.cloud.renewed.append(self.slot)
+        return replace(self.plan_slot(), stale=())
 
 
 class Cloud(Slot):
@@ -76,7 +80,7 @@ class Cloud(Slot):
         self.count = slots
         self.max_sessions = slots
         self.plans = [slot.Plan(standing=STANDING, slot=n) for n in range(1, slots + 1)]
-        self.ran, self.reset, self.configured, self.ensured = [], [], [], []
+        self.ran, self.reset, self.configured, self.ensured, self.renewed = [], [], [], [], []
         self.hold = 0
 
     def in_slot(self, number):
@@ -263,6 +267,22 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
     assert (reset.standing(1)["state"], reset.standing(2)["state"]) == (reset.FAILED, reset.IDLE), (
         "configuring a slot by hand clears that slot's failed reset and no other")
     assert client.get("/api/range/slot/?slot=3").status_code == 400
+
+
+def test_a_slot_on_an_older_image_is_rebuilt_by_a_post_only_when_no_session_holds_it(client, cloud):
+    held = opened(client)
+    cloud.plans = [replace(plan, stale=("fsl-waf",)) for plan in cloud.plans]
+
+    answer = client.post_json("/api/range/slot/").json()
+
+    assert held.slot == 1 and cloud.renewed == [2], (
+        "a rebuild under an open session wipes the VMs its learner is using"
+    )
+    assert answer["stale"] == ["fsl-waf"]
+    assert answer["blocked"] == [
+        f"session {held.pk} holds this slot, so the rebuild of fsl-waf onto the ready image "
+        f"waits for its close"
+    ], "bin/cloud up stops on a blocked slot instead of waiting for a READY that cannot come"
 
 
 def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, settings):

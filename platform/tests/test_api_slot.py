@@ -4,6 +4,8 @@ import pytest
 
 from range import slot
 
+pytestmark = pytest.mark.django_db
+
 URL = "/api/range/slot/"
 
 class Built:

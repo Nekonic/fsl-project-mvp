@@ -6241,3 +6241,45 @@ review agents against the code and the live range, then fixed.
   and `/configure/?slot=2`.
 - Full `bin/verify` on that VM afterwards: unit 1583 passed; acceptance 73
   passed, 0 failed, 0 errors, 0 skipped in 3969 s; ratchet ok.
+
+## 2026-10-23 — A slot standing through a deploy is rebuilt onto the new images
+
+A deploy that rebuilt an image left every standing slot on the old one: Kali
+and the WAF until the slot's next close, the edge and the wargame host until
+someone ran `POST /api/range/slot/rebuild/` and `/configure/` by hand.
+
+- The slot plan marks a standing server `stale` when Nova's `image.id` for it
+  is not its host's ready image. A server with no image id (boot from volume)
+  is never stale, so nothing is rebuilt on a guess.
+- `POST /api/range/slot/` has Nova rebuild the stale servers of a slot no
+  session holds. `bin/cloud up` already sends it after the images and then
+  waits for `REBUILDING` to end and configures, so `up` needs no new step.
+- A held slot is not touched; the POST reports it blocked, naming the
+  session, and `up` stops there rather than waiting for a `READY` an open
+  session never gives. The close rebuilds the stale VMs, the edge and the
+  wargame host included, and `reset_in_place()` skips them.
+- `ready/` reads a free stale slot `STALE`, not `READY`, so no session opens on
+  the old image. A session cannot take a stale slot, so the POST's check of the
+  holders cannot race an open.
+- Rejected: rebuilding at close only (the first session after a deploy would
+  still run the old images); folding the check into `bin/cloud` (every UI
+  action is REST first, and a by-hand `POST slot/` should do the same);
+  always rebuilding the edge and the wargame host at close (close to READY
+  took 95-116 s with every VM rebuilt and 60-66 s with the in-place reset,
+  `docs/OPENSTACK.md` §6.1; staleness follows only a deploy).
+- Live proof (2026-10-23, `bin/cloud up --replace --sideload
+  platform=... --sideload corp=...` with this code, 34 min, exit 0). Before
+  it, slot 1's `fsl-wargame-host` booted a wargame host image made on
+  2026-10-20 (bundle `3a4ae90c`) and slot 2's one from earlier that day;
+  Glance held three wargame host images. The run built the new wargame host
+  image, rebuilt both wargame hosts onto it at 21:03:37Z, configured them,
+  and both slots read READY; Glance then held one wargame host image. On
+  both slots corp had `/tmp/fsl-corp-ready` and UM's forms 5, 6 and 7.
+- What this corrects: the corp readiness fix and the corp case fixes of
+  2026-10-22 were exercised by the full `bin/verify` and the three
+  `test_corp_*` runs on slot 2 only where slot 2's wargame host happened to
+  be rebuilt, and slot 1's corp stayed the 2026-10-20 image through all of
+  them. The first run with the fixed corp on both slots is the full
+  `bin/verify` after this deploy.
+- Full `bin/verify` after that deploy: unit 1592 passed; acceptance 73
+  passed, 0 failed, 0 errors, 0 skipped in 4083 s; ratchet ok.

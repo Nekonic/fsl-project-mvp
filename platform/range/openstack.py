@@ -1159,13 +1159,15 @@ class OpenStack:
     def plan_slot(self) -> slot.Plan:
         return self._slot()[0]
 
-    def ensure_slot(self) -> slot.Plan:
+    def ensure_slot(self, renew: bool = True) -> slot.Plan:
         plan, bound, subnets, ports, groups, ready = self._slot()
         if plan.blocked:
             raise Drifted("; ".join(plan.blocked))
         named_groups = self._slot_groups(groups)
         self._fence_management(bound, ports, named_groups[fabric.MANAGEMENT_GROUP])
-        if not plan.boot:
+        stale = [(host, server) for host, server, _ in plan.standing if renew and host in plan.stale]
+        self._rebuild(stale, ready)
+        if not (plan.boot or stale):
             return plan
         edge = slot.edge_of(self.declared)
         own = self._port_name
@@ -1258,17 +1260,21 @@ class OpenStack:
                 f"the slot is not fully standing, so there is nothing to reset "
                 f"for {', '.join(plan.boot)}; provision it first"
             )
-        rebuilding = [(host, server) for host, server, _status in plan.standing if host not in kept]
+        rebuilding = [(host, server) for host, server, _status in plan.standing
+                      if host not in kept or host in plan.stale]
         missing = [host for host, _server in rebuilding if host not in ready]
         if missing:
             raise Drifted(
                 f"image {', '.join(missing)} is not ready, so rebuilding would "
                 f"wipe some VMs and leave others; make the images ready first"
             )
-        for host, server in rebuilding:
-            self.get(self._call(ACTION, server=server), {"rebuild": {"imageRef": ready[host]}})
+        self._rebuild(rebuilding, ready)
         self._shape = None
         return rebuilding
+
+    def _rebuild(self, servers: list[tuple[str, str]], ready: dict[str, str]) -> None:
+        for host, server in servers:
+            self.get(self._call(ACTION, server=server), {"rebuild": {"imageRef": ready[host]}})
 
     def reset_slot(self) -> list[tuple[str, str]]:
         return self.rebuild_slot(kept=self.reset_in_place_hosts())
@@ -1282,12 +1288,12 @@ class OpenStack:
         first = (slot.edge_of(self.declared), self.declared.host(GATEWAY_ROLE))
         return alongside(*self._chains([*first, *self.declared.hosts]), [self.open_collector])
 
-    def reset_in_place(self) -> list[tuple[str, tuple[str, ...]]]:
+    def reset_in_place(self, rebuilt=()) -> list[tuple[str, tuple[str, ...]]]:
         self.describe()
-        hosts = self.reset_in_place_hosts()
+        hosts = self.reset_in_place_hosts() - set(rebuilt)
         edge = [self.reset_edge] if slot.edge_of(self.declared) in hosts else []
         wargames = ([self.clear_wargames, *self._wargame_chain()]
-                    if wargame_host.ROLE in self.declared.roles else [])
+                    if self.declared.roles.get(wargame_host.ROLE) in hosts else [])
         return alongside(edge, [self.open_collector], wargames)
 
     def configure_rebuilt(self, hosts) -> list[tuple[str, tuple[str, ...]]]:

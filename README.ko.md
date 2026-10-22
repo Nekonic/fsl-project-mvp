@@ -501,6 +501,9 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
+이미 떠 있는 슬롯에 같은 POST를 보내면, 준비된 이미지가 아닌 이미지로 떠 있는 VM을
+재구축합니다. 세션이 그 슬롯을 잡고 있으면 재구축하지 않습니다.
+
 그다음 `POST /api/range/configure/`가 ssh로 설정을 적용합니다. OPNsense 에지에는
 config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅합니다. WAF에는
 ModSecurity 로그 전달을 설정합니다. board와 corp는 워게임 호스트에서 컨테이너로
@@ -516,6 +519,8 @@ ModSecurity 로그 전달을 설정합니다. board와 corp는 워게임 호스�
 - 에지는 그 자리에서 초기화합니다. 해시를 비교해서 파일이 달라졌을 때만
   재부팅합니다.
 - 워게임 호스트도 그 자리에서 초기화합니다(`docker compose down -v`).
+- 에지나 워게임 호스트의 이미지가 준비된 이미지와 다르면 그 자리에서 초기화하지
+  않고 재구축합니다.
 
 VM이 ACTIVE가 되면 플랫폼이 스스로 다시 configure합니다. 그동안
 `GET /api/range/ready/`는 phase `RESETTING`을 보여 주고, 세션 열기는 거부됩니다.

@@ -1496,7 +1496,7 @@ A wargame image can be sideloaded onto the platform (`FSL_SIDELOADED`, the names
 3. `setup.sh` pulls from GHCR as before. Then for each `<name>` it fetches `<served-from><name>/`, which is `GET /api/range/images/sideloaded/<name>/` (`platform/api/sideloaded.py`). That endpoint streams `docker save` of the image. It answers 404 for a name that is not sideloaded or not run by a declared wargame.
 4. `setup.sh` runs `docker load` and refuses unless the loaded image's id equals the platform's. It prunes the GHCR copy.
 
-With nothing sideloaded for a wargame, nothing changes. A slot standing before the new image is ready keeps its old wargame host until `POST /api/range/slot/rebuild/`, because a close resets that host in place.
+With nothing sideloaded for a wargame, nothing changes. A slot standing before the new image is ready runs its old wargame host until `POST /api/range/slot/` rebuilds it, which `bin/cloud up` sends. Under an open session the rebuild waits for the close.
 
 The fabric also makes three security groups.
 
@@ -1517,6 +1517,7 @@ The slot is the set of range hosts. It is managed through `/api/range/slot/` and
 - Each host has a port per declared segment, named `<host>.<segment>`, in `fsl-range` or, on `mgmt`, in `fsl-mgmt`. A standing `mgmt` port in another group is moved into `fsl-mgmt`.
 - The host that fills `gateway` holds every origin's gateway address on one Internet port. Cloud-init configures only the first address, so the host's user data adds the rest at every boot.
 - Every host's user data appends the `estate` names to `/etc/hosts`: the WAF's `board.com` and `corp.com`, and the wargame host's `board` and `corp-wp`. This is how the WAF finds each wargame's published port. Each database answers only inside its compose project on the host.
+- A standing server whose image (`image.id` in Nova) is not its host's ready image is `stale` in the plan. `POST /api/range/slot/` has Nova rebuild it from the ready image when no session holds the slot. For a held slot it rebuilds nothing and reports the slot blocked.
 
 **Range slots.** `compute.slots` in `cloud.yaml` (default 1, `FSL_OPENSTACK_SLOTS` on the platform) sets how many copies of the range stand at once. `max_sessions` is that count.
 
@@ -1549,7 +1550,7 @@ The rules editor writes the file that the include names and reloads with `surica
 `POST /api/sessions/<id>/close/` calls `reset_slot()` instead.
 
 - It rebuilds only the VMs that hand out a shell (Kali, the WAF).
-- It leaves the edge and the wargame host to be reset in place (`docs/OPENSTACK.md` §6.1).
+- It leaves the edge and the wargame host to be reset in place (`docs/OPENSTACK.md` §6.1), unless that VM is `stale`. A stale one is rebuilt with the others, and `reset_in_place()` skips it.
 - A session therefore leaves the next one no edited rule or planted data.
 
 A rebuild wipes the disk, so configure must follow once the VMs are ACTIVE.
@@ -1587,7 +1588,7 @@ The close answers at once. The reset state (idle, running, failed and why) is he
 `GET /api/range/ready/` reports every slot under `slots`:
 
 - its number and the session holding it;
-- its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `REBUILDING`, `CHECKING` or `READY`;
+- its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `STALE` (a VM on an image other than its host's ready one), `REBUILDING`, `CHECKING` or `READY`;
 - its reset state;
 - three checks: every VM ACTIVE, the board's ground truth readable, and the sensor rules at baseline with no suppression of that slot in force.
 

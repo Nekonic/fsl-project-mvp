@@ -529,6 +529,9 @@ every wargame as its GHCR containers. The platform reaches the four over ssh on
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
+On a slot that already stands, the same POST rebuilds each VM whose image is
+not the ready one, unless a session holds the slot.
+
 `POST /api/range/configure/` then pushes configuration over ssh. On the
 OPNsense edge it installs config.xml (WAN addresses, pass rules, Suricata,
 syslog) and reboots it. On the WAF it sets up forwarding of the ModSecurity log.
@@ -546,6 +549,8 @@ Closing a session resets its slot:
 - The edge is reset in place. It compares hashes and reboots only if its files
   drifted.
 - The wargame host is reset in place (`docker compose down -v`).
+- The edge or the wargame host is rebuilt instead when its image is not the
+  ready one.
 
 When the VMs are ACTIVE, the platform configures them again by itself.
 Meanwhile `GET /api/range/ready/` reports phase `RESETTING`, and opening a
