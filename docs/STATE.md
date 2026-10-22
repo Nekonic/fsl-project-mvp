@@ -1069,6 +1069,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       example rule matches `/admin` and must get an XSS `msg` and
       `content:"<script"` (the check is unchanged). Found fixed since: the F5
       step 1 sort control (the tester's board image predated 2026-10-18).
+      What the tester saw there, the coach pointing at the home link again
+      and again while the element was missing, now ends after one trip home
+      with "이 단계가 가리키는 요소가 이 화면에 없습니다…"
+      (`lesson.site.missing`).
       Not reproduced: the F4 step 3 report (too vague to act on).
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for

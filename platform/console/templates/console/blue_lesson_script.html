@@ -1507,7 +1507,8 @@ function coach(prefix, declared) {
     const target = targetOf(step);
     settleKibana();
     const found = target ? locate(target, step, firstRules() !== at) : NOT_FOUND;
-    const rect = found.rect;
+    const stuck = Boolean(target) && target.kind === "site" && homed === at && siteHome.on && site.history[site.at] === "/" && !site.expecting && !site.busy;
+    const rect = stuck ? null : found.rect;
     if (!target || (target.kind !== "map" && target.kind !== "site")) stopAsking();
     const needed = paneFor(target, step.point);
     const waiting = Boolean(needed) && !paneOpen(needed);
@@ -1522,7 +1523,7 @@ function coach(prefix, declared) {
     lost = rect || !target || waiting || settling(target) ? 0 : lost + 1;
     if (lost === MISSING_AFTER_FRAMES) console.log(`coach: no target for step ${step.id} in pane ${needed || openedPane()}`, JSON.stringify(target));
     const home = Boolean(target) && target.kind === "site" && siteHome.on;
-    const callout = calloutFor(step, target, found, home);
+    const callout = stuck ? t("lesson.site.missing") : calloutFor(step, target, found, home);
     const kind = found.kind !== undefined ? found.kind : target ? target.kind : "";
     const marked = kind === "panel" && target ? document.querySelector(target.spec) : null;
     const outsidePane = marked && !field("pane").contains(marked);
@@ -1543,7 +1544,7 @@ function coach(prefix, declared) {
         ? { crowd, coreCrowd: kind === "kibana" ? [...(found.core || []), ...cells] : null, within: found.within || null, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing }
         : { kind: "open", anchor: field("step-open") };
       highlight(rect || openBox, rect ? callout : opening, aimed);
-      coveredSay(found.stage === "covered" && !rect ? callout : "");
+      coveredSay((found.stage === "covered" || stuck) && !rect ? callout : "");
       opener();
     }
     requestAnimationFrame(tick);
