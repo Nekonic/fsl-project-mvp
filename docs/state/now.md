@@ -193,8 +193,9 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    rebuild, remaining work"): the F1/F2 "auto-advance" item was a walker
    race, fixed in the walker on 2026-10-21 (`docs/STATE.md`); the walker's
    two F4/F6 faults are fixed and the 2026-10-22 re-walk (session 1137)
-   passed F4-F6, 28 of 28 steps; the Kali and WAF terminals are wider than
-   their pane, so line ends sit under the lesson notes; a live review round of 9f1f39d..60243e6 (six reviewers, convergence
+   passed F4-F6, 28 of 28 steps; the Kali and WAF terminals' last column no
+   longer sits under the lesson notes (fixed in `blue.html`, `docs/STATE.md`);
+   a live review round of 9f1f39d..60243e6 (six reviewers, convergence
    rule, exit on zero countable findings); Kibana's Home and Stack Management
    menu entries; whether the walker (`~/.cache/fsl-work/walker/walk.py`)
    becomes a repo tool.
