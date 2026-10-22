@@ -677,6 +677,34 @@ def test_a_website_step_whose_element_is_not_on_this_page_points_at_the_link_to_
     assert seen["errors"] == []
     assert seen["result"] == {"home": "a.navbar-brand", "ring": True, "callout": english("lesson.site.home"), "missing": False}
 
+def test_a_website_step_whose_element_is_missing_on_the_post_list_too_says_so_instead_of_pointing_home_again(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sort")}
+      await browser.click('step-open');
+      const loaded = async () => {{
+        window.dispatchEvent({{type: 'message', data: {{site: '/site/1/board.com/'}}, source: browser.element('site-frame').contentWindow,
+                               origin: 'http://console.test:8002'}});
+        await frames();
+      }};
+      const missing = async () => {{
+        answer('site-frame', null);
+        await frames();
+      }};
+      await loaded();
+      await missing();
+      await missing();
+      const sentHome = site.history.length;
+      await loaded();
+      await missing();
+      await missing();
+      return {{sentHome, again: site.history.length, ring: shown('coach-ring'), status: browser.text('step-status')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"sentHome": 2, "again": 2, "ring": False, "status": english("lesson.site.missing")}, (
+        "sent home once; with the element still missing there, no second trip and no ring on the home link"
+    )
+
 def visit_without_the_target(client, path):
     return open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("search")}
