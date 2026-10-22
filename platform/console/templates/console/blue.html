@@ -162,8 +162,12 @@
     const area = screen.getBoundingClientRect();
     if (!area.width || !area.height || !room.clientWidth || !room.clientHeight) return;
     const bar = term.element.querySelector(".xterm-viewport");
-    const cols = Math.floor((room.clientWidth - (bar ? bar.offsetWidth - bar.clientWidth : 0)) * term.cols / area.width);
-    const rows = Math.floor(room.clientHeight * term.rows / area.height);
+    const view = term.element.ownerDocument && term.element.ownerDocument.defaultView;
+    const edge = view ? view.getComputedStyle(term.element) : {};
+    const across = (parseFloat(edge.paddingLeft) || 0) + (parseFloat(edge.paddingRight) || 0);
+    const down = (parseFloat(edge.paddingTop) || 0) + (parseFloat(edge.paddingBottom) || 0);
+    const cols = Math.floor((room.clientWidth - across - (bar ? bar.offsetWidth - bar.clientWidth : 0)) * term.cols / area.width);
+    const rows = Math.floor((room.clientHeight - down) * term.rows / area.height);
     if (cols > 1 && rows > 1 && (cols !== term.cols || rows !== term.rows)) term.resize(cols, rows);
   }
 
@@ -265,6 +269,7 @@
 
   tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
   setInterval(terminalWait, TERMINAL_WAIT_MS);
+  if (typeof ResizeObserver === "function") new ResizeObserver(terminalWait).observe(field("pane-body"));
 
   const KIBANA_ALREADY_SEEN = {
     "discover:docExplorerUpdateCalloutClosed": "true",

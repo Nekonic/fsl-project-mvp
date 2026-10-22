@@ -1491,6 +1491,23 @@ def test_the_terminal_is_fitted_to_the_pane_it_sits_in_and_left_alone_once_it_fi
     assert seen["errors"] == []
     assert seen["result"]["resized"] == [[83, 24]]
 
+def test_the_terminal_fit_leaves_out_the_padding_xterm_keeps_around_its_screen(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      const resized = [];
+      const term = browser.element('kali-frame').contentWindow.term;
+      const grid = {{getBoundingClientRect: () => box(0, 0, term.cols * 12, term.rows * 20)}};
+      term.element = {{querySelector: (selector) => (selector === '.xterm-screen' ? grid : null),
+                      parentElement: {{clientWidth: 1000, clientHeight: 480}},
+                      ownerDocument: {{defaultView: {{getComputedStyle: () => ({{paddingLeft: '5px', paddingRight: '5px', paddingTop: '5px', paddingBottom: '5px'}})}}}}}};
+      term.resize = (cols, rows) => {{ resized.push([cols, rows]); term.cols = cols; term.rows = rows; }};
+      await browser.click('[data-pane="kali"]');
+      for (let i = 0; i < 4; i += 1) await browser.wait(500);
+      return {{resized}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["resized"] == [[82, 23]], "a screen as wide as the room minus the padding leaves no column under the notes"
+
 def test_the_map_pane_keeps_its_size_while_another_pane_is_open(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       await browser.click('[data-pane="topology"]');

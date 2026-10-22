@@ -990,11 +990,20 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             Website pane holds an error page instead of the search box, and
             reads the step card's command once it has rendered. Session
             1137, F4-F6: 28 of 28 steps passed (F4 11, F5 9, F6 8).
-      - [ ] The Kali and WAF terminals are wider than their pane at
-            1440x900: line ends sit under the lesson notes column (sqlmap's
-            CRITICAL line in F5, `systemctl reload nginx` in F6). Seen in
-            the 2026-10-22 walk's screenshots; the terminal's columns do
-            not follow the visible width.
+      - [x] The Kali and WAF terminals were wider than their pane (2026-10-23):
+            the console's fit (`terminalFit` in `blue.html`) sized the xterm
+            screen to the iframe's width but ignored the 5 px padding ttyd
+            keeps on each side of `.terminal`, so the last column sat 1 px past
+            the pane edge at 1440 px and a line that filled it lost its last
+            character under the notes column (F5 sqlmap's CRITICAL line, F6
+            `systemctl reload nginx`). It now subtracts the padding in both
+            directions and also runs on a `ResizeObserver` of `#pane-body`
+            besides the 500 ms poll. Checked on session 1139 through the live
+            platform with the patched page substituted in the browser (the
+            platform image itself is not redeployed): 1440x900 148 columns
+            ending 1 px past the iframe became 147 ending 6 px inside it, in
+            both terminals, and the columns followed the notes column folding
+            and the window going 1100 and 1700 px wide.
       - [ ] A live review round of the round-5 fixes under the convergence
             rule: six reviewers (lesson design, UI, terms, AI-sounding
             Korean, realism and leaks, first-time learner); a finding counts
