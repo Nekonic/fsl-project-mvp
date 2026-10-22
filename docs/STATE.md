@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-22
+Updated: 2026-10-23
 
 ## Where things stand
 
@@ -44,8 +44,8 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-22 on the new cloud with two slots: unit 1581
-passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 3759 s; ratchet
+`bin/verify` ran on 2026-10-23 on the new cloud with two slots: unit 1583
+passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 3969 s; ratchet
 ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
 the removal, and one after it; failures that all come from the single slot) and
@@ -918,7 +918,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       the wargame host, and the container and VM names still do.
 - [ ] A slot standing before a deploy keeps its old wargame host (the close
       resets it in place), so a changed board needs `POST
-      /api/range/slot/rebuild/` and `/configure/` by hand
+      /api/range/slot/rebuild/` and `/configure/` by hand. Its Kali and WAF
+      likewise stay on the previous image until the slot's next close
+      rebuilds them (seen 2026-10-23: a rebuilt Kali image reached slot 1 at
+      its next close, slot 2 only through `slot/rebuild/`)
       (`docs/OPENSTACK.md` §5.3). The reset could Nova-rebuild a wargame
       host booted from an image other than the ready one (`openstack.py`).
 - [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
@@ -1042,6 +1045,22 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       localizes two `"nonce"` values (`rbGlobalSubmissionSettings` and
       `um_scripts`); `test_corp_authz` and `corp-content-write` now read the
       `rbGlobalSubmissionSettings` one only.
+- [x] Tester reports of 2026-10-21 on the course, fixed and proven live on
+      2026-10-23 (`docs/DECISIONS.md` "A root shell on Kali and the lesson
+      checks"). A learner who switched to a root shell
+      (`sudo su`, `sudo -s`, `sudo <command>`) ran sqlmap with no proxy,
+      because `http_proxy` is set only for login shells and `sudo` reset it,
+      so the Kali step's check found no stamped request (F5 step 4, F6
+      step 2). Fixes: the `kali` sudoers drop-in keeps `http_proxy` and
+      `HTTP_PROXY` (`deploy/kali/setup.sh`, in the Kali image); F5 step 5 now
+      answers `lesson.check.kali_first` ("pass the previous step's check
+      first") instead of the generic unrecorded message when the Kali step it
+      reads recorded nothing; `lesson.check.kali_none` names the root shell
+      and says to return with `exit`; the F4 step 7 nudge says the theory's
+      example rule matches `/admin` and must get an XSS `msg` and
+      `content:"<script"` (the check is unchanged). Found fixed since: the F5
+      step 1 sort control (the tester's board image predated 2026-10-18).
+      Not reproduced: the F4 step 3 report (too vague to act on).
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
       WordPress (P3's shape) first.

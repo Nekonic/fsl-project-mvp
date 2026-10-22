@@ -4,7 +4,7 @@ The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-22 (the platform VM runs the fixes of this push with its
+Updated: 2026-10-23 (the platform VM runs the fixes of this push with its
 platform and corp images sideloaded, with two range slots). Written for a session that reaches the new cloud through the user's
 VPN (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and
 the Internet.
@@ -21,7 +21,9 @@ the Internet.
   rebuilt from the main checkout without `--sideload` (29 min, dev's head from
   GitHub and GHCR), then twice from a worktree with `--sideload
   platform=... --sideload corp=...` (27 min each) to prove the corp readiness
-  and reset-resume fixes live. It runs the fixes of this push now
+  and reset-resume fixes live, and on 2026-10-23 once more (33 min, the Kali
+  image rebuilt) for the root-shell proxy fix; both slots' Kali run that
+  image. It runs the fixes of this push now
   (`FSL_SIDELOADED=corp,platform`); the other images come from GHCR. Two slots (`compute.slots: 2`), both READY: the user had their VM
   `FSL-front` deleted, which freed 4 cores, and the project now uses 18 of
   its 20 cores (`docs/OPENSTACK.md` §3.2).
@@ -46,9 +48,10 @@ the Internet.
   failures that all come from the single slot (the earlier runs, two bullets
   down).
 - Last full `bin/verify`, on the sideloaded VM with the fixes of this push
-  (2026-10-22): unit 1581 passed; acceptance 73 passed, 0 failed, 0 errors, 0
-  skipped in 3759 s; ratchet ok (`docs/DECISIONS.md` "A reset cut short by a
-  restart, and corp's readiness"). The run before it, on dev's head without a
+  (2026-10-23): unit 1583 passed; acceptance 73 passed, 0 failed, 0 errors, 0
+  skipped in 3969 s; ratchet ok (`docs/DECISIONS.md` "A root shell on Kali
+  and the lesson checks"). The 2026-10-22 run before the root-shell fix gave
+  unit 1581 and acceptance 73 passed in 3759 s. The run before those, on dev's head without a
   sideload, gave unit 1578 and acceptance 73 passed in 3853 s; the one-slot
   failures below are gone (`docs/DECISIONS.md` "Two range slots on the new
   cloud").

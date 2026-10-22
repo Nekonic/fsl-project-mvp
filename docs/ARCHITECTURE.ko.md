@@ -460,6 +460,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 - `/var/lib/session/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달합니다. `host-rewrite` 출발지 모드를 삭제한(2026-10-21) 뒤로는 이 파일에 쓰는 곳이 없습니다. `stamp.py`와 `deploy/kali/setup.sh`는 아직 이 파일 이름을 적고 있습니다.
 - 플랫폼은 `active` 파일을 `runner("proxy")`로, ssh를 통해 씁니다.
 - TLS 가로채기를 하지 않습니다. 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다. `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
+- `/etc/profile.d/proxy.sh`가 로그인 셸에 `http_proxy`와 `HTTP_PROXY`를 지정하고, `kali`의 sudoers 드롭인이 두 변수를 `sudo`에서도 유지합니다. 그래서 `sudo su`, `sudo -s`, `sudo <명령>`으로 연 root 셸도 프록시를 거칩니다.
 
 터미널은 사용자가 입력한 명령도 기록합니다.
 

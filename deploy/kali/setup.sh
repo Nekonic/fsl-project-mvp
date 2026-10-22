@@ -36,6 +36,7 @@ echo Asia/Seoul > /etc/timezone
 
 useradd --create-home --shell /bin/bash --groups sudo --comment Kali kali
 echo "kali ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-kali
+echo 'Defaults env_keep += "http_proxy HTTP_PROXY"' >> /etc/sudoers.d/90-kali
 chmod 0440 /etc/sudoers.d/90-kali
 visudo -cf /etc/sudoers.d/90-kali
 install -o kali -g kali -m 0644 bashrc /home/kali/.bashrc
