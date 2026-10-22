@@ -81,7 +81,7 @@ def _reset(adapter, turn, rebuilt, then=None) -> None:
             hosts = [host for host, _ in rebuilt or ()]
             with turn:
                 _side_by_side(
-                    lambda: _until_answered(adapter.reset_in_place, deadline),
+                    lambda: _until_answered(lambda: adapter.reset_in_place(hosts), deadline),
                     lambda: _configure_once_active(
                         adapter, deadline, servers, lambda: adapter.configure_rebuilt(hosts)),
                 )

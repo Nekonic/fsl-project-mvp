@@ -2447,6 +2447,7 @@ def _slot_plan(plan):
             for host, server, status in plan.standing
         ],
         "blocked": [reason if number == 1 else f"slot {number}: {reason}" for reason in plan.blocked],
+        "stale": [named(host) for host in plan.stale],
         "clean": plan.clean,
     }
 
@@ -2456,7 +2457,7 @@ def _slot_plans(plans):
         return each[0]
     return {
         **{key: [entry for plan in each for entry in plan[key]]
-           for key in ("boot", "ports", "standing", "blocked")},
+           for key in ("boot", "ports", "standing", "blocked", "stale")},
         "clean": all(plan["clean"] for plan in each),
         "slots": each,
     }
@@ -2495,10 +2496,22 @@ def range_slot(request):
             return _reply(_slot_plans(adapter.plan_slots()))
         return _reply(_slot_plans([_in_slot(adapter, n).plan_slot() for n in numbers]))
     if request.method == "POST":
-        return _reply(_slot_plans(_each_slot(request, adapter, lambda one: one.ensure_slot())))
+        held = _holders()
+        return _reply(_slot_plans(_each_slot(
+            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1))))))
     removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
                for step in steps]
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
+
+def _ensured(adapter, held):
+    if held is None:
+        return adapter.ensure_slot()
+    plan = adapter.ensure_slot(renew=False)
+    if not plan.stale:
+        return plan
+    return replace(plan, blocked=(*plan.blocked, (
+        f"session {held} holds this slot, so the rebuild of {', '.join(plan.stale)} "
+        f"onto the ready image waits for its close")))
 
 @require_http_methods(["POST"])
 def range_rebuild(request):
@@ -2591,6 +2604,10 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     elif plan.boot or plan.blocked:
         phase = "NOT_STANDING"
         blocked += list(plan.blocked) or [f"{host} is not standing" for host in plan.boot]
+    elif plan.stale:
+        phase = "STALE"
+        blocked += [f"{host} runs an older image than the ready one; POST /api/range/slot/ rebuilds it"
+                    for host in plan.stale]
     elif not plan.active:
         phase = "REBUILDING"
         blocked += [f"{host} is {status}" for host, _, status in plan.standing

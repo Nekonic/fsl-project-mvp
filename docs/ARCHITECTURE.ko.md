@@ -1496,7 +1496,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init이 쓴 `FSL_S
 3. `setup.sh`는 이전처럼 GHCR에서 pull한 다음 `<name>`마다 `<served-from><name>/`, 곧 `GET /api/range/images/sideloaded/<name>/`(`platform/api/sideloaded.py`)을 받습니다. 이 엔드포인트는 그 이미지의 `docker save`를 스트리밍합니다. 사이드로드하지 않았거나 선언된 워게임이 쓰지 않는 이름에는 404를 응답합니다.
 4. `setup.sh`가 `docker load`하고, 로드한 이미지의 id가 플랫폼의 id와 다르면 거부합니다. GHCR 사본을 정리합니다.
 
-워게임에 사이드로드한 이미지가 없으면 아무것도 바뀌지 않습니다. 새 이미지가 준비되기 전부터 서 있던 슬롯은 닫을 때 워게임 호스트를 그 자리에서 리셋하므로, `POST /api/range/slot/rebuild/` 전까지 이전 워게임 호스트를 그대로 씁니다.
+워게임에 사이드로드한 이미지가 없으면 아무것도 바뀌지 않습니다. 새 이미지가 준비되기 전부터 서 있던 슬롯은 `POST /api/range/slot/`이 재구축할 때까지 이전 워게임 호스트를 그대로 씁니다. `bin/cloud up`이 이 요청을 보냅니다. 세션이 열려 있으면 재구축은 그 세션을 닫을 때까지 미룹니다.
 
 fabric은 보안 그룹 세 개도 만듭니다.
 
@@ -1517,6 +1517,7 @@ fabric은 보안 그룹 세 개도 만듭니다.
 - 각 호스트는 선언된 네트워크마다 `<host>.<segment>` 이름의 포트를 가집니다. 이 포트는 `fsl-range`에, `mgmt`에서는 `fsl-mgmt`에 속합니다. 다른 그룹에 있던 기존 `mgmt` 포트는 `fsl-mgmt`로 옮깁니다.
 - `gateway` 역할을 맡은 호스트는 모든 출발지의 게이트웨이 주소를 인터넷 포트 하나에 갖습니다. cloud-init은 첫 번째 주소만 설정하므로, 나머지는 호스트의 user data가 부팅할 때마다 추가합니다.
 - 모든 호스트의 user data는 `estate` 이름을 `/etc/hosts`에 덧붙입니다. WAF의 `board.com`과 `corp.com`, 워게임 호스트의 `board`와 `corp-wp`입니다. WAF는 이것으로 각 워게임의 publish된 포트를 찾습니다. 각 데이터베이스는 호스트 안의 자기 compose 프로젝트 안에서만 응답합니다.
+- 떠 있는 서버의 이미지(Nova의 `image.id`)가 그 호스트의 준비된 이미지와 다르면 계획에서 `stale`로 표시합니다. 세션이 잡지 않은 슬롯이면 `POST /api/range/slot/`이 Nova로 그 서버를 준비된 이미지로 재구축합니다. 세션이 잡은 슬롯이면 아무것도 재구축하지 않고 슬롯을 blocked로 보고합니다.
 
 **훈련 환경 슬롯.** `cloud.yaml`의 `compute.slots`(기본값 1, 플랫폼에서는 `FSL_OPENSTACK_SLOTS`)는 훈련 환경을 몇 벌 동시에 세울지 정합니다. `max_sessions`가 바로 이 수입니다.
 
@@ -1549,7 +1550,7 @@ fabric은 보안 그룹 세 개도 만듭니다.
 `POST /api/sessions/<id>/close/`는 이 함수 대신 `reset_slot()`을 호출합니다.
 
 - 쉘을 내주는 VM(Kali, WAF)만 재구축합니다.
-- 에지 방화벽과 워게임 호스트는 제자리에서 초기화합니다(`docs/OPENSTACK.md` §6.1).
+- 에지 방화벽과 워게임 호스트는 제자리에서 초기화합니다(`docs/OPENSTACK.md` §6.1). 단, 그 VM이 `stale`이면 다른 VM과 함께 재구축하고 `reset_in_place()`는 건너뜁니다.
 - 그래서 한 세션이 수정한 룰이나 심어 둔 데이터가 다음 세션에 남지 않습니다.
 
 재구축은 디스크를 지우므로, VM이 ACTIVE가 된 뒤 반드시 configure를 다시 실행해야 합니다.
@@ -1587,7 +1588,7 @@ close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 �
 `GET /api/range/ready/`는 `slots` 아래에 슬롯마다 다음을 보고합니다.
 
 - 번호와 그 슬롯을 잡은 세션
-- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `REBUILDING`, `CHECKING`, `READY`
+- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(VM이 호스트의 준비된 이미지가 아닌 이미지로 떠 있음), `REBUILDING`, `CHECKING`, `READY`
 - 초기화 상태
 - 세 가지 검사: 모든 VM이 ACTIVE, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 적용 중인 예외 처리가 없음
 

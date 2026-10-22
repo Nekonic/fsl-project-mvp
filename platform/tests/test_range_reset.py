@@ -159,9 +159,11 @@ class ResetsInPlace(Slot):
         self.rebuilt_step = rebuilt or (lambda hosts: None)
         self.configured_rebuilt = []
         self.reset = 0
+        self.left_to_the_rebuild = []
 
-    def reset_in_place(self):
+    def reset_in_place(self, rebuilt=()):
         self.reset += 1
+        self.left_to_the_rebuild.append(list(rebuilt))
         self.in_place()
         return [("fsl-edge", ("reset in place",))]
 
@@ -184,6 +186,19 @@ def test_only_the_vms_the_close_rebuilt_must_be_seen_rebuilding(client):
     )
     assert cloud.reset == 1 and cloud.configured_rebuilt == [["fsl-waf"]]
     assert cloud.configured == 0, "the whole slot is not configured again on top"
+
+def test_a_host_the_close_rebuilt_is_not_also_reset_in_place(client):
+    cloud = ResetsInPlace(plans=[REBUILDING])
+
+    with patch("api.reset.REBUILD_SHOWN", 0):
+        reset.begin(cloud, threading.RLock(), [("fsl-edge", "s1"), ("fsl-waf", "s2")]).join(5)
+
+    assert reset.standing() == {"state": reset.IDLE, "reason": ""}
+    assert cloud.left_to_the_rebuild == [["fsl-edge", "fsl-waf"]], (
+        "an edge on an older image is rebuilt at close; resetting it in place "
+        "at the same time would race the rebuild"
+    )
+    assert cloud.configured_rebuilt == [["fsl-edge", "fsl-waf"]]
 
 def test_an_in_place_reset_that_fails_fails_the_reset_with_its_reason(client):
     def drifts():

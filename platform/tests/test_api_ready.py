@@ -11,8 +11,8 @@ URL = "/api/range/ready/"
 pytestmark = pytest.mark.django_db
 
 class Cloud:
-    def __init__(self, standing=(("fsl-waf", "s1", "ACTIVE"),), boot=(), blocked=()):
-        self._plan = slot.Plan(boot=boot, standing=standing, blocked=blocked)
+    def __init__(self, standing=(("fsl-waf", "s1", "ACTIVE"),), boot=(), blocked=(), stale=()):
+        self._plan = slot.Plan(boot=boot, standing=standing, blocked=blocked, stale=stale)
 
     def plan_slot(self):
         return self._plan
@@ -48,7 +48,8 @@ def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
     (Cloud(standing=(("fsl-waf", "s1", "REBUILD"),)), "REBUILDING", "fsl-waf"),
     (Cloud(boot=("fsl-wg-board",), blocked=("image fsl-wg-board is not ready",)), "NOT_STANDING",
      "image fsl-wg-board is not ready"),
-], ids=["rebuilding", "to-boot"])
+    (Cloud(stale=("fsl-waf",)), "STALE", "fsl-waf runs an older image than the ready one"),
+], ids=["rebuilding", "to-boot", "older-image"])
 def test_a_slot_not_standing_ready_is_not_ready_and_says_why(client, cloud, phase, reason):
     body = _get(client, cloud).json()
 

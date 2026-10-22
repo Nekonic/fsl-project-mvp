@@ -783,7 +783,12 @@ The scripts find the `openstack` command beside `.venv/bin/python`.
    differs from what the platform would create).
 6. It sends `POST images/` until every image is ready and no builder is left. It
    stops on a failed image or an image that no script builds.
-7. It sends `POST slot/`. It stops when the slot is blocked.
+7. It sends `POST slot/`. It stops when the slot is blocked. On a slot that
+   already stands, this POST has Nova rebuild each VM whose image is not its
+   host's ready image, so a slot booted before an image changed runs the new
+   image. It does this only when no session holds the slot. A held slot with
+   such a VM reads blocked, and `up` stops; that session's close rebuilds the VM
+   (§6.1).
 8. It sends `GET ready/` until the slot leaves `NOT_STANDING` and `REBUILDING`.
 9. It sends `POST configure/`. It retries while the answer is 503, which means
    the VMs' ssh is not up yet. It stops on 409.
@@ -923,24 +928,23 @@ A new board is therefore a new `fsl-wargame-host` image. It is built when the
 range's images are next planned. `bin/cloud up` does that, and it takes about 4
 to 5 minutes.
 
-A slot that was already up keeps the wargame host it booted, with the old board,
-because a close resets that host in place (§6.1). When no session is open,
-rebuild every slot and configure it again:
+A slot that was already up runs the wargame host it booted, with the old board,
+until `POST slot/` rebuilds that host from the new image. `bin/cloud up` sends
+it after the images are ready and then configures the slot, so an `up` brings
+every free slot onto the new image. Until then `ready/` reads the slot `STALE`.
+A slot that a session holds keeps the old host until the session closes. The
+close then rebuilds the host instead of resetting it in place (§6.1). By hand:
 
 ```bash
 P=http://ADDRESS:8000/api/range
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/rebuild/
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/
 curl -s $P/ready/          # until no slot is REBUILDING
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # retry on 503 until ssh is up
 curl -s $P/ready/          # every slot READY
 ```
 
-This is still open: the reset does not yet notice that a wargame host booted from
-an image other than the ready one. Until it does, a deploy that changes a
-wargame image needs the slot rebuild above (`docs/DECISIONS.md` 2026-10-18,
-"Foundations rebuilt as integrated attack and defence lessons"). To see the
-sideloaded names, run `sudo docker exec fsl-platform env | grep FSL_SIDELOADED`
-on the VM.
+To see the sideloaded names, run
+`sudo docker exec fsl-platform env | grep FSL_SIDELOADED` on the VM.
 
 Before it deletes anything, the command refuses in these cases:
 
@@ -1016,7 +1020,8 @@ P=http://$ADDRESS:8000/api/range
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/fabric/     # fsl-internet (30 origin /24s, DHCP off), fsl-estate, fsl-mgmt (no gateway),
                                   # keypair fsl-platform, groups fsl-range/fsl-reach/fsl-mgmt, platform port fsl-platform.mgmt
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/images/     # repeat until "clean": true; builders on FSL_OPENSTACK_BUILD_NETWORK
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # boots fsl-edge, fsl-kali, fsl-waf, fsl-wargame-host; mgmt ports into fsl-mgmt
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # boots fsl-edge, fsl-kali, fsl-waf, fsl-wargame-host; mgmt ports into fsl-mgmt;
+                                  # rebuilds a standing VM whose image is not the ready one, when no session holds its slot
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # the edge's config.xml + reboot; WAF log forwarding; the wargames and the estate sensor up
 curl -s $P/ready/
 ```
@@ -1094,6 +1099,11 @@ wargame host in place"):
 | `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | It is the blue team's shell (`vm-terminal.sh fsl-waf`) |
 | `fsl-edge` | in place: the baseline `fsl.rules` is written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` are checked by sha256; the pf states of every range subnet are dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | The session can change only `fsl.rules`, and only the platform reaches the edge's GUI and ssh (`fsl-mgmt`) |
 | `fsl-wargame-host` | in place: `docker compose -p <id> down -v` for each wargame and for the estate sensor; its `eve.json` and rsyslog's imfile state are removed. Then its time source, the usual `up -d --wait --pull never`, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | The containers mount no host path, run unprivileged and get no docker socket |
+
+The close rebuilds the edge or the wargame host too when that VM's image is not
+its host's ready image. This happens when a deploy changed the image while a
+session held the slot (§5.2, step 7). The in-place reset then leaves that VM
+alone, and the rebuilt VMs' configure sets it up.
 
 OPNsense rewrites `config.xml` on its first boot after an install. Its
 migrations add uuids, defaults and `persisted_at` stamps. The edge's file

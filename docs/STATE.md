@@ -44,9 +44,9 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-23 on the new cloud with two slots: unit 1583
-passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 3969 s; ratchet
-ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
+`bin/verify` ran on 2026-10-23 on the new cloud with two slots, both on the
+new images: unit 1592 passed; acceptance 73 passed, 0 failed, 0 errors, 0
+skipped in 4083 s; ratchet ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
 the removal, and one after it; failures that all come from the single slot) and
 the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
@@ -916,14 +916,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       longer shows it (`topology.learner` maps the range's names to role
       names), but the operator's system maps, the `log.syslog.hostname` of the WAF and
       the wargame host, and the container and VM names still do.
-- [ ] A slot standing before a deploy keeps its old wargame host (the close
-      resets it in place), so a changed board needs `POST
-      /api/range/slot/rebuild/` and `/configure/` by hand. Its Kali and WAF
-      likewise stay on the previous image until the slot's next close
-      rebuilds them (seen 2026-10-23: a rebuilt Kali image reached slot 1 at
-      its next close, slot 2 only through `slot/rebuild/`)
-      (`docs/OPENSTACK.md` §5.3). The reset could Nova-rebuild a wargame
-      host booted from an image other than the ready one (`openstack.py`).
+- [x] A slot standing before a deploy kept the servers booted from the
+      previous images: the wargame host and the edge until someone ran
+      `POST /api/range/slot/rebuild/` and `/configure/`, the Kali and WAF
+      until the slot's next close. Fixed 2026-10-23: the slot plan names
+      servers whose Nova image is not the ready one (`stale`),
+      `/api/range/ready/` reads such a free slot `STALE`, and `POST
+      /api/range/slot/` (which `bin/cloud up` sends) rebuilds them when no
+      session holds the slot; a held slot answers blocked and its close
+      rebuilds them. Proven live: slot 1's wargame host had run a
+      2026-10-20 image through every rebuild since; the next `--replace`
+      rebuilt both wargame hosts onto the new image and Glance kept only
+      that one (`docs/DECISIONS.md` 2026-10-23).
 - [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
       on the service segment beside the sites, and the learner map draws it
       so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda
@@ -1004,6 +1008,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             ending 1 px past the iframe became 147 ending 6 px inside it, in
             both terminals, and the columns followed the notes column folding
             and the window going 1100 and 1700 px wide.
+            Proven on the platform image on 2026-10-23 (session 1189):
+            Kali and WAF 147 columns ending at 1034 px of a 1040 px pane at
+            1440 px, 104 columns ending at 733 of 740 at 1100 px.
       - [ ] A live review round of the round-5 fixes under the convergence
             rule: six reviewers (lesson design, UI, terms, AI-sounding
             Korean, realism and leaks, first-time learner); a finding counts

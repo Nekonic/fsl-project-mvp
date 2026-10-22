@@ -87,13 +87,16 @@ class Cloud:
             port.update(body["port"])
             return {"port": port}
         if verb == "POST" and path == "v2.1/servers":
-            server = dict(body["server"], id=f"srv-{next(self.ids)}", status="BUILD", addresses={})
+            server = dict(body["server"], id=f"srv-{next(self.ids)}", status="BUILD", addresses={},
+                          image={"id": body["server"]["imageRef"]})
             self.servers.append(server)
             return {"server": {"id": server["id"]}}
         if verb == "POST" and path.endswith("/action"):
             server = next(s for s in self.servers if s["id"] == path.rsplit("/", 2)[-2])
             if "rebuild" in (body or {}):
                 server["imageRef"] = body["rebuild"]["imageRef"]
+                server["image"] = {"id": body["rebuild"]["imageRef"]}
+                server["status"] = "REBUILD"
             return {}
         if verb == "DELETE":
             kind, ident = path.rsplit("/", 2)[-2:]
@@ -254,6 +257,53 @@ def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(clou
     assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == [], (
         "a rebuild that found one image missing only after wiping the others "
         "would leave a half-reset slot; refuse before issuing any rebuild"
+    )
+
+def _rebuilds(cloud):
+    return [(path.rsplit("/", 2)[-2], body["rebuild"]["imageRef"]) for verb, path, body in cloud.calls
+            if verb == "POST" and path.endswith("/action") and "rebuild" in (body or {})]
+
+def _on_an_older_image(cloud, host):
+    server = cloud.booted(host)
+    server["image"] = {"id": "img-before-the-deploy"}
+    return server
+
+def test_a_free_slot_standing_on_an_older_image_is_rebuilt_onto_the_ready_one(cloud):
+    adapter(cloud).ensure_slot()
+    for server in cloud.servers:
+        server["status"] = "ACTIVE"
+    old = _on_an_older_image(cloud, WARGAME_HOST)
+
+    seen = adapter(cloud).plan_slot()
+    plan = adapter(cloud).ensure_slot()
+
+    assert seen.stale == (WARGAME_HOST,) and not seen.clean, (
+        "a slot standing before a deploy reads clean while it runs the image the deploy replaced"
+    )
+    assert _rebuilds(cloud) == [(old["id"], f"img-{WARGAME_HOST}")], (
+        "only the server on an older image is rebuilt; the others already run the ready image"
+    )
+    assert plan.stale == () and not plan.active, "bin/cloud up waits for the rebuild, then configures"
+
+def test_a_slot_on_an_older_image_is_not_rebuilt_while_a_session_holds_it(cloud):
+    adapter(cloud).ensure_slot()
+    _on_an_older_image(cloud, "fsl-kali")
+
+    plan = adapter(cloud).ensure_slot(renew=False)
+
+    assert _rebuilds(cloud) == []
+    assert plan.stale == ("fsl-kali",)
+
+def test_a_close_rebuilds_a_host_it_would_reset_in_place_when_that_host_is_on_an_older_image(cloud):
+    adapter(cloud).ensure_slot()
+    old = _on_an_older_image(cloud, WARGAME_HOST)
+    in_place = adapter(cloud).reset_in_place_hosts()
+
+    rebuilt = adapter(cloud).reset_slot()
+
+    assert WARGAME_HOST in in_place and (WARGAME_HOST, old["id"]) in rebuilt
+    assert {host for host, _ in rebuilt} == set(DECLARED.hosts) - in_place | {WARGAME_HOST}, (
+        "the edge stays on the ready image, so it is still reset in place"
     )
 
 def test_taking_the_slot_down_removes_its_servers_and_the_ports_it_made(cloud):

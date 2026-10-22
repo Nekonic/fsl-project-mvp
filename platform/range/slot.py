@@ -32,10 +32,11 @@ class Plan:
     standing: tuple[tuple[str, str, str], ...] = ()
     blocked: tuple[str, ...] = ()
     slot: int = 1
+    stale: tuple[str, ...] = ()
 
     @property
     def clean(self) -> bool:
-        return not (self.boot or self.ports or self.blocked)
+        return not (self.boot or self.ports or self.blocked or self.stale)
 
     @property
     def active(self) -> bool:
@@ -61,6 +62,10 @@ def in_slot(server: dict) -> bool:
 def server_of(servers: list, host: str, slot: int = 1) -> dict | None:
     return next((server for server in servers
                  if (server.get("metadata") or {}).get(HOST) == host and slot_of(server) == slot), None)
+
+def booted_from(server: dict) -> str:
+    image = server.get("image")
+    return str(image.get("id") or "") if isinstance(image, dict) else ""
 
 def known_as(server: dict) -> str:
     return server["metadata"][HOST] if in_slot(server) else server["name"]
@@ -96,11 +101,13 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
     attacker = declaration.roles.get(ATTACKER_ROLE, "")
     may_stand_outside = {host for host in (edge, attacker) if host}
     existing = {(port.get("network_id"), port.get("name")) for port in ports}
-    boot, create, standing, blocked = [], [], [], []
+    boot, create, standing, blocked, stale = [], [], [], [], []
     for host, entry in declaration.hosts.items():
         server = server_of(servers, host, slot)
         if server is not None:
             standing.append((host, server["id"], server.get("status", "")))
+            if host in ready and booted_from(server) not in ("", ready[host]):
+                stale.append(host)
             continue
         reasons = [
             f"the fabric has no network for {segment}, which {host} stands on"
@@ -131,7 +138,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, ports: list,
                 fixed = ()
             create.append(Port(host=host, segment=segment, name=name, fixed_ips=fixed))
     return Plan(boot=tuple(boot), ports=tuple(create), standing=tuple(standing),
-                blocked=tuple(blocked), slot=slot)
+                blocked=tuple(blocked), slot=slot, stale=tuple(stale))
 
 def user_data(names: dict, mac: str = "", addresses: tuple[str, ...] = ()) -> str:
     document = {

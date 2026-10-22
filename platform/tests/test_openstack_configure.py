@@ -338,6 +338,16 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
         "the waf is rebuilt from its image and configured once Nova has it back"
     )
 
+def test_a_wargame_host_the_close_rebuilt_is_left_to_its_configure_and_not_reset_in_place():
+    edge = ResetsInPlace()
+
+    done = _adapter(edge, Groups()).reset_in_place(("fsl-kali", "fsl-wargame-host"))
+
+    assert {host for host, _ in done} == {"fsl-edge", "fsl-platform"}
+    assert not [role for role, _, _ in edge.calls if role in ("wargames", "estate-sensor")], (
+        "the host is rebuilding from its newer image; clearing it in place races the rebuild"
+    )
+
 def test_the_rebuilt_vms_are_configured_by_their_own_steps_from_a_fresh_read_of_the_cloud():
     edge = ResetsInPlace()
     adapter = _adapter(edge)

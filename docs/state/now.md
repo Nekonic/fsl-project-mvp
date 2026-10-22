@@ -47,10 +47,13 @@ the Internet.
   19 min 44 s, and the full `bin/verify` on the VM, on the code with the docker substrate removed, passed with 8
   failures that all come from the single slot (the earlier runs, two bullets
   down).
-- Last full `bin/verify`, on the sideloaded VM with the fixes of this push
-  (2026-10-23): unit 1583 passed; acceptance 73 passed, 0 failed, 0 errors, 0
-  skipped in 3969 s; ratchet ok (`docs/DECISIONS.md` "A root shell on Kali
-  and the lesson checks"). The 2026-10-22 run before the root-shell fix gave
+- Last full `bin/verify`, on the sideloaded VM with all the fixes of this
+  push (2026-10-23, after the standing slots were rebuilt onto the new images,
+  so both slots ran the fixed corp): unit 1592 passed; acceptance 73 passed, 0
+  failed, 0 errors, 0 skipped in 4083 s; ratchet ok (`docs/DECISIONS.md` "A
+  slot standing through a deploy is rebuilt onto the new images"). The run
+  before the stale-image fix gave unit 1583 and acceptance 73 passed in
+  3969 s; the 2026-10-22 run before the root-shell fix gave
   unit 1581 and acceptance 73 passed in 3759 s. The run before those, on dev's head without a
   sideload, gave unit 1578 and acceptance 73 passed in 3853 s; the one-slot
   failures below are gone (`docs/DECISIONS.md` "Two range slots on the new
