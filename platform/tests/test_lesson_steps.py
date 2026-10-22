@@ -241,6 +241,19 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
     assert (recorded.started_at, recorded.ended_at) == (first, last), "the run spans its first to its last request"
     assert window_of(done["kali"]["discover"]) == (first - views.RECORD_SLACK, last + views.RECORD_SLACK)
 
+def test_a_fact_about_a_kali_step_that_recorded_nothing_sends_the_learner_back_to_that_step(client):
+    session = taught("f5")
+    run_step(session, "f5", "verdict", "unused", timezone.now())
+    with quietly():
+        before = check(client, session, "verdict", {"answer": "yes"}).json()
+        recorded_run(session, "f5", "sqlmap", "sqlmap-run", timezone.now() - timedelta(minutes=2),
+                     timezone.now() - timedelta(minutes=1))
+        with patch("api.views.attacker.sqlmap_found", return_value=True), patch("api.views._range"):
+            after = check(client, session, "verdict", {"answer": "yes"}).json()
+
+    assert (before["passed"], before["reason"]) == (False, ["lesson.check.kali_first", []])
+    assert after["passed"] is True
+
 @pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "3"), ("notes", [], "4")])
 def test_the_count_of_my_searches_is_the_events_the_kibana_view_of_this_lesson_shows_for_my_word(
         client, word, others, expected):

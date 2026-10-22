@@ -460,6 +460,7 @@ The proxy is a `mitmdump` script.
 - When `/var/lib/session/origin` names an address, the proxy forwards the request there with the original `Host`. Nothing writes that file since the `host-rewrite` origin mode was removed (2026-10-21). `stamp.py` and `deploy/kali/setup.sh` still name it.
 - The platform writes `active` through `runner("proxy")`, over ssh.
 - There is no TLS interception. The proxy is only an environment variable and enforces nothing: `curl --noproxy '*'` skips it.
+- `/etc/profile.d/proxy.sh` sets `http_proxy` and `HTTP_PROXY` for login shells, and the `kali` sudoers drop-in keeps both through `sudo`, so a root shell from `sudo su`, `sudo -s` or `sudo <command>` still goes through the proxy.
 
 The terminal also records what the operator types.
 

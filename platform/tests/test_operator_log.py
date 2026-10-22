@@ -163,6 +163,14 @@ def test_the_attacker_shell_is_kali_s_own():
     assert "preserve_hostname: true" in setup, "cloud-init renamed the machine to the Nova server name again"
     assert ": > /etc/motd" in setup
 
+def test_sudo_keeps_the_proxy_variables_so_a_root_shell_still_goes_through_the_stamping_proxy():
+    setup = KALI_SETUP.read_text()
+    exported = re.findall(r"^export (\w*proxy)=", setup, re.M | re.I)
+
+    assert exported == ["http_proxy", "HTTP_PROXY"]
+    assert "echo 'Defaults env_keep += \"http_proxy HTTP_PROXY\"' >> /etc/sudoers.d/90-kali" in setup
+    assert setup.index("visudo -cf /etc/sudoers.d/90-kali") > setup.index("env_keep")
+
 def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
     shell = subprocess.run(
         ["bash", "--noprofile", "--norc", "-ic", 'source "$1"; printf "%s" "$PS1"', "bash", str(KALI_BASHRC)],

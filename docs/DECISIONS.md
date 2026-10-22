@@ -6203,3 +6203,41 @@ read through `run_on_role gateway`.
 - Not changed: the assessment and the lesson text. Whether they should
   teach the `REQUEST_URI_RAW` exclusion is a content decision, left open in
   `docs/STATE.md`.
+
+## 2026-10-23 — A root shell on Kali and the lesson checks
+
+Tester reports of 2026-10-21 on the foundations course, checked by three
+review agents against the code and the live range, then fixed.
+
+| Report | Finding |
+|---|---|
+| F4 step 3, "many errors on the IDS and log side" | Not reproduced; too vague to place. |
+| F4 step 7, the theory example is not an XSS rule | True: the only example rule matches `/admin`; a learner who copies it passes step 7 and then gets "no log yet" at step 8. The nudge now says so. The step 7 check is unchanged (requiring `<script` would change what passes). |
+| F5 step 1, no sort control | Fixed since: the tester's board image predated the sort control (2026-10-18). |
+| F5 step 4, F6 step 2, "no request log from this step's command" after a finished sqlmap | The tester ran sqlmap in a root shell. `http_proxy` is set only in `/etc/profile.d/proxy.sh` (login shells) and `sudo` reset it, so sqlmap went straight to the WAF without the step's `X-Request-ID` marker that the check matches. The check never reads the command log; root's commands were logged. |
+| F5 step 5, "no log for this request yet" | A consequence of step 4: the fact it reads was never recorded. |
+
+- Fixes: the `kali` sudoers drop-in keeps `http_proxy` and `HTTP_PROXY`
+  (`deploy/kali/setup.sh`); a fact check whose Kali step recorded nothing
+  answers `lesson.check.kali_first`; `lesson.check.kali_none` names the root
+  shell and says to return with `exit`; the F4 step 7 nudge names the
+  `/admin` example.
+- Rejected: matching unmarked requests to the step (a request could be
+  credited to the wrong step); a transparent proxy with an iptables
+  redirect (covers tools that ignore `http_proxy`, but a larger change than
+  the report needs).
+- Live proof on the platform VM with this code sideloaded
+  (`bin/cloud up --replace`, 33 min, exit 0, the Kali image rebuilt). The
+  first driver run landed on a Kali that stood through the deploy, still on
+  the previous image: `sudo su` had no proxy, the step 4 check gave the new
+  root-shell message and step 5 the new `kali_first` message. After the
+  slot's close rebuilt its Kali (session 1141, slot 1): in `sudo su`, `sudo
+  -s` and `sudo -i` `http_proxy` stays set; sqlmap run from `sudo su`
+  passed step 4 ("sqlmap 실행을 확인했습니다") and step 5 answered
+  correctly; step 1's sort control was there.
+- The run also showed that a deploy that rebuilds the Kali image leaves the
+  standing slots' Kali on the old image until each slot's next close;
+  slot 2 was brought up to date with `POST /api/range/slot/rebuild/?slot=2`
+  and `/configure/?slot=2`.
+- Full `bin/verify` on that VM afterwards: unit 1583 passed; acceptance 73
+  passed, 0 failed, 0 errors, 0 skipped in 3969 s; ratchet ok.
