@@ -367,8 +367,8 @@ def test_a_kali_step_writes_its_marker_to_the_stamp_proxy_shows_no_runnable_comm
     assert labelled.call_args.args[0] == marker
     assert "--headers" not in shown["agent"]["command"] and "--random-agent" in shown["agent"]["command"]
     assert (early["passed"], early["reason"]) == (False, ["lesson.check.kali_none", ["sqlmap"]])
-    assert (running["passed"], running["reason"]) == (False, ["lesson.check.kali_running", ["sqlmap"]]), (
-        "a request seconds ago means the run is still going")
+    assert (running["passed"], running["reason"]) == (False, ["lesson.check.kali_settling", ["sqlmap"]]), (
+        "a request seconds ago means the logs are still settling")
     assert ran["passed"] is True and set(ran["kali"]) == {"name", "discover"}, "no request count, no sensor names"
     recorded = Case.objects.get(session=session, case_id=marker)
     assert recorded.malicious and (recorded.meta["kali"], recorded.meta["lesson"]) == ("agent", "f5")

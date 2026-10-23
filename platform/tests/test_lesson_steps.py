@@ -234,8 +234,8 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
             done = check(client, session, "agent", {"poll": True}).json()
     recorded = Case.objects.get(session=session, case_id="agent-run")
 
-    assert (running["passed"], running["reason"]) == (False, ["lesson.check.kali_running", ["sqlmap"]])
-    assert running["kali"] == {"name": "board-sqli-orderby-sqlmap-random-agent", "running": True}, "no window yet"
+    assert (running["passed"], running["reason"]) == (False, ["lesson.check.kali_settling", ["sqlmap"]])
+    assert running["kali"] == {"name": "board-sqli-orderby-sqlmap-random-agent", "settling": True}, "no window yet"
     assert premature is False
     assert done["passed"] is True
     assert (recorded.started_at, recorded.ended_at) == (first, last), "the run spans its first to its last request"
